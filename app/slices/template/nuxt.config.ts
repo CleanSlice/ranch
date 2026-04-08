@@ -9,7 +9,7 @@ export default defineNuxtConfig({
   },
   modules: ['@nuxtjs/i18n'],
   i18n: {
-    langDir: './locales',
+    langDir: currentDir + '/locales',
     locales: [{ code: 'en', file: 'en.json' }],
   },
 });

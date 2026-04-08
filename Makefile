@@ -1,4 +1,4 @@
-.PHONY: init setup install db db-wait migrate generate dev dev-api dev-app dev-admin stop clean help
+.PHONY: init setup install db db-wait migrate generate dev dev-api dev-app dev-admin stop clean help free-ports
 .PHONY: infra-init infra-plan infra-apply infra-destroy kubeconfig deploy argocd-password
 
 # ============================================
@@ -46,16 +46,25 @@ generate: ## Generate schema.prisma from slices
 studio: ## Open Prisma Studio
 	cd api && bun run studio
 
-dev: ## Start all services (api + app + admin)
+free-ports: ## Kill processes on ports 3000, 3001, 3002
+	@for port in 3000 3001 3002; do \
+		pid=$$(lsof -ti :$$port 2>/dev/null); \
+		if [ -n "$$pid" ]; then \
+			echo "Killing process on port $$port (PID $$pid)"; \
+			kill -9 $$pid 2>/dev/null; \
+		fi; \
+	done
+
+dev: free-ports ## Start all services (api + app + admin)
 	bun run dev
 
-dev-api: ## Start API only (port 3000)
+dev-api: free-ports ## Start API only (port 3000)
 	bun run dev:api
 
-dev-app: ## Start app only (port 3001)
+dev-app: free-ports ## Start app only (port 3001)
 	bun run dev:app
 
-dev-admin: ## Start admin only (port 3002)
+dev-admin: free-ports ## Start admin only (port 3002)
 	bun run dev:admin
 
 build: ## Build all services

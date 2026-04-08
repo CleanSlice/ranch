@@ -6,6 +6,25 @@ Agent deployment platform on Kubernetes. Deploy, manage, and monitor AI agents a
 
 Built with [CleanSlice](https://github.com/CleanSlice) architecture.
 
+## Quick Start
+
+```bash
+git clone https://github.com/CleanSlice/ranch.git
+cd ranch
+make init
+```
+
+The setup wizard will guide you through:
+1. Installing dependencies (Bun, Docker)
+2. Setting up local PostgreSQL and running migrations
+3. Optionally: configuring and deploying to Hetzner Cloud
+
+After setup, start developing:
+
+```bash
+make dev    # Starts api:3000 + app:3001 + admin:3002
+```
+
 ## Architecture
 
 ```

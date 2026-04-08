@@ -1,4 +1,4 @@
-.PHONY: setup install db db-wait migrate generate dev dev-api dev-app dev-admin stop clean help
+.PHONY: init setup install db db-wait migrate generate dev dev-api dev-app dev-admin stop clean help
 .PHONY: infra-init infra-plan infra-apply infra-destroy kubeconfig deploy argocd-password
 
 # ============================================
@@ -8,7 +8,10 @@
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-setup: install db db-wait migrate ## Full local setup (first time)
+init: ## Interactive setup wizard (local + optional Hetzner deploy)
+	@bash scripts/init.sh
+
+setup: install db db-wait migrate ## Full local setup (non-interactive)
 	@echo ""
 	@echo "Setup complete! Run: make dev"
 

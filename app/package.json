@@ -8,5 +8,21 @@
     "build:api": "openapi-ts",
     "preview": "nuxt preview",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "nuxt": "^3.16",
+    "vue": "^3.5",
+    "@pinia/nuxt": "^0.9",
+    "pinia": "^3",
+    "@nuxtjs/tailwindcss": "^6",
+    "@nuxtjs/i18n": "^9",
+    "@nuxt/image": "^1",
+    "shadcn-nuxt": "^1",
+    "@hey-api/client-axios": "^0.6",
+    "axios": "^1"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.66",
+    "eslint": "^9"
   }
 }

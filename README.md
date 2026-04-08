@@ -1,3 +1,5 @@
+![Ranch](docs/cleanslice-ranch-banner.png)
+
 # Ranch
 
 Agent deployment platform on Kubernetes. Deploy, manage, and monitor AI agents at scale.
@@ -8,25 +10,25 @@ Built with [CleanSlice](https://github.com/CleanSlice) architecture.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Hetzner Cloud                         │
-│                                                          │
+│                    Hetzner Cloud                        │
+│                                                         │
 │  ┌────────────┐  ┌────────────────┐  ┌───────────────┐  │
 │  │  ArgoCD    │  │ Argo Workflows │  │  CloudNativePG│  │
 │  │  (GitOps)  │  │ (Agent runs)   │  │  (PostgreSQL) │  │
 │  └─────┬──────┘  └──────▲─────────┘  └───────────────┘  │
-│        │ sync           │ submit                         │
-│        ▼                │                                │
-│  ┌──────────────────────┴──────────────────────────┐     │
-│  │           Agent Manager (api)                    │     │
-│  │  NestJS + Prisma + CleanSlice                    │     │
-│  └──────────────────────────────────────────────────┘     │
-│  ┌─────────────────┐  ┌─────────────────────────────┐    │
-│  │   Dashboard (app)│  │   Admin Panel (admin)       │    │
-│  │   Nuxt + Vue 3   │  │   Nuxt + Vue 3              │    │
-│  └─────────────────┘  └─────────────────────────────┘    │
-│                                                          │
+│        │ sync           │ submit                        │
+│        ▼                │                               │
+│  ┌──────────────────────┴──────────────────────────┐    │
+│  │           Agent Manager (api)                   │    │
+│  │  NestJS + Prisma + CleanSlice                   │    │
+│  └─────────────────────────────────────────────────┘    │
+│  ┌─────────────────┐  ┌─────────────────────────────┐   │
+│  │   Dashboard (app)│  │   Admin Panel (admin)      │   │
+│  │   Nuxt + Vue 3   │  │   Nuxt + Vue 3             │   │
+│  └─────────────────┘  └─────────────────────────────┘   │
+│                                                         │
 │  ┌──────────────────────────────────────────────────┐    │
-│  │  Agent Pods (dynamic, via Argo Workflows)         │    │
+│  │  Agent Pods (dynamic, via Argo Workflows)        │    │
 │  └──────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────┘
 ```

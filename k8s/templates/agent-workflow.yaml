@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: agent-deployment
+  namespace: agents
+spec:
+  entrypoint: deploy-agent
+  arguments:
+    parameters:
+      - name: agent-id
+      - name: agent-name
+      - name: template-id
+      - name: agent-config
+      - name: cpu-limit
+        value: "500m"
+      - name: memory-limit
+        value: "512Mi"
+  templates:
+    - name: deploy-agent
+      steps:
+        - - name: run-agent
+            template: agent-pod
+
+    - name: agent-pod
+      resource:
+        action: create
+        successCondition: status.phase == Running
+        manifest: |
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: "agent-{{workflow.parameters.agent-id}}"
+            namespace: agents
+            labels:
+              app: ranch-agent
+              ranch/agent-id: "{{workflow.parameters.agent-id}}"
+              ranch/template-id: "{{workflow.parameters.template-id}}"
+          spec:
+            nodeSelector:
+              node-role: agents
+            tolerations:
+              - key: workload
+                value: agent
+                effect: NoSchedule
+            containers:
+              - name: agent
+                image: "ghcr.io/CleanSlice/agent-{{workflow.parameters.template-id}}:latest"
+                env:
+                  - name: AGENT_ID
+                    value: "{{workflow.parameters.agent-id}}"
+                  - name: AGENT_NAME
+                    value: "{{workflow.parameters.agent-name}}"
+                  - name: AGENT_CONFIG
+                    value: "{{workflow.parameters.agent-config}}"
+                resources:
+                  requests:
+                    cpu: "{{workflow.parameters.cpu-limit}}"
+                    memory: "{{workflow.parameters.memory-limit}}"
+                  limits:
+                    cpu: "{{workflow.parameters.cpu-limit}}"
+                    memory: "{{workflow.parameters.memory-limit}}"
+            restartPolicy: Never

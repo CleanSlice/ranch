@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ranch-api
+  namespace: platform
+  labels:
+    app: ranch-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ranch-api
+  template:
+    metadata:
+      labels:
+        app: ranch-api
+    spec:
+      nodeSelector:
+        node-role: system
+      containers:
+        - name: api
+          image: ghcr.io/CleanSlice/ranch-api:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: ranch-api-env
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10

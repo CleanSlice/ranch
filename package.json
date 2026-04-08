@@ -1,0 +1,21 @@
+{
+  "name": "ranch",
+  "private": true,
+  "workspaces": [
+    "api",
+    "app",
+    "admin"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "dev:api": "turbo dev --filter=api",
+    "dev:app": "turbo dev --filter=app",
+    "dev:admin": "turbo dev --filter=admin"
+  },
+  "devDependencies": {
+    "turbo": "^2"
+  }
+}

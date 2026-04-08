@@ -1,0 +1,94 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ranch-apps
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/CleanSlice/ranch.git
+    targetRevision: main
+    path: k8s/argocd
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ranch-infrastructure
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/CleanSlice/ranch.git
+    targetRevision: main
+    path: k8s/infrastructure
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ranch-api
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/CleanSlice/ranch.git
+    targetRevision: main
+    path: k8s/platform/api
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ranch-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/CleanSlice/ranch.git
+    targetRevision: main
+    path: k8s/platform/app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ranch-admin
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/CleanSlice/ranch.git
+    targetRevision: main
+    path: k8s/platform/admin
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -1,0 +1,4 @@
+hcloud_token        = "your-hetzner-cloud-api-token"
+domain              = "ranch.example.com"
+admin_ip            = "YOUR_IP/32"
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"

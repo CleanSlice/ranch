@@ -1,6 +1,7 @@
 {
   "name": "ranch",
   "private": true,
+  "packageManager": "bun@1.2.12",
   "workspaces": [
     "api",
     "app",

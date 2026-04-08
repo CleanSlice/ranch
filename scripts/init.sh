@@ -105,9 +105,11 @@ cd ..
 step 4 "Running database migrations"
 
 cd api
+bun add -d prisma prisma-import dotenv-cli 2>/dev/null
+bun add @prisma/client 2>/dev/null
 bun run generate 2>/dev/null
-dotenv -e .env.dev -- npx prisma db push --accept-data-loss 2>/dev/null || npx prisma db push 2>/dev/null
-dotenv -e .env.dev -- npx prisma generate 2>/dev/null || npx prisma generate 2>/dev/null
+npx --yes prisma db push --accept-data-loss 2>/dev/null || true
+npx --yes prisma generate 2>/dev/null
 cd ..
 ok "Database schema applied"
 

@@ -1,5 +1,6 @@
-.PHONY: init setup install db db-wait migrate generate dev dev-api dev-app dev-admin stop clean help free-ports
+.PHONY: init setup install db db-wait migrate generate dev dev-api dev-app dev-admin down stop clean help free-ports
 .PHONY: infra-init infra-plan infra-apply infra-destroy kubeconfig deploy argocd-password
+.PHONY: k3d k3d-stop k3d-clean k3d-status
 
 # ============================================
 # Ranch - CleanSlice Agent Platform
@@ -11,7 +12,7 @@ help: ## Show this help
 init: ## Interactive setup wizard (local + optional Hetzner deploy)
 	@bash scripts/init.sh
 
-setup: install db db-wait migrate ## Full local setup (non-interactive)
+setup: install db db-wait migrate k3d ## Full local setup (non-interactive)
 	@echo ""
 	@echo "Setup complete! Run: make dev"
 
@@ -46,7 +47,7 @@ generate: ## Generate schema.prisma from slices
 studio: ## Open Prisma Studio
 	cd api && bun run studio
 
-free-ports: ## Kill processes on ports 3000, 3001, 3002
+free-ports: ## Kill processes on ports 3000, 3001, 3002 and free 5432
 	@for port in 3000 3001 3002; do \
 		pid=$$(lsof -ti :$$port 2>/dev/null); \
 		if [ -n "$$pid" ]; then \
@@ -54,8 +55,13 @@ free-ports: ## Kill processes on ports 3000, 3001, 3002
 			kill -9 $$pid 2>/dev/null; \
 		fi; \
 	done
+	@container=$$(docker ps -q --filter "publish=5432" 2>/dev/null); \
+	if [ -n "$$container" ]; then \
+		echo "Stopping container on port 5432 ($$container)"; \
+		docker stop $$container > /dev/null; \
+	fi
 
-dev: free-ports ## Start all services (api + app + admin)
+dev: free-ports k3d ## Start all services (api + app + admin + k3d)
 	bun run dev
 
 dev-api: free-ports ## Start API only (port 3000)
@@ -76,12 +82,75 @@ lint: ## Lint all services
 test: ## Run tests
 	bun run test
 
-stop: db-stop ## Stop all services
+down: ## Stop all services and free ports
+	@for port in 3000 3001 3333; do \
+		pid=$$(lsof -ti :$$port 2>/dev/null); \
+		if [ -n "$$pid" ]; then \
+			echo "Killing process on port $$port (PID $$pid)"; \
+			kill $$pid 2>/dev/null || true; \
+		fi; \
+	done
+	@cd api && docker compose down 2>/dev/null || true
+	@k3d cluster stop ranch 2>/dev/null || true
+	@echo "All services stopped."
+
+stop: down ## Alias for down
 
 clean: ## Remove node_modules and build artifacts
 	rm -rf node_modules api/node_modules app/node_modules admin/node_modules
 	rm -rf api/dist app/.nuxt app/.output admin/.nuxt admin/.output
 	rm -rf .turbo api/.turbo app/.turbo admin/.turbo
+
+# ============================================
+# Local Kubernetes (k3d)
+# ============================================
+
+CLUSTER    := ranch
+KUBECONFIG_LOCAL := $(HOME)/.kube/ranch-local.yaml
+
+k3d: ## Create/start local k3d cluster
+	@echo "── Checking k3d ──"
+	@command -v k3d >/dev/null 2>&1 || (echo "  Installing k3d..." && brew install k3d)
+	@if k3d cluster list 2>/dev/null | grep -q "$(CLUSTER)"; then \
+		state=$$(k3d cluster list 2>/dev/null | grep "$(CLUSTER)" | awk '{print $$2}'); \
+		if echo "$$state" | grep -qi running; then \
+			echo "  cluster $(CLUSTER): running"; \
+		else \
+			echo "  cluster $(CLUSTER): starting..."; \
+			k3d cluster start $(CLUSTER); \
+		fi; \
+	else \
+		echo "  cluster $(CLUSTER): creating..."; \
+		k3d cluster create $(CLUSTER) --api-port 6550 --wait; \
+	fi
+	@mkdir -p $$(dirname $(KUBECONFIG_LOCAL))
+	@k3d kubeconfig get $(CLUSTER) > $(KUBECONFIG_LOCAL)
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl create namespace platform 2>/dev/null || true
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl create namespace agents 2>/dev/null || true
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl apply -f k8s/templates/agent-workflow.yaml 2>/dev/null || true
+	@echo "  namespaces: platform, agents"
+	@echo "  kubeconfig: $(KUBECONFIG_LOCAL)"
+	@echo ""
+	@echo "  Run: export KUBECONFIG=$(KUBECONFIG_LOCAL)"
+
+k3d-stop: ## Stop local k3d cluster
+	@k3d cluster stop $(CLUSTER) 2>/dev/null || true
+	@echo "Cluster $(CLUSTER) stopped."
+
+k3d-clean: ## Delete local k3d cluster
+	@k3d cluster delete $(CLUSTER) 2>/dev/null || true
+	@rm -f $(KUBECONFIG_LOCAL)
+	@echo "Cluster $(CLUSTER) deleted."
+
+k3d-status: ## Show local cluster status
+	@echo "=== Cluster ==="
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl get nodes 2>/dev/null || echo "  Not running. Run: make k3d"
+	@echo ""
+	@echo "=== Platform ==="
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl get pods -n platform 2>/dev/null || true
+	@echo ""
+	@echo "=== Agents ==="
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl get pods -n agents 2>/dev/null || true
 
 # ============================================
 # Hetzner / Terraform

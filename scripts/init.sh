@@ -37,9 +37,9 @@ echo ""
 read -p "  Choose [1/2]: " MODE
 
 if [ "$MODE" = "1" ]; then
-  TOTAL_STEPS=4
+  TOTAL_STEPS=5
 else
-  TOTAL_STEPS=9
+  TOTAL_STEPS=10
 fi
 
 # ============================================
@@ -60,6 +60,8 @@ check_cmd() {
 
 check_cmd "bun" "curl -fsSL https://bun.sh/install | bash && export PATH=\$HOME/.bun/bin:\$PATH"
 check_cmd "docker" "fail 'Install Docker from https://docs.docker.com/get-docker/'"
+check_cmd "kubectl" "brew install kubectl || fail 'Install kubectl: https://kubernetes.io/docs/tasks/tools/'"
+check_cmd "k3d" "brew install k3d || fail 'Install k3d: https://k3d.io/'"
 
 if [ "$MODE" = "2" ]; then
   check_cmd "terraform" "brew install terraform || fail 'Install terraform: https://developer.hashicorp.com/terraform/install'"
@@ -113,25 +115,61 @@ npx dotenv-cli -e .env.dev -- npx prisma generate 2>/dev/null
 cd ..
 ok "Database schema applied"
 
+# ============================================
+# Step 5: Local Kubernetes (k3d)
+# ============================================
+
+step 5 "Setting up local Kubernetes cluster"
+
+CLUSTER="ranch"
+KUBECONFIG_LOCAL="$HOME/.kube/ranch-local.yaml"
+
+if k3d cluster list 2>/dev/null | grep -q "$CLUSTER"; then
+  state=$(k3d cluster list 2>/dev/null | grep "$CLUSTER" | awk '{print $2}')
+  if echo "$state" | grep -qi running; then
+    ok "cluster $CLUSTER: running"
+  else
+    echo "  Starting cluster..."
+    k3d cluster start "$CLUSTER"
+    ok "cluster $CLUSTER: started"
+  fi
+else
+  echo "  Creating k3d cluster..."
+  k3d cluster create "$CLUSTER" --api-port 6550 --wait
+  ok "cluster $CLUSTER: created"
+fi
+
+mkdir -p "$(dirname "$KUBECONFIG_LOCAL")"
+k3d kubeconfig get "$CLUSTER" > "$KUBECONFIG_LOCAL"
+KUBECONFIG="$KUBECONFIG_LOCAL" kubectl create namespace platform 2>/dev/null || true
+KUBECONFIG="$KUBECONFIG_LOCAL" kubectl create namespace agents 2>/dev/null || true
+KUBECONFIG="$KUBECONFIG_LOCAL" kubectl apply -f k8s/templates/agent-workflow.yaml 2>/dev/null || true
+ok "namespaces: platform, agents"
+ok "kubeconfig: $KUBECONFIG_LOCAL"
+
 if [ "$MODE" = "1" ]; then
   echo ""
   echo -e "${GREEN}${BOLD}  ✓ Local setup complete!${NC}"
   echo ""
   echo -e "  Start developing:"
   echo -e "    ${CYAN}make dev${NC}          — Start all services"
-  echo -e "    ${CYAN}make dev-api${NC}      — API only (http://localhost:3000)"
-  echo -e "    ${CYAN}make dev-app${NC}      — App only (http://localhost:3001)"
-  echo -e "    ${CYAN}make dev-admin${NC}    — Admin only (http://localhost:3002)"
+  echo -e "    ${CYAN}make dev-api${NC}      — API only (http://localhost:3333)"
+  echo -e "    ${CYAN}make dev-app${NC}      — App only (http://localhost:3000)"
+  echo -e "    ${CYAN}make dev-admin${NC}    — Admin only (http://localhost:3001)"
   echo ""
-  echo -e "  Swagger UI: ${CYAN}http://localhost:3000/api${NC}"
+  echo -e "  Kubernetes:"
+  echo -e "    ${CYAN}export KUBECONFIG=$KUBECONFIG_LOCAL${NC}"
+  echo -e "    ${CYAN}make k3d-status${NC}   — Cluster status"
+  echo ""
+  echo -e "  Swagger UI: ${CYAN}http://localhost:3333/api${NC}"
   exit 0
 fi
 
 # ============================================
-# Step 5: Configure environment
+# Step 6: Configure environment
 # ============================================
 
-step 5 "Configuring Hetzner environment"
+step 6 "Configuring Hetzner environment"
 
 echo ""
 ask "Environment name (e.g. mycompany, staging)" ENV_NAME
@@ -191,10 +229,10 @@ sed -i '' "s|default = \"~/.ssh/id_ed25519\"|default = \"$SSH_KEY\"|" "$ENV_DIR/
 ok "Configuration saved to $ENV_DIR/terraform.tfvars"
 
 # ============================================
-# Step 6: Build MicroOS snapshots
+# Step 7: Build MicroOS snapshots
 # ============================================
 
-step 6 "Building MicroOS snapshots for k3s"
+step 7 "Building MicroOS snapshots for k3s"
 
 echo "  This creates OS images on Hetzner for the k3s cluster nodes."
 echo "  Takes ~5 minutes. Only needed once per Hetzner account."
@@ -219,10 +257,10 @@ else
 fi
 
 # ============================================
-# Step 7: Provision infrastructure
+# Step 8: Provision infrastructure
 # ============================================
 
-step 7 "Provisioning Hetzner infrastructure"
+step 8 "Provisioning Hetzner infrastructure"
 
 echo ""
 read -p "  Create the cluster now? This costs ~€38/month. [y/N]: " CREATE_INFRA
@@ -254,10 +292,10 @@ else
 fi
 
 # ============================================
-# Step 8: Install platform services
+# Step 9: Install platform services
 # ============================================
 
-step 8 "Installing platform services"
+step 9 "Installing platform services"
 
 export KUBECONFIG=~/.kube/ranch-$ENV_NAME
 
@@ -292,10 +330,10 @@ kubectl apply -f k8s/templates/agent-workflow.yaml >/dev/null 2>&1
 ok "Namespaces and workflow templates created"
 
 # ============================================
-# Step 9: Summary
+# Step 10: Summary
 # ============================================
 
-step 9 "Setup complete"
+step 10 "Setup complete"
 
 LB_IP=$(kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "<pending>")
 ARGOCD_PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "<pending>")

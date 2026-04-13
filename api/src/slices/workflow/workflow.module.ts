@@ -11,6 +11,6 @@ import { ArgoWorkflowGateway } from './data/argo-workflow.gateway';
       useClass: ArgoWorkflowGateway,
     },
   ],
-  exports: [WorkflowService],
+  exports: [WorkflowService, IWorkflowGateway],
 })
 export class WorkflowModule {}

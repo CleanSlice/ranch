@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ITemplateGateway } from '../domain/template.gateway';
 import {
@@ -35,11 +36,12 @@ export class TemplateGateway extends ITemplateGateway {
         name: data.name,
         description: data.description,
         image: data.image,
-        defaultConfig: data.defaultConfig ?? {},
-        defaultResources: data.defaultResources ?? {
+        defaultConfig: (data.defaultConfig ??
+          {}) as unknown as Prisma.InputJsonValue,
+        defaultResources: (data.defaultResources ?? {
           cpu: '500m',
           memory: '512Mi',
-        },
+        }) as unknown as Prisma.InputJsonValue,
       },
     });
     return this.mapper.toEntity(record);
@@ -48,7 +50,19 @@ export class TemplateGateway extends ITemplateGateway {
   async update(id: string, data: IUpdateTemplateData): Promise<ITemplateData> {
     const record = await this.prisma.template.update({
       where: { id },
-      data,
+      data: {
+        ...(data.name && { name: data.name }),
+        ...(data.description && { description: data.description }),
+        ...(data.image && { image: data.image }),
+        ...(data.defaultConfig && {
+          defaultConfig:
+            data.defaultConfig as unknown as Prisma.InputJsonValue,
+        }),
+        ...(data.defaultResources && {
+          defaultResources:
+            data.defaultResources as unknown as Prisma.InputJsonValue,
+        }),
+      },
     });
     return this.mapper.toEntity(record);
   }

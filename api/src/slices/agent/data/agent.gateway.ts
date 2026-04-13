@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { IAgentGateway } from '../domain/agent.gateway';
 import {
@@ -36,8 +37,11 @@ export class AgentGateway extends IAgentGateway {
         name: data.name,
         templateId: data.templateId,
         status: 'pending',
-        config: data.config ?? {},
-        resources: data.resources ?? { cpu: '500m', memory: '512Mi' },
+        config: (data.config ?? {}) as unknown as Prisma.InputJsonValue,
+        resources: (data.resources ?? {
+          cpu: '500m',
+          memory: '512Mi',
+        }) as unknown as Prisma.InputJsonValue,
       },
     });
     return this.mapper.toEntity(record);
@@ -48,8 +52,12 @@ export class AgentGateway extends IAgentGateway {
       where: { id },
       data: {
         ...(data.name && { name: data.name }),
-        ...(data.config && { config: data.config }),
-        ...(data.resources && { resources: data.resources }),
+        ...(data.config && {
+          config: data.config as unknown as Prisma.InputJsonValue,
+        }),
+        ...(data.resources && {
+          resources: data.resources as unknown as Prisma.InputJsonValue,
+        }),
       },
     });
     return this.mapper.toEntity(record);

@@ -145,7 +145,7 @@ make clean            # Remove node_modules and build artifacts
 
 ### API Endpoints
 
-After `make dev`, the API is available at `http://localhost:3000`:
+After `make dev`, the API is available at `http://localhost:3333`:
 
 - `GET /health` — Health check
 - `GET /api` — Swagger UI

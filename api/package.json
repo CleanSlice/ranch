@@ -21,7 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "generate": "npx prisma-import --force",
     "premigrate": "npx prisma-import --force",
-    "migrate": "dotenv -e .env.dev -- npx prisma migrate dev && dotenv -e .env.dev -- npx prisma generate",
+    "migrate": "dotenv -e .env.dev -- npx prisma db push && dotenv -e .env.dev -- npx prisma generate",
     "migrate:prod": "dotenv -e .env.prod -- npx prisma migrate deploy",
     "studio": "dotenv -e .env.dev -- npx prisma studio",
     "docker": "docker compose up -d",

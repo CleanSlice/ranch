@@ -99,7 +99,8 @@ jobs:
           password: ${{ secrets.GHCR_PAT }}
       - uses: docker/build-push-action@v6
         with:
-          context: ./admin
+          context: .
+          file: ./admin/Dockerfile
           platforms: linux/amd64
           push: true
           build-args: |
@@ -124,7 +125,8 @@ jobs:
           password: ${{ secrets.GHCR_PAT }}
       - uses: docker/build-push-action@v6
         with:
-          context: ./app
+          context: .
+          file: ./app/Dockerfile
           platforms: linux/amd64
           push: true
           build-args: |

@@ -1,0 +1,12 @@
+{
+  "chat": {
+    "empty_title": "Pick an agent",
+    "empty_hint": "Select one of your agents on the left to start chatting.",
+    "placeholder": "Message your agent…",
+    "send": "Send",
+    "sending": "Thinking…",
+    "error": "Failed to reach agent",
+    "you": "You",
+    "agent": "Agent"
+  }
+}

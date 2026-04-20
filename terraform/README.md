@@ -229,3 +229,85 @@ kubectl get nodes
 - **kubectl provider can't connect ("localhost refused")** — the `config_path`
   must point at the file, not at the module output `kubeconfig` (which is
   content, not a path). `environments/<env>/main.tf` already does this.
+
+## 9. CI/CD (GitHub Actions)
+
+Two workflows in `.github/workflows/`:
+
+| File | Trigger | What it does |
+|---|---|---|
+| `build-images.yaml` | push to `main` on `api/**` or `admin/**` (+ manual) | builds + pushes `ghcr.io/dmitriyzhuk/ranch-{api,admin}:{latest,<sha>}`, then `kubectl rollout restart` the affected Deployment |
+| `terraform.yaml` | PR on `terraform/**` → plan; manual dispatch → plan or apply | runs TF against `environments/dreamvention` |
+| `ci.yaml` | every PR/push | lint + test (bun) |
+
+`build-images.yaml` keeps deploys fast (~2 min) and never touches cluster state.
+`terraform.yaml` is manual-apply only — TF changes (firewall, secrets rotation,
+node resize) should be explicit, not triggered by a commit.
+
+### Required repository secrets
+
+Set via `gh secret set NAME` (or UI → Settings → Secrets and variables → Actions).
+
+| Secret | Used by | Value |
+|---|---|---|
+| `GHCR_PAT` | build-images | GitHub PAT with `write:packages`, `read:packages` (push images to ghcr.io/dmitriyzhuk) |
+| `KUBECONFIG_B64` | build-images | `base64 -i environments/dreamvention/k3s_kubeconfig.yaml` |
+| `HCLOUD_TOKEN` | terraform | Hetzner Cloud API token (read-write) |
+| `AWS_ACCESS_KEY_ID` | terraform | For S3 state backend (or use OIDC) |
+| `AWS_SECRET_ACCESS_KEY` | terraform | — |
+| `TF_VAR_DATABASE_URL` | terraform | Neon direct URL (not pooler), `sslmode=require&channel_binding=require` |
+| `TF_VAR_JWT_SECRET` | terraform | — |
+| `TF_VAR_BRIDLE_API_KEY` | terraform | — |
+| `TF_VAR_GHCR_PAT` | terraform | Same PAT as `GHCR_PAT` — used to build the imagePullSecret in-cluster |
+
+### Required repository variables
+
+Set via `gh variable set NAME --body VALUE`.
+
+| Variable | Used by | Example |
+|---|---|---|
+| `API_URL` | build-images (admin build arg) | `https://api.ranch.cleanslice.org` |
+| `DOMAIN` | terraform | `ranch.cleanslice.org` |
+| `ADMIN_IP` | terraform | your IP for SSH allow-list, e.g. `1.2.3.4/32` |
+| `GHCR_USERNAME` | terraform | `dmitriyzhuk` |
+| `API_IMAGE` | terraform | `ghcr.io/dmitriyzhuk/ranch-api:latest` |
+| `ADMIN_IMAGE` | terraform | `ghcr.io/dmitriyzhuk/ranch-admin:latest` |
+
+### One-shot setup
+
+```bash
+cd ranch
+
+# secrets
+echo "<ghcr-pat>"   | gh secret set GHCR_PAT
+base64 -i terraform/environments/dreamvention/k3s_kubeconfig.yaml | gh secret set KUBECONFIG_B64
+echo "<hcloud>"     | gh secret set HCLOUD_TOKEN
+echo "<aws-key>"    | gh secret set AWS_ACCESS_KEY_ID
+echo "<aws-secret>" | gh secret set AWS_SECRET_ACCESS_KEY
+echo "$TF_VAR_database_url"    | gh secret set TF_VAR_DATABASE_URL
+echo "$TF_VAR_jwt_secret"      | gh secret set TF_VAR_JWT_SECRET
+echo "$TF_VAR_bridle_api_key"  | gh secret set TF_VAR_BRIDLE_API_KEY
+echo "<ghcr-pat>"              | gh secret set TF_VAR_GHCR_PAT
+
+# variables
+gh variable set API_URL       --body "https://api.ranch.cleanslice.org"
+gh variable set DOMAIN        --body "ranch.cleanslice.org"
+gh variable set ADMIN_IP      --body "<your-ip>/32"
+gh variable set GHCR_USERNAME --body "dmitriyzhuk"
+gh variable set API_IMAGE     --body "ghcr.io/dmitriyzhuk/ranch-api:latest"
+gh variable set ADMIN_IMAGE   --body "ghcr.io/dmitriyzhuk/ranch-admin:latest"
+```
+
+### Typical flow
+
+1. Push a code change to `api/` or `admin/` → `build-images` builds, pushes, restarts the Deployment. Smoke-tests the public endpoint at the end.
+2. Open a PR touching `terraform/` → `terraform.yaml` runs `plan` on the PR.
+3. After merging, run `gh workflow run terraform.yaml -f action=apply` to apply (or use the Actions UI).
+
+### Kubeconfig rotation
+
+If you rebuild the cluster, update `KUBECONFIG_B64`:
+
+```bash
+base64 -i terraform/environments/dreamvention/k3s_kubeconfig.yaml | gh secret set KUBECONFIG_B64
+```

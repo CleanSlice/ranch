@@ -1,58 +1,80 @@
 name: Terraform
 
+# Plan on PR (read-only, safe to run automatically).
+# Apply is manual only (workflow_dispatch) — Terraform touches cluster state,
+# DNS, Neon URLs, etc. We do not want a push to auto-apply.
+#
+# Required repo secrets:
+#   HCLOUD_TOKEN           — Hetzner Cloud API token
+#   AWS_ACCESS_KEY_ID      — for S3 state backend (or use OIDC)
+#   AWS_SECRET_ACCESS_KEY
+#   TF_VAR_DATABASE_URL    — Neon direct URL (sslmode=require&channel_binding=require)
+#   TF_VAR_JWT_SECRET
+#   TF_VAR_BRIDLE_API_KEY
+#   TF_VAR_GHCR_PAT        — same PAT as build workflow (for imagePullSecret)
+#
+# Required repo variables:
+#   DOMAIN                 — e.g. ranch.cleanslice.org
+#   ADMIN_IP               — your office/home IP for SSH allow-list
+#   GHCR_USERNAME          — e.g. dmitriyzhuk
+#   API_IMAGE              — e.g. ghcr.io/dmitriyzhuk/ranch-api:latest
+#   ADMIN_IMAGE            — e.g. ghcr.io/dmitriyzhuk/ranch-admin:latest
+
 on:
   pull_request:
     branches: [main]
     paths:
       - 'terraform/**'
-  push:
-    branches: [main]
-    paths:
-      - 'terraform/**'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'plan or apply'
+        required: true
+        default: 'plan'
+        type: choice
+        options: [plan, apply]
+
+env:
+  AWS_REGION: us-east-1
+  TF_WORKDIR: terraform/environments/dreamvention
 
 jobs:
-  plan:
+  terraform:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     defaults:
       run:
-        working-directory: terraform/environments/prod
+        working-directory: ${{ env.TF_WORKDIR }}
+    env:
+      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_hcloud_token:   ${{ secrets.HCLOUD_TOKEN }}
+      TF_VAR_domain:         ${{ vars.DOMAIN }}
+      TF_VAR_admin_ip:       ${{ vars.ADMIN_IP }}
+      TF_VAR_ghcr_username:  ${{ vars.GHCR_USERNAME }}
+      TF_VAR_ghcr_pat:       ${{ secrets.TF_VAR_GHCR_PAT }}
+      TF_VAR_api_image:      ${{ vars.API_IMAGE }}
+      TF_VAR_admin_image:    ${{ vars.ADMIN_IMAGE }}
+      TF_VAR_database_url:   ${{ secrets.TF_VAR_DATABASE_URL }}
+      TF_VAR_jwt_secret:     ${{ secrets.TF_VAR_JWT_SECRET }}
+      TF_VAR_bridle_api_key: ${{ secrets.TF_VAR_BRIDLE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
 
       - name: Terraform Init
-        run: terraform init
-        env:
-          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+        run: terraform init -input=false
 
       - name: Terraform Plan
-        run: terraform plan -no-color
-        env:
-          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
-          TF_VAR_domain: ${{ vars.DOMAIN }}
-          TF_VAR_admin_ip: ${{ vars.ADMIN_IP }}
-
-  apply:
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    defaults:
-      run:
-        working-directory: terraform/environments/prod
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        run: terraform init
-        env:
-          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+        if: github.event_name == 'pull_request' || inputs.action == 'plan'
+        run: terraform plan -input=false -no-color
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve
-        env:
-          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
-          TF_VAR_domain: ${{ vars.DOMAIN }}
-          TF_VAR_admin_ip: ${{ vars.ADMIN_IP }}
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+        run: terraform apply -input=false -auto-approve

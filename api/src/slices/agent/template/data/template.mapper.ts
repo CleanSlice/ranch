@@ -11,7 +11,8 @@ export class TemplateMapper {
       description: record.description,
       image: record.image,
       defaultConfig: record.defaultConfig as unknown as Record<string, unknown>,
-      defaultResources: record.defaultResources as unknown as ITemplateData['defaultResources'],
+      defaultResources:
+        record.defaultResources as unknown as ITemplateData['defaultResources'],
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

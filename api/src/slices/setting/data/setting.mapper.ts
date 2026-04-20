@@ -18,7 +18,16 @@ export class SettingMapper {
 
   encode(valueType: SettingValueTypes, value: unknown): string {
     if (valueType === 'json') return JSON.stringify(value ?? null);
-    return value == null ? '' : String(value);
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+    if (
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint'
+    ) {
+      return String(value);
+    }
+    return JSON.stringify(value);
   }
 
   private decode(valueType: SettingValueTypes, raw: string): unknown {

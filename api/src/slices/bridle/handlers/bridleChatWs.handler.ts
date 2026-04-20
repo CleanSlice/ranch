@@ -6,11 +6,11 @@ import {
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
-} from '@nestjs/websockets'
-import { Logger } from '@nestjs/common'
-import { JwtService } from '@nestjs/jwt'
-import { Server, Socket } from 'socket.io'
-import { IBridleGateway, type BridlePart, buildParts } from '../domain'
+} from '@nestjs/websockets';
+import { Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { Server, Socket } from 'socket.io';
+import { IBridleGateway, type BridlePart, buildParts } from '../domain';
 
 /**
  * WebSocket gateway for BROWSER clients.
@@ -35,11 +35,13 @@ import { IBridleGateway, type BridlePart, buildParts } from '../domain'
  *   "pong"        { ts }
  */
 @WebSocketGateway({ namespace: '/ws/chat', cors: { origin: '*' } })
-export class BridleChatWsHandler implements OnGatewayConnection, OnGatewayDisconnect {
+export class BridleChatWsHandler
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
-  server: Server
+  server: Server;
 
-  private readonly logger = new Logger(BridleChatWsHandler.name)
+  private readonly logger = new Logger(BridleChatWsHandler.name);
 
   constructor(
     private readonly hub: IBridleGateway,
@@ -47,67 +49,75 @@ export class BridleChatWsHandler implements OnGatewayConnection, OnGatewayDiscon
   ) {}
 
   handleConnection(client: Socket) {
-    const token = client.handshake.auth?.token as string | undefined
-    const botId = client.handshake.auth?.botId as string | undefined
+    const token = client.handshake.auth?.token as string | undefined;
+    const botId = client.handshake.auth?.botId as string | undefined;
 
     if (!token || !botId) {
-      this.logger.warn('Browser connection rejected: missing token or botId')
-      client.disconnect(true)
-      return
+      this.logger.warn('Browser connection rejected: missing token or botId');
+      client.disconnect(true);
+      return;
     }
 
-    let payload: Record<string, unknown>
+    let payload: Record<string, unknown>;
     try {
-      payload = this.jwt.verify(token) as Record<string, unknown>
+      payload = this.jwt.verify(token);
     } catch {
-      this.logger.warn('Browser connection rejected: invalid JWT')
-      client.disconnect(true)
-      return
+      this.logger.warn('Browser connection rejected: invalid JWT');
+      client.disconnect(true);
+      return;
     }
 
-    const roles = payload.roles as string[] | undefined
-    const isAdmin = Array.isArray(roles) && roles.includes('ADMIN')
-    const clientId = isAdmin ? 'admin' : (payload.sub as string)
+    const roles = payload.roles as string[] | undefined;
+    const isAdmin = Array.isArray(roles) && roles.includes('ADMIN');
+    const clientId = isAdmin ? 'admin' : (payload.sub as string);
 
-    client.data = { clientId, botId, email: payload.email, isAdmin }
+    client.data = { clientId, botId, email: payload.email, isAdmin };
 
     const send = (data: unknown) => {
-      const event = (data as Record<string, unknown>)?.type as string ?? 'data'
-      client.emit(event, data)
-    }
+      const event =
+        ((data as Record<string, unknown>)?.type as string) ?? 'data';
+      client.emit(event, data);
+    };
 
-    this.hub.registerClient(clientId, botId, send)
-    client.emit('welcome', { clientId })
+    this.hub.registerClient(clientId, botId, send);
+    client.emit('welcome', { clientId });
 
-    this.logger.log(`Browser connected: clientId=${clientId} botId=${botId} admin=${isAdmin}`)
+    this.logger.log(
+      `Browser connected: clientId=${clientId} botId=${botId} admin=${isAdmin}`,
+    );
   }
 
   handleDisconnect(client: Socket) {
-    const clientId = client.data?.clientId as string | undefined
+    const clientId = client.data?.clientId as string | undefined;
     if (clientId) {
-      this.hub.unregisterClient(clientId)
-      this.logger.log(`Browser disconnected: clientId=${clientId}`)
+      this.hub.unregisterClient(clientId);
+      this.logger.log(`Browser disconnected: clientId=${clientId}`);
     }
   }
 
   @SubscribeMessage('message')
   handleMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { text?: string; parts?: BridlePart[]; images?: Array<{ base64: string; mediaType: string }> },
+    @MessageBody()
+    data: {
+      text?: string;
+      parts?: BridlePart[];
+      images?: Array<{ base64: string; mediaType: string }>;
+    },
   ) {
-    const clientId = client.data?.clientId as string
-    const botId = client.data?.botId as string
-    if (!clientId || !botId) return
+    const clientId = client.data?.clientId as string;
+    const botId = client.data?.botId as string;
+    if (!clientId || !botId) return;
 
-    const text = data.text ?? ''
-    const parts = data.parts ?? buildParts(text, data.images)
-    if (!text && parts.length === 0) return
+    const text = data.text ?? '';
+    const parts = data.parts ?? buildParts(text, data.images);
+    if (!text && parts.length === 0) return;
 
-    this.hub.sendToAgent(clientId, botId, text, parts)
+    this.hub.sendToAgent(clientId, botId, text, parts);
   }
 
   @SubscribeMessage('ping')
   handlePing(@ConnectedSocket() client: Socket) {
-    client.emit('pong', { ts: Date.now() })
+    client.emit('pong', { ts: Date.now() });
   }
 }

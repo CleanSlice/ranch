@@ -6,7 +6,9 @@ export class UpsertSettingDto {
   @IsEnum(['string', 'json'])
   valueType: 'string' | 'json';
 
-  @ApiProperty({ description: 'String for valueType=string; any JSON for valueType=json' })
+  @ApiProperty({
+    description: 'String for valueType=string; any JSON for valueType=json',
+  })
   @IsDefined()
   value: unknown;
 }

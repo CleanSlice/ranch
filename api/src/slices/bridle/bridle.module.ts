@@ -1,10 +1,10 @@
-import { Module } from '@nestjs/common'
-import { ConfigModule, ConfigService } from '@nestjs/config'
-import { JwtModule } from '@nestjs/jwt'
-import { BridleController } from './bridle.controller'
-import { BridleChatWsHandler, BridleAgentWsHandler } from './handlers'
-import { IBridleGateway } from './domain'
-import { BridleGateway } from './data'
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { BridleController } from './bridle.controller';
+import { BridleChatWsHandler, BridleAgentWsHandler } from './handlers';
+import { IBridleGateway } from './domain';
+import { BridleGateway } from './data';
 
 /**
  * Bridle Module — authenticated hub between browsers and bot agents.

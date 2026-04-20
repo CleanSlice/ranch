@@ -1,63 +1,73 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsString, IsNotEmpty, IsArray, IsOptional, ValidateNested, IsEnum } from 'class-validator'
-import { Type } from 'class-transformer'
-import { BridlePartTypes } from '../domain'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  IsOptional,
+  ValidateNested,
+  IsEnum,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { BridlePartTypes } from '../domain';
 
 export class BridleTextPartDto {
   @ApiProperty({ enum: BridlePartTypes, example: BridlePartTypes.Text })
   @IsEnum(BridlePartTypes)
-  type: BridlePartTypes.Text
+  type: BridlePartTypes.Text;
 
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
-  text: string
+  text: string;
 }
 
 export class BridleImagePartDto {
   @ApiProperty({ enum: BridlePartTypes, example: BridlePartTypes.Image })
   @IsEnum(BridlePartTypes)
-  type: BridlePartTypes.Image
+  type: BridlePartTypes.Image;
 
   @ApiProperty({ description: 'Base64-encoded image data' })
   @IsString()
   @IsNotEmpty()
-  base64: string
+  base64: string;
 
   @ApiProperty({ description: 'MIME type', example: 'image/jpeg' })
   @IsString()
   @IsNotEmpty()
-  mediaType: string
+  mediaType: string;
 }
 
 export class BridleFilePartDto {
   @ApiProperty({ enum: BridlePartTypes, example: BridlePartTypes.File })
   @IsEnum(BridlePartTypes)
-  type: BridlePartTypes.File
+  type: BridlePartTypes.File;
 
   @ApiProperty({ description: 'File URL' })
   @IsString()
   @IsNotEmpty()
-  url: string
+  url: string;
 
   @ApiProperty({ description: 'File name' })
   @IsString()
   @IsNotEmpty()
-  name: string
+  name: string;
 
   @ApiPropertyOptional({ description: 'MIME type' })
   @IsString()
   @IsOptional()
-  mimeType?: string
+  mimeType?: string;
 }
 
 export class SendMessageDto {
   @ApiProperty({ description: 'Message text (plain-text shorthand)' })
   @IsString()
   @IsNotEmpty()
-  text: string
+  text: string;
 
-  @ApiPropertyOptional({ description: 'Rich content parts. If omitted, built from text + images.', type: [BridleTextPartDto] })
+  @ApiPropertyOptional({
+    description: 'Rich content parts. If omitted, built from text + images.',
+    type: [BridleTextPartDto],
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
@@ -72,12 +82,15 @@ export class SendMessageDto {
     },
     keepDiscriminatorProperty: true,
   })
-  parts?: Array<BridleTextPartDto | BridleImagePartDto | BridleFilePartDto>
+  parts?: Array<BridleTextPartDto | BridleImagePartDto | BridleFilePartDto>;
 
-  @ApiPropertyOptional({ description: 'Attached images (legacy — prefer parts)', type: [BridleImagePartDto] })
+  @ApiPropertyOptional({
+    description: 'Attached images (legacy — prefer parts)',
+    type: [BridleImagePartDto],
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => BridleImagePartDto)
-  images?: BridleImagePartDto[]
+  images?: BridleImagePartDto[];
 }

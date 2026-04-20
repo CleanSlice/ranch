@@ -43,22 +43,30 @@ export class AgentController {
     if (!agent) return;
     const template = await this.templateGateway.findById(agent.templateId);
     if (!template) {
-      this.logger.error(`Template ${agent.templateId} not found for agent ${agentId}`);
+      this.logger.error(
+        `Template ${agent.templateId} not found for agent ${agentId}`,
+      );
       await this.agentGateway.updateStatus(agentId, 'failed');
       return;
     }
     try {
-      const workflowId = await this.workflowService.submitAgentWorkflow(agent, template.image);
+      const workflowId = await this.workflowService.submitAgentWorkflow(
+        agent,
+        template.image,
+      );
       let status: AgentStatusTypes = 'deploying';
       try {
-        const { phase } = await this.workflowService.getWorkflowStatus(workflowId);
+        const { phase } =
+          await this.workflowService.getWorkflowStatus(workflowId);
         status = PHASE_TO_STATUS[phase];
       } catch {
         // keep 'deploying' if status probe fails
       }
       await this.agentGateway.updateStatus(agentId, status, workflowId);
     } catch (err) {
-      this.logger.error(`Workflow submit failed for agent ${agentId}: ${(err as Error).message}`);
+      this.logger.error(
+        `Workflow submit failed for agent ${agentId}: ${(err as Error).message}`,
+      );
       await this.agentGateway.updateStatus(agentId, 'failed');
     }
   }
@@ -67,7 +75,9 @@ export class AgentController {
     const agent = await this.agentGateway.findById(agentId);
     if (!agent?.workflowId) return agent;
     try {
-      const { phase } = await this.workflowService.getWorkflowStatus(agent.workflowId);
+      const { phase } = await this.workflowService.getWorkflowStatus(
+        agent.workflowId,
+      );
       const next = PHASE_TO_STATUS[phase];
       if (next && next !== agent.status) {
         await this.agentGateway.updateStatus(agentId, next, agent.workflowId);
@@ -116,7 +126,9 @@ export class AgentController {
     try {
       await this.workflowService.cancelAgentWorkflow(agent.workflowId);
     } catch (err) {
-      this.logger.warn(`Cancel workflow failed for agent ${id}: ${(err as Error).message}`);
+      this.logger.warn(
+        `Cancel workflow failed for agent ${id}: ${(err as Error).message}`,
+      );
     }
     await this.deploy(id);
     return this.agentGateway.findById(id);
@@ -132,7 +144,9 @@ export class AgentController {
       try {
         await this.workflowService.cancelAgentWorkflow(agent.workflowId);
       } catch (err) {
-        this.logger.warn(`Cancel workflow failed for agent ${id}: ${(err as Error).message}`);
+        this.logger.warn(
+          `Cancel workflow failed for agent ${id}: ${(err as Error).message}`,
+        );
       }
     }
     await this.agentGateway.delete(id);

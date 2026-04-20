@@ -9,5 +9,5 @@
  * Here it's a passthrough so the controller works standalone.
  */
 export function FlatResponse(): MethodDecorator {
-  return (_target, _key, descriptor) => descriptor
+  return (_target, _key, descriptor) => descriptor;
 }

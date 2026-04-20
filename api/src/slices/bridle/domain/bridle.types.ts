@@ -7,68 +7,68 @@ export enum BridlePartTypes {
 }
 
 export interface IBridleTextPart {
-  type: BridlePartTypes.Text
-  text: string
+  type: BridlePartTypes.Text;
+  text: string;
 }
 
 export interface IBridleImagePart {
-  type: BridlePartTypes.Image
-  base64: string
-  mediaType: string
+  type: BridlePartTypes.Image;
+  base64: string;
+  mediaType: string;
 }
 
 export interface IBridleFilePart {
-  type: BridlePartTypes.File
-  url: string
-  name: string
-  mimeType?: string
+  type: BridlePartTypes.File;
+  url: string;
+  name: string;
+  mimeType?: string;
 }
 
-export type BridlePart = IBridleTextPart | IBridleImagePart | IBridleFilePart
+export type BridlePart = IBridleTextPart | IBridleImagePart | IBridleFilePart;
 
 // ── Wire protocol messages ───────────────────────────────────
 
 /** Hub → Agent: incoming message from a browser client */
 export interface IBridleIncomingMessage {
-  type: 'message'
-  clientId: string
-  botId: string
-  text: string
-  messageId: string
-  parts: BridlePart[]
+  type: 'message';
+  clientId: string;
+  botId: string;
+  text: string;
+  messageId: string;
+  parts: BridlePart[];
 }
 
 /** Agent → Hub: events routed to browser clients */
 export interface IBridleOutgoingEvent {
-  type: 'register' | 'message' | 'stream' | 'stream_end' | 'typing' | 'ping'
-  clientId?: string
-  text?: string
-  parts?: BridlePart[]
-  messageId?: string
-  ts?: number
+  type: 'register' | 'message' | 'stream' | 'stream_end' | 'typing' | 'ping';
+  clientId?: string;
+  text?: string;
+  parts?: BridlePart[];
+  messageId?: string;
+  ts?: number;
 }
 
 // ── Health ───────────────────────────────────────────────────
 
 /** Health check response */
 export interface IBridleHealthData {
-  ok: boolean
-  agentConnected: boolean
-  browserClients: number
+  ok: boolean;
+  agentConnected: boolean;
+  browserClients: number;
 }
 
 /** Per-bot health check response */
 export interface IBridleBotHealthData {
-  ok: boolean
-  agentConnected: boolean
-  browserClients: number
-  botId: string
+  ok: boolean;
+  agentConnected: boolean;
+  browserClients: number;
+  botId: string;
 }
 
 /** Registered client metadata */
 export interface IBridleClientData {
-  botId: string
-  send: (data: unknown) => void
+  botId: string;
+  send: (data: unknown) => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -77,20 +77,27 @@ export interface IBridleClientData {
 export function getTextFromParts(parts: BridlePart[]): string {
   return parts
     .filter((p): p is IBridleTextPart => p.type === BridlePartTypes.Text)
-    .map(p => p.text)
-    .join('')
+    .map((p) => p.text)
+    .join('');
 }
 
 /** Build parts array from flat text + images (backward compat) */
-export function buildParts(text: string, images?: Array<{ base64: string; mediaType: string }>): BridlePart[] {
-  const parts: BridlePart[] = []
+export function buildParts(
+  text: string,
+  images?: Array<{ base64: string; mediaType: string }>,
+): BridlePart[] {
+  const parts: BridlePart[] = [];
   if (text) {
-    parts.push({ type: BridlePartTypes.Text, text })
+    parts.push({ type: BridlePartTypes.Text, text });
   }
   if (images) {
     for (const img of images) {
-      parts.push({ type: BridlePartTypes.Image, base64: img.base64, mediaType: img.mediaType })
+      parts.push({
+        type: BridlePartTypes.Image,
+        base64: img.base64,
+        mediaType: img.mediaType,
+      });
     }
   }
-  return parts
+  return parts;
 }

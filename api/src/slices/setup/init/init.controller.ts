@@ -10,14 +10,18 @@ export class InitController {
   constructor(private initService: InitService) {}
 
   @Get('status')
-  @ApiOperation({ summary: 'Check whether the system needs initial owner setup' })
+  @ApiOperation({
+    summary: 'Check whether the system needs initial owner setup',
+  })
   status(): Promise<InitStatusDto> {
     return this.initService.getStatus();
   }
 
   @Post('init')
   @HttpCode(201)
-  @ApiOperation({ summary: 'Create the first owner. Fails if one already exists.' })
+  @ApiOperation({
+    summary: 'Create the first owner. Fails if one already exists.',
+  })
   async init(@Body() dto: CreateOwnerDto): Promise<AuthDto> {
     return this.initService.createOwner(dto.name, dto.email, dto.password);
   }

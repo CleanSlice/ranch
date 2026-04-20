@@ -1,1 +1,1 @@
-export { BridleGateway } from './bridle.gateway'
+export { BridleGateway } from './bridle.gateway';

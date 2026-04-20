@@ -20,7 +20,9 @@ import { SettingModule } from '#/setting/setting.module';
         argo: ArgoWorkflowGateway,
         mock: MockWorkflowGateway,
       ) => {
-        const provider = (config.get<string>('WORKFLOW_PROVIDER') ?? 'argo').toLowerCase();
+        const provider = (
+          config.get<string>('WORKFLOW_PROVIDER') ?? 'argo'
+        ).toLowerCase();
         console.log(`[WorkflowModule] using provider=${provider}`);
         return provider === 'mock' ? mock : argo;
       },

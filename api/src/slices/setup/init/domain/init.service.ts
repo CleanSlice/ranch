@@ -1,7 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-} from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '#/setup/prisma/prisma.service';
@@ -25,7 +22,11 @@ export class InitService {
     return { requiresInit: ownerCount === 0 };
   }
 
-  async createOwner(name: string, email: string, password: string): Promise<IAuthResult> {
+  async createOwner(
+    name: string,
+    email: string,
+    password: string,
+  ): Promise<IAuthResult> {
     const { requiresInit } = await this.getStatus();
     if (!requiresInit) {
       throw new ConflictException('System already initialized');

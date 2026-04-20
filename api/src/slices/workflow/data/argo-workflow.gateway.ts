@@ -103,14 +103,11 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       },
     };
 
-    const response = await fetch(
-      `${this.argoUrl}/api/v1/workflows/agents`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflow }),
-      },
-    );
+    const response = await fetch(`${this.argoUrl}/api/v1/workflows/agents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow }),
+    });
 
     if (!response.ok) {
       const error = await response.text();

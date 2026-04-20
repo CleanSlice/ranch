@@ -55,8 +55,7 @@ export class TemplateGateway extends ITemplateGateway {
         ...(data.description && { description: data.description }),
         ...(data.image && { image: data.image }),
         ...(data.defaultConfig && {
-          defaultConfig:
-            data.defaultConfig as unknown as Prisma.InputJsonValue,
+          defaultConfig: data.defaultConfig as unknown as Prisma.InputJsonValue,
         }),
         ...(data.defaultResources && {
           defaultResources:

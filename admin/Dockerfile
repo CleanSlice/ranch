@@ -1,11 +1,15 @@
-# Build context = monorepo root (need access to api/ for swagger-spec.json).
+# Build context = monorepo root (bun workspace + need access to api/ for swagger).
 # In CI: docker build -f admin/Dockerfile .
 
 FROM oven/bun:1 AS api-swagger
-WORKDIR /build/api
-COPY api/package.json api/bun.lock* ./
+WORKDIR /build
+COPY package.json bun.lock ./
+COPY api/package.json ./api/
+COPY app/package.json ./app/
+COPY admin/package.json ./admin/
 RUN bun install --frozen-lockfile --ignore-scripts
-COPY api/ ./
+COPY api/ ./api/
+WORKDIR /build/api
 RUN bunx prisma-import --force \
  && bunx prisma generate --schema=./prisma/schema.prisma \
  && bun run build \
@@ -13,11 +17,14 @@ RUN bunx prisma-import --force \
 
 FROM oven/bun:1 AS admin-builder
 WORKDIR /build
-COPY --from=api-swagger /build/api/swagger-spec.json ./api/swagger-spec.json
-COPY admin/package.json admin/bun.lock* ./admin/
-WORKDIR /build/admin
+COPY package.json bun.lock ./
+COPY api/package.json ./api/
+COPY app/package.json ./app/
+COPY admin/package.json ./admin/
 RUN bun install --frozen-lockfile
-COPY admin/ ./
+COPY --from=api-swagger /build/api/swagger-spec.json ./api/swagger-spec.json
+COPY admin/ ./admin/
+WORKDIR /build/admin
 ARG API_URL
 RUN API_URL=${API_URL} bun run build
 

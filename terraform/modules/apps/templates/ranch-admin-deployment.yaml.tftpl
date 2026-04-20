@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ranch-admin
+  namespace: platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ranch-admin
+  template:
+    metadata:
+      labels:
+        app: ranch-admin
+    spec:
+      imagePullSecrets:
+        - name: ghcr
+      containers:
+        - name: admin
+          image: ${image}
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3002
+          env:
+            - name: NITRO_PORT
+              value: "3002"
+            - name: NUXT_PUBLIC_API_URL
+              value: "${api_url}"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

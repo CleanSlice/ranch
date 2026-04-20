@@ -30,3 +30,44 @@ variable "ssh_private_key_path" {
   type    = string
   default = "~/.ssh/ranch-hetzner"
 }
+
+# ---------------------------------------------------------------------
+# Apps module inputs (ranch-api / ranch-admin + agent workflow)
+# ---------------------------------------------------------------------
+
+variable "api_image" {
+  type    = string
+  default = "ghcr.io/dmitriyzhuk/ranch-api:latest"
+}
+
+variable "admin_image" {
+  type    = string
+  default = "ghcr.io/dmitriyzhuk/ranch-admin:latest"
+}
+
+variable "database_url" {
+  type        = string
+  sensitive   = true
+  description = "Full Postgres URI (e.g. Neon) — prefer TF_VAR_database_url over tfvars"
+}
+
+variable "jwt_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "bridle_api_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "ghcr_username" {
+  type    = string
+  default = "dmitriyzhuk"
+}
+
+variable "ghcr_pat" {
+  type        = string
+  sensitive   = true
+  description = "GitHub PAT with read:packages for pulling private images"
+}

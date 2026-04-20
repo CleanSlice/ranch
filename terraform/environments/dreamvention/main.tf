@@ -76,6 +76,22 @@ module "bootstrap" {
   depends_on = [module.cluster]
 }
 
+module "apps" {
+  source = "../../modules/apps"
+  domain = var.domain
+
+  api_image   = var.api_image
+  admin_image = var.admin_image
+
+  database_url   = var.database_url
+  jwt_secret     = var.jwt_secret
+  bridle_api_key = var.bridle_api_key
+  ghcr_username  = var.ghcr_username
+  ghcr_pat       = var.ghcr_pat
+
+  depends_on = [module.bootstrap]
+}
+
 module "dns" {
   source           = "../../modules/dns"
   domain           = var.domain

@@ -1,6 +1,8 @@
 # Ranch — Terraform deployment
 
-Everything lives here: remote state backend, per-environment modules, and reusable building blocks.
+Everything deployable is in Terraform: infra (k3s on Hetzner), platform add-ons
+(ArgoCD, Argo Workflows, cert-manager, CNPG operator), and applications
+(ranch-api, ranch-admin, agent WorkflowTemplate).
 
 ```
 terraform/
@@ -13,20 +15,25 @@ terraform/
     ├── network/                 # hcloud_network + firewall
     ├── cluster/                 # kube-hetzner (k3s + traefik + cert-manager)
     ├── bootstrap/               # argocd, argo-workflows, cnpg, namespaces, ClusterIssuer
-    ├── database/                # (doc only — DB is via CNPG or external Neon)
+    ├── apps/                    # ranch-api + ranch-admin + agent workflow + secrets
+    ├── database/                # (doc only — DB is CNPG or external Neon)
     └── dns/                     # outputs A-record list (DNS managed outside TF)
 ```
 
-## AWS profile
+## Prerequisites
 
-All AWS calls (S3 backend + DynamoDB locks) go through the `cleanslice` profile.
-`~/.zshrc` exports `AWS_PROFILE=cleanslice` at shell open; any new terminal is ready.
+- `terraform >= 1.5`, `kubectl`, `helm`, `aws` CLI
+- SSH key at `~/.ssh/ranch-hetzner` / `.pub` (for the cluster)
+- AWS profile `cleanslice` configured via SSO (`~/.zshrc` exports `AWS_PROFILE=cleanslice`)
+- A Hetzner Cloud API token
+- A DNS zone for the domain (A-records managed externally)
 
-## 1. Create the remote state backend (one-time)
+Run `aws sso login --profile cleanslice` whenever the token expires.
 
-Bootstraps the S3 bucket + DynamoDB table that every env will use to store its state.
-State of the backend itself lives in a **local** file next to `main.tf` — you can't
-store the backend's state in the bucket it is creating (chicken/egg).
+## 0. One-time: remote state backend
+
+Creates the S3 bucket + DynamoDB lock table used by every env. The backend's own
+state stays local (chicken/egg — can't host it in the bucket it creates).
 
 ```bash
 cd terraform/backend
@@ -34,103 +41,163 @@ terraform init
 terraform apply
 ```
 
-Outputs:
-- `terraform_state_bucket` — `ranch-terraform-state`
-- `dynamodb_lock_table` — `ranch-terraform-locks`
-- `backend_config_snippet` — a ready-to-paste `backend "s3" { ... }` block
+Outputs: `terraform_state_bucket`, `dynamodb_lock_table`, `backend_config_snippet`.
 
-The bucket has versioning, AES256 encryption, public-access-block, and
-`lifecycle.prevent_destroy = true` (state loss = cluster management loss).
+Bucket has versioning, AES256, public-access-block, `prevent_destroy = true`.
 
-## 2. Migrate an environment onto remote state
+## 1. Deploy an existing environment (e.g. `dreamvention`)
 
-If an env currently has `backend "local"`:
+### 1.1 Set sensitive variables
 
-1. Replace the block in `environments/<env>/main.tf` with:
-   ```hcl
-   terraform {
-     backend "s3" {
-       bucket         = "ranch-terraform-state"
-       key            = "<env>/terraform.tfstate"
-       region         = "us-east-1"
-       dynamodb_table = "ranch-terraform-locks"
-       encrypt        = true
-     }
-   }
-   ```
+All secrets pass through Terraform via `TF_VAR_*` environment variables — never
+put them in `terraform.tfvars` (state ends up in S3, tfvars might be shared).
 
-2. Run:
-   ```bash
-   cd terraform/environments/<env>
-   terraform init -migrate-state
-   ```
-   Terraform asks to copy the existing local state to S3 — answer `yes`.
-   Keep the local `terraform.tfstate` for one apply cycle as a fallback, then delete.
-
-## 3. Create a new environment
+First time: decide values for each. Recurring deploy: pull from the live cluster.
 
 ```bash
-cp -r environments/dev environments/myenv
-cd environments/myenv
-cp terraform.tfvars.example terraform.tfvars
-$EDITOR terraform.tfvars   # set hcloud_token, domain, admin_ip, ssh key paths
-# Point to remote state (see §2)
-terraform init
-terraform apply            # ~5–10 min for k3s + add-ons
+export KUBECONFIG=~/.kube/ranch/config   # or environments/dreamvention/k3s_kubeconfig.yaml
+
+# Pull live values the cluster already has
+export TF_VAR_database_url=$(kubectl -n platform get secret ranch-external-db -o jsonpath='{.data.uri}' | base64 -d)
+export TF_VAR_jwt_secret=$(kubectl -n platform get secret ranch-secrets -o jsonpath='{.data.JWT_SECRET}' | base64 -d)
+export TF_VAR_bridle_api_key=$(kubectl -n platform get secret ranch-secrets -o jsonpath='{.data.BRIDLE_API_KEY}' | base64 -d)
+export TF_VAR_ghcr_username=dmitriyzhuk
+export TF_VAR_ghcr_pat=<GH PAT with read:packages>
 ```
 
-See `../README.md` (main) for prereqs (kube-hetzner MicroOS snapshot, packer, etc).
-
-## 4. Apply changes to an existing environment
+For a fresh install, generate them:
 
 ```bash
-cd terraform/environments/<env>
-terraform plan    # always review first
+export TF_VAR_database_url='postgresql://...@neon.tech/neondb?sslmode=require'
+export TF_VAR_jwt_secret=$(openssl rand -base64 48 | tr -d '\n/+' | head -c 40)
+export TF_VAR_bridle_api_key=$(openssl rand -base64 48 | tr -d '\n/+' | head -c 40)
+export TF_VAR_ghcr_username=dmitriyzhuk
+export TF_VAR_ghcr_pat=<GH PAT with read:packages>
+```
+
+Tip: keep these in `~/.zshrc` sourced from a non-committed file, or use 1Password /
+AWS Secrets Manager and pipe in.
+
+### 1.2 Apply
+
+```bash
+cd terraform/environments/dreamvention
+terraform init       # downloads providers, connects to S3 backend
+terraform plan       # review diff
+terraform apply      # ~5–10 min fresh, ~30 s on updates
+```
+
+A fresh apply creates:
+
+- k3s control plane VM on Hetzner (`cx33`, nbg1)
+- Load balancer + firewall (with outbound :5432 for Neon)
+- Traefik, cert-manager, hcloud-CCM, hcloud-CSI (via kube-hetzner)
+- ArgoCD + Argo Workflows + CNPG operator
+- Namespaces `platform`, `agents`, ClusterIssuer `letsencrypt-prod`
+- Secrets: `ghcr`, `ranch-secrets`, `ranch-external-db`
+- `ranch-api` (with init-container running `prisma migrate deploy`)
+- `ranch-admin`
+- Ingresses with Let's Encrypt TLS for `{domain}`, `api.{domain}`, `argocd.{domain}`
+- `agents/workflow` ServiceAccount + RBAC + WorkflowTemplate `agent-deployment`
+
+### 1.3 DNS (manual)
+
+`modules/dns` only outputs the list of records. Add these A-records at your
+DNS provider pointing at `module.cluster.load_balancer_ip`:
+
+| Host | Purpose |
+|---|---|
+| `{domain}` | Admin UI |
+| `api.{domain}` | API + bridle WS |
+| `argocd.{domain}` | GitOps UI |
+
+`cleanslice.org` lives in DigitalOcean DNS. The API tokens for DNS stay outside
+Terraform for now — managed manually or via the DO console.
+
+### 1.4 First owner
+
+Once `https://{domain}/` loads the `/setup` page, create the first owner
+(name/email/password). Then in **Settings** fill:
+
+- `integrations/claude_code_oauth_token` OR `anthropic_api_key` (for LLM)
+- `integrations/bridle_url`, `bridle_api_key` (bridle hub — optional, defaults work)
+- `integrations/s3_*` (for agent state persistence — optional)
+
+## 2. Update an image
+
+```bash
+# Build + push (on the Hetzner server or wherever):
+cd /root/build/ranch-api && podman build -t ghcr.io/dmitriyzhuk/ranch-api:v1.2 . && podman push ghcr.io/dmitriyzhuk/ranch-api:v1.2
+
+# Bump the tag in TF:
+export TF_VAR_api_image=ghcr.io/dmitriyzhuk/ranch-api:v1.2
+cd terraform/environments/dreamvention
 terraform apply
 ```
 
-DynamoDB enforces one `apply` at a time across all users. If a previous run crashed
-and left a stale lock: `terraform force-unlock <lock-id>`.
+Or set defaults in `variables.tf` of the env if you don't want to pass each time.
 
-## 5. What Terraform manages vs not
+Latest tag with `imagePullPolicy: Always` works for fast-moving dev (deployment
+pulls fresh on every restart), but pin to a SHA / semver for reproducible prod.
 
-Managed via TF (module `bootstrap`):
+## 3. Rotate a secret
 
-- Namespaces `platform`, `agents`
-- Helm releases: `argocd`, `argo-workflows`, `cnpg`
-- `ClusterIssuer letsencrypt-prod`
+Any of the `TF_VAR_*` secrets (JWT, BRIDLE_API_KEY, PAT, database_url) rotates
+the same way:
 
-Managed via TF (module `cluster`, via kube-hetzner):
+```bash
+export TF_VAR_jwt_secret=$(openssl rand -base64 48 | tr -d '\n/+' | head -c 40)
+terraform apply
+```
 
-- k3s cluster, Traefik, cert-manager, hcloud-ccm/csi
-- Firewall with outbound `tcp/5432` (Neon / external Postgres)
+Terraform replaces the secret; `ranch-api` Deployment has `strategy: Recreate`
+so it restarts on config change.
 
-**Not in TF — applied manually via `kubectl`** (see `k8s/deploy/`):
+## 4. Create a new environment
 
-- `ghcr` imagePullSecret, `ranch-secrets`, `ranch-external-db` (Neon URL)
-- `ranch-api` / `ranch-admin` Deployments + Services + Ingresses
-- WorkflowTemplate `agent-deployment` in `agents`
+```bash
+cp -r environments/dreamvention environments/myenv
+cd environments/myenv
+$EDITOR terraform.tfvars          # set hcloud_token, domain, admin_ip
+# update the S3 backend key to "myenv/terraform.tfstate" in main.tf
+terraform init
+# set TF_VAR_* (§1.1)
+terraform apply
+```
 
-These can be moved into Terraform (or into an ArgoCD `Application` pointing at
-this repo) later.
+## 5. Migrate an env from local state to S3
 
-## 6. DNS
+If `backend "local"` is still in the main.tf:
 
-This project does **not** manage DNS via Terraform. The `dns` module only outputs
-the list of A-records the env needs. For the `dreamvention` env on `cleanslice.org`:
+1. Replace with:
+   ```hcl
+   backend "s3" {
+     bucket         = "ranch-terraform-state"
+     key            = "<env>/terraform.tfstate"
+     region         = "us-east-1"
+     dynamodb_table = "ranch-terraform-locks"
+     encrypt        = true
+   }
+   ```
 
-| Host | Type | Target |
+2. `terraform init -migrate-state` — answer `yes`.
+
+3. Keep the local `terraform.tfstate` as a fallback for one apply cycle, then delete.
+
+## 6. What each module owns
+
+| Module | Creates | Triggers pod restart? |
 |---|---|---|
-| `ranch.cleanslice.org` | A | `46.225.62.248` |
-| `api.ranch.cleanslice.org` | A | `46.225.62.248` |
-| `argocd.ranch.cleanslice.org` | A | `46.225.62.248` |
-
-Managed in DigitalOcean DNS.
+| `network` | `hcloud_network` ranch-{env}, firewall for admin_ip | no |
+| `cluster` | k3s control plane, LB, MicroOS image, CCM/CSI/Traefik/cert-manager (via kube-hetzner) | yes (new node) |
+| `bootstrap` | Namespaces, ArgoCD, Argo Workflows, CNPG operator, ClusterIssuer | helm upgrade restarts pods |
+| `apps` | Secrets, ranch-api, ranch-admin, workflow SA+RBAC, WorkflowTemplate | yes (on image / env change) |
+| `dns` | **nothing** — outputs A-record targets | — |
 
 ## 7. Kubeconfig
 
-`kube-hetzner` writes the kubeconfig to `environments/<env>/k3s_kubeconfig.yaml`.
-Keep a symlink for kubectl:
+`kube-hetzner` writes kubeconfig to `environments/<env>/k3s_kubeconfig.yaml`
+on apply. Keep it handy:
 
 ```bash
 export KUBECONFIG=$(pwd)/environments/<env>/k3s_kubeconfig.yaml
@@ -139,18 +206,26 @@ kubectl get nodes
 
 ## 8. Common pitfalls
 
-- **State lock "resource temporarily unavailable"** after an IDE force-quits TF:
+- **`ExpiredToken` / `InvalidClientTokenId` from AWS** — SSO session expired.
+  `aws sso login --profile cleanslice`.
+
+- **State lock stuck ("resource temporarily unavailable")** after a crashed run:
   ```bash
-  rm -f .terraform.tfstate.lock.info
-  # or use -lock=false for the next single command
+  terraform force-unlock <lock-id>          # shown in error
+  # or emergency single-shot: add `-lock=false` to one command
   ```
 
 - **Helm release drift on import** — after `terraform import helm_release.X`,
-  the `repository` attribute is empty in state. First `apply` after import adds
-  it (in-place, no pod restarts). This is expected.
+  `repository` is empty in state. First `apply` adds it in-place (no restart).
 
-- **Pod can't reach Neon** — ensure the kube-hetzner firewall has outbound
-  `tcp/5432` (already in `modules/cluster/main.tf` via `extra_firewall_rules`).
-  If you see `P1001: Can't reach database server` from a Prisma migration pod,
-  verify the rule actually applied: `terraform plan` should show no diff on the
-  firewall.
+- **Argo CD chart 9.x ingress format** — uses `server.ingress.hostname` (single
+  string) + `tls: true`, NOT `hosts: [...]` + `tls: [...]`. Wrong format silently
+  produces `argocd.example.com`.
+
+- **Pod can't reach Neon (`P1001`)** — the kube-hetzner firewall needs outbound
+  tcp/5432. Already set via `extra_firewall_rules` in `modules/cluster/main.tf`.
+  Check the firewall isn't reverted: `terraform plan` should show no diff on it.
+
+- **kubectl provider can't connect ("localhost refused")** — the `config_path`
+  must point at the file, not at the module output `kubeconfig` (which is
+  content, not a path). `environments/<env>/main.tf` already does this.

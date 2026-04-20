@@ -3,6 +3,7 @@ WORKDIR /usr/src/app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --ignore-scripts
 COPY . .
+RUN bunx prisma-import --force
 RUN bunx prisma generate --schema=./prisma/schema.prisma
 RUN bun run build
 

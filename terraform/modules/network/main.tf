@@ -34,26 +34,26 @@ resource "hcloud_firewall" "cluster" {
   name = "ranch-${var.environment}-cluster"
 
   rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "6443"
-    source_ips = [var.admin_ip]
+    direction   = "in"
+    protocol    = "tcp"
+    port        = "6443"
+    source_ips  = [var.admin_ip]
     description = "K8s API"
   }
 
   rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "80"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    direction   = "in"
+    protocol    = "tcp"
+    port        = "80"
+    source_ips  = ["0.0.0.0/0", "::/0"]
     description = "HTTP"
   }
 
   rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "443"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    direction   = "in"
+    protocol    = "tcp"
+    port        = "443"
+    source_ips  = ["0.0.0.0/0", "::/0"]
     description = "HTTPS"
   }
 }

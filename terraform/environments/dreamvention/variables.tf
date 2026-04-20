@@ -45,6 +45,11 @@ variable "admin_image" {
   default = "ghcr.io/dmitriyzhuk/ranch-admin:latest"
 }
 
+variable "app_image" {
+  type    = string
+  default = "ghcr.io/dmitriyzhuk/ranch-app:latest"
+}
+
 variable "database_url" {
   type        = string
   sensitive   = true

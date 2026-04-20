@@ -37,14 +37,14 @@ module "network" {
 }
 
 module "cluster" {
-  source              = "../../modules/cluster"
-  environment         = var.environment
-  location            = var.location
-  hcloud_token        = var.hcloud_token
+  source               = "../../modules/cluster"
+  environment          = var.environment
+  location             = var.location
+  hcloud_token         = var.hcloud_token
   ssh_public_key_path  = var.ssh_public_key_path
   ssh_private_key_path = var.ssh_private_key_path
   network_id           = module.network.network_id
-  firewall_id         = module.network.firewall_id
+  firewall_id          = module.network.firewall_id
 
   providers = {
     hcloud = hcloud
@@ -82,6 +82,7 @@ module "apps" {
 
   api_image   = var.api_image
   admin_image = var.admin_image
+  app_image   = var.app_image
 
   database_url   = var.database_url
   jwt_secret     = var.jwt_secret

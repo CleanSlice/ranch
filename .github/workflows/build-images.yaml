@@ -1,6 +1,6 @@
 name: Build, push & deploy
 
-# On every push to main, build images for whatever changed (api / admin),
+# On every push to main, build images for whatever changed (api / admin / app),
 # push to GHCR under ghcr.io/dmitriyzhuk/ranch-* (both :latest and :sha),
 # then trigger a rolling restart of the affected Deployment on the prod cluster.
 #
@@ -9,7 +9,7 @@ name: Build, push & deploy
 #   KUBECONFIG_B64    — base64 of ranch cluster kubeconfig
 #
 # Required repo variables (Settings → Variables):
-#   API_URL           — e.g. https://api.ranch.cleanslice.org (baked into admin Nuxt build)
+#   API_URL           — e.g. https://api.ranch.cleanslice.org (baked into admin + app Nuxt build)
 
 on:
   push:
@@ -17,12 +17,15 @@ on:
     paths:
       - 'api/**'
       - 'admin/**'
+      - 'app/**'
   workflow_dispatch:
     inputs:
-      app:
-        description: 'Which app to build (api, admin, both)'
+      target:
+        description: 'Which app to build (api, admin, app, all)'
         required: true
-        default: 'both'
+        default: 'all'
+        type: choice
+        options: [api, admin, app, all]
 
 env:
   REGISTRY: ghcr.io
@@ -33,8 +36,9 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      api: ${{ steps.filter.outputs.api || steps.manual.outputs.api }}
+      api:   ${{ steps.filter.outputs.api   || steps.manual.outputs.api }}
       admin: ${{ steps.filter.outputs.admin || steps.manual.outputs.admin }}
+      app:   ${{ steps.filter.outputs.app   || steps.manual.outputs.app }}
     steps:
       - uses: actions/checkout@v4
       - id: filter
@@ -46,13 +50,16 @@ jobs:
               - 'api/**'
             admin:
               - 'admin/**'
+            app:
+              - 'app/**'
       - id: manual
         if: github.event_name == 'workflow_dispatch'
         run: |
-          case "${{ inputs.app }}" in
-            api)   echo "api=true"   >> $GITHUB_OUTPUT; echo "admin=false" >> $GITHUB_OUTPUT ;;
-            admin) echo "api=false"  >> $GITHUB_OUTPUT; echo "admin=true"  >> $GITHUB_OUTPUT ;;
-            both)  echo "api=true"   >> $GITHUB_OUTPUT; echo "admin=true"  >> $GITHUB_OUTPUT ;;
+          case "${{ inputs.target }}" in
+            api)   echo "api=true"   >> $GITHUB_OUTPUT; echo "admin=false" >> $GITHUB_OUTPUT; echo "app=false" >> $GITHUB_OUTPUT ;;
+            admin) echo "api=false"  >> $GITHUB_OUTPUT; echo "admin=true"  >> $GITHUB_OUTPUT; echo "app=false" >> $GITHUB_OUTPUT ;;
+            app)   echo "api=false"  >> $GITHUB_OUTPUT; echo "admin=false" >> $GITHUB_OUTPUT; echo "app=true"  >> $GITHUB_OUTPUT ;;
+            all)   echo "api=true"   >> $GITHUB_OUTPUT; echo "admin=true"  >> $GITHUB_OUTPUT; echo "app=true"  >> $GITHUB_OUTPUT ;;
           esac
 
   build-api:
@@ -103,11 +110,38 @@ jobs:
           cache-from: type=gha,scope=ranch-admin
           cache-to: type=gha,mode=max,scope=ranch-admin
 
+  build-app:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ secrets.GHCR_PAT }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            API_URL=${{ vars.API_URL }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-app:latest
+            ${{ env.IMAGE_PREFIX }}-app:${{ github.sha }}
+          cache-from: type=gha,scope=ranch-app
+          cache-to: type=gha,mode=max,scope=ranch-app
+
   deploy:
-    needs: [changes, build-api, build-admin]
+    needs: [changes, build-api, build-admin, build-app]
     if: |
       always() &&
-      (needs.build-api.result == 'success' || needs.build-admin.result == 'success')
+      (needs.build-api.result == 'success' ||
+       needs.build-admin.result == 'success' ||
+       needs.build-app.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Configure kubectl
@@ -129,8 +163,18 @@ jobs:
           kubectl -n platform rollout restart deploy/ranch-admin
           kubectl -n platform rollout status deploy/ranch-admin --timeout=5m
 
-      - name: Smoke test
-        if: needs.changes.outputs.api == 'true' || needs.changes.outputs.admin == 'true'
+      - name: Rollout ranch-app
+        if: needs.changes.outputs.app == 'true' && needs.build-app.result == 'success'
         run: |
-          curl -fsS -o /dev/null -w "api=%{http_code}\n" https://api.ranch.cleanslice.org/setup/status
-          curl -fsS -o /dev/null -w "admin=%{http_code}\n" https://ranch.cleanslice.org/login
+          kubectl -n platform rollout restart deploy/ranch-app
+          kubectl -n platform rollout status deploy/ranch-app --timeout=5m
+
+      - name: Smoke test
+        if: |
+          needs.changes.outputs.api == 'true' ||
+          needs.changes.outputs.admin == 'true' ||
+          needs.changes.outputs.app == 'true'
+        run: |
+          curl -fsS -o /dev/null -w "api=%{http_code}\n"   https://api.ranch.cleanslice.org/setup/status
+          curl -fsS -o /dev/null -w "admin=%{http_code}\n" https://admin.ranch.cleanslice.org/login
+          curl -fsS -o /dev/null -w "app=%{http_code}\n"   https://ranch.cleanslice.org/

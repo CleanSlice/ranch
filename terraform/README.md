@@ -97,7 +97,7 @@ A fresh apply creates:
 - Secrets: `ghcr`, `ranch-secrets`, `ranch-external-db`
 - `ranch-api` (with init-container running `prisma migrate deploy`)
 - `ranch-admin`
-- Ingresses with Let's Encrypt TLS for `{domain}`, `api.{domain}`, `argocd.{domain}`
+- Ingresses with Let's Encrypt TLS for `{domain}` (app), `admin.{domain}`, `api.{domain}`, `argocd.{domain}`
 - `agents/workflow` ServiceAccount + RBAC + WorkflowTemplate `agent-deployment`
 
 ### 1.3 DNS (manual)
@@ -107,7 +107,8 @@ DNS provider pointing at `module.cluster.load_balancer_ip`:
 
 | Host | Purpose |
 |---|---|
-| `{domain}` | Admin UI |
+| `{domain}` | App (public UI) |
+| `admin.{domain}` | Admin UI |
 | `api.{domain}` | API + bridle WS |
 | `argocd.{domain}` | GitOps UI |
 
@@ -236,7 +237,7 @@ Two workflows in `.github/workflows/`:
 
 | File | Trigger | What it does |
 |---|---|---|
-| `build-images.yaml` | push to `main` on `api/**` or `admin/**` (+ manual) | builds + pushes `ghcr.io/dmitriyzhuk/ranch-{api,admin}:{latest,<sha>}`, then `kubectl rollout restart` the affected Deployment |
+| `build-images.yaml` | push to `main` on `api/**`, `admin/**`, or `app/**` (+ manual) | builds + pushes `ghcr.io/dmitriyzhuk/ranch-{api,admin,app}:{latest,<sha>}`, then `kubectl rollout restart` the affected Deployment |
 | `terraform.yaml` | PR on `terraform/**` → plan; manual dispatch → plan or apply | runs TF against `environments/dreamvention` |
 | `ci.yaml` | every PR/push | lint + test (bun) |
 
@@ -272,6 +273,7 @@ Set via `gh variable set NAME --body VALUE`.
 | `GHCR_USERNAME` | terraform | `dmitriyzhuk` |
 | `API_IMAGE` | terraform | `ghcr.io/dmitriyzhuk/ranch-api:latest` |
 | `ADMIN_IMAGE` | terraform | `ghcr.io/dmitriyzhuk/ranch-admin:latest` |
+| `APP_IMAGE` | terraform | `ghcr.io/dmitriyzhuk/ranch-app:latest` |
 
 ### One-shot setup
 
@@ -296,6 +298,7 @@ gh variable set ADMIN_IP      --body "<your-ip>/32"
 gh variable set GHCR_USERNAME --body "dmitriyzhuk"
 gh variable set API_IMAGE     --body "ghcr.io/dmitriyzhuk/ranch-api:latest"
 gh variable set ADMIN_IMAGE   --body "ghcr.io/dmitriyzhuk/ranch-admin:latest"
+gh variable set APP_IMAGE     --body "ghcr.io/dmitriyzhuk/ranch-app:latest"
 ```
 
 ### Typical flow

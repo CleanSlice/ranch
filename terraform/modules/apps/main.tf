@@ -8,7 +8,7 @@ terraform {
 
 variable "domain" {
   type        = string
-  description = "Root hostname (e.g. ranch.cleanslice.org). admin = {domain}, api = api.{domain}"
+  description = "Root hostname (e.g. ranch.cleanslice.org). app = {domain}, admin = admin.{domain}, api = api.{domain}"
 }
 
 variable "api_image" {
@@ -19,6 +19,11 @@ variable "api_image" {
 variable "admin_image" {
   type    = string
   default = "ghcr.io/dmitriyzhuk/ranch-admin:latest"
+}
+
+variable "app_image" {
+  type    = string
+  default = "ghcr.io/dmitriyzhuk/ranch-app:latest"
 }
 
 variable "letsencrypt_issuer" {
@@ -52,10 +57,11 @@ variable "ghcr_pat" {
 
 locals {
   api_host   = "api.${var.domain}"
-  admin_host = var.domain
+  admin_host = "admin.${var.domain}"
+  app_host   = var.domain
   cors_origin = join(",", [
-    "https://${var.domain}",
-    "https://api.${var.domain}",
+    "https://${local.app_host}",
+    "https://${local.admin_host}",
   ])
 
   dockerconfigjson = base64encode(jsonencode({
@@ -179,7 +185,7 @@ resource "kubectl_manifest" "workflow_rolebinding" {
 
 resource "kubectl_manifest" "agent_deployment_workflow" {
   depends_on = [kubectl_manifest.workflow_sa]
-  yaml_body = templatefile("${path.module}/templates/agent-deployment.yaml.tftpl", {})
+  yaml_body  = templatefile("${path.module}/templates/agent-deployment.yaml.tftpl", {})
 }
 
 # ---------------------------------------------------------------------
@@ -256,6 +262,46 @@ resource "kubectl_manifest" "ranch_admin_ingress" {
     host   = local.admin_host
     issuer = var.letsencrypt_issuer
   })
+}
+
+# ---------------------------------------------------------------------
+# ranch-app: Deployment + Service + Ingress
+# ---------------------------------------------------------------------
+
+resource "kubectl_manifest" "ranch_app_deployment" {
+  depends_on = [kubectl_manifest.ghcr_pull_secret]
+  yaml_body = templatefile("${path.module}/templates/ranch-app-deployment.yaml.tftpl", {
+    image   = var.app_image
+    api_url = "https://${local.api_host}"
+  })
+}
+
+resource "kubectl_manifest" "ranch_app_service" {
+  yaml_body = <<-YAML
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: ranch-app
+      namespace: platform
+    spec:
+      selector:
+        app: ranch-app
+      ports:
+        - name: http
+          port: 80
+          targetPort: 3002
+  YAML
+}
+
+resource "kubectl_manifest" "ranch_app_ingress" {
+  yaml_body = templatefile("${path.module}/templates/ranch-app-ingress.yaml.tftpl", {
+    host   = local.app_host
+    issuer = var.letsencrypt_issuer
+  })
+}
+
+output "app_url" {
+  value = "https://${local.app_host}"
 }
 
 output "admin_url" {

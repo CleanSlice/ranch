@@ -19,6 +19,7 @@ name: Terraform
 #   GHCR_USERNAME          — e.g. dmitriyzhuk
 #   API_IMAGE              — e.g. ghcr.io/dmitriyzhuk/ranch-api:latest
 #   ADMIN_IMAGE            — e.g. ghcr.io/dmitriyzhuk/ranch-admin:latest
+#   APP_IMAGE              — e.g. ghcr.io/dmitriyzhuk/ranch-app:latest
 
 on:
   pull_request:
@@ -54,6 +55,7 @@ jobs:
       TF_VAR_ghcr_pat:       ${{ secrets.TF_VAR_GHCR_PAT }}
       TF_VAR_api_image:      ${{ vars.API_IMAGE }}
       TF_VAR_admin_image:    ${{ vars.ADMIN_IMAGE }}
+      TF_VAR_app_image:      ${{ vars.APP_IMAGE }}
       TF_VAR_database_url:   ${{ secrets.TF_VAR_DATABASE_URL }}
       TF_VAR_jwt_secret:     ${{ secrets.TF_VAR_JWT_SECRET }}
       TF_VAR_bridle_api_key: ${{ secrets.TF_VAR_BRIDLE_API_KEY }}

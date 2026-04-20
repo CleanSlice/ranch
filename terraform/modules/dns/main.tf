@@ -15,8 +15,8 @@ variable "load_balancer_ip" {
 
 output "dns_records_needed" {
   value = {
+    (var.domain)           = var.load_balancer_ip # app (root)
     "api.${var.domain}"    = var.load_balancer_ip
-    "app.${var.domain}"    = var.load_balancer_ip
     "admin.${var.domain}"  = var.load_balancer_ip
     "argocd.${var.domain}" = var.load_balancer_ip
   }

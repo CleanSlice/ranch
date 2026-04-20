@@ -14,6 +14,10 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = "~> 1.14"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
   }
 
   backend "s3" {
@@ -27,6 +31,15 @@ terraform {
 
 provider "hcloud" {
   token = var.hcloud_token
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+module "storage" {
+  source      = "../../modules/storage"
+  environment = var.environment
 }
 
 module "network" {
@@ -111,4 +124,22 @@ output "argocd_url" {
 
 output "dns_records" {
   value = module.dns.dns_records_needed
+}
+
+output "agent_data_bucket" {
+  value = module.storage.bucket_name
+}
+
+output "agent_data_region" {
+  value = module.storage.bucket_region
+}
+
+output "agent_data_access_key_id" {
+  value     = module.storage.access_key_id
+  sensitive = true
+}
+
+output "agent_data_secret_access_key" {
+  value     = module.storage.secret_access_key
+  sensitive = true
 }

@@ -13,6 +13,12 @@ variable "location" {
   default = "nbg1"
 }
 
+variable "aws_region" {
+  type        = string
+  default     = "us-east-1"
+  description = "AWS region for S3 bucket and other AWS resources (matches backend bucket)"
+}
+
 variable "domain" {
   type = string
 }

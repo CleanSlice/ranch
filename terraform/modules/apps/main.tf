@@ -93,6 +93,19 @@ resource "kubectl_manifest" "ghcr_pull_secret" {
   YAML
 }
 
+resource "kubectl_manifest" "ghcr_pull_secret_agents" {
+  yaml_body = <<-YAML
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: ghcr
+      namespace: agents
+    type: kubernetes.io/dockerconfigjson
+    data:
+      .dockerconfigjson: ${local.dockerconfigjson}
+  YAML
+}
+
 resource "kubectl_manifest" "ranch_secrets" {
   yaml_body = <<-YAML
     apiVersion: v1
@@ -184,8 +197,10 @@ resource "kubectl_manifest" "workflow_rolebinding" {
 # ---------------------------------------------------------------------
 
 resource "kubectl_manifest" "agent_deployment_workflow" {
-  depends_on = [kubectl_manifest.workflow_sa]
-  yaml_body  = templatefile("${path.module}/templates/agent-deployment.yaml.tftpl", {})
+  depends_on        = [kubectl_manifest.workflow_sa]
+  server_side_apply = true
+  force_conflicts   = true
+  yaml_body         = templatefile("${path.module}/templates/agent-deployment.yaml.tftpl", {})
 }
 
 # ---------------------------------------------------------------------
@@ -269,7 +284,8 @@ resource "kubectl_manifest" "ranch_admin_ingress" {
 # ---------------------------------------------------------------------
 
 resource "kubectl_manifest" "ranch_app_deployment" {
-  depends_on = [kubectl_manifest.ghcr_pull_secret]
+  depends_on       = [kubectl_manifest.ghcr_pull_secret]
+  wait_for_rollout = false
   yaml_body = templatefile("${path.module}/templates/ranch-app-deployment.yaml.tftpl", {
     image   = var.app_image
     api_url = "https://${local.api_host}"

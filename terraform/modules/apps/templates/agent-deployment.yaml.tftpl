@@ -76,6 +76,8 @@ spec:
               ranch/template-id: "{{workflow.parameters.template-id}}"
           spec:
             restartPolicy: Never
+            imagePullSecrets:
+              - name: ghcr
             containers:
               - name: agent
                 image: "{{workflow.parameters.agent-image}}"

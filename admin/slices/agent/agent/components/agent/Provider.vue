@@ -44,6 +44,7 @@ const SECRET_ENV_KEYS = new Set([
   'BRIDLE_API_KEY',
   'CLAUDE_CODE_OAUTH_TOKEN',
   'ANTHROPIC_API_KEY',
+  'AWS_SECRET_ACCESS_KEY',
 ]);
 
 const BRIDLE_URL_DEFAULT = 'http://host.k3d.internal:3333';
@@ -55,6 +56,7 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     const v = settingStore.get('integrations', name)?.value;
     return (typeof v === 'string' && v) || fallback;
   };
+  const bucket = settingValue('s3_bucket');
   return [
     { name: 'AGENT_ID', value: agent.value.id },
     { name: 'AGENT_NAME', value: agent.value.name },
@@ -64,6 +66,12 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'BRIDLE_BOT_ID', value: agent.value.id },
     { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: settingValue('claude_code_oauth_token') },
     { name: 'ANTHROPIC_API_KEY', value: settingValue('anthropic_api_key') },
+    { name: 'S3_BUCKET', value: bucket },
+    { name: 'S3_PREFIX', value: bucket ? `agents/${agent.value.id}` : '' },
+    { name: 'S3_ENDPOINT', value: settingValue('s3_endpoint') },
+    { name: 'AWS_REGION', value: settingValue('aws_region', 'us-east-1') },
+    { name: 'AWS_ACCESS_KEY_ID', value: settingValue('aws_access_key_id') },
+    { name: 'AWS_SECRET_ACCESS_KEY', value: settingValue('aws_secret_access_key') },
   ];
 });
 

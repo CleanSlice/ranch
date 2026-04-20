@@ -9,7 +9,8 @@
     "prebuild": "npm run build:api",
     "build:api": "openapi-ts",
     "preview": "nuxt preview",
-    "lint": "echo 'admin lint: not configured (see eslint.config.mjs TODO)'"
+    "lint": "echo 'admin lint: not configured (see eslint.config.mjs TODO)'",
+    "test": "echo 'admin test: no tests yet'"
   },
   "dependencies": {
     "@hey-api/client-axios": "^0.6",

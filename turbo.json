@@ -9,8 +9,6 @@
       "outputs": ["dist/**", ".nuxt/**", ".output/**"]
     },
     "lint": {},
-    "test": {
-      "dependsOn": ["build"]
-    }
+    "test": {}
   }
 }

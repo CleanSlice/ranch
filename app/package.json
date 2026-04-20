@@ -7,7 +7,8 @@
     "build": "nuxt build",
     "build:api": "openapi-ts",
     "preview": "nuxt preview",
-    "lint": "echo 'app lint: not configured (see eslint.config.mjs TODO)'"
+    "lint": "echo 'app lint: not configured (see eslint.config.mjs TODO)'",
+    "test": "echo 'app test: no tests yet'"
   },
   "dependencies": {
     "nuxt": "^3.16",

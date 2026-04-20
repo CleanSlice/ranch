@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ranch-api
+  namespace: platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ranch-api
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: ranch-api
+    spec:
+      imagePullSecrets:
+        - name: ghcr
+      initContainers:
+        - name: prisma-migrate
+          image: ghcr.io/dmitriyzhuk/ranch-api:latest
+          imagePullPolicy: Always
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "[migrate] applying prisma migrations"
+              bunx prisma migrate deploy --schema=./prisma/schema.prisma
+              echo "[migrate] done"
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-db-app
+                  key: uri
+      containers:
+        - name: api
+          image: ghcr.io/dmitriyzhuk/ranch-api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3333
+          env:
+            - name: NODE_ENV
+              value: "dev"
+            - name: PORT
+              value: "3333"
+            - name: CORS_ORIGIN
+              value: "https://ranch.cleanslice.org,https://api.ranch.cleanslice.org"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-db-app
+                  key: uri
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-secrets
+                  key: JWT_SECRET
+            - name: JWT_EXPIRES_IN
+              value: "7d"
+            - name: BRIDLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-secrets
+                  key: BRIDLE_API_KEY
+            - name: WORKFLOW_PROVIDER
+              value: "argo"
+            - name: ARGO_WORKFLOWS_URL
+              value: "http://argo-workflows-server.argo.svc.cluster.local:2746"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3333
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3333
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ranch-api
+  namespace: platform
+spec:
+  selector:
+    app: ranch-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3333
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ranch-api
+  namespace: platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - api.ranch.cleanslice.org
+      secretName: ranch-api-tls
+  rules:
+    - host: api.ranch.cleanslice.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ranch-api
+                port:
+                  number: 80

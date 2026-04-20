@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ranch-admin
+  namespace: platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ranch-admin
+  template:
+    metadata:
+      labels:
+        app: ranch-admin
+    spec:
+      imagePullSecrets:
+        - name: ghcr
+      containers:
+        - name: admin
+          image: ghcr.io/dmitriyzhuk/ranch-admin:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3002
+          env:
+            - name: NITRO_PORT
+              value: "3002"
+            - name: NUXT_PUBLIC_API_URL
+              value: "https://api.ranch.cleanslice.org"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ranch-admin
+  namespace: platform
+spec:
+  selector:
+    app: ranch-admin
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3002
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ranch-admin
+  namespace: platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - ranch.cleanslice.org
+      secretName: ranch-admin-tls
+  rules:
+    - host: ranch.cleanslice.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ranch-admin
+                port:
+                  number: 80

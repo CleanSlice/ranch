@@ -1,0 +1,16 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ranch-db
+  namespace: platform
+spec:
+  instances: 1
+  storage:
+    size: 10Gi
+  bootstrap:
+    initdb:
+      database: ranch
+      owner: app
+  postgresql:
+    parameters:
+      max_connections: "200"

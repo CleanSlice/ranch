@@ -16,8 +16,12 @@ terraform {
     }
   }
 
-  backend "local" {
-    path = "terraform.tfstate"
+  backend "s3" {
+    bucket         = "ranch-terraform-state"
+    key            = "dreamvention/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "ranch-terraform-locks"
+    encrypt        = true
   }
 }
 
@@ -47,14 +51,21 @@ module "cluster" {
   }
 }
 
+# kube-hetzner writes kubeconfig to k3s_kubeconfig.yaml in the env directory on apply.
+# Both providers point at the file path (the module output is content, not a path).
+locals {
+  kubeconfig_path = "${path.module}/k3s_kubeconfig.yaml"
+}
+
 provider "helm" {
   kubernetes {
-    config_path = module.cluster.kubeconfig
+    config_path = local.kubeconfig_path
   }
 }
 
 provider "kubectl" {
-  config_path = module.cluster.kubeconfig
+  config_path      = local.kubeconfig_path
+  load_config_file = true
 }
 
 module "bootstrap" {

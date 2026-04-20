@@ -181,6 +181,9 @@ make migrate    # Create migration + generate client
 
 ## Deploy to Hetzner Cloud
 
+> 📘 Full Terraform guide (remote state backend, environments, imports, DNS, gotchas):
+> [`terraform/README.md`](terraform/README.md)
+
 ### 1. Create Your Environment
 
 ```bash

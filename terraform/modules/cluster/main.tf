@@ -70,6 +70,18 @@ module "kube-hetzner" {
 
   load_balancer_type     = "lb11"
   load_balancer_location = var.location
+
+  # Allow outbound Postgres so pods can reach external DB (Neon, Supabase, etc.)
+  extra_firewall_rules = [
+    {
+      description     = "Postgres (Neon / external)"
+      direction       = "out"
+      protocol        = "tcp"
+      port            = "5432"
+      source_ips      = []
+      destination_ips = ["0.0.0.0/0", "::/0"]
+    }
+  ]
 }
 
 output "kubeconfig" {

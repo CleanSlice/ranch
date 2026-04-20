@@ -1,0 +1,11 @@
+model Setting {
+  id        String   @id @default(uuid())
+  group     String
+  name      String
+  valueType String   @default("string")
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([group, name])
+}

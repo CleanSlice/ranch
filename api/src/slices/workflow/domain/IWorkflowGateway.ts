@@ -4,6 +4,7 @@ export interface ISubmitWorkflowData {
   agentId: string;
   agentName: string;
   templateId: string;
+  image: string;
   config: Record<string, unknown>;
   resources: { cpu: string; memory: string };
 }

@@ -5,6 +5,9 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 
 export default defineNuxtConfig({
   alias: { '#common': currentDir },
+  imports: {
+    dirs: [`${currentDir}/stores`],
+  },
   modules: ['@nuxtjs/i18n'],
   i18n: {
     langDir: 'locales',

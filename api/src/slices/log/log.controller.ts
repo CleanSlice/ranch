@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Sse, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { IAgentGateway } from '#/agent/domain';
+import { IAgentGateway } from '#/agent/agent/domain';
 import { IWorkflowGateway } from '#/workflow/domain/IWorkflowGateway';
 
 @ApiTags('logs')

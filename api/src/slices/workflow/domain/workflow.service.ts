@@ -1,16 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { IAgentData } from '#/agent/domain';
+import { IAgentData } from '#/agent/agent/domain';
 import { IWorkflowGateway } from './IWorkflowGateway';
 
 @Injectable()
 export class WorkflowService {
   constructor(private workflowGateway: IWorkflowGateway) {}
 
-  async submitAgentWorkflow(agent: IAgentData): Promise<string> {
+  async submitAgentWorkflow(agent: IAgentData, image: string): Promise<string> {
     return this.workflowGateway.submit({
       agentId: agent.id,
       agentName: agent.name,
       templateId: agent.templateId,
+      image,
       config: agent.config,
       resources: agent.resources,
     });

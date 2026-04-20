@@ -5,20 +5,44 @@ import {
   ISubmitWorkflowData,
 } from '../domain/IWorkflowGateway';
 import { IWorkflowStatus } from '../domain/workflow.types';
+import { ISettingGateway } from '#/setting/domain';
+
+const DEFAULTS = {
+  bridle_url: 'http://host.k3d.internal:3333',
+  bridle_api_key: 'dev-bridle-api-key-change-me',
+  claude_code_oauth_token: '',
+  anthropic_api_key: '',
+};
 
 @Injectable()
 export class ArgoWorkflowGateway extends IWorkflowGateway {
   private readonly logger = new Logger(ArgoWorkflowGateway.name);
   private readonly argoUrl: string;
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private settingGateway: ISettingGateway,
+  ) {
     super();
     this.argoUrl =
       this.config.get<string>('ARGO_WORKFLOWS_URL') ||
       'http://argo-workflows-server.argo:2746';
   }
 
+  private async getIntegration(name: keyof typeof DEFAULTS): Promise<string> {
+    const setting = await this.settingGateway.findByKey('integrations', name);
+    const value = typeof setting?.value === 'string' ? setting.value : '';
+    return value || DEFAULTS[name];
+  }
+
   async submit(data: ISubmitWorkflowData): Promise<string> {
+    const [bridleUrl, bridleApiKey, claudeToken, anthropicKey] = await Promise.all([
+      this.getIntegration('bridle_url'),
+      this.getIntegration('bridle_api_key'),
+      this.getIntegration('claude_code_oauth_token'),
+      this.getIntegration('anthropic_api_key'),
+    ]);
+
     const workflow = {
       apiVersion: 'argoproj.io/v1alpha1',
       kind: 'Workflow',
@@ -39,9 +63,14 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'agent-id', value: data.agentId },
             { name: 'agent-name', value: data.agentName },
             { name: 'template-id', value: data.templateId },
+            { name: 'agent-image', value: data.image },
             { name: 'agent-config', value: JSON.stringify(data.config) },
             { name: 'cpu-limit', value: data.resources.cpu },
             { name: 'memory-limit', value: data.resources.memory },
+            { name: 'bridle-url', value: bridleUrl },
+            { name: 'bridle-api-key', value: bridleApiKey },
+            { name: 'claude-code-oauth-token', value: claudeToken },
+            { name: 'anthropic-api-key', value: anthropicKey },
           ],
         },
       },

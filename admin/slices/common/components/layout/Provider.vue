@@ -1,18 +1,32 @@
+<script setup lang="ts">
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from '#theme/components/ui/sidebar';
+import { Separator } from '#theme/components/ui/separator';
+
+const route = useRoute();
+
+const pageTitle = computed(() => {
+  const name = route.name?.toString() ?? '';
+  if (!name) return 'Admin';
+  return name.charAt(0).toUpperCase() + name.slice(1);
+});
+</script>
+
 <template>
-  <div class="min-h-screen bg-background">
-    <nav class="border-b">
-      <div class="container mx-auto flex items-center h-14 px-4">
-        <NuxtLink to="/" class="font-bold text-lg mr-8">Ranch Admin</NuxtLink>
-        <div class="flex gap-4">
-          <NuxtLink to="/agents" class="text-sm hover:text-primary">Agents</NuxtLink>
-          <NuxtLink to="/templates" class="text-sm hover:text-primary">Templates</NuxtLink>
-          <NuxtLink to="/users" class="text-sm hover:text-primary">Users</NuxtLink>
-          <NuxtLink to="/settings" class="text-sm hover:text-primary">Settings</NuxtLink>
-        </div>
-      </div>
-    </nav>
-    <main class="container mx-auto px-4 py-6">
-      <slot />
-    </main>
-  </div>
+  <SidebarProvider>
+    <LayoutSidebar />
+    <SidebarInset>
+      <header class="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+        <SidebarTrigger class="-ml-1" />
+        <Separator orientation="vertical" class="mx-2 h-4" />
+        <h1 class="text-sm font-medium">{{ pageTitle }}</h1>
+      </header>
+      <main class="flex-1 p-6">
+        <slot />
+      </main>
+    </SidebarInset>
+  </SidebarProvider>
 </template>

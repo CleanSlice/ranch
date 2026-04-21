@@ -21,4 +21,4 @@ spec:
               service:
                 name: ranch-admin
                 port:
-                  number: 3002
+                  number: 3001

@@ -23,9 +23,9 @@
           class="rounded-xl border p-6 hover:border-primary transition-colors"
         >
           <div
-            class="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-xl mb-4"
+            class="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-4"
           >
-            {{ feature.icon }}
+            <Icon :name="feature.icon" :size="20" />
           </div>
           <h3 class="font-semibold mb-2">{{ feature.title }}</h3>
           <p class="text-sm text-muted-foreground">{{ feature.body }}</p>
@@ -82,32 +82,32 @@
 <script setup lang="ts">
 const features = [
   {
-    icon: '📦',
+    icon: 'package',
     title: 'One-click agent templates',
     body: 'Pick a Docker image, pin CPU/memory, and Ranch submits an Argo Workflow that rolls out your agent pod.',
   },
   {
-    icon: '💬',
+    icon: 'message-square',
     title: 'Live chat over WebSocket',
     body: 'Every running agent is reachable through a JWT-auth Socket.IO gateway with streaming responses.',
   },
   {
-    icon: '🚦',
+    icon: 'activity',
     title: 'Status & lifecycle',
     body: 'Deploying, running, failed, stopped — Ranch tracks the workflow phase and surfaces it in the UI.',
   },
   {
-    icon: '🔁',
+    icon: 'refresh-cw',
     title: 'Restart without redeploy',
     body: 'Cancel the workflow, flip the image tag, and restart — Ranch keeps the agent record intact.',
   },
   {
-    icon: '📜',
+    icon: 'scroll-text',
     title: 'Log streaming',
     body: 'Tail agent logs straight from the pod without jumping into kubectl.',
   },
   {
-    icon: '🧭',
+    icon: 'users',
     title: 'Multi-tenant admin',
     body: 'An admin surface to manage templates, users, quotas, and the whole fleet across the cluster.',
   },

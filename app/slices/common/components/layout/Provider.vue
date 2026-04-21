@@ -19,40 +19,11 @@
             class="text-muted-foreground hover:text-foreground transition-colors"
             active-class="text-foreground font-medium"
           >
-            Chat
-          </NuxtLink>
-          <NuxtLink
-            to="/agents"
-            class="text-muted-foreground hover:text-foreground transition-colors"
-            active-class="text-foreground font-medium"
-          >
             Agents
-          </NuxtLink>
-          <NuxtLink
-            to="/templates"
-            class="text-muted-foreground hover:text-foreground transition-colors"
-            active-class="text-foreground font-medium"
-          >
-            Templates
           </NuxtLink>
         </nav>
 
         <div class="flex-1" />
-
-        <a
-          href="https://github.com/Dreamvention/cleanslice"
-          target="_blank"
-          rel="noopener"
-          class="hidden sm:inline-flex text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Docs
-        </a>
-        <NuxtLink
-          to="/chat"
-          class="inline-flex items-center rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium hover:opacity-90 transition"
-        >
-          Open dashboard
-        </NuxtLink>
       </div>
     </header>
 

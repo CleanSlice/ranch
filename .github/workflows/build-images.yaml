@@ -30,7 +30,7 @@ on:
 env:
   REGISTRY: ghcr.io
   REGISTRY_USER: dmitriyzhuk
-  IMAGE_PREFIX: ghcr.io/dmitriyzhuk/ranch
+  IMAGE_PREFIX: ghcr.io/cleanslice/ranch
 
 jobs:
   changes:

@@ -15,6 +15,8 @@ const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
 const settingStore = useSettingStore();
+const llmStore = useLlmStore();
+const usageStore = useUsageStore();
 const config = useRuntimeConfig();
 
 const apiUrl =
@@ -28,6 +30,11 @@ const { data: agent, pending, refresh } = await useAsyncData(
 );
 
 await useAsyncData('admin-settings-for-agent-env', () => settingStore.fetchAll());
+await useAsyncData('admin-llms-for-agent-env', () => llmStore.fetchAll());
+const { data: usage, refresh: refreshUsage } = await useAsyncData(
+  `admin-agent-usage-${props.id}`,
+  () => usageStore.fetchForAgent(props.id),
+);
 
 const statusVariant: Record<AgentStatusTypes, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   running: 'default',
@@ -42,8 +49,7 @@ const formatDate = (iso: string) =>
 
 const SECRET_ENV_KEYS = new Set([
   'BRIDLE_API_KEY',
-  'CLAUDE_CODE_OAUTH_TOKEN',
-  'ANTHROPIC_API_KEY',
+  'RANCH_LLM_CREDENTIALS',
   'AWS_SECRET_ACCESS_KEY',
 ]);
 
@@ -64,8 +70,20 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'BRIDLE_URL', value: settingValue('bridle_url', BRIDLE_URL_DEFAULT) },
     { name: 'BRIDLE_API_KEY', value: settingValue('bridle_api_key', BRIDLE_API_KEY_DEFAULT) },
     { name: 'BRIDLE_BOT_ID', value: agent.value.id },
-    { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: settingValue('claude_code_oauth_token') },
-    { name: 'ANTHROPIC_API_KEY', value: settingValue('anthropic_api_key') },
+    {
+      name: 'RANCH_LLM_CREDENTIALS',
+      value: JSON.stringify(
+        llmStore.items
+          .filter((c) => c.status === 'active')
+          .map((c) => ({
+            id: c.id,
+            provider: c.provider,
+            model: c.model,
+            label: c.label,
+            apiKey: c.apiKey,
+          })),
+      ),
+    },
     { name: 'S3_BUCKET', value: bucket },
     { name: 'S3_PREFIX', value: bucket ? `agents/${agent.value.id}` : '' },
     { name: 'S3_ENDPOINT', value: settingValue('s3_endpoint') },
@@ -79,10 +97,23 @@ const revealed = ref<Record<string, boolean>>({});
 const mask = (v: string) =>
   v ? (v.length <= 6 ? '•'.repeat(v.length) : `${v.slice(0, 3)}${'•'.repeat(Math.max(6, v.length - 6))}${v.slice(-3)}`) : '';
 
+function fmt(n: number) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k';
+  return String(n);
+}
+
+function fmtUsd(n: number) {
+  if (n <= 0) return '$0';
+  if (n < 0.01) return '<$0.01';
+  return '$' + n.toFixed(2);
+}
+
 async function onRestart() {
   if (!agent.value) return;
   await agentStore.restart(agent.value.id);
   await refresh();
+  await refreshUsage();
 }
 
 async function onRemove() {
@@ -114,6 +145,57 @@ async function onRemove() {
 
       <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(380px,480px)]">
         <div class="flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Usage</CardTitle>
+              <CardDescription>
+                Tokens reported by the agent runtime (<code>usage.json</code>).
+                Today first, then 30-day totals across all models.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div v-if="!usage || usage.totals.callCount === 0" class="text-sm text-muted-foreground">
+                No usage reported yet.
+              </div>
+              <dl v-else class="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                <div>
+                  <dt class="text-xs text-muted-foreground">Today · model</dt>
+                  <dd class="mt-1 font-mono text-sm">{{ usage.today.model ?? '—' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">Today · in / out</dt>
+                  <dd class="mt-1 font-mono text-sm">
+                    {{ fmt(usage.today.inputTokens) }} / {{ fmt(usage.today.outputTokens) }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">Today · calls</dt>
+                  <dd class="mt-1 font-mono text-sm">{{ usage.today.callCount }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">30d · cost</dt>
+                  <dd class="mt-1 font-mono text-sm">{{ fmtUsd(usage.totals.costUsd) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">30d · top model</dt>
+                  <dd class="mt-1 font-mono text-sm">{{ usage.topModel ?? '—' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">30d · input</dt>
+                  <dd class="mt-1 font-mono text-sm">{{ fmt(usage.totals.inputTokens) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">30d · output</dt>
+                  <dd class="mt-1 font-mono text-sm">{{ fmt(usage.totals.outputTokens) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">30d · calls</dt>
+                  <dd class="mt-1 font-mono text-sm">{{ usage.totals.callCount }}</dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Runtime</CardTitle>
@@ -155,9 +237,11 @@ async function onRemove() {
             <CardHeader>
               <CardTitle>Environment</CardTitle>
               <CardDescription>
-                Env variables injected into the agent pod at submit time. Edit values in
-                <NuxtLink to="/settings" class="underline">Settings</NuxtLink>
-                (group <code>integrations</code>) and restart the agent to apply.
+                Env variables injected into the agent pod at submit time. Edit LLM credentials in
+                <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>,
+                other integrations in
+                <NuxtLink to="/settings" class="underline">Settings</NuxtLink>.
+                Restart the agent to apply changes.
               </CardDescription>
             </CardHeader>
             <CardContent>

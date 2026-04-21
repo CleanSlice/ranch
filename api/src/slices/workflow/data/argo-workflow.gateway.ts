@@ -6,12 +6,11 @@ import {
 } from '../domain/IWorkflowGateway';
 import { IWorkflowStatus } from '../domain/workflow.types';
 import { ISettingGateway } from '#/setting/domain';
+import { ILlmGateway } from '#/llm/domain';
 
 const DEFAULTS = {
   bridle_url: 'http://host.k3d.internal:3333',
   bridle_api_key: 'dev-bridle-api-key-change-me',
-  claude_code_oauth_token: '',
-  anthropic_api_key: '',
   s3_bucket: '',
   s3_endpoint: '',
   aws_region: 'us-east-1',
@@ -27,6 +26,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
   constructor(
     private config: ConfigService,
     private settingGateway: ISettingGateway,
+    private llmGateway: ILlmGateway,
   ) {
     super();
     this.argoUrl =
@@ -44,25 +44,33 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     const [
       bridleUrl,
       bridleApiKey,
-      claudeToken,
-      anthropicKey,
       s3Bucket,
       s3Endpoint,
       awsRegion,
       awsAccessKeyId,
       awsSecretAccessKey,
+      credentials,
     ] = await Promise.all([
       this.getIntegration('bridle_url'),
       this.getIntegration('bridle_api_key'),
-      this.getIntegration('claude_code_oauth_token'),
-      this.getIntegration('anthropic_api_key'),
       this.getIntegration('s3_bucket'),
       this.getIntegration('s3_endpoint'),
       this.getIntegration('aws_region'),
       this.getIntegration('aws_access_key_id'),
       this.getIntegration('aws_secret_access_key'),
+      this.llmGateway.findActive(),
     ]);
     const s3Prefix = s3Bucket ? `agents/${data.agentId}` : '';
+
+    const llmCredentialsJson = JSON.stringify(
+      credentials.map((c) => ({
+        id: c.id,
+        provider: c.provider,
+        model: c.model,
+        label: c.label,
+        apiKey: c.apiKey,
+      })),
+    );
 
     const workflow = {
       apiVersion: 'argoproj.io/v1alpha1',
@@ -90,8 +98,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'memory-limit', value: data.resources.memory },
             { name: 'bridle-url', value: bridleUrl },
             { name: 'bridle-api-key', value: bridleApiKey },
-            { name: 'claude-code-oauth-token', value: claudeToken },
-            { name: 'anthropic-api-key', value: anthropicKey },
+            { name: 'ranch-llm-credentials', value: llmCredentialsJson },
             { name: 's3-bucket', value: s3Bucket },
             { name: 's3-prefix', value: s3Prefix },
             { name: 's3-endpoint', value: s3Endpoint },

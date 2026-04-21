@@ -1,0 +1,16 @@
+{
+  "llms": "LLMs",
+  "add_credential": "Add credential",
+  "provider": "Provider",
+  "model": "Model",
+  "label": "Label",
+  "api_key": "API key",
+  "status": "Status",
+  "active": "active",
+  "disabled": "disabled",
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "confirm_delete": "Delete this credential?",
+  "empty": "No LLM credentials yet. Add one to make it available to your agents."
+}

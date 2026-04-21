@@ -81,27 +81,6 @@ const SECTIONS: { title: string; description?: string; fields: IFieldDef[] }[] =
     ],
   },
   {
-    title: 'LLM credentials',
-    description:
-      'Injected into every agent pod. Use Claude Code OAuth token OR Anthropic API key (runtime picks whichever is present).',
-    fields: [
-      {
-        group: 'integrations',
-        name: 'claude_code_oauth_token',
-        label: 'Claude Code OAuth token',
-        type: 'password',
-        placeholder: 'sk-ant-oat01-…',
-      },
-      {
-        group: 'integrations',
-        name: 'anthropic_api_key',
-        label: 'Anthropic API key',
-        type: 'password',
-        placeholder: 'sk-ant-api03-…',
-      },
-    ],
-  },
-  {
     title: 'S3 persistence (MinIO / AWS S3)',
     description:
       'If bucket is set, runtime syncs .agent/ to S3 on shutdown and restores on boot. For local MinIO use endpoint http://cleanslice-ranch-minio-1:9000 (pod DNS name) and bucket ranch-agent-data. Per-agent prefix is computed as agents/{agent-id}.',

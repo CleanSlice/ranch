@@ -17,6 +17,7 @@ import {
   IconRobot,
   IconFileText,
   IconUsers,
+  IconBrain,
   IconSettings,
   IconLogout,
 } from '@tabler/icons-vue';
@@ -35,6 +36,7 @@ const iconMap: Record<string, unknown> = {
   Robot: IconRobot,
   FileText: IconFileText,
   Users: IconUsers,
+  Brain: IconBrain,
   Settings: IconSettings,
 };
 

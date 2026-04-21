@@ -16,6 +16,22 @@ export type UpsertSettingDto = {
     };
 };
 
+export type CreateLlmCredentialDto = {
+    provider: string;
+    model: string;
+    apiKey: string;
+    label?: string;
+    status?: 'active' | 'disabled';
+};
+
+export type UpdateLlmCredentialDto = {
+    provider?: string;
+    model?: string;
+    apiKey?: string;
+    label?: string;
+    status?: 'active' | 'disabled';
+};
+
 export type CreateTemplateDto = {
     name: string;
     description: string;
@@ -143,6 +159,16 @@ export type BridleBotHealthDto = {
     botId: string;
 };
 
+export type ReportUsageDto = {
+    date: string;
+    /**
+     * Per-model usage. Key is the canonical model name (e.g. claude-sonnet-4-6).
+     */
+    byModel: {
+        [key: string]: unknown;
+    };
+};
+
 export type HealthControllerCheckData = {
     body?: never;
     path?: never;
@@ -239,6 +265,67 @@ export type SettingControllerUpsertData = {
 };
 
 export type SettingControllerUpsertResponses = {
+    200: unknown;
+};
+
+export type LlmControllerFindAllData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/llms';
+};
+
+export type LlmControllerFindAllResponses = {
+    200: unknown;
+};
+
+export type LlmControllerCreateData = {
+    body: CreateLlmCredentialDto;
+    path?: never;
+    query?: never;
+    url: '/llms';
+};
+
+export type LlmControllerCreateResponses = {
+    201: unknown;
+};
+
+export type LlmControllerRemoveData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/llms/{id}';
+};
+
+export type LlmControllerRemoveResponses = {
+    200: unknown;
+};
+
+export type LlmControllerFindByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/llms/{id}';
+};
+
+export type LlmControllerFindByIdResponses = {
+    200: unknown;
+};
+
+export type LlmControllerUpdateData = {
+    body: UpdateLlmCredentialDto;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/llms/{id}';
+};
+
+export type LlmControllerUpdateResponses = {
     200: unknown;
 };
 
@@ -526,6 +613,37 @@ export type ListAgentsData = {
 export type ListAgentsResponses = {
     200: unknown;
 };
+
+export type UsageControllerFindForAgentData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/agents/{agentId}/usage';
+};
+
+export type UsageControllerFindForAgentResponses = {
+    200: unknown;
+};
+
+export type UsageControllerReportData = {
+    body: ReportUsageDto;
+    headers: {
+        'x-bridle-api-key': string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/agents/{agentId}/usage';
+};
+
+export type UsageControllerReportResponses = {
+    204: void;
+};
+
+export type UsageControllerReportResponse = UsageControllerReportResponses[keyof UsageControllerReportResponses];
 
 export type ClientOptions = {
     baseURL: string;

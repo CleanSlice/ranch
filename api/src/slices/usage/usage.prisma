@@ -1,0 +1,21 @@
+import { Agent } from "../agent/agent/agent"
+import { LlmCredential } from "../llm/llm"
+
+model Usage {
+  id              String         @id @default(uuid())
+  agentId         String
+  agent           Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  llmCredentialId String?
+  llmCredential   LlmCredential? @relation(fields: [llmCredentialId], references: [id], onDelete: SetNull)
+  model           String
+  date            DateTime
+  inputTokens     Int            @default(0)
+  outputTokens    Int            @default(0)
+  callCount       Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([agentId, model, date])
+  @@index([agentId])
+  @@index([date])
+}

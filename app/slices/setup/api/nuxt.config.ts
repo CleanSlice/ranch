@@ -7,4 +7,9 @@ export default defineNuxtConfig({
   alias: {
     '#api': currentDir,
   },
+  runtimeConfig: {
+    public: {
+      apiUrl: '',
+    },
+  },
 });

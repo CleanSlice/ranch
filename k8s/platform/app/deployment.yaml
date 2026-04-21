@@ -22,6 +22,12 @@ spec:
           image: ghcr.io/cleanslice/ranch-app:latest
           ports:
             - containerPort: 3000
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 6
           resources:
             requests:
               cpu: 100m

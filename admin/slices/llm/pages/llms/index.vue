@@ -1,5 +1,5 @@
 <template>
   <div>
-    <LlmProvider />
+    <LlmListProvider />
   </div>
 </template>

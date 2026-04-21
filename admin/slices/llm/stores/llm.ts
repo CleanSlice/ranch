@@ -47,6 +47,11 @@ export const useLlmStore = defineStore('llm', () => {
     return items.value;
   }
 
+  async function fetchById(id: string) {
+    const res = await LlmsService.llmControllerFindById({ path: { id } });
+    return unwrap<ILlmCredentialData>(res.data);
+  }
+
   async function create(body: ILlmCredentialInput) {
     const res = await LlmsService.llmControllerCreate({ body });
     const created = unwrap<ILlmCredentialData>(res.data);
@@ -72,5 +77,5 @@ export const useLlmStore = defineStore('llm', () => {
     items.value = items.value.filter((x) => x.id !== id);
   }
 
-  return { items, loading, error, fetchAll, create, update, remove };
+  return { items, loading, error, fetchAll, fetchById, create, update, remove };
 });

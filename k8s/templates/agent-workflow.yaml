@@ -5,6 +5,7 @@ metadata:
   namespace: agents
 spec:
   entrypoint: deploy-agent
+  serviceAccountName: workflow
   arguments:
     parameters:
       - name: agent-id

@@ -27,6 +27,12 @@ export default defineNuxtConfig({
     componentDir: './slices/setup/theme/components/ui',
   },
   components: {
-    dirs: [],
+    dirs: [
+      {
+        path: `${currentDir}/components`,
+        ignore: ['**/ui/**'],
+        pathPrefix: false,
+      },
+    ],
   },
 });

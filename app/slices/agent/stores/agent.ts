@@ -16,6 +16,18 @@ export interface IAgentData {
   updatedAt: string;
 }
 
+interface IEnvelope<T> {
+  success?: boolean;
+  data?: T;
+}
+
+function unwrap<T>(body: unknown): T | null {
+  if (body && typeof body === 'object' && 'data' in (body as IEnvelope<T>)) {
+    return ((body as IEnvelope<T>).data ?? null) as T | null;
+  }
+  return (body ?? null) as T | null;
+}
+
 export const useAgentStore = defineStore('agent', () => {
   const agents = ref<IAgentData[]>([]);
   const current = ref<IAgentData | null>(null);
@@ -27,7 +39,8 @@ export const useAgentStore = defineStore('agent', () => {
     error.value = null;
     try {
       const res = await AgentsService.agentControllerFindAll();
-      agents.value = (res.data as IAgentData[]) ?? [];
+      const list = unwrap<IAgentData[]>(res.data);
+      agents.value = Array.isArray(list) ? list : [];
     } catch (err) {
       error.value = (err as Error).message;
       agents.value = [];
@@ -42,7 +55,7 @@ export const useAgentStore = defineStore('agent', () => {
     error.value = null;
     try {
       const res = await AgentsService.agentControllerFindById({ path: { id } });
-      current.value = (res.data as IAgentData) ?? null;
+      current.value = unwrap<IAgentData>(res.data);
     } catch (err) {
       error.value = (err as Error).message;
       current.value = null;
@@ -54,7 +67,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   async function create(body: CreateAgentDto) {
     const res = await AgentsService.agentControllerCreate({ body });
-    const created = res.data as IAgentData;
+    const created = unwrap<IAgentData>(res.data);
     if (created) agents.value.push(created);
     return created;
   }
@@ -64,7 +77,7 @@ export const useAgentStore = defineStore('agent', () => {
       path: { id },
       body,
     });
-    const updated = res.data as IAgentData;
+    const updated = unwrap<IAgentData>(res.data);
     if (updated) {
       const idx = agents.value.findIndex((a) => a.id === id);
       if (idx >= 0) agents.value[idx] = updated;
@@ -79,7 +92,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   async function restart(id: string) {
     const res = await AgentsService.agentControllerRestart({ path: { id } });
-    const updated = res.data as IAgentData;
+    const updated = unwrap<IAgentData>(res.data);
     if (updated) {
       const idx = agents.value.findIndex((a) => a.id === id);
       if (idx >= 0) agents.value[idx] = updated;

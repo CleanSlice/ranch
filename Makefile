@@ -127,6 +127,7 @@ k3d: ## Create/start local k3d cluster
 	@k3d kubeconfig get $(CLUSTER) > $(KUBECONFIG_LOCAL)
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl create namespace platform 2>/dev/null || true
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl create namespace agents 2>/dev/null || true
+	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl apply -f k8s/templates/rbac.yaml 2>/dev/null || true
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl apply -f k8s/templates/agent-workflow.yaml 2>/dev/null || true
 	@echo "  namespaces: platform, agents"
 	@echo "  kubeconfig: $(KUBECONFIG_LOCAL)"

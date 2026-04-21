@@ -101,6 +101,7 @@
         "@pinia/nuxt": "^0.9",
         "axios": "^1",
         "clsx": "^2.1.1",
+        "lucide-vue-next": "^1.0.0",
         "nuxt": "^3.16",
         "pinia": "^3",
         "shadcn-nuxt": "^2.4.3",

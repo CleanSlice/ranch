@@ -143,6 +143,7 @@ mkdir -p "$(dirname "$KUBECONFIG_LOCAL")"
 k3d kubeconfig get "$CLUSTER" > "$KUBECONFIG_LOCAL"
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl create namespace platform 2>/dev/null || true
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl create namespace agents 2>/dev/null || true
+KUBECONFIG="$KUBECONFIG_LOCAL" kubectl apply -f k8s/templates/rbac.yaml 2>/dev/null || true
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl apply -f k8s/templates/agent-workflow.yaml 2>/dev/null || true
 ok "namespaces: platform, agents"
 ok "kubeconfig: $KUBECONFIG_LOCAL"
@@ -326,8 +327,9 @@ ok "CloudNativePG installed"
 
 kubectl create namespace platform >/dev/null 2>&1
 kubectl create namespace agents >/dev/null 2>&1
+kubectl apply -f k8s/templates/rbac.yaml >/dev/null 2>&1
 kubectl apply -f k8s/templates/agent-workflow.yaml >/dev/null 2>&1
-ok "Namespaces and workflow templates created"
+ok "Namespaces, RBAC, and workflow templates created"
 
 # ============================================
 # Step 10: Summary

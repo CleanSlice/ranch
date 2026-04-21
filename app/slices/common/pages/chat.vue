@@ -1,9 +1,15 @@
 <template>
-  <div class="h-[calc(100vh-3.5rem-3rem)] -my-6">
-    <div class="grid grid-cols-[18rem_1fr] h-full border rounded-lg overflow-hidden bg-background">
-      <aside class="border-r flex flex-col bg-muted/30">
-        <div class="px-4 py-3 border-b flex items-center justify-between">
-          <h2 class="font-semibold text-sm uppercase tracking-wide text-muted-foreground">
+  <div class="flex-1 min-h-0 flex flex-col p-4">
+    <div
+      class="grid grid-cols-[18rem_1fr] flex-1 min-h-0 border rounded-lg overflow-hidden bg-background"
+    >
+      <aside class="border-r flex flex-col bg-muted/30 min-h-0">
+        <div
+          class="shrink-0 px-4 py-3 border-b flex items-center justify-between"
+        >
+          <h2
+            class="font-semibold text-sm uppercase tracking-wide text-muted-foreground"
+          >
             Agents
           </h2>
           <NuxtLink
@@ -14,8 +20,11 @@
           </NuxtLink>
         </div>
 
-        <div class="flex-1 overflow-y-auto">
-          <div v-if="agentStore.loading" class="p-4 text-sm text-muted-foreground">
+        <div class="flex-1 min-h-0 overflow-y-auto">
+          <div
+            v-if="agentStore.loading"
+            class="p-4 text-sm text-muted-foreground"
+          >
             Loading…
           </div>
           <div
@@ -56,7 +65,7 @@
         </div>
       </aside>
 
-      <section class="min-w-0">
+      <section class="min-w-0 min-h-0">
         <BridleChatProvider
           :bot-id="selectedId"
           :title="selectedAgent?.name"

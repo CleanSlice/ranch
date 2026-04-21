@@ -18,6 +18,18 @@ interface ISyncResponse {
   ts?: number;
 }
 
+interface IEnvelope<T> {
+  success?: boolean;
+  data?: T;
+}
+
+function unwrap<T>(body: unknown): T | null {
+  if (body && typeof body === 'object' && 'data' in (body as IEnvelope<T>)) {
+    return ((body as IEnvelope<T>).data ?? null) as T | null;
+  }
+  return (body ?? null) as T | null;
+}
+
 export const useBridleStore = defineStore('bridle', () => {
   const conversations = ref<Record<string, IBridleMessage[]>>({});
   const pending = ref<Record<string, boolean>>({});
@@ -51,7 +63,7 @@ export const useBridleStore = defineStore('bridle', () => {
         path: { botId },
         body: { text: trimmed },
       });
-      const data = (res.data as ISyncResponse) ?? {};
+      const data = unwrap<ISyncResponse>(res.data) ?? {};
       appendMessage(botId, {
         id: data.messageId || `a-${Date.now()}`,
         role: BridleRoleTypes.Agent,

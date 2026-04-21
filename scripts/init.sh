@@ -145,6 +145,9 @@ KUBECONFIG="$KUBECONFIG_LOCAL" kubectl create namespace platform 2>/dev/null || 
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl create namespace agents 2>/dev/null || true
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl apply -f k8s/templates/rbac.yaml 2>/dev/null || true
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl apply -f k8s/templates/agent-workflow.yaml 2>/dev/null || true
+KUBECONFIG="$KUBECONFIG_LOCAL" kubectl apply -f k8s/local/coredns-host-alias.yaml 2>/dev/null || true
+KUBECONFIG="$KUBECONFIG_LOCAL" kubectl -n kube-system rollout restart deploy coredns 2>/dev/null || true
+KUBECONFIG="$KUBECONFIG_LOCAL" kubectl label node --all node-role=agents --overwrite 2>/dev/null || true
 ok "namespaces: platform, agents"
 ok "kubeconfig: $KUBECONFIG_LOCAL"
 

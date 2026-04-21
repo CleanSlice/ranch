@@ -11,21 +11,59 @@ spec:
       - name: agent-id
       - name: agent-name
       - name: template-id
+      - name: agent-image
       - name: agent-config
+        value: "{}"
       - name: cpu-limit
         value: "500m"
       - name: memory-limit
         value: "512Mi"
+      - name: bridle-url
+        value: ""
+      - name: bridle-api-key
+        value: ""
+      - name: claude-code-oauth-token
+        value: ""
+      - name: anthropic-api-key
+        value: ""
+      - name: s3-bucket
+        value: ""
+      - name: s3-prefix
+        value: ""
+      - name: s3-endpoint
+        value: ""
+      - name: aws-region
+        value: "us-east-1"
+      - name: aws-access-key-id
+        value: ""
+      - name: aws-secret-access-key
+        value: ""
   templates:
     - name: deploy-agent
       steps:
+        - - name: cleanup-old
+            template: cleanup-pod
+            continueOn:
+              failed: true
         - - name: run-agent
             template: agent-pod
+
+    - name: cleanup-pod
+      resource:
+        action: delete
+        flags: ["--ignore-not-found", "--wait=true", "--timeout=30s"]
+        manifest: |
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: "agent-{{workflow.parameters.agent-id}}"
+            namespace: agents
 
     - name: agent-pod
       resource:
         action: create
         successCondition: status.phase == Running
+        failureCondition: status.phase == Failed
         manifest: |
           apiVersion: v1
           kind: Pod
@@ -37,6 +75,7 @@ spec:
               ranch/agent-id: "{{workflow.parameters.agent-id}}"
               ranch/template-id: "{{workflow.parameters.template-id}}"
           spec:
+            restartPolicy: Never
             nodeSelector:
               node-role: agents
             tolerations:
@@ -45,7 +84,8 @@ spec:
                 effect: NoSchedule
             containers:
               - name: agent
-                image: "ghcr.io/CleanSlice/agent-{{workflow.parameters.template-id}}:latest"
+                image: "{{workflow.parameters.agent-image}}"
+                imagePullPolicy: IfNotPresent
                 env:
                   - name: AGENT_ID
                     value: "{{workflow.parameters.agent-id}}"
@@ -53,6 +93,28 @@ spec:
                     value: "{{workflow.parameters.agent-name}}"
                   - name: AGENT_CONFIG
                     value: "{{workflow.parameters.agent-config}}"
+                  - name: BRIDLE_URL
+                    value: "{{workflow.parameters.bridle-url}}"
+                  - name: BRIDLE_API_KEY
+                    value: "{{workflow.parameters.bridle-api-key}}"
+                  - name: BRIDLE_BOT_ID
+                    value: "{{workflow.parameters.agent-id}}"
+                  - name: CLAUDE_CODE_OAUTH_TOKEN
+                    value: "{{workflow.parameters.claude-code-oauth-token}}"
+                  - name: ANTHROPIC_API_KEY
+                    value: "{{workflow.parameters.anthropic-api-key}}"
+                  - name: S3_BUCKET
+                    value: "{{workflow.parameters.s3-bucket}}"
+                  - name: S3_PREFIX
+                    value: "{{workflow.parameters.s3-prefix}}"
+                  - name: S3_ENDPOINT
+                    value: "{{workflow.parameters.s3-endpoint}}"
+                  - name: AWS_REGION
+                    value: "{{workflow.parameters.aws-region}}"
+                  - name: AWS_ACCESS_KEY_ID
+                    value: "{{workflow.parameters.aws-access-key-id}}"
+                  - name: AWS_SECRET_ACCESS_KEY
+                    value: "{{workflow.parameters.aws-secret-access-key}}"
                 resources:
                   requests:
                     cpu: "{{workflow.parameters.cpu-limit}}"
@@ -60,4 +122,3 @@ spec:
                   limits:
                     cpu: "{{workflow.parameters.cpu-limit}}"
                     memory: "{{workflow.parameters.memory-limit}}"
-            restartPolicy: Never

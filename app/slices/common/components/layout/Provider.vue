@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen flex flex-col bg-background">
     <header
-      class="sticky top-0 z-40 backdrop-blur bg-background/80 border-b"
+      class="sticky top-0 z-40 shrink-0 backdrop-blur bg-background/80 border-b"
     >
       <div class="container mx-auto flex items-center h-14 px-4 gap-6">
         <NuxtLink to="/" class="flex items-center gap-2 font-bold text-lg">
@@ -56,13 +56,18 @@
       </div>
     </header>
 
-    <main class="flex-1 container mx-auto px-4 py-6">
-      <slot />
+    <main class="flex-1 min-h-0 flex flex-col">
+      <div v-if="!isDashboard" class="container mx-auto px-4 py-6 w-full">
+        <slot />
+      </div>
+      <div v-else class="flex-1 min-h-0 flex flex-col">
+        <slot />
+      </div>
     </main>
 
-    <footer class="border-t mt-auto">
+    <footer class="shrink-0 border-t">
       <div
-        class="container mx-auto px-4 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground"
+        class="container mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground"
       >
         <div>© {{ year }} Ranch — built on CleanSlice.</div>
         <div class="flex items-center gap-4">
@@ -79,5 +84,8 @@
 </template>
 
 <script setup lang="ts">
+const route = useRoute();
 const year = new Date().getFullYear();
+
+const isDashboard = computed(() => route.path.startsWith('/chat'));
 </script>

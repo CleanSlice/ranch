@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  host-alias.server: |
+    host.k3d.internal:53 host.docker.internal:53 {
+      hosts {
+        192.168.65.254 host.k3d.internal host.docker.internal
+      }
+    }

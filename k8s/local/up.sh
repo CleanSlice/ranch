@@ -28,8 +28,11 @@ helm upgrade --install argo-workflows argo/argo-workflows \
 
 echo "==> Applying Ranch manifests"
 kubectl apply -f "${SCRIPT_DIR}/namespaces.yaml"
-kubectl apply -f "${SCRIPT_DIR}/rbac.yaml"
-kubectl apply -f "${SCRIPT_DIR}/workflow-template.yaml"
+kubectl apply -f "${SCRIPT_DIR}/../templates/rbac.yaml"
+kubectl apply -f "${SCRIPT_DIR}/../templates/agent-workflow.yaml"
+kubectl apply -f "${SCRIPT_DIR}/coredns-host-alias.yaml"
+kubectl -n kube-system rollout restart deploy coredns >/dev/null 2>&1 || true
+kubectl label node --all node-role=agents --overwrite >/dev/null 2>&1 || true
 
 echo "==> Starting port-forward argo-server :2746 (with auto-reconnect)"
 pkill -f "ranch-argo-pf-loop" 2>/dev/null || true

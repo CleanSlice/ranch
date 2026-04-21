@@ -7,6 +7,6 @@ spec:
   selector:
     app: ranch-admin
   ports:
-    - port: 3002
-      targetPort: 3002
+    - port: 3001
+      targetPort: 3001
       protocol: TCP

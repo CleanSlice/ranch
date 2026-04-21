@@ -21,7 +21,7 @@ spec:
         - name: admin
           image: ghcr.io/CleanSlice/ranch-admin:latest
           ports:
-            - containerPort: 3002
+            - containerPort: 3001
           resources:
             requests:
               cpu: 100m

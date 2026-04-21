@@ -3,8 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npm run build:api && nuxt dev --port 3000",
-    "build": "npm run build:api && nuxt build",
+    "predev": "openapi-ts",
+    "dev": "nuxt dev --port 3000",
+    "prebuild": "openapi-ts",
+    "build": "nuxt build",
     "build:api": "openapi-ts",
     "preview": "nuxt preview",
     "lint": "echo 'app lint: not configured (see eslint.config.mjs TODO)'",

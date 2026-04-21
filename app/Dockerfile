@@ -34,6 +34,6 @@ RUN API_URL=${API_URL} bun run build
 FROM node:22-alpine
 WORKDIR /usr/src/app
 COPY --from=app-builder /build/app/.output ./.output
-ENV NITRO_PORT=3002
-EXPOSE 3002
+ENV NITRO_PORT=3000
+EXPOSE 3000
 CMD ["node", ".output/server/index.mjs"]

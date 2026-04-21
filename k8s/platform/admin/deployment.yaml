@@ -19,7 +19,7 @@ spec:
         node-role: system
       containers:
         - name: admin
-          image: ghcr.io/CleanSlice/ranch-admin:latest
+          image: ghcr.io/cleanslice/ranch-admin:latest
           ports:
             - containerPort: 3001
           resources:

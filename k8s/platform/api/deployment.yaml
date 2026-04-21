@@ -19,7 +19,7 @@ spec:
         node-role: system
       containers:
         - name: api
-          image: ghcr.io/CleanSlice/ranch-api:latest
+          image: ghcr.io/cleanslice/ranch-api:latest
           ports:
             - containerPort: 3000
           envFrom:

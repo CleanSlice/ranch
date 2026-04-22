@@ -3,6 +3,7 @@ dist/
 .nuxt/
 .output/
 .turbo/
+.docker/
 *.log
 .env
 .env.*

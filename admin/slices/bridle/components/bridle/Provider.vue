@@ -94,7 +94,7 @@ const handleSend = (text: string) => {
       </ScrollArea>
     </CardContent>
 
-    <CardFooter class="border-t p-3">
+    <CardFooter class="border-t">
       <Input
         :placeholder="placeholder"
         :disabled="!isConnected"

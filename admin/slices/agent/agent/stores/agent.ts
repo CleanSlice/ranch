@@ -1,4 +1,4 @@
-import { AgentsService } from '#api/data';
+import { AgentsService, LogsService } from '#api/data';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
 
@@ -88,5 +88,11 @@ export const useAgentStore = defineStore('agent', () => {
     agents.value = agents.value.filter((a) => a.id !== id);
   }
 
-  return { agents, fetchAll, fetchById, create, update, restart, remove };
+  async function fetchLogs(id: string): Promise<string> {
+    const res = await LogsService.logControllerGetLogs({ path: { agentId: id } });
+    const env = res.data as ApiEnvelope<{ logs: string }> | undefined;
+    return env?.data?.logs ?? '';
+  }
+
+  return { agents, fetchAll, fetchById, create, update, restart, remove, fetchLogs };
 });

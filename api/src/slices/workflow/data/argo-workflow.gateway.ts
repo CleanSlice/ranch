@@ -7,6 +7,7 @@ import {
 import { IWorkflowStatus } from '../domain/workflow.types';
 import { ISettingGateway } from '#/setting/domain';
 import { ILlmGateway } from '#/llm/domain';
+import { normalizeCredential } from '#/llm/domain/llm.utils';
 
 const DEFAULTS = {
   bridle_url: 'http://host.k3d.internal:3333',
@@ -72,7 +73,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
         name: 'llm-fallback-model',
         value: credential?.fallbackModel ?? credential?.model ?? '',
       },
-      { name: 'llm-api-key', value: credential?.apiKey ?? '' },
+      { name: 'llm-api-key', value: credential?.apiKey ? normalizeCredential(credential.apiKey) : '' },
     ];
 
     const workflow = {

@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsIn } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { normalizeCredential } from '../domain/llm.utils';
 
 export class CreateLlmCredentialDto {
   @ApiProperty({ example: 'anthropic' })
@@ -12,6 +14,7 @@ export class CreateLlmCredentialDto {
 
   @ApiProperty()
   @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? normalizeCredential(value) : value))
   apiKey: string;
 
   @ApiPropertyOptional({ example: 'claude-haiku-4-5' })

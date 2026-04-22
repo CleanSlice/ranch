@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from '#theme/components/ui/card';
-import { IconArrowLeft, IconEye, IconEyeOff } from '@tabler/icons-vue';
+import { IconArrowLeft, IconEye, IconEyeOff, IconRefresh } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
@@ -108,6 +108,49 @@ async function onRestart() {
   await refresh();
   await refreshUsage();
 }
+
+// ── Pod logs ────────────────────────────────────────────────────────────
+const logs = ref<string>('');
+const logsLoading = ref(false);
+const logsError = ref<string | null>(null);
+const logsAutoRefresh = ref(false);
+const logsScrollRef = ref<HTMLElement | null>(null);
+let logsTimer: ReturnType<typeof setInterval> | null = null;
+
+async function refreshLogs() {
+  if (!agent.value) return;
+  logsLoading.value = true;
+  logsError.value = null;
+  try {
+    logs.value = await agentStore.fetchLogs(agent.value.id);
+    await nextTick();
+    if (logsScrollRef.value) {
+      logsScrollRef.value.scrollTop = logsScrollRef.value.scrollHeight;
+    }
+  } catch (err) {
+    logsError.value = (err as Error).message || 'Failed to fetch logs';
+  } finally {
+    logsLoading.value = false;
+  }
+}
+
+watch(logsAutoRefresh, (on) => {
+  if (logsTimer) {
+    clearInterval(logsTimer);
+    logsTimer = null;
+  }
+  if (on) {
+    logsTimer = setInterval(refreshLogs, 5000);
+  }
+});
+
+onMounted(() => {
+  if (agent.value) refreshLogs();
+});
+
+onBeforeUnmount(() => {
+  if (logsTimer) clearInterval(logsTimer);
+});
 
 async function onRemove() {
   if (!agent.value) return;
@@ -274,14 +317,80 @@ async function onRemove() {
           </Card>
         </div>
 
-        <BridleProvider
-          v-if="authStore.accessToken"
-          :api-url="apiUrl"
-          :bot-id="agent.id"
-          :token="authStore.accessToken"
-          :title="`Chat with ${agent.name}`"
-          class="h-[600px] w-full max-w-none"
-        />
+        <div class="flex flex-col gap-6">
+          <BridleProvider
+            v-if="authStore.accessToken"
+            :api-url="apiUrl"
+            :bot-id="agent.id"
+            :token="authStore.accessToken"
+            :title="`Chat with ${agent.name}`"
+            class="h-[600px] w-full max-w-none"
+          />
+
+          <Card>
+            <CardHeader>
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <CardTitle>Logs</CardTitle>
+                  <CardDescription>
+                    Last 500 lines from the agent pod
+                    (<code>kubectl logs agent-{{ agent.id.slice(0, 8) }}…</code>).
+                  </CardDescription>
+                </div>
+                <div class="flex items-center gap-2">
+                  <label class="flex items-center gap-1 text-xs text-muted-foreground">
+                    <input
+                      v-model="logsAutoRefresh"
+                      type="checkbox"
+                      class="size-3.5"
+                    />
+                    Auto 5s
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    :disabled="logsLoading"
+                    @click="refreshLogs"
+                  >
+                    <IconRefresh
+                      class="size-4"
+                      :class="{ 'animate-spin': logsLoading }"
+                    />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div
+                v-if="logsError"
+                class="mb-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
+              >
+                {{ logsError }}
+              </div>
+              <div
+                ref="logsScrollRef"
+                class="max-h-[480px] overflow-auto rounded-md border bg-muted/30 p-3"
+              >
+                <pre
+                  v-if="logs"
+                  class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed"
+                >{{ logs }}</pre>
+                <div
+                  v-else-if="logsLoading"
+                  class="py-8 text-center text-xs text-muted-foreground"
+                >
+                  Loading…
+                </div>
+                <div
+                  v-else
+                  class="py-8 text-center text-xs text-muted-foreground"
+                >
+                  No logs yet.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </template>
 

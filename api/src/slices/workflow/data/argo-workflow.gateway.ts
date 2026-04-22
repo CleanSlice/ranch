@@ -62,15 +62,20 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     ]);
     const s3Prefix = s3Bucket ? `agents/${data.agentId}` : '';
 
-    const llmCredentialsJson = JSON.stringify(
-      credentials.map((c) => ({
-        id: c.id,
-        provider: c.provider,
-        model: c.model,
-        label: c.label,
-        apiKey: c.apiKey,
-      })),
-    );
+    // Base64-encode to sidestep YAML string-escape hazards when Argo
+    // substitutes the value into the agent-pod manifest. Agent decodes with
+    // atob/Buffer.from(v, 'base64') → JSON.parse.
+    const llmCredentialsB64 = Buffer.from(
+      JSON.stringify(
+        credentials.map((c) => ({
+          id: c.id,
+          provider: c.provider,
+          model: c.model,
+          label: c.label,
+          apiKey: c.apiKey,
+        })),
+      ),
+    ).toString('base64');
 
     const workflow = {
       apiVersion: 'argoproj.io/v1alpha1',
@@ -98,7 +103,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'memory-limit', value: data.resources.memory },
             { name: 'bridle-url', value: bridleUrl },
             { name: 'bridle-api-key', value: bridleApiKey },
-            { name: 'ranch-llm-credentials', value: llmCredentialsJson },
+            { name: 'ranch-llm-credentials', value: llmCredentialsB64 },
             { name: 's3-bucket', value: s3Bucket },
             { name: 's3-prefix', value: s3Prefix },
             { name: 's3-endpoint', value: s3Endpoint },

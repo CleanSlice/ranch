@@ -34,6 +34,17 @@ spec:
         value: ""
       - name: aws-secret-access-key
         value: ""
+      # LLM provider keys (populated from active LlmCredential rows per provider)
+      - name: anthropic-api-key
+        value: ""
+      - name: openai-api-key
+        value: ""
+      - name: google-api-key
+        value: ""
+      - name: xai-api-key
+        value: ""
+      - name: claude-code-oauth-token
+        value: ""
   templates:
     - name: deploy-agent
       steps:
@@ -103,6 +114,16 @@ spec:
                     value: "{{workflow.parameters.aws-access-key-id}}"
                   - name: AWS_SECRET_ACCESS_KEY
                     value: "{{workflow.parameters.aws-secret-access-key}}"
+                  - name: ANTHROPIC_API_KEY
+                    value: "{{workflow.parameters.anthropic-api-key}}"
+                  - name: OPENAI_API_KEY
+                    value: "{{workflow.parameters.openai-api-key}}"
+                  - name: GOOGLE_API_KEY
+                    value: "{{workflow.parameters.google-api-key}}"
+                  - name: XAI_API_KEY
+                    value: "{{workflow.parameters.xai-api-key}}"
+                  - name: CLAUDE_CODE_OAUTH_TOKEN
+                    value: "{{workflow.parameters.claude-code-oauth-token}}"
                 resources:
                   requests:
                     cpu: "{{workflow.parameters.cpu-limit}}"

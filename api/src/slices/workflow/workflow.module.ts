@@ -5,9 +5,10 @@ import { IWorkflowGateway } from './domain/IWorkflowGateway';
 import { ArgoWorkflowGateway } from './data/argo-workflow.gateway';
 import { MockWorkflowGateway } from './data/mock-workflow.gateway';
 import { SettingModule } from '#/setting/setting.module';
+import { LlmModule } from '#/llm/llm.module';
 
 @Module({
-  imports: [SettingModule],
+  imports: [SettingModule, LlmModule],
   providers: [
     WorkflowService,
     ArgoWorkflowGateway,

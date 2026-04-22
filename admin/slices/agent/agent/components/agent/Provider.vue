@@ -31,9 +31,6 @@ const { data: agent, pending, refresh } = await useAsyncData(
 
 await useAsyncData('admin-settings-for-agent-env', () => settingStore.fetchAll());
 await useAsyncData('admin-llms-for-agent-env', () => llmStore.fetchAll());
-const activeCredentials = computed(() =>
-  llmStore.items.filter((c) => c.status === 'active'),
-);
 const { data: usage, refresh: refreshUsage } = await useAsyncData(
   `admin-agent-usage-${props.id}`,
   () => usageStore.fetchForAgent(props.id),
@@ -53,7 +50,20 @@ const formatDate = (iso: string) =>
 const SECRET_ENV_KEYS = new Set([
   'BRIDLE_API_KEY',
   'AWS_SECRET_ACCESS_KEY',
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+  'GOOGLE_API_KEY',
+  'XAI_API_KEY',
+  'CLAUDE_CODE_OAUTH_TOKEN',
 ]);
+
+const LLM_PROVIDER_ENV: { provider: string; env: string }[] = [
+  { provider: 'anthropic', env: 'ANTHROPIC_API_KEY' },
+  { provider: 'openai', env: 'OPENAI_API_KEY' },
+  { provider: 'google', env: 'GOOGLE_API_KEY' },
+  { provider: 'xai', env: 'XAI_API_KEY' },
+  { provider: 'claude-code', env: 'CLAUDE_CODE_OAUTH_TOKEN' },
+];
 
 const BRIDLE_URL_DEFAULT = 'http://host.k3d.internal:3333';
 const BRIDLE_API_KEY_DEFAULT = 'dev-bridle-api-key-change-me';
@@ -78,6 +88,12 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'AWS_REGION', value: settingValue('aws_region', 'us-east-1') },
     { name: 'AWS_ACCESS_KEY_ID', value: settingValue('aws_access_key_id') },
     { name: 'AWS_SECRET_ACCESS_KEY', value: settingValue('aws_secret_access_key') },
+    ...LLM_PROVIDER_ENV.map(({ provider, env }) => {
+      const cred = llmStore.items.find(
+        (c) => c.provider === provider && c.status === 'active',
+      );
+      return { name: env, value: cred?.apiKey ?? '' };
+    }),
   ];
 });
 
@@ -225,10 +241,11 @@ async function onRemove() {
             <CardHeader>
               <CardTitle>Environment</CardTitle>
               <CardDescription>
-                Env vars injected into the pod at submit time. Edit integration
-                values in
-                <NuxtLink to="/settings" class="underline">Settings</NuxtLink>
-                and restart the agent to apply.
+                Env vars injected into the pod at submit time. LLM keys come
+                from <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>
+                (one env per known provider), integration values from
+                <NuxtLink to="/settings" class="underline">Settings</NuxtLink>.
+                Restart the agent to apply changes.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -258,68 +275,6 @@ async function onRemove() {
                     </button>
                   </dd>
                   <dd v-else />
-                </template>
-              </dl>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Credentials (fetched at boot)</CardTitle>
-              <CardDescription>
-                Agent calls
-                <code>GET {BRIDLE_URL}/agents/{AGENT_ID}/llms</code>
-                with
-                <code>x-bridle-api-key</code> on startup and receives this
-                list. Manage entries in
-                <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div
-                v-if="!activeCredentials.length"
-                class="text-sm text-muted-foreground"
-              >
-                No active credentials — agent will receive an empty list.
-              </div>
-              <dl
-                v-else
-                class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]"
-              >
-                <template v-for="cred in activeCredentials" :key="cred.id">
-                  <dt class="font-mono text-xs text-muted-foreground">
-                    {{ cred.provider }}
-                  </dt>
-                  <dd class="min-w-0 break-all font-mono text-xs">
-                    {{ cred.model }}
-                    <span v-if="cred.label" class="text-muted-foreground">
-                      · {{ cred.label }}
-                    </span>
-                  </dd>
-                  <dd class="font-mono text-xs text-muted-foreground">
-                    <template v-if="revealed[`llm:${cred.id}`]">
-                      {{ cred.apiKey }}
-                    </template>
-                    <template v-else>
-                      {{ mask(cred.apiKey) }}
-                    </template>
-                  </dd>
-                  <dd class="flex justify-end">
-                    <button
-                      type="button"
-                      class="text-muted-foreground hover:text-foreground"
-                      :title="revealed[`llm:${cred.id}`] ? 'Hide' : 'Show'"
-                      @click="
-                        revealed[`llm:${cred.id}`] = !revealed[`llm:${cred.id}`]
-                      "
-                    >
-                      <IconEyeOff
-                        v-if="revealed[`llm:${cred.id}`]"
-                        class="size-4"
-                      />
-                      <IconEye v-else class="size-4" />
-                    </button>
-                  </dd>
                 </template>
               </dl>
             </CardContent>

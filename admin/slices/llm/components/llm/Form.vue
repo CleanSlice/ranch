@@ -59,10 +59,12 @@ function onSubmit() {
       <CardHeader>
         <CardTitle>Credential</CardTitle>
         <CardDescription>
-          API key is stored plaintext. Agents read the list of active
-          credentials on boot via
-          <code>GET /agents/:agentId/llms</code> (header
-          <code>x-bridle-api-key</code>).
+          API key is stored plaintext. First active credential per provider
+          is injected as a pod env var (anthropic →
+          <code>ANTHROPIC_API_KEY</code>, openai → <code>OPENAI_API_KEY</code>,
+          google → <code>GOOGLE_API_KEY</code>, xai → <code>XAI_API_KEY</code>,
+          claude-code → <code>CLAUDE_CODE_OAUTH_TOKEN</code>). Restart the
+          agent to apply changes.
         </CardDescription>
       </CardHeader>
       <CardContent class="grid max-w-xl gap-4">

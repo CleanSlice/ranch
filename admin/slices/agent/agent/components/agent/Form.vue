@@ -25,6 +25,7 @@ const props = defineProps<{
   initialValues?: ICreateAgentData;
   submitLabel?: string;
   submitting?: boolean;
+  disableTemplate?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -97,7 +98,7 @@ function onSubmit() {
 
         <div class="grid gap-2">
           <Label for="template">Template</Label>
-          <Select v-model="form.templateId">
+          <Select v-model="form.templateId" :disabled="disableTemplate">
             <SelectTrigger id="template">
               <SelectValue placeholder="Choose a template" />
             </SelectTrigger>
@@ -108,6 +109,9 @@ function onSubmit() {
             </SelectContent>
           </Select>
           <p v-if="errors.templateId" class="text-xs text-destructive">{{ errors.templateId }}</p>
+          <p v-if="disableTemplate" class="text-xs text-muted-foreground">
+            Template can't be changed after creation.
+          </p>
         </div>
 
         <div class="grid gap-2">

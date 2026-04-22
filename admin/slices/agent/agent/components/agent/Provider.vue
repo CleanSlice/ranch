@@ -131,6 +131,9 @@ async function onRemove() {
           <p class="text-sm text-muted-foreground">Agent ID: {{ agent.id }}</p>
         </div>
         <div class="flex gap-2">
+          <Button variant="outline" as-child>
+            <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
+          </Button>
           <Button variant="outline" @click="onRestart">Restart</Button>
           <Button variant="ghost" class="text-destructive" @click="onRemove">Delete</Button>
         </div>

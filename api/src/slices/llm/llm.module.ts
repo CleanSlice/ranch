@@ -3,8 +3,10 @@ import { LlmController } from './llm.controller';
 import { ILlmGateway } from './domain/llm.gateway';
 import { LlmGateway } from './data/llm.gateway';
 import { LlmMapper } from './data/llm.mapper';
+import { BridleModule } from '#/bridle/bridle.module';
 
 @Module({
+  imports: [BridleModule],
   controllers: [LlmController],
   providers: [
     LlmMapper,

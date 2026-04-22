@@ -36,55 +36,6 @@ export const UpsertSettingDtoSchema = {
     required: ['valueType', 'value']
 } as const;
 
-export const CreateLlmCredentialDtoSchema = {
-    type: 'object',
-    properties: {
-        provider: {
-            type: 'string',
-            example: 'anthropic'
-        },
-        model: {
-            type: 'string',
-            example: 'claude-sonnet-4-6'
-        },
-        apiKey: {
-            type: 'string'
-        },
-        label: {
-            type: 'string'
-        },
-        status: {
-            type: 'string',
-            enum: ['active', 'disabled']
-        }
-    },
-    required: ['provider', 'model', 'apiKey']
-} as const;
-
-export const UpdateLlmCredentialDtoSchema = {
-    type: 'object',
-    properties: {
-        provider: {
-            type: 'string',
-            example: 'anthropic'
-        },
-        model: {
-            type: 'string',
-            example: 'claude-sonnet-4-6'
-        },
-        apiKey: {
-            type: 'string'
-        },
-        label: {
-            type: 'string'
-        },
-        status: {
-            type: 'string',
-            enum: ['active', 'disabled']
-        }
-    }
-} as const;
-
 export const CreateTemplateDtoSchema = {
     type: 'object',
     properties: {
@@ -350,6 +301,55 @@ export const BridleBotHealthDtoSchema = {
         }
     },
     required: ['ok', 'agentConnected', 'browserClients', 'botId']
+} as const;
+
+export const CreateLlmCredentialDtoSchema = {
+    type: 'object',
+    properties: {
+        provider: {
+            type: 'string',
+            example: 'anthropic'
+        },
+        model: {
+            type: 'string',
+            example: 'claude-sonnet-4-6'
+        },
+        apiKey: {
+            type: 'string'
+        },
+        label: {
+            type: 'string'
+        },
+        status: {
+            type: 'string',
+            enum: ['active', 'disabled']
+        }
+    },
+    required: ['provider', 'model', 'apiKey']
+} as const;
+
+export const UpdateLlmCredentialDtoSchema = {
+    type: 'object',
+    properties: {
+        provider: {
+            type: 'string',
+            example: 'anthropic'
+        },
+        model: {
+            type: 'string',
+            example: 'claude-sonnet-4-6'
+        },
+        apiKey: {
+            type: 'string'
+        },
+        label: {
+            type: 'string'
+        },
+        status: {
+            type: 'string',
+            enum: ['active', 'disabled']
+        }
+    }
 } as const;
 
 export const ReportUsageDtoSchema = {

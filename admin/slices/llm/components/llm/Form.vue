@@ -59,8 +59,10 @@ function onSubmit() {
       <CardHeader>
         <CardTitle>Credential</CardTitle>
         <CardDescription>
-          API key is stored plaintext and injected into every agent pod as part
-          of <code>RANCH_LLM_CREDENTIALS</code>.
+          API key is stored plaintext. Agents read the list of active
+          credentials on boot via
+          <code>GET /agents/:agentId/llms</code> (header
+          <code>x-bridle-api-key</code>).
         </CardDescription>
       </CardHeader>
       <CardContent class="grid max-w-xl gap-4">

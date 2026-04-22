@@ -15,7 +15,6 @@ const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
 const settingStore = useSettingStore();
-const llmStore = useLlmStore();
 const usageStore = useUsageStore();
 const config = useRuntimeConfig();
 
@@ -30,7 +29,6 @@ const { data: agent, pending, refresh } = await useAsyncData(
 );
 
 await useAsyncData('admin-settings-for-agent-env', () => settingStore.fetchAll());
-await useAsyncData('admin-llms-for-agent-env', () => llmStore.fetchAll());
 const { data: usage, refresh: refreshUsage } = await useAsyncData(
   `admin-agent-usage-${props.id}`,
   () => usageStore.fetchForAgent(props.id),
@@ -49,7 +47,6 @@ const formatDate = (iso: string) =>
 
 const SECRET_ENV_KEYS = new Set([
   'BRIDLE_API_KEY',
-  'RANCH_LLM_CREDENTIALS',
   'AWS_SECRET_ACCESS_KEY',
 ]);
 
@@ -70,20 +67,6 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'BRIDLE_URL', value: settingValue('bridle_url', BRIDLE_URL_DEFAULT) },
     { name: 'BRIDLE_API_KEY', value: settingValue('bridle_api_key', BRIDLE_API_KEY_DEFAULT) },
     { name: 'BRIDLE_BOT_ID', value: agent.value.id },
-    {
-      name: 'RANCH_LLM_CREDENTIALS',
-      value: JSON.stringify(
-        llmStore.items
-          .filter((c) => c.status === 'active')
-          .map((c) => ({
-            id: c.id,
-            provider: c.provider,
-            model: c.model,
-            label: c.label,
-            apiKey: c.apiKey,
-          })),
-      ),
-    },
     { name: 'S3_BUCKET', value: bucket },
     { name: 'S3_PREFIX', value: bucket ? `agents/${agent.value.id}` : '' },
     { name: 'S3_ENDPOINT', value: settingValue('s3_endpoint') },
@@ -237,11 +220,13 @@ async function onRemove() {
             <CardHeader>
               <CardTitle>Environment</CardTitle>
               <CardDescription>
-                Env variables injected into the agent pod at submit time. Edit LLM credentials in
+                Env variables injected into the agent pod at submit time. LLM
+                credentials are fetched at agent boot from
+                <code>GET {BRIDLE_URL}/agents/{AGENT_ID}/llms</code> using
+                <code>BRIDLE_API_KEY</code>; manage them in
                 <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>,
                 other integrations in
                 <NuxtLink to="/settings" class="underline">Settings</NuxtLink>.
-                Restart the agent to apply changes.
               </CardDescription>
             </CardHeader>
             <CardContent>

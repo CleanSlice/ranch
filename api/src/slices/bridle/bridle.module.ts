@@ -5,6 +5,7 @@ import { BridleController } from './bridle.controller';
 import { BridleChatWsHandler, BridleAgentWsHandler } from './handlers';
 import { IBridleGateway } from './domain';
 import { BridleGateway } from './data';
+import { BridleApiKeyGuard } from './guards/bridleApiKey.guard';
 
 /**
  * Bridle Module — authenticated hub between browsers and bot agents.
@@ -54,8 +55,9 @@ import { BridleGateway } from './data';
     { provide: IBridleGateway, useClass: BridleGateway },
     BridleChatWsHandler,
     BridleAgentWsHandler,
+    BridleApiKeyGuard,
   ],
   controllers: [BridleController],
-  exports: [IBridleGateway],
+  exports: [IBridleGateway, BridleApiKeyGuard],
 })
 export class BridleModule {}

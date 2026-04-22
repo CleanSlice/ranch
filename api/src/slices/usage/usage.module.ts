@@ -3,13 +3,13 @@ import { UsageController } from './usage.controller';
 import { IUsageGateway } from './domain/usage.gateway';
 import { UsageGateway } from './data/usage.gateway';
 import { UsageMapper } from './data/usage.mapper';
-import { BridleApiKeyGuard } from './data/bridleApiKey.guard';
+import { BridleModule } from '#/bridle/bridle.module';
 
 @Module({
+  imports: [BridleModule],
   controllers: [UsageController],
   providers: [
     UsageMapper,
-    BridleApiKeyGuard,
     {
       provide: IUsageGateway,
       useClass: UsageGateway,

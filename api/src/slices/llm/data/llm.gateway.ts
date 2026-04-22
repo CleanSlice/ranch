@@ -46,6 +46,7 @@ export class LlmGateway extends ILlmGateway {
       data: {
         provider: data.provider,
         model: data.model,
+        fallbackModel: data.fallbackModel ?? null,
         apiKey: data.apiKey,
         label: data.label ?? null,
         status: data.status ?? 'active',

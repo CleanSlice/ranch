@@ -9,6 +9,7 @@ export class LlmMapper {
       id: record.id,
       provider: record.provider,
       model: record.model,
+      fallbackModel: record.fallbackModel,
       label: record.label,
       apiKey: record.apiKey,
       status: record.status,

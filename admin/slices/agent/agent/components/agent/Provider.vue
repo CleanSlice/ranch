@@ -50,20 +50,8 @@ const formatDate = (iso: string) =>
 const SECRET_ENV_KEYS = new Set([
   'BRIDLE_API_KEY',
   'AWS_SECRET_ACCESS_KEY',
-  'ANTHROPIC_API_KEY',
-  'OPENAI_API_KEY',
-  'GOOGLE_API_KEY',
-  'XAI_API_KEY',
-  'CLAUDE_CODE_OAUTH_TOKEN',
+  'LLM_API_KEY',
 ]);
-
-const LLM_PROVIDER_ENV: { provider: string; env: string }[] = [
-  { provider: 'anthropic', env: 'ANTHROPIC_API_KEY' },
-  { provider: 'openai', env: 'OPENAI_API_KEY' },
-  { provider: 'google', env: 'GOOGLE_API_KEY' },
-  { provider: 'xai', env: 'XAI_API_KEY' },
-  { provider: 'claude-code', env: 'CLAUDE_CODE_OAUTH_TOKEN' },
-];
 
 const BRIDLE_URL_DEFAULT = 'http://host.k3d.internal:3333';
 const BRIDLE_API_KEY_DEFAULT = 'dev-bridle-api-key-change-me';
@@ -75,6 +63,9 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     return (typeof v === 'string' && v) || fallback;
   };
   const bucket = settingValue('s3_bucket');
+  const cred = agent.value.llmCredentialId
+    ? llmStore.items.find((c) => c.id === agent.value!.llmCredentialId) ?? null
+    : null;
   return [
     { name: 'AGENT_ID', value: agent.value.id },
     { name: 'AGENT_NAME', value: agent.value.name },
@@ -82,18 +73,16 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'BRIDLE_URL', value: settingValue('bridle_url', BRIDLE_URL_DEFAULT) },
     { name: 'BRIDLE_API_KEY', value: settingValue('bridle_api_key', BRIDLE_API_KEY_DEFAULT) },
     { name: 'BRIDLE_BOT_ID', value: agent.value.id },
+    { name: 'LLM_PROVIDER', value: cred?.provider ?? '' },
+    { name: 'LLM_MODEL', value: cred?.model ?? '' },
+    { name: 'LLM_FALLBACK_MODEL', value: cred?.fallbackModel ?? cred?.model ?? '' },
+    { name: 'LLM_API_KEY', value: cred?.apiKey ?? '' },
     { name: 'S3_BUCKET', value: bucket },
     { name: 'S3_PREFIX', value: bucket ? `agents/${agent.value.id}` : '' },
     { name: 'S3_ENDPOINT', value: settingValue('s3_endpoint') },
     { name: 'AWS_REGION', value: settingValue('aws_region', 'us-east-1') },
     { name: 'AWS_ACCESS_KEY_ID', value: settingValue('aws_access_key_id') },
     { name: 'AWS_SECRET_ACCESS_KEY', value: settingValue('aws_secret_access_key') },
-    ...LLM_PROVIDER_ENV.map(({ provider, env }) => {
-      const cred = llmStore.items.find(
-        (c) => c.provider === provider && c.status === 'active',
-      );
-      return { name: env, value: cred?.apiKey ?? '' };
-    }),
   ];
 });
 
@@ -241,9 +230,10 @@ async function onRemove() {
             <CardHeader>
               <CardTitle>Environment</CardTitle>
               <CardDescription>
-                Env vars injected into the pod at submit time. LLM keys come
-                from <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>
-                (one env per known provider), integration values from
+                Env vars injected into the pod at submit time. <code>LLM_*</code>
+                comes from the credential assigned to this agent (manage in
+                <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>);
+                integration values from
                 <NuxtLink to="/settings" class="underline">Settings</NuxtLink>.
                 Restart the agent to apply changes.
               </CardDescription>

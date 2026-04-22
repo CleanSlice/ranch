@@ -21,6 +21,7 @@ import {
 
 const props = defineProps<{
   templates: ITemplateData[];
+  llms: { id: string; provider: string; model: string; label: string | null; status: string }[];
   initialValues?: ICreateAgentData;
   submitLabel?: string;
   submitting?: boolean;
@@ -33,11 +34,15 @@ const emit = defineEmits<{
 
 const firstTemplate = props.templates[0];
 
-const form = reactive<Required<Pick<ICreateAgentData, 'name' | 'templateId'>> & {
-  resources: { cpu: string; memory: string };
-}>({
+const form = reactive<
+  Required<Pick<ICreateAgentData, 'name' | 'templateId'>> & {
+    llmCredentialId: string;
+    resources: { cpu: string; memory: string };
+  }
+>({
   name: props.initialValues?.name ?? '',
   templateId: props.initialValues?.templateId ?? firstTemplate?.id ?? '',
+  llmCredentialId: props.initialValues?.llmCredentialId ?? '',
   resources: {
     cpu: props.initialValues?.resources?.cpu ?? firstTemplate?.defaultResources.cpu ?? '500m',
     memory: props.initialValues?.resources?.memory ?? firstTemplate?.defaultResources.memory ?? '512Mi',
@@ -67,6 +72,7 @@ function onSubmit() {
   emit('submit', {
     name: form.name.trim(),
     templateId: form.templateId,
+    llmCredentialId: form.llmCredentialId || null,
     resources: {
       cpu: form.resources.cpu.trim() || '500m',
       memory: form.resources.memory.trim() || '512Mi',
@@ -102,6 +108,30 @@ function onSubmit() {
             </SelectContent>
           </Select>
           <p v-if="errors.templateId" class="text-xs text-destructive">{{ errors.templateId }}</p>
+        </div>
+
+        <div class="grid gap-2">
+          <Label for="llm">LLM credential</Label>
+          <Select v-model="form.llmCredentialId">
+            <SelectTrigger id="llm">
+              <SelectValue placeholder="None (pod runs without LLM_* env)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">None</SelectItem>
+              <SelectItem
+                v-for="l in llms.filter((c) => c.status === 'active')"
+                :key="l.id"
+                :value="l.id"
+              >
+                {{ l.provider }} · {{ l.model }}{{ l.label ? ` (${l.label})` : '' }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p class="text-xs text-muted-foreground">
+            Picks which credential's provider/model/apiKey become
+            <code>LLM_*</code> env vars on the pod. Manage entries in
+            <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>.
+          </p>
         </div>
       </CardContent>
     </Card>

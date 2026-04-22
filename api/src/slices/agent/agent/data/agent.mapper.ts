@@ -9,6 +9,7 @@ export class AgentMapper {
       id: record.id,
       name: record.name,
       templateId: record.templateId,
+      llmCredentialId: record.llmCredentialId,
       status: record.status as IAgentData['status'],
       workflowId: record.workflowId,
       config: record.config as unknown as Record<string, unknown>,

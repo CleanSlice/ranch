@@ -34,16 +34,14 @@ spec:
         value: ""
       - name: aws-secret-access-key
         value: ""
-      # LLM provider keys (populated from active LlmCredential rows per provider)
-      - name: anthropic-api-key
+      # LLM contract for the runtime (LLM_* env on the pod)
+      - name: llm-provider
         value: ""
-      - name: openai-api-key
+      - name: llm-model
         value: ""
-      - name: google-api-key
+      - name: llm-fallback-model
         value: ""
-      - name: xai-api-key
-        value: ""
-      - name: claude-code-oauth-token
+      - name: llm-api-key
         value: ""
   templates:
     - name: deploy-agent
@@ -118,16 +116,14 @@ spec:
                     value: "{{workflow.parameters.aws-access-key-id}}"
                   - name: AWS_SECRET_ACCESS_KEY
                     value: "{{workflow.parameters.aws-secret-access-key}}"
-                  - name: ANTHROPIC_API_KEY
-                    value: "{{workflow.parameters.anthropic-api-key}}"
-                  - name: OPENAI_API_KEY
-                    value: "{{workflow.parameters.openai-api-key}}"
-                  - name: GOOGLE_API_KEY
-                    value: "{{workflow.parameters.google-api-key}}"
-                  - name: XAI_API_KEY
-                    value: "{{workflow.parameters.xai-api-key}}"
-                  - name: CLAUDE_CODE_OAUTH_TOKEN
-                    value: "{{workflow.parameters.claude-code-oauth-token}}"
+                  - name: LLM_PROVIDER
+                    value: "{{workflow.parameters.llm-provider}}"
+                  - name: LLM_MODEL
+                    value: "{{workflow.parameters.llm-model}}"
+                  - name: LLM_FALLBACK_MODEL
+                    value: "{{workflow.parameters.llm-fallback-model}}"
+                  - name: LLM_API_KEY
+                    value: "{{workflow.parameters.llm-api-key}}"
                 resources:
                   requests:
                     cpu: "{{workflow.parameters.cpu-limit}}"

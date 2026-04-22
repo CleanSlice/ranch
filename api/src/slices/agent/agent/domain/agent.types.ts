@@ -9,6 +9,7 @@ export interface IAgentData {
   id: string;
   name: string;
   templateId: string;
+  llmCredentialId: string | null;
   status: AgentStatusTypes;
   workflowId: string | null;
   config: Record<string, unknown>;
@@ -25,12 +26,14 @@ export interface IAgentResources {
 export interface ICreateAgentData {
   name: string;
   templateId: string;
+  llmCredentialId?: string | null;
   config?: Record<string, unknown>;
   resources?: IAgentResources;
 }
 
 export interface IUpdateAgentData {
   name?: string;
+  llmCredentialId?: string | null;
   config?: Record<string, unknown>;
   resources?: IAgentResources;
 }

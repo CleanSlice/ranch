@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AgentDto {
   @ApiProperty()
@@ -9,6 +9,9 @@ export class AgentDto {
 
   @ApiProperty()
   templateId: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  llmCredentialId: string | null;
 
   @ApiProperty()
   status: string;

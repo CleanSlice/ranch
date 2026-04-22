@@ -14,6 +14,11 @@ export class CreateLlmCredentialDto {
   @IsString()
   apiKey: string;
 
+  @ApiPropertyOptional({ example: 'claude-haiku-4-5' })
+  @IsOptional()
+  @IsString()
+  fallbackModel?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

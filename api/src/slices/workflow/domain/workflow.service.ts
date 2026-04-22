@@ -11,6 +11,7 @@ export class WorkflowService {
       agentId: agent.id,
       agentName: agent.name,
       templateId: agent.templateId,
+      llmCredentialId: agent.llmCredentialId,
       image,
       config: agent.config,
       resources: agent.resources,

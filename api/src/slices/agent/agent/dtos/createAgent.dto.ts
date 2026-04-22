@@ -28,6 +28,11 @@ export class CreateAgentDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  llmCredentialId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsObject()
   config?: Record<string, unknown>;
 

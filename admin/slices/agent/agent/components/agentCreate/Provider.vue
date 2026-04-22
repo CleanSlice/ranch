@@ -4,11 +4,14 @@ import { IconArrowLeft } from '@tabler/icons-vue';
 
 const agentStore = useAgentStore();
 const templateStore = useTemplateStore();
+const llmStore = useLlmStore();
 
-const { data: templates, pending } = await useAsyncData(
-  'agent-create-templates',
-  () => templateStore.fetchAll(),
-);
+const [{ data: templates, pending: pendingTemplates }, { pending: pendingLlms }] =
+  await Promise.all([
+    useAsyncData('agent-create-templates', () => templateStore.fetchAll()),
+    useAsyncData('agent-create-llms', () => llmStore.fetchAll()),
+  ]);
+const pending = computed(() => pendingTemplates.value || pendingLlms.value);
 
 const submitting = ref(false);
 
@@ -43,6 +46,7 @@ function onCancel() {
     <AgentForm
       v-else
       :templates="templates ?? []"
+      :llms="llmStore.items"
       :submitting="submitting"
       submit-label="Create agent"
       @submit="onSubmit"

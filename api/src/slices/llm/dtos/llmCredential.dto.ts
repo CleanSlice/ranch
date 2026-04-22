@@ -11,6 +11,9 @@ export class LlmCredentialDto {
   model: string;
 
   @ApiPropertyOptional()
+  fallbackModel: string | null;
+
+  @ApiPropertyOptional()
   label: string | null;
 
   @ApiProperty()

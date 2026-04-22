@@ -6,7 +6,7 @@ import {
 } from '../domain/IWorkflowGateway';
 import { IWorkflowStatus } from '../domain/workflow.types';
 import { ISettingGateway } from '#/setting/domain';
-import { ILlmGateway, LLM_PROVIDER_BINDINGS } from '#/llm/domain';
+import { ILlmGateway } from '#/llm/domain';
 
 const DEFAULTS = {
   bridle_url: 'http://host.k3d.internal:3333',
@@ -49,7 +49,6 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       awsRegion,
       awsAccessKeyId,
       awsSecretAccessKey,
-      credentials,
     ] = await Promise.all([
       this.getIntegration('bridle_url'),
       this.getIntegration('bridle_api_key'),
@@ -58,18 +57,23 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       this.getIntegration('aws_region'),
       this.getIntegration('aws_access_key_id'),
       this.getIntegration('aws_secret_access_key'),
-      this.llmGateway.findActive(),
     ]);
     const s3Prefix = s3Bucket ? `agents/${data.agentId}` : '';
 
-    // For each known provider, take the first active credential and map
-    // its apiKey to the workflow parameter Argo will substitute into the
-    // pod env. Unknown providers are skipped — add them to
-    // LLM_PROVIDER_BINDINGS if the runtime needs them.
-    const llmParams = LLM_PROVIDER_BINDINGS.map((binding) => {
-      const cred = credentials.find((c) => c.provider === binding.provider);
-      return { name: binding.param, value: cred?.apiKey ?? '' };
-    });
+    // Resolve the agent's assigned LlmCredential (or empty if none) and
+    // project it onto the runtime's LLM_* env contract.
+    const credential = data.llmCredentialId
+      ? await this.llmGateway.findById(data.llmCredentialId)
+      : null;
+    const llmParams = [
+      { name: 'llm-provider', value: credential?.provider ?? '' },
+      { name: 'llm-model', value: credential?.model ?? '' },
+      {
+        name: 'llm-fallback-model',
+        value: credential?.fallbackModel ?? credential?.model ?? '',
+      },
+      { name: 'llm-api-key', value: credential?.apiKey ?? '' },
+    ];
 
     const workflow = {
       apiVersion: 'argoproj.io/v1alpha1',

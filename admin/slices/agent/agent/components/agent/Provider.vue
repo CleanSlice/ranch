@@ -15,6 +15,7 @@ const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
 const settingStore = useSettingStore();
+const llmStore = useLlmStore();
 const usageStore = useUsageStore();
 const config = useRuntimeConfig();
 
@@ -29,6 +30,10 @@ const { data: agent, pending, refresh } = await useAsyncData(
 );
 
 await useAsyncData('admin-settings-for-agent-env', () => settingStore.fetchAll());
+await useAsyncData('admin-llms-for-agent-env', () => llmStore.fetchAll());
+const activeCredentials = computed(() =>
+  llmStore.items.filter((c) => c.status === 'active'),
+);
 const { data: usage, refresh: refreshUsage } = await useAsyncData(
   `admin-agent-usage-${props.id}`,
   () => usageStore.fetchForAgent(props.id),
@@ -220,13 +225,10 @@ async function onRemove() {
             <CardHeader>
               <CardTitle>Environment</CardTitle>
               <CardDescription>
-                Env variables injected into the agent pod at submit time. LLM
-                credentials are fetched at agent boot from
-                <code>GET {BRIDLE_URL}/agents/{AGENT_ID}/llms</code> using
-                <code>BRIDLE_API_KEY</code>; manage them in
-                <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>,
-                other integrations in
-                <NuxtLink to="/settings" class="underline">Settings</NuxtLink>.
+                Env vars injected into the pod at submit time. Edit integration
+                values in
+                <NuxtLink to="/settings" class="underline">Settings</NuxtLink>
+                and restart the agent to apply.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -256,6 +258,68 @@ async function onRemove() {
                     </button>
                   </dd>
                   <dd v-else />
+                </template>
+              </dl>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Credentials (fetched at boot)</CardTitle>
+              <CardDescription>
+                Agent calls
+                <code>GET {BRIDLE_URL}/agents/{AGENT_ID}/llms</code>
+                with
+                <code>x-bridle-api-key</code> on startup and receives this
+                list. Manage entries in
+                <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div
+                v-if="!activeCredentials.length"
+                class="text-sm text-muted-foreground"
+              >
+                No active credentials — agent will receive an empty list.
+              </div>
+              <dl
+                v-else
+                class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]"
+              >
+                <template v-for="cred in activeCredentials" :key="cred.id">
+                  <dt class="font-mono text-xs text-muted-foreground">
+                    {{ cred.provider }}
+                  </dt>
+                  <dd class="min-w-0 break-all font-mono text-xs">
+                    {{ cred.model }}
+                    <span v-if="cred.label" class="text-muted-foreground">
+                      · {{ cred.label }}
+                    </span>
+                  </dd>
+                  <dd class="font-mono text-xs text-muted-foreground">
+                    <template v-if="revealed[`llm:${cred.id}`]">
+                      {{ cred.apiKey }}
+                    </template>
+                    <template v-else>
+                      {{ mask(cred.apiKey) }}
+                    </template>
+                  </dd>
+                  <dd class="flex justify-end">
+                    <button
+                      type="button"
+                      class="text-muted-foreground hover:text-foreground"
+                      :title="revealed[`llm:${cred.id}`] ? 'Hide' : 'Show'"
+                      @click="
+                        revealed[`llm:${cred.id}`] = !revealed[`llm:${cred.id}`]
+                      "
+                    >
+                      <IconEyeOff
+                        v-if="revealed[`llm:${cred.id}`]"
+                        class="size-4"
+                      />
+                      <IconEye v-else class="size-4" />
+                    </button>
+                  </dd>
                 </template>
               </dl>
             </CardContent>

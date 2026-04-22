@@ -35,6 +35,10 @@ const emit = defineEmits<{
 
 const firstTemplate = props.templates[0];
 
+// Reka UI disallows empty-string <SelectItem value="">, so the "None"
+// option uses a sentinel that we map to/from null at the edges.
+const LLM_NONE = '__none__';
+
 const form = reactive<
   Required<Pick<ICreateAgentData, 'name' | 'templateId'>> & {
     llmCredentialId: string;
@@ -43,7 +47,7 @@ const form = reactive<
 >({
   name: props.initialValues?.name ?? '',
   templateId: props.initialValues?.templateId ?? firstTemplate?.id ?? '',
-  llmCredentialId: props.initialValues?.llmCredentialId ?? '',
+  llmCredentialId: props.initialValues?.llmCredentialId ?? LLM_NONE,
   resources: {
     cpu: props.initialValues?.resources?.cpu ?? firstTemplate?.defaultResources.cpu ?? '500m',
     memory: props.initialValues?.resources?.memory ?? firstTemplate?.defaultResources.memory ?? '512Mi',
@@ -73,7 +77,10 @@ function onSubmit() {
   emit('submit', {
     name: form.name.trim(),
     templateId: form.templateId,
-    llmCredentialId: form.llmCredentialId || null,
+    llmCredentialId:
+      form.llmCredentialId && form.llmCredentialId !== LLM_NONE
+        ? form.llmCredentialId
+        : null,
     resources: {
       cpu: form.resources.cpu.trim() || '500m',
       memory: form.resources.memory.trim() || '512Mi',
@@ -121,7 +128,7 @@ function onSubmit() {
               <SelectValue placeholder="None (pod runs without LLM_* env)" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">None</SelectItem>
+              <SelectItem :value="LLM_NONE">None</SelectItem>
               <SelectItem
                 v-for="l in llms.filter((c) => c.status === 'active')"
                 :key="l.id"

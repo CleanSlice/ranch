@@ -48,7 +48,7 @@ spec:
             - name: PORT
               value: "3333"
             - name: CORS_ORIGIN
-              value: "https://ranch.cleanslice.org,https://api.ranch.cleanslice.org"
+              value: "https://ranch.cleanslice.org,https://admin.ranch.cleanslice.org,https://api.ranch.cleanslice.org"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

@@ -55,6 +55,52 @@ services:
       exit 0;
       "
 
+  lightrag-postgres:
+    image: shangor/postgres-for-rag:v1.0
+    container_name: ranch-lightrag-postgres
+    ports:
+      - '5433:5432'
+    environment:
+      POSTGRES_USER: lightrag
+      POSTGRES_PASSWORD: lightrag
+      POSTGRES_DB: lightrag
+    volumes:
+      - ./docker/lightrag-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lightrag']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  lightrag:
+    image: ghcr.io/hkuds/lightrag:latest
+    container_name: ranch-lightrag
+    ports:
+      - '9621:9621'
+    environment:
+      LIGHTRAG_API_KEY: ${LIGHTRAG_API_KEY:-dev-secret-change-me}
+      LLM_BINDING: openai
+      LLM_MODEL: gpt-4o-mini
+      LLM_BINDING_API_KEY: ${OPENAI_API_KEY}
+      EMBEDDING_BINDING: openai
+      EMBEDDING_MODEL: text-embedding-3-small
+      EMBEDDING_BINDING_API_KEY: ${OPENAI_API_KEY}
+      POSTGRES_HOST: lightrag-postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: lightrag
+      POSTGRES_PASSWORD: lightrag
+      POSTGRES_DATABASE: lightrag
+      LIGHTRAG_KV_STORAGE: PGKVStorage
+      LIGHTRAG_DOC_STATUS_STORAGE: PGDocStatusStorage
+      LIGHTRAG_VECTOR_STORAGE: PGVectorStorage
+      LIGHTRAG_GRAPH_STORAGE: PGGraphStorage
+    depends_on:
+      lightrag-postgres:
+        condition: service_healthy
+    volumes:
+      - ./docker/lightrag-data:/app/data/rag_storage
+      - ./docker/lightrag-inputs:/app/data/inputs
+
 networks:
   default:
   k3d:

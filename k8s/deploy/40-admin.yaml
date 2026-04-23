@@ -60,10 +60,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - ranch.cleanslice.org
+        - admin.ranch.cleanslice.org
       secretName: ranch-admin-tls
   rules:
-    - host: ranch.cleanslice.org
+    - host: admin.ranch.cleanslice.org
       http:
         paths:
           - path: /

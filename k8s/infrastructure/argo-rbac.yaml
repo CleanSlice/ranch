@@ -1,0 +1,26 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-server-agents-logs
+  namespace: agents
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-server-agents-logs
+  namespace: agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argo-server-agents-logs
+subjects:
+  - kind: ServiceAccount
+    name: argo-workflows-server
+    namespace: argo
+  - kind: ServiceAccount
+    name: argo-workflows-workflow-controller
+    namespace: argo

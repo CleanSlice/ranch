@@ -113,7 +113,7 @@ async function onRestart() {
 const logs = ref<string>('');
 const logsLoading = ref(false);
 const logsError = ref<string | null>(null);
-const logsAutoRefresh = ref(false);
+const logsAutoRefresh = ref(true);
 const logsScrollRef = ref<HTMLElement | null>(null);
 let logsTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -134,15 +134,19 @@ async function refreshLogs() {
   }
 }
 
-watch(logsAutoRefresh, (on) => {
-  if (logsTimer) {
-    clearInterval(logsTimer);
-    logsTimer = null;
-  }
-  if (on) {
-    logsTimer = setInterval(refreshLogs, 5000);
-  }
-});
+watch(
+  logsAutoRefresh,
+  (on) => {
+    if (logsTimer) {
+      clearInterval(logsTimer);
+      logsTimer = null;
+    }
+    if (on) {
+      logsTimer = setInterval(refreshLogs, 5000);
+    }
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
   if (agent.value) refreshLogs();
@@ -332,10 +336,6 @@ async function onRemove() {
               <div class="flex items-start justify-between gap-2">
                 <div>
                   <CardTitle>Logs</CardTitle>
-                  <CardDescription>
-                    Last 500 lines from the agent pod
-                    (<code>kubectl logs agent-{{ agent.id.slice(0, 8) }}…</code>).
-                  </CardDescription>
                 </div>
                 <div class="flex items-center gap-2">
                   <label class="flex items-center gap-1 text-xs text-muted-foreground">

@@ -1,6 +1,7 @@
 .PHONY: init setup install db db-wait migrate generate dev dev-api dev-app dev-admin down stop clean help free-ports
 .PHONY: infra-init infra-plan infra-apply infra-destroy kubeconfig deploy argocd-password
 .PHONY: k3d k3d-stop k3d-clean k3d-status
+.PHONY: lightrag-logs
 
 # ============================================
 # Ranch - CleanSlice Agent Platform
@@ -35,6 +36,9 @@ db-stop: ## Stop PostgreSQL
 
 db-reset: ## Reset database (destroy data)
 	cd api && docker compose down -v
+
+lightrag-logs: ## Tail LightRAG container logs
+	docker compose -f api/docker-compose.yml logs -f lightrag
 
 migrate: generate ## Run Prisma migrations
 	cd api && test -f .env.dev || cp .env.example .env.dev

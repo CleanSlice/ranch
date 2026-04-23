@@ -17,6 +17,7 @@ import { SettingModule } from './slices/setting/setting.module';
 import { BridleModule } from './slices/bridle/bridle.module';
 import { LlmModule } from './slices/llm/llm.module';
 import { UsageModule } from './slices/usage/usage.module';
+import { ReinsModule } from './slices/reins/reins.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { UsageModule } from './slices/usage/usage.module';
     BridleModule,
     LlmModule,
     UsageModule,
+    ReinsModule,
   ],
 })
 export class AppModule {}

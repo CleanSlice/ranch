@@ -20,7 +20,7 @@ spec:
         - name: ghcr
       initContainers:
         - name: prisma-migrate
-          image: ghcr.io/dmitriyzhuk/ranch-api:latest
+          image: ghcr.io/cleanslice/ranch-api:latest
           imagePullPolicy: Always
           command: ["sh", "-c"]
           args:
@@ -37,7 +37,7 @@ spec:
                   key: uri
       containers:
         - name: api
-          image: ghcr.io/dmitriyzhuk/ranch-api:latest
+          image: ghcr.io/cleanslice/ranch-api:latest
           imagePullPolicy: Always
           ports:
             - name: http

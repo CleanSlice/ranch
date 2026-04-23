@@ -12,6 +12,20 @@
 
 ---
 
+## Test policy (updated after Phase 3)
+
+The ranch codebase has **no existing tests** and Jest runs with `--passWithNoTests`. By user direction, **all TDD/unit-test steps in this plan are SKIPPED**. Implement code directly and commit without writing `.spec.ts` files.
+
+This affects specifically:
+- **Phase 3 Task 3.3** (LightRAG HTTP client) — already completed without tests; the plan's test steps were not executed.
+- **Phase 6 Task 6.1** (ReinsService state machine) — ignore all test-related sub-steps; implement `reins.service.ts` directly from the implementation code block, then commit. The `waitForIndex` method in the service stays (it's a public helper that's useful even without tests — it lets callers await an indexing run to finish, and is trivial).
+
+For any other phase that happens to mention tests, the same rule applies: skip the test steps.
+
+If a future task argues that a specific unit genuinely benefits from a test (e.g., a complex pure function), escalate to the controller before adding it.
+
+---
+
 ## Phase 0 — Pre-flight
 
 ### Task 0.1: Verify environment and baseline

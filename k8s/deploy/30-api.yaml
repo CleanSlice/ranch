@@ -15,6 +15,7 @@ spec:
       labels:
         app: ranch-api
     spec:
+      serviceAccountName: ranch-api
       imagePullSecrets:
         - name: ghcr
       initContainers:

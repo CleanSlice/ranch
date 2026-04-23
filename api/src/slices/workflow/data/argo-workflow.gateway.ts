@@ -10,7 +10,7 @@ import { ILlmGateway } from '#/llm/domain';
 import { normalizeCredential } from '#/llm/domain/llm.utils';
 
 const DEFAULTS = {
-  bridle_url: 'http://host.k3d.internal:3333',
+  bridle_url: 'http://host.k3d.internal:3333/ws/agent',
   bridle_api_key: 'dev-bridle-api-key-change-me',
   s3_bucket: '',
   s3_endpoint: '',

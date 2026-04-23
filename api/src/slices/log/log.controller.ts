@@ -1,43 +1,61 @@
-import { Controller, Get, Param, NotFoundException, Query } from '@nestjs/common';
+import { Controller, Get, Param, NotFoundException, Query, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
+import { CoreV1Api, KubeConfig } from '@kubernetes/client-node';
 import { IAgentGateway } from '#/agent/agent/domain';
 
-const execAsync = promisify(exec);
-
+/**
+ * Agent-pod logs.
+ *
+ * Reads via the Kubernetes API (not `kubectl` shell-out) so the same code
+ * works on two setups:
+ *   - Local dev: API runs on host → `KubeConfig.loadFromDefault()` picks up
+ *     `~/.kube/config`.
+ *   - In-cluster: API runs in a Pod → `loadFromDefault()` auto-detects the
+ *     projected ServiceAccount token at
+ *     `/var/run/secrets/kubernetes.io/serviceaccount`.
+ *
+ * Required RBAC: the API's ServiceAccount needs `get` on `pods` and
+ * `pods/log` in the agents namespace (see k8s/templates/rbac.yaml).
+ */
 @ApiTags('logs')
 @Controller('agents/:agentId/logs')
 export class LogController {
-  constructor(private agentGateway: IAgentGateway) {}
+  private readonly logger = new Logger(LogController.name);
+  private readonly coreApi: CoreV1Api;
+  private readonly namespace: string;
+
+  constructor(private agentGateway: IAgentGateway) {
+    const kc = new KubeConfig();
+    kc.loadFromDefault();
+    this.coreApi = kc.makeApiClient(CoreV1Api);
+    this.namespace = process.env.AGENTS_NAMESPACE || 'agents';
+  }
 
   @Get()
   @ApiOperation({ summary: 'Get agent pod logs' })
   async getLogs(
     @Param('agentId') agentId: string,
     @Query('tail') tail?: string,
-  ) {
+  ): Promise<{ logs: string }> {
     const agent = await this.agentGateway.findById(agentId);
     if (!agent) throw new NotFoundException('Agent not found');
 
-    const namespace = process.env.AGENTS_NAMESPACE || 'agents';
-    const context = process.env.KUBE_CONTEXT;
-    const tailLines = this.parseTail(tail);
     const podName = `agent-${agentId}`;
-
-    const args = ['-n', namespace, 'logs', podName, `--tail=${tailLines}`];
-    if (context) args.unshift('--context', context);
+    const tailLines = this.parseTail(tail);
 
     try {
-      const { stdout } = await execAsync(
-        `kubectl ${args.map((a) => JSON.stringify(a)).join(' ')} 2>&1`,
-        { timeout: 10_000, maxBuffer: 5 * 1024 * 1024 },
-      );
-      return { logs: stdout };
+      const logs = await this.coreApi.readNamespacedPodLog({
+        name: podName,
+        namespace: this.namespace,
+        tailLines,
+        timestamps: false,
+      });
+      // SDK returns the raw log string.
+      return { logs: typeof logs === 'string' ? logs : String(logs ?? '') };
     } catch (err) {
-      const stderr = (err as { stdout?: string; stderr?: string }).stderr ?? '';
-      const stdout = (err as { stdout?: string }).stdout ?? '';
-      return { logs: stdout + stderr || `[log fetch failed: ${(err as Error).message}]` };
+      const message = this.extractKubeError(err);
+      this.logger.warn(`log fetch failed for ${podName}: ${message}`);
+      return { logs: `[log fetch failed: ${message}]` };
     }
   }
 
@@ -45,5 +63,12 @@ export class LogController {
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0) return 500;
     return Math.min(n, 5000);
+  }
+
+  private extractKubeError(err: unknown): string {
+    if (!err || typeof err !== 'object') return String(err);
+    const e = err as { body?: { message?: string }; statusCode?: number; message?: string };
+    if (e.body?.message) return `${e.statusCode ?? ''} ${e.body.message}`.trim();
+    return e.message ?? JSON.stringify(e).slice(0, 200);
   }
 }

@@ -53,7 +53,7 @@ const SECRET_ENV_KEYS = new Set([
   'LLM_API_KEY',
 ]);
 
-const BRIDLE_URL_DEFAULT = 'http://host.k3d.internal:3333';
+const BRIDLE_URL_DEFAULT = 'http://host.k3d.internal:3333/ws/agent';
 const BRIDLE_API_KEY_DEFAULT = 'dev-bridle-api-key-change-me';
 
 const envVars = computed<{ name: string; value: string }[]>(() => {

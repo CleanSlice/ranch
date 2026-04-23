@@ -87,10 +87,12 @@ spec:
               - key: workload
                 value: agent
                 effect: NoSchedule
+            imagePullSecrets:
+              - name: ghcr
             containers:
               - name: agent
                 image: "{{workflow.parameters.agent-image}}"
-                imagePullPolicy: IfNotPresent
+                imagePullPolicy: Always
                 env:
                   - name: AGENT_ID
                     value: "{{workflow.parameters.agent-id}}"

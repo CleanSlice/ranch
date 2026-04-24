@@ -207,6 +207,14 @@ k8s-secrets: ## Create API secrets in cluster (interactive)
 		--from-literal=ARGO_WORKFLOWS_URL="http://argo-workflows-server.argo:2746" \
 		--dry-run=client -o yaml | kubectl apply -f -
 	@echo "Secret created."
+	@echo "Creating lightrag-api secret in platform namespace..."
+	@read -s -p "LightRAG API key: " LIGHTRAG_API_KEY; echo; \
+	  read -s -p "OpenAI API key: " OPENAI_API_KEY; echo; \
+	  kubectl -n platform create secret generic lightrag-api \
+	    --from-literal=apiKey="$$LIGHTRAG_API_KEY" \
+	    --from-literal=openaiApiKey="$$OPENAI_API_KEY" \
+	    --dry-run=client -o yaml | kubectl apply -f -
+	@echo "LightRAG secret created."
 
 k8s-status: ## Show cluster status
 	@echo "=== Nodes ==="

@@ -92,6 +92,12 @@ services:
       - '11434:11434'
     volumes:
       - ollama-data:/root/.ollama
+    # Ollama downloads models from Cloudflare R2. Docker's default embedded
+    # DNS sometimes fails to resolve cloudflarestorage.com mid-download.
+    # Fall back to public DNS so pulls don't flake.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     healthcheck:
       test: ['CMD', 'ollama', 'list']
       interval: 5s

@@ -96,6 +96,25 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+  name: ranch-lightrag
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/CleanSlice/ranch.git
+    targetRevision: main
+    path: k8s/platform/lightrag
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
   name: ranch-templates
   namespace: argocd
 spec:

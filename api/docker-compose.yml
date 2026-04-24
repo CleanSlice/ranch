@@ -59,21 +59,22 @@ services:
   # `make dev` doesn't try to pull amd64-only images on arm64 dev machines
   # or require a Docker Hub login. Start manually when working on reins:
   #   docker compose --profile rag up -d
+  # gzdaniel/postgres-for-rag has user/password/db baked in as "rag/rag/rag"
+  # (POSTGRES_* env vars are ignored by this image's init). We use the same.
   lightrag-postgres:
-    image: shangor/postgres-for-rag:v1.0
+    image: gzdaniel/postgres-for-rag:16.6
     container_name: ranch-lightrag-postgres
     profiles:
       - rag
     ports:
       - '5433:5432'
-    environment:
-      POSTGRES_USER: lightrag
-      POSTGRES_PASSWORD: lightrag
-      POSTGRES_DB: lightrag
+    # Named volume (not bind mount) so Docker seeds it from the image on
+    # first mount — the image ships pre-initialized data that a bind mount
+    # would hide.
     volumes:
-      - ./.docker/lightrag-postgres:/var/lib/postgresql/data
+      - lightrag-postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U lightrag']
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U rag -d rag']
       interval: 5s
       timeout: 5s
       retries: 5
@@ -95,9 +96,9 @@ services:
       EMBEDDING_BINDING_API_KEY: ${OPENAI_API_KEY}
       POSTGRES_HOST: lightrag-postgres
       POSTGRES_PORT: 5432
-      POSTGRES_USER: lightrag
-      POSTGRES_PASSWORD: lightrag
-      POSTGRES_DATABASE: lightrag
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+      POSTGRES_DATABASE: rag
       LIGHTRAG_KV_STORAGE: PGKVStorage
       LIGHTRAG_DOC_STATUS_STORAGE: PGDocStatusStorage
       LIGHTRAG_VECTOR_STORAGE: PGVectorStorage
@@ -114,3 +115,6 @@ networks:
   k3d:
     name: k3d-ranch
     external: true
+
+volumes:
+  lightrag-postgres-data:

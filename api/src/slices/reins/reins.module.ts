@@ -21,13 +21,13 @@ import { MinioFileLoader } from './data/minio.fileLoader';
       inject: [ConfigService],
       useFactory: (config: ConfigService) =>
         new MinioFileLoader({
-          endpoint: config.get<string>('MINIO_ENDPOINT', 'http://localhost:9000'),
+          endpoint: config.get<string>(
+            'MINIO_ENDPOINT',
+            'http://localhost:9000',
+          ),
           region: config.get<string>('MINIO_REGION', 'us-east-1'),
           accessKeyId: config.get<string>('MINIO_ACCESS_KEY', 'minioadmin'),
-          secretAccessKey: config.get<string>(
-            'MINIO_SECRET_KEY',
-            'minioadmin',
-          ),
+          secretAccessKey: config.get<string>('MINIO_SECRET_KEY', 'minioadmin'),
           bucket: config.get<string>(
             'MINIO_REINS_BUCKET',
             'ranch-reins-sources',
@@ -40,7 +40,10 @@ import { MinioFileLoader } from './data/minio.fileLoader';
       useFactory: (config: ConfigService) =>
         new LightragHttpClient({
           baseUrl: config.get<string>('LIGHTRAG_URL', 'http://localhost:9621'),
-          apiKey: config.get<string>('LIGHTRAG_API_KEY', 'dev-secret-change-me'),
+          apiKey: config.get<string>(
+            'LIGHTRAG_API_KEY',
+            'dev-secret-change-me',
+          ),
         }),
     },
     {

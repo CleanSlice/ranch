@@ -1,8 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IKnowledgeData,
-  IndexStatusTypes,
-} from '../domain/reins.types';
+import { IKnowledgeData, IndexStatusTypes } from '../domain/reins.types';
 import { ReinsSourceDto } from './reinsSource.dto';
 
 export class KnowledgeDto implements IKnowledgeData {

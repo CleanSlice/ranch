@@ -3,15 +3,13 @@ dist/
 .nuxt/
 .output/
 .turbo/
+.docker/
 *.log
 .env
 .env.*
 !.env.example
 .envrc
 swagger-spec.json
-
-# Local docker runtime data (postgres, minio volumes)
-api/docker/
 
 # Claude Code subagent scratch
 .claude/

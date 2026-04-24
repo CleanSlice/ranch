@@ -15,11 +15,12 @@ spec:
       labels:
         app: ranch-api
     spec:
+      serviceAccountName: ranch-api
       imagePullSecrets:
         - name: ghcr
       initContainers:
         - name: prisma-migrate
-          image: ghcr.io/dmitriyzhuk/ranch-api:latest
+          image: ghcr.io/cleanslice/ranch-api:latest
           imagePullPolicy: Always
           command: ["sh", "-c"]
           args:
@@ -32,11 +33,11 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: ranch-db-app
+                  name: ranch-external-db
                   key: uri
       containers:
         - name: api
-          image: ghcr.io/dmitriyzhuk/ranch-api:latest
+          image: ghcr.io/cleanslice/ranch-api:latest
           imagePullPolicy: Always
           ports:
             - name: http
@@ -47,11 +48,11 @@ spec:
             - name: PORT
               value: "3333"
             - name: CORS_ORIGIN
-              value: "https://ranch.cleanslice.org,https://api.ranch.cleanslice.org"
+              value: "https://ranch.cleanslice.org,https://admin.ranch.cleanslice.org,https://api.ranch.cleanslice.org"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: ranch-db-app
+                  name: ranch-external-db
                   key: uri
             - name: JWT_SECRET
               valueFrom:

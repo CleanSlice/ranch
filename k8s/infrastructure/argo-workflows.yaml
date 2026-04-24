@@ -14,6 +14,18 @@ spec:
         server:
           ingress:
             enabled: false
+          extraArgs:
+            - --auth-mode=server
+          extraEnv:
+            - name: KUBECONFIG
+              value: ""
+        controller:
+          extraEnv:
+            - name: ARGO_LOG_LEVEL
+              value: info
+        artifactRepository:
+          archiveLogs: false
+        useDefaultArtifactRepo: false
   destination:
     server: https://kubernetes.default.svc
     namespace: argo

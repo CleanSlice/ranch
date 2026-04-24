@@ -23,8 +23,9 @@ const emit = defineEmits<{
 }>();
 
 const form = reactive({
-  provider: props.initialValues?.provider ?? 'anthropic',
+  provider: props.initialValues?.provider ?? 'claude',
   model: props.initialValues?.model ?? '',
+  fallbackModel: props.initialValues?.fallbackModel ?? '',
   label: props.initialValues?.label ?? '',
   apiKey: props.initialValues?.apiKey ?? '',
   status: props.initialValues?.status ?? 'active',
@@ -46,6 +47,7 @@ function onSubmit() {
   emit('submit', {
     provider: form.provider.trim(),
     model: form.model.trim(),
+    fallbackModel: form.fallbackModel.trim() || undefined,
     apiKey: form.apiKey.trim(),
     label: form.label.trim() || undefined,
     status: form.status,
@@ -59,8 +61,14 @@ function onSubmit() {
       <CardHeader>
         <CardTitle>Credential</CardTitle>
         <CardDescription>
-          API key is stored plaintext and injected into every agent pod as part
-          of <code>RANCH_LLM_CREDENTIALS</code>.
+          API key is stored plaintext. When assigned to an agent, these values
+          are injected as <code>LLM_PROVIDER</code>, <code>LLM_MODEL</code>,
+          <code>LLM_FALLBACK_MODEL</code>, <code>LLM_API_KEY</code> on the
+          pod. Provider values the runtime understands today: <code>claude</code>,
+          <code>deepseek</code>, <code>mistral</code>, <code>openrouter</code>.
+          For Anthropic, <code>apiKey</code> may be a comma-separated mix of
+          <code>sk-ant-oat*</code> (OAuth) and <code>sk-ant-api*</code> tokens
+          — auto-classified inside the runtime.
         </CardDescription>
       </CardHeader>
       <CardContent class="grid max-w-xl gap-4">
@@ -70,7 +78,7 @@ function onSubmit() {
             <Input
               id="provider"
               v-model="form.provider"
-              placeholder="anthropic"
+              placeholder="claude"
               :aria-invalid="!!errors.provider"
             />
             <p v-if="errors.provider" class="text-xs text-destructive">
@@ -92,20 +100,28 @@ function onSubmit() {
         </div>
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="grid gap-2">
+            <Label for="fallbackModel">Fallback model (optional)</Label>
+            <Input
+              id="fallbackModel"
+              v-model="form.fallbackModel"
+              placeholder="claude-haiku-4-5"
+            />
+          </div>
+          <div class="grid gap-2">
             <Label for="label">Label (optional)</Label>
             <Input id="label" v-model="form.label" placeholder="primary" />
           </div>
-          <div class="grid gap-2">
-            <Label for="status">Status</Label>
-            <select
-              id="status"
-              v-model="form.status"
-              class="h-9 rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="active">active</option>
-              <option value="disabled">disabled</option>
-            </select>
-          </div>
+        </div>
+        <div class="grid gap-2">
+          <Label for="status">Status</Label>
+          <select
+            id="status"
+            v-model="form.status"
+            class="h-9 rounded-md border bg-background px-3 text-sm max-w-xs"
+          >
+            <option value="active">active</option>
+            <option value="disabled">disabled</option>
+          </select>
         </div>
         <div class="grid gap-2">
           <Label for="apiKey">API key</Label>

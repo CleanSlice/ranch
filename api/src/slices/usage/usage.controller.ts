@@ -15,7 +15,7 @@ import {
   IUsageDailyEntry,
 } from './domain/usage.types';
 import { ReportUsageDto } from './dtos';
-import { BridleApiKeyGuard } from './data/bridleApiKey.guard';
+import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
 
 function dayKey(d: Date): string {
   return d.toISOString().slice(0, 10);

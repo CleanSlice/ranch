@@ -63,13 +63,13 @@ const SECTIONS: { title: string; description?: string; fields: IFieldDef[] }[] =
   {
     title: 'Bridle chat hub',
     description:
-      'Agents connect to this URL on startup. Empty = default http://host.k3d.internal:3333 (local k3d reaching host api).',
+      'Agents connect to this URL on startup. Must include the /ws/agent namespace. Empty = default http://host.k3d.internal:3333/ws/agent (local k3d reaching host api).',
     fields: [
       {
         group: 'integrations',
         name: 'bridle_url',
         label: 'Bridle URL',
-        placeholder: 'http://host.k3d.internal:3333',
+        placeholder: 'http://host.k3d.internal:3333/ws/agent',
       },
       {
         group: 'integrations',

@@ -7,9 +7,10 @@ import {
 import { IWorkflowStatus } from '../domain/workflow.types';
 import { ISettingGateway } from '#/setting/domain';
 import { ILlmGateway } from '#/llm/domain';
+import { normalizeCredential } from '#/llm/domain/llm.utils';
 
 const DEFAULTS = {
-  bridle_url: 'http://host.k3d.internal:3333',
+  bridle_url: 'http://host.k3d.internal:3333/ws/agent',
   bridle_api_key: 'dev-bridle-api-key-change-me',
   s3_bucket: '',
   s3_endpoint: '',
@@ -49,7 +50,6 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       awsRegion,
       awsAccessKeyId,
       awsSecretAccessKey,
-      credentials,
     ] = await Promise.all([
       this.getIntegration('bridle_url'),
       this.getIntegration('bridle_api_key'),
@@ -58,19 +58,23 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       this.getIntegration('aws_region'),
       this.getIntegration('aws_access_key_id'),
       this.getIntegration('aws_secret_access_key'),
-      this.llmGateway.findActive(),
     ]);
     const s3Prefix = s3Bucket ? `agents/${data.agentId}` : '';
 
-    const llmCredentialsJson = JSON.stringify(
-      credentials.map((c) => ({
-        id: c.id,
-        provider: c.provider,
-        model: c.model,
-        label: c.label,
-        apiKey: c.apiKey,
-      })),
-    );
+    // Resolve the agent's assigned LlmCredential (or empty if none) and
+    // project it onto the runtime's LLM_* env contract.
+    const credential = data.llmCredentialId
+      ? await this.llmGateway.findById(data.llmCredentialId)
+      : null;
+    const llmParams = [
+      { name: 'llm-provider', value: credential?.provider ?? '' },
+      { name: 'llm-model', value: credential?.model ?? '' },
+      {
+        name: 'llm-fallback-model',
+        value: credential?.fallbackModel ?? credential?.model ?? '',
+      },
+      { name: 'llm-api-key', value: credential?.apiKey ? normalizeCredential(credential.apiKey) : '' },
+    ];
 
     const workflow = {
       apiVersion: 'argoproj.io/v1alpha1',
@@ -98,13 +102,13 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'memory-limit', value: data.resources.memory },
             { name: 'bridle-url', value: bridleUrl },
             { name: 'bridle-api-key', value: bridleApiKey },
-            { name: 'ranch-llm-credentials', value: llmCredentialsJson },
             { name: 's3-bucket', value: s3Bucket },
             { name: 's3-prefix', value: s3Prefix },
             { name: 's3-endpoint', value: s3Endpoint },
             { name: 'aws-region', value: awsRegion },
             { name: 'aws-access-key-id', value: awsAccessKeyId },
             { name: 'aws-secret-access-key', value: awsSecretAccessKey },
+            ...llmParams,
           ],
         },
       },

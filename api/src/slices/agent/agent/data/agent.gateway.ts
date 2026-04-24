@@ -36,6 +36,7 @@ export class AgentGateway extends IAgentGateway {
       data: {
         name: data.name,
         templateId: data.templateId,
+        llmCredentialId: data.llmCredentialId ?? null,
         status: 'pending',
         config: (data.config ?? {}) as unknown as Prisma.InputJsonValue,
         resources: (data.resources ?? {
@@ -52,6 +53,9 @@ export class AgentGateway extends IAgentGateway {
       where: { id },
       data: {
         ...(data.name && { name: data.name }),
+        ...(data.llmCredentialId !== undefined && {
+          llmCredentialId: data.llmCredentialId,
+        }),
         ...(data.config && {
           config: data.config as unknown as Prisma.InputJsonValue,
         }),

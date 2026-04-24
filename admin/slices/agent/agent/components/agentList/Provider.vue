@@ -84,6 +84,9 @@ async function onRemove(agent: IAgentData) {
             <TableCell class="text-muted-foreground">{{ formatDate(agent.createdAt) }}</TableCell>
             <TableCell @click.stop>
               <div class="flex justify-end gap-2">
+                <Button size="sm" variant="outline" as-child>
+                  <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
+                </Button>
                 <Button size="sm" variant="outline" @click="onRestart(agent)">
                   Restart
                 </Button>

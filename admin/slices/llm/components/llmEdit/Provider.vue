@@ -57,6 +57,7 @@ function onCancel() {
         :initial-values="{
           provider: credential.provider,
           model: credential.model,
+          fallbackModel: credential.fallbackModel ?? undefined,
           label: credential.label ?? undefined,
           apiKey: credential.apiKey,
           status: credential.status,

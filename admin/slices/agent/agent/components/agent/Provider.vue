@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from '#theme/components/ui/card';
-import { IconArrowLeft, IconEye, IconEyeOff } from '@tabler/icons-vue';
+import { IconArrowLeft, IconEye, IconEyeOff, IconRefresh } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
@@ -49,11 +49,11 @@ const formatDate = (iso: string) =>
 
 const SECRET_ENV_KEYS = new Set([
   'BRIDLE_API_KEY',
-  'RANCH_LLM_CREDENTIALS',
   'AWS_SECRET_ACCESS_KEY',
+  'LLM_API_KEY',
 ]);
 
-const BRIDLE_URL_DEFAULT = 'http://host.k3d.internal:3333';
+const BRIDLE_URL_DEFAULT = 'http://host.k3d.internal:3333/ws/agent';
 const BRIDLE_API_KEY_DEFAULT = 'dev-bridle-api-key-change-me';
 
 const envVars = computed<{ name: string; value: string }[]>(() => {
@@ -63,6 +63,9 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     return (typeof v === 'string' && v) || fallback;
   };
   const bucket = settingValue('s3_bucket');
+  const cred = agent.value.llmCredentialId
+    ? llmStore.items.find((c) => c.id === agent.value!.llmCredentialId) ?? null
+    : null;
   return [
     { name: 'AGENT_ID', value: agent.value.id },
     { name: 'AGENT_NAME', value: agent.value.name },
@@ -70,20 +73,10 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'BRIDLE_URL', value: settingValue('bridle_url', BRIDLE_URL_DEFAULT) },
     { name: 'BRIDLE_API_KEY', value: settingValue('bridle_api_key', BRIDLE_API_KEY_DEFAULT) },
     { name: 'BRIDLE_BOT_ID', value: agent.value.id },
-    {
-      name: 'RANCH_LLM_CREDENTIALS',
-      value: JSON.stringify(
-        llmStore.items
-          .filter((c) => c.status === 'active')
-          .map((c) => ({
-            id: c.id,
-            provider: c.provider,
-            model: c.model,
-            label: c.label,
-            apiKey: c.apiKey,
-          })),
-      ),
-    },
+    { name: 'LLM_PROVIDER', value: cred?.provider ?? '' },
+    { name: 'LLM_MODEL', value: cred?.model ?? '' },
+    { name: 'LLM_FALLBACK_MODEL', value: cred?.fallbackModel ?? cred?.model ?? '' },
+    { name: 'LLM_API_KEY', value: cred?.apiKey ?? '' },
     { name: 'S3_BUCKET', value: bucket },
     { name: 'S3_PREFIX', value: bucket ? `agents/${agent.value.id}` : '' },
     { name: 'S3_ENDPOINT', value: settingValue('s3_endpoint') },
@@ -116,6 +109,53 @@ async function onRestart() {
   await refreshUsage();
 }
 
+// ── Pod logs ────────────────────────────────────────────────────────────
+const logs = ref<string>('');
+const logsLoading = ref(false);
+const logsError = ref<string | null>(null);
+const logsAutoRefresh = ref(true);
+const logsScrollRef = ref<HTMLElement | null>(null);
+let logsTimer: ReturnType<typeof setInterval> | null = null;
+
+async function refreshLogs() {
+  if (!agent.value) return;
+  logsLoading.value = true;
+  logsError.value = null;
+  try {
+    logs.value = await agentStore.fetchLogs(agent.value.id);
+    await nextTick();
+    if (logsScrollRef.value) {
+      logsScrollRef.value.scrollTop = logsScrollRef.value.scrollHeight;
+    }
+  } catch (err) {
+    logsError.value = (err as Error).message || 'Failed to fetch logs';
+  } finally {
+    logsLoading.value = false;
+  }
+}
+
+watch(
+  logsAutoRefresh,
+  (on) => {
+    if (logsTimer) {
+      clearInterval(logsTimer);
+      logsTimer = null;
+    }
+    if (on) {
+      logsTimer = setInterval(refreshLogs, 5000);
+    }
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
+  if (agent.value) refreshLogs();
+});
+
+onBeforeUnmount(() => {
+  if (logsTimer) clearInterval(logsTimer);
+});
+
 async function onRemove() {
   if (!agent.value) return;
   await agentStore.remove(agent.value.id);
@@ -138,6 +178,9 @@ async function onRemove() {
           <p class="text-sm text-muted-foreground">Agent ID: {{ agent.id }}</p>
         </div>
         <div class="flex gap-2">
+          <Button variant="outline" as-child>
+            <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
+          </Button>
           <Button variant="outline" @click="onRestart">Restart</Button>
           <Button variant="ghost" class="text-destructive" @click="onRemove">Delete</Button>
         </div>
@@ -237,9 +280,10 @@ async function onRemove() {
             <CardHeader>
               <CardTitle>Environment</CardTitle>
               <CardDescription>
-                Env variables injected into the agent pod at submit time. Edit LLM credentials in
-                <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>,
-                other integrations in
+                Env vars injected into the pod at submit time. <code>LLM_*</code>
+                comes from the credential assigned to this agent (manage in
+                <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>);
+                integration values from
                 <NuxtLink to="/settings" class="underline">Settings</NuxtLink>.
                 Restart the agent to apply changes.
               </CardDescription>
@@ -277,14 +321,76 @@ async function onRemove() {
           </Card>
         </div>
 
-        <BridleProvider
-          v-if="authStore.accessToken"
-          :api-url="apiUrl"
-          :bot-id="agent.id"
-          :token="authStore.accessToken"
-          :title="`Chat with ${agent.name}`"
-          class="h-[600px] w-full max-w-none"
-        />
+        <div class="flex flex-col gap-6">
+          <BridleProvider
+            v-if="authStore.accessToken"
+            :api-url="apiUrl"
+            :bot-id="agent.id"
+            :token="authStore.accessToken"
+            :title="`Chat with ${agent.name}`"
+            class="h-[600px] w-full max-w-none"
+          />
+
+          <Card>
+            <CardHeader>
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <CardTitle>Logs</CardTitle>
+                </div>
+                <div class="flex items-center gap-2">
+                  <label class="flex items-center gap-1 text-xs text-muted-foreground">
+                    <input
+                      v-model="logsAutoRefresh"
+                      type="checkbox"
+                      class="size-3.5"
+                    />
+                    Auto 5s
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    :disabled="logsLoading"
+                    @click="refreshLogs"
+                  >
+                    <IconRefresh
+                      class="size-4"
+                      :class="{ 'animate-spin': logsLoading }"
+                    />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div
+                v-if="logsError"
+                class="mb-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
+              >
+                {{ logsError }}
+              </div>
+              <div
+                ref="logsScrollRef"
+                class="max-h-[480px] overflow-auto rounded-md border bg-muted/30 p-3"
+              >
+                <pre
+                  v-if="logs"
+                  class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed"
+                >{{ logs }}</pre>
+                <div
+                  v-else-if="logsLoading"
+                  class="py-8 text-center text-xs text-muted-foreground"
+                >
+                  Loading…
+                </div>
+                <div
+                  v-else
+                  class="py-8 text-center text-xs text-muted-foreground"
+                >
+                  No logs yet.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </template>
 

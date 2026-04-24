@@ -15,7 +15,7 @@ services:
       POSTGRES_PASSWORD: root
       POSTGRES_DB: ranch-local
     volumes:
-      - ./docker/postgres:/var/lib/postgresql/data
+      - ./.docker/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s
@@ -31,7 +31,7 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     volumes:
-      - ./docker/minio:/data
+      - ./.docker/minio:/data
     command: server /data --console-address ":9001"
     networks:
       - default
@@ -65,7 +65,7 @@ services:
       POSTGRES_PASSWORD: lightrag
       POSTGRES_DB: lightrag
     volumes:
-      - ./docker/lightrag-postgres:/var/lib/postgresql/data
+      - ./.docker/lightrag-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U lightrag']
       interval: 5s
@@ -98,14 +98,11 @@ services:
       lightrag-postgres:
         condition: service_healthy
     volumes:
-      - ./docker/lightrag-data:/app/data/rag_storage
-      - ./docker/lightrag-inputs:/app/data/inputs
+      - ./.docker/lightrag-data:/app/data/rag_storage
+      - ./.docker/lightrag-inputs:/app/data/inputs
 
 networks:
   default:
   k3d:
     name: k3d-ranch
     external: true
-
-volumes:
-  postgres-data:

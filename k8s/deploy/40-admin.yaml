@@ -17,7 +17,7 @@ spec:
         - name: ghcr
       containers:
         - name: admin
-          image: ghcr.io/dmitriyzhuk/ranch-admin:latest
+          image: ghcr.io/cleanslice/ranch-admin:latest
           imagePullPolicy: Always
           ports:
             - name: http
@@ -60,10 +60,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - ranch.cleanslice.org
+        - admin.ranch.cleanslice.org
       secretName: ranch-admin-tls
   rules:
-    - host: ranch.cleanslice.org
+    - host: admin.ranch.cleanslice.org
       http:
         paths:
           - path: /

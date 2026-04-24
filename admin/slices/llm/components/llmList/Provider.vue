@@ -37,8 +37,10 @@ async function onRemove(item: ILlmCredentialData) {
       <div>
         <h1 class="text-2xl font-semibold">LLMs</h1>
         <p class="text-sm text-muted-foreground">
-          Credentials injected into agent pods via <code>RANCH_LLM_CREDENTIALS</code>.
-          The agent picks which model/key to use based on its own config.
+          Pick a credential for each agent. Its provider/model/apiKey become
+          <code>LLM_PROVIDER</code> / <code>LLM_MODEL</code> /
+          <code>LLM_FALLBACK_MODEL</code> / <code>LLM_API_KEY</code> on the
+          pod at submit time.
         </p>
       </div>
       <Button as-child>

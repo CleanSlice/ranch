@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ranch-api
+  namespace: platform
+---
+# Cross-namespace permission: ranch-api (platform ns) reads agent pods in agents ns.
+# Needed for GET /agents/:id/logs to tail pod logs via the Kubernetes API.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ranch-api-agent-reader
+  namespace: agents
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ranch-api-agent-reader
+  namespace: agents
+subjects:
+  - kind: ServiceAccount
+    name: ranch-api
+    namespace: platform
+roleRef:
+  kind: Role
+  name: ranch-api-agent-reader
+  apiGroup: rbac.authorization.k8s.io

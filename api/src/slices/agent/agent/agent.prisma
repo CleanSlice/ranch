@@ -1,17 +1,20 @@
 import { Template } from "../template/template"
 import { Usage } from "../../usage/usage"
+import { LlmCredential } from "../../llm/llm"
 
 model Agent {
-  id         String   @id @default(uuid())
-  name       String
-  templateId String
-  template   Template @relation(fields: [templateId], references: [id])
-  status     String   @default("pending")
-  workflowId String?
-  config     Json     @default("{}")
-  resources  Json     @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              String         @id @default(uuid())
+  name            String
+  templateId      String
+  template        Template       @relation(fields: [templateId], references: [id])
+  llmCredentialId String?
+  llmCredential   LlmCredential? @relation(fields: [llmCredentialId], references: [id], onDelete: SetNull)
+  status          String         @default("pending")
+  workflowId      String?
+  config          Json           @default("{}")
+  resources       Json           @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   usages Usage[]
 }

@@ -50,6 +50,10 @@ export const CreateLlmCredentialDtoSchema = {
         apiKey: {
             type: 'string'
         },
+        fallbackModel: {
+            type: 'string',
+            example: 'claude-haiku-4-5'
+        },
         label: {
             type: 'string'
         },
@@ -74,6 +78,10 @@ export const UpdateLlmCredentialDtoSchema = {
         },
         apiKey: {
             type: 'string'
+        },
+        fallbackModel: {
+            type: 'string',
+            example: 'claude-haiku-4-5'
         },
         label: {
             type: 'string'
@@ -154,6 +162,9 @@ export const CreateAgentDtoSchema = {
         templateId: {
             type: 'string'
         },
+        llmCredentialId: {
+            type: 'string'
+        },
         config: {
             type: 'object'
         },
@@ -171,6 +182,9 @@ export const UpdateAgentDtoSchema = {
             type: 'string'
         },
         templateId: {
+            type: 'string'
+        },
+        llmCredentialId: {
             type: 'string'
         },
         config: {

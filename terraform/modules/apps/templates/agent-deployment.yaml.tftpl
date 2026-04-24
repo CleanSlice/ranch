@@ -22,8 +22,6 @@ spec:
         value: "http://host.k3d.internal:3333"
       - name: bridle-api-key
         value: "dev-bridle-api-key-change-me"
-      - name: ranch-llm-credentials
-        value: "[]"
       - name: s3-bucket
         value: ""
       - name: s3-prefix
@@ -35,6 +33,15 @@ spec:
       - name: aws-access-key-id
         value: ""
       - name: aws-secret-access-key
+        value: ""
+      # LLM contract for the runtime (LLM_* env on the pod)
+      - name: llm-provider
+        value: ""
+      - name: llm-model
+        value: ""
+      - name: llm-fallback-model
+        value: ""
+      - name: llm-api-key
         value: ""
   templates:
     - name: deploy-agent
@@ -93,8 +100,6 @@ spec:
                     value: "{{workflow.parameters.bridle-api-key}}"
                   - name: BRIDLE_BOT_ID
                     value: "{{workflow.parameters.agent-id}}"
-                  - name: RANCH_LLM_CREDENTIALS
-                    value: "{{workflow.parameters.ranch-llm-credentials}}"
                   - name: S3_BUCKET
                     value: "{{workflow.parameters.s3-bucket}}"
                   - name: S3_PREFIX
@@ -107,6 +112,14 @@ spec:
                     value: "{{workflow.parameters.aws-access-key-id}}"
                   - name: AWS_SECRET_ACCESS_KEY
                     value: "{{workflow.parameters.aws-secret-access-key}}"
+                  - name: LLM_PROVIDER
+                    value: "{{workflow.parameters.llm-provider}}"
+                  - name: LLM_MODEL
+                    value: "{{workflow.parameters.llm-model}}"
+                  - name: LLM_FALLBACK_MODEL
+                    value: "{{workflow.parameters.llm-fallback-model}}"
+                  - name: LLM_API_KEY
+                    value: "{{workflow.parameters.llm-api-key}}"
                 resources:
                   requests:
                     cpu: "{{workflow.parameters.cpu-limit}}"

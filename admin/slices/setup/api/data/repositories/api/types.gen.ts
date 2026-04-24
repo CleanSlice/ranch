@@ -20,6 +20,7 @@ export type CreateLlmCredentialDto = {
     provider: string;
     model: string;
     apiKey: string;
+    fallbackModel?: string;
     label?: string;
     status?: 'active' | 'disabled';
 };
@@ -28,6 +29,7 @@ export type UpdateLlmCredentialDto = {
     provider?: string;
     model?: string;
     apiKey?: string;
+    fallbackModel?: string;
     label?: string;
     status?: 'active' | 'disabled';
 };
@@ -64,6 +66,7 @@ export type AgentResourcesDto = {
 export type CreateAgentDto = {
     name: string;
     templateId: string;
+    llmCredentialId?: string;
     config?: {
         [key: string]: unknown;
     };
@@ -73,6 +76,7 @@ export type CreateAgentDto = {
 export type UpdateAgentDto = {
     name?: string;
     templateId?: string;
+    llmCredentialId?: string;
     config?: {
         [key: string]: unknown;
     };

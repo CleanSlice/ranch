@@ -79,6 +79,25 @@ services:
       timeout: 5s
       retries: 5
 
+  # Ollama — local LLM + embedding provider. No external API keys needed.
+  # Models (~3GB) are pulled via `make lightrag-up` on first run.
+  # To use OpenAI/Azure/Bedrock instead, override LLM_BINDING / EMBEDDING_BINDING
+  # (and related *_HOST, *_API_KEY, EMBEDDING_DIM) in your env.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ranch-ollama
+    profiles:
+      - rag
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ['CMD', 'ollama', 'list']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   lightrag:
     image: ghcr.io/hkuds/lightrag:latest
     container_name: ranch-lightrag
@@ -88,12 +107,15 @@ services:
       - '9621:9621'
     environment:
       LIGHTRAG_API_KEY: ${LIGHTRAG_API_KEY:-dev-secret-change-me}
-      LLM_BINDING: openai
-      LLM_MODEL: gpt-4o-mini
-      LLM_BINDING_API_KEY: ${OPENAI_API_KEY}
-      EMBEDDING_BINDING: openai
-      EMBEDDING_MODEL: text-embedding-3-small
-      EMBEDDING_BINDING_API_KEY: ${OPENAI_API_KEY}
+      LLM_BINDING: ${LLM_BINDING:-ollama}
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:latest}
+      LLM_BINDING_HOST: ${LLM_BINDING_HOST:-http://ollama:11434}
+      LLM_BINDING_API_KEY: ${LLM_BINDING_API_KEY:-not-needed}
+      EMBEDDING_BINDING: ${EMBEDDING_BINDING:-ollama}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text:latest}
+      EMBEDDING_BINDING_HOST: ${EMBEDDING_BINDING_HOST:-http://ollama:11434}
+      EMBEDDING_BINDING_API_KEY: ${EMBEDDING_BINDING_API_KEY:-not-needed}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-768}
       POSTGRES_HOST: lightrag-postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: rag
@@ -105,6 +127,8 @@ services:
       LIGHTRAG_GRAPH_STORAGE: PGGraphStorage
     depends_on:
       lightrag-postgres:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     volumes:
       - ./.docker/lightrag-data:/app/data/rag_storage
@@ -118,3 +142,4 @@ networks:
 
 volumes:
   lightrag-postgres-data:
+  ollama-data:

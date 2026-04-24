@@ -1,7 +1,7 @@
 .PHONY: init setup install db db-wait migrate generate dev dev-api dev-app dev-admin down stop clean help free-ports
 .PHONY: infra-init infra-plan infra-apply infra-destroy kubeconfig deploy argocd-password
 .PHONY: k3d k3d-stop k3d-clean k3d-status
-.PHONY: lightrag-up lightrag-down lightrag-logs
+.PHONY: lightrag-up lightrag-down lightrag-logs lightrag-reset
 
 # ============================================
 # Ranch - CleanSlice Agent Platform
@@ -37,11 +37,23 @@ db-stop: ## Stop PostgreSQL
 db-reset: ## Reset database (destroy data)
 	cd api && docker compose down -v
 
-lightrag-up: ## Start LightRAG + its Postgres (opt-in, requires OPENAI_API_KEY)
+lightrag-up: ## Start LightRAG stack (Ollama + Postgres + LightRAG). First run pulls ~3GB of models.
+	@echo "Starting Ollama..."
+	docker compose -f api/docker-compose.yml --profile rag up -d ollama
+	@echo "Waiting for Ollama to be ready..."
+	@until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 2; done
+	@echo "Pulling models (skipped if already downloaded)..."
+	@docker exec ranch-ollama ollama pull llama3.2:latest
+	@docker exec ranch-ollama ollama pull nomic-embed-text:latest
+	@echo "Starting LightRAG + Postgres..."
 	docker compose -f api/docker-compose.yml --profile rag up -d
+	@echo "Done. LightRAG at http://localhost:9621"
 
-lightrag-down: ## Stop LightRAG + its Postgres
+lightrag-down: ## Stop LightRAG stack (keeps data)
 	docker compose -f api/docker-compose.yml --profile rag down
+
+lightrag-reset: ## Wipe LightRAG stack including Postgres + Ollama data (destructive!)
+	docker compose -f api/docker-compose.yml --profile rag down -v
 
 lightrag-logs: ## Tail LightRAG container logs
 	docker compose -f api/docker-compose.yml logs -f lightrag

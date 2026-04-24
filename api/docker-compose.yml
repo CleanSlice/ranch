@@ -55,9 +55,15 @@ services:
       exit 0;
       "
 
+  # LightRAG services are opt-in via the `rag` profile so that day-to-day
+  # `make dev` doesn't try to pull amd64-only images on arm64 dev machines
+  # or require a Docker Hub login. Start manually when working on reins:
+  #   docker compose --profile rag up -d
   lightrag-postgres:
     image: shangor/postgres-for-rag:v1.0
     container_name: ranch-lightrag-postgres
+    profiles:
+      - rag
     ports:
       - '5433:5432'
     environment:
@@ -75,6 +81,8 @@ services:
   lightrag:
     image: ghcr.io/hkuds/lightrag:latest
     container_name: ranch-lightrag
+    profiles:
+      - rag
     ports:
       - '9621:9621'
     environment:

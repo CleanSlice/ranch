@@ -4,6 +4,7 @@ dist/
 .output/
 .turbo/
 .docker/
+api/docker/
 *.log
 .env
 .env.*

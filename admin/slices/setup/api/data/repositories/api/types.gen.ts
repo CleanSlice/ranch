@@ -494,7 +494,9 @@ export type LogControllerGetLogsData = {
     path: {
         agentId: string;
     };
-    query?: never;
+    query: {
+        tail: string;
+    };
     url: '/agents/{agentId}/logs';
 };
 
@@ -673,11 +675,7 @@ export type UsageControllerReportResponse = UsageControllerReportResponses[keyof
 export type GetKnowledgesData = {
     body?: never;
     path?: never;
-    query?: {
-        search?: string;
-        page?: number;
-        perPage?: number;
-    };
+    query?: never;
     url: '/knowledges';
 };
 

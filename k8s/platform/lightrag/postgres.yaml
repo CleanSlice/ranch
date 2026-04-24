@@ -1,0 +1,27 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: lightrag-postgres
+  namespace: platform
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+
+  postgresql:
+    parameters:
+      shared_preload_libraries: "age"
+
+  bootstrap:
+    initdb:
+      database: lightrag
+      owner: lightrag
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector;
+        - CREATE EXTENSION IF NOT EXISTS age;
+        - LOAD 'age';
+        - SET search_path = ag_catalog, "$user", public;
+      secret:
+        name: lightrag-postgres-credentials
+
+  storage:
+    size: 20Gi

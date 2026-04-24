@@ -111,7 +111,7 @@ export class ReinsService {
 
     const task = this.runIndex(knowledgeId, k.workspace);
     this.inflightIndexing.set(knowledgeId, task);
-    task.finally(() => {
+    void task.finally(() => {
       if (this.inflightIndexing.get(knowledgeId) === task) {
         this.inflightIndexing.delete(knowledgeId);
       }
@@ -124,7 +124,10 @@ export class ReinsService {
     if (task) await task;
   }
 
-  private async runIndex(knowledgeId: string, workspace: string): Promise<void> {
+  private async runIndex(
+    knowledgeId: string,
+    workspace: string,
+  ): Promise<void> {
     try {
       const sources = await this.gateway.findSourcesByKnowledge(knowledgeId);
       for (const source of sources) {

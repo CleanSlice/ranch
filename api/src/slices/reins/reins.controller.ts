@@ -19,7 +19,6 @@ import { ReinsService } from './domain/reins.service';
 import {
   CreateKnowledgeDto,
   UpdateKnowledgeDto,
-  FilterKnowledgeDto,
   QueryKnowledgeDto,
   CreateSourceDto,
 } from './dtos';
@@ -42,7 +41,7 @@ export class ReinsController {
 
   @Get()
   @ApiOperation({ summary: 'List knowledges', operationId: 'getKnowledges' })
-  list(@Query() _filter: FilterKnowledgeDto) {
+  list() {
     return this.service.listKnowledge();
   }
 
@@ -115,7 +114,8 @@ export class ReinsController {
     await this.service.getKnowledge(id);
 
     if (dto.type === 'file') {
-      if (!file) throw new BadRequestException('file is required when type=file');
+      if (!file)
+        throw new BadRequestException('file is required when type=file');
       const key = `${id}/${crypto.randomUUID()}-${file.originalname}`;
       const url = await this.minio.upload(key, file.buffer, file.mimetype);
       return this.service.addSource({
@@ -129,7 +129,8 @@ export class ReinsController {
     }
 
     if (dto.type === 'url') {
-      if (!dto.url) throw new BadRequestException('url is required when type=url');
+      if (!dto.url)
+        throw new BadRequestException('url is required when type=url');
       return this.service.addSource({
         knowledgeId: id,
         type: 'url',

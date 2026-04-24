@@ -1,0 +1,3 @@
+<template>
+  <KnowledgeCreateProvider />
+</template>

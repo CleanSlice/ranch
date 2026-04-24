@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lightrag
+  namespace: platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lightrag
+  template:
+    metadata:
+      labels:
+        app: lightrag
+    spec:
+      containers:
+        - name: lightrag
+          image: ghcr.io/hkuds/lightrag:latest
+          ports:
+            - containerPort: 9621
+          env:
+            - name: LIGHTRAG_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lightrag-api
+                  key: apiKey
+            - name: LLM_BINDING
+              value: openai
+            - name: LLM_MODEL
+              value: gpt-4o-mini
+            - name: LLM_BINDING_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lightrag-api
+                  key: openaiApiKey
+            - name: EMBEDDING_BINDING
+              value: openai
+            - name: EMBEDDING_MODEL
+              value: text-embedding-3-small
+            - name: EMBEDDING_BINDING_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lightrag-api
+                  key: openaiApiKey
+            - name: POSTGRES_HOST
+              value: lightrag-postgres-rw
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: lightrag-postgres-credentials
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lightrag-postgres-credentials
+                  key: password
+            - name: POSTGRES_DATABASE
+              value: lightrag
+            - name: LIGHTRAG_KV_STORAGE
+              value: PGKVStorage
+            - name: LIGHTRAG_DOC_STATUS_STORAGE
+              value: PGDocStatusStorage
+            - name: LIGHTRAG_VECTOR_STORAGE
+              value: PGVectorStorage
+            - name: LIGHTRAG_GRAPH_STORAGE
+              value: PGGraphStorage
+          readinessProbe:
+            tcpSocket:
+              port: 9621
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"

@@ -13,17 +13,17 @@ variable "domain" {
 
 variable "api_image" {
   type    = string
-  default = "ghcr.io/dmitriyzhuk/ranch-api:latest"
+  default = "ghcr.io/cleanslice/ranch-api:latest"
 }
 
 variable "admin_image" {
   type    = string
-  default = "ghcr.io/dmitriyzhuk/ranch-admin:latest"
+  default = "ghcr.io/cleanslice/ranch-admin:latest"
 }
 
 variable "app_image" {
   type    = string
-  default = "ghcr.io/dmitriyzhuk/ranch-app:latest"
+  default = "ghcr.io/cleanslice/ranch-app:latest"
 }
 
 variable "letsencrypt_issuer" {

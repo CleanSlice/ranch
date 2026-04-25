@@ -15,6 +15,7 @@ spec:
       labels:
         app: ranch-api
     spec:
+      serviceAccountName: ranch-api
       nodeSelector:
         node-role: system
       containers:
@@ -25,6 +26,11 @@ spec:
           envFrom:
             - secretRef:
                 name: ranch-api-env
+          env:
+            # Make Node.js trust the in-cluster apiserver CA so @kubernetes/client-node
+            # can fetch pod logs without "self signed certificate in certificate chain".
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
           resources:
             requests:
               cpu: 250m

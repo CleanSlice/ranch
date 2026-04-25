@@ -307,7 +307,7 @@ export class AgentsService {
 
 export class LogsService {
     /**
-     * Get agent logs
+     * Get agent pod logs
      */
     public static logControllerGetLogs<ThrowOnError extends boolean = false>(options: Options<LogControllerGetLogsData, ThrowOnError>) {
         return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({

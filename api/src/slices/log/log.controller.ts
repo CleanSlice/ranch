@@ -27,6 +27,21 @@ export class LogController {
   constructor(private agentGateway: IAgentGateway) {
     const kc = new KubeConfig();
     kc.loadFromDefault();
+
+    // In-cluster the apiserver uses k3s's self-signed CA. It's mounted at
+    // /var/run/secrets/kubernetes.io/serviceaccount/ca.crt; the deployment
+    // exposes it via NODE_EXTRA_CA_CERTS so Node's global TLS stack trusts
+    // it. For local dev / kubeconfigs without embedded CA, set KUBE_INSECURE=true
+    // to bypass verification (never enable in prod).
+    if (process.env.KUBE_INSECURE === 'true') {
+      const current = kc.getCurrentCluster();
+      if (current) {
+        kc.clusters = kc.clusters.map((c) =>
+          c.name === current.name ? { ...c, skipTLSVerify: true } : c,
+        );
+      }
+    }
+
     this.coreApi = kc.makeApiClient(CoreV1Api);
     this.namespace = process.env.AGENTS_NAMESPACE || 'agents';
   }

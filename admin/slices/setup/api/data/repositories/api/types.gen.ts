@@ -473,7 +473,9 @@ export type LogControllerGetLogsData = {
     path: {
         agentId: string;
     };
-    query?: never;
+    query: {
+        tail: string;
+    };
     url: '/agents/{agentId}/logs';
 };
 

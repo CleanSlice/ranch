@@ -18,6 +18,8 @@ spec:
         value: "500m"
       - name: memory-limit
         value: "512Mi"
+      - name: image-pull-policy
+        value: "IfNotPresent"
       - name: bridle-url
         value: ""
       - name: bridle-api-key
@@ -92,7 +94,7 @@ spec:
             containers:
               - name: agent
                 image: "{{workflow.parameters.agent-image}}"
-                imagePullPolicy: Always
+                imagePullPolicy: "{{workflow.parameters.image-pull-policy}}"
                 env:
                   - name: AGENT_ID
                     value: "{{workflow.parameters.agent-id}}"

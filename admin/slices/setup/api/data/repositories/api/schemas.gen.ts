@@ -196,6 +196,17 @@ export const UpdateAgentDtoSchema = {
     }
 } as const;
 
+export const SaveFileDtoSchema = {
+    type: 'object',
+    properties: {
+        content: {
+            type: 'string',
+            description: 'Full file content as text'
+        }
+    },
+    required: ['content']
+} as const;
+
 export const CreateUserDtoSchema = {
     type: 'object',
     properties: {
@@ -386,4 +397,85 @@ export const ReportUsageDtoSchema = {
         }
     },
     required: ['date', 'byModel']
+} as const;
+
+export const ImportSkillUrlDtoSchema = {
+    type: 'object',
+    properties: {
+        url: {
+            type: 'string',
+            description: 'GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.',
+            example: 'https://github.com/supabase/agent-skills/tree/main/skills/supabase-postgres-best-practices'
+        },
+        name: {
+            type: 'string'
+        }
+    },
+    required: ['url']
+} as const;
+
+export const ImportSkillDtoSchema = {
+    type: 'object',
+    properties: {
+        repo: {
+            type: 'string',
+            example: 'anthropics/skills',
+            description: 'GitHub owner/repo as returned by /skills/search'
+        },
+        path: {
+            type: 'string',
+            example: 'pdf-skill/SKILL.md',
+            description: 'Path to the SKILL.md file inside the repo'
+        },
+        name: {
+            type: 'string',
+            description: 'Override the auto-derived slug. Lowercase letters, digits and dashes.'
+        }
+    },
+    required: ['repo', 'path']
+} as const;
+
+export const CreateSkillDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string',
+            example: 'devops',
+            description: 'Unique slug — lowercase letters, digits, dashes'
+        },
+        title: {
+            type: 'string',
+            example: 'DevOps engineer'
+        },
+        body: {
+            type: 'string',
+            description: 'Markdown body of the skill'
+        },
+        description: {
+            type: 'string'
+        }
+    },
+    required: ['name', 'title', 'body']
+} as const;
+
+export const UpdateSkillDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string',
+            example: 'devops',
+            description: 'Unique slug — lowercase letters, digits, dashes'
+        },
+        title: {
+            type: 'string',
+            example: 'DevOps engineer'
+        },
+        body: {
+            type: 'string',
+            description: 'Markdown body of the skill'
+        },
+        description: {
+            type: 'string'
+        }
+    }
 } as const;

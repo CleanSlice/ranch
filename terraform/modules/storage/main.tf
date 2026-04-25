@@ -24,6 +24,12 @@ variable "create_iam_user" {
   description = "Create an IAM user + access key scoped to this bucket. Disable if agents authenticate via IRSA or another mechanism."
 }
 
+variable "secret_name_prefix" {
+  type        = string
+  default     = "ranch-agent/"
+  description = "Secrets Manager name prefix the agent IAM user can create/read. Each agent has one secret at ranch-agent/agent-<id>."
+}
+
 locals {
   bucket_name = var.bucket_name != "" ? var.bucket_name : "ranch-agent-data-${var.environment}"
   iam_user    = "ranch-agent-${var.environment}"
@@ -92,6 +98,19 @@ data "aws_iam_policy_document" "agent_bucket_access" {
       "s3:ListMultipartUploadParts",
     ]
     resources = ["${aws_s3_bucket.agent_data.arn}/*"]
+  }
+
+  statement {
+    sid = "SecretsManagerScoped"
+    actions = [
+      "secretsmanager:CreateSecret",
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:PutSecretValue",
+      "secretsmanager:UpdateSecret",
+      "secretsmanager:TagResource",
+    ]
+    resources = ["arn:aws:secretsmanager:*:*:secret:${var.secret_name_prefix}*"]
   }
 }
 

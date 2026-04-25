@@ -37,6 +37,8 @@ const initials = (name: string) =>
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
+const confirmRemoveOpen = ref(false);
+
 async function onRemove() {
   if (!user.value) return;
   await userStore.remove(user.value.id);
@@ -69,12 +71,20 @@ async function onRemove() {
             variant="ghost"
             class="text-destructive"
             :disabled="user.role === 'owner'"
-            @click="onRemove"
+            @click="confirmRemoveOpen = true"
           >
             Remove
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        v-model:open="confirmRemoveOpen"
+        title="Remove user"
+        :description="`Permanently remove ${user.name} (${user.email})? They will lose all access immediately.`"
+        confirm-label="Remove user"
+        @confirm="onRemove"
+      />
 
       <Card>
         <CardHeader>

@@ -36,6 +36,11 @@ spec:
         value: ""
       - name: aws-secret-access-key
         value: ""
+      # Secret storage backend for the runtime (file | aws)
+      - name: secret-provider
+        value: "file"
+      - name: aws-secret-prefix
+        value: "cleanslice/users"
       # LLM contract for the runtime (LLM_* env on the pod)
       - name: llm-provider
         value: ""
@@ -120,6 +125,10 @@ spec:
                     value: "{{workflow.parameters.aws-access-key-id}}"
                   - name: AWS_SECRET_ACCESS_KEY
                     value: "{{workflow.parameters.aws-secret-access-key}}"
+                  - name: SECRET_PROVIDER
+                    value: "{{workflow.parameters.secret-provider}}"
+                  - name: AWS_SECRET_PREFIX
+                    value: "{{workflow.parameters.aws-secret-prefix}}"
                   - name: LLM_PROVIDER
                     value: "{{workflow.parameters.llm-provider}}"
                   - name: LLM_MODEL

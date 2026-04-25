@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Template } from '@prisma/client';
-import { ITemplateData } from '../domain';
+import { Template, Prisma } from '@prisma/client';
+import { ITemplateData, ICreateTemplateData } from '../domain';
 
 @Injectable()
 export class TemplateMapper {
@@ -15,6 +15,21 @@ export class TemplateMapper {
         record.defaultResources as unknown as ITemplateData['defaultResources'],
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+    };
+  }
+
+  toCreate(data: ICreateTemplateData) {
+    return {
+      id: `template-${crypto.randomUUID()}`,
+      name: data.name,
+      description: data.description,
+      image: data.image,
+      defaultConfig: (data.defaultConfig ??
+        {}) as unknown as Prisma.InputJsonValue,
+      defaultResources: (data.defaultResources ?? {
+        cpu: '500m',
+        memory: '512Mi',
+      }) as unknown as Prisma.InputJsonValue,
     };
   }
 }

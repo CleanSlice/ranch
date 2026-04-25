@@ -11,13 +11,15 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
 } from '#theme/components/ui/sidebar';
 import {
-  IconDashboard,
+  IconTractor,
   IconRobot,
   IconFileText,
   IconUsers,
   IconBrain,
+  IconSparkles,
   IconSettings,
   IconLogout,
 } from '@tabler/icons-vue';
@@ -32,11 +34,11 @@ async function onLogout() {
 const menu = useMenuStore();
 
 const iconMap: Record<string, unknown> = {
-  Dashboard: IconDashboard,
   Robot: IconRobot,
   FileText: IconFileText,
   Users: IconUsers,
   Brain: IconBrain,
+  Sparkles: IconSparkles,
   Settings: IconSettings,
 };
 
@@ -50,7 +52,7 @@ const itemsByGroup = (group: MenuGroupTypes) =>
 </script>
 
 <template>
-  <Sidebar collapsible="icon">
+  <Sidebar collapsible="icon" variant="inset">
     <SidebarHeader>
       <SidebarMenu>
         <SidebarMenuItem>
@@ -59,7 +61,7 @@ const itemsByGroup = (group: MenuGroupTypes) =>
               <div
                 class="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
               >
-                <IconDashboard class="size-4" />
+                <IconTractor class="size-4 p-0" />
               </div>
               <div class="flex flex-col">
                 <span class="font-semibold text-sm">Ranch</span>
@@ -120,5 +122,6 @@ const itemsByGroup = (group: MenuGroupTypes) =>
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarFooter>
+    <SidebarRail />
   </Sidebar>
 </template>

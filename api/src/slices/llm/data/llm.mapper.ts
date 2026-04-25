@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { LlmCredential } from '@prisma/client';
-import { ILlmCredentialData } from '../domain';
+import { ILlmCredentialData, ICreateLlmCredentialData } from '../domain';
 
 @Injectable()
 export class LlmMapper {
@@ -15,6 +15,18 @@ export class LlmMapper {
       status: record.status,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+    };
+  }
+
+  toCreate(data: ICreateLlmCredentialData) {
+    return {
+      id: `llm-${crypto.randomUUID()}`,
+      provider: data.provider,
+      model: data.model,
+      fallbackModel: data.fallbackModel ?? null,
+      apiKey: data.apiKey,
+      label: data.label ?? null,
+      status: data.status ?? 'active',
     };
   }
 }

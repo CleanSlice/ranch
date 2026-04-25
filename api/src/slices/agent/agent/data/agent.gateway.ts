@@ -33,17 +33,7 @@ export class AgentGateway extends IAgentGateway {
 
   async create(data: ICreateAgentData): Promise<IAgentData> {
     const record = await this.prisma.agent.create({
-      data: {
-        name: data.name,
-        templateId: data.templateId,
-        llmCredentialId: data.llmCredentialId ?? null,
-        status: 'pending',
-        config: (data.config ?? {}) as unknown as Prisma.InputJsonValue,
-        resources: (data.resources ?? {
-          cpu: '500m',
-          memory: '512Mi',
-        }) as unknown as Prisma.InputJsonValue,
-      },
+      data: this.mapper.toCreate(data),
     });
     return this.mapper.toEntity(record);
   }

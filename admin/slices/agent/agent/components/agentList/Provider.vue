@@ -34,7 +34,18 @@ async function onRestart(agent: IAgentData) {
   await refresh();
 }
 
-async function onRemove(agent: IAgentData) {
+const pendingRemoval = ref<IAgentData | null>(null);
+const confirmRemoveOpen = computed({
+  get: () => pendingRemoval.value !== null,
+  set: (v: boolean) => {
+    if (!v) pendingRemoval.value = null;
+  },
+});
+
+async function onRemove() {
+  const agent = pendingRemoval.value;
+  if (!agent) return;
+  pendingRemoval.value = null;
   await agentStore.remove(agent.id);
   await refresh();
 }
@@ -90,7 +101,7 @@ async function onRemove(agent: IAgentData) {
                 <Button size="sm" variant="outline" @click="onRestart(agent)">
                   Restart
                 </Button>
-                <Button size="sm" variant="ghost" class="text-destructive" @click="onRemove(agent)">
+                <Button size="sm" variant="ghost" class="text-destructive" @click="pendingRemoval = agent">
                   Delete
                 </Button>
               </div>
@@ -103,5 +114,13 @@ async function onRemove(agent: IAgentData) {
     <div v-else class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
       No agents yet.
     </div>
+
+    <ConfirmDialog
+      v-model:open="confirmRemoveOpen"
+      title="Delete agent"
+      :description="pendingRemoval ? `Permanently delete agent “${pendingRemoval.name}”? This cannot be undone.` : ''"
+      confirm-label="Delete agent"
+      @confirm="onRemove"
+    />
   </div>
 </template>

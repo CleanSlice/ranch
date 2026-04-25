@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Agent } from '@prisma/client';
-import { IAgentData } from '../domain';
+import { Agent, Prisma } from '@prisma/client';
+import { IAgentData, ICreateAgentData } from '../domain';
 
 @Injectable()
 export class AgentMapper {
@@ -16,6 +16,21 @@ export class AgentMapper {
       resources: record.resources as unknown as IAgentData['resources'],
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+    };
+  }
+
+  toCreate(data: ICreateAgentData) {
+    return {
+      id: `agent-${crypto.randomUUID()}`,
+      name: data.name,
+      templateId: data.templateId,
+      llmCredentialId: data.llmCredentialId ?? null,
+      status: 'pending',
+      config: (data.config ?? {}) as unknown as Prisma.InputJsonValue,
+      resources: (data.resources ?? {
+        cpu: '500m',
+        memory: '512Mi',
+      }) as unknown as Prisma.InputJsonValue,
     };
   }
 }

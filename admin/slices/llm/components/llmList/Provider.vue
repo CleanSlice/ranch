@@ -24,8 +24,18 @@ function mask(key: string) {
   return `${key.slice(0, 4)}…${key.slice(-4)}`;
 }
 
-async function onRemove(item: ILlmCredentialData) {
-  if (!confirm('Delete this credential?')) return;
+const pendingRemoval = ref<ILlmCredentialData | null>(null);
+const confirmRemoveOpen = computed({
+  get: () => pendingRemoval.value !== null,
+  set: (v: boolean) => {
+    if (!v) pendingRemoval.value = null;
+  },
+});
+
+async function onRemove() {
+  const item = pendingRemoval.value;
+  if (!item) return;
+  pendingRemoval.value = null;
   await llmStore.remove(item.id);
   await refresh();
 }
@@ -91,7 +101,7 @@ async function onRemove(item: ILlmCredentialData) {
                   size="sm"
                   variant="ghost"
                   class="text-destructive"
-                  @click="onRemove(item)"
+                  @click="pendingRemoval = item"
                 >
                   Delete
                 </Button>
@@ -108,5 +118,13 @@ async function onRemove(item: ILlmCredentialData) {
     >
       No LLM credentials yet.
     </div>
+
+    <ConfirmDialog
+      v-model:open="confirmRemoveOpen"
+      title="Delete credential"
+      :description="pendingRemoval ? `Permanently delete the ${pendingRemoval.provider} credential${pendingRemoval.label ? ` “${pendingRemoval.label}”` : ''}? Agents using it will lose access on next restart.` : ''"
+      confirm-label="Delete credential"
+      @confirm="onRemove"
+    />
   </div>
 </template>

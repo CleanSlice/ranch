@@ -9,7 +9,6 @@ export interface IKnowledge {
   id: string;
   name: string;
   description: string | null;
-  workspace: string;
   entityTypes: string[];
   relationshipTypes: string[];
   indexStatus: IndexStatus;
@@ -30,7 +29,7 @@ export interface IReinsSource {
   mimeType: string | null;
   content: string | null;
   sizeBytes: number | null;
-  lightragDocId: string | null;
+  indexed: boolean;
   createdAt: string;
   updatedAt: string;
 }

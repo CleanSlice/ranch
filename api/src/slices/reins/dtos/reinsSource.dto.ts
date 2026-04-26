@@ -10,7 +10,7 @@ export class ReinsSourceDto implements IReinsSourceData {
   @ApiProperty({ type: String, nullable: true }) mimeType: string | null;
   @ApiProperty({ type: String, nullable: true }) content: string | null;
   @ApiProperty({ type: Number, nullable: true }) sizeBytes: number | null;
-  @ApiProperty({ type: String, nullable: true }) lightragDocId: string | null;
+  @ApiProperty() indexed: boolean;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
 }

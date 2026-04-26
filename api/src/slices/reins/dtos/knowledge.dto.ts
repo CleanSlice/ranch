@@ -6,7 +6,6 @@ export class KnowledgeDto implements IKnowledgeData {
   @ApiProperty() id: string;
   @ApiProperty() name: string;
   @ApiProperty({ type: String, nullable: true }) description: string | null;
-  @ApiProperty() workspace: string;
   @ApiProperty({ type: [String] }) entityTypes: string[];
   @ApiProperty({ type: [String] }) relationshipTypes: string[];
   @ApiProperty({ enum: ['idle', 'indexing', 'ready', 'failed'] })

@@ -4,7 +4,11 @@ import {
   IUpdateKnowledgeData,
   IReinsSourceData,
   ICreateSourceData,
-  IndexStatusTypes,
+  IIndexStatePatch,
+  IKnowledgeQueryRecord,
+  IUploadSourceFileInput,
+  IUploadedSourceFile,
+  QueryModeTypes,
 } from './reins.types';
 
 export abstract class IReinsGateway {
@@ -17,12 +21,7 @@ export abstract class IReinsGateway {
   ): Promise<IKnowledgeData>;
   abstract updateKnowledgeIndexState(
     id: string,
-    patch: {
-      indexStatus: IndexStatusTypes;
-      indexError?: string | null;
-      indexedAt?: Date | null;
-      indexStartedAt?: Date | null;
-    },
+    patch: IIndexStatePatch,
   ): Promise<IKnowledgeData>;
   abstract deleteKnowledge(id: string): Promise<void>;
 
@@ -31,9 +30,21 @@ export abstract class IReinsGateway {
   ): Promise<IReinsSourceData[]>;
   abstract findSourceById(id: string): Promise<IReinsSourceData | null>;
   abstract createSource(data: ICreateSourceData): Promise<IReinsSourceData>;
-  abstract setSourceLightragDocId(
-    id: string,
-    lightragDocId: string,
-  ): Promise<IReinsSourceData>;
   abstract deleteSource(id: string): Promise<void>;
+
+  abstract uploadSourceFile(
+    input: IUploadSourceFileInput,
+  ): Promise<IUploadedSourceFile>;
+  abstract deleteSourceFile(url: string): Promise<void>;
+
+  abstract indexSource(source: IReinsSourceData): Promise<void>;
+  abstract removeSourceFromIndex(source: IReinsSourceData): Promise<void>;
+  abstract removeKnowledgeFromIndex(knowledgeId: string): Promise<void>;
+
+  abstract searchKnowledge(
+    knowledgeId: string,
+    query: string,
+    mode?: QueryModeTypes,
+    topK?: number,
+  ): Promise<IKnowledgeQueryRecord[]>;
 }

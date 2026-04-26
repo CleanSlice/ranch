@@ -5,16 +5,21 @@ import {
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
   IReinsSourceData,
-  ICreateSourceData,
   IKnowledgeQueryRecord,
   QueryModeTypes,
 } from './reins.types';
-import { ILightragClient } from '../data/lightrag.client';
 
 const STALE_INDEX_AFTER_MS = 10 * 60 * 1000;
 
-export interface IFileLoader {
-  loadFile(url: string): Promise<Buffer>;
+export interface IUploadedFile {
+  name: string;
+  buffer: Buffer;
+  mimeType: string;
+  size: number;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 @Injectable()
@@ -22,11 +27,7 @@ export class ReinsService {
   private readonly logger = new Logger(ReinsService.name);
   private readonly inflightIndexing = new Map<string, Promise<void>>();
 
-  constructor(
-    private readonly gateway: IReinsGateway,
-    private readonly client: ILightragClient,
-    private readonly fileLoader: IFileLoader,
-  ) {}
+  constructor(private readonly gateway: IReinsGateway) {}
 
   listKnowledge(): Promise<IKnowledgeData[]> {
     return this.gateway.findAllKnowledge();
@@ -51,13 +52,25 @@ export class ReinsService {
   }
 
   async deleteKnowledge(id: string): Promise<void> {
-    const k = await this.getKnowledge(id);
+    await this.getKnowledge(id);
     try {
-      await this.client.deleteWorkspace(k.workspace);
+      await this.gateway.removeKnowledgeFromIndex(id);
     } catch (err) {
       this.logger.warn(
-        `LightRAG deleteWorkspace(${k.workspace}) failed: ${(err as Error).message}`,
+        `removeKnowledgeFromIndex(${id}) failed: ${errorMessage(err)}`,
       );
+    }
+    const sources = await this.gateway.findSourcesByKnowledge(id);
+    for (const source of sources) {
+      if (source.type === 'file' && source.url) {
+        try {
+          await this.gateway.deleteSourceFile(source.url);
+        } catch (err) {
+          this.logger.warn(
+            `deleteSourceFile(${source.url}) failed: ${errorMessage(err)}`,
+          );
+        }
+      }
     }
     await this.gateway.deleteKnowledge(id);
   }
@@ -66,23 +79,72 @@ export class ReinsService {
     return this.gateway.findSourcesByKnowledge(knowledgeId);
   }
 
-  async addSource(data: ICreateSourceData): Promise<IReinsSourceData> {
-    return this.gateway.createSource(data);
+  async addFileSource(
+    knowledgeId: string,
+    file: IUploadedFile,
+  ): Promise<IReinsSourceData> {
+    await this.getKnowledge(knowledgeId);
+    const stored = await this.gateway.uploadSourceFile({
+      knowledgeId,
+      filename: file.name,
+      body: file.buffer,
+      contentType: file.mimeType,
+    });
+    return this.gateway.createSource({
+      knowledgeId,
+      type: 'file',
+      name: file.name,
+      url: stored.url,
+      mimeType: file.mimeType,
+      sizeBytes: file.size,
+    });
+  }
+
+  async addUrlSource(
+    knowledgeId: string,
+    data: { name: string; url: string },
+  ): Promise<IReinsSourceData> {
+    await this.getKnowledge(knowledgeId);
+    return this.gateway.createSource({
+      knowledgeId,
+      type: 'url',
+      name: data.name,
+      url: data.url,
+    });
+  }
+
+  async addTextSource(
+    knowledgeId: string,
+    data: { name: string; content: string },
+  ): Promise<IReinsSourceData> {
+    await this.getKnowledge(knowledgeId);
+    return this.gateway.createSource({
+      knowledgeId,
+      type: 'text',
+      name: data.name,
+      content: data.content,
+    });
   }
 
   async deleteSource(id: string): Promise<void> {
     const source = await this.gateway.findSourceById(id);
     if (!source) throw new NotFoundException(`Source ${id} not found`);
-    if (source.lightragDocId) {
-      const k = await this.gateway.findKnowledgeById(source.knowledgeId);
-      if (k) {
-        try {
-          await this.client.deleteDocument(k.workspace, source.lightragDocId);
-        } catch (err) {
-          this.logger.warn(
-            `LightRAG deleteDocument failed for source ${id}: ${(err as Error).message}`,
-          );
-        }
+    if (source.indexed) {
+      try {
+        await this.gateway.removeSourceFromIndex(source);
+      } catch (err) {
+        this.logger.warn(
+          `removeSourceFromIndex(${id}) failed: ${errorMessage(err)}`,
+        );
+      }
+    }
+    if (source.type === 'file' && source.url) {
+      try {
+        await this.gateway.deleteSourceFile(source.url);
+      } catch (err) {
+        this.logger.warn(
+          `deleteSourceFile(${source.url}) failed: ${errorMessage(err)}`,
+        );
       }
     }
     await this.gateway.deleteSource(id);
@@ -109,7 +171,7 @@ export class ReinsService {
       indexError: null,
     });
 
-    const task = this.runIndex(knowledgeId, k.workspace);
+    const task = this.runIndex(knowledgeId);
     this.inflightIndexing.set(knowledgeId, task);
     void task.finally(() => {
       if (this.inflightIndexing.get(knowledgeId) === task) {
@@ -118,77 +180,9 @@ export class ReinsService {
     });
   }
 
-  /** Resolves when the current indexing run finishes. Useful for callers that want to block. */
   async waitForIndex(knowledgeId: string): Promise<void> {
     const task = this.inflightIndexing.get(knowledgeId);
     if (task) await task;
-  }
-
-  private async runIndex(
-    knowledgeId: string,
-    workspace: string,
-  ): Promise<void> {
-    try {
-      const sources = await this.gateway.findSourcesByKnowledge(knowledgeId);
-      for (const source of sources) {
-        if (source.lightragDocId) continue;
-        await this.ingestSource(source, workspace);
-      }
-      await this.gateway.updateKnowledgeIndexState(knowledgeId, {
-        indexStatus: 'ready',
-        indexedAt: new Date(),
-        indexError: null,
-      });
-    } catch (err) {
-      this.logger.error(
-        `Indexing failed for knowledge ${knowledgeId}: ${(err as Error).message}`,
-      );
-      await this.gateway.updateKnowledgeIndexState(knowledgeId, {
-        indexStatus: 'failed',
-        indexError: (err as Error).message,
-      });
-    }
-  }
-
-  private async ingestSource(
-    source: IReinsSourceData,
-    workspace: string,
-  ): Promise<void> {
-    if (source.type === 'text') {
-      if (!source.content) {
-        throw new Error(`Source ${source.id} has no content`);
-      }
-      const res = await this.client.ingestText({
-        workspace,
-        text: source.content,
-        fileSource: source.name,
-      });
-      await this.gateway.setSourceLightragDocId(source.id, res.docId);
-      return;
-    }
-    if (source.type === 'url') {
-      if (!source.url) {
-        throw new Error(`Source ${source.id} has no url`);
-      }
-      const res = await this.client.ingestUrl({ workspace, url: source.url });
-      await this.gateway.setSourceLightragDocId(source.id, res.docId);
-      return;
-    }
-    if (source.type === 'file') {
-      if (!source.url) {
-        throw new Error(`Source ${source.id} has no url`);
-      }
-      const buffer = await this.fileLoader.loadFile(source.url);
-      const res = await this.client.ingestFile({
-        workspace,
-        filename: source.name,
-        mimeType: source.mimeType ?? 'application/octet-stream',
-        content: buffer,
-      });
-      await this.gateway.setSourceLightragDocId(source.id, res.docId);
-      return;
-    }
-    throw new Error(`Unknown source type: ${source.type as string}`);
   }
 
   async query(
@@ -197,12 +191,30 @@ export class ReinsService {
     mode?: QueryModeTypes,
     topK?: number,
   ): Promise<IKnowledgeQueryRecord[]> {
-    const k = await this.getKnowledge(knowledgeId);
-    return this.client.query({
-      workspace: k.workspace,
-      query,
-      mode,
-      topK,
-    });
+    await this.getKnowledge(knowledgeId);
+    return this.gateway.searchKnowledge(knowledgeId, query, mode, topK);
+  }
+
+  private async runIndex(knowledgeId: string): Promise<void> {
+    try {
+      const sources = await this.gateway.findSourcesByKnowledge(knowledgeId);
+      for (const source of sources) {
+        if (source.indexed) continue;
+        await this.gateway.indexSource(source);
+      }
+      await this.gateway.updateKnowledgeIndexState(knowledgeId, {
+        indexStatus: 'ready',
+        indexedAt: new Date(),
+        indexError: null,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Indexing failed for knowledge ${knowledgeId}: ${errorMessage(err)}`,
+      );
+      await this.gateway.updateKnowledgeIndexState(knowledgeId, {
+        indexStatus: 'failed',
+        indexError: errorMessage(err),
+      });
+    }
   }
 }

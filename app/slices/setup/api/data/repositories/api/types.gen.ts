@@ -173,6 +173,27 @@ export type ReportUsageDto = {
     };
 };
 
+export type CreateKnowledgeDto = {
+    name: string;
+    description?: string;
+    entityTypes?: Array<string>;
+    relationshipTypes?: Array<string>;
+};
+
+export type UpdateKnowledgeDto = {
+    name?: string;
+    description?: string | null;
+    entityTypes?: Array<string>;
+    relationshipTypes?: Array<string>;
+};
+
+export type CreateSourceDto = {
+    type: 'file' | 'url' | 'text';
+    name: string;
+    url?: string;
+    content?: string;
+};
+
 export type HealthControllerCheckData = {
     body?: never;
     path?: never;
@@ -473,7 +494,9 @@ export type LogControllerGetLogsData = {
     path: {
         agentId: string;
     };
-    query?: never;
+    query: {
+        tail: string;
+    };
     url: '/agents/{agentId}/logs';
 };
 
@@ -648,6 +671,141 @@ export type UsageControllerReportResponses = {
 };
 
 export type UsageControllerReportResponse = UsageControllerReportResponses[keyof UsageControllerReportResponses];
+
+export type GetKnowledgesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/knowledges';
+};
+
+export type GetKnowledgesResponses = {
+    200: unknown;
+};
+
+export type CreateKnowledgeData = {
+    body: CreateKnowledgeDto;
+    path?: never;
+    query?: never;
+    url: '/knowledges';
+};
+
+export type CreateKnowledgeResponses = {
+    201: unknown;
+};
+
+export type DeleteKnowledgeData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/knowledges/{id}';
+};
+
+export type DeleteKnowledgeResponses = {
+    204: void;
+};
+
+export type DeleteKnowledgeResponse = DeleteKnowledgeResponses[keyof DeleteKnowledgeResponses];
+
+export type GetKnowledgeData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/knowledges/{id}';
+};
+
+export type GetKnowledgeResponses = {
+    200: unknown;
+};
+
+export type UpdateKnowledgeData = {
+    body: UpdateKnowledgeDto;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/knowledges/{id}';
+};
+
+export type UpdateKnowledgeResponses = {
+    200: unknown;
+};
+
+export type IndexKnowledgeData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/knowledges/{id}/index';
+};
+
+export type IndexKnowledgeResponses = {
+    202: unknown;
+};
+
+export type GetKnowledgeRecordsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query: {
+        query: string;
+        mode?: 'hybrid' | 'local' | 'global' | 'naive';
+        topK?: number;
+    };
+    url: '/knowledges/{id}/records';
+};
+
+export type GetKnowledgeRecordsResponses = {
+    200: unknown;
+};
+
+export type GetKnowledgeSourcesData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/knowledges/{id}/sources';
+};
+
+export type GetKnowledgeSourcesResponses = {
+    200: unknown;
+};
+
+export type AddKnowledgeSourceData = {
+    body: CreateSourceDto;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/knowledges/{id}/sources';
+};
+
+export type AddKnowledgeSourceResponses = {
+    201: unknown;
+};
+
+export type DeleteKnowledgeSourceData = {
+    body?: never;
+    path: {
+        id: string;
+        sourceId: string;
+    };
+    query?: never;
+    url: '/knowledges/{id}/sources/{sourceId}';
+};
+
+export type DeleteKnowledgeSourceResponses = {
+    204: void;
+};
+
+export type DeleteKnowledgeSourceResponse = DeleteKnowledgeSourceResponses[keyof DeleteKnowledgeSourceResponses];
 
 export type ClientOptions = {
     baseURL: string;

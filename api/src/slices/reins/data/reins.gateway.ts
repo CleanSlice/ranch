@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '#/setup/prisma/prisma.service';
+import { S3Repository } from '#/aws/s3';
 import { IReinsGateway } from '../domain/reins.gateway';
 import {
   IKnowledgeData,
@@ -7,9 +8,14 @@ import {
   IUpdateKnowledgeData,
   IReinsSourceData,
   ICreateSourceData,
-  IndexStatusTypes,
+  IIndexStatePatch,
+  IKnowledgeQueryRecord,
+  IUploadSourceFileInput,
+  IUploadedSourceFile,
+  QueryModeTypes,
 } from '../domain/reins.types';
 import { ReinsMapper } from './reins.mapper';
+import { ILightragClient } from './repositories/lightrag/lightrag.client';
 
 function workspaceOf(id: string): string {
   return `knowledge_${id.replace(/-/g, '')}`;
@@ -18,8 +24,11 @@ function workspaceOf(id: string): string {
 @Injectable()
 export class ReinsGateway extends IReinsGateway {
   constructor(
-    private prisma: PrismaService,
-    private mapper: ReinsMapper,
+    private readonly prisma: PrismaService,
+    private readonly mapper: ReinsMapper,
+    private readonly lightrag: ILightragClient,
+    private readonly s3: S3Repository,
+    private readonly bucket: string,
   ) {
     super();
   }
@@ -83,12 +92,7 @@ export class ReinsGateway extends IReinsGateway {
 
   async updateKnowledgeIndexState(
     id: string,
-    patch: {
-      indexStatus: IndexStatusTypes;
-      indexError?: string | null;
-      indexedAt?: Date | null;
-      indexStartedAt?: Date | null;
-    },
+    patch: IIndexStatePatch,
   ): Promise<IKnowledgeData> {
     const record = await this.prisma.knowledge.update({
       where: { id },
@@ -139,18 +143,110 @@ export class ReinsGateway extends IReinsGateway {
     return this.mapper.toSourceEntity(record);
   }
 
-  async setSourceLightragDocId(
-    id: string,
-    lightragDocId: string,
-  ): Promise<IReinsSourceData> {
-    const record = await this.prisma.reinsSource.update({
-      where: { id },
-      data: { lightragDocId },
-    });
-    return this.mapper.toSourceEntity(record);
-  }
-
   async deleteSource(id: string): Promise<void> {
     await this.prisma.reinsSource.delete({ where: { id } });
+  }
+
+  async uploadSourceFile(
+    input: IUploadSourceFileInput,
+  ): Promise<IUploadedSourceFile> {
+    const key = `${input.knowledgeId}/${crypto.randomUUID()}-${input.filename}`;
+    const stored = await this.s3.upload({
+      bucket: this.bucket,
+      key,
+      body: input.body,
+      contentType: input.contentType,
+    });
+    return { url: stored.uri };
+  }
+
+  async deleteSourceFile(url: string): Promise<void> {
+    const location = S3Repository.parseUri(url);
+    await this.s3.delete(location);
+  }
+
+  async indexSource(source: IReinsSourceData): Promise<void> {
+    const workspace = await this.workspaceOfKnowledge(source.knowledgeId);
+    const docId = await this.ingestByType(source, workspace);
+    await this.prisma.reinsSource.update({
+      where: { id: source.id },
+      data: { lightragDocId: docId },
+    });
+  }
+
+  async removeSourceFromIndex(source: IReinsSourceData): Promise<void> {
+    const record = await this.prisma.reinsSource.findUnique({
+      where: { id: source.id },
+      select: { lightragDocId: true, knowledgeId: true },
+    });
+    if (!record?.lightragDocId) return;
+    const workspace = await this.workspaceOfKnowledge(record.knowledgeId);
+    await this.lightrag.deleteDocument(workspace, record.lightragDocId);
+  }
+
+  async removeKnowledgeFromIndex(knowledgeId: string): Promise<void> {
+    const workspace = await this.workspaceOfKnowledge(knowledgeId);
+    await this.lightrag.deleteWorkspace(workspace);
+  }
+
+  async searchKnowledge(
+    knowledgeId: string,
+    query: string,
+    mode?: QueryModeTypes,
+    topK?: number,
+  ): Promise<IKnowledgeQueryRecord[]> {
+    const workspace = await this.workspaceOfKnowledge(knowledgeId);
+    return this.lightrag.query({ workspace, query, mode, topK });
+  }
+
+  private async ingestByType(
+    source: IReinsSourceData,
+    workspace: string,
+  ): Promise<string> {
+    if (source.type === 'text') {
+      if (!source.content) {
+        throw new Error(`Source ${source.id} has no content`);
+      }
+      const res = await this.lightrag.ingestText({
+        workspace,
+        text: source.content,
+        fileSource: source.name,
+      });
+      return res.docId;
+    }
+    if (source.type === 'url') {
+      if (!source.url) {
+        throw new Error(`Source ${source.id} has no url`);
+      }
+      const res = await this.lightrag.ingestUrl({
+        workspace,
+        url: source.url,
+      });
+      return res.docId;
+    }
+    if (source.type === 'file') {
+      if (!source.url) {
+        throw new Error(`Source ${source.id} has no url`);
+      }
+      const location = S3Repository.parseUri(source.url);
+      const buffer = await this.s3.download(location);
+      const res = await this.lightrag.ingestFile({
+        workspace,
+        filename: source.name,
+        mimeType: source.mimeType ?? 'application/octet-stream',
+        content: buffer,
+      });
+      return res.docId;
+    }
+    const exhaustive: never = source.type;
+    throw new Error(`Unknown source type: ${String(exhaustive)}`);
+  }
+
+  private async workspaceOfKnowledge(knowledgeId: string): Promise<string> {
+    const record = await this.prisma.knowledge.findUnique({
+      where: { id: knowledgeId },
+      select: { workspace: true },
+    });
+    return record?.workspace ?? workspaceOf(knowledgeId);
   }
 }

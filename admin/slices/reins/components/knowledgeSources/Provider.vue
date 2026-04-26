@@ -67,8 +67,8 @@ async function onAdded() {
             <TableCell class="font-medium">{{ s.name }}</TableCell>
             <TableCell class="text-muted-foreground">{{ s.type }}</TableCell>
             <TableCell>
-              <Badge :variant="s.lightragDocId ? 'default' : 'outline'">
-                {{ s.lightragDocId ? 'Indexed' : 'Pending' }}
+              <Badge :variant="s.indexed ? 'default' : 'outline'">
+                {{ s.indexed ? 'Indexed' : 'Pending' }}
               </Badge>
             </TableCell>
             <TableCell class="text-right">

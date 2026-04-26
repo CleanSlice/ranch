@@ -86,7 +86,7 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async query(input: IQueryInput): Promise<IQueryResultItem[]> {
-    const res = await this.fetchImpl(`${this.baseUrl}/query`, {
+    const res = await this.fetchImpl(`${this.baseUrl}/query/data`, {
       method: 'POST',
       headers: this.headers({ 'content-type': 'application/json' }),
       body: JSON.stringify({
@@ -96,28 +96,9 @@ export class LightragHttpClient extends ILightragClient {
         top_k: input.topK ?? 25,
       }),
     });
-    await this.ensureOk(res, '/query');
-    const body = (await res.json()) as {
-      chunks?: Array<{
-        content?: string;
-        file_path?: string;
-        source_id?: string;
-      }>;
-    };
-    const chunks = body.chunks ?? [];
-    return chunks
-      .filter(
-        (c): c is { content: string; file_path?: string; source_id?: string } =>
-          typeof c.content === 'string' && c.content.length > 0,
-      )
-      .map((c) => ({
-        pageContent: c.content,
-        metadata: {
-          title: c.file_path,
-          source: c.file_path,
-          sourceId: c.source_id,
-        },
-      }));
+    await this.ensureOk(res, '/query/data');
+    const body: unknown = await res.json();
+    return extractChunks(body);
   }
 
   async deleteDocument(workspace: string, docId: string): Promise<void> {
@@ -181,4 +162,44 @@ export class LightragHttpClient extends ILightragClient {
       path,
     );
   }
+}
+
+interface IRawChunk {
+  content: string;
+  file_path?: string;
+  chunk_id?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isRawChunk(value: unknown): value is IRawChunk {
+  if (!isRecord(value)) return false;
+  if (typeof value.content !== 'string' || value.content.length === 0) {
+    return false;
+  }
+  if (value.file_path !== undefined && typeof value.file_path !== 'string') {
+    return false;
+  }
+  if (value.chunk_id !== undefined && typeof value.chunk_id !== 'string') {
+    return false;
+  }
+  return true;
+}
+
+function extractChunks(body: unknown): IQueryResultItem[] {
+  if (!isRecord(body)) return [];
+  const data = body.data;
+  if (!isRecord(data)) return [];
+  const chunks = data.chunks;
+  if (!Array.isArray(chunks)) return [];
+  return chunks.filter(isRawChunk).map((c) => ({
+    pageContent: c.content,
+    metadata: {
+      title: c.file_path,
+      source: c.file_path,
+      sourceId: c.chunk_id,
+    },
+  }));
 }

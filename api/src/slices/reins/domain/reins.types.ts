@@ -8,7 +8,6 @@ export interface IKnowledgeData {
   id: string;
   name: string;
   description: string | null;
-  workspace: string;
   entityTypes: string[];
   relationshipTypes: string[];
   indexStatus: IndexStatusTypes;
@@ -29,7 +28,7 @@ export interface IReinsSourceData {
   mimeType: string | null;
   content: string | null;
   sizeBytes: number | null;
-  lightragDocId: string | null;
+  indexed: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -56,6 +55,24 @@ export interface ICreateSourceData {
   mimeType?: string;
   content?: string;
   sizeBytes?: number;
+}
+
+export interface IUploadSourceFileInput {
+  knowledgeId: string;
+  filename: string;
+  body: Buffer;
+  contentType: string;
+}
+
+export interface IUploadedSourceFile {
+  url: string;
+}
+
+export interface IIndexStatePatch {
+  indexStatus: IndexStatusTypes;
+  indexError?: string | null;
+  indexedAt?: Date | null;
+  indexStartedAt?: Date | null;
 }
 
 export interface IKnowledgeQueryRecord {

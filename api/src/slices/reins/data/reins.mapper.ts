@@ -18,16 +18,20 @@ const INDEX_STATUSES: readonly IndexStatusTypes[] = [
 ];
 const SOURCE_TYPES: readonly SourceTypes[] = ['file', 'url', 'text'];
 
+function isIndexStatus(value: string): value is IndexStatusTypes {
+  return (INDEX_STATUSES as readonly string[]).includes(value);
+}
+
+function isSourceType(value: string): value is SourceTypes {
+  return (SOURCE_TYPES as readonly string[]).includes(value);
+}
+
 function parseIndexStatus(value: string): IndexStatusTypes {
-  return INDEX_STATUSES.includes(value as IndexStatusTypes)
-    ? (value as IndexStatusTypes)
-    : 'idle';
+  return isIndexStatus(value) ? value : 'idle';
 }
 
 function parseSourceType(value: string): SourceTypes {
-  return SOURCE_TYPES.includes(value as SourceTypes)
-    ? (value as SourceTypes)
-    : 'text';
+  return isSourceType(value) ? value : 'text';
 }
 
 @Injectable()
@@ -39,7 +43,6 @@ export class ReinsMapper {
       id: record.id,
       name: record.name,
       description: record.description ?? null,
-      workspace: record.workspace,
       entityTypes: record.entityTypes,
       relationshipTypes: record.relationshipTypes,
       indexStatus: parseIndexStatus(record.indexStatus),
@@ -62,7 +65,7 @@ export class ReinsMapper {
       mimeType: record.mimeType ?? null,
       content: record.content ?? null,
       sizeBytes: record.sizeBytes ?? null,
-      lightragDocId: record.lightragDocId ?? null,
+      indexed: record.lightragDocId !== null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

@@ -1,39 +1,22 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaModule } from '#/setup/prisma/prisma.module';
+import { PrismaService } from '#/setup/prisma/prisma.service';
+import { AwsModule } from '#/aws/aws.module';
+import { S3Repository } from '#/aws/s3';
 import { ReinsController } from './reins.controller';
 import { IReinsGateway } from './domain/reins.gateway';
 import { ReinsGateway } from './data/reins.gateway';
 import { ReinsMapper } from './data/reins.mapper';
 import { ReinsService } from './domain/reins.service';
-import { ILightragClient } from './data/lightrag.client';
-import { LightragHttpClient } from './data/lightragHttp.client';
-import { MinioFileLoader } from './data/minio.fileLoader';
+import { ILightragClient } from './data/repositories/lightrag/lightrag.client';
+import { LightragHttpClient } from './data/repositories/lightrag/lightragHttp.client';
 
 @Module({
-  imports: [ConfigModule, PrismaModule],
+  imports: [ConfigModule, PrismaModule, AwsModule],
   controllers: [ReinsController],
   providers: [
     ReinsMapper,
-    { provide: IReinsGateway, useClass: ReinsGateway },
-    {
-      provide: MinioFileLoader,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
-        new MinioFileLoader({
-          endpoint: config.get<string>(
-            'MINIO_ENDPOINT',
-            'http://localhost:9000',
-          ),
-          region: config.get<string>('MINIO_REGION', 'us-east-1'),
-          accessKeyId: config.get<string>('MINIO_ACCESS_KEY', 'minioadmin'),
-          secretAccessKey: config.get<string>('MINIO_SECRET_KEY', 'minioadmin'),
-          bucket: config.get<string>(
-            'MINIO_REINS_BUCKET',
-            'ranch-reins-sources',
-          ),
-        }),
-    },
     {
       provide: ILightragClient,
       inject: [ConfigService],
@@ -47,14 +30,30 @@ import { MinioFileLoader } from './data/minio.fileLoader';
         }),
     },
     {
-      provide: ReinsService,
-      inject: [IReinsGateway, ILightragClient, MinioFileLoader],
+      provide: IReinsGateway,
+      inject: [
+        PrismaService,
+        ReinsMapper,
+        ILightragClient,
+        S3Repository,
+        ConfigService,
+      ],
       useFactory: (
-        gateway: IReinsGateway,
-        client: ILightragClient,
-        loader: MinioFileLoader,
-      ) => new ReinsService(gateway, client, loader),
+        prisma: PrismaService,
+        mapper: ReinsMapper,
+        lightrag: ILightragClient,
+        s3: S3Repository,
+        config: ConfigService,
+      ) =>
+        new ReinsGateway(
+          prisma,
+          mapper,
+          lightrag,
+          s3,
+          config.get<string>('REINS_S3_BUCKET', 'ranch-reins-sources'),
+        ),
     },
+    ReinsService,
   ],
   exports: [ReinsService],
 })

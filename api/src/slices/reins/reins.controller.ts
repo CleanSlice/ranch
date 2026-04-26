@@ -11,7 +11,6 @@ import {
   UploadedFile,
   UseInterceptors,
   BadRequestException,
-  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
@@ -22,7 +21,6 @@ import {
   QueryKnowledgeDto,
   CreateSourceDto,
 } from './dtos';
-import { MinioFileLoader } from './data/minio.fileLoader';
 
 interface UploadedFileLike {
   originalname: string;
@@ -34,10 +32,7 @@ interface UploadedFileLike {
 @ApiTags('reins')
 @Controller('knowledges')
 export class ReinsController {
-  constructor(
-    private readonly service: ReinsService,
-    private readonly minio: MinioFileLoader,
-  ) {}
+  constructor(private readonly service: ReinsService) {}
 
   @Get()
   @ApiOperation({ summary: 'List knowledges', operationId: 'getKnowledges' })
@@ -47,7 +42,7 @@ export class ReinsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get one knowledge', operationId: 'getKnowledge' })
-  async getOne(@Param('id') id: string) {
+  getOne(@Param('id') id: string) {
     return this.service.getKnowledge(id);
   }
 
@@ -86,7 +81,7 @@ export class ReinsController {
     summary: 'Query knowledge',
     operationId: 'getKnowledgeRecords',
   })
-  async query(@Param('id') id: string, @Query() dto: QueryKnowledgeDto) {
+  query(@Param('id') id: string, @Query() dto: QueryKnowledgeDto) {
     return this.service.query(id, dto.query, dto.mode, dto.topK);
   }
 
@@ -106,51 +101,39 @@ export class ReinsController {
   })
   @ApiConsumes('multipart/form-data', 'application/json')
   @UseInterceptors(FileInterceptor('file'))
-  async addSource(
+  addSource(
     @Param('id') id: string,
     @Body() dto: CreateSourceDto,
     @UploadedFile() file?: UploadedFileLike,
   ) {
-    await this.service.getKnowledge(id);
-
     if (dto.type === 'file') {
-      if (!file)
+      if (!file) {
         throw new BadRequestException('file is required when type=file');
-      const key = `${id}/${crypto.randomUUID()}-${file.originalname}`;
-      const url = await this.minio.upload(key, file.buffer, file.mimetype);
-      return this.service.addSource({
-        knowledgeId: id,
-        type: 'file',
+      }
+      return this.service.addFileSource(id, {
         name: file.originalname,
-        url,
+        buffer: file.buffer,
         mimeType: file.mimetype,
-        sizeBytes: file.size,
+        size: file.size,
       });
     }
-
     if (dto.type === 'url') {
-      if (!dto.url)
+      if (!dto.url) {
         throw new BadRequestException('url is required when type=url');
-      return this.service.addSource({
-        knowledgeId: id,
-        type: 'url',
-        name: dto.name,
-        url: dto.url,
-      });
+      }
+      return this.service.addUrlSource(id, { name: dto.name, url: dto.url });
     }
-
     if (dto.type === 'text') {
-      if (!dto.content)
+      if (!dto.content) {
         throw new BadRequestException('content is required when type=text');
-      return this.service.addSource({
-        knowledgeId: id,
-        type: 'text',
+      }
+      return this.service.addTextSource(id, {
         name: dto.name,
         content: dto.content,
       });
     }
-
-    throw new BadRequestException(`Unknown source type: ${dto.type as string}`);
+    const exhaustive: never = dto.type;
+    throw new BadRequestException(`Unknown source type: ${String(exhaustive)}`);
   }
 
   @Delete(':id/sources/:sourceId')
@@ -160,16 +143,9 @@ export class ReinsController {
   })
   @HttpCode(204)
   async removeSource(
-    @Param('id') id: string,
+    @Param('id') _knowledgeId: string,
     @Param('sourceId') sourceId: string,
   ) {
-    const source = await this.service
-      .listSources(id)
-      .then((list) => list.find((s) => s.id === sourceId));
-    if (!source) throw new NotFoundException(`Source ${sourceId} not found`);
-    if (source.url && source.type === 'file') {
-      await this.minio.delete(source.url);
-    }
     await this.service.deleteSource(sourceId);
   }
 }

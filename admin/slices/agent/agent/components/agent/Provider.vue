@@ -83,6 +83,8 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'AWS_REGION', value: settingValue('aws_region', 'us-east-1') },
     { name: 'AWS_ACCESS_KEY_ID', value: settingValue('aws_access_key_id') },
     { name: 'AWS_SECRET_ACCESS_KEY', value: settingValue('aws_secret_access_key') },
+    { name: 'SECRET_PROVIDER', value: settingValue('secret_provider', 'file') },
+    { name: 'AWS_SECRET_PREFIX', value: settingValue('aws_secret_prefix', 'cleanslice/users') },
   ];
 });
 
@@ -154,7 +156,29 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (logsTimer) clearInterval(logsTimer);
+  if (statusTimer) clearInterval(statusTimer);
 });
+
+// ── Status polling while deploying ──────────────────────────────────────
+// Backend syncStatus runs on each fetchById; refreshing pulls the latest
+// workflow phase. Stop as soon as the agent reaches a terminal state.
+let statusTimer: ReturnType<typeof setInterval> | null = null;
+const POLL_STATUSES: ReadonlySet<AgentStatusTypes> = new Set(['pending', 'deploying']);
+
+watch(
+  () => agent.value?.status,
+  (status) => {
+    if (status && POLL_STATUSES.has(status)) {
+      if (!statusTimer) statusTimer = setInterval(refresh, 5000);
+    } else if (statusTimer) {
+      clearInterval(statusTimer);
+      statusTimer = null;
+    }
+  },
+  { immediate: true },
+);
+
+const confirmRemoveOpen = ref(false);
 
 async function onRemove() {
   if (!agent.value) return;
@@ -182,9 +206,17 @@ async function onRemove() {
             <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
           </Button>
           <Button variant="outline" @click="onRestart">Restart</Button>
-          <Button variant="ghost" class="text-destructive" @click="onRemove">Delete</Button>
+          <Button variant="ghost" class="text-destructive" @click="confirmRemoveOpen = true">Delete</Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        v-model:open="confirmRemoveOpen"
+        title="Delete agent"
+        :description="`Permanently delete agent “${agent.name}”? This cannot be undone.`"
+        confirm-label="Delete agent"
+        @confirm="onRemove"
+      />
 
       <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(380px,480px)]">
         <div class="flex flex-col gap-6">
@@ -273,6 +305,20 @@ async function onRemove() {
                   <dd class="mt-1 text-sm">{{ formatDate(agent.updatedAt) }}</dd>
                 </div>
               </dl>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Files</CardTitle>
+              <CardDescription>
+                Agent data stored in S3 (<code>agents/{{ agent.id }}/</code>).
+                <code>.md</code> and <code>.json</code> files can be edited;
+                changes apply on next agent restart.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AgentFileProvider :id="agent.id" />
             </CardContent>
           </Card>
 

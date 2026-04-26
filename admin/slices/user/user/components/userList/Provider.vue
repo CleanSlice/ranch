@@ -36,7 +36,18 @@ const initials = (name: string) =>
     .join('')
     .toUpperCase();
 
-async function onRemove(user: IUserData) {
+const pendingRemoval = ref<IUserData | null>(null);
+const confirmRemoveOpen = computed({
+  get: () => pendingRemoval.value !== null,
+  set: (v: boolean) => {
+    if (!v) pendingRemoval.value = null;
+  },
+});
+
+async function onRemove() {
+  const user = pendingRemoval.value;
+  if (!user) return;
+  pendingRemoval.value = null;
   await userStore.remove(user.id);
   await refresh();
 }
@@ -102,7 +113,7 @@ async function onRemove(user: IUserData) {
                   variant="ghost"
                   class="text-destructive"
                   :disabled="user.role === 'owner'"
-                  @click="onRemove(user)"
+                  @click="pendingRemoval = user"
                 >
                   Remove
                 </Button>
@@ -116,5 +127,13 @@ async function onRemove(user: IUserData) {
     <div v-else class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
       No users.
     </div>
+
+    <ConfirmDialog
+      v-model:open="confirmRemoveOpen"
+      title="Remove user"
+      :description="pendingRemoval ? `Permanently remove ${pendingRemoval.name} (${pendingRemoval.email})? They will lose all access immediately.` : ''"
+      confirm-label="Remove user"
+      @confirm="onRemove"
+    />
   </div>
 </template>

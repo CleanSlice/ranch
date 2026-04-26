@@ -19,14 +19,16 @@ const pageTitle = computed(() => {
   <SidebarProvider>
     <LayoutSidebar />
     <SidebarInset>
-      <header class="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+      <header
+        class="flex h-14 shrink-0 items-center gap-2 border-b px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12"
+      >
         <SidebarTrigger class="-ml-1" />
         <Separator orientation="vertical" class="mx-2 h-4" />
         <h1 class="text-sm font-medium">{{ pageTitle }}</h1>
       </header>
-      <main class="flex-1 p-6">
+      <div class="flex flex-1 flex-col gap-4 p-6 min-w-0 overflow-x-auto">
         <slot />
-      </main>
+      </div>
     </SidebarInset>
   </SidebarProvider>
 </template>

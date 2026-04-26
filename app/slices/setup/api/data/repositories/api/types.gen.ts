@@ -83,6 +83,13 @@ export type UpdateAgentDto = {
     resources?: AgentResourcesDto;
 };
 
+export type SaveFileDto = {
+    /**
+     * Full file content as text
+     */
+    content: string;
+};
+
 export type CreateUserDto = {
     name: string;
     email: string;
@@ -192,6 +199,55 @@ export type CreateSourceDto = {
     name: string;
     url?: string;
     content?: string;
+};
+
+export type ImportSkillUrlDto = {
+    /**
+     * GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.
+     */
+    url: string;
+    name?: string;
+};
+
+export type ImportSkillDto = {
+    /**
+     * GitHub owner/repo as returned by /skills/search
+     */
+    repo: string;
+    /**
+     * Path to the SKILL.md file inside the repo
+     */
+    path: string;
+    /**
+     * Override the auto-derived slug. Lowercase letters, digits and dashes.
+     */
+    name?: string;
+};
+
+export type CreateSkillDto = {
+    /**
+     * Unique slug — lowercase letters, digits, dashes
+     */
+    name: string;
+    title: string;
+    /**
+     * Markdown body of the skill
+     */
+    body: string;
+    description?: string;
+};
+
+export type UpdateSkillDto = {
+    /**
+     * Unique slug — lowercase letters, digits, dashes
+     */
+    name?: string;
+    title?: string;
+    /**
+     * Markdown body of the skill
+     */
+    body?: string;
+    description?: string;
 };
 
 export type HealthControllerCheckData = {
@@ -487,6 +543,49 @@ export type AgentControllerRestartData = {
 
 export type AgentControllerRestartResponses = {
     201: unknown;
+};
+
+export type FileControllerListData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/agents/{agentId}/files';
+};
+
+export type FileControllerListResponses = {
+    200: unknown;
+};
+
+export type FileControllerReadData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query: {
+        path: string;
+    };
+    url: '/agents/{agentId}/files/content';
+};
+
+export type FileControllerReadResponses = {
+    200: unknown;
+};
+
+export type FileControllerSaveData = {
+    body: SaveFileDto;
+    path: {
+        agentId: string;
+    };
+    query: {
+        path: string;
+    };
+    url: '/agents/{agentId}/files/content';
+};
+
+export type FileControllerSaveResponses = {
+    200: unknown;
 };
 
 export type LogControllerGetLogsData = {
@@ -806,6 +905,113 @@ export type DeleteKnowledgeSourceResponses = {
 };
 
 export type DeleteKnowledgeSourceResponse = DeleteKnowledgeSourceResponses[keyof DeleteKnowledgeSourceResponses];
+
+export type SkillControllerFindAllData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/skills';
+};
+
+export type SkillControllerFindAllResponses = {
+    200: unknown;
+};
+
+export type SkillControllerCreateData = {
+    body: CreateSkillDto;
+    path?: never;
+    query?: never;
+    url: '/skills';
+};
+
+export type SkillControllerCreateResponses = {
+    201: unknown;
+};
+
+export type SkillControllerListSourcesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/skills/sources';
+};
+
+export type SkillControllerListSourcesResponses = {
+    200: unknown;
+};
+
+export type SkillControllerSearchData = {
+    body?: never;
+    path?: never;
+    query: {
+        q: string;
+    };
+    url: '/skills/search';
+};
+
+export type SkillControllerSearchResponses = {
+    200: unknown;
+};
+
+export type SkillControllerImportFromUrlData = {
+    body: ImportSkillUrlDto;
+    path?: never;
+    query?: never;
+    url: '/skills/import-url';
+};
+
+export type SkillControllerImportFromUrlResponses = {
+    201: unknown;
+};
+
+export type SkillControllerImportFromGithubData = {
+    body: ImportSkillDto;
+    path?: never;
+    query?: never;
+    url: '/skills/import';
+};
+
+export type SkillControllerImportFromGithubResponses = {
+    201: unknown;
+};
+
+export type SkillControllerRemoveData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/skills/{id}';
+};
+
+export type SkillControllerRemoveResponses = {
+    200: unknown;
+};
+
+export type SkillControllerFindByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/skills/{id}';
+};
+
+export type SkillControllerFindByIdResponses = {
+    200: unknown;
+};
+
+export type SkillControllerUpdateData = {
+    body: UpdateSkillDto;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/skills/{id}';
+};
+
+export type SkillControllerUpdateResponses = {
+    200: unknown;
+};
 
 export type ClientOptions = {
     baseURL: string;

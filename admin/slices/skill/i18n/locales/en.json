@@ -1,0 +1,13 @@
+{
+  "skills": "Skills",
+  "add_skill": "Add skill",
+  "name": "Name",
+  "title": "Title",
+  "description": "Description",
+  "body": "Body",
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "confirm_delete": "Delete this skill?",
+  "empty": "No skills yet. Add one to make it available to your templates."
+}

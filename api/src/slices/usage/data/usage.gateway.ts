@@ -27,27 +27,10 @@ export class UsageGateway extends IUsageGateway {
       Object.entries(data.byModel).map(([model, entry]) =>
         this.prisma.usage.upsert({
           where: {
-            agentId_model_date: {
-              agentId,
-              model,
-              date,
-            },
+            agentId_model_date: { agentId, model, date },
           },
-          create: {
-            agentId,
-            model,
-            date,
-            llmCredentialId: entry.llmCredentialId ?? null,
-            inputTokens: entry.inputTokens,
-            outputTokens: entry.outputTokens,
-            callCount: entry.callCount,
-          },
-          update: {
-            llmCredentialId: entry.llmCredentialId ?? null,
-            inputTokens: entry.inputTokens,
-            outputTokens: entry.outputTokens,
-            callCount: entry.callCount,
-          },
+          create: this.mapper.toCreate({ agentId, model, date, entry }),
+          update: this.mapper.toUpdate(entry),
         }),
       ),
     );

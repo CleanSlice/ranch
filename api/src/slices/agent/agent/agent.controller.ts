@@ -16,6 +16,7 @@ import { CreateAgentDto, UpdateAgentDto } from './dtos';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
 import { IWorkflowStatus } from '#/workflow/domain/workflow.types';
 import { ITemplateGateway } from '#/agent/template/domain';
+import { IPodGateway } from '#/agent/pod/domain';
 
 // Workflow only runs until the agent pod is Running (successCondition), then finishes.
 // So Succeeded means "deploy succeeded, pod is live" — map to running, not stopped.
@@ -36,6 +37,7 @@ export class AgentController {
     private agentGateway: IAgentGateway,
     private templateGateway: ITemplateGateway,
     private workflowService: WorkflowService,
+    private podGateway: IPodGateway,
   ) {}
 
   private async deploy(agentId: string) {
@@ -140,6 +142,11 @@ export class AgentController {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
 
+    // Delete the DB row first so the UI clears immediately. Argo/k8s can be
+    // slow or flaky — we don't want a workflow/pod cleanup hiccup to leave
+    // the agent stuck in the list.
+    await this.agentGateway.delete(id);
+
     if (agent.workflowId) {
       try {
         await this.workflowService.cancelAgentWorkflow(agent.workflowId);
@@ -149,6 +156,13 @@ export class AgentController {
         );
       }
     }
-    await this.agentGateway.delete(id);
+
+    try {
+      await this.podGateway.delete(id);
+    } catch (err) {
+      this.logger.warn(
+        `Pod cleanup failed for agent ${id}: ${(err as Error).message}`,
+      );
+    }
   }
 }

@@ -118,6 +118,27 @@ const SECTIONS: { title: string; description?: string; fields: IFieldDef[] }[] =
       },
     ],
   },
+  {
+    title: 'Agent secret storage',
+    description:
+      'Where agents persist user-scoped secrets at runtime. "file" stores them as JSON in the agent pod (dev only); "aws" stores them in AWS Secrets Manager under the configured prefix and reuses the AWS credentials above.',
+    fields: [
+      {
+        group: 'integrations',
+        name: 'secret_provider',
+        label: 'Secret provider',
+        placeholder: 'file or aws',
+      },
+      {
+        group: 'integrations',
+        name: 'aws_secret_prefix',
+        label: 'AWS Secrets Manager prefix',
+        placeholder: 'cleanslice/users',
+        description:
+          'No trailing "/" — runtime appends it. e.g. "ranch-dreamvention" → secret name "ranch-dreamvention/<userId>".',
+      },
+    ],
+  },
 ];
 
 const settingStore = useSettingStore();
@@ -186,7 +207,8 @@ async function onSave() {
             :placeholder="field.placeholder"
             :autocomplete="field.type === 'password' ? 'off' : undefined"
           />
-          <p class="text-xs text-muted-foreground">{{ field.group }}/{{ field.name }}</p>
+          <p v-if="field.description" class="text-xs text-muted-foreground">{{ field.description }}</p>
+          <p class="text-xs text-muted-foreground/70">{{ field.group }}/{{ field.name }}</p>
         </div>
       </CardContent>
     </Card>

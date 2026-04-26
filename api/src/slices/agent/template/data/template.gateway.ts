@@ -32,17 +32,7 @@ export class TemplateGateway extends ITemplateGateway {
 
   async create(data: ICreateTemplateData): Promise<ITemplateData> {
     const record = await this.prisma.template.create({
-      data: {
-        name: data.name,
-        description: data.description,
-        image: data.image,
-        defaultConfig: (data.defaultConfig ??
-          {}) as unknown as Prisma.InputJsonValue,
-        defaultResources: (data.defaultResources ?? {
-          cpu: '500m',
-          memory: '512Mi',
-        }) as unknown as Prisma.InputJsonValue,
-      },
+      data: this.mapper.toCreate(data),
     });
     return this.mapper.toEntity(record);
   }

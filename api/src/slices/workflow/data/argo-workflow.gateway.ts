@@ -17,6 +17,8 @@ const DEFAULTS = {
   aws_region: 'us-east-1',
   aws_access_key_id: '',
   aws_secret_access_key: '',
+  secret_provider: 'file',
+  aws_secret_prefix: 'cleanslice/users',
 };
 
 @Injectable()
@@ -50,6 +52,8 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       awsRegion,
       awsAccessKeyId,
       awsSecretAccessKey,
+      secretProvider,
+      awsSecretPrefix,
     ] = await Promise.all([
       this.getIntegration('bridle_url'),
       this.getIntegration('bridle_api_key'),
@@ -58,6 +62,8 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       this.getIntegration('aws_region'),
       this.getIntegration('aws_access_key_id'),
       this.getIntegration('aws_secret_access_key'),
+      this.getIntegration('secret_provider'),
+      this.getIntegration('aws_secret_prefix'),
     ]);
     const s3Prefix = s3Bucket ? `agents/${data.agentId}` : '';
 
@@ -108,6 +114,8 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'aws-region', value: awsRegion },
             { name: 'aws-access-key-id', value: awsAccessKeyId },
             { name: 'aws-secret-access-key', value: awsSecretAccessKey },
+            { name: 'secret-provider', value: secretProvider },
+            { name: 'aws-secret-prefix', value: awsSecretPrefix },
             ...llmParams,
           ],
         },

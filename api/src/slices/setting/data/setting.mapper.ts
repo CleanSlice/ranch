@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Setting } from '@prisma/client';
-import { ISettingData, SettingValueTypes } from '../domain';
+import {
+  ISettingData,
+  IUpsertSettingData,
+  SettingValueTypes,
+} from '../domain';
 
 @Injectable()
 export class SettingMapper {
@@ -13,6 +17,23 @@ export class SettingMapper {
       valueType,
       value: this.decode(valueType, record.value),
       updatedAt: record.updatedAt,
+    };
+  }
+
+  toCreate(group: string, name: string, data: IUpsertSettingData) {
+    return {
+      id: `setting-${crypto.randomUUID()}`,
+      group,
+      name,
+      valueType: data.valueType,
+      value: this.encode(data.valueType, data.value),
+    };
+  }
+
+  toUpdate(data: IUpsertSettingData) {
+    return {
+      valueType: data.valueType,
+      value: this.encode(data.valueType, data.value),
     };
   }
 

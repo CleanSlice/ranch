@@ -21,6 +21,8 @@ const { data: template, pending, refresh } = await useAsyncData(
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
+const confirmRemoveOpen = ref(false);
+
 async function onRemove() {
   if (!template.value) return;
   await templateStore.remove(template.value.id);
@@ -46,9 +48,17 @@ async function onRemove() {
           <Button variant="outline" as-child>
             <NuxtLink :to="`/templates/${template.id}/edit`">Edit</NuxtLink>
           </Button>
-          <Button variant="ghost" class="text-destructive" @click="onRemove">Delete</Button>
+          <Button variant="ghost" class="text-destructive" @click="confirmRemoveOpen = true">Delete</Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        v-model:open="confirmRemoveOpen"
+        title="Delete template"
+        :description="`Permanently delete template “${template.name}”? Existing agents using it will keep running, but you can no longer create new ones from it.`"
+        confirm-label="Delete template"
+        @confirm="onRemove"
+      />
 
       <Card>
         <CardHeader>

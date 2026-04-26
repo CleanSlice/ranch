@@ -9,6 +9,7 @@ import { InitModule } from './slices/setup/init/init.module';
 // Feature slices
 import { AgentModule } from './slices/agent/agent/agent.module';
 import { TemplateModule } from './slices/agent/template/template.module';
+import { FileModule } from './slices/agent/file/file.module';
 import { WorkflowModule } from './slices/workflow/workflow.module';
 import { LogModule } from './slices/log/log.module';
 import { UserModule } from './slices/user/user/user.module';
@@ -18,6 +19,7 @@ import { BridleModule } from './slices/bridle/bridle.module';
 import { LlmModule } from './slices/llm/llm.module';
 import { UsageModule } from './slices/usage/usage.module';
 import { ReinsModule } from './slices/reins/reins.module';
+import { SkillModule } from './slices/skill/skill.module';
 
 @Module({
   imports: [
@@ -35,6 +37,7 @@ import { ReinsModule } from './slices/reins/reins.module';
     WorkflowModule,
     TemplateModule,
     AgentModule,
+    FileModule,
     LogModule,
     UserModule,
     AuthModule,
@@ -43,6 +46,7 @@ import { ReinsModule } from './slices/reins/reins.module';
     LlmModule,
     UsageModule,
     ReinsModule,
+    SkillModule,
   ],
 })
 export class AppModule {}

@@ -33,14 +33,9 @@ export class UserGateway extends IUserGateway {
   }
 
   async create(data: ICreateUserData): Promise<IUserData> {
+    const password = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
     const record = await this.prisma.user.create({
-      data: {
-        name: data.name,
-        email: data.email.toLowerCase(),
-        password: await bcrypt.hash(data.password, BCRYPT_ROUNDS),
-        role: data.role ?? 'member',
-        status: 'invited',
-      },
+      data: this.mapper.toCreate({ ...data, password }),
     });
     return this.mapper.toEntity(record);
   }

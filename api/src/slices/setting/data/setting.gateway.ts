@@ -40,11 +40,10 @@ export class SettingGateway extends ISettingGateway {
     name: string,
     data: IUpsertSettingData,
   ): Promise<ISettingData> {
-    const stored = this.mapper.encode(data.valueType, data.value);
     const record = await this.prisma.setting.upsert({
       where: { group_name: { group, name } },
-      create: { group, name, valueType: data.valueType, value: stored },
-      update: { valueType: data.valueType, value: stored },
+      create: this.mapper.toCreate(group, name, data),
+      update: this.mapper.toUpdate(data),
     });
     return this.mapper.toEntity(record);
   }

@@ -156,7 +156,27 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (logsTimer) clearInterval(logsTimer);
+  if (statusTimer) clearInterval(statusTimer);
 });
+
+// ── Status polling while deploying ──────────────────────────────────────
+// Backend syncStatus runs on each fetchById; refreshing pulls the latest
+// workflow phase. Stop as soon as the agent reaches a terminal state.
+let statusTimer: ReturnType<typeof setInterval> | null = null;
+const POLL_STATUSES: ReadonlySet<AgentStatusTypes> = new Set(['pending', 'deploying']);
+
+watch(
+  () => agent.value?.status,
+  (status) => {
+    if (status && POLL_STATUSES.has(status)) {
+      if (!statusTimer) statusTimer = setInterval(refresh, 5000);
+    } else if (statusTimer) {
+      clearInterval(statusTimer);
+      statusTimer = null;
+    }
+  },
+  { immediate: true },
+);
 
 const confirmRemoveOpen = ref(false);
 

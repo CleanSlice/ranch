@@ -1,8 +1,4 @@
-import {
-  ISkillData,
-  ICreateSkillData,
-  IUpdateSkillData,
-} from './skill.types';
+import { ISkillData, ICreateSkillData, IUpdateSkillData } from './skill.types';
 
 export abstract class ISkillGateway {
   abstract findAll(): Promise<ISkillData[]>;

@@ -1,4 +1,11 @@
-import { Controller, Get, Param, NotFoundException, Query, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  NotFoundException,
+  Query,
+  Logger,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CoreV1Api, KubeConfig } from '@kubernetes/client-node';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -82,8 +89,13 @@ export class LogController {
 
   private extractKubeError(err: unknown): string {
     if (!err || typeof err !== 'object') return String(err);
-    const e = err as { body?: { message?: string }; statusCode?: number; message?: string };
-    if (e.body?.message) return `${e.statusCode ?? ''} ${e.body.message}`.trim();
+    const e = err as {
+      body?: { message?: string };
+      statusCode?: number;
+      message?: string;
+    };
+    if (e.body?.message)
+      return `${e.statusCode ?? ''} ${e.body.message}`.trim();
     return e.message ?? JSON.stringify(e).slice(0, 200);
   }
 }

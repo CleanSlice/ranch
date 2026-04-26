@@ -88,9 +88,7 @@ function isAsyncIterableOfBytes(
   value: unknown,
 ): value is AsyncIterable<Uint8Array> {
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    Symbol.asyncIterator in value
+    typeof value === 'object' && value !== null && Symbol.asyncIterator in value
   );
 }
 

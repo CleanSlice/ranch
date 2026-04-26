@@ -14,7 +14,9 @@ export class CreateLlmCredentialDto {
 
   @ApiProperty()
   @IsString()
-  @Transform(({ value }) => (typeof value === 'string' ? normalizeCredential(value) : value))
+  @Transform(({ value }) =>
+    typeof value === 'string' ? normalizeCredential(value) : value,
+  )
   apiKey: string;
 
   @ApiPropertyOptional({ example: 'claude-haiku-4-5' })

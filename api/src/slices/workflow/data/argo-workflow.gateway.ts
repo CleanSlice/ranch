@@ -79,7 +79,10 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
         name: 'llm-fallback-model',
         value: credential?.fallbackModel ?? credential?.model ?? '',
       },
-      { name: 'llm-api-key', value: credential?.apiKey ? normalizeCredential(credential.apiKey) : '' },
+      {
+        name: 'llm-api-key',
+        value: credential?.apiKey ? normalizeCredential(credential.apiKey) : '',
+      },
     ];
 
     const workflow = {

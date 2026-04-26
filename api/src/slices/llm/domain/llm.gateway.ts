@@ -8,9 +8,7 @@ export abstract class ILlmGateway {
   abstract findAll(): Promise<ILlmCredentialData[]>;
   abstract findActive(): Promise<ILlmCredentialData[]>;
   abstract findById(id: string): Promise<ILlmCredentialData | null>;
-  abstract create(
-    data: ICreateLlmCredentialData,
-  ): Promise<ILlmCredentialData>;
+  abstract create(data: ICreateLlmCredentialData): Promise<ILlmCredentialData>;
   abstract update(
     id: string,
     data: IUpdateLlmCredentialData,

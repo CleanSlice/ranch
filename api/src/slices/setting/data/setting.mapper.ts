@@ -1,10 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Setting } from '@prisma/client';
-import {
-  ISettingData,
-  IUpsertSettingData,
-  SettingValueTypes,
-} from '../domain';
+import { ISettingData, IUpsertSettingData, SettingValueTypes } from '../domain';
 
 @Injectable()
 export class SettingMapper {

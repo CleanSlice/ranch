@@ -48,9 +48,13 @@ export class SkillController {
   }
 
   @Post('import-url')
-  @ApiOperation({ summary: 'Import a skill from any GitHub URL (folder or SKILL.md)' })
+  @ApiOperation({
+    summary: 'Import a skill from any GitHub URL (folder or SKILL.md)',
+  })
   async importFromUrl(@Body() dto: ImportSkillUrlDto) {
-    const { repo, skillPath, bundle } = await this.github.fetchBundleFromUrl(dto.url);
+    const { repo, skillPath, bundle } = await this.github.fetchBundleFromUrl(
+      dto.url,
+    );
     const slug = dto.name ?? deriveSlug(skillPath);
     const existing = await this.gateway.findAll();
     if (existing.some((s) => s.name === slug)) {

@@ -10,10 +10,7 @@ import {
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { IUsageGateway } from './domain';
 import { costUsd } from './domain/model-pricing';
-import {
-  IAgentUsageResponse,
-  IUsageDailyEntry,
-} from './domain/usage.types';
+import { IAgentUsageResponse, IUsageDailyEntry } from './domain/usage.types';
 import { ReportUsageDto } from './dtos';
 import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
 

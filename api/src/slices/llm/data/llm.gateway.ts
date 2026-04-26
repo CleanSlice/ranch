@@ -39,9 +39,7 @@ export class LlmGateway extends ILlmGateway {
     return record ? this.mapper.toEntity(record) : null;
   }
 
-  async create(
-    data: ICreateLlmCredentialData,
-  ): Promise<ILlmCredentialData> {
+  async create(data: ICreateLlmCredentialData): Promise<ILlmCredentialData> {
     const record = await this.prisma.llmCredential.create({
       data: this.mapper.toCreate(data),
     });

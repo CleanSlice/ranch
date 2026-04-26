@@ -19,7 +19,10 @@ export class SkillSearchResultDto {
   @ApiPropertyOptional()
   description: string | null;
 
-  @ApiProperty({ example: 'https://github.com/anthropics/skills/blob/main/pdf-skill/SKILL.md' })
+  @ApiProperty({
+    example:
+      'https://github.com/anthropics/skills/blob/main/pdf-skill/SKILL.md',
+  })
   url: string;
 
   @ApiPropertyOptional()

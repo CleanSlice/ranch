@@ -50,8 +50,13 @@ export class KubePodGateway extends IPodGateway {
 
   private extractKubeError(err: unknown): string {
     if (!err || typeof err !== 'object') return String(err);
-    const e = err as { body?: { message?: string }; statusCode?: number; message?: string };
-    if (e.body?.message) return `${e.statusCode ?? ''} ${e.body.message}`.trim();
+    const e = err as {
+      body?: { message?: string };
+      statusCode?: number;
+      message?: string;
+    };
+    if (e.body?.message)
+      return `${e.statusCode ?? ''} ${e.body.message}`.trim();
     return e.message ?? JSON.stringify(e).slice(0, 200);
   }
 }

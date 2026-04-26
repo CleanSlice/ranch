@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   S3Client,
   ListObjectsV2Command,
@@ -43,7 +47,9 @@ export class S3FileGateway extends IFileGateway {
           updatedAt: obj.LastModified ?? new Date(0),
         });
       }
-      continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+      continuationToken = res.IsTruncated
+        ? res.NextContinuationToken
+        : undefined;
     } while (continuationToken);
 
     return out.sort((a, b) => a.path.localeCompare(b.path));
@@ -124,7 +130,8 @@ export class S3FileGateway extends IFileGateway {
 
   private assertSafePath(path: string): void {
     if (!path) throw new BadRequestException('Path is required');
-    if (path.startsWith('/')) throw new BadRequestException('Path must be relative');
+    if (path.startsWith('/'))
+      throw new BadRequestException('Path must be relative');
     if (path.includes('\0')) throw new BadRequestException('Invalid path');
     const segments = path.split('/');
     if (segments.some((s) => s === '..' || s === '.')) {
@@ -162,13 +169,14 @@ export class S3FileGateway extends IFileGateway {
       return typeof value === 'string' ? value : '';
     };
 
-    const [bucket, region, accessKeyId, secretAccessKey, endpoint] = await Promise.all([
-      get('s3_bucket'),
-      get('aws_region'),
-      get('aws_access_key_id'),
-      get('aws_secret_access_key'),
-      get('s3_endpoint'),
-    ]);
+    const [bucket, region, accessKeyId, secretAccessKey, endpoint] =
+      await Promise.all([
+        get('s3_bucket'),
+        get('aws_region'),
+        get('aws_access_key_id'),
+        get('aws_secret_access_key'),
+        get('s3_endpoint'),
+      ]);
 
     if (!bucket) {
       throw new BadRequestException(

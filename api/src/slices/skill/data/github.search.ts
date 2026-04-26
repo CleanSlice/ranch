@@ -25,7 +25,10 @@ const SOURCES: { repo: string; label: string }[] = [
   { repo: 'coreyhaines31/marketingskills', label: 'Marketing (Haines)' },
   { repo: 'kostja94/marketing-skills', label: 'Marketing (Kostja)' },
   { repo: 'superamped/ai-marketing-skills', label: 'Marketing (Superamped)' },
-  { repo: 'zubair-trabzada/ai-marketing-claude', label: 'Marketing (Trabzada)' },
+  {
+    repo: 'zubair-trabzada/ai-marketing-claude',
+    label: 'Marketing (Trabzada)',
+  },
   { repo: 'alirezarezvani/claude-skills', label: 'Claude Skills (mixed)' },
 ];
 
@@ -53,7 +56,9 @@ export class GithubSearch {
 
     const requests = SOURCES.map((s) =>
       this.searchOne(s.repo, trimmed, token).catch((err) => {
-        this.logger.warn(`search failed for ${s.repo}: ${(err as Error).message}`);
+        this.logger.warn(
+          `search failed for ${s.repo}: ${(err as Error).message}`,
+        );
         return [] as ISkillSearchHit[];
       }),
     );
@@ -174,7 +179,9 @@ export class GithubSearch {
     const fetchedAll = await Promise.all(
       blobs.map(async (b) => {
         if ((b.size ?? 0) > MAX_FILE_BYTES) {
-          this.logger.debug(`skip ${b.path} — ${b.size} bytes > ${MAX_FILE_BYTES}`);
+          this.logger.debug(
+            `skip ${b.path} — ${b.size} bytes > ${MAX_FILE_BYTES}`,
+          );
           return null;
         }
         if (!isLikelyText(b.path)) return null;
@@ -189,7 +196,9 @@ export class GithubSearch {
         return { path: b.path, content: await raw.text() };
       }),
     );
-    const fetched = fetchedAll.filter((x): x is { path: string; content: string } => x !== null);
+    const fetched = fetchedAll.filter(
+      (x): x is { path: string; content: string } => x !== null,
+    );
 
     const skillEntry = fetched.find((f) => f.path === skillPath);
     if (!skillEntry) {
@@ -198,7 +207,8 @@ export class GithubSearch {
     const meta = parseSkillMetadata(skillEntry.content, skillPath);
 
     // Strip the parent-dir prefix so files use paths relative to the skill root.
-    const stripPrefix = (p: string) => (dir === '' ? p : p.slice(dir.length + 1));
+    const stripPrefix = (p: string) =>
+      dir === '' ? p : p.slice(dir.length + 1);
     const siblings: ISkillFile[] = fetched
       .filter((f) => f.path !== skillPath)
       .map((f) => ({ path: stripPrefix(f.path), content: f.content }));
@@ -220,18 +230,23 @@ export class GithubSearch {
       `https://api.github.com/repos/${repo}/git/trees/${sha}?recursive=1`,
       { headers: githubHeaders(token) },
     );
-    if (!res.ok) throw new Error(`GitHub tree ${res.status} for ${repo}@${sha}`);
+    if (!res.ok)
+      throw new Error(`GitHub tree ${res.status} for ${repo}@${sha}`);
     return res.json() as Promise<{
       tree: { path: string; type: string; size?: number }[];
     }>;
   }
 
-  private async getHeadSha(repo: string, token: string | null): Promise<string> {
+  private async getHeadSha(
+    repo: string,
+    token: string | null,
+  ): Promise<string> {
     const res = await fetch(
       `https://api.github.com/repos/${repo}/commits/HEAD`,
       { headers: githubHeaders(token) },
     );
-    if (!res.ok) throw new Error(`GitHub commits/HEAD ${res.status} for ${repo}`);
+    if (!res.ok)
+      throw new Error(`GitHub commits/HEAD ${res.status} for ${repo}`);
     const data = (await res.json()) as { sha: string };
     return data.sha;
   }
@@ -266,7 +281,10 @@ export class GithubSearch {
   }
 }
 
-function githubHeaders(token: string | null, withTextMatches = false): Record<string, string> {
+function githubHeaders(
+  token: string | null,
+  withTextMatches = false,
+): Record<string, string> {
   const h: Record<string, string> = {
     Accept: withTextMatches
       ? 'application/vnd.github.text-match+json'
@@ -299,11 +317,14 @@ function guessSlug(path: string): string {
   const parts = path.split('/').filter(Boolean);
   const fname = parts.pop() ?? '';
   const parent = parts.pop();
-  const raw = parent && parent !== 'skills' ? parent : fname.replace(/\.md$/i, '');
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'skill';
+  const raw =
+    parent && parent !== 'skills' ? parent : fname.replace(/\.md$/i, '');
+  return (
+    raw
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'skill'
+  );
 }
 
 function humanize(slug: string): string {
@@ -367,9 +388,12 @@ function parentDir(path: string): string {
 function isLikelyText(path: string): boolean {
   // Permissive allowlist — anything markdown/code/config/data we'd plausibly
   // want a skill author to ship. Excludes binaries (images, archives, …).
-  return /\.(md|mdx|markdown|txt|rst|adoc|json|yaml|yml|toml|ini|cfg|conf|env|properties|html|xml|svg|csv|tsv|sql|sh|bash|zsh|py|rb|go|rs|java|kt|ts|tsx|js|jsx|mjs|cjs|c|h|cc|hh|cpp|hpp|cs|php|pl|swift|scala|lua|r|jl|tex|gitignore|editorconfig|prettierrc|eslintrc|dockerignore|dockerfile)$/i.test(
-    path,
-  ) || /^(Dockerfile|Makefile|README|LICENSE)/.test(path.split('/').pop() ?? '');
+  return (
+    /\.(md|mdx|markdown|txt|rst|adoc|json|yaml|yml|toml|ini|cfg|conf|env|properties|html|xml|svg|csv|tsv|sql|sh|bash|zsh|py|rb|go|rs|java|kt|ts|tsx|js|jsx|mjs|cjs|c|h|cc|hh|cpp|hpp|cs|php|pl|swift|scala|lua|r|jl|tex|gitignore|editorconfig|prettierrc|eslintrc|dockerignore|dockerfile)$/i.test(
+      path,
+    ) ||
+    /^(Dockerfile|Makefile|README|LICENSE)/.test(path.split('/').pop() ?? '')
+  );
 }
 
 function dedupe(hits: ISkillSearchHit[]): ISkillSearchHit[] {

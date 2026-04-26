@@ -36,11 +36,11 @@ export interface IUpdateSkillData {
 
 export interface ISkillSearchHit {
   /** Stable identifier for the result (used for import) */
-  source: string;            // e.g. "github:anthropics/skills"
-  repo: string;              // owner/repo
-  path: string;              // path to SKILL.md within repo
+  source: string; // e.g. "github:anthropics/skills"
+  repo: string; // owner/repo
+  path: string; // path to SKILL.md within repo
   /** Suggested skill metadata extracted from path/contents */
-  name: string;              // proposed slug
+  name: string; // proposed slug
   title: string;
   description: string | null;
   /** Permalink to view in browser */

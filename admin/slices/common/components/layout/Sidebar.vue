@@ -22,6 +22,7 @@ import {
   IconSparkles,
   IconSettings,
   IconLogout,
+  IconDatabase,
 } from '@tabler/icons-vue';
 
 const authStore = useAuthStore();
@@ -40,6 +41,7 @@ const iconMap: Record<string, unknown> = {
   Brain: IconBrain,
   Sparkles: IconSparkles,
   Settings: IconSettings,
+  Database: IconDatabase,
 };
 
 const groups = [

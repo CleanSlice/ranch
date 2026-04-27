@@ -46,7 +46,7 @@ async function onRemove(item: IKnowledge) {
   <div class="flex flex-col gap-6">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-semibold">Knowledge</h1>
+        <h1 class="text-2xl font-semibold">Knowledges</h1>
         <p class="text-sm text-muted-foreground">
           Knowledge bases backed by LightRAG. Create one, add sources, then index.
         </p>

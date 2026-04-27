@@ -75,11 +75,40 @@ export interface IIndexStatePatch {
   indexStartedAt?: Date | null;
 }
 
-export interface IKnowledgeQueryRecord {
-  pageContent: string;
-  metadata: {
-    title?: string;
-    source?: string;
-    sourceId?: string;
-  };
+export interface IKnowledgeQueryReference {
+  referenceId: string;
+  filePath: string;
+}
+
+export interface IKnowledgeQueryResult {
+  answer: string;
+  references: IKnowledgeQueryReference[];
+}
+
+export interface IGraphNodeData {
+  id: string;
+  label: string;
+  entityType: string;
+  description: string;
+}
+
+export interface IGraphEdgeData {
+  id: string;
+  source: string;
+  target: string;
+  weight: number;
+  keywords: string;
+  description: string;
+}
+
+export interface IGraphData {
+  nodes: IGraphNodeData[];
+  edges: IGraphEdgeData[];
+  isTruncated: boolean;
+}
+
+export interface IGetGraphParams {
+  label: string;
+  maxDepth?: number;
+  maxNodes?: number;
 }

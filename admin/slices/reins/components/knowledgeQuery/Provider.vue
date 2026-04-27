@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IQueryRecord } from '#reins/stores/knowledge';
+import type { IQueryResult } from '#reins/stores/knowledge';
 import { Button } from '#theme/components/ui/button';
 import { Input } from '#theme/components/ui/input';
 import { Label } from '#theme/components/ui/label';
@@ -14,7 +14,7 @@ const query = ref('');
 const mode = ref<QueryMode>('hybrid');
 const topK = ref(10);
 const loading = ref(false);
-const items = ref<IQueryRecord[]>([]);
+const result = ref<IQueryResult | null>(null);
 const errorMessage = ref<string | null>(null);
 
 async function run() {
@@ -22,15 +22,18 @@ async function run() {
   loading.value = true;
   errorMessage.value = null;
   try {
-    items.value = await store.query(
+    result.value = await store.query(
       route.params.id as string,
       query.value,
       mode.value,
       topK.value,
     );
   } catch (err: unknown) {
-    const e = err as { response?: { data?: { message?: string } }; message?: string };
-    errorMessage.value = e?.response?.data?.message ?? e?.message ?? 'Query failed';
+    if (err instanceof Error) {
+      errorMessage.value = err.message;
+    } else {
+      errorMessage.value = 'Query failed';
+    }
   } finally {
     loading.value = false;
   }
@@ -40,39 +43,49 @@ async function run() {
 <template>
   <div class="grid gap-6 md:grid-cols-[1fr_280px]">
     <div class="flex flex-col gap-3">
-      <div v-if="loading" class="text-sm text-muted-foreground">Searching…</div>
-      <div v-else-if="errorMessage" class="text-sm text-destructive">
+      <div v-if="loading" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+        Asking the model…
+      </div>
+      <div v-else-if="errorMessage" class="rounded-md border border-destructive/50 bg-destructive/5 p-4 text-sm text-destructive">
         {{ errorMessage }}
       </div>
       <div
-        v-else-if="items.length === 0"
+        v-else-if="!result"
         class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground"
       >
-        Enter a query and press Run.
+        Enter a question and press Run.
       </div>
 
-      <div
-        v-for="(item, idx) in items"
-        :key="idx"
-        class="rounded-md border bg-card p-4"
-      >
-        <div class="mb-1 text-sm font-medium">
-          {{ item.metadata.title ?? item.metadata.sourceId ?? 'Unknown source' }}
+      <template v-else>
+        <div class="rounded-md border bg-card p-4">
+          <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Answer
+          </div>
+          <p class="whitespace-pre-wrap text-sm leading-relaxed">{{ result.answer }}</p>
         </div>
-        <p class="whitespace-pre-wrap text-sm text-muted-foreground">
-          {{ item.pageContent }}
-        </p>
-      </div>
+
+        <div v-if="result.references.length" class="rounded-md border bg-card p-4">
+          <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            References ({{ result.references.length }})
+          </div>
+          <ol class="flex flex-col gap-1 pl-5 text-sm list-decimal">
+            <li v-for="ref in result.references" :key="ref.referenceId">
+              <span class="font-mono text-xs text-muted-foreground">[{{ ref.referenceId }}]</span>
+              {{ ref.filePath }}
+            </li>
+          </ol>
+        </div>
+      </template>
     </div>
 
     <div class="flex flex-col gap-3">
       <div class="grid gap-2">
-        <Label for="query-text">Query</Label>
+        <Label for="query-text">Question</Label>
         <Textarea
           id="query-text"
           v-model="query"
           rows="4"
-          placeholder="Ask a question…"
+          placeholder="Ask a question about your knowledge…"
         />
       </div>
       <div class="grid gap-2">

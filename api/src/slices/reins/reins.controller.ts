@@ -13,13 +13,17 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiConsumes, ApiOkResponse } from '@nestjs/swagger';
 import { ReinsService } from './domain/reins.service';
+import { IGraphData } from './domain/reins.types';
 import {
   CreateKnowledgeDto,
   UpdateKnowledgeDto,
   QueryKnowledgeDto,
   CreateSourceDto,
+  GetGraphDto,
+  GraphDto,
+  KnowledgeQueryResultDto,
 } from './dtos';
 
 interface UploadedFileLike {
@@ -38,6 +42,26 @@ export class ReinsController {
   @ApiOperation({ summary: 'List knowledges', operationId: 'getKnowledges' })
   list() {
     return this.service.listKnowledge();
+  }
+
+  @Get('graph/labels')
+  @ApiOperation({
+    summary: 'List graph entity labels',
+    operationId: 'getGraphLabels',
+  })
+  graphLabels(): Promise<string[]> {
+    return this.service.getGraphLabels();
+  }
+
+  @Get('graph')
+  @ApiOperation({ summary: 'Get knowledge graph', operationId: 'getGraph' })
+  @ApiOkResponse({ type: GraphDto })
+  graph(@Query() dto: GetGraphDto): Promise<IGraphData> {
+    return this.service.getGraph({
+      label: dto.label,
+      maxDepth: dto.maxDepth,
+      maxNodes: dto.maxNodes,
+    });
   }
 
   @Get(':id')
@@ -76,12 +100,13 @@ export class ReinsController {
     return { ok: true };
   }
 
-  @Get(':id/records')
+  @Post(':id/query')
   @ApiOperation({
-    summary: 'Query knowledge',
-    operationId: 'getKnowledgeRecords',
+    summary: 'Query knowledge (LLM-generated answer)',
+    operationId: 'queryKnowledge',
   })
-  query(@Param('id') id: string, @Query() dto: QueryKnowledgeDto) {
+  @ApiOkResponse({ type: KnowledgeQueryResultDto })
+  query(@Param('id') id: string, @Body() dto: QueryKnowledgeDto) {
     return this.service.query(id, dto.query, dto.mode, dto.topK);
   }
 

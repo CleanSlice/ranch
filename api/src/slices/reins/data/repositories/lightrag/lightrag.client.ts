@@ -4,8 +4,10 @@ import {
   IIngestFileInput,
   IIngestResult,
   IQueryInput,
-  IQueryResultItem,
+  IQueryResult,
   ILightragHealth,
+  IGetGraphInput,
+  ILightragGraph,
 } from './lightrag.types';
 
 export abstract class ILightragClient {
@@ -13,7 +15,8 @@ export abstract class ILightragClient {
   abstract ingestText(input: IIngestTextInput): Promise<IIngestResult>;
   abstract ingestUrl(input: IIngestUrlInput): Promise<IIngestResult>;
   abstract ingestFile(input: IIngestFileInput): Promise<IIngestResult>;
-  abstract query(input: IQueryInput): Promise<IQueryResultItem[]>;
-  abstract deleteDocument(workspace: string, docId: string): Promise<void>;
-  abstract deleteWorkspace(workspace: string): Promise<void>;
+  abstract query(input: IQueryInput): Promise<IQueryResult>;
+  abstract deleteDocumentsByTrackIds(trackIds: string[]): Promise<void>;
+  abstract getGraphLabels(): Promise<string[]>;
+  abstract getGraph(input: IGetGraphInput): Promise<ILightragGraph>;
 }

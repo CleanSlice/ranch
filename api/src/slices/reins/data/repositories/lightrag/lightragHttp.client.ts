@@ -6,8 +6,13 @@ import {
   IIngestFileInput,
   IIngestResult,
   IQueryInput,
-  IQueryResultItem,
+  IQueryResult,
+  IQueryReference,
   ILightragHealth,
+  IGetGraphInput,
+  ILightragGraph,
+  ILightragGraphNode,
+  ILightragGraphEdge,
   LightragClientError,
 } from './lightrag.types';
 
@@ -85,43 +90,87 @@ export class LightragHttpClient extends ILightragClient {
     return this.extractDocId(res, '/documents/file');
   }
 
-  async query(input: IQueryInput): Promise<IQueryResultItem[]> {
-    const res = await this.fetchImpl(`${this.baseUrl}/query/data`, {
+  async query(input: IQueryInput): Promise<IQueryResult> {
+    const res = await this.fetchImpl(`${this.baseUrl}/query`, {
       method: 'POST',
       headers: this.headers({ 'content-type': 'application/json' }),
       body: JSON.stringify({
-        workspace: input.workspace,
         query: input.query,
         mode: input.mode ?? 'hybrid',
-        top_k: input.topK ?? 25,
+        top_k: input.topK ?? 10,
+        include_references: true,
       }),
     });
-    await this.ensureOk(res, '/query/data');
+    await this.ensureOk(res, '/query');
     const body: unknown = await res.json();
-    return extractChunks(body);
+    return extractQueryResult(body);
   }
 
-  async deleteDocument(workspace: string, docId: string): Promise<void> {
-    const res = await this.fetchImpl(`${this.baseUrl}/documents`, {
-      method: 'DELETE',
-      headers: this.headers({ 'content-type': 'application/json' }),
-      body: JSON.stringify({
-        workspace,
-        doc_ids: [docId],
-      }),
-    });
-    await this.ensureOk(res, '/documents');
-  }
-
-  async deleteWorkspace(workspace: string): Promise<void> {
+  async deleteDocumentsByTrackIds(trackIds: string[]): Promise<void> {
+    if (trackIds.length === 0) return;
+    const docIds: string[] = [];
+    for (const trackId of trackIds) {
+      const ids = await this.resolveDocIdsByTrackId(trackId);
+      docIds.push(...ids);
+    }
+    if (docIds.length === 0) return;
     const res = await this.fetchImpl(
-      `${this.baseUrl}/workspaces/${encodeURIComponent(workspace)}`,
+      `${this.baseUrl}/documents/delete_document`,
       {
         method: 'DELETE',
+        headers: this.headers({ 'content-type': 'application/json' }),
+        body: JSON.stringify({
+          doc_ids: docIds,
+          delete_file: false,
+          delete_llm_cache: false,
+        }),
+      },
+    );
+    await this.ensureOk(res, '/documents/delete_document');
+  }
+
+  private async resolveDocIdsByTrackId(trackId: string): Promise<string[]> {
+    const res = await this.fetchImpl(
+      `${this.baseUrl}/documents/track_status/${encodeURIComponent(trackId)}`,
+      {
+        method: 'GET',
         headers: this.headers(),
       },
     );
-    await this.ensureOk(res, `/workspaces/${workspace}`);
+    if (res.status === 404) return [];
+    await this.ensureOk(res, `/documents/track_status/${trackId}`);
+    const body: unknown = await res.json();
+    return extractTrackStatusDocIds(body);
+  }
+
+  async getGraphLabels(): Promise<string[]> {
+    const res = await this.fetchImpl(`${this.baseUrl}/graph/label/list`, {
+      method: 'GET',
+      headers: this.headers(),
+    });
+    await this.ensureOk(res, '/graph/label/list');
+    const body: unknown = await res.json();
+    return extractLabels(body);
+  }
+
+  async getGraph(input: IGetGraphInput): Promise<ILightragGraph> {
+    const params = new URLSearchParams({ label: input.label });
+    if (input.maxDepth !== undefined) {
+      params.set('max_depth', String(input.maxDepth));
+    }
+    if (input.maxNodes !== undefined) {
+      params.set('max_nodes', String(input.maxNodes));
+    }
+    const res = await this.fetchImpl(
+      `${this.baseUrl}/graphs?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: this.headers(),
+      },
+    );
+    await this.ensureOk(res, '/graphs');
+    const body: unknown = await res.json();
+    return extractGraph(body);
   }
 
   private async extractDocId(
@@ -164,42 +213,102 @@ export class LightragHttpClient extends ILightragClient {
   }
 }
 
-interface IRawChunk {
-  content: string;
-  file_path?: string;
-  chunk_id?: string;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function isRawChunk(value: unknown): value is IRawChunk {
-  if (!isRecord(value)) return false;
-  if (typeof value.content !== 'string' || value.content.length === 0) {
-    return false;
-  }
-  if (value.file_path !== undefined && typeof value.file_path !== 'string') {
-    return false;
-  }
-  if (value.chunk_id !== undefined && typeof value.chunk_id !== 'string') {
-    return false;
-  }
-  return true;
+function toReference(value: unknown): IQueryReference | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.reference_id !== 'string') return null;
+  if (typeof value.file_path !== 'string') return null;
+  return {
+    referenceId: value.reference_id,
+    filePath: value.file_path,
+  };
 }
 
-function extractChunks(body: unknown): IQueryResultItem[] {
+function extractQueryResult(body: unknown): IQueryResult {
+  if (!isRecord(body)) return { answer: '', references: [] };
+  const answer = typeof body.response === 'string' ? body.response : '';
+  const rawRefs = Array.isArray(body.references) ? body.references : [];
+  const references = rawRefs
+    .map(toReference)
+    .filter((r): r is IQueryReference => r !== null);
+  return { answer, references };
+}
+
+function extractLabels(body: unknown): string[] {
+  if (!Array.isArray(body)) return [];
+  return body.filter((x): x is string => typeof x === 'string');
+}
+
+function extractTrackStatusDocIds(body: unknown): string[] {
   if (!isRecord(body)) return [];
-  const data = body.data;
-  if (!isRecord(data)) return [];
-  const chunks = data.chunks;
-  if (!Array.isArray(chunks)) return [];
-  return chunks.filter(isRawChunk).map((c) => ({
-    pageContent: c.content,
-    metadata: {
-      title: c.file_path,
-      source: c.file_path,
-      sourceId: c.chunk_id,
-    },
-  }));
+  const docs = body.documents;
+  if (!Array.isArray(docs)) return [];
+  const ids: string[] = [];
+  for (const doc of docs) {
+    if (isRecord(doc) && typeof doc.id === 'string') {
+      ids.push(doc.id);
+    }
+  }
+  return ids;
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function isNumber(value: unknown): value is number {
+  return typeof value === 'number' && !Number.isNaN(value);
+}
+
+function toRawNode(value: unknown): ILightragGraphNode | null {
+  if (!isRecord(value)) return null;
+  if (!isString(value.id)) return null;
+  const labels = Array.isArray(value.labels)
+    ? value.labels.filter(isString)
+    : [];
+  const props = isRecord(value.properties) ? value.properties : {};
+  return {
+    id: value.id,
+    label: labels[0] ?? value.id,
+    entityType: isString(props.entity_type) ? props.entity_type : 'unknown',
+    description: isString(props.description) ? props.description : '',
+  };
+}
+
+function toRawEdge(value: unknown): ILightragGraphEdge | null {
+  if (!isRecord(value)) return null;
+  if (!isString(value.id) || !isString(value.source) || !isString(value.target)) {
+    return null;
+  }
+  const props = isRecord(value.properties) ? value.properties : {};
+  return {
+    id: value.id,
+    source: value.source,
+    target: value.target,
+    weight: isNumber(props.weight) ? props.weight : 1,
+    keywords: isString(props.keywords) ? props.keywords : '',
+    description: isString(props.description) ? props.description : '',
+  };
+}
+
+function extractGraph(body: unknown): ILightragGraph {
+  if (!isRecord(body)) {
+    return { nodes: [], edges: [], isTruncated: false };
+  }
+  const rawNodes = Array.isArray(body.nodes) ? body.nodes : [];
+  const rawEdges = Array.isArray(body.edges) ? body.edges : [];
+  const nodes = rawNodes
+    .map(toRawNode)
+    .filter((n): n is ILightragGraphNode => n !== null);
+  const edges = rawEdges
+    .map(toRawEdge)
+    .filter((e): e is ILightragGraphEdge => e !== null);
+  return {
+    nodes,
+    edges,
+    isTruncated: typeof body.is_truncated === 'boolean' ? body.is_truncated : false,
+  };
 }

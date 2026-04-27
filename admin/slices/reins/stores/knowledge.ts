@@ -1,4 +1,5 @@
 import { ReinsService } from '#api/data';
+import type { GraphDto, KnowledgeQueryResultDto } from '#api/data';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
 
@@ -48,14 +49,7 @@ export interface IUpdateKnowledgeInput {
   relationshipTypes?: string[];
 }
 
-export interface IQueryRecord {
-  pageContent: string;
-  metadata: {
-    title?: string;
-    source?: string;
-    sourceId?: string;
-  };
-}
+export type IQueryResult = KnowledgeQueryResultDto;
 
 function unwrap<T>(body: unknown): T | null {
   if (body && typeof body === 'object' && 'data' in (body as ApiEnvelope<T>)) {
@@ -124,13 +118,15 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     id: string,
     q: string,
     mode: 'hybrid' | 'local' | 'global' | 'naive' = 'hybrid',
-    topK = 25,
-  ) {
-    const res = await ReinsService.getKnowledgeRecords({
+    topK = 10,
+  ): Promise<IQueryResult> {
+    const res = await ReinsService.queryKnowledge({
       path: { id },
-      query: { query: q, mode, topK },
+      body: { query: q, mode, topK },
     });
-    return unwrap<IQueryRecord[]>(res.data) ?? [];
+    return (
+      unwrap<IQueryResult>(res.data) ?? { answer: '', references: [] }
+    );
   }
 
   async function listSources(id: string) {
@@ -172,6 +168,25 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     });
   }
 
+  async function getGraphLabels(): Promise<string[]> {
+    const res = await ReinsService.getGraphLabels();
+    const list = unwrap<unknown>(res.data);
+    if (!Array.isArray(list)) return [];
+    return list.filter((x): x is string => typeof x === 'string');
+  }
+
+  async function getGraph(
+    label: string,
+    maxDepth: number,
+    maxNodes: number,
+  ): Promise<GraphDto> {
+    const res = await ReinsService.getGraph({
+      query: { label, maxDepth, maxNodes },
+    });
+    const data = unwrap<GraphDto>(res.data);
+    return data ?? { nodes: [], edges: [], isTruncated: false };
+  }
+
   return {
     items,
     loading,
@@ -188,5 +203,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     addUrlSource,
     addFileSource,
     removeSource,
+    getGraphLabels,
+    getGraph,
   };
 });

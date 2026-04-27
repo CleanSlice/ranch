@@ -5,10 +5,12 @@ import {
   IReinsSourceData,
   ICreateSourceData,
   IIndexStatePatch,
-  IKnowledgeQueryRecord,
+  IKnowledgeQueryResult,
   IUploadSourceFileInput,
   IUploadedSourceFile,
   QueryModeTypes,
+  IGetGraphParams,
+  IGraphData,
 } from './reins.types';
 
 export abstract class IReinsGateway {
@@ -46,5 +48,8 @@ export abstract class IReinsGateway {
     query: string,
     mode?: QueryModeTypes,
     topK?: number,
-  ): Promise<IKnowledgeQueryRecord[]>;
+  ): Promise<IKnowledgeQueryResult>;
+
+  abstract getGraphLabels(): Promise<string[]>;
+  abstract getGraph(params: IGetGraphParams): Promise<IGraphData>;
 }

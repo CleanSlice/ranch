@@ -9,10 +9,12 @@ import {
   IReinsSourceData,
   ICreateSourceData,
   IIndexStatePatch,
-  IKnowledgeQueryRecord,
+  IKnowledgeQueryResult,
   IUploadSourceFileInput,
   IUploadedSourceFile,
   QueryModeTypes,
+  IGetGraphParams,
+  IGraphData,
 } from '../domain/reins.types';
 import { ReinsMapper } from './reins.mapper';
 import { ILightragClient } from './repositories/lightrag/lightrag.client';
@@ -177,16 +179,22 @@ export class ReinsGateway extends IReinsGateway {
   async removeSourceFromIndex(source: IReinsSourceData): Promise<void> {
     const record = await this.prisma.reinsSource.findUnique({
       where: { id: source.id },
-      select: { lightragDocId: true, knowledgeId: true },
+      select: { lightragDocId: true },
     });
     if (!record?.lightragDocId) return;
-    const workspace = await this.workspaceOfKnowledge(record.knowledgeId);
-    await this.lightrag.deleteDocument(workspace, record.lightragDocId);
+    await this.lightrag.deleteDocumentsByTrackIds([record.lightragDocId]);
   }
 
   async removeKnowledgeFromIndex(knowledgeId: string): Promise<void> {
-    const workspace = await this.workspaceOfKnowledge(knowledgeId);
-    await this.lightrag.deleteWorkspace(workspace);
+    const records = await this.prisma.reinsSource.findMany({
+      where: { knowledgeId, lightragDocId: { not: null } },
+      select: { lightragDocId: true },
+    });
+    const trackIds = records
+      .map((r) => r.lightragDocId)
+      .filter((v): v is string => v !== null);
+    if (trackIds.length === 0) return;
+    await this.lightrag.deleteDocumentsByTrackIds(trackIds);
   }
 
   async searchKnowledge(
@@ -194,9 +202,21 @@ export class ReinsGateway extends IReinsGateway {
     query: string,
     mode?: QueryModeTypes,
     topK?: number,
-  ): Promise<IKnowledgeQueryRecord[]> {
+  ): Promise<IKnowledgeQueryResult> {
     const workspace = await this.workspaceOfKnowledge(knowledgeId);
     return this.lightrag.query({ workspace, query, mode, topK });
+  }
+
+  getGraphLabels(): Promise<string[]> {
+    return this.lightrag.getGraphLabels();
+  }
+
+  getGraph(params: IGetGraphParams): Promise<IGraphData> {
+    return this.lightrag.getGraph({
+      label: params.label,
+      maxDepth: params.maxDepth,
+      maxNodes: params.maxNodes,
+    });
   }
 
   private async ingestByType(

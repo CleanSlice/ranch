@@ -29,17 +29,46 @@ export interface IQueryInput {
   topK?: number;
 }
 
-export interface IQueryResultItem {
-  pageContent: string;
-  metadata: {
-    title?: string;
-    source?: string;
-    sourceId?: string;
-  };
+export interface IQueryReference {
+  referenceId: string;
+  filePath: string;
+}
+
+export interface IQueryResult {
+  answer: string;
+  references: IQueryReference[];
 }
 
 export interface ILightragHealth {
   ok: boolean;
+}
+
+export interface IGetGraphInput {
+  label: string;
+  maxDepth?: number;
+  maxNodes?: number;
+}
+
+export interface ILightragGraphNode {
+  id: string;
+  label: string;
+  entityType: string;
+  description: string;
+}
+
+export interface ILightragGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  weight: number;
+  keywords: string;
+  description: string;
+}
+
+export interface ILightragGraph {
+  nodes: ILightragGraphNode[];
+  edges: ILightragGraphEdge[];
+  isTruncated: boolean;
 }
 
 export class LightragClientError extends Error {

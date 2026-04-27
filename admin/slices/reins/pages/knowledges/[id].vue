@@ -78,7 +78,7 @@ provide('knowledge-refresh', refresh);
       to="/knowledges"
       class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
     >
-      ← Back to Knowledge
+      ← Back to Knowledges
     </NuxtLink>
 
     <div v-if="current" class="flex items-start justify-between gap-4">

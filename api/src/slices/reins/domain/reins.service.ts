@@ -5,8 +5,10 @@ import {
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
   IReinsSourceData,
-  IKnowledgeQueryRecord,
+  IKnowledgeQueryResult,
   QueryModeTypes,
+  IGetGraphParams,
+  IGraphData,
 } from './reins.types';
 
 const STALE_INDEX_AFTER_MS = 10 * 60 * 1000;
@@ -190,9 +192,17 @@ export class ReinsService {
     query: string,
     mode?: QueryModeTypes,
     topK?: number,
-  ): Promise<IKnowledgeQueryRecord[]> {
+  ): Promise<IKnowledgeQueryResult> {
     await this.getKnowledge(knowledgeId);
     return this.gateway.searchKnowledge(knowledgeId, query, mode, topK);
+  }
+
+  getGraphLabels(): Promise<string[]> {
+    return this.gateway.getGraphLabels();
+  }
+
+  getGraph(params: IGetGraphParams): Promise<IGraphData> {
+    return this.gateway.getGraph(params);
   }
 
   private async runIndex(knowledgeId: string): Promise<void> {

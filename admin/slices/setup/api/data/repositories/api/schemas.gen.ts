@@ -399,6 +399,72 @@ export const ReportUsageDtoSchema = {
     required: ['date', 'byModel']
 } as const;
 
+export const GraphNodeDtoSchema = {
+    type: 'object',
+    properties: {
+        id: {
+            type: 'string'
+        },
+        label: {
+            type: 'string'
+        },
+        entityType: {
+            type: 'string'
+        },
+        description: {
+            type: 'string'
+        }
+    },
+    required: ['id', 'label', 'entityType', 'description']
+} as const;
+
+export const GraphEdgeDtoSchema = {
+    type: 'object',
+    properties: {
+        id: {
+            type: 'string'
+        },
+        source: {
+            type: 'string'
+        },
+        target: {
+            type: 'string'
+        },
+        weight: {
+            type: 'number'
+        },
+        keywords: {
+            type: 'string'
+        },
+        description: {
+            type: 'string'
+        }
+    },
+    required: ['id', 'source', 'target', 'weight', 'keywords', 'description']
+} as const;
+
+export const GraphDtoSchema = {
+    type: 'object',
+    properties: {
+        nodes: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/GraphNodeDto'
+            }
+        },
+        edges: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/GraphEdgeDto'
+            }
+        },
+        isTruncated: {
+            type: 'boolean'
+        }
+    },
+    required: ['nodes', 'edges', 'isTruncated']
+} as const;
+
 export const CreateKnowledgeDtoSchema = {
     type: 'object',
     properties: {
@@ -447,6 +513,54 @@ export const UpdateKnowledgeDtoSchema = {
             }
         }
     }
+} as const;
+
+export const QueryKnowledgeDtoSchema = {
+    type: 'object',
+    properties: {
+        query: {
+            type: 'string'
+        },
+        mode: {
+            type: 'string',
+            enum: ['hybrid', 'local', 'global', 'naive'],
+            default: 'hybrid'
+        },
+        topK: {
+            type: 'number',
+            default: 25
+        }
+    },
+    required: ['query']
+} as const;
+
+export const KnowledgeQueryReferenceDtoSchema = {
+    type: 'object',
+    properties: {
+        referenceId: {
+            type: 'string'
+        },
+        filePath: {
+            type: 'string'
+        }
+    },
+    required: ['referenceId', 'filePath']
+} as const;
+
+export const KnowledgeQueryResultDtoSchema = {
+    type: 'object',
+    properties: {
+        answer: {
+            type: 'string'
+        },
+        references: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/KnowledgeQueryReferenceDto'
+            }
+        }
+    },
+    required: ['answer', 'references']
 } as const;
 
 export const CreateSourceDtoSchema = {

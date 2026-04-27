@@ -5,11 +5,11 @@ export default defineNuxtPlugin(() => {
 
   menu.addSidebar({
     id: 'reins',
-    group: MenuGroupTypes.Admin,
-    title: 'Knowledge',
+    group: MenuGroupTypes.Main,
+    title: 'Knowledges',
     link: 'knowledges',
     active: false,
     icon: 'Database',
-    sortOrder: 20,
+    sortOrder: 30,
   });
 });

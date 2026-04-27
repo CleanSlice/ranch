@@ -75,10 +75,22 @@ export class LogController {
       // SDK returns the raw log string.
       return { logs: typeof logs === 'string' ? logs : String(logs ?? '') };
     } catch (err) {
+      // 404 is the normal "no pod" state (agent pending/deploying/stopped/failed)
+      // and the admin polls this every 5s — keep it silent. Real failures
+      // (RBAC, network, etc.) still surface as warnings.
+      if (this.isNotFound(err)) {
+        return { logs: `[no pod yet for ${agent.status} agent]` };
+      }
       const message = this.extractKubeError(err);
       this.logger.warn(`log fetch failed for ${podName}: ${message}`);
       return { logs: `[log fetch failed: ${message}]` };
     }
+  }
+
+  private isNotFound(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false;
+    const e = err as { statusCode?: number; code?: number };
+    return e.statusCode === 404 || e.code === 404;
   }
 
   private parseTail(raw?: string): number {

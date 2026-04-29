@@ -71,6 +71,41 @@ resource "aws_s3_bucket_public_access_block" "agent_data" {
 }
 
 # ---------------------------------------------------------------------
+# S3 bucket for Postgres backups (CNPG barmanObjectStore)
+# ---------------------------------------------------------------------
+
+resource "aws_s3_bucket" "pg_backups" {
+  bucket = "ranch-pg-backups-${var.environment}"
+}
+
+resource "aws_s3_bucket_versioning" "pg_backups" {
+  bucket = aws_s3_bucket.pg_backups.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "pg_backups" {
+  bucket = aws_s3_bucket.pg_backups.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "pg_backups" {
+  bucket = aws_s3_bucket.pg_backups.id
+
+  block_public_acls       = true
+  ignore_public_acls      = true
+  block_public_policy     = true
+  restrict_public_buckets = true
+}
+
+# ---------------------------------------------------------------------
 # IAM user scoped to this bucket (optional)
 # ---------------------------------------------------------------------
 
@@ -112,6 +147,24 @@ data "aws_iam_policy_document" "agent_bucket_access" {
     ]
     resources = ["arn:aws:secretsmanager:*:*:secret:${var.secret_name_prefix}*"]
   }
+
+  statement {
+    sid       = "PgBackupsBucketLevel"
+    actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
+    resources = [aws_s3_bucket.pg_backups.arn]
+  }
+
+  statement {
+    sid = "PgBackupsObjectLevel"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:AbortMultipartUpload",
+      "s3:ListMultipartUploadParts",
+    ]
+    resources = ["${aws_s3_bucket.pg_backups.arn}/*"]
+  }
 }
 
 resource "aws_iam_user_policy" "agent_bucket_access" {
@@ -150,4 +203,12 @@ output "access_key_id" {
 output "secret_access_key" {
   value     = try(aws_iam_access_key.agent[0].secret, null)
   sensitive = true
+}
+
+output "pg_backups_bucket_name" {
+  value = aws_s3_bucket.pg_backups.id
+}
+
+output "pg_backups_bucket_region" {
+  value = aws_s3_bucket.pg_backups.region
 }

@@ -83,7 +83,7 @@ free-ports: ## Kill processes on ports 3000, 3001, 3002 and free 5432
 		docker stop $$container > /dev/null; \
 	fi
 
-dev: free-ports k3d ## Start all services (api + app + admin + k3d)
+dev: free-ports k3d lightrag-up ## Start all services (api + app + admin + k3d + lightrag)
 	bun run dev
 
 dev-api: free-ports ## Start API only (port 3000)
@@ -233,6 +233,14 @@ k8s-secrets: ## Create API secrets in cluster (interactive)
 	    --from-literal=openaiApiKey="$$OPENAI_API_KEY" \
 	    --dry-run=client -o yaml | kubectl apply -f -
 	@echo "LightRAG secret created."
+	@echo "Creating pg-backup-aws secret in platform namespace..."
+	@read -s -p "AWS access key id (for pg-backups): " ACCESS_KEY_ID; echo; \
+	  read -s -p "AWS secret access key (for pg-backups): " ACCESS_SECRET_KEY; echo; \
+	  kubectl -n platform create secret generic pg-backup-aws \
+	    --from-literal=ACCESS_KEY_ID="$$ACCESS_KEY_ID" \
+	    --from-literal=ACCESS_SECRET_KEY="$$ACCESS_SECRET_KEY" \
+	    --dry-run=client -o yaml | kubectl apply -f -
+	@echo "pg-backup-aws secret created."
 
 k8s-status: ## Show cluster status
 	@echo "=== Nodes ==="

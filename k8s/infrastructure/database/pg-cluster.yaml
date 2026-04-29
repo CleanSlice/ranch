@@ -10,3 +10,31 @@ spec:
   postgresql:
     parameters:
       max_connections: "200"
+
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://ranch-pg-backups-dreamvention/app
+      s3Credentials:
+        accessKeyId:
+          name: pg-backup-aws
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: pg-backup-aws
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+      data:
+        compression: gzip
+        immediateCheckpoint: true
+    retentionPolicy: "30d"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: ranch-db-daily
+  namespace: platform
+spec:
+  schedule: "0 0 2 * * *"
+  cluster:
+    name: ranch-db
+  backupOwnerReference: self

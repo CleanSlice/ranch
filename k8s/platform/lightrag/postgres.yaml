@@ -25,3 +25,29 @@ spec:
 
   storage:
     size: 20Gi
+
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://ranch-pg-backups-dreamvention/lightrag
+      s3Credentials:
+        accessKeyId:
+          name: pg-backup-aws
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: pg-backup-aws
+          key: ACCESS_SECRET_KEY
+      data:
+        compression: gzip
+        immediateCheckpoint: true
+    retentionPolicy: "30d"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: lightrag-postgres-daily
+  namespace: platform
+spec:
+  schedule: "0 0 3 * * *"
+  cluster:
+    name: lightrag-postgres
+  backupOwnerReference: self

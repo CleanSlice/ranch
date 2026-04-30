@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from '#theme/components/ui/card';
-import { IconArrowLeft, IconSearch, IconExternalLink } from '@tabler/icons-vue';
+import { IconSearch, IconExternalLink } from '@tabler/icons-vue';
 
 const skillStore = useSkillStore();
 
@@ -22,11 +22,6 @@ const hits = ref<ISkillSearchHit[]>([]);
 
 const importingPath = ref<string | null>(null);
 const imported = ref<Record<string, boolean>>({});
-
-const urlValue = ref('');
-const urlImporting = ref(false);
-const urlError = ref<string | null>(null);
-const urlSuccess = ref<string | null>(null);
 
 async function onSearch() {
   if (query.value.trim().length < 2) {
@@ -71,79 +66,10 @@ async function onImport(hit: ISkillSearchHit) {
 function isImported(hit: ISkillSearchHit) {
   return imported.value[`${hit.repo}:${hit.path}`] === true;
 }
-
-async function onImportUrl() {
-  const trimmed = urlValue.value.trim();
-  if (!trimmed) return;
-  urlImporting.value = true;
-  urlError.value = null;
-  urlSuccess.value = null;
-  try {
-    const created = await skillStore.importFromUrl({ url: trimmed });
-    if (created) {
-      urlSuccess.value = `Imported "${created.name}".`;
-      urlValue.value = '';
-    }
-  } catch (err) {
-    const e = err as { response?: { data?: { message?: string } }; message?: string };
-    urlError.value = e?.response?.data?.message ?? e?.message ?? 'Import failed';
-  } finally {
-    urlImporting.value = false;
-  }
-}
 </script>
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink
-      to="/skills"
-      class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <IconArrowLeft class="size-4" /> Back to skills
-    </NuxtLink>
-
-    <div>
-      <h1 class="text-2xl font-semibold">Import skill from GitHub</h1>
-      <p class="text-sm text-muted-foreground">
-        Searches a curated set of public repos via GitHub Code Search and
-        imports the matched <code>SKILL.md</code> into your skill library.
-        Requires <code>integrations/github_pat</code> in
-        <NuxtLink to="/settings" class="underline">Settings</NuxtLink> with
-        <code>read:packages</code> + <code>public_repo</code> scope.
-      </p>
-    </div>
-
-    <Card>
-      <CardHeader>
-        <CardTitle>Import by URL</CardTitle>
-        <CardDescription>
-          Paste any GitHub link — to a folder
-          (<code>github.com/owner/repo/tree/&lt;ref&gt;/path</code>) or a
-          <code>SKILL.md</code> file. The whole folder
-          (<code>SKILL.md</code> + <code>references/*</code> etc.) is bundled.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form class="flex gap-2" @submit.prevent="onImportUrl">
-          <div class="grid flex-1 gap-2 min-w-0">
-            <Label for="url" class="sr-only">URL</Label>
-            <Input
-              id="url"
-              v-model="urlValue"
-              type="url"
-              placeholder="https://github.com/supabase/agent-skills/tree/main/skills/supabase-postgres-best-practices"
-              autocomplete="off"
-            />
-          </div>
-          <Button type="submit" :disabled="urlImporting || !urlValue.trim()">
-            {{ urlImporting ? 'Importing…' : 'Import' }}
-          </Button>
-        </form>
-        <p v-if="urlError" class="mt-3 text-xs text-destructive">{{ urlError }}</p>
-        <p v-if="urlSuccess" class="mt-3 text-xs text-emerald-600">{{ urlSuccess }}</p>
-      </CardContent>
-    </Card>
-
     <Card>
       <CardHeader>
         <CardTitle>Search</CardTitle>

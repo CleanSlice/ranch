@@ -14,5 +14,6 @@ import { S3FileGateway } from './data/file.gateway';
       useClass: S3FileGateway,
     },
   ],
+  exports: [IFileGateway],
 })
 export class FileModule {}

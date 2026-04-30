@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({
-  middleware: () => navigateTo('/llms/models', { replace: true }),
+  middleware: () => navigateTo('/skills/import/search', { replace: true }),
 });
 </script>
 

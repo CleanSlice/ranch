@@ -28,6 +28,9 @@ const pageTitle = computed(() => {
         <SidebarTrigger class="-ml-1" />
         <Separator orientation="vertical" class="mx-2 h-4" />
         <h1 class="text-sm font-medium">{{ pageTitle }}</h1>
+        <div class="ml-auto flex items-center">
+          <AgentStatusIndicator />
+        </div>
       </header>
       <div class="flex flex-1 flex-col gap-4 p-6 min-w-0 overflow-x-auto">
         <slot />

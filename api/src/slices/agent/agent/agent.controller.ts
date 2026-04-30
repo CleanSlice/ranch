@@ -8,11 +8,15 @@ import {
   Param,
   NotFoundException,
   Logger,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
+import { Observable, map } from 'rxjs';
 import { IAgentGateway } from './domain';
 import { AgentStatusTypes } from './domain/agent.types';
-import { CreateAgentDto, UpdateAgentDto } from './dtos';
+import { AgentStatusService } from './domain/agentStatus.service';
+import { AgentStatusDto, CreateAgentDto, UpdateAgentDto } from './dtos';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
 import { IWorkflowStatus } from '#/workflow/domain/workflow.types';
 import { ITemplateGateway } from '#/agent/template/domain';
@@ -38,6 +42,7 @@ export class AgentController {
     private templateGateway: ITemplateGateway,
     private workflowService: WorkflowService,
     private podGateway: IPodGateway,
+    private agentStatusService: AgentStatusService,
   ) {}
 
   private async deploy(agentId: string) {
@@ -95,6 +100,24 @@ export class AgentController {
   @ApiOperation({ summary: 'List all agents' })
   findAll() {
     return this.agentGateway.findAll();
+  }
+
+  @Get('status')
+  @ApiOperation({ summary: 'Snapshot of all agents joined with live pod status' })
+  @ApiOkResponse({ type: AgentStatusDto, isArray: true })
+  status() {
+    return this.agentStatusService.snapshot();
+  }
+
+  @Sse('status/stream')
+  @ApiOperation({
+    summary:
+      'Live SSE stream of agent pod state changes. Emits an initial snapshot then per-event updates.',
+  })
+  statusStream(): Observable<MessageEvent> {
+    return this.agentStatusService
+      .stream$()
+      .pipe(map((data) => ({ data }) as MessageEvent));
   }
 
   @Get(':id')

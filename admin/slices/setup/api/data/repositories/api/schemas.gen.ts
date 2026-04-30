@@ -138,6 +138,77 @@ export const UpdateTemplateDtoSchema = {
     }
 } as const;
 
+export const AgentPodStatusDtoSchema = {
+    type: 'object',
+    properties: {
+        agentId: {
+            type: 'string',
+            example: 'agent-abc-123'
+        },
+        podName: {
+            type: 'string',
+            example: 'agent-agent-abc-123'
+        },
+        phase: {
+            type: 'string',
+            enum: ['Pending', 'Running', 'Succeeded', 'Failed', 'Unknown'],
+            example: 'Running'
+        },
+        ready: {
+            type: 'boolean',
+            example: true
+        },
+        restartCount: {
+            type: 'number',
+            example: 0
+        },
+        startedAt: {
+            type: 'string',
+            nullable: true,
+            example: '2026-04-30T10:15:00Z'
+        },
+        lastTerminationReason: {
+            type: 'string',
+            nullable: true,
+            example: 'OOMKilled'
+        },
+        containerWaitingReason: {
+            type: 'string',
+            nullable: true,
+            example: 'CrashLoopBackOff'
+        },
+        message: {
+            type: 'string',
+            nullable: true
+        },
+        observedAt: {
+            type: 'string',
+            example: '2026-04-30T10:30:00Z'
+        }
+    },
+    required: ['agentId', 'podName', 'phase', 'ready', 'restartCount', 'startedAt', 'lastTerminationReason', 'containerWaitingReason', 'message', 'observedAt']
+} as const;
+
+export const AgentStatusDtoSchema = {
+    type: 'object',
+    properties: {
+        agent: {
+            type: 'object',
+            description: 'Agent DB record (id, name, status, etc.)'
+        },
+        pod: {
+            nullable: true,
+            description: 'Live pod status; null if no pod is currently running for this agent.',
+            allOf: [
+                {
+                    '$ref': '#/components/schemas/AgentPodStatusDto'
+                }
+            ]
+        }
+    },
+    required: ['agent', 'pod']
+} as const;
+
 export const AgentResourcesDtoSchema = {
     type: 'object',
     properties: {
@@ -397,6 +468,190 @@ export const ReportUsageDtoSchema = {
         }
     },
     required: ['date', 'byModel']
+} as const;
+
+export const GraphNodeDtoSchema = {
+    type: 'object',
+    properties: {
+        id: {
+            type: 'string'
+        },
+        label: {
+            type: 'string'
+        },
+        entityType: {
+            type: 'string'
+        },
+        description: {
+            type: 'string'
+        }
+    },
+    required: ['id', 'label', 'entityType', 'description']
+} as const;
+
+export const GraphEdgeDtoSchema = {
+    type: 'object',
+    properties: {
+        id: {
+            type: 'string'
+        },
+        source: {
+            type: 'string'
+        },
+        target: {
+            type: 'string'
+        },
+        weight: {
+            type: 'number'
+        },
+        keywords: {
+            type: 'string'
+        },
+        description: {
+            type: 'string'
+        }
+    },
+    required: ['id', 'source', 'target', 'weight', 'keywords', 'description']
+} as const;
+
+export const GraphDtoSchema = {
+    type: 'object',
+    properties: {
+        nodes: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/GraphNodeDto'
+            }
+        },
+        edges: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/GraphEdgeDto'
+            }
+        },
+        isTruncated: {
+            type: 'boolean'
+        }
+    },
+    required: ['nodes', 'edges', 'isTruncated']
+} as const;
+
+export const CreateKnowledgeDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string'
+        },
+        description: {
+            type: 'string'
+        },
+        entityTypes: {
+            type: 'array',
+            items: {
+                type: 'string'
+            }
+        },
+        relationshipTypes: {
+            type: 'array',
+            items: {
+                type: 'string'
+            }
+        }
+    },
+    required: ['name']
+} as const;
+
+export const UpdateKnowledgeDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string'
+        },
+        description: {
+            type: 'string',
+            nullable: true
+        },
+        entityTypes: {
+            type: 'array',
+            items: {
+                type: 'string'
+            }
+        },
+        relationshipTypes: {
+            type: 'array',
+            items: {
+                type: 'string'
+            }
+        }
+    }
+} as const;
+
+export const QueryKnowledgeDtoSchema = {
+    type: 'object',
+    properties: {
+        query: {
+            type: 'string'
+        },
+        mode: {
+            type: 'string',
+            enum: ['hybrid', 'local', 'global', 'naive'],
+            default: 'hybrid'
+        },
+        topK: {
+            type: 'number',
+            default: 25
+        }
+    },
+    required: ['query']
+} as const;
+
+export const KnowledgeQueryReferenceDtoSchema = {
+    type: 'object',
+    properties: {
+        referenceId: {
+            type: 'string'
+        },
+        filePath: {
+            type: 'string'
+        }
+    },
+    required: ['referenceId', 'filePath']
+} as const;
+
+export const KnowledgeQueryResultDtoSchema = {
+    type: 'object',
+    properties: {
+        answer: {
+            type: 'string'
+        },
+        references: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/KnowledgeQueryReferenceDto'
+            }
+        }
+    },
+    required: ['answer', 'references']
+} as const;
+
+export const CreateSourceDtoSchema = {
+    type: 'object',
+    properties: {
+        type: {
+            type: 'string',
+            enum: ['file', 'url', 'text']
+        },
+        name: {
+            type: 'string'
+        },
+        url: {
+            type: 'string'
+        },
+        content: {
+            type: 'string'
+        }
+    },
+    required: ['type', 'name']
 } as const;
 
 export const ImportSkillUrlDtoSchema = {

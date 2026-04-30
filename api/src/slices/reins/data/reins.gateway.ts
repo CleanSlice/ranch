@@ -6,7 +6,7 @@ import {
   IKnowledgeData,
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
-  IReinsSourceData,
+  ISourceData,
   ICreateSourceData,
   IIndexStatePatch,
   IKnowledgeQueryResult,
@@ -117,21 +117,21 @@ export class ReinsGateway extends IReinsGateway {
 
   async findSourcesByKnowledge(
     knowledgeId: string,
-  ): Promise<IReinsSourceData[]> {
-    const records = await this.prisma.reinsSource.findMany({
+  ): Promise<ISourceData[]> {
+    const records = await this.prisma.source.findMany({
       where: { knowledgeId },
       orderBy: { createdAt: 'asc' },
     });
     return records.map((r) => this.mapper.toSourceEntity(r));
   }
 
-  async findSourceById(id: string): Promise<IReinsSourceData | null> {
-    const record = await this.prisma.reinsSource.findUnique({ where: { id } });
+  async findSourceById(id: string): Promise<ISourceData | null> {
+    const record = await this.prisma.source.findUnique({ where: { id } });
     return record ? this.mapper.toSourceEntity(record) : null;
   }
 
-  async createSource(data: ICreateSourceData): Promise<IReinsSourceData> {
-    const record = await this.prisma.reinsSource.create({
+  async createSource(data: ICreateSourceData): Promise<ISourceData> {
+    const record = await this.prisma.source.create({
       data: {
         knowledgeId: data.knowledgeId,
         type: data.type,
@@ -146,7 +146,7 @@ export class ReinsGateway extends IReinsGateway {
   }
 
   async deleteSource(id: string): Promise<void> {
-    await this.prisma.reinsSource.delete({ where: { id } });
+    await this.prisma.source.delete({ where: { id } });
   }
 
   async uploadSourceFile(
@@ -167,17 +167,17 @@ export class ReinsGateway extends IReinsGateway {
     await this.s3.delete(location);
   }
 
-  async indexSource(source: IReinsSourceData): Promise<void> {
+  async indexSource(source: ISourceData): Promise<void> {
     const workspace = await this.workspaceOfKnowledge(source.knowledgeId);
     const docId = await this.ingestByType(source, workspace);
-    await this.prisma.reinsSource.update({
+    await this.prisma.source.update({
       where: { id: source.id },
       data: { lightragDocId: docId },
     });
   }
 
-  async removeSourceFromIndex(source: IReinsSourceData): Promise<void> {
-    const record = await this.prisma.reinsSource.findUnique({
+  async removeSourceFromIndex(source: ISourceData): Promise<void> {
+    const record = await this.prisma.source.findUnique({
       where: { id: source.id },
       select: { lightragDocId: true },
     });
@@ -186,7 +186,7 @@ export class ReinsGateway extends IReinsGateway {
   }
 
   async removeKnowledgeFromIndex(knowledgeId: string): Promise<void> {
-    const records = await this.prisma.reinsSource.findMany({
+    const records = await this.prisma.source.findMany({
       where: { knowledgeId, lightragDocId: { not: null } },
       select: { lightragDocId: true },
     });
@@ -220,7 +220,7 @@ export class ReinsGateway extends IReinsGateway {
   }
 
   private async ingestByType(
-    source: IReinsSourceData,
+    source: ISourceData,
     workspace: string,
   ): Promise<string> {
     if (source.type === 'text') {

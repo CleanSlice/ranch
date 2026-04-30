@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IKnowledge, IReinsSource } from '#reins/stores/knowledge';
+import type { IKnowledge, ISource } from '#reins/stores/knowledge';
 import { Button } from '#theme/components/ui/button';
 import { Badge } from '#theme/components/ui/badge';
 import {
@@ -16,7 +16,7 @@ const store = useKnowledgeStore();
 const current = inject<Ref<IKnowledge | null>>('knowledge-current');
 const refresh = inject<() => Promise<void>>('knowledge-refresh');
 
-const sources = ref<IReinsSource[]>([]);
+const sources = ref<ISource[]>([]);
 const loading = ref(false);
 
 async function reload() {
@@ -30,7 +30,7 @@ async function reload() {
 
 await reload();
 
-async function handleDelete(source: IReinsSource) {
+async function handleDelete(source: ISource) {
   if (!confirm(`Delete source "${source.name}"?`)) return;
   await store.removeSource(route.params.id as string, source.id);
   await reload();

@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type {
   Knowledge as PrismaKnowledge,
-  ReinsSource as PrismaReinsSource,
+  Source as PrismaSource,
 } from '@prisma/client';
 import {
   IKnowledgeData,
-  IReinsSourceData,
+  ISourceData,
   IndexStatusTypes,
   SourceTypes,
 } from '../domain/reins.types';
@@ -37,7 +37,7 @@ function parseSourceType(value: string): SourceTypes {
 @Injectable()
 export class ReinsMapper {
   toKnowledgeEntity(
-    record: PrismaKnowledge & { sources?: PrismaReinsSource[] },
+    record: PrismaKnowledge & { sources?: PrismaSource[] },
   ): IKnowledgeData {
     return {
       id: record.id,
@@ -55,7 +55,7 @@ export class ReinsMapper {
     };
   }
 
-  toSourceEntity(record: PrismaReinsSource): IReinsSourceData {
+  toSourceEntity(record: PrismaSource): ISourceData {
     return {
       id: record.id,
       knowledgeId: record.knowledgeId,

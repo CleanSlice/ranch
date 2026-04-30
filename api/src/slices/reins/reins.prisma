@@ -11,12 +11,12 @@ model Knowledge {
   indexStartedAt    DateTime?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
-  sources           ReinsSource[]
+  sources           Source[]
 
   @@index([indexStatus])
 }
 
-model ReinsSource {
+model Source {
   id            String    @id @default(uuid())
   knowledgeId   String
   knowledge     Knowledge @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)

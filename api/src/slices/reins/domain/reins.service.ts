@@ -4,7 +4,7 @@ import {
   IKnowledgeData,
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
-  IReinsSourceData,
+  ISourceData,
   IKnowledgeQueryResult,
   QueryModeTypes,
   IGetGraphParams,
@@ -77,14 +77,14 @@ export class ReinsService {
     await this.gateway.deleteKnowledge(id);
   }
 
-  listSources(knowledgeId: string): Promise<IReinsSourceData[]> {
+  listSources(knowledgeId: string): Promise<ISourceData[]> {
     return this.gateway.findSourcesByKnowledge(knowledgeId);
   }
 
   async addFileSource(
     knowledgeId: string,
     file: IUploadedFile,
-  ): Promise<IReinsSourceData> {
+  ): Promise<ISourceData> {
     await this.getKnowledge(knowledgeId);
     const stored = await this.gateway.uploadSourceFile({
       knowledgeId,
@@ -105,7 +105,7 @@ export class ReinsService {
   async addUrlSource(
     knowledgeId: string,
     data: { name: string; url: string },
-  ): Promise<IReinsSourceData> {
+  ): Promise<ISourceData> {
     await this.getKnowledge(knowledgeId);
     return this.gateway.createSource({
       knowledgeId,
@@ -118,7 +118,7 @@ export class ReinsService {
   async addTextSource(
     knowledgeId: string,
     data: { name: string; content: string },
-  ): Promise<IReinsSourceData> {
+  ): Promise<ISourceData> {
     await this.getKnowledge(knowledgeId);
     return this.gateway.createSource({
       knowledgeId,

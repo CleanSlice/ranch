@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IKnowledgeData, IndexStatusTypes } from '../domain/reins.types';
-import { ReinsSourceDto } from './reinsSource.dto';
+import { SourceDto } from './source.dto';
 
 export class KnowledgeDto implements IKnowledgeData {
   @ApiProperty() id: string;
@@ -15,5 +15,5 @@ export class KnowledgeDto implements IKnowledgeData {
   @ApiProperty({ type: String, nullable: true }) indexStartedAt: Date | null;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
-  @ApiPropertyOptional({ type: [ReinsSourceDto] }) sources?: ReinsSourceDto[];
+  @ApiPropertyOptional({ type: [SourceDto] }) sources?: SourceDto[];
 }

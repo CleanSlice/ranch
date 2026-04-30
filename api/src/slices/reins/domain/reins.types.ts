@@ -16,10 +16,10 @@ export interface IKnowledgeData {
   indexStartedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  sources?: IReinsSourceData[];
+  sources?: ISourceData[];
 }
 
-export interface IReinsSourceData {
+export interface ISourceData {
   id: string;
   knowledgeId: string;
   type: SourceTypes;

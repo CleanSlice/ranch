@@ -18,10 +18,10 @@ export interface IKnowledge {
   indexStartedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  sources?: IReinsSource[];
+  sources?: ISource[];
 }
 
-export interface IReinsSource {
+export interface ISource {
   id: string;
   knowledgeId: string;
   type: SourceType;
@@ -131,7 +131,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
 
   async function listSources(id: string) {
     const res = await ReinsService.getKnowledgeSources({ path: { id } });
-    return unwrap<IReinsSource[]>(res.data) ?? [];
+    return unwrap<ISource[]>(res.data) ?? [];
   }
 
   async function addTextSource(id: string, name: string, content: string) {
@@ -139,7 +139,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
       path: { id },
       body: { type: 'text', name, content },
     });
-    return unwrap<IReinsSource>(res.data);
+    return unwrap<ISource>(res.data);
   }
 
   async function addUrlSource(id: string, name: string, url: string) {
@@ -147,7 +147,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
       path: { id },
       body: { type: 'url', name, url },
     });
-    return unwrap<IReinsSource>(res.data);
+    return unwrap<ISource>(res.data);
   }
 
   async function addFileSource(id: string, file: File) {
@@ -159,7 +159,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
       method: 'POST',
       body: form,
     });
-    return unwrap<IReinsSource>(res);
+    return unwrap<ISource>(res);
   }
 
   async function removeSource(id: string, sourceId: string) {

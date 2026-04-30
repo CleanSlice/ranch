@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IReinsSourceData, SourceTypes } from '../domain/reins.types';
+import { ISourceData, SourceTypes } from '../domain/reins.types';
 
-export class ReinsSourceDto implements IReinsSourceData {
+export class SourceDto implements ISourceData {
   @ApiProperty() id: string;
   @ApiProperty() knowledgeId: string;
   @ApiProperty({ enum: ['file', 'url', 'text'] }) type: SourceTypes;

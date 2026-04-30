@@ -2,7 +2,7 @@ import {
   IKnowledgeData,
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
-  IReinsSourceData,
+  ISourceData,
   ICreateSourceData,
   IIndexStatePatch,
   IKnowledgeQueryResult,
@@ -29,9 +29,9 @@ export abstract class IReinsGateway {
 
   abstract findSourcesByKnowledge(
     knowledgeId: string,
-  ): Promise<IReinsSourceData[]>;
-  abstract findSourceById(id: string): Promise<IReinsSourceData | null>;
-  abstract createSource(data: ICreateSourceData): Promise<IReinsSourceData>;
+  ): Promise<ISourceData[]>;
+  abstract findSourceById(id: string): Promise<ISourceData | null>;
+  abstract createSource(data: ICreateSourceData): Promise<ISourceData>;
   abstract deleteSource(id: string): Promise<void>;
 
   abstract uploadSourceFile(
@@ -39,8 +39,8 @@ export abstract class IReinsGateway {
   ): Promise<IUploadedSourceFile>;
   abstract deleteSourceFile(url: string): Promise<void>;
 
-  abstract indexSource(source: IReinsSourceData): Promise<void>;
-  abstract removeSourceFromIndex(source: IReinsSourceData): Promise<void>;
+  abstract indexSource(source: ISourceData): Promise<void>;
+  abstract removeSourceFromIndex(source: ISourceData): Promise<void>;
   abstract removeKnowledgeFromIndex(knowledgeId: string): Promise<void>;
 
   abstract searchKnowledge(

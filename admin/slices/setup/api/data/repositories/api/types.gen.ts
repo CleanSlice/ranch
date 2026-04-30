@@ -58,6 +58,13 @@ export type UpdateTemplateDto = {
     };
 };
 
+export type SaveTemplateFileDto = {
+    /**
+     * Full file content as text
+     */
+    content: string;
+};
+
 export type AgentPodStatusDto = {
     agentId: string;
     podName: string;
@@ -194,6 +201,24 @@ export type BridleBotHealthDto = {
      * Bot identifier
      */
     botId: string;
+};
+
+export type TranscriptMessageDto = {
+    id: string;
+    role: 'user' | 'assistant';
+    text: string;
+    /**
+     * Unix epoch milliseconds.
+     */
+    ts: number;
+};
+
+export type TranscriptResponseDto = {
+    messages: Array<TranscriptMessageDto>;
+    /**
+     * Channel the transcript was loaded from.
+     */
+    channel: string;
 };
 
 export type ReportUsageDto = {
@@ -535,6 +560,68 @@ export type TemplateControllerUpdateResponses = {
     200: unknown;
 };
 
+export type TemplateFileControllerListData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/templates/{id}/files';
+};
+
+export type TemplateFileControllerListResponses = {
+    200: unknown;
+};
+
+export type TemplateFileControllerReadData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query: {
+        path: string;
+    };
+    url: '/templates/{id}/files/content';
+};
+
+export type TemplateFileControllerReadResponses = {
+    200: unknown;
+};
+
+export type TemplateFileControllerSaveData = {
+    body: SaveTemplateFileDto;
+    path: {
+        id: string;
+    };
+    query: {
+        path: string;
+    };
+    url: '/templates/{id}/files/content';
+};
+
+export type TemplateFileControllerSaveResponses = {
+    200: unknown;
+};
+
+export type TemplateFileControllerUploadData = {
+    body: {
+        files?: Array<Blob | File>;
+        /**
+         * Relative paths matching files[] by index, e.g. ".agent/agent.md"
+         */
+        paths?: Array<string>;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/templates/{id}/files/upload';
+};
+
+export type TemplateFileControllerUploadResponses = {
+    201: unknown;
+};
+
 export type AgentControllerFindAllData = {
     body?: never;
     path?: never;
@@ -827,6 +914,46 @@ export type ListAgentsData = {
 export type ListAgentsResponses = {
     200: unknown;
 };
+
+export type ResetBridleTranscriptData = {
+    body?: never;
+    path: {
+        botId: string;
+    };
+    query?: {
+        /**
+         * Session channel — defaults to "admin".
+         */
+        channel?: string;
+    };
+    url: '/api/agent/{botId}/transcript';
+};
+
+export type ResetBridleTranscriptResponses = {
+    204: void;
+};
+
+export type ResetBridleTranscriptResponse = ResetBridleTranscriptResponses[keyof ResetBridleTranscriptResponses];
+
+export type GetBridleTranscriptData = {
+    body?: never;
+    path: {
+        botId: string;
+    };
+    query?: {
+        /**
+         * Session channel — defaults to "admin" for the admin app.
+         */
+        channel?: string;
+    };
+    url: '/api/agent/{botId}/transcript';
+};
+
+export type GetBridleTranscriptResponses = {
+    200: TranscriptResponseDto;
+};
+
+export type GetBridleTranscriptResponse = GetBridleTranscriptResponses[keyof GetBridleTranscriptResponses];
 
 export type UsageControllerFindForAgentData = {
     body?: never;

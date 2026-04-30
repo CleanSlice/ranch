@@ -6,7 +6,7 @@ name: cleanslice-ranch
 # it must exist before compose runs (created by `k3d cluster create ranch`).
 services:
   postgres-local:
-    image: postgres:latest
+    image: postgres:18
     container_name: ranch-postgres
     ports:
       - '5432:5432'
@@ -15,7 +15,7 @@ services:
       POSTGRES_PASSWORD: root
       POSTGRES_DB: ranch-local
     volumes:
-      - ./.docker/postgres:/var/lib/postgresql/data
+      - ./.docker/postgres:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s

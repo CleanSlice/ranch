@@ -9,27 +9,31 @@ import {
   GetObjectCommand,
   PutObjectCommand,
   HeadObjectCommand,
-  DeleteObjectCommand,
+  DeleteObjectsCommand,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
 import { ISettingGateway } from '#/setting/domain';
-import { IFileGateway } from '../domain/file.gateway';
-import { IFileContent, IFileNode } from '../domain/file.types';
+import { ITemplateFileGateway } from '../domain/templateFile.gateway';
+import {
+  ITemplateFileContent,
+  ITemplateFileNode,
+  ITemplateFileUpload,
+} from '../domain/templateFile.types';
 
 const MAX_BYTES = 256 * 1024;
 const ALLOWED_WRITE_EXT = new Set(['.md', '.json']);
 
 @Injectable()
-export class S3FileGateway extends IFileGateway {
+export class S3TemplateFileGateway extends ITemplateFileGateway {
   constructor(private settings: ISettingGateway) {
     super();
   }
 
-  async list(agentId: string): Promise<IFileNode[]> {
+  async list(templateId: string): Promise<ITemplateFileNode[]> {
     const { client, bucket } = await this.connect();
-    const prefix = this.prefix(agentId);
+    const prefix = this.prefix(templateId);
 
-    const out: IFileNode[] = [];
+    const out: ITemplateFileNode[] = [];
     let continuationToken: string | undefined;
 
     do {
@@ -56,10 +60,10 @@ export class S3FileGateway extends IFileGateway {
     return out.sort((a, b) => a.path.localeCompare(b.path));
   }
 
-  async read(agentId: string, path: string): Promise<IFileContent> {
+  async read(templateId: string, path: string): Promise<ITemplateFileContent> {
     this.assertSafePath(path);
     const { client, bucket } = await this.connect();
-    const key = this.prefix(agentId) + path;
+    const key = this.prefix(templateId) + path;
 
     let head;
     try {
@@ -91,7 +95,11 @@ export class S3FileGateway extends IFileGateway {
     };
   }
 
-  async save(agentId: string, path: string, content: string): Promise<void> {
+  async save(
+    templateId: string,
+    path: string,
+    content: string,
+  ): Promise<void> {
     this.assertSafePath(path);
     this.assertWritableExt(path);
 
@@ -113,7 +121,7 @@ export class S3FileGateway extends IFileGateway {
     }
 
     const { client, bucket } = await this.connect();
-    const key = this.prefix(agentId) + path;
+    const key = this.prefix(templateId) + path;
 
     await client.send(
       new PutObjectCommand({
@@ -125,26 +133,66 @@ export class S3FileGateway extends IFileGateway {
     );
   }
 
-  async delete(agentId: string, path: string): Promise<void> {
-    this.assertSafePath(path);
+  async uploadMany(
+    templateId: string,
+    files: ITemplateFileUpload[],
+  ): Promise<void> {
     const { client, bucket } = await this.connect();
-    const key = this.prefix(agentId) + path;
+    const prefix = this.prefix(templateId);
 
-    try {
+    for (const file of files) {
+      this.assertSafePath(file.path);
+      if (file.buffer.byteLength > MAX_BYTES) {
+        throw new BadRequestException(
+          `File ${file.path} too large (${file.buffer.byteLength} > ${MAX_BYTES} bytes)`,
+        );
+      }
+    }
+
+    for (const file of files) {
       await client.send(
-        new DeleteObjectCommand({ Bucket: bucket, Key: key }),
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: prefix + file.path,
+          Body: file.buffer,
+          ContentType: file.contentType ?? this.contentType(file.path),
+        }),
       );
-    } catch (err) {
-      // S3 DELETE is idempotent — 404 isn't typically returned, but treat
-      // any not-found as success so callers (e.g. "reset chat") don't fail
-      // when the file already doesn't exist.
-      if (this.isNotFound(err)) return;
-      throw err;
     }
   }
 
-  private prefix(agentId: string): string {
-    return `agents/${agentId}/`;
+  async wipe(templateId: string): Promise<void> {
+    const { client, bucket } = await this.connect();
+    const prefix = this.prefix(templateId);
+
+    let continuationToken: string | undefined;
+    do {
+      const list = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      const keys = (list.Contents ?? [])
+        .map((o) => o.Key)
+        .filter((k): k is string => Boolean(k));
+      if (keys.length > 0) {
+        await client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+      }
+      continuationToken = list.IsTruncated
+        ? list.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+  }
+
+  private prefix(templateId: string): string {
+    return `templates/${templateId}/`;
   }
 
   private assertSafePath(path: string): void {
@@ -171,7 +219,10 @@ export class S3FileGateway extends IFileGateway {
   private contentType(path: string): string {
     if (path.endsWith('.json')) return 'application/json; charset=utf-8';
     if (path.endsWith('.md')) return 'text/markdown; charset=utf-8';
-    return 'text/plain; charset=utf-8';
+    if (path.endsWith('.yaml') || path.endsWith('.yml'))
+      return 'application/yaml; charset=utf-8';
+    if (path.endsWith('.txt')) return 'text/plain; charset=utf-8';
+    return 'application/octet-stream';
   }
 
   private isNotFound(err: unknown): boolean {

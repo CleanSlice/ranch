@@ -6,7 +6,8 @@ import Message from './Message.vue'
 import Input from './Input.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
 import { ScrollArea } from '#theme/components/ui/scroll-area'
-import { Bot, Circle } from 'lucide-vue-next'
+import { Button } from '#theme/components/ui/button'
+import { Bot, Circle, MessageSquarePlus } from 'lucide-vue-next'
 import { cn } from '#theme/utils/cn'
 
 const props = withDefaults(defineProps<{
@@ -34,7 +35,13 @@ watch([messages, isTyping], async () => {
   if (el) el.scrollTop = el.scrollHeight
 }, { deep: true })
 
-onMounted(() => {
+onMounted(async () => {
+  // Replay persisted history first so the chat isn't blank between
+  // page refreshes / agent switches; then connect the WS for live updates.
+  // Clear before load so the previous agent's messages don't briefly leak
+  // through (the store is a shared singleton across providers).
+  store.clearMessages()
+  await store.loadTranscript(props.apiUrl, props.botId, props.token)
   store.connect(props.apiUrl, props.botId, props.token)
 })
 
@@ -45,6 +52,20 @@ onUnmounted(() => {
 const handleSend = (text: string) => {
   store.sendMessage(text)
 }
+
+const confirmResetOpen = ref(false)
+const resetting = ref(false)
+
+async function onConfirmReset() {
+  resetting.value = true
+  try {
+    store.disconnect()
+    await store.resetTranscript(props.apiUrl, props.botId, props.token)
+    store.connect(props.apiUrl, props.botId, props.token)
+  } finally {
+    resetting.value = false
+  }
+}
 </script>
 
 <template>
@@ -54,13 +75,34 @@ const handleSend = (text: string) => {
         <Bot class="h-5 w-5" />
         <h3 class="font-semibold text-sm">{{ title }}</h3>
       </div>
-      <div v-if="showStatus" class="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Circle
-          :class="cn('h-2 w-2 fill-current', isConnected ? 'text-green-500' : 'text-red-500')"
-        />
-        {{ isConnected ? 'Connected' : 'Disconnected' }}
+      <div class="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="h-7 px-2 text-xs"
+          :disabled="resetting || messages.length === 0"
+          :title="messages.length === 0 ? 'Already empty' : 'Start a new chat'"
+          @click="confirmResetOpen = true"
+        >
+          <MessageSquarePlus class="h-3.5 w-3.5" />
+          New chat
+        </Button>
+        <div v-if="showStatus" class="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Circle
+            :class="cn('h-2 w-2 fill-current', isConnected ? 'text-green-500' : 'text-red-500')"
+          />
+          {{ isConnected ? 'Connected' : 'Disconnected' }}
+        </div>
       </div>
     </CardHeader>
+
+    <ConfirmDialog
+      v-model:open="confirmResetOpen"
+      title="Start new chat"
+      description="Delete the saved transcript for this agent and start fresh? Past messages will be removed from storage. The agent's in-memory context may persist until its next restart."
+      confirm-label="Start new chat"
+      @confirm="onConfirmReset"
+    />
 
     <CardContent class="flex-1 overflow-hidden p-0">
       <ScrollArea ref="scrollRef" class="h-full">

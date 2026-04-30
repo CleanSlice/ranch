@@ -175,6 +175,52 @@ export const useBridleStore = defineStore('bridle', {
       this.messages = []
     },
 
+    async resetTranscript(apiUrl: string, botId: string, token: string, channel = 'admin') {
+      const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(botId)}/transcript?channel=${encodeURIComponent(channel)}`
+      try {
+        const res = await fetch(url, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) {
+          console.warn('[bridle] transcript reset returned', res.status)
+          return false
+        }
+        this.messages = []
+        return true
+      } catch (err) {
+        console.warn('[bridle] failed to reset transcript', err)
+        return false
+      }
+    },
+
+    async loadTranscript(apiUrl: string, botId: string, token: string, channel = 'admin') {
+      try {
+        const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(botId)}/transcript?channel=${encodeURIComponent(channel)}`
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) {
+          console.warn('[bridle] transcript fetch returned', res.status)
+          return
+        }
+        type TranscriptMessage = { id: string; role: 'user' | 'assistant'; text: string; ts: number }
+        type TranscriptPayload = { messages?: TranscriptMessage[] }
+        type TranscriptEnvelope = { data?: TranscriptPayload }
+        const body = await res.json() as TranscriptEnvelope & TranscriptPayload
+        const items = body.data?.messages ?? body.messages ?? []
+        this.messages = items.map((m: TranscriptMessage) => ({
+          id: m.id,
+          role: m.role,
+          text: m.text,
+          parts: [{ type: BridlePartTypes.Text as const, text: m.text }],
+          ts: m.ts,
+        }))
+      } catch (err) {
+        console.warn('[bridle] failed to load transcript', err)
+      }
+    },
+
     toggle() {
       this.isOpen = !this.isOpen
     },

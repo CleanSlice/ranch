@@ -138,6 +138,17 @@ export const UpdateTemplateDtoSchema = {
     }
 } as const;
 
+export const SaveTemplateFileDtoSchema = {
+    type: 'object',
+    properties: {
+        content: {
+            type: 'string',
+            description: 'Full file content as text'
+        }
+    },
+    required: ['content']
+} as const;
+
 export const AgentPodStatusDtoSchema = {
     type: 'object',
     properties: {
@@ -446,6 +457,49 @@ export const BridleBotHealthDtoSchema = {
         }
     },
     required: ['ok', 'agentConnected', 'browserClients', 'botId']
+} as const;
+
+export const TranscriptMessageDtoSchema = {
+    type: 'object',
+    properties: {
+        id: {
+            type: 'string',
+            example: 'c94dbcf2-64f1-4e84-9723-c94e2d815f61'
+        },
+        role: {
+            type: 'string',
+            enum: ['user', 'assistant'],
+            example: 'assistant'
+        },
+        text: {
+            type: 'string',
+            example: 'Hello, how can I help?'
+        },
+        ts: {
+            type: 'number',
+            example: 1777562539964,
+            description: 'Unix epoch milliseconds.'
+        }
+    },
+    required: ['id', 'role', 'text', 'ts']
+} as const;
+
+export const TranscriptResponseDtoSchema = {
+    type: 'object',
+    properties: {
+        messages: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/TranscriptMessageDto'
+            }
+        },
+        channel: {
+            type: 'string',
+            example: 'admin',
+            description: 'Channel the transcript was loaded from.'
+        }
+    },
+    required: ['messages', 'channel']
 } as const;
 
 export const ReportUsageDtoSchema = {

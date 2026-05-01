@@ -72,6 +72,14 @@ export class AgentGateway extends IAgentGateway {
     return this.mapper.toEntity(record);
   }
 
+  async setWorkflowId(id: string, workflowId: string): Promise<IAgentData> {
+    const record = await this.prisma.agent.update({
+      where: { id },
+      data: { workflowId },
+    });
+    return this.mapper.toEntity(record);
+  }
+
   async setDebugEnabled(id: string, enabled: boolean): Promise<IAgentData> {
     const record = await this.prisma.agent.update({
       where: { id },

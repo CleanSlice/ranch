@@ -37,12 +37,14 @@ import { IBridleGateway } from '#/bridle/domain';
 import { JwtAuthGuard, Public, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
 
-// Workflow only runs until the agent pod is Running (successCondition), then finishes.
-// So Succeeded means "deploy succeeded, pod is live" — map to running, not stopped.
+// Workflow ends as soon as the pod hits phase=Running, but pod=Running does
+// not mean the agent inside is ready (channels connected, S3 pulled, HTTP up).
+// Keep status at 'deploying' even on Succeeded — AgentStatusService.reconcile
+// promotes to 'running' when the readiness probe passes (port 3000 served).
 const PHASE_TO_STATUS: Record<IWorkflowStatus['phase'], AgentStatusTypes> = {
   Pending: 'deploying',
   Running: 'deploying',
-  Succeeded: 'running',
+  Succeeded: 'deploying',
   Failed: 'failed',
   Error: 'failed',
 };
@@ -74,20 +76,19 @@ export class AgentController {
       await this.agentGateway.updateStatus(agentId, 'failed');
       return;
     }
+    // Mark deploying BEFORE submitting the workflow. Submit + getStatus take
+    // seconds — long enough for the pod to come up and AgentStatusService to
+    // flip status to 'running'. If we wrote status here after submit we'd
+    // overwrite that 'running' with 'deploying' (last-writer-wins race).
+    await this.agentGateway.updateStatus(agentId, 'deploying');
     try {
       const workflowId = await this.workflowService.submitAgentWorkflow(
         agent,
         template.image,
       );
-      let status: AgentStatusTypes = 'deploying';
-      try {
-        const { phase } =
-          await this.workflowService.getWorkflowStatus(workflowId);
-        status = PHASE_TO_STATUS[phase];
-      } catch {
-        // keep 'deploying' if status probe fails
-      }
-      await this.agentGateway.updateStatus(agentId, status, workflowId);
+      // Only attach the new workflowId — never touch status post-submit.
+      // Reconciler is the single source of truth for 'running'.
+      await this.agentGateway.setWorkflowId(agentId, workflowId);
     } catch (err) {
       this.logger.error(
         `Workflow submit failed for agent ${agentId}: ${(err as Error).message}`,
@@ -99,13 +100,17 @@ export class AgentController {
   private async syncStatus(agentId: string) {
     const agent = await this.agentGateway.findById(agentId);
     if (!agent?.workflowId) return agent;
+    // Forward-only: only flip to 'failed' (terminal) here. We never demote
+    // 'running' back to 'deploying' on a Pending workflow phase — pod-event
+    // reconciler owns the running/deploying transitions and a workflow can
+    // briefly look Pending while a pod is already up.
     try {
       const { phase } = await this.workflowService.getWorkflowStatus(
         agent.workflowId,
       );
-      const next = PHASE_TO_STATUS[phase];
-      if (next && next !== agent.status) {
-        await this.agentGateway.updateStatus(agentId, next, agent.workflowId);
+      const mapped = PHASE_TO_STATUS[phase];
+      if (mapped === 'failed' && agent.status !== 'failed') {
+        await this.agentGateway.updateStatus(agentId, 'failed', agent.workflowId);
         return this.agentGateway.findById(agentId);
       }
     } catch {

@@ -9,6 +9,8 @@ import {
   CardHeader,
   CardTitle,
 } from '#theme/components/ui/card';
+import { Checkbox } from '#theme/components/ui/checkbox';
+import { Label } from '#theme/components/ui/label';
 import { Skeleton } from '#theme/components/ui/skeleton';
 import { IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh } from '@tabler/icons-vue';
 
@@ -130,8 +132,15 @@ function fmtUsd(n: number) {
 const restarting = ref(false);
 const restartError = ref<string | null>(null);
 
+// Button shows the busy state while the API call is in flight AND while the
+// pod is still coming up (status='deploying'). Reverts to idle once the
+// AgentStatusService reconciler flips the agent to 'running'.
+const isRestarting = computed(
+  () => restarting.value || agent.value?.status === 'deploying',
+);
+
 async function onRestart() {
-  if (!agent.value || restarting.value) return;
+  if (!agent.value || isRestarting.value) return;
   restarting.value = true;
   restartError.value = null;
   // Optimistic — flip to "deploying" right away so the badge reacts before
@@ -291,15 +300,15 @@ async function onRemove() {
             </Button>
             <Button
               variant="outline"
-              :disabled="restarting"
+              :disabled="isRestarting"
               @click="onRestart"
             >
               <IconLoader2
-                v-if="restarting"
+                v-if="isRestarting"
                 class="size-4 animate-spin"
               />
               <IconRefresh v-else class="size-4" />
-              {{ restarting ? 'Restarting…' : 'Restart' }}
+              {{ isRestarting ? 'Restarting…' : 'Restart' }}
             </Button>
             <Button variant="ghost" class="text-destructive" @click="confirmRemoveOpen = true">Delete</Button>
           </div>
@@ -525,14 +534,10 @@ async function onRemove() {
                   <CardTitle>Logs</CardTitle>
                 </div>
                 <div class="flex items-center gap-2">
-                  <label class="flex items-center gap-1 text-xs text-muted-foreground">
-                    <input
-                      v-model="logsAutoRefresh"
-                      type="checkbox"
-                      class="size-3.5"
-                    />
+                  <Label for="logs-auto-refresh" class="text-xs text-muted-foreground font-normal">
+                    <Checkbox id="logs-auto-refresh" v-model="logsAutoRefresh" />
                     Auto 5s
-                  </label>
+                  </Label>
                   <Button
                     size="sm"
                     variant="outline"

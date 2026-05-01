@@ -19,7 +19,7 @@ spec:
       - name: memory-limit
         value: "512Mi"
       - name: image-pull-policy
-        value: "IfNotPresent"
+        value: "Always"
       - name: bridle-url
         value: ""
       - name: bridle-api-key
@@ -144,3 +144,22 @@ spec:
                   limits:
                     cpu: "{{workflow.parameters.cpu-limit}}"
                     memory: "{{workflow.parameters.memory-limit}}"
+                ports:
+                  - containerPort: 3000
+                # Runtime starts Bun.serve AFTER await runtime.start() finishes —
+                # the channels are connected, S3 is pulled, the loop is wired.
+                # Probing port 3000 means "agent is actually ready", not just
+                # "container PID 1 exists". Without this the API reconciler flips
+                # status to 'running' the moment kubelet reports container started.
+                startupProbe:
+                  httpGet:
+                    path: /
+                    port: 3000
+                  periodSeconds: 2
+                  failureThreshold: 90
+                readinessProbe:
+                  httpGet:
+                    path: /
+                    port: 3000
+                  periodSeconds: 5
+                  failureThreshold: 3

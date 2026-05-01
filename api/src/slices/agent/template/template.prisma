@@ -1,13 +1,14 @@
 import { Agent } from "../agent/agent"
 
 model Template {
-  id               String   @id @default(uuid())
-  name             String   @unique
-  description      String
-  image            String
-  defaultConfig    Json     @default("{}")
-  defaultResources Json     @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
-  agents           Agent[]
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  name                 String   @unique
+  description          String
+  image                String
+  defaultConfig        Json     @default("{}")
+  defaultResources     Json     @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
+  defaultKnowledgeIds  String[] @default([])
+  agents               Agent[]
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }

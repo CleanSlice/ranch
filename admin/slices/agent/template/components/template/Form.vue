@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { ICreateTemplateData } from '#template/stores/template';
+import type { IKnowledge } from '#reins/stores/knowledge';
 import { Button } from '#theme/components/ui/button';
 import { Input } from '#theme/components/ui/input';
 import { Label } from '#theme/components/ui/label';
+import { Checkbox } from '#theme/components/ui/checkbox';
 import {
   Card,
   CardContent,
@@ -12,6 +14,8 @@ import {
 } from '#theme/components/ui/card';
 
 const props = defineProps<{
+  knowledges: IKnowledge[];
+  knowledgeServiceEnabled: boolean;
   initialValues?: ICreateTemplateData;
   submitLabel?: string;
   submitting?: boolean;
@@ -27,6 +31,7 @@ const form = reactive<{
   description: string;
   image: string;
   defaultResources: { cpu: string; memory: string };
+  defaultKnowledgeIds: string[];
 }>({
   name: props.initialValues?.name ?? '',
   description: props.initialValues?.description ?? '',
@@ -35,17 +40,30 @@ const form = reactive<{
     cpu: props.initialValues?.defaultResources?.cpu ?? '500m',
     memory: props.initialValues?.defaultResources?.memory ?? '512Mi',
   },
+  defaultKnowledgeIds: [...(props.initialValues?.defaultKnowledgeIds ?? [])],
 });
 
 const errors = reactive<Partial<Record<'name' | 'image', string>>>({});
 
-function validate() {
+function validate(): boolean {
   errors.name = form.name.trim() ? undefined : 'Name is required';
   errors.image = form.image.trim() ? undefined : 'Image is required';
   return !errors.name && !errors.image;
 }
 
-function onSubmit() {
+function toggleKnowledge(id: string, checked: boolean | 'indeterminate'): void {
+  if (checked === true) {
+    if (!form.defaultKnowledgeIds.includes(id)) {
+      form.defaultKnowledgeIds.push(id);
+    }
+  } else {
+    form.defaultKnowledgeIds = form.defaultKnowledgeIds.filter(
+      (x) => x !== id,
+    );
+  }
+}
+
+function onSubmit(): void {
   if (!validate()) return;
   emit('submit', {
     name: form.name.trim(),
@@ -55,6 +73,7 @@ function onSubmit() {
       cpu: form.defaultResources.cpu.trim() || '500m',
       memory: form.defaultResources.memory.trim() || '512Mi',
     },
+    defaultKnowledgeIds: [...form.defaultKnowledgeIds],
   });
 }
 </script>
@@ -99,6 +118,58 @@ function onSubmit() {
             <Label for="memory">Default memory</Label>
             <Input id="memory" v-model="form.defaultResources.memory" placeholder="512Mi" />
           </div>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle>Knowledges</CardTitle>
+        <CardDescription>
+          Knowledge bases agents spawned from this template can query at runtime.
+        </CardDescription>
+      </CardHeader>
+      <CardContent class="grid max-w-xl gap-3">
+        <p
+          v-if="!knowledgeServiceEnabled"
+          class="text-xs text-muted-foreground"
+        >
+          Knowledge service is disabled. Configure the URL in
+          <NuxtLink to="/settings" class="underline">Settings</NuxtLink>
+          to attach knowledges.
+        </p>
+        <p
+          v-else-if="!knowledges.length"
+          class="text-xs text-muted-foreground"
+        >
+          No knowledges yet. Create one in
+          <NuxtLink to="/knowledges" class="underline">Knowledges</NuxtLink>.
+        </p>
+        <div
+          v-else
+          class="flex max-h-64 flex-col gap-2 overflow-auto rounded-md border p-3"
+        >
+          <label
+            v-for="k in knowledges"
+            :key="k.id"
+            class="flex cursor-pointer items-start gap-3"
+          >
+            <Checkbox
+              :model-value="form.defaultKnowledgeIds.includes(k.id)"
+              @update:model-value="(v) => toggleKnowledge(k.id, v)"
+            />
+            <div class="grid gap-0.5">
+              <span class="text-sm font-medium">{{ k.name }}</span>
+              <span
+                v-if="k.description"
+                class="text-xs text-muted-foreground"
+              >{{ k.description }}</span>
+              <span
+                v-if="k.indexStatus !== 'ready'"
+                class="text-xs text-muted-foreground"
+              >Index: {{ k.indexStatus }}</span>
+            </div>
+          </label>
         </div>
       </CardContent>
     </Card>

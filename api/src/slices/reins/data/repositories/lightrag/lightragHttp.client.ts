@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ILightragClient } from './lightrag.client';
 import {
   IIngestTextInput,
@@ -18,38 +18,52 @@ import {
 
 type FetchImpl = typeof fetch;
 
-export interface LightragHttpClientConfig {
+export interface LightragRequestConfig {
+  url: string;
+  apiKey: string;
+  enabled: boolean;
+}
+
+export type LightragConfigResolver = () => Promise<LightragRequestConfig>;
+
+export interface LightragHttpClientOptions {
+  resolveConfig: LightragConfigResolver;
+  fetchImpl?: FetchImpl;
+}
+
+interface ResolvedRequestConfig {
   baseUrl: string;
   apiKey: string;
-  fetchImpl?: FetchImpl;
 }
 
 @Injectable()
 export class LightragHttpClient extends ILightragClient {
-  private readonly baseUrl: string;
-  private readonly apiKey: string;
+  private readonly resolveConfig: LightragConfigResolver;
   private readonly fetchImpl: FetchImpl;
 
-  constructor(config: LightragHttpClientConfig) {
+  constructor(options: LightragHttpClientOptions) {
     super();
-    this.baseUrl = config.baseUrl.replace(/\/+$/, '');
-    this.apiKey = config.apiKey;
-    this.fetchImpl = config.fetchImpl ?? fetch;
+    this.resolveConfig = options.resolveConfig;
+    this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
   async health(): Promise<ILightragHealth> {
-    const res = await this.fetchImpl(`${this.baseUrl}/health`, {
+    const cfg = await this.requireEnabled();
+    const res = await this.fetchImpl(`${cfg.baseUrl}/health`, {
       method: 'GET',
-      headers: this.headers(),
+      headers: this.headers(cfg.apiKey),
     });
     await this.ensureOk(res, '/health');
     return { ok: true };
   }
 
   async ingestText(input: IIngestTextInput): Promise<IIngestResult> {
-    const res = await this.fetchImpl(`${this.baseUrl}/documents/text`, {
+    const cfg = await this.requireEnabled();
+    const res = await this.fetchImpl(`${cfg.baseUrl}/documents/text`, {
       method: 'POST',
-      headers: this.headers({ 'content-type': 'application/json' }),
+      headers: this.headers(cfg.apiKey, {
+        'content-type': 'application/json',
+      }),
       body: JSON.stringify({
         workspace: input.workspace,
         text: input.text,
@@ -61,9 +75,12 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async ingestUrl(input: IIngestUrlInput): Promise<IIngestResult> {
-    const res = await this.fetchImpl(`${this.baseUrl}/documents/url`, {
+    const cfg = await this.requireEnabled();
+    const res = await this.fetchImpl(`${cfg.baseUrl}/documents/url`, {
       method: 'POST',
-      headers: this.headers({ 'content-type': 'application/json' }),
+      headers: this.headers(cfg.apiKey, {
+        'content-type': 'application/json',
+      }),
       body: JSON.stringify({
         workspace: input.workspace,
         url: input.url,
@@ -74,6 +91,7 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async ingestFile(input: IIngestFileInput): Promise<IIngestResult> {
+    const cfg = await this.requireEnabled();
     const form = new FormData();
     form.append('workspace', input.workspace);
     form.append(
@@ -81,9 +99,9 @@ export class LightragHttpClient extends ILightragClient {
       new Blob([new Uint8Array(input.content)], { type: input.mimeType }),
       input.filename,
     );
-    const res = await this.fetchImpl(`${this.baseUrl}/documents/file`, {
+    const res = await this.fetchImpl(`${cfg.baseUrl}/documents/file`, {
       method: 'POST',
-      headers: this.headers(),
+      headers: this.headers(cfg.apiKey),
       body: form,
     });
     await this.ensureOk(res, '/documents/file');
@@ -91,9 +109,12 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async query(input: IQueryInput): Promise<IQueryResult> {
-    const res = await this.fetchImpl(`${this.baseUrl}/query`, {
+    const cfg = await this.requireEnabled();
+    const res = await this.fetchImpl(`${cfg.baseUrl}/query`, {
       method: 'POST',
-      headers: this.headers({ 'content-type': 'application/json' }),
+      headers: this.headers(cfg.apiKey, {
+        'content-type': 'application/json',
+      }),
       body: JSON.stringify({
         query: input.query,
         mode: input.mode ?? 'hybrid',
@@ -108,17 +129,20 @@ export class LightragHttpClient extends ILightragClient {
 
   async deleteDocumentsByTrackIds(trackIds: string[]): Promise<void> {
     if (trackIds.length === 0) return;
+    const cfg = await this.requireEnabled();
     const docIds: string[] = [];
     for (const trackId of trackIds) {
-      const ids = await this.resolveDocIdsByTrackId(trackId);
+      const ids = await this.resolveDocIdsByTrackId(cfg, trackId);
       docIds.push(...ids);
     }
     if (docIds.length === 0) return;
     const res = await this.fetchImpl(
-      `${this.baseUrl}/documents/delete_document`,
+      `${cfg.baseUrl}/documents/delete_document`,
       {
         method: 'DELETE',
-        headers: this.headers({ 'content-type': 'application/json' }),
+        headers: this.headers(cfg.apiKey, {
+          'content-type': 'application/json',
+        }),
         body: JSON.stringify({
           doc_ids: docIds,
           delete_file: false,
@@ -129,12 +153,15 @@ export class LightragHttpClient extends ILightragClient {
     await this.ensureOk(res, '/documents/delete_document');
   }
 
-  private async resolveDocIdsByTrackId(trackId: string): Promise<string[]> {
+  private async resolveDocIdsByTrackId(
+    cfg: ResolvedRequestConfig,
+    trackId: string,
+  ): Promise<string[]> {
     const res = await this.fetchImpl(
-      `${this.baseUrl}/documents/track_status/${encodeURIComponent(trackId)}`,
+      `${cfg.baseUrl}/documents/track_status/${encodeURIComponent(trackId)}`,
       {
         method: 'GET',
-        headers: this.headers(),
+        headers: this.headers(cfg.apiKey),
       },
     );
     if (res.status === 404) return [];
@@ -144,9 +171,10 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async getGraphLabels(): Promise<string[]> {
-    const res = await this.fetchImpl(`${this.baseUrl}/graph/label/list`, {
+    const cfg = await this.requireEnabled();
+    const res = await this.fetchImpl(`${cfg.baseUrl}/graph/label/list`, {
       method: 'GET',
-      headers: this.headers(),
+      headers: this.headers(cfg.apiKey),
     });
     await this.ensureOk(res, '/graph/label/list');
     const body: unknown = await res.json();
@@ -154,6 +182,7 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async getGraph(input: IGetGraphInput): Promise<ILightragGraph> {
+    const cfg = await this.requireEnabled();
     const params = new URLSearchParams({ label: input.label });
     if (input.maxDepth !== undefined) {
       params.set('max_depth', String(input.maxDepth));
@@ -162,15 +191,28 @@ export class LightragHttpClient extends ILightragClient {
       params.set('max_nodes', String(input.maxNodes));
     }
     const res = await this.fetchImpl(
-      `${this.baseUrl}/graphs?${params.toString()}`,
+      `${cfg.baseUrl}/graphs?${params.toString()}`,
       {
         method: 'GET',
-        headers: this.headers(),
+        headers: this.headers(cfg.apiKey),
       },
     );
     await this.ensureOk(res, '/graphs');
     const body: unknown = await res.json();
     return extractGraph(body);
+  }
+
+  private async requireEnabled(): Promise<ResolvedRequestConfig> {
+    const cfg = await this.resolveConfig();
+    if (!cfg.enabled || !cfg.url) {
+      throw new ServiceUnavailableException(
+        'Knowledge service is not configured',
+      );
+    }
+    return {
+      baseUrl: cfg.url.replace(/\/+$/, ''),
+      apiKey: cfg.apiKey,
+    };
   }
 
   private async extractDocId(
@@ -189,9 +231,12 @@ export class LightragHttpClient extends ILightragClient {
     return { docId };
   }
 
-  private headers(extra: Record<string, string> = {}): Record<string, string> {
+  private headers(
+    apiKey: string,
+    extra: Record<string, string> = {},
+  ): Record<string, string> {
     return {
-      'x-api-key': this.apiKey,
+      'x-api-key': apiKey,
       accept: 'application/json',
       ...extra,
     };

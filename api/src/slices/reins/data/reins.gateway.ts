@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { S3Repository } from '#/aws/s3';
 import { IReinsGateway } from '../domain/reins.gateway';
+import { IKnowledgeConfigService } from '../domain/knowledgeConfig.service';
 import {
   IKnowledgeData,
   ICreateKnowledgeData,
@@ -30,9 +31,19 @@ export class ReinsGateway extends IReinsGateway {
     private readonly mapper: ReinsMapper,
     private readonly lightrag: ILightragClient,
     private readonly s3: S3Repository,
-    private readonly bucket: string,
+    private readonly knowledgeConfig: IKnowledgeConfigService,
   ) {
     super();
+  }
+
+  private async requireBucket(): Promise<string> {
+    const cfg = await this.knowledgeConfig.resolve();
+    if (!cfg.bucket) {
+      throw new ServiceUnavailableException(
+        'Knowledge S3 bucket is not configured',
+      );
+    }
+    return cfg.bucket;
   }
 
   async findAllKnowledge(): Promise<IKnowledgeData[]> {
@@ -152,9 +163,10 @@ export class ReinsGateway extends IReinsGateway {
   async uploadSourceFile(
     input: IUploadSourceFileInput,
   ): Promise<IUploadedSourceFile> {
+    const bucket = await this.requireBucket();
     const key = `${input.knowledgeId}/${crypto.randomUUID()}-${input.filename}`;
     const stored = await this.s3.upload({
-      bucket: this.bucket,
+      bucket,
       key,
       body: input.body,
       contentType: input.contentType,

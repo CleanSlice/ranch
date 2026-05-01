@@ -19,6 +19,9 @@ export class TemplateDto {
   @ApiProperty()
   defaultResources: { cpu: string; memory: string };
 
+  @ApiProperty({ type: [String] })
+  defaultKnowledgeIds: string[];
+
   @ApiProperty()
   createdAt: Date;
 

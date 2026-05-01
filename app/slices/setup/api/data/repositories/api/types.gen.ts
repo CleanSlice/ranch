@@ -44,6 +44,7 @@ export type CreateTemplateDto = {
     defaultResources?: {
         [key: string]: unknown;
     };
+    defaultKnowledgeIds?: Array<string>;
 };
 
 export type UpdateTemplateDto = {
@@ -56,6 +57,7 @@ export type UpdateTemplateDto = {
     defaultResources?: {
         [key: string]: unknown;
     };
+    defaultKnowledgeIds?: Array<string>;
 };
 
 export type AgentResourcesDto = {
@@ -180,6 +182,28 @@ export type ReportUsageDto = {
     };
 };
 
+export type GraphNodeDto = {
+    id: string;
+    label: string;
+    entityType: string;
+    description: string;
+};
+
+export type GraphEdgeDto = {
+    id: string;
+    source: string;
+    target: string;
+    weight: number;
+    keywords: string;
+    description: string;
+};
+
+export type GraphDto = {
+    nodes: Array<GraphNodeDto>;
+    edges: Array<GraphEdgeDto>;
+    isTruncated: boolean;
+};
+
 export type CreateKnowledgeDto = {
     name: string;
     description?: string;
@@ -192,6 +216,22 @@ export type UpdateKnowledgeDto = {
     description?: string | null;
     entityTypes?: Array<string>;
     relationshipTypes?: Array<string>;
+};
+
+export type QueryKnowledgeDto = {
+    query: string;
+    mode?: 'hybrid' | 'local' | 'global' | 'naive';
+    topK?: number;
+};
+
+export type KnowledgeQueryReferenceDto = {
+    referenceId: string;
+    filePath: string;
+};
+
+export type KnowledgeQueryResultDto = {
+    answer: string;
+    references: Array<KnowledgeQueryReferenceDto>;
 };
 
 export type CreateSourceDto = {
@@ -793,6 +833,45 @@ export type CreateKnowledgeResponses = {
     201: unknown;
 };
 
+export type GetKnowledgeStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/knowledges/status';
+};
+
+export type GetKnowledgeStatusResponses = {
+    200: unknown;
+};
+
+export type GetGraphLabelsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/knowledges/graph/labels';
+};
+
+export type GetGraphLabelsResponses = {
+    200: unknown;
+};
+
+export type GetGraphData = {
+    body?: never;
+    path?: never;
+    query: {
+        label: string;
+        maxDepth?: number;
+        maxNodes?: number;
+    };
+    url: '/knowledges/graph';
+};
+
+export type GetGraphResponses = {
+    200: GraphDto;
+};
+
+export type GetGraphResponse = GetGraphResponses[keyof GetGraphResponses];
+
 export type DeleteKnowledgeData = {
     body?: never;
     path: {
@@ -847,22 +926,20 @@ export type IndexKnowledgeResponses = {
     202: unknown;
 };
 
-export type GetKnowledgeRecordsData = {
-    body?: never;
+export type QueryKnowledgeData = {
+    body: QueryKnowledgeDto;
     path: {
         id: string;
     };
-    query: {
-        query: string;
-        mode?: 'hybrid' | 'local' | 'global' | 'naive';
-        topK?: number;
-    };
-    url: '/knowledges/{id}/records';
+    query?: never;
+    url: '/knowledges/{id}/query';
 };
 
-export type GetKnowledgeRecordsResponses = {
-    200: unknown;
+export type QueryKnowledgeResponses = {
+    200: KnowledgeQueryResultDto;
 };
+
+export type QueryKnowledgeResponse = QueryKnowledgeResponses[keyof QueryKnowledgeResponses];
 
 export type GetKnowledgeSourcesData = {
     body?: never;

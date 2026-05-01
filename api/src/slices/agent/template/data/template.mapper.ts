@@ -13,6 +13,7 @@ export class TemplateMapper {
       defaultConfig: record.defaultConfig as unknown as Record<string, unknown>,
       defaultResources:
         record.defaultResources as unknown as ITemplateData['defaultResources'],
+      defaultKnowledgeIds: record.defaultKnowledgeIds,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -30,6 +31,7 @@ export class TemplateMapper {
         cpu: '500m',
         memory: '512Mi',
       }) as unknown as Prisma.InputJsonValue,
+      defaultKnowledgeIds: data.defaultKnowledgeIds ?? [],
     };
   }
 }

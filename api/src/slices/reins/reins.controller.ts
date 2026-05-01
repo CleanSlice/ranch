@@ -15,6 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiOkResponse } from '@nestjs/swagger';
 import { ReinsService } from './domain/reins.service';
+import { IKnowledgeConfigService } from './domain/knowledgeConfig.service';
 import { IGraphData } from './domain/reins.types';
 import {
   CreateKnowledgeDto,
@@ -36,12 +37,25 @@ interface UploadedFileLike {
 @ApiTags('reins')
 @Controller('knowledges')
 export class ReinsController {
-  constructor(private readonly service: ReinsService) {}
+  constructor(
+    private readonly service: ReinsService,
+    private readonly knowledgeConfig: IKnowledgeConfigService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List knowledges', operationId: 'getKnowledges' })
-  list() {
+  async list() {
+    if (!(await this.knowledgeConfig.isEnabled())) return [];
     return this.service.listKnowledge();
+  }
+
+  @Get('status')
+  @ApiOperation({
+    summary: 'Knowledge service availability',
+    operationId: 'getKnowledgeStatus',
+  })
+  async status(): Promise<{ enabled: boolean }> {
+    return { enabled: await this.knowledgeConfig.isEnabled() };
   }
 
   @Get('graph/labels')

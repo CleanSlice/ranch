@@ -51,6 +51,9 @@ export class TemplateGateway extends ITemplateGateway {
           defaultResources:
             data.defaultResources as unknown as Prisma.InputJsonValue,
         }),
+        ...(data.defaultKnowledgeIds !== undefined && {
+          defaultKnowledgeIds: data.defaultKnowledgeIds,
+        }),
       },
     });
     return this.mapper.toEntity(record);

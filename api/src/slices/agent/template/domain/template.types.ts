@@ -5,6 +5,7 @@ export interface ITemplateData {
   image: string;
   defaultConfig: Record<string, unknown>;
   defaultResources: { cpu: string; memory: string };
+  defaultKnowledgeIds: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -15,6 +16,7 @@ export interface ICreateTemplateData {
   image: string;
   defaultConfig?: Record<string, unknown>;
   defaultResources?: { cpu: string; memory: string };
+  defaultKnowledgeIds?: string[];
 }
 
 export interface IUpdateTemplateData {
@@ -23,4 +25,5 @@ export interface IUpdateTemplateData {
   image?: string;
   defaultConfig?: Record<string, unknown>;
   defaultResources?: { cpu: string; memory: string };
+  defaultKnowledgeIds?: string[];
 }

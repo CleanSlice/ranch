@@ -14,6 +14,7 @@ export interface ITemplateData {
   image: string;
   defaultConfig: Record<string, unknown>;
   defaultResources: ITemplateResources;
+  defaultKnowledgeIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -24,6 +25,7 @@ export interface ICreateTemplateData {
   image: string;
   defaultConfig?: Record<string, unknown>;
   defaultResources?: ITemplateResources;
+  defaultKnowledgeIds?: string[];
 }
 
 export interface IUpdateTemplateData {
@@ -32,6 +34,7 @@ export interface IUpdateTemplateData {
   image?: string;
   defaultConfig?: Record<string, unknown>;
   defaultResources?: ITemplateResources;
+  defaultKnowledgeIds?: string[];
 }
 
 export const useTemplateStore = defineStore('template', () => {

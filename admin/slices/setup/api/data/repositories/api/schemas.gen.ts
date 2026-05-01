@@ -111,6 +111,12 @@ export const CreateTemplateDtoSchema = {
         },
         defaultResources: {
             type: 'object'
+        },
+        defaultKnowledgeIds: {
+            type: 'array',
+            items: {
+                type: 'string'
+            }
         }
     },
     required: ['name', 'description', 'image']
@@ -134,6 +140,12 @@ export const UpdateTemplateDtoSchema = {
         },
         defaultResources: {
             type: 'object'
+        },
+        defaultKnowledgeIds: {
+            type: 'array',
+            items: {
+                type: 'string'
+            }
         }
     }
 } as const;

@@ -1,5 +1,6 @@
 import { ReinsService } from '#api/data';
 import type { GraphDto, KnowledgeQueryResultDto } from '#api/data';
+import { client as apiClient } from '#api/data/repositories/api/client.gen';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
 
@@ -58,10 +59,34 @@ function unwrap<T>(body: unknown): T | null {
   return (body ?? null) as T | null;
 }
 
+function isStatusBody(value: unknown): value is { enabled: boolean } {
+  if (typeof value !== 'object' || value === null) return false;
+  if (!('enabled' in value)) return false;
+  return typeof value.enabled === 'boolean';
+}
+
 export const useKnowledgeStore = defineStore('reins-knowledge', () => {
   const items = ref<IKnowledge[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  const enabled = ref<boolean>(false);
+  const statusChecked = ref<boolean>(false);
+
+  async function fetchStatus(): Promise<boolean> {
+    try {
+      const res = await apiClient.get<unknown>({ url: '/knowledges/status' });
+      const body = unwrap<unknown>(res.data);
+      if (isStatusBody(body)) {
+        enabled.value = body.enabled;
+      } else {
+        enabled.value = false;
+      }
+    } catch {
+      enabled.value = false;
+    }
+    statusChecked.value = true;
+    return enabled.value;
+  }
 
   async function fetchAll() {
     loading.value = true;
@@ -191,6 +216,9 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     items,
     loading,
     error,
+    enabled,
+    statusChecked,
+    fetchStatus,
     fetchAll,
     fetchById,
     create,

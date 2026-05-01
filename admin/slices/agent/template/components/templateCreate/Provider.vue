@@ -3,16 +3,24 @@ import type { ICreateTemplateData } from '#template/stores/template';
 import { IconArrowLeft } from '@tabler/icons-vue';
 
 const templateStore = useTemplateStore();
+const knowledgeStore = useKnowledgeStore();
 const submitting = ref(false);
 
-async function onSubmit(values: ICreateTemplateData) {
+const [{ data: knowledges }] = await Promise.all([
+  useAsyncData('template-create-knowledges', () => knowledgeStore.fetchAll()),
+  useAsyncData('template-create-knowledge-status', () =>
+    knowledgeStore.fetchStatus(),
+  ),
+]);
+
+async function onSubmit(values: ICreateTemplateData): Promise<void> {
   submitting.value = true;
   const created = await templateStore.create(values);
   submitting.value = false;
   await navigateTo(`/templates/${created.id}`);
 }
 
-function onCancel() {
+function onCancel(): void {
   navigateTo('/templates');
 }
 </script>
@@ -32,6 +40,8 @@ function onCancel() {
     </div>
 
     <TemplateForm
+      :knowledges="knowledges ?? []"
+      :knowledge-service-enabled="knowledgeStore.enabled"
       :submitting="submitting"
       submit-label="Create template"
       @submit="onSubmit"

@@ -13,10 +13,10 @@ import {
 
 const store = useKnowledgeStore();
 
-const { data: items, pending, refresh } = await useAsyncData(
-  'admin-reins-knowledges',
-  () => store.fetchAll(),
-);
+const [{ data: items, pending, refresh }] = await Promise.all([
+  useAsyncData('admin-reins-knowledges', () => store.fetchAll()),
+  useAsyncData('admin-reins-status', () => store.fetchStatus()),
+]);
 
 const search = ref('');
 
@@ -51,9 +51,22 @@ async function onRemove(item: IKnowledge) {
           Knowledge bases backed by LightRAG. Create one, add sources, then index.
         </p>
       </div>
-      <Button as-child>
-        <NuxtLink to="/knowledges/create">New knowledge</NuxtLink>
+      <Button as-child :disabled="!store.enabled">
+        <NuxtLink
+          v-if="store.enabled"
+          to="/knowledges/create"
+        >New knowledge</NuxtLink>
+        <span v-else>New knowledge</span>
       </Button>
+    </div>
+
+    <div
+      v-if="!store.enabled"
+      class="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
+    >
+      Knowledge service is disabled. Set the URL in
+      <NuxtLink to="/settings" class="underline">Settings → Knowledge service</NuxtLink>
+      to enable knowledges.
     </div>
 
     <Input v-model="search" placeholder="Search" class="max-w-sm" />

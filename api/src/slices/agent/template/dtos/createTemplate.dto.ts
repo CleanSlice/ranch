@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsArray } from 'class-validator';
 
 export class CreateTemplateDto {
   @ApiProperty()
@@ -23,4 +23,10 @@ export class CreateTemplateDto {
   @IsOptional()
   @IsObject()
   defaultResources?: { cpu: string; memory: string };
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  defaultKnowledgeIds?: string[];
 }

@@ -44,6 +44,7 @@ export type CreateTemplateDto = {
     defaultResources?: {
         [key: string]: unknown;
     };
+    defaultKnowledgeIds?: Array<string>;
 };
 
 export type UpdateTemplateDto = {
@@ -56,6 +57,7 @@ export type UpdateTemplateDto = {
     defaultResources?: {
         [key: string]: unknown;
     };
+    defaultKnowledgeIds?: Array<string>;
 };
 
 export type AgentResourcesDto = {
@@ -829,6 +831,17 @@ export type CreateKnowledgeData = {
 
 export type CreateKnowledgeResponses = {
     201: unknown;
+};
+
+export type GetKnowledgeStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/knowledges/status';
+};
+
+export type GetKnowledgeStatusResponses = {
+    200: unknown;
 };
 
 export type GetGraphLabelsData = {

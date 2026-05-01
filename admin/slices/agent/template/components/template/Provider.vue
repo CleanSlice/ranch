@@ -12,18 +12,38 @@ import { IconArrowLeft } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 const templateStore = useTemplateStore();
+const knowledgeStore = useKnowledgeStore();
 
-const { data: template, pending, refresh } = await useAsyncData(
-  `admin-template-${props.id}`,
-  () => templateStore.fetchById(props.id),
-);
+const [{ data: template, pending }, { data: knowledges }] = await Promise.all([
+  useAsyncData(`admin-template-${props.id}`, () =>
+    templateStore.fetchById(props.id),
+  ),
+  useAsyncData(`template-${props.id}-knowledges`, () =>
+    knowledgeStore.fetchAll(),
+  ),
+  useAsyncData(`template-${props.id}-knowledge-status`, () =>
+    knowledgeStore.fetchStatus(),
+  ),
+]);
 
-const formatDate = (iso: string) =>
+const linkedKnowledges = computed(() => {
+  const ids = new Set(template.value?.defaultKnowledgeIds ?? []);
+  return (knowledges.value ?? []).filter((k) => ids.has(k.id));
+});
+
+const linkedIdsWithoutKnowledges = computed(() => {
+  const linkedSet = new Set(linkedKnowledges.value.map((k) => k.id));
+  return (template.value?.defaultKnowledgeIds ?? []).filter(
+    (id) => !linkedSet.has(id),
+  );
+});
+
+const formatDate = (iso: string): string =>
   new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
 const confirmRemoveOpen = ref(false);
 
-async function onRemove() {
+async function onRemove(): Promise<void> {
   if (!template.value) return;
   await templateStore.remove(template.value.id);
   await navigateTo('/templates');
@@ -94,6 +114,42 @@ async function onRemove() {
               <dd class="mt-1 text-sm text-muted-foreground">{{ template.id }}</dd>
             </div>
           </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Knowledges</CardTitle>
+          <CardDescription>
+            Bases agents created from this template can query.
+          </CardDescription>
+        </CardHeader>
+        <CardContent class="grid gap-3">
+          <p
+            v-if="!knowledgeStore.enabled && template.defaultKnowledgeIds.length"
+            class="text-xs text-muted-foreground"
+          >
+            Knowledge service is disabled — names cannot be resolved. Showing
+            stored IDs.
+          </p>
+          <p
+            v-if="!template.defaultKnowledgeIds.length"
+            class="text-sm text-muted-foreground"
+          >
+            None linked.
+          </p>
+          <ul v-else class="flex flex-wrap gap-2">
+            <li v-for="k in linkedKnowledges" :key="k.id">
+              <Badge variant="outline">{{ k.name }}</Badge>
+            </li>
+            <li
+              v-for="id in linkedIdsWithoutKnowledges"
+              :key="id"
+              class="text-xs text-muted-foreground"
+            >
+              <Badge variant="outline">{{ id }}</Badge>
+            </li>
+          </ul>
         </CardContent>
       </Card>
     </template>

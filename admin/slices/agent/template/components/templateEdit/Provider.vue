@@ -5,21 +5,29 @@ import { IconArrowLeft } from '@tabler/icons-vue';
 const props = defineProps<{ id: string }>();
 
 const templateStore = useTemplateStore();
+const knowledgeStore = useKnowledgeStore();
 const submitting = ref(false);
 
-const { data: template, pending } = await useAsyncData(
-  `admin-template-${props.id}-edit`,
-  () => templateStore.fetchById(props.id),
-);
+const [{ data: template, pending }, { data: knowledges }] = await Promise.all([
+  useAsyncData(`admin-template-${props.id}-edit`, () =>
+    templateStore.fetchById(props.id),
+  ),
+  useAsyncData(`template-edit-knowledges-${props.id}`, () =>
+    knowledgeStore.fetchAll(),
+  ),
+  useAsyncData(`template-edit-knowledge-status-${props.id}`, () =>
+    knowledgeStore.fetchStatus(),
+  ),
+]);
 
-async function onSubmit(values: ICreateTemplateData) {
+async function onSubmit(values: ICreateTemplateData): Promise<void> {
   submitting.value = true;
   await templateStore.update(props.id, values);
   submitting.value = false;
   await navigateTo(`/templates/${props.id}`);
 }
 
-function onCancel() {
+function onCancel(): void {
   navigateTo(`/templates/${props.id}`);
 }
 </script>
@@ -42,12 +50,15 @@ function onCancel() {
       </div>
 
       <TemplateForm
+        :knowledges="knowledges ?? []"
+        :knowledge-service-enabled="knowledgeStore.enabled"
         :initial-values="{
           name: template.name,
           description: template.description,
           image: template.image,
           defaultConfig: template.defaultConfig,
           defaultResources: template.defaultResources,
+          defaultKnowledgeIds: template.defaultKnowledgeIds,
         }"
         :submitting="submitting"
         submit-label="Save changes"

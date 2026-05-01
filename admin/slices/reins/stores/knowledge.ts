@@ -1,4 +1,4 @@
-import { ReinsService } from '#api/data';
+import { KnowledgesService, KnowledgeSourcesService } from '#api/data';
 import type { GraphDto, KnowledgeQueryResultDto } from '#api/data';
 import { client as apiClient } from '#api/data/repositories/api/client.gen';
 
@@ -92,7 +92,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     loading.value = true;
     error.value = null;
     try {
-      const res = await ReinsService.getKnowledges();
+      const res = await KnowledgesService.getKnowledges();
       items.value = unwrap<IKnowledge[]>(res.data) ?? [];
     } catch (err) {
       error.value = (err as Error).message;
@@ -103,19 +103,19 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
   }
 
   async function fetchById(id: string) {
-    const res = await ReinsService.getKnowledge({ path: { id } });
+    const res = await KnowledgesService.getKnowledge({ path: { id } });
     return unwrap<IKnowledge>(res.data);
   }
 
   async function create(body: ICreateKnowledgeInput) {
-    const res = await ReinsService.createKnowledge({ body });
+    const res = await KnowledgesService.createKnowledge({ body });
     const created = unwrap<IKnowledge>(res.data);
     if (created) items.value.unshift(created);
     return created;
   }
 
   async function update(id: string, body: IUpdateKnowledgeInput) {
-    const res = await ReinsService.updateKnowledge({ path: { id }, body });
+    const res = await KnowledgesService.updateKnowledge({ path: { id }, body });
     const updated = unwrap<IKnowledge>(res.data);
     if (updated) {
       const idx = items.value.findIndex((x) => x.id === id);
@@ -125,12 +125,12 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
   }
 
   async function remove(id: string) {
-    await ReinsService.deleteKnowledge({ path: { id } });
+    await KnowledgesService.deleteKnowledge({ path: { id } });
     items.value = items.value.filter((x) => x.id !== id);
   }
 
   async function startIndex(id: string) {
-    await ReinsService.indexKnowledge({ path: { id } });
+    await KnowledgesService.indexKnowledge({ path: { id } });
     const fresh = await fetchById(id);
     if (fresh) {
       const idx = items.value.findIndex((x) => x.id === id);
@@ -145,7 +145,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     mode: 'hybrid' | 'local' | 'global' | 'naive' = 'hybrid',
     topK = 10,
   ): Promise<IQueryResult> {
-    const res = await ReinsService.queryKnowledge({
+    const res = await KnowledgesService.queryKnowledge({
       path: { id },
       body: { query: q, mode, topK },
     });
@@ -155,21 +155,23 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
   }
 
   async function listSources(id: string) {
-    const res = await ReinsService.getKnowledgeSources({ path: { id } });
+    const res = await KnowledgeSourcesService.getKnowledgeSources({
+      path: { knowledgeId: id },
+    });
     return unwrap<ISource[]>(res.data) ?? [];
   }
 
   async function addTextSource(id: string, name: string, content: string) {
-    const res = await ReinsService.addKnowledgeSource({
-      path: { id },
+    const res = await KnowledgeSourcesService.addKnowledgeSource({
+      path: { knowledgeId: id },
       body: { type: 'text', name, content },
     });
     return unwrap<ISource>(res.data);
   }
 
   async function addUrlSource(id: string, name: string, url: string) {
-    const res = await ReinsService.addKnowledgeSource({
-      path: { id },
+    const res = await KnowledgeSourcesService.addKnowledgeSource({
+      path: { knowledgeId: id },
       body: { type: 'url', name, url },
     });
     return unwrap<ISource>(res.data);
@@ -188,13 +190,13 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
   }
 
   async function removeSource(id: string, sourceId: string) {
-    await ReinsService.deleteKnowledgeSource({
-      path: { id, sourceId },
+    await KnowledgeSourcesService.deleteKnowledgeSource({
+      path: { knowledgeId: id, sourceId },
     });
   }
 
   async function getGraphLabels(): Promise<string[]> {
-    const res = await ReinsService.getGraphLabels();
+    const res = await KnowledgesService.getGraphLabels();
     const list = unwrap<unknown>(res.data);
     if (!Array.isArray(list)) return [];
     return list.filter((x): x is string => typeof x === 'string');
@@ -205,7 +207,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     maxDepth: number,
     maxNodes: number,
   ): Promise<GraphDto> {
-    const res = await ReinsService.getGraph({
+    const res = await KnowledgesService.getGraph({
       query: { label, maxDepth, maxNodes },
     });
     const data = unwrap<GraphDto>(res.data);

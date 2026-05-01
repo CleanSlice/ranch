@@ -13,6 +13,17 @@ const props = withDefaults(
 const { t } = useI18n();
 const bridleStore = useBridleStore();
 
+// Replay persisted conversation so the chat isn't blank after a refresh.
+// Watcher (not just onMounted) covers the case where the parent swaps botId
+// without remounting this component.
+watch(
+  () => props.botId,
+  (botId) => {
+    if (botId) bridleStore.hydrate(botId);
+  },
+  { immediate: true },
+);
+
 const messages = computed(() =>
   props.botId ? bridleStore.messagesFor(props.botId) : [],
 );

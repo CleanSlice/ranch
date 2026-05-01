@@ -3,13 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { ISettingGateway } from '#/setting/domain';
 import {
   IKnowledgeConfig,
-  IKnowledgeConfigService,
-} from '../domain/knowledgeConfig.service';
+  IKnowledgeConfigGateway,
+} from '../domain/knowledgeConfig.gateway';
 
 const SETTING_GROUP = 'knowledge';
 
 @Injectable()
-export class KnowledgeConfigService extends IKnowledgeConfigService {
+export class KnowledgeConfigGateway extends IKnowledgeConfigGateway {
   constructor(
     private readonly settings: ISettingGateway,
     private readonly env: ConfigService,

@@ -1,7 +1,7 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { S3Repository } from '#/aws/s3';
-import { IKnowledgeConfigService } from '../../config/domain/knowledgeConfig.service';
+import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
 import { workspaceOf } from '../../knowledge/domain/workspace';
 import { ISourceGateway } from '../domain/source.gateway';
@@ -20,7 +20,7 @@ export class SourceGateway extends ISourceGateway {
     private readonly mapper: SourceMapper,
     private readonly lightrag: ILightragClient,
     private readonly s3: S3Repository,
-    private readonly knowledgeConfig: IKnowledgeConfigService,
+    private readonly knowledgeConfig: IKnowledgeConfigGateway,
   ) {
     super();
   }

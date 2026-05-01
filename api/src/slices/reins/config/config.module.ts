@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule as NestConfigModule } from '@nestjs/config';
 import { SettingModule } from '#/setting/setting.module';
-import { IKnowledgeConfigService } from './domain/knowledgeConfig.service';
-import { KnowledgeConfigService } from './data/knowledgeConfig.service';
+import { IKnowledgeConfigGateway } from './domain/knowledgeConfig.gateway';
+import { KnowledgeConfigGateway } from './data/knowledgeConfig.gateway';
 
 @Module({
   imports: [NestConfigModule, SettingModule],
   providers: [
-    { provide: IKnowledgeConfigService, useClass: KnowledgeConfigService },
+    { provide: IKnowledgeConfigGateway, useClass: KnowledgeConfigGateway },
   ],
-  exports: [IKnowledgeConfigService],
+  exports: [IKnowledgeConfigGateway],
 })
 export class ConfigModule {}

@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '../config/config.module';
-import { IKnowledgeConfigService } from '../config/domain/knowledgeConfig.service';
+import { IKnowledgeConfigGateway } from '../config/domain/knowledgeConfig.gateway';
 import { ILightragClient } from './domain/lightrag.client';
 import { LightragHttpClient } from './data/lightragHttp.client';
 
@@ -9,8 +9,8 @@ import { LightragHttpClient } from './data/lightragHttp.client';
   providers: [
     {
       provide: ILightragClient,
-      inject: [IKnowledgeConfigService],
-      useFactory: (cfg: IKnowledgeConfigService) =>
+      inject: [IKnowledgeConfigGateway],
+      useFactory: (cfg: IKnowledgeConfigGateway) =>
         new LightragHttpClient({
           resolveConfig: async () => {
             const c = await cfg.resolve();

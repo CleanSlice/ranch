@@ -1,1 +1,1 @@
-export * from './knowledgeConfig.service';
+export * from './knowledgeConfig.gateway';

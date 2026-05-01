@@ -5,7 +5,7 @@ export interface IKnowledgeConfig {
   enabled: boolean;
 }
 
-export abstract class IKnowledgeConfigService {
+export abstract class IKnowledgeConfigGateway {
   abstract resolve(): Promise<IKnowledgeConfig>;
   abstract isEnabled(): Promise<boolean>;
 }

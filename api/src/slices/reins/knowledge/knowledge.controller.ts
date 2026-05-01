@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
 import { KnowledgeService } from './domain/knowledge.service';
-import { IKnowledgeConfigService } from '../config/domain/knowledgeConfig.service';
+import { IKnowledgeConfigGateway } from '../config/domain/knowledgeConfig.gateway';
 import { IGraphData } from './domain/knowledge.types';
 import {
   CreateKnowledgeDto,
@@ -27,7 +27,7 @@ import {
 export class KnowledgeController {
   constructor(
     private readonly service: KnowledgeService,
-    private readonly knowledgeConfig: IKnowledgeConfigService,
+    private readonly knowledgeConfig: IKnowledgeConfigGateway,
   ) {}
 
   @Get()

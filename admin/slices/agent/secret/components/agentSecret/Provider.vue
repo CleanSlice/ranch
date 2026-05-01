@@ -7,8 +7,12 @@ const props = defineProps<{ id: string }>();
 
 const store = useAgentSecretStore();
 
-await useAsyncData(`admin-agent-secrets-${props.id}`, () =>
-  store.fetchForAgent(props.id),
+// Lazy so this sub-provider doesn't re-suspend the page once the parent's
+// agent data resolves and this component mounts.
+useAsyncData(
+  `admin-agent-secrets-${props.id}`,
+  () => store.fetchForAgent(props.id),
+  { lazy: true },
 );
 
 const revealed = ref<Record<string, boolean>>({});

@@ -26,17 +26,34 @@ const apiUrl =
   (typeof process !== 'undefined' ? process.env.API_URL : undefined) ??
   'http://localhost:3333';
 
-const { data: agent, pending, refresh } = await useAsyncData(
+// All async data is loaded lazily so the route transitions immediately and
+// each block renders its own skeleton until its data arrives. Without lazy,
+// top-level awaits in <script setup> block the Vue Router transition until
+// every promise resolves — the user perceives this as a multi-second delay
+// before the page opens.
+const { data: agent, pending, refresh } = useAsyncData(
   `admin-agent-${props.id}`,
   () => agentStore.fetchById(props.id),
+  { lazy: true },
 );
 
-await useAsyncData('admin-settings-for-agent-env', () => settingStore.fetchAll());
-await useAsyncData('admin-llms-for-agent-env', () => llmStore.fetchAll());
-const { data: usage, refresh: refreshUsage } = await useAsyncData(
+const { pending: settingsPending } = useAsyncData(
+  'admin-settings-for-agent-env',
+  () => settingStore.fetchAll(),
+  { lazy: true },
+);
+const { pending: llmsPending } = useAsyncData(
+  'admin-llms-for-agent-env',
+  () => llmStore.fetchAll(),
+  { lazy: true },
+);
+const { data: usage, pending: usagePending, refresh: refreshUsage } = useAsyncData(
   `admin-agent-usage-${props.id}`,
   () => usageStore.fetchForAgent(props.id),
+  { lazy: true },
 );
+
+const envPending = computed(() => settingsPending.value || llmsPending.value);
 
 const statusVariant: Record<AgentStatusTypes, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   running: 'default',
@@ -314,7 +331,13 @@ async function onRemove() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div v-if="!usage || usage.totals.callCount === 0" class="text-sm text-muted-foreground">
+              <div v-if="usagePending && !usage" class="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                <div v-for="i in 8" :key="i" class="space-y-2">
+                  <Skeleton class="h-3 w-20" />
+                  <Skeleton class="h-4 w-24" />
+                </div>
+              </div>
+              <div v-else-if="!usage || usage.totals.callCount === 0" class="text-sm text-muted-foreground">
                 No usage reported yet.
               </div>
               <dl v-else class="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -446,7 +469,14 @@ async function onRemove() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <dl class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+              <div v-if="envPending" class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+                <template v-for="i in 8" :key="i">
+                  <Skeleton class="h-3 w-32" />
+                  <Skeleton class="h-3 w-full max-w-md" />
+                  <div />
+                </template>
+              </div>
+              <dl v-else class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
                 <template v-for="env in envVars" :key="env.name">
                   <dt class="font-mono text-xs text-muted-foreground">{{ env.name }}</dt>
                   <dd class="min-w-0 break-all font-mono text-xs">

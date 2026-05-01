@@ -127,10 +127,16 @@ function dismissRestartBanner() {
   store.clearPendingRestart(props.id);
 }
 
-await useAsyncData(`admin-agent-files-${props.id}`, async () => {
-  await store.fetchList(props.id);
-  return true;
-});
+// Lazy so this sub-provider doesn't re-suspend the page once the parent's
+// agent data resolves and this component mounts.
+useAsyncData(
+  `admin-agent-files-${props.id}`,
+  async () => {
+    await store.fetchList(props.id);
+    return true;
+  },
+  { lazy: true },
+);
 </script>
 
 <template>

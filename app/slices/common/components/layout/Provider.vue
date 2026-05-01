@@ -15,7 +15,7 @@
 
         <nav class="hidden md:flex items-center gap-5 text-sm">
           <NuxtLink
-            to="/chat"
+            to="/agents"
             class="text-muted-foreground hover:text-foreground transition-colors"
             active-class="text-foreground font-medium"
           >
@@ -92,14 +92,10 @@ const authStore = useAuthStore();
 const year = new Date().getFullYear();
 
 // Pages that own the full content area (no container padding, no footer).
-// Matches:
-//   /chat           — agents+chat dashboard
-//   /agents/:id     — chat-first agent detail (but NOT /agents or /agents/create)
+// Matches /agents/:id (chat-first agent detail) but NOT /agents or /agents/create.
 const isFlush = computed(() => {
   const p = route.path;
-  if (p.startsWith('/chat')) return true;
-  if (/^\/agents\/[^/]+$/.test(p) && p !== '/agents/create') return true;
-  return false;
+  return /^\/agents\/[^/]+$/.test(p) && p !== '/agents/create';
 });
 
 // Show "Sign up" only when self-service registration is open. Lazy-loaded

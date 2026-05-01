@@ -15,7 +15,6 @@ import {
 } from '#theme/components/ui/sidebar';
 import {
   IconTractor,
-  IconRobot,
   IconFileText,
   IconUsers,
   IconBrain,
@@ -24,6 +23,7 @@ import {
   IconLogout,
   IconDatabase,
 } from '@tabler/icons-vue';
+import { Bot } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const ranchVersion = useRuntimeConfig().public.ranchVersion;
@@ -36,7 +36,7 @@ async function onLogout() {
 const menu = useMenuStore();
 
 const iconMap: Record<string, unknown> = {
-  Robot: IconRobot,
+  Bot,
   FileText: IconFileText,
   Users: IconUsers,
   Brain: IconBrain,

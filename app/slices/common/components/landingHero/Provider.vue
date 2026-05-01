@@ -27,7 +27,7 @@
 
           <div class="mt-8 flex flex-wrap gap-3">
             <NuxtLink
-              to="/chat"
+              to="/agents"
               class="inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground px-5 py-3 text-sm font-medium hover:opacity-90 transition"
             >
               Open full dashboard →

@@ -1,7 +1,6 @@
 /**
  * Public routes (Q2-C):
  *   - /              landing
- *   - /chat          public chat with whichever agent
  *   - /login         self
  *   - /register      self (gated by setting on the server side)
  *

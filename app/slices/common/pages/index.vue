@@ -69,7 +69,7 @@
           Jump into the dashboard, pick an agent, and start a conversation.
         </p>
         <NuxtLink
-          to="/chat"
+          to="/agents"
           class="mt-8 inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground px-6 py-3 text-sm font-medium hover:opacity-90 transition"
         >
           Open the dashboard →

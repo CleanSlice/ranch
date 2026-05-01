@@ -32,7 +32,7 @@ const emit = defineEmits<{
 }>();
 
 const isExpanded = computed(() =>
-  props.node.type === 'folder' ? props.expandedMap[props.node.path] ?? true : false,
+  props.node.type === 'folder' ? props.expandedMap[props.node.path] ?? false : false,
 );
 
 const indent = computed(() => `${props.level * 12}px`);

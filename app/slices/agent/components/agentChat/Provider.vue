@@ -157,80 +157,86 @@ const initials = computed(() => {
 <template>
   <div class="flex h-[calc(100vh-3.5rem-1px)] flex-col">
     <!-- Compact header strip: back, agent identity, status, actions -->
-    <header
-      class="flex shrink-0 items-center gap-3 border-b bg-card px-4 py-3"
-    >
-      <NuxtLink
-        to="/agents"
-        class="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition"
-        aria-label="Back to agents"
-      >
-        <Icon name="arrow-left" :size="16" />
-      </NuxtLink>
-
+    <header class="shrink-0 border-b bg-card">
       <div
-        v-if="agent"
-        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-linear-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary"
+        class="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3"
       >
-        {{ initials }}
-      </div>
-
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2">
-          <h1 class="truncate text-sm font-semibold">
-            <template v-if="agent">{{ agent.name }}</template>
-            <template v-else-if="pending">Loading…</template>
-            <template v-else>Agent not found</template>
-          </h1>
-          <span
-            v-if="agent"
-            class="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
-          >
-            <span class="relative flex h-1.5 w-1.5">
-              <span
-                v-if="statusMeta.pulse"
-                class="absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping"
-                :class="statusMeta.dot"
-              />
-              <span
-                class="relative inline-flex h-1.5 w-1.5 rounded-full"
-                :class="statusMeta.dot"
-              />
-            </span>
-            {{ statusMeta.label }}
-          </span>
-        </div>
-        <p
-          v-if="agent"
-          class="mt-0.5 truncate text-xs text-muted-foreground"
-          :title="agent.templateId"
+        <NuxtLink
+          to="/agents"
+          class="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition"
+          aria-label="Back to agents"
         >
-          {{ agent.templateId }}
-        </p>
-      </div>
+          <Icon name="arrow-left" :size="16" />
+        </NuxtLink>
 
-      <button
-        v-if="agent && canManage"
-        type="button"
-        class="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60 transition"
-        :disabled="isTransitioning"
-        @click="onRestart"
-      >
-        <Icon
-          :name="isTransitioning ? 'loader-2' : 'refresh-cw'"
-          :size="13"
-          :class="isTransitioning && 'animate-spin'"
-        />
-        {{ isTransitioning ? 'Restarting…' : 'Restart' }}
-      </button>
+        <div
+          v-if="agent"
+          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-linear-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary"
+        >
+          {{ initials }}
+        </div>
+
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <h1 class="truncate text-sm font-semibold">
+              <template v-if="agent">{{ agent.name }}</template>
+              <template v-else-if="pending">Loading…</template>
+              <template v-else>Agent not found</template>
+            </h1>
+            <span
+              v-if="agent"
+              class="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+            >
+              <span class="relative flex h-1.5 w-1.5">
+                <span
+                  v-if="statusMeta.pulse"
+                  class="absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping"
+                  :class="statusMeta.dot"
+                />
+                <span
+                  class="relative inline-flex h-1.5 w-1.5 rounded-full"
+                  :class="statusMeta.dot"
+                />
+              </span>
+              {{ statusMeta.label }}
+            </span>
+          </div>
+          <p
+            v-if="agent"
+            class="mt-0.5 truncate text-xs text-muted-foreground"
+            :title="agent.templateId"
+          >
+            {{ agent.templateId }}
+          </p>
+        </div>
+
+        <button
+          v-if="agent && canManage"
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60 transition"
+          :disabled="isTransitioning"
+          @click="onRestart"
+        >
+          <Icon
+            :name="isTransitioning ? 'loader-2' : 'refresh-cw'"
+            :size="13"
+            :class="isTransitioning && 'animate-spin'"
+          />
+          {{ isTransitioning ? 'Restarting…' : 'Restart' }}
+        </button>
+      </div>
     </header>
 
-    <p
+    <div
       v-if="restartError"
-      class="shrink-0 border-b bg-rose-500/10 px-4 py-2 text-xs text-rose-700 dark:text-rose-400"
+      class="shrink-0 border-b bg-rose-500/10"
     >
-      {{ restartError }}
-    </p>
+      <p
+        class="mx-auto w-full max-w-3xl px-4 py-2 text-xs text-rose-700 dark:text-rose-400"
+      >
+        {{ restartError }}
+      </p>
+    </div>
 
     <!-- Chat — expands to fill remaining height -->
     <div class="relative flex-1 min-h-0 overflow-hidden">

@@ -39,12 +39,7 @@ export class KnowledgeConfigService extends IKnowledgeConfigService {
     const allowed = explicitFlag !== false;
     const enabled = allowed && url.length > 0;
 
-    return {
-      url,
-      apiKey,
-      bucket,
-      enabled,
-    };
+    return { url, apiKey, bucket, enabled };
   }
 
   async isEnabled(): Promise<boolean> {

@@ -6,14 +6,14 @@ import { AwsModule } from '#/aws/aws.module';
 import { S3Repository } from '#/aws/s3';
 import { SettingModule } from '#/setting/setting.module';
 import { ReinsController } from './reins.controller';
-import { IReinsGateway } from './domain/reins.gateway';
-import { IKnowledgeConfigService } from './domain/knowledgeConfig.service';
-import { ReinsGateway } from './data/reins.gateway';
-import { ReinsMapper } from './data/reins.mapper';
-import { KnowledgeConfigService } from './data/knowledgeConfig.service';
-import { ReinsService } from './domain/reins.service';
-import { ILightragClient } from './data/repositories/lightrag/lightrag.client';
-import { LightragHttpClient } from './data/repositories/lightrag/lightragHttp.client';
+import { IReinsGateway } from './knowledge/domain/reins.gateway';
+import { IKnowledgeConfigService } from './config/domain/knowledgeConfig.service';
+import { ReinsGateway } from './knowledge/data/reins.gateway';
+import { ReinsMapper } from './knowledge/data/reins.mapper';
+import { KnowledgeConfigService } from './config/data/knowledgeConfig.service';
+import { ReinsService } from './knowledge/domain/reins.service';
+import { ILightragClient } from './knowledge/data/repositories/lightrag/lightrag.client';
+import { LightragHttpClient } from './knowledge/data/repositories/lightrag/lightragHttp.client';
 
 @Module({
   imports: [ConfigModule, PrismaModule, AwsModule, SettingModule],

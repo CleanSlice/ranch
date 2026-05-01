@@ -14,9 +14,9 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiOkResponse } from '@nestjs/swagger';
-import { ReinsService } from './domain/reins.service';
-import { IKnowledgeConfigService } from './domain/knowledgeConfig.service';
-import { IGraphData } from './domain/reins.types';
+import { ReinsService } from './knowledge/domain/reins.service';
+import { IKnowledgeConfigService } from './config/domain/knowledgeConfig.service';
+import { IGraphData } from './knowledge/domain/reins.types';
 import {
   CreateKnowledgeDto,
   UpdateKnowledgeDto,
@@ -25,7 +25,7 @@ import {
   GetGraphDto,
   GraphDto,
   KnowledgeQueryResultDto,
-} from './dtos';
+} from './knowledge/dtos';
 
 interface UploadedFileLike {
   originalname: string;

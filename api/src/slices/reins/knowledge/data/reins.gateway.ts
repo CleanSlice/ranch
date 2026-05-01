@@ -2,7 +2,7 @@ import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { S3Repository } from '#/aws/s3';
 import { IReinsGateway } from '../domain/reins.gateway';
-import { IKnowledgeConfigService } from '../domain/knowledgeConfig.service';
+import { IKnowledgeConfigService } from '../../config/domain/knowledgeConfig.service';
 import {
   IKnowledgeData,
   ICreateKnowledgeData,

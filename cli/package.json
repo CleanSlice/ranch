@@ -4,6 +4,15 @@
   "type": "module",
   "description": "Ranch project CLI",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CleanSlice/ranch.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/CleanSlice/ranch/tree/main/cli#readme",
+  "bugs": {
+    "url": "https://github.com/CleanSlice/ranch/issues"
+  },
   "bin": {
     "ranch": "dist/ranch.mjs"
   },

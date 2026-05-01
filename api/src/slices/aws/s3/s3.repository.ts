@@ -1,12 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { ISettingGateway } from '#/setting/domain';
 import {
-  IS3Config,
   IS3FileLocation,
   IS3StoredFile,
   IS3UploadInput,
@@ -15,22 +15,13 @@ import {
 
 @Injectable()
 export class S3Repository {
-  private readonly client: S3Client;
+  private client: S3Client | undefined;
 
-  constructor(config: IS3Config) {
-    this.client = new S3Client({
-      endpoint: config.endpoint,
-      region: config.region,
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
-      },
-      forcePathStyle: typeof config.endpoint === 'string',
-    });
-  }
+  constructor(private settings: ISettingGateway) {}
 
   async upload(input: IS3UploadInput): Promise<IS3StoredFile> {
-    await this.client.send(
+    const client = await this.getClient();
+    await client.send(
       new PutObjectCommand({
         Bucket: input.bucket,
         Key: input.key,
@@ -46,7 +37,8 @@ export class S3Repository {
   }
 
   async download(location: IS3FileLocation): Promise<Buffer> {
-    const res = await this.client.send(
+    const client = await this.getClient();
+    const res = await client.send(
       new GetObjectCommand({
         Bucket: location.bucket,
         Key: location.key,
@@ -63,12 +55,44 @@ export class S3Repository {
   }
 
   async delete(location: IS3FileLocation): Promise<void> {
-    await this.client.send(
+    const client = await this.getClient();
+    await client.send(
       new DeleteObjectCommand({
         Bucket: location.bucket,
         Key: location.key,
       }),
     );
+  }
+
+  private async getClient(): Promise<S3Client> {
+    if (this.client) return this.client;
+
+    const get = async (name: string): Promise<string> => {
+      const setting = await this.settings.findByKey('integrations', name);
+      const value = setting?.value;
+      return typeof value === 'string' ? value : '';
+    };
+
+    const [endpoint, region, accessKeyId, secretAccessKey] = await Promise.all([
+      get('s3_endpoint'),
+      get('s3_region'),
+      get('s3_access_key'),
+      get('s3_secret_key'),
+    ]);
+
+    if (!accessKeyId || !secretAccessKey) {
+      throw new BadRequestException(
+        'S3 is not configured (settings → integrations → s3_access_key, s3_secret_key)',
+      );
+    }
+
+    this.client = new S3Client({
+      endpoint: endpoint || undefined,
+      region: region || 'us-east-1',
+      credentials: { accessKeyId, secretAccessKey },
+      forcePathStyle: Boolean(endpoint),
+    });
+    return this.client;
   }
 
   static toUri(location: IS3FileLocation): string {

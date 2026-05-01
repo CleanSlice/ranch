@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import { consola } from "consola";
 import { join } from "node:path";
-import { findRanchRoot } from "../utils/root";
+import { ensureRanchRoot } from "../utils/setup";
 import { tryRun } from "../utils/exec";
 import { freePorts } from "../utils/ports";
 
@@ -11,7 +11,7 @@ export const downCommand = defineCommand({
     description: "Stop all dev services and free ports",
   },
   async run() {
-    const root = findRanchRoot();
+    const root = await ensureRanchRoot();
 
     consola.start("Freeing dev ports...");
     freePorts([3000, 3001, 3002, 3333]);

@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import { consola } from "consola";
 import { join } from "node:path";
-import { findRanchRoot } from "../utils/root";
+import { ensureRanchRoot } from "../utils/setup";
 import { runOrThrow, tryRun } from "../utils/exec";
 
 export const dbCommand = defineCommand({
@@ -17,7 +17,7 @@ export const dbCommand = defineCommand({
     },
   },
   async run({ args }) {
-    const root = findRanchRoot();
+    const root = await ensureRanchRoot();
     const apiDir = join(root, "api");
 
     switch (args.action) {

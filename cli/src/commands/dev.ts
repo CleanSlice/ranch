@@ -1,6 +1,6 @@
 import { defineCommand } from "citty";
 import { consola } from "consola";
-import { findRanchRoot } from "../utils/root";
+import { ensureRanchRoot } from "../utils/setup";
 import { run } from "../utils/exec";
 import { freePorts } from "../utils/ports";
 
@@ -17,7 +17,7 @@ export const devCommand = defineCommand({
     },
   },
   async run({ args }) {
-    const root = findRanchRoot();
+    const root = await ensureRanchRoot();
     freePorts([3000, 3001, 3002]);
 
     const target = args.target;

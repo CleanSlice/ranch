@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import { consola } from "consola";
 import { join } from "node:path";
-import { findRanchRoot } from "../utils/root";
+import { ensureRanchRoot } from "../utils/setup";
 import { runOrThrow } from "../utils/exec";
 
 export const generateCommand = defineCommand({
@@ -10,7 +10,7 @@ export const generateCommand = defineCommand({
     description: "Regenerate Prisma schema from slices and run prisma generate",
   },
   async run() {
-    const root = findRanchRoot();
+    const root = await ensureRanchRoot();
     const apiDir = join(root, "api");
 
     consola.start("Generating Prisma schema from slices...");

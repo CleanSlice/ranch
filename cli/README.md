@@ -11,6 +11,7 @@ ranch stop                   Alias for down
 ranch db <action>            start | stop | reset | studio
 ranch generate               Regenerate Prisma schema from slices
 ranch status                 Show what's currently running locally
+ranch where                  Show which Ranch root the CLI is using
 ```
 
 Run `ranch --help` or `ranch <cmd> --help` for the full list.
@@ -38,9 +39,30 @@ Verify:
 ranch --help
 ```
 
-The CLI auto-discovers the Ranch project root by walking upward from the
-current directory until it finds a `package.json` with `"name": "ranch"`.
-You can also set `RANCH_ROOT` to point at it explicitly.
+## First run — auto-setup
+
+The first time you run `ranch <command>` outside of a Ranch checkout,
+the CLI offers to set one up:
+
+- **Clone `CleanSlice/ranch`** into a directory of your choice and
+  optionally run `bun install` there.
+- **Point at an existing local copy** if you've already cloned it
+  somewhere.
+
+The chosen path is cached at:
+
+- `~/.config/ranch/config.json` on macOS / Linux
+- `%APPDATA%\ranch\config.json` on Windows
+
+Subsequent `ranch` commands work from anywhere — no need to `cd` into
+the project. Inspect / re-discover with `ranch where`.
+
+Resolution order (first match wins):
+
+1. `RANCH_ROOT` environment variable
+2. `package.json#name === "ranch"` walking up from the current directory
+3. The cached path from the config file
+4. Interactive setup
 
 ## Local development
 

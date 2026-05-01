@@ -688,7 +688,7 @@ export class UsageService {
     
 }
 
-export class ReinsService {
+export class KnowledgesService {
     /**
      * List knowledges
      */
@@ -801,12 +801,15 @@ export class ReinsService {
         });
     }
     
+}
+
+export class KnowledgeSourcesService {
     /**
      * List sources
      */
     public static getKnowledgeSources<ThrowOnError extends boolean = false>(options: Options<GetKnowledgeSourcesData, ThrowOnError>) {
         return (options.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({
-            url: '/knowledges/{id}/sources',
+            url: '/knowledges/{knowledgeId}/sources',
             ...options
         });
     }
@@ -817,7 +820,7 @@ export class ReinsService {
     public static addKnowledgeSource<ThrowOnError extends boolean = false>(options: Options<AddKnowledgeSourceData, ThrowOnError>) {
         return (options.client ?? _heyApiClient).post<unknown, unknown, ThrowOnError>({
             ...formDataBodySerializer,
-            url: '/knowledges/{id}/sources',
+            url: '/knowledges/{knowledgeId}/sources',
             ...options,
             headers: {
                 'Content-Type': null,
@@ -831,7 +834,7 @@ export class ReinsService {
      */
     public static deleteKnowledgeSource<ThrowOnError extends boolean = false>(options: Options<DeleteKnowledgeSourceData, ThrowOnError>) {
         return (options.client ?? _heyApiClient).delete<DeleteKnowledgeSourceResponse, unknown, ThrowOnError>({
-            url: '/knowledges/{id}/sources/{sourceId}',
+            url: '/knowledges/{knowledgeId}/sources/{sourceId}',
             ...options
         });
     }

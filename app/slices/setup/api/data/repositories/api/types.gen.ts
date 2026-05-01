@@ -1230,10 +1230,10 @@ export type QueryKnowledgeResponse = QueryKnowledgeResponses[keyof QueryKnowledg
 export type GetKnowledgeSourcesData = {
     body?: never;
     path: {
-        id: string;
+        knowledgeId: string;
     };
     query?: never;
-    url: '/knowledges/{id}/sources';
+    url: '/knowledges/{knowledgeId}/sources';
 };
 
 export type GetKnowledgeSourcesResponses = {
@@ -1243,10 +1243,10 @@ export type GetKnowledgeSourcesResponses = {
 export type AddKnowledgeSourceData = {
     body: CreateSourceDto;
     path: {
-        id: string;
+        knowledgeId: string;
     };
     query?: never;
-    url: '/knowledges/{id}/sources';
+    url: '/knowledges/{knowledgeId}/sources';
 };
 
 export type AddKnowledgeSourceResponses = {
@@ -1256,11 +1256,11 @@ export type AddKnowledgeSourceResponses = {
 export type DeleteKnowledgeSourceData = {
     body?: never;
     path: {
-        id: string;
+        knowledgeId: string;
         sourceId: string;
     };
     query?: never;
-    url: '/knowledges/{id}/sources/{sourceId}';
+    url: '/knowledges/{knowledgeId}/sources/{sourceId}';
 };
 
 export type DeleteKnowledgeSourceResponses = {

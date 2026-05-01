@@ -3,10 +3,16 @@ import { UsersService } from '#api/data';
 type ApiEnvelope<T> = { success: boolean; data: T };
 
 export enum UserRoleTypes {
-  Owner = 'owner',
-  Admin = 'admin',
-  Member = 'member',
+  Owner = 'Owner',
+  Admin = 'Admin',
+  User = 'User',
 }
+
+export const ALL_USER_ROLES: UserRoleTypes[] = [
+  UserRoleTypes.Owner,
+  UserRoleTypes.Admin,
+  UserRoleTypes.User,
+];
 
 export enum UserStatusTypes {
   Active = 'active',
@@ -18,7 +24,7 @@ export interface IUserData {
   id: string;
   name: string;
   email: string;
-  role: UserRoleTypes;
+  roles: UserRoleTypes[];
   status: UserStatusTypes;
   createdAt: string;
 }
@@ -27,7 +33,7 @@ export interface ICreateUserData {
   name: string;
   email: string;
   password: string;
-  role: UserRoleTypes;
+  roles: UserRoleTypes[];
 }
 
 export const useUserStore = defineStore('user', () => {
@@ -53,10 +59,20 @@ export const useUserStore = defineStore('user', () => {
     return env.data;
   }
 
+  async function updateRoles(id: string, roles: UserRoleTypes[]) {
+    const res = await UsersService.userControllerUpdateRoles({
+      path: { id },
+      body: { roles },
+    });
+    const env = res.data as ApiEnvelope<IUserData>;
+    users.value = users.value.map((u) => (u.id === id ? env.data : u));
+    return env.data;
+  }
+
   async function remove(id: string) {
     await UsersService.userControllerRemove({ path: { id } });
     users.value = users.value.filter((u) => u.id !== id);
   }
 
-  return { users, fetchAll, fetchById, create, remove };
+  return { users, fetchAll, fetchById, create, updateRoles, remove };
 });

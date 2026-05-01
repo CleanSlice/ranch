@@ -86,8 +86,8 @@ async function onRemove() {
               </Badge>
               <span v-else class="text-muted-foreground">—</span>
             </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ item.description ?? '—' }}
+            <TableCell class="max-w-[400px] text-muted-foreground">
+              <div class="truncate">{{ item.description ?? '—' }}</div>
             </TableCell>
             <TableCell @click.stop>
               <div class="flex justify-end gap-2">

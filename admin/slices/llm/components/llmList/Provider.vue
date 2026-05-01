@@ -44,15 +44,11 @@ async function onRemove() {
 <template>
   <div class="flex flex-col gap-6">
     <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold">LLMs</h1>
-        <p class="text-sm text-muted-foreground">
-          Pick a credential for each agent. Its provider/model/apiKey become
-          <code>LLM_PROVIDER</code> / <code>LLM_MODEL</code> /
-          <code>LLM_FALLBACK_MODEL</code> / <code>LLM_API_KEY</code> on the
-          pod at submit time.
-        </p>
-      </div>
+      <p class="text-sm text-muted-foreground">
+        Provider/model/apiKey become <code>LLM_PROVIDER</code> /
+        <code>LLM_MODEL</code> / <code>LLM_FALLBACK_MODEL</code> /
+        <code>LLM_API_KEY</code> on the agent pod at submit time.
+      </p>
       <Button as-child>
         <NuxtLink to="/llms/create">New credential</NuxtLink>
       </Button>

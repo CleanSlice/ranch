@@ -13,6 +13,7 @@ model Agent {
   workflowId      String?
   config          Json           @default("{}")
   resources       Json           @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
+  debugEnabled    Boolean        @default(false)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

@@ -110,6 +110,10 @@ async function onRemove(): Promise<void> {
               <dd class="mt-1 text-sm">{{ formatDate(template.createdAt) }}</dd>
             </div>
             <div>
+              <dt class="text-xs text-muted-foreground">Last updated</dt>
+              <dd class="mt-1 text-sm">{{ formatDate(template.updatedAt) }}</dd>
+            </div>
+            <div>
               <dt class="text-xs text-muted-foreground">ID</dt>
               <dd class="mt-1 text-sm text-muted-foreground">{{ template.id }}</dd>
             </div>
@@ -150,6 +154,19 @@ async function onRemove(): Promise<void> {
               <Badge variant="outline">{{ id }}</Badge>
             </li>
           </ul>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Files</CardTitle>
+          <CardDescription>
+            Upload a .agent folder to populate this template, then edit individual
+            files in the browser.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TemplateFileProvider :id="template.id" />
         </CardContent>
       </Card>
     </template>

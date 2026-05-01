@@ -2,6 +2,7 @@
 .PHONY: infra-init infra-plan infra-apply infra-destroy kubeconfig deploy argocd-password
 .PHONY: k3d k3d-stop k3d-clean k3d-status
 .PHONY: lightrag-up lightrag-down lightrag-logs lightrag-reset
+.PHONY: pf-argo
 
 # ============================================
 # Ranch - CleanSlice Agent Platform
@@ -167,6 +168,14 @@ k3d-clean: ## Delete local k3d cluster
 	@k3d cluster delete $(CLUSTER) 2>/dev/null || true
 	@rm -f $(KUBECONFIG_LOCAL)
 	@echo "Cluster $(CLUSTER) deleted."
+
+pf-argo: ## Port-forward Argo Workflows server to localhost:2746 (needed for `dev-api` to talk to Argo)
+	@if lsof -iTCP:2746 -sTCP:LISTEN >/dev/null 2>&1; then \
+		echo "  port 2746 already in use — assuming a forward is running"; \
+	else \
+		echo "  forwarding argo-workflows-server -> localhost:2746"; \
+		kubectl port-forward -n argo svc/argo-workflows-server 2746:2746; \
+	fi
 
 k3d-status: ## Show local cluster status
 	@echo "=== Cluster ==="

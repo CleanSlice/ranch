@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
+import { SettingModule } from '#/setting/setting.module';
 import { TemplateController } from './template.controller';
 import { ITemplateGateway } from './domain/template.gateway';
 import { TemplateGateway } from './data/template.gateway';
 import { TemplateMapper } from './data/template.mapper';
 
 @Module({
+  imports: [SettingModule],
   controllers: [TemplateController],
   providers: [
     TemplateMapper,

@@ -1,10 +1,9 @@
-import { IUserData } from '../../user/domain';
+import { IUserData, UserRoleTypes } from '../../user/domain';
 
 export interface IAuthTokenPayload {
   sub: string;
   email: string;
-  role: string;
-  roles: string[];
+  roles: UserRoleTypes[];
 }
 
 export interface IAuthResult {

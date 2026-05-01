@@ -1,2 +1,2 @@
 export * from './bridle.types';
-export { IBridleGateway } from './bridle.gateway';
+export { IBridleGateway, type ISyncAgentResult } from './bridle.gateway';

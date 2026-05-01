@@ -9,6 +9,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
   HeadObjectCommand,
+  DeleteObjectCommand,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
 import { ISettingGateway } from '#/setting/domain';
@@ -122,6 +123,24 @@ export class S3FileGateway extends IFileGateway {
         ContentType: this.contentType(path),
       }),
     );
+  }
+
+  async delete(agentId: string, path: string): Promise<void> {
+    this.assertSafePath(path);
+    const { client, bucket } = await this.connect();
+    const key = this.prefix(agentId) + path;
+
+    try {
+      await client.send(
+        new DeleteObjectCommand({ Bucket: bucket, Key: key }),
+      );
+    } catch (err) {
+      // S3 DELETE is idempotent — 404 isn't typically returned, but treat
+      // any not-found as success so callers (e.g. "reset chat") don't fail
+      // when the file already doesn't exist.
+      if (this.isNotFound(err)) return;
+      throw err;
+    }
   }
 
   private prefix(agentId: string): string {

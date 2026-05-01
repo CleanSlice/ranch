@@ -77,10 +77,37 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   async function restart(id: string) {
-    const res = await AgentsService.agentControllerRestart({ path: { id } });
-    const env = res.data as ApiEnvelope<IAgentData>;
-    agents.value = agents.value.map((a) => (a.id === id ? env.data : a));
-    return env.data;
+    // Optimistic: flip the status to "deploying" so the UI reacts immediately
+    // (the restart endpoint cancels the old workflow and submits a new one,
+    // which can take several seconds). Revert on error.
+    const previous = agents.value.find((a) => a.id === id);
+    if (previous && previous.status !== 'deploying') {
+      agents.value = agents.value.map((a) =>
+        a.id === id ? { ...a, status: 'deploying' } : a,
+      );
+    }
+    try {
+      const res = await AgentsService.agentControllerRestart({ path: { id } });
+      // Hey API axios returns `{ data, error, response }`. On non-2xx it leaves
+      // `data` undefined and surfaces the body in `error`. Surface a meaningful
+      // message instead of crashing on `env.data` access.
+      const errBody = (res as { error?: { message?: string } }).error;
+      if (errBody) {
+        throw new Error(errBody.message ?? 'Restart failed');
+      }
+      const env = res.data as ApiEnvelope<IAgentData> | undefined;
+      const updated = env?.data;
+      if (!updated) {
+        throw new Error('Restart returned no agent data');
+      }
+      agents.value = agents.value.map((a) => (a.id === id ? updated : a));
+      return updated;
+    } catch (err) {
+      if (previous) {
+        agents.value = agents.value.map((a) => (a.id === id ? previous : a));
+      }
+      throw err;
+    }
   }
 
   async function remove(id: string) {

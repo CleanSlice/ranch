@@ -60,6 +60,39 @@ export type UpdateTemplateDto = {
     defaultKnowledgeIds?: Array<string>;
 };
 
+export type SaveTemplateFileDto = {
+    /**
+     * Full file content as text
+     */
+    content: string;
+};
+
+export type AgentPodStatusDto = {
+    agentId: string;
+    podName: string;
+    phase: 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Unknown';
+    ready: boolean;
+    restartCount: number;
+    startedAt: string | null;
+    lastTerminationReason: string | null;
+    containerWaitingReason: string | null;
+    message: string | null;
+    observedAt: string;
+};
+
+export type AgentStatusDto = {
+    /**
+     * Agent DB record (id, name, status, etc.)
+     */
+    agent: {
+        [key: string]: unknown;
+    };
+    /**
+     * Live pod status; null if no pod is currently running for this agent.
+     */
+    pod: AgentPodStatusDto | null;
+};
+
 export type AgentResourcesDto = {
     cpu: string;
     memory: string;
@@ -85,29 +118,20 @@ export type UpdateAgentDto = {
     resources?: AgentResourcesDto;
 };
 
-export type SaveFileDto = {
+export type SetAgentDebugDto = {
     /**
-     * Full file content as text
+     * When true, runtime emits prompt-debug snapshots over the bridle WS to admin clients.
      */
-    content: string;
-};
-
-export type CreateUserDto = {
-    name: string;
-    email: string;
-    password: string;
-    role?: 'owner' | 'admin' | 'member';
-};
-
-export type UpdateUserDto = {
-    name?: string;
-    email?: string;
-    password?: string;
-    role?: 'owner' | 'admin' | 'member';
-    status?: 'active' | 'invited' | 'disabled';
+    enabled: boolean;
 };
 
 export type LoginDto = {
+    email: string;
+    password: string;
+};
+
+export type RegisterDto = {
+    name: string;
     email: string;
     password: string;
 };
@@ -170,6 +194,66 @@ export type BridleBotHealthDto = {
      * Bot identifier
      */
     botId: string;
+};
+
+export type TranscriptMessageDto = {
+    id: string;
+    role: 'user' | 'assistant';
+    text: string;
+    /**
+     * Unix epoch milliseconds.
+     */
+    ts: number;
+};
+
+export type TranscriptResponseDto = {
+    messages: Array<TranscriptMessageDto>;
+    /**
+     * Channel the transcript was loaded from.
+     */
+    channel: string;
+};
+
+export type SaveFileDto = {
+    /**
+     * Full file content as text
+     */
+    content: string;
+};
+
+export type SecretEntryDto = {
+    name: string;
+    value: string;
+    updatedAt: string | null;
+};
+
+export type SecretListDto = {
+    provider: 'aws' | 'file';
+    secrets: Array<SecretEntryDto>;
+};
+
+export enum UserRoleTypes {
+    OWNER = 'Owner',
+    ADMIN = 'Admin',
+    USER = 'User'
+}
+
+export type CreateUserDto = {
+    name: string;
+    email: string;
+    password: string;
+    roles?: Array<UserRoleTypes>;
+};
+
+export type UpdateUserDto = {
+    name?: string;
+    email?: string;
+    password?: string;
+    status?: 'active' | 'invited' | 'disabled';
+};
+
+export type UpdateUserRolesDto = {
+    roles: Array<UserRoleTypes>;
 };
 
 export type ReportUsageDto = {
@@ -511,6 +595,68 @@ export type TemplateControllerUpdateResponses = {
     200: unknown;
 };
 
+export type TemplateFileControllerListData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/templates/{id}/files';
+};
+
+export type TemplateFileControllerListResponses = {
+    200: unknown;
+};
+
+export type TemplateFileControllerReadData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query: {
+        path: string;
+    };
+    url: '/templates/{id}/files/content';
+};
+
+export type TemplateFileControllerReadResponses = {
+    200: unknown;
+};
+
+export type TemplateFileControllerSaveData = {
+    body: SaveTemplateFileDto;
+    path: {
+        id: string;
+    };
+    query: {
+        path: string;
+    };
+    url: '/templates/{id}/files/content';
+};
+
+export type TemplateFileControllerSaveResponses = {
+    200: unknown;
+};
+
+export type TemplateFileControllerUploadData = {
+    body: {
+        files?: Array<Blob | File>;
+        /**
+         * Relative paths matching files[] by index, e.g. ".agent/agent.md"
+         */
+        paths?: Array<string>;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/templates/{id}/files/upload';
+};
+
+export type TemplateFileControllerUploadResponses = {
+    201: unknown;
+};
+
 export type AgentControllerFindAllData = {
     body?: never;
     path?: never;
@@ -531,6 +677,30 @@ export type AgentControllerCreateData = {
 
 export type AgentControllerCreateResponses = {
     201: unknown;
+};
+
+export type AgentControllerStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/agents/status';
+};
+
+export type AgentControllerStatusResponses = {
+    200: Array<AgentStatusDto>;
+};
+
+export type AgentControllerStatusResponse = AgentControllerStatusResponses[keyof AgentControllerStatusResponses];
+
+export type AgentControllerStatusStreamData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/agents/status/stream';
+};
+
+export type AgentControllerStatusStreamResponses = {
+    200: unknown;
 };
 
 export type AgentControllerRemoveData = {
@@ -572,6 +742,19 @@ export type AgentControllerUpdateResponses = {
     200: unknown;
 };
 
+export type AgentControllerSetDebugData = {
+    body: SetAgentDebugDto;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/agents/{id}/debug';
+};
+
+export type AgentControllerSetDebugResponses = {
+    200: unknown;
+};
+
 export type AgentControllerRestartData = {
     body?: never;
     path: {
@@ -584,6 +767,144 @@ export type AgentControllerRestartData = {
 export type AgentControllerRestartResponses = {
     201: unknown;
 };
+
+export type AuthControllerLoginData = {
+    body: LoginDto;
+    path?: never;
+    query?: never;
+    url: '/auth/login';
+};
+
+export type AuthControllerLoginResponses = {
+    200: unknown;
+};
+
+export type AuthControllerRegisterData = {
+    body: RegisterDto;
+    path?: never;
+    query?: never;
+    url: '/auth/register';
+};
+
+export type AuthControllerRegisterResponses = {
+    200: unknown;
+};
+
+export type AuthControllerMeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/auth/me';
+};
+
+export type AuthControllerMeResponses = {
+    200: unknown;
+};
+
+export type SendBridleMessageData = {
+    body: SendMessageDto;
+    path: {
+        botId: string;
+    };
+    query?: never;
+    url: '/api/agent/{botId}/message';
+};
+
+export type SendBridleMessageResponses = {
+    200: unknown;
+};
+
+export type SendBridleMessageSyncData = {
+    body: SendMessageDto;
+    path: {
+        botId: string;
+    };
+    query?: never;
+    url: '/api/agent/{botId}/message/sync';
+};
+
+export type SendBridleMessageSyncResponses = {
+    200: unknown;
+};
+
+export type BridleHealthData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agent/health';
+};
+
+export type BridleHealthResponses = {
+    200: BridleHealthDto;
+};
+
+export type BridleHealthResponse = BridleHealthResponses[keyof BridleHealthResponses];
+
+export type BridleBotHealthData = {
+    body?: never;
+    path: {
+        botId: string;
+    };
+    query?: never;
+    url: '/api/agent/{botId}/health';
+};
+
+export type BridleBotHealthResponses = {
+    200: BridleBotHealthDto;
+};
+
+export type BridleBotHealthResponse = BridleBotHealthResponses[keyof BridleBotHealthResponses];
+
+export type ListAgentsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agent/list';
+};
+
+export type ListAgentsResponses = {
+    200: unknown;
+};
+
+export type ResetBridleTranscriptData = {
+    body?: never;
+    path: {
+        botId: string;
+    };
+    query?: {
+        /**
+         * Session channel — defaults to "admin".
+         */
+        channel?: string;
+    };
+    url: '/api/agent/{botId}/transcript';
+};
+
+export type ResetBridleTranscriptResponses = {
+    204: void;
+};
+
+export type ResetBridleTranscriptResponse = ResetBridleTranscriptResponses[keyof ResetBridleTranscriptResponses];
+
+export type GetBridleTranscriptData = {
+    body?: never;
+    path: {
+        botId: string;
+    };
+    query?: {
+        /**
+         * Session channel — defaults to "admin" for the admin app.
+         */
+        channel?: string;
+    };
+    url: '/api/agent/{botId}/transcript';
+};
+
+export type GetBridleTranscriptResponses = {
+    200: TranscriptResponseDto;
+};
+
+export type GetBridleTranscriptResponse = GetBridleTranscriptResponses[keyof GetBridleTranscriptResponses];
 
 export type FileControllerListData = {
     body?: never;
@@ -627,6 +948,34 @@ export type FileControllerSaveData = {
 export type FileControllerSaveResponses = {
     200: unknown;
 };
+
+export type FileControllerSyncData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/agents/{agentId}/files/sync';
+};
+
+export type FileControllerSyncResponses = {
+    200: unknown;
+};
+
+export type SecretControllerListData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/agents/{agentId}/secrets';
+};
+
+export type SecretControllerListResponses = {
+    200: SecretListDto;
+};
+
+export type SecretControllerListResponse = SecretControllerListResponses[keyof SecretControllerListResponses];
 
 export type LogControllerGetLogsData = {
     body?: never;
@@ -704,79 +1053,16 @@ export type UserControllerUpdateResponses = {
     200: unknown;
 };
 
-export type AuthControllerLoginData = {
-    body: LoginDto;
-    path?: never;
-    query?: never;
-    url: '/auth/login';
-};
-
-export type AuthControllerLoginResponses = {
-    200: unknown;
-};
-
-export type SendBridleMessageData = {
-    body: SendMessageDto;
+export type UserControllerUpdateRolesData = {
+    body: UpdateUserRolesDto;
     path: {
-        botId: string;
+        id: string;
     };
     query?: never;
-    url: '/api/agent/{botId}/message';
+    url: '/users/{id}/roles';
 };
 
-export type SendBridleMessageResponses = {
-    200: unknown;
-};
-
-export type SendBridleMessageSyncData = {
-    body: SendMessageDto;
-    path: {
-        botId: string;
-    };
-    query?: never;
-    url: '/api/agent/{botId}/message/sync';
-};
-
-export type SendBridleMessageSyncResponses = {
-    200: unknown;
-};
-
-export type BridleHealthData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/agent/health';
-};
-
-export type BridleHealthResponses = {
-    200: BridleHealthDto;
-};
-
-export type BridleHealthResponse = BridleHealthResponses[keyof BridleHealthResponses];
-
-export type BridleBotHealthData = {
-    body?: never;
-    path: {
-        botId: string;
-    };
-    query?: never;
-    url: '/api/agent/{botId}/health';
-};
-
-export type BridleBotHealthResponses = {
-    200: BridleBotHealthDto;
-};
-
-export type BridleBotHealthResponse = BridleBotHealthResponses[keyof BridleBotHealthResponses];
-
-export type ListAgentsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/agent/list';
-};
-
-export type ListAgentsResponses = {
+export type UserControllerUpdateRolesResponses = {
     200: unknown;
 };
 

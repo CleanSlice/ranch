@@ -14,6 +14,10 @@ const DEFAULTS = {
   bridle_api_key: 'dev-bridle-api-key-change-me',
   s3_bucket: '',
   s3_endpoint: '',
+  // Endpoint as seen from inside agent pods. When blank, falls back to
+  // s3_endpoint. Used because in dev MinIO is reachable from the host as
+  // localhost:9000 but from k3d pods only as cleanslice-ranch-minio-1:9000.
+  s3_endpoint_agent: '',
   aws_region: 'us-east-1',
   aws_access_key_id: '',
   aws_secret_access_key: '',
@@ -49,6 +53,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       bridleApiKey,
       s3Bucket,
       s3Endpoint,
+      s3EndpointAgentOverride,
       awsRegion,
       awsAccessKeyId,
       awsSecretAccessKey,
@@ -59,12 +64,16 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       this.getIntegration('bridle_api_key'),
       this.getIntegration('s3_bucket'),
       this.getIntegration('s3_endpoint'),
+      this.getIntegration('s3_endpoint_agent'),
       this.getIntegration('aws_region'),
       this.getIntegration('aws_access_key_id'),
       this.getIntegration('aws_secret_access_key'),
       this.getIntegration('secret_provider'),
       this.getIntegration('aws_secret_prefix'),
     ]);
+    // Pods use the agent-side endpoint when set, otherwise fall back to the
+    // shared one. The API itself keeps using s3_endpoint for its own SDK.
+    const s3EndpointForPod = s3EndpointAgentOverride || s3Endpoint;
     const s3Prefix = s3Bucket ? `agents/${data.agentId}` : '';
 
     // Resolve the agent's assigned LlmCredential (or empty if none) and
@@ -113,7 +122,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'bridle-api-key', value: bridleApiKey },
             { name: 's3-bucket', value: s3Bucket },
             { name: 's3-prefix', value: s3Prefix },
-            { name: 's3-endpoint', value: s3Endpoint },
+            { name: 's3-endpoint', value: s3EndpointForPod },
             { name: 'aws-region', value: awsRegion },
             { name: 'aws-access-key-id', value: awsAccessKeyId },
             { name: 'aws-secret-access-key', value: awsSecretAccessKey },

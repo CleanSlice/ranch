@@ -1,11 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayUnique,
+  IsArray,
   IsEmail,
   IsEnum,
   IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
+import { UserRoleTypes } from '../domain';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Jane Doe' })
@@ -22,8 +25,15 @@ export class CreateUserDto {
   @MinLength(8)
   password: string;
 
-  @ApiPropertyOptional({ enum: ['owner', 'admin', 'member'] })
+  @ApiPropertyOptional({
+    isArray: true,
+    enum: UserRoleTypes,
+    enumName: 'UserRoleTypes',
+    example: [UserRoleTypes.User],
+  })
   @IsOptional()
-  @IsEnum(['owner', 'admin', 'member'])
-  role?: 'owner' | 'admin' | 'member';
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(UserRoleTypes, { each: true })
+  roles?: UserRoleTypes[];
 }

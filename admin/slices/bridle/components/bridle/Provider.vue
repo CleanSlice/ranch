@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted, onUnmounted, type HTMLAttributes } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted, type HTMLAttributes } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useBridleStore } from '../../stores/bridle'
 import Message from './Message.vue'
 import Input from './Input.vue'
+import DebugPanel from './DebugPanel.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
 import { ScrollArea } from '#theme/components/ui/scroll-area'
-import { Bot, Circle } from 'lucide-vue-next'
+import { Button } from '#theme/components/ui/button'
+import { Bot, Bug, Circle, MessageSquarePlus } from 'lucide-vue-next'
 import { cn } from '#theme/utils/cn'
 
 const props = withDefaults(defineProps<{
@@ -24,18 +26,63 @@ const props = withDefaults(defineProps<{
 })
 
 const store = useBridleStore()
-const { messages, isConnected, isTyping } = storeToRefs(store)
+const { messages, isConnected, isTyping, debugEnabled } = storeToRefs(store)
+const togglingDebug = ref(false)
+
+async function onToggleDebug() {
+  togglingDebug.value = true
+  try {
+    await store.setDebugEnabled(props.apiUrl, props.botId, props.token, !debugEnabled.value)
+  } finally {
+    togglingDebug.value = false
+  }
+}
+
+const inspectedMessageId = ref<string | null>(null)
+const inspectedDebug = computed(() =>
+  inspectedMessageId.value ? store.getDebugForMessage(inspectedMessageId.value) : null,
+)
+const isDebugOpen = computed({
+  get: () => inspectedMessageId.value !== null,
+  set: (open: boolean) => {
+    if (!open) inspectedMessageId.value = null
+  },
+})
 
 const scrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
 
-watch([messages, isTyping], async () => {
-  await nextTick()
-  const el = scrollRef.value?.$el?.querySelector('[data-radix-scroll-area-viewport]')
-  if (el) el.scrollTop = el.scrollHeight
-}, { deep: true })
+function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
+  const root = scrollRef.value?.$el as HTMLElement | undefined
+  const viewport = root?.querySelector(
+    '[data-slot="scroll-area-viewport"]',
+  ) as HTMLElement | null
+  if (!viewport) return
+  requestAnimationFrame(() => {
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior })
+  })
+}
 
-onMounted(() => {
+watch(
+  () => [messages.value.length, isTyping.value],
+  async () => {
+    await nextTick()
+    scrollToBottom()
+  },
+)
+
+onMounted(async () => {
+  // Replay persisted history first so the chat isn't blank between
+  // page refreshes / agent switches; then connect the WS for live updates.
+  // Clear before load so the previous agent's messages don't briefly leak
+  // through (the store is a shared singleton across providers).
+  store.clearMessages()
+  await Promise.all([
+    store.loadTranscript(props.apiUrl, props.botId, props.token),
+    store.loadAgentMeta(props.apiUrl, props.botId, props.token),
+  ])
   store.connect(props.apiUrl, props.botId, props.token)
+  await nextTick()
+  scrollToBottom('auto')
 })
 
 onUnmounted(() => {
@@ -44,6 +91,20 @@ onUnmounted(() => {
 
 const handleSend = (text: string) => {
   store.sendMessage(text)
+}
+
+const confirmResetOpen = ref(false)
+const resetting = ref(false)
+
+async function onConfirmReset() {
+  resetting.value = true
+  try {
+    store.disconnect()
+    await store.resetTranscript(props.apiUrl, props.botId, props.token)
+    store.connect(props.apiUrl, props.botId, props.token)
+  } finally {
+    resetting.value = false
+  }
 }
 </script>
 
@@ -54,13 +115,47 @@ const handleSend = (text: string) => {
         <Bot class="h-5 w-5" />
         <h3 class="font-semibold text-sm">{{ title }}</h3>
       </div>
-      <div v-if="showStatus" class="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Circle
-          :class="cn('h-2 w-2 fill-current', isConnected ? 'text-green-500' : 'text-red-500')"
-        />
-        {{ isConnected ? 'Connected' : 'Disconnected' }}
+      <div class="flex items-center gap-3">
+        <Button
+          :variant="debugEnabled ? 'default' : 'ghost'"
+          size="sm"
+          class="h-7 px-2 text-xs"
+          :disabled="togglingDebug"
+          :title="debugEnabled
+            ? 'Prompt debug: ON — runtime is emitting debug snapshots. Click to disable.'
+            : 'Prompt debug: OFF — click to enable. Pushed live to the agent without restart.'"
+          @click="onToggleDebug"
+        >
+          <Bug class="h-3.5 w-3.5" />
+          Debug {{ debugEnabled ? 'on' : 'off' }}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          class="h-7 px-2 text-xs"
+          :disabled="resetting || messages.length === 0"
+          :title="messages.length === 0 ? 'Already empty' : 'Start a new chat'"
+          @click="confirmResetOpen = true"
+        >
+          <MessageSquarePlus class="h-3.5 w-3.5" />
+          New chat
+        </Button>
+        <div v-if="showStatus" class="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Circle
+            :class="cn('h-2 w-2 fill-current', isConnected ? 'text-green-500' : 'text-red-500')"
+          />
+          {{ isConnected ? 'Connected' : 'Disconnected' }}
+        </div>
       </div>
     </CardHeader>
+
+    <ConfirmDialog
+      v-model:open="confirmResetOpen"
+      title="Start new chat"
+      description="Delete the saved transcript for this agent and start fresh? Past messages will be removed from storage. The agent's in-memory context may persist until its next restart."
+      confirm-label="Start new chat"
+      @confirm="onConfirmReset"
+    />
 
     <CardContent class="flex-1 overflow-hidden p-0">
       <ScrollArea ref="scrollRef" class="h-full">
@@ -76,6 +171,8 @@ const handleSend = (text: string) => {
             v-for="msg in messages"
             :key="msg.id"
             :message="msg"
+            :has-debug="msg.role === 'assistant' && !!store.getDebugForMessage(msg.id)"
+            @inspect="inspectedMessageId = $event"
           />
 
           <div v-if="isTyping" class="flex gap-3 mr-auto">
@@ -101,5 +198,7 @@ const handleSend = (text: string) => {
         @send="handleSend"
       />
     </CardFooter>
+
+    <DebugPanel v-model:open="isDebugOpen" :debug="inspectedDebug" />
   </Card>
 </template>

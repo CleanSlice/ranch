@@ -9,10 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from '#theme/components/ui/card';
-import { IconArrowLeft, IconEye, IconEyeOff, IconRefresh } from '@tabler/icons-vue';
+import { Skeleton } from '#theme/components/ui/skeleton';
+import { IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
+const agentStatusStore = useAgentStatusStore();
 const authStore = useAuthStore();
 const settingStore = useSettingStore();
 const llmStore = useLlmStore();
@@ -79,7 +81,11 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'LLM_API_KEY', value: cred?.apiKey ?? '' },
     { name: 'S3_BUCKET', value: bucket },
     { name: 'S3_PREFIX', value: bucket ? `agents/${agent.value.id}` : '' },
-    { name: 'S3_ENDPOINT', value: settingValue('s3_endpoint') },
+    {
+      name: 'S3_ENDPOINT',
+      value:
+        settingValue('s3_endpoint_agent') || settingValue('s3_endpoint'),
+    },
     { name: 'AWS_REGION', value: settingValue('aws_region', 'us-east-1') },
     { name: 'AWS_ACCESS_KEY_ID', value: settingValue('aws_access_key_id') },
     { name: 'AWS_SECRET_ACCESS_KEY', value: settingValue('aws_secret_access_key') },
@@ -104,12 +110,45 @@ function fmtUsd(n: number) {
   return '$' + n.toFixed(2);
 }
 
+const restarting = ref(false);
+const restartError = ref<string | null>(null);
+
 async function onRestart() {
-  if (!agent.value) return;
-  await agentStore.restart(agent.value.id);
-  await refresh();
-  await refreshUsage();
+  if (!agent.value || restarting.value) return;
+  restarting.value = true;
+  restartError.value = null;
+  // Optimistic — flip to "deploying" right away so the badge reacts before
+  // the API call resolves (cancel + submit takes a few seconds).
+  const previousStatus = agent.value.status;
+  agent.value = { ...agent.value, status: 'deploying' };
+  try {
+    await agentStore.restart(agent.value.id);
+    await refresh();
+    await refreshUsage();
+  } catch (err) {
+    if (agent.value) agent.value = { ...agent.value, status: previousStatus };
+    restartError.value = (err as Error).message || 'Restart failed';
+  } finally {
+    restarting.value = false;
+  }
 }
+
+// ── Live pod state from SSE ─────────────────────────────────────────────
+// Lets the user watch sub-second pod transitions (Pending → ContainerCreating
+// → Running) instead of waiting on the 5s status poll below.
+onMounted(() => agentStatusStore.connect());
+onBeforeUnmount(() => agentStatusStore.disconnect());
+
+const podStatus = computed(() => agentStatusStore.statuses[props.id] ?? null);
+
+const podPhaseLabel = computed(() => {
+  const pod = podStatus.value;
+  if (!pod) return null;
+  if (pod.containerWaitingReason) return pod.containerWaitingReason;
+  if (pod.phase === 'Running' && !pod.ready) return 'Starting…';
+  if (pod.phase === 'Running' && pod.ready) return 'Ready';
+  return pod.phase;
+});
 
 // ── Pod logs ────────────────────────────────────────────────────────────
 const logs = ref<string>('');
@@ -193,7 +232,34 @@ async function onRemove() {
       <IconArrowLeft class="size-4" /> Back to agents
     </NuxtLink>
 
-    <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
+    <!-- Skeleton only on initial load (no agent yet). Subsequent refreshes
+         (status polling every 5s during deploy, post-restart refresh) keep
+         showing the previous data so the page doesn't flash to "Loading…"
+         and back. -->
+    <div v-if="pending && !agent" class="flex flex-col gap-6">
+      <div class="flex items-start justify-between gap-4">
+        <div class="space-y-2">
+          <Skeleton class="h-8 w-64" />
+          <Skeleton class="h-4 w-72" />
+        </div>
+        <div class="flex gap-2">
+          <Skeleton class="h-9 w-16" />
+          <Skeleton class="h-9 w-24" />
+          <Skeleton class="h-9 w-16" />
+        </div>
+      </div>
+      <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(380px,480px)]">
+        <div class="flex flex-col gap-6">
+          <Skeleton class="h-44 w-full rounded-lg" />
+          <Skeleton class="h-56 w-full rounded-lg" />
+          <Skeleton class="h-72 w-full rounded-lg" />
+        </div>
+        <div class="flex flex-col gap-6">
+          <Skeleton class="h-[600px] w-full rounded-lg" />
+          <Skeleton class="h-[480px] w-full rounded-lg" />
+        </div>
+      </div>
+    </div>
 
     <template v-else-if="agent">
       <div class="flex items-start justify-between gap-4">
@@ -201,12 +267,31 @@ async function onRemove() {
           <h1 class="text-2xl font-semibold">{{ agent.name }}</h1>
           <p class="text-sm text-muted-foreground">Agent ID: {{ agent.id }}</p>
         </div>
-        <div class="flex gap-2">
-          <Button variant="outline" as-child>
-            <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
-          </Button>
-          <Button variant="outline" @click="onRestart">Restart</Button>
-          <Button variant="ghost" class="text-destructive" @click="confirmRemoveOpen = true">Delete</Button>
+        <div class="flex flex-col items-end gap-1">
+          <div class="flex gap-2">
+            <Button variant="outline" as-child>
+              <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
+            </Button>
+            <Button
+              variant="outline"
+              :disabled="restarting"
+              @click="onRestart"
+            >
+              <IconLoader2
+                v-if="restarting"
+                class="size-4 animate-spin"
+              />
+              <IconRefresh v-else class="size-4" />
+              {{ restarting ? 'Restarting…' : 'Restart' }}
+            </Button>
+            <Button variant="ghost" class="text-destructive" @click="confirmRemoveOpen = true">Delete</Button>
+          </div>
+          <p
+            v-if="restartError"
+            class="text-xs text-destructive"
+          >
+            {{ restartError }}
+          </p>
         </div>
       </div>
 
@@ -280,8 +365,16 @@ async function onRemove() {
               <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <dt class="text-xs text-muted-foreground">Status</dt>
-                  <dd class="mt-1">
+                  <dd class="mt-1 flex items-center gap-2">
                     <Badge :variant="statusVariant[agent.status]" class="capitalize">{{ agent.status }}</Badge>
+                    <span
+                      v-if="podPhaseLabel"
+                      class="text-xs text-muted-foreground"
+                      :title="podStatus?.message ?? ''"
+                    >
+                      pod: {{ podPhaseLabel }}<span v-if="podStatus && podStatus.restartCount > 0">
+                        · restarts {{ podStatus.restartCount }}</span>
+                    </span>
                   </dd>
                 </div>
                 <div>
@@ -319,6 +412,24 @@ async function onRemove() {
             </CardHeader>
             <CardContent>
               <AgentFileProvider :id="agent.id" />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Secrets</CardTitle>
+              <CardDescription>
+                User-scoped secrets stored by the agent runtime. Source depends
+                on <code>SECRET_PROVIDER</code>:
+                <code>aws</code> reads from AWS Secrets Manager
+                (<code>aws_secret_prefix/&lt;agentId&gt;</code>);
+                <code>file</code> lists S3 under
+                <code>agents/{{ agent.id }}/data/secrets/</code>. Values are
+                masked — click the eye icon to reveal.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AgentSecretProvider :id="agent.id" />
             </CardContent>
           </Card>
 

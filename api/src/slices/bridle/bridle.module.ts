@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { BridleController } from './bridle.controller';
@@ -6,6 +6,8 @@ import { BridleChatWsHandler, BridleAgentWsHandler } from './handlers';
 import { IBridleGateway } from './domain';
 import { BridleGateway } from './data';
 import { BridleApiKeyGuard } from './guards/bridleApiKey.guard';
+import { FileModule } from '#/agent/file/file.module';
+import { AgentModule } from '#/agent/agent/agent.module';
 
 /**
  * Bridle Module — authenticated hub between browsers and bot agents.
@@ -42,6 +44,8 @@ import { BridleApiKeyGuard } from './guards/bridleApiKey.guard';
 @Module({
   imports: [
     ConfigModule,
+    forwardRef(() => FileModule),
+    forwardRef(() => AgentModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({

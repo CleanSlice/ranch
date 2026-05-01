@@ -6,10 +6,16 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Socket } from 'socket.io';
-import { IBridleGateway, type IBridleOutgoingEvent } from '../domain';
+import {
+  IBridleGateway,
+  type IBridleOutgoingEvent,
+  type IBridleSyncResponse,
+  type IBridleDebugEvent,
+} from '../domain';
+import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 
 /**
  * WebSocket gateway for AGENT runtime connections.
@@ -26,10 +32,12 @@ import { IBridleGateway, type IBridleOutgoingEvent } from '../domain';
  *   "stream"      { clientId, text, messageId, ts }
  *   "stream_end"  { clientId, text, messageId, ts }
  *   "typing"      { clientId, ts }
+ *   "sync_done"   { requestId, pushed, error? }
  *   "ping"        {}
  *
  * Events (Hub → Agent):
  *   "message"     { clientId, text, messageId, images? }
+ *   "sync"        { requestId }
  *   "pong"        {}
  */
 @WebSocketGateway({ namespace: '/ws/agent', cors: { origin: '*' } })
@@ -41,6 +49,8 @@ export class BridleAgentWsHandler
   constructor(
     private readonly hub: IBridleGateway,
     private readonly config: ConfigService,
+    @Inject(forwardRef(() => IAgentGateway))
+    private readonly agentGateway: IAgentGateway,
   ) {}
 
   handleConnection(client: Socket) {
@@ -66,6 +76,23 @@ export class BridleAgentWsHandler
 
     this.hub.registerAgent(botId, send);
     this.logger.log(`Agent connected: botId=${botId}`);
+
+    // Rehydrate debug flag from DB so a freshly-started agent picks up
+    // whatever the admin toggled while it was offline. We do this fire-
+    // and-forget — debug is non-critical, and the WS handshake shouldn't
+    // block on a DB query.
+    this.agentGateway
+      .findById(botId)
+      .then((agent) => {
+        if (agent?.debugEnabled) {
+          this.hub.setDebug(botId, true);
+        }
+      })
+      .catch((err: Error) => {
+        this.logger.warn(
+          `Debug rehydrate failed for ${botId}: ${err.message}`,
+        );
+      });
   }
 
   handleDisconnect(client: Socket) {
@@ -117,6 +144,28 @@ export class BridleAgentWsHandler
     const botId = client.data?.botId as string;
     if (data?.clientId && botId) {
       this.hub.handleAgentEvent(botId, { ...data, type: 'typing' });
+    }
+  }
+
+  @SubscribeMessage('sync_done')
+  handleSyncDone(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: IBridleSyncResponse,
+  ) {
+    const botId = client.data?.botId as string;
+    if (botId && data?.requestId) {
+      this.hub.handleSyncResponse(botId, data);
+    }
+  }
+
+  @SubscribeMessage('debug')
+  handleDebug(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: IBridleDebugEvent,
+  ) {
+    const botId = client.data?.botId as string;
+    if (botId) {
+      this.hub.handleDebugEvent(botId, { ...data, type: 'debug' });
     }
   }
 

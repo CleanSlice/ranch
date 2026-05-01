@@ -150,6 +150,88 @@ export const UpdateTemplateDtoSchema = {
     }
 } as const;
 
+export const SaveTemplateFileDtoSchema = {
+    type: 'object',
+    properties: {
+        content: {
+            type: 'string',
+            description: 'Full file content as text'
+        }
+    },
+    required: ['content']
+} as const;
+
+export const AgentPodStatusDtoSchema = {
+    type: 'object',
+    properties: {
+        agentId: {
+            type: 'string',
+            example: 'agent-abc-123'
+        },
+        podName: {
+            type: 'string',
+            example: 'agent-agent-abc-123'
+        },
+        phase: {
+            type: 'string',
+            enum: ['Pending', 'Running', 'Succeeded', 'Failed', 'Unknown'],
+            example: 'Running'
+        },
+        ready: {
+            type: 'boolean',
+            example: true
+        },
+        restartCount: {
+            type: 'number',
+            example: 0
+        },
+        startedAt: {
+            type: 'string',
+            nullable: true,
+            example: '2026-04-30T10:15:00Z'
+        },
+        lastTerminationReason: {
+            type: 'string',
+            nullable: true,
+            example: 'OOMKilled'
+        },
+        containerWaitingReason: {
+            type: 'string',
+            nullable: true,
+            example: 'CrashLoopBackOff'
+        },
+        message: {
+            type: 'string',
+            nullable: true
+        },
+        observedAt: {
+            type: 'string',
+            example: '2026-04-30T10:30:00Z'
+        }
+    },
+    required: ['agentId', 'podName', 'phase', 'ready', 'restartCount', 'startedAt', 'lastTerminationReason', 'containerWaitingReason', 'message', 'observedAt']
+} as const;
+
+export const AgentStatusDtoSchema = {
+    type: 'object',
+    properties: {
+        agent: {
+            type: 'object',
+            description: 'Agent DB record (id, name, status, etc.)'
+        },
+        pod: {
+            nullable: true,
+            description: 'Live pod status; null if no pod is currently running for this agent.',
+            allOf: [
+                {
+                    '$ref': '#/components/schemas/AgentPodStatusDto'
+                }
+            ]
+        }
+    },
+    required: ['agent', 'pod']
+} as const;
+
 export const AgentResourcesDtoSchema = {
     type: 'object',
     properties: {
@@ -208,66 +290,15 @@ export const UpdateAgentDtoSchema = {
     }
 } as const;
 
-export const SaveFileDtoSchema = {
+export const SetAgentDebugDtoSchema = {
     type: 'object',
     properties: {
-        content: {
-            type: 'string',
-            description: 'Full file content as text'
+        enabled: {
+            type: 'boolean',
+            description: 'When true, runtime emits prompt-debug snapshots over the bridle WS to admin clients.'
         }
     },
-    required: ['content']
-} as const;
-
-export const CreateUserDtoSchema = {
-    type: 'object',
-    properties: {
-        name: {
-            type: 'string',
-            example: 'Jane Doe'
-        },
-        email: {
-            type: 'string',
-            example: 'jane@example.com'
-        },
-        password: {
-            type: 'string',
-            example: 'strongPassword1',
-            minLength: 8
-        },
-        role: {
-            type: 'string',
-            enum: ['owner', 'admin', 'member']
-        }
-    },
-    required: ['name', 'email', 'password']
-} as const;
-
-export const UpdateUserDtoSchema = {
-    type: 'object',
-    properties: {
-        name: {
-            type: 'string',
-            example: 'Jane Doe'
-        },
-        email: {
-            type: 'string',
-            example: 'jane@example.com'
-        },
-        password: {
-            type: 'string',
-            example: 'strongPassword1',
-            minLength: 8
-        },
-        role: {
-            type: 'string',
-            enum: ['owner', 'admin', 'member']
-        },
-        status: {
-            type: 'string',
-            enum: ['active', 'invited', 'disabled']
-        }
-    }
+    required: ['enabled']
 } as const;
 
 export const LoginDtoSchema = {
@@ -284,6 +315,26 @@ export const LoginDtoSchema = {
         }
     },
     required: ['email', 'password']
+} as const;
+
+export const RegisterDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string',
+            example: 'Jane Doe'
+        },
+        email: {
+            type: 'string',
+            example: 'jane@example.com'
+        },
+        password: {
+            type: 'string',
+            example: 'strongPassword1',
+            minLength: 8
+        }
+    },
+    required: ['name', 'email', 'password']
 } as const;
 
 export const BridleTextPartDtoSchema = {
@@ -387,6 +438,167 @@ export const BridleBotHealthDtoSchema = {
         }
     },
     required: ['ok', 'agentConnected', 'browserClients', 'botId']
+} as const;
+
+export const TranscriptMessageDtoSchema = {
+    type: 'object',
+    properties: {
+        id: {
+            type: 'string',
+            example: 'c94dbcf2-64f1-4e84-9723-c94e2d815f61'
+        },
+        role: {
+            type: 'string',
+            enum: ['user', 'assistant'],
+            example: 'assistant'
+        },
+        text: {
+            type: 'string',
+            example: 'Hello, how can I help?'
+        },
+        ts: {
+            type: 'number',
+            example: 1777562539964,
+            description: 'Unix epoch milliseconds.'
+        }
+    },
+    required: ['id', 'role', 'text', 'ts']
+} as const;
+
+export const TranscriptResponseDtoSchema = {
+    type: 'object',
+    properties: {
+        messages: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/TranscriptMessageDto'
+            }
+        },
+        channel: {
+            type: 'string',
+            example: 'admin',
+            description: 'Channel the transcript was loaded from.'
+        }
+    },
+    required: ['messages', 'channel']
+} as const;
+
+export const SaveFileDtoSchema = {
+    type: 'object',
+    properties: {
+        content: {
+            type: 'string',
+            description: 'Full file content as text'
+        }
+    },
+    required: ['content']
+} as const;
+
+export const SecretEntryDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string',
+            example: 'user-abc/openai_api_key'
+        },
+        value: {
+            type: 'string',
+            example: 'sk-...'
+        },
+        updatedAt: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true
+        }
+    },
+    required: ['name', 'value', 'updatedAt']
+} as const;
+
+export const SecretListDtoSchema = {
+    type: 'object',
+    properties: {
+        provider: {
+            type: 'string',
+            enum: ['aws', 'file'],
+            example: 'file'
+        },
+        secrets: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/SecretEntryDto'
+            }
+        }
+    },
+    required: ['provider', 'secrets']
+} as const;
+
+export const UserRoleTypesSchema = {
+    type: 'string',
+    enum: ['Owner', 'Admin', 'User']
+} as const;
+
+export const CreateUserDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string',
+            example: 'Jane Doe'
+        },
+        email: {
+            type: 'string',
+            example: 'jane@example.com'
+        },
+        password: {
+            type: 'string',
+            example: 'strongPassword1',
+            minLength: 8
+        },
+        roles: {
+            type: 'array',
+            example: ['User'],
+            items: {
+                '$ref': '#/components/schemas/UserRoleTypes'
+            }
+        }
+    },
+    required: ['name', 'email', 'password']
+} as const;
+
+export const UpdateUserDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string',
+            example: 'Jane Doe'
+        },
+        email: {
+            type: 'string',
+            example: 'jane@example.com'
+        },
+        password: {
+            type: 'string',
+            example: 'strongPassword1',
+            minLength: 8
+        },
+        status: {
+            type: 'string',
+            enum: ['active', 'invited', 'disabled']
+        }
+    }
+} as const;
+
+export const UpdateUserRolesDtoSchema = {
+    type: 'object',
+    properties: {
+        roles: {
+            type: 'array',
+            example: ['User'],
+            items: {
+                '$ref': '#/components/schemas/UserRoleTypes'
+            }
+        }
+    },
+    required: ['roles']
 } as const;
 
 export const ReportUsageDtoSchema = {

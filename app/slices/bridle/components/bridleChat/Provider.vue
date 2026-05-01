@@ -1,39 +1,14 @@
-<template>
-  <div class="flex flex-col h-full">
-    <BridleChatEmpty v-if="!botId" />
-    <template v-else>
-      <header class="border-b px-4 py-3">
-        <h2 class="font-semibold">{{ title ?? botId }}</h2>
-        <p v-if="subtitle" class="text-xs text-muted-foreground">
-          {{ subtitle }}
-        </p>
-      </header>
-
-      <div ref="scrollEl" class="flex-1 overflow-y-auto p-4 space-y-3">
-        <BridleChatMessage
-          v-for="message in messages"
-          :key="message.id"
-          :message="message"
-        />
-        <div v-if="sending" class="text-xs text-muted-foreground">
-          {{ t('chat.sending') }}
-        </div>
-        <div v-if="error" class="text-xs text-red-600">
-          {{ t('chat.error') }}: {{ error }}
-        </div>
-      </div>
-
-      <BridleChatInput :disabled="sending" @send="onSend" />
-    </template>
-  </div>
-</template>
-
 <script setup lang="ts">
-const props = defineProps<{
-  botId: string | null;
-  title?: string;
-  subtitle?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    botId: string | null;
+    title?: string;
+    subtitle?: string;
+    /** Hide the inner header — useful when the parent already shows agent identity. */
+    showHeader?: boolean;
+  }>(),
+  { showHeader: true },
+);
 
 const { t } = useI18n();
 const bridleStore = useBridleStore();
@@ -50,19 +25,117 @@ const error = computed(() =>
 
 const scrollEl = ref<HTMLElement | null>(null);
 
+function scrollToBottom() {
+  const el = scrollEl.value;
+  if (!el) return;
+  requestAnimationFrame(() => {
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  });
+}
+
 async function onSend(text: string) {
   if (!props.botId) return;
   await bridleStore.sendMessage(props.botId, text);
 }
 
 watch(
-  [messages, sending],
+  () => [messages.value.length, sending.value],
   async () => {
     await nextTick();
-    if (scrollEl.value) {
-      scrollEl.value.scrollTop = scrollEl.value.scrollHeight;
-    }
+    scrollToBottom();
   },
-  { deep: true },
 );
+
+onMounted(async () => {
+  await nextTick();
+  const el = scrollEl.value;
+  if (el) el.scrollTop = el.scrollHeight;
+});
+
+const agentInitial = computed(() => {
+  const source = props.title?.trim() || props.botId || 'Agent';
+  return source.split(/\s+/).filter(Boolean)[0]?.[0]?.toUpperCase() ?? 'A';
+});
 </script>
+
+<template>
+  <div class="flex h-full flex-col">
+    <BridleChatEmpty v-if="!botId" />
+
+    <template v-else>
+      <header
+        v-if="showHeader"
+        class="shrink-0 border-b px-4 py-3"
+      >
+        <h2 class="font-semibold">{{ title ?? botId }}</h2>
+        <p v-if="subtitle" class="text-xs text-muted-foreground">
+          {{ subtitle }}
+        </p>
+      </header>
+
+      <!-- Message list — gradient backdrop so bubbles read against it -->
+      <div
+        ref="scrollEl"
+        class="flex-1 min-h-0 overflow-y-auto bg-linear-to-b from-muted/20 via-background to-background"
+      >
+        <div class="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
+          <!-- Conversation starter when no messages yet -->
+          <div
+            v-if="!messages.length"
+            class="mt-8 flex flex-col items-center text-center"
+          >
+            <div
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br from-primary/20 to-primary/5 text-base font-semibold text-primary"
+            >
+              {{ agentInitial }}
+            </div>
+            <h3 class="mt-3 text-sm font-semibold">
+              {{ title ?? t('chat.agent') }}
+            </h3>
+            <p class="mt-1 max-w-xs text-xs text-muted-foreground">
+              Say hello — your message will go straight to the agent runtime.
+            </p>
+          </div>
+
+          <BridleChatMessage
+            v-for="message in messages"
+            :key="message.id"
+            :message="message"
+            :agent-name="title"
+          />
+
+          <!-- Typing indicator: three bouncing dots styled like an agent bubble -->
+          <div
+            v-if="sending"
+            class="flex items-end gap-2 justify-start"
+          >
+            <div
+              class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary/25 to-primary/5 text-[11px] font-semibold text-primary"
+            >
+              {{ agentInitial }}
+            </div>
+            <div
+              class="rounded-2xl rounded-bl-md bg-muted px-4 py-3 shadow-sm"
+            >
+              <div class="flex items-center gap-1">
+                <span class="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:0ms]" />
+                <span class="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:150ms]" />
+                <span class="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:300ms]" />
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-if="error"
+            class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive"
+          >
+            <Icon name="alert-triangle" :size="14" class="mt-px shrink-0" />
+            <span>{{ t('chat.error') }}: {{ error }}</span>
+          </div>
+        </div>
+      </div>
+
+      <BridleChatInput :disabled="sending" @send="onSend" />
+    </template>
+  </div>
+</template>

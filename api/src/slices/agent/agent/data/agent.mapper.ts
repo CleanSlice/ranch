@@ -14,6 +14,7 @@ export class AgentMapper {
       workflowId: record.workflowId,
       config: record.config as unknown as Record<string, unknown>,
       resources: record.resources as unknown as IAgentData['resources'],
+      debugEnabled: record.debugEnabled,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

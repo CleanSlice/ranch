@@ -33,10 +33,18 @@
               Open full dashboard →
             </NuxtLink>
             <NuxtLink
+              v-if="canDeployAgent"
               to="/agents/create"
               class="inline-flex items-center justify-center rounded-md border px-5 py-3 text-sm font-medium hover:bg-accent transition"
             >
               Deploy an agent
+            </NuxtLink>
+            <NuxtLink
+              v-else-if="!authStore.isAuthenticated"
+              to="/login"
+              class="inline-flex items-center justify-center rounded-md border px-5 py-3 text-sm font-medium hover:bg-accent transition"
+            >
+              Sign in to deploy
             </NuxtLink>
           </div>
 
@@ -83,6 +91,7 @@
 import type { IAgentData } from '#agent/stores/agent';
 
 const agentStore = useAgentStore();
+const authStore = useAuthStore();
 
 await useAsyncData('landing-agents', () => agentStore.fetchAll());
 
@@ -92,6 +101,10 @@ const featured = computed<IAgentData | null>(
 
 const runningCount = computed(
   () => agentStore.agents.filter((a) => a.status === 'running').length,
+);
+
+const canDeployAgent = computed(() =>
+  authStore.hasRole(UserRoleTypes.Owner, UserRoleTypes.Admin),
 );
 
 const demoAgent: IAgentData = {

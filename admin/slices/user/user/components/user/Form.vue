@@ -16,11 +16,18 @@ import {
   CardTitle,
 } from '#theme/components/ui/card';
 
-const props = defineProps<{
-  initialValues?: ICreateUserData;
-  submitLabel?: string;
-  submitting?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    mode?: 'create' | 'edit';
+    initialValues?: Partial<ICreateUserData>;
+    showRoles?: boolean;
+    submitLabel?: string;
+    submitting?: boolean;
+    cardTitle?: string;
+    cardDescription?: string;
+  }>(),
+  { mode: 'create', showRoles: true },
+);
 
 const emit = defineEmits<{
   submit: [values: ICreateUserData];
@@ -58,10 +65,17 @@ function validate() {
   if (!email) errors.email = 'Email is required';
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Invalid email';
   else errors.email = undefined;
-  if (!form.password) errors.password = 'Password is required';
-  else if (form.password.length < 8) errors.password = 'Min 8 characters';
-  else errors.password = undefined;
-  errors.roles = form.roles.length ? undefined : 'Pick at least one role';
+
+  // In edit mode the password is optional — only validate when filled.
+  if (props.mode === 'edit') {
+    errors.password = form.password && form.password.length < 8 ? 'Min 8 characters' : undefined;
+  } else {
+    if (!form.password) errors.password = 'Password is required';
+    else if (form.password.length < 8) errors.password = 'Min 8 characters';
+    else errors.password = undefined;
+  }
+
+  errors.roles = props.showRoles && !form.roles.length ? 'Pick at least one role' : undefined;
   return !errors.name && !errors.email && !errors.password && !errors.roles;
 }
 
@@ -80,8 +94,15 @@ function onSubmit() {
   <form class="flex flex-col gap-6" @submit.prevent="onSubmit">
     <Card>
       <CardHeader>
-        <CardTitle>Invite</CardTitle>
-        <CardDescription>An invitation email will be sent to the address below.</CardDescription>
+        <CardTitle>{{ cardTitle ?? (mode === 'edit' ? 'Profile' : 'Invite') }}</CardTitle>
+        <CardDescription>
+          {{
+            cardDescription ??
+            (mode === 'edit'
+              ? 'Update the user\'s profile.'
+              : 'An invitation email will be sent to the address below.')
+          }}
+        </CardDescription>
       </CardHeader>
       <CardContent class="grid max-w-xl gap-4">
         <div class="grid gap-2">
@@ -95,18 +116,18 @@ function onSubmit() {
           <p v-if="errors.email" class="text-xs text-destructive">{{ errors.email }}</p>
         </div>
         <div class="grid gap-2">
-          <Label for="password">Password</Label>
+          <Label for="password">{{ mode === 'edit' ? 'New password' : 'Password' }}</Label>
           <Input
             id="password"
             v-model="form.password"
             type="password"
             autocomplete="new-password"
-            placeholder="At least 8 characters"
+            :placeholder="mode === 'edit' ? 'Leave blank to keep current' : 'At least 8 characters'"
             :aria-invalid="!!errors.password"
           />
           <p v-if="errors.password" class="text-xs text-destructive">{{ errors.password }}</p>
         </div>
-        <div class="grid gap-2">
+        <div v-if="showRoles" class="grid gap-2">
           <Label>Roles</Label>
           <p class="text-xs text-muted-foreground">
             A user can hold any combination. Owner can change other users' roles.
@@ -133,7 +154,11 @@ function onSubmit() {
 
     <div class="flex items-center gap-3">
       <Button type="submit" :disabled="submitting">
-        {{ submitting ? 'Sending…' : (submitLabel ?? 'Send invite') }}
+        {{
+          submitting
+            ? (mode === 'edit' ? 'Saving…' : 'Sending…')
+            : (submitLabel ?? (mode === 'edit' ? 'Save' : 'Send invite'))
+        }}
       </Button>
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>
     </div>

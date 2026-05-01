@@ -36,6 +36,13 @@ export interface ICreateUserData {
   roles: UserRoleTypes[];
 }
 
+export interface IUpdateUserData {
+  name?: string;
+  email?: string;
+  password?: string;
+  status?: UserStatusTypes;
+}
+
 export const useUserStore = defineStore('user', () => {
   const users = ref<IUserData[]>([]);
 
@@ -59,6 +66,16 @@ export const useUserStore = defineStore('user', () => {
     return env.data;
   }
 
+  async function update(id: string, data: IUpdateUserData) {
+    const res = await UsersService.userControllerUpdate({
+      path: { id },
+      body: data,
+    });
+    const env = res.data as ApiEnvelope<IUserData>;
+    users.value = users.value.map((u) => (u.id === id ? env.data : u));
+    return env.data;
+  }
+
   async function updateRoles(id: string, roles: UserRoleTypes[]) {
     const res = await UsersService.userControllerUpdateRoles({
       path: { id },
@@ -74,5 +91,5 @@ export const useUserStore = defineStore('user', () => {
     users.value = users.value.filter((u) => u.id !== id);
   }
 
-  return { users, fetchAll, fetchById, create, updateRoles, remove };
+  return { users, fetchAll, fetchById, create, update, updateRoles, remove };
 });

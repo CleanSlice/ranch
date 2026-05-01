@@ -176,21 +176,117 @@ jobs:
 
       - name: Rollout ranch-api
         if: needs.changes.outputs.api == 'true' && needs.build-api.result == 'success'
+        env:
+          DEPLOY: ranch-api
+          NS: platform
         run: |
-          kubectl -n platform rollout restart deploy/ranch-api
-          kubectl -n platform rollout status deploy/ranch-api --timeout=5m
+          kubectl -n "$NS" rollout restart deploy/"$DEPLOY"
+          if ! kubectl -n "$NS" rollout status deploy/"$DEPLOY" --timeout=10m; then
+            echo "::group::describe deploy/$DEPLOY"
+            kubectl -n "$NS" describe deploy/"$DEPLOY" || true
+            echo "::endgroup::"
+            echo "::group::pods for $DEPLOY"
+            { kubectl -n "$NS" get pods -o wide | head -1; kubectl -n "$NS" get pods -o wide | grep "^$DEPLOY-" || true; }
+            echo "::endgroup::"
+            echo "::group::describe pods"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              kubectl -n "$NS" describe "$p" | tail -80 || true
+              echo "---"
+            done
+            echo "::endgroup::"
+            echo "::group::recent namespace events"
+            kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -50 || true
+            echo "::endgroup::"
+            echo "::group::pod logs (current)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            echo "::group::pod logs (previous)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --previous --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Rollout ranch-admin
         if: needs.changes.outputs.admin == 'true' && needs.build-admin.result == 'success'
+        env:
+          DEPLOY: ranch-admin
+          NS: platform
         run: |
-          kubectl -n platform rollout restart deploy/ranch-admin
-          kubectl -n platform rollout status deploy/ranch-admin --timeout=5m
+          kubectl -n "$NS" rollout restart deploy/"$DEPLOY"
+          if ! kubectl -n "$NS" rollout status deploy/"$DEPLOY" --timeout=10m; then
+            echo "::group::describe deploy/$DEPLOY"
+            kubectl -n "$NS" describe deploy/"$DEPLOY" || true
+            echo "::endgroup::"
+            echo "::group::pods for $DEPLOY"
+            { kubectl -n "$NS" get pods -o wide | head -1; kubectl -n "$NS" get pods -o wide | grep "^$DEPLOY-" || true; }
+            echo "::endgroup::"
+            echo "::group::describe pods"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              kubectl -n "$NS" describe "$p" | tail -80 || true
+              echo "---"
+            done
+            echo "::endgroup::"
+            echo "::group::recent namespace events"
+            kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -50 || true
+            echo "::endgroup::"
+            echo "::group::pod logs (current)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            echo "::group::pod logs (previous)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --previous --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Rollout ranch-app
         if: needs.changes.outputs.app == 'true' && needs.build-app.result == 'success'
+        env:
+          DEPLOY: ranch-app
+          NS: platform
         run: |
-          kubectl -n platform rollout restart deploy/ranch-app
-          kubectl -n platform rollout status deploy/ranch-app --timeout=5m
+          kubectl -n "$NS" rollout restart deploy/"$DEPLOY"
+          if ! kubectl -n "$NS" rollout status deploy/"$DEPLOY" --timeout=10m; then
+            echo "::group::describe deploy/$DEPLOY"
+            kubectl -n "$NS" describe deploy/"$DEPLOY" || true
+            echo "::endgroup::"
+            echo "::group::pods for $DEPLOY"
+            { kubectl -n "$NS" get pods -o wide | head -1; kubectl -n "$NS" get pods -o wide | grep "^$DEPLOY-" || true; }
+            echo "::endgroup::"
+            echo "::group::describe pods"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              kubectl -n "$NS" describe "$p" | tail -80 || true
+              echo "---"
+            done
+            echo "::endgroup::"
+            echo "::group::recent namespace events"
+            kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -50 || true
+            echo "::endgroup::"
+            echo "::group::pod logs (current)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            echo "::group::pod logs (previous)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --previous --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Smoke test
         if: |

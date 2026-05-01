@@ -80,6 +80,9 @@ onMounted(async () => {
     store.loadTranscript(props.apiUrl, props.botId, props.token),
     store.loadAgentMeta(props.apiUrl, props.botId, props.token),
   ])
+  // Re-attach debug snapshots saved in localStorage from previous sessions —
+  // makes the inspect icon survive a page refresh.
+  store.loadPersistedDebug(props.botId)
   store.connect(props.apiUrl, props.botId, props.token)
   await nextTick()
   scrollToBottom('auto')

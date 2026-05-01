@@ -61,6 +61,52 @@ export interface IBridleDebugData {
   latencyMs: number
 }
 
+/**
+ * localStorage persistence for debug snapshots — survives a page refresh so
+ * the inspect icon doesn't disappear after every reload. Scoped per botId so
+ * switching agents doesn't bleed.
+ */
+const DEBUG_STORAGE_PREFIX = 'bridle:debug:'
+
+interface IPersistedDebug {
+  byMessageId: Record<string, IBridleDebugData>
+  lastDebug: IBridleDebugData | null
+}
+
+function loadDebugFromStorage(botId: string): IPersistedDebug | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(DEBUG_STORAGE_PREFIX + botId)
+    if (!raw) return null
+    return JSON.parse(raw) as IPersistedDebug
+  } catch (err) {
+    console.warn('[bridle] failed to load persisted debug', err)
+    return null
+  }
+}
+
+function saveDebugToStorage(botId: string, payload: IPersistedDebug): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(
+      DEBUG_STORAGE_PREFIX + botId,
+      JSON.stringify(payload),
+    )
+  } catch (err) {
+    // Quota exceeded or storage disabled — debug is best-effort, ignore.
+    console.warn('[bridle] failed to persist debug', err)
+  }
+}
+
+function clearDebugFromStorage(botId: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(DEBUG_STORAGE_PREFIX + botId)
+  } catch {
+    // ignore
+  }
+}
+
 function buildParts(text: string, images?: Array<{ base64: string; mediaType: string }>): BridlePart[] {
   const parts: BridlePart[] = []
   if (text) parts.push({ type: BridlePartTypes.Text, text })
@@ -93,6 +139,8 @@ export const useBridleStore = defineStore('bridle', {
      */
     debugEnabled: false,
     _socket: null as Socket | null,
+    /** Active botId — captured on connect, used to scope persisted debug. */
+    _botId: null as string | null,
   }),
 
   getters: {
@@ -112,6 +160,8 @@ export const useBridleStore = defineStore('bridle', {
   actions: {
     connect(apiUrl: string, botId: string, token: string) {
       if (this._socket) return
+
+      this._botId = botId
 
       const socket = io(`${apiUrl}/ws/chat`, {
         transports: ['websocket'],
@@ -181,6 +231,13 @@ export const useBridleStore = defineStore('bridle', {
         // a messageId so we can still attach to the most recent assistant
         // message via the getter.
         this._lastDebug = data
+        // Persist for survival across page reloads. Scoped per bot.
+        if (this._botId) {
+          saveDebugToStorage(this._botId, {
+            byMessageId: { ...this.debugByMessageId },
+            lastDebug: this._lastDebug,
+          })
+        }
       })
 
       socket.on('stream_end', (data: { text?: string; parts?: BridlePart[]; messageId?: string; ts?: number }) => {
@@ -291,11 +348,25 @@ export const useBridleStore = defineStore('bridle', {
           return false
         }
         this.messages = []
+        this.debugByMessageId = {}
+        this._lastDebug = null
+        clearDebugFromStorage(botId)
         return true
       } catch (err) {
         console.warn('[bridle] failed to reset transcript', err)
         return false
       }
+    },
+
+    /**
+     * Hydrate debug snapshots for the given bot from localStorage. Called from
+     * the Provider on mount so the inspect icon survives a page refresh.
+     */
+    loadPersistedDebug(botId: string): void {
+      const stored = loadDebugFromStorage(botId)
+      if (!stored) return
+      this.debugByMessageId = stored.byMessageId ?? {}
+      this._lastDebug = stored.lastDebug ?? null
     },
 
     async loadTranscript(apiUrl: string, botId: string, token: string, channel = 'admin') {

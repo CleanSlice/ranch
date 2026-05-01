@@ -4,9 +4,24 @@
 
 Agent deployment platform on Kubernetes. Deploy, manage, and monitor AI agents at scale.
 
+**Live demo:** [ranch.cleanslice.org](https://ranch.cleanslice.org/)
+
 Built with [CleanSlice](https://github.com/CleanSlice) architecture.
 
 ## Quick Start
+
+Install the CLI globally — it auto-clones the project on first run:
+
+```bash
+bun add -g @cleanslice/ranch
+# or: npm install -g @cleanslice/ranch
+
+ranch dev    # offers to clone if no checkout, then starts api + app + admin
+```
+
+See [`cli/README.md`](cli/README.md) for all `ranch` commands.
+
+### Or clone manually
 
 ```bash
 git clone https://github.com/CleanSlice/ranch.git

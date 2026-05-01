@@ -19,10 +19,7 @@ import {
 } from '../domain/reins.types';
 import { ReinsMapper } from './reins.mapper';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
-
-function workspaceOf(id: string): string {
-  return `knowledge_${id.replace(/-/g, '')}`;
-}
+import { workspaceOf } from '../domain/workspace';
 
 @Injectable()
 export class ReinsGateway extends IReinsGateway {
@@ -180,7 +177,7 @@ export class ReinsGateway extends IReinsGateway {
   }
 
   async indexSource(source: ISourceData): Promise<void> {
-    const workspace = await this.workspaceOfKnowledge(source.knowledgeId);
+    const workspace = workspaceOf(source.knowledgeId);
     const docId = await this.ingestByType(source, workspace);
     await this.prisma.source.update({
       where: { id: source.id },
@@ -215,8 +212,7 @@ export class ReinsGateway extends IReinsGateway {
     mode?: QueryModeTypes,
     topK?: number,
   ): Promise<IKnowledgeQueryResult> {
-    const workspace = await this.workspaceOfKnowledge(knowledgeId);
-    return this.lightrag.query({ workspace, query, mode, topK });
+    return this.lightrag.query({ workspace: workspaceOf(knowledgeId), query, mode, topK });
   }
 
   getGraphLabels(): Promise<string[]> {
@@ -274,11 +270,4 @@ export class ReinsGateway extends IReinsGateway {
     throw new Error(`Unknown source type: ${String(exhaustive)}`);
   }
 
-  private async workspaceOfKnowledge(knowledgeId: string): Promise<string> {
-    const record = await this.prisma.knowledge.findUnique({
-      where: { id: knowledgeId },
-      select: { workspace: true },
-    });
-    return record?.workspace ?? workspaceOf(knowledgeId);
-  }
 }

@@ -1,0 +1,31 @@
+{
+  "name": "@cleanslice/ranch",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Ranch project CLI",
+  "license": "MIT",
+  "bin": {
+    "ranch": "dist/ranch.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "bun build src/cli.ts --target=node --format=esm --outfile=dist/ranch.mjs",
+    "compile": "bun build src/cli.ts --compile --outfile=dist/ranch",
+    "prepublishOnly": "bun run build && chmod +x dist/ranch.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "citty": "^0.1.6",
+    "consola": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}

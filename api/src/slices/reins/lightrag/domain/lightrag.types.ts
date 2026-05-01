@@ -1,4 +1,4 @@
-import { QueryModeTypes } from '../../knowledge/domain/reins.types';
+export type QueryModeTypes = 'hybrid' | 'local' | 'global' | 'naive';
 
 export interface IIngestTextInput {
   workspace: string;

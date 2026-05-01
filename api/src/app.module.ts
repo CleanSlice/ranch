@@ -20,7 +20,8 @@ import { SettingModule } from './slices/setting/setting.module';
 import { BridleModule } from './slices/bridle/bridle.module';
 import { LlmModule } from './slices/llm/llm.module';
 import { UsageModule } from './slices/usage/usage.module';
-import { ReinsModule } from './slices/reins/reins.module';
+import { KnowledgeModule } from './slices/reins/knowledge/knowledge.module';
+import { SourceModule } from './slices/reins/source/source.module';
 import { SkillModule } from './slices/skill/skill.module';
 
 @Module({
@@ -49,7 +50,8 @@ import { SkillModule } from './slices/skill/skill.module';
     BridleModule,
     LlmModule,
     UsageModule,
-    ReinsModule,
+    KnowledgeModule,
+    SourceModule,
     SkillModule,
   ],
 })

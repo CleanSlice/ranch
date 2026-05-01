@@ -1,8 +1,6 @@
+export type { QueryModeTypes } from '../../lightrag/domain/lightrag.types';
+
 export type IndexStatusTypes = 'idle' | 'indexing' | 'ready' | 'failed';
-
-export type SourceTypes = 'file' | 'url' | 'text';
-
-export type QueryModeTypes = 'hybrid' | 'local' | 'global' | 'naive';
 
 export interface IKnowledgeData {
   id: string;
@@ -14,21 +12,6 @@ export interface IKnowledgeData {
   indexError: string | null;
   indexedAt: Date | null;
   indexStartedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-  sources?: ISourceData[];
-}
-
-export interface ISourceData {
-  id: string;
-  knowledgeId: string;
-  type: SourceTypes;
-  name: string;
-  url: string | null;
-  mimeType: string | null;
-  content: string | null;
-  sizeBytes: number | null;
-  indexed: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,27 +28,6 @@ export interface IUpdateKnowledgeData {
   description?: string | null;
   entityTypes?: string[];
   relationshipTypes?: string[];
-}
-
-export interface ICreateSourceData {
-  knowledgeId: string;
-  type: SourceTypes;
-  name: string;
-  url?: string;
-  mimeType?: string;
-  content?: string;
-  sizeBytes?: number;
-}
-
-export interface IUploadSourceFileInput {
-  knowledgeId: string;
-  filename: string;
-  body: Buffer;
-  contentType: string;
-}
-
-export interface IUploadedSourceFile {
-  url: string;
 }
 
 export interface IIndexStatePatch {

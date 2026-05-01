@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEnum, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
-import { QueryModeTypes } from '../domain/reins.types';
+import { QueryModeTypes } from '../domain/knowledge.types';
 
 const QUERY_MODES: QueryModeTypes[] = ['hybrid', 'local', 'global', 'naive'];
 

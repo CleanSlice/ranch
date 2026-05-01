@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   IKnowledgeQueryReference,
   IKnowledgeQueryResult,
-} from '../domain/reins.types';
+} from '../domain/knowledge.types';
 
 export class KnowledgeQueryReferenceDto implements IKnowledgeQueryReference {
   @ApiProperty() referenceId: string;

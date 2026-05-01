@@ -1,3 +1,4 @@
-export * from './reins.types';
-export * from './reins.gateway';
-export * from './reins.service';
+export * from './knowledge.types';
+export * from './knowledge.gateway';
+export * from './knowledge.service';
+export * from './workspace';

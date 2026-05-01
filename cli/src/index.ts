@@ -1,4 +1,5 @@
 import { defineCommand, runMain as _runMain } from "citty";
+import pkg from "../package.json" with { type: "json" };
 import { devCommand } from "./commands/dev";
 import { downCommand } from "./commands/down";
 import { dbCommand } from "./commands/db";
@@ -9,7 +10,7 @@ import { whereCommand } from "./commands/where";
 const main = defineCommand({
   meta: {
     name: "ranch",
-    version: "0.1.2",
+    version: pkg.version,
     description: "Ranch project CLI",
   },
   subCommands: {

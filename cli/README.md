@@ -66,12 +66,14 @@ Resolution order (first match wins):
 
 ## Local development
 
-From the monorepo root, `bun install` will pick up `cli/` because it's
-registered as a workspace. To run the CLI from source while iterating:
+The CLI is intentionally **not** a bun workspace of the ranch monorepo —
+keeping it out means `turbo dev` never tries to spawn it as one of the
+dev tasks. Install its deps independently:
 
 ```bash
 cd cli
-bun run dev -- --help          # runs src/cli.ts directly via bun
+bun install
+bun run start -- --help        # runs src/cli.ts directly via bun
 ```
 
 To link your working copy as if it were globally installed:

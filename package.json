@@ -5,8 +5,7 @@
   "workspaces": [
     "api",
     "app",
-    "admin",
-    "cli"
+    "admin"
   ],
   "scripts": {
     "dev": "turbo dev",

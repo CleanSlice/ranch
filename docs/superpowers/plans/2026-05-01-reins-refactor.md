@@ -481,14 +481,19 @@ git mv api/src/slices/reins/knowledge/dtos/source.dto.ts api/src/slices/reins/so
 
 - [ ] **Step 2: Rename class + interface and slim domain types**
 
-Edit `api/src/slices/reins/knowledge/domain/knowledge.types.ts`. Remove source-only types `ISourceData`, `ICreateSourceData`, `IUploadSourceFileInput`, `IUploadedSourceFile`, `SourceTypes`. Remove `sources?: ISourceData[]` from `IKnowledgeData`. Keep everything else (`IndexStatusTypes`, `QueryModeTypes`, `IKnowledgeData`, `ICreateKnowledgeData`, `IUpdateKnowledgeData`, `IIndexStatePatch`, `IKnowledgeQueryReference`, `IKnowledgeQueryResult`, `IGraphNodeData`, `IGraphEdgeData`, `IGraphData`, `IGetGraphParams`).
+Edit `api/src/slices/reins/knowledge/domain/knowledge.types.ts`. Remove source-only types `ISourceData`, `ICreateSourceData`, `IUploadSourceFileInput`, `IUploadedSourceFile`, `SourceTypes`. Remove `sources?: ISourceData[]` from `IKnowledgeData`. Keep `IndexStatusTypes`, `IKnowledgeData`, `ICreateKnowledgeData`, `IUpdateKnowledgeData`, `IIndexStatePatch`, `IKnowledgeQueryReference`, `IKnowledgeQueryResult`, `IGraphNodeData`, `IGraphEdgeData`, `IGraphData`, `IGetGraphParams`.
+
+**`QueryModeTypes` ownership change:** The values `'hybrid' | 'local' | 'global' | 'naive'` are LightRAG query modes — they belong in `lightrag/domain/lightrag.types.ts`, not `knowledge`. To honor the dependency direction `Config ← Lightrag ← Knowledge`, **move the definition** to lightrag (it already lives there as a circular import) and re-export it from `knowledge.types.ts`. Specifically:
+
+1. Edit `api/src/slices/reins/lightrag/domain/lightrag.types.ts`: remove the line `import { QueryModeTypes } from '../../knowledge/domain/reins.types';` (or its updated path), and replace with the local definition `export type QueryModeTypes = 'hybrid' | 'local' | 'global' | 'naive';` at the top of the file.
+2. In `knowledge.types.ts`, do not redefine `QueryModeTypes`. Instead, add at the top: `export type { QueryModeTypes } from '../../lightrag/domain/lightrag.types';`. Existing knowledge consumers that import `QueryModeTypes` from `knowledge.types.ts` continue to work unchanged.
 
 Final `knowledge.types.ts`:
 
 ```ts
-export type IndexStatusTypes = 'idle' | 'indexing' | 'ready' | 'failed';
+export type { QueryModeTypes } from '../../lightrag/domain/lightrag.types';
 
-export type QueryModeTypes = 'hybrid' | 'local' | 'global' | 'naive';
+export type IndexStatusTypes = 'idle' | 'indexing' | 'ready' | 'failed';
 
 export interface IKnowledgeData {
   id: string;

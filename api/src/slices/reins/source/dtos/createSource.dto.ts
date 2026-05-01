@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEnum } from 'class-validator';
-import { SourceTypes } from '../domain/reins.types';
+import { SourceTypes } from '../domain/source.types';
 
 const SOURCE_TYPES: SourceTypes[] = ['file', 'url', 'text'];
 

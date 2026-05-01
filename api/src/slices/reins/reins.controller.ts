@@ -21,11 +21,11 @@ import {
   CreateKnowledgeDto,
   UpdateKnowledgeDto,
   QueryKnowledgeDto,
-  CreateSourceDto,
   GetGraphDto,
   GraphDto,
   KnowledgeQueryResultDto,
 } from './knowledge/dtos';
+import { CreateSourceDto } from './source/dtos';
 
 interface UploadedFileLike {
   originalname: string;

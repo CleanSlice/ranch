@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IKnowledgeData, IndexStatusTypes } from '../domain/reins.types';
-import { SourceDto } from './source.dto';
+import { SourceDto } from '../../source/dtos/source.dto';
 
 export class KnowledgeDto implements IKnowledgeData {
   @ApiProperty() id: string;

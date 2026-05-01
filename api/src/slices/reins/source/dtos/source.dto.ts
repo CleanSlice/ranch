@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ISourceData, SourceTypes } from '../domain/reins.types';
+import { ISourceData, SourceTypes } from '../domain/source.types';
 
 export class SourceDto implements ISourceData {
   @ApiProperty() id: string;

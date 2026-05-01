@@ -4,7 +4,5 @@ export * from './updateKnowledge.dto';
 export * from './filterKnowledge.dto';
 export * from './queryKnowledge.dto';
 export * from './knowledgeRecord.dto';
-export * from './source.dto';
-export * from './createSource.dto';
 export * from './getGraph.dto';
 export * from './graph.dto';

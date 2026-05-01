@@ -1,5 +1,5 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { ILightragClient } from './lightrag.client';
+import { ILightragClient } from '../domain/lightrag.client';
 import {
   IIngestTextInput,
   IIngestUrlInput,
@@ -14,7 +14,7 @@ import {
   ILightragGraphNode,
   ILightragGraphEdge,
   LightragClientError,
-} from './lightrag.types';
+} from '../domain/lightrag.types';
 
 type FetchImpl = typeof fetch;
 

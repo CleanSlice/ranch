@@ -1,4 +1,4 @@
-import { QueryModeTypes } from '../../../domain/reins.types';
+import { QueryModeTypes } from '../../knowledge/domain/reins.types';
 
 export interface IIngestTextInput {
   workspace: string;

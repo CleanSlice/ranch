@@ -18,7 +18,7 @@ import {
   IGraphData,
 } from '../domain/reins.types';
 import { ReinsMapper } from './reins.mapper';
-import { ILightragClient } from './repositories/lightrag/lightrag.client';
+import { ILightragClient } from '../../lightrag/domain/lightrag.client';
 
 function workspaceOf(id: string): string {
   return `knowledge_${id.replace(/-/g, '')}`;

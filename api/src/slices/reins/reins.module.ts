@@ -12,32 +12,17 @@ import { ReinsGateway } from './knowledge/data/reins.gateway';
 import { ReinsMapper } from './knowledge/data/reins.mapper';
 import { KnowledgeConfigService } from './config/data/knowledgeConfig.service';
 import { ReinsService } from './knowledge/domain/reins.service';
-import { ILightragClient } from './knowledge/data/repositories/lightrag/lightrag.client';
-import { LightragHttpClient } from './knowledge/data/repositories/lightrag/lightragHttp.client';
+import { ILightragClient } from './lightrag/domain/lightrag.client';
+import { LightragModule } from './lightrag/lightrag.module';
 
 @Module({
-  imports: [ConfigModule, PrismaModule, AwsModule, SettingModule],
+  imports: [ConfigModule, PrismaModule, AwsModule, SettingModule, LightragModule],
   controllers: [ReinsController],
   providers: [
     ReinsMapper,
     {
       provide: IKnowledgeConfigService,
       useClass: KnowledgeConfigService,
-    },
-    {
-      provide: ILightragClient,
-      inject: [IKnowledgeConfigService],
-      useFactory: (configService: IKnowledgeConfigService) =>
-        new LightragHttpClient({
-          resolveConfig: async () => {
-            const cfg = await configService.resolve();
-            return {
-              url: cfg.url,
-              apiKey: cfg.apiKey,
-              enabled: cfg.enabled,
-            };
-          },
-        }),
     },
     {
       provide: IReinsGateway,

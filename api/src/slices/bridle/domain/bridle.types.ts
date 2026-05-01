@@ -48,6 +48,49 @@ export interface IBridleOutgoingEvent {
   ts?: number;
 }
 
+/**
+ * Agent → Hub → Admin browsers only.
+ * Carries a snapshot of what was sent to the LLM and what came back, for
+ * prompt debugging in the admin UI. Hub fans this out only to clients
+ * with `isAdmin === true`.
+ */
+export interface IBridleDebugEvent {
+  type: 'debug';
+  clientId: string;
+  messageId?: string;
+  ts: number;
+  model: string;
+  provider: string;
+  systemPrompt: string;
+  history: unknown[];
+  response: {
+    text: string;
+    toolCalls?: Array<{ name: string; params: unknown }>;
+    stopReason?: string;
+  };
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    credentialId?: string;
+  };
+  latencyMs: number;
+}
+
+/** Hub → Agent: command to push agent's local files to S3 */
+export interface IBridleSyncRequest {
+  type: 'sync';
+  requestId: string;
+}
+
+/** Agent → Hub: ack for a sync command */
+export interface IBridleSyncResponse {
+  type: 'sync_done';
+  requestId: string;
+  pushed: number;
+  error?: string;
+}
+
 // ── Health ───────────────────────────────────────────────────
 
 /** Health check response */
@@ -69,6 +112,7 @@ export interface IBridleBotHealthData {
 export interface IBridleClientData {
   botId: string;
   send: (data: unknown) => void;
+  isAdmin: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────

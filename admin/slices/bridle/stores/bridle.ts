@@ -36,6 +36,31 @@ export interface IBridleMessageData {
   streaming?: boolean
 }
 
+/**
+ * Snapshot of an LLM round-trip, sent by the runtime over the "debug" WS
+ * event. Hub fans this out only to admin clients.
+ */
+export interface IBridleDebugData {
+  messageId?: string
+  ts: number
+  model: string
+  provider: string
+  systemPrompt: string
+  history: unknown[]
+  response: {
+    text: string
+    toolCalls?: Array<{ name: string; params: unknown }>
+    stopReason?: string
+  }
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+    credentialId?: string
+  }
+  latencyMs: number
+}
+
 function buildParts(text: string, images?: Array<{ base64: string; mediaType: string }>): BridlePart[] {
   const parts: BridlePart[] = []
   if (text) parts.push({ type: BridlePartTypes.Text, text })
@@ -54,12 +79,34 @@ export const useBridleStore = defineStore('bridle', {
     isTyping: false,
     isOpen: false,
     clientId: null as string | null,
+    /**
+     * Debug snapshots keyed by messageId when the runtime supplies one;
+     * otherwise stored in `_lastDebug` and attached to the most recent
+     * assistant message via `getDebugForMessage`.
+     */
+    debugByMessageId: {} as Record<string, IBridleDebugData>,
+    _lastDebug: null as IBridleDebugData | null,
+    /**
+     * Local mirror of the agent's `debugEnabled` flag, populated by
+     * `loadAgentMeta`. UI reads this to render the toggle state. Persistent
+     * source of truth lives on the API; runtime gets it via WS push.
+     */
+    debugEnabled: false,
     _socket: null as Socket | null,
   }),
 
   getters: {
     getMessages: (state) => state.messages,
     getIsOpen: (state) => state.isOpen,
+    getDebugForMessage: (state) => (id: string): IBridleDebugData | null => {
+      const direct = state.debugByMessageId[id]
+      if (direct) return direct
+      // No messageId match: only attach the orphan debug to the *latest*
+      // assistant message — older assistant messages keep no debug.
+      const lastAssistant = [...state.messages].reverse().find(m => m.role === 'assistant')
+      if (lastAssistant && lastAssistant.id === id) return state._lastDebug
+      return null
+    },
   },
 
   actions: {
@@ -126,6 +173,16 @@ export const useBridleStore = defineStore('bridle', {
         }
       })
 
+      socket.on('debug', (data: IBridleDebugData & { messageId?: string }) => {
+        if (data.messageId) {
+          this.debugByMessageId[data.messageId] = data
+        }
+        // Always cache as last — covers the case where runtime didn't pass
+        // a messageId so we can still attach to the most recent assistant
+        // message via the getter.
+        this._lastDebug = data
+      })
+
       socket.on('stream_end', (data: { text?: string; parts?: BridlePart[]; messageId?: string; ts?: number }) => {
         this.isTyping = false
         const text = data.text ?? ''
@@ -173,6 +230,53 @@ export const useBridleStore = defineStore('bridle', {
 
     clearMessages() {
       this.messages = []
+      this.debugByMessageId = {}
+      this._lastDebug = null
+    },
+
+    async loadAgentMeta(apiUrl: string, botId: string, token: string): Promise<void> {
+      const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(botId)}`
+      try {
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) return
+        type AgentMeta = { debugEnabled?: boolean }
+        type Envelope = { data?: AgentMeta }
+        const body = (await res.json()) as Envelope & AgentMeta
+        this.debugEnabled = !!(body.data?.debugEnabled ?? body.debugEnabled)
+      } catch (err) {
+        console.warn('[bridle] failed to load agent meta', err)
+      }
+    },
+
+    async setDebugEnabled(apiUrl: string, botId: string, token: string, enabled: boolean): Promise<boolean> {
+      const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(botId)}/debug`
+      try {
+        const res = await fetch(url, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ enabled }),
+        })
+        if (!res.ok) {
+          console.warn('[bridle] setDebugEnabled returned', res.status)
+          return false
+        }
+        // The endpoint returns { id, debugEnabled } — we trust the server's
+        // echo over the optimistic value to avoid drift.
+        type Resp = { debugEnabled?: boolean }
+        type Envelope = { data?: Resp }
+        const body = (await res.json()) as Envelope & Resp
+        const next = body.data?.debugEnabled ?? body.debugEnabled ?? enabled
+        this.debugEnabled = next
+        return next
+      } catch (err) {
+        console.warn('[bridle] failed to set debug flag', err)
+        return false
+      }
     },
 
     async resetTranscript(apiUrl: string, botId: string, token: string, channel = 'admin') {

@@ -49,7 +49,7 @@ export class UserGateway extends IUserGateway {
         ...(data.password && {
           password: await bcrypt.hash(data.password, BCRYPT_ROUNDS),
         }),
-        ...(data.role && { role: data.role }),
+        ...(data.roles && { roles: this.mapper.normalizeRoles(data.roles) }),
         ...(data.status && { status: data.status }),
       },
     });

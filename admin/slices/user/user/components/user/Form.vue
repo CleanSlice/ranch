@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import { UserRoleTypes, type ICreateUserData } from '#user/stores/user';
+import {
+  ALL_USER_ROLES,
+  UserRoleTypes,
+  type ICreateUserData,
+} from '#user/stores/user';
 import { Button } from '#theme/components/ui/button';
+import { Checkbox } from '#theme/components/ui/checkbox';
 import { Input } from '#theme/components/ui/input';
 import { Label } from '#theme/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '#theme/components/ui/select';
 import {
   Card,
   CardContent,
@@ -29,19 +27,30 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const roleOptions = [
-  { value: UserRoleTypes.Admin, label: 'Admin' },
-  { value: UserRoleTypes.Member, label: 'Member' },
-];
-
 const form = reactive<ICreateUserData>({
   name: props.initialValues?.name ?? '',
   email: props.initialValues?.email ?? '',
   password: props.initialValues?.password ?? '',
-  role: props.initialValues?.role ?? UserRoleTypes.Member,
+  roles: props.initialValues?.roles?.length
+    ? [...props.initialValues.roles]
+    : [UserRoleTypes.User],
 });
 
-const errors = reactive<Partial<Record<'name' | 'email' | 'password', string>>>({});
+const errors = reactive<
+  Partial<Record<'name' | 'email' | 'password' | 'roles', string>>
+>({});
+
+function isChecked(role: UserRoleTypes) {
+  return form.roles.includes(role);
+}
+
+function toggleRole(role: UserRoleTypes, checked: boolean) {
+  if (checked) {
+    if (!form.roles.includes(role)) form.roles = [...form.roles, role];
+  } else {
+    form.roles = form.roles.filter((r) => r !== role);
+  }
+}
 
 function validate() {
   errors.name = form.name.trim() ? undefined : 'Name is required';
@@ -52,7 +61,8 @@ function validate() {
   if (!form.password) errors.password = 'Password is required';
   else if (form.password.length < 8) errors.password = 'Min 8 characters';
   else errors.password = undefined;
-  return !errors.name && !errors.email && !errors.password;
+  errors.roles = form.roles.length ? undefined : 'Pick at least one role';
+  return !errors.name && !errors.email && !errors.password && !errors.roles;
 }
 
 function onSubmit() {
@@ -61,7 +71,7 @@ function onSubmit() {
     name: form.name.trim(),
     email: form.email.trim(),
     password: form.password,
-    role: form.role,
+    roles: [...form.roles],
   });
 }
 </script>
@@ -97,17 +107,26 @@ function onSubmit() {
           <p v-if="errors.password" class="text-xs text-destructive">{{ errors.password }}</p>
         </div>
         <div class="grid gap-2">
-          <Label for="role">Role</Label>
-          <Select v-model="form.role">
-            <SelectTrigger id="role">
-              <SelectValue placeholder="Choose a role" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="option in roleOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <Label>Roles</Label>
+          <p class="text-xs text-muted-foreground">
+            A user can hold any combination. Owner can change other users' roles.
+          </p>
+          <div class="flex flex-wrap gap-4 pt-1">
+            <label
+              v-for="role in ALL_USER_ROLES"
+              :key="role"
+              :for="`role-${role}`"
+              class="flex items-center gap-2 text-sm"
+            >
+              <Checkbox
+                :id="`role-${role}`"
+                :model-value="isChecked(role)"
+                @update:model-value="(v: boolean | 'indeterminate') => toggleRole(role, v === true)"
+              />
+              {{ role }}
+            </label>
+          </div>
+          <p v-if="errors.roles" class="text-xs text-destructive">{{ errors.roles }}</p>
         </div>
       </CardContent>
     </Card>

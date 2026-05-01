@@ -1,19 +1,32 @@
 import {
+  Body,
   Controller,
+  Delete,
   Get,
+  NotFoundException,
+  Param,
   Post,
   Put,
-  Delete,
-  Body,
-  Param,
-  NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { IUserGateway } from './domain';
-import { CreateUserDto, UpdateUserDto } from './dtos';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { IUserGateway, UserRoleTypes } from './domain';
+import {
+  CreateUserDto,
+  UpdateUserDto,
+  UpdateUserRolesDto,
+} from './dtos';
+import {
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+} from '../auth/guards';
 
 @ApiTags('users')
+@ApiBearerAuth()
 @Controller('users')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 export class UserController {
   constructor(private userGateway: IUserGateway) {}
 
@@ -38,13 +51,23 @@ export class UserController {
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update user' })
+  @ApiOperation({
+    summary: 'Update user (name, email, password, status). Use /roles to change roles.',
+  })
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.userGateway.update(id, dto);
   }
 
+  @Put(':id/roles')
+  @Roles(UserRoleTypes.Owner)
+  @ApiOperation({ summary: 'Replace the user\'s roles. Owner only.' })
+  updateRoles(@Param('id') id: string, @Body() dto: UpdateUserRolesDto) {
+    return this.userGateway.update(id, { roles: dto.roles });
+  }
+
   @Delete(':id')
-  @ApiOperation({ summary: 'Remove user' })
+  @Roles(UserRoleTypes.Owner)
+  @ApiOperation({ summary: 'Remove user. Owner only.' })
   async remove(@Param('id') id: string) {
     const user = await this.userGateway.findById(id);
     if (!user) throw new NotFoundException('User not found');

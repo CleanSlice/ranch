@@ -11,6 +11,7 @@ import { AgentModule } from './slices/agent/agent/agent.module';
 import { TemplateModule } from './slices/agent/template/template.module';
 import { TemplateFileModule } from './slices/agent/templateFile/templateFile.module';
 import { FileModule } from './slices/agent/file/file.module';
+import { SecretModule } from './slices/agent/secret/secret.module';
 import { WorkflowModule } from './slices/workflow/workflow.module';
 import { LogModule } from './slices/log/log.module';
 import { UserModule } from './slices/user/user/user.module';
@@ -40,6 +41,7 @@ import { SkillModule } from './slices/skill/skill.module';
     TemplateFileModule,
     AgentModule,
     FileModule,
+    SecretModule,
     LogModule,
     UserModule,
     AuthModule,

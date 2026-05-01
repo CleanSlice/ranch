@@ -5,10 +5,12 @@ import {
   Delete,
   Body,
   HttpCode,
+  Inject,
   Param,
   Query,
   Req,
   Logger,
+  forwardRef,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -35,6 +37,7 @@ export class BridleController {
 
   constructor(
     private readonly hub: IBridleGateway,
+    @Inject(forwardRef(() => IFileGateway))
     private readonly fileGateway: IFileGateway,
   ) {}
 
@@ -86,20 +89,25 @@ export class BridleController {
         });
       }, 120_000);
 
-      this.hub.registerClient(clientId, botId, (data: unknown) => {
-        const event = data as Record<string, unknown>;
-        if (event.type === 'message' || event.type === 'stream_end') {
-          clearTimeout(timeout);
-          this.hub.unregisterClient(clientId);
-          resolve({
-            text: event.text ?? chunks.join(''),
-            messageId: event.messageId,
-            ts: event.ts,
-          });
-        } else if (event.type === 'stream') {
-          chunks.push((event.text as string) ?? '');
-        }
-      });
+      this.hub.registerClient(
+        clientId,
+        botId,
+        (data: unknown) => {
+          const event = data as Record<string, unknown>;
+          if (event.type === 'message' || event.type === 'stream_end') {
+            clearTimeout(timeout);
+            this.hub.unregisterClient(clientId);
+            resolve({
+              text: event.text ?? chunks.join(''),
+              messageId: event.messageId,
+              ts: event.ts,
+            });
+          } else if (event.type === 'stream') {
+            chunks.push((event.text as string) ?? '');
+          }
+        },
+        false,
+      );
 
       const parts = body.parts ?? buildParts(body.text, body.images);
       this.hub.sendToAgent(clientId, botId, body.text, parts);

@@ -14,6 +14,7 @@ export interface IAgentData {
   workflowId: string | null;
   config: Record<string, unknown>;
   resources: IAgentResources;
+  debugEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

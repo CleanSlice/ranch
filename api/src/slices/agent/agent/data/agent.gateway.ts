@@ -72,6 +72,14 @@ export class AgentGateway extends IAgentGateway {
     return this.mapper.toEntity(record);
   }
 
+  async setDebugEnabled(id: string, enabled: boolean): Promise<IAgentData> {
+    const record = await this.prisma.agent.update({
+      where: { id },
+      data: { debugEnabled: enabled },
+    });
+    return this.mapper.toEntity(record);
+  }
+
   async delete(id: string): Promise<void> {
     await this.prisma.agent.delete({ where: { id } });
   }

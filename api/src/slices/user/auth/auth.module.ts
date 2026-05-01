@@ -4,9 +4,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './domain';
 import { UserMapper } from '../user/data/user.mapper';
+import { SettingModule } from '#/setting/setting.module';
+import { JwtAuthGuard } from './guards/jwtAuth.guard';
+import { RolesGuard } from './guards/roles.guard';
 
 @Module({
   imports: [
+    SettingModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -20,7 +24,7 @@ import { UserMapper } from '../user/data/user.mapper';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, UserMapper],
-  exports: [AuthService],
+  providers: [AuthService, UserMapper, JwtAuthGuard, RolesGuard],
+  exports: [AuthService, JwtAuthGuard, RolesGuard, JwtModule],
 })
 export class AuthModule {}

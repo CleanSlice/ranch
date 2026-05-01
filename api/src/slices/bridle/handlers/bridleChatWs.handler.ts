@@ -68,7 +68,9 @@ export class BridleChatWsHandler
     }
 
     const roles = payload.roles as string[] | undefined;
-    const isAdmin = Array.isArray(roles) && roles.includes('ADMIN');
+    const isAdmin =
+      Array.isArray(roles) &&
+      (roles.includes('Owner') || roles.includes('Admin'));
     const clientId = isAdmin ? 'admin' : (payload.sub as string);
 
     client.data = { clientId, botId, email: payload.email, isAdmin };
@@ -79,7 +81,7 @@ export class BridleChatWsHandler
       client.emit(event, data);
     };
 
-    this.hub.registerClient(clientId, botId, send);
+    this.hub.registerClient(clientId, botId, send, isAdmin);
     client.emit('welcome', { clientId });
 
     this.logger.log(

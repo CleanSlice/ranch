@@ -96,7 +96,17 @@ async function onRemove() {
                 </div>
               </div>
             </TableCell>
-            <TableCell class="capitalize text-muted-foreground">{{ user.role }}</TableCell>
+            <TableCell>
+              <div class="flex flex-wrap gap-1">
+                <Badge
+                  v-for="role in user.roles"
+                  :key="role"
+                  variant="secondary"
+                >
+                  {{ role }}
+                </Badge>
+              </div>
+            </TableCell>
             <TableCell>
               <Badge :variant="statusVariant[user.status]" class="capitalize">
                 {{ user.status }}
@@ -112,7 +122,7 @@ async function onRemove() {
                   size="sm"
                   variant="ghost"
                   class="text-destructive"
-                  :disabled="user.role === 'owner'"
+                  :disabled="user.roles.includes('Owner')"
                   @click="pendingRemoval = user"
                 >
                   Remove

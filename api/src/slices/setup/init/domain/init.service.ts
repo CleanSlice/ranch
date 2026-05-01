@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { UserMapper } from '#/user/user/data/user.mapper';
+import { UserRoleTypes } from '#/user/user/domain';
 import { IAuthResult, IAuthTokenPayload } from '#/user/auth/domain';
 
 const BCRYPT_ROUNDS = 10;
@@ -17,7 +18,7 @@ export class InitService {
 
   async getStatus(): Promise<{ requiresInit: boolean }> {
     const ownerCount = await this.prisma.user.count({
-      where: { role: 'owner' },
+      where: { roles: { has: UserRoleTypes.Owner } },
     });
     return { requiresInit: ownerCount === 0 };
   }
@@ -37,7 +38,7 @@ export class InitService {
         name,
         email: email.toLowerCase(),
         password: await bcrypt.hash(password, BCRYPT_ROUNDS),
-        role: 'owner',
+        roles: [UserRoleTypes.Owner],
         status: 'active',
       },
     });
@@ -46,8 +47,7 @@ export class InitService {
     const payload: IAuthTokenPayload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
-      roles: user.role === 'owner' || user.role === 'admin' ? ['ADMIN'] : [],
+      roles: user.roles,
     };
 
     return {

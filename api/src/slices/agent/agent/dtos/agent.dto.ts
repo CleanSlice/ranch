@@ -25,6 +25,12 @@ export class AgentDto {
   @ApiProperty()
   resources: { cpu: string; memory: string };
 
+  @ApiProperty({
+    description:
+      'When true, the agent runtime emits prompt-debug snapshots to admin clients via the bridle hub.',
+  })
+  debugEnabled: boolean;
+
   @ApiProperty()
   createdAt: Date;
 

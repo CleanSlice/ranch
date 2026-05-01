@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { BridlePartTypes, type IBridleMessageData } from '../../stores/bridle'
-import { Bot, User, FileText } from 'lucide-vue-next'
+import { Bot, User, FileText, Info } from 'lucide-vue-next'
+import { Button } from '#theme/components/ui/button'
 import { cn } from '#theme/utils/cn'
 
 defineProps<{
   message: IBridleMessageData
+  hasDebug?: boolean
+}>()
+
+defineEmits<{
+  inspect: [id: string]
 }>()
 </script>
 
@@ -59,5 +65,16 @@ defineProps<{
       <!-- Fallback: if no parts, show plain text -->
       <p v-if="message.parts.length === 0" class="whitespace-pre-wrap break-words">{{ message.text }}</p>
     </div>
+
+    <Button
+      v-if="message.role === 'assistant' && hasDebug"
+      variant="ghost"
+      size="icon"
+      class="h-6 w-6 self-end mb-1 text-muted-foreground hover:text-foreground"
+      title="Inspect prompt"
+      @click="$emit('inspect', message.id)"
+    >
+      <Info class="h-3.5 w-3.5" />
+    </Button>
   </div>
 </template>

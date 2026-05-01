@@ -8,6 +8,7 @@ interface IMenuItem {
 const items: IMenuItem[] = [
   { title: 'Organization', description: 'Name shown across the admin UI.', to: '/settings/organization' },
   { title: 'Agent defaults', description: 'Default CPU and memory for agents.', to: '/settings/agents' },
+  { title: 'Authentication', description: 'Self-service registration toggle.', to: '/settings/auth' },
   { title: 'GitHub', description: 'Personal Access Token for private images.', to: '/settings/github' },
   { title: 'Bridle', description: 'Chat hub URL agents connect to.', to: '/settings/bridle' },
   { title: 'Storage', description: 'S3 / MinIO persistence.', to: '/settings/storage' },

@@ -15,5 +15,6 @@ export abstract class IAgentGateway {
     status: AgentStatusTypes,
     workflowId?: string,
   ): Promise<IAgentData>;
+  abstract setDebugEnabled(id: string, enabled: boolean): Promise<IAgentData>;
   abstract delete(id: string): Promise<void>;
 }

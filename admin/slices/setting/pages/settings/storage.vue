@@ -9,7 +9,13 @@ const fields = [
   {
     group: 'integrations',
     name: 's3_endpoint',
-    label: 'S3 endpoint (blank for AWS)',
+    label: 'S3 endpoint — API side (blank for AWS)',
+    placeholder: 'http://localhost:9000',
+  },
+  {
+    group: 'integrations',
+    name: 's3_endpoint_agent',
+    label: 'S3 endpoint — agent pod side (blank to reuse API endpoint)',
     placeholder: 'http://cleanslice-ranch-minio-1:9000',
   },
   {
@@ -37,7 +43,7 @@ const fields = [
 <template>
   <SettingForm
     title="S3 persistence (MinIO / AWS S3)"
-    description="If bucket is set, runtime syncs .agent/ to S3 on shutdown and restores on boot. For local MinIO use endpoint http://cleanslice-ranch-minio-1:9000 (pod DNS name) and bucket ranch-agent-data. Per-agent prefix is computed as agents/{agent-id}."
+    description="If bucket is set, runtime syncs .agent/ to S3 on shutdown and restores on boot. Two endpoints because in dev MinIO is reachable from the host as http://localhost:9000 (used by API) but from k3d pods only as http://cleanslice-ranch-minio-1:9000 (used by agents). For AWS leave both blank. Per-agent prefix is computed as agents/{agent-id}."
     :fields="fields"
   />
 </template>

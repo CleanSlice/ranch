@@ -21,13 +21,18 @@ const props = withDefaults(
     mode?: 'create' | 'edit';
     initialValues?: Partial<ICreateUserData>;
     showRoles?: boolean;
+    disabledRoles?: UserRoleTypes[];
     submitLabel?: string;
     submitting?: boolean;
     cardTitle?: string;
     cardDescription?: string;
   }>(),
-  { mode: 'create', showRoles: true },
+  { mode: 'create', showRoles: true, disabledRoles: () => [] },
 );
+
+function isRoleDisabled(role: UserRoleTypes) {
+  return props.disabledRoles.includes(role);
+}
 
 const emit = defineEmits<{
   submit: [values: ICreateUserData];
@@ -138,10 +143,12 @@ function onSubmit() {
               :key="role"
               :for="`role-${role}`"
               class="flex items-center gap-2 text-sm"
+              :class="{ 'opacity-60': isRoleDisabled(role) }"
             >
               <Checkbox
                 :id="`role-${role}`"
                 :model-value="isChecked(role)"
+                :disabled="isRoleDisabled(role)"
                 @update:model-value="(v: boolean | 'indeterminate') => toggleRole(role, v === true)"
               />
               {{ role }}

@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { ICreateUserData, IUpdateUserData } from '#user/stores/user';
+import {
+  UserRoleTypes,
+  type ICreateUserData,
+  type IUpdateUserData,
+} from '#user/stores/user';
 import { IconArrowLeft } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
@@ -12,21 +16,33 @@ const { data: user, pending } = await useAsyncData(
 
 const submitting = ref(false);
 
+function rolesEqual(a: UserRoleTypes[], b: UserRoleTypes[]) {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  return sa.every((r, i) => r === sb[i]);
+}
+
 async function onSubmit(values: ICreateUserData) {
   if (!user.value) return;
+
   const patch: IUpdateUserData = {};
   if (values.name && values.name !== user.value.name) patch.name = values.name;
   if (values.email && values.email !== user.value.email) patch.email = values.email;
   if (values.password) patch.password = values.password;
 
-  if (Object.keys(patch).length === 0) {
+  const rolesChanged = !rolesEqual(values.roles, user.value.roles);
+  const profileChanged = Object.keys(patch).length > 0;
+
+  if (!rolesChanged && !profileChanged) {
     await navigateTo(`/users/${props.id}`);
     return;
   }
 
   submitting.value = true;
   try {
-    await userStore.update(props.id, patch);
+    if (profileChanged) await userStore.update(props.id, patch);
+    if (rolesChanged) await userStore.updateRoles(props.id, values.roles);
   } finally {
     submitting.value = false;
   }
@@ -52,14 +68,19 @@ function onCancel() {
     <template v-else-if="user">
       <div>
         <h1 class="text-2xl font-semibold">Edit {{ user.name }}</h1>
-        <p class="text-sm text-muted-foreground">Update profile fields. Roles are managed separately.</p>
+        <p class="text-sm text-muted-foreground">Update profile and roles. The Owner role cannot be changed here.</p>
       </div>
 
       <UserForm
         mode="edit"
-        :show-roles="false"
         :submitting="submitting"
-        :initial-values="{ name: user.name, email: user.email, password: '' }"
+        :disabled-roles="[UserRoleTypes.Owner]"
+        :initial-values="{
+          name: user.name,
+          email: user.email,
+          password: '',
+          roles: user.roles,
+        }"
         @submit="onSubmit"
         @cancel="onCancel"
       />

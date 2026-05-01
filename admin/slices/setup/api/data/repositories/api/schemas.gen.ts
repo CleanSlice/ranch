@@ -290,6 +290,18 @@ export const UpdateAgentDtoSchema = {
   },
 } as const;
 
+export const SetAgentDebugDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+      description:
+        "When true, runtime emits prompt-debug snapshots over the bridle WS to admin clients.",
+    },
+  },
+  required: ["enabled"],
+} as const;
+
 export const LoginDtoSchema = {
   type: "object",
   properties: {
@@ -324,17 +336,6 @@ export const RegisterDtoSchema = {
     },
   },
   required: ["name", "email", "password"],
-} as const;
-
-export const SaveFileDtoSchema = {
-  type: "object",
-  properties: {
-    content: {
-      type: "string",
-      description: "Full file content as text",
-    },
-  },
-  required: ["content"],
 } as const;
 
 export const BridleTextPartDtoSchema = {
@@ -481,6 +482,17 @@ export const TranscriptResponseDtoSchema = {
     },
   },
   required: ["messages", "channel"],
+} as const;
+
+export const SaveFileDtoSchema = {
+  type: "object",
+  properties: {
+    content: {
+      type: "string",
+      description: "Full file content as text",
+    },
+  },
+  required: ["content"],
 } as const;
 
 export const SecretEntryDtoSchema = {

@@ -116,6 +116,13 @@ export type UpdateAgentDto = {
   resources?: AgentResourcesDto;
 };
 
+export type SetAgentDebugDto = {
+  /**
+   * When true, runtime emits prompt-debug snapshots over the bridle WS to admin clients.
+   */
+  enabled: boolean;
+};
+
 export type LoginDto = {
   email: string;
   password: string;
@@ -125,13 +132,6 @@ export type RegisterDto = {
   name: string;
   email: string;
   password: string;
-};
-
-export type SaveFileDto = {
-  /**
-   * Full file content as text
-   */
-  content: string;
 };
 
 export type BridleTextPartDto = {
@@ -210,6 +210,13 @@ export type TranscriptResponseDto = {
    * Channel the transcript was loaded from.
    */
   channel: string;
+};
+
+export type SaveFileDto = {
+  /**
+   * Full file content as text
+   */
+  content: string;
 };
 
 export type SecretEntryDto = {
@@ -734,6 +741,19 @@ export type AgentControllerUpdateResponses = {
   200: unknown;
 };
 
+export type AgentControllerSetDebugData = {
+  body: SetAgentDebugDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/debug";
+};
+
+export type AgentControllerSetDebugResponses = {
+  200: unknown;
+};
+
 export type AgentControllerRestartData = {
   body?: never;
   path: {
@@ -777,62 +797,6 @@ export type AuthControllerMeData = {
 };
 
 export type AuthControllerMeResponses = {
-  200: unknown;
-};
-
-export type FileControllerListData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query?: never;
-  url: "/agents/{agentId}/files";
-};
-
-export type FileControllerListResponses = {
-  200: unknown;
-};
-
-export type FileControllerReadData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query: {
-    path: string;
-  };
-  url: "/agents/{agentId}/files/content";
-};
-
-export type FileControllerReadResponses = {
-  200: unknown;
-};
-
-export type FileControllerSaveData = {
-  body: SaveFileDto;
-  path: {
-    agentId: string;
-  };
-  query: {
-    path: string;
-  };
-  url: "/agents/{agentId}/files/content";
-};
-
-export type FileControllerSaveResponses = {
-  200: unknown;
-};
-
-export type FileControllerSyncData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query?: never;
-  url: "/agents/{agentId}/files/sync";
-};
-
-export type FileControllerSyncResponses = {
   200: unknown;
 };
 
@@ -944,6 +908,62 @@ export type GetBridleTranscriptResponses = {
 
 export type GetBridleTranscriptResponse =
   GetBridleTranscriptResponses[keyof GetBridleTranscriptResponses];
+
+export type FileControllerListData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files";
+};
+
+export type FileControllerListResponses = {
+  200: unknown;
+};
+
+export type FileControllerReadData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query: {
+    path: string;
+  };
+  url: "/agents/{agentId}/files/content";
+};
+
+export type FileControllerReadResponses = {
+  200: unknown;
+};
+
+export type FileControllerSaveData = {
+  body: SaveFileDto;
+  path: {
+    agentId: string;
+  };
+  query: {
+    path: string;
+  };
+  url: "/agents/{agentId}/files/content";
+};
+
+export type FileControllerSaveResponses = {
+  200: unknown;
+};
+
+export type FileControllerSyncData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/sync";
+};
+
+export type FileControllerSyncResponses = {
+  200: unknown;
+};
 
 export type SecretControllerListData = {
   body?: never;

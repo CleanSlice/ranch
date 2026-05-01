@@ -37,14 +37,11 @@ import type {
   AgentControllerRemoveData,
   AgentControllerFindByIdData,
   AgentControllerUpdateData,
+  AgentControllerSetDebugData,
   AgentControllerRestartData,
   AuthControllerLoginData,
   AuthControllerRegisterData,
   AuthControllerMeData,
-  FileControllerListData,
-  FileControllerReadData,
-  FileControllerSaveData,
-  FileControllerSyncData,
   SendBridleMessageData,
   SendBridleMessageSyncData,
   BridleHealthData,
@@ -56,6 +53,10 @@ import type {
   ResetBridleTranscriptResponse,
   GetBridleTranscriptData,
   GetBridleTranscriptResponse,
+  FileControllerListData,
+  FileControllerReadData,
+  FileControllerSaveData,
+  FileControllerSyncData,
   SecretControllerListData,
   SecretControllerListResponse,
   LogControllerGetLogsData,
@@ -629,6 +630,26 @@ export class AgentsService {
   }
 
   /**
+   * Toggle prompt-debug emission for an agent. Persists to DB and pushes a control event over the bridle WS so the running agent picks it up live without a restart.
+   */
+  public static agentControllerSetDebug<ThrowOnError extends boolean = false>(
+    options: Options<AgentControllerSetDebugData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).patch<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/debug",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
    * Restart an agent. Admin or Owner.
    */
   public static agentControllerRestart<ThrowOnError extends boolean = false>(
@@ -698,76 +719,6 @@ export class AuthService {
       ThrowOnError
     >({
       url: "/auth/me",
-      ...options,
-    });
-  }
-}
-
-export class FilesService {
-  /**
-   * List files for an agent
-   */
-  public static fileControllerList<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerListData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files",
-      ...options,
-    });
-  }
-
-  /**
-   * Read a file
-   */
-  public static fileControllerRead<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerReadData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/content",
-      ...options,
-    });
-  }
-
-  /**
-   * Save a file (.md / .json only)
-   */
-  public static fileControllerSave<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerSaveData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/content",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Ask the agent runtime to push its local files to S3, then return the latest S3 state to the admin UI
-   */
-  public static fileControllerSync<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerSyncData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/sync",
       ...options,
     });
   }
@@ -890,6 +841,76 @@ export class BridleService {
       ThrowOnError
     >({
       url: "/api/agent/{botId}/transcript",
+      ...options,
+    });
+  }
+}
+
+export class FilesService {
+  /**
+   * List files for an agent
+   */
+  public static fileControllerList<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerListData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files",
+      ...options,
+    });
+  }
+
+  /**
+   * Read a file
+   */
+  public static fileControllerRead<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerReadData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/content",
+      ...options,
+    });
+  }
+
+  /**
+   * Save a file (.md / .json only)
+   */
+  public static fileControllerSave<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerSaveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/content",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Ask the agent runtime to push its local files to S3, then return the latest S3 state to the admin UI
+   */
+  public static fileControllerSync<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerSyncData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/sync",
       ...options,
     });
   }

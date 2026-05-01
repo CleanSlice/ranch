@@ -4,6 +4,16 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   extends: [...registerSlices()],
   ssr: false,
+  runtimeConfig: {
+    public: {
+      ranchVersion: process.env.RANCH_VERSION || 'dev',
+    },
+  },
+  app: {
+    head: {
+      link: [{ rel: 'icon', type: 'image/png', href: '/favicon.png' }],
+    },
+  },
   routeRules: {
     '/**': { headers: { 'Cache-Control': 'no-cache' } },
     '/_nuxt/**': {

@@ -28,12 +28,15 @@ COPY --from=api-swagger /build/api/swagger-spec.json ./api/swagger-spec.json
 COPY app/ ./app/
 WORKDIR /build/app
 ARG API_URL
-RUN API_URL=${API_URL} bun run build
+ARG RANCH_VERSION=dev
+RUN API_URL=${API_URL} RANCH_VERSION=${RANCH_VERSION} bun run build
 
 # Stage 3: runtime
 FROM node:22-alpine
 WORKDIR /usr/src/app
 COPY --from=app-builder /build/app/.output ./.output
+ARG RANCH_VERSION=dev
+ENV RANCH_VERSION=${RANCH_VERSION}
 ENV NITRO_PORT=3000
 EXPOSE 3000
 CMD ["node", ".output/server/index.mjs"]

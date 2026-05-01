@@ -26,6 +26,7 @@ import {
 } from '@tabler/icons-vue';
 
 const authStore = useAuthStore();
+const ranchVersion = useRuntimeConfig().public.ranchVersion;
 
 async function onLogout() {
   authStore.logout();
@@ -123,6 +124,9 @@ const itemsByGroup = (group: MenuGroupTypes) =>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
+      <div class="px-3 pb-1 pt-2 text-[11px] text-muted-foreground group-has-data-[collapsible=icon]/sidebar-wrapper:hidden">
+        Ranch v{{ ranchVersion }}
+      </div>
     </SidebarFooter>
     <SidebarRail />
   </Sidebar>

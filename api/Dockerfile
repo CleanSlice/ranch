@@ -13,6 +13,8 @@ COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/prisma ./prisma
 COPY --from=builder /usr/src/app/package.json ./
+ARG RANCH_VERSION=dev
+ENV RANCH_VERSION=${RANCH_VERSION}
 ENV PORT=3333
 EXPOSE 3333
 CMD ["bun", "run", "start:prod"]

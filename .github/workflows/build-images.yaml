@@ -18,6 +18,8 @@ on:
       - 'api/**'
       - 'admin/**'
       - 'app/**'
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       target:
@@ -36,13 +38,28 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      api:   ${{ steps.filter.outputs.api   || steps.manual.outputs.api }}
-      admin: ${{ steps.filter.outputs.admin || steps.manual.outputs.admin }}
-      app:   ${{ steps.filter.outputs.app   || steps.manual.outputs.app }}
+      api:     ${{ steps.tag.outputs.all || steps.filter.outputs.api   || steps.manual.outputs.api }}
+      admin:   ${{ steps.tag.outputs.all || steps.filter.outputs.admin || steps.manual.outputs.admin }}
+      app:     ${{ steps.tag.outputs.all || steps.filter.outputs.app   || steps.manual.outputs.app }}
+      version: ${{ steps.version.outputs.value }}
+      tag:     ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+      - id: tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: echo "all=true" >> $GITHUB_OUTPUT
+      - id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VALUE="${GITHUB_REF_NAME#v}"
+            echo "value=${VALUE}" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          else
+            echo "value=0.0.0-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          fi
       - id: filter
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
         uses: dorny/paths-filter@v3
         with:
           filters: |
@@ -79,9 +96,11 @@ jobs:
           context: ./api
           platforms: linux/amd64
           push: true
+          build-args: |
+            RANCH_VERSION=${{ needs.changes.outputs.version }}
           tags: |
             ${{ env.IMAGE_PREFIX }}-api:latest
-            ${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-api:${{ needs.changes.outputs.tag }}
           cache-from: type=gha,scope=ranch-api
           cache-to: type=gha,mode=max,scope=ranch-api
 
@@ -105,9 +124,10 @@ jobs:
           push: true
           build-args: |
             API_URL=${{ vars.API_URL }}
+            RANCH_VERSION=${{ needs.changes.outputs.version }}
           tags: |
             ${{ env.IMAGE_PREFIX }}-admin:latest
-            ${{ env.IMAGE_PREFIX }}-admin:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-admin:${{ needs.changes.outputs.tag }}
           cache-from: type=gha,scope=ranch-admin
           cache-to: type=gha,mode=max,scope=ranch-admin
 
@@ -131,9 +151,10 @@ jobs:
           push: true
           build-args: |
             API_URL=${{ vars.API_URL }}
+            RANCH_VERSION=${{ needs.changes.outputs.version }}
           tags: |
             ${{ env.IMAGE_PREFIX }}-app:latest
-            ${{ env.IMAGE_PREFIX }}-app:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-app:${{ needs.changes.outputs.tag }}
           cache-from: type=gha,scope=ranch-app
           cache-to: type=gha,mode=max,scope=ranch-app
 

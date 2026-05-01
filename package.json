@@ -1,5 +1,6 @@
 {
   "name": "ranch",
+  "version": "0.1.0",
   "private": true,
   "packageManager": "bun@1.2.12",
   "workspaces": [
@@ -14,7 +15,8 @@
     "test": "turbo test",
     "dev:api": "turbo dev --filter=api",
     "dev:app": "turbo dev --filter=app",
-    "dev:admin": "turbo dev --filter=admin"
+    "dev:admin": "turbo dev --filter=admin",
+    "release": "npm version --message 'chore(release): v%s'"
   },
   "devDependencies": {
     "turbo": "^2"

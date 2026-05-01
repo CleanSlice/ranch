@@ -15,23 +15,50 @@ ranch status                 Show what's currently running locally
 
 Run `ranch --help` or `ranch <cmd> --help` for the full list.
 
-## Local install
+## Install
 
-From the monorepo root, dependencies are installed by `bun install` because `cli` is registered as a workspace.
-
-To make the `ranch` binary available globally on your machine:
+Install globally so the `ranch` command is available everywhere:
 
 ```bash
-cd cli
-bun link              # registers @cleanslice/ranch in bun's link registry
-bun link @cleanslice/ranch   # run from any other directory to link it there
-# or: link globally so it works anywhere on your $PATH
-ln -sf "$(pwd)/bin/ranch.js" /usr/local/bin/ranch
+npm i -g @cleanslice/ranch
+# or
+bun add -g @cleanslice/ranch
+pnpm add -g @cleanslice/ranch
+yarn global add @cleanslice/ranch
+```
+
+> **Note: the `-g` (global) flag is required.** Without it the package
+> is installed only into a project's local `node_modules/.bin` and
+> the `ranch` command will not be on your `$PATH` — you'd have to
+> invoke it with `npx ranch …`.
+
+Verify:
+
+```bash
+ranch --help
 ```
 
 The CLI auto-discovers the Ranch project root by walking upward from the
 current directory until it finds a `package.json` with `"name": "ranch"`.
 You can also set `RANCH_ROOT` to point at it explicitly.
+
+## Local development
+
+From the monorepo root, `bun install` will pick up `cli/` because it's
+registered as a workspace. To run the CLI from source while iterating:
+
+```bash
+cd cli
+bun run dev -- --help          # runs src/cli.ts directly via bun
+```
+
+To link your working copy as if it were globally installed:
+
+```bash
+cd cli
+bun link
+bun link @cleanslice/ranch     # run from any other directory
+```
 
 ## Standalone binary
 
@@ -52,12 +79,14 @@ Releases are automated by `.github/workflows/publish-cli.yaml`.
 
 **One-time setup:**
 
-1. Make sure the npm scope `@ranch` is owned by you (or change `name` in
-   `cli/package.json` to a scope/name you control — e.g. `@your-org/ranch-cli`).
+1. The npm scope `@cleanslice` already exists and is owned by `dmitriyzhuk`.
+   Add other maintainers via `npm org set cleanslice <user> developer`.
 2. Create an automation token at https://www.npmjs.com/settings/<user>/tokens
    (type: **Automation**, so it bypasses 2FA in CI).
 3. In the GitHub repo: **Settings → Secrets and variables → Actions →
    New repository secret** → name `NPM_TOKEN`, value = the token.
+4. The repository **must be public** — npm provenance refuses to verify
+   packages built from private GitHub Actions runs.
 
 **To cut a release:**
 

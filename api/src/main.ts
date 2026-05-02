@@ -7,6 +7,19 @@ import { AppModule } from './app.module';
 import { ErrorHandlingInterceptor } from './slices/setup/error/error-handling.interceptor';
 import { ResponseInterceptor } from './slices/setup/error/response.interceptor';
 
+// Bun exits the process on unhandled rejection/exception by default. The
+// @kubernetes/client-node Watch (KubePodGateway) leaks a DOMException
+// TimeoutError after the ~5min server-side watch timeout, which is what
+// has been crash-looping the api pod every ~6 minutes in prod. Swallow
+// these globally so the watch reconnect logic in pod.gateway.ts has a
+// chance to take over instead of bringing the whole API down.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason instanceof Error ? reason.stack ?? reason : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err.stack ?? err);
+});
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 

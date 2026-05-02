@@ -3,6 +3,7 @@ import {
   IsString,
   IsOptional,
   IsObject,
+  IsBoolean,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -41,4 +42,12 @@ export class CreateAgentDto {
   @ValidateNested()
   @Type(() => AgentResourcesDto)
   resources?: AgentResourcesDto;
+
+  @ApiPropertyOptional({
+    description:
+      'When true, the agent is visible on the public landing page to unauthenticated visitors.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isPublic?: boolean;
 }

@@ -129,6 +129,16 @@ export class AgentController {
     return this.agentGateway.findAll();
   }
 
+  @Get('public')
+  @Public()
+  @ApiOperation({
+    summary:
+      'List agents flagged as public. Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.',
+  })
+  findPublic() {
+    return this.agentGateway.findPublic();
+  }
+
   @Get('status')
   @Public()
   @ApiOperation({

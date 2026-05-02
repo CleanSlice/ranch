@@ -7,6 +7,7 @@ import {
 
 export abstract class IAgentGateway {
   abstract findAll(): Promise<IAgentData[]>;
+  abstract findPublic(): Promise<IAgentData[]>;
   abstract findById(id: string): Promise<IAgentData | null>;
   abstract create(data: ICreateAgentData): Promise<IAgentData>;
   abstract update(id: string, data: IUpdateAgentData): Promise<IAgentData>;

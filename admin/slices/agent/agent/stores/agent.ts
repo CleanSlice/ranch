@@ -23,6 +23,7 @@ export interface IAgentData {
   workflowId: string | null;
   config: Record<string, unknown>;
   resources: IAgentResources;
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +34,7 @@ export interface ICreateAgentData {
   llmCredentialId?: string | null;
   config?: Record<string, unknown>;
   resources?: IAgentResources;
+  isPublic?: boolean;
 }
 
 export interface IUpdateAgentData {
@@ -41,6 +43,7 @@ export interface IUpdateAgentData {
   llmCredentialId?: string | null;
   config?: Record<string, unknown>;
   resources?: IAgentResources;
+  isPublic?: boolean;
 }
 
 export const useAgentStore = defineStore('agent', () => {

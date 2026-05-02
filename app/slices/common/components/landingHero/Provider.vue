@@ -52,7 +52,7 @@
             <div>
               <dt class="text-xs text-muted-foreground">Agents</dt>
               <dd class="text-2xl font-semibold">
-                {{ agentStore.agents.length }}
+                {{ agentStore.publicAgents.length }}
               </dd>
             </div>
             <div>
@@ -93,14 +93,15 @@ import type { IAgentData } from '#agent/stores/agent';
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
 
-await useAsyncData('landing-agents', () => agentStore.fetchAll());
+await useAsyncData('landing-agents', () => agentStore.fetchPublic());
 
 const featured = computed<IAgentData | null>(
-  () => agentStore.agents[0] ?? null,
+  () => agentStore.publicAgents[0] ?? null,
 );
 
 const runningCount = computed(
-  () => agentStore.agents.filter((a) => a.status === 'running').length,
+  () =>
+    agentStore.publicAgents.filter((a) => a.status === 'running').length,
 );
 
 const canDeployAgent = computed(() =>

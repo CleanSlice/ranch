@@ -31,6 +31,12 @@ export class AgentDto {
   })
   debugEnabled: boolean;
 
+  @ApiProperty({
+    description:
+      'When true, the agent is visible on the public landing page to unauthenticated visitors.',
+  })
+  isPublic: boolean;
+
   @ApiProperty()
   createdAt: Date;
 

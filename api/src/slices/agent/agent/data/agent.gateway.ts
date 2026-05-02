@@ -26,6 +26,14 @@ export class AgentGateway extends IAgentGateway {
     return records.map((r) => this.mapper.toEntity(r));
   }
 
+  async findPublic(): Promise<IAgentData[]> {
+    const records = await this.prisma.agent.findMany({
+      where: { isPublic: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return records.map((r) => this.mapper.toEntity(r));
+  }
+
   async findById(id: string): Promise<IAgentData | null> {
     const record = await this.prisma.agent.findUnique({ where: { id } });
     return record ? this.mapper.toEntity(record) : null;
@@ -52,6 +60,7 @@ export class AgentGateway extends IAgentGateway {
         ...(data.resources && {
           resources: data.resources as unknown as Prisma.InputJsonValue,
         }),
+        ...(data.isPublic !== undefined && { isPublic: data.isPublic }),
       },
     });
     return this.mapper.toEntity(record);

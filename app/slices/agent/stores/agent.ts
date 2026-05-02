@@ -12,6 +12,7 @@ export interface IAgentData {
   workflowId: string | null;
   config: Record<string, unknown>;
   resources: { cpu: string; memory: string };
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,6 +31,7 @@ function unwrap<T>(body: unknown): T | null {
 
 export const useAgentStore = defineStore('agent', () => {
   const agents = ref<IAgentData[]>([]);
+  const publicAgents = ref<IAgentData[]>([]);
   const current = ref<IAgentData | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
@@ -48,6 +50,22 @@ export const useAgentStore = defineStore('agent', () => {
       loading.value = false;
     }
     return agents.value;
+  }
+
+  async function fetchPublic() {
+    loading.value = true;
+    error.value = null;
+    try {
+      const res = await AgentsService.agentControllerFindPublic();
+      const list = unwrap<IAgentData[]>(res.data);
+      publicAgents.value = Array.isArray(list) ? list : [];
+    } catch (err) {
+      error.value = (err as Error).message;
+      publicAgents.value = [];
+    } finally {
+      loading.value = false;
+    }
+    return publicAgents.value;
   }
 
   async function fetchById(id: string) {
@@ -102,10 +120,12 @@ export const useAgentStore = defineStore('agent', () => {
 
   return {
     agents,
+    publicAgents,
     current,
     loading,
     error,
     fetchAll,
+    fetchPublic,
     fetchById,
     create,
     update,

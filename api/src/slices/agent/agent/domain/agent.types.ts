@@ -15,6 +15,7 @@ export interface IAgentData {
   config: Record<string, unknown>;
   resources: IAgentResources;
   debugEnabled: boolean;
+  isPublic: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,6 +31,7 @@ export interface ICreateAgentData {
   llmCredentialId?: string | null;
   config?: Record<string, unknown>;
   resources?: IAgentResources;
+  isPublic?: boolean;
 }
 
 export interface IUpdateAgentData {
@@ -37,4 +39,5 @@ export interface IUpdateAgentData {
   llmCredentialId?: string | null;
   config?: Record<string, unknown>;
   resources?: IAgentResources;
+  isPublic?: boolean;
 }

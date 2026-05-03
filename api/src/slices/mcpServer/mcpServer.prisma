@@ -1,0 +1,28 @@
+import { Template } from "../agent/template/template"
+
+model McpServer {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  // Transport URL the runtime connects to. For the built-in Ranch entry this
+  // is the in-cluster URL of the api itself (e.g. http://api:3001/mcp/mcp).
+  url         String
+  // streamableHttp | sse — Streamable HTTP is preferred; SSE kept for legacy
+  // servers that haven't migrated yet.
+  transport   String   @default("streamableHttp")
+  // none | bearer | header — how the runtime authenticates to the server.
+  authType    String   @default("none")
+  // For bearer: the token (or "${RANCH_API_TOKEN}" placeholder substituted at
+  // runtime). For header: stored as JSON {"X-Foo": "value"}.
+  authValue   String?
+  // Only enabled servers get loaded by agents. Disable to globally pause an
+  // MCP without detaching it from templates.
+  enabled     Boolean  @default(true)
+  // Built-ins (e.g. the Ranch MCP itself) cannot be deleted — only disabled.
+  builtIn     Boolean  @default(false)
+  templates   Template[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+}

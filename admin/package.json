@@ -36,7 +36,8 @@
     "sigma": "^3.0.2",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^2.6.1",
-    "vue": "^3.5"
+    "vue": "^3.5",
+    "yaml": "^2.8.4"
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "^0.66",

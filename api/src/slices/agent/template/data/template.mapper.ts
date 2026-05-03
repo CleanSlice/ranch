@@ -2,11 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { Template, Prisma } from '@prisma/client';
 import { ITemplateData, ICreateTemplateData } from '../domain';
 
-type TemplateWithSkills = Template & { skills?: { id: string }[] };
+type TemplateWithRelations = Template & {
+  skills?: { id: string }[];
+  mcpServers?: { id: string }[];
+};
 
 @Injectable()
 export class TemplateMapper {
-  toEntity(record: TemplateWithSkills): ITemplateData {
+  toEntity(record: TemplateWithRelations): ITemplateData {
     return {
       id: record.id,
       name: record.name,
@@ -16,6 +19,7 @@ export class TemplateMapper {
       defaultResources:
         record.defaultResources as unknown as ITemplateData['defaultResources'],
       skillIds: (record.skills ?? []).map((s) => s.id),
+      mcpServerIds: (record.mcpServers ?? []).map((m) => m.id),
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

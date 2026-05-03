@@ -10,6 +10,6 @@ export default defineNuxtPlugin(() => {
     link: 'settings',
     active: false,
     icon: 'Settings',
-    sortOrder: 20,
+    sortOrder: 40,
   });
 });

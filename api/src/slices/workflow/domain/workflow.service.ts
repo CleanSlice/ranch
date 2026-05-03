@@ -6,7 +6,11 @@ import { IWorkflowGateway } from './IWorkflowGateway';
 export class WorkflowService {
   constructor(private workflowGateway: IWorkflowGateway) {}
 
-  async submitAgentWorkflow(agent: IAgentData, image: string): Promise<string> {
+  async submitAgentWorkflow(
+    agent: IAgentData,
+    image: string,
+    ranchApiToken = '',
+  ): Promise<string> {
     return this.workflowGateway.submit({
       agentId: agent.id,
       agentName: agent.name,
@@ -15,6 +19,8 @@ export class WorkflowService {
       image,
       config: agent.config,
       resources: agent.resources,
+      isAdmin: agent.isAdmin,
+      ranchApiToken,
     });
   }
 

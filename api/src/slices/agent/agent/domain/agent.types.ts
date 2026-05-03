@@ -16,6 +16,7 @@ export interface IAgentData {
   resources: IAgentResources;
   debugEnabled: boolean;
   isPublic: boolean;
+  isAdmin: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

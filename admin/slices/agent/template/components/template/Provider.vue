@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from '#theme/components/ui/card';
 import { IconArrowLeft } from '@tabler/icons-vue';
+import { FlaskConical } from 'lucide-vue-next';
 
 const props = defineProps<{ id: string }>();
 const templateStore = useTemplateStore();
@@ -21,11 +22,12 @@ const { data: template, pending, refresh } = await useAsyncData(
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
-type SectionId = 'blueprint' | 'skills' | 'files';
+type SectionId = 'blueprint' | 'skills' | 'mcps' | 'files';
 
 const sections: { id: SectionId; title: string; description: string }[] = [
   { id: 'blueprint', title: 'Blueprint', description: 'Image and resource defaults.' },
   { id: 'skills', title: 'Skills', description: 'Attach skills available to this template.' },
+  { id: 'mcps', title: 'MCP servers', description: 'Tool servers agents inherit from this template.' },
   { id: 'files', title: 'Files', description: 'The .agent folder uploaded to S3.' },
 ];
 
@@ -40,6 +42,10 @@ async function onRemove() {
 }
 
 async function onSkillsSaved() {
+  await refresh();
+}
+
+async function onMcpsSaved() {
   await refresh();
 }
 </script>
@@ -59,6 +65,12 @@ async function onSkillsSaved() {
           <p class="text-sm text-muted-foreground">{{ template.description }}</p>
         </div>
         <div class="flex gap-2">
+          <Button variant="outline" as-child>
+            <NuxtLink :to="`/templates/${template.id}/paddock`">
+              <FlaskConical class="size-4" />
+              Paddock
+            </NuxtLink>
+          </Button>
           <Button variant="outline" as-child>
             <NuxtLink :to="`/templates/${template.id}/edit`">Edit</NuxtLink>
           </Button>
@@ -149,6 +161,24 @@ async function onSkillsSaved() {
                 :template-id="template.id"
                 :initial-skill-ids="template.skillIds"
                 @saved="onSkillsSaved"
+              />
+            </CardContent>
+          </Card>
+
+          <Card v-else-if="active === 'mcps'">
+            <CardHeader>
+              <CardTitle>MCP servers</CardTitle>
+              <CardDescription>
+                Pick which MCP servers agents created from this template should connect to.
+                Saved as a full set — unchecked servers are detached. Register new servers in
+                <NuxtLink to="/mcps" class="underline">MCP servers</NuxtLink>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TemplateMcpsProvider
+                :template-id="template.id"
+                :initial-mcp-server-ids="template.mcpServerIds"
+                @saved="onMcpsSaved"
               />
             </CardContent>
           </Card>

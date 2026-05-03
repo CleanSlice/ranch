@@ -11,6 +11,8 @@ const items: IMenuItem[] = [
   { title: 'Authentication', description: 'Self-service registration toggle.', to: '/settings/auth' },
   { title: 'GitHub', description: 'Personal Access Token for private images.', to: '/settings/github' },
   { title: 'Bridle', description: 'Chat hub URL agents connect to.', to: '/settings/bridle' },
+  { title: 'Rancher', description: 'API URL the admin agent calls for ranch_* tools.', to: '/settings/rancher' },
+  { title: 'MCP', description: 'Connect external agents to this Ranch as an MCP server.', to: '/settings/mcp' },
   { title: 'Storage', description: 'S3 / MinIO persistence.', to: '/settings/storage' },
   { title: 'Secrets', description: 'Where agents store user secrets.', to: '/settings/secrets' },
 ];

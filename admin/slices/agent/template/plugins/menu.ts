@@ -9,7 +9,7 @@ export default defineNuxtPlugin(() => {
     title: 'Templates',
     link: 'templates',
     active: false,
-    icon: 'FileText',
+    icon: 'LayoutTemplate',
     sortOrder: 20,
   });
 });

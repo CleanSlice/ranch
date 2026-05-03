@@ -6,6 +6,7 @@ export interface ITemplateData {
   defaultConfig: Record<string, unknown>;
   defaultResources: { cpu: string; memory: string };
   skillIds: string[];
+  mcpServerIds: string[];
   createdAt: Date;
   updatedAt: Date;
 }

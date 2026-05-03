@@ -1,0 +1,46 @@
+{
+  "maxIterations": 30,
+  "taskLabelLength": 60,
+  "maxTokens": 16384,
+
+  "_comment_access": "Rancher is the admin agent — only the operator (and approved teammates) should reach it. Default to 'approval' so new chats need explicit greenlight.",
+  "accessStrategy": "approval",
+  "allowlist": [],
+  "accessCode": "",
+
+  "heartbeat": {
+    "intervalMin": 30
+  },
+
+  "session": {
+    "compactionThreshold": 60,
+    "recentKeep": 20
+  },
+
+  "s3": {
+    "syncIntervalSec": 0,
+    "watcherDebounceMs": 30000
+  },
+
+  "stopPhrases": [
+    "/stop",
+    "stop", "abort", "cancel",
+    "halt", "enough", "quit"
+  ],
+
+  "managedFiles": ["SOUL.md"],
+  "syncSkills": true,
+
+  "tools": {
+    "spawnAgent": {
+      "timeoutMin": 5,
+      "outputLimit": 4000
+    },
+    "browser": {
+      "outputLimit": 5000
+    },
+    "webFetch": {
+      "maxChars": 8000
+    }
+  }
+}

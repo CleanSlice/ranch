@@ -118,7 +118,7 @@ const agentInitial = computed(() => {
           <!-- Typing indicator: three bouncing dots styled like an agent bubble -->
           <div
             v-if="sending"
-            class="flex items-end gap-2 justify-start"
+            class="flex items-center gap-2 justify-start"
           >
             <div
               class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary/25 to-primary/5 text-[11px] font-semibold text-primary"
@@ -126,12 +126,12 @@ const agentInitial = computed(() => {
               {{ agentInitial }}
             </div>
             <div
-              class="rounded-2xl rounded-bl-md bg-muted px-4 py-3 shadow-sm"
+              class="rounded-2xl rounded-tl-md bg-muted px-4 py-2.5 shadow-sm"
             >
-              <div class="flex items-center gap-1">
-                <span class="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:0ms]" />
-                <span class="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:150ms]" />
-                <span class="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:300ms]" />
+              <div class="flex h-4 items-center gap-1">
+                <span class="bridle-typing-dot h-1.5 w-1.5 rounded-full bg-foreground/50 [animation-delay:0ms]" />
+                <span class="bridle-typing-dot h-1.5 w-1.5 rounded-full bg-foreground/50 [animation-delay:150ms]" />
+                <span class="bridle-typing-dot h-1.5 w-1.5 rounded-full bg-foreground/50 [animation-delay:300ms]" />
               </div>
             </div>
           </div>
@@ -150,3 +150,24 @@ const agentInitial = computed(() => {
     </template>
   </div>
 </template>
+
+<style scoped>
+.bridle-typing-dot {
+  display: inline-block;
+  animation: bridle-typing 1.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes bridle-typing {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+</style>

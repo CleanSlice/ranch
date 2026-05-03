@@ -1,0 +1,21 @@
+{
+  "paddock": {
+    "title": "Paddock",
+    "scenarios": "Scenarios",
+    "evaluations": "Evaluations",
+    "runEvaluation": "Run Evaluation",
+    "newScenario": "New Scenario",
+    "verdict": {
+      "pass": "Pass",
+      "fail": "Fail",
+      "partial": "Partial",
+      "skipped": "Skipped"
+    },
+    "status": {
+      "running": "Running",
+      "done": "Done",
+      "failed": "Failed",
+      "aborted": "Aborted"
+    }
+  }
+}

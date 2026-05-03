@@ -26,6 +26,15 @@ import type {
   TemplateControllerFindByIdData,
   TemplateControllerUpdateData,
   TemplateControllerSetSkillsData,
+  TemplateControllerSetMcpsData,
+  McpServerControllerFindAllData,
+  McpServerControllerCreateData,
+  McpServerControllerRemoveData,
+  McpServerControllerFindByIdData,
+  McpServerControllerUpdateData,
+  AuthControllerLoginData,
+  AuthControllerRegisterData,
+  AuthControllerMeData,
   TemplateFileControllerListData,
   TemplateFileControllerReadData,
   TemplateFileControllerSaveData,
@@ -39,11 +48,17 @@ import type {
   AgentControllerRemoveData,
   AgentControllerFindByIdData,
   AgentControllerUpdateData,
+  GetAgentMcpsData,
+  GetAgentMcpsResponse,
   AgentControllerSetDebugData,
+  AgentControllerFindAdminData,
+  AgentControllerDemoteAdminData,
+  AgentControllerPromoteAdminData,
   AgentControllerRestartData,
-  AuthControllerLoginData,
-  AuthControllerRegisterData,
-  AuthControllerMeData,
+  FileControllerListData,
+  FileControllerReadData,
+  FileControllerSaveData,
+  FileControllerSyncData,
   SendBridleMessageData,
   SendBridleMessageSyncData,
   BridleHealthData,
@@ -55,10 +70,6 @@ import type {
   ResetBridleTranscriptResponse,
   GetBridleTranscriptData,
   GetBridleTranscriptResponse,
-  FileControllerListData,
-  FileControllerReadData,
-  FileControllerSaveData,
-  FileControllerSyncData,
   SecretControllerListData,
   SecretControllerListResponse,
   LogControllerGetLogsData,
@@ -96,6 +107,27 @@ import type {
   SkillControllerRemoveData,
   SkillControllerFindByIdData,
   SkillControllerUpdateData,
+  RancherControllerStatusData,
+  RancherControllerEnsureTemplateData,
+  PaddockScenarioControllerFindAllData,
+  PaddockScenarioControllerCreateData,
+  PaddockScenarioControllerRemoveData,
+  PaddockScenarioControllerFindByIdData,
+  PaddockScenarioControllerUpdateData,
+  PaddockScenarioControllerGenerateData,
+  PaddockEvaluationControllerListData,
+  PaddockEvaluationControllerStartData,
+  PaddockEvaluationControllerGetData,
+  PaddockEvaluationControllerReportData,
+  PaddockEvaluationControllerTraceData,
+  PaddockEvaluationControllerAbortData,
+  PaddockEvaluationControllerRerunData,
+  SseControllerSseData,
+  SseControllerMessagesData,
+  SseControllerDebugSessionsData,
+  StreamableHttpControllerHandleDeleteRequestData,
+  StreamableHttpControllerHandleGetRequestData,
+  StreamableHttpControllerHandlePostRequestData,
 } from "./types.gen";
 import { client as _heyApiClient } from "./client.gen";
 
@@ -453,6 +485,174 @@ export class TemplatesService {
       },
     });
   }
+
+  /**
+   * Replace the MCP servers attached to a template. Body lists the full desired set; omitted IDs are detached. Agents created from this template inherit these MCPs at deploy time.
+   */
+  public static templateControllerSetMcps<ThrowOnError extends boolean = false>(
+    options: Options<TemplateControllerSetMcpsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/templates/{id}/mcps",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
+export class McpServersService {
+  /**
+   * List all MCP servers registered in this Ranch.
+   */
+  public static mcpServerControllerFindAll<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<McpServerControllerFindAllData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers",
+      ...options,
+    });
+  }
+
+  /**
+   * Register a new MCP server.
+   */
+  public static mcpServerControllerCreate<ThrowOnError extends boolean = false>(
+    options: Options<McpServerControllerCreateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Delete an MCP server. Built-in entries (e.g. the Ranch MCP itself) cannot be deleted — only disabled.
+   */
+  public static mcpServerControllerRemove<ThrowOnError extends boolean = false>(
+    options: Options<McpServerControllerRemoveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Get an MCP server by id.
+   */
+  public static mcpServerControllerFindById<
+    ThrowOnError extends boolean = false,
+  >(options: Options<McpServerControllerFindByIdData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Update an MCP server.
+   */
+  public static mcpServerControllerUpdate<ThrowOnError extends boolean = false>(
+    options: Options<McpServerControllerUpdateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).patch<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/{id}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
+export class AuthService {
+  /**
+   * Authenticate and receive an access token
+   */
+  public static authControllerLogin<ThrowOnError extends boolean = false>(
+    options: Options<AuthControllerLoginData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/auth/login",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Self-service signup. Requires the 'auth.registration_enabled' setting to be true; otherwise 403.
+   */
+  public static authControllerRegister<ThrowOnError extends boolean = false>(
+    options: Options<AuthControllerRegisterData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/auth/register",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Get the current authenticated user
+   */
+  public static authControllerMe<ThrowOnError extends boolean = false>(
+    options?: Options<AuthControllerMeData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/auth/me",
+      ...options,
+    });
+  }
 }
 
 export class TemplateFilesService {
@@ -668,6 +868,22 @@ export class AgentsService {
   }
 
   /**
+   * List of MCP servers this agent should connect to at runtime. Resolves the agent's template and returns its enabled MCP attachments. Called by the runtime on boot to populate its tool registry. Tokens with role=Agent (issued to runtimes) can only read their OWN agent — `sub` must match `agent:<id>`.
+   */
+  public static getAgentMcps<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentMcpsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentMcpsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/mcps",
+      ...options,
+    });
+  }
+
+  /**
    * Toggle prompt-debug emission for an agent. Persists to DB and pushes a control event over the bridle WS so the running agent picks it up live without a restart.
    */
   public static agentControllerSetDebug<ThrowOnError extends boolean = false>(
@@ -688,6 +904,54 @@ export class AgentsService {
   }
 
   /**
+   * Get the agent currently flagged as Ranch admin (or null).
+   */
+  public static agentControllerFindAdmin<ThrowOnError extends boolean = false>(
+    options?: Options<AgentControllerFindAdminData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/admin/current",
+      ...options,
+    });
+  }
+
+  /**
+   * Demote this agent from Ranch admin. Redeploys without RANCH_ADMIN.
+   */
+  public static agentControllerDemoteAdmin<
+    ThrowOnError extends boolean = false,
+  >(options: Options<AgentControllerDemoteAdminData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/promote-admin",
+      ...options,
+    });
+  }
+
+  /**
+   * Mark this agent as the Ranch admin. Clears the flag from any other agent (single-admin invariant) and redeploys with RANCH_ADMIN=true + a service token. Any previous admin is redeployed without the flag.
+   */
+  public static agentControllerPromoteAdmin<
+    ThrowOnError extends boolean = false,
+  >(options: Options<AgentControllerPromoteAdminData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/promote-admin",
+      ...options,
+    });
+  }
+
+  /**
    * Restart an agent. Admin or Owner.
    */
   public static agentControllerRestart<ThrowOnError extends boolean = false>(
@@ -704,19 +968,51 @@ export class AgentsService {
   }
 }
 
-export class AuthService {
+export class FilesService {
   /**
-   * Authenticate and receive an access token
+   * List files for an agent
    */
-  public static authControllerLogin<ThrowOnError extends boolean = false>(
-    options: Options<AuthControllerLoginData, ThrowOnError>,
+  public static fileControllerList<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerListData, ThrowOnError>,
   ) {
-    return (options.client ?? _heyApiClient).post<
+    return (options.client ?? _heyApiClient).get<
       unknown,
       unknown,
       ThrowOnError
     >({
-      url: "/auth/login",
+      url: "/agents/{agentId}/files",
+      ...options,
+    });
+  }
+
+  /**
+   * Read a file
+   */
+  public static fileControllerRead<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerReadData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/content",
+      ...options,
+    });
+  }
+
+  /**
+   * Save a file (.md / .json only)
+   */
+  public static fileControllerSave<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerSaveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/content",
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -726,37 +1022,17 @@ export class AuthService {
   }
 
   /**
-   * Self-service signup. Requires the 'auth.registration_enabled' setting to be true; otherwise 403.
+   * Ask the agent runtime to push its local files to S3, then return the latest S3 state to the admin UI
    */
-  public static authControllerRegister<ThrowOnError extends boolean = false>(
-    options: Options<AuthControllerRegisterData, ThrowOnError>,
+  public static fileControllerSync<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerSyncData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).post<
       unknown,
       unknown,
       ThrowOnError
     >({
-      url: "/auth/register",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Get the current authenticated user
-   */
-  public static authControllerMe<ThrowOnError extends boolean = false>(
-    options?: Options<AuthControllerMeData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/auth/me",
+      url: "/agents/{agentId}/files/sync",
       ...options,
     });
   }
@@ -879,76 +1155,6 @@ export class BridleService {
       ThrowOnError
     >({
       url: "/api/agent/{botId}/transcript",
-      ...options,
-    });
-  }
-}
-
-export class FilesService {
-  /**
-   * List files for an agent
-   */
-  public static fileControllerList<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerListData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files",
-      ...options,
-    });
-  }
-
-  /**
-   * Read a file
-   */
-  public static fileControllerRead<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerReadData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/content",
-      ...options,
-    });
-  }
-
-  /**
-   * Save a file (.md / .json only)
-   */
-  public static fileControllerSave<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerSaveData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/content",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Ask the agent runtime to push its local files to S3, then return the latest S3 state to the admin UI
-   */
-  public static fileControllerSync<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerSyncData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/sync",
       ...options,
     });
   }
@@ -1507,6 +1713,365 @@ export class SkillsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+}
+
+export class RancherService {
+  /**
+   * Stepper state for the Rancher setup wizard: do we have an LLM, the special template, and an admin agent?
+   */
+  public static rancherControllerStatus<ThrowOnError extends boolean = false>(
+    options?: Options<RancherControllerStatusData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/rancher/status",
+      ...options,
+    });
+  }
+
+  /**
+   * Create the special Rancher template (idempotent). Returns the existing one if already created.
+   */
+  public static rancherControllerEnsureTemplate<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<RancherControllerEnsureTemplateData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/rancher/template",
+      ...options,
+    });
+  }
+}
+
+export class PaddockScenariosService {
+  /**
+   * List paddock scenarios. Filter by templateId or agentId; without filters returns all.
+   */
+  public static paddockScenarioControllerFindAll<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<PaddockScenarioControllerFindAllData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios",
+      ...options,
+    });
+  }
+
+  /**
+   * Create a paddock scenario scoped to either a template or an agent (XOR — exactly one).
+   */
+  public static paddockScenarioControllerCreate<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockScenarioControllerCreateData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Delete a paddock scenario
+   */
+  public static paddockScenarioControllerRemove<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockScenarioControllerRemoveData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Get a paddock scenario by id
+   */
+  public static paddockScenarioControllerFindById<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockScenarioControllerFindByIdData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Update a paddock scenario. Scope (templateId/agentId) is immutable — create a new scenario to change scope.
+   */
+  public static paddockScenarioControllerUpdate<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockScenarioControllerUpdateData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).patch<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios/{id}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Generate a scenario draft from a natural-language description via LLM. Result is NOT persisted — review + POST / to save.
+   */
+  public static paddockScenarioControllerGenerate<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockScenarioControllerGenerateData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios/generate",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
+export class PaddockEvaluationsService {
+  /**
+   * List paddock evaluations. Filter by agentId / templateId.
+   */
+  public static paddockEvaluationControllerList<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<PaddockEvaluationControllerListData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-evaluations",
+      ...options,
+    });
+  }
+
+  /**
+   * Start a paddock evaluation for an agent. Returns the evaluation record immediately; the actual run is asynchronous (poll status).
+   */
+  public static paddockEvaluationControllerStart<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockEvaluationControllerStartData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-evaluations",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Get evaluation status + summary + per-scenario results
+   */
+  public static paddockEvaluationControllerGet<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockEvaluationControllerGetData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-evaluations/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch the full evaluation report — both structured JSON and markdown.
+   */
+  public static paddockEvaluationControllerReport<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockEvaluationControllerReportData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-evaluations/{id}/report",
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch the per-scenario execution trace (responses, tool calls, errors). Available after the run completes.
+   */
+  public static paddockEvaluationControllerTrace<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockEvaluationControllerTraceData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-evaluations/{id}/trace",
+      ...options,
+    });
+  }
+
+  /**
+   * Mark a running evaluation as aborted. The current scenario will finish before the run halts.
+   */
+  public static paddockEvaluationControllerAbort<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockEvaluationControllerAbortData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-evaluations/{id}/abort",
+      ...options,
+    });
+  }
+
+  /**
+   * Start a new evaluation re-using the exact scenarios + judge config from this one. Returns the new evaluation record immediately; the run is async.
+   */
+  public static paddockEvaluationControllerRerun<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockEvaluationControllerRerunData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-evaluations/{id}/rerun",
+      ...options,
+    });
+  }
+}
+
+export class McpService {
+  public static sseControllerSse<ThrowOnError extends boolean = false>(
+    options?: Options<SseControllerSseData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp/sse",
+      ...options,
+    });
+  }
+
+  public static sseControllerMessages<ThrowOnError extends boolean = false>(
+    options?: Options<SseControllerMessagesData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp/messages",
+      ...options,
+    });
+  }
+
+  public static sseControllerDebugSessions<
+    ThrowOnError extends boolean = false,
+  >(options: Options<SseControllerDebugSessionsData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/teams/{teamId}/sessions/debug",
+      ...options,
+    });
+  }
+}
+
+export class StreamableHttpService {
+  public static streamableHttpControllerHandleDeleteRequest<
+    ThrowOnError extends boolean = false,
+  >(
+    options?: Options<
+      StreamableHttpControllerHandleDeleteRequestData,
+      ThrowOnError
+    >,
+  ) {
+    return (options?.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp/mcp",
+      ...options,
+    });
+  }
+
+  public static streamableHttpControllerHandleGetRequest<
+    ThrowOnError extends boolean = false,
+  >(
+    options: Options<
+      StreamableHttpControllerHandleGetRequestData,
+      ThrowOnError
+    >,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp/mcp",
+      ...options,
+    });
+  }
+
+  public static streamableHttpControllerHandlePostRequest<
+    ThrowOnError extends boolean = false,
+  >(
+    options: Options<
+      StreamableHttpControllerHandlePostRequestData,
+      ThrowOnError
+    >,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp/mcp",
+      ...options,
     });
   }
 }

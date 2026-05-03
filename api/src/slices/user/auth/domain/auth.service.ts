@@ -96,6 +96,22 @@ export class AuthService {
     };
   }
 
+  async issueAgentServiceToken(
+    agentId: string,
+    isAdmin: boolean,
+  ): Promise<string> {
+    // Admin agents act as Ranch operators — they hold Owner-equivalent power
+    // (they manage the platform itself). Non-admin agents get the Agent role
+    // which only opens self-scoped endpoints (`/agents/:id/mcps`, etc.) — they
+    // cannot read other agents' data even if they manipulate the URL.
+    const payload: IAuthTokenPayload = {
+      sub: `agent:${agentId}`,
+      email: `agent-${agentId}@ranch.local`,
+      roles: isAdmin ? [UserRoleTypes.Owner] : [UserRoleTypes.Agent],
+    };
+    return this.jwt.signAsync(payload, { expiresIn: '365d' });
+  }
+
   private async isRegistrationEnabled(): Promise<boolean> {
     const setting = await this.settings.findByKey('auth', 'registration_enabled');
     if (!setting) return false;

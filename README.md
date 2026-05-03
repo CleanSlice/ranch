@@ -16,7 +16,7 @@ Install the CLI globally — it auto-clones the project on first run:
 bun add -g @cleanslice/ranch
 # or: npm install -g @cleanslice/ranch
 
-ranch dev    # offers to clone if no checkout, then starts api + app + admin
+ranch dev    # offers to clone if no checkout, then starts api + app + admin + local k3d
 ```
 
 See [`cli/README.md`](cli/README.md) for all `ranch` commands.
@@ -84,33 +84,38 @@ make dev    # Starts api:3000 + app:3001 + admin:3002
 ranch/
 ├── api/                  # NestJS backend
 │   └── src/slices/
-│       ├── setup/        #   prisma, health, error
-│       ├── agent/        #   CRUD + deploy agents
+│       ├── setup/        #   prisma, init, health
+│       ├── user/         #   auth + user
+│       ├── agent/        #   agent, file, pod, secret, template, templateFile
 │       ├── workflow/     #   Argo Workflows integration
-│       ├── template/     #   Agent templates
-│       └── log/          #   Agent logs
-├── app/                  # Nuxt user dashboard
-│   └── slices/
-│       ├── setup/        #   pinia, i18n, theme, api, error
-│       ├── agent/        #   Agent list, detail, create
-│       ├── template/     #   Browse templates
-│       └── common/       #   Layout, navigation
-├── admin/                # Nuxt admin panel
-│   └── slices/
-│       ├── setup/        #   pinia, i18n, theme, api, error
-│       ├── agent/        #   Manage all agents
-│       ├── template/     #   CRUD templates
-│       ├── user/         #   User management
+│       ├── bridle/       #   chat (sessions, messages, streaming)
+│       ├── mcp/          #   MCP runtime hosted at /mcp/*
+│       ├── mcpServer/    #   MCP server registry
+│       ├── llm/          #   LLM provider config
+│       ├── skill/        #   Reusable agent skills
+│       ├── rancher/      #   Per-tenant ranch (workspace) management
+│       ├── reins/        #   Access control / API keys
 │       ├── setting/      #   System settings
-│       └── common/       #   Admin layout
+│       ├── usage/        #   Usage metering
+│       ├── log/          #   Agent logs
+│       └── aws/          #   AWS-backed integrations (S3, etc.)
+├── app/                  # Nuxt user dashboard
+│   └── slices/           #   setup, agent, bridle, template, user, common
+├── admin/                # Nuxt admin panel
+│   └── slices/           #   setup, agent, bridle, llm, mcpServer, rancher,
+│                         #   reins, setting, skill, usage, user, common
+├── cli/                  # @cleanslice/ranch — published to npm
+├── rancher/              # Default agent template ("rancher" agent)
 ├── terraform/            # Hetzner infrastructure
-│   ├── modules/          #   cluster, network, bootstrap, dns, database
-│   └── environments/     #   dev, prod (+ your custom env)
+│   ├── modules/          #   cluster, network, bootstrap, dns, database, storage, apps
+│   └── environments/     #   dev, prod, dreamvention (+ your custom env)
 ├── k8s/                  # Kubernetes manifests
 │   ├── argocd/           #   App-of-apps
 │   ├── infrastructure/   #   Argo Workflows, CNPG, database
 │   ├── platform/         #   api, app, admin deployments
-│   └── templates/        #   Argo WorkflowTemplate for agents
+│   ├── templates/        #   Argo WorkflowTemplate + RBAC for agents
+│   ├── local/            #   Local k3d-only manifests (CoreDNS host alias, etc.)
+│   └── deploy/           #   Deploy hooks
 └── .github/workflows/    # CI/CD
 ```
 
@@ -124,14 +129,27 @@ ranch/
 
 ## Local Development
 
-### Quick Start
+### Recommended: `ranch` CLI
+
+The `ranch` CLI wraps the most-used `make` targets and works from any
+directory once installed globally. See [`cli/README.md`](cli/README.md)
+for the full reference.
 
 ```bash
-make setup    # Install deps, start DB, run migrations
-make dev      # Start api + app + admin
+bun add -g @cleanslice/ranch       # one-time install
+
+ranch dev                          # start api + app + admin
+ranch dev api                      # or just one service: api | app | admin
+ranch down                         # stop dev servers, postgres, k3d
+ranch db start | stop | reset | studio
+ranch generate                     # regenerate Prisma schema from slices
+ranch status                       # show what's running locally
+ranch where                        # show which Ranch checkout the CLI is using
 ```
 
-### All Commands
+### Or: `make` from inside the repo
+
+Equivalent targets, run from the project root:
 
 ```bash
 make help             # Show all commands
@@ -158,23 +176,35 @@ make test             # Run tests
 make clean            # Remove node_modules and build artifacts
 ```
 
-### API Endpoints
+### Services & Endpoints
 
-After `make dev`, the API is available at `http://localhost:3333`:
+After `ranch dev` (or `make dev`):
 
-- `GET /health` — Health check
-- `GET /api` — Swagger UI
-- `POST /agents` — Create and deploy an agent
-- `GET /agents` — List all agents
-- `GET /agents/:id` — Get agent details
-- `PUT /agents/:id` — Update agent config
-- `POST /agents/:id/restart` — Restart agent
-- `DELETE /agents/:id` — Stop and delete agent
-- `GET /agents/:agentId/logs` — Get agent logs
-- `GET /templates` — List agent templates
-- `POST /templates` — Create template
-- `PUT /templates/:id` — Update template
-- `DELETE /templates/:id` — Delete template
+| URL | Description |
+|---|---|
+| `http://localhost:3000` | API (NestJS) |
+| `http://localhost:3000/api` | Swagger UI — full endpoint reference |
+| `http://localhost:3000/mcp/*` | MCP runtime (tools exposed via `@Tool` decorators) |
+| `http://localhost:3000/health` | Health check |
+| `http://localhost:3001` | App (user dashboard) |
+| `http://localhost:3002` | Admin panel |
+
+`ranch dev` also brings up a local **k3d** cluster (`ranch`) with the
+`platform` and `agents` namespaces and Argo workflow templates pre-applied,
+so the API can submit real agent workflows against a local Kubernetes.
+Kubeconfig is written to `~/.kube/ranch-local.yaml`.
+
+### Optional: LightRAG stack
+
+For RAG-backed agents, a LightRAG + Ollama + Postgres stack ships behind a
+Docker Compose profile:
+
+```bash
+make lightrag-up      # First run pulls ~3GB of models — LightRAG at :9621
+make lightrag-down    # Stop (keeps data)
+make lightrag-reset   # Wipe data + models
+make lightrag-logs    # Tail container logs
+```
 
 ## Prisma Schema (per-slice)
 
@@ -182,9 +212,10 @@ Each slice defines its own `.prisma` file at the slice root. They are merged int
 
 ```
 api/src/slices/
-├── setup/prisma/prisma.prisma    # datasource + generator
-├── agent/agent.prisma            # Agent model
-└── template/template.prisma      # Template model
+├── setup/prisma/prisma.prisma          # datasource + generator
+├── agent/agent/agent.prisma            # Agent model
+├── agent/template/template.prisma      # Template model
+└── user/user/user.prisma               # User model
 ```
 
 Edit the slice `.prisma` files, then:

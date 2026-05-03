@@ -1,0 +1,24 @@
+import { Template } from "../../agent/template/template"
+import { Agent } from "../../agent/agent/agent"
+
+model PaddockScenario {
+  id               String   @id @default(uuid())
+  templateId       String?
+  agentId          String?
+  category         String
+  difficulty       String
+  name             String
+  description      String
+  expectedBehavior String
+  messages         Json
+  successCriteria  Json
+  setup            Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  template Template? @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  agent    Agent?    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@index([agentId])
+}

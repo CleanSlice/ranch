@@ -10,6 +10,7 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
   DeleteObjectCommand,
+  CopyObjectCommand,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
 import { ISettingGateway } from '#/setting/domain';
@@ -141,6 +142,57 @@ export class S3FileGateway extends IFileGateway {
       if (this.isNotFound(err)) return;
       throw err;
     }
+  }
+
+  // Server-side copy of every file under templates/{templateId}/ into
+  // agents/{agentId}/. Skips agents that already have files (re-deploys
+  // must not overwrite evolved state). Returns the number of files copied.
+  async seedFromTemplate(
+    agentId: string,
+    templateId: string,
+  ): Promise<number> {
+    const { client, bucket } = await this.connect();
+    const destPrefix = this.prefix(agentId);
+    const srcPrefix = `templates/${templateId}/`;
+
+    const existing = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: destPrefix,
+        MaxKeys: 1,
+      }),
+    );
+    if ((existing.Contents ?? []).length > 0) return 0;
+
+    let copied = 0;
+    let continuationToken: string | undefined;
+    do {
+      const list = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: srcPrefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      for (const obj of list.Contents ?? []) {
+        if (!obj.Key) continue;
+        const rel = obj.Key.slice(srcPrefix.length);
+        if (!rel) continue;
+        await client.send(
+          new CopyObjectCommand({
+            Bucket: bucket,
+            Key: destPrefix + rel,
+            CopySource: encodeURI(`${bucket}/${obj.Key}`),
+          }),
+        );
+        copied++;
+      }
+      continuationToken = list.IsTruncated
+        ? list.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+
+    return copied;
   }
 
   private prefix(agentId: string): string {

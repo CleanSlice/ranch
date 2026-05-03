@@ -1,0 +1,44 @@
+import { Agent } from "../../agent/agent/agent"
+
+model PaddockEvaluation {
+  id                String   @id @default(uuid())
+  agentId           String
+  templateId        String?
+  status            String   @default("running")
+  startedAt         DateTime @default(now())
+  finishedAt        DateTime?
+  currentScenarioId String?
+  passRate          Float?
+  scenarioCount     Int      @default(0)
+  passCount         Int      @default(0)
+  failCount         Int      @default(0)
+  partialCount      Int      @default(0)
+  skippedCount      Int      @default(0)
+  judgeConfig       Json
+  scenariosSnapshot Json
+  reportS3Key       String?
+  errorMessage      String?
+
+  agent   Agent                     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  results PaddockEvaluationResult[]
+
+  @@index([agentId])
+  @@index([templateId])
+  @@index([status])
+}
+
+model PaddockEvaluationResult {
+  id              String @id @default(uuid())
+  evaluationId    String
+  scenarioId      String
+  verdict         String
+  finalScore      Float
+  agreement       Float
+  dimensionScores Json
+  judges          Json
+  failureReasons  String[]
+
+  evaluation PaddockEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@index([evaluationId])
+}

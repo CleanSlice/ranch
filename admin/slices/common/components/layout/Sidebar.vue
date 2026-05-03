@@ -15,15 +15,17 @@ import {
 } from '#theme/components/ui/sidebar';
 import {
   IconTractor,
-  IconFileText,
+  IconTemplate,
   IconUsers,
   IconBrain,
   IconSparkles,
   IconSettings,
   IconLogout,
   IconDatabase,
+  IconShield,
+  IconPlug,
 } from '@tabler/icons-vue';
-import { Bot } from 'lucide-vue-next';
+import { Bot, FlaskConical } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const ranchVersion = useRuntimeConfig().public.ranchVersion;
@@ -37,12 +39,16 @@ const menu = useMenuStore();
 
 const iconMap: Record<string, unknown> = {
   Bot,
-  FileText: IconFileText,
+  LayoutTemplate: IconTemplate,
+  Template: IconTemplate,
   Users: IconUsers,
   Brain: IconBrain,
   Sparkles: IconSparkles,
   Settings: IconSettings,
   Database: IconDatabase,
+  Shield: IconShield,
+  Plug: IconPlug,
+  FlaskConical,
 };
 
 const groups = [
@@ -60,7 +66,7 @@ const itemsByGroup = (group: MenuGroupTypes) =>
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton as-child size="lg">
-            <NuxtLink to="/">
+            <NuxtLink to="/rancher">
               <div
                 class="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
               >

@@ -19,10 +19,12 @@ const props = withDefaults(defineProps<{
   placeholder?: string
   class?: HTMLAttributes['class']
   showStatus?: boolean
+  agentConnected?: boolean
 }>(), {
   title: 'Agent Chat',
   placeholder: 'Type a message...',
   showStatus: true,
+  agentConnected: true,
 })
 
 const store = useBridleStore()
@@ -47,6 +49,19 @@ const isDebugOpen = computed({
   set: (open: boolean) => {
     if (!open) inspectedMessageId.value = null
   },
+})
+
+const connectionStatus = computed(() => {
+  const chat = isConnected.value
+  const agent = props.agentConnected
+  if (chat && agent) return { label: 'Connected', color: 'text-green-500' }
+  if (chat || agent) {
+    return {
+      label: chat ? 'Agent offline' : 'Chat offline',
+      color: 'text-orange-500',
+    }
+  }
+  return { label: 'Disconnected', color: 'text-red-500' }
 })
 
 const scrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
@@ -144,10 +159,8 @@ async function onConfirmReset() {
           New chat
         </Button>
         <div v-if="showStatus" class="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Circle
-            :class="cn('h-2 w-2 fill-current', isConnected ? 'text-green-500' : 'text-red-500')"
-          />
-          {{ isConnected ? 'Connected' : 'Disconnected' }}
+          <Circle :class="cn('h-2 w-2 fill-current', connectionStatus.color)" />
+          {{ connectionStatus.label }}
         </div>
       </div>
     </CardHeader>

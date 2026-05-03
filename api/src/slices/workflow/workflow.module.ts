@@ -6,9 +6,11 @@ import { ArgoWorkflowGateway } from './data/argo-workflow.gateway';
 import { MockWorkflowGateway } from './data/mock-workflow.gateway';
 import { SettingModule } from '#/setting/setting.module';
 import { LlmModule } from '#/llm/llm.module';
+import { TemplateModule } from '#/agent/template/template.module';
+import { McpServerModule } from '#/mcpServer/mcpServer.module';
 
 @Module({
-  imports: [SettingModule, LlmModule],
+  imports: [SettingModule, LlmModule, TemplateModule, McpServerModule],
   providers: [
     WorkflowService,
     ArgoWorkflowGateway,

@@ -65,6 +65,52 @@ export type SetTemplateSkillsDto = {
   skillIds: Array<string>;
 };
 
+export type SetTemplateMcpsDto = {
+  /**
+   * Full list of MCP server IDs to attach. Replaces any prior set.
+   */
+  mcpServerIds: Array<string>;
+};
+
+export type CreateMcpServerDto = {
+  name: string;
+  description?: {
+    [key: string]: unknown;
+  };
+  url: string;
+  transport?: "streamableHttp" | "sse";
+  authType?: "none" | "bearer" | "header";
+  authValue?: {
+    [key: string]: unknown;
+  };
+  enabled?: boolean;
+};
+
+export type UpdateMcpServerDto = {
+  name?: string;
+  description?: {
+    [key: string]: unknown;
+  };
+  url?: string;
+  transport?: "streamableHttp" | "sse";
+  authType?: "none" | "bearer" | "header";
+  authValue?: {
+    [key: string]: unknown;
+  };
+  enabled?: boolean;
+};
+
+export type LoginDto = {
+  email: string;
+  password: string;
+};
+
+export type RegisterDto = {
+  name: string;
+  email: string;
+  password: string;
+};
+
 export type SaveTemplateFileDto = {
   /**
    * Full file content as text
@@ -98,6 +144,33 @@ export type AgentStatusDto = {
   pod: AgentPodStatusDto | null;
 };
 
+export type AgentMcpDto = {
+  /**
+   * Unique MCP server name (key in the runtime registry).
+   */
+  name: string;
+  /**
+   * Transport protocol the runtime should use to connect.
+   */
+  transport: "streamableHttp" | "sse";
+  /**
+   * MCP server endpoint URL.
+   */
+  url: string;
+  /**
+   * Auth scheme for the connection.
+   */
+  authType: "none" | "bearer" | "header";
+  /**
+   * Auth credential. For `bearer`: raw token (runtime adds the `Bearer ` prefix). For `header`: literal `Header-Name: value` line. `null` when authType is `none`.
+   */
+  authValue: string | null;
+  /**
+   * Always `true` in this list — disabled servers are filtered server-side. Kept for forward compatibility.
+   */
+  enabled: boolean;
+};
+
 export type AgentResourcesDto = {
   cpu: string;
   memory: string;
@@ -115,6 +188,10 @@ export type CreateAgentDto = {
    * When true, the agent is visible on the public landing page to unauthenticated visitors.
    */
   isPublic?: boolean;
+  /**
+   * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
+   */
+  isAdmin?: boolean;
 };
 
 export type UpdateAgentDto = {
@@ -129,6 +206,10 @@ export type UpdateAgentDto = {
    * When true, the agent is visible on the public landing page to unauthenticated visitors.
    */
   isPublic?: boolean;
+  /**
+   * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
+   */
+  isAdmin?: boolean;
 };
 
 export type SetAgentDebugDto = {
@@ -138,15 +219,11 @@ export type SetAgentDebugDto = {
   enabled: boolean;
 };
 
-export type LoginDto = {
-  email: string;
-  password: string;
-};
-
-export type RegisterDto = {
-  name: string;
-  email: string;
-  password: string;
+export type SaveFileDto = {
+  /**
+   * Full file content as text
+   */
+  content: string;
 };
 
 export type BridleTextPartDto = {
@@ -227,13 +304,6 @@ export type TranscriptResponseDto = {
   channel: string;
 };
 
-export type SaveFileDto = {
-  /**
-   * Full file content as text
-   */
-  content: string;
-};
-
 export type SecretEntryDto = {
   name: string;
   value: string;
@@ -249,6 +319,7 @@ export enum UserRoleTypes {
   OWNER = "Owner",
   ADMIN = "Admin",
   USER = "User",
+  AGENT = "Agent",
 }
 
 export type CreateUserDto = {
@@ -385,6 +456,109 @@ export type UpdateSkillDto = {
    */
   body?: string;
   description?: string;
+};
+
+export type CreatePaddockScenarioMessageDto = {
+  text: string;
+  from: string;
+  delayMs?: number;
+};
+
+export type CreatePaddockSuccessCriterionDto = {
+  dimension:
+    | "correctness"
+    | "tool_usage"
+    | "soul_compliance"
+    | "response_quality"
+    | "error_handling";
+  description: string;
+  weight: number;
+};
+
+export type CreatePaddockScenarioSetupDto = {
+  files?: {
+    [key: string]: string;
+  };
+  env?: {
+    [key: string]: string;
+  };
+  tools?: Array<string>;
+};
+
+export type CreatePaddockScenarioDto = {
+  templateId?: string | null;
+  agentId?: string | null;
+  category:
+    | "tool_use"
+    | "memory"
+    | "conversation"
+    | "patching_workflow"
+    | "edge_case"
+    | "multi_turn"
+    | "error_recovery";
+  difficulty: "easy" | "medium" | "hard" | "adversarial";
+  name: string;
+  description: string;
+  expectedBehavior: string;
+  messages: Array<CreatePaddockScenarioMessageDto>;
+  successCriteria: Array<CreatePaddockSuccessCriterionDto>;
+  setup?: CreatePaddockScenarioSetupDto | null;
+};
+
+export type GeneratePaddockScenarioDto = {
+  /**
+   * Free-form description of the problem / behavior the user wants to test.
+   */
+  description: string;
+  templateId?: string | null;
+  agentId?: string | null;
+  category?:
+    | "tool_use"
+    | "memory"
+    | "conversation"
+    | "patching_workflow"
+    | "edge_case"
+    | "multi_turn"
+    | "error_recovery";
+  difficulty?: "easy" | "medium" | "hard" | "adversarial";
+  /**
+   * Optional LlmCredential id; if omitted, the first active Anthropic credential is used.
+   */
+  credentialId?: string;
+};
+
+export type UpdatePaddockScenarioDto = {
+  category?:
+    | "tool_use"
+    | "memory"
+    | "conversation"
+    | "patching_workflow"
+    | "edge_case"
+    | "multi_turn"
+    | "error_recovery";
+  difficulty?: "easy" | "medium" | "hard" | "adversarial";
+  name?: string;
+  description?: string;
+  expectedBehavior?: string;
+  messages?: Array<CreatePaddockScenarioMessageDto>;
+  successCriteria?: Array<CreatePaddockSuccessCriterionDto>;
+  setup?: CreatePaddockScenarioSetupDto | null;
+};
+
+export type RunPaddockJudgeOverrideDto = {
+  credentialIds?: Array<string>;
+  threshold?: number;
+  maxLlmCalls?: number;
+  maxTimeMs?: number;
+};
+
+export type RunPaddockEvaluationDto = {
+  agentId: string;
+  /**
+   * Optional subset of scenario IDs. If omitted, runs the agent’s template scenarios merged with agent overrides.
+   */
+  scenarioIds?: Array<string>;
+  judgeOverride?: RunPaddockJudgeOverrideDto;
 };
 
 export type HealthControllerCheckData = {
@@ -621,6 +795,113 @@ export type TemplateControllerSetSkillsResponses = {
   200: unknown;
 };
 
+export type TemplateControllerSetMcpsData = {
+  body: SetTemplateMcpsDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/templates/{id}/mcps";
+};
+
+export type TemplateControllerSetMcpsResponses = {
+  200: unknown;
+};
+
+export type McpServerControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/mcp-servers";
+};
+
+export type McpServerControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type McpServerControllerCreateData = {
+  body: CreateMcpServerDto;
+  path?: never;
+  query?: never;
+  url: "/mcp-servers";
+};
+
+export type McpServerControllerCreateResponses = {
+  201: unknown;
+};
+
+export type McpServerControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/mcp-servers/{id}";
+};
+
+export type McpServerControllerRemoveResponses = {
+  200: unknown;
+};
+
+export type McpServerControllerFindByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/mcp-servers/{id}";
+};
+
+export type McpServerControllerFindByIdResponses = {
+  200: unknown;
+};
+
+export type McpServerControllerUpdateData = {
+  body: UpdateMcpServerDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/mcp-servers/{id}";
+};
+
+export type McpServerControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type AuthControllerLoginData = {
+  body: LoginDto;
+  path?: never;
+  query?: never;
+  url: "/auth/login";
+};
+
+export type AuthControllerLoginResponses = {
+  200: unknown;
+};
+
+export type AuthControllerRegisterData = {
+  body: RegisterDto;
+  path?: never;
+  query?: never;
+  url: "/auth/register";
+};
+
+export type AuthControllerRegisterResponses = {
+  200: unknown;
+};
+
+export type AuthControllerMeData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/auth/me";
+};
+
+export type AuthControllerMeResponses = {
+  200: unknown;
+};
+
 export type TemplateFileControllerListData = {
   body?: never;
   path: {
@@ -780,6 +1061,22 @@ export type AgentControllerUpdateResponses = {
   200: unknown;
 };
 
+export type GetAgentMcpsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/mcps";
+};
+
+export type GetAgentMcpsResponses = {
+  200: Array<AgentMcpDto>;
+};
+
+export type GetAgentMcpsResponse =
+  GetAgentMcpsResponses[keyof GetAgentMcpsResponses];
+
 export type AgentControllerSetDebugData = {
   body: SetAgentDebugDto;
   path: {
@@ -791,6 +1088,43 @@ export type AgentControllerSetDebugData = {
 
 export type AgentControllerSetDebugResponses = {
   200: unknown;
+};
+
+export type AgentControllerFindAdminData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agents/admin/current";
+};
+
+export type AgentControllerFindAdminResponses = {
+  200: unknown;
+};
+
+export type AgentControllerDemoteAdminData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/promote-admin";
+};
+
+export type AgentControllerDemoteAdminResponses = {
+  200: unknown;
+};
+
+export type AgentControllerPromoteAdminData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/promote-admin";
+};
+
+export type AgentControllerPromoteAdminResponses = {
+  201: unknown;
 };
 
 export type AgentControllerRestartData = {
@@ -806,36 +1140,59 @@ export type AgentControllerRestartResponses = {
   201: unknown;
 };
 
-export type AuthControllerLoginData = {
-  body: LoginDto;
-  path?: never;
-  query?: never;
-  url: "/auth/login";
-};
-
-export type AuthControllerLoginResponses = {
-  200: unknown;
-};
-
-export type AuthControllerRegisterData = {
-  body: RegisterDto;
-  path?: never;
-  query?: never;
-  url: "/auth/register";
-};
-
-export type AuthControllerRegisterResponses = {
-  200: unknown;
-};
-
-export type AuthControllerMeData = {
+export type FileControllerListData = {
   body?: never;
-  path?: never;
+  path: {
+    agentId: string;
+  };
   query?: never;
-  url: "/auth/me";
+  url: "/agents/{agentId}/files";
 };
 
-export type AuthControllerMeResponses = {
+export type FileControllerListResponses = {
+  200: unknown;
+};
+
+export type FileControllerReadData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query: {
+    path: string;
+  };
+  url: "/agents/{agentId}/files/content";
+};
+
+export type FileControllerReadResponses = {
+  200: unknown;
+};
+
+export type FileControllerSaveData = {
+  body: SaveFileDto;
+  path: {
+    agentId: string;
+  };
+  query: {
+    path: string;
+  };
+  url: "/agents/{agentId}/files/content";
+};
+
+export type FileControllerSaveResponses = {
+  200: unknown;
+};
+
+export type FileControllerSyncData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/sync";
+};
+
+export type FileControllerSyncResponses = {
   200: unknown;
 };
 
@@ -947,62 +1304,6 @@ export type GetBridleTranscriptResponses = {
 
 export type GetBridleTranscriptResponse =
   GetBridleTranscriptResponses[keyof GetBridleTranscriptResponses];
-
-export type FileControllerListData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query?: never;
-  url: "/agents/{agentId}/files";
-};
-
-export type FileControllerListResponses = {
-  200: unknown;
-};
-
-export type FileControllerReadData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query: {
-    path: string;
-  };
-  url: "/agents/{agentId}/files/content";
-};
-
-export type FileControllerReadResponses = {
-  200: unknown;
-};
-
-export type FileControllerSaveData = {
-  body: SaveFileDto;
-  path: {
-    agentId: string;
-  };
-  query: {
-    path: string;
-  };
-  url: "/agents/{agentId}/files/content";
-};
-
-export type FileControllerSaveResponses = {
-  200: unknown;
-};
-
-export type FileControllerSyncData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query?: never;
-  url: "/agents/{agentId}/files/sync";
-};
-
-export type FileControllerSyncResponses = {
-  200: unknown;
-};
 
 export type SecretControllerListData = {
   body?: never;
@@ -1410,6 +1711,268 @@ export type SkillControllerUpdateData = {
 
 export type SkillControllerUpdateResponses = {
   200: unknown;
+};
+
+export type RancherControllerStatusData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/rancher/status";
+};
+
+export type RancherControllerStatusResponses = {
+  200: unknown;
+};
+
+export type RancherControllerEnsureTemplateData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/rancher/template";
+};
+
+export type RancherControllerEnsureTemplateResponses = {
+  201: unknown;
+};
+
+export type PaddockScenarioControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: {
+    templateId?: string;
+    agentId?: string;
+  };
+  url: "/paddock-scenarios";
+};
+
+export type PaddockScenarioControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type PaddockScenarioControllerCreateData = {
+  body: CreatePaddockScenarioDto;
+  path?: never;
+  query?: never;
+  url: "/paddock-scenarios";
+};
+
+export type PaddockScenarioControllerCreateResponses = {
+  201: unknown;
+};
+
+export type PaddockScenarioControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-scenarios/{id}";
+};
+
+export type PaddockScenarioControllerRemoveResponses = {
+  200: unknown;
+};
+
+export type PaddockScenarioControllerFindByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-scenarios/{id}";
+};
+
+export type PaddockScenarioControllerFindByIdResponses = {
+  200: unknown;
+};
+
+export type PaddockScenarioControllerUpdateData = {
+  body: UpdatePaddockScenarioDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-scenarios/{id}";
+};
+
+export type PaddockScenarioControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type PaddockScenarioControllerGenerateData = {
+  body: GeneratePaddockScenarioDto;
+  path?: never;
+  query?: never;
+  url: "/paddock-scenarios/generate";
+};
+
+export type PaddockScenarioControllerGenerateResponses = {
+  201: unknown;
+};
+
+export type PaddockEvaluationControllerListData = {
+  body?: never;
+  path?: never;
+  query?: {
+    agentId?: string;
+    templateId?: string;
+    limit?: string;
+  };
+  url: "/paddock-evaluations";
+};
+
+export type PaddockEvaluationControllerListResponses = {
+  200: unknown;
+};
+
+export type PaddockEvaluationControllerStartData = {
+  body: RunPaddockEvaluationDto;
+  path?: never;
+  query?: never;
+  url: "/paddock-evaluations";
+};
+
+export type PaddockEvaluationControllerStartResponses = {
+  201: unknown;
+};
+
+export type PaddockEvaluationControllerGetData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-evaluations/{id}";
+};
+
+export type PaddockEvaluationControllerGetResponses = {
+  200: unknown;
+};
+
+export type PaddockEvaluationControllerReportData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-evaluations/{id}/report";
+};
+
+export type PaddockEvaluationControllerReportResponses = {
+  200: unknown;
+};
+
+export type PaddockEvaluationControllerTraceData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query: {
+    scenarioId: string;
+  };
+  url: "/paddock-evaluations/{id}/trace";
+};
+
+export type PaddockEvaluationControllerTraceResponses = {
+  200: unknown;
+};
+
+export type PaddockEvaluationControllerAbortData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-evaluations/{id}/abort";
+};
+
+export type PaddockEvaluationControllerAbortResponses = {
+  201: unknown;
+};
+
+export type PaddockEvaluationControllerRerunData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-evaluations/{id}/rerun";
+};
+
+export type PaddockEvaluationControllerRerunResponses = {
+  201: unknown;
+};
+
+export type SseControllerSseData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/mcp/sse";
+};
+
+export type SseControllerSseResponses = {
+  200: unknown;
+};
+
+export type SseControllerMessagesData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/mcp/messages";
+};
+
+export type SseControllerMessagesResponses = {
+  201: unknown;
+};
+
+export type SseControllerDebugSessionsData = {
+  body?: never;
+  path: {
+    teamId: string;
+  };
+  query?: never;
+  url: "/teams/{teamId}/sessions/debug";
+};
+
+export type SseControllerDebugSessionsResponses = {
+  200: unknown;
+};
+
+export type StreamableHttpControllerHandleDeleteRequestData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/mcp/mcp";
+};
+
+export type StreamableHttpControllerHandleDeleteRequestResponses = {
+  200: unknown;
+};
+
+export type StreamableHttpControllerHandleGetRequestData = {
+  body?: never;
+  path: {
+    teamId: string;
+  };
+  query?: never;
+  url: "/mcp/mcp";
+};
+
+export type StreamableHttpControllerHandleGetRequestResponses = {
+  200: unknown;
+};
+
+export type StreamableHttpControllerHandlePostRequestData = {
+  body?: never;
+  path: {
+    teamId: string;
+  };
+  query?: never;
+  url: "/mcp/mcp";
+};
+
+export type StreamableHttpControllerHandlePostRequestResponses = {
+  201: unknown;
 };
 
 export type ClientOptions = {

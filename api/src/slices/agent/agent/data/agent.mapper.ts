@@ -16,6 +16,7 @@ export class AgentMapper {
       resources: record.resources as unknown as IAgentData['resources'],
       debugEnabled: record.debugEnabled,
       isPublic: record.isPublic,
+      isAdmin: record.isAdmin,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

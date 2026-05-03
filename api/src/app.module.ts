@@ -22,6 +22,10 @@ import { LlmModule } from './slices/llm/llm.module';
 import { UsageModule } from './slices/usage/usage.module';
 import { ReinsModule } from './slices/reins/reins.module';
 import { SkillModule } from './slices/skill/skill.module';
+import { RancherModule } from './slices/rancher/rancher.module';
+import { McpServerModule } from './slices/mcpServer/mcpServer.module';
+import { McpModule } from './slices/mcp';
+import { PaddockModule } from './slices/paddock/paddock.module';
 
 @Module({
   imports: [
@@ -51,6 +55,16 @@ import { SkillModule } from './slices/skill/skill.module';
     UsageModule,
     ReinsModule,
     SkillModule,
+    RancherModule,
+    McpServerModule,
+    PaddockModule,
+    McpModule.forRoot({
+      name: 'ranch',
+      version: '1.0.0',
+      sseEndpoint: 'mcp/sse',
+      messagesEndpoint: 'mcp/messages',
+      mcpEndpoint: 'mcp/mcp',
+    }),
   ],
 })
 export class AppModule {}

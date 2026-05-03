@@ -12,7 +12,8 @@ import {
 import { Checkbox } from '#theme/components/ui/checkbox';
 import { Label } from '#theme/components/ui/label';
 import { Skeleton } from '#theme/components/ui/skeleton';
-import { IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh } from '@tabler/icons-vue';
+import { IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh, IconShield, IconShieldOff } from '@tabler/icons-vue';
+import { FlaskConical } from 'lucide-vue-next';
 
 const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
@@ -110,6 +111,12 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'AWS_SECRET_ACCESS_KEY', value: settingValue('aws_secret_access_key') },
     { name: 'SECRET_PROVIDER', value: settingValue('secret_provider', 'file') },
     { name: 'AWS_SECRET_PREFIX', value: settingValue('aws_secret_prefix', 'cleanslice/users') },
+    { name: 'RANCH_ADMIN', value: agent.value.isAdmin ? 'true' : 'false' },
+    { name: 'RANCH_API_URL', value: agent.value.isAdmin ? settingValue('ranch_api_url', 'http://api:3001') : '' },
+    // Token is minted at deploy time and never echoed back over the API. Show
+    // a placeholder so the admin can see the slot exists without leaking the
+    // value (which is in the pod env, AWS Secrets Manager, or S3 only).
+    { name: 'RANCH_API_TOKEN', value: agent.value.isAdmin ? '<service-token>' : '' },
   ];
 });
 
@@ -250,6 +257,27 @@ async function onRemove() {
   await agentStore.remove(agent.value.id);
   await navigateTo('/agents');
 }
+
+const promoting = ref(false);
+const promoteError = ref<string | null>(null);
+const confirmPromoteOpen = ref(false);
+
+async function onPromote() {
+  if (!agent.value || promoting.value) return;
+  promoting.value = true;
+  promoteError.value = null;
+  try {
+    const updated = agent.value.isAdmin
+      ? await agentStore.demoteAdmin(agent.value.id)
+      : await agentStore.promoteAdmin(agent.value.id);
+    agent.value = { ...updated, status: 'deploying' };
+    await refresh();
+  } catch (err) {
+    promoteError.value = (err as Error).message || 'Promote failed';
+  } finally {
+    promoting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -290,13 +318,37 @@ async function onRemove() {
     <template v-else-if="agent">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <h1 class="text-2xl font-semibold">{{ agent.name }}</h1>
+          <div class="flex items-center gap-2">
+            <h1 class="text-2xl font-semibold">{{ agent.name }}</h1>
+            <Badge v-if="agent.isAdmin" variant="default" class="gap-1">
+              <IconShield class="size-3" /> Ranch admin
+            </Badge>
+          </div>
           <p class="text-sm text-muted-foreground">Agent ID: {{ agent.id }}</p>
         </div>
         <div class="flex flex-col items-end gap-1">
           <div class="flex gap-2">
             <Button variant="outline" as-child>
+              <NuxtLink :to="`/agents/${agent.id}/paddock`">
+                <FlaskConical class="size-4" />
+                Paddock
+              </NuxtLink>
+            </Button>
+            <Button variant="outline" as-child>
               <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
+            </Button>
+            <Button
+              variant="outline"
+              :disabled="promoting"
+              :title="agent.isAdmin
+                ? 'Drop ranch_* admin tools and redeploy'
+                : 'Grant ranch_* admin tools and redeploy. Clears the flag from any other agent.'"
+              @click="agent.isAdmin ? (onPromote()) : (confirmPromoteOpen = true)"
+            >
+              <IconLoader2 v-if="promoting" class="size-4 animate-spin" />
+              <IconShieldOff v-else-if="agent.isAdmin" class="size-4" />
+              <IconShield v-else class="size-4" />
+              {{ agent.isAdmin ? 'Demote' : 'Promote to admin' }}
             </Button>
             <Button
               variant="outline"
@@ -318,8 +370,22 @@ async function onRemove() {
           >
             {{ restartError }}
           </p>
+          <p
+            v-if="promoteError"
+            class="text-xs text-destructive"
+          >
+            {{ promoteError }}
+          </p>
         </div>
       </div>
+
+      <ConfirmDialog
+        v-model:open="confirmPromoteOpen"
+        title="Promote to Ranch admin"
+        :description="`Grant ranch_* tools to “${agent.name}” and redeploy with RANCH_ADMIN=true. The flag is cleared from any other admin agent and that agent is also redeployed.`"
+        confirm-label="Promote"
+        @confirm="onPromote"
+      />
 
       <ConfirmDialog
         v-model:open="confirmRemoveOpen"

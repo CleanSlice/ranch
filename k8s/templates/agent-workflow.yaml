@@ -41,6 +41,18 @@ spec:
         value: "file"
       - name: aws-secret-prefix
         value: "cleanslice/users"
+      # Ranch admin mode — when "true" the runtime registers ranch_* tools
+      # and the agent can manage this Ranch through its REST API.
+      - name: ranch-admin
+        value: "false"
+      - name: ranch-api-url
+        value: ""
+      - name: ranch-api-token
+        value: ""
+      # MCP servers — JSON array of IMcpServerConfig, populated by the api
+      # at deploy time from the agent's template's attached MCP servers.
+      - name: mcp-servers
+        value: "[]"
       # LLM contract for the runtime (LLM_* env on the pod)
       - name: llm-provider
         value: ""
@@ -137,6 +149,14 @@ spec:
                     value: "{{workflow.parameters.llm-fallback-model}}"
                   - name: LLM_API_KEY
                     value: "{{workflow.parameters.llm-api-key}}"
+                  - name: RANCH_ADMIN
+                    value: "{{workflow.parameters.ranch-admin}}"
+                  - name: RANCH_API_URL
+                    value: "{{workflow.parameters.ranch-api-url}}"
+                  - name: RANCH_API_TOKEN
+                    value: "{{workflow.parameters.ranch-api-token}}"
+                  - name: MCP_SERVERS
+                    value: "{{workflow.parameters.mcp-servers}}"
                 resources:
                   requests:
                     cpu: "{{workflow.parameters.cpu-limit}}"

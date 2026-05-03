@@ -8,6 +8,8 @@ import { IWorkflowStatus } from '../domain/workflow.types';
 import { ISettingGateway } from '#/setting/domain';
 import { ILlmGateway } from '#/llm/domain';
 import { normalizeCredential } from '#/llm/domain/llm.utils';
+import { ITemplateGateway } from '#/agent/template/domain';
+import { IMcpServerGateway, IMcpServerData } from '#/mcpServer/domain';
 
 const DEFAULTS = {
   bridle_url: 'http://host.k3d.internal:3333/ws/agent',
@@ -23,6 +25,9 @@ const DEFAULTS = {
   aws_secret_access_key: '',
   secret_provider: 'file',
   aws_secret_prefix: 'cleanslice/users',
+  // Ranch API URL as seen from agent pods (in-cluster). Defaults to the
+  // API service inside k8s. Override via integrations.ranch_api_url.
+  ranch_api_url: 'http://api:3001',
 };
 
 @Injectable()
@@ -34,6 +39,8 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     private config: ConfigService,
     private settingGateway: ISettingGateway,
     private llmGateway: ILlmGateway,
+    private templateGateway: ITemplateGateway,
+    private mcpServerGateway: IMcpServerGateway,
   ) {
     super();
     this.argoUrl =
@@ -45,6 +52,38 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     const setting = await this.settingGateway.findByKey('integrations', name);
     const value = typeof setting?.value === 'string' ? setting.value : '';
     return value || DEFAULTS[name];
+  }
+
+  /**
+   * Resolves the MCP servers attached to the agent's template and serializes
+   * them to the wire format the runtime expects (IMcpServerConfig). Auth
+   * placeholders like `${RANCH_API_TOKEN}` are substituted with the actual
+   * service token minted for this agent. Disabled servers are filtered out.
+   */
+  private async resolveMcpServers(
+    templateId: string,
+    ranchApiToken: string,
+  ): Promise<unknown[]> {
+    const template = await this.templateGateway.findById(templateId);
+    if (!template || template.mcpServerIds.length === 0) return [];
+    const servers = await this.mcpServerGateway.findByIds(template.mcpServerIds);
+    return servers
+      .filter((m) => m.enabled)
+      .map((m) => this.toRuntimeConfig(m, ranchApiToken));
+  }
+
+  private toRuntimeConfig(server: IMcpServerData, ranchApiToken: string) {
+    const value = server.authValue
+      ? server.authValue.replace('${RANCH_API_TOKEN}', ranchApiToken)
+      : null;
+    return {
+      name: server.name,
+      transport: server.transport,
+      url: server.url,
+      authType: server.authType,
+      authValue: server.authType === 'none' ? null : value,
+      enabled: true,
+    };
   }
 
   async submit(data: ISubmitWorkflowData): Promise<string> {
@@ -59,6 +98,8 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       awsSecretAccessKey,
       secretProvider,
       awsSecretPrefix,
+      ranchApiUrl,
+      mcpServers,
     ] = await Promise.all([
       this.getIntegration('bridle_url'),
       this.getIntegration('bridle_api_key'),
@@ -70,6 +111,8 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       this.getIntegration('aws_secret_access_key'),
       this.getIntegration('secret_provider'),
       this.getIntegration('aws_secret_prefix'),
+      this.getIntegration('ranch_api_url'),
+      this.resolveMcpServers(data.templateId, data.ranchApiToken),
     ]);
     // Pods use the agent-side endpoint when set, otherwise fall back to the
     // shared one. The API itself keeps using s3_endpoint for its own SDK.
@@ -128,6 +171,10 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'aws-secret-access-key', value: awsSecretAccessKey },
             { name: 'secret-provider', value: secretProvider },
             { name: 'aws-secret-prefix', value: awsSecretPrefix },
+            { name: 'ranch-admin', value: data.isAdmin ? 'true' : 'false' },
+            { name: 'ranch-api-url', value: ranchApiUrl },
+            { name: 'ranch-api-token', value: data.ranchApiToken },
+            { name: 'mcp-servers', value: JSON.stringify(mcpServers) },
             ...llmParams,
           ],
         },

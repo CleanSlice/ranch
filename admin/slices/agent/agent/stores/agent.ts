@@ -24,6 +24,7 @@ export interface IAgentData {
   config: Record<string, unknown>;
   resources: IAgentResources;
   isPublic: boolean;
+  isAdmin: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -35,6 +36,7 @@ export interface ICreateAgentData {
   config?: Record<string, unknown>;
   resources?: IAgentResources;
   isPublic?: boolean;
+  isAdmin?: boolean;
 }
 
 export interface IUpdateAgentData {
@@ -58,6 +60,12 @@ export const useAgentStore = defineStore('agent', () => {
 
   async function fetchById(id: string) {
     const res = await AgentsService.agentControllerFindById({ path: { id } });
+    const env = res.data as ApiEnvelope<IAgentData | null> | undefined;
+    return env?.data ?? null;
+  }
+
+  async function fetchAdmin() {
+    const res = await AgentsService.agentControllerFindAdmin();
     const env = res.data as ApiEnvelope<IAgentData | null> | undefined;
     return env?.data ?? null;
   }
@@ -118,11 +126,33 @@ export const useAgentStore = defineStore('agent', () => {
     agents.value = agents.value.filter((a) => a.id !== id);
   }
 
+  async function promoteAdmin(id: string) {
+    const res = await AgentsService.agentControllerPromoteAdmin({ path: { id } });
+    const env = res.data as ApiEnvelope<IAgentData> | undefined;
+    const updated = env?.data;
+    if (!updated) throw new Error('Promote returned no agent data');
+    // Single-admin invariant — local cache must mirror the server. Drop the
+    // flag from any other agent so two badges never appear at once.
+    agents.value = agents.value.map((a) =>
+      a.id === id ? updated : { ...a, isAdmin: false },
+    );
+    return updated;
+  }
+
+  async function demoteAdmin(id: string) {
+    const res = await AgentsService.agentControllerDemoteAdmin({ path: { id } });
+    const env = res.data as ApiEnvelope<IAgentData> | undefined;
+    const updated = env?.data;
+    if (!updated) throw new Error('Demote returned no agent data');
+    agents.value = agents.value.map((a) => (a.id === id ? updated : a));
+    return updated;
+  }
+
   async function fetchLogs(id: string): Promise<string> {
     const res = await LogsService.logControllerGetLogs({ path: { agentId: id } });
     const env = res.data as ApiEnvelope<{ logs: string }> | undefined;
     return env?.data?.logs ?? '';
   }
 
-  return { agents, fetchAll, fetchById, create, update, restart, remove, fetchLogs };
+  return { agents, fetchAll, fetchById, fetchAdmin, create, update, restart, remove, promoteAdmin, demoteAdmin, fetchLogs };
 });

@@ -50,4 +50,12 @@ export class CreateAgentDto {
   @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isAdmin?: boolean;
 }

@@ -15,6 +15,7 @@ export interface ITemplateData {
   defaultConfig: Record<string, unknown>;
   defaultResources: ITemplateResources;
   skillIds: string[];
+  mcpServerIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -69,7 +70,11 @@ export const useTemplateStore = defineStore('template', () => {
   }
 
   async function remove(id: string) {
-    await TemplatesService.templateControllerRemove({ path: { id } });
+    const res = await TemplatesService.templateControllerRemove({ path: { id } });
+    if (res.error) {
+      const err = res.error as { message?: string };
+      throw new Error(err.message ?? 'Failed to delete template');
+    }
     templates.value = templates.value.filter((t) => t.id !== id);
   }
 
@@ -83,5 +88,15 @@ export const useTemplateStore = defineStore('template', () => {
     return env.data;
   }
 
-  return { templates, fetchAll, fetchById, create, update, remove, setSkills };
+  async function setMcps(id: string, mcpServerIds: string[]) {
+    const res = await TemplatesService.templateControllerSetMcps({
+      path: { id },
+      body: { mcpServerIds },
+    });
+    const env = res.data as ApiEnvelope<ITemplateData>;
+    templates.value = templates.value.map((t) => (t.id === id ? env.data : t));
+    return env.data;
+  }
+
+  return { templates, fetchAll, fetchById, create, update, remove, setSkills, setMcps };
 });

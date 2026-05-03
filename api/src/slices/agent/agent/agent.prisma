@@ -1,6 +1,8 @@
 import { Template } from "../template/template"
 import { Usage } from "../../usage/usage"
 import { LlmCredential } from "../../llm/llm"
+import { PaddockScenario } from "../../paddock/scenario/scenario"
+import { PaddockEvaluation } from "../../paddock/evaluation/evaluation"
 
 model Agent {
   id              String         @id @default(uuid())
@@ -15,8 +17,11 @@ model Agent {
   resources       Json           @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
   debugEnabled    Boolean        @default(false)
   isPublic        Boolean        @default(false)
+  isAdmin         Boolean        @default(false)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  usages Usage[]
+  usages             Usage[]
+  paddockScenarios   PaddockScenario[]
+  paddockEvaluations PaddockEvaluation[]
 }

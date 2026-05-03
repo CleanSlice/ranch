@@ -1,15 +1,20 @@
 import { Agent } from "../agent/agent"
 import { Skill } from "../../skill/skill"
+import { McpServer } from "../../mcpServer/mcpServer"
+import { PaddockScenario } from "../../paddock/scenario/scenario"
 
 model Template {
-  id               String   @id @default(uuid())
-  name             String   @unique
+  id               String      @id @default(uuid())
+  name             String      @unique
   description      String
   image            String
-  defaultConfig    Json     @default("{}")
-  defaultResources Json     @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
+  defaultConfig    Json        @default("{}")
+  defaultResources Json        @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
+  paddockConfig    Json        @default("{}")
   agents           Agent[]
   skills           Skill[]
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  mcpServers       McpServer[]
+  paddockScenarios PaddockScenario[]
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 }

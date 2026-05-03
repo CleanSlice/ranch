@@ -223,9 +223,11 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
       const rawTemplate = t.uri;
       const templatePath = this.convertTemplate(this.convertUri(rawTemplate));
-      const matcher = match(templatePath, {
-        delimiter: decodeURIComponent as any,
-      });
+      // path-to-regexp v8 requires `delimiter` to be a string (was previously
+      // passed `decodeURIComponent` as a function via `as any`, which crashes
+      // with "str.replace is not a function" inside the lib). Default `/`
+      // works fine for URI paths.
+      const matcher = match(templatePath);
       const result = matcher(strippedInputUri);
 
       if (result) {

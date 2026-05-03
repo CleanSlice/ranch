@@ -34,6 +34,7 @@ async function onSubmit(values: ICreateAgentData) {
       name: values.name,
       llmCredentialId: values.llmCredentialId ?? null,
       resources: values.resources,
+      isPublic: values.isPublic,
     };
     await agentStore.update(props.id, update);
     await navigateTo(`/agents/${props.id}`);
@@ -81,6 +82,7 @@ function onCancel() {
           templateId: agent.templateId,
           llmCredentialId: agent.llmCredentialId,
           resources: agent.resources,
+          isPublic: agent.isPublic,
         }"
         :submitting="submitting"
         submit-label="Save changes"

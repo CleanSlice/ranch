@@ -104,6 +104,10 @@ export type CreateAgentDto = {
     [key: string]: unknown;
   };
   resources?: AgentResourcesDto;
+  /**
+   * When true, the agent is visible on the public landing page to unauthenticated visitors.
+   */
+  isPublic?: boolean;
 };
 
 export type UpdateAgentDto = {
@@ -114,6 +118,10 @@ export type UpdateAgentDto = {
     [key: string]: unknown;
   };
   resources?: AgentResourcesDto;
+  /**
+   * When true, the agent is visible on the public landing page to unauthenticated visitors.
+   */
+  isPublic?: boolean;
 };
 
 export type SetAgentDebugDto = {
@@ -675,6 +683,17 @@ export type AgentControllerCreateData = {
 
 export type AgentControllerCreateResponses = {
   201: unknown;
+};
+
+export type AgentControllerFindPublicData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agents/public";
+};
+
+export type AgentControllerFindPublicResponses = {
+  200: unknown;
 };
 
 export type AgentControllerStatusData = {

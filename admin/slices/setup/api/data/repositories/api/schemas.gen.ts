@@ -265,6 +265,11 @@ export const CreateAgentDtoSchema = {
     resources: {
       $ref: "#/components/schemas/AgentResourcesDto",
     },
+    isPublic: {
+      type: "boolean",
+      description:
+        "When true, the agent is visible on the public landing page to unauthenticated visitors.",
+    },
   },
   required: ["name", "templateId"],
 } as const;
@@ -286,6 +291,11 @@ export const UpdateAgentDtoSchema = {
     },
     resources: {
       $ref: "#/components/schemas/AgentResourcesDto",
+    },
+    isPublic: {
+      type: "boolean",
+      description:
+        "When true, the agent is visible on the public landing page to unauthenticated visitors.",
     },
   },
 } as const;

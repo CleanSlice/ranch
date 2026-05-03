@@ -31,6 +31,7 @@ import type {
   TemplateFileControllerUploadData,
   AgentControllerFindAllData,
   AgentControllerCreateData,
+  AgentControllerFindPublicData,
   AgentControllerStatusData,
   AgentControllerStatusResponse,
   AgentControllerStatusStreamData,
@@ -542,6 +543,22 @@ export class AgentsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * List agents flagged as public. Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.
+   */
+  public static agentControllerFindPublic<ThrowOnError extends boolean = false>(
+    options?: Options<AgentControllerFindPublicData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/public",
+      ...options,
     });
   }
 

@@ -410,6 +410,14 @@ async function onRemove() {
                   </dd>
                 </div>
                 <div>
+                  <dt class="text-xs text-muted-foreground">Visibility</dt>
+                  <dd class="mt-1">
+                    <Badge :variant="agent.isPublic ? 'default' : 'outline'">
+                      {{ agent.isPublic ? 'Public' : 'Private' }}
+                    </Badge>
+                  </dd>
+                </div>
+                <div>
                   <dt class="text-xs text-muted-foreground">Template</dt>
                   <dd class="mt-1 text-sm text-muted-foreground">{{ agent.templateId }}</dd>
                 </div>

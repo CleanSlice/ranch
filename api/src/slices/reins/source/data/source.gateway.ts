@@ -3,7 +3,7 @@ import { PrismaService } from '#/setup/prisma/prisma.service';
 import { S3Repository } from '#/aws/s3';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
-import { workspaceOf } from '../../knowledge/domain/workspace';
+import { workspaceOf } from '../../lightrag/data/workspace';
 import { ISourceGateway } from '../domain/source.gateway';
 import {
   ISourceData,

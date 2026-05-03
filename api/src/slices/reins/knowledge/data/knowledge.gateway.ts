@@ -12,7 +12,7 @@ import {
   IGetGraphParams,
   IGraphData,
 } from '../domain/knowledge.types';
-import { workspaceOf } from '../domain/workspace';
+import { workspaceOf } from '../../lightrag/data/workspace';
 import { KnowledgeMapper } from './knowledge.mapper';
 
 @Injectable()

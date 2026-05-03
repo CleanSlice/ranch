@@ -10,7 +10,11 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { ITemplateGateway } from './domain';
-import { CreateTemplateDto, UpdateTemplateDto } from './dtos';
+import {
+  CreateTemplateDto,
+  SetTemplateSkillsDto,
+  UpdateTemplateDto,
+} from './dtos';
 
 @ApiTags('templates')
 @Controller('templates')
@@ -41,6 +45,20 @@ export class TemplateController {
   @ApiOperation({ summary: 'Update a template' })
   update(@Param('id') id: string, @Body() dto: UpdateTemplateDto) {
     return this.templateGateway.update(id, dto);
+  }
+
+  @Put(':id/skills')
+  @ApiOperation({
+    summary:
+      'Replace the skill set attached to a template. Body lists the full desired set; omitted IDs are detached.',
+  })
+  async setSkills(
+    @Param('id') id: string,
+    @Body() dto: SetTemplateSkillsDto,
+  ) {
+    const template = await this.templateGateway.findById(id);
+    if (!template) throw new NotFoundException('Template not found');
+    return this.templateGateway.setSkills(id, dto.skillIds);
   }
 
   @Delete(':id')

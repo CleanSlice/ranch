@@ -14,6 +14,7 @@ export interface ITemplateData {
   image: string;
   defaultConfig: Record<string, unknown>;
   defaultResources: ITemplateResources;
+  skillIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -72,5 +73,15 @@ export const useTemplateStore = defineStore('template', () => {
     templates.value = templates.value.filter((t) => t.id !== id);
   }
 
-  return { templates, fetchAll, fetchById, create, update, remove };
+  async function setSkills(id: string, skillIds: string[]) {
+    const res = await TemplatesService.templateControllerSetSkills({
+      path: { id },
+      body: { skillIds },
+    });
+    const env = res.data as ApiEnvelope<ITemplateData>;
+    templates.value = templates.value.map((t) => (t.id === id ? env.data : t));
+    return env.data;
+  }
+
+  return { templates, fetchAll, fetchById, create, update, remove, setSkills };
 });

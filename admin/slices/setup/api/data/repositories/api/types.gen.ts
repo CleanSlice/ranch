@@ -58,6 +58,13 @@ export type UpdateTemplateDto = {
   };
 };
 
+export type SetTemplateSkillsDto = {
+  /**
+   * Full list of skill IDs to attach. Replaces any prior set.
+   */
+  skillIds: Array<string>;
+};
+
 export type SaveTemplateFileDto = {
   /**
    * Full file content as text
@@ -598,6 +605,19 @@ export type TemplateControllerUpdateData = {
 };
 
 export type TemplateControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type TemplateControllerSetSkillsData = {
+  body: SetTemplateSkillsDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/templates/{id}/skills";
+};
+
+export type TemplateControllerSetSkillsResponses = {
   200: unknown;
 };
 

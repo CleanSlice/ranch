@@ -30,18 +30,23 @@ export class TemplateGateway extends ITemplateGateway {
   async findAll(): Promise<ITemplateData[]> {
     const records = await this.prisma.template.findMany({
       orderBy: { name: 'asc' },
+      include: { skills: { select: { id: true } } },
     });
     return records.map((r) => this.mapper.toEntity(r));
   }
 
   async findById(id: string): Promise<ITemplateData | null> {
-    const record = await this.prisma.template.findUnique({ where: { id } });
+    const record = await this.prisma.template.findUnique({
+      where: { id },
+      include: { skills: { select: { id: true } } },
+    });
     return record ? this.mapper.toEntity(record) : null;
   }
 
   async create(data: ICreateTemplateData): Promise<ITemplateData> {
     const record = await this.prisma.template.create({
       data: this.mapper.toCreate(data),
+      include: { skills: { select: { id: true } } },
     });
     return this.mapper.toEntity(record);
   }
@@ -61,6 +66,18 @@ export class TemplateGateway extends ITemplateGateway {
             data.defaultResources as unknown as Prisma.InputJsonValue,
         }),
       },
+      include: { skills: { select: { id: true } } },
+    });
+    return this.mapper.toEntity(record);
+  }
+
+  async setSkills(id: string, skillIds: string[]): Promise<ITemplateData> {
+    const record = await this.prisma.template.update({
+      where: { id },
+      data: {
+        skills: { set: skillIds.map((skillId) => ({ id: skillId })) },
+      },
+      include: { skills: { select: { id: true } } },
     });
     return this.mapper.toEntity(record);
   }
@@ -69,6 +86,7 @@ export class TemplateGateway extends ITemplateGateway {
     const record = await this.prisma.template.update({
       where: { id },
       data: { updatedAt: new Date() },
+      include: { skills: { select: { id: true } } },
     });
     return this.mapper.toEntity(record);
   }

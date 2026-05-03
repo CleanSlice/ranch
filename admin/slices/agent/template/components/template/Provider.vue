@@ -21,12 +21,26 @@ const { data: template, pending, refresh } = await useAsyncData(
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
+type SectionId = 'blueprint' | 'skills' | 'files';
+
+const sections: { id: SectionId; title: string; description: string }[] = [
+  { id: 'blueprint', title: 'Blueprint', description: 'Image and resource defaults.' },
+  { id: 'skills', title: 'Skills', description: 'Attach skills available to this template.' },
+  { id: 'files', title: 'Files', description: 'The .agent folder uploaded to S3.' },
+];
+
+const active = ref<SectionId>('blueprint');
+
 const confirmRemoveOpen = ref(false);
 
 async function onRemove() {
   if (!template.value) return;
   await templateStore.remove(template.value.id);
   await navigateTo('/templates');
+}
+
+async function onSkillsSaved() {
+  await refresh();
 }
 </script>
 
@@ -60,59 +74,99 @@ async function onRemove() {
         @confirm="onRemove"
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Blueprint</CardTitle>
-          <CardDescription>Defaults applied when spawning an agent from this template.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div class="sm:col-span-2">
-              <dt class="text-xs text-muted-foreground">Image</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ template.image }}</code>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted-foreground">Default CPU</dt>
-              <dd class="mt-1">
-                <Badge variant="outline">{{ template.defaultResources.cpu }}</Badge>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted-foreground">Default memory</dt>
-              <dd class="mt-1">
-                <Badge variant="outline">{{ template.defaultResources.memory }}</Badge>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted-foreground">Created</dt>
-              <dd class="mt-1 text-sm">{{ formatDate(template.createdAt) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted-foreground">Last updated</dt>
-              <dd class="mt-1 text-sm">{{ formatDate(template.updatedAt) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted-foreground">ID</dt>
-              <dd class="mt-1 text-sm text-muted-foreground">{{ template.id }}</dd>
-            </div>
-          </dl>
-        </CardContent>
-      </Card>
+      <div class="grid gap-8 md:grid-cols-[16rem_1fr]">
+        <aside>
+          <nav class="flex flex-col gap-1">
+            <button
+              v-for="section in sections"
+              :key="section.id"
+              type="button"
+              class="group rounded-md border border-transparent px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              :class="active === section.id ? 'border-border bg-muted' : ''"
+              @click="active = section.id"
+            >
+              <span class="block font-medium">{{ section.title }}</span>
+              <span class="block text-xs text-muted-foreground">
+                {{ section.description }}
+              </span>
+            </button>
+          </nav>
+        </aside>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Files</CardTitle>
-          <CardDescription>
-            Upload a .agent folder to populate this template, then edit individual
-            files in the browser.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <TemplateFileProvider :id="template.id" />
-        </CardContent>
-      </Card>
+        <section class="min-w-0">
+          <Card v-if="active === 'blueprint'">
+            <CardHeader>
+              <CardTitle>Blueprint</CardTitle>
+              <CardDescription>Defaults applied when spawning an agent from this template.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div class="sm:col-span-2">
+                  <dt class="text-xs text-muted-foreground">Image</dt>
+                  <dd class="mt-1">
+                    <code class="text-sm">{{ template.image }}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">Default CPU</dt>
+                  <dd class="mt-1">
+                    <Badge variant="outline">{{ template.defaultResources.cpu }}</Badge>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">Default memory</dt>
+                  <dd class="mt-1">
+                    <Badge variant="outline">{{ template.defaultResources.memory }}</Badge>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">Created</dt>
+                  <dd class="mt-1 text-sm">{{ formatDate(template.createdAt) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">Last updated</dt>
+                  <dd class="mt-1 text-sm">{{ formatDate(template.updatedAt) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">ID</dt>
+                  <dd class="mt-1 text-sm text-muted-foreground">{{ template.id }}</dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+
+          <Card v-else-if="active === 'skills'">
+            <CardHeader>
+              <CardTitle>Skills</CardTitle>
+              <CardDescription>
+                Pick which skills this template carries. Saved as a full set —
+                unchecked skills are detached. Manage skill content in
+                <NuxtLink to="/skills" class="underline">Skills</NuxtLink>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TemplateSkillsProvider
+                :template-id="template.id"
+                :initial-skill-ids="template.skillIds"
+                @saved="onSkillsSaved"
+              />
+            </CardContent>
+          </Card>
+
+          <Card v-else-if="active === 'files'">
+            <CardHeader>
+              <CardTitle>Files</CardTitle>
+              <CardDescription>
+                Upload a .agent folder to populate this template, then edit individual
+                files in the browser.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TemplateFileProvider :id="template.id" />
+            </CardContent>
+          </Card>
+        </section>
+      </div>
     </template>
 
     <div v-else class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">

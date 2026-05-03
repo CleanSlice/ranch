@@ -5,6 +5,7 @@ export interface ITemplateData {
   image: string;
   defaultConfig: Record<string, unknown>;
   defaultResources: { cpu: string; memory: string };
+  skillIds: string[];
   createdAt: Date;
   updatedAt: Date;
 }

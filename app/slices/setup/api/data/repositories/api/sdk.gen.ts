@@ -25,6 +25,7 @@ import type {
   TemplateControllerRemoveData,
   TemplateControllerFindByIdData,
   TemplateControllerUpdateData,
+  TemplateControllerSetSkillsData,
   TemplateFileControllerListData,
   TemplateFileControllerReadData,
   TemplateFileControllerSaveData,
@@ -425,6 +426,26 @@ export class TemplatesService {
       ThrowOnError
     >({
       url: "/templates/{id}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Replace the skill set attached to a template. Body lists the full desired set; omitted IDs are detached.
+   */
+  public static templateControllerSetSkills<
+    ThrowOnError extends boolean = false,
+  >(options: Options<TemplateControllerSetSkillsData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/templates/{id}/skills",
       ...options,
       headers: {
         "Content-Type": "application/json",

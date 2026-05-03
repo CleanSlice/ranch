@@ -138,6 +138,20 @@ export const UpdateTemplateDtoSchema = {
   },
 } as const;
 
+export const SetTemplateSkillsDtoSchema = {
+  type: "object",
+  properties: {
+    skillIds: {
+      description: "Full list of skill IDs to attach. Replaces any prior set.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["skillIds"],
+} as const;
+
 export const SaveTemplateFileDtoSchema = {
   type: "object",
   properties: {

@@ -12,6 +12,7 @@ export abstract class ITemplateGateway {
     id: string,
     data: IUpdateTemplateData,
   ): Promise<ITemplateData>;
+  abstract setSkills(id: string, skillIds: string[]): Promise<ITemplateData>;
   abstract touch(id: string): Promise<ITemplateData>;
   abstract delete(id: string): Promise<void>;
 }

@@ -129,7 +129,11 @@ export class AgentController {
       );
       const mapped = PHASE_TO_STATUS[phase];
       if (mapped === 'failed' && agent.status !== 'failed') {
-        await this.agentGateway.updateStatus(agentId, 'failed', agent.workflowId);
+        await this.agentGateway.updateStatus(
+          agentId,
+          'failed',
+          agent.workflowId,
+        );
         return this.agentGateway.findById(agentId);
       }
     } catch {
@@ -306,7 +310,9 @@ export class AgentController {
 
   @Get('admin/current')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
-  @ApiOperation({ summary: 'Get the agent currently flagged as Ranch admin (or null).' })
+  @ApiOperation({
+    summary: 'Get the agent currently flagged as Ranch admin (or null).',
+  })
   findAdmin() {
     return this.agentGateway.findAdmin();
   }

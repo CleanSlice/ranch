@@ -16,10 +16,15 @@ export class SecretGateway extends ISecretGateway {
   }
 
   async list(agentId: string): Promise<ISecretListData> {
-    const setting = await this.settings.findByKey('integrations', 'secret_provider');
+    const setting = await this.settings.findByKey(
+      'integrations',
+      'secret_provider',
+    );
     const value =
       typeof setting?.value === 'string' ? setting.value.toLowerCase() : '';
     const provider = value === 'aws' ? 'aws' : 'file';
-    return provider === 'aws' ? this.aws.list(agentId) : this.file.list(agentId);
+    return provider === 'aws'
+      ? this.aws.list(agentId)
+      : this.file.list(agentId);
   }
 }

@@ -13,7 +13,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiOkResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+  ApiOkResponse,
+} from '@nestjs/swagger';
 import { ReinsService } from './domain/reins.service';
 import { IGraphData } from './domain/reins.types';
 import {

@@ -12,7 +12,8 @@ export function normalizeEndpoint(endpoint?: string | null): string {
     }
 
     // Ensure endpoint is a string
-    const endpointStr = typeof endpoint === 'string' ? endpoint : String(endpoint);
+    const endpointStr =
+      typeof endpoint === 'string' ? endpoint : String(endpoint);
 
     // Check if the endpoint has a protocol
     const protocolMatch = endpointStr.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//);

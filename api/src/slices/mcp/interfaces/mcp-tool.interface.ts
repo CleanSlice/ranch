@@ -2,7 +2,10 @@ import { Progress } from '@modelcontextprotocol/sdk/types.js';
 
 export type Literal = boolean | null | number | string | undefined;
 
-export type SerializableValue = Literal | SerializableValue[] | { [key: string]: SerializableValue };
+export type SerializableValue =
+  | Literal
+  | SerializableValue[]
+  | { [key: string]: SerializableValue };
 
 /**
  * Enhanced execution context that includes user information

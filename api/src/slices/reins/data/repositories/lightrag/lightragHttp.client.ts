@@ -280,7 +280,11 @@ function toRawNode(value: unknown): ILightragGraphNode | null {
 
 function toRawEdge(value: unknown): ILightragGraphEdge | null {
   if (!isRecord(value)) return null;
-  if (!isString(value.id) || !isString(value.source) || !isString(value.target)) {
+  if (
+    !isString(value.id) ||
+    !isString(value.source) ||
+    !isString(value.target)
+  ) {
     return null;
   }
   const props = isRecord(value.properties) ? value.properties : {};
@@ -309,6 +313,7 @@ function extractGraph(body: unknown): ILightragGraph {
   return {
     nodes,
     edges,
-    isTruncated: typeof body.is_truncated === 'boolean' ? body.is_truncated : false,
+    isTruncated:
+      typeof body.is_truncated === 'boolean' ? body.is_truncated : false,
   };
 }

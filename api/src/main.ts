@@ -14,7 +14,10 @@ import { ResponseInterceptor } from './slices/setup/error/response.interceptor';
 // these globally so the watch reconnect logic in pod.gateway.ts has a
 // chance to take over instead of bringing the whole API down.
 process.on('unhandledRejection', (reason) => {
-  console.error('[unhandledRejection]', reason instanceof Error ? reason.stack ?? reason : reason);
+  console.error(
+    '[unhandledRejection]',
+    reason instanceof Error ? (reason.stack ?? reason) : reason,
+  );
 });
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException]', err.stack ?? err);

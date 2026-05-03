@@ -21,54 +21,74 @@ export class McpResourcesHandler extends McpHandlerBase {
     mcpServer.server.setRequestHandler(ListResourcesRequestSchema, () => {
       this.logger.debug('ListResourcesRequestSchema is being called');
       return {
-        resources: this.registry.getResources().map((resources) => resources.metadata),
+        resources: this.registry
+          .getResources()
+          .map((resources) => resources.metadata),
       };
     });
 
-    mcpServer.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      this.logger.debug('ReadResourceRequestSchema is being called');
+    mcpServer.server.setRequestHandler(
+      ReadResourceRequestSchema,
+      async (request) => {
+        this.logger.debug('ReadResourceRequestSchema is being called');
 
-      const uri = request.params.uri;
-      const resourceInfo = this.registry.findResourceByUri(uri);
+        const uri = request.params.uri;
+        const resourceInfo = this.registry.findResourceByUri(uri);
 
-      if (!resourceInfo) {
-        throw new McpError(ErrorCode.MethodNotFound, `Unknown resource: ${uri}`);
-      }
-
-      try {
-        const contextId = ContextIdFactory.getByRequest(httpRequest);
-        this.moduleRef.registerRequestByContextId(httpRequest, contextId);
-
-        const resourceInstance = await this.moduleRef.resolve(resourceInfo.resource.providerClass, contextId, {
-          strict: false,
-        });
-
-        if (!resourceInstance) {
-          throw new McpError(ErrorCode.MethodNotFound, `Unknown resource: ${uri}`);
+        if (!resourceInfo) {
+          throw new McpError(
+            ErrorCode.MethodNotFound,
+            `Unknown resource: ${uri}`,
+          );
         }
 
-        const context = this.createContext(mcpServer, request);
+        try {
+          const contextId = ContextIdFactory.getByRequest(httpRequest);
+          this.moduleRef.registerRequestByContextId(httpRequest, contextId);
 
-        const requestParams = {
-          ...resourceInfo.params,
-          ...request.params,
-        };
+          const resourceInstance = await this.moduleRef.resolve(
+            resourceInfo.resource.providerClass,
+            contextId,
+            {
+              strict: false,
+            },
+          );
 
-        const methodName = resourceInfo.resource.methodName;
+          if (!resourceInstance) {
+            throw new McpError(
+              ErrorCode.MethodNotFound,
+              `Unknown resource: ${uri}`,
+            );
+          }
 
-        const result = await resourceInstance[methodName].call(resourceInstance, requestParams, context, httpRequest);
+          const context = this.createContext(mcpServer, request);
 
-        this.logger.debug(result, 'ReadResourceRequestSchema result');
+          const requestParams = {
+            ...resourceInfo.params,
+            ...request.params,
+          };
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-        return result;
-      } catch (error) {
-        this.logger.error(error);
-        return {
-          contents: [{ uri, mimeType: 'text/plain', text: error.message }],
-          isError: true,
-        };
-      }
-    });
+          const methodName = resourceInfo.resource.methodName;
+
+          const result = await resourceInstance[methodName].call(
+            resourceInstance,
+            requestParams,
+            context,
+            httpRequest,
+          );
+
+          this.logger.debug(result, 'ReadResourceRequestSchema result');
+
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+          return result;
+        } catch (error) {
+          this.logger.error(error);
+          return {
+            contents: [{ uri, mimeType: 'text/plain', text: error.message }],
+            isError: true,
+          };
+        }
+      },
+    );
   }
 }

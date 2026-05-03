@@ -9,7 +9,9 @@ import {
  * Express HTTP adapter that implements the generic HTTP interface
  */
 export class ExpressHttpAdapter implements HttpAdapter {
-  adaptRequest(req: Request & { user?: any, team?: any, cognito_user?: any }): HttpRequest {
+  adaptRequest(
+    req: Request & { user?: any; team?: any; cognito_user?: any },
+  ): HttpRequest {
     return {
       url: req.url,
       method: req.method,

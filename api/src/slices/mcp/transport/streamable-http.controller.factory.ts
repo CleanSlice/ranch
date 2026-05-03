@@ -14,7 +14,6 @@ import {
   UseGuards,
   applyDecorators,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { randomUUID } from 'crypto';
 
@@ -119,9 +118,8 @@ export function createStreamableHttpController(
       @Req() req: any,
       @Res() res: any,
       @Body() body: unknown,
-      @Param('teamId') teamId: string
+      @Param('teamId') _teamId: string,
     ) {
-
       this.logger.debug('Received MCP request:', body);
 
       // Get the appropriate HTTP adapter for the request/response
@@ -172,7 +170,6 @@ export function createStreamableHttpController(
         const stateless = await this.createStatelessServer(req);
         server = stateless.server;
         transport = stateless.transport;
-
 
         // Handle the request
         await transport.handleRequest(req.raw, res.raw, body);
@@ -321,7 +318,11 @@ export function createStreamableHttpController(
      */
     @Get(`${normalizeEndpoint(`${apiPrefix}/${endpoint}`)}`)
     @UseGuards(...guards)
-    async handleGetRequest(@Req() req: any, @Res() res: any, @Param('teamId') teamId: string) {
+    async handleGetRequest(
+      @Req() req: any,
+      @Res() res: any,
+      @Param('teamId') _teamId: string,
+    ) {
       // Get the appropriate HTTP adapter for the request/response
       const adapter = HttpAdapterFactory.getAdapter(req, res);
       const adaptedReq = adapter.adaptRequest(req);

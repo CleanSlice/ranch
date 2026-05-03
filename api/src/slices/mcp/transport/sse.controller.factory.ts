@@ -18,19 +18,19 @@ import {
   applyDecorators,
   Param,
   Logger,
-} from "@nestjs/common";
-import { ApiTags } from "@nestjs/swagger";
-import type { Request, Response } from "express";
-import { CanActivate } from "@nestjs/common";
-import { ContextIdFactory, ModuleRef } from "@nestjs/core";
-import { Buffer } from "node:buffer";
+} from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
+import { CanActivate } from '@nestjs/common';
+import { ContextIdFactory, ModuleRef } from '@nestjs/core';
+import { Buffer } from 'node:buffer';
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { McpOptions } from "../interfaces";
-import { McpRegistryService } from "../services/mcp-registry.service";
-import { McpExecutorService } from "../services/mcp-executor.service";
-import { SsePingService } from "../services/sse-ping.service";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { McpOptions } from '../interfaces';
+import { McpRegistryService } from '../services/mcp-registry.service';
+import { McpExecutorService } from '../services/mcp-executor.service';
+import { SsePingService } from '../services/sse-ping.service';
 
 /**
  * Creates a controller for handling SSE connections and tool executions
@@ -40,7 +40,7 @@ export function createSseController(
   messagesEndpoint: string,
   globalApiPrefix: string,
   guards: Type<CanActivate>[] = [],
-  decorators: ClassDecorator[] = []
+  decorators: ClassDecorator[] = [],
 ) {
   @Controller({
     version: VERSION_NEUTRAL,
@@ -59,10 +59,10 @@ export function createSseController(
     public mcpServers = new Map<string, McpServer>();
 
     constructor(
-      @Inject("MCP_OPTIONS") public readonly options: McpOptions,
+      @Inject('MCP_OPTIONS') public readonly options: McpOptions,
       public readonly moduleRef: ModuleRef,
       public readonly toolRegistry: McpRegistryService,
-      @Inject(SsePingService) public readonly pingService: SsePingService
+      @Inject(SsePingService) public readonly pingService: SsePingService,
     ) {}
 
     /**
@@ -84,8 +84,8 @@ export function createSseController(
       // Don't set headers here - SSEServerTransport.start() will handle it
       const transport = new SSEServerTransport(
         // Remove potential double slashes from the path
-        `${globalApiPrefix}/${messagesEndpoint}`.replace(/\/+/g, "/"),
-        res
+        `${globalApiPrefix}/${messagesEndpoint}`.replace(/\/+/g, '/'),
+        res,
       );
       const sessionId = transport.sessionId;
 
@@ -101,8 +101,8 @@ export function createSseController(
             resources: {},
             prompts: {},
           },
-          instructions: this.options.instructions || "",
-        }
+          instructions: this.options.instructions || '',
+        },
       );
 
       // Store the transport and server for this session (локально для текущего пода)
@@ -121,13 +121,13 @@ export function createSseController(
       };
 
       // Use modern event handling for Node.js v22 compatibility
-      if (req.socket && typeof req.socket.on === "function") {
-        req.socket.on("close", cleanup);
-        req.socket.on("end", cleanup);
+      if (req.socket && typeof req.socket.on === 'function') {
+        req.socket.on('close', cleanup);
+        req.socket.on('end', cleanup);
       }
 
       // Also handle request close event
-      req.on("close", cleanup);
+      req.on('close', cleanup);
 
       // Set transport close handler
       transport.onclose = () => {
@@ -140,14 +140,14 @@ export function createSseController(
       } catch (error) {
         this.logger.error(
           `[MCP] Failed to connect MCP server for session ${sessionId}:`,
-          error
+          error,
         );
         // Clean up on error
         cleanup();
 
         // If headers haven't been sent yet, send error response
         if (!res.headersSent) {
-          res.status(500).json({ error: "Failed to connect MCP server" });
+          res.status(500).json({ error: 'Failed to connect MCP server' });
         } else {
           res.end();
         }
@@ -162,18 +162,18 @@ export function createSseController(
     async messages(
       @Req() req: Request,
       @Res() res: Response,
-      @Body() body: unknown
+      @Body() body: unknown,
     ) {
       const sessionId = req.query.sessionId as string;
 
       if (!sessionId) {
         this.logger.error(`[MCP] Missing session ID in request to ${req.url}`);
-        return res.status(400).json({ error: "Session ID is required" });
+        return res.status(400).json({ error: 'Session ID is required' });
       }
 
       this.logger.debug(`[MCP] Processing request for session: ${sessionId}`);
       this.logger.debug(
-        `[MCP] Local active sessions: ${Array.from(this.transports.keys()).join(", ")}`
+        `[MCP] Local active sessions: ${Array.from(this.transports.keys()).join(', ')}`,
       );
 
       // First check local sessions
@@ -186,11 +186,13 @@ export function createSseController(
         return;
       }
 
-      this.logger.debug(`[MCP] Successfully found/restored session ${sessionId}`);
+      this.logger.debug(
+        `[MCP] Successfully found/restored session ${sessionId}`,
+      );
 
       const normalizedBody = this.normalizeRequestBody(body);
 
-      if (typeof normalizedBody === "string") {
+      if (typeof normalizedBody === 'string') {
         (req as any).body = normalizedBody;
         (req as any).rawBody = normalizedBody;
       }
@@ -200,7 +202,7 @@ export function createSseController(
       const executor = await this.moduleRef.resolve(
         McpExecutorService,
         contextId,
-        { strict: false }
+        { strict: false },
       );
 
       // Register request handlers with the user context from this specific request
@@ -227,14 +229,14 @@ export function createSseController(
             } catch (parseError) {
               this.logger.warn(
                 `[MCP] Failed to parse MCP message body as JSON for session ${sessionId}:`,
-                parseError
+                parseError,
               );
               mcpMessage = body;
             }
           }
 
           // Check if it's a tool call request
-          if (mcpMessage?.method === "tools/call") {
+          if (mcpMessage?.method === 'tools/call') {
             // Execute the tool directly
             const toolName = mcpMessage?.params?.name;
             if (toolName) {
@@ -246,7 +248,7 @@ export function createSseController(
                   const toolInstance = await this.moduleRef.resolve(
                     toolInfo.providerClass,
                     contextId,
-                    { strict: false }
+                    { strict: false },
                   );
 
                   if (toolInstance) {
@@ -262,34 +264,34 @@ export function createSseController(
                           warn: () => {},
                         },
                       },
-                      req
+                      req,
                     );
 
                     res.json({
-                      jsonrpc: "2.0",
+                      jsonrpc: '2.0',
                       id: mcpMessage?.id,
                       result: result,
                     });
                   } else {
                     res.status(500).json({
-                      jsonrpc: "2.0",
+                      jsonrpc: '2.0',
                       id: mcpMessage?.id,
                       error: {
                         code: -32000,
-                        message: "Tool instance not found",
+                        message: 'Tool instance not found',
                       },
                     });
                   }
                 } catch (error) {
                   res.status(500).json({
-                    jsonrpc: "2.0",
+                    jsonrpc: '2.0',
                     id: mcpMessage?.id,
                     error: { code: -32000, message: error.message },
                   });
                 }
               } else {
                 res.status(404).json({
-                  jsonrpc: "2.0",
+                  jsonrpc: '2.0',
                   id: mcpMessage?.id,
                   error: {
                     code: -32601,
@@ -299,15 +301,15 @@ export function createSseController(
               }
             } else {
               res.status(400).json({
-                jsonrpc: "2.0",
+                jsonrpc: '2.0',
                 id: mcpMessage?.id,
-                error: { code: -32602, message: "Tool name not specified" },
+                error: { code: -32602, message: 'Tool name not specified' },
               });
             }
           } else {
             // For other MCP methods, return method not found
             res.status(404).json({
-              jsonrpc: "2.0",
+              jsonrpc: '2.0',
               id: mcpMessage?.id,
               error: {
                 code: -32601,
@@ -319,12 +321,12 @@ export function createSseController(
       } catch (error) {
         this.logger.error(
           `[MCP] Error handling MCP request for session ${sessionId}:`,
-          error
+          error,
         );
 
         // Send error response
         res.status(500).json({
-          error: "Failed to process MCP request",
+          error: 'Failed to process MCP request',
           sessionId,
           details: error.message,
         });
@@ -332,35 +334,35 @@ export function createSseController(
     }
 
     normalizeRequestBody(body: unknown): string {
-      if (typeof body === "string") {
+      if (typeof body === 'string') {
         return body;
       }
 
       if (Buffer.isBuffer(body)) {
-        return body.toString("utf8");
+        return body.toString('utf8');
       }
 
       if (body instanceof Uint8Array) {
-        return Buffer.from(body).toString("utf8");
+        return Buffer.from(body).toString('utf8');
       }
 
       if (body === undefined || body === null) {
-        return "";
+        return '';
       }
 
       try {
         const json = JSON.stringify(body);
-        return typeof json === "string" ? json : String(body);
+        return typeof json === 'string' ? json : '[unserializable]';
       } catch {
-        return String(body);
+        return '[unserializable]';
       }
     }
 
     /**
      * Diagnostic endpoint for checking active sessions
      */
-    @Get("teams/:teamId/sessions/debug")
-    async debugSessions(@Param("teamId") teamId: string, @Res() res: Response) {
+    @Get('teams/:teamId/sessions/debug')
+    async debugSessions(@Param('teamId') teamId: string, @Res() res: Response) {
       try {
         // Get local sessions
         const localSessions = Array.from(this.transports.keys()).map(
@@ -370,7 +372,7 @@ export function createSseController(
             isLocal: true,
             hasTransport: this.transports.has(sessionId),
             hasMcpServer: this.mcpServers.has(sessionId),
-          })
+          }),
         );
         res.json({
           teamId,
@@ -381,11 +383,11 @@ export function createSseController(
       } catch (error) {
         this.logger.error(
           `[MCP] Error getting debug info for team ${teamId}:`,
-          error
+          error,
         );
         res
           .status(500)
-          .json({ error: "Failed to get debug info", details: error.message });
+          .json({ error: 'Failed to get debug info', details: error.message });
       }
     }
   }

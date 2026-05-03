@@ -142,8 +142,7 @@ export class PaddockScenarioTool {
     const hasAgent = Boolean(input.agentId);
     if (hasTemplate === hasAgent) {
       return ok({
-        error:
-          'Scenario must be scoped to exactly one of: templateId, agentId',
+        error: 'Scenario must be scoped to exactly one of: templateId, agentId',
       });
     }
     const data: ICreatePaddockScenarioData = {
@@ -155,7 +154,8 @@ export class PaddockScenarioTool {
       description: input.description,
       expectedBehavior: input.expectedBehavior,
       messages: input.messages,
-      successCriteria: input.successCriteria as ICreatePaddockScenarioData['successCriteria'],
+      successCriteria:
+        input.successCriteria as ICreatePaddockScenarioData['successCriteria'],
       setup: input.setup ?? null,
     };
     return ok(await this.scenarios.create(data));
@@ -177,10 +177,7 @@ export class PaddockScenarioTool {
       setup: setupSchema,
     }),
   })
-  async update({
-    id,
-    ...patch
-  }: { id: string } & IUpdatePaddockScenarioData) {
+  async update({ id, ...patch }: { id: string } & IUpdatePaddockScenarioData) {
     const existing = await this.scenarios.findById(id);
     if (!existing) return ok({ error: `Scenario ${id} not found` });
     return ok(await this.scenarios.update(id, patch));

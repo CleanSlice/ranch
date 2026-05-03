@@ -32,7 +32,7 @@ export class SsePingService implements OnModuleInit, OnModuleDestroy {
   private pingIntervalMs = 30000;
   private pingEnabled = true;
 
-  constructor() { }
+  constructor() {}
 
   onModuleInit() {
     this.logger.log('Initializing SSE ping service');
@@ -181,11 +181,13 @@ export class SsePingService implements OnModuleInit, OnModuleDestroy {
    * Get information about active connections
    */
   public getActiveConnectionsInfo() {
-    const connections = Array.from(this.activeConnections.entries()).map(([sessionId, { res }]) => ({
-      sessionId,
-      isValid: this.isResponseValid(res),
-      timestamp: new Date().toISOString(),
-    }));
+    const connections = Array.from(this.activeConnections.entries()).map(
+      ([sessionId, { res }]) => ({
+        sessionId,
+        isValid: this.isResponseValid(res),
+        timestamp: new Date().toISOString(),
+      }),
+    );
 
     return {
       totalConnections: connections.length,
@@ -203,7 +205,9 @@ export class SsePingService implements OnModuleInit, OnModuleDestroy {
 
     for (const [sessionId, { res }] of this.activeConnections.entries()) {
       if (!this.isResponseValid(res)) {
-        this.logger.debug(`Forcing cleanup of invalid connection: ${sessionId}`);
+        this.logger.debug(
+          `Forcing cleanup of invalid connection: ${sessionId}`,
+        );
         this.removeConnection(sessionId);
       }
     }
@@ -212,7 +216,9 @@ export class SsePingService implements OnModuleInit, OnModuleDestroy {
     const cleanedCount = beforeCount - afterCount;
 
     if (cleanedCount > 0) {
-      this.logger.log(`Cleaned up ${cleanedCount} invalid connections. Active: ${afterCount}`);
+      this.logger.log(
+        `Cleaned up ${cleanedCount} invalid connections. Active: ${afterCount}`,
+      );
     }
 
     return { cleanedCount, remainingCount: afterCount };

@@ -1,17 +1,7 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { PaddockEvaluationService } from './domain/evaluation.service';
-import {
-  PaddockEvaluationReportDto,
-  RunPaddockEvaluationDto,
-} from './dtos';
+import { PaddockEvaluationReportDto, RunPaddockEvaluationDto } from './dtos';
 import { IRunPaddockEvaluationData } from './domain/evaluation.types';
 
 @ApiTags('paddock-evaluations')
@@ -48,7 +38,9 @@ export class PaddockEvaluationController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get evaluation status + summary + per-scenario results' })
+  @ApiOperation({
+    summary: 'Get evaluation status + summary + per-scenario results',
+  })
   get(@Param('id') id: string) {
     return this.service.getById(id);
   }

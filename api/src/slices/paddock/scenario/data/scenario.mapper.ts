@@ -44,8 +44,7 @@ export class PaddockScenarioMapper {
       description: data.description,
       expectedBehavior: data.expectedBehavior,
       messages: data.messages as unknown as Prisma.InputJsonValue,
-      successCriteria:
-        data.successCriteria as unknown as Prisma.InputJsonValue,
+      successCriteria: data.successCriteria as unknown as Prisma.InputJsonValue,
       setup: (data.setup ?? null) as unknown as Prisma.InputJsonValue,
     };
   }

@@ -58,12 +58,18 @@ export class CreatePaddockSuccessCriterionDto {
 }
 
 export class CreatePaddockScenarioSetupDto {
-  @ApiPropertyOptional({ type: 'object', additionalProperties: { type: 'string' } })
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+  })
   @IsOptional()
   @IsObject()
   files?: Record<string, string>;
 
-  @ApiPropertyOptional({ type: 'object', additionalProperties: { type: 'string' } })
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+  })
   @IsOptional()
   @IsObject()
   env?: Record<string, string>;
@@ -136,7 +142,10 @@ export class CreatePaddockScenarioDto {
   @Type(() => CreatePaddockSuccessCriterionDto)
   successCriteria: CreatePaddockSuccessCriterionDto[];
 
-  @ApiPropertyOptional({ type: () => CreatePaddockScenarioSetupDto, nullable: true })
+  @ApiPropertyOptional({
+    type: () => CreatePaddockScenarioSetupDto,
+    nullable: true,
+  })
   @IsOptional()
   @ValidateNested()
   @Type(() => CreatePaddockScenarioSetupDto)

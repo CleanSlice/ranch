@@ -51,7 +51,9 @@ export class BunCliPaddockRunner extends IPaddockRunner {
   abort(agentId: string): boolean {
     const proc = this.active.get(agentId);
     if (!proc) return false;
-    this.logger.log(`Aborting paddock CLI for agent ${agentId} (pid=${proc.pid})`);
+    this.logger.log(
+      `Aborting paddock CLI for agent ${agentId} (pid=${proc.pid})`,
+    );
     try {
       proc.kill('SIGTERM');
     } catch {
@@ -276,7 +278,8 @@ export class BunCliPaddockRunner extends IPaddockRunner {
     for (const j of input.judges) {
       const provider = j.provider.toLowerCase();
       if (provider === 'claude' || provider === 'anthropic') {
-        if (!env.CLAUDE_CODE_OAUTH_TOKEN) env.CLAUDE_CODE_OAUTH_TOKEN = j.apiKey;
+        if (!env.CLAUDE_CODE_OAUTH_TOKEN)
+          env.CLAUDE_CODE_OAUTH_TOKEN = j.apiKey;
         if (!env.ANTHROPIC_API_KEY) env.ANTHROPIC_API_KEY = j.apiKey;
         if (!env.EVAL_CLAUDE_JUDGE_MODEL && j.model)
           env.EVAL_CLAUDE_JUDGE_MODEL = j.model;
@@ -378,18 +381,14 @@ export class BunCliPaddockRunner extends IPaddockRunner {
         mtime: (await fs.stat(c.path)).mtimeMs,
       })),
     );
-    stats
-      .filter((s) => s.mtime >= sinceTs)
-      .sort((a, b) => b.mtime - a.mtime);
+    stats.filter((s) => s.mtime >= sinceTs).sort((a, b) => b.mtime - a.mtime);
 
     for (const c of stats) {
       if (c.mtime < sinceTs) continue;
       try {
         const text = await fs.readFile(c.path, 'utf-8');
         const parsed = JSON.parse(text) as PaddockJsonReport;
-        const ids = new Set(
-          (parsed.results ?? []).map((r) => r.id),
-        );
+        const ids = new Set((parsed.results ?? []).map((r) => r.id));
         // Match if our scenario ids are a subset of this report's results
         const matches = [...wantedScenarioIds].every((id) => ids.has(id));
         if (matches) {
@@ -424,7 +423,10 @@ export class BunCliPaddockRunner extends IPaddockRunner {
           : 0;
 
     // Group errors by scenario for synthetic trace output
-    const errorsByScenario = new Map<string, Array<{ phase: string; message: string }>>();
+    const errorsByScenario = new Map<
+      string,
+      Array<{ phase: string; message: string }>
+    >();
     for (const e of report.errors ?? []) {
       const arr = errorsByScenario.get(e.scenario) ?? [];
       arr.push({ phase: e.phase, message: e.message });

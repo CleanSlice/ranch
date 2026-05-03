@@ -212,17 +212,17 @@ function parseScenarioJson(raw: string): ParsedScenario | null {
       expectedBehavior:
         typeof obj.expectedBehavior === 'string' ? obj.expectedBehavior : '',
       messages: (obj.messages as Array<Record<string, unknown>>).map((m) => ({
-        text: String(m.text ?? ''),
-        from: String(m.from ?? 'eval-user'),
+        text: typeof m.text === 'string' ? m.text : '',
+        from: typeof m.from === 'string' ? m.from : 'eval-user',
         delayMs: typeof m.delayMs === 'number' ? m.delayMs : undefined,
       })),
-      successCriteria: (obj.successCriteria as Array<Record<string, unknown>>).map(
-        (c) => ({
-          dimension: c.dimension as PaddockEvalDimension,
-          description: String(c.description ?? ''),
-          weight: Number(c.weight ?? 0),
-        }),
-      ),
+      successCriteria: (
+        obj.successCriteria as Array<Record<string, unknown>>
+      ).map((c) => ({
+        dimension: c.dimension as PaddockEvalDimension,
+        description: typeof c.description === 'string' ? c.description : '',
+        weight: typeof c.weight === 'number' ? c.weight : 0,
+      })),
       setup:
         obj.setup && typeof obj.setup === 'object'
           ? (obj.setup as IPaddockScenarioSetup)

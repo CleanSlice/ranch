@@ -3,11 +3,7 @@ import {
   PaddockEvalDimension,
 } from '../../scenario/domain';
 
-export type PaddockEvaluationStatus =
-  | 'running'
-  | 'done'
-  | 'failed'
-  | 'aborted';
+export type PaddockEvaluationStatus = 'running' | 'done' | 'failed' | 'aborted';
 
 export type PaddockVerdict = 'pass' | 'fail' | 'partial' | 'skipped';
 

@@ -58,7 +58,9 @@ export class McpServerGateway extends IMcpServerGateway {
       where: { id },
       data: {
         ...(data.name !== undefined && { name: data.name }),
-        ...(data.description !== undefined && { description: data.description }),
+        ...(data.description !== undefined && {
+          description: data.description,
+        }),
         ...(data.url !== undefined && { url: data.url }),
         ...(data.transport !== undefined && { transport: data.transport }),
         ...(data.authType !== undefined && { authType: data.authType }),

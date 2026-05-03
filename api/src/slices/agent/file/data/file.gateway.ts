@@ -132,9 +132,7 @@ export class S3FileGateway extends IFileGateway {
     const key = this.prefix(agentId) + path;
 
     try {
-      await client.send(
-        new DeleteObjectCommand({ Bucket: bucket, Key: key }),
-      );
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
     } catch (err) {
       // S3 DELETE is idempotent — 404 isn't typically returned, but treat
       // any not-found as success so callers (e.g. "reset chat") don't fail
@@ -147,10 +145,7 @@ export class S3FileGateway extends IFileGateway {
   // Server-side copy of every file under templates/{templateId}/ into
   // agents/{agentId}/. Skips agents that already have files (re-deploys
   // must not overwrite evolved state). Returns the number of files copied.
-  async seedFromTemplate(
-    agentId: string,
-    templateId: string,
-  ): Promise<number> {
+  async seedFromTemplate(agentId: string, templateId: string): Promise<number> {
     const { client, bucket } = await this.connect();
     const destPrefix = this.prefix(agentId);
     const srcPrefix = `templates/${templateId}/`;

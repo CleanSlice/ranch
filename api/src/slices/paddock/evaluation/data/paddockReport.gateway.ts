@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import {
   S3Client,
   PutObjectCommand,
@@ -78,10 +74,7 @@ export class PaddockReportGateway extends IPaddockReportGateway {
     }
   }
 
-  async saveSnapshot(
-    evaluationId: string,
-    snapshot: object,
-  ): Promise<string> {
+  async saveSnapshot(evaluationId: string, snapshot: object): Promise<string> {
     const { client, bucket } = await this.connect();
     const key = `${this.basePrefix(evaluationId)}snapshot.json`;
     await client.send(

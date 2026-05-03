@@ -65,11 +65,7 @@ export class PaddockEvaluationTool {
       limit: z.number().int().positive().optional(),
     }),
   })
-  async list(input: {
-    agentId?: string;
-    templateId?: string;
-    limit?: number;
-  }) {
+  async list(input: { agentId?: string; templateId?: string; limit?: number }) {
     return ok(await this.service.list(input));
   }
 

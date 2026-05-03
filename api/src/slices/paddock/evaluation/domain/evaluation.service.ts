@@ -37,7 +37,9 @@ export class PaddockEvaluationService {
     private envelope: RanchAgentEnvelope,
   ) {}
 
-  async start(input: IRunPaddockEvaluationData): Promise<IPaddockEvaluationData> {
+  async start(
+    input: IRunPaddockEvaluationData,
+  ): Promise<IPaddockEvaluationData> {
     const agent = await this.agentGateway.findById(input.agentId);
     if (!agent) throw new NotFoundException('Agent not found');
 
@@ -164,9 +166,7 @@ export class PaddockEvaluationService {
     return evaluation;
   }
 
-  async getReport(
-    id: string,
-  ): Promise<{ json: object; md: string }> {
+  async getReport(id: string): Promise<{ json: object; md: string }> {
     const ev = await this.evaluationGateway.findById(id);
     if (!ev) throw new NotFoundException('Evaluation not found');
     if (!ev.reportS3Key) {

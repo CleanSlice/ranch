@@ -113,7 +113,10 @@ export class AuthService {
   }
 
   private async isRegistrationEnabled(): Promise<boolean> {
-    const setting = await this.settings.findByKey('auth', 'registration_enabled');
+    const setting = await this.settings.findByKey(
+      'auth',
+      'registration_enabled',
+    );
     if (!setting) return false;
     const value = setting.value;
     return value === true || value === 'true';

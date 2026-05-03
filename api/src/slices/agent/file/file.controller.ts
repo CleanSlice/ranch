@@ -58,7 +58,7 @@ export class FileController {
   @HttpCode(200)
   @ApiOperation({
     summary:
-      "Ask the agent runtime to push its local files to S3, then return the latest S3 state to the admin UI",
+      'Ask the agent runtime to push its local files to S3, then return the latest S3 state to the admin UI',
   })
   async sync(@Param('agentId') agentId: string): Promise<SyncFilesDto> {
     await this.assertAgent(agentId);

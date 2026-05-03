@@ -31,10 +31,16 @@ export class PaddockSuccessCriterionDto {
 }
 
 export class PaddockScenarioSetupDto {
-  @ApiPropertyOptional({ type: 'object', additionalProperties: { type: 'string' } })
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+  })
   files?: Record<string, string>;
 
-  @ApiPropertyOptional({ type: 'object', additionalProperties: { type: 'string' } })
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+  })
   env?: Record<string, string>;
 
   @ApiPropertyOptional({ type: [String] })

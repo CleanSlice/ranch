@@ -41,47 +41,60 @@ export class McpPromptsHandler extends McpHandlerBase {
       };
     });
 
-    mcpServer.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-      this.logger.debug('GetPromptRequestSchema is being called');
+    mcpServer.server.setRequestHandler(
+      GetPromptRequestSchema,
+      async (request) => {
+        this.logger.debug('GetPromptRequestSchema is being called');
 
-      try {
-        const name = request.params.name;
-        const promptInfo = this.registry.findPrompt(name);
+        try {
+          const name = request.params.name;
+          const promptInfo = this.registry.findPrompt(name);
 
-        if (!promptInfo) {
-          throw new McpError(ErrorCode.MethodNotFound, `Unknown prompt: ${name}`);
+          if (!promptInfo) {
+            throw new McpError(
+              ErrorCode.MethodNotFound,
+              `Unknown prompt: ${name}`,
+            );
+          }
+
+          const contextId = ContextIdFactory.getByRequest(httpRequest);
+          this.moduleRef.registerRequestByContextId(httpRequest, contextId);
+
+          const promptInstance = await this.moduleRef.resolve(
+            promptInfo.providerClass,
+            contextId,
+            { strict: false },
+          );
+
+          if (!promptInstance) {
+            throw new McpError(
+              ErrorCode.MethodNotFound,
+              `Unknown prompt: ${name}`,
+            );
+          }
+
+          const context = this.createContext(mcpServer, request);
+          const methodName = promptInfo.methodName;
+
+          const result = await promptInstance[methodName].call(
+            promptInstance,
+            request.params.arguments,
+            context,
+            httpRequest,
+          );
+
+          this.logger.debug(result, 'GetPromptRequestSchema result');
+
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+          return result;
+        } catch (error) {
+          this.logger.error(error);
+          return {
+            contents: [{ mimeType: 'text/plain', text: error.message }],
+            isError: true,
+          };
         }
-
-        const contextId = ContextIdFactory.getByRequest(httpRequest);
-        this.moduleRef.registerRequestByContextId(httpRequest, contextId);
-
-        const promptInstance = await this.moduleRef.resolve(promptInfo.providerClass, contextId, { strict: false });
-
-        if (!promptInstance) {
-          throw new McpError(ErrorCode.MethodNotFound, `Unknown prompt: ${name}`);
-        }
-
-        const context = this.createContext(mcpServer, request);
-        const methodName = promptInfo.methodName;
-
-        const result = await promptInstance[methodName].call(
-          promptInstance,
-          request.params.arguments,
-          context,
-          httpRequest,
-        );
-
-        this.logger.debug(result, 'GetPromptRequestSchema result');
-
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-        return result;
-      } catch (error) {
-        this.logger.error(error);
-        return {
-          contents: [{ mimeType: 'text/plain', text: error.message }],
-          isError: true,
-        };
-      }
-    });
+      },
+    );
   }
 }

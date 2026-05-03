@@ -11,16 +11,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IUserGateway, UserRoleTypes } from './domain';
-import {
-  CreateUserDto,
-  UpdateUserDto,
-  UpdateUserRolesDto,
-} from './dtos';
-import {
-  JwtAuthGuard,
-  Roles,
-  RolesGuard,
-} from '../auth/guards';
+import { CreateUserDto, UpdateUserDto, UpdateUserRolesDto } from './dtos';
+import { JwtAuthGuard, Roles, RolesGuard } from '../auth/guards';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -52,7 +44,8 @@ export class UserController {
 
   @Put(':id')
   @ApiOperation({
-    summary: 'Update user (name, email, password, status). Use /roles to change roles.',
+    summary:
+      'Update user (name, email, password, status). Use /roles to change roles.',
   })
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.userGateway.update(id, dto);
@@ -60,7 +53,7 @@ export class UserController {
 
   @Put(':id/roles')
   @Roles(UserRoleTypes.Owner)
-  @ApiOperation({ summary: 'Replace the user\'s roles. Owner only.' })
+  @ApiOperation({ summary: "Replace the user's roles. Owner only." })
   updateRoles(@Param('id') id: string, @Body() dto: UpdateUserRolesDto) {
     return this.userGateway.update(id, { roles: dto.roles });
   }

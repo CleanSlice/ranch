@@ -28,9 +28,7 @@ export function buildMcpCapabilities(
     };
   }
 
-  if (
-    registry.getResources().length > 0
-  ) {
+  if (registry.getResources().length > 0) {
     capabilities.resources = capabilities.resources || {
       listChanged: true,
     };

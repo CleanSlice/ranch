@@ -46,7 +46,9 @@ export class FileSecretGateway {
           secrets.push(entry);
         }
       }
-      continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+      continuationToken = res.IsTruncated
+        ? res.NextContinuationToken
+        : undefined;
     } while (continuationToken);
 
     secrets.sort((a, b) => a.name.localeCompare(b.name));

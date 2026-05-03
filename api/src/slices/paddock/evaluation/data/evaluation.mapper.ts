@@ -56,7 +56,9 @@ export class PaddockEvaluationMapper {
     };
   }
 
-  toResultEntity(record: PaddockEvaluationResult): IPaddockEvaluationResultData {
+  toResultEntity(
+    record: PaddockEvaluationResult,
+  ): IPaddockEvaluationResultData {
     return {
       id: record.id,
       evaluationId: record.evaluationId,

@@ -95,11 +95,7 @@ export class S3TemplateFileGateway extends ITemplateFileGateway {
     };
   }
 
-  async save(
-    templateId: string,
-    path: string,
-    content: string,
-  ): Promise<void> {
+  async save(templateId: string, path: string, content: string): Promise<void> {
     this.assertSafePath(path);
     this.assertWritableExt(path);
 

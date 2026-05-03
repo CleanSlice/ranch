@@ -54,10 +54,7 @@ export class TemplateController {
     summary:
       'Replace the skill set attached to a template. Body lists the full desired set; omitted IDs are detached.',
   })
-  async setSkills(
-    @Param('id') id: string,
-    @Body() dto: SetTemplateSkillsDto,
-  ) {
+  async setSkills(@Param('id') id: string, @Body() dto: SetTemplateSkillsDto) {
     const template = await this.templateGateway.findById(id);
     if (!template) throw new NotFoundException('Template not found');
     return this.templateGateway.setSkills(id, dto.skillIds);

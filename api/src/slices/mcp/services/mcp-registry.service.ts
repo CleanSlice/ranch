@@ -2,24 +2,24 @@ import {
   Injectable,
   InjectionToken,
   OnApplicationBootstrap,
-} from "@nestjs/common";
-import { DiscoveryService, MetadataScanner } from "@nestjs/core";
+} from '@nestjs/common';
+import { DiscoveryService, MetadataScanner } from '@nestjs/core';
 import {
   MCP_PROMPT_METADATA_KEY,
   MCP_RESOURCE_METADATA_KEY,
   MCP_TOOL_METADATA_KEY,
   ToolMetadata,
-} from "../decorators";
-import { ResourceMetadata } from "../decorators/resource.decorator";
-import { match } from "path-to-regexp";
-import { PromptMetadata } from "../decorators/prompt.decorator";
-import { Logger } from "@nestjs/common";
+} from '../decorators';
+import { ResourceMetadata } from '../decorators/resource.decorator';
+import { match } from 'path-to-regexp';
+import { PromptMetadata } from '../decorators/prompt.decorator';
+import { Logger } from '@nestjs/common';
 
 /**
  * Interface representing a discovered tool
  */
 export type DiscoveredTool<T extends object> = {
-  type: "tool" | "resource" | "prompt";
+  type: 'tool' | 'resource' | 'prompt';
   metadata: T;
   providerClass: InjectionToken;
   methodName: string;
@@ -35,7 +35,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
   constructor(
     private readonly discovery: DiscoveryService,
-    private readonly metadataScanner: MetadataScanner
+    private readonly metadataScanner: MetadataScanner,
   ) {}
 
   onApplicationBootstrap() {
@@ -52,8 +52,8 @@ export class McpRegistryService implements OnApplicationBootstrap {
       .filter(
         (wrapper) =>
           wrapper.instance &&
-          typeof wrapper.instance === "object" &&
-          wrapper.instance !== null
+          typeof wrapper.instance === 'object' &&
+          wrapper.instance !== null,
       )
       .map((wrapper) => ({
         instance: wrapper.instance as object,
@@ -84,11 +84,11 @@ export class McpRegistryService implements OnApplicationBootstrap {
    * Adds a discovered tool to the registry
    */
   private addDiscovery<T>(
-    type: "tool" | "resource" | "prompt",
+    type: 'tool' | 'resource' | 'prompt',
     metadataKey: string,
     methodRef: object,
     token: InjectionToken,
-    methodName: string
+    methodName: string,
   ) {
     const metadata: T = Reflect.getMetadata(metadataKey, methodRef);
 
@@ -103,42 +103,42 @@ export class McpRegistryService implements OnApplicationBootstrap {
   private addDiscoveryPrompt(
     methodRef: object,
     token: InjectionToken,
-    methodName: string
+    methodName: string,
   ) {
     this.addDiscovery<PromptMetadata>(
-      "prompt",
+      'prompt',
       MCP_PROMPT_METADATA_KEY,
       methodRef,
       token,
-      methodName
+      methodName,
     );
   }
 
   private addDiscoveryTool(
     methodRef: object,
     token: InjectionToken,
-    methodName: string
+    methodName: string,
   ) {
     this.addDiscovery<ToolMetadata>(
-      "tool",
+      'tool',
       MCP_TOOL_METADATA_KEY,
       methodRef,
       token,
-      methodName
+      methodName,
     );
   }
 
   private addDiscoveryResource(
     methodRef: object,
     token: InjectionToken,
-    methodName: string
+    methodName: string,
   ) {
     this.addDiscovery<ResourceMetadata>(
-      "resource",
+      'resource',
       MCP_RESOURCE_METADATA_KEY,
       methodRef,
       token,
-      methodName
+      methodName,
     );
   }
 
@@ -146,7 +146,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
    * Get all discovered tools
    */
   getTools(): DiscoveredTool<ToolMetadata>[] {
-    const tools = this.discoveredTools.filter((tool) => tool.type === "tool");
+    const tools = this.discoveredTools.filter((tool) => tool.type === 'tool');
     return tools;
   }
 
@@ -162,7 +162,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
    * Get all discovered resources
    */
   getResources(): DiscoveredTool<ResourceMetadata>[] {
-    return this.discoveredTools.filter((tool) => tool.type === "resource");
+    return this.discoveredTools.filter((tool) => tool.type === 'resource');
   }
 
   /**
@@ -176,7 +176,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
    * Get all discovered prompts
    */
   getPrompts(): DiscoveredTool<PromptMetadata>[] {
-    return this.discoveredTools.filter((tool) => tool.type === "prompt");
+    return this.discoveredTools.filter((tool) => tool.type === 'prompt');
   }
 
   /**
@@ -190,12 +190,12 @@ export class McpRegistryService implements OnApplicationBootstrap {
     if (!template || typeof template !== 'string') {
       return '';
     }
-    return template.replace(/{(\w+)}/g, ":$1");
+    return template.replace(/{(\w+)}/g, ':$1');
   }
 
   private convertUri(uri: string): string {
-    if (uri.includes("://")) {
-      return uri.split("://")[1];
+    if (uri.includes('://')) {
+      return uri.split('://')[1];
     }
 
     return uri;

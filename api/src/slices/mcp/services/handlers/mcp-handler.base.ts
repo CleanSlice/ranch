@@ -1,17 +1,16 @@
 import { Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { z } from 'zod';
 import {
   CallToolRequest,
-  CallToolRequestSchema,
   GetPromptRequest,
-  GetPromptRequestSchema,
   Progress,
   ReadResourceRequest,
-  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { Context, SerializableValue } from '../../interfaces/mcp-tool.interface';
+import {
+  Context,
+  SerializableValue,
+} from '../../interfaces/mcp-tool.interface';
 import { McpRegistryService } from '../mcp-registry.service';
 
 export abstract class McpHandlerBase {
@@ -81,24 +80,23 @@ export abstract class McpHandlerBase {
       this.logger.warn(`Stateless context: '${fn}' is not supported.`);
     };
     return {
-      // eslint-disable-next-line @typescript-eslint/require-await,@typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/require-await
       reportProgress: async (_progress: Progress) => {
         warn('reportProgress not supported in stateless');
       },
       log: {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         debug: (_message: string, _data?: SerializableValue) => {
           warn('server report logging not supported in stateless');
         },
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
         error: (_message: string, _data?: SerializableValue) => {
           warn('server report logging not supported in stateless');
         },
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
         info: (_message: string, _data?: SerializableValue) => {
           warn('server report logging not supported in stateless');
         },
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
         warn: (_message: string, _data?: SerializableValue) => {
           warn('server report logging not supported in stateless');
         },

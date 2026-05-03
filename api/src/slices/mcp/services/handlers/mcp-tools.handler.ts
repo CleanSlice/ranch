@@ -1,9 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListToolsRequestSchema,
+  McpError,
+} from '@modelcontextprotocol/sdk/types.js';
 import { Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { Request } from 'express';
-import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
@@ -16,7 +20,6 @@ export class McpToolsHandler extends McpHandlerBase {
 
   private convertZodToJsonSchema(parameters: any): any {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return
       return zodToJsonSchema(parameters);
     } catch {
       return undefined;
@@ -28,7 +31,9 @@ export class McpToolsHandler extends McpHandlerBase {
       const tools = this.registry.getTools().map((tool) => ({
         name: tool.metadata.name,
         description: tool.metadata.description,
-        inputSchema: tool.metadata.parameters ? this.convertZodToJsonSchema(tool.metadata.parameters) : undefined,
+        inputSchema: tool.metadata.parameters
+          ? this.convertZodToJsonSchema(tool.metadata.parameters)
+          : undefined,
       }));
 
       return {
@@ -36,42 +41,57 @@ export class McpToolsHandler extends McpHandlerBase {
       };
     });
 
-    mcpServer.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const toolInfo = this.registry.findTool(request.params.name);
+    mcpServer.server.setRequestHandler(
+      CallToolRequestSchema,
+      async (request) => {
+        const toolInfo = this.registry.findTool(request.params.name);
 
-      if (!toolInfo) {
-        throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
-      }
-
-
-      try {
-        const contextId = ContextIdFactory.getByRequest(httpRequest);
-        this.moduleRef.registerRequestByContextId(httpRequest, contextId);
-
-        const toolInstance = await this.moduleRef.resolve(toolInfo.providerClass, contextId, { strict: false });
-
-        const context = this.createContext(mcpServer, request);
-
-        if (!toolInstance) {
-          throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
+        if (!toolInfo) {
+          throw new McpError(
+            ErrorCode.MethodNotFound,
+            `Unknown tool: ${request.params.name}`,
+          );
         }
 
-        const result = await toolInstance[toolInfo.methodName].call(
-          toolInstance,
-          request.params.arguments,
-          context,
-          httpRequest,
-        );
+        try {
+          const contextId = ContextIdFactory.getByRequest(httpRequest);
+          this.moduleRef.registerRequestByContextId(httpRequest, contextId);
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-        return result;
-      } catch (error) {
-        this.logger.error(`[MCP Tools] Tool execution error: ${request.params.name}`, error);
-        return {
-          content: [{ type: 'text', text: error.message }],
-          isError: true,
-        };
-      }
-    });
+          const toolInstance = await this.moduleRef.resolve(
+            toolInfo.providerClass,
+            contextId,
+            { strict: false },
+          );
+
+          const context = this.createContext(mcpServer, request);
+
+          if (!toolInstance) {
+            throw new McpError(
+              ErrorCode.MethodNotFound,
+              `Unknown tool: ${request.params.name}`,
+            );
+          }
+
+          const result = await toolInstance[toolInfo.methodName].call(
+            toolInstance,
+            request.params.arguments,
+            context,
+            httpRequest,
+          );
+
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+          return result;
+        } catch (error) {
+          this.logger.error(
+            `[MCP Tools] Tool execution error: ${request.params.name}`,
+            error,
+          );
+          return {
+            content: [{ type: 'text', text: error.message }],
+            isError: true,
+          };
+        }
+      },
+    );
   }
 }

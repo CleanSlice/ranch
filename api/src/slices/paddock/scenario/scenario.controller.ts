@@ -88,10 +88,7 @@ export class PaddockScenarioController {
     summary:
       'Update a paddock scenario. Scope (templateId/agentId) is immutable — create a new scenario to change scope.',
   })
-  async update(
-    @Param('id') id: string,
-    @Body() dto: UpdatePaddockScenarioDto,
-  ) {
+  async update(@Param('id') id: string, @Body() dto: UpdatePaddockScenarioDto) {
     const existing = await this.gateway.findById(id);
     if (!existing) throw new NotFoundException('Scenario not found');
     return this.gateway.update(id, dto as IUpdatePaddockScenarioData);

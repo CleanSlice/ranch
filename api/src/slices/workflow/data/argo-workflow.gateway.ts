@@ -66,7 +66,9 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
   ): Promise<unknown[]> {
     const template = await this.templateGateway.findById(templateId);
     if (!template || template.mcpServerIds.length === 0) return [];
-    const servers = await this.mcpServerGateway.findByIds(template.mcpServerIds);
+    const servers = await this.mcpServerGateway.findByIds(
+      template.mcpServerIds,
+    );
     return servers
       .filter((m) => m.enabled)
       .map((m) => this.toRuntimeConfig(m, ranchApiToken));

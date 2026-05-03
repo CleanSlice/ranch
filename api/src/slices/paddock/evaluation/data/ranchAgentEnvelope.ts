@@ -16,11 +16,7 @@ export interface IRanchAgentEnvelope {
  * arrive malformed from S3 (open WAL, partial sync) and crash the runtime
  * with `database disk image is malformed`.
  */
-const SKIP_PATH_PREFIXES = [
-  'data/',
-  'sessions/',
-  'workspace/',
-];
+const SKIP_PATH_PREFIXES = ['data/', 'sessions/', 'workspace/'];
 
 const SKIP_EXTENSIONS = new Set([
   '.db',
@@ -45,10 +41,7 @@ export class RanchAgentEnvelope {
   constructor(private files: IFileGateway) {}
 
   async materialize(agentId: string): Promise<IRanchAgentEnvelope> {
-    const agentDir = join(
-      tmpdir(),
-      `ranch-paddock-${agentId}-${Date.now()}`,
-    );
+    const agentDir = join(tmpdir(), `ranch-paddock-${agentId}-${Date.now()}`);
     await mkdir(agentDir, { recursive: true });
 
     let nodes: { path: string }[];

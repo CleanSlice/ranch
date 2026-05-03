@@ -1,12 +1,12 @@
-import { DynamicModule, Module, Provider, Type } from "@nestjs/common";
-import { DiscoveryModule } from "@nestjs/core";
-import { McpOptions, McpTransportType } from "./interfaces";
-import { McpExecutorService } from "./services/mcp-executor.service";
-import { McpRegistryService } from "./services/mcp-registry.service";
-import { SsePingService } from "./services/sse-ping.service";
-import { StdioService } from "./transport/stdio.service";
-import { createStreamableHttpController } from "./transport/streamable-http.controller.factory";
-import { createSseController } from "./transport/sse.controller.factory";
+import { DynamicModule, Module, Provider, Type } from '@nestjs/common';
+import { DiscoveryModule } from '@nestjs/core';
+import { McpOptions, McpTransportType } from './interfaces';
+import { McpExecutorService } from './services/mcp-executor.service';
+import { McpRegistryService } from './services/mcp-registry.service';
+import { SsePingService } from './services/sse-ping.service';
+import { StdioService } from './transport/stdio.service';
+import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
+import { createSseController } from './transport/sse.controller.factory';
 let instanceIdCounter = 0;
 @Module({
   imports: [DiscoveryModule],
@@ -20,10 +20,10 @@ export class McpModule {
         McpTransportType.STREAMABLE_HTTP,
         McpTransportType.STDIO,
       ],
-      sseEndpoint: "sse",
-      messagesEndpoint: "messages",
-      mcpEndpoint: "mcp",
-      globalApiPrefix: "",
+      sseEndpoint: 'sse',
+      messagesEndpoint: 'messages',
+      mcpEndpoint: 'mcp',
+      globalApiPrefix: '',
       guards: [],
       decorators: [],
       streamableHttp: {
@@ -51,12 +51,12 @@ export class McpModule {
   }
 
   private static createControllersFromOptions(
-    options: McpOptions
+    options: McpOptions,
   ): Type<any>[] {
-    const sseEndpoint = options.sseEndpoint ?? "sse";
-    const messagesEndpoint = options.messagesEndpoint ?? "messages";
-    const mcpEndpoint = options.mcpEndpoint ?? "mcp";
-    const globalApiPrefix = options.globalApiPrefix ?? "";
+    const sseEndpoint = options.sseEndpoint ?? 'sse';
+    const messagesEndpoint = options.messagesEndpoint ?? 'messages';
+    const mcpEndpoint = options.mcpEndpoint ?? 'mcp';
+    const globalApiPrefix = options.globalApiPrefix ?? '';
     const guards = options.guards ?? [];
     const transports = Array.isArray(options.transport)
       ? options.transport
@@ -70,7 +70,7 @@ export class McpModule {
         messagesEndpoint,
         globalApiPrefix,
         guards,
-        decorators
+        decorators,
       );
       controllers.push(sseController);
     }
@@ -80,7 +80,7 @@ export class McpModule {
         mcpEndpoint,
         globalApiPrefix,
         guards,
-        decorators
+        decorators,
       );
       controllers.push(streamableHttpController);
     }
@@ -94,15 +94,15 @@ export class McpModule {
 
   private static createProvidersFromOptions(
     options: McpOptions,
-    moduleId: string
+    moduleId: string,
   ): Provider[] {
     const providers: Provider[] = [
       {
-        provide: "MCP_OPTIONS",
+        provide: 'MCP_OPTIONS',
         useValue: options,
       },
       {
-        provide: "MCP_MODULE_ID",
+        provide: 'MCP_MODULE_ID',
         useValue: moduleId,
       },
       McpRegistryService,

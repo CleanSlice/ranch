@@ -11,7 +11,9 @@ import {
  * details. The runtime keys MCP entries by `name`, so it MUST be unique here.
  */
 export class AgentMcpDto {
-  @ApiProperty({ description: 'Unique MCP server name (key in the runtime registry).' })
+  @ApiProperty({
+    description: 'Unique MCP server name (key in the runtime registry).',
+  })
   name!: string;
 
   @ApiProperty({

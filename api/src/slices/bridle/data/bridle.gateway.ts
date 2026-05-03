@@ -136,9 +136,7 @@ export class BridleGateway extends IBridleGateway {
       return;
     }
     agentSend({ type: 'debug_set', enabled });
-    this.logger.log(
-      `Pushed debug_set=${enabled} to agent botId=${botId}`,
-    );
+    this.logger.log(`Pushed debug_set=${enabled} to agent botId=${botId}`);
   }
 
   handleDebugEvent(botId: string, data: IBridleDebugEvent): void {
@@ -193,7 +191,9 @@ export class BridleGateway extends IBridleGateway {
     return new Promise<ISyncAgentResult>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingSyncs.delete(requestId);
-        reject(new Error(`Sync timed out after ${timeoutMs}ms (botId=${botId})`));
+        reject(
+          new Error(`Sync timed out after ${timeoutMs}ms (botId=${botId})`),
+        );
       }, timeoutMs);
 
       this.pendingSyncs.set(requestId, { resolve, reject, timer, botId });

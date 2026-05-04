@@ -13,6 +13,7 @@ import {
 
 const route = useRoute();
 const store = useKnowledgeStore();
+const confirmStore = useConfirmStore();
 const current = inject<Ref<IKnowledge | null>>('knowledge-current');
 const refresh = inject<() => Promise<void>>('knowledge-refresh');
 
@@ -31,7 +32,14 @@ async function reload() {
 await reload();
 
 async function handleDelete(source: IReinsSource) {
-  if (!confirm(`Delete source "${source.name}"?`)) return;
+  const ok = await confirmStore.ask({
+    title: 'Delete source?',
+    description: `Permanently delete source "${source.name}"? This cannot be undone.`,
+    confirmLabel: 'Delete',
+    cancelLabel: 'Cancel',
+    variant: 'destructive',
+  });
+  if (!ok) return;
   await store.removeSource(route.params.id as string, source.id);
   await reload();
   if (refresh) await refresh();

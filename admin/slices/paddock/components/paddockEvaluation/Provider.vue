@@ -33,10 +33,12 @@ import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 const props = defineProps<{ evaluationId: string }>();
 
 const store = usePaddockEvaluationStore();
-const scenarioStore = usePaddockScenarioStore();
 
 // Live-progress: which scenario rows the user has expanded, plus a cache
 // of the fetched full data (messages, expectedBehavior, successCriteria).
+// Reads from the evaluation's snapshot, NOT the global scenario store —
+// the live `paddock_scenarios` table can drift (template re-seed assigns
+// new UUIDs) so only the snapshot is reliable for past/running runs.
 const expandedLiveScenario = ref<string | null>(null);
 const liveScenarioCache = ref<Record<string, IPaddockScenario | null>>({});
 
@@ -47,11 +49,8 @@ async function toggleLiveScenario(id: string) {
   }
   expandedLiveScenario.value = id;
   if (liveScenarioCache.value[id] === undefined) {
-    try {
-      liveScenarioCache.value[id] = await scenarioStore.fetchById(id);
-    } catch {
-      liveScenarioCache.value[id] = null;
-    }
+    const data = await store.fetchEvalScenario(props.evaluationId, id);
+    liveScenarioCache.value[id] = (data as IPaddockScenario | null) ?? null;
   }
 }
 

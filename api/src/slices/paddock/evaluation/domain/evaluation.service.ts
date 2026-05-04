@@ -224,6 +224,24 @@ export class PaddockEvaluationService {
     return { lines: this.runner.getLogs(ev.agentId) };
   }
 
+  // Fetch a scenario as it was captured into this evaluation's snapshot.
+  // The live `paddock_scenarios` table can drift (rancher auto-sync wipes
+  // and reseeds with new UUIDs on every deploy), so the only reliable
+  // source for "what did this run actually use" is the snapshot.
+  async getScenario(
+    id: string,
+    scenarioId: string,
+  ): Promise<IPaddockScenarioData> {
+    const ev = await this.evaluationGateway.findById(id);
+    if (!ev) throw new NotFoundException('Evaluation not found');
+    const scenario = ev.scenariosSnapshot.find((s) => s.id === scenarioId);
+    if (!scenario)
+      throw new NotFoundException(
+        `Scenario ${scenarioId} is not part of evaluation ${id}`,
+      );
+    return scenario;
+  }
+
   async getReport(id: string): Promise<{ json: object; md: string }> {
     const ev = await this.evaluationGateway.findById(id);
     if (!ev) throw new NotFoundException('Evaluation not found');

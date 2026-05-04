@@ -7,6 +7,7 @@ import {
 import { Separator } from '#theme/components/ui/separator';
 
 const route = useRoute();
+const confirmStore = useConfirmStore();
 
 const pageTitle = computed(() => {
   const name = route.name?.toString() ?? '';
@@ -36,5 +37,15 @@ const pageTitle = computed(() => {
         <slot />
       </div>
     </SidebarInset>
+
+    <ConfirmDialog
+      v-model:open="confirmStore.open"
+      :title="confirmStore.current?.title ?? 'Are you sure?'"
+      :description="confirmStore.current?.description ?? ''"
+      :confirm-label="confirmStore.current?.confirmLabel ?? 'OK'"
+      :cancel-label="confirmStore.current?.cancelLabel ?? 'Cancel'"
+      :variant="confirmStore.current?.variant ?? 'default'"
+      @confirm="confirmStore.accept()"
+    />
   </SidebarProvider>
 </template>

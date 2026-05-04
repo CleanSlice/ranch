@@ -12,6 +12,7 @@ import {
 } from '#theme/components/ui/table';
 
 const store = useKnowledgeStore();
+const confirmStore = useConfirmStore();
 
 const { data: items, pending, refresh } = await useAsyncData(
   'admin-reins-knowledges',
@@ -36,7 +37,14 @@ function formatDate(iso: string): string {
 }
 
 async function onRemove(item: IKnowledge) {
-  if (!confirm(`Delete knowledge "${item.name}"?`)) return;
+  const ok = await confirmStore.ask({
+    title: 'Delete knowledge?',
+    description: `Permanently delete knowledge "${item.name}"? This cannot be undone.`,
+    confirmLabel: 'Delete',
+    cancelLabel: 'Cancel',
+    variant: 'destructive',
+  });
+  if (!ok) return;
   await store.remove(item.id);
   await refresh();
 }

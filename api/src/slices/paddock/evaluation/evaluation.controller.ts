@@ -63,6 +63,18 @@ export class PaddockEvaluationController {
     return this.service.getLogs(id);
   }
 
+  @Get(':id/scenarios/:scenarioId')
+  @ApiOperation({
+    summary:
+      "Fetch one scenario as captured in this evaluation's snapshot (messages, expectedBehavior, successCriteria). Reliable across template re-seeds that change scenario UUIDs in the live `paddock_scenarios` table.",
+  })
+  scenario(
+    @Param('id') id: string,
+    @Param('scenarioId') scenarioId: string,
+  ) {
+    return this.service.getScenario(id, scenarioId);
+  }
+
   @Get(':id/trace')
   @ApiOperation({
     summary:

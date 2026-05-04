@@ -179,6 +179,25 @@ export const usePaddockEvaluationStore = defineStore(
       return env?.data?.lines ?? [];
     }
 
+    // Fetch a scenario from the evaluation's snapshot — survives template
+    // re-seeds that change scenario UUIDs in the live `paddock_scenarios`
+    // table. Use this in evaluation views; only fall back to the global
+    // scenario store for scenario CRUD on templates.
+    async function fetchEvalScenario(
+      id: string,
+      scenarioId: string,
+    ): Promise<unknown | null> {
+      try {
+        const res = await apiClient.get<unknown>({
+          url: `/paddock-evaluations/${id}/scenarios/${scenarioId}`,
+        });
+        const env = res.data as ApiEnvelope<unknown> | undefined;
+        return env?.data ?? null;
+      } catch {
+        return null;
+      }
+    }
+
     return {
       evaluations,
       fetchAll,
@@ -189,6 +208,7 @@ export const usePaddockEvaluationStore = defineStore(
       fetchReport,
       fetchTrace,
       fetchLogs,
+      fetchEvalScenario,
     };
   },
 );

@@ -167,6 +167,11 @@ export class BunCliPaddockRunner extends IPaddockRunner {
       this.logger.log(
         `Spawning bun ${cliPath} run for ${input.scenarios.length} scenarios in ${runtimeRoot}`,
       );
+      this.logger.log(
+        `[order] ${input.scenarios
+          .map((s, i) => `${i + 1}.${s.category}/${s.difficulty}/${s.name}`)
+          .join(' → ')}`,
+      );
 
       const onProgress = input.onProgress;
       const progressRegex = /\[paddock\] running scenario (\d+)\/(\d+): (\S+)/;

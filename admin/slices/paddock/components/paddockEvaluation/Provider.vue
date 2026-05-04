@@ -21,6 +21,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconRefresh,
+  IconLoader2,
   IconCopy,
   IconCheck,
 } from '@tabler/icons-vue';
@@ -40,7 +41,26 @@ const store = usePaddockEvaluationStore();
 // the live `paddock_scenarios` table can drift (template re-seed assigns
 // new UUIDs) so only the snapshot is reliable for past/running runs.
 const expandedLiveScenario = ref<string | null>(null);
-const liveScenarioCache = ref<Record<string, IPaddockScenario | null>>({});
+const liveScenarioCache = ref<Record<string, IPaddockScenario>>({});
+const liveScenarioLoading = ref<Record<string, boolean>>({});
+const liveScenarioError = ref<Record<string, boolean>>({});
+
+async function loadLiveScenario(id: string) {
+  liveScenarioLoading.value[id] = true;
+  liveScenarioError.value[id] = false;
+  try {
+    const data = await store.fetchEvalScenario(props.evaluationId, id);
+    if (data) {
+      liveScenarioCache.value[id] = data as IPaddockScenario;
+    } else {
+      liveScenarioError.value[id] = true;
+    }
+  } catch {
+    liveScenarioError.value[id] = true;
+  } finally {
+    liveScenarioLoading.value[id] = false;
+  }
+}
 
 async function toggleLiveScenario(id: string) {
   if (expandedLiveScenario.value === id) {
@@ -48,9 +68,8 @@ async function toggleLiveScenario(id: string) {
     return;
   }
   expandedLiveScenario.value = id;
-  if (liveScenarioCache.value[id] === undefined) {
-    const data = await store.fetchEvalScenario(props.evaluationId, id);
-    liveScenarioCache.value[id] = (data as IPaddockScenario | null) ?? null;
+  if (!liveScenarioCache.value[id] && !liveScenarioLoading.value[id]) {
+    await loadLiveScenario(id);
   }
 }
 
@@ -64,8 +83,15 @@ const polling = ref<ReturnType<typeof setInterval> | null>(null);
 const expandedScenario = ref<string | null>(null);
 const traces = ref<Record<string, object | null>>({});
 
+const refreshing = ref(false);
+
 async function refresh() {
-  evaluation.value = await store.fetchById(props.evaluationId);
+  refreshing.value = true;
+  try {
+    evaluation.value = await store.fetchById(props.evaluationId);
+  } finally {
+    refreshing.value = false;
+  }
 }
 
 const logLines = ref<string[]>([]);
@@ -421,7 +447,15 @@ const elapsedLabel = computed(() => {
             <IconRefresh class="size-4" :class="rerunning ? 'animate-spin' : ''" />
             {{ rerunning ? 'Starting…' : `Rerun failed${rerunCount > 0 ? ` (${rerunCount})` : ''}` }}
           </Button>
-          <Button variant="ghost" @click="refresh()">Refresh</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            :disabled="refreshing"
+            @click="refresh()"
+          >
+            <IconLoader2 v-if="refreshing" class="size-4 animate-spin" />
+            <IconRefresh v-else class="size-4" />
+          </Button>
         </div>
         <p v-if="rerunError" class="text-xs text-destructive">{{ rerunError }}</p>
       </div>
@@ -606,12 +640,25 @@ const elapsedLabel = computed(() => {
               </template>
 
               <p
-                v-else-if="liveScenarioFor(s.id) === null"
-                class="text-muted-foreground italic"
+                v-else-if="liveScenarioLoading[s.id]"
+                class="flex items-center gap-2 text-muted-foreground italic"
               >
-                Could not load scenario details.
+                <IconLoader2 class="size-3.5 animate-spin" />
+                Loading…
               </p>
-              <p v-else class="text-muted-foreground italic">Loading…</p>
+              <div
+                v-else-if="liveScenarioError[s.id]"
+                class="flex items-center justify-between gap-2 text-muted-foreground italic"
+              >
+                <span>Could not load scenario details.</span>
+                <button
+                  type="button"
+                  class="cursor-pointer rounded-md border border-border px-2 py-0.5 text-[10px] not-italic hover:bg-muted"
+                  @click.stop="loadLiveScenario(s.id)"
+                >
+                  Retry
+                </button>
+              </div>
             </div>
           </li>
         </ul>

@@ -22,6 +22,39 @@ import {
 import { IPaddockScenarioData } from '../../scenario/domain';
 import { RanchAgentEnvelope } from '../data/ranchAgentEnvelope';
 
+// Stable execution order for paddock. Logical "easy → hard" progression
+// keyed by category, with difficulty + name as deterministic tie-breakers.
+// BunCliPaddockRunner materializes scenarios with zero-padded filenames
+// in this order, so paddock's readdirSync sees them in the same sequence.
+const CATEGORY_ORDER: Record<string, number> = {
+  conversation: 0,
+  memory: 1,
+  multi_turn: 2,
+  tool_use: 3,
+  error_recovery: 4,
+  edge_case: 5,
+  patching_workflow: 6,
+};
+
+const DIFFICULTY_ORDER: Record<string, number> = {
+  easy: 0,
+  medium: 1,
+  hard: 2,
+  adversarial: 3,
+};
+
+function sortScenarios(scenarios: IPaddockScenarioData[]): IPaddockScenarioData[] {
+  return [...scenarios].sort((a, b) => {
+    const catA = CATEGORY_ORDER[a.category] ?? 99;
+    const catB = CATEGORY_ORDER[b.category] ?? 99;
+    if (catA !== catB) return catA - catB;
+    const diffA = DIFFICULTY_ORDER[a.difficulty] ?? 99;
+    const diffB = DIFFICULTY_ORDER[b.difficulty] ?? 99;
+    if (diffA !== diffB) return diffA - diffB;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 @Injectable()
 export class PaddockEvaluationService {
   private readonly logger = new Logger(PaddockEvaluationService.name);
@@ -158,8 +191,8 @@ export class PaddockEvaluationService {
         .filter((r) => r.verdict === 'pass')
         .map((r) => r.scenarioId),
     );
-    const scenariosToRun = source.scenariosSnapshot.filter(
-      (s) => !passedIds.has(s.id),
+    const scenariosToRun = sortScenarios(
+      source.scenariosSnapshot.filter((s) => !passedIds.has(s.id)),
     );
 
     if (scenariosToRun.length === 0) {
@@ -214,15 +247,17 @@ export class PaddockEvaluationService {
   private async resolveScenarios(
     input: IRunPaddockEvaluationData,
   ): Promise<IPaddockScenarioData[]> {
+    let scenarios: IPaddockScenarioData[];
     if (input.scenarioIds && input.scenarioIds.length > 0) {
-      const scenarios: IPaddockScenarioData[] = [];
+      scenarios = [];
       for (const id of input.scenarioIds) {
         const s = await this.scenarioGateway.findById(id);
         if (s) scenarios.push(s);
       }
-      return scenarios;
+    } else {
+      scenarios = await this.scenarioGateway.findForAgent(input.agentId);
     }
-    return this.scenarioGateway.findForAgent(input.agentId);
+    return sortScenarios(scenarios);
   }
 
   /**

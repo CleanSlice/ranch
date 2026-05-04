@@ -38,6 +38,11 @@ COPY --from=builder /build/api/package.json ./
 # Runtime sits at /usr/src/app/runtime — picked up by BunCliPaddockRunner
 # via PADDOCK_RUNTIME_ROOT (set in k8s) or auto-detection (`process.cwd() + '/runtime'`).
 COPY --from=builder /build/runtime ./runtime
+# Rancher template source (.agent/ + .paddock/) seeds the Rancher template
+# files (SOUL.md, MEMORY.md, …) and paddock scenarios into the DB on first
+# /rancher/template POST. RANCHER_TEMPLATE_DIR / RANCHER_PADDOCK_DIR in
+# k8s point at this location.
+COPY rancher ./rancher
 ARG RANCH_VERSION=dev
 ENV RANCH_VERSION=${RANCH_VERSION}
 ENV PORT=3333

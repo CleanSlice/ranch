@@ -37,6 +37,14 @@ spec:
             # documents the contract and bypasses lookup.
             - name: PADDOCK_RUNTIME_ROOT
               value: /usr/src/app/runtime
+            # Rancher template seed sources — image ships the rancher/ folder
+            # at /usr/src/app/rancher. RancherService falls back to
+            # `cwd()/../rancher` which doesn't exist in this image, so we set
+            # them explicitly.
+            - name: RANCHER_TEMPLATE_DIR
+              value: /usr/src/app/rancher/.agent
+            - name: RANCHER_PADDOCK_DIR
+              value: /usr/src/app/rancher/.paddock/scenarios
           volumeMounts:
             - name: paddock-work
               mountPath: /usr/src/app/runtime/.paddock

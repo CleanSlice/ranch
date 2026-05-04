@@ -74,9 +74,17 @@ export class RancherService {
   // filesystem from the local source (rancher/.agent/, etc.). The image
   // override comes from `agent_defaults.image` if the operator set one
   // in Settings.
+  //
+  // If the template already exists but has no files or scenarios attached
+  // (e.g. the previous deploy ran without `rancher/` baked into the image),
+  // we re-attempt the seeds so a redeploy with the source available heals
+  // the empty template without needing manual deletion.
   async ensureTemplate(): Promise<ITemplateData> {
     const existing = await this.templateGateway.findById(RANCHER_TEMPLATE_ID);
-    if (existing) return existing;
+    if (existing) {
+      await this.healTemplate();
+      return existing;
+    }
 
     const imageSetting = await this.settingGateway.findByKey(
       'agent_defaults',
@@ -114,6 +122,40 @@ export class RancherService {
     await this.seedTemplateFiles();
     await this.seedTemplateScenarios();
     return withMcps;
+  }
+
+  // Re-seed empty pieces of an existing template. Cheap to run on every
+  // call — both checks are O(1) DB hits and the seeders no-op fast when
+  // the source dir is missing.
+  private async healTemplate(): Promise<void> {
+    try {
+      const files = await this.templateFileGateway.list(RANCHER_TEMPLATE_ID);
+      if (files.length === 0) {
+        this.logger.log(
+          `Rancher template ${RANCHER_TEMPLATE_ID} has no files — seeding from source`,
+        );
+        await this.seedTemplateFiles();
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to check Rancher template files: ${(err as Error).message}`,
+      );
+    }
+    try {
+      const scenarios = await this.scenarioGateway.findAll({
+        templateId: RANCHER_TEMPLATE_ID,
+      });
+      if (scenarios.length === 0) {
+        this.logger.log(
+          `Rancher template ${RANCHER_TEMPLATE_ID} has no paddock scenarios — seeding from source`,
+        );
+        await this.seedTemplateScenarios();
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to check Rancher template scenarios: ${(err as Error).message}`,
+      );
+    }
   }
 
   // Walks the local `.agent/` folder under rancher/ and uploads every file

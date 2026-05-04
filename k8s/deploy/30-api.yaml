@@ -70,6 +70,20 @@ spec:
               value: "argo"
             - name: ARGO_WORKFLOWS_URL
               value: "http://argo-workflows-server.argo.svc.cluster.local:2746"
+            # Paddock CLI dynamic-imports <runtimeRoot>/src/runtime.ts and
+            # writes scenarios + reports under <runtimeRoot>/.paddock.
+            # Image ships runtime at /usr/src/app/runtime.
+            - name: PADDOCK_RUNTIME_ROOT
+              value: /usr/src/app/runtime
+            # Rancher template seed sources — image ships rancher/ at
+            # /usr/src/app/rancher.
+            - name: RANCHER_TEMPLATE_DIR
+              value: /usr/src/app/rancher/.agent
+            - name: RANCHER_PADDOCK_DIR
+              value: /usr/src/app/rancher/.paddock/scenarios
+          volumeMounts:
+            - name: paddock-work
+              mountPath: /usr/src/app/runtime/.paddock
           readinessProbe:
             httpGet:
               path: /health
@@ -89,6 +103,10 @@ spec:
             limits:
               cpu: 1000m
               memory: 768Mi
+      volumes:
+        - name: paddock-work
+          emptyDir:
+            sizeLimit: 1Gi
 ---
 apiVersion: v1
 kind: Service

@@ -135,11 +135,17 @@ export class RancherService implements OnApplicationBootstrap {
 
     await this.seedTemplateFiles();
     await this.seedTemplateScenarios();
-    // Record the source hash so the boot-time sync can tell when source
-    // drifts in a future deploy. Null means source dirs were unreachable —
-    // fine, the next boot will retry.
-    const initialHash = await this.computeSourceHash();
-    if (initialHash) await this.storeSourceHash(initialHash);
+    // Record the source hash only if seeds actually populated the template,
+    // so a partial seed (e.g. transient S3 hiccup) doesn't trick the
+    // next-boot sync into thinking "in sync" against an empty template.
+    const [filesAfter, scenariosAfter] = await Promise.all([
+      this.templateFileGateway.list(RANCHER_TEMPLATE_ID),
+      this.scenarioGateway.findAll({ templateId: RANCHER_TEMPLATE_ID }),
+    ]);
+    if (filesAfter.length > 0 && scenariosAfter.length > 0) {
+      const initialHash = await this.computeSourceHash();
+      if (initialHash) await this.storeSourceHash(initialHash);
+    }
     return withMcps;
   }
 
@@ -171,7 +177,24 @@ export class RancherService implements OnApplicationBootstrap {
     await this.deleteTemplateScenarios();
     await this.seedTemplateFiles();
     await this.seedTemplateScenarios();
+
+    // seed methods swallow their own errors (best-effort). Only record the
+    // hash once the post-conditions are met — otherwise next boot would
+    // assume "in sync" and never retry on an empty template.
+    const [filesAfter, scenariosAfter] = await Promise.all([
+      this.templateFileGateway.list(RANCHER_TEMPLATE_ID),
+      this.scenarioGateway.findAll({ templateId: RANCHER_TEMPLATE_ID }),
+    ]);
+    if (filesAfter.length === 0 || scenariosAfter.length === 0) {
+      this.logger.warn(
+        `Rancher sync did not populate the template (files=${filesAfter.length}, scenarios=${scenariosAfter.length}); leaving hash unset so the next boot retries`,
+      );
+      return;
+    }
     await this.storeSourceHash(currentHash);
+    this.logger.log(
+      `Rancher template synced: ${filesAfter.length} files, ${scenariosAfter.length} scenarios`,
+    );
   }
 
   private async deleteTemplateScenarios(): Promise<void> {

@@ -4,17 +4,21 @@ difficulty: medium
 name: Promote an agent to ranch admin
 description: User asks to make a specific agent the ranch admin
 expectedBehavior: |
-  Agent calls set_agent_admin with id and enabled=true. Mentions the single-admin
-  invariant only if the user seems unaware, otherwise just confirms.
+  Agent calls `set_agent_admin` MCP tool with id+enabled=true (if loaded)
+  OR `http` PUT ${RANCH_API_URL}/agents/agent-bridle-42 with body
+  `{ isAdmin: true }` and Bearer auth. Mentions the single-admin invariant
+  only if the user seems unaware.
 messages:
   - text: "Make agent-bridle-42 the admin of this ranch"
     from: eval-user
 successCriteria:
   - dimension: tool_usage
-    description: Called set_agent_admin with id="agent-bridle-42", enabled=true
+    description: |
+      Called either `set_agent_admin` with id+enabled=true OR `http` PUT
+      on ${RANCH_API_URL}/agents/agent-bridle-42 with isAdmin=true.
     weight: 0.5
   - dimension: correctness
-    description: Confirmed promotion based on returned data
+    description: Confirmed promotion based on the response (not invented data)
     weight: 0.3
   - dimension: response_quality
     description: Concise; mentions previous admin was demoted only if relevant

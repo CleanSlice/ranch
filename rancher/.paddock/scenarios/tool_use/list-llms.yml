@@ -3,13 +3,16 @@ category: tool_use
 difficulty: easy
 name: List configured LLM credentials
 description: User wants to see what LLMs are wired up on the ranch
-expectedBehavior: Agent calls list_llms, summarizes provider/model/status per credential
+expectedBehavior: |
+  Agent calls `list_llms` MCP tool (if loaded) OR `http` GET
+  ${RANCH_API_URL}/llms with Bearer auth, then summarizes provider /
+  model / status per credential. Russian user message — answer in Russian.
 messages:
   - text: "Какие LLM подключены к ранчу?"
     from: eval-user
 successCriteria:
   - dimension: tool_usage
-    description: Called list_llms
+    description: Called either `list_llms` OR `http` GET on ${RANCH_API_URL}/llms
     weight: 0.4
   - dimension: soul_compliance
     description: Responded in Russian (mirroring user language)

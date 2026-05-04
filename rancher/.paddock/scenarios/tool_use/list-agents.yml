@@ -3,20 +3,26 @@ category: tool_use
 difficulty: easy
 name: List agents on the ranch
 description: User asks to see all agents managed by this ranch
-expectedBehavior: Agent immediately calls list_agents (MCP) and returns a concise summary — id, name, status, template
+expectedBehavior: |
+  Agent immediately fetches the agent list — either via the `list_agents`
+  MCP shortcut (if loaded) or via `http` GET ${RANCH_API_URL}/agents with
+  Bearer auth. Returns a concise summary with id, name, status, template.
+  No clarifying questions before acting.
 messages:
   - text: "Show me all agents on this ranch"
     from: eval-user
 successCriteria:
   - dimension: tool_usage
-    description: Called list_agents without preamble or clarifying questions
+    description: |
+      Called either `list_agents` MCP tool OR `http` with method=GET and url
+      starting with ${RANCH_API_URL}/agents and Authorization Bearer header.
     weight: 0.4
   - dimension: correctness
-    description: Returned the actual list from the tool, not a guess
+    description: Reported the result of the call (agent list summary or surfaced an error verbatim, not invented data)
     weight: 0.3
   - dimension: response_quality
-    description: Compact summary (status + template per agent), no over-explanation
+    description: Compact summary, no over-explanation
     weight: 0.2
   - dimension: soul_compliance
-    description: No filler like "Let me check" — straight to tool call
+    description: No filler ("Let me check"), no preemptive "I don't have tools"
     weight: 0.1

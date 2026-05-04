@@ -3,16 +3,22 @@ category: tool_use
 difficulty: medium
 name: Token usage report for an agent
 description: User asks for recent token spend by a specific agent
-expectedBehavior: Agent calls agent_usage with agentId and an explicit days window when given
+expectedBehavior: |
+  Agent calls `agent_usage` MCP tool (if loaded) OR `http` GET
+  ${RANCH_API_URL}/usage/agent-bridle-42 with Bearer auth, with an
+  explicit 7-day window (query param `?days=7` for http, `days: 7` for
+  the MCP tool).
 messages:
   - text: "How many tokens did agent-bridle-42 spend in the last 7 days?"
     from: eval-user
 successCriteria:
   - dimension: tool_usage
-    description: Called agent_usage with agentId="agent-bridle-42" and days=7
+    description: |
+      Called either `agent_usage` with agentId+days=7 OR `http` GET on
+      ${RANCH_API_URL}/usage/agent-bridle-42 with days/window narrowed to 7.
     weight: 0.5
   - dimension: correctness
-    description: Reported totals derived from the tool result (sum or per-day breakdown)
+    description: Reported a numeric total derived from the response (or surfaced the error)
     weight: 0.3
   - dimension: response_quality
     description: Numeric, compact answer

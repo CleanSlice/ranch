@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import { parse as parseYaml } from 'yaml';
 import { ITemplateGateway, ITemplateData } from '#/agent/template/domain';
@@ -42,8 +43,11 @@ const SCENARIO_DIFFICULTIES: readonly PaddockScenarioDifficulty[] = [
   'adversarial',
 ];
 
+const SEEDED_HASH_GROUP = 'rancher';
+const SEEDED_HASH_NAME = 'seeded_hash';
+
 @Injectable()
-export class RancherService {
+export class RancherService implements OnApplicationBootstrap {
   private readonly logger = new Logger(RancherService.name);
 
   constructor(
@@ -55,6 +59,24 @@ export class RancherService {
     private mcpServerGateway: IMcpServerGateway,
     private scenarioGateway: IPaddockScenarioGateway,
   ) {}
+
+  // Auto-sync the Rancher template's files + paddock scenarios on every
+  // api boot. Compares a content-hash of the local source against the
+  // hash recorded after the last successful sync (stored in `settings`):
+  //   - hash matches → no-op
+  //   - hash differs (new image, edited yml in dev, etc.) → wipe and reseed
+  // Skips silently if the template doesn't exist yet — POST /rancher/template
+  // will create + seed it on first call.
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      await this.syncTemplateIfChanged();
+    } catch (err) {
+      // Best-effort: don't block api startup on a sync failure.
+      this.logger.warn(
+        `Rancher template auto-sync failed: ${(err as Error).message}`,
+      );
+    }
+  }
 
   async getStatus(): Promise<IRancherStatus> {
     const [llms, template, admin] = await Promise.all([
@@ -74,17 +96,9 @@ export class RancherService {
   // filesystem from the local source (rancher/.agent/, etc.). The image
   // override comes from `agent_defaults.image` if the operator set one
   // in Settings.
-  //
-  // If the template already exists but has no files or scenarios attached
-  // (e.g. the previous deploy ran without `rancher/` baked into the image),
-  // we re-attempt the seeds so a redeploy with the source available heals
-  // the empty template without needing manual deletion.
   async ensureTemplate(): Promise<ITemplateData> {
     const existing = await this.templateGateway.findById(RANCHER_TEMPLATE_ID);
-    if (existing) {
-      await this.healTemplate();
-      return existing;
-    }
+    if (existing) return existing;
 
     const imageSetting = await this.settingGateway.findByKey(
       'agent_defaults',
@@ -121,41 +135,91 @@ export class RancherService {
 
     await this.seedTemplateFiles();
     await this.seedTemplateScenarios();
+    // Record the source hash so the boot-time sync can tell when source
+    // drifts in a future deploy. Null means source dirs were unreachable —
+    // fine, the next boot will retry.
+    const initialHash = await this.computeSourceHash();
+    if (initialHash) await this.storeSourceHash(initialHash);
     return withMcps;
   }
 
-  // Re-seed empty pieces of an existing template. Cheap to run on every
-  // call — both checks are O(1) DB hits and the seeders no-op fast when
-  // the source dir is missing.
-  private async healTemplate(): Promise<void> {
-    try {
-      const files = await this.templateFileGateway.list(RANCHER_TEMPLATE_ID);
-      if (files.length === 0) {
-        this.logger.log(
-          `Rancher template ${RANCHER_TEMPLATE_ID} has no files — seeding from source`,
-        );
-        await this.seedTemplateFiles();
-      }
-    } catch (err) {
+  // Internal — boot-time. Replaces files + scenarios when the local source
+  // hash differs from the one stored in settings. Loud about what it does.
+  private async syncTemplateIfChanged(): Promise<void> {
+    const existing = await this.templateGateway.findById(RANCHER_TEMPLATE_ID);
+    if (!existing) return;
+
+    const currentHash = await this.computeSourceHash();
+    if (currentHash === null) {
       this.logger.warn(
-        `Failed to check Rancher template files: ${(err as Error).message}`,
+        'Rancher source hash unavailable (RANCHER_TEMPLATE_DIR / RANCHER_PADDOCK_DIR missing) — skipping auto-sync',
       );
+      return;
     }
-    try {
-      const scenarios = await this.scenarioGateway.findAll({
-        templateId: RANCHER_TEMPLATE_ID,
-      });
-      if (scenarios.length === 0) {
-        this.logger.log(
-          `Rancher template ${RANCHER_TEMPLATE_ID} has no paddock scenarios — seeding from source`,
-        );
-        await this.seedTemplateScenarios();
+    const stored = await this.settingGateway.findByKey(
+      SEEDED_HASH_GROUP,
+      SEEDED_HASH_NAME,
+    );
+    const storedHash =
+      typeof stored?.value === 'string' ? stored.value : null;
+    if (storedHash === currentHash) return;
+
+    this.logger.log(
+      `Rancher template source hash changed (${storedHash ?? 'none'} → ${currentHash}) — wiping and reseeding files + scenarios`,
+    );
+    await this.templateFileGateway.wipe(RANCHER_TEMPLATE_ID);
+    await this.deleteTemplateScenarios();
+    await this.seedTemplateFiles();
+    await this.seedTemplateScenarios();
+    await this.storeSourceHash(currentHash);
+  }
+
+  private async deleteTemplateScenarios(): Promise<void> {
+    const scenarios = await this.scenarioGateway.findAll({
+      templateId: RANCHER_TEMPLATE_ID,
+    });
+    for (const s of scenarios) {
+      await this.scenarioGateway.delete(s.id);
+    }
+  }
+
+  private async storeSourceHash(hash: string): Promise<void> {
+    await this.settingGateway.upsert(SEEDED_HASH_GROUP, SEEDED_HASH_NAME, {
+      value: hash,
+      valueType: 'string',
+    });
+  }
+
+  // SHA-256 of (sorted) {path, contents} entries from the .agent dir and the
+  // .paddock/scenarios dir. Returns null if neither dir is reachable —
+  // caller treats that as "skip auto-sync, the previous state is fine".
+  private async computeSourceHash(): Promise<string | null> {
+    const agentDir =
+      process.env.RANCHER_TEMPLATE_DIR ??
+      path.resolve(process.cwd(), '..', 'rancher', '.agent');
+    const paddockDir =
+      process.env.RANCHER_PADDOCK_DIR ??
+      path.resolve(process.cwd(), '..', 'rancher', '.paddock', 'scenarios');
+
+    const entries: { path: string; sha: string }[] = [];
+    let found = false;
+    for (const root of [agentDir, paddockDir]) {
+      try {
+        const files = await this.collectFiles(root);
+        for (const f of files) {
+          entries.push({
+            path: `${path.basename(root)}/${f.path}`,
+            sha: createHash('sha256').update(f.buffer).digest('hex'),
+          });
+        }
+        found = true;
+      } catch {
+        // best-effort; skip missing roots
       }
-    } catch (err) {
-      this.logger.warn(
-        `Failed to check Rancher template scenarios: ${(err as Error).message}`,
-      );
     }
+    if (!found) return null;
+    entries.sort((a, b) => a.path.localeCompare(b.path));
+    return createHash('sha256').update(JSON.stringify(entries)).digest('hex');
   }
 
   // Walks the local `.agent/` folder under rancher/ and uploads every file

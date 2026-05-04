@@ -411,6 +411,20 @@ export class BunCliPaddockRunner extends IPaddockRunner {
       env.TELEGRAM_BOT_ADMIN_IDS = [...existingAdmins, 'eval-user'].join(',');
     }
 
+    // SOUL.md tells the rancher agent these env vars are guaranteed. In eval
+    // mode they aren't — without them the agent invents `localhost:8080`-
+    // style URLs and judges fail it on "wrong URL pattern". Default to the
+    // api's own loopback so the http pattern matches docs; the token is a
+    // sandbox value (calls return 401, but tool_usage scoring sees the
+    // correct call shape).
+    if (!env.RANCH_API_URL) {
+      env.RANCH_API_URL = `http://localhost:${process.env.PORT ?? '3333'}`;
+    }
+    if (!env.RANCH_API_TOKEN) {
+      env.RANCH_API_TOKEN = 'eval-sandbox-token';
+    }
+    env.RANCH_ADMIN = 'true';
+
     return env;
   }
 

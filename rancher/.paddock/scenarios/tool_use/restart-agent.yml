@@ -3,16 +3,21 @@ category: tool_use
 difficulty: medium
 name: Restart agent after file edit
 description: User edited an agent's file and wants the change to take effect
-expectedBehavior: Agent calls restart_agent with the id, confirms restart was queued
+expectedBehavior: |
+  Agent calls `restart_agent` MCP tool (if loaded) OR `http` POST
+  ${RANCH_API_URL}/agents/agent-bridle-42/restart with Bearer auth, then
+  confirms the restart was queued.
 messages:
   - text: "I just updated SOUL.md for agent-bridle-42. Restart it so the changes apply."
     from: eval-user
 successCriteria:
   - dimension: tool_usage
-    description: Called restart_agent with id="agent-bridle-42"
+    description: |
+      Called either `restart_agent` with id="agent-bridle-42" OR `http` POST
+      on url=${RANCH_API_URL}/agents/agent-bridle-42/restart with Bearer auth.
     weight: 0.5
   - dimension: correctness
-    description: Reported back that restart was queued (not claimed it's already restarted)
+    description: Reported back what the call returned — restart queued, or the actual error
     weight: 0.3
   - dimension: response_quality
     description: One-line confirmation, no extra steps invented

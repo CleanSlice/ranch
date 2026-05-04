@@ -1862,6 +1862,19 @@ export type PaddockEvaluationControllerReportResponses = {
   200: unknown;
 };
 
+export type PaddockEvaluationControllerLogsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-evaluations/{id}/logs";
+};
+
+export type PaddockEvaluationControllerLogsResponses = {
+  200: unknown;
+};
+
 export type PaddockEvaluationControllerTraceData = {
   body?: never;
   path: {

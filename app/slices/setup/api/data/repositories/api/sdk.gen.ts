@@ -119,6 +119,7 @@ import type {
   PaddockEvaluationControllerStartData,
   PaddockEvaluationControllerGetData,
   PaddockEvaluationControllerReportData,
+  PaddockEvaluationControllerLogsData,
   PaddockEvaluationControllerTraceData,
   PaddockEvaluationControllerAbortData,
   PaddockEvaluationControllerRerunData,
@@ -1926,6 +1927,22 @@ export class PaddockEvaluationsService {
       ThrowOnError
     >({
       url: "/paddock-evaluations/{id}/report",
+      ...options,
+    });
+  }
+
+  /**
+   * Live tail of paddock CLI stdout+stderr. In-memory ring buffer (~2000 lines), keyed by the evaluation's agent. Cleared on API restart or when a fresh run starts for the same agent.
+   */
+  public static paddockEvaluationControllerLogs<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockEvaluationControllerLogsData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-evaluations/{id}/logs",
       ...options,
     });
   }

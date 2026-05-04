@@ -28,10 +28,35 @@ import type {
   IPaddockEvaluationResult,
   IPaddockJudgeScore,
 } from '#paddock/stores/paddockEvaluation';
+import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 
 const props = defineProps<{ evaluationId: string }>();
 
 const store = usePaddockEvaluationStore();
+const scenarioStore = usePaddockScenarioStore();
+
+// Live-progress: which scenario rows the user has expanded, plus a cache
+// of the fetched full data (messages, expectedBehavior, successCriteria).
+const expandedLiveScenario = ref<string | null>(null);
+const liveScenarioCache = ref<Record<string, IPaddockScenario | null>>({});
+
+async function toggleLiveScenario(id: string) {
+  if (expandedLiveScenario.value === id) {
+    expandedLiveScenario.value = null;
+    return;
+  }
+  expandedLiveScenario.value = id;
+  if (liveScenarioCache.value[id] === undefined) {
+    try {
+      liveScenarioCache.value[id] = await scenarioStore.fetchById(id);
+    } catch {
+      liveScenarioCache.value[id] = null;
+    }
+  }
+}
+
+const liveScenarioFor = (id: string): IPaddockScenario | null =>
+  liveScenarioCache.value[id] ?? null;
 
 const evaluation = ref(await store.fetchById(props.evaluationId));
 const reportError = ref<string | null>(null);
@@ -441,7 +466,7 @@ const elapsedLabel = computed(() => {
           <li
             v-for="s in evaluation.scenarios"
             :key="s.id"
-            class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm"
+            class="rounded-md border text-sm"
             :class="{
               'border-primary/50 bg-primary/10': scenarioState(s.id) === 'current',
               'border-border bg-card': scenarioState(s.id) === 'done',
@@ -449,61 +474,146 @@ const elapsedLabel = computed(() => {
               'border-dashed bg-transparent text-muted-foreground': scenarioState(s.id) === 'queued',
             }"
           >
-            <!-- state icon -->
-            <span class="flex size-5 shrink-0 items-center justify-center">
-              <template v-if="scenarioState(s.id) === 'current'">
-                <span class="size-3 rounded-full bg-primary animate-pulse" />
-              </template>
-              <template v-else-if="scenarioState(s.id) === 'done'">
-                <span
-                  class="flex size-5 items-center justify-center rounded-full text-[10px] text-white"
-                  :class="verdictForScenario(s.id)?.verdict === 'pass' ? 'bg-green-600' :
-                          verdictForScenario(s.id)?.verdict === 'partial' ? 'bg-yellow-500' :
-                          verdictForScenario(s.id)?.verdict === 'skipped' ? 'bg-muted-foreground' :
-                          'bg-destructive'"
-                >
-                  ✓
-                </span>
-              </template>
-              <template v-else-if="scenarioState(s.id) === 'processed'">
-                <span class="flex size-5 items-center justify-center rounded-full bg-muted-foreground/40 text-[10px] text-white">
-                  ✓
-                </span>
-              </template>
-              <template v-else>
-                <span class="size-2 rounded-full bg-muted-foreground/30" />
-              </template>
-            </span>
+            <button
+              type="button"
+              class="flex w-full items-center gap-3 px-3 py-2 text-left"
+              @click="toggleLiveScenario(s.id)"
+            >
+              <!-- chevron -->
+              <IconChevronDown
+                v-if="expandedLiveScenario === s.id"
+                class="size-3.5 shrink-0 text-muted-foreground"
+              />
+              <IconChevronRight
+                v-else
+                class="size-3.5 shrink-0 text-muted-foreground"
+              />
 
-            <span class="font-medium flex-1 truncate">{{ s.name }}</span>
+              <!-- state icon -->
+              <span class="flex size-5 shrink-0 items-center justify-center">
+                <template v-if="scenarioState(s.id) === 'current'">
+                  <span class="size-3 rounded-full bg-primary animate-pulse" />
+                </template>
+                <template v-else-if="scenarioState(s.id) === 'done'">
+                  <span
+                    class="flex size-5 items-center justify-center rounded-full text-[10px] text-white"
+                    :class="verdictForScenario(s.id)?.verdict === 'pass' ? 'bg-green-600' :
+                            verdictForScenario(s.id)?.verdict === 'partial' ? 'bg-yellow-500' :
+                            verdictForScenario(s.id)?.verdict === 'skipped' ? 'bg-muted-foreground' :
+                            'bg-destructive'"
+                  >
+                    ✓
+                  </span>
+                </template>
+                <template v-else-if="scenarioState(s.id) === 'processed'">
+                  <span class="flex size-5 items-center justify-center rounded-full bg-muted-foreground/40 text-[10px] text-white">
+                    ✓
+                  </span>
+                </template>
+                <template v-else>
+                  <span class="size-2 rounded-full bg-muted-foreground/30" />
+                </template>
+              </span>
 
-            <Badge variant="outline" class="text-xs">{{ s.category }}</Badge>
-            <Badge variant="outline" class="text-xs">{{ s.difficulty }}</Badge>
+              <span class="font-medium flex-1 truncate">{{ s.name }}</span>
 
-            <span
-              v-if="verdictForScenario(s.id)"
-              class="tabular-nums text-xs w-12 text-right"
+              <Badge variant="outline" class="text-xs">{{ s.category }}</Badge>
+              <Badge variant="outline" class="text-xs">{{ s.difficulty }}</Badge>
+
+              <span
+                v-if="verdictForScenario(s.id)"
+                class="tabular-nums text-xs w-12 text-right"
+              >
+                {{ verdictForScenario(s.id)!.score.toFixed(1) }}
+              </span>
+              <span
+                v-else-if="scenarioState(s.id) === 'current'"
+                class="text-xs italic text-primary w-12 text-right"
+              >
+                running
+              </span>
+              <span
+                v-else-if="scenarioState(s.id) === 'processed'"
+                class="text-xs italic text-muted-foreground w-12 text-right"
+              >
+                done
+              </span>
+              <span
+                v-else
+                class="text-xs italic text-muted-foreground w-12 text-right"
+              >
+                queued
+              </span>
+            </button>
+
+            <!-- expanded scenario detail -->
+            <div
+              v-if="expandedLiveScenario === s.id"
+              class="border-t bg-background/50 px-3 py-3 flex flex-col gap-3 text-xs"
             >
-              {{ verdictForScenario(s.id)!.score.toFixed(1) }}
-            </span>
-            <span
-              v-else-if="scenarioState(s.id) === 'current'"
-              class="text-xs italic text-primary"
-            >
-              running
-            </span>
-            <span
-              v-else-if="scenarioState(s.id) === 'processed'"
-              class="text-xs italic text-muted-foreground"
-            >
-              done
-            </span>
-            <span
-              v-else
-              class="text-xs italic text-muted-foreground"
-            >
-              queued
-            </span>
+              <p
+                v-if="s.description"
+                class="text-muted-foreground"
+              >
+                {{ s.description }}
+              </p>
+
+              <template v-if="liveScenarioFor(s.id)">
+                <div v-if="liveScenarioFor(s.id)!.expectedBehavior" class="flex flex-col gap-1">
+                  <span class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Expected behavior
+                  </span>
+                  <p class="whitespace-pre-wrap leading-relaxed">
+                    {{ liveScenarioFor(s.id)!.expectedBehavior }}
+                  </p>
+                </div>
+
+                <div v-if="liveScenarioFor(s.id)!.messages?.length" class="flex flex-col gap-1">
+                  <span class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    User messages ({{ liveScenarioFor(s.id)!.messages.length }})
+                  </span>
+                  <div class="flex flex-col gap-1.5">
+                    <div
+                      v-for="(m, i) in liveScenarioFor(s.id)!.messages"
+                      :key="i"
+                      class="rounded-md border bg-muted/40 px-2.5 py-1.5"
+                    >
+                      <div class="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <code>{{ m.from }}</code>
+                        <span v-if="m.delayMs">+{{ m.delayMs }}ms</span>
+                      </div>
+                      <p class="mt-0.5 whitespace-pre-wrap">{{ m.text }}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="liveScenarioFor(s.id)!.successCriteria?.length" class="flex flex-col gap-1">
+                  <span class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Success criteria
+                  </span>
+                  <ul class="flex flex-col gap-1">
+                    <li
+                      v-for="(c, i) in liveScenarioFor(s.id)!.successCriteria"
+                      :key="i"
+                      class="flex items-start gap-2"
+                    >
+                      <Badge variant="secondary" class="text-[9px] shrink-0">
+                        {{ c.dimension }} · {{ Math.round(c.weight * 100) }}%
+                      </Badge>
+                      <span class="text-muted-foreground">{{ c.description }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </template>
+
+              <p
+                v-else-if="liveScenarioFor(s.id) === null"
+                class="text-muted-foreground italic"
+              >
+                Could not load scenario details.
+              </p>
+              <p v-else class="text-muted-foreground italic">Loading…</p>
+            </div>
           </li>
         </ul>
       </CardContent>

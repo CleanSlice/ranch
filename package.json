@@ -22,6 +22,6 @@
     "turbo": "^2"
   },
   "dependencies": {
-    "@cleanslice/paddock": "^0.2.1"
+    "@cleanslice/paddock": "^0.2.3"
   }
 }

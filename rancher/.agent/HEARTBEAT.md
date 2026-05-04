@@ -8,9 +8,9 @@ _Periodic ranch checks. Runs every 30 minutes._
 
 ## Common patterns to add
 
-- **Pod health sweep**: `ranch_agent_status` — flag any agent stuck in `pending` / `failed` / `crashloop` for >15 min.
-- **Cost guardrail**: `ranch_usage_get` for top-3 spending agents — alert the operator if 30d cost exceeds a threshold they set.
-- **LLM credential health**: `ranch_llm_list` — flag credentials with `status: 'inactive'` or that have started returning auth errors.
-- **Knowledge index freshness**: `ranch_knowledge_source_list` — flag sources whose `lastIndexedAt` is older than 7 days.
+- **Pod health sweep**: `list_agents` then `get_agent` per non-`running` one — flag any stuck in `pending` / `failed` / `crashloop` for >15 min.
+- **Cost guardrail**: `list_agents` → top-3 by spend via `agent_usage({ agentId, days: 30 })` — alert if a threshold the operator set is breached.
+- **LLM credential health**: `list_llms` — flag credentials with `status: 'inactive'` or that have started returning auth errors.
+- **Knowledge index freshness**: `http GET ${RANCH_API_URL}/knowledges` — flag knowledge bases whose sources are older than 7 days (no MCP shortcut for this; see ranch SKILL recipe #8).
 
 Add only what the operator explicitly asks for. Heartbeat noise is worse than no heartbeat.

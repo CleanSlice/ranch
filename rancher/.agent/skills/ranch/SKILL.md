@@ -1,6 +1,6 @@
 ---
 name: ranch
-description: Operate the Ranch — manage agents, templates, skills, LLMs, knowledge, users, settings via the ranch_* toolset. Use this skill whenever the operator asks anything about agents, templates, skills, deployments, LLM credentials, knowledge bases, users, usage, secrets, or platform settings.
+description: Operate the Ranch — manage agents, templates, skills, LLMs, knowledge, users, settings via the ranch_* MCP tools or the http tool. Use this skill whenever the operator asks anything about agents, templates, skills, deployments, LLM credentials, knowledge bases, users, usage, secrets, or platform settings.
 metadata:
   emoji: "🤠"
   always: true
@@ -8,28 +8,83 @@ metadata:
 
 # Ranch Skill — Operating the Platform
 
-The `ranch_*` tools are your operational interface to the Ranch API. Use them aggressively — they are the only correct way to act on the operator's requests. Never simulate, narrate, or guess what would happen — call the tool.
+You have **two ways** to act on the Ranch. Use the right one for the right job.
+
+1. **`ranch_*` MCP tools** — fast shortcuts auto-attached because you have `RANCH_ADMIN=true`. They cover the most common reads and a handful of mutations. Call them by their exact names from the table below.
+2. **`http` tool against `${RANCH_API_URL}`** — universal interface; everything the API can do is reachable here, including all the ops that don't have an MCP shortcut. Always available.
 
 This skill is `always: true` because every operator request touches at least one of these resources.
 
 ---
 
-## Tool Map
+## MCP tool catalogue (real names — these are the ONLY ones)
 
-| Domain | Read | Mutate (admin-only) |
-|--------|------|---------------------|
-| **Agents** | `ranch_agent_list`, `ranch_agent_get`, `ranch_agent_status` | `ranch_agent_create`, `ranch_agent_update`, `ranch_agent_delete`, `ranch_agent_restart`, `ranch_agent_set_debug` |
-| **Templates** | `ranch_template_list`, `ranch_template_get` | `ranch_template_create`, `ranch_template_update`, `ranch_template_delete`, `ranch_template_set_skills` |
-| **Template files** | `ranch_template_file_list`, `ranch_template_file_read` | `ranch_template_file_save` |
-| **Skills** | `ranch_skill_list`, `ranch_skill_get`, `ranch_skill_search` | `ranch_skill_create`, `ranch_skill_update`, `ranch_skill_delete`, `ranch_skill_import` |
-| **Knowledge** | `ranch_knowledge_list`, `ranch_knowledge_get`, `ranch_knowledge_query`, `ranch_knowledge_source_list` | `ranch_knowledge_create`, `ranch_knowledge_update`, `ranch_knowledge_delete`, `ranch_knowledge_index`, `ranch_knowledge_source_add`, `ranch_knowledge_source_delete` |
-| **LLMs** | `ranch_llm_list`, `ranch_llm_get` | `ranch_llm_create`, `ranch_llm_update`, `ranch_llm_delete` |
-| **Users** | `ranch_user_list`, `ranch_user_get`, `ranch_usage_get` | `ranch_user_invite`, `ranch_user_update`, `ranch_user_delete`, `ranch_user_set_roles` |
-| **Settings** | `ranch_settings_list`, `ranch_settings_get` | `ranch_settings_upsert`, `ranch_settings_delete` |
-| **Files / logs** | `ranch_file_list`, `ranch_file_read`, `ranch_secret_list`, `ranch_logs` | `ranch_file_save`, `ranch_file_sync` |
-| **Escape hatch** | `ranch_api_call` (read or write any Ranch API endpoint) |  |
+| Domain | Tool | Purpose |
+|--------|------|---------|
+| **Agents** | `list_agents` | every agent on the ranch with status, template, resources |
+|            | `get_agent` (id) | single agent's status / workflowId / config |
+|            | `restart_agent` (id) | queue restart of an agent's pod |
+|            | `set_agent_admin` (id, enabled) | promote / demote (single-admin invariant — enabling clears the flag elsewhere) |
+| **Templates** | `list_templates` | all templates |
+|               | `get_template` (id) | template + image + defaults + attached skill ids |
+|               | `set_template_skills` (id, skillIds) | EXHAUSTIVE — sends the full skill list, omitted ids get detached |
+| **Skills** | `list_skills` | inventory |
+| **LLMs** | `list_llms` | configured credentials (provider, model, status) |
+| **Settings** | `list_settings` (group?) | all platform settings, optionally filtered by group |
+|              | `upsert_setting` (group, name, value, valueType?) | create / replace; `valueType=string` for strings, `json` for objects/numbers/arrays |
+| **Agent files** | `list_agent_files` (agentId) | files in agent's S3 prefix (mounted into pod's `.agent/`) |
+|                 | `read_agent_file` (agentId, path) | one file (`SOUL.md`, `MEMORY.md`, `agent.config.json`, …) |
+|                 | `write_agent_file` (agentId, path, content) | only `.md` and `.json` accepted; restart the agent for changes to apply |
+| **Usage** | `agent_usage` (agentId, days?) | recent token usage records (default 30 days) |
 
-**Rule:** if a dedicated `ranch_*` tool exists for the action, use it. Drop to `ranch_api_call` only when the dedicated tool is missing or a new endpoint hasn't been wrapped yet.
+**Anything not in this table — there is no `ranch_*` shortcut.** Don't invent names. Use `http` (next section).
+
+---
+
+## HTTP fallback — for everything not in the table above
+
+The Ranch API has many endpoints that don't have a dedicated MCP tool. Use the `http` tool with the env vars guaranteed on your pod:
+
+- `RANCH_API_URL` — base URL (e.g. `http://api:3000` in-cluster)
+- `RANCH_API_TOKEN` — Bearer JWT, role `Owner`
+
+```
+http({
+  url: "${RANCH_API_URL}/<path>",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  headers: { "Authorization": "Bearer ${RANCH_API_TOKEN}", "Content-Type": "application/json" },
+  body: "<json>"  // when applicable
+})
+```
+
+### Common HTTP-only routes
+
+| What | Method · Path |
+|------|---------------|
+| Create agent | POST `/agents` body `{ name, templateId, llmCredentialId?, isAdmin? }` |
+| Update agent | PUT `/agents/{id}` |
+| Delete agent | DELETE `/agents/{id}` |
+| Agent live pod state | GET `/agents/status` |
+| Agent secrets list | GET `/agents/{id}/secrets` |
+| Agent logs | GET `/agents/{id}/logs?tail=200` |
+| Set agent debug | PATCH `/agents/{id}/debug` body `{ enabled }` |
+| Create template | POST `/templates` |
+| Update template | PUT `/templates/{id}` |
+| Delete template | DELETE `/templates/{id}` |
+| Template files | GET·PUT `/templates/{id}/files[?path=]` |
+| Skill CRUD | POST·PUT·DELETE `/skills[/{id}]` |
+| Search GitHub skills | GET `/skills/search?q=<term>` |
+| Import skill from GitHub | POST `/skills/import` body `{ url }` |
+| LLM credential CRUD | POST·PUT·DELETE `/llms[/{id}]` |
+| Knowledge bases · CRUD | GET·POST·PUT·DELETE `/knowledges[/{id}]` |
+| Query knowledge | POST `/knowledges/{id}/query` body `{ query }` |
+| List users | GET `/users` |
+| Invite user | POST `/users/invite` body `{ email, roles }` |
+| User CRUD | PUT·DELETE `/users/{id}` |
+| Delete a setting | DELETE `/settings/{group}/{name}` |
+| OpenAPI spec (full surface) | GET `/api-json` — fetch this if you need to introspect any endpoint |
+
+For anything not listed: fetch `/api-json` and pick the right route.
 
 ---
 
@@ -40,14 +95,14 @@ This skill is `always: true` because every operator request touches at least one
 ```
 operator: "spawn an agent named Knox using the default template with our Claude key"
 
-1. ranch_template_list                              → find the default template's id
-2. ranch_llm_list                                   → find the active Claude credential id
-3. ranch_agent_create({ body: {
+1. list_templates                                 → find the default template's id
+2. list_llms                                      → find the active Claude credential id
+3. http POST ${RANCH_API_URL}/agents body {
      name: "Knox",
      templateId: <template-id>,
      llmCredentialId: <llm-id>
-   }})                                              → returns the new agent + status
-4. (optionally) ranch_agent_status({ id })          → confirm pod is healthy
+   }                                              → returns the new agent + status
+4. get_agent({ id })                              → confirm pod is healthy (after a moment)
 ```
 
 Report back: `Knox spawned · agent-<id> · status: pending → running`.
@@ -59,9 +114,9 @@ Report back: `Knox spawned · agent-<id> · status: pending → running`.
 ```
 operator: "restart Knox"
 
-1. ranch_agent_list                                 → resolve "Knox" → agent id
-2. ranch_agent_restart({ id })                      → returns 202 + new pod
-3. ranch_agent_status({ id })                       → after a moment, confirm running
+1. list_agents                                    → resolve "Knox" → agent id
+2. restart_agent({ id })                          → returns 202 + new pod
+3. (after 10-60s) get_agent({ id })               → confirm running
 ```
 
 Don't wait synchronously for `running` — pods take 10-60s. Report the restart and the current status; if the operator wants confirmation, schedule a 60-second `cron_add` follow-up.
@@ -73,13 +128,14 @@ Don't wait synchronously for `running` — pods take 10-60s. Report the restart 
 ```
 operator: "add a DeepSeek key: sk-..."
 
-1. ranch_llm_create({ body: {
-     provider: "deepseek",
-     model: "deepseek-chat",
-     apiKey: "sk-...",
-     status: "active"
-   }})                                              → returns the new credential
-2. (optional) ranch_llm_list                        → confirm visible
+http POST ${RANCH_API_URL}/llms body {
+  provider: "deepseek",
+  model: "deepseek-chat",
+  apiKey: "sk-...",
+  status: "active"
+}                                                 → returns the new credential
+
+(optional) list_llms                              → confirm visible
 ```
 
 **Never log or echo the API key** in your reply. Confirm with `Saved · deepseek-chat · llm-<id>`.
@@ -91,18 +147,18 @@ operator: "add a DeepSeek key: sk-..."
 Most operators want to copy an existing template + tweak it. Workflow:
 
 ```
-operator: "make a new template like 'default' but call it 'researcher' with a 1Gi memory"
+operator: "make a new template like 'default' but call it 'researcher' with 1Gi memory"
 
-1. ranch_template_get({ id: <default-id> })         → get the source template
-2. ranch_template_create({ body: {
+1. get_template({ id: <default-id> })             → get the source template
+2. http POST ${RANCH_API_URL}/templates body {
      name: "researcher",
      description: "...",
      image: "<copied>",
      defaultResources: { cpu: "500m", memory: "1Gi" },
      defaultConfig: { ...copied... }
-   }})                                              → returns new template id
+   }                                              → returns new template id
 3. (optional) attach skills:
-   ranch_template_set_skills({
+   set_template_skills({
      id: <new-template-id>,
      skillIds: [<skill-id>, ...]
    })
@@ -111,11 +167,13 @@ operator: "make a new template like 'default' but call it 'researcher' with a 1G
 To copy template files (SOUL.md, skills, etc.) from the source:
 
 ```
-4. ranch_template_file_list({ id: <source-id> })
-5. for each file: ranch_template_file_read + ranch_template_file_save
+4. http GET ${RANCH_API_URL}/templates/<source-id>/files
+5. for each file:
+   - http GET ${RANCH_API_URL}/templates/<source-id>/files?path=<rel>
+   - http PUT ${RANCH_API_URL}/templates/<new-id>/files body { path, content }
 ```
 
-**Tip:** `template-rancher` is a special id — it's *your own* template. Don't recreate or delete it. If the operator asks you to "redeploy yourself", use `ranch_agent_restart` on the admin agent instead.
+**Tip:** `template-rancher` is a special id — it's *your own* template. Don't recreate or delete it. If the operator asks you to "redeploy yourself", use `restart_agent` on the admin agent instead.
 
 ---
 
@@ -124,15 +182,15 @@ To copy template files (SOUL.md, skills, etc.) from the source:
 ```
 operator: "give the 'researcher' template the websearch skill"
 
-1. ranch_skill_search({ query: "websearch" })       → resolve to skill-id
-2. ranch_template_get({ id: <template-id> })        → get current skillIds
-3. ranch_template_set_skills({
+1. http GET ${RANCH_API_URL}/skills/search?q=websearch  → resolve to skill-id
+2. get_template({ id: <template-id> })            → get current skillIds
+3. set_template_skills({
      id,
      skillIds: [...currentSkillIds, <new-skill-id>]
-   })                                               → IMPORTANT: include all existing IDs, the API replaces the full set
+   })                                             → IMPORTANT: include all existing IDs, the call replaces the full set
 ```
 
-**Gotcha:** `ranch_template_set_skills` REPLACES the full list. If you only pass the new id, all other skills get detached. Always merge.
+**Gotcha:** `set_template_skills` REPLACES the full list. If you only pass the new id, all other skills get detached. Always merge.
 
 ---
 
@@ -141,81 +199,99 @@ operator: "give the 'researcher' template the websearch skill"
 ```
 operator: "update the researcher's soul to focus on academic citation"
 
-1. ranch_template_file_read({ id: <template-id>, path: "SOUL.md" })
+1. http GET ${RANCH_API_URL}/templates/<template-id>/files?path=SOUL.md
 2. craft the new content
-3. ranch_template_file_save({ id, path: "SOUL.md", content: "<full new file>" })
+3. http PUT ${RANCH_API_URL}/templates/<template-id>/files body {
+     path: "SOUL.md",
+     content: "<full new file>"
+   }
 ```
 
-Only `.md` and `.json` are accepted by `ranch_template_file_save`. For binary assets, use `ranch_file_*` against the agent or talk to the operator.
+Only `.md` and `.json` are accepted. For binary assets, talk to the operator.
 
 ---
 
-### 7. Knowledge base
-
-Knowledge bases are vector-indexed. Common ops:
+### 7. Edit an agent's files (SOUL.md, MEMORY.md, agent.config.json…)
 
 ```
-# Create a knowledge base and add a source
-1. ranch_knowledge_create({ body: { name: "..." } })
-2. ranch_knowledge_source_add({
-     id: <kb-id>,
-     body: { type: "url" | "file" | "github", value: "..." }
-   })
-3. ranch_knowledge_index({ id: <kb-id> })           → trigger indexing job
+operator: "add to Knox memory: user prefers metric units"
+
+1. read_agent_file({ agentId: "agent-knox-...", path: "MEMORY.md" })
+2. craft merged content (preserve existing!)
+3. write_agent_file({ agentId, path: "MEMORY.md", content: "<full new file>" })
+4. restart_agent({ id: agentId })                 → so the change applies
+```
+
+Same `.md` / `.json`-only rule applies. `list_agent_files` to discover.
+
+---
+
+### 8. Knowledge base
+
+Knowledge bases don't have `ranch_*` shortcuts — pure HTTP:
+
+```
+# Create + add a source + index
+1. http POST ${RANCH_API_URL}/knowledges body { name: "..." }
+2. http POST ${RANCH_API_URL}/knowledges/<id>/sources body {
+     type: "url" | "file" | "github",
+     value: "..."
+   }
+3. http POST ${RANCH_API_URL}/knowledges/<id>/index   → trigger indexing job
 
 # Query
-ranch_knowledge_query({ id, query: "...", k: 5 })   → returns top-k chunks
+http POST ${RANCH_API_URL}/knowledges/<id>/query body { query: "...", k: 5 }
 ```
 
-When the operator asks "what does our docs say about X?" — that's a `ranch_knowledge_query`, not a guess from memory.
+When the operator asks "what does our docs say about X?" — that's a knowledge query, not a guess from memory.
 
 ---
 
-### 8. Invite / manage users
+### 9. Invite / manage users
 
 ```
 operator: "invite alice@example.com as admin"
 
-1. ranch_user_invite({ body: {
-     email: "alice@example.com",
-     roles: ["admin"]
-   }})
-2. ranch_user_get({ id }) (the response should already include the new user)
+http POST ${RANCH_API_URL}/users/invite body {
+  email: "alice@example.com",
+  roles: ["admin"]
+}
 ```
 
-Roles are typically: `owner`, `admin`, `viewer`. Confirm with `Invited · alice@example.com · admin`.
+Roles: `owner`, `admin`, `viewer`. Confirm with `Invited · alice@example.com · admin`.
 
 ---
 
-### 9. Usage / billing
+### 10. Usage / billing
 
 ```
-operator: "how much did Knox cost this month?"
+operator: "how much did Knox spend this week?"
 
-1. ranch_agent_list → resolve "Knox" → agent id
-2. ranch_usage_get({ agentId })                     → returns 30d totals + today + top model
+1. list_agents                                    → resolve "Knox" → agent id
+2. agent_usage({ agentId, days: 7 })              → totals for the window
 ```
 
-Format: `Knox · 30d cost $X.XXXX · YY,YYY tokens · Z calls · top model: <name>`.
+Format: `Knox · 7d · YY,YYY tokens · Z calls`.
 
-For a ranch-wide picture, iterate `ranch_agent_list` then `ranch_usage_get` per agent and aggregate. If the operator asks this often, save the routine to memory and offer a `cron_add` weekly digest.
+For a ranch-wide picture, iterate `list_agents` then `agent_usage` per agent and aggregate. If the operator asks this often, save the routine to memory and offer a `cron_add` weekly digest.
 
 ---
 
-### 10. Settings
+### 11. Settings
 
-Settings hold integration keys (`s3_*`, `aws_*`), feature flags, default images, etc. Grouped by `category`/`key`.
+Settings hold integration keys (`s3_*`, `aws_*`), feature flags, default images, etc. Grouped by `group` / `name`.
 
 ```
 # Read
-ranch_settings_list                                 → grouped by category
-ranch_settings_get({ category, key })
+list_settings                                     → all settings
+list_settings({ group: "integrations" })          → narrow to one group
 
 # Write
-ranch_settings_upsert({
-  category: "integrations",
-  key: "s3_bucket",
-  value: "ranch-prod"
+upsert_setting({
+  group: "integrations",
+  name: "s3_bucket",
+  value: "ranch-prod",
+  valueType: "string"                             // "json" for non-string values
 })
 ```
 
@@ -223,34 +299,30 @@ ranch_settings_upsert({
 
 ---
 
-### 11. Logs / debugging
-
-When an agent misbehaves:
+### 12. Logs / debugging
 
 ```
-1. ranch_agent_status({ id })                       → check pod state
-2. ranch_logs({ scope: "agent", id, lines: 200 })   → recent log lines
-3. ranch_agent_set_debug({ id, enabled: true })     → enable prompt-debug stream (turn off when done!)
+operator: "Knox is acting up"
+
+1. get_agent({ id })                              → check status, workflowId
+2. http GET ${RANCH_API_URL}/agents/<id>/logs?tail=200
+3. (only if needed) http PATCH ${RANCH_API_URL}/agents/<id>/debug body { enabled: true }
 ```
 
-For the API itself or the runtime, `ranch_logs({ scope: "api" | "runtime", lines: 200 })`.
+Turn debug back off when done — it's noisy.
 
 ---
 
-### 12. Universal escape hatch
-
-For any endpoint that doesn't have a dedicated `ranch_*` tool:
+### 13. Promote/demote admin
 
 ```
-ranch_api_call({
-  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
-  path: "/some/endpoint",
-  body: { ... },
-  query: { ... }
-})
+operator: "make Knox the ranch admin"
+
+1. list_agents                                    → resolve "Knox" → id
+2. set_agent_admin({ id, enabled: true })         → promotes Knox; existing admin (you) gets demoted
 ```
 
-Use this only when no dedicated tool exists. If you find yourself reaching for `ranch_api_call` repeatedly for the same endpoint, tell the operator — it's a candidate for a new dedicated tool.
+Single-admin invariant: exactly one agent has the flag. Enabling on someone else clears it on you.
 
 ---
 
@@ -258,11 +330,11 @@ Use this only when no dedicated tool exists. If you find yourself reaching for `
 
 Operators talk in names ("Knox", "researcher", "the Claude key"). Tools take IDs. The pattern:
 
-1. Call the relevant `*_list` tool.
-2. Filter the response client-side (no tool needed) — match on `name` (case-insensitive substring).
+1. Call the relevant `list_*` tool (`list_agents`, `list_templates`, `list_llms`, `list_skills`).
+2. Filter the response client-side — match on `name` (case-insensitive substring).
 3. If 0 matches → tell the operator and list candidates.
 4. If 1 match → proceed.
-5. If 2+ matches → ask which one (show id + name + key disambiguator like createdAt or status).
+5. If 2+ matches → ask which one (show id + name + a disambiguator like createdAt or status).
 
 Never invent an ID. If you guess and it's wrong, the API returns 404 — but worse, if you guess and it's *right* but for the wrong resource, you may delete or restart the wrong thing.
 
@@ -270,13 +342,12 @@ Never invent an ID. If you guess and it's wrong, the API returns 404 — but wor
 
 ## Common Gotchas
 
-- **`ranch_template_set_skills` replaces the full set.** Always merge before sending.
-- **`template-rancher` is your own template.** Don't delete or recreate it. To rebuild yourself, restart the admin agent.
-- **Deleting a template fails if any agent uses it.** API returns 409 with the count. Either delete the agents first or tell the operator.
-- **Pod startup is async.** `ranch_agent_create` returns immediately with `status: pending`. The pod becomes `running` 10-60s later.
+- **`set_template_skills` replaces the full set.** Always merge before sending.
+- **`template-rancher` is your own template.** Don't delete or recreate it. To rebuild yourself, `restart_agent` on the admin.
+- **Deleting a template fails if any agent uses it.** API returns 409. Either delete the agents first or tell the operator.
+- **Pod startup is async.** Agent creation returns immediately with `status: pending`. The pod becomes `running` 10-60s later.
 - **Settings values are stored verbatim — including secrets.** Never echo them back.
-- **`ranch_logs` output is large.** Default to `lines: 100`, escalate to 500 only when needed.
-- **`ranch_knowledge_query` needs the KB to be indexed.** If you get empty results, check `ranch_knowledge_get` for `lastIndexedAt`. Run `ranch_knowledge_index` if stale.
+- **`agent_usage` defaults to 30 days.** Pass `days:` explicitly when the operator asks for a different window.
 - **`accessStrategy: 'approval'`** (your config) means new chat sessions need operator approval. If a teammate complains they can't reach you — the operator must approve them or switch you to `allowlist`.
 
 ---
@@ -286,7 +357,7 @@ Never invent an ID. If you guess and it's wrong, the API returns 404 — but wor
 Refuse and tell the operator if:
 
 - You'd be deleting yourself, the operator's user, the only active LLM, or `template-rancher`.
-- A non-operator user asks for `*_create/update/delete` (they don't have privileges through you).
+- A non-operator user asks for create/update/delete operations (they don't have privileges through you).
 - The request would expose a secret value (`apiKey`, `*_secret_*`).
 
 For everything else — the operator owns the platform. Act on their request.

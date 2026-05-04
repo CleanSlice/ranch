@@ -31,6 +31,15 @@ spec:
             # can fetch pod logs without "self signed certificate in certificate chain".
             - name: NODE_EXTRA_CA_CERTS
               value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            # Paddock CLI writes scenarios + reports under <runtimeRoot>/.paddock.
+            # Image ships runtime at /usr/src/app/runtime; auto-detection picks
+            # this up via the `runtime` candidate. Setting the env explicitly
+            # documents the contract and bypasses lookup.
+            - name: PADDOCK_RUNTIME_ROOT
+              value: /usr/src/app/runtime
+          volumeMounts:
+            - name: paddock-work
+              mountPath: /usr/src/app/runtime/.paddock
           resources:
             requests:
               cpu: 250m
@@ -50,3 +59,7 @@ spec:
               port: 3000
             initialDelaySeconds: 5
             periodSeconds: 10
+      volumes:
+        - name: paddock-work
+          emptyDir:
+            sizeLimit: 1Gi

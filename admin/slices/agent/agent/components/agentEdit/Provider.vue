@@ -1,6 +1,20 @@
 <script setup lang="ts">
 import type { ICreateAgentData, IUpdateAgentData } from '#agent/stores/agent';
-import { IconArrowLeft } from '@tabler/icons-vue';
+import { Button } from '#theme/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '#theme/components/ui/card';
+import { Badge } from '#theme/components/ui/badge';
+import {
+  IconArrowLeft,
+  IconLoader2,
+  IconShield,
+  IconShieldOff,
+} from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 
@@ -9,7 +23,7 @@ const templateStore = useTemplateStore();
 const llmStore = useLlmStore();
 
 const [
-  { data: agent, pending: pendingAgent },
+  { data: agent, pending: pendingAgent, refresh: refreshAgent },
   { data: templates, pending: pendingTemplates },
   { pending: pendingLlms },
 ] = await Promise.all([
@@ -53,6 +67,28 @@ async function onSubmit(values: ICreateAgentData) {
 function onCancel() {
   navigateTo(`/agents/${props.id}`);
 }
+
+// ─── Promote / demote ──────────────────────────────────────────────────────
+const promoting = ref(false);
+const promoteError = ref<string | null>(null);
+const confirmPromoteOpen = ref(false);
+
+async function onPromote() {
+  if (!agent.value || promoting.value) return;
+  promoting.value = true;
+  promoteError.value = null;
+  try {
+    const updated = agent.value.isAdmin
+      ? await agentStore.demoteAdmin(agent.value.id)
+      : await agentStore.promoteAdmin(agent.value.id);
+    agent.value = { ...updated, status: 'deploying' };
+    await refreshAgent();
+  } catch (err) {
+    promoteError.value = (err as Error).message || 'Promote failed';
+  } finally {
+    promoting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -89,6 +125,48 @@ function onCancel() {
         disable-template
         @submit="onSubmit"
         @cancel="onCancel"
+      />
+
+      <Card>
+        <CardHeader>
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle class="flex items-center gap-2 text-base">
+                Ranch admin access
+                <Badge v-if="agent.isAdmin" variant="default" class="gap-1">
+                  <IconShield class="size-3" /> Admin
+                </Badge>
+              </CardTitle>
+              <CardDescription>
+                {{ agent.isAdmin
+                  ? 'This agent has the ranch_* admin tools enabled and was deployed with RANCH_ADMIN=true. Demoting it drops those tools and redeploys.'
+                  : 'Promote this agent to grant ranch_* admin tools and redeploy with RANCH_ADMIN=true. The flag is cleared from any other admin agent.' }}
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              :disabled="promoting"
+              @click="agent.isAdmin ? onPromote() : (confirmPromoteOpen = true)"
+            >
+              <IconLoader2 v-if="promoting" class="size-4 animate-spin" />
+              <IconShieldOff v-else-if="agent.isAdmin" class="size-4" />
+              <IconShield v-else class="size-4" />
+              {{ agent.isAdmin ? 'Demote' : 'Promote to admin' }}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent v-if="promoteError">
+          <p class="text-xs text-destructive">{{ promoteError }}</p>
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        v-model:open="confirmPromoteOpen"
+        title="Promote to Ranch admin"
+        :description="`Grant ranch_* tools to “${agent.name}” and redeploy with RANCH_ADMIN=true. The flag is cleared from any other admin agent and that agent is also redeployed.`"
+        confirm-label="Promote"
+        :variant="'default'"
+        @confirm="onPromote"
       />
     </template>
 

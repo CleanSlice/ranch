@@ -1,0 +1,19 @@
+id: ranch-list-llms
+category: tool_use
+difficulty: easy
+name: List configured LLM credentials
+description: User wants to see what LLMs are wired up on the ranch
+expectedBehavior: Agent calls list_llms, summarizes provider/model/status per credential
+messages:
+  - text: "Какие LLM подключены к ранчу?"
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Called list_llms
+    weight: 0.4
+  - dimension: soul_compliance
+    description: Responded in Russian (mirroring user language)
+    weight: 0.3
+  - dimension: response_quality
+    description: Compact list with provider, model, status
+    weight: 0.3

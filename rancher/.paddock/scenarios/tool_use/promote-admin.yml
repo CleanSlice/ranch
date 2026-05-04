@@ -1,0 +1,21 @@
+id: ranch-promote-admin
+category: tool_use
+difficulty: medium
+name: Promote an agent to ranch admin
+description: User asks to make a specific agent the ranch admin
+expectedBehavior: |
+  Agent calls set_agent_admin with id and enabled=true. Mentions the single-admin
+  invariant only if the user seems unaware, otherwise just confirms.
+messages:
+  - text: "Make agent-bridle-42 the admin of this ranch"
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Called set_agent_admin with id="agent-bridle-42", enabled=true
+    weight: 0.5
+  - dimension: correctness
+    description: Confirmed promotion based on returned data
+    weight: 0.3
+  - dimension: response_quality
+    description: Concise; mentions previous admin was demoted only if relevant
+    weight: 0.2

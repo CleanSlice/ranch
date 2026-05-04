@@ -1,0 +1,21 @@
+id: ranch-edit-agent-memory
+category: tool_use
+difficulty: hard
+name: Append a fact to agent memory and restart
+description: User asks to add a new fact to another agent's MEMORY.md so it remembers it next session
+expectedBehavior: |
+  Agent (1) read_agent_file MEMORY.md, (2) write_agent_file with the appended content,
+  (3) restart_agent so changes take effect. Confirms each step briefly.
+messages:
+  - text: "Add this to agent-bridle-42 memory: 'user prefers metric units'. Then restart it."
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: read_agent_file → write_agent_file (preserved existing content) → restart_agent
+    weight: 0.5
+  - dimension: correctness
+    description: Wrote file contains both old content and the new fact
+    weight: 0.3
+  - dimension: response_quality
+    description: Brief confirmation, no extra ceremony
+    weight: 0.2

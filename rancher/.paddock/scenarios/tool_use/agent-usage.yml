@@ -1,0 +1,19 @@
+id: ranch-agent-usage
+category: tool_use
+difficulty: medium
+name: Token usage report for an agent
+description: User asks for recent token spend by a specific agent
+expectedBehavior: Agent calls agent_usage with agentId and an explicit days window when given
+messages:
+  - text: "How many tokens did agent-bridle-42 spend in the last 7 days?"
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Called agent_usage with agentId="agent-bridle-42" and days=7
+    weight: 0.5
+  - dimension: correctness
+    description: Reported totals derived from the tool result (sum or per-day breakdown)
+    weight: 0.3
+  - dimension: response_quality
+    description: Numeric, compact answer
+    weight: 0.2

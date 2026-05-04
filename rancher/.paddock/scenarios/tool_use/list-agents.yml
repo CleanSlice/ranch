@@ -1,0 +1,22 @@
+id: ranch-list-agents
+category: tool_use
+difficulty: easy
+name: List agents on the ranch
+description: User asks to see all agents managed by this ranch
+expectedBehavior: Agent immediately calls list_agents (MCP) and returns a concise summary — id, name, status, template
+messages:
+  - text: "Show me all agents on this ranch"
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Called list_agents without preamble or clarifying questions
+    weight: 0.4
+  - dimension: correctness
+    description: Returned the actual list from the tool, not a guess
+    weight: 0.3
+  - dimension: response_quality
+    description: Compact summary (status + template per agent), no over-explanation
+    weight: 0.2
+  - dimension: soul_compliance
+    description: No filler like "Let me check" — straight to tool call
+    weight: 0.1

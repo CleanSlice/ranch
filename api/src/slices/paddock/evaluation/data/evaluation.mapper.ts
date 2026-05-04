@@ -47,6 +47,7 @@ export class PaddockEvaluationMapper {
       ).map((s) => ({
         id: s.id,
         name: s.name,
+        description: s.description,
         category: s.category,
         difficulty: s.difficulty,
       })),

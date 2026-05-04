@@ -23,6 +23,9 @@ export class PaddockEvaluationScenarioSummaryDto {
   name: string;
 
   @ApiProperty()
+  description: string;
+
+  @ApiProperty()
   category: string;
 
   @ApiProperty()
@@ -80,7 +83,7 @@ export class PaddockEvaluationDto {
   @ApiProperty({
     type: [PaddockEvaluationScenarioSummaryDto],
     description:
-      'Slim summary of scenarios that were captured at run start (id, name, category, difficulty). Used by progress UIs while the eval is running.',
+      'Slim summary of scenarios that were captured at run start (id, name, description, category, difficulty). Used by progress UIs while the eval is running.',
   })
   scenarios: PaddockEvaluationScenarioSummaryDto[];
 

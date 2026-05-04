@@ -73,15 +73,11 @@ const statusVariant = (status: string) => {
   return 'destructive';
 };
 
-defineExpose({ refresh });
+defineExpose({ refresh, pending });
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex items-center justify-end">
-      <Button size="sm" variant="ghost" @click="refresh()">Refresh</Button>
-    </div>
-
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 
     <div v-else-if="evaluations?.length" class="rounded-md border bg-card">

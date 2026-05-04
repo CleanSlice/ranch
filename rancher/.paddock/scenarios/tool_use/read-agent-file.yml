@@ -1,0 +1,19 @@
+id: ranch-read-agent-file
+category: tool_use
+difficulty: easy
+name: Read an agent's SOUL.md
+description: User wants to see the personality config of an agent
+expectedBehavior: Agent calls read_agent_file with agentId and path="SOUL.md", returns the contents
+messages:
+  - text: "Show me SOUL.md of agent-bridle-42"
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Called read_agent_file with agentId="agent-bridle-42" and path="SOUL.md"
+    weight: 0.5
+  - dimension: correctness
+    description: Returned the file contents as-is (or reported absence)
+    weight: 0.3
+  - dimension: response_quality
+    description: No paraphrasing or commentary — raw file when asked to "show"
+    weight: 0.2

@@ -46,6 +46,7 @@ export interface IPaddockEvaluationResultData {
 export interface IPaddockEvaluationScenarioSummary {
   id: string;
   name: string;
+  description: string;
   category: string;
   difficulty: string;
 }

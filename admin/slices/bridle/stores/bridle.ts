@@ -67,6 +67,27 @@ export interface IBridleDebugData {
  * switching agents doesn't bleed.
  */
 const DEBUG_STORAGE_PREFIX = 'bridle:debug:'
+const MARKDOWN_STORAGE_KEY = 'bridle:markdownEnabled'
+
+function loadMarkdownPref(): boolean {
+  if (typeof window === 'undefined') return true
+  try {
+    const raw = window.localStorage.getItem(MARKDOWN_STORAGE_KEY)
+    if (raw === null) return true
+    return raw === '1' || raw === 'true'
+  } catch {
+    return true
+  }
+}
+
+function saveMarkdownPref(enabled: boolean): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(MARKDOWN_STORAGE_KEY, enabled ? '1' : '0')
+  } catch {
+    // ignore — preference is best-effort
+  }
+}
 
 interface IPersistedDebug {
   byMessageId: Record<string, IBridleDebugData>
@@ -138,6 +159,11 @@ export const useBridleStore = defineStore('bridle', {
      * source of truth lives on the API; runtime gets it via WS push.
      */
     debugEnabled: false,
+    /**
+     * Render assistant messages as markdown when true; otherwise show raw
+     * text. Persisted in localStorage so the user's choice survives refresh.
+     */
+    markdownEnabled: loadMarkdownPref(),
     _socket: null as Socket | null,
     /** Active botId — captured on connect, used to scope persisted debug. */
     _botId: null as string | null,
@@ -394,6 +420,11 @@ export const useBridleStore = defineStore('bridle', {
       } catch (err) {
         console.warn('[bridle] failed to load transcript', err)
       }
+    },
+
+    setMarkdownEnabled(enabled: boolean) {
+      this.markdownEnabled = enabled
+      saveMarkdownPref(enabled)
     },
 
     toggle() {

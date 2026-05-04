@@ -18,6 +18,7 @@ on:
       - 'api/**'
       - 'admin/**'
       - 'app/**'
+      - 'runtime/**'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -65,6 +66,7 @@ jobs:
           filters: |
             api:
               - 'api/**'
+              - 'runtime/**'
             admin:
               - 'admin/**'
             app:
@@ -93,7 +95,8 @@ jobs:
           password: ${{ secrets.GHCR_PAT }}
       - uses: docker/build-push-action@v6
         with:
-          context: ./api
+          context: .
+          file: ./api/Dockerfile
           platforms: linux/amd64
           push: true
           build-args: |

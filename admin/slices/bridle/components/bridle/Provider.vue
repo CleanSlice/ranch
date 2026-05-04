@@ -8,7 +8,7 @@ import DebugPanel from './DebugPanel.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
 import { ScrollArea } from '#theme/components/ui/scroll-area'
 import { Button } from '#theme/components/ui/button'
-import { Bot, Bug, Circle, MessageSquarePlus } from 'lucide-vue-next'
+import { Bot, Circle, MessageSquarePlus } from 'lucide-vue-next'
 import { cn } from '#theme/utils/cn'
 
 const props = withDefaults(defineProps<{
@@ -28,7 +28,11 @@ const props = withDefaults(defineProps<{
 })
 
 const store = useBridleStore()
-const { messages, isConnected, isTyping, debugEnabled } = storeToRefs(store)
+const { messages, isConnected, isTyping, debugEnabled, markdownEnabled } = storeToRefs(store)
+
+function onMarkdownChange(v: boolean | 'indeterminate') {
+  store.setMarkdownEnabled(v === true)
+}
 const togglingDebug = ref(false)
 
 async function onToggleDebug() {
@@ -135,19 +139,6 @@ async function onConfirmReset() {
       </div>
       <div class="flex items-center gap-3">
         <Button
-          :variant="debugEnabled ? 'default' : 'ghost'"
-          size="sm"
-          class="h-7 px-2 text-xs"
-          :disabled="togglingDebug"
-          :title="debugEnabled
-            ? 'Prompt debug: ON — runtime is emitting debug snapshots. Click to disable.'
-            : 'Prompt debug: OFF — click to enable. Pushed live to the agent without restart.'"
-          @click="onToggleDebug"
-        >
-          <Bug class="h-3.5 w-3.5" />
-          Debug {{ debugEnabled ? 'on' : 'off' }}
-        </Button>
-        <Button
           variant="ghost"
           size="sm"
           class="h-7 px-2 text-xs"
@@ -188,6 +179,7 @@ async function onConfirmReset() {
             :key="msg.id"
             :message="msg"
             :has-debug="msg.role === 'assistant' && !!store.getDebugForMessage(msg.id)"
+            :markdown-enabled="markdownEnabled"
             @inspect="inspectedMessageId = $event"
           />
 
@@ -207,14 +199,144 @@ async function onConfirmReset() {
       </ScrollArea>
     </CardContent>
 
-    <CardFooter class="border-t">
+    <CardFooter class="flex flex-col items-stretch gap-2 border-t">
       <Input
         :placeholder="placeholder"
         :disabled="!isConnected"
         @send="handleSend"
       />
+      <div class="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          :disabled="togglingDebug"
+          :title="debugEnabled
+            ? 'Prompt debug: ON — runtime is emitting debug snapshots. Click to disable.'
+            : 'Prompt debug: OFF — click to enable. Pushed live to the agent without restart.'"
+          class="cursor-pointer rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/70 disabled:cursor-wait disabled:opacity-50"
+          :class="debugEnabled
+            ? 'border border-foreground/30 text-foreground'
+            : 'border border-transparent'"
+          @click="onToggleDebug"
+        >
+          Debug
+        </button>
+        <button
+          type="button"
+          class="cursor-pointer rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/70"
+          :class="markdownEnabled
+            ? 'border border-foreground/30 text-foreground'
+            : 'border border-transparent'"
+          @click="onMarkdownChange(!markdownEnabled)"
+        >
+          Markdown
+        </button>
+      </div>
     </CardFooter>
 
     <DebugPanel v-model:open="isDebugOpen" :debug="inspectedDebug" />
   </Card>
 </template>
+
+<style>
+/* Markdown content rendered inside an agent bubble. Global (un-scoped) so
+   v-html children pick up these rules. */
+.chat-md > *:first-child { margin-top: 0; }
+.chat-md > *:last-child { margin-bottom: 0; }
+
+.chat-md p { margin: 0.4em 0; }
+.chat-md p:empty { display: none; }
+
+.chat-md strong { font-weight: 600; }
+.chat-md em { font-style: italic; }
+
+.chat-md a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chat-md a:hover { opacity: 0.85; }
+
+.chat-md ul,
+.chat-md ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+.chat-md ul { list-style: disc; }
+.chat-md ol { list-style: decimal; }
+.chat-md li { margin: 0.2em 0; }
+.chat-md li > p { margin: 0; }
+.chat-md li::marker { color: var(--color-muted-foreground); }
+
+.chat-md h1,
+.chat-md h2,
+.chat-md h3,
+.chat-md h4,
+.chat-md h5,
+.chat-md h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0.8em 0 0.3em;
+}
+.chat-md h1 { font-size: 1.15em; }
+.chat-md h2 { font-size: 1.05em; }
+.chat-md h3,
+.chat-md h4,
+.chat-md h5,
+.chat-md h6 { font-size: 1em; }
+
+.chat-md code {
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.9em;
+}
+
+.chat-md pre {
+  background-color: color-mix(in srgb, currentColor 8%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 0.5rem;
+  padding: 0.75em 0.9em;
+  overflow-x: auto;
+  margin: 0.6em 0;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+.chat-md pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.chat-md blockquote {
+  border-left: 3px solid color-mix(in srgb, currentColor 25%, transparent);
+  padding-left: 0.9em;
+  margin: 0.5em 0;
+  color: var(--color-muted-foreground);
+  font-style: italic;
+}
+
+.chat-md hr {
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  margin: 0.8em 0;
+}
+
+.chat-md table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+  width: 100%;
+}
+.chat-md th,
+.chat-md td {
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  padding: 0.35em 0.6em;
+  text-align: left;
+}
+.chat-md th {
+  font-weight: 600;
+  background-color: color-mix(in srgb, currentColor 6%, transparent);
+}
+</style>

@@ -121,9 +121,13 @@ export class PaddockEvaluationService {
   }
 
   /**
-   * Re-run an evaluation with the exact same scenarios + judge config as a
-   * source run. Useful for comparing eval results across prompt/agent changes
-   * without re-resolving the scenario set (which may have drifted).
+   * Re-run an evaluation, but skip scenarios that passed in the source run.
+   * Only failed / partial / skipped / unevaluated scenarios are retried.
+   * Use this to iterate on agent fixes without burning judge tokens on
+   * already-passing cases.
+   *
+   * If the source has no `results` (e.g. crashed before producing any),
+   * everything is rerun — there's nothing to skip.
    */
   async rerun(sourceId: string): Promise<IPaddockEvaluationData> {
     const source = await this.evaluationGateway.findById(sourceId);
@@ -149,21 +153,42 @@ export class PaddockEvaluationService {
       );
     }
 
+    const passedIds = new Set(
+      source.results
+        .filter((r) => r.verdict === 'pass')
+        .map((r) => r.scenarioId),
+    );
+    const scenariosToRun = source.scenariosSnapshot.filter(
+      (s) => !passedIds.has(s.id),
+    );
+
+    if (scenariosToRun.length === 0) {
+      throw new BadRequestException(
+        'All scenarios passed in the source evaluation — nothing to rerun.',
+      );
+    }
+
     const evaluation = await this.evaluationGateway.create({
       agentId: source.agentId,
       templateId: source.templateId,
       judgeConfig: source.judgeConfig,
-      scenariosSnapshot: source.scenariosSnapshot,
+      scenariosSnapshot: scenariosToRun,
     });
 
     void this.runInBackground(
       evaluation.id,
       source.agentId,
-      source.scenariosSnapshot,
+      scenariosToRun,
       source.judgeConfig,
     );
 
     return evaluation;
+  }
+
+  async getLogs(id: string): Promise<{ lines: string[] }> {
+    const ev = await this.evaluationGateway.findById(id);
+    if (!ev) throw new NotFoundException('Evaluation not found');
+    return { lines: this.runner.getLogs(ev.agentId) };
   }
 
   async getReport(id: string): Promise<{ json: object; md: string }> {

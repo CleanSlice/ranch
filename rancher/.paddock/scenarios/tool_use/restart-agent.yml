@@ -1,0 +1,19 @@
+id: ranch-restart-agent
+category: tool_use
+difficulty: medium
+name: Restart agent after file edit
+description: User edited an agent's file and wants the change to take effect
+expectedBehavior: Agent calls restart_agent with the id, confirms restart was queued
+messages:
+  - text: "I just updated SOUL.md for agent-bridle-42. Restart it so the changes apply."
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Called restart_agent with id="agent-bridle-42"
+    weight: 0.5
+  - dimension: correctness
+    description: Reported back that restart was queued (not claimed it's already restarted)
+    weight: 0.3
+  - dimension: response_quality
+    description: One-line confirmation, no extra steps invented
+    weight: 0.2

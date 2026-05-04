@@ -47,6 +47,27 @@ type PaddockJsonReport = {
 export class BunCliPaddockRunner extends IPaddockRunner {
   private readonly logger = new Logger(BunCliPaddockRunner.name);
   private active = new Map<string, ChildProcess>();
+  // Per-agent ring buffer of paddock CLI stdout+stderr lines. Cleared
+  // when a fresh run starts for the same agentId. Cap keeps memory bounded
+  // for long evals (~2000 lines × ~200 chars ≈ 400KB max per agent).
+  private logs = new Map<string, string[]>();
+  private readonly LOG_BUFFER_MAX = 2000;
+
+  getLogs(agentId: string): string[] {
+    return this.logs.get(agentId) ?? [];
+  }
+
+  private appendLog(agentId: string, line: string): void {
+    let buf = this.logs.get(agentId);
+    if (!buf) {
+      buf = [];
+      this.logs.set(agentId, buf);
+    }
+    buf.push(line);
+    if (buf.length > this.LOG_BUFFER_MAX) {
+      buf.splice(0, buf.length - this.LOG_BUFFER_MAX);
+    }
+  }
 
   abort(agentId: string): boolean {
     const proc = this.active.get(agentId);
@@ -112,9 +133,17 @@ export class BunCliPaddockRunner extends IPaddockRunner {
     let stdoutAcc = '';
 
     try {
-      for (const s of input.scenarios) {
+      // Prefix YAML filenames with a zero-padded index so paddock's
+      // readdirSync (which has no guaranteed sort) iterates them in the
+      // same order the API queued them. This keeps the eval execution
+      // order aligned with the order the UI renders, so "scenarios
+      // before current = done" is a valid derivation.
+      const pad = String(input.scenarios.length).length;
+      for (let i = 0; i < input.scenarios.length; i++) {
+        const s = input.scenarios[i];
+        const idx = String(i + 1).padStart(pad, '0');
         await writeFile(
-          join(scenariosDir, `${s.id}.yaml`),
+          join(scenariosDir, `${idx}-${s.id}.yaml`),
           scenarioToYaml(s),
           'utf-8',
         );
@@ -141,7 +170,25 @@ export class BunCliPaddockRunner extends IPaddockRunner {
 
       const onProgress = input.onProgress;
       const progressRegex = /\[paddock\] running scenario (\d+)\/(\d+): (\S+)/;
+      const completionRegex = /\[paddock\] scenario (\S+):/;
       const tag = `[paddock cli] ${input.agentId}`;
+
+      // Fresh run for this agent — wipe the previous in-memory log buffer.
+      this.logs.set(input.agentId, []);
+
+      // Watchdog: paddock CLI prints `[paddock] running scenario N/M: id` when
+      // a scenario starts and `[paddock] scenario id: OK|N errors` when it
+      // ends. If neither line appears for STUCK_THRESHOLD_MS, kill the
+      // subprocess — a hung LLM call inside a single scenario would otherwise
+      // burn the full eval budget (maxTimeMs = 30 min default).
+      const STUCK_THRESHOLD_MS = parseInt(
+        process.env.PADDOCK_SCENARIO_STUCK_MS ?? '300000', // 5 min
+        10,
+      );
+      const WATCHDOG_TICK_MS = 30_000;
+      let lastProgressTs = Date.now();
+      let stuckScenarioId: string | null = null;
+      let watchdogKilled = false;
 
       const exitCode = await new Promise<number>((resolveProc, reject) => {
         const proc = spawn('bun', args, {
@@ -150,6 +197,29 @@ export class BunCliPaddockRunner extends IPaddockRunner {
           stdio: ['ignore', 'pipe', 'pipe'],
         });
         this.active.set(input.agentId, proc);
+
+        const watchdog = setInterval(() => {
+          const idle = Date.now() - lastProgressTs;
+          if (idle <= STUCK_THRESHOLD_MS) return;
+          watchdogKilled = true;
+          const msg = `Watchdog: scenario ${stuckScenarioId ?? '<unknown>'} stuck for ${Math.round(idle / 1000)}s — killing paddock CLI`;
+          this.logger.warn(`${tag} ${msg}`);
+          this.appendLog(input.agentId, `[watchdog] ${msg}`);
+          try {
+            proc.kill('SIGTERM');
+          } catch {
+            // best-effort
+          }
+          setTimeout(() => {
+            try {
+              if (!proc.killed) proc.kill('SIGKILL');
+            } catch {
+              // ignore
+            }
+          }, 2000);
+          clearInterval(watchdog);
+        }, WATCHDOG_TICK_MS);
+
         let outBuf = '';
         let errBuf = '';
         proc.stdout?.on('data', (d) => {
@@ -162,19 +232,27 @@ export class BunCliPaddockRunner extends IPaddockRunner {
             outBuf = outBuf.slice(nlIdx + 1);
             if (line.length > 0) {
               this.logger.log(`${tag} ${line}`);
+              this.appendLog(input.agentId, line);
             }
-            const m = onProgress ? progressRegex.exec(line) : null;
-            if (m && onProgress) {
-              try {
-                const event = {
-                  index: parseInt(m[1], 10),
-                  total: parseInt(m[2], 10),
-                  scenarioId: m[3],
-                };
-                Promise.resolve(onProgress(event)).catch(() => undefined);
-              } catch {
-                // ignore — progress is best-effort
+            // Reset watchdog on either start-of-scenario OR completion-of-scenario.
+            const startMatch = progressRegex.exec(line);
+            if (startMatch) {
+              lastProgressTs = Date.now();
+              stuckScenarioId = startMatch[3];
+              if (onProgress) {
+                try {
+                  const event = {
+                    index: parseInt(startMatch[1], 10),
+                    total: parseInt(startMatch[2], 10),
+                    scenarioId: startMatch[3],
+                  };
+                  Promise.resolve(onProgress(event)).catch(() => undefined);
+                } catch {
+                  // ignore — progress is best-effort
+                }
               }
+            } else if (completionRegex.test(line)) {
+              lastProgressTs = Date.now();
             }
           }
         });
@@ -188,14 +266,17 @@ export class BunCliPaddockRunner extends IPaddockRunner {
             errBuf = errBuf.slice(nlIdx + 1);
             if (line.length > 0) {
               this.logger.warn(`${tag} ${line}`);
+              this.appendLog(input.agentId, `[stderr] ${line}`);
             }
           }
         });
         proc.on('error', (err) => {
+          clearInterval(watchdog);
           this.active.delete(input.agentId);
           reject(err);
         });
         proc.on('close', (code) => {
+          clearInterval(watchdog);
           this.active.delete(input.agentId);
           resolveProc(code ?? 0);
         });
@@ -212,6 +293,11 @@ export class BunCliPaddockRunner extends IPaddockRunner {
         wantedIds,
       );
       if (!reportFiles) {
+        if (watchdogKilled) {
+          throw new InternalServerErrorException(
+            `Watchdog killed paddock CLI: scenario "${stuckScenarioId ?? '<unknown>'}" was idle for >${Math.round(STUCK_THRESHOLD_MS / 1000)}s with no progress (override with PADDOCK_SCENARIO_STUCK_MS env, in ms).`,
+          );
+        }
         const tail = (stderrAcc || stdoutAcc).slice(-1500);
         throw new InternalServerErrorException(
           `paddock CLI produced no report for scenarios [${[...wantedIds].join(', ')}]. Last output:\n${tail}`,
@@ -309,6 +395,20 @@ export class BunCliPaddockRunner extends IPaddockRunner {
       } else if (agentProvider === 'gemini' || agentProvider === 'google') {
         env.GEMINI_API_KEY = input.agentLlm.apiKey;
       }
+    }
+
+    // Eval messages always come from "eval-user" (paddock's MockChannel default).
+    // Runtime gates `adminOnly` tools (memory_save/memory_search, secret_*,
+    // skill mgmt, etc.) on AccessService.isAdmin(userId) — without this, the
+    // eval user is non-admin and the agent literally cannot see those tools.
+    // Merge with whatever was already set so a real Telegram admin list is
+    // preserved if the operator configured one.
+    const existingAdmins = (env.TELEGRAM_BOT_ADMIN_IDS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!existingAdmins.includes('eval-user')) {
+      env.TELEGRAM_BOT_ADMIN_IDS = [...existingAdmins, 'eval-user'].join(',');
     }
 
     return env;

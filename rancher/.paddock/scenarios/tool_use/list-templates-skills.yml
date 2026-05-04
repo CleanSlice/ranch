@@ -1,0 +1,19 @@
+id: ranch-list-templates-skills
+category: tool_use
+difficulty: medium
+name: List templates and available skills
+description: User wants an overview of building blocks before creating a new agent
+expectedBehavior: Agent calls list_templates and list_skills (parallel where possible), summarizes both
+messages:
+  - text: "What templates and skills do I have available on this ranch?"
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Called both list_templates and list_skills
+    weight: 0.5
+  - dimension: correctness
+    description: Reported actual data from both tools
+    weight: 0.3
+  - dimension: response_quality
+    description: Two clean sections (templates, skills), no padding
+    weight: 0.2

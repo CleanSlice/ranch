@@ -1,4 +1,5 @@
 import { PaddockEvaluationsService } from '#api/data';
+import { client as apiClient } from '#api/data/repositories/api/client.gen';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
 
@@ -41,6 +42,7 @@ export interface IPaddockEvaluationResult {
 export interface IPaddockEvaluationScenarioSummary {
   id: string;
   name: string;
+  description: string;
   category: string;
   difficulty: string;
 }
@@ -167,6 +169,16 @@ export const usePaddockEvaluationStore = defineStore(
       return env?.data ?? null;
     }
 
+    // Logs use the underlying client directly so we don't need to regenerate
+    // the SDK after adding the GET /paddock-evaluations/:id/logs route.
+    async function fetchLogs(id: string): Promise<string[]> {
+      const res = await apiClient.get<unknown>({
+        url: `/paddock-evaluations/${id}/logs`,
+      });
+      const env = res.data as ApiEnvelope<{ lines: string[] }> | undefined;
+      return env?.data?.lines ?? [];
+    }
+
     return {
       evaluations,
       fetchAll,
@@ -176,6 +188,7 @@ export const usePaddockEvaluationStore = defineStore(
       rerun,
       fetchReport,
       fetchTrace,
+      fetchLogs,
     };
   },
 );

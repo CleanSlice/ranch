@@ -12,6 +12,7 @@ import { SkillModule } from '#/skill/skill.module';
 import { UsageModule } from '#/usage/usage.module';
 import { FileModule } from '#/agent/file/file.module';
 import { McpServerModule } from '#/mcpServer/mcpServer.module';
+import { PaddockScenarioModule } from '#/paddock/scenario/scenario.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { McpServerModule } from '#/mcpServer/mcpServer.module';
     UsageModule,
     FileModule,
     McpServerModule,
+    PaddockScenarioModule,
   ],
   controllers: [RancherController],
   providers: [RancherService, RancherTool],

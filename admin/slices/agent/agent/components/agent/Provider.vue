@@ -12,7 +12,7 @@ import {
 import { Checkbox } from '#theme/components/ui/checkbox';
 import { Label } from '#theme/components/ui/label';
 import { Skeleton } from '#theme/components/ui/skeleton';
-import { IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh, IconShield, IconShieldOff } from '@tabler/icons-vue';
+import { IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh, IconShield } from '@tabler/icons-vue';
 import { FlaskConical } from 'lucide-vue-next';
 
 const props = defineProps<{ id: string }>();
@@ -258,26 +258,6 @@ async function onRemove() {
   await navigateTo('/agents');
 }
 
-const promoting = ref(false);
-const promoteError = ref<string | null>(null);
-const confirmPromoteOpen = ref(false);
-
-async function onPromote() {
-  if (!agent.value || promoting.value) return;
-  promoting.value = true;
-  promoteError.value = null;
-  try {
-    const updated = agent.value.isAdmin
-      ? await agentStore.demoteAdmin(agent.value.id)
-      : await agentStore.promoteAdmin(agent.value.id);
-    agent.value = { ...updated, status: 'deploying' };
-    await refresh();
-  } catch (err) {
-    promoteError.value = (err as Error).message || 'Promote failed';
-  } finally {
-    promoting.value = false;
-  }
-}
 </script>
 
 <template>
@@ -339,19 +319,6 @@ async function onPromote() {
             </Button>
             <Button
               variant="outline"
-              :disabled="promoting"
-              :title="agent.isAdmin
-                ? 'Drop ranch_* admin tools and redeploy'
-                : 'Grant ranch_* admin tools and redeploy. Clears the flag from any other agent.'"
-              @click="agent.isAdmin ? (onPromote()) : (confirmPromoteOpen = true)"
-            >
-              <IconLoader2 v-if="promoting" class="size-4 animate-spin" />
-              <IconShieldOff v-else-if="agent.isAdmin" class="size-4" />
-              <IconShield v-else class="size-4" />
-              {{ agent.isAdmin ? 'Demote' : 'Promote to admin' }}
-            </Button>
-            <Button
-              variant="outline"
               :disabled="isRestarting"
               @click="onRestart"
             >
@@ -370,22 +337,8 @@ async function onPromote() {
           >
             {{ restartError }}
           </p>
-          <p
-            v-if="promoteError"
-            class="text-xs text-destructive"
-          >
-            {{ promoteError }}
-          </p>
         </div>
       </div>
-
-      <ConfirmDialog
-        v-model:open="confirmPromoteOpen"
-        title="Promote to Ranch admin"
-        :description="`Grant ranch_* tools to “${agent.name}” and redeploy with RANCH_ADMIN=true. The flag is cleared from any other admin agent and that agent is also redeployed.`"
-        confirm-label="Promote"
-        @confirm="onPromote"
-      />
 
       <ConfirmDialog
         v-model:open="confirmRemoveOpen"

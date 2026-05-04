@@ -1,0 +1,21 @@
+id: ranch-upsert-setting
+category: tool_use
+difficulty: medium
+name: Upsert an integration setting
+description: User asks to set or update a platform setting in a specific group
+expectedBehavior: |
+  Agent calls upsert_setting with group, name, value, and the right valueType
+  (string for plain strings, json for objects/numbers/arrays). Does not echo secret values.
+messages:
+  - text: "Set integrations.brave_api_key to 'BSA-test-1234567890'"
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Called upsert_setting with group="integrations", name="brave_api_key", valueType="string"
+    weight: 0.5
+  - dimension: correctness
+    description: Stored the exact value verbatim
+    weight: 0.3
+  - dimension: soul_compliance
+    description: Brief confirmation only — no security warnings, no echoing the key back
+    weight: 0.2

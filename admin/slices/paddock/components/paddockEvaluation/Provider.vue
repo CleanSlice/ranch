@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { marked } from 'marked';
 import { Button } from '#theme/components/ui/button';
 import { Badge } from '#theme/components/ui/badge';
 import {
@@ -8,7 +9,21 @@ import {
   CardTitle,
   CardDescription,
 } from '#theme/components/ui/card';
-import { IconChevronDown, IconChevronRight, IconRefresh } from '@tabler/icons-vue';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '#theme/components/ui/table';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconRefresh,
+  IconCopy,
+  IconCheck,
+} from '@tabler/icons-vue';
 import type {
   IPaddockEvaluationResult,
   IPaddockJudgeScore,
@@ -28,6 +43,46 @@ const traces = ref<Record<string, object | null>>({});
 async function refresh() {
   evaluation.value = await store.fetchById(props.evaluationId);
 }
+
+const logLines = ref<string[]>([]);
+const logsAutoScroll = ref(true);
+const logsContainer = ref<HTMLElement | null>(null);
+const logsPolling = ref<ReturnType<typeof setInterval> | null>(null);
+
+async function refreshLogs() {
+  try {
+    logLines.value = await store.fetchLogs(props.evaluationId);
+  } catch {
+    // best-effort — logs are diagnostic, not critical
+  }
+}
+
+function onLogsScroll(e: Event) {
+  const el = e.target as HTMLElement;
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 16;
+  logsAutoScroll.value = atBottom;
+}
+
+function logLineClass(line: string): string {
+  if (line.startsWith('[stderr]')) return 'text-destructive';
+  if (line.includes('running scenario ')) return 'text-primary font-medium';
+  if (/scenario \S+: OK/.test(line)) return 'text-green-600 dark:text-green-500';
+  if (/scenario \S+: \d+ errors?/.test(line)) return 'text-destructive';
+  if (line.startsWith('[paddock]')) return 'text-foreground/90';
+  return 'text-foreground/70';
+}
+
+function logLineDisplay(line: string): string {
+  return line.startsWith('[stderr] ') ? line.slice(9) : line;
+}
+
+watch(logLines, () => {
+  if (!logsAutoScroll.value) return;
+  nextTick(() => {
+    const el = logsContainer.value;
+    if (el) el.scrollTop = el.scrollHeight;
+  });
+});
 
 async function loadReport() {
   reportError.value = null;
@@ -68,6 +123,17 @@ async function onAbort() {
 const rerunning = ref(false);
 const rerunError = ref<string | null>(null);
 
+// How many scenarios would actually rerun (everything except passes).
+// Mirrors the filter the API applies on the server side.
+const rerunCount = computed(() => {
+  const ev = evaluation.value;
+  if (!ev) return 0;
+  const passedIds = new Set(
+    ev.results.filter((r) => r.verdict === 'pass').map((r) => r.scenarioId),
+  );
+  return ev.scenarios.filter((s) => !passedIds.has(s.id)).length;
+});
+
 async function onRerun() {
   rerunning.value = true;
   rerunError.value = null;
@@ -99,12 +165,29 @@ watch(
     ) {
       void loadReport();
     }
+
+    // Logs: tail every 1.5s while running. After done/failed we still pull once
+    // to capture the final lines (the in-memory ring buffer survives until the
+    // next run for this agent or an API restart).
+    if (status === 'running') {
+      void refreshLogs();
+      if (!logsPolling.value) {
+        logsPolling.value = setInterval(refreshLogs, 1500);
+      }
+    } else {
+      if (logsPolling.value) {
+        clearInterval(logsPolling.value);
+        logsPolling.value = null;
+      }
+      void refreshLogs();
+    }
   },
   { immediate: true },
 );
 
 onUnmounted(() => {
   if (polling.value) clearInterval(polling.value);
+  if (logsPolling.value) clearInterval(logsPolling.value);
 });
 
 const formatPassRate = (rate: number | null) =>
@@ -141,31 +224,49 @@ const truncate = (s: string, n: number) =>
   s.length <= n ? s : `${s.slice(0, n)}…`;
 
 // Progress derivation while running.
-type ScenarioState = 'done' | 'current' | 'queued';
+// `done` — final result available (verdict + score)
+// `processed` — paddock executed it but verdicts are batched at the end;
+//   we infer it from currentScenarioId position (sequential exec order)
+// `current` — actively running right now
+// `queued` — not yet started
+type ScenarioState = 'done' | 'processed' | 'current' | 'queued';
+
+const currentScenarioIndex = computed(() => {
+  const ev = evaluation.value;
+  if (!ev?.currentScenarioId) return -1;
+  return ev.scenarios.findIndex((s) => s.id === ev.currentScenarioId);
+});
 
 const scenarioState = (id: string): ScenarioState => {
   const ev = evaluation.value;
   if (!ev) return 'queued';
   if (ev.results.some((r) => r.scenarioId === id)) return 'done';
   if (ev.currentScenarioId === id) return 'current';
+  const curIdx = currentScenarioIndex.value;
+  if (curIdx >= 0) {
+    const myIdx = ev.scenarios.findIndex((s) => s.id === id);
+    if (myIdx >= 0 && myIdx < curIdx) return 'processed';
+  }
   return 'queued';
 };
-
-const completedCount = computed(
-  () => evaluation.value?.results.length ?? 0,
-);
 
 const totalCount = computed(
   () => evaluation.value?.scenarioCount ?? 0,
 );
 
 const currentIndex = computed(() => {
-  const ev = evaluation.value;
-  if (!ev?.currentScenarioId) return null;
-  const idx = ev.scenarios.findIndex(
-    (s) => s.id === ev.currentScenarioId,
-  );
+  const idx = currentScenarioIndex.value;
   return idx >= 0 ? idx + 1 : null;
+});
+
+// "Done" for progress purposes = scenarios with full results OR scenarios
+// already processed by paddock (sitting before currentScenarioId in execution
+// order). The latter only matters mid-run — at end, results.length === total.
+const completedCount = computed(() => {
+  const ev = evaluation.value;
+  if (!ev) return 0;
+  if (ev.results.length > 0) return ev.results.length;
+  return Math.max(0, currentScenarioIndex.value);
 });
 
 const progressPercent = computed(() => {
@@ -183,6 +284,49 @@ const verdictForScenario = (
   const r = evaluation.value?.results.find((x) => x.scenarioId === id);
   return r ? { verdict: r.verdict, score: r.finalScore } : null;
 };
+
+const scenarioInfoFor = (id: string) =>
+  evaluation.value?.scenarios.find((s) => s.id === id) ?? null;
+
+const sortByCategory = ref(false);
+
+const sortedResults = computed<IPaddockEvaluationResult[]>(() => {
+  const list = (evaluation.value?.results ?? []) as IPaddockEvaluationResult[];
+  if (!sortByCategory.value) return list;
+  return [...list].sort((a, b) => {
+    const ca = scenarioInfoFor(a.scenarioId)?.category ?? '';
+    const cb = scenarioInfoFor(b.scenarioId)?.category ?? '';
+    if (ca !== cb) return ca.localeCompare(cb);
+    return b.finalScore - a.finalScore;
+  });
+});
+
+// Markdown render toggle for the eval report.
+const markdownRendered = ref(false);
+
+const reportCopied = ref(false);
+let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function copyReport() {
+  const md = report.value?.md;
+  if (!md) return;
+  try {
+    await navigator.clipboard.writeText(md);
+    reportCopied.value = true;
+    if (copyResetTimer) clearTimeout(copyResetTimer);
+    copyResetTimer = setTimeout(() => (reportCopied.value = false), 1500);
+  } catch {
+    reportCopied.value = false;
+  }
+}
+
+onUnmounted(() => {
+  if (copyResetTimer) clearTimeout(copyResetTimer);
+});
+const renderedReportHtml = computed(() => {
+  if (!report.value?.md || !markdownRendered.value) return '';
+  return marked.parse(report.value.md, { async: false }) as string;
+});
 
 // Tick every second to refresh elapsed-time display while running
 const now = ref(Date.now());
@@ -221,7 +365,8 @@ const elapsedLabel = computed(() => {
 <template>
   <div v-if="!evaluation" class="text-sm text-muted-foreground">Evaluation not found.</div>
 
-  <div v-else class="flex flex-col gap-6">
+  <div v-else class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,420px)]">
+    <div class="flex min-w-0 flex-col gap-6">
     <!-- header -->
     <div class="flex items-start justify-between gap-4">
       <div class="flex flex-col gap-1">
@@ -243,11 +388,14 @@ const elapsedLabel = computed(() => {
           <Button
             v-else
             variant="outline"
-            :disabled="rerunning"
+            :disabled="rerunning || rerunCount === 0"
+            :title="rerunCount === 0
+              ? 'All scenarios passed — nothing to rerun'
+              : `Reruns ${rerunCount} non-passing scenario(s); skips ${evaluation.passCount} passed`"
             @click="onRerun"
           >
             <IconRefresh class="size-4" :class="rerunning ? 'animate-spin' : ''" />
-            {{ rerunning ? 'Starting…' : 'Rerun' }}
+            {{ rerunning ? 'Starting…' : `Rerun failed${rerunCount > 0 ? ` (${rerunCount})` : ''}` }}
           </Button>
           <Button variant="ghost" @click="refresh()">Refresh</Button>
         </div>
@@ -297,6 +445,7 @@ const elapsedLabel = computed(() => {
             :class="{
               'border-primary/50 bg-primary/10': scenarioState(s.id) === 'current',
               'border-border bg-card': scenarioState(s.id) === 'done',
+              'border-border bg-muted/40': scenarioState(s.id) === 'processed',
               'border-dashed bg-transparent text-muted-foreground': scenarioState(s.id) === 'queued',
             }"
           >
@@ -313,6 +462,11 @@ const elapsedLabel = computed(() => {
                           verdictForScenario(s.id)?.verdict === 'skipped' ? 'bg-muted-foreground' :
                           'bg-destructive'"
                 >
+                  ✓
+                </span>
+              </template>
+              <template v-else-if="scenarioState(s.id) === 'processed'">
+                <span class="flex size-5 items-center justify-center rounded-full bg-muted-foreground/40 text-[10px] text-white">
                   ✓
                 </span>
               </template>
@@ -337,6 +491,12 @@ const elapsedLabel = computed(() => {
               class="text-xs italic text-primary"
             >
               running
+            </span>
+            <span
+              v-else-if="scenarioState(s.id) === 'processed'"
+              class="text-xs italic text-muted-foreground"
+            >
+              done
             </span>
             <span
               v-else
@@ -395,138 +555,200 @@ const elapsedLabel = computed(() => {
     <!-- per-scenario expandable -->
     <Card v-if="evaluation.results.length">
       <CardHeader>
-        <CardTitle>Per-scenario results</CardTitle>
-        <CardDescription>Click a scenario to see judge reasoning, agent responses, tool calls, and errors.</CardDescription>
-      </CardHeader>
-      <CardContent class="flex flex-col gap-2">
-        <div
-          v-for="r in (evaluation.results as IPaddockEvaluationResult[])"
-          :key="r.id"
-          class="flex flex-col"
-        >
-          <button
-            type="button"
-            class="flex w-full items-center gap-3 rounded-md border bg-card px-4 py-3 text-left hover:bg-muted transition-colors"
-            :class="expandedScenario === r.scenarioId ? 'rounded-b-none' : ''"
-            @click="toggleScenario(r.scenarioId)"
-          >
-            <IconChevronRight v-if="expandedScenario !== r.scenarioId" class="size-4 text-muted-foreground" />
-            <IconChevronDown v-else class="size-4 text-muted-foreground" />
-
-            <code class="text-xs flex-1 truncate">{{ r.scenarioId }}</code>
-
-            <Badge :variant="verdictColor(r.verdict)">{{ r.verdict }}</Badge>
-            <span class="text-sm tabular-nums w-16 text-right">{{ r.finalScore.toFixed(1) }}/10</span>
-            <span class="text-xs text-muted-foreground tabular-nums w-12 text-right">
-              {{ Math.round(r.agreement * 100) }}%
-            </span>
-          </button>
-
-          <div
-            v-show="expandedScenario === r.scenarioId"
-            class="border border-t-0 rounded-b-md bg-muted/30 px-4 py-4"
-          >
-            <div class="flex flex-col gap-4">
-              <!-- failure reasons -->
-              <div v-if="r.failureReasons?.length" class="flex flex-col gap-1">
-                <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Why it failed
-                </h4>
-                <ul class="flex flex-col gap-1 text-sm">
-                  <li v-for="(reason, i) in r.failureReasons" :key="i" class="text-destructive">
-                    {{ reason }}
-                  </li>
-                </ul>
-              </div>
-
-              <!-- judge reasoning -->
-              <div v-if="r.judges?.length" class="flex flex-col gap-3">
-                <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Judges ({{ r.judges.length }})
-                </h4>
-                <div
-                  v-for="(j, i) in (r.judges as IPaddockJudgeScore[])"
-                  :key="i"
-                  class="rounded-md border bg-background p-3 flex flex-col gap-2"
-                >
-                  <div class="flex items-center justify-between">
-                    <span class="text-sm font-medium">{{ j.judgeModel }}</span>
-                    <div class="flex items-center gap-2">
-                      <Badge :variant="verdictColor(j.verdict)">{{ j.verdict }}</Badge>
-                      <span class="text-xs tabular-nums">{{ j.overallScore.toFixed(1) }}/10</span>
-                      <span class="text-xs text-muted-foreground">conf {{ Math.round(j.confidence * 100) }}%</span>
-                    </div>
-                  </div>
-
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    <div
-                      v-for="[dim, score] in judgeScoreEntries(j.scores)"
-                      :key="dim"
-                      class="flex items-start gap-2"
-                    >
-                      <span class="text-muted-foreground w-32 shrink-0">{{ dim }}</span>
-                      <span class="tabular-nums w-8 shrink-0">{{ score }}/10</span>
-                      <span class="text-muted-foreground">{{ j.reasoning[dim] }}</span>
-                    </div>
-                  </div>
-
-                  <div v-if="j.suggestions?.length" class="flex flex-col gap-1 mt-1">
-                    <span class="text-xs font-semibold text-muted-foreground">Suggestions</span>
-                    <ul class="text-xs flex flex-col gap-0.5">
-                      <li v-for="(s, si) in j.suggestions" :key="si">— {{ s }}</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              <!-- trace -->
-              <div v-if="traceFor(r.scenarioId)" class="flex flex-col gap-3">
-                <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Execution trace
-                </h4>
-
-                <div v-if="traceFor(r.scenarioId)?.responses?.length" class="flex flex-col gap-1">
-                  <span class="text-xs font-semibold">Agent responses ({{ traceFor(r.scenarioId)?.responses?.length }})</span>
-                  <div
-                    v-for="(resp, ri) in traceFor(r.scenarioId)?.responses"
-                    :key="ri"
-                    class="rounded-md border bg-background px-3 py-2 text-xs whitespace-pre-wrap"
-                  >
-                    {{ resp.text }}
-                  </div>
-                </div>
-                <p v-else class="text-xs text-muted-foreground">No agent responses captured.</p>
-
-                <div v-if="traceFor(r.scenarioId)?.toolCalls?.length" class="flex flex-col gap-1">
-                  <span class="text-xs font-semibold">Tool calls ({{ traceFor(r.scenarioId)?.toolCalls?.length }})</span>
-                  <div
-                    v-for="(tc, ti) in traceFor(r.scenarioId)?.toolCalls"
-                    :key="ti"
-                    class="rounded-md border bg-background px-3 py-2 text-xs font-mono"
-                  >
-                    <span :class="tc.error ? 'text-destructive' : 'text-foreground'">{{ tc.name }}</span>
-                    <span class="text-muted-foreground">({{ truncate(JSON.stringify(tc.params), 80) }})</span>
-                    <span class="text-muted-foreground"> → {{ tc.error ? `ERROR: ${tc.error}` : truncate(JSON.stringify(tc.result), 80) }}</span>
-                    <span class="text-muted-foreground"> [{{ tc.durationMs }}ms]</span>
-                  </div>
-                </div>
-
-                <div v-if="traceFor(r.scenarioId)?.errors?.length" class="flex flex-col gap-1">
-                  <span class="text-xs font-semibold text-destructive">Errors ({{ traceFor(r.scenarioId)?.errors?.length }})</span>
-                  <div
-                    v-for="(e, ei) in traceFor(r.scenarioId)?.errors"
-                    :key="ei"
-                    class="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-xs"
-                  >
-                    <span class="font-semibold">[{{ e.phase }}]</span> {{ e.message }}
-                  </div>
-                </div>
-              </div>
-              <p v-else-if="expandedScenario === r.scenarioId" class="text-xs text-muted-foreground">
-                Loading trace…
-              </p>
-            </div>
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>Per-scenario results</CardTitle>
+            <CardDescription>Click a scenario to see judge reasoning, agent responses, tool calls, and errors.</CardDescription>
           </div>
+          <div class="flex shrink-0 items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span>Sort</span>
+            <button
+              type="button"
+              class="cursor-pointer rounded-md px-2 py-0.5 font-medium transition-colors"
+              :class="!sortByCategory
+                ? 'border border-foreground/30 bg-muted text-foreground'
+                : 'border border-transparent bg-muted/50 hover:bg-muted'"
+              @click="sortByCategory = false"
+            >
+              Default
+            </button>
+            <button
+              type="button"
+              class="cursor-pointer rounded-md px-2 py-0.5 font-medium transition-colors"
+              :class="sortByCategory
+                ? 'border border-foreground/30 bg-muted text-foreground'
+                : 'border border-transparent bg-muted/50 hover:bg-muted'"
+              @click="sortByCategory = true"
+            >
+              Category
+            </button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent class="p-0">
+        <div class="rounded-md border-t bg-card">
+          <Table class="w-full table-fixed">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead class="w-32">Category</TableHead>
+                <TableHead class="w-28">Difficulty</TableHead>
+                <TableHead class="w-24">Verdict</TableHead>
+                <TableHead class="w-20 text-right">Score</TableHead>
+                <TableHead class="w-24 text-right">Agreement</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <template v-for="r in sortedResults" :key="r.id">
+                <TableRow
+                  class="cursor-pointer"
+                  :class="expandedScenario === r.scenarioId ? 'bg-muted/40' : ''"
+                  @click="toggleScenario(r.scenarioId)"
+                >
+                  <TableCell>
+                    <div class="flex items-start gap-2">
+                      <IconChevronRight v-if="expandedScenario !== r.scenarioId" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      <IconChevronDown v-else class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      <div class="flex min-w-0 flex-col gap-0.5">
+                        <span class="truncate font-medium">
+                          {{ scenarioInfoFor(r.scenarioId)?.name ?? r.scenarioId }}
+                        </span>
+                        <span
+                          v-if="scenarioInfoFor(r.scenarioId)?.description"
+                          class="line-clamp-2 text-xs text-muted-foreground"
+                        >
+                          {{ scenarioInfoFor(r.scenarioId)?.description }}
+                        </span>
+                        <code class="truncate text-[10px] text-muted-foreground/70">{{ r.scenarioId }}</code>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge v-if="scenarioInfoFor(r.scenarioId)?.category" variant="outline">
+                      {{ scenarioInfoFor(r.scenarioId)?.category }}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge v-if="scenarioInfoFor(r.scenarioId)?.difficulty" variant="secondary">
+                      {{ scenarioInfoFor(r.scenarioId)?.difficulty }}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge :variant="verdictColor(r.verdict)">{{ r.verdict }}</Badge>
+                  </TableCell>
+                  <TableCell class="text-right tabular-nums">{{ r.finalScore.toFixed(1) }}/10</TableCell>
+                  <TableCell class="text-right tabular-nums text-muted-foreground">
+                    {{ Math.round(r.agreement * 100) }}%
+                  </TableCell>
+                </TableRow>
+
+                <TableRow v-if="expandedScenario === r.scenarioId" class="bg-muted/30 hover:bg-muted/30">
+                  <TableCell :colspan="6" class="p-4">
+                    <div class="flex w-full min-w-0 flex-col gap-4">
+                      <!-- failure reasons -->
+                      <div v-if="r.failureReasons?.length" class="flex flex-col gap-1">
+                        <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Why it failed
+                        </h4>
+                        <ul class="flex flex-col gap-1 text-sm">
+                          <li v-for="(reason, i) in r.failureReasons" :key="i" class="wrap-break-word whitespace-break-spaces text-destructive">
+                            {{ reason }}
+                          </li>
+                        </ul>
+                      </div>
+
+                      <!-- judge reasoning -->
+                      <div v-if="r.judges?.length" class="flex flex-col gap-3">
+                        <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Judges ({{ r.judges.length }})
+                        </h4>
+                        <div
+                          v-for="(j, i) in (r.judges as IPaddockJudgeScore[])"
+                          :key="i"
+                          class="rounded-md border bg-background p-3 flex flex-col gap-2"
+                        >
+                          <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium">{{ j.judgeModel }}</span>
+                            <div class="flex items-center gap-2">
+                              <Badge :variant="verdictColor(j.verdict)">{{ j.verdict }}</Badge>
+                              <span class="text-xs tabular-nums">{{ j.overallScore.toFixed(1) }}/10</span>
+                              <span class="text-xs text-muted-foreground">conf {{ Math.round(j.confidence * 100) }}%</span>
+                            </div>
+                          </div>
+
+                          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                            <div
+                              v-for="[dim, score] in judgeScoreEntries(j.scores)"
+                              :key="dim"
+                              class="flex min-w-0 items-start gap-2"
+                            >
+                              <span class="text-muted-foreground w-32 shrink-0">{{ dim }}</span>
+                              <span class="tabular-nums w-8 shrink-0">{{ score }}/10</span>
+                              <span class="wrap-break-word whitespace-break-spaces text-muted-foreground">{{ j.reasoning[dim] }}</span>
+                            </div>
+                          </div>
+
+                          <div v-if="j.suggestions?.length" class="flex flex-col gap-1 mt-1">
+                            <span class="text-xs font-semibold text-muted-foreground">Suggestions</span>
+                            <ul class="text-xs flex flex-col gap-0.5">
+                              <li v-for="(s, si) in j.suggestions" :key="si">— {{ s }}</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- trace -->
+                      <div v-if="traceFor(r.scenarioId)" class="flex flex-col gap-3">
+                        <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Execution trace
+                        </h4>
+
+                        <div v-if="traceFor(r.scenarioId)?.responses?.length" class="flex flex-col gap-1">
+                          <span class="text-xs font-semibold">Agent responses ({{ traceFor(r.scenarioId)?.responses?.length }})</span>
+                          <div
+                            v-for="(resp, ri) in traceFor(r.scenarioId)?.responses"
+                            :key="ri"
+                            class="wrap-break-word rounded-md border bg-background px-3 py-2 text-xs whitespace-pre-wrap"
+                          >
+                            {{ resp.text }}
+                          </div>
+                        </div>
+                        <p v-else class="text-xs text-muted-foreground">No agent responses captured.</p>
+
+                        <div v-if="traceFor(r.scenarioId)?.toolCalls?.length" class="flex flex-col gap-1">
+                          <span class="text-xs font-semibold">Tool calls ({{ traceFor(r.scenarioId)?.toolCalls?.length }})</span>
+                          <div
+                            v-for="(tc, ti) in traceFor(r.scenarioId)?.toolCalls"
+                            :key="ti"
+                            class="overflow-x-auto rounded-md border bg-background px-3 py-2 text-xs font-mono whitespace-nowrap"
+                          >
+                            <span :class="tc.error ? 'text-destructive' : 'text-foreground'">{{ tc.name }}</span>
+                            <span class="text-muted-foreground">({{ truncate(JSON.stringify(tc.params), 80) }})</span>
+                            <span class="text-muted-foreground"> → {{ tc.error ? `ERROR: ${tc.error}` : truncate(JSON.stringify(tc.result), 80) }}</span>
+                            <span class="text-muted-foreground"> [{{ tc.durationMs }}ms]</span>
+                          </div>
+                        </div>
+
+                        <div v-if="traceFor(r.scenarioId)?.errors?.length" class="flex flex-col gap-1">
+                          <span class="text-xs font-semibold text-destructive">Errors ({{ traceFor(r.scenarioId)?.errors?.length }})</span>
+                          <div
+                            v-for="(e, ei) in traceFor(r.scenarioId)?.errors"
+                            :key="ei"
+                            class="wrap-break-word whitespace-break-spaces rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-xs"
+                          >
+                            <span class="font-semibold">[{{ e.phase }}]</span> {{ e.message }}
+                          </div>
+                        </div>
+                      </div>
+                      <p v-else class="text-xs text-muted-foreground">
+                        Loading trace…
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </template>
+            </TableBody>
+          </Table>
         </div>
       </CardContent>
     </Card>
@@ -534,11 +756,43 @@ const elapsedLabel = computed(() => {
     <!-- markdown report -->
     <Card v-if="report?.md">
       <CardHeader>
-        <CardTitle>Markdown report</CardTitle>
-        <CardDescription>Full paddock-generated report (also persisted in S3).</CardDescription>
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle>Report</CardTitle>
+            <CardDescription>Full paddock-generated report (also persisted in S3).</CardDescription>
+          </div>
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              class="flex cursor-pointer items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/70"
+              :class="reportCopied ? 'border border-foreground/30 text-foreground' : 'border border-transparent'"
+              @click="copyReport"
+            >
+              <IconCheck v-if="reportCopied" class="size-3" />
+              <IconCopy v-else class="size-3" />
+              {{ reportCopied ? 'Copied' : 'Copy' }}
+            </button>
+            <button
+              type="button"
+              class="cursor-pointer rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/70"
+              :class="markdownRendered
+                ? 'border border-foreground/30 text-foreground'
+                : 'border border-transparent'"
+              @click="markdownRendered = !markdownRendered"
+            >
+              Markdown
+            </button>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
-        <pre class="whitespace-pre-wrap text-xs leading-relaxed font-mono">{{ report.md }}</pre>
+        <div class="paddock-report pr-6 wrap-break-word">
+          <pre
+            v-if="!markdownRendered"
+            class="whitespace-pre-wrap text-xs leading-relaxed font-mono"
+          >{{ report.md }}</pre>
+          <div v-else class="text-sm leading-relaxed" v-html="renderedReportHtml" />
+        </div>
       </CardContent>
     </Card>
 
@@ -548,5 +802,153 @@ const elapsedLabel = computed(() => {
     >
       {{ reportError }}
     </div>
+    </div>
+
+    <!-- right rail: live paddock CLI logs -->
+    <aside class="flex min-w-0 flex-col lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)]">
+      <Card class="flex flex-1 min-h-0 flex-col overflow-hidden">
+        <CardHeader class="flex-row items-center justify-between gap-3 space-y-0 border-b py-3">
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="relative flex size-2 shrink-0">
+              <span
+                v-if="evaluation.status === 'running'"
+                class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"
+              ></span>
+              <span
+                class="relative inline-flex size-2 rounded-full"
+                :class="evaluation.status === 'running' ? 'bg-primary' : 'bg-muted-foreground/40'"
+              ></span>
+            </span>
+            <CardTitle class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Paddock logs
+            </CardTitle>
+          </div>
+          <div class="flex shrink-0 items-center gap-2 text-[10px] text-muted-foreground tabular-nums">
+            <span>{{ logLines.length }} {{ logLines.length === 1 ? 'line' : 'lines' }}</span>
+            <span v-if="evaluation.status === 'running'" class="text-primary font-medium">live</span>
+            <button
+              v-else-if="logLines.length > 0"
+              type="button"
+              class="cursor-pointer rounded-md border border-transparent px-1.5 py-0.5 hover:bg-muted"
+              @click="refreshLogs"
+            >
+              refresh
+            </button>
+          </div>
+        </CardHeader>
+        <div
+          ref="logsContainer"
+          class="paddock-logs flex-1 min-h-[20rem] overflow-y-auto bg-muted/30 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all"
+          @scroll="onLogsScroll"
+        >
+          <template v-if="logLines.length">
+            <div
+              v-for="(line, i) in logLines"
+              :key="i"
+              :class="logLineClass(line)"
+            >{{ logLineDisplay(line) }}</div>
+          </template>
+          <div v-else class="flex h-full flex-col items-center justify-center gap-2 px-4 py-12 text-center">
+            <span class="text-2xl text-muted-foreground/40">⎯</span>
+            <p class="text-xs text-muted-foreground">
+              {{ evaluation.status === 'running' ? 'Waiting for paddock output…' : 'No logs captured for this run.' }}
+            </p>
+            <p
+              v-if="evaluation.status === 'running'"
+              class="text-[10px] text-muted-foreground/70"
+            >
+              First lines appear once paddock CLI prints stdout.
+            </p>
+          </div>
+        </div>
+        <div
+          v-if="!logsAutoScroll && logLines.length"
+          class="border-t bg-card/60 px-3 py-1.5 text-[10px] text-muted-foreground"
+        >
+          Auto-scroll paused — scroll to bottom to resume.
+        </div>
+      </Card>
+    </aside>
   </div>
 </template>
+
+<style scoped>
+/* Slim, terminal-feel scrollbar for the live paddock logs panel. */
+.paddock-logs {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+}
+.paddock-logs::-webkit-scrollbar {
+  width: 6px;
+}
+.paddock-logs::-webkit-scrollbar-track {
+  background: transparent;
+}
+.paddock-logs::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+.paddock-logs::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Rendered markdown report — keep tables scrollable inside their cell so
+   long rows don't blow out the layout, and give content breathing room. */
+.paddock-report :deep(table) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.8125rem;
+}
+.paddock-report :deep(thead) {
+  background: hsl(var(--muted) / 0.4);
+}
+.paddock-report :deep(th),
+.paddock-report :deep(td) {
+  border: 1px solid hsl(var(--border));
+  padding: 0.375rem 0.625rem;
+  text-align: left;
+  white-space: nowrap;
+}
+.paddock-report :deep(h1),
+.paddock-report :deep(h2),
+.paddock-report :deep(h3),
+.paddock-report :deep(h4) {
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem;
+  line-height: 1.3;
+}
+.paddock-report :deep(h1) { font-size: 1.25rem; }
+.paddock-report :deep(h2) { font-size: 1.1rem; }
+.paddock-report :deep(h3) { font-size: 1rem; }
+.paddock-report :deep(p) {
+  margin: 0.5rem 0;
+}
+.paddock-report :deep(ul),
+.paddock-report :deep(ol) {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+.paddock-report :deep(li) {
+  margin: 0.125rem 0;
+}
+.paddock-report :deep(code) {
+  background: hsl(var(--muted) / 0.6);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+}
+.paddock-report :deep(pre) {
+  background: hsl(var(--muted) / 0.4);
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+  font-size: 0.8125rem;
+}
+.paddock-report :deep(strong) {
+  font-weight: 600;
+}
+</style>

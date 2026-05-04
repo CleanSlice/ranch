@@ -76,4 +76,12 @@ export abstract class IPaddockRunner {
    * had a process to kill, false otherwise.
    */
   abstract abort(agentId: string): boolean;
+  /**
+   * Live tail of paddock CLI stdout+stderr for the most recent (or in-flight)
+   * eval of an agent. Empty array if nothing has run yet, or if the buffer
+   * was cleared at the start of a fresh run for the same agent.
+   * Implementations are expected to keep at least a bounded ring buffer
+   * (lost on process restart — acceptable for live debugging).
+   */
+  abstract getLogs(agentId: string): string[];
 }

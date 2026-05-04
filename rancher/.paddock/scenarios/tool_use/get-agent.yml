@@ -1,0 +1,19 @@
+id: ranch-get-agent
+category: tool_use
+difficulty: easy
+name: Inspect a single agent
+description: User asks for details on a specific agent by id
+expectedBehavior: Agent calls get_agent with the supplied id and reports status, workflowId, template, resources
+messages:
+  - text: "What's the status of agent agent-abc123?"
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Called get_agent with id="agent-abc123" exactly
+    weight: 0.4
+  - dimension: correctness
+    description: Reported status and workflowId from the result (or surfaced "not found" cleanly)
+    weight: 0.4
+  - dimension: response_quality
+    description: Direct answer, no narration before the tool call
+    weight: 0.2

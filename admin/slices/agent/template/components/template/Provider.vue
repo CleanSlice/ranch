@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from '#theme/components/ui/card';
 import { IconArrowLeft } from '@tabler/icons-vue';
-import { FlaskConical } from 'lucide-vue-next';
+import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 
 const props = defineProps<{ id: string }>();
 const templateStore = useTemplateStore();
@@ -22,16 +22,35 @@ const { data: template, pending, refresh } = await useAsyncData(
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
-type SectionId = 'blueprint' | 'skills' | 'mcps' | 'files';
+type SectionId = 'blueprint' | 'skills' | 'mcps' | 'files' | 'evaluations';
 
 const sections: { id: SectionId; title: string; description: string }[] = [
   { id: 'blueprint', title: 'Blueprint', description: 'Image and resource defaults.' },
   { id: 'skills', title: 'Skills', description: 'Attach skills available to this template.' },
   { id: 'mcps', title: 'MCP servers', description: 'Tool servers agents inherit from this template.' },
   { id: 'files', title: 'Files', description: 'The .agent folder uploaded to S3.' },
+  { id: 'evaluations', title: 'Evaluations', description: 'Default paddock scenarios for agents from this template.' },
 ];
 
 const active = ref<SectionId>('blueprint');
+
+const evalFormOpen = ref(false);
+const evalEditing = ref<IPaddockScenario | null>(null);
+const evalListRef = ref<{ refresh: () => Promise<void> } | null>(null);
+
+function onEvalCreate() {
+  evalEditing.value = null;
+  evalFormOpen.value = true;
+}
+
+function onEvalEdit(scenario: IPaddockScenario) {
+  evalEditing.value = scenario;
+  evalFormOpen.value = true;
+}
+
+async function onEvalSaved() {
+  await evalListRef.value?.refresh();
+}
 
 const confirmRemoveOpen = ref(false);
 
@@ -65,12 +84,6 @@ async function onMcpsSaved() {
           <p class="text-sm text-muted-foreground">{{ template.description }}</p>
         </div>
         <div class="flex gap-2">
-          <Button variant="outline" as-child>
-            <NuxtLink :to="`/templates/${template.id}/paddock`">
-              <FlaskConical class="size-4" />
-              Paddock
-            </NuxtLink>
-          </Button>
           <Button variant="outline" as-child>
             <NuxtLink :to="`/templates/${template.id}/edit`">Edit</NuxtLink>
           </Button>
@@ -193,6 +206,30 @@ async function onMcpsSaved() {
             </CardHeader>
             <CardContent>
               <TemplateFileProvider :id="template.id" />
+            </CardContent>
+          </Card>
+
+          <Card v-else-if="active === 'evaluations'">
+            <CardHeader>
+              <CardTitle>Evaluations</CardTitle>
+              <CardDescription>
+                Default paddock scenarios for agents created from this template.
+                Agents inherit these and can override them individually.
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-6">
+              <PaddockScenarioListProvider
+                ref="evalListRef"
+                :template-id="template.id"
+                @create="onEvalCreate"
+                @edit="onEvalEdit"
+              />
+              <PaddockScenarioFormProvider
+                v-model:open="evalFormOpen"
+                :template-id="template.id"
+                :scenario="evalEditing"
+                @saved="onEvalSaved"
+              />
             </CardContent>
           </Card>
         </section>

@@ -54,6 +54,15 @@ export class PaddockEvaluationController {
     return this.service.getReport(id);
   }
 
+  @Get(':id/logs')
+  @ApiOperation({
+    summary:
+      'Live tail of paddock CLI stdout+stderr. In-memory ring buffer (~2000 lines), keyed by the evaluation\'s agent. Cleared on API restart or when a fresh run starts for the same agent.',
+  })
+  logs(@Param('id') id: string) {
+    return this.service.getLogs(id);
+  }
+
   @Get(':id/trace')
   @ApiOperation({
     summary:

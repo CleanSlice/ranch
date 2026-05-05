@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { consola } from "consola";
 
 const KUBECONFIG_LOCAL = join(homedir(), ".kube", "ranch-local.yaml");
+const RESTART_DELAY_MS = 3_000;
+const MAX_RESTARTS = 20;
 
 function portInUse(port: number): boolean {
   try {
@@ -31,6 +33,72 @@ export interface PortForwardSpec {
   port: number;
 }
 
+interface ManagedPortForward {
+  spec: PortForwardSpec;
+  child: ChildProcess | null;
+  restarts: number;
+  stopped: boolean;
+}
+
+function spawnKubectl(spec: PortForwardSpec): ChildProcess {
+  const child = spawn(
+    "kubectl",
+    [
+      "port-forward",
+      "-n",
+      spec.namespace,
+      `svc/${spec.service}`,
+      `${spec.port}:${spec.port}`,
+    ],
+    {
+      env: { ...process.env, KUBECONFIG: KUBECONFIG_LOCAL },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
+    },
+  );
+  let stderrBuf = "";
+  child.stderr?.on("data", (chunk) => {
+    stderrBuf += chunk.toString();
+    if (stderrBuf.length > 4000) stderrBuf = stderrBuf.slice(-4000);
+  });
+  (child as ChildProcess & { _stderrBuf: () => string })._stderrBuf = () => stderrBuf;
+  return child;
+}
+
+function startManaged(mpf: ManagedPortForward): void {
+  if (mpf.stopped) return;
+  if (portInUse(mpf.spec.port)) {
+    consola.info(
+      `${mpf.spec.label}: localhost:${mpf.spec.port} already bound — skipping forward`,
+    );
+    return;
+  }
+
+  consola.start(`Forwarding ${mpf.spec.label} → localhost:${mpf.spec.port}`);
+  const child = spawnKubectl(mpf.spec);
+  mpf.child = child;
+
+  child.on("exit", (code, signal) => {
+    if (mpf.stopped) return;
+    if (signal === "SIGTERM" || signal === "SIGINT") return;
+
+    const stderr = (child as ChildProcess & { _stderrBuf?: () => string })._stderrBuf?.() ?? "";
+    const reason = stderr.trim().split("\n").slice(-3).join(" | ") || `exit ${code}`;
+
+    if (mpf.restarts >= MAX_RESTARTS) {
+      consola.error(
+        `${mpf.spec.label} port-forward gave up after ${MAX_RESTARTS} restarts. Last error: ${reason}`,
+      );
+      return;
+    }
+    mpf.restarts += 1;
+    consola.warn(
+      `${mpf.spec.label} port-forward died (${reason}). Restart ${mpf.restarts}/${MAX_RESTARTS} in ${RESTART_DELAY_MS / 1000}s.`,
+    );
+    setTimeout(() => startManaged(mpf), RESTART_DELAY_MS);
+  });
+}
+
 export function ensurePortForwards(specs: PortForwardSpec[]): void {
   if (!hasBinary("kubectl")) {
     consola.warn("kubectl not installed — skipping port-forwards");
@@ -41,45 +109,23 @@ export function ensurePortForwards(specs: PortForwardSpec[]): void {
     return;
   }
 
-  const children: ChildProcess[] = [];
+  const managed: ManagedPortForward[] = specs.map((spec) => ({
+    spec,
+    child: null,
+    restarts: 0,
+    stopped: false,
+  }));
 
-  for (const spec of specs) {
-    if (portInUse(spec.port)) {
-      consola.info(`${spec.label}: localhost:${spec.port} already bound — skipping forward`);
-      continue;
-    }
-    consola.start(`Forwarding ${spec.label} → localhost:${spec.port}`);
-    const child = spawn(
-      "kubectl",
-      [
-        "port-forward",
-        "-n",
-        spec.namespace,
-        `svc/${spec.service}`,
-        `${spec.port}:${spec.port}`,
-      ],
-      {
-        env: { ...process.env, KUBECONFIG: KUBECONFIG_LOCAL },
-        stdio: "ignore",
-        detached: false,
-      },
-    );
-    child.on("exit", (code, signal) => {
-      if (signal === "SIGTERM" || signal === "SIGINT") return;
-      if (code !== null && code !== 0) {
-        consola.warn(`${spec.label} port-forward exited with code ${code}`);
-      }
-    });
-    children.push(child);
+  for (const mpf of managed) {
+    startManaged(mpf);
   }
 
-  if (children.length === 0) return;
-
   const cleanup = () => {
-    for (const child of children) {
-      if (child.exitCode === null) {
+    for (const mpf of managed) {
+      mpf.stopped = true;
+      if (mpf.child && mpf.child.exitCode === null) {
         try {
-          child.kill("SIGTERM");
+          mpf.child.kill("SIGTERM");
         } catch {}
       }
     }

@@ -37,13 +37,20 @@ await useAsyncData('admin-settings', () => settingStore.fetchAll());
 const keyOf = (g: string, n: string) => `${g}.${n}`;
 
 const values = reactive<Record<string, string>>({});
+let anyStored = false;
 for (const f of props.fields) {
   const existing = settingStore.get(f.group, f.name);
   const stored = typeof existing?.value === 'string' ? existing.value : '';
-  values[keyOf(f.group, f.name)] = stored || f.default || '';
+  values[keyOf(f.group, f.name)] = stored;
+  if (stored) anyStored = true;
 }
 
-const hasDefaults = computed(() => props.fields.some((f) => f.default !== undefined));
+// Show the "Use localhost values" banner only on a fresh install — if any
+// field already has a saved value we assume the operator knows what they're
+// doing (likely AWS or a custom MinIO) and the banner becomes noise.
+const showLocalHint = computed(
+  () => !anyStored && props.fields.some((f) => f.default !== undefined),
+);
 
 function resetToDefaults() {
   for (const f of props.fields) {
@@ -89,7 +96,7 @@ async function onSave() {
         <CardDescription v-if="description">{{ description }}</CardDescription>
       </CardHeader>
       <div
-        v-if="hasDefaults"
+        v-if="showLocalHint"
         class="mx-6 mb-4 flex items-center justify-between gap-4 rounded-md border border-dashed bg-muted/40 px-4 py-3 text-sm"
       >
         <span class="text-muted-foreground">

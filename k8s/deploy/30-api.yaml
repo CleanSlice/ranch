@@ -47,6 +47,11 @@ spec:
               value: "dev"
             - name: PORT
               value: "3333"
+            # Trust the k3s API server's self-signed CA for in-cluster API
+            # calls (KubePodGateway watches, log streaming via CoreV1Api).
+            # The CA is auto-mounted by the ServiceAccount projection.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
             - name: CORS_ORIGIN
               value: "https://ranch.cleanslice.org,https://admin.ranch.cleanslice.org,https://api.ranch.cleanslice.org"
             - name: DATABASE_URL

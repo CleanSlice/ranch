@@ -5,6 +5,7 @@ import {
   SidebarTrigger,
 } from '#theme/components/ui/sidebar';
 import { Separator } from '#theme/components/ui/separator';
+import { Sonner } from '#theme/components/ui/sonner';
 
 const route = useRoute();
 const confirmStore = useConfirmStore();
@@ -47,5 +48,7 @@ const pageTitle = computed(() => {
       :variant="confirmStore.current?.variant ?? 'default'"
       @confirm="confirmStore.accept()"
     />
+
+    <Sonner />
   </SidebarProvider>
 </template>

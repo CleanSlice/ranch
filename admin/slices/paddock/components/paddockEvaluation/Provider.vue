@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { marked } from 'marked';
+import { toast } from 'vue-sonner';
 import { Button } from '#theme/components/ui/button';
 import { Badge } from '#theme/components/ui/badge';
 import {
@@ -198,9 +199,37 @@ async function onRerun() {
   }
 }
 
+function scrollToReport() {
+  const el = document.getElementById('paddock-report-card');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function notifyCompletion(status: 'done' | 'failed') {
+  const ev = evaluation.value;
+  if (!ev) return;
+
+  if (status === 'failed') {
+    toast.error('Evaluation failed', {
+      description: 'Paddock could not finish the run. See the report for details.',
+      action: { label: 'View report', onClick: scrollToReport },
+      duration: 10000,
+    });
+    return;
+  }
+
+  const passed = ev.passCount;
+  const total = ev.scenarioCount;
+  const rate = formatPassRate(ev.passRate);
+  toast.success('Evaluation finished', {
+    description: `${passed}/${total} scenarios passed (${rate}).`,
+    action: { label: 'View report', onClick: scrollToReport },
+    duration: 10000,
+  });
+}
+
 watch(
   () => evaluation.value?.status,
-  (status) => {
+  (status, prevStatus) => {
     if (status === 'running' && !polling.value) {
       polling.value = setInterval(refresh, 2000);
     }
@@ -214,6 +243,15 @@ watch(
       !reportError.value
     ) {
       void loadReport();
+    }
+
+    // Notify only on the live running → done/failed transition. Skip the
+    // initial mount for already-finished evaluations (prevStatus is undefined).
+    if (
+      prevStatus === 'running' &&
+      (status === 'done' || status === 'failed')
+    ) {
+      notifyCompletion(status);
     }
 
     // Logs: tail every 1.5s while running. After done/failed we still pull once
@@ -910,7 +948,7 @@ const elapsedLabel = computed(() => {
     </Card>
 
     <!-- markdown report -->
-    <Card v-if="report?.md">
+    <Card v-if="report?.md" id="paddock-report-card">
       <CardHeader>
         <div class="flex items-center justify-between gap-3">
           <div>

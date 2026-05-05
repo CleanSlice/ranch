@@ -51,13 +51,10 @@ async function onRemove(item: IKnowledge) {
           Knowledge bases backed by LightRAG. Create one, add sources, then index.
         </p>
       </div>
-      <Button as-child :disabled="!store.enabled">
-        <NuxtLink
-          v-if="store.enabled"
-          to="/knowledges/create"
-        >New knowledge</NuxtLink>
-        <span v-else>New knowledge</span>
+      <Button v-if="store.enabled" as-child>
+        <NuxtLink to="/knowledges/create">New knowledge</NuxtLink>
       </Button>
+      <Button v-else disabled>New knowledge</Button>
     </div>
 
     <div

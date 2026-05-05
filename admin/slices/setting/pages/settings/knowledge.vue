@@ -138,7 +138,10 @@ async function onSave(): Promise<void> {
             v-model="values[field.name]"
             :type="field.type ?? 'text'"
             :placeholder="field.placeholder"
-            :autocomplete="field.type === 'password' ? 'off' : undefined"
+            :autocomplete="field.type === 'password' ? 'new-password' : 'off'"
+            spellcheck="false"
+            data-1p-ignore
+            data-lpignore="true"
           />
           <p v-if="field.description" class="text-xs text-muted-foreground">
             {{ field.description }}

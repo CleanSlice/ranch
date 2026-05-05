@@ -27,12 +27,41 @@ function clusterState(): ClusterState {
     const out = execSync(`k3d cluster list -o json`, {
       stdio: ["ignore", "pipe", "ignore"],
     }).toString();
-    const list = JSON.parse(out) as Array<{ name: string; serversRunning: number; serversCount: number }>;
+    const list = JSON.parse(out) as Array<{
+      name: string;
+      serversRunning: number;
+      serversCount: number;
+    }>;
     const found = list.find((c) => c.name === CLUSTER);
     if (!found) return "missing";
-    return found.serversRunning > 0 ? "running" : "stopped";
+    if (found.serversRunning === 0) return "stopped";
+    if (!allNodesRunning()) return "stopped";
+    return "running";
   } catch {
     return "missing";
+  }
+}
+
+function allNodesRunning(): boolean {
+  try {
+    const out = execSync(
+      `docker ps -a --filter "label=k3d.cluster=${CLUSTER}" --format "{{.State}}|{{.Label \\"k3d.role\\"}}"`,
+      { stdio: ["ignore", "pipe", "ignore"] },
+    ).toString();
+    const nodes = out
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [state, role] = line.split("|");
+        return { state, role };
+      });
+    const runtimeRoles = new Set(["server", "agent", "loadbalancer"]);
+    const runtimeNodes = nodes.filter((n) => n.role && runtimeRoles.has(n.role));
+    if (runtimeNodes.length === 0) return false;
+    return runtimeNodes.every((n) => n.state === "running");
+  } catch {
+    return false;
   }
 }
 

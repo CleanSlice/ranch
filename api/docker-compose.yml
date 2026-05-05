@@ -14,6 +14,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: root
       POSTGRES_DB: ranch-local
+      PGTZ: 'Europe/Kyiv'
+      TZ: 'Europe/Kyiv'
     volumes:
       - ./.docker/postgres:/var/lib/postgresql
     healthcheck:

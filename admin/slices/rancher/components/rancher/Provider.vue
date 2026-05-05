@@ -21,6 +21,7 @@ import {
   IconBrain,
   IconBook2,
   IconActivity,
+  IconCloud,
 } from '@tabler/icons-vue';
 import { Bot } from 'lucide-vue-next';
 
@@ -144,6 +145,7 @@ async function onRefreshAll() {
 }
 
 const hasLlm = computed(() => !!status.value?.hasLlm);
+const hasS3 = computed(() => !!status.value?.hasS3);
 const hasTemplate = computed(() => !!status.value?.template);
 const admin = computed(() => status.value?.admin ?? null);
 
@@ -185,12 +187,17 @@ if (import.meta.client) {
 
 const stepDone = computed(() => ({
   llm: hasLlm.value,
+  s3: hasS3.value,
   template: hasTemplate.value,
   agent: !!admin.value,
 }));
 
 const allDone = computed(
-  () => stepDone.value.llm && stepDone.value.template && stepDone.value.agent,
+  () =>
+    stepDone.value.llm &&
+    stepDone.value.s3 &&
+    stepDone.value.template &&
+    stepDone.value.agent,
 );
 
 const generatingTemplate = ref(false);
@@ -367,7 +374,42 @@ async function onDeploy() {
         </CardContent>
       </Card>
 
-      <!-- Step 2 — Rancher template -->
+      <!-- Step 2 — S3 storage -->
+      <Card :class="stepDone.s3 ? 'border-primary/40' : ''">
+        <CardHeader>
+          <div class="flex items-center gap-3">
+            <div
+              class="flex size-7 items-center justify-center rounded-full border"
+              :class="stepDone.s3 ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40 text-muted-foreground'"
+            >
+              <IconCheck v-if="stepDone.s3" class="size-4" />
+              <span v-else class="text-xs font-semibold">2</span>
+            </div>
+            <div class="flex-1">
+              <CardTitle class="text-base">Configure S3 storage</CardTitle>
+              <CardDescription>
+                Required to seed template files and persist agent state. Set
+                <code>s3_bucket</code>, <code>aws_access_key_id</code> and
+                <code>aws_secret_access_key</code>. Local dev: use the included
+                MinIO defaults.
+              </CardDescription>
+            </div>
+            <Badge v-if="stepDone.s3" variant="default">Done</Badge>
+            <IconCircle v-else class="size-4 text-muted-foreground" />
+          </div>
+        </CardHeader>
+        <CardContent v-if="!stepDone.s3">
+          <Button as-child>
+            <NuxtLink to="/settings/storage">
+              <IconCloud class="size-4" />
+              Open Storage settings
+              <IconExternalLink class="size-4" />
+            </NuxtLink>
+          </Button>
+        </CardContent>
+      </Card>
+
+      <!-- Step 3 — Rancher template -->
       <Card :class="stepDone.template ? 'border-primary/40' : ''">
         <CardHeader>
           <div class="flex items-center gap-3">
@@ -376,7 +418,7 @@ async function onDeploy() {
               :class="stepDone.template ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40 text-muted-foreground'"
             >
               <IconCheck v-if="stepDone.template" class="size-4" />
-              <span v-else class="text-xs font-semibold">2</span>
+              <span v-else class="text-xs font-semibold">3</span>
             </div>
             <div class="flex-1">
               <CardTitle class="text-base">Generate the Rancher template</CardTitle>
@@ -391,15 +433,15 @@ async function onDeploy() {
         <CardContent v-if="!stepDone.template" class="flex flex-col gap-2">
           <div>
             <Button
-              :disabled="!stepDone.llm || generatingTemplate"
+              :disabled="!stepDone.llm || !stepDone.s3 || generatingTemplate"
               @click="onGenerateTemplate"
             >
               <IconLoader2 v-if="generatingTemplate" class="size-4 animate-spin" />
               {{ generatingTemplate ? 'Generating…' : 'Generate template' }}
             </Button>
           </div>
-          <p v-if="!stepDone.llm" class="text-xs text-muted-foreground">
-            Complete step 1 first.
+          <p v-if="!stepDone.llm || !stepDone.s3" class="text-xs text-muted-foreground">
+            Complete steps 1 and 2 first.
           </p>
           <p v-if="templateError" class="text-xs text-destructive">
             {{ templateError }}
@@ -412,7 +454,7 @@ async function onDeploy() {
         </CardContent>
       </Card>
 
-      <!-- Step 3 — Deploy agent -->
+      <!-- Step 4 — Deploy agent -->
       <Card :class="stepDone.agent ? 'border-primary/40' : ''">
         <CardHeader>
           <div class="flex items-center gap-3">
@@ -421,7 +463,7 @@ async function onDeploy() {
               :class="stepDone.agent ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40 text-muted-foreground'"
             >
               <IconCheck v-if="stepDone.agent" class="size-4" />
-              <span v-else class="text-xs font-semibold">3</span>
+              <span v-else class="text-xs font-semibold">4</span>
             </div>
             <div class="flex-1">
               <CardTitle class="text-base">Deploy the Rancher agent</CardTitle>
@@ -436,7 +478,7 @@ async function onDeploy() {
         <CardContent v-if="!stepDone.agent" class="flex flex-col gap-2">
           <div>
             <Button
-              :disabled="!stepDone.llm || !stepDone.template || deploying"
+              :disabled="!stepDone.llm || !stepDone.s3 || !stepDone.template || deploying"
               @click="onDeploy"
             >
               <IconLoader2 v-if="deploying" class="size-4 animate-spin" />
@@ -444,7 +486,7 @@ async function onDeploy() {
             </Button>
           </div>
           <p v-if="!stepDone.template" class="text-xs text-muted-foreground">
-            Complete steps 1 and 2 first.
+            Complete steps 1, 2 and 3 first.
           </p>
           <p v-if="deployError" class="text-xs text-destructive">
             {{ deployError }}

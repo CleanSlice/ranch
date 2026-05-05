@@ -79,16 +79,34 @@ export class RancherService implements OnApplicationBootstrap {
   }
 
   async getStatus(): Promise<IRancherStatus> {
-    const [llms, template, admin] = await Promise.all([
+    const [llms, template, admin, hasS3] = await Promise.all([
       this.llmGateway.findAll(),
       this.templateGateway.findById(RANCHER_TEMPLATE_ID),
       this.agentGateway.findAdmin(),
+      this.checkS3Configured(),
     ]);
     return {
       hasLlm: llms.some((l) => l.status === 'active'),
+      hasS3,
       template,
       admin,
     };
+  }
+
+  // S3 is "configured" when bucket + AWS credentials are all present in
+  // settings → integrations. Endpoint/region are optional (region falls
+  // back to us-east-1; endpoint blank means real AWS).
+  private async checkS3Configured(): Promise<boolean> {
+    const get = async (name: string): Promise<string> => {
+      const s = await this.settingGateway.findByKey('integrations', name);
+      return typeof s?.value === 'string' ? s.value : '';
+    };
+    const [bucket, key, secret] = await Promise.all([
+      get('s3_bucket'),
+      get('aws_access_key_id'),
+      get('aws_secret_access_key'),
+    ]);
+    return !!(bucket && key && secret);
   }
 
   // Idempotent — returns the existing Rancher template if one exists,

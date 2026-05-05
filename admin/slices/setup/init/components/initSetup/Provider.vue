@@ -17,7 +17,7 @@ async function onSubmit(values: { name: string; email: string; password: string 
     authStore.user = result.user;
     const tokenCookie = useCookie('access_token');
     tokenCookie.value = result.accessToken;
-    await navigateTo('/agents');
+    await navigateTo('/rancher');
   } catch (err: unknown) {
     const e = err as { response?: { data?: { message?: string } }; message?: string };
     errorMessage.value = e?.response?.data?.message ?? e?.message ?? 'Setup failed';

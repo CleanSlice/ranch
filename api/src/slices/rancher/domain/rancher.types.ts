@@ -14,6 +14,7 @@ export const RANCHER_TEMPLATE_DEFAULTS = {
 
 export interface IRancherStatus {
   hasLlm: boolean;
+  hasS3: boolean;
   template: ITemplateData | null;
   admin: IAgentData | null;
 }

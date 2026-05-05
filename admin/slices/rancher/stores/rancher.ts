@@ -6,6 +6,7 @@ type ApiEnvelope<T> = { success: boolean; data: T };
 
 export interface IRancherStatus {
   hasLlm: boolean;
+  hasS3: boolean;
   template: ITemplateData | null;
   admin: IAgentData | null;
 }

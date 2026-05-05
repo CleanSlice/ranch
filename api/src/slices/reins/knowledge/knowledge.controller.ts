@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   HttpCode,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
 import { KnowledgeService } from './domain/knowledge.service';
@@ -30,6 +31,14 @@ export class KnowledgeController {
     private readonly knowledgeConfig: IKnowledgeConfigGateway,
   ) {}
 
+  private async requireEnabled(): Promise<void> {
+    if (!(await this.knowledgeConfig.isEnabled())) {
+      throw new ServiceUnavailableException(
+        'Knowledge service is not configured',
+      );
+    }
+  }
+
   @Get()
   @ApiOperation({ summary: 'List knowledges', operationId: 'getKnowledges' })
   async list() {
@@ -51,14 +60,16 @@ export class KnowledgeController {
     summary: 'List graph entity labels',
     operationId: 'getGraphLabels',
   })
-  graphLabels(): Promise<string[]> {
+  async graphLabels(): Promise<string[]> {
+    await this.requireEnabled();
     return this.service.getGraphLabels();
   }
 
   @Get('graph')
   @ApiOperation({ summary: 'Get knowledge graph', operationId: 'getGraph' })
   @ApiOkResponse({ type: GraphDto })
-  graph(@Query() dto: GetGraphDto): Promise<IGraphData> {
+  async graph(@Query() dto: GetGraphDto): Promise<IGraphData> {
+    await this.requireEnabled();
     return this.service.getGraph({
       label: dto.label,
       maxDepth: dto.maxDepth,
@@ -68,19 +79,22 @@ export class KnowledgeController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get one knowledge', operationId: 'getKnowledge' })
-  getOne(@Param('id') id: string) {
+  async getOne(@Param('id') id: string) {
+    await this.requireEnabled();
     return this.service.get(id);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create knowledge', operationId: 'createKnowledge' })
-  create(@Body() dto: CreateKnowledgeDto) {
+  async create(@Body() dto: CreateKnowledgeDto) {
+    await this.requireEnabled();
     return this.service.create(dto);
   }
 
   @Put(':id')
   @ApiOperation({ summary: 'Update knowledge', operationId: 'updateKnowledge' })
-  update(@Param('id') id: string, @Body() dto: UpdateKnowledgeDto) {
+  async update(@Param('id') id: string, @Body() dto: UpdateKnowledgeDto) {
+    await this.requireEnabled();
     return this.service.update(id, dto);
   }
 
@@ -88,6 +102,7 @@ export class KnowledgeController {
   @ApiOperation({ summary: 'Delete knowledge', operationId: 'deleteKnowledge' })
   @HttpCode(204)
   async remove(@Param('id') id: string) {
+    await this.requireEnabled();
     await this.service.delete(id);
   }
 
@@ -95,6 +110,7 @@ export class KnowledgeController {
   @ApiOperation({ summary: 'Start indexing', operationId: 'indexKnowledge' })
   @HttpCode(202)
   async startIndex(@Param('id') id: string) {
+    await this.requireEnabled();
     await this.service.startIndex(id);
     return { ok: true };
   }
@@ -105,7 +121,8 @@ export class KnowledgeController {
     operationId: 'queryKnowledge',
   })
   @ApiOkResponse({ type: KnowledgeQueryResultDto })
-  query(@Param('id') id: string, @Body() dto: QueryKnowledgeDto) {
+  async query(@Param('id') id: string, @Body() dto: QueryKnowledgeDto) {
+    await this.requireEnabled();
     return this.service.query(id, dto.query, dto.mode, dto.topK);
   }
 }

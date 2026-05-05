@@ -1,4 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { S3Repository } from '#/aws/s3';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
@@ -49,6 +53,13 @@ export class SourceGateway extends ISourceGateway {
   }
 
   async create(data: ICreateSourceData): Promise<ISourceData> {
+    const knowledge = await this.prisma.knowledge.findUnique({
+      where: { id: data.knowledgeId },
+      select: { id: true },
+    });
+    if (!knowledge) {
+      throw new NotFoundException(`Knowledge ${data.knowledgeId} not found`);
+    }
     const record = await this.prisma.source.create({
       data: this.mapper.toCreate(data),
     });

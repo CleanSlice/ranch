@@ -4,6 +4,8 @@ import { ensureRanchRoot } from "../utils/setup";
 import { run } from "../utils/exec";
 import { freePorts } from "../utils/ports";
 import { ensureK3dRunning } from "../utils/k3d";
+import { ensurePortForwards } from "../utils/port-forward";
+import { ensureDepsInstalled } from "../utils/deps";
 
 export const devCommand = defineCommand({
   meta: {
@@ -20,9 +22,18 @@ export const devCommand = defineCommand({
       type: "boolean",
       description: "Skip k3d cluster start",
     },
+    "no-install": {
+      type: "boolean",
+      description: "Skip dependency freshness check",
+    },
   },
   async run({ args }) {
     const root = await ensureRanchRoot();
+
+    if (!args["no-install"]) {
+      await ensureDepsInstalled(root);
+    }
+
     freePorts([3000, 3001, 3002]);
 
     const target = args.target;
@@ -38,6 +49,9 @@ export const devCommand = defineCommand({
     const needsK3d = !args["no-k3d"] && (!target || target === "api");
     if (needsK3d) {
       await ensureK3dRunning(root);
+      ensurePortForwards([
+        { label: "Argo Workflows", namespace: "argo", service: "argo-workflows-server", port: 2746 },
+      ]);
     }
 
     if (target) {

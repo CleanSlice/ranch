@@ -1875,6 +1875,20 @@ export type PaddockEvaluationControllerLogsResponses = {
   200: unknown;
 };
 
+export type PaddockEvaluationControllerScenarioData = {
+  body?: never;
+  path: {
+    id: string;
+    scenarioId: string;
+  };
+  query?: never;
+  url: "/paddock-evaluations/{id}/scenarios/{scenarioId}";
+};
+
+export type PaddockEvaluationControllerScenarioResponses = {
+  200: unknown;
+};
+
 export type PaddockEvaluationControllerTraceData = {
   body?: never;
   path: {

@@ -120,6 +120,7 @@ import type {
   PaddockEvaluationControllerGetData,
   PaddockEvaluationControllerReportData,
   PaddockEvaluationControllerLogsData,
+  PaddockEvaluationControllerScenarioData,
   PaddockEvaluationControllerTraceData,
   PaddockEvaluationControllerAbortData,
   PaddockEvaluationControllerRerunData,
@@ -1943,6 +1944,22 @@ export class PaddockEvaluationsService {
       ThrowOnError
     >({
       url: "/paddock-evaluations/{id}/logs",
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch one scenario as captured in this evaluation's snapshot (messages, expectedBehavior, successCriteria). Reliable across template re-seeds that change scenario UUIDs in the live `paddock_scenarios` table.
+   */
+  public static paddockEvaluationControllerScenario<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockEvaluationControllerScenarioData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-evaluations/{id}/scenarios/{scenarioId}",
       ...options,
     });
   }

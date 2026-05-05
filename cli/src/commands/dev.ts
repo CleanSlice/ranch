@@ -3,6 +3,7 @@ import { consola } from "consola";
 import { ensureRanchRoot } from "../utils/setup";
 import { run } from "../utils/exec";
 import { freePorts } from "../utils/ports";
+import { ensureK3dRunning } from "../utils/k3d";
 
 export const devCommand = defineCommand({
   meta: {
@@ -14,6 +15,10 @@ export const devCommand = defineCommand({
       type: "positional",
       required: false,
       description: "Optional: api | app | admin",
+    },
+    "no-k3d": {
+      type: "boolean",
+      description: "Skip k3d cluster start",
     },
   },
   async run({ args }) {
@@ -28,6 +33,14 @@ export const devCommand = defineCommand({
         process.exit(1);
       }
       turboArgs.push(`--filter=${target}`);
+    }
+
+    const needsK3d = !args["no-k3d"] && (!target || target === "api");
+    if (needsK3d) {
+      await ensureK3dRunning(root);
+    }
+
+    if (target) {
       consola.start(`Starting ${target} (dev)...`);
     } else {
       consola.start("Starting api + app + admin (dev)...");

@@ -13,6 +13,8 @@ export class LlmMapper {
       label: record.label,
       apiKey: record.apiKey,
       status: record.status,
+      supportsChat: record.supportsChat,
+      supportsEmbedding: record.supportsEmbedding,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -27,6 +29,8 @@ export class LlmMapper {
       apiKey: data.apiKey,
       label: data.label ?? null,
       status: data.status ?? 'active',
+      supportsChat: data.supportsChat ?? true,
+      supportsEmbedding: data.supportsEmbedding ?? false,
     };
   }
 }

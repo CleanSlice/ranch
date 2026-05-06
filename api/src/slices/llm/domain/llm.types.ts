@@ -6,6 +6,8 @@ export interface ILlmCredentialData {
   label: string | null;
   apiKey: string;
   status: string;
+  supportsChat: boolean;
+  supportsEmbedding: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,6 +19,8 @@ export interface ICreateLlmCredentialData {
   fallbackModel?: string | null;
   label?: string | null;
   status?: string;
+  supportsChat?: boolean;
+  supportsEmbedding?: boolean;
 }
 
 export interface IUpdateLlmCredentialData {
@@ -26,4 +30,6 @@ export interface IUpdateLlmCredentialData {
   fallbackModel?: string | null;
   label?: string | null;
   status?: string;
+  supportsChat?: boolean;
+  supportsEmbedding?: boolean;
 }

@@ -13,6 +13,7 @@ import {
   IconRefresh,
   IconX,
 } from '@tabler/icons-vue';
+import { until } from '@vueuse/core';
 import AgentFileTree from './Tree.vue';
 import AgentFileViewer from './Viewer.vue';
 
@@ -20,6 +21,7 @@ const props = defineProps<{ id: string }>();
 
 const store = useAgentFileStore();
 const agentStore = useAgentStore();
+const confirmStore = useConfirmStore();
 
 const syncing = ref(false);
 const syncError = ref<string | null>(null);
@@ -74,8 +76,18 @@ async function onSync() {
 }
 
 async function openFile(path: string) {
+  if (saving.value) {
+    await until(saving).toBe(false);
+  }
   if (dirty.value) {
-    if (!confirm('Unsaved changes will be lost. Continue?')) return;
+    const ok = await confirmStore.ask({
+      title: 'Discard unsaved changes?',
+      description: 'You have unsaved edits in this file. They will be lost if you continue.',
+      confirmLabel: 'Discard changes',
+      cancelLabel: 'Keep editing',
+      variant: 'destructive',
+    });
+    if (!ok) return;
   }
   selected.value = path;
   contentLoading.value = true;
@@ -127,10 +139,16 @@ function dismissRestartBanner() {
   store.clearPendingRestart(props.id);
 }
 
-await useAsyncData(`admin-agent-files-${props.id}`, async () => {
-  await store.fetchList(props.id);
-  return true;
-});
+// Lazy so this sub-provider doesn't re-suspend the page once the parent's
+// agent data resolves and this component mounts.
+useAsyncData(
+  `admin-agent-files-${props.id}`,
+  async () => {
+    await store.fetchList(props.id);
+    return true;
+  },
+  { lazy: true },
+);
 </script>
 
 <template>

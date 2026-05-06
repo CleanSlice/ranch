@@ -1,0 +1,22 @@
+id: ranch-list-templates-skills
+category: tool_use
+difficulty: medium
+name: List templates and available skills
+description: User wants an overview of building blocks before creating a new agent
+expectedBehavior: |
+  Agent fetches both lists — `list_templates` + `list_skills` MCP shortcuts
+  if loaded, otherwise `http` GET ${RANCH_API_URL}/templates and
+  ${RANCH_API_URL}/skills (parallel where possible). Summarizes both.
+messages:
+  - text: "What templates and skills do I have available on this ranch?"
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Called the templates list AND the skills list (any combination of MCP shortcuts and http)
+    weight: 0.5
+  - dimension: correctness
+    description: Reported actual data from both responses
+    weight: 0.3
+  - dimension: response_quality
+    description: Two clean sections (templates, skills), no padding
+    weight: 0.2

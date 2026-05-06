@@ -7,10 +7,16 @@ import {
   Body,
   Param,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { ITemplateGateway } from './domain';
-import { CreateTemplateDto, UpdateTemplateDto } from './dtos';
+import {
+  CreateTemplateDto,
+  SetTemplateMcpsDto,
+  SetTemplateSkillsDto,
+  UpdateTemplateDto,
+} from './dtos';
 
 @ApiTags('templates')
 @Controller('templates')
@@ -43,9 +49,40 @@ export class TemplateController {
     return this.templateGateway.update(id, dto);
   }
 
+  @Put(':id/skills')
+  @ApiOperation({
+    summary:
+      'Replace the skill set attached to a template. Body lists the full desired set; omitted IDs are detached.',
+  })
+  async setSkills(@Param('id') id: string, @Body() dto: SetTemplateSkillsDto) {
+    const template = await this.templateGateway.findById(id);
+    if (!template) throw new NotFoundException('Template not found');
+    return this.templateGateway.setSkills(id, dto.skillIds);
+  }
+
+  @Put(':id/mcps')
+  @ApiOperation({
+    summary:
+      'Replace the MCP servers attached to a template. Body lists the full desired set; omitted IDs are detached. Agents created from this template inherit these MCPs at deploy time.',
+  })
+  async setMcps(@Param('id') id: string, @Body() dto: SetTemplateMcpsDto) {
+    const template = await this.templateGateway.findById(id);
+    if (!template) throw new NotFoundException('Template not found');
+    return this.templateGateway.setMcps(id, dto.mcpServerIds);
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a template' })
-  remove(@Param('id') id: string) {
-    return this.templateGateway.delete(id);
+  async remove(@Param('id') id: string) {
+    const template = await this.templateGateway.findById(id);
+    if (!template) throw new NotFoundException('Template not found');
+    const agentCount = await this.templateGateway.countAgents(id);
+    if (agentCount > 0) {
+      throw new ConflictException(
+        `Cannot delete template — ${agentCount} agent${agentCount === 1 ? '' : 's'} still using it.`,
+      );
+    }
+    await this.templateGateway.delete(id);
+    return { id };
   }
 }

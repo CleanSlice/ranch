@@ -15,17 +15,20 @@ import {
 } from '#theme/components/ui/sidebar';
 import {
   IconTractor,
-  IconRobot,
-  IconFileText,
+  IconTemplate,
   IconUsers,
   IconBrain,
   IconSparkles,
   IconSettings,
   IconLogout,
   IconDatabase,
+  IconShield,
+  IconPlug,
 } from '@tabler/icons-vue';
+import { Bot, FlaskConical } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
+const ranchVersion = useRuntimeConfig().public.ranchVersion;
 
 async function onLogout() {
   authStore.logout();
@@ -35,13 +38,17 @@ async function onLogout() {
 const menu = useMenuStore();
 
 const iconMap: Record<string, unknown> = {
-  Robot: IconRobot,
-  FileText: IconFileText,
+  Bot,
+  LayoutTemplate: IconTemplate,
+  Template: IconTemplate,
   Users: IconUsers,
   Brain: IconBrain,
   Sparkles: IconSparkles,
   Settings: IconSettings,
   Database: IconDatabase,
+  Shield: IconShield,
+  Plug: IconPlug,
+  FlaskConical,
 };
 
 const groups = [
@@ -59,7 +66,7 @@ const itemsByGroup = (group: MenuGroupTypes) =>
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton as-child size="lg">
-            <NuxtLink to="/">
+            <NuxtLink to="/rancher">
               <div
                 class="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
               >
@@ -123,6 +130,9 @@ const itemsByGroup = (group: MenuGroupTypes) =>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
+      <div class="px-3 pb-1 pt-2 text-[11px] text-muted-foreground group-has-data-[collapsible=icon]/sidebar-wrapper:hidden">
+        Ranch v{{ ranchVersion }}
+      </div>
     </SidebarFooter>
     <SidebarRail />
   </Sidebar>

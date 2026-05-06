@@ -12,12 +12,14 @@ import {
   IconRefresh,
   IconUpload,
 } from '@tabler/icons-vue';
+import { until } from '@vueuse/core';
 import AgentFileTree from '#agentFile/components/agentFile/Tree.vue';
 import AgentFileViewer from '#agentFile/components/agentFile/Viewer.vue';
 
 const props = defineProps<{ id: string }>();
 
 const store = useTemplateFileStore();
+const confirmStore = useConfirmStore();
 
 const listLoading = ref(false);
 const listError = ref<string | null>(null);
@@ -40,6 +42,25 @@ const folderInput = ref<HTMLInputElement | null>(null);
 
 const dirty = computed(() => content.value !== original.value);
 
+const ROOT_PREFIX = '.agent/';
+
+function stripRoot(p: string): string {
+  return p.startsWith(ROOT_PREFIX) ? p.slice(ROOT_PREFIX.length) : p;
+}
+
+const treeFiles = computed(() =>
+  store.nodes.map((n) => ({ ...n, path: stripRoot(n.path) })),
+);
+
+const treeSelected = computed(() =>
+  selected.value ? stripRoot(selected.value) : null,
+);
+
+function onTreeSelect(displayPath: string) {
+  const original = store.nodes.find((n) => stripRoot(n.path) === displayPath);
+  if (original) openFile(original.path);
+}
+
 async function refreshList() {
   listLoading.value = true;
   listError.value = null;
@@ -53,8 +74,18 @@ async function refreshList() {
 }
 
 async function openFile(path: string) {
+  if (saving.value) {
+    await until(saving).toBe(false);
+  }
   if (dirty.value) {
-    if (!confirm('Unsaved changes will be lost. Continue?')) return;
+    const ok = await confirmStore.ask({
+      title: 'Discard unsaved changes?',
+      description: 'You have unsaved edits in this file. They will be lost if you continue.',
+      confirmLabel: 'Discard changes',
+      cancelLabel: 'Keep editing',
+      variant: 'destructive',
+    });
+    if (!ok) return;
   }
   selected.value = path;
   contentLoading.value = true;
@@ -100,9 +131,13 @@ async function onFolderPicked(event: Event) {
   if (!fileList || fileList.length === 0) return;
 
   const arr = Array.from(fileList);
-  const ok = confirm(
-    `Upload ${arr.length} file(s)? This will REPLACE all existing files for this template.`,
-  );
+  const ok = await confirmStore.ask({
+    title: 'Replace all template files?',
+    description: `This will upload ${arr.length} file(s) and REPLACE all existing files for this template.`,
+    confirmLabel: 'Replace files',
+    cancelLabel: 'Cancel',
+    variant: 'destructive',
+  });
   if (!ok) {
     input.value = '';
     return;
@@ -146,9 +181,9 @@ await useAsyncData(`admin-template-files-${props.id}`, async () => {
             </SheetHeader>
             <div class="overflow-auto px-2 pb-4">
               <AgentFileTree
-                :files="store.nodes"
-                :selected="selected"
-                @select="openFile"
+                :files="treeFiles"
+                :selected="treeSelected"
+                @select="onTreeSelect"
               />
             </div>
           </SheetContent>
@@ -209,9 +244,9 @@ await useAsyncData(`admin-template-files-${props.id}`, async () => {
     <div class="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)] md:items-start">
       <div class="hidden max-h-[640px] overflow-auto rounded-md border p-2 md:block">
         <AgentFileTree
-          :files="store.nodes"
-          :selected="selected"
-          @select="openFile"
+          :files="treeFiles"
+          :selected="treeSelected"
+          @select="onTreeSelect"
         />
       </div>
       <div class="min-h-[480px]">

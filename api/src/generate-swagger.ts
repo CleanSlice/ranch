@@ -4,9 +4,11 @@ import { writeFileSync } from 'fs';
 import { AppModule } from './app.module';
 
 async function generate() {
+  process.env.S3_ACCESS_KEY ??= 'swagger-build-placeholder';
+  process.env.S3_SECRET_KEY ??= 'swagger-build-placeholder';
+
   const app = await NestFactory.create(AppModule, {
-    logger: false,
-    bufferLogs: true,
+    logger: ['error', 'warn'],
   });
 
   const config = new DocumentBuilder()

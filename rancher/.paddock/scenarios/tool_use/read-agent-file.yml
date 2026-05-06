@@ -1,0 +1,24 @@
+id: ranch-read-agent-file
+category: tool_use
+difficulty: easy
+name: Read an agent's SOUL.md
+description: User wants to see the personality config of an agent
+expectedBehavior: |
+  Agent calls `read_agent_file` MCP tool (if loaded) OR `http` GET
+  ${RANCH_API_URL}/agents/agent-bridle-42/files?path=SOUL.md with Bearer
+  auth, then returns the contents.
+messages:
+  - text: "Show me SOUL.md of agent-bridle-42"
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: |
+      Called either `read_agent_file` with agentId+path OR `http` GET on
+      ${RANCH_API_URL}/agents/agent-bridle-42/files?path=SOUL.md.
+    weight: 0.5
+  - dimension: correctness
+    description: Returned the response from the call, not paraphrased
+    weight: 0.3
+  - dimension: response_quality
+    description: No commentary — just the file (or the error)
+    weight: 0.2

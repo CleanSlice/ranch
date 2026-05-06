@@ -89,9 +89,7 @@ export class BridleAgentWsHandler
         }
       })
       .catch((err: Error) => {
-        this.logger.warn(
-          `Debug rehydrate failed for ${botId}: ${err.message}`,
-        );
+        this.logger.warn(`Debug rehydrate failed for ${botId}: ${err.message}`);
       });
   }
 

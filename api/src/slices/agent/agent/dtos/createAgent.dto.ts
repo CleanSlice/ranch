@@ -3,6 +3,7 @@ import {
   IsString,
   IsOptional,
   IsObject,
+  IsBoolean,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -41,4 +42,20 @@ export class CreateAgentDto {
   @ValidateNested()
   @Type(() => AgentResourcesDto)
   resources?: AgentResourcesDto;
+
+  @ApiPropertyOptional({
+    description:
+      'When true, the agent is visible on the public landing page to unauthenticated visitors.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isPublic?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isAdmin?: boolean;
 }

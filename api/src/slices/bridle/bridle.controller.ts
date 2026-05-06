@@ -148,7 +148,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      'Replay the persisted chat transcript for a bot (read from the agent runtime\'s data/sessions/bridle:<channel>.jsonl). Used to restore the chat UI on page refresh — live updates still arrive via /ws/chat.',
+      "Replay the persisted chat transcript for a bot (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Used to restore the chat UI on page refresh — live updates still arrive via /ws/chat.",
     operationId: 'getBridleTranscript',
   })
   @ApiQuery({
@@ -206,7 +206,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      'Delete the persisted chat transcript for a bot/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime\'s in-memory session may still hold context until the next pod restart.',
+      "Delete the persisted chat transcript for a bot/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart.",
     operationId: 'resetBridleTranscript',
   })
   @ApiQuery({

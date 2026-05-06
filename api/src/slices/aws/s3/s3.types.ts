@@ -1,10 +1,3 @@
-export interface IS3Config {
-  endpoint?: string;
-  region: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-}
-
 export interface IS3FileLocation {
   bucket: string;
   key: string;

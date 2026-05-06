@@ -22,6 +22,12 @@ export class TemplateDto {
   @ApiProperty({ type: [String] })
   defaultKnowledgeIds: string[];
 
+  @ApiProperty({
+    type: [String],
+    description: 'IDs of skills attached to this template.',
+  })
+  skillIds: string[];
+
   @ApiProperty()
   createdAt: Date;
 

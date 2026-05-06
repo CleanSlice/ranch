@@ -126,7 +126,7 @@ export class TemplateFileController {
       try {
         const parsed: unknown = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.every((p) => typeof p === 'string'))
-          return parsed as string[];
+          return parsed;
       } catch {
         return [raw];
       }

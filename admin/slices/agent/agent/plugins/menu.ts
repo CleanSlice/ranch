@@ -9,7 +9,7 @@ export default defineNuxtPlugin(() => {
     title: 'Agents',
     link: 'agents',
     active: false,
-    icon: 'Robot',
+    icon: 'Bot',
     sortOrder: 10,
   });
 });

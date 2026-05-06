@@ -2,6 +2,7 @@
 import type { ICreateAgentData } from '#agent/stores/agent';
 import type { ITemplateData } from '#template/stores/template';
 import { Button } from '#theme/components/ui/button';
+import { Checkbox } from '#theme/components/ui/checkbox';
 import { Input } from '#theme/components/ui/input';
 import { Label } from '#theme/components/ui/label';
 import {
@@ -43,6 +44,7 @@ const form = reactive<
   Required<Pick<ICreateAgentData, 'name' | 'templateId'>> & {
     llmCredentialId: string;
     resources: { cpu: string; memory: string };
+    isPublic: boolean;
   }
 >({
   name: props.initialValues?.name ?? '',
@@ -52,6 +54,7 @@ const form = reactive<
     cpu: props.initialValues?.resources?.cpu ?? firstTemplate?.defaultResources.cpu ?? '500m',
     memory: props.initialValues?.resources?.memory ?? firstTemplate?.defaultResources.memory ?? '512Mi',
   },
+  isPublic: props.initialValues?.isPublic ?? false,
 });
 
 watch(
@@ -85,6 +88,7 @@ function onSubmit() {
       cpu: form.resources.cpu.trim() || '500m',
       memory: form.resources.memory.trim() || '512Mi',
     },
+    isPublic: form.isPublic,
   });
 }
 </script>
@@ -161,6 +165,30 @@ function onSubmit() {
           <Label for="memory">Memory</Label>
           <Input id="memory" v-model="form.resources.memory" placeholder="512Mi" />
         </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle>Visibility</CardTitle>
+        <CardDescription>
+          Public agents appear on the marketing landing page to unauthenticated visitors.
+        </CardDescription>
+      </CardHeader>
+      <CardContent class="grid max-w-xl gap-2">
+        <label for="isPublic" class="flex items-start gap-3 text-sm">
+          <Checkbox
+            id="isPublic"
+            :model-value="form.isPublic"
+            @update:model-value="(v: boolean | 'indeterminate') => (form.isPublic = v === true)"
+          />
+          <span>
+            <span class="font-medium">Show on landing page</span>
+            <span class="block text-xs text-muted-foreground">
+              When off, the agent stays hidden from `/` and the public agent list.
+            </span>
+          </span>
+        </label>
       </CardContent>
     </Card>
 

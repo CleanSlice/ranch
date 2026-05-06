@@ -1,0 +1,25 @@
+id: ranch-attach-skill-to-template
+category: tool_use
+difficulty: hard
+name: Attach a skill to a template
+description: User wants to add a skill to an existing template's skill set without losing existing skills
+expectedBehavior: |
+  Agent first reads the current template via `get_template` MCP shortcut
+  OR `http` GET ${RANCH_API_URL}/templates/tpl-bridle, then writes the
+  full union (existing + websearch) via `set_template_skills` OR `http`
+  PUT ${RANCH_API_URL}/templates/tpl-bridle/skills with body `{skillIds}`.
+  The endpoint is exhaustive — sending only "websearch" would detach
+  the existing skills.
+messages:
+  - text: "Add the websearch skill to template tpl-bridle. Don't drop the others."
+    from: eval-user
+successCriteria:
+  - dimension: tool_usage
+    description: Read template first to see current skillIds, then sent the full union (not just websearch)
+    weight: 0.5
+  - dimension: correctness
+    description: Final skill list contains existing skills + websearch
+    weight: 0.3
+  - dimension: response_quality
+    description: Confirmed final skill list back to user
+    weight: 0.2

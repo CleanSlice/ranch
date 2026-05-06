@@ -11,7 +11,20 @@ import {
   TableHeader,
   TableRow,
 } from '#theme/components/ui/table';
-import { IconLoader2, IconRefresh } from '@tabler/icons-vue';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '#theme/components/ui/dropdown-menu';
+import {
+  IconDotsVertical,
+  IconLoader2,
+  IconRefresh,
+  IconShield,
+  IconTrash,
+} from '@tabler/icons-vue';
 
 const agentStore = useAgentStore();
 
@@ -115,7 +128,14 @@ async function onRemove() {
             class="cursor-pointer"
             @click="navigateTo(`/agents/${agent.id}`)"
           >
-            <TableCell class="font-medium">{{ agent.name }}</TableCell>
+            <TableCell class="font-medium">
+              <div class="flex items-center gap-2">
+                <span>{{ agent.name }}</span>
+                <Badge v-if="agent.isAdmin" variant="default" class="gap-1" title="This agent has the ranch_* admin tools and a service token">
+                  <IconShield class="size-3" /> Admin
+                </Badge>
+              </div>
+            </TableCell>
             <TableCell class="text-muted-foreground">
               {{ agent.resources.cpu }} / {{ agent.resources.memory }}
             </TableCell>
@@ -130,22 +150,35 @@ async function onRemove() {
                 <Button size="sm" variant="outline" as-child>
                   <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  :disabled="isRestarting(agent.id)"
-                  @click="onRestart(agent)"
-                >
-                  <IconLoader2
-                    v-if="isRestarting(agent.id)"
-                    class="size-4 animate-spin"
-                  />
-                  <IconRefresh v-else class="size-4" />
-                  {{ isRestarting(agent.id) ? 'Restarting…' : 'Restart' }}
-                </Button>
-                <Button size="sm" variant="ghost" class="text-destructive" @click="pendingRemoval = agent">
-                  Delete
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button size="sm" variant="ghost" class="size-8 p-0">
+                      <span class="sr-only">Open menu</span>
+                      <IconDotsVertical class="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      :disabled="isRestarting(agent.id)"
+                      @select="onRestart(agent)"
+                    >
+                      <IconLoader2
+                        v-if="isRestarting(agent.id)"
+                        class="size-4 animate-spin"
+                      />
+                      <IconRefresh v-else class="size-4" />
+                      {{ isRestarting(agent.id) ? 'Restarting…' : 'Restart' }}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      class="text-destructive focus:text-destructive"
+                      @select="pendingRemoval = agent"
+                    >
+                      <IconTrash class="size-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </TableCell>
           </TableRow>

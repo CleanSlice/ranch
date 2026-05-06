@@ -19,7 +19,11 @@ export class AgentPodStatusDto {
   @ApiProperty({ example: 0 })
   restartCount: number;
 
-  @ApiProperty({ nullable: true, type: String, example: '2026-04-30T10:15:00Z' })
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: '2026-04-30T10:15:00Z',
+  })
   startedAt: string | null;
 
   @ApiProperty({ nullable: true, type: String, example: 'OOMKilled' })
@@ -42,7 +46,8 @@ export class AgentStatusDto {
   @ApiProperty({
     type: AgentPodStatusDto,
     nullable: true,
-    description: 'Live pod status; null if no pod is currently running for this agent.',
+    description:
+      'Live pod status; null if no pod is currently running for this agent.',
   })
   pod: AgentPodStatusDto | null;
 }

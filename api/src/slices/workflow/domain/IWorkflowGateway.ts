@@ -8,6 +8,8 @@ export interface ISubmitWorkflowData {
   image: string;
   config: Record<string, unknown>;
   resources: { cpu: string; memory: string };
+  isAdmin: boolean;
+  ranchApiToken: string;
 }
 
 export abstract class IWorkflowGateway {

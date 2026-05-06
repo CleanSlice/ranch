@@ -1,47 +1,64 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { BridlePartTypes, type IBridleMessageData } from '../../stores/bridle'
+import { renderMarkdown } from '../../utils/markdown'
 import { Bot, User, FileText, Info } from 'lucide-vue-next'
 import { Button } from '#theme/components/ui/button'
 import { cn } from '#theme/utils/cn'
 
-defineProps<{
+const props = defineProps<{
   message: IBridleMessageData
   hasDebug?: boolean
+  markdownEnabled?: boolean
 }>()
 
 defineEmits<{
   inspect: [id: string]
 }>()
+
+const isUser = computed(() => props.message.role === 'user')
+
+// Markdown rendering applies only to assistant messages — user input stays
+// plain text so pasted content can't accidentally be rendered as HTML.
+function htmlFor(text: string): string {
+  return renderMarkdown(text)
+}
 </script>
 
 <template>
   <div
     :class="cn(
       'flex gap-3 max-w-[85%]',
-      message.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto',
+      isUser ? 'ml-auto flex-row-reverse' : 'mr-auto',
     )"
   >
     <div
       :class="cn(
         'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs',
-        message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted',
+        isUser ? 'bg-primary text-primary-foreground' : 'bg-muted',
       )"
     >
-      <User v-if="message.role === 'user'" class="h-4 w-4" />
+      <User v-if="isUser" class="h-4 w-4" />
       <Bot v-else class="h-4 w-4" />
     </div>
 
     <div
       :class="cn(
         'rounded-lg px-3 py-2 text-sm space-y-2',
-        message.role === 'user'
-          ? 'bg-primary text-primary-foreground'
-          : 'bg-muted',
+        isUser ? 'bg-primary text-primary-foreground' : 'bg-muted',
+        !isUser && markdownEnabled && 'chat-md',
         message.streaming && 'border-l-2 border-primary',
       )"
     >
       <template v-for="(part, i) in message.parts" :key="i">
-        <p v-if="part.type === BridlePartTypes.Text" class="whitespace-pre-wrap break-words">{{ part.text }}</p>
+        <template v-if="part.type === BridlePartTypes.Text">
+          <div
+            v-if="!isUser && markdownEnabled"
+            class="wrap-break-word"
+            v-html="htmlFor(part.text)"
+          />
+          <p v-else class="whitespace-pre-wrap wrap-break-word">{{ part.text }}</p>
+        </template>
 
         <img
           v-else-if="part.type === BridlePartTypes.Image"
@@ -62,8 +79,15 @@ defineEmits<{
         </a>
       </template>
 
-      <!-- Fallback: if no parts, show plain text -->
-      <p v-if="message.parts.length === 0" class="whitespace-pre-wrap break-words">{{ message.text }}</p>
+      <!-- Fallback: if no parts, show plain text (or markdown for assistant) -->
+      <template v-if="message.parts.length === 0">
+        <div
+          v-if="!isUser && markdownEnabled"
+          class="wrap-break-word"
+          v-html="htmlFor(message.text)"
+        />
+        <p v-else class="whitespace-pre-wrap wrap-break-word">{{ message.text }}</p>
+      </template>
     </div>
 
     <Button

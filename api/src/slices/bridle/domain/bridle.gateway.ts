@@ -57,7 +57,10 @@ export abstract class IBridleGateway {
    * resolve when the agent acks. Resolves with `agentOnline=false` immediately
    * if no agent is connected for botId.
    */
-  abstract syncAgent(botId: string, timeoutMs?: number): Promise<ISyncAgentResult>;
+  abstract syncAgent(
+    botId: string,
+    timeoutMs?: number,
+  ): Promise<ISyncAgentResult>;
   /** Resolve a pending syncAgent() Promise by requestId. */
   abstract handleSyncResponse(botId: string, data: IBridleSyncResponse): void;
   /**

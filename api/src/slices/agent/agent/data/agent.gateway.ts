@@ -26,6 +26,21 @@ export class AgentGateway extends IAgentGateway {
     return records.map((r) => this.mapper.toEntity(r));
   }
 
+  async findPublic(): Promise<IAgentData[]> {
+    const records = await this.prisma.agent.findMany({
+      where: { isPublic: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return records.map((r) => this.mapper.toEntity(r));
+  }
+
+  async findAdmin(): Promise<IAgentData | null> {
+    const record = await this.prisma.agent.findFirst({
+      where: { isAdmin: true },
+    });
+    return record ? this.mapper.toEntity(record) : null;
+  }
+
   async findById(id: string): Promise<IAgentData | null> {
     const record = await this.prisma.agent.findUnique({ where: { id } });
     return record ? this.mapper.toEntity(record) : null;
@@ -52,6 +67,7 @@ export class AgentGateway extends IAgentGateway {
         ...(data.resources && {
           resources: data.resources as unknown as Prisma.InputJsonValue,
         }),
+        ...(data.isPublic !== undefined && { isPublic: data.isPublic }),
       },
     });
     return this.mapper.toEntity(record);
@@ -72,11 +88,41 @@ export class AgentGateway extends IAgentGateway {
     return this.mapper.toEntity(record);
   }
 
+  async setWorkflowId(id: string, workflowId: string): Promise<IAgentData> {
+    const record = await this.prisma.agent.update({
+      where: { id },
+      data: { workflowId },
+    });
+    return this.mapper.toEntity(record);
+  }
+
   async setDebugEnabled(id: string, enabled: boolean): Promise<IAgentData> {
     const record = await this.prisma.agent.update({
       where: { id },
       data: { debugEnabled: enabled },
     });
+    return this.mapper.toEntity(record);
+  }
+
+  async setAdmin(id: string, enabled: boolean): Promise<IAgentData> {
+    if (!enabled) {
+      const record = await this.prisma.agent.update({
+        where: { id },
+        data: { isAdmin: false },
+      });
+      return this.mapper.toEntity(record);
+    }
+    // Single-admin invariant — clear the flag from any other agent first.
+    const [, record] = await this.prisma.$transaction([
+      this.prisma.agent.updateMany({
+        where: { isAdmin: true, NOT: { id } },
+        data: { isAdmin: false },
+      }),
+      this.prisma.agent.update({
+        where: { id },
+        data: { isAdmin: true },
+      }),
+    ]);
     return this.mapper.toEntity(record);
   }
 

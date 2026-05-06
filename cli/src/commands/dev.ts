@@ -1,0 +1,66 @@
+import { defineCommand } from "citty";
+import { consola } from "consola";
+import { ensureRanchRoot } from "../utils/setup";
+import { run } from "../utils/exec";
+import { freePorts } from "../utils/ports";
+import { ensureK3dRunning } from "../utils/k3d";
+import { ensurePortForwards } from "../utils/port-forward";
+import { ensureDepsInstalled } from "../utils/deps";
+
+export const devCommand = defineCommand({
+  meta: {
+    name: "dev",
+    description: "Start dev servers (api + app + admin, or one of them)",
+  },
+  args: {
+    target: {
+      type: "positional",
+      required: false,
+      description: "Optional: api | app | admin",
+    },
+    "no-k3d": {
+      type: "boolean",
+      description: "Skip k3d cluster start",
+    },
+    "no-install": {
+      type: "boolean",
+      description: "Skip dependency freshness check",
+    },
+  },
+  async run({ args }) {
+    const root = await ensureRanchRoot();
+
+    if (!args["no-install"]) {
+      await ensureDepsInstalled(root);
+    }
+
+    freePorts([3000, 3001, 3002]);
+
+    const target = args.target;
+    const turboArgs = ["run", "turbo", "dev"];
+    if (target) {
+      if (!["api", "app", "admin"].includes(target)) {
+        consola.error(`Unknown target: ${target}. Use api | app | admin.`);
+        process.exit(1);
+      }
+      turboArgs.push(`--filter=${target}`);
+    }
+
+    const needsK3d = !args["no-k3d"] && (!target || target === "api");
+    if (needsK3d) {
+      await ensureK3dRunning(root);
+      ensurePortForwards([
+        { label: "Argo Workflows", namespace: "argo", service: "argo-workflows-server", port: 2746 },
+      ]);
+    }
+
+    if (target) {
+      consola.start(`Starting ${target} (dev)...`);
+    } else {
+      consola.start("Starting api + app + admin (dev)...");
+    }
+
+    const code = await run("bun", turboArgs, { cwd: root });
+    process.exit(code);
+  },
+});

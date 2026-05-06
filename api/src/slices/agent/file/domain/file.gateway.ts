@@ -5,4 +5,8 @@ export abstract class IFileGateway {
   abstract read(agentId: string, path: string): Promise<IFileContent>;
   abstract save(agentId: string, path: string, content: string): Promise<void>;
   abstract delete(agentId: string, path: string): Promise<void>;
+  abstract seedFromTemplate(
+    agentId: string,
+    templateId: string,
+  ): Promise<number>;
 }

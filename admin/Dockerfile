@@ -26,11 +26,14 @@ COPY --from=api-swagger /build/api/swagger-spec.json ./api/swagger-spec.json
 COPY admin/ ./admin/
 WORKDIR /build/admin
 ARG API_URL
-RUN API_URL=${API_URL} bun run build
+ARG RANCH_VERSION=dev
+RUN API_URL=${API_URL} RANCH_VERSION=${RANCH_VERSION} bun run build
 
 FROM node:22-slim
 WORKDIR /usr/src/app
 COPY --from=admin-builder /build/admin/.output ./.output
+ARG RANCH_VERSION=dev
+ENV RANCH_VERSION=${RANCH_VERSION}
 ENV NITRO_PORT=3001
 EXPOSE 3001
 CMD ["node", ".output/server/index.mjs"]

@@ -18,6 +18,10 @@ on:
       - 'api/**'
       - 'admin/**'
       - 'app/**'
+      - 'runtime/**'
+      - 'rancher/**'
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       target:
@@ -36,18 +40,35 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      api:   ${{ steps.filter.outputs.api   || steps.manual.outputs.api }}
-      admin: ${{ steps.filter.outputs.admin || steps.manual.outputs.admin }}
-      app:   ${{ steps.filter.outputs.app   || steps.manual.outputs.app }}
+      api:     ${{ steps.tag.outputs.all || steps.filter.outputs.api   || steps.manual.outputs.api }}
+      admin:   ${{ steps.tag.outputs.all || steps.filter.outputs.admin || steps.manual.outputs.admin }}
+      app:     ${{ steps.tag.outputs.all || steps.filter.outputs.app   || steps.manual.outputs.app }}
+      version: ${{ steps.version.outputs.value }}
+      tag:     ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+      - id: tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: echo "all=true" >> $GITHUB_OUTPUT
+      - id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VALUE="${GITHUB_REF_NAME#v}"
+            echo "value=${VALUE}" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          else
+            echo "value=0.0.0-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          fi
       - id: filter
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
         uses: dorny/paths-filter@v3
         with:
           filters: |
             api:
               - 'api/**'
+              - 'runtime/**'
+              - 'rancher/**'
             admin:
               - 'admin/**'
             app:
@@ -68,6 +89,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Bake runtime/ source + deps into the api image so paddock CLI's
+      # dynamic-import of <repo>/runtime/src/runtime.ts works in prod.
+      # Runtime lives in a sibling repo, so we clone it into the build
+      # context root.
+      - name: Checkout runtime
+        uses: actions/checkout@v4
+        with:
+          repository: CleanSlice/runtime
+          token: ${{ secrets.GHCR_PAT }}
+          path: runtime
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -76,12 +107,15 @@ jobs:
           password: ${{ secrets.GHCR_PAT }}
       - uses: docker/build-push-action@v6
         with:
-          context: ./api
+          context: .
+          file: ./api/Dockerfile
           platforms: linux/amd64
           push: true
+          build-args: |
+            RANCH_VERSION=${{ needs.changes.outputs.version }}
           tags: |
             ${{ env.IMAGE_PREFIX }}-api:latest
-            ${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-api:${{ needs.changes.outputs.tag }}
           cache-from: type=gha,scope=ranch-api
           cache-to: type=gha,mode=max,scope=ranch-api
 
@@ -105,9 +139,10 @@ jobs:
           push: true
           build-args: |
             API_URL=${{ vars.API_URL }}
+            RANCH_VERSION=${{ needs.changes.outputs.version }}
           tags: |
             ${{ env.IMAGE_PREFIX }}-admin:latest
-            ${{ env.IMAGE_PREFIX }}-admin:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-admin:${{ needs.changes.outputs.tag }}
           cache-from: type=gha,scope=ranch-admin
           cache-to: type=gha,mode=max,scope=ranch-admin
 
@@ -131,9 +166,10 @@ jobs:
           push: true
           build-args: |
             API_URL=${{ vars.API_URL }}
+            RANCH_VERSION=${{ needs.changes.outputs.version }}
           tags: |
             ${{ env.IMAGE_PREFIX }}-app:latest
-            ${{ env.IMAGE_PREFIX }}-app:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-app:${{ needs.changes.outputs.tag }}
           cache-from: type=gha,scope=ranch-app
           cache-to: type=gha,mode=max,scope=ranch-app
 
@@ -155,21 +191,117 @@ jobs:
 
       - name: Rollout ranch-api
         if: needs.changes.outputs.api == 'true' && needs.build-api.result == 'success'
+        env:
+          DEPLOY: ranch-api
+          NS: platform
         run: |
-          kubectl -n platform rollout restart deploy/ranch-api
-          kubectl -n platform rollout status deploy/ranch-api --timeout=5m
+          kubectl -n "$NS" rollout restart deploy/"$DEPLOY"
+          if ! kubectl -n "$NS" rollout status deploy/"$DEPLOY" --timeout=10m; then
+            echo "::group::describe deploy/$DEPLOY"
+            kubectl -n "$NS" describe deploy/"$DEPLOY" || true
+            echo "::endgroup::"
+            echo "::group::pods for $DEPLOY"
+            { kubectl -n "$NS" get pods -o wide | head -1; kubectl -n "$NS" get pods -o wide | grep "^$DEPLOY-" || true; }
+            echo "::endgroup::"
+            echo "::group::describe pods"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              kubectl -n "$NS" describe "$p" | tail -80 || true
+              echo "---"
+            done
+            echo "::endgroup::"
+            echo "::group::recent namespace events"
+            kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -50 || true
+            echo "::endgroup::"
+            echo "::group::pod logs (current)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            echo "::group::pod logs (previous)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --previous --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Rollout ranch-admin
         if: needs.changes.outputs.admin == 'true' && needs.build-admin.result == 'success'
+        env:
+          DEPLOY: ranch-admin
+          NS: platform
         run: |
-          kubectl -n platform rollout restart deploy/ranch-admin
-          kubectl -n platform rollout status deploy/ranch-admin --timeout=5m
+          kubectl -n "$NS" rollout restart deploy/"$DEPLOY"
+          if ! kubectl -n "$NS" rollout status deploy/"$DEPLOY" --timeout=10m; then
+            echo "::group::describe deploy/$DEPLOY"
+            kubectl -n "$NS" describe deploy/"$DEPLOY" || true
+            echo "::endgroup::"
+            echo "::group::pods for $DEPLOY"
+            { kubectl -n "$NS" get pods -o wide | head -1; kubectl -n "$NS" get pods -o wide | grep "^$DEPLOY-" || true; }
+            echo "::endgroup::"
+            echo "::group::describe pods"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              kubectl -n "$NS" describe "$p" | tail -80 || true
+              echo "---"
+            done
+            echo "::endgroup::"
+            echo "::group::recent namespace events"
+            kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -50 || true
+            echo "::endgroup::"
+            echo "::group::pod logs (current)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            echo "::group::pod logs (previous)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --previous --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Rollout ranch-app
         if: needs.changes.outputs.app == 'true' && needs.build-app.result == 'success'
+        env:
+          DEPLOY: ranch-app
+          NS: platform
         run: |
-          kubectl -n platform rollout restart deploy/ranch-app
-          kubectl -n platform rollout status deploy/ranch-app --timeout=5m
+          kubectl -n "$NS" rollout restart deploy/"$DEPLOY"
+          if ! kubectl -n "$NS" rollout status deploy/"$DEPLOY" --timeout=10m; then
+            echo "::group::describe deploy/$DEPLOY"
+            kubectl -n "$NS" describe deploy/"$DEPLOY" || true
+            echo "::endgroup::"
+            echo "::group::pods for $DEPLOY"
+            { kubectl -n "$NS" get pods -o wide | head -1; kubectl -n "$NS" get pods -o wide | grep "^$DEPLOY-" || true; }
+            echo "::endgroup::"
+            echo "::group::describe pods"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              kubectl -n "$NS" describe "$p" | tail -80 || true
+              echo "---"
+            done
+            echo "::endgroup::"
+            echo "::group::recent namespace events"
+            kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -50 || true
+            echo "::endgroup::"
+            echo "::group::pod logs (current)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            echo "::group::pod logs (previous)"
+            for p in $(kubectl -n "$NS" get pods -o name | grep "/$DEPLOY-" || true); do
+              echo "=== $p ==="
+              kubectl -n "$NS" logs "$p" --previous --tail=200 --all-containers --timestamps || true
+            done
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Smoke test
         if: |

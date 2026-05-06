@@ -150,6 +150,129 @@ export const UpdateTemplateDtoSchema = {
     }
 } as const;
 
+export const SetTemplateSkillsDtoSchema = {
+    type: 'object',
+    properties: {
+        skillIds: {
+            description: 'Full list of skill IDs to attach. Replaces any prior set.',
+            type: 'array',
+            items: {
+                type: 'string'
+            }
+        }
+    },
+    required: ['skillIds']
+} as const;
+
+export const SetTemplateMcpsDtoSchema = {
+    type: 'object',
+    properties: {
+        mcpServerIds: {
+            description: 'Full list of MCP server IDs to attach. Replaces any prior set.',
+            type: 'array',
+            items: {
+                type: 'string'
+            }
+        }
+    },
+    required: ['mcpServerIds']
+} as const;
+
+export const CreateMcpServerDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string'
+        },
+        description: {
+            type: 'object'
+        },
+        url: {
+            type: 'string'
+        },
+        transport: {
+            type: 'string',
+            enum: ['streamableHttp', 'sse']
+        },
+        authType: {
+            type: 'string',
+            enum: ['none', 'bearer', 'header']
+        },
+        authValue: {
+            type: 'object'
+        },
+        enabled: {
+            type: 'boolean'
+        }
+    },
+    required: ['name', 'url']
+} as const;
+
+export const UpdateMcpServerDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string'
+        },
+        description: {
+            type: 'object'
+        },
+        url: {
+            type: 'string'
+        },
+        transport: {
+            type: 'string',
+            enum: ['streamableHttp', 'sse']
+        },
+        authType: {
+            type: 'string',
+            enum: ['none', 'bearer', 'header']
+        },
+        authValue: {
+            type: 'object'
+        },
+        enabled: {
+            type: 'boolean'
+        }
+    }
+} as const;
+
+export const LoginDtoSchema = {
+    type: 'object',
+    properties: {
+        email: {
+            type: 'string',
+            example: 'jane@example.com'
+        },
+        password: {
+            type: 'string',
+            example: 'strongPassword1',
+            minLength: 8
+        }
+    },
+    required: ['email', 'password']
+} as const;
+
+export const RegisterDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string',
+            example: 'Jane Doe'
+        },
+        email: {
+            type: 'string',
+            example: 'jane@example.com'
+        },
+        password: {
+            type: 'string',
+            example: 'strongPassword1',
+            minLength: 8
+        }
+    },
+    required: ['name', 'email', 'password']
+} as const;
+
 export const SaveTemplateFileDtoSchema = {
     type: 'object',
     properties: {
@@ -232,6 +355,40 @@ export const AgentStatusDtoSchema = {
     required: ['agent', 'pod']
 } as const;
 
+export const AgentMcpDtoSchema = {
+    type: 'object',
+    properties: {
+        name: {
+            type: 'string',
+            description: 'Unique MCP server name (key in the runtime registry).'
+        },
+        transport: {
+            type: 'string',
+            enum: ['streamableHttp', 'sse'],
+            description: 'Transport protocol the runtime should use to connect.'
+        },
+        url: {
+            type: 'string',
+            description: 'MCP server endpoint URL.'
+        },
+        authType: {
+            type: 'string',
+            enum: ['none', 'bearer', 'header'],
+            description: 'Auth scheme for the connection.'
+        },
+        authValue: {
+            type: 'string',
+            nullable: true,
+            description: 'Auth credential. For `bearer`: raw token (runtime adds the `Bearer ` prefix). For `header`: literal `Header-Name: value` line. `null` when authType is `none`.'
+        },
+        enabled: {
+            type: 'boolean',
+            description: 'Always `true` in this list — disabled servers are filtered server-side. Kept for forward compatibility.'
+        }
+    },
+    required: ['name', 'transport', 'url', 'authType', 'authValue', 'enabled']
+} as const;
+
 export const AgentResourcesDtoSchema = {
     type: 'object',
     properties: {
@@ -264,6 +421,14 @@ export const CreateAgentDtoSchema = {
         },
         resources: {
             '$ref': '#/components/schemas/AgentResourcesDto'
+        },
+        isPublic: {
+            type: 'boolean',
+            description: 'When true, the agent is visible on the public landing page to unauthenticated visitors.'
+        },
+        isAdmin: {
+            type: 'boolean',
+            description: 'When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.'
         }
     },
     required: ['name', 'templateId']
@@ -286,6 +451,14 @@ export const UpdateAgentDtoSchema = {
         },
         resources: {
             '$ref': '#/components/schemas/AgentResourcesDto'
+        },
+        isPublic: {
+            type: 'boolean',
+            description: 'When true, the agent is visible on the public landing page to unauthenticated visitors.'
+        },
+        isAdmin: {
+            type: 'boolean',
+            description: 'When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.'
         }
     }
 } as const;
@@ -301,40 +474,15 @@ export const SetAgentDebugDtoSchema = {
     required: ['enabled']
 } as const;
 
-export const LoginDtoSchema = {
+export const SaveFileDtoSchema = {
     type: 'object',
     properties: {
-        email: {
+        content: {
             type: 'string',
-            example: 'jane@example.com'
-        },
-        password: {
-            type: 'string',
-            example: 'strongPassword1',
-            minLength: 8
+            description: 'Full file content as text'
         }
     },
-    required: ['email', 'password']
-} as const;
-
-export const RegisterDtoSchema = {
-    type: 'object',
-    properties: {
-        name: {
-            type: 'string',
-            example: 'Jane Doe'
-        },
-        email: {
-            type: 'string',
-            example: 'jane@example.com'
-        },
-        password: {
-            type: 'string',
-            example: 'strongPassword1',
-            minLength: 8
-        }
-    },
-    required: ['name', 'email', 'password']
+    required: ['content']
 } as const;
 
 export const BridleTextPartDtoSchema = {
@@ -483,17 +631,6 @@ export const TranscriptResponseDtoSchema = {
     required: ['messages', 'channel']
 } as const;
 
-export const SaveFileDtoSchema = {
-    type: 'object',
-    properties: {
-        content: {
-            type: 'string',
-            description: 'Full file content as text'
-        }
-    },
-    required: ['content']
-} as const;
-
 export const SecretEntryDtoSchema = {
     type: 'object',
     properties: {
@@ -534,7 +671,7 @@ export const SecretListDtoSchema = {
 
 export const UserRoleTypesSchema = {
     type: 'string',
-    enum: ['Owner', 'Admin', 'User']
+    enum: ['Owner', 'Admin', 'User', 'Agent']
 } as const;
 
 export const CreateUserDtoSchema = {
@@ -886,4 +1023,228 @@ export const UpdateSkillDtoSchema = {
             type: 'string'
         }
     }
+} as const;
+
+export const CreatePaddockScenarioMessageDtoSchema = {
+    type: 'object',
+    properties: {
+        text: {
+            type: 'string'
+        },
+        from: {
+            type: 'string'
+        },
+        delayMs: {
+            type: 'number'
+        }
+    },
+    required: ['text', 'from']
+} as const;
+
+export const CreatePaddockSuccessCriterionDtoSchema = {
+    type: 'object',
+    properties: {
+        dimension: {
+            type: 'string',
+            enum: ['correctness', 'tool_usage', 'soul_compliance', 'response_quality', 'error_handling']
+        },
+        description: {
+            type: 'string'
+        },
+        weight: {
+            type: 'number'
+        }
+    },
+    required: ['dimension', 'description', 'weight']
+} as const;
+
+export const CreatePaddockScenarioSetupDtoSchema = {
+    type: 'object',
+    properties: {
+        files: {
+            type: 'object',
+            additionalProperties: {
+                type: 'string'
+            }
+        },
+        env: {
+            type: 'object',
+            additionalProperties: {
+                type: 'string'
+            }
+        },
+        tools: {
+            type: 'array',
+            items: {
+                type: 'string'
+            }
+        }
+    }
+} as const;
+
+export const CreatePaddockScenarioDtoSchema = {
+    type: 'object',
+    properties: {
+        templateId: {
+            type: 'string',
+            nullable: true
+        },
+        agentId: {
+            type: 'string',
+            nullable: true
+        },
+        category: {
+            type: 'string',
+            enum: ['tool_use', 'memory', 'conversation', 'patching_workflow', 'edge_case', 'multi_turn', 'error_recovery']
+        },
+        difficulty: {
+            type: 'string',
+            enum: ['easy', 'medium', 'hard', 'adversarial']
+        },
+        name: {
+            type: 'string'
+        },
+        description: {
+            type: 'string'
+        },
+        expectedBehavior: {
+            type: 'string'
+        },
+        messages: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/CreatePaddockScenarioMessageDto'
+            }
+        },
+        successCriteria: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/CreatePaddockSuccessCriterionDto'
+            }
+        },
+        setup: {
+            nullable: true,
+            allOf: [
+                {
+                    '$ref': '#/components/schemas/CreatePaddockScenarioSetupDto'
+                }
+            ]
+        }
+    },
+    required: ['category', 'difficulty', 'name', 'description', 'expectedBehavior', 'messages', 'successCriteria']
+} as const;
+
+export const GeneratePaddockScenarioDtoSchema = {
+    type: 'object',
+    properties: {
+        description: {
+            type: 'string',
+            description: 'Free-form description of the problem / behavior the user wants to test.'
+        },
+        templateId: {
+            type: 'string',
+            nullable: true
+        },
+        agentId: {
+            type: 'string',
+            nullable: true
+        },
+        category: {
+            type: 'string',
+            enum: ['tool_use', 'memory', 'conversation', 'patching_workflow', 'edge_case', 'multi_turn', 'error_recovery']
+        },
+        difficulty: {
+            type: 'string',
+            enum: ['easy', 'medium', 'hard', 'adversarial']
+        },
+        credentialId: {
+            type: 'string',
+            description: 'Optional LlmCredential id; if omitted, the first active Anthropic credential is used.'
+        }
+    },
+    required: ['description']
+} as const;
+
+export const UpdatePaddockScenarioDtoSchema = {
+    type: 'object',
+    properties: {
+        category: {
+            type: 'string',
+            enum: ['tool_use', 'memory', 'conversation', 'patching_workflow', 'edge_case', 'multi_turn', 'error_recovery']
+        },
+        difficulty: {
+            type: 'string',
+            enum: ['easy', 'medium', 'hard', 'adversarial']
+        },
+        name: {
+            type: 'string'
+        },
+        description: {
+            type: 'string'
+        },
+        expectedBehavior: {
+            type: 'string'
+        },
+        messages: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/CreatePaddockScenarioMessageDto'
+            }
+        },
+        successCriteria: {
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/CreatePaddockSuccessCriterionDto'
+            }
+        },
+        setup: {
+            nullable: true,
+            allOf: [
+                {
+                    '$ref': '#/components/schemas/CreatePaddockScenarioSetupDto'
+                }
+            ]
+        }
+    }
+} as const;
+
+export const RunPaddockJudgeOverrideDtoSchema = {
+    type: 'object',
+    properties: {
+        credentialIds: {
+            type: 'array',
+            items: {
+                type: 'string'
+            }
+        },
+        threshold: {
+            type: 'number'
+        },
+        maxLlmCalls: {
+            type: 'number'
+        },
+        maxTimeMs: {
+            type: 'number'
+        }
+    }
+} as const;
+
+export const RunPaddockEvaluationDtoSchema = {
+    type: 'object',
+    properties: {
+        agentId: {
+            type: 'string'
+        },
+        scenarioIds: {
+            description: 'Optional subset of scenario IDs. If omitted, runs the agent’s template scenarios merged with agent overrides.',
+            type: 'array',
+            items: {
+                type: 'string'
+            }
+        },
+        judgeOverride: {
+            '$ref': '#/components/schemas/RunPaddockJudgeOverrideDto'
+        }
+    },
+    required: ['agentId']
 } as const;

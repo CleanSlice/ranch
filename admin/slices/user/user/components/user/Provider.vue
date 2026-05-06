@@ -66,7 +66,7 @@ async function onRemove() {
           </div>
         </div>
         <div class="flex gap-2">
-          <Button variant="outline">Edit</Button>
+          <Button variant="outline" @click="navigateTo(`/users/${user.id}/edit`)">Edit</Button>
           <Button
             variant="ghost"
             class="text-destructive"

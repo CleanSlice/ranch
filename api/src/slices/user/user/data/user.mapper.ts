@@ -39,7 +39,7 @@ export class UserMapper {
     if (!roles?.length) return [UserRoleTypes.User];
     const filtered = Array.from(
       new Set(roles.filter((r): r is UserRoleTypes => VALID_ROLES.has(r))),
-    ) as UserRoleTypes[];
+    );
     return filtered.length ? filtered : [UserRoleTypes.User];
   }
 }

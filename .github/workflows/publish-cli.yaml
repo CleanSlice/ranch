@@ -1,0 +1,116 @@
+name: Publish CLI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "cli/**"
+    tags:
+      - "cli-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "npm dist-tag (e.g. latest, next)"
+        required: false
+        default: "latest"
+
+concurrency:
+  group: publish-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish @cleanslice/ranch to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          always-auth: true
+
+      - name: Resolve versions
+        id: versions
+        working-directory: cli
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view @cleanslice/ranch version 2>/dev/null || echo "")
+          echo "package=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "published=$PUBLISHED" >> "$GITHUB_OUTPUT"
+          echo "Package version:   $PKG_VERSION"
+          echo "Published version: ${PUBLISHED:-<none>}"
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/cli-v')
+        working-directory: cli
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#cli-v}"
+          if [ "$TAG_VERSION" != "${{ steps.versions.outputs.package }}" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match cli/package.json version ${{ steps.versions.outputs.package }}"
+            exit 1
+          fi
+
+      - name: Decide whether to publish
+        id: gate
+        run: |
+          PKG="${{ steps.versions.outputs.package }}"
+          PUB="${{ steps.versions.outputs.published }}"
+          EVENT="${{ github.event_name }}"
+          if [ "$EVENT" = "workflow_dispatch" ] || [ "${{ startsWith(github.ref, 'refs/tags/cli-v') }}" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Publishing (manual or tag trigger)"
+          elif [ "$PKG" = "$PUB" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Version $PKG already published — skipping."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Version bumped: $PUB → $PKG — will publish."
+          fi
+
+      - name: Install dependencies
+        if: steps.gate.outputs.publish == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        if: steps.gate.outputs.publish == 'true'
+        working-directory: cli
+        run: bun run build
+
+      - name: Pack (dry run, sanity check)
+        if: steps.gate.outputs.publish == 'true'
+        working-directory: cli
+        run: npm pack --dry-run
+
+      - name: Publish to npm
+        if: steps.gate.outputs.publish == 'true'
+        working-directory: cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          DIST_TAG="${{ github.event.inputs.tag || 'latest' }}"
+          npm publish --tag "$DIST_TAG" --provenance --access public
+
+      - name: Create git tag
+        if: steps.gate.outputs.publish == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="cli-v${{ steps.versions.outputs.package }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — skipping"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"

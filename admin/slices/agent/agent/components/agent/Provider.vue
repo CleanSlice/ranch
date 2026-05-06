@@ -9,8 +9,11 @@ import {
   CardHeader,
   CardTitle,
 } from '#theme/components/ui/card';
+import { Checkbox } from '#theme/components/ui/checkbox';
+import { Label } from '#theme/components/ui/label';
 import { Skeleton } from '#theme/components/ui/skeleton';
-import { IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh } from '@tabler/icons-vue';
+import { IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh, IconShield } from '@tabler/icons-vue';
+import { FlaskConical } from 'lucide-vue-next';
 
 const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
@@ -26,17 +29,34 @@ const apiUrl =
   (typeof process !== 'undefined' ? process.env.API_URL : undefined) ??
   'http://localhost:3333';
 
-const { data: agent, pending, refresh } = await useAsyncData(
+// All async data is loaded lazily so the route transitions immediately and
+// each block renders its own skeleton until its data arrives. Without lazy,
+// top-level awaits in <script setup> block the Vue Router transition until
+// every promise resolves — the user perceives this as a multi-second delay
+// before the page opens.
+const { data: agent, pending, refresh } = useAsyncData(
   `admin-agent-${props.id}`,
   () => agentStore.fetchById(props.id),
+  { lazy: true },
 );
 
-await useAsyncData('admin-settings-for-agent-env', () => settingStore.fetchAll());
-await useAsyncData('admin-llms-for-agent-env', () => llmStore.fetchAll());
-const { data: usage, refresh: refreshUsage } = await useAsyncData(
+const { pending: settingsPending } = useAsyncData(
+  'admin-settings-for-agent-env',
+  () => settingStore.fetchAll(),
+  { lazy: true },
+);
+const { pending: llmsPending } = useAsyncData(
+  'admin-llms-for-agent-env',
+  () => llmStore.fetchAll(),
+  { lazy: true },
+);
+const { data: usage, pending: usagePending, refresh: refreshUsage } = useAsyncData(
   `admin-agent-usage-${props.id}`,
   () => usageStore.fetchForAgent(props.id),
+  { lazy: true },
 );
+
+const envPending = computed(() => settingsPending.value || llmsPending.value);
 
 const statusVariant: Record<AgentStatusTypes, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   running: 'default',
@@ -91,6 +111,12 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'AWS_SECRET_ACCESS_KEY', value: settingValue('aws_secret_access_key') },
     { name: 'SECRET_PROVIDER', value: settingValue('secret_provider', 'file') },
     { name: 'AWS_SECRET_PREFIX', value: settingValue('aws_secret_prefix', 'cleanslice/users') },
+    { name: 'RANCH_ADMIN', value: agent.value.isAdmin ? 'true' : 'false' },
+    { name: 'RANCH_API_URL', value: agent.value.isAdmin ? settingValue('ranch_api_url', 'http://api:3001') : '' },
+    // Token is minted at deploy time and never echoed back over the API. Show
+    // a placeholder so the admin can see the slot exists without leaking the
+    // value (which is in the pod env, AWS Secrets Manager, or S3 only).
+    { name: 'RANCH_API_TOKEN', value: agent.value.isAdmin ? '<service-token>' : '' },
   ];
 });
 
@@ -113,8 +139,15 @@ function fmtUsd(n: number) {
 const restarting = ref(false);
 const restartError = ref<string | null>(null);
 
+// Button shows the busy state while the API call is in flight AND while the
+// pod is still coming up (status='deploying'). Reverts to idle once the
+// AgentStatusService reconciler flips the agent to 'running'.
+const isRestarting = computed(
+  () => restarting.value || agent.value?.status === 'deploying',
+);
+
 async function onRestart() {
-  if (!agent.value || restarting.value) return;
+  if (!agent.value || isRestarting.value) return;
   restarting.value = true;
   restartError.value = null;
   // Optimistic — flip to "deploying" right away so the badge reacts before
@@ -224,6 +257,7 @@ async function onRemove() {
   await agentStore.remove(agent.value.id);
   await navigateTo('/agents');
 }
+
 </script>
 
 <template>
@@ -264,25 +298,36 @@ async function onRemove() {
     <template v-else-if="agent">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <h1 class="text-2xl font-semibold">{{ agent.name }}</h1>
+          <div class="flex items-center gap-2">
+            <h1 class="text-2xl font-semibold">{{ agent.name }}</h1>
+            <Badge v-if="agent.isAdmin" variant="default" class="gap-1">
+              <IconShield class="size-3" /> Ranch admin
+            </Badge>
+          </div>
           <p class="text-sm text-muted-foreground">Agent ID: {{ agent.id }}</p>
         </div>
         <div class="flex flex-col items-end gap-1">
           <div class="flex gap-2">
             <Button variant="outline" as-child>
+              <NuxtLink :to="`/agents/${agent.id}/paddock`">
+                <FlaskConical class="size-4" />
+                Paddock
+              </NuxtLink>
+            </Button>
+            <Button variant="outline" as-child>
               <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
             </Button>
             <Button
               variant="outline"
-              :disabled="restarting"
+              :disabled="isRestarting"
               @click="onRestart"
             >
               <IconLoader2
-                v-if="restarting"
+                v-if="isRestarting"
                 class="size-4 animate-spin"
               />
               <IconRefresh v-else class="size-4" />
-              {{ restarting ? 'Restarting…' : 'Restart' }}
+              {{ isRestarting ? 'Restarting…' : 'Restart' }}
             </Button>
             <Button variant="ghost" class="text-destructive" @click="confirmRemoveOpen = true">Delete</Button>
           </div>
@@ -314,7 +359,13 @@ async function onRemove() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div v-if="!usage || usage.totals.callCount === 0" class="text-sm text-muted-foreground">
+              <div v-if="usagePending && !usage" class="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                <div v-for="i in 8" :key="i" class="space-y-2">
+                  <Skeleton class="h-3 w-20" />
+                  <Skeleton class="h-4 w-24" />
+                </div>
+              </div>
+              <div v-else-if="!usage || usage.totals.callCount === 0" class="text-sm text-muted-foreground">
                 No usage reported yet.
               </div>
               <dl v-else class="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -375,6 +426,14 @@ async function onRemove() {
                       pod: {{ podPhaseLabel }}<span v-if="podStatus && podStatus.restartCount > 0">
                         · restarts {{ podStatus.restartCount }}</span>
                     </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">Visibility</dt>
+                  <dd class="mt-1">
+                    <Badge :variant="agent.isPublic ? 'default' : 'outline'">
+                      {{ agent.isPublic ? 'Public' : 'Private' }}
+                    </Badge>
                   </dd>
                 </div>
                 <div>
@@ -446,7 +505,14 @@ async function onRemove() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <dl class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+              <div v-if="envPending" class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+                <template v-for="i in 8" :key="i">
+                  <Skeleton class="h-3 w-32" />
+                  <Skeleton class="h-3 w-full max-w-md" />
+                  <div />
+                </template>
+              </div>
+              <dl v-else class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
                 <template v-for="env in envVars" :key="env.name">
                   <dt class="font-mono text-xs text-muted-foreground">{{ env.name }}</dt>
                   <dd class="min-w-0 break-all font-mono text-xs">
@@ -495,14 +561,10 @@ async function onRemove() {
                   <CardTitle>Logs</CardTitle>
                 </div>
                 <div class="flex items-center gap-2">
-                  <label class="flex items-center gap-1 text-xs text-muted-foreground">
-                    <input
-                      v-model="logsAutoRefresh"
-                      type="checkbox"
-                      class="size-3.5"
-                    />
+                  <Label for="logs-auto-refresh" class="text-xs text-muted-foreground font-normal">
+                    <Checkbox id="logs-auto-refresh" v-model="logsAutoRefresh" />
                     Auto 5s
-                  </label>
+                  </Label>
                   <Button
                     size="sm"
                     variant="outline"

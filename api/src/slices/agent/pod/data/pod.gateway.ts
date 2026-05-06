@@ -4,12 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import {
-  CoreV1Api,
-  KubeConfig,
-  V1Pod,
-  Watch,
-} from '@kubernetes/client-node';
+import { CoreV1Api, KubeConfig, V1Pod, Watch } from '@kubernetes/client-node';
 import { Observable, Subject } from 'rxjs';
 import { IPodGateway } from '../domain/pod.gateway';
 import {
@@ -226,7 +221,9 @@ export class KubePodGateway
 
   private toIso(value: Date | string | undefined | null): string | null {
     if (!value) return null;
-    return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+    return value instanceof Date
+      ? value.toISOString()
+      : new Date(value).toISOString();
   }
 
   private isNotFound(err: unknown): boolean {

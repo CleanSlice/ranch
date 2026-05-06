@@ -17,11 +17,15 @@ interface IFieldDef {
   description?: string;
   type?: 'text' | 'password';
   placeholder?: string;
+  // Localhost / dev default. Pre-filled when no value is saved, and used
+  // as the target for the "Reset to localhost values" button.
+  default?: string;
 }
 
 interface IProps {
   title: string;
   description?: string;
+  resetLabel?: string;
   fields: IFieldDef[];
 }
 
@@ -33,10 +37,27 @@ await useAsyncData('admin-settings', () => settingStore.fetchAll());
 const keyOf = (g: string, n: string) => `${g}.${n}`;
 
 const values = reactive<Record<string, string>>({});
+let anyStored = false;
 for (const f of props.fields) {
   const existing = settingStore.get(f.group, f.name);
-  values[keyOf(f.group, f.name)] =
-    typeof existing?.value === 'string' ? existing.value : '';
+  const stored = typeof existing?.value === 'string' ? existing.value : '';
+  values[keyOf(f.group, f.name)] = stored;
+  if (stored) anyStored = true;
+}
+
+// Show the "Use localhost values" banner only on a fresh install — if any
+// field already has a saved value we assume the operator knows what they're
+// doing (likely AWS or a custom MinIO) and the banner becomes noise.
+const showLocalHint = computed(
+  () => !anyStored && props.fields.some((f) => f.default !== undefined),
+);
+
+function resetToDefaults() {
+  for (const f of props.fields) {
+    if (f.default !== undefined) {
+      values[keyOf(f.group, f.name)] = f.default;
+    }
+  }
 }
 
 const saving = ref(false);
@@ -74,6 +95,23 @@ async function onSave() {
         <CardTitle>{{ title }}</CardTitle>
         <CardDescription v-if="description">{{ description }}</CardDescription>
       </CardHeader>
+      <div
+        v-if="showLocalHint"
+        class="mx-6 mb-4 flex items-center justify-between gap-4 rounded-md border border-dashed bg-muted/40 px-4 py-3 text-sm"
+      >
+        <span class="text-muted-foreground">
+          Local install? Pre-fill all fields with bundled defaults (MinIO,
+          localhost) — useful for first-time <code>make dev</code> setup.
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          @click="resetToDefaults"
+        >
+          {{ resetLabel ?? 'Use localhost values' }}
+        </Button>
+      </div>
       <CardContent class="grid max-w-xl gap-4">
         <div
           v-for="field in fields"

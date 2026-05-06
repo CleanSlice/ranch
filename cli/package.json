@@ -1,0 +1,51 @@
+{
+  "name": "@cleanslice/ranch",
+  "version": "0.1.4",
+  "type": "module",
+  "description": "Ranch project CLI",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CleanSlice/ranch.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/CleanSlice/ranch/tree/main/cli#readme",
+  "bugs": {
+    "url": "https://github.com/CleanSlice/ranch/issues"
+  },
+  "keywords": [
+    "ranch",
+    "cleanslice",
+    "cli",
+    "monorepo",
+    "nestjs",
+    "nuxt"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "ranch": "dist/ranch.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "build": "bun build src/cli.ts --target=node --format=esm --outfile=dist/ranch.mjs",
+    "compile": "bun build src/cli.ts --compile --outfile=dist/ranch",
+    "prepublishOnly": "bun run build && chmod +x dist/ranch.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "citty": "^0.1.6",
+    "consola": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}

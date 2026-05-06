@@ -6,6 +6,7 @@ import { freePorts } from "../utils/ports";
 import { ensureK3dRunning } from "../utils/k3d";
 import { ensurePortForwards } from "../utils/port-forward";
 import { ensureDepsInstalled } from "../utils/deps";
+import { ensureDockerRunning } from "../utils/docker";
 
 export const devCommand = defineCommand({
   meta: {
@@ -30,19 +31,25 @@ export const devCommand = defineCommand({
   async run({ args }) {
     const root = await ensureRanchRoot();
 
+    const target = args.target;
+    if (target && !["api", "app", "admin"].includes(target)) {
+      consola.error(`Unknown target: ${target}. Use api | app | admin.`);
+      process.exit(1);
+    }
+
+    const needsDocker = !target || target === "api";
+    if (needsDocker) {
+      ensureDockerRunning();
+    }
+
     if (!args["no-install"]) {
       await ensureDepsInstalled(root);
     }
 
     freePorts([3000, 3001, 3002]);
 
-    const target = args.target;
     const turboArgs = ["run", "turbo", "dev"];
     if (target) {
-      if (!["api", "app", "admin"].includes(target)) {
-        consola.error(`Unknown target: ${target}. Use api | app | admin.`);
-        process.exit(1);
-      }
       turboArgs.push(`--filter=${target}`);
     }
 

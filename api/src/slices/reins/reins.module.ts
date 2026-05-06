@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaModule } from '#/setup/prisma/prisma.module';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { AwsModule } from '#/aws/aws.module';
 import { S3Repository } from '#/aws/s3';
+import { SettingModule } from '#/setting/setting.module';
+import { IInfraConfigGateway } from '#/setting/domain';
 import { ReinsController } from './reins.controller';
 import { IReinsGateway } from './domain/reins.gateway';
 import { ReinsGateway } from './data/reins.gateway';
@@ -13,20 +14,17 @@ import { ILightragClient } from './data/repositories/lightrag/lightrag.client';
 import { LightragHttpClient } from './data/repositories/lightrag/lightragHttp.client';
 
 @Module({
-  imports: [ConfigModule, PrismaModule, AwsModule],
+  imports: [PrismaModule, AwsModule, SettingModule],
   controllers: [ReinsController],
   providers: [
     ReinsMapper,
     {
       provide: ILightragClient,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
+      inject: [IInfraConfigGateway],
+      useFactory: async (infraConfig: IInfraConfigGateway) =>
         new LightragHttpClient({
-          baseUrl: config.get<string>('LIGHTRAG_URL', 'http://localhost:9621'),
-          apiKey: config.get<string>(
-            'LIGHTRAG_API_KEY',
-            'dev-secret-change-me',
-          ),
+          baseUrl: await infraConfig.getLightragUrl(),
+          apiKey: await infraConfig.getLightragApiKey(),
         }),
     },
     {
@@ -36,21 +34,21 @@ import { LightragHttpClient } from './data/repositories/lightrag/lightragHttp.cl
         ReinsMapper,
         ILightragClient,
         S3Repository,
-        ConfigService,
+        IInfraConfigGateway,
       ],
-      useFactory: (
+      useFactory: async (
         prisma: PrismaService,
         mapper: ReinsMapper,
         lightrag: ILightragClient,
         s3: S3Repository,
-        config: ConfigService,
+        infraConfig: IInfraConfigGateway,
       ) =>
         new ReinsGateway(
           prisma,
           mapper,
           lightrag,
           s3,
-          config.get<string>('REINS_S3_BUCKET', 'ranch-reins-sources'),
+          await infraConfig.getReinsBucket(),
         ),
     },
     ReinsService,

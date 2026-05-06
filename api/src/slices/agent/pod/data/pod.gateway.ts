@@ -7,6 +7,7 @@ import {
 import { CoreV1Api, KubeConfig, V1Pod, Watch } from '@kubernetes/client-node';
 import { Observable, Subject } from 'rxjs';
 import { IPodGateway } from '../domain/pod.gateway';
+import { IInfraConfigGateway } from '#/setting/domain';
 import {
   IAgentPodEvent,
   IAgentPodStatus,
@@ -25,9 +26,9 @@ export class KubePodGateway
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(KubePodGateway.name);
-  private readonly kc: KubeConfig;
-  private readonly coreApi: CoreV1Api;
-  private readonly namespace: string;
+  private kc!: KubeConfig;
+  private coreApi!: CoreV1Api;
+  private namespace!: string;
 
   private readonly statuses = new Map<string, IAgentPodStatus>();
   private readonly events = new Subject<IAgentPodEvent>();
@@ -37,12 +38,20 @@ export class KubePodGateway
   private reconnectDelayMs = RECONNECT_BASE_MS;
   private destroyed = false;
 
-  constructor() {
+  constructor(private infraConfig: IInfraConfigGateway) {
     super();
+  }
+
+  async onModuleInit(): Promise<void> {
+    const [namespace, skipTls] = await Promise.all([
+      this.infraConfig.getAgentsNamespace(),
+      this.infraConfig.getKubeSkipTlsVerify(),
+    ]);
+    this.namespace = namespace;
+
     this.kc = new KubeConfig();
     this.kc.loadFromDefault();
-
-    if (process.env.KUBE_INSECURE === 'true') {
+    if (skipTls) {
       const current = this.kc.getCurrentCluster();
       if (current) {
         this.kc.clusters = this.kc.clusters.map((c) =>
@@ -50,12 +59,8 @@ export class KubePodGateway
         );
       }
     }
-
     this.coreApi = this.kc.makeApiClient(CoreV1Api);
-    this.namespace = process.env.AGENTS_NAMESPACE || 'agents';
-  }
 
-  async onModuleInit(): Promise<void> {
     await this.bootstrapInitialState();
     this.startWatch();
   }

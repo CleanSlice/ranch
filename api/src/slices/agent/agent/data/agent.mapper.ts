@@ -16,6 +16,7 @@ export class AgentMapper {
       resources: record.resources as unknown as IAgentData['resources'],
       debugEnabled: record.debugEnabled,
       isPublic: record.isPublic,
+      allowedOrigins: record.allowedOrigins,
       isAdmin: record.isAdmin,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
@@ -35,6 +36,7 @@ export class AgentMapper {
         memory: '512Mi',
       }) as unknown as Prisma.InputJsonValue,
       isPublic: data.isPublic ?? false,
+      allowedOrigins: data.allowedOrigins ?? [],
     };
   }
 }

@@ -37,6 +37,14 @@ export class AgentDto {
   })
   isPublic: boolean;
 
+  @ApiProperty({
+    type: [String],
+    description:
+      'Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.',
+    example: ['https://bridle.cleanslice.org', 'http://localhost:5173'],
+  })
+  allowedOrigins: string[];
+
   @ApiProperty()
   createdAt: Date;
 

@@ -1,11 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   IWorkflowGateway,
   ISubmitWorkflowData,
 } from '../domain/IWorkflowGateway';
 import { IWorkflowStatus } from '../domain/workflow.types';
-import { ISettingGateway } from '#/setting/domain';
+import { IInfraConfigGateway, ISettingGateway } from '#/setting/domain';
 import { ILlmGateway } from '#/llm/domain';
 import { normalizeCredential } from '#/llm/domain/llm.utils';
 import { ITemplateGateway } from '#/agent/template/domain';
@@ -33,19 +32,15 @@ const DEFAULTS = {
 @Injectable()
 export class ArgoWorkflowGateway extends IWorkflowGateway {
   private readonly logger = new Logger(ArgoWorkflowGateway.name);
-  private readonly argoUrl: string;
 
   constructor(
-    private config: ConfigService,
+    private infraConfig: IInfraConfigGateway,
     private settingGateway: ISettingGateway,
     private llmGateway: ILlmGateway,
     private templateGateway: ITemplateGateway,
     private mcpServerGateway: IMcpServerGateway,
   ) {
     super();
-    this.argoUrl =
-      this.config.get<string>('ARGO_WORKFLOWS_URL') ||
-      'http://argo-workflows-server.argo:2746';
   }
 
   private async getIntegration(name: keyof typeof DEFAULTS): Promise<string> {
@@ -183,7 +178,8 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       },
     };
 
-    const response = await fetch(`${this.argoUrl}/api/v1/workflows/agents`, {
+    const argoUrl = await this.infraConfig.getArgoUrl();
+    const response = await fetch(`${argoUrl}/api/v1/workflows/agents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workflow }),
@@ -200,15 +196,16 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
   }
 
   async cancel(workflowId: string): Promise<void> {
-    await fetch(
-      `${this.argoUrl}/api/v1/workflows/agents/${workflowId}/terminate`,
-      { method: 'PUT' },
-    );
+    const argoUrl = await this.infraConfig.getArgoUrl();
+    await fetch(`${argoUrl}/api/v1/workflows/agents/${workflowId}/terminate`, {
+      method: 'PUT',
+    });
   }
 
   async getStatus(workflowId: string): Promise<IWorkflowStatus> {
+    const argoUrl = await this.infraConfig.getArgoUrl();
     const response = await fetch(
-      `${this.argoUrl}/api/v1/workflows/agents/${workflowId}`,
+      `${argoUrl}/api/v1/workflows/agents/${workflowId}`,
     );
     const data = await response.json();
 
@@ -221,8 +218,9 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
   }
 
   async getLogs(workflowId: string): Promise<string> {
+    const argoUrl = await this.infraConfig.getArgoUrl();
     const response = await fetch(
-      `${this.argoUrl}/api/v1/workflows/agents/${workflowId}/log`,
+      `${argoUrl}/api/v1/workflows/agents/${workflowId}/log`,
     );
     return response.text();
   }

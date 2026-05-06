@@ -24,6 +24,7 @@ export interface IAgentData {
   config: Record<string, unknown>;
   resources: IAgentResources;
   isPublic: boolean;
+  allowedOrigins: string[];
   isAdmin: boolean;
   createdAt: string;
   updatedAt: string;
@@ -36,6 +37,7 @@ export interface ICreateAgentData {
   config?: Record<string, unknown>;
   resources?: IAgentResources;
   isPublic?: boolean;
+  allowedOrigins?: string[];
   isAdmin?: boolean;
 }
 
@@ -46,6 +48,7 @@ export interface IUpdateAgentData {
   config?: Record<string, unknown>;
   resources?: IAgentResources;
   isPublic?: boolean;
+  allowedOrigins?: string[];
 }
 
 export const useAgentStore = defineStore('agent', () => {

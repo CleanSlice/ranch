@@ -7,20 +7,21 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { IBridleGateway, type BridlePart, buildParts } from '../domain';
+import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 
 /**
  * WebSocket gateway for BROWSER clients.
  * Browsers connect here: ws://hub-host/ws/chat
  *
- * Auth: JWT token + botId in Socket.IO handshake.
- * Token is verified via JwtService. botId scopes the chat to a specific bot.
- *
- * Admin detection: if JWT payload contains roles including 'ADMIN',
- * clientId is set to 'admin' so the runtime's access control recognizes it.
+ * Auth (two paths):
+ *   1. Public bot — bot has `isPublic: true` and the request `Origin` header
+ *      matches one of `allowedOrigins`. No JWT required; clientId is anonymous.
+ *   2. Authenticated — JWT token + botId in handshake auth, JWT verified.
+ *      Admin role grants `clientId = "admin"` for runtime ACL.
  *
  * Events (browser → hub):
  *   "message"  { text, images? }
@@ -46,34 +47,60 @@ export class BridleChatWsHandler
   constructor(
     private readonly hub: IBridleGateway,
     private readonly jwt: JwtService,
+    @Inject(forwardRef(() => IAgentGateway))
+    private readonly agentGateway: IAgentGateway,
   ) {}
 
-  handleConnection(client: Socket) {
-    const token = client.handshake.auth?.token as string | undefined;
+  async handleConnection(client: Socket) {
     const botId = client.handshake.auth?.botId as string | undefined;
-
-    if (!token || !botId) {
-      this.logger.warn('Browser connection rejected: missing token or botId');
+    if (!botId) {
+      this.logger.warn('Browser connection rejected: missing botId');
       client.disconnect(true);
       return;
     }
 
-    let payload: Record<string, unknown>;
-    try {
-      payload = this.jwt.verify(token);
-    } catch {
-      this.logger.warn('Browser connection rejected: invalid JWT');
-      client.disconnect(true);
-      return;
+    const origin = client.handshake.headers.origin as string | undefined;
+    const agent = await this.agentGateway.findById(botId);
+
+    let clientId: string;
+    let isAdmin = false;
+    let email: string | undefined;
+
+    if (agent?.isPublic && origin && agent.allowedOrigins.includes(origin)) {
+      // Public-bot path: anonymous browser session, no token required.
+      clientId = `anon-${randomId()}`;
+      this.logger.log(
+        `Browser connected (public): clientId=${clientId} botId=${botId} origin=${origin}`,
+      );
+    } else {
+      // Authenticated path: JWT required.
+      const token = client.handshake.auth?.token as string | undefined;
+      if (!token) {
+        this.logger.warn(
+          `Browser connection rejected: missing token (botId=${botId}, origin=${origin ?? 'none'})`,
+        );
+        client.disconnect(true);
+        return;
+      }
+
+      let payload: Record<string, unknown>;
+      try {
+        payload = this.jwt.verify(token);
+      } catch {
+        this.logger.warn('Browser connection rejected: invalid JWT');
+        client.disconnect(true);
+        return;
+      }
+
+      const roles = payload.roles as string[] | undefined;
+      isAdmin =
+        Array.isArray(roles) &&
+        (roles.includes('Owner') || roles.includes('Admin'));
+      clientId = isAdmin ? 'admin' : (payload.sub as string);
+      email = payload.email as string | undefined;
     }
 
-    const roles = payload.roles as string[] | undefined;
-    const isAdmin =
-      Array.isArray(roles) &&
-      (roles.includes('Owner') || roles.includes('Admin'));
-    const clientId = isAdmin ? 'admin' : (payload.sub as string);
-
-    client.data = { clientId, botId, email: payload.email, isAdmin };
+    client.data = { clientId, botId, email, isAdmin };
 
     const send = (data: unknown) => {
       const event =
@@ -122,4 +149,10 @@ export class BridleChatWsHandler
   handlePing(@ConnectedSocket() client: Socket) {
     client.emit('pong', { ts: Date.now() });
   }
+}
+
+function randomId(): string {
+  return (
+    Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
+  );
 }

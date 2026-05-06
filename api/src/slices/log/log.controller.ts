@@ -9,6 +9,7 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CoreV1Api, KubeConfig } from '@kubernetes/client-node';
 import { IAgentGateway } from '#/agent/agent/domain';
+import { IInfraConfigGateway } from '#/setting/domain';
 
 /**
  * Agent-pod logs.
@@ -28,19 +29,33 @@ import { IAgentGateway } from '#/agent/agent/domain';
 @Controller('agents/:agentId/logs')
 export class LogController {
   private readonly logger = new Logger(LogController.name);
-  private readonly coreApi: CoreV1Api;
-  private readonly namespace: string;
+  private kubeContext: { coreApi: CoreV1Api; namespace: string } | null = null;
 
-  constructor(private agentGateway: IAgentGateway) {
+  constructor(
+    private agentGateway: IAgentGateway,
+    private infraConfig: IInfraConfigGateway,
+  ) {}
+
+  private async getKubeContext(): Promise<{
+    coreApi: CoreV1Api;
+    namespace: string;
+  }> {
+    if (this.kubeContext) return this.kubeContext;
+
+    const [namespace, skipTls] = await Promise.all([
+      this.infraConfig.getAgentsNamespace(),
+      this.infraConfig.getKubeSkipTlsVerify(),
+    ]);
+
     const kc = new KubeConfig();
     kc.loadFromDefault();
 
     // In-cluster the apiserver uses k3s's self-signed CA. It's mounted at
     // /var/run/secrets/kubernetes.io/serviceaccount/ca.crt; the deployment
     // exposes it via NODE_EXTRA_CA_CERTS so Node's global TLS stack trusts
-    // it. For local dev / kubeconfigs without embedded CA, set KUBE_INSECURE=true
-    // to bypass verification (never enable in prod).
-    if (process.env.KUBE_INSECURE === 'true') {
+    // it. For local dev / kubeconfigs without embedded CA, enable
+    // `infrastructure.kube_skip_tls_verify` to bypass verification.
+    if (skipTls) {
       const current = kc.getCurrentCluster();
       if (current) {
         kc.clusters = kc.clusters.map((c) =>
@@ -49,8 +64,11 @@ export class LogController {
       }
     }
 
-    this.coreApi = kc.makeApiClient(CoreV1Api);
-    this.namespace = process.env.AGENTS_NAMESPACE || 'agents';
+    this.kubeContext = {
+      coreApi: kc.makeApiClient(CoreV1Api),
+      namespace,
+    };
+    return this.kubeContext;
   }
 
   @Get()
@@ -64,11 +82,12 @@ export class LogController {
 
     const podName = `agent-${agentId}`;
     const tailLines = this.parseTail(tail);
+    const { coreApi, namespace } = await this.getKubeContext();
 
     try {
-      const logs = await this.coreApi.readNamespacedPodLog({
+      const logs = await coreApi.readNamespacedPodLog({
         name: podName,
-        namespace: this.namespace,
+        namespace,
         tailLines,
         timestamps: false,
       });

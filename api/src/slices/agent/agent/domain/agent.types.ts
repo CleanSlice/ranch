@@ -16,6 +16,7 @@ export interface IAgentData {
   resources: IAgentResources;
   debugEnabled: boolean;
   isPublic: boolean;
+  allowedOrigins: string[];
   isAdmin: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -33,6 +34,7 @@ export interface ICreateAgentData {
   config?: Record<string, unknown>;
   resources?: IAgentResources;
   isPublic?: boolean;
+  allowedOrigins?: string[];
 }
 
 export interface IUpdateAgentData {
@@ -41,4 +43,5 @@ export interface IUpdateAgentData {
   config?: Record<string, unknown>;
   resources?: IAgentResources;
   isPublic?: boolean;
+  allowedOrigins?: string[];
 }

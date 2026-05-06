@@ -23,6 +23,8 @@ export type CreateLlmCredentialDto = {
     fallbackModel?: string;
     label?: string;
     status?: 'active' | 'disabled';
+    supportsChat?: boolean;
+    supportsEmbedding?: boolean;
 };
 
 export type UpdateLlmCredentialDto = {
@@ -32,6 +34,8 @@ export type UpdateLlmCredentialDto = {
     fallbackModel?: string;
     label?: string;
     status?: 'active' | 'disabled';
+    supportsChat?: boolean;
+    supportsEmbedding?: boolean;
 };
 
 export type CreateTemplateDto = {

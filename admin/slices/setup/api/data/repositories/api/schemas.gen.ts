@@ -60,6 +60,14 @@ export const CreateLlmCredentialDtoSchema = {
         status: {
             type: 'string',
             enum: ['active', 'disabled']
+        },
+        supportsChat: {
+            type: 'boolean',
+            default: true
+        },
+        supportsEmbedding: {
+            type: 'boolean',
+            default: false
         }
     },
     required: ['provider', 'model', 'apiKey']
@@ -89,6 +97,14 @@ export const UpdateLlmCredentialDtoSchema = {
         status: {
             type: 'string',
             enum: ['active', 'disabled']
+        },
+        supportsChat: {
+            type: 'boolean',
+            default: true
+        },
+        supportsEmbedding: {
+            type: 'boolean',
+            default: false
         }
     }
 } as const;

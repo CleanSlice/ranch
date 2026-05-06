@@ -853,7 +853,7 @@ export class KnowledgesService {
     }
     
     /**
-     * Knowledge service availability
+     * Knowledge service availability and setup readiness
      */
     public static getKnowledgeStatus<ThrowOnError extends boolean = false>(options?: Options<GetKnowledgeStatusData, ThrowOnError>) {
         return (options?.client ?? _heyApiClient).get<unknown, unknown, ThrowOnError>({

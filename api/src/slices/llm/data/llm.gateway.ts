@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '#/setup/prisma/prisma.service';
-import { ILlmGateway } from '../domain/llm.gateway';
+import { ILlmGateway, LlmCapability } from '../domain/llm.gateway';
 import {
   ILlmCredentialData,
   ICreateLlmCredentialData,
@@ -59,5 +59,16 @@ export class LlmGateway extends ILlmGateway {
 
   async delete(id: string): Promise<void> {
     await this.prisma.llmCredential.delete({ where: { id } });
+  }
+
+  async hasCredentialWithCapability(
+    capability: LlmCapability,
+  ): Promise<boolean> {
+    const where =
+      capability === 'chat'
+        ? { status: 'active', supportsChat: true }
+        : { status: 'active', supportsEmbedding: true };
+    const count = await this.prisma.llmCredential.count({ where });
+    return count > 0;
   }
 }

@@ -4,6 +4,8 @@ import {
   IUpdateLlmCredentialData,
 } from './llm.types';
 
+export type LlmCapability = 'chat' | 'embedding';
+
 export abstract class ILlmGateway {
   abstract findAll(): Promise<ILlmCredentialData[]>;
   abstract findActive(): Promise<ILlmCredentialData[]>;
@@ -14,4 +16,7 @@ export abstract class ILlmGateway {
     data: IUpdateLlmCredentialData,
   ): Promise<ILlmCredentialData>;
   abstract delete(id: string): Promise<void>;
+  abstract hasCredentialWithCapability(
+    capability: LlmCapability,
+  ): Promise<boolean>;
 }

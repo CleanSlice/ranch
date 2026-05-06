@@ -189,6 +189,10 @@ export type CreateAgentDto = {
    */
   isPublic?: boolean;
   /**
+   * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
+   */
+  allowedOrigins?: Array<string>;
+  /**
    * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
    */
   isAdmin?: boolean;
@@ -206,6 +210,10 @@ export type UpdateAgentDto = {
    * When true, the agent is visible on the public landing page to unauthenticated visitors.
    */
   isPublic?: boolean;
+  /**
+   * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
+   */
+  allowedOrigins?: Array<string>;
   /**
    * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
    */

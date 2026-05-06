@@ -430,6 +430,15 @@ export const CreateAgentDtoSchema = {
       description:
         "When true, the agent is visible on the public landing page to unauthenticated visitors.",
     },
+    allowedOrigins: {
+      description:
+        "Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.",
+      example: ["https://bridle.cleanslice.org", "http://localhost:5173"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
     isAdmin: {
       type: "boolean",
       description:
@@ -461,6 +470,15 @@ export const UpdateAgentDtoSchema = {
       type: "boolean",
       description:
         "When true, the agent is visible on the public landing page to unauthenticated visitors.",
+    },
+    allowedOrigins: {
+      description:
+        "Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.",
+      example: ["https://bridle.cleanslice.org", "http://localhost:5173"],
+      type: "array",
+      items: {
+        type: "string",
+      },
     },
     isAdmin: {
       type: "boolean",

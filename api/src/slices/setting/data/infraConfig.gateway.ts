@@ -80,7 +80,15 @@ export class InfraConfigGateway
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.seedDefaults();
+    // Tolerate missing DB (e.g. swagger-spec generation in Docker build runs
+    // the full Nest lifecycle without DATABASE_URL). Seed is best-effort.
+    try {
+      await this.seedDefaults();
+    } catch (err) {
+      this.logger.warn(
+        `Skipping infra config seed: ${(err as Error).message}`,
+      );
+    }
   }
 
   invalidate(): void {

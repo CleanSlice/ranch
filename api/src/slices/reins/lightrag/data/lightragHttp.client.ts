@@ -49,12 +49,19 @@ export class LightragHttpClient extends ILightragClient {
 
   async health(): Promise<ILightragHealth> {
     const cfg = await this.requireEnabled();
-    const res = await this.fetchImpl(`${cfg.baseUrl}/health`, {
-      method: 'GET',
-      headers: this.headers(cfg.apiKey),
-    });
-    await this.ensureOk(res, '/health');
-    return { ok: true };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    try {
+      const res = await this.fetchImpl(`${cfg.baseUrl}/health`, {
+        method: 'GET',
+        headers: this.headers(cfg.apiKey),
+        signal: controller.signal,
+      });
+      await this.ensureOk(res, '/health');
+      return { ok: true };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async ingestText(input: IIngestTextInput): Promise<IIngestResult> {

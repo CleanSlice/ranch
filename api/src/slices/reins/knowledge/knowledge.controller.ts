@@ -14,6 +14,8 @@ import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
 import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeConfigGateway } from '../config/domain/knowledgeConfig.gateway';
 import { IGraphData } from './domain/knowledge.types';
+import { ILightragClient } from '../lightrag/domain/lightrag.client';
+import { ILlmGateway } from '#/llm/domain';
 import {
   CreateKnowledgeDto,
   UpdateKnowledgeDto,
@@ -29,6 +31,8 @@ export class KnowledgeController {
   constructor(
     private readonly service: KnowledgeService,
     private readonly knowledgeConfig: IKnowledgeConfigGateway,
+    private readonly lightrag: ILightragClient,
+    private readonly llm: ILlmGateway,
   ) {}
 
   private async requireEnabled(): Promise<void> {
@@ -48,11 +52,49 @@ export class KnowledgeController {
 
   @Get('status')
   @ApiOperation({
-    summary: 'Knowledge service availability',
+    summary: 'Knowledge service availability and setup readiness',
     operationId: 'getKnowledgeStatus',
   })
-  async status(): Promise<{ enabled: boolean }> {
-    return { enabled: await this.knowledgeConfig.isEnabled() };
+  async status(): Promise<{
+    enabled: boolean;
+    setup: {
+      hasChatCredential: boolean;
+      hasEmbeddingCredential: boolean;
+      hasUrl: boolean;
+      hasBucket: boolean;
+      hasCredentialsSelected: boolean;
+      isHealthy: boolean;
+    };
+  }> {
+    const [config, selected, hasChat, hasEmbedding] = await Promise.all([
+      this.knowledgeConfig.resolve(),
+      this.knowledgeConfig.getSelectedCredentialIds(),
+      this.llm.hasCredentialWithCapability('chat'),
+      this.llm.hasCredentialWithCapability('embedding'),
+    ]);
+
+    let isHealthy = false;
+    if (config.url.length > 0) {
+      try {
+        await this.lightrag.health();
+        isHealthy = true;
+      } catch {
+        isHealthy = false;
+      }
+    }
+
+    return {
+      enabled: config.enabled,
+      setup: {
+        hasChatCredential: hasChat,
+        hasEmbeddingCredential: hasEmbedding,
+        hasUrl: config.url.length > 0,
+        hasBucket: config.bucket.length > 0,
+        hasCredentialsSelected:
+          selected.chat !== null && selected.embedding !== null,
+        isHealthy,
+      },
+    };
   }
 
   @Get('graph/labels')

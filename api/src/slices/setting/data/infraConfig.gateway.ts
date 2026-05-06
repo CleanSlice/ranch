@@ -127,11 +127,21 @@ export class InfraConfigGateway
     }
 
     const spec = KEYS[key];
-    const setting = await this.settings.findByKey(GROUP, spec.setting);
-    const settingValue =
-      typeof setting?.value === 'string' && setting.value.length > 0
-        ? setting.value
-        : null;
+    // Tolerate DB outages (e.g. swagger gen during Docker build): fall through
+    // to env/default below instead of failing module instantiation. Module
+    // useFactory providers call resolve() at startup before the DB is up.
+    let settingValue: string | null = null;
+    try {
+      const setting = await this.settings.findByKey(GROUP, spec.setting);
+      settingValue =
+        typeof setting?.value === 'string' && setting.value.length > 0
+          ? setting.value
+          : null;
+    } catch (err) {
+      this.logger.warn(
+        `Settings DB unavailable for "${spec.setting}", falling back to env/default: ${(err as Error).message}`,
+      );
+    }
     const envValue = this.config.get<string>(spec.env) ?? null;
 
     let value: unknown;

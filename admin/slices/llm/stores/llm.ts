@@ -10,6 +10,8 @@ export interface ILlmCredentialData {
   label: string | null;
   apiKey: string;
   status: string;
+  supportsChat: boolean;
+  supportsEmbedding: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -21,6 +23,8 @@ export interface ILlmCredentialInput {
   fallbackModel?: string;
   label?: string;
   status?: string;
+  supportsChat?: boolean;
+  supportsEmbedding?: boolean;
 }
 
 function unwrap<T>(body: unknown): T | null {

@@ -59,10 +59,45 @@ function unwrap<T>(body: unknown): T | null {
   return (body ?? null) as T | null;
 }
 
-function isStatusBody(value: unknown): value is { enabled: boolean } {
+export interface IKnowledgeSetupStatus {
+  hasChatCredential: boolean;
+  hasEmbeddingCredential: boolean;
+  hasUrl: boolean;
+  hasBucket: boolean;
+  hasCredentialsSelected: boolean;
+  isHealthy: boolean;
+}
+
+const EMPTY_SETUP: IKnowledgeSetupStatus = {
+  hasChatCredential: false,
+  hasEmbeddingCredential: false,
+  hasUrl: false,
+  hasBucket: false,
+  hasCredentialsSelected: false,
+  isHealthy: false,
+};
+
+function isSetupBody(value: unknown): value is IKnowledgeSetupStatus {
   if (typeof value !== 'object' || value === null) return false;
-  if (!('enabled' in value)) return false;
-  return typeof value.enabled === 'boolean';
+  const o = value as Record<string, unknown>;
+  return (
+    typeof o.hasChatCredential === 'boolean' &&
+    typeof o.hasEmbeddingCredential === 'boolean' &&
+    typeof o.hasUrl === 'boolean' &&
+    typeof o.hasBucket === 'boolean' &&
+    typeof o.hasCredentialsSelected === 'boolean' &&
+    typeof o.isHealthy === 'boolean'
+  );
+}
+
+function isStatusBody(
+  value: unknown,
+): value is { enabled: boolean; setup?: IKnowledgeSetupStatus } {
+  if (typeof value !== 'object' || value === null) return false;
+  const o = value as Record<string, unknown>;
+  if (typeof o.enabled !== 'boolean') return false;
+  if (o.setup !== undefined && !isSetupBody(o.setup)) return false;
+  return true;
 }
 
 export const useKnowledgeStore = defineStore('reins-knowledge', () => {
@@ -71,6 +106,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
   const error = ref<string | null>(null);
   const enabled = ref<boolean>(false);
   const statusChecked = ref<boolean>(false);
+  const setup = ref<IKnowledgeSetupStatus>(EMPTY_SETUP);
 
   async function fetchStatus(): Promise<boolean> {
     try {
@@ -78,11 +114,14 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
       const body = unwrap<unknown>(res.data);
       if (isStatusBody(body)) {
         enabled.value = body.enabled;
+        setup.value = body.setup ?? EMPTY_SETUP;
       } else {
         enabled.value = false;
+        setup.value = EMPTY_SETUP;
       }
     } catch {
       enabled.value = false;
+      setup.value = EMPTY_SETUP;
     }
     statusChecked.value = true;
     return enabled.value;
@@ -220,6 +259,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     error,
     enabled,
     statusChecked,
+    setup,
     fetchStatus,
     fetchAll,
     fetchById,

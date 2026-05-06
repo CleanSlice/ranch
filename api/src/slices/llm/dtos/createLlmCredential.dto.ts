@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsBoolean } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { normalizeCredential } from '../domain/llm.utils';
 
@@ -33,4 +33,14 @@ export class CreateLlmCredentialDto {
   @IsOptional()
   @IsIn(['active', 'disabled'])
   status?: string;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  supportsChat?: boolean;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  supportsEmbedding?: boolean;
 }

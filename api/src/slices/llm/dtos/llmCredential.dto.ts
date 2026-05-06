@@ -22,6 +22,12 @@ export class LlmCredentialDto {
   @ApiProperty({ example: 'active', enum: ['active', 'disabled'] })
   status: string;
 
+  @ApiProperty({ default: true })
+  supportsChat: boolean;
+
+  @ApiProperty({ default: false })
+  supportsEmbedding: boolean;
+
   @ApiProperty()
   createdAt: Date;
 

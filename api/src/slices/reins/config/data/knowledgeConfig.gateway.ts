@@ -4,6 +4,7 @@ import { ISettingGateway } from '#/setting/domain';
 import {
   IKnowledgeConfig,
   IKnowledgeConfigGateway,
+  ISelectedCredentialIds,
 } from '../domain/knowledgeConfig.gateway';
 
 const SETTING_GROUP = 'knowledge';
@@ -45,6 +46,17 @@ export class KnowledgeConfigGateway extends IKnowledgeConfigGateway {
   async isEnabled(): Promise<boolean> {
     const config = await this.resolve();
     return config.enabled;
+  }
+
+  async getSelectedCredentialIds(): Promise<ISelectedCredentialIds> {
+    const [chatSetting, embeddingSetting] = await Promise.all([
+      this.settings.findByKey(SETTING_GROUP, 'chat_credential_id'),
+      this.settings.findByKey(SETTING_GROUP, 'embedding_credential_id'),
+    ]);
+    return {
+      chat: readString(chatSetting?.value),
+      embedding: readString(embeddingSetting?.value),
+    };
   }
 }
 

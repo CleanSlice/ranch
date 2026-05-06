@@ -67,6 +67,11 @@ const steps = computed<IStep[]>(() => [
 
 const allDone = computed(() => steps.value.every((s) => s.done));
 
+const firstPendingId = computed<string | null>(() => {
+  const pending = steps.value.find((s) => !s.done);
+  return pending !== undefined ? pending.id : null;
+});
+
 const localCommand = 'make dev';
 const k8sCommand = 'kubectl rollout restart deploy/lightrag -n platform';
 
@@ -79,7 +84,6 @@ async function copy(value: string, key: string): Promise<void> {
   }, 1500);
 }
 
-defineExpose({ allDone });
 </script>
 
 <template>
@@ -96,6 +100,7 @@ defineExpose({ allDone });
         <li
           v-for="step in steps"
           :key="step.id"
+          :aria-current="step.id === firstPendingId ? 'step' : undefined"
           class="flex items-start gap-3 rounded-md border p-3"
           :class="step.done ? 'bg-muted/30' : 'bg-background'"
         >
@@ -169,4 +174,11 @@ defineExpose({ allDone });
       </ol>
     </CardContent>
   </Card>
+  <div
+    v-else
+    class="inline-flex items-center gap-2 rounded-md border bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700"
+  >
+    <IconCheck class="size-3.5" />
+    Knowledge is ready
+  </div>
 </template>

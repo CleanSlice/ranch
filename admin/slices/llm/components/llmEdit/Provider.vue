@@ -61,6 +61,8 @@ function onCancel() {
           label: credential.label ?? undefined,
           apiKey: credential.apiKey,
           status: credential.status,
+          supportsChat: credential.supportsChat,
+          supportsEmbedding: credential.supportsEmbedding,
         }"
         :submitting="submitting"
         submit-label="Save changes"

@@ -7,7 +7,7 @@ export default defineNuxtPlugin(() => {
     id: 'templateInstall',
     group: MenuGroupTypes.Main,
     title: 'Install template',
-    link: 'templates/install',
+    link: 'templates-install',
     active: false,
     icon: 'PackagePlus',
     sortOrder: 21,

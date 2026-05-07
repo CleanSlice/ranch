@@ -15,12 +15,12 @@ import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 
 /**
  * WebSocket gateway for BROWSER clients.
- * Browsers connect here: ws://hub-host/ws/chat
+ * Browsers connect here: ws://hub-host/ws/client
  *
  * Auth (two paths):
- *   1. Public bot — bot has `isPublic: true` and the request `Origin` header
+ *   1. Public agent — agent has `isPublic: true` and the request `Origin` header
  *      matches one of `allowedOrigins`. No JWT required; clientId is anonymous.
- *   2. Authenticated — JWT token + botId in handshake auth, JWT verified.
+ *   2. Authenticated — JWT token + agentId in handshake auth, JWT verified.
  *      Admin role grants `clientId = "admin"` for runtime ACL.
  *
  * Events (browser → hub):
@@ -35,14 +35,14 @@ import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
  *   "typing"      { ts }
  *   "pong"        { ts }
  */
-@WebSocketGateway({ namespace: '/ws/chat', cors: { origin: '*' } })
-export class BridleChatWsHandler
+@WebSocketGateway({ namespace: '/ws/client', cors: { origin: '*' } })
+export class BridleClientWsHandler
   implements OnGatewayConnection, OnGatewayDisconnect
 {
   @WebSocketServer()
   server: Server;
 
-  private readonly logger = new Logger(BridleChatWsHandler.name);
+  private readonly logger = new Logger(BridleClientWsHandler.name);
 
   constructor(
     private readonly hub: IBridleGateway,
@@ -52,32 +52,32 @@ export class BridleChatWsHandler
   ) {}
 
   async handleConnection(client: Socket) {
-    const botId = client.handshake.auth?.botId as string | undefined;
-    if (!botId) {
-      this.logger.warn('Browser connection rejected: missing botId');
+    const agentId = client.handshake.auth?.agentId as string | undefined;
+    if (!agentId) {
+      this.logger.warn('Browser connection rejected: missing agentId');
       client.disconnect(true);
       return;
     }
 
     const origin = client.handshake.headers.origin as string | undefined;
-    const agent = await this.agentGateway.findById(botId);
+    const agent = await this.agentGateway.findById(agentId);
 
     let clientId: string;
     let isAdmin = false;
     let email: string | undefined;
 
     if (agent?.isPublic && origin && agent.allowedOrigins.includes(origin)) {
-      // Public-bot path: anonymous browser session, no token required.
+      // Public-agent path: anonymous browser session, no token required.
       clientId = `anon-${randomId()}`;
       this.logger.log(
-        `Browser connected (public): clientId=${clientId} botId=${botId} origin=${origin}`,
+        `Browser connected (public): clientId=${clientId} agentId=${agentId} origin=${origin}`,
       );
     } else {
       // Authenticated path: JWT required.
       const token = client.handshake.auth?.token as string | undefined;
       if (!token) {
         this.logger.warn(
-          `Browser connection rejected: missing token (botId=${botId}, origin=${origin ?? 'none'})`,
+          `Browser connection rejected: missing token (agentId=${agentId}, origin=${origin ?? 'none'})`,
         );
         client.disconnect(true);
         return;
@@ -100,7 +100,7 @@ export class BridleChatWsHandler
       email = payload.email as string | undefined;
     }
 
-    client.data = { clientId, botId, email, isAdmin };
+    client.data = { clientId, agentId, email, isAdmin };
 
     const send = (data: unknown) => {
       const event =
@@ -108,11 +108,11 @@ export class BridleChatWsHandler
       client.emit(event, data);
     };
 
-    this.hub.registerClient(clientId, botId, send, isAdmin);
+    this.hub.registerClient(clientId, agentId, send, isAdmin);
     client.emit('welcome', { clientId });
 
     this.logger.log(
-      `Browser connected: clientId=${clientId} botId=${botId} admin=${isAdmin}`,
+      `Browser connected: clientId=${clientId} agentId=${agentId} admin=${isAdmin}`,
     );
   }
 
@@ -135,14 +135,14 @@ export class BridleChatWsHandler
     },
   ) {
     const clientId = client.data?.clientId as string;
-    const botId = client.data?.botId as string;
-    if (!clientId || !botId) return;
+    const agentId = client.data?.agentId as string;
+    if (!clientId || !agentId) return;
 
     const text = data.text ?? '';
     const parts = data.parts ?? buildParts(text, data.images);
     if (!text && parts.length === 0) return;
 
-    this.hub.sendToAgent(clientId, botId, text, parts);
+    this.hub.sendToAgent(clientId, agentId, text, parts);
   }
 
   @SubscribeMessage('ping')

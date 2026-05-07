@@ -499,7 +499,7 @@ async function onDeploy() {
           <BridleProvider
             v-if="authStore.accessToken"
             :api-url="apiUrl"
-            :bot-id="admin.id"
+            :agent-id="admin.id"
             :token="authStore.accessToken"
             :title="`Chat with ${admin.name}`"
             :agent-connected="adminConnected"

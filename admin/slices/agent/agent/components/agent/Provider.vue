@@ -548,7 +548,7 @@ async function onRemove() {
           <BridleProvider
             v-if="authStore.accessToken"
             :api-url="apiUrl"
-            :bot-id="agent.id"
+            :agent-id="agent.id"
             :token="authStore.accessToken"
             :title="`Chat with ${agent.name}`"
             class="h-[600px] w-full max-w-none"

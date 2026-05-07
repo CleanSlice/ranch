@@ -265,7 +265,7 @@ const initials = computed(() => {
       </div>
       <BridleChatProvider
         v-else
-        :bot-id="agent.id"
+        :agent-id="agent.id"
         :title="agent.name"
         :subtitle="agent.templateId"
         :show-header="false"

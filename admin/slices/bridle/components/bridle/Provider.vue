@@ -13,7 +13,7 @@ import { cn } from '#theme/utils/cn'
 
 const props = withDefaults(defineProps<{
   apiUrl: string
-  botId: string
+  agentId: string
   token: string
   title?: string
   placeholder?: string
@@ -38,7 +38,7 @@ const togglingDebug = ref(false)
 async function onToggleDebug() {
   togglingDebug.value = true
   try {
-    await store.setDebugEnabled(props.apiUrl, props.botId, props.token, !debugEnabled.value)
+    await store.setDebugEnabled(props.apiUrl, props.agentId, props.token, !debugEnabled.value)
   } finally {
     togglingDebug.value = false
   }
@@ -96,13 +96,13 @@ onMounted(async () => {
   // through (the store is a shared singleton across providers).
   store.clearMessages()
   await Promise.all([
-    store.loadTranscript(props.apiUrl, props.botId, props.token),
-    store.loadAgentMeta(props.apiUrl, props.botId, props.token),
+    store.loadTranscript(props.apiUrl, props.agentId, props.token),
+    store.loadAgentMeta(props.apiUrl, props.agentId, props.token),
   ])
   // Re-attach debug snapshots saved in localStorage from previous sessions —
   // makes the inspect icon survive a page refresh.
-  store.loadPersistedDebug(props.botId)
-  store.connect(props.apiUrl, props.botId, props.token)
+  store.loadPersistedDebug(props.agentId)
+  store.connect(props.apiUrl, props.agentId, props.token)
   await nextTick()
   scrollToBottom('auto')
 })
@@ -122,8 +122,8 @@ async function onConfirmReset() {
   resetting.value = true
   try {
     store.disconnect()
-    await store.resetTranscript(props.apiUrl, props.botId, props.token)
-    store.connect(props.apiUrl, props.botId, props.token)
+    await store.resetTranscript(props.apiUrl, props.agentId, props.token)
+    store.connect(props.apiUrl, props.agentId, props.token)
   } finally {
     resetting.value = false
   }

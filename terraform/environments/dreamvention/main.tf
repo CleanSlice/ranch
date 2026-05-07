@@ -38,8 +38,9 @@ provider "aws" {
 }
 
 module "storage" {
-  source      = "../../modules/storage"
-  environment = var.environment
+  source             = "../../modules/storage"
+  environment        = var.environment
+  secret_name_prefix = "ranch-${var.environment}/hatzner/"
 }
 
 module "network" {

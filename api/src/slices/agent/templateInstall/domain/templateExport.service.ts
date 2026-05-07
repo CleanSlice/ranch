@@ -185,13 +185,19 @@ export class TemplateExportService {
     }
 
     // 3. agent.yaml at root. Prefer manifestJson; fall back to
-    // synthesized. Rewrite skills[] to point at the bundled paths,
-    // then normalise field order so emitted YAML reads top-to-bottom
+    // synthesized. Rewrite skills[] and mcp[] from current DB state so
+    // attachments added or removed via the admin UI after install are
+    // reflected in the export (manifestJson is a frozen install-time
+    // snapshot, not authoritative for current attachments). Then
+    // normalise field order so emitted YAML reads top-to-bottom
     // independent of how Postgres serialised the JSON column.
     const baseManifest =
       template.manifestJson ?? this.synthesizeManifest(template);
     const manifest = reorderManifest(
-      this.applyBundledSkills(baseManifest, skills),
+      this.applyAttachedMcps(
+        this.applyBundledSkills(baseManifest, skills),
+        template,
+      ),
     );
     archive.append(yamlStringify(manifest), { name: 'agent.yaml' });
 
@@ -272,6 +278,29 @@ export class TemplateExportService {
         id: s.name,
         source: `./.agent/skills/${s.name}`,
       })),
+    };
+  }
+
+  // Rewrite manifest.mcp from current Template.mcpServerIds. Preserves
+  // any per-mcp `config`/`source` block from the original manifest when
+  // the id still matches; drops manifest entries that are no longer
+  // attached; adds id-only entries for MCPs attached after install
+  // (per-template config for those isn't stored in v1, so they get
+  // bare `{ id }` until the join-table feature lands).
+  private applyAttachedMcps(
+    manifest: Record<string, unknown>,
+    template: ITemplateData,
+  ): Record<string, unknown> {
+    const existing = (manifest.mcp ?? []) as Array<Record<string, unknown>>;
+    const byId = new Map<string, Record<string, unknown>>();
+    for (const entry of existing) {
+      if (typeof entry.id === 'string') byId.set(entry.id, entry);
+    }
+    return {
+      ...manifest,
+      mcp: template.mcpServerIds.map(
+        (id) => byId.get(id) ?? { id },
+      ),
     };
   }
 

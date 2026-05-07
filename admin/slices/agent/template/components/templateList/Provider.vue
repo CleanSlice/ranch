@@ -16,7 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '#theme/components/ui/dropdown-menu';
-import { IconDotsVertical, IconTrash } from '@tabler/icons-vue';
+import { IconDotsVertical, IconTrash, IconPackageImport } from '@tabler/icons-vue';
 
 const templateStore = useTemplateStore();
 const rancherStore = useRancherStore();
@@ -80,9 +80,17 @@ async function onRemove() {
         <h1 class="text-2xl font-semibold">Templates</h1>
         <p class="text-sm text-muted-foreground">Agent blueprints used when spawning runtime instances.</p>
       </div>
-      <Button as-child>
-        <NuxtLink to="/templates/create">New template</NuxtLink>
-      </Button>
+      <div class="flex gap-2">
+        <Button variant="outline" as-child>
+          <NuxtLink to="/templates/install" class="inline-flex items-center gap-1.5">
+            <IconPackageImport class="size-4" />
+            Install
+          </NuxtLink>
+        </Button>
+        <Button as-child>
+          <NuxtLink to="/templates/create">New template</NuxtLink>
+        </Button>
+      </div>
     </div>
 
     <div

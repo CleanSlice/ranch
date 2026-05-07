@@ -54,8 +54,15 @@ export class BridleAgentWsHandler
   ) {}
 
   handleConnection(client: Socket) {
-    const apiKey = client.handshake.auth?.apiKey as string | undefined;
-    const agentId = client.handshake.auth?.agentId as string | undefined;
+    const auth = (client.handshake.auth ?? {}) as {
+      apiKey?: string;
+      agentId?: string;
+      botId?: string;
+    };
+    const apiKey = auth.apiKey;
+    // Legacy `botId` is accepted so runtimes still on the pre-0.3.0 SDK can
+    // keep connecting during the rename rollout.
+    const agentId = auth.agentId ?? auth.botId;
     const expectedKey = this.config.get<string>('BRIDLE_API_KEY');
 
     if (!apiKey || !agentId || apiKey !== expectedKey) {

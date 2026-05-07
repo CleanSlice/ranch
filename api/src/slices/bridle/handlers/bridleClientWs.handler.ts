@@ -52,7 +52,14 @@ export class BridleClientWsHandler
   ) {}
 
   async handleConnection(client: Socket) {
-    const agentId = client.handshake.auth?.agentId as string | undefined;
+    const auth = (client.handshake.auth ?? {}) as {
+      agentId?: string;
+      botId?: string;
+      token?: string;
+    };
+    // Accept legacy `botId` from browsers running cached pre-0.3.0 SDK
+    // bundles. Drop after CDN/embedders have rolled forward.
+    const agentId = auth.agentId ?? auth.botId;
     if (!agentId) {
       this.logger.warn('Browser connection rejected: missing agentId');
       client.disconnect(true);
@@ -74,7 +81,7 @@ export class BridleClientWsHandler
       );
     } else {
       // Authenticated path: JWT required.
-      const token = client.handshake.auth?.token as string | undefined;
+      const token = auth.token;
       if (!token) {
         this.logger.warn(
           `Browser connection rejected: missing token (agentId=${agentId}, origin=${origin ?? 'none'})`,

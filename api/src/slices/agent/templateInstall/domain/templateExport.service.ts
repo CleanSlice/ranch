@@ -7,6 +7,8 @@ import {
   IPaddockScenarioGateway,
   IPaddockScenarioData,
 } from '#/paddock/scenario/domain';
+import { ISkillGateway } from '#/skill/domain/skill.gateway';
+import { ISkillData } from '#/skill/domain/skill.types';
 
 export interface ITemplateExportResult {
   filename: string;
@@ -21,6 +23,7 @@ export class TemplateExportService {
     private readonly templateGateway: ITemplateGateway,
     private readonly templateFileGateway: ITemplateFileGateway,
     private readonly scenarioGateway: IPaddockScenarioGateway,
+    private readonly skillGateway: ISkillGateway,
   ) {}
 
   async exportZip(id: string): Promise<ITemplateExportResult> {
@@ -41,8 +44,26 @@ export class TemplateExportService {
       archive.on('warning', (w) => this.logger.warn(`archiver: ${w.message}`));
     });
 
-    // 1. template.yaml — prefer manifestJson; fall back to synthesized.
-    const manifest = template.manifestJson ?? this.synthesizeManifest(template);
+    // 1. Resolve attached skills, bundle their content into skills/<name>/,
+    // and rewrite manifest.skills to point at the bundles (preserves the
+    // SKILL.md frontmatter + sibling files so re-installs are self-contained).
+    const skills = await this.loadSkills(template.skillIds);
+    for (const skill of skills) {
+      archive.append(skill.body, {
+        name: `skills/${skill.name}/SKILL.md`,
+      });
+      for (const file of skill.files ?? []) {
+        archive.append(file.content, {
+          name: `skills/${skill.name}/${file.path}`,
+        });
+      }
+    }
+
+    // 2. template.yaml — prefer manifestJson; fall back to synthesized.
+    // In both cases, rewrite skills[] so each entry points at the bundle.
+    const baseManifest =
+      template.manifestJson ?? this.synthesizeManifest(template);
+    const manifest = this.applyBundledSkills(baseManifest, skills);
     archive.append(yamlStringify(manifest), { name: 'template.yaml' });
 
     // 2. README.md (only if we know it; manifestJson doesn't contain it)
@@ -90,6 +111,7 @@ export class TemplateExportService {
   // For legacy templates without a manifestJson: produce a minimal v1
   // manifest from the columns we do have. Round-trip is lossy (UI hints,
   // params, secrets are not recoverable) but install will still accept it.
+  // Skills are filled in by `applyBundledSkills` after this returns.
   private synthesizeManifest(template: ITemplateData): Record<string, unknown> {
     return {
       apiVersion: 'ranch/v1',
@@ -101,9 +123,41 @@ export class TemplateExportService {
         description: template.description,
       },
       files: { agent: './.agent', paddock: './.paddock' },
-      skills: template.skillIds.map((skillId) => ({ id: skillId })),
+      skills: [],
       mcp: template.mcpServerIds.map((mcpId) => ({ id: mcpId })),
       paddock: { seedScenarios: true },
+    };
+  }
+
+  private async loadSkills(skillIds: string[]): Promise<ISkillData[]> {
+    const out: ISkillData[] = [];
+    for (const id of skillIds) {
+      try {
+        const skill = await this.skillGateway.findById(id);
+        if (skill) out.push(skill);
+        else this.logger.warn(`Skill ${id} not found — skipped`);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to load skill ${id}: ${(err as Error).message}`,
+        );
+      }
+    }
+    return out;
+  }
+
+  // Replace manifest.skills with bundle pointers. Each entry keeps the
+  // human-readable skill `name` as id (not the DB uuid) and a `source`
+  // path so re-installs can register the bundled skill from disk.
+  private applyBundledSkills(
+    manifest: Record<string, unknown>,
+    skills: ISkillData[],
+  ): Record<string, unknown> {
+    return {
+      ...manifest,
+      skills: skills.map((s) => ({
+        id: s.name,
+        source: `./skills/${s.name}`,
+      })),
     };
   }
 

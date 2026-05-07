@@ -18,6 +18,8 @@ export class TemplateMapper {
       defaultConfig: record.defaultConfig as unknown as Record<string, unknown>,
       defaultResources:
         record.defaultResources as unknown as ITemplateData['defaultResources'],
+      paddockConfig:
+        (record.paddockConfig as unknown as Record<string, unknown>) ?? {},
       sourceUrl: record.sourceUrl,
       sourceType: record.sourceType,
       manifestJson:
@@ -43,6 +45,9 @@ export class TemplateMapper {
         cpu: '500m',
         memory: '512Mi',
       }) as unknown as Prisma.InputJsonValue,
+      ...(data.paddockConfig !== undefined && {
+        paddockConfig: data.paddockConfig as unknown as Prisma.InputJsonValue,
+      }),
       ...(data.sourceUrl !== undefined && { sourceUrl: data.sourceUrl }),
       ...(data.sourceType !== undefined && { sourceType: data.sourceType }),
       ...(data.manifestJson !== undefined && {

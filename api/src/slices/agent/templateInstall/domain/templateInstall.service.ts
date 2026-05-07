@@ -202,6 +202,9 @@ export class TemplateInstallService {
     // Create or upgrade — populate provenance fields so future installs
     // can do real version comparisons and audits.
     const manifestJson = manifest as unknown as Record<string, unknown>;
+    const paddockConfig = scenariosDir
+      ? await this.readPaddockConfig(scenariosDir)
+      : null;
     if (!existing) {
       await this.templateGateway.createWithId({
         id: manifest.metadata.id,
@@ -213,6 +216,7 @@ export class TemplateInstallService {
         sourceUrl: provenance.sourceUrl,
         version: manifest.metadata.version,
         manifestJson,
+        ...(paddockConfig ? { paddockConfig } : {}),
       });
     } else {
       await this.templateGateway.update(existing.id, {
@@ -222,6 +226,7 @@ export class TemplateInstallService {
         sourceType: provenance.sourceType,
         sourceUrl: provenance.sourceUrl ?? null,
         manifestJson,
+        ...(paddockConfig ? { paddockConfig } : {}),
       });
     }
 
@@ -234,7 +239,6 @@ export class TemplateInstallService {
       const filesUploaded = await this.uploadAgentFiles(
         manifest.metadata.id,
         agentDir,
-        scenariosDir,
         params,
       );
 
@@ -344,10 +348,11 @@ export class TemplateInstallService {
   private async uploadAgentFiles(
     templateId: string,
     agentDir: string,
-    scenariosDir: string | null,
     params: IInstallParamValues,
   ): Promise<number> {
-    // .agent/* → templateFile prefix, with rendering for text files.
+    // Only `.agent/*` files are stored as template files (browseable +
+    // editable in the admin UI). `.paddock/config.json` lives in the
+    // Template.paddockConfig column; scenarios become DB rows.
     const agentFiles = await this.collectFiles(agentDir);
     const uploads: { path: string; buffer: Buffer; contentType?: string }[] = [];
     for (const abs of agentFiles) {
@@ -363,22 +368,34 @@ export class TemplateInstallService {
       uploads.push({ path: rel, buffer: finalBuffer });
     }
 
-    // .paddock/config.json → also stored as a template file (paddock
-    // configuration is per-template). Scenario files are NOT uploaded
-    // as template files — they are seeded into DB rows by seedScenarios.
-    if (scenariosDir) {
-      const paddockDir = path.dirname(scenariosDir);
-      const paddockConfig = path.join(paddockDir, 'config.json');
-      if (await this.fileExists(paddockConfig)) {
-        const buffer = await fs.readFile(paddockConfig);
-        uploads.push({ path: '.paddock/config.json', buffer });
-      }
-    }
-
     if (uploads.length > 0) {
       await this.templateFileGateway.uploadMany(templateId, uploads);
     }
     return uploads.length;
+  }
+
+  // Reads `.paddock/config.json` from the directory that holds `scenarios/`.
+  // Returns null when missing or invalid JSON — install proceeds without
+  // setting the column, leaving any existing value alone.
+  private async readPaddockConfig(
+    scenariosDir: string,
+  ): Promise<Record<string, unknown> | null> {
+    const paddockDir = path.dirname(scenariosDir);
+    const configPath = path.join(paddockDir, 'config.json');
+    if (!(await this.fileExists(configPath))) return null;
+    try {
+      const raw = await fs.readFile(configPath, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return null;
+      }
+      return parsed as Record<string, unknown>;
+    } catch (err) {
+      this.logger.warn(
+        `Failed to parse .paddock/config.json: ${(err as Error).message}`,
+      );
+      return null;
+    }
   }
 
   private async collectWarnings(

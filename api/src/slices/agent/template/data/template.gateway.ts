@@ -87,6 +87,10 @@ export class TemplateGateway extends ITemplateGateway {
           defaultResources:
             data.defaultResources as unknown as Prisma.InputJsonValue,
         }),
+        ...(data.paddockConfig !== undefined && {
+          paddockConfig:
+            data.paddockConfig as unknown as Prisma.InputJsonValue,
+        }),
         ...(data.sourceUrl !== undefined && { sourceUrl: data.sourceUrl }),
         ...(data.sourceType !== undefined && { sourceType: data.sourceType }),
         ...(data.manifestJson !== undefined && {

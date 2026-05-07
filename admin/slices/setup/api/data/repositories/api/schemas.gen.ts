@@ -273,6 +273,515 @@ export const SaveTemplateFileDtoSchema = {
   required: ["content"],
 } as const;
 
+export const InstallDeclaredSkillDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    resolved: {
+      type: "boolean",
+    },
+  },
+  required: ["id", "resolved"],
+} as const;
+
+export const InstallDeclaredMcpDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    resolved: {
+      type: "boolean",
+    },
+  },
+  required: ["id", "resolved"],
+} as const;
+
+export const InstallDeclaredSecretDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    required: {
+      type: "boolean",
+    },
+  },
+  required: ["name", "required"],
+} as const;
+
+export const InstallDeclaredDtoSchema = {
+  type: "object",
+  properties: {
+    skills: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallDeclaredSkillDto",
+      },
+    },
+    mcp: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallDeclaredMcpDto",
+      },
+    },
+    secrets: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallDeclaredSecretDto",
+      },
+    },
+  },
+  required: ["skills", "mcp", "secrets"],
+} as const;
+
+export const InstallFileCountsDtoSchema = {
+  type: "object",
+  properties: {
+    agentFiles: {
+      type: "number",
+    },
+    scenarioFiles: {
+      type: "number",
+    },
+  },
+  required: ["agentFiles", "scenarioFiles"],
+} as const;
+
+export const InstallPreviewDtoSchema = {
+  type: "object",
+  properties: {
+    manifest: {
+      type: "object",
+      description:
+        "The parsed manifest. Returned as raw JSON so the UI can render any field without typed coupling.",
+      additionalProperties: true,
+    },
+    willCreate: {
+      type: "boolean",
+    },
+    willUpgrade: {
+      type: "boolean",
+    },
+    existingTemplateId: {
+      type: "string",
+    },
+    declared: {
+      $ref: "#/components/schemas/InstallDeclaredDto",
+    },
+    files: {
+      $ref: "#/components/schemas/InstallFileCountsDto",
+    },
+    warnings: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "manifest",
+    "willCreate",
+    "willUpgrade",
+    "declared",
+    "files",
+    "warnings",
+  ],
+} as const;
+
+export const InstallResultDtoSchema = {
+  type: "object",
+  properties: {
+    templateId: {
+      type: "string",
+    },
+    templateName: {
+      type: "string",
+    },
+    filesUploaded: {
+      type: "number",
+    },
+    scenariosSeeded: {
+      type: "number",
+    },
+    mcpAttached: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    skillsAttached: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    unresolvedMcp: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    unresolvedSkills: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    warnings: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "templateId",
+    "templateName",
+    "filesUploaded",
+    "scenariosSeeded",
+    "mcpAttached",
+    "skillsAttached",
+    "unresolvedMcp",
+    "unresolvedSkills",
+    "warnings",
+  ],
+} as const;
+
+export const InstallFromGitDtoSchema = {
+  type: "object",
+  properties: {
+    gitUrl: {
+      type: "string",
+      description:
+        "Git URL — https://, http://, git@host:..., or ssh://host/.../repo.git",
+      example: "https://github.com/CleanSlice/agent-templates.git",
+    },
+    gitRef: {
+      type: "string",
+      description:
+        "Optional ref — branch, tag, or short SHA. Defaults to the remote default branch.",
+      example: "main",
+    },
+    params: {
+      type: "object",
+      description:
+        'Operator-supplied params (e.g. {"language":"ru"}). Validated against the manifest at install time.',
+      additionalProperties: true,
+    },
+  },
+  required: ["gitUrl"],
+} as const;
+
+export const ImportSkillUrlDtoSchema = {
+  type: "object",
+  properties: {
+    url: {
+      type: "string",
+      description:
+        "GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.",
+      example:
+        "https://github.com/supabase/agent-skills/tree/main/skills/supabase-postgres-best-practices",
+    },
+    name: {
+      type: "string",
+    },
+  },
+  required: ["url"],
+} as const;
+
+export const ImportSkillDtoSchema = {
+  type: "object",
+  properties: {
+    repo: {
+      type: "string",
+      example: "anthropics/skills",
+      description: "GitHub owner/repo as returned by /skills/search",
+    },
+    path: {
+      type: "string",
+      example: "pdf-skill/SKILL.md",
+      description: "Path to the SKILL.md file inside the repo",
+    },
+    name: {
+      type: "string",
+      description:
+        "Override the auto-derived slug. Lowercase letters, digits and dashes.",
+    },
+  },
+  required: ["repo", "path"],
+} as const;
+
+export const CreateSkillDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "devops",
+      description: "Unique slug — lowercase letters, digits, dashes",
+    },
+    title: {
+      type: "string",
+      example: "DevOps engineer",
+    },
+    body: {
+      type: "string",
+      description: "Markdown body of the skill",
+    },
+    description: {
+      type: "string",
+    },
+  },
+  required: ["name", "title", "body"],
+} as const;
+
+export const UpdateSkillDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "devops",
+      description: "Unique slug — lowercase letters, digits, dashes",
+    },
+    title: {
+      type: "string",
+      example: "DevOps engineer",
+    },
+    body: {
+      type: "string",
+      description: "Markdown body of the skill",
+    },
+    description: {
+      type: "string",
+    },
+  },
+} as const;
+
+export const CreatePaddockScenarioMessageDtoSchema = {
+  type: "object",
+  properties: {
+    text: {
+      type: "string",
+    },
+    from: {
+      type: "string",
+    },
+    delayMs: {
+      type: "number",
+    },
+  },
+  required: ["text", "from"],
+} as const;
+
+export const CreatePaddockSuccessCriterionDtoSchema = {
+  type: "object",
+  properties: {
+    dimension: {
+      type: "string",
+      enum: [
+        "correctness",
+        "tool_usage",
+        "soul_compliance",
+        "response_quality",
+        "error_handling",
+      ],
+    },
+    description: {
+      type: "string",
+    },
+    weight: {
+      type: "number",
+    },
+  },
+  required: ["dimension", "description", "weight"],
+} as const;
+
+export const CreatePaddockScenarioSetupDtoSchema = {
+  type: "object",
+  properties: {
+    files: {
+      type: "object",
+      additionalProperties: {
+        type: "string",
+      },
+    },
+    env: {
+      type: "object",
+      additionalProperties: {
+        type: "string",
+      },
+    },
+    tools: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+} as const;
+
+export const CreatePaddockScenarioDtoSchema = {
+  type: "object",
+  properties: {
+    templateId: {
+      type: "string",
+      nullable: true,
+    },
+    agentId: {
+      type: "string",
+      nullable: true,
+    },
+    category: {
+      type: "string",
+      enum: [
+        "tool_use",
+        "memory",
+        "conversation",
+        "patching_workflow",
+        "edge_case",
+        "multi_turn",
+        "error_recovery",
+      ],
+    },
+    difficulty: {
+      type: "string",
+      enum: ["easy", "medium", "hard", "adversarial"],
+    },
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+    },
+    expectedBehavior: {
+      type: "string",
+    },
+    messages: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/CreatePaddockScenarioMessageDto",
+      },
+    },
+    successCriteria: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/CreatePaddockSuccessCriterionDto",
+      },
+    },
+    setup: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/CreatePaddockScenarioSetupDto",
+        },
+      ],
+    },
+  },
+  required: [
+    "category",
+    "difficulty",
+    "name",
+    "description",
+    "expectedBehavior",
+    "messages",
+    "successCriteria",
+  ],
+} as const;
+
+export const GeneratePaddockScenarioDtoSchema = {
+  type: "object",
+  properties: {
+    description: {
+      type: "string",
+      description:
+        "Free-form description of the problem / behavior the user wants to test.",
+    },
+    templateId: {
+      type: "string",
+      nullable: true,
+    },
+    agentId: {
+      type: "string",
+      nullable: true,
+    },
+    category: {
+      type: "string",
+      enum: [
+        "tool_use",
+        "memory",
+        "conversation",
+        "patching_workflow",
+        "edge_case",
+        "multi_turn",
+        "error_recovery",
+      ],
+    },
+    difficulty: {
+      type: "string",
+      enum: ["easy", "medium", "hard", "adversarial"],
+    },
+    credentialId: {
+      type: "string",
+      description:
+        "Optional LlmCredential id; if omitted, the first active Anthropic credential is used.",
+    },
+  },
+  required: ["description"],
+} as const;
+
+export const UpdatePaddockScenarioDtoSchema = {
+  type: "object",
+  properties: {
+    category: {
+      type: "string",
+      enum: [
+        "tool_use",
+        "memory",
+        "conversation",
+        "patching_workflow",
+        "edge_case",
+        "multi_turn",
+        "error_recovery",
+      ],
+    },
+    difficulty: {
+      type: "string",
+      enum: ["easy", "medium", "hard", "adversarial"],
+    },
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+    },
+    expectedBehavior: {
+      type: "string",
+    },
+    messages: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/CreatePaddockScenarioMessageDto",
+      },
+    },
+    successCriteria: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/CreatePaddockSuccessCriterionDto",
+      },
+    },
+    setup: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/CreatePaddockScenarioSetupDto",
+        },
+      ],
+    },
+  },
+} as const;
+
 export const AgentPodStatusDtoSchema = {
   type: "object",
   properties: {
@@ -591,7 +1100,7 @@ export const BridleHealthDtoSchema = {
   required: ["ok", "agentConnected", "browserClients"],
 } as const;
 
-export const BridleBotHealthDtoSchema = {
+export const BridleAgentHealthDtoSchema = {
   type: "object",
   properties: {
     ok: {
@@ -600,18 +1109,18 @@ export const BridleBotHealthDtoSchema = {
     },
     agentConnected: {
       type: "boolean",
-      description: "Whether this bot agent is connected via WebSocket",
+      description: "Whether this agent is connected via WebSocket",
     },
     browserClients: {
       type: "number",
-      description: "Number of browser clients connected to this bot",
+      description: "Number of browser clients connected to this agent",
     },
-    botId: {
+    agentId: {
       type: "string",
       description: "Bot identifier",
     },
   },
-  required: ["ok", "agentConnected", "browserClients", "botId"],
+  required: ["ok", "agentConnected", "browserClients", "agentId"],
 } as const;
 
 export const TranscriptMessageDtoSchema = {
@@ -969,313 +1478,6 @@ export const CreateSourceDtoSchema = {
     },
   },
   required: ["type", "name"],
-} as const;
-
-export const ImportSkillUrlDtoSchema = {
-  type: "object",
-  properties: {
-    url: {
-      type: "string",
-      description:
-        "GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.",
-      example:
-        "https://github.com/supabase/agent-skills/tree/main/skills/supabase-postgres-best-practices",
-    },
-    name: {
-      type: "string",
-    },
-  },
-  required: ["url"],
-} as const;
-
-export const ImportSkillDtoSchema = {
-  type: "object",
-  properties: {
-    repo: {
-      type: "string",
-      example: "anthropics/skills",
-      description: "GitHub owner/repo as returned by /skills/search",
-    },
-    path: {
-      type: "string",
-      example: "pdf-skill/SKILL.md",
-      description: "Path to the SKILL.md file inside the repo",
-    },
-    name: {
-      type: "string",
-      description:
-        "Override the auto-derived slug. Lowercase letters, digits and dashes.",
-    },
-  },
-  required: ["repo", "path"],
-} as const;
-
-export const CreateSkillDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "devops",
-      description: "Unique slug — lowercase letters, digits, dashes",
-    },
-    title: {
-      type: "string",
-      example: "DevOps engineer",
-    },
-    body: {
-      type: "string",
-      description: "Markdown body of the skill",
-    },
-    description: {
-      type: "string",
-    },
-  },
-  required: ["name", "title", "body"],
-} as const;
-
-export const UpdateSkillDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "devops",
-      description: "Unique slug — lowercase letters, digits, dashes",
-    },
-    title: {
-      type: "string",
-      example: "DevOps engineer",
-    },
-    body: {
-      type: "string",
-      description: "Markdown body of the skill",
-    },
-    description: {
-      type: "string",
-    },
-  },
-} as const;
-
-export const CreatePaddockScenarioMessageDtoSchema = {
-  type: "object",
-  properties: {
-    text: {
-      type: "string",
-    },
-    from: {
-      type: "string",
-    },
-    delayMs: {
-      type: "number",
-    },
-  },
-  required: ["text", "from"],
-} as const;
-
-export const CreatePaddockSuccessCriterionDtoSchema = {
-  type: "object",
-  properties: {
-    dimension: {
-      type: "string",
-      enum: [
-        "correctness",
-        "tool_usage",
-        "soul_compliance",
-        "response_quality",
-        "error_handling",
-      ],
-    },
-    description: {
-      type: "string",
-    },
-    weight: {
-      type: "number",
-    },
-  },
-  required: ["dimension", "description", "weight"],
-} as const;
-
-export const CreatePaddockScenarioSetupDtoSchema = {
-  type: "object",
-  properties: {
-    files: {
-      type: "object",
-      additionalProperties: {
-        type: "string",
-      },
-    },
-    env: {
-      type: "object",
-      additionalProperties: {
-        type: "string",
-      },
-    },
-    tools: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-  },
-} as const;
-
-export const CreatePaddockScenarioDtoSchema = {
-  type: "object",
-  properties: {
-    templateId: {
-      type: "string",
-      nullable: true,
-    },
-    agentId: {
-      type: "string",
-      nullable: true,
-    },
-    category: {
-      type: "string",
-      enum: [
-        "tool_use",
-        "memory",
-        "conversation",
-        "patching_workflow",
-        "edge_case",
-        "multi_turn",
-        "error_recovery",
-      ],
-    },
-    difficulty: {
-      type: "string",
-      enum: ["easy", "medium", "hard", "adversarial"],
-    },
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-    },
-    expectedBehavior: {
-      type: "string",
-    },
-    messages: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/CreatePaddockScenarioMessageDto",
-      },
-    },
-    successCriteria: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/CreatePaddockSuccessCriterionDto",
-      },
-    },
-    setup: {
-      nullable: true,
-      allOf: [
-        {
-          $ref: "#/components/schemas/CreatePaddockScenarioSetupDto",
-        },
-      ],
-    },
-  },
-  required: [
-    "category",
-    "difficulty",
-    "name",
-    "description",
-    "expectedBehavior",
-    "messages",
-    "successCriteria",
-  ],
-} as const;
-
-export const GeneratePaddockScenarioDtoSchema = {
-  type: "object",
-  properties: {
-    description: {
-      type: "string",
-      description:
-        "Free-form description of the problem / behavior the user wants to test.",
-    },
-    templateId: {
-      type: "string",
-      nullable: true,
-    },
-    agentId: {
-      type: "string",
-      nullable: true,
-    },
-    category: {
-      type: "string",
-      enum: [
-        "tool_use",
-        "memory",
-        "conversation",
-        "patching_workflow",
-        "edge_case",
-        "multi_turn",
-        "error_recovery",
-      ],
-    },
-    difficulty: {
-      type: "string",
-      enum: ["easy", "medium", "hard", "adversarial"],
-    },
-    credentialId: {
-      type: "string",
-      description:
-        "Optional LlmCredential id; if omitted, the first active Anthropic credential is used.",
-    },
-  },
-  required: ["description"],
-} as const;
-
-export const UpdatePaddockScenarioDtoSchema = {
-  type: "object",
-  properties: {
-    category: {
-      type: "string",
-      enum: [
-        "tool_use",
-        "memory",
-        "conversation",
-        "patching_workflow",
-        "edge_case",
-        "multi_turn",
-        "error_recovery",
-      ],
-    },
-    difficulty: {
-      type: "string",
-      enum: ["easy", "medium", "hard", "adversarial"],
-    },
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-    },
-    expectedBehavior: {
-      type: "string",
-    },
-    messages: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/CreatePaddockScenarioMessageDto",
-      },
-    },
-    successCriteria: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/CreatePaddockSuccessCriterionDto",
-      },
-    },
-    setup: {
-      nullable: true,
-      allOf: [
-        {
-          $ref: "#/components/schemas/CreatePaddockScenarioSetupDto",
-        },
-      ],
-    },
-  },
 } as const;
 
 export const RunPaddockJudgeOverrideDtoSchema = {

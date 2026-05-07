@@ -118,6 +118,195 @@ export type SaveTemplateFileDto = {
   content: string;
 };
 
+export type InstallDeclaredSkillDto = {
+  id: string;
+  resolved: boolean;
+};
+
+export type InstallDeclaredMcpDto = {
+  id: string;
+  resolved: boolean;
+};
+
+export type InstallDeclaredSecretDto = {
+  name: string;
+  required: boolean;
+};
+
+export type InstallDeclaredDto = {
+  skills: Array<InstallDeclaredSkillDto>;
+  mcp: Array<InstallDeclaredMcpDto>;
+  secrets: Array<InstallDeclaredSecretDto>;
+};
+
+export type InstallFileCountsDto = {
+  agentFiles: number;
+  scenarioFiles: number;
+};
+
+export type InstallPreviewDto = {
+  /**
+   * The parsed manifest. Returned as raw JSON so the UI can render any field without typed coupling.
+   */
+  manifest: {
+    [key: string]: unknown;
+  };
+  willCreate: boolean;
+  willUpgrade: boolean;
+  existingTemplateId?: string;
+  declared: InstallDeclaredDto;
+  files: InstallFileCountsDto;
+  warnings: Array<string>;
+};
+
+export type InstallResultDto = {
+  templateId: string;
+  templateName: string;
+  filesUploaded: number;
+  scenariosSeeded: number;
+  mcpAttached: Array<string>;
+  skillsAttached: Array<string>;
+  unresolvedMcp: Array<string>;
+  unresolvedSkills: Array<string>;
+  warnings: Array<string>;
+};
+
+export type ImportSkillUrlDto = {
+  /**
+   * GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.
+   */
+  url: string;
+  name?: string;
+};
+
+export type ImportSkillDto = {
+  /**
+   * GitHub owner/repo as returned by /skills/search
+   */
+  repo: string;
+  /**
+   * Path to the SKILL.md file inside the repo
+   */
+  path: string;
+  /**
+   * Override the auto-derived slug. Lowercase letters, digits and dashes.
+   */
+  name?: string;
+};
+
+export type CreateSkillDto = {
+  /**
+   * Unique slug — lowercase letters, digits, dashes
+   */
+  name: string;
+  title: string;
+  /**
+   * Markdown body of the skill
+   */
+  body: string;
+  description?: string;
+};
+
+export type UpdateSkillDto = {
+  /**
+   * Unique slug — lowercase letters, digits, dashes
+   */
+  name?: string;
+  title?: string;
+  /**
+   * Markdown body of the skill
+   */
+  body?: string;
+  description?: string;
+};
+
+export type CreatePaddockScenarioMessageDto = {
+  text: string;
+  from: string;
+  delayMs?: number;
+};
+
+export type CreatePaddockSuccessCriterionDto = {
+  dimension:
+    | "correctness"
+    | "tool_usage"
+    | "soul_compliance"
+    | "response_quality"
+    | "error_handling";
+  description: string;
+  weight: number;
+};
+
+export type CreatePaddockScenarioSetupDto = {
+  files?: {
+    [key: string]: string;
+  };
+  env?: {
+    [key: string]: string;
+  };
+  tools?: Array<string>;
+};
+
+export type CreatePaddockScenarioDto = {
+  templateId?: string | null;
+  agentId?: string | null;
+  category:
+    | "tool_use"
+    | "memory"
+    | "conversation"
+    | "patching_workflow"
+    | "edge_case"
+    | "multi_turn"
+    | "error_recovery";
+  difficulty: "easy" | "medium" | "hard" | "adversarial";
+  name: string;
+  description: string;
+  expectedBehavior: string;
+  messages: Array<CreatePaddockScenarioMessageDto>;
+  successCriteria: Array<CreatePaddockSuccessCriterionDto>;
+  setup?: CreatePaddockScenarioSetupDto | null;
+};
+
+export type GeneratePaddockScenarioDto = {
+  /**
+   * Free-form description of the problem / behavior the user wants to test.
+   */
+  description: string;
+  templateId?: string | null;
+  agentId?: string | null;
+  category?:
+    | "tool_use"
+    | "memory"
+    | "conversation"
+    | "patching_workflow"
+    | "edge_case"
+    | "multi_turn"
+    | "error_recovery";
+  difficulty?: "easy" | "medium" | "hard" | "adversarial";
+  /**
+   * Optional LlmCredential id; if omitted, the first active Anthropic credential is used.
+   */
+  credentialId?: string;
+};
+
+export type UpdatePaddockScenarioDto = {
+  category?:
+    | "tool_use"
+    | "memory"
+    | "conversation"
+    | "patching_workflow"
+    | "edge_case"
+    | "multi_turn"
+    | "error_recovery";
+  difficulty?: "easy" | "medium" | "hard" | "adversarial";
+  name?: string;
+  description?: string;
+  expectedBehavior?: string;
+  messages?: Array<CreatePaddockScenarioMessageDto>;
+  successCriteria?: Array<CreatePaddockSuccessCriterionDto>;
+  setup?: CreatePaddockScenarioSetupDto | null;
+};
+
 export type AgentPodStatusDto = {
   agentId: string;
   podName: string;
@@ -278,20 +467,20 @@ export type BridleHealthDto = {
   browserClients: number;
 };
 
-export type BridleBotHealthDto = {
+export type BridleAgentHealthDto = {
   ok: boolean;
   /**
-   * Whether this bot agent is connected via WebSocket
+   * Whether this agent is connected via WebSocket
    */
   agentConnected: boolean;
   /**
-   * Number of browser clients connected to this bot
+   * Number of browser clients connected to this agent
    */
   browserClients: number;
   /**
    * Bot identifier
    */
-  botId: string;
+  agentId: string;
 };
 
 export type TranscriptMessageDto = {
@@ -415,142 +604,6 @@ export type CreateSourceDto = {
   name: string;
   url?: string;
   content?: string;
-};
-
-export type ImportSkillUrlDto = {
-  /**
-   * GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.
-   */
-  url: string;
-  name?: string;
-};
-
-export type ImportSkillDto = {
-  /**
-   * GitHub owner/repo as returned by /skills/search
-   */
-  repo: string;
-  /**
-   * Path to the SKILL.md file inside the repo
-   */
-  path: string;
-  /**
-   * Override the auto-derived slug. Lowercase letters, digits and dashes.
-   */
-  name?: string;
-};
-
-export type CreateSkillDto = {
-  /**
-   * Unique slug — lowercase letters, digits, dashes
-   */
-  name: string;
-  title: string;
-  /**
-   * Markdown body of the skill
-   */
-  body: string;
-  description?: string;
-};
-
-export type UpdateSkillDto = {
-  /**
-   * Unique slug — lowercase letters, digits, dashes
-   */
-  name?: string;
-  title?: string;
-  /**
-   * Markdown body of the skill
-   */
-  body?: string;
-  description?: string;
-};
-
-export type CreatePaddockScenarioMessageDto = {
-  text: string;
-  from: string;
-  delayMs?: number;
-};
-
-export type CreatePaddockSuccessCriterionDto = {
-  dimension:
-    | "correctness"
-    | "tool_usage"
-    | "soul_compliance"
-    | "response_quality"
-    | "error_handling";
-  description: string;
-  weight: number;
-};
-
-export type CreatePaddockScenarioSetupDto = {
-  files?: {
-    [key: string]: string;
-  };
-  env?: {
-    [key: string]: string;
-  };
-  tools?: Array<string>;
-};
-
-export type CreatePaddockScenarioDto = {
-  templateId?: string | null;
-  agentId?: string | null;
-  category:
-    | "tool_use"
-    | "memory"
-    | "conversation"
-    | "patching_workflow"
-    | "edge_case"
-    | "multi_turn"
-    | "error_recovery";
-  difficulty: "easy" | "medium" | "hard" | "adversarial";
-  name: string;
-  description: string;
-  expectedBehavior: string;
-  messages: Array<CreatePaddockScenarioMessageDto>;
-  successCriteria: Array<CreatePaddockSuccessCriterionDto>;
-  setup?: CreatePaddockScenarioSetupDto | null;
-};
-
-export type GeneratePaddockScenarioDto = {
-  /**
-   * Free-form description of the problem / behavior the user wants to test.
-   */
-  description: string;
-  templateId?: string | null;
-  agentId?: string | null;
-  category?:
-    | "tool_use"
-    | "memory"
-    | "conversation"
-    | "patching_workflow"
-    | "edge_case"
-    | "multi_turn"
-    | "error_recovery";
-  difficulty?: "easy" | "medium" | "hard" | "adversarial";
-  /**
-   * Optional LlmCredential id; if omitted, the first active Anthropic credential is used.
-   */
-  credentialId?: string;
-};
-
-export type UpdatePaddockScenarioDto = {
-  category?:
-    | "tool_use"
-    | "memory"
-    | "conversation"
-    | "patching_workflow"
-    | "edge_case"
-    | "multi_turn"
-    | "error_recovery";
-  difficulty?: "easy" | "medium" | "hard" | "adversarial";
-  name?: string;
-  description?: string;
-  expectedBehavior?: string;
-  messages?: Array<CreatePaddockScenarioMessageDto>;
-  successCriteria?: Array<CreatePaddockSuccessCriterionDto>;
-  setup?: CreatePaddockScenarioSetupDto | null;
 };
 
 export type RunPaddockJudgeOverrideDto = {
@@ -972,6 +1025,228 @@ export type TemplateFileControllerUploadResponses = {
   201: unknown;
 };
 
+export type PreviewTemplateInstallData = {
+  body: {
+    archive: Blob | File;
+    /**
+     * JSON object of operator-supplied params (e.g. {"language":"ru"}). Empty string or omitted = no params.
+     */
+    params?: string;
+  };
+  path?: never;
+  query?: never;
+  url: "/templates/install/preview";
+};
+
+export type PreviewTemplateInstallResponses = {
+  200: InstallPreviewDto;
+};
+
+export type PreviewTemplateInstallResponse =
+  PreviewTemplateInstallResponses[keyof PreviewTemplateInstallResponses];
+
+export type InstallTemplateData = {
+  body: {
+    archive: Blob | File;
+    /**
+     * JSON object of operator-supplied params.
+     */
+    params?: string;
+  };
+  path?: never;
+  query?: never;
+  url: "/templates/install";
+};
+
+export type InstallTemplateResponses = {
+  200: InstallResultDto;
+};
+
+export type InstallTemplateResponse =
+  InstallTemplateResponses[keyof InstallTemplateResponses];
+
+export type SkillControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/skills";
+};
+
+export type SkillControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type SkillControllerCreateData = {
+  body: CreateSkillDto;
+  path?: never;
+  query?: never;
+  url: "/skills";
+};
+
+export type SkillControllerCreateResponses = {
+  201: unknown;
+};
+
+export type SkillControllerListSourcesData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/skills/sources";
+};
+
+export type SkillControllerListSourcesResponses = {
+  200: unknown;
+};
+
+export type SkillControllerSearchData = {
+  body?: never;
+  path?: never;
+  query: {
+    q: string;
+  };
+  url: "/skills/search";
+};
+
+export type SkillControllerSearchResponses = {
+  200: unknown;
+};
+
+export type SkillControllerImportFromUrlData = {
+  body: ImportSkillUrlDto;
+  path?: never;
+  query?: never;
+  url: "/skills/import-url";
+};
+
+export type SkillControllerImportFromUrlResponses = {
+  201: unknown;
+};
+
+export type SkillControllerImportFromGithubData = {
+  body: ImportSkillDto;
+  path?: never;
+  query?: never;
+  url: "/skills/import";
+};
+
+export type SkillControllerImportFromGithubResponses = {
+  201: unknown;
+};
+
+export type SkillControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/skills/{id}";
+};
+
+export type SkillControllerRemoveResponses = {
+  200: unknown;
+};
+
+export type SkillControllerFindByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/skills/{id}";
+};
+
+export type SkillControllerFindByIdResponses = {
+  200: unknown;
+};
+
+export type SkillControllerUpdateData = {
+  body: UpdateSkillDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/skills/{id}";
+};
+
+export type SkillControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type PaddockScenarioControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: {
+    templateId?: string;
+    agentId?: string;
+  };
+  url: "/paddock-scenarios";
+};
+
+export type PaddockScenarioControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type PaddockScenarioControllerCreateData = {
+  body: CreatePaddockScenarioDto;
+  path?: never;
+  query?: never;
+  url: "/paddock-scenarios";
+};
+
+export type PaddockScenarioControllerCreateResponses = {
+  201: unknown;
+};
+
+export type PaddockScenarioControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-scenarios/{id}";
+};
+
+export type PaddockScenarioControllerRemoveResponses = {
+  200: unknown;
+};
+
+export type PaddockScenarioControllerFindByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-scenarios/{id}";
+};
+
+export type PaddockScenarioControllerFindByIdResponses = {
+  200: unknown;
+};
+
+export type PaddockScenarioControllerUpdateData = {
+  body: UpdatePaddockScenarioDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/paddock-scenarios/{id}";
+};
+
+export type PaddockScenarioControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type PaddockScenarioControllerGenerateData = {
+  body: GeneratePaddockScenarioDto;
+  path?: never;
+  query?: never;
+  url: "/paddock-scenarios/generate";
+};
+
+export type PaddockScenarioControllerGenerateResponses = {
+  201: unknown;
+};
+
 export type AgentControllerFindAllData = {
   body?: never;
   path?: never;
@@ -1207,10 +1482,10 @@ export type FileControllerSyncResponses = {
 export type SendBridleMessageData = {
   body: SendMessageDto;
   path: {
-    botId: string;
+    agentId: string;
   };
   query?: never;
-  url: "/api/agent/{botId}/message";
+  url: "/api/agent/{agentId}/message";
 };
 
 export type SendBridleMessageResponses = {
@@ -1220,10 +1495,10 @@ export type SendBridleMessageResponses = {
 export type SendBridleMessageSyncData = {
   body: SendMessageDto;
   path: {
-    botId: string;
+    agentId: string;
   };
   query?: never;
-  url: "/api/agent/{botId}/message/sync";
+  url: "/api/agent/{agentId}/message/sync";
 };
 
 export type SendBridleMessageSyncResponses = {
@@ -1244,21 +1519,21 @@ export type BridleHealthResponses = {
 export type BridleHealthResponse =
   BridleHealthResponses[keyof BridleHealthResponses];
 
-export type BridleBotHealthData = {
+export type BridleAgentHealthData = {
   body?: never;
   path: {
-    botId: string;
+    agentId: string;
   };
   query?: never;
-  url: "/api/agent/{botId}/health";
+  url: "/api/agent/{agentId}/health";
 };
 
-export type BridleBotHealthResponses = {
-  200: BridleBotHealthDto;
+export type BridleAgentHealthResponses = {
+  200: BridleAgentHealthDto;
 };
 
-export type BridleBotHealthResponse =
-  BridleBotHealthResponses[keyof BridleBotHealthResponses];
+export type BridleAgentHealthResponse =
+  BridleAgentHealthResponses[keyof BridleAgentHealthResponses];
 
 export type ListAgentsData = {
   body?: never;
@@ -1274,7 +1549,7 @@ export type ListAgentsResponses = {
 export type ResetBridleTranscriptData = {
   body?: never;
   path: {
-    botId: string;
+    agentId: string;
   };
   query?: {
     /**
@@ -1282,7 +1557,7 @@ export type ResetBridleTranscriptData = {
      */
     channel?: string;
   };
-  url: "/api/agent/{botId}/transcript";
+  url: "/api/agent/{agentId}/transcript";
 };
 
 export type ResetBridleTranscriptResponses = {
@@ -1295,7 +1570,7 @@ export type ResetBridleTranscriptResponse =
 export type GetBridleTranscriptData = {
   body?: never;
   path: {
-    botId: string;
+    agentId: string;
   };
   query?: {
     /**
@@ -1303,7 +1578,7 @@ export type GetBridleTranscriptData = {
      */
     channel?: string;
   };
-  url: "/api/agent/{botId}/transcript";
+  url: "/api/agent/{agentId}/transcript";
 };
 
 export type GetBridleTranscriptResponses = {
@@ -1614,113 +1889,6 @@ export type DeleteKnowledgeSourceResponses = {
 export type DeleteKnowledgeSourceResponse =
   DeleteKnowledgeSourceResponses[keyof DeleteKnowledgeSourceResponses];
 
-export type SkillControllerFindAllData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/skills";
-};
-
-export type SkillControllerFindAllResponses = {
-  200: unknown;
-};
-
-export type SkillControllerCreateData = {
-  body: CreateSkillDto;
-  path?: never;
-  query?: never;
-  url: "/skills";
-};
-
-export type SkillControllerCreateResponses = {
-  201: unknown;
-};
-
-export type SkillControllerListSourcesData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/skills/sources";
-};
-
-export type SkillControllerListSourcesResponses = {
-  200: unknown;
-};
-
-export type SkillControllerSearchData = {
-  body?: never;
-  path?: never;
-  query: {
-    q: string;
-  };
-  url: "/skills/search";
-};
-
-export type SkillControllerSearchResponses = {
-  200: unknown;
-};
-
-export type SkillControllerImportFromUrlData = {
-  body: ImportSkillUrlDto;
-  path?: never;
-  query?: never;
-  url: "/skills/import-url";
-};
-
-export type SkillControllerImportFromUrlResponses = {
-  201: unknown;
-};
-
-export type SkillControllerImportFromGithubData = {
-  body: ImportSkillDto;
-  path?: never;
-  query?: never;
-  url: "/skills/import";
-};
-
-export type SkillControllerImportFromGithubResponses = {
-  201: unknown;
-};
-
-export type SkillControllerRemoveData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/skills/{id}";
-};
-
-export type SkillControllerRemoveResponses = {
-  200: unknown;
-};
-
-export type SkillControllerFindByIdData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/skills/{id}";
-};
-
-export type SkillControllerFindByIdResponses = {
-  200: unknown;
-};
-
-export type SkillControllerUpdateData = {
-  body: UpdateSkillDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/skills/{id}";
-};
-
-export type SkillControllerUpdateResponses = {
-  200: unknown;
-};
-
 export type RancherControllerStatusData = {
   body?: never;
   path?: never;
@@ -1740,81 +1908,6 @@ export type RancherControllerEnsureTemplateData = {
 };
 
 export type RancherControllerEnsureTemplateResponses = {
-  201: unknown;
-};
-
-export type PaddockScenarioControllerFindAllData = {
-  body?: never;
-  path?: never;
-  query?: {
-    templateId?: string;
-    agentId?: string;
-  };
-  url: "/paddock-scenarios";
-};
-
-export type PaddockScenarioControllerFindAllResponses = {
-  200: unknown;
-};
-
-export type PaddockScenarioControllerCreateData = {
-  body: CreatePaddockScenarioDto;
-  path?: never;
-  query?: never;
-  url: "/paddock-scenarios";
-};
-
-export type PaddockScenarioControllerCreateResponses = {
-  201: unknown;
-};
-
-export type PaddockScenarioControllerRemoveData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/paddock-scenarios/{id}";
-};
-
-export type PaddockScenarioControllerRemoveResponses = {
-  200: unknown;
-};
-
-export type PaddockScenarioControllerFindByIdData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/paddock-scenarios/{id}";
-};
-
-export type PaddockScenarioControllerFindByIdResponses = {
-  200: unknown;
-};
-
-export type PaddockScenarioControllerUpdateData = {
-  body: UpdatePaddockScenarioDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/paddock-scenarios/{id}";
-};
-
-export type PaddockScenarioControllerUpdateResponses = {
-  200: unknown;
-};
-
-export type PaddockScenarioControllerGenerateData = {
-  body: GeneratePaddockScenarioDto;
-  path?: never;
-  query?: never;
-  url: "/paddock-scenarios/generate";
-};
-
-export type PaddockScenarioControllerGenerateResponses = {
   201: unknown;
 };
 

@@ -450,6 +450,31 @@ export const InstallResultDtoSchema = {
   ],
 } as const;
 
+export const InstallFromGitDtoSchema = {
+  type: "object",
+  properties: {
+    gitUrl: {
+      type: "string",
+      description:
+        "Git URL — https://, http://, git@host:..., or ssh://host/.../repo.git",
+      example: "https://github.com/CleanSlice/agent-templates.git",
+    },
+    gitRef: {
+      type: "string",
+      description:
+        "Optional ref — branch, tag, or short SHA. Defaults to the remote default branch.",
+      example: "main",
+    },
+    params: {
+      type: "object",
+      description:
+        'Operator-supplied params (e.g. {"language":"ru"}). Validated against the manifest at install time.',
+      additionalProperties: true,
+    },
+  },
+  required: ["gitUrl"],
+} as const;
+
 export const ImportSkillUrlDtoSchema = {
   type: "object",
   properties: {

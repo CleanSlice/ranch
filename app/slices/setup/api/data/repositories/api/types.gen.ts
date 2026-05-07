@@ -171,6 +171,23 @@ export type InstallResultDto = {
   warnings: Array<string>;
 };
 
+export type InstallFromGitDto = {
+  /**
+   * Git URL — https://, http://, git@host:..., or ssh://host/.../repo.git
+   */
+  gitUrl: string;
+  /**
+   * Optional ref — branch, tag, or short SHA. Defaults to the remote default branch.
+   */
+  gitRef?: string;
+  /**
+   * Operator-supplied params (e.g. {"language":"ru"}). Validated against the manifest at install time.
+   */
+  params?: {
+    [key: string]: unknown;
+  };
+};
+
 export type ImportSkillUrlDto = {
   /**
    * GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.
@@ -1064,6 +1081,34 @@ export type InstallTemplateResponses = {
 
 export type InstallTemplateResponse =
   InstallTemplateResponses[keyof InstallTemplateResponses];
+
+export type PreviewTemplateInstallFromGitData = {
+  body: InstallFromGitDto;
+  path?: never;
+  query?: never;
+  url: "/templates/install/from-git/preview";
+};
+
+export type PreviewTemplateInstallFromGitResponses = {
+  200: InstallPreviewDto;
+};
+
+export type PreviewTemplateInstallFromGitResponse =
+  PreviewTemplateInstallFromGitResponses[keyof PreviewTemplateInstallFromGitResponses];
+
+export type InstallTemplateFromGitData = {
+  body: InstallFromGitDto;
+  path?: never;
+  query?: never;
+  url: "/templates/install/from-git";
+};
+
+export type InstallTemplateFromGitResponses = {
+  200: InstallResultDto;
+};
+
+export type InstallTemplateFromGitResponse =
+  InstallTemplateFromGitResponses[keyof InstallTemplateFromGitResponses];
 
 export type SkillControllerFindAllData = {
   body?: never;

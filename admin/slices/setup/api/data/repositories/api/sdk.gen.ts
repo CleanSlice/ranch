@@ -47,6 +47,7 @@ import type {
   PreviewTemplateInstallFromGitResponse,
   InstallTemplateFromGitData,
   InstallTemplateFromGitResponse,
+  DownloadTemplateData,
   SkillControllerFindAllData,
   SkillControllerCreateData,
   SkillControllerListSourcesData,
@@ -595,6 +596,22 @@ export class TemplatesService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Download a template as a zip — round-trips template.yaml, .agent*, .paddock/config.json, and .paddock/scenarios* back into an installable bundle.
+   */
+  public static downloadTemplate<ThrowOnError extends boolean = false>(
+    options: Options<DownloadTemplateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/templates/{id}/download",
+      ...options,
     });
   }
 }

@@ -43,6 +43,10 @@ import type {
   PreviewTemplateInstallResponse,
   InstallTemplateData,
   InstallTemplateResponse,
+  PreviewTemplateInstallFromGitData,
+  PreviewTemplateInstallFromGitResponse,
+  InstallTemplateFromGitData,
+  InstallTemplateFromGitResponse,
   SkillControllerFindAllData,
   SkillControllerCreateData,
   SkillControllerListSourcesData,
@@ -549,6 +553,46 @@ export class TemplatesService {
       ...options,
       headers: {
         "Content-Type": null,
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Preview template install from a git repository — clones into /tmp, parses manifest, reports what would happen, no DB or S3 writes.
+   */
+  public static previewTemplateInstallFromGit<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PreviewTemplateInstallFromGitData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      PreviewTemplateInstallFromGitResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/templates/install/from-git/preview",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Install a template from a git repository.
+   */
+  public static installTemplateFromGit<ThrowOnError extends boolean = false>(
+    options: Options<InstallTemplateFromGitData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      InstallTemplateFromGitResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/templates/install/from-git",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
         ...options?.headers,
       },
     });

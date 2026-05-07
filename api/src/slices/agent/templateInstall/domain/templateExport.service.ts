@@ -15,6 +15,94 @@ export interface ITemplateExportResult {
   buffer: Buffer;
 }
 
+// Canonical field order for the emitted template.yaml. Reading order:
+// apiVersion / kind on top, then identity, requirements, structure,
+// content lists, then per-feature config sections.
+const TOP_LEVEL_ORDER = [
+  'apiVersion',
+  'kind',
+  'metadata',
+  'requirements',
+  'files',
+  'skills',
+  'mcp',
+  'params',
+  'secrets',
+  'paddock',
+  'permissions',
+  'compliance',
+  'hooks',
+];
+
+const METADATA_ORDER = [
+  'id',
+  'name',
+  'version',
+  'description',
+  'author',
+  'homepage',
+  'license',
+  'tags',
+  'i18n',
+];
+
+const REQUIREMENTS_ORDER = ['ranchRuntime', 'ranch', 'services', 'env'];
+const FILES_ORDER = ['agent', 'paddock'];
+const PADDOCK_ORDER = [
+  'seedScenarios',
+  'runOnInstall',
+  'passThreshold',
+  'requiredFor',
+];
+const PERMISSIONS_ORDER = ['network', 'adminTools'];
+
+function reorder(
+  obj: Record<string, unknown>,
+  order: string[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of order) if (k in obj) out[k] = obj[k];
+  for (const k of Object.keys(obj)) if (!(k in out)) out[k] = obj[k];
+  return out;
+}
+
+function reorderManifest(
+  manifest: Record<string, unknown>,
+): Record<string, unknown> {
+  const reordered = reorder(manifest, TOP_LEVEL_ORDER);
+  if (reordered.metadata && typeof reordered.metadata === 'object') {
+    reordered.metadata = reorder(
+      reordered.metadata as Record<string, unknown>,
+      METADATA_ORDER,
+    );
+  }
+  if (reordered.requirements && typeof reordered.requirements === 'object') {
+    reordered.requirements = reorder(
+      reordered.requirements as Record<string, unknown>,
+      REQUIREMENTS_ORDER,
+    );
+  }
+  if (reordered.files && typeof reordered.files === 'object') {
+    reordered.files = reorder(
+      reordered.files as Record<string, unknown>,
+      FILES_ORDER,
+    );
+  }
+  if (reordered.paddock && typeof reordered.paddock === 'object') {
+    reordered.paddock = reorder(
+      reordered.paddock as Record<string, unknown>,
+      PADDOCK_ORDER,
+    );
+  }
+  if (reordered.permissions && typeof reordered.permissions === 'object') {
+    reordered.permissions = reorder(
+      reordered.permissions as Record<string, unknown>,
+      PERMISSIONS_ORDER,
+    );
+  }
+  return reordered;
+}
+
 @Injectable()
 export class TemplateExportService {
   private readonly logger = new Logger(TemplateExportService.name);
@@ -97,10 +185,14 @@ export class TemplateExportService {
     }
 
     // 3. template.yaml at root. Prefer manifestJson; fall back to
-    // synthesized. Rewrite skills[] to point at the bundled paths.
+    // synthesized. Rewrite skills[] to point at the bundled paths,
+    // then normalise field order so emitted YAML reads top-to-bottom
+    // independent of how Postgres serialised the JSON column.
     const baseManifest =
       template.manifestJson ?? this.synthesizeManifest(template);
-    const manifest = this.applyBundledSkills(baseManifest, skills);
+    const manifest = reorderManifest(
+      this.applyBundledSkills(baseManifest, skills),
+    );
     archive.append(yamlStringify(manifest), { name: 'template.yaml' });
 
     // 4. .paddock/config.json — only if non-empty.

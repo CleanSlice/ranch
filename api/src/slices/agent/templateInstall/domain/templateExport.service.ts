@@ -9,6 +9,8 @@ import {
 } from '#/paddock/scenario/domain';
 import { ISkillGateway } from '#/skill/domain/skill.gateway';
 import { ISkillData } from '#/skill/domain/skill.types';
+import { IMcpServerGateway } from '#/mcpServer/domain/mcpServer.gateway';
+import { IMcpServerData } from '#/mcpServer/domain/mcpServer.types';
 
 export interface ITemplateExportResult {
   filename: string;
@@ -112,6 +114,7 @@ export class TemplateExportService {
     private readonly templateFileGateway: ITemplateFileGateway,
     private readonly scenarioGateway: IPaddockScenarioGateway,
     private readonly skillGateway: ISkillGateway,
+    private readonly mcpServerGateway: IMcpServerGateway,
   ) {}
 
   async exportZip(id: string): Promise<ITemplateExportResult> {
@@ -193,10 +196,11 @@ export class TemplateExportService {
     // independent of how Postgres serialised the JSON column.
     const baseManifest =
       template.manifestJson ?? this.synthesizeManifest(template);
+    const mcps = await this.loadMcps(template.mcpServerIds);
     const manifest = reorderManifest(
       this.applyAttachedMcps(
         this.applyBundledSkills(baseManifest, skills),
-        template,
+        mcps,
       ),
     );
     archive.append(yamlStringify(manifest), { name: 'agent.yaml' });
@@ -288,26 +292,62 @@ export class TemplateExportService {
     };
   }
 
-  // Rewrite manifest.mcp from current Template.mcpServerIds. Preserves
-  // any per-mcp `config`/`source` block from the original manifest when
-  // the id still matches; drops manifest entries that are no longer
-  // attached; adds id-only entries for MCPs attached after install
-  // (per-template config for those isn't stored in v1, so they get
-  // bare `{ id }` until the join-table feature lands).
+  private async loadMcps(ids: string[]): Promise<IMcpServerData[]> {
+    const out: IMcpServerData[] = [];
+    for (const id of ids) {
+      try {
+        const m = await this.mcpServerGateway.findById(id);
+        if (m) out.push(m);
+        else this.logger.warn(`McpServer ${id} not found — skipped`);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to load mcp ${id}: ${(err as Error).message}`,
+        );
+      }
+    }
+    return out;
+  }
+
+  // Rewrite manifest.mcp from current Template.mcpServerIds, expanding
+  // each entry with the McpServer's connection details so a re-installer
+  // (or human reader) sees how to wire up the same MCP elsewhere.
+  // Preserves any `config` block from the frozen manifestJson when the
+  // id still matches; drops detached entries.
+  // SECURITY: authValue is intentionally never exported — re-install
+  // must supply credentials separately.
   private applyAttachedMcps(
     manifest: Record<string, unknown>,
-    template: ITemplateData,
+    mcps: IMcpServerData[],
   ): Record<string, unknown> {
-    const existing = (manifest.mcp ?? []) as Array<Record<string, unknown>>;
-    const byId = new Map<string, Record<string, unknown>>();
-    for (const entry of existing) {
-      if (typeof entry.id === 'string') byId.set(entry.id, entry);
+    const previous = (manifest.mcp ?? []) as Array<Record<string, unknown>>;
+    const previousById = new Map<string, Record<string, unknown>>();
+    for (const entry of previous) {
+      if (typeof entry.id === 'string') previousById.set(entry.id, entry);
     }
     return {
       ...manifest,
-      mcp: template.mcpServerIds.map(
-        (id) => byId.get(id) ?? { id },
-      ),
+      mcp: mcps.map((m) => {
+        const entry: Record<string, unknown> = {
+          id: m.id,
+          name: m.name,
+        };
+        if (m.description) entry.description = m.description;
+        if (m.url) entry.url = m.url;
+        if (m.transport) entry.transport = m.transport;
+        if (m.authType && m.authType !== 'none') {
+          entry.authType = m.authType;
+          // Placeholder — the real value is provided at install time
+          // via the secret store, not bundled into the manifest.
+          entry.authValue = `$secret:MCP_${m.id.toUpperCase().replace(/-/g, '_')}_AUTH`;
+        }
+        if (m.builtIn) entry.builtIn = true;
+        // Re-attach any config block authored in the original manifest.
+        const prev = previousById.get(m.id);
+        if (prev && prev.config && typeof prev.config === 'object') {
+          entry.config = prev.config;
+        }
+        return entry;
+      }),
     };
   }
 

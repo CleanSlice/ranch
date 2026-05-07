@@ -44,42 +44,64 @@ export class TemplateExportService {
       archive.on('warning', (w) => this.logger.warn(`archiver: ${w.message}`));
     });
 
-    // 1. Resolve attached skills, bundle their content into skills/<name>/,
-    // and rewrite manifest.skills to point at the bundles (preserves the
-    // SKILL.md frontmatter + sibling files so re-installs are self-contained).
+    // Layout convention (works the same for templates installed via the
+    // wizard and for legacy rancher-seeded templates):
+    //
+    //   template.yaml              ← manifest at zip root
+    //   .agent/                    ← every agent-runtime file
+    //     agent.config.json, SOUL.md, …, skills/<name>/SKILL.md, …
+    //   .paddock/                  ← eval data
+    //     config.json
+    //     scenarios/<category>/<slug>.yml
+    //
+    // Bundled skills live under `.agent/skills/<name>/` so the agent
+    // sees them on its filesystem the same way at runtime.
+
     const skills = await this.loadSkills(template.skillIds);
-    for (const skill of skills) {
-      archive.append(skill.body, {
-        name: `skills/${skill.name}/SKILL.md`,
-      });
-      for (const file of skill.files ?? []) {
-        archive.append(file.content, {
-          name: `skills/${skill.name}/${file.path}`,
-        });
-      }
-    }
+    const skillTargetPrefixes = skills.map(
+      (s) => `.agent/skills/${s.name}/`,
+    );
 
-    // 2. template.yaml — prefer manifestJson; fall back to synthesized.
-    // In both cases, rewrite skills[] so each entry points at the bundle.
-    const baseManifest =
-      template.manifestJson ?? this.synthesizeManifest(template);
-    const manifest = this.applyBundledSkills(baseManifest, skills);
-    archive.append(yamlStringify(manifest), { name: 'template.yaml' });
-
-    // 2. README.md (only if we know it; manifestJson doesn't contain it)
-    // Skip — README is repo-level, not template-content.
-
-    // 3. .agent/* files — read each from S3 and append.
+    // 1. .agent/* files from S3. Strip any leading `.agent/` (legacy
+    // rancher seed didn't prefix), then re-prefix uniformly. Skip anything
+    // that would collide with a DB-attached skill bundle — DB content wins.
     for (const node of files) {
+      const rel = node.path.replace(/^\.agent\//, '');
+      const target = `.agent/${rel}`;
+      if (skillTargetPrefixes.some((p) => target.startsWith(p))) {
+        this.logger.warn(
+          `Skipping S3 file ${node.path} — overridden by DB-attached skill bundle`,
+        );
+        continue;
+      }
       try {
         const content = await this.templateFileGateway.read(id, node.path);
-        archive.append(content.content, { name: content.path });
+        archive.append(content.content, { name: target });
       } catch (err) {
         this.logger.warn(
           `Skipping file ${node.path}: ${(err as Error).message}`,
         );
       }
     }
+
+    // 2. DB-attached skills → .agent/skills/<name>/...
+    for (const skill of skills) {
+      archive.append(skill.body, {
+        name: `.agent/skills/${skill.name}/SKILL.md`,
+      });
+      for (const file of skill.files ?? []) {
+        archive.append(file.content, {
+          name: `.agent/skills/${skill.name}/${file.path}`,
+        });
+      }
+    }
+
+    // 3. template.yaml at root. Prefer manifestJson; fall back to
+    // synthesized. Rewrite skills[] to point at the bundled paths.
+    const baseManifest =
+      template.manifestJson ?? this.synthesizeManifest(template);
+    const manifest = this.applyBundledSkills(baseManifest, skills);
+    archive.append(yamlStringify(manifest), { name: 'template.yaml' });
 
     // 4. .paddock/config.json — only if non-empty.
     if (
@@ -156,7 +178,7 @@ export class TemplateExportService {
       ...manifest,
       skills: skills.map((s) => ({
         id: s.name,
-        source: `./skills/${s.name}`,
+        source: `./.agent/skills/${s.name}`,
       })),
     };
   }

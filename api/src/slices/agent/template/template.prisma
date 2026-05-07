@@ -11,6 +11,13 @@ model Template {
   defaultConfig    Json        @default("{}")
   defaultResources Json        @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
   paddockConfig    Json        @default("{}")
+  // Provenance — populated by templateInstall when the template was created
+  // from an installable manifest. Null for templates created by the legacy
+  // direct-CRUD endpoints. version follows semver from manifest.metadata.
+  sourceUrl        String?
+  sourceType       String?
+  manifestJson     Json?
+  version          String?
   agents           Agent[]
   skills           Skill[]
   mcpServers       McpServer[]

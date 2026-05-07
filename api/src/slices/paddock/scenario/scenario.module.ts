@@ -4,6 +4,7 @@ import { PaddockScenarioController } from './scenario.controller';
 import { PaddockScenarioTool } from './scenario.tool';
 import { IPaddockScenarioGateway } from './domain/scenario.gateway';
 import { IPaddockScenarioGeneratorGateway } from './domain/scenarioGenerator.gateway';
+import { PaddockScenarioService } from './domain/scenario.service';
 import { PaddockScenarioGateway } from './data/scenario.gateway';
 import { PaddockScenarioGeneratorGateway } from './data/scenarioGenerator.gateway';
 import { PaddockScenarioMapper } from './data/scenario.mapper';
@@ -14,6 +15,7 @@ import { PaddockScenarioMapper } from './data/scenario.mapper';
   providers: [
     PaddockScenarioMapper,
     PaddockScenarioTool,
+    PaddockScenarioService,
     {
       provide: IPaddockScenarioGateway,
       useClass: PaddockScenarioGateway,
@@ -23,6 +25,10 @@ import { PaddockScenarioMapper } from './data/scenario.mapper';
       useClass: PaddockScenarioGeneratorGateway,
     },
   ],
-  exports: [IPaddockScenarioGateway, IPaddockScenarioGeneratorGateway],
+  exports: [
+    IPaddockScenarioGateway,
+    IPaddockScenarioGeneratorGateway,
+    PaddockScenarioService,
+  ],
 })
 export class PaddockScenarioModule {}

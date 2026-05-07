@@ -6,20 +6,14 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as YAML from 'yaml';
-import { ITemplateGateway } from '#/agent/template/domain';
+import {
+  ITemplateGateway,
+  ITemplateData,
+} from '#/agent/template/domain';
 import { ITemplateFileGateway } from '#/agent/templateFile/domain';
 import { IMcpServerGateway } from '#/mcpServer/domain/mcpServer.gateway';
 import { ISkillGateway } from '#/skill/domain/skill.gateway';
-import { IPaddockScenarioGateway } from '#/paddock/scenario/domain/scenario.gateway';
-import {
-  ICreatePaddockScenarioData,
-  IPaddockScenarioMessage,
-  IPaddockSuccessCriterion,
-  IPaddockScenarioSetup,
-  PaddockScenarioCategory,
-  PaddockScenarioDifficulty,
-} from '#/paddock/scenario/domain/scenario.types';
+import { PaddockScenarioService } from '#/paddock/scenario/domain/scenario.service';
 import { IManifestGateway } from './manifest.gateway';
 import { IArchiveGateway } from './archive.gateway';
 import {
@@ -54,7 +48,7 @@ export class TemplateInstallService {
     private readonly templateFileGateway: ITemplateFileGateway,
     private readonly mcpServerGateway: IMcpServerGateway,
     private readonly skillGateway: ISkillGateway,
-    private readonly scenarioGateway: IPaddockScenarioGateway,
+    private readonly scenarioService: PaddockScenarioService,
   ) {}
 
   async preview(
@@ -146,11 +140,13 @@ export class TemplateInstallService {
       // Lower version on top of installed → reject.
       if (existing && this.compareSemver(manifest, existing) < 0) {
         throw new ConflictException(
-          `Cannot downgrade template ${manifest.metadata.id} — installed version is newer than ${manifest.metadata.version}`,
+          `Cannot downgrade template ${manifest.metadata.id} — installed version (${existing.version ?? 'unknown'}) is newer than ${manifest.metadata.version}`,
         );
       }
 
-      // Create or upgrade
+      // Create or upgrade — populate provenance fields so future installs
+      // can do real version comparisons and audits.
+      const manifestJson = manifest as unknown as Record<string, unknown>;
       if (!existing) {
         await this.templateGateway.createWithId({
           id: manifest.metadata.id,
@@ -158,11 +154,17 @@ export class TemplateInstallService {
           description: manifest.metadata.description,
           image: DEFAULT_IMAGE,
           defaultResources: DEFAULT_RESOURCES,
+          sourceType: 'zip',
+          version: manifest.metadata.version,
+          manifestJson,
         });
       } else {
         await this.templateGateway.update(existing.id, {
           name: manifest.metadata.name,
           description: manifest.metadata.description,
+          version: manifest.metadata.version,
+          sourceType: 'zip',
+          manifestJson,
         });
       }
 
@@ -210,14 +212,22 @@ export class TemplateInstallService {
       }
       await this.templateGateway.setMcps(manifest.metadata.id, resolvedMcp);
 
-      // Seed paddock scenarios. Strict-ensure: on upgrade we wipe the
-      // existing scenarios for this template first so removed scenarios
-      // don't linger.
-      const scenariosSeeded = await this.seedScenarios(
-        manifest.metadata.id,
-        scenariosDir,
-        existing !== null,
-      );
+      // Seed paddock scenarios via the shared service.
+      // Strict-ensure on upgrade: wipe existing template-scoped scenarios
+      // first so removed YAMLs disappear from the DB.
+      const seedResult = scenariosDir
+        ? await this.scenarioService.seedFromDir(
+            manifest.metadata.id,
+            scenariosDir,
+            { wipeExisting: existing !== null },
+          )
+        : { seeded: 0, skipped: 0, total: 0 };
+      const scenariosSeeded = seedResult.seeded;
+      if (seedResult.skipped > 0) {
+        warnings.push(
+          `${seedResult.skipped} of ${seedResult.total} paddock scenarios were skipped (invalid shape) — see api logs.`,
+        );
+      }
 
       return {
         templateId: manifest.metadata.id,
@@ -317,81 +327,9 @@ export class TemplateInstallService {
     return uploads.length;
   }
 
-  private async seedScenarios(
-    templateId: string,
-    scenariosDir: string | null,
-    isUpgrade: boolean,
-  ): Promise<number> {
-    if (!scenariosDir) return 0;
-    if (!(await this.dirExists(scenariosDir))) return 0;
-
-    if (isUpgrade) {
-      const existing = await this.scenarioGateway.findAll({ templateId });
-      for (const s of existing) await this.scenarioGateway.delete(s.id);
-    }
-
-    const files = await this.collectFiles(scenariosDir);
-    let seeded = 0;
-    for (const abs of files) {
-      if (!/\.ya?ml$/i.test(abs)) continue;
-      const rel = path.relative(scenariosDir, abs);
-      // Category = top-level subfolder, e.g. `conversation/greeting.yml` → `conversation`.
-      const category = rel.split(path.sep)[0] as PaddockScenarioCategory;
-      const yamlSource = await fs.readFile(abs, 'utf8');
-      const parsed = YAML.parse(yamlSource) as Record<string, unknown>;
-      const data = this.coerceScenario(templateId, category, parsed, rel);
-      if (!data) continue;
-      try {
-        await this.scenarioGateway.create(data);
-        seeded++;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        this.logger.warn(`Skipped scenario ${rel}: ${msg}`);
-      }
-    }
-    return seeded;
-  }
-
-  private coerceScenario(
-    templateId: string,
-    fallbackCategory: PaddockScenarioCategory,
-    raw: Record<string, unknown>,
-    relPath: string,
-  ): ICreatePaddockScenarioData | null {
-    const cat = (raw.category as PaddockScenarioCategory) ?? fallbackCategory;
-    const diff = (raw.difficulty as PaddockScenarioDifficulty) ?? 'easy';
-    const name = (raw.name as string) ?? path.basename(relPath, path.extname(relPath));
-    const description = (raw.description as string) ?? '';
-    const expectedBehavior = (raw.expectedBehavior as string) ?? '';
-    const messages = (raw.messages as IPaddockScenarioMessage[]) ?? [];
-    const successCriteria =
-      (raw.successCriteria as IPaddockSuccessCriterion[]) ?? [];
-
-    if (!Array.isArray(messages) || messages.length === 0) {
-      this.logger.warn(`Scenario ${relPath}: no messages — skipped`);
-      return null;
-    }
-    if (!Array.isArray(successCriteria) || successCriteria.length === 0) {
-      this.logger.warn(`Scenario ${relPath}: no successCriteria — skipped`);
-      return null;
-    }
-
-    return {
-      templateId,
-      category: cat,
-      difficulty: diff,
-      name,
-      description,
-      expectedBehavior,
-      messages,
-      successCriteria,
-      setup: (raw.setup as IPaddockScenarioSetup | null) ?? null,
-    };
-  }
-
   private async collectWarnings(
     manifest: IManifest,
-    existing: { id: string } | null,
+    existing: ITemplateData | null,
   ): Promise<string[]> {
     const warnings: string[] = [];
     const req = manifest.requirements?.ranchRuntime;
@@ -414,21 +352,37 @@ export class TemplateInstallService {
     return true;
   }
 
-  private sameVersion(
-    existing: { name: string },
-    manifest: IManifest,
-  ): boolean {
-    // Phase a: no version column on Template yet, so use name+id match.
-    // Phase b will read existing.version and compare against manifest.metadata.version.
-    return existing.name === manifest.metadata.name;
+  private sameVersion(existing: ITemplateData, manifest: IManifest): boolean {
+    return (
+      existing.version !== null &&
+      existing.version === manifest.metadata.version
+    );
   }
 
   // Returns -1 if manifest < existing, 0 if equal, 1 if manifest > existing.
-  // Phase a: no version column — always returns 0 (treat any re-install as upgrade or no-op).
+  // Falls back to 0 (treat as upgrade, not downgrade) when either side has
+  // no recorded version — be conservative rather than blocking the operator.
   private compareSemver(
-    _manifest: IManifest,
-    _existing: { id: string },
+    manifest: IManifest,
+    existing: ITemplateData,
   ): number {
+    if (!existing.version) return 0;
+    return this.semverCompare(manifest.metadata.version, existing.version);
+  }
+
+  private semverCompare(a: string, b: string): number {
+    const parts = (s: string) => {
+      const [main] = s.split(/[-+]/);
+      return main.split('.').map((n) => parseInt(n, 10) || 0);
+    };
+    const A = parts(a);
+    const B = parts(b);
+    for (let i = 0; i < Math.max(A.length, B.length); i++) {
+      const x = A[i] ?? 0;
+      const y = B[i] ?? 0;
+      if (x > y) return 1;
+      if (x < y) return -1;
+    }
     return 0;
   }
 

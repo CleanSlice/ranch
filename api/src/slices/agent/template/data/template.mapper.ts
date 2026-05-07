@@ -18,6 +18,12 @@ export class TemplateMapper {
       defaultConfig: record.defaultConfig as unknown as Record<string, unknown>,
       defaultResources:
         record.defaultResources as unknown as ITemplateData['defaultResources'],
+      sourceUrl: record.sourceUrl,
+      sourceType: record.sourceType,
+      manifestJson:
+        (record.manifestJson as unknown as Record<string, unknown> | null) ??
+        null,
+      version: record.version,
       skillIds: (record.skills ?? []).map((s) => s.id),
       mcpServerIds: (record.mcpServers ?? []).map((m) => m.id),
       createdAt: record.createdAt,
@@ -37,6 +43,12 @@ export class TemplateMapper {
         cpu: '500m',
         memory: '512Mi',
       }) as unknown as Prisma.InputJsonValue,
+      ...(data.sourceUrl !== undefined && { sourceUrl: data.sourceUrl }),
+      ...(data.sourceType !== undefined && { sourceType: data.sourceType }),
+      ...(data.manifestJson !== undefined && {
+        manifestJson: data.manifestJson as unknown as Prisma.InputJsonValue,
+      }),
+      ...(data.version !== undefined && { version: data.version }),
     };
   }
 }

@@ -16,7 +16,11 @@ import {
 } from '@nestjs/swagger';
 import { TemplateInstallService } from './domain/templateInstall.service';
 import { IInstallParamValues } from './domain';
-import { InstallPreviewDto, InstallResultDto } from './dtos';
+import {
+  InstallPreviewDto,
+  InstallResultDto,
+  InstallFromGitDto,
+} from './dtos';
 
 interface UploadedFileLike {
   originalname: string;
@@ -96,6 +100,44 @@ export class TemplateInstallController {
   ): Promise<InstallResultDto> {
     const buf = this.requireZip(archive);
     return this.service.install(buf, this.parseParams(params));
+  }
+
+  @Post('from-git/preview')
+  @ApiOperation({
+    summary:
+      'Preview template install from a git repository — clones into /tmp, parses manifest, reports what would happen, no DB or S3 writes.',
+    operationId: 'previewTemplateInstallFromGit',
+  })
+  @ApiOkResponse({ type: InstallPreviewDto })
+  async previewFromGit(@Body() dto: InstallFromGitDto): Promise<InstallPreviewDto> {
+    const result = await this.service.previewFromGit(
+      dto.gitUrl,
+      dto.gitRef,
+      dto.params ?? {},
+    );
+    return {
+      manifest: result.manifest as unknown as Record<string, unknown>,
+      willCreate: result.willCreate,
+      willUpgrade: result.willUpgrade,
+      existingTemplateId: result.existingTemplateId,
+      declared: result.declared,
+      files: result.files,
+      warnings: result.warnings,
+    };
+  }
+
+  @Post('from-git')
+  @ApiOperation({
+    summary: 'Install a template from a git repository.',
+    operationId: 'installTemplateFromGit',
+  })
+  @ApiOkResponse({ type: InstallResultDto })
+  installFromGit(@Body() dto: InstallFromGitDto): Promise<InstallResultDto> {
+    return this.service.installFromGit(
+      dto.gitUrl,
+      dto.gitRef,
+      dto.params ?? {},
+    );
   }
 
   private requireZip(file: UploadedFileLike | undefined): Buffer {

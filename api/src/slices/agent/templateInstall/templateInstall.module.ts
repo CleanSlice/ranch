@@ -8,8 +8,10 @@ import { TemplateInstallController } from './templateInstall.controller';
 import { TemplateInstallService } from './domain/templateInstall.service';
 import { IManifestGateway } from './domain/manifest.gateway';
 import { IArchiveGateway } from './domain/archive.gateway';
+import { IGitGateway } from './domain/git.gateway';
 import { ManifestGateway } from './data/manifest.gateway';
 import { ArchiveGateway } from './data/archive.gateway';
+import { GitGateway } from './data/git.gateway';
 
 @Module({
   imports: [
@@ -24,6 +26,7 @@ import { ArchiveGateway } from './data/archive.gateway';
     TemplateInstallService,
     { provide: IManifestGateway, useClass: ManifestGateway },
     { provide: IArchiveGateway, useClass: ArchiveGateway },
+    { provide: IGitGateway, useClass: GitGateway },
   ],
   exports: [TemplateInstallService],
 })

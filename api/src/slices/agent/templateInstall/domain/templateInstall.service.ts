@@ -16,6 +16,7 @@ import { ISkillGateway } from '#/skill/domain/skill.gateway';
 import { PaddockScenarioService } from '#/paddock/scenario/domain/scenario.service';
 import { IManifestGateway } from './manifest.gateway';
 import { IArchiveGateway } from './archive.gateway';
+import { IGitGateway } from './git.gateway';
 import {
   IManifest,
   IInstallParamValues,
@@ -43,6 +44,7 @@ export class TemplateInstallService {
 
   constructor(
     private readonly archiveGateway: IArchiveGateway,
+    private readonly gitGateway: IGitGateway,
     private readonly manifestGateway: IManifestGateway,
     private readonly templateGateway: ITemplateGateway,
     private readonly templateFileGateway: ITemplateFileGateway,
@@ -51,53 +53,15 @@ export class TemplateInstallService {
     private readonly scenarioService: PaddockScenarioService,
   ) {}
 
+  // ===== public entry points =====
+
   async preview(
     zip: Buffer,
     suppliedParams: IInstallParamValues,
   ): Promise<IInstallPreview> {
     const archive = await this.archiveGateway.extractZip(zip);
     try {
-      const { manifest, agentDir, scenariosDir } =
-        await this.parseFromArchive(archive);
-      this.manifestGateway.validateParams(manifest, suppliedParams);
-
-      const existing = await this.templateGateway.findById(manifest.metadata.id);
-      const warnings = await this.collectWarnings(manifest, existing);
-
-      const [agentFiles, scenarioFiles] = await Promise.all([
-        this.countFiles(agentDir),
-        scenariosDir ? this.countFiles(scenariosDir) : Promise.resolve(0),
-      ]);
-
-      const declaredSkills = await Promise.all(
-        (manifest.skills ?? []).map(async (s) => ({
-          id: s.id,
-          resolved: !!(await this.skillGateway.findById(s.id)),
-        })),
-      );
-      const declaredMcp = await Promise.all(
-        (manifest.mcp ?? []).map(async (m) => ({
-          id: m.id,
-          resolved: !!(await this.mcpServerGateway.findById(m.id)),
-        })),
-      );
-
-      return {
-        manifest,
-        willCreate: !existing,
-        willUpgrade: !!existing,
-        existingTemplateId: existing?.id,
-        declared: {
-          skills: declaredSkills,
-          mcp: declaredMcp,
-          secrets: (manifest.secrets ?? []).map((s) => ({
-            name: s.name,
-            required: s.required ?? true,
-          })),
-        },
-        files: { agentFiles, scenarioFiles },
-        warnings,
-      };
+      return await this.previewFromExtracted(archive, suppliedParams);
     } finally {
       await archive.cleanup();
     }
@@ -109,8 +73,99 @@ export class TemplateInstallService {
   ): Promise<IInstallResult> {
     const archive = await this.archiveGateway.extractZip(zip);
     try {
-      const { manifest, agentDir, scenariosDir } =
-        await this.parseFromArchive(archive);
+      return await this.installFromExtracted(archive, suppliedParams, {
+        sourceType: 'zip',
+      });
+    } finally {
+      await archive.cleanup();
+    }
+  }
+
+  async previewFromGit(
+    url: string,
+    ref: string | undefined,
+    suppliedParams: IInstallParamValues,
+  ): Promise<IInstallPreview> {
+    const archive = await this.gitGateway.clone(url, ref);
+    try {
+      return await this.previewFromExtracted(archive, suppliedParams);
+    } finally {
+      await archive.cleanup();
+    }
+  }
+
+  async installFromGit(
+    url: string,
+    ref: string | undefined,
+    suppliedParams: IInstallParamValues,
+  ): Promise<IInstallResult> {
+    const archive = await this.gitGateway.clone(url, ref);
+    try {
+      return await this.installFromExtracted(archive, suppliedParams, {
+        sourceType: 'git',
+        sourceUrl: url,
+      });
+    } finally {
+      await archive.cleanup();
+    }
+  }
+
+  // ===== shared internals =====
+
+  private async previewFromExtracted(
+    archive: IExtractedArchive,
+    suppliedParams: IInstallParamValues,
+  ): Promise<IInstallPreview> {
+    const { manifest, agentDir, scenariosDir } =
+      await this.parseFromArchive(archive);
+    this.manifestGateway.validateParams(manifest, suppliedParams);
+
+    const existing = await this.templateGateway.findById(manifest.metadata.id);
+    const warnings = await this.collectWarnings(manifest, existing);
+
+    const [agentFiles, scenarioFiles] = await Promise.all([
+      this.countFiles(agentDir),
+      scenariosDir ? this.countFiles(scenariosDir) : Promise.resolve(0),
+    ]);
+
+    const declaredSkills = await Promise.all(
+      (manifest.skills ?? []).map(async (s) => ({
+        id: s.id,
+        resolved: !!(await this.skillGateway.findById(s.id)),
+      })),
+    );
+    const declaredMcp = await Promise.all(
+      (manifest.mcp ?? []).map(async (m) => ({
+        id: m.id,
+        resolved: !!(await this.mcpServerGateway.findById(m.id)),
+      })),
+    );
+
+    return {
+      manifest,
+      willCreate: !existing,
+      willUpgrade: !!existing,
+      existingTemplateId: existing?.id,
+      declared: {
+        skills: declaredSkills,
+        mcp: declaredMcp,
+        secrets: (manifest.secrets ?? []).map((s) => ({
+          name: s.name,
+          required: s.required ?? true,
+        })),
+      },
+      files: { agentFiles, scenarioFiles },
+      warnings,
+    };
+  }
+
+  private async installFromExtracted(
+    archive: IExtractedArchive,
+    suppliedParams: IInstallParamValues,
+    provenance: { sourceType: 'zip' | 'git'; sourceUrl?: string },
+  ): Promise<IInstallResult> {
+    const { manifest, agentDir, scenariosDir } =
+      await this.parseFromArchive(archive);
       const params = this.manifestGateway.validateParams(
         manifest,
         suppliedParams,
@@ -144,29 +199,31 @@ export class TemplateInstallService {
         );
       }
 
-      // Create or upgrade — populate provenance fields so future installs
-      // can do real version comparisons and audits.
-      const manifestJson = manifest as unknown as Record<string, unknown>;
-      if (!existing) {
-        await this.templateGateway.createWithId({
-          id: manifest.metadata.id,
-          name: manifest.metadata.name,
-          description: manifest.metadata.description,
-          image: DEFAULT_IMAGE,
-          defaultResources: DEFAULT_RESOURCES,
-          sourceType: 'zip',
-          version: manifest.metadata.version,
-          manifestJson,
-        });
-      } else {
-        await this.templateGateway.update(existing.id, {
-          name: manifest.metadata.name,
-          description: manifest.metadata.description,
-          version: manifest.metadata.version,
-          sourceType: 'zip',
-          manifestJson,
-        });
-      }
+    // Create or upgrade — populate provenance fields so future installs
+    // can do real version comparisons and audits.
+    const manifestJson = manifest as unknown as Record<string, unknown>;
+    if (!existing) {
+      await this.templateGateway.createWithId({
+        id: manifest.metadata.id,
+        name: manifest.metadata.name,
+        description: manifest.metadata.description,
+        image: DEFAULT_IMAGE,
+        defaultResources: DEFAULT_RESOURCES,
+        sourceType: provenance.sourceType,
+        sourceUrl: provenance.sourceUrl,
+        version: manifest.metadata.version,
+        manifestJson,
+      });
+    } else {
+      await this.templateGateway.update(existing.id, {
+        name: manifest.metadata.name,
+        description: manifest.metadata.description,
+        version: manifest.metadata.version,
+        sourceType: provenance.sourceType,
+        sourceUrl: provenance.sourceUrl ?? null,
+        manifestJson,
+      });
+    }
 
       // Files: wipe on upgrade so removed files are actually gone, then
       // upload the rendered set. New install → S3 prefix is empty already.
@@ -229,20 +286,17 @@ export class TemplateInstallService {
         );
       }
 
-      return {
-        templateId: manifest.metadata.id,
-        templateName: manifest.metadata.name,
-        filesUploaded,
-        scenariosSeeded,
-        mcpAttached: resolvedMcp,
-        skillsAttached: resolvedSkills,
-        unresolvedMcp,
-        unresolvedSkills,
-        warnings,
-      };
-    } finally {
-      await archive.cleanup();
-    }
+    return {
+      templateId: manifest.metadata.id,
+      templateName: manifest.metadata.name,
+      filesUploaded,
+      scenariosSeeded,
+      mcpAttached: resolvedMcp,
+      skillsAttached: resolvedSkills,
+      unresolvedMcp,
+      unresolvedSkills,
+      warnings,
+    };
   }
 
   // ---- internals ----

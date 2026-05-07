@@ -49,6 +49,7 @@ async function onSubmit(values: ICreateAgentData) {
       llmCredentialId: values.llmCredentialId ?? null,
       resources: values.resources,
       isPublic: values.isPublic,
+      allowedOrigins: values.allowedOrigins,
     };
     await agentStore.update(props.id, update);
     await navigateTo(`/agents/${props.id}`);
@@ -119,6 +120,7 @@ async function onPromote() {
           llmCredentialId: agent.llmCredentialId,
           resources: agent.resources,
           isPublic: agent.isPublic,
+          allowedOrigins: agent.allowedOrigins,
         }"
         :submitting="submitting"
         submit-label="Save changes"

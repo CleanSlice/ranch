@@ -27,7 +27,8 @@
     "migrate:prod": "dotenv -e .env.prod -- npx prisma migrate deploy",
     "studio": "dotenv -e .env.dev -- npx prisma studio",
     "docker": "docker compose up -d",
-    "predev": "npm run docker && npm run migrate"
+    "freeport": "lsof -ti:3333 | xargs kill -9 2>/dev/null || true",
+    "predev": "npm run docker && npm run migrate && npm run freeport"
   },
   "prisma": {
     "import": {

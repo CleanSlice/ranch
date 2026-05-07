@@ -15,7 +15,7 @@ export interface ITemplateExportResult {
   buffer: Buffer;
 }
 
-// Canonical field order for the emitted template.yaml. Reading order:
+// Canonical field order for the emitted agent.yaml. Reading order:
 // apiVersion / kind on top, then identity, requirements, structure,
 // content lists, then per-feature config sections.
 const TOP_LEVEL_ORDER = [
@@ -135,7 +135,7 @@ export class TemplateExportService {
     // Layout convention (works the same for templates installed via the
     // wizard and for legacy rancher-seeded templates):
     //
-    //   template.yaml              ← manifest at zip root
+    //   agent.yaml                 ← manifest at zip root
     //   .agent/                    ← every agent-runtime file
     //     agent.config.json, SOUL.md, …, skills/<name>/SKILL.md, …
     //   .paddock/                  ← eval data
@@ -184,7 +184,7 @@ export class TemplateExportService {
       }
     }
 
-    // 3. template.yaml at root. Prefer manifestJson; fall back to
+    // 3. agent.yaml at root. Prefer manifestJson; fall back to
     // synthesized. Rewrite skills[] to point at the bundled paths,
     // then normalise field order so emitted YAML reads top-to-bottom
     // independent of how Postgres serialised the JSON column.
@@ -193,7 +193,7 @@ export class TemplateExportService {
     const manifest = reorderManifest(
       this.applyBundledSkills(baseManifest, skills),
     );
-    archive.append(yamlStringify(manifest), { name: 'template.yaml' });
+    archive.append(yamlStringify(manifest), { name: 'agent.yaml' });
 
     // 4. .paddock/config.json — only if non-empty.
     if (

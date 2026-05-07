@@ -328,20 +328,27 @@ export class TemplateInstallService {
     return { manifest, agentDir, scenariosDir };
   }
 
-  // template.yaml may be at archive root, or one level deep (zips of a folder
-  // typically contain one top-level dir). We accept both.
+  // The manifest may be at archive root, or one level deep (zips of a
+  // folder typically contain one top-level dir). Accept either name:
+  // `agent.yaml` is preferred going forward; `template.yaml` is kept
+  // for legacy zips and matches the historical default-template repo.
   private async locateManifest(rootDir: string): Promise<string> {
-    const direct = path.join(rootDir, 'template.yaml');
-    if (await this.fileExists(direct)) return direct;
+    const candidates = ['agent.yaml', 'template.yaml'];
+    for (const name of candidates) {
+      const direct = path.join(rootDir, name);
+      if (await this.fileExists(direct)) return direct;
+    }
 
     const entries = await fs.readdir(rootDir, { withFileTypes: true });
     const dirs = entries.filter((e) => e.isDirectory());
     if (dirs.length === 1) {
-      const nested = path.join(rootDir, dirs[0].name, 'template.yaml');
-      if (await this.fileExists(nested)) return nested;
+      for (const name of candidates) {
+        const nested = path.join(rootDir, dirs[0].name, name);
+        if (await this.fileExists(nested)) return nested;
+      }
     }
     throw new BadRequestException(
-      'archive: template.yaml not found at archive root',
+      'archive: manifest (agent.yaml or template.yaml) not found at archive root',
     );
   }
 

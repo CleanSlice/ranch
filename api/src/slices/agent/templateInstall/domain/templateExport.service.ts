@@ -268,16 +268,23 @@ export class TemplateExportService {
   // Replace manifest.skills with bundle pointers. Each entry keeps the
   // human-readable skill `name` as id (not the DB uuid) and a `source`
   // path so re-installs can register the bundled skill from disk.
+  // When the skill was imported from an upstream URL (Skill.source in
+  // DB, e.g. github.com/owner/repo/SKILL.md), expose that as `github`
+  // so the manifest carries provenance for traceability.
   private applyBundledSkills(
     manifest: Record<string, unknown>,
     skills: ISkillData[],
   ): Record<string, unknown> {
     return {
       ...manifest,
-      skills: skills.map((s) => ({
-        id: s.name,
-        source: `./.agent/skills/${s.name}`,
-      })),
+      skills: skills.map((s) => {
+        const entry: Record<string, unknown> = {
+          id: s.name,
+          source: `./.agent/skills/${s.name}`,
+        };
+        if (s.source) entry.github = s.source;
+        return entry;
+      }),
     };
   }
 

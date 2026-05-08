@@ -503,7 +503,6 @@ async function onDeploy() {
             :agent-id="admin.id"
             :token="authStore.accessToken"
             :title="`Chat with ${admin.name}`"
-            :agent-connected="adminConnected"
             class="h-full min-h-0 w-full max-w-none flex-1"
           />
         </template>

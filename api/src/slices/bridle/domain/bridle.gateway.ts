@@ -50,6 +50,8 @@ export abstract class IBridleGateway {
   abstract health(): IBridleHealthData;
   /** Health status for a specific agent */
   abstract agentHealth(agentId: string): IBridleAgentHealthData;
+  /** Whether an agent runtime is currently registered for this agentId. */
+  abstract isAgentConnected(agentId: string): boolean;
   /** List all connected agents with their client counts */
   abstract listAgents(): Array<{ agentId: string; clients: number }>;
   /**

@@ -42,6 +42,7 @@ export class BridleGateway extends IBridleGateway {
     this.logger.log(
       `Agent registered: agentId=${agentId} (total agents: ${this.agents.size})`,
     );
+    this.broadcastAgentStatus(agentId, true);
   }
 
   unregisterAgent(agentId: string): void {
@@ -56,6 +57,23 @@ export class BridleGateway extends IBridleGateway {
       this.pendingSyncs.delete(requestId);
       pending.reject(new Error('Agent disconnected before sync completed'));
     }
+    this.broadcastAgentStatus(agentId, false);
+  }
+
+  /**
+   * Push current agent connection state to every browser client scoped to
+   * this agentId. Used so the chat header can show green (both chat and
+   * agent connected) vs orange (one side down) without polling.
+   */
+  private broadcastAgentStatus(agentId: string, connected: boolean): void {
+    for (const client of this.clients.values()) {
+      if (client.agentId !== agentId) continue;
+      client.send({ type: 'agent_status', agentId, connected });
+    }
+  }
+
+  isAgentConnected(agentId: string): boolean {
+    return this.agents.has(agentId);
   }
 
   registerClient(

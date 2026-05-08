@@ -117,6 +117,14 @@ export class BridleClientWsHandler
 
     this.hub.registerClient(clientId, agentId, send, isAdmin);
     client.emit('welcome', { clientId });
+    // Tell the new client whether the agent runtime is currently online so the
+    // chat header can render the right indicator color before any subsequent
+    // register/unregister broadcasts.
+    client.emit('agent_status', {
+      type: 'agent_status',
+      agentId,
+      connected: this.hub.isAgentConnected(agentId),
+    });
 
     this.logger.log(
       `Browser connected: clientId=${clientId} agentId=${agentId} admin=${isAdmin}`,

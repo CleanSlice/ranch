@@ -8,7 +8,7 @@ async function onSubmit(values: { email: string; password: string }) {
   errorMessage.value = null;
   try {
     await authStore.login(values.email, values.password);
-    await navigateTo('/agents');
+    await navigateTo(authStore.hasAdminAccess ? '/agents' : '/access-denied');
   } catch (err: unknown) {
     const e = err as { response?: { data?: { message?: string } }; message?: string };
     errorMessage.value = e?.response?.data?.message ?? e?.message ?? 'Login failed';

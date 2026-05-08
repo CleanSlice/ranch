@@ -1,4 +1,4 @@
-export default defineNuxtPlugin(() => {
+export default defineNuxtPlugin(async () => {
   const authStore = useAuthStore();
-  authStore.hydrate();
+  await authStore.hydrate();
 });

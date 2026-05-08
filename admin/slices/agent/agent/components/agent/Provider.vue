@@ -94,7 +94,7 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'AGENT_CONFIG', value: JSON.stringify(agent.value.config) },
     { name: 'BRIDLE_URL', value: settingValue('bridle_url', BRIDLE_URL_DEFAULT) },
     { name: 'BRIDLE_API_KEY', value: settingValue('bridle_api_key', BRIDLE_API_KEY_DEFAULT) },
-    { name: 'BRIDLE_BOT_ID', value: agent.value.id },
+    { name: 'BRIDLE_AGENT_ID', value: agent.value.id },
     { name: 'LLM_PROVIDER', value: cred?.provider ?? '' },
     { name: 'LLM_MODEL', value: cred?.model ?? '' },
     { name: 'LLM_FALLBACK_MODEL', value: cred?.fallbackModel ?? cred?.model ?? '' },

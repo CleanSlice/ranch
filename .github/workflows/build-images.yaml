@@ -309,6 +309,26 @@ jobs:
           needs.changes.outputs.admin == 'true' ||
           needs.changes.outputs.app == 'true'
         run: |
-          curl -fsS -o /dev/null -w "api=%{http_code}\n"   https://api.ranch.cleanslice.org/setup/status
-          curl -fsS -o /dev/null -w "admin=%{http_code}\n" https://admin.ranch.cleanslice.org/login
-          curl -fsS -o /dev/null -w "app=%{http_code}\n"   https://ranch.cleanslice.org/
+          # `kubectl rollout status` returns as soon as the pod is Ready, but
+          # Traefik takes a few seconds to swap its upstream — so a curl
+          # immediately after rollout occasionally hits the old (now-gone)
+          # endpoint and gets a 503. Retry with a short backoff instead of
+          # racing the ingress.
+          probe() {
+            local name="$1" url="$2"
+            local code
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" || echo "000")
+              if [ "$code" = "200" ]; then
+                echo "$name=$code"
+                return 0
+              fi
+              echo "attempt $i: $name=$code, retrying in 5s..."
+              sleep 5
+            done
+            echo "$name=$code (gave up after 12 attempts)"
+            return 1
+          }
+          probe api   https://api.ranch.cleanslice.org/setup/status
+          probe admin https://admin.ranch.cleanslice.org/login
+          probe app   https://ranch.cleanslice.org/

@@ -110,9 +110,7 @@ export class PaddockScenarioService {
       !SCENARIO_CATEGORIES.includes(category as PaddockScenarioCategory)
     ) {
       const fallback = relPath.split(path.sep)[0];
-      if (
-        SCENARIO_CATEGORIES.includes(fallback as PaddockScenarioCategory)
-      ) {
+      if (SCENARIO_CATEGORIES.includes(fallback as PaddockScenarioCategory)) {
         category = fallback;
       } else {
         return null;

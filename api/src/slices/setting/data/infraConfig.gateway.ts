@@ -85,9 +85,7 @@ export class InfraConfigGateway
     try {
       await this.seedDefaults();
     } catch (err) {
-      this.logger.warn(
-        `Skipping infra config seed: ${(err as Error).message}`,
-      );
+      this.logger.warn(`Skipping infra config seed: ${(err as Error).message}`);
     }
   }
 

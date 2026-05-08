@@ -163,8 +163,7 @@ export class RancherService implements OnApplicationBootstrap {
       SEEDED_HASH_GROUP,
       SEEDED_HASH_NAME,
     );
-    const storedHash =
-      typeof stored?.value === 'string' ? stored.value : null;
+    const storedHash = typeof stored?.value === 'string' ? stored.value : null;
     if (storedHash === currentHash) return;
 
     this.logger.log(

@@ -9,5 +9,7 @@ export interface ILlmHealthCheckResult {
 }
 
 export abstract class ILlmHealthGateway {
-  abstract check(credential: ILlmCredentialData): Promise<ILlmHealthCheckResult>;
+  abstract check(
+    credential: ILlmCredentialData,
+  ): Promise<ILlmHealthCheckResult>;
 }

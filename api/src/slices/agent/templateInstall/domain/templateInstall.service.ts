@@ -6,10 +6,7 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import {
-  ITemplateGateway,
-  ITemplateData,
-} from '#/agent/template/domain';
+import { ITemplateGateway, ITemplateData } from '#/agent/template/domain';
 import { ITemplateFileGateway } from '#/agent/templateFile/domain';
 import { IMcpServerGateway } from '#/mcpServer/domain/mcpServer.gateway';
 import { ISkillGateway } from '#/skill/domain/skill.gateway';
@@ -176,38 +173,38 @@ export class TemplateInstallService {
   ): Promise<IInstallResult> {
     const { manifest, agentDir, scenariosDir } =
       await this.parseFromArchive(archive);
-      const params = this.manifestGateway.validateParams(
-        manifest,
-        suppliedParams,
+    const params = this.manifestGateway.validateParams(
+      manifest,
+      suppliedParams,
+    );
+
+    const existing = await this.templateGateway.findById(manifest.metadata.id);
+    const warnings = await this.collectWarnings(manifest, existing);
+
+    // Same version + already installed → no-op (idempotent).
+    if (existing && this.sameVersion(existing, manifest)) {
+      return {
+        templateId: existing.id,
+        templateName: existing.name,
+        filesUploaded: 0,
+        scenariosSeeded: 0,
+        mcpAttached: existing.mcpServerIds,
+        skillsAttached: existing.skillIds,
+        unresolvedMcp: [],
+        unresolvedSkills: [],
+        warnings: [
+          ...warnings,
+          `template ${manifest.metadata.id}@${manifest.metadata.version} already installed — no-op`,
+        ],
+      };
+    }
+
+    // Lower version on top of installed → reject.
+    if (existing && this.compareSemver(manifest, existing) < 0) {
+      throw new ConflictException(
+        `Cannot downgrade template ${manifest.metadata.id} — installed version (${existing.version ?? 'unknown'}) is newer than ${manifest.metadata.version}`,
       );
-
-      const existing = await this.templateGateway.findById(manifest.metadata.id);
-      const warnings = await this.collectWarnings(manifest, existing);
-
-      // Same version + already installed → no-op (idempotent).
-      if (existing && this.sameVersion(existing, manifest)) {
-        return {
-          templateId: existing.id,
-          templateName: existing.name,
-          filesUploaded: 0,
-          scenariosSeeded: 0,
-          mcpAttached: existing.mcpServerIds,
-          skillsAttached: existing.skillIds,
-          unresolvedMcp: [],
-          unresolvedSkills: [],
-          warnings: [
-            ...warnings,
-            `template ${manifest.metadata.id}@${manifest.metadata.version} already installed — no-op`,
-          ],
-        };
-      }
-
-      // Lower version on top of installed → reject.
-      if (existing && this.compareSemver(manifest, existing) < 0) {
-        throw new ConflictException(
-          `Cannot downgrade template ${manifest.metadata.id} — installed version (${existing.version ?? 'unknown'}) is newer than ${manifest.metadata.version}`,
-        );
-      }
+    }
 
     // Create or upgrade — populate provenance fields so future installs
     // can do real version comparisons and audits.
@@ -240,88 +237,88 @@ export class TemplateInstallService {
       });
     }
 
-      // Files: wipe on upgrade so removed files are actually gone, then
-      // upload the rendered set. New install → S3 prefix is empty already.
-      if (existing) {
-        await this.templateFileGateway.wipe(existing.id);
-      }
+    // Files: wipe on upgrade so removed files are actually gone, then
+    // upload the rendered set. New install → S3 prefix is empty already.
+    if (existing) {
+      await this.templateFileGateway.wipe(existing.id);
+    }
 
-      const filesUploaded = await this.uploadAgentFiles(
-        manifest.metadata.id,
-        agentDir,
-        params,
+    const filesUploaded = await this.uploadAgentFiles(
+      manifest.metadata.id,
+      agentDir,
+      params,
+    );
+
+    // Resolve skills + attach. Missing → warning; install proceeds.
+    const skillRefs = manifest.skills ?? [];
+    const resolvedSkills: string[] = [];
+    const unresolvedSkills: string[] = [];
+    for (const s of skillRefs) {
+      const found = await this.skillGateway.findById(s.id);
+      if (found) resolvedSkills.push(s.id);
+      else unresolvedSkills.push(s.id);
+    }
+    if (unresolvedSkills.length > 0) {
+      warnings.push(
+        `Skills not found in registry, skipped: ${unresolvedSkills.join(', ')}`,
       );
+    }
+    await this.templateGateway.setSkills(manifest.metadata.id, resolvedSkills);
 
-      // Resolve skills + attach. Missing → warning; install proceeds.
-      const skillRefs = manifest.skills ?? [];
-      const resolvedSkills: string[] = [];
-      const unresolvedSkills: string[] = [];
-      for (const s of skillRefs) {
-        const found = await this.skillGateway.findById(s.id);
-        if (found) resolvedSkills.push(s.id);
-        else unresolvedSkills.push(s.id);
+    const mcpRefs = manifest.mcp ?? [];
+    const resolvedMcp: string[] = [];
+    const unresolvedMcp: string[] = [];
+    const createdMcp: string[] = [];
+    for (const m of mcpRefs) {
+      const found = await this.mcpServerGateway.findById(m.id);
+      if (found) {
+        resolvedMcp.push(m.id);
+        continue;
       }
-      if (unresolvedSkills.length > 0) {
-        warnings.push(
-          `Skills not found in registry, skipped: ${unresolvedSkills.join(', ')}`,
-        );
-      }
-      await this.templateGateway.setSkills(manifest.metadata.id, resolvedSkills);
-
-      const mcpRefs = manifest.mcp ?? [];
-      const resolvedMcp: string[] = [];
-      const unresolvedMcp: string[] = [];
-      const createdMcp: string[] = [];
-      for (const m of mcpRefs) {
-        const found = await this.mcpServerGateway.findById(m.id);
-        if (found) {
-          resolvedMcp.push(m.id);
-          continue;
-        }
-        // Not in registry — try to bootstrap from manifest fields.
-        if (m.url && m.transport) {
-          try {
-            const created = await this.bootstrapMcpServer(m, suppliedSecrets);
-            resolvedMcp.push(created.id);
-            createdMcp.push(created.id);
-          } catch (err) {
-            unresolvedMcp.push(m.id);
-            warnings.push(
-              `Failed to create McpServer ${m.id}: ${(err as Error).message}`,
-            );
-          }
-        } else {
+      // Not in registry — try to bootstrap from manifest fields.
+      if (m.url && m.transport) {
+        try {
+          const created = await this.bootstrapMcpServer(m, suppliedSecrets);
+          resolvedMcp.push(created.id);
+          createdMcp.push(created.id);
+        } catch (err) {
           unresolvedMcp.push(m.id);
+          warnings.push(
+            `Failed to create McpServer ${m.id}: ${(err as Error).message}`,
+          );
         }
+      } else {
+        unresolvedMcp.push(m.id);
       }
-      if (unresolvedMcp.length > 0) {
-        warnings.push(
-          `MCP servers not found in registry and missing url/transport in manifest — skipped: ${unresolvedMcp.join(', ')}`,
-        );
-      }
-      if (createdMcp.length > 0) {
-        warnings.push(
-          `MCP servers auto-created from manifest: ${createdMcp.join(', ')} — verify auth in admin if not supplied as secret.`,
-        );
-      }
-      await this.templateGateway.setMcps(manifest.metadata.id, resolvedMcp);
+    }
+    if (unresolvedMcp.length > 0) {
+      warnings.push(
+        `MCP servers not found in registry and missing url/transport in manifest — skipped: ${unresolvedMcp.join(', ')}`,
+      );
+    }
+    if (createdMcp.length > 0) {
+      warnings.push(
+        `MCP servers auto-created from manifest: ${createdMcp.join(', ')} — verify auth in admin if not supplied as secret.`,
+      );
+    }
+    await this.templateGateway.setMcps(manifest.metadata.id, resolvedMcp);
 
-      // Seed paddock scenarios via the shared service.
-      // Strict-ensure on upgrade: wipe existing template-scoped scenarios
-      // first so removed YAMLs disappear from the DB.
-      const seedResult = scenariosDir
-        ? await this.scenarioService.seedFromDir(
-            manifest.metadata.id,
-            scenariosDir,
-            { wipeExisting: existing !== null },
-          )
-        : { seeded: 0, skipped: 0, total: 0 };
-      const scenariosSeeded = seedResult.seeded;
-      if (seedResult.skipped > 0) {
-        warnings.push(
-          `${seedResult.skipped} of ${seedResult.total} paddock scenarios were skipped (invalid shape) — see api logs.`,
-        );
-      }
+    // Seed paddock scenarios via the shared service.
+    // Strict-ensure on upgrade: wipe existing template-scoped scenarios
+    // first so removed YAMLs disappear from the DB.
+    const seedResult = scenariosDir
+      ? await this.scenarioService.seedFromDir(
+          manifest.metadata.id,
+          scenariosDir,
+          { wipeExisting: existing !== null },
+        )
+      : { seeded: 0, skipped: 0, total: 0 };
+    const scenariosSeeded = seedResult.seeded;
+    if (seedResult.skipped > 0) {
+      warnings.push(
+        `${seedResult.skipped} of ${seedResult.total} paddock scenarios were skipped (invalid shape) — see api logs.`,
+      );
+    }
 
     return {
       templateId: manifest.metadata.id,
@@ -430,7 +427,8 @@ export class TemplateInstallService {
     // editable in the admin UI). `.paddock/config.json` lives in the
     // Template.paddockConfig column; scenarios become DB rows.
     const agentFiles = await this.collectFiles(agentDir);
-    const uploads: { path: string; buffer: Buffer; contentType?: string }[] = [];
+    const uploads: { path: string; buffer: Buffer; contentType?: string }[] =
+      [];
     for (const abs of agentFiles) {
       const rel = path.posix.join('.agent', path.relative(agentDir, abs));
       const buffer = await fs.readFile(abs);
@@ -462,7 +460,11 @@ export class TemplateInstallService {
     try {
       const raw = await fs.readFile(configPath, 'utf8');
       const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
         return null;
       }
       return parsed as Record<string, unknown>;
@@ -509,10 +511,7 @@ export class TemplateInstallService {
   // Returns -1 if manifest < existing, 0 if equal, 1 if manifest > existing.
   // Falls back to 0 (treat as upgrade, not downgrade) when either side has
   // no recorded version — be conservative rather than blocking the operator.
-  private compareSemver(
-    manifest: IManifest,
-    existing: ITemplateData,
-  ): number {
+  private compareSemver(manifest: IManifest, existing: ITemplateData): number {
     if (!existing.version) return 0;
     return this.semverCompare(manifest.metadata.version, existing.version);
   }

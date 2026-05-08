@@ -117,7 +117,9 @@ export class ManifestGateway extends IManifestGateway {
           meta.i18n === null ||
           Array.isArray(meta.i18n)
         ) {
-          errors.push('metadata.i18n: must be a map of locale → {name, description}');
+          errors.push(
+            'metadata.i18n: must be a map of locale → {name, description}',
+          );
         }
       }
     }
@@ -159,9 +161,7 @@ export class ManifestGateway extends IManifestGateway {
             errors.push(`params[${i}].name: required`);
           }
           if (
-            !['string', 'number', 'boolean', 'enum'].includes(
-              pp.type as string,
-            )
+            !['string', 'number', 'boolean', 'enum'].includes(pp.type as string)
           ) {
             errors.push(
               `params[${i}].type: must be one of string|number|boolean|enum`,
@@ -169,9 +169,7 @@ export class ManifestGateway extends IManifestGateway {
           }
           if (pp.type === 'enum') {
             if (!Array.isArray(pp.values) || pp.values.length === 0) {
-              errors.push(
-                `params[${i}].values: required when type=enum`,
-              );
+              errors.push(`params[${i}].values: required when type=enum`);
             }
           }
         });
@@ -190,7 +188,11 @@ export class ManifestGateway extends IManifestGateway {
 
     const paddock = obj.paddock as Record<string, unknown> | undefined;
     if (paddock !== undefined) {
-      if (typeof paddock !== 'object' || paddock === null || Array.isArray(paddock)) {
+      if (
+        typeof paddock !== 'object' ||
+        paddock === null ||
+        Array.isArray(paddock)
+      ) {
         errors.push('paddock: must be an object');
       } else {
         if (
@@ -199,7 +201,9 @@ export class ManifestGateway extends IManifestGateway {
             paddock.passThreshold < 0 ||
             paddock.passThreshold > 1)
         ) {
-          errors.push('paddock.passThreshold: must be a number between 0 and 1');
+          errors.push(
+            'paddock.passThreshold: must be a number between 0 and 1',
+          );
         }
         const requiredFor = paddock.requiredFor as
           | Record<string, unknown>
@@ -210,7 +214,9 @@ export class ManifestGateway extends IManifestGateway {
             requiredFor === null ||
             Array.isArray(requiredFor))
         ) {
-          errors.push('paddock.requiredFor: must be an object with boolean fields');
+          errors.push(
+            'paddock.requiredFor: must be an object with boolean fields',
+          );
         }
       }
     }
@@ -254,7 +260,9 @@ export class ManifestGateway extends IManifestGateway {
         if (p.pattern) {
           const re = new RegExp(p.pattern);
           if (!re.test(s)) {
-            errors.push(`params.${p.name}: does not match pattern ${p.pattern}`);
+            errors.push(
+              `params.${p.name}: does not match pattern ${p.pattern}`,
+            );
             return undefined;
           }
         }

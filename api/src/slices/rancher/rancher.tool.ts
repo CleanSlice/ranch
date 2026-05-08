@@ -192,7 +192,9 @@ export class RancherTool {
       '".paddock/config.json"). Files larger than 256 KiB are rejected.',
     parameters: z.object({
       id: z.string(),
-      path: z.string().describe('Relative path inside the template, no leading "/"'),
+      path: z
+        .string()
+        .describe('Relative path inside the template, no leading "/"'),
     }),
   })
   async readTemplateFile({ id, path }: { id: string; path: string }) {

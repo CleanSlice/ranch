@@ -17,16 +17,10 @@ export class TemplateExportController {
       'Download a template as a zip — round-trips template.yaml, .agent/*, .paddock/config.json, and .paddock/scenarios/* back into an installable bundle.',
     operationId: 'downloadTemplate',
   })
-  async download(
-    @Param('id') id: string,
-    @Res() res: Response,
-  ): Promise<void> {
+  async download(@Param('id') id: string, @Res() res: Response): Promise<void> {
     const { filename, buffer } = await this.service.exportZip(id);
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', buffer.length.toString());
     res.send(buffer);
   }

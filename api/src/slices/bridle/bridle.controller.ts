@@ -42,8 +42,7 @@ export class BridleController {
   ) {}
 
   @ApiOperation({
-    description:
-      'Send a message to a agent (HTTP fallback — fire & forget)',
+    description: 'Send a message to a agent (HTTP fallback — fire & forget)',
     operationId: 'sendBridleMessage',
   })
   @ApiBody({ type: SendMessageDto })
@@ -63,8 +62,7 @@ export class BridleController {
   }
 
   @ApiOperation({
-    description:
-      'Send a message and wait for the agent response (synchronous)',
+    description: 'Send a message and wait for the agent response (synchronous)',
     operationId: 'sendBridleMessageSync',
   })
   @ApiBody({ type: SendMessageDto })

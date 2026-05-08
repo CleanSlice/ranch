@@ -149,9 +149,7 @@ export class TemplateExportService {
     // sees them on its filesystem the same way at runtime.
 
     const skills = await this.loadSkills(template.skillIds);
-    const skillTargetPrefixes = skills.map(
-      (s) => `.agent/skills/${s.name}/`,
-    );
+    const skillTargetPrefixes = skills.map((s) => `.agent/skills/${s.name}/`);
 
     // 1. .agent/* files from S3. Strip any leading `.agent/` (legacy
     // rancher seed didn't prefix), then re-prefix uniformly. Skip anything
@@ -300,9 +298,7 @@ export class TemplateExportService {
         if (m) out.push(m);
         else this.logger.warn(`McpServer ${id} not found — skipped`);
       } catch (err) {
-        this.logger.warn(
-          `Failed to load mcp ${id}: ${(err as Error).message}`,
-        );
+        this.logger.warn(`Failed to load mcp ${id}: ${(err as Error).message}`);
       }
     }
     return out;

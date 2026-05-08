@@ -16,11 +16,7 @@ import {
 } from '@nestjs/swagger';
 import { TemplateInstallService } from './domain/templateInstall.service';
 import { IInstallParamValues } from './domain';
-import {
-  InstallPreviewDto,
-  InstallResultDto,
-  InstallFromGitDto,
-} from './dtos';
+import { InstallPreviewDto, InstallResultDto, InstallFromGitDto } from './dtos';
 
 interface UploadedFileLike {
   originalname: string;
@@ -36,7 +32,8 @@ export class TemplateInstallController {
 
   @Post('preview')
   @ApiOperation({
-    summary: 'Preview template install — parse manifest and report what would happen, no DB or S3 writes.',
+    summary:
+      'Preview template install — parse manifest and report what would happen, no DB or S3 writes.',
     operationId: 'previewTemplateInstall',
   })
   @ApiConsumes('multipart/form-data')
@@ -119,7 +116,9 @@ export class TemplateInstallController {
     operationId: 'previewTemplateInstallFromGit',
   })
   @ApiOkResponse({ type: InstallPreviewDto })
-  async previewFromGit(@Body() dto: InstallFromGitDto): Promise<InstallPreviewDto> {
+  async previewFromGit(
+    @Body() dto: InstallFromGitDto,
+  ): Promise<InstallPreviewDto> {
     const result = await this.service.previewFromGit(
       dto.gitUrl,
       dto.gitRef,
@@ -165,7 +164,11 @@ export class TemplateInstallController {
     if (!raw || raw.trim() === '') return {};
     try {
       const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
         throw new Error('must be a JSON object');
       }
       return parsed as IInstallParamValues;
@@ -179,7 +182,11 @@ export class TemplateInstallController {
     if (!raw || raw.trim() === '') return {};
     try {
       const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
         throw new Error('must be a JSON object');
       }
       const out: Record<string, string> = {};

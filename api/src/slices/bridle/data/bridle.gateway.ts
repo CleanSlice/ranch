@@ -103,7 +103,9 @@ export class BridleGateway extends IBridleGateway {
   ): void {
     const agentSend = this.agents.get(agentId);
     if (!agentSend) {
-      this.logger.warn(`Cannot send to agent — not connected (agentId=${agentId})`);
+      this.logger.warn(
+        `Cannot send to agent — not connected (agentId=${agentId})`,
+      );
       this.sendToClient(clientId, {
         type: 'message',
         text: 'Agent is not connected. Please try again later.',

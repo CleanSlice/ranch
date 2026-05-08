@@ -66,7 +66,7 @@ export class BridleClientWsHandler
       return;
     }
 
-    const origin = client.handshake.headers.origin as string | undefined;
+    const origin = client.handshake.headers.origin;
     const agent = await this.agentGateway.findById(agentId);
 
     let clientId: string;

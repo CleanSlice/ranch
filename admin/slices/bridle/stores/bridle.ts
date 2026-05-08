@@ -139,10 +139,28 @@ function buildParts(text: string, images?: Array<{ base64: string; mediaType: st
   return parts
 }
 
+// Tool-only LLM iterations cause the runtime's bridle channel to emit
+// stream/stream_end events with empty text. Without this guard each one
+// renders as an empty chat bubble.
+function hasVisibleContent(text: string, parts: BridlePart[]): boolean {
+  if (text && text.trim().length > 0) return true
+  return parts.some(p => {
+    if (p.type === BridlePartTypes.Image || p.type === BridlePartTypes.File) return true
+    return p.type === BridlePartTypes.Text && p.text.trim().length > 0
+  })
+}
+
 export const useBridleStore = defineStore('bridle', {
   state: () => ({
     messages: [] as IBridleMessageData[],
     isConnected: false,
+    /**
+     * Whether the agent runtime is currently registered with the bridle hub.
+     * Pushed by the hub via the `agent_status` event on connect and on every
+     * runtime register/unregister. Independent of `isConnected` (the client's
+     * own WS) — the chat header needs both signals to color the indicator.
+     */
+    isAgentConnected: false,
     isTyping: false,
     isOpen: false,
     clientId: null as string | null,
@@ -202,10 +220,15 @@ export const useBridleStore = defineStore('bridle', {
 
       socket.on('disconnect', () => {
         this.isConnected = false
+        // We can't observe agent register/unregister while our own socket is
+        // down; reset to false so the indicator doesn't lie about a stale
+        // value while we're trying to reconnect.
+        this.isAgentConnected = false
       })
 
       socket.on('connect_error', (err) => {
         this.isConnected = false
+        this.isAgentConnected = false
         console.error('[bridle] connection error:', err.message)
       })
 
@@ -213,10 +236,15 @@ export const useBridleStore = defineStore('bridle', {
         this.clientId = data.clientId
       })
 
+      socket.on('agent_status', (data: { connected?: boolean }) => {
+        this.isAgentConnected = !!data?.connected
+      })
+
       socket.on('message', (data: { text?: string; parts?: BridlePart[]; messageId?: string; ts?: number }) => {
         this.isTyping = false
         const text = data.text ?? ''
         const parts = data.parts ?? (text ? [{ type: BridlePartTypes.Text as const, text }] : [])
+        if (!hasVisibleContent(text, parts)) return
         this.messages.push({
           id: data.messageId ?? crypto.randomUUID(),
           role: 'assistant',
@@ -238,6 +266,9 @@ export const useBridleStore = defineStore('bridle', {
         if (idx >= 0) {
           this.messages[idx] = { ...this.messages[idx], text, parts, streaming: true }
         } else {
+          // Don't create a fresh bubble for an empty initial chunk — wait
+          // until the runtime actually has visible content.
+          if (!hasVisibleContent(text, parts)) return
           this.messages.push({
             id: data.messageId ?? crypto.randomUUID(),
             role: 'assistant',
@@ -274,6 +305,7 @@ export const useBridleStore = defineStore('bridle', {
         if (idx >= 0) {
           this.messages[idx] = { ...this.messages[idx], text, parts, streaming: false }
         } else {
+          if (!hasVisibleContent(text, parts)) return
           this.messages.push({
             id: data.messageId ?? crypto.randomUUID(),
             role: 'assistant',
@@ -291,6 +323,7 @@ export const useBridleStore = defineStore('bridle', {
       this._socket?.disconnect()
       this._socket = null
       this.isConnected = false
+      this.isAgentConnected = false
     },
 
     sendMessage(text: string, images?: Array<{ base64: string; mediaType: string }>) {

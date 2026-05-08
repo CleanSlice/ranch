@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Tool } from '#mcp';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { ITemplateGateway } from '#/agent/template/domain';
+import { ITemplateFileGateway } from '#/agent/templateFile/domain';
 import { ILlmGateway } from '#/llm/domain';
 import { ISkillGateway } from '#/skill/domain';
 import { ISettingGateway } from '#/setting/domain';
@@ -25,6 +26,7 @@ export class RancherTool {
   constructor(
     private readonly agents: IAgentGateway,
     private readonly templates: ITemplateGateway,
+    private readonly templateFiles: ITemplateFileGateway,
     private readonly llms: ILlmGateway,
     private readonly skills: ISkillGateway,
     private readonly settings: ISettingGateway,
@@ -132,6 +134,99 @@ export class RancherTool {
     skillIds: string[];
   }) {
     return ok(await this.templates.setSkills(id, skillIds));
+  }
+
+  @Tool({
+    name: 'update_template',
+    description:
+      'Update template fields in place. Pass only the fields you want to change. ' +
+      'Useful for editing defaultConfig, paddockConfig (passThreshold, scenarios, ' +
+      'maxIterations, etc.), name, description, image, or defaultResources.',
+    parameters: z.object({
+      id: z.string(),
+      name: z.string().optional(),
+      description: z.string().optional(),
+      image: z.string().optional(),
+      defaultConfig: z.record(z.unknown()).optional(),
+      defaultResources: z
+        .object({ cpu: z.string(), memory: z.string() })
+        .optional(),
+      paddockConfig: z.record(z.unknown()).optional(),
+    }),
+  })
+  async updateTemplate({
+    id,
+    ...patch
+  }: {
+    id: string;
+    name?: string;
+    description?: string;
+    image?: string;
+    defaultConfig?: Record<string, unknown>;
+    defaultResources?: { cpu: string; memory: string };
+    paddockConfig?: Record<string, unknown>;
+  }) {
+    const template = await this.templates.findById(id);
+    if (!template) return ok({ error: `Template ${id} not found` });
+    const updated = await this.templates.update(id, patch);
+    return ok(updated);
+  }
+
+  @Tool({
+    name: 'list_template_files',
+    description:
+      "List files stored in a template's S3 prefix (templates/{id}/). These are " +
+      'seeded into every new agent that uses this template.',
+    parameters: z.object({ id: z.string() }),
+  })
+  async listTemplateFiles({ id }: { id: string }) {
+    const template = await this.templates.findById(id);
+    if (!template) return ok({ error: `Template ${id} not found` });
+    return ok(await this.templateFiles.list(id));
+  }
+
+  @Tool({
+    name: 'read_template_file',
+    description:
+      'Read a single template file by relative path (e.g. ".agent/SOUL.md", ' +
+      '".paddock/config.json"). Files larger than 256 KiB are rejected.',
+    parameters: z.object({
+      id: z.string(),
+      path: z.string().describe('Relative path inside the template, no leading "/"'),
+    }),
+  })
+  async readTemplateFile({ id, path }: { id: string; path: string }) {
+    const template = await this.templates.findById(id);
+    if (!template) return ok({ error: `Template ${id} not found` });
+    return ok(await this.templateFiles.read(id, path));
+  }
+
+  @Tool({
+    name: 'write_template_file',
+    description:
+      'Write or replace a template file. Only `.md` and `.json` are accepted. ' +
+      'Use this to add files like ".agent/SOUL.md" or ".paddock/config.json" ' +
+      'that every new agent created from this template will inherit.',
+    parameters: z.object({
+      id: z.string(),
+      path: z.string(),
+      content: z.string(),
+    }),
+  })
+  async writeTemplateFile({
+    id,
+    path,
+    content,
+  }: {
+    id: string;
+    path: string;
+    content: string;
+  }) {
+    const template = await this.templates.findById(id);
+    if (!template) return ok({ error: `Template ${id} not found` });
+    await this.templateFiles.save(id, path, content);
+    await this.templates.touch(id);
+    return ok({ ok: true, templateId: id, path });
   }
 
   // ─── LLM credentials ─────────────────────────────────────────────────

@@ -23,4 +23,13 @@ export class CreateTemplateDto {
   @IsOptional()
   @IsObject()
   defaultResources?: { cpu: string; memory: string };
+
+  // Paddock runtime config — passThreshold, maxIterations, scenarios, etc.
+  // Was missing before; without it the global ValidationPipe (whitelist:true)
+  // silently dropped this field from PUT /templates/:id, and updates appeared
+  // to be ignored.
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  paddockConfig?: Record<string, unknown>;
 }

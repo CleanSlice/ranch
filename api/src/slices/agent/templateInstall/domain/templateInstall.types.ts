@@ -40,6 +40,19 @@ export interface IManifestSkillRef {
 
 export interface IManifestMcpRef {
   id: string;
+  // Optional fields used by the install layer when this MCP isn't
+  // already in the target ranch's registry — they describe how to
+  // create the McpServer record from the manifest alone.
+  name?: string;
+  description?: string | null;
+  url?: string;
+  transport?: 'streamableHttp' | 'sse';
+  authType?: 'none' | 'bearer' | 'header';
+  // May be a literal value (rare; secrets shouldn't be inlined) or
+  // a `$secret:NAME` reference that the install layer resolves
+  // against the `secrets` map supplied with the install request.
+  authValue?: string | null;
+  builtIn?: boolean;
   source?: string;
   config?: Record<string, unknown>;
 }
@@ -118,6 +131,12 @@ export interface IManifest {
 // Map of param name → value supplied by the operator at install time.
 // Values are constrained to scalars to match ManifestParam types.
 export type IInstallParamValues = Record<string, string | number | boolean>;
+
+// Map of secret name → value supplied at install time. Used to resolve
+// `$secret:NAME` references in the manifest (e.g. mcp[].authValue).
+// Values are stored in the agent/template secret stores at runtime —
+// never written to template files.
+export type IInstallSecretValues = Record<string, string>;
 
 export interface IExtractedArchive {
   // Absolute path to the directory holding the extracted contents.

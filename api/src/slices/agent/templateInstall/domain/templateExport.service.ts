@@ -324,31 +324,79 @@ export class TemplateExportService {
     for (const entry of previous) {
       if (typeof entry.id === 'string') previousById.set(entry.id, entry);
     }
+
+    const declaredSecrets: Record<string, unknown>[] = [];
+
+    const mcpEntries = mcps.map((m) => {
+      const entry: Record<string, unknown> = {
+        id: m.id,
+        name: m.name,
+      };
+      if (m.description) entry.description = m.description;
+      if (m.url) entry.url = m.url;
+      if (m.transport) entry.transport = m.transport;
+      if (m.authType && m.authType !== 'none') {
+        entry.authType = m.authType;
+        // Placeholder — the real value is provided at install time
+        // via the secret store, not bundled into the manifest.
+        // Strip the conventional `mcp-` id prefix so we don't end up
+        // with redundant `MCP_MCP_<X>_AUTH`.
+        const slug = m.id
+          .replace(/^mcp[_-]/i, '')
+          .toUpperCase()
+          .replace(/-/g, '_');
+        const secretName = `MCP_${slug}_AUTH`;
+        entry.authValue = `$secret:${secretName}`;
+        declaredSecrets.push({
+          name: secretName,
+          required: true,
+          label: `${m.name} auth`,
+          hint: `Auth credential for the ${m.name} MCP server (${m.authType}). Used by the install layer to populate McpServer.authValue when re-creating this MCP on a different ranch.`,
+          groupId: 'mcp',
+          groupLabel: 'MCP authentication',
+        });
+      }
+      if (m.builtIn) entry.builtIn = true;
+      // Re-attach any config block authored in the original manifest.
+      const prev = previousById.get(m.id);
+      if (prev && prev.config && typeof prev.config === 'object') {
+        entry.config = prev.config;
+      }
+      return entry;
+    });
+
     return {
       ...manifest,
-      mcp: mcps.map((m) => {
-        const entry: Record<string, unknown> = {
-          id: m.id,
-          name: m.name,
-        };
-        if (m.description) entry.description = m.description;
-        if (m.url) entry.url = m.url;
-        if (m.transport) entry.transport = m.transport;
-        if (m.authType && m.authType !== 'none') {
-          entry.authType = m.authType;
-          // Placeholder — the real value is provided at install time
-          // via the secret store, not bundled into the manifest.
-          entry.authValue = `$secret:MCP_${m.id.toUpperCase().replace(/-/g, '_')}_AUTH`;
-        }
-        if (m.builtIn) entry.builtIn = true;
-        // Re-attach any config block authored in the original manifest.
-        const prev = previousById.get(m.id);
-        if (prev && prev.config && typeof prev.config === 'object') {
-          entry.config = prev.config;
-        }
-        return entry;
-      }),
+      mcp: mcpEntries,
+      secrets: this.mergeSecrets(manifest.secrets, declaredSecrets),
     };
+  }
+
+  // Merge auto-generated MCP-auth secret declarations with whatever the
+  // original manifest declared. Manifest-authored entries win on name
+  // collisions (operator authoring is more authoritative than the
+  // export layer's heuristic).
+  private mergeSecrets(
+    existing: unknown,
+    additions: Record<string, unknown>[],
+  ): Record<string, unknown>[] {
+    const existingArr = Array.isArray(existing)
+      ? (existing as Record<string, unknown>[])
+      : [];
+    const out: Record<string, unknown>[] = [...existingArr];
+    const known = new Set(
+      existingArr
+        .map((s) => (typeof s.name === 'string' ? s.name : null))
+        .filter((n): n is string => n !== null),
+    );
+    for (const a of additions) {
+      const name = a.name as string;
+      if (!known.has(name)) {
+        out.push(a);
+        known.add(name);
+      }
+    }
+    return out;
   }
 
   private scenarioToYaml(s: IPaddockScenarioData): Record<string, unknown> {

@@ -108,7 +108,12 @@ async function runInstall() {
     const r =
       sourceKind.value === 'zip'
         ? await installZip()
-        : await store.installFromGit(gitUrl.value, gitRef.value || undefined, paramValues.value);
+        : await store.installFromGit(
+            gitUrl.value,
+            gitRef.value || undefined,
+            paramValues.value,
+            secretValues.value,
+          );
     result.value = r;
     step.value = 'result';
   } catch (e) {
@@ -120,7 +125,11 @@ async function runInstall() {
 
 async function installZip(): Promise<IInstallResult> {
   if (!zipFile.value) throw new Error('Pick a zip file first');
-  return store.installFromZip(zipFile.value, paramValues.value);
+  return store.installFromZip(
+    zipFile.value,
+    paramValues.value,
+    secretValues.value,
+  );
 }
 
 function onZipPicked(e: Event) {

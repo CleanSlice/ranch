@@ -471,6 +471,12 @@ export const InstallFromGitDtoSchema = {
         'Operator-supplied params (e.g. {"language":"ru"}). Validated against the manifest at install time.',
       additionalProperties: true,
     },
+    secrets: {
+      type: "object",
+      description:
+        'Operator-supplied secrets (e.g. {"MCP_RANCH_AUTH":"sk-..."}). Used to resolve $secret:NAME references in the manifest at install time (currently for mcp[].authValue). Never echoed back.',
+      additionalProperties: true,
+    },
   },
   required: ["gitUrl"],
 } as const;

@@ -88,6 +88,11 @@ export class TemplateInstallController {
           type: 'string',
           description: 'JSON object of operator-supplied params.',
         },
+        secrets: {
+          type: 'string',
+          description:
+            'JSON object of operator-supplied secrets used to resolve $secret:NAME references in the manifest (e.g. mcp[].authValue).',
+        },
       },
       required: ['archive'],
     },
@@ -97,9 +102,14 @@ export class TemplateInstallController {
   async install(
     @UploadedFile() archive: UploadedFileLike | undefined,
     @Body('params') params?: string,
+    @Body('secrets') secrets?: string,
   ): Promise<InstallResultDto> {
     const buf = this.requireZip(archive);
-    return this.service.install(buf, this.parseParams(params));
+    return this.service.install(
+      buf,
+      this.parseParams(params),
+      this.parseSecrets(secrets),
+    );
   }
 
   @Post('from-git/preview')
@@ -137,6 +147,7 @@ export class TemplateInstallController {
       dto.gitUrl,
       dto.gitRef,
       dto.params ?? {},
+      dto.secrets ?? {},
     );
   }
 
@@ -161,6 +172,27 @@ export class TemplateInstallController {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       throw new BadRequestException(`params: invalid JSON — ${msg}`);
+    }
+  }
+
+  private parseSecrets(raw?: string): Record<string, string> {
+    if (!raw || raw.trim() === '') return {};
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error('must be a JSON object');
+      }
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof v !== 'string') {
+          throw new Error(`secret "${k}" must be a string`);
+        }
+        out[k] = v;
+      }
+      return out;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new BadRequestException(`secrets: invalid JSON — ${msg}`);
     }
   }
 }

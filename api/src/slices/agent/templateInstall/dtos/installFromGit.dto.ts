@@ -31,4 +31,14 @@ export class InstallFromGitDto {
   @IsObject()
   @IsOptional()
   params?: Record<string, string | number | boolean>;
+
+  @ApiProperty({
+    description:
+      'Operator-supplied secrets (e.g. {"MCP_RANCH_AUTH":"sk-..."}). Used to resolve $secret:NAME references in the manifest at install time (currently for mcp[].authValue). Never echoed back.',
+    required: false,
+    additionalProperties: true,
+  })
+  @IsObject()
+  @IsOptional()
+  secrets?: Record<string, string>;
 }

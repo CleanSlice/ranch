@@ -20,9 +20,11 @@ import { IGitGateway } from './git.gateway';
 import {
   IManifest,
   IInstallParamValues,
+  IInstallSecretValues,
   IInstallPreview,
   IInstallResult,
   IExtractedArchive,
+  IManifestMcpRef,
 } from './templateInstall.types';
 
 const DEFAULT_IMAGE = 'ghcr.io/cleanslice/runtime:latest';
@@ -70,12 +72,16 @@ export class TemplateInstallService {
   async install(
     zip: Buffer,
     suppliedParams: IInstallParamValues,
+    suppliedSecrets: IInstallSecretValues = {},
   ): Promise<IInstallResult> {
     const archive = await this.archiveGateway.extractZip(zip);
     try {
-      return await this.installFromExtracted(archive, suppliedParams, {
-        sourceType: 'zip',
-      });
+      return await this.installFromExtracted(
+        archive,
+        suppliedParams,
+        suppliedSecrets,
+        { sourceType: 'zip' },
+      );
     } finally {
       await archive.cleanup();
     }
@@ -98,13 +104,16 @@ export class TemplateInstallService {
     url: string,
     ref: string | undefined,
     suppliedParams: IInstallParamValues,
+    suppliedSecrets: IInstallSecretValues = {},
   ): Promise<IInstallResult> {
     const archive = await this.gitGateway.clone(url, ref);
     try {
-      return await this.installFromExtracted(archive, suppliedParams, {
-        sourceType: 'git',
-        sourceUrl: url,
-      });
+      return await this.installFromExtracted(
+        archive,
+        suppliedParams,
+        suppliedSecrets,
+        { sourceType: 'git', sourceUrl: url },
+      );
     } finally {
       await archive.cleanup();
     }
@@ -162,6 +171,7 @@ export class TemplateInstallService {
   private async installFromExtracted(
     archive: IExtractedArchive,
     suppliedParams: IInstallParamValues,
+    suppliedSecrets: IInstallSecretValues,
     provenance: { sourceType: 'zip' | 'git'; sourceUrl?: string },
   ): Promise<IInstallResult> {
     const { manifest, agentDir, scenariosDir } =
@@ -261,14 +271,37 @@ export class TemplateInstallService {
       const mcpRefs = manifest.mcp ?? [];
       const resolvedMcp: string[] = [];
       const unresolvedMcp: string[] = [];
+      const createdMcp: string[] = [];
       for (const m of mcpRefs) {
         const found = await this.mcpServerGateway.findById(m.id);
-        if (found) resolvedMcp.push(m.id);
-        else unresolvedMcp.push(m.id);
+        if (found) {
+          resolvedMcp.push(m.id);
+          continue;
+        }
+        // Not in registry — try to bootstrap from manifest fields.
+        if (m.url && m.transport) {
+          try {
+            const created = await this.bootstrapMcpServer(m, suppliedSecrets);
+            resolvedMcp.push(created.id);
+            createdMcp.push(created.id);
+          } catch (err) {
+            unresolvedMcp.push(m.id);
+            warnings.push(
+              `Failed to create McpServer ${m.id}: ${(err as Error).message}`,
+            );
+          }
+        } else {
+          unresolvedMcp.push(m.id);
+        }
       }
       if (unresolvedMcp.length > 0) {
         warnings.push(
-          `MCP servers not found in registry, skipped: ${unresolvedMcp.join(', ')}`,
+          `MCP servers not found in registry and missing url/transport in manifest — skipped: ${unresolvedMcp.join(', ')}`,
+        );
+      }
+      if (createdMcp.length > 0) {
+        warnings.push(
+          `MCP servers auto-created from manifest: ${createdMcp.join(', ')} — verify auth in admin if not supplied as secret.`,
         );
       }
       await this.templateGateway.setMcps(manifest.metadata.id, resolvedMcp);
@@ -301,6 +334,42 @@ export class TemplateInstallService {
       unresolvedSkills,
       warnings,
     };
+  }
+
+  // Create an McpServer from a manifest entry. Used at install when the
+  // target ranch's registry doesn't already have this MCP. authValue is
+  // resolved against suppliedSecrets when the manifest stores a
+  // `$secret:NAME` reference; otherwise null and the operator must set
+  // it via admin → MCP servers afterwards.
+  private async bootstrapMcpServer(
+    m: IManifestMcpRef,
+    suppliedSecrets: IInstallSecretValues,
+  ): Promise<{ id: string }> {
+    const created = await this.mcpServerGateway.create({
+      id: m.id,
+      name: m.name ?? m.id,
+      description: m.description ?? null,
+      url: m.url as string,
+      transport: m.transport,
+      authType: m.authType ?? 'none',
+      authValue: this.resolveSecretReference(m.authValue, suppliedSecrets),
+      builtIn: m.builtIn ?? false,
+    });
+    return { id: created.id };
+  }
+
+  // Returns the resolved value for a `$secret:NAME` reference, or the
+  // literal value if it isn't a reference, or null when undefined or
+  // unresolved. Bare value passes through (rare — secrets shouldn't be
+  // bundled in the manifest).
+  private resolveSecretReference(
+    value: string | null | undefined,
+    secrets: IInstallSecretValues,
+  ): string | null {
+    if (value === undefined || value === null || value === '') return null;
+    const match = /^\$secret:([A-Za-z_][A-Za-z0-9_]*)$/.exec(value);
+    if (!match) return value;
+    return secrets[match[1]] ?? null;
   }
 
   // ---- internals ----

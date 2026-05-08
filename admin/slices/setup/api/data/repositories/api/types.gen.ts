@@ -186,6 +186,12 @@ export type InstallFromGitDto = {
   params?: {
     [key: string]: unknown;
   };
+  /**
+   * Operator-supplied secrets (e.g. {"MCP_RANCH_AUTH":"sk-..."}). Used to resolve $secret:NAME references in the manifest at install time (currently for mcp[].authValue). Never echoed back.
+   */
+  secrets?: {
+    [key: string]: unknown;
+  };
 };
 
 export type ImportSkillUrlDto = {
@@ -1069,6 +1075,10 @@ export type InstallTemplateData = {
      * JSON object of operator-supplied params.
      */
     params?: string;
+    /**
+     * JSON object of operator-supplied secrets used to resolve $secret:NAME references in the manifest (e.g. mcp[].authValue).
+     */
+    secrets?: string;
   };
   path?: never;
   query?: never;

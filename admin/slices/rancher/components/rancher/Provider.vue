@@ -340,6 +340,7 @@ async function onDeploy() {
           <Skeleton class="h-32 w-full rounded-lg" />
           <Skeleton class="h-32 w-full rounded-lg" />
           <Skeleton class="h-32 w-full rounded-lg" />
+          <Skeleton class="h-32 w-full rounded-lg" />
         </div>
 
         <div v-else-if="!allDone" class="flex flex-col gap-4">

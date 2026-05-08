@@ -82,6 +82,7 @@ export interface IInstallResult {
 }
 
 export type IInstallParamValues = Record<string, string | number | boolean>;
+export type IInstallSecretValues = Record<string, string>;
 
 export const useTemplateInstallStore = defineStore('templateInstall', () => {
   async function previewFromZip(
@@ -104,12 +105,18 @@ export const useTemplateInstallStore = defineStore('templateInstall', () => {
   async function installFromZip(
     archive: File,
     params: IInstallParamValues,
+    secrets: IInstallSecretValues,
   ): Promise<IInstallResult> {
     const fd = new FormData();
     fd.append('archive', archive);
     fd.append('params', JSON.stringify(params));
+    fd.append('secrets', JSON.stringify(secrets));
     const res = await TemplatesService.installTemplate({
-      body: fd as unknown as { archive?: Blob | File; params?: string },
+      body: fd as unknown as {
+        archive?: Blob | File;
+        params?: string;
+        secrets?: string;
+      },
     });
     const env = res.data as ApiEnvelope<IInstallResult> | undefined;
     if (!env || !env.success) {
@@ -137,9 +144,10 @@ export const useTemplateInstallStore = defineStore('templateInstall', () => {
     gitUrl: string,
     gitRef: string | undefined,
     params: IInstallParamValues,
+    secrets: IInstallSecretValues,
   ): Promise<IInstallResult> {
     const res = await TemplatesService.installTemplateFromGit({
-      body: { gitUrl, gitRef, params },
+      body: { gitUrl, gitRef, params, secrets },
     });
     const env = res.data as ApiEnvelope<IInstallResult> | undefined;
     if (!env || !env.success) {

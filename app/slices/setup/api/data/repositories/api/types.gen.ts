@@ -1110,6 +1110,19 @@ export type InstallTemplateFromGitResponses = {
 export type InstallTemplateFromGitResponse =
   InstallTemplateFromGitResponses[keyof InstallTemplateFromGitResponses];
 
+export type DownloadTemplateData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/templates/{id}/download";
+};
+
+export type DownloadTemplateResponses = {
+  200: unknown;
+};
+
 export type SkillControllerFindAllData = {
   body?: never;
   path?: never;

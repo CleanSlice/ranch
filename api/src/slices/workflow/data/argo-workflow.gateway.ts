@@ -24,9 +24,11 @@ const DEFAULTS = {
   aws_secret_access_key: '',
   secret_provider: 'file',
   aws_secret_prefix: 'cleanslice/users',
-  // Ranch API URL as seen from agent pods (in-cluster). Defaults to the
-  // API service inside k8s. Override via integrations.ranch_api_url.
-  ranch_api_url: 'http://api:3001',
+  // Ranch API URL as seen from agent pods. The default targets the host
+  // network from inside k3d (matching bridle_url). On a real cluster
+  // override via integrations.ranch_api_url, e.g.
+  // `http://ranch-api.platform.svc.cluster.local`.
+  ranch_api_url: 'http://host.k3d.internal:3333',
 };
 
 @Injectable()

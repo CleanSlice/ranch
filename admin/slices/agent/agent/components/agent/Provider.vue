@@ -120,7 +120,7 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     { name: 'SECRET_PROVIDER', value: settingValue('secret_provider', 'file') },
     { name: 'AWS_SECRET_PREFIX', value: settingValue('aws_secret_prefix', 'cleanslice/users') },
     { name: 'RANCH_ADMIN', value: agent.value.isAdmin ? 'true' : 'false' },
-    { name: 'RANCH_API_URL', value: agent.value.isAdmin ? settingValue('ranch_api_url', 'http://api:3001') : '' },
+    { name: 'RANCH_API_URL', value: agent.value.isAdmin ? settingValue('ranch_api_url', 'http://host.k3d.internal:3333') : '' },
     // Token is minted at deploy time and never echoed back over the API. Show
     // a placeholder so the admin can see the slot exists without leaking the
     // value (which is in the pod env, AWS Secrets Manager, or S3 only).

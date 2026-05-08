@@ -6,7 +6,7 @@ const fields = [
     label: 'Ranch API URL',
     placeholder: 'http://host.k3d.internal:3333',
     description:
-      'Base URL of this API as seen from agent pods. The Rancher admin agent uses it to call ranch_* tools. Local k3d → http://host.k3d.internal:3333. In-cluster → http://api:3001.',
+      'Base URL of this API as seen from agent pods. The Rancher admin agent uses it to call ranch_* tools. Local k3d → http://host.k3d.internal:3333. In-cluster (k8s) → http://ranch-api.platform.svc.cluster.local.',
   },
 ];
 </script>

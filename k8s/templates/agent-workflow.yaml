@@ -12,8 +12,11 @@ spec:
       - name: agent-name
       - name: template-id
       - name: agent-image
-      - name: agent-config
-        value: "{}"
+      # Base64-encoded JSON. Raw JSON cannot be safely substituted into the
+      # double-quoted YAML scalar in agent-pod.manifest below — its inner `"`
+      # would terminate the surrounding string. Base64 sidesteps that.
+      - name: agent-config-b64
+        value: "e30="
       - name: cpu-limit
         value: "500m"
       - name: memory-limit
@@ -49,10 +52,11 @@ spec:
         value: ""
       - name: ranch-api-token
         value: ""
-      # MCP servers — JSON array of IMcpServerConfig, populated by the api
-      # at deploy time from the agent's template's attached MCP servers.
-      - name: mcp-servers
-        value: "[]"
+      # MCP servers — base64(JSON array of IMcpServerConfig), populated by the
+      # api at deploy time from the agent's template's attached MCP servers.
+      # Base64 to avoid breaking the surrounding YAML string (see agent-config-b64).
+      - name: mcp-servers-b64
+        value: "W10="
       # LLM contract for the runtime (LLM_* env on the pod)
       - name: llm-provider
         value: ""
@@ -117,8 +121,8 @@ spec:
                     value: "{{workflow.parameters.agent-id}}"
                   - name: AGENT_NAME
                     value: "{{workflow.parameters.agent-name}}"
-                  - name: AGENT_CONFIG
-                    value: "{{workflow.parameters.agent-config}}"
+                  - name: AGENT_CONFIG_B64
+                    value: "{{workflow.parameters.agent-config-b64}}"
                   - name: BRIDLE_URL
                     value: "{{workflow.parameters.bridle-url}}"
                   - name: BRIDLE_API_KEY
@@ -155,8 +159,8 @@ spec:
                     value: "{{workflow.parameters.ranch-api-url}}"
                   - name: RANCH_API_TOKEN
                     value: "{{workflow.parameters.ranch-api-token}}"
-                  - name: MCP_SERVERS
-                    value: "{{workflow.parameters.mcp-servers}}"
+                  - name: MCP_SERVERS_B64
+                    value: "{{workflow.parameters.mcp-servers-b64}}"
                 resources:
                   requests:
                     cpu: "{{workflow.parameters.cpu-limit}}"

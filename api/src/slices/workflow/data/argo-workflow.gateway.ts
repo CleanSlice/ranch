@@ -121,6 +121,17 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     const credential = data.llmCredentialId
       ? await this.llmGateway.findById(data.llmCredentialId)
       : null;
+
+    // JSON parameters are base64-encoded before injection. Argo substitutes
+    // {{workflow.parameters.X}} as raw text into a YAML manifest; an inner `"`
+    // would terminate the surrounding double-quoted string and produce
+    // "manifest must be a valid yaml". Base64 has no YAML-significant chars.
+    const agentConfigB64 = Buffer.from(JSON.stringify(data.config)).toString(
+      'base64',
+    );
+    const mcpServersB64 = Buffer.from(JSON.stringify(mcpServers)).toString(
+      'base64',
+    );
     const llmParams = [
       { name: 'llm-provider', value: credential?.provider ?? '' },
       { name: 'llm-model', value: credential?.model ?? '' },
@@ -155,7 +166,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'agent-name', value: data.agentName },
             { name: 'template-id', value: data.templateId },
             { name: 'agent-image', value: data.image },
-            { name: 'agent-config', value: JSON.stringify(data.config) },
+            { name: 'agent-config-b64', value: agentConfigB64 },
             { name: 'cpu-limit', value: data.resources.cpu },
             { name: 'memory-limit', value: data.resources.memory },
             { name: 'bridle-url', value: bridleUrl },
@@ -171,7 +182,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'ranch-admin', value: data.isAdmin ? 'true' : 'false' },
             { name: 'ranch-api-url', value: ranchApiUrl },
             { name: 'ranch-api-token', value: data.ranchApiToken },
-            { name: 'mcp-servers', value: JSON.stringify(mcpServers) },
+            { name: 'mcp-servers-b64', value: mcpServersB64 },
             ...llmParams,
           ],
         },

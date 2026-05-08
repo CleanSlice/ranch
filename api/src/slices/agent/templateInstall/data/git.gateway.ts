@@ -14,7 +14,7 @@ const URL_PATTERN = /^(https?:\/\/|git@|ssh:\/\/)/;
 // Reject URLs that contain shell-meta or look like local file refs.
 const URL_BLOCKLIST = /[`$;&|<>]|^file:\/\/|^\.\.?\//;
 // Refs may be branches, tags, or short SHAs — reject anything else.
-const REF_PATTERN = /^[A-Za-z0-9._/\-]{1,100}$/;
+const REF_PATTERN = /^[A-Za-z0-9._/-]{1,100}$/;
 
 @Injectable()
 export class GitGateway extends IGitGateway {

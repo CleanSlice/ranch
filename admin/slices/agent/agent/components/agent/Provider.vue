@@ -12,8 +12,10 @@ import {
 import { Checkbox } from '#theme/components/ui/checkbox';
 import { Label } from '#theme/components/ui/label';
 import { Skeleton } from '#theme/components/ui/skeleton';
-import { IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh, IconShield } from '@tabler/icons-vue';
-import { FlaskConical } from 'lucide-vue-next';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '#theme/components/ui/tabs';
+import { IconAlertTriangle, IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh, IconShield, IconX } from '@tabler/icons-vue';
+import { FileText, X } from 'lucide-vue-next';
+import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 
 const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
@@ -57,6 +59,12 @@ const { data: usage, pending: usagePending, refresh: refreshUsage } = useAsyncDa
 );
 
 const envPending = computed(() => settingsPending.value || llmsPending.value);
+
+const currentLlm = computed(() =>
+  agent.value?.llmCredentialId
+    ? llmStore.items.find((c) => c.id === agent.value!.llmCredentialId) ?? null
+    : null,
+);
 
 const statusVariant: Record<AgentStatusTypes, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   running: 'default',
@@ -156,6 +164,7 @@ async function onRestart() {
   agent.value = { ...agent.value, status: 'deploying' };
   try {
     await agentStore.restart(agent.value.id);
+    agentStore.clearPendingRestart(agent.value.id);
     await refresh();
     await refreshUsage();
   } catch (err) {
@@ -164,6 +173,12 @@ async function onRestart() {
   } finally {
     restarting.value = false;
   }
+}
+
+const pendingRestart = computed(() => agentStore.isPendingRestart(props.id));
+
+function dismissRestartBanner() {
+  agentStore.clearPendingRestart(props.id);
 }
 
 // ── Live pod state from SSE ─────────────────────────────────────────────
@@ -250,13 +265,51 @@ watch(
   { immediate: true },
 );
 
-const confirmRemoveOpen = ref(false);
+// Side-by-side logs panel on the chat tab. Convenience for watching the agent
+// process a message without leaving the chat — separate from the dedicated
+// Logs tab, which is the full-width view for log-focused work.
+const showSideLogs = ref(false);
 
-async function onRemove() {
-  if (!agent.value) return;
-  await agentStore.remove(agent.value.id);
-  await navigateTo('/agents');
+// ── Paddock tab state ───────────────────────────────────────────────────
+const paddockScenarioListRef = ref<{ refresh: () => Promise<void> } | null>(null);
+const paddockEvalListRef = ref<{ refresh: () => Promise<void> } | null>(null);
+const paddockFormOpen = ref(false);
+const paddockEditing = ref<IPaddockScenario | null>(null);
+
+function onPaddockCreate() {
+  paddockEditing.value = null;
+  paddockFormOpen.value = true;
 }
+
+function onPaddockEdit(scenario: IPaddockScenario) {
+  paddockEditing.value = scenario;
+  paddockFormOpen.value = true;
+}
+
+async function onPaddockScenarioSaved() {
+  await paddockScenarioListRef.value?.refresh();
+}
+
+async function onPaddockEvalStarted() {
+  await paddockEvalListRef.value?.refresh();
+}
+
+// Tab state — persisted in the URL so deep links + browser back work.
+// `chat` is the default since 99% of the time the user is here to talk to the
+// agent, not to inspect its plumbing.
+const TABS = ['chat', 'overview', 'files', 'secrets', 'env', 'logs', 'paddock'] as const;
+type AgentTab = (typeof TABS)[number];
+const route = useRoute();
+const router = useRouter();
+const activeTab = computed<AgentTab>({
+  get: () => {
+    const q = route.query.tab;
+    return TABS.includes(q as AgentTab) ? (q as AgentTab) : 'chat';
+  },
+  set: (v) => {
+    router.replace({ query: { ...route.query, tab: v === 'chat' ? undefined : v } });
+  },
+});
 
 </script>
 
@@ -265,6 +318,37 @@ async function onRemove() {
     <NuxtLink to="/agents" class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
       <IconArrowLeft class="size-4" /> Back to agents
     </NuxtLink>
+
+    <div
+      v-if="pendingRestart"
+      class="flex flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
+    >
+      <IconAlertTriangle class="size-4 shrink-0" />
+      <p class="flex-1 min-w-56">
+        Agent settings were updated. Restart the agent to apply the changes.
+      </p>
+      <div class="flex items-center gap-2">
+        <Button
+          size="sm"
+          :disabled="isRestarting"
+          @click="onRestart"
+        >
+          <IconRefresh
+            class="size-4"
+            :class="isRestarting && 'animate-spin'"
+          />
+          {{ isRestarting ? 'Restarting…' : 'Restart agent' }}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          :disabled="isRestarting"
+          @click="dismissRestartBanner"
+        >
+          <IconX class="size-4" />
+        </Button>
+      </div>
+    </div>
 
     <!-- Skeleton only on initial load (no agent yet). Subsequent refreshes
          (status polling every 5s during deploy, post-restart refresh) keep
@@ -282,17 +366,8 @@ async function onRemove() {
           <Skeleton class="h-9 w-16" />
         </div>
       </div>
-      <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(380px,480px)]">
-        <div class="flex flex-col gap-6">
-          <Skeleton class="h-44 w-full rounded-lg" />
-          <Skeleton class="h-56 w-full rounded-lg" />
-          <Skeleton class="h-72 w-full rounded-lg" />
-        </div>
-        <div class="flex flex-col gap-6">
-          <Skeleton class="h-[600px] w-full rounded-lg" />
-          <Skeleton class="h-[480px] w-full rounded-lg" />
-        </div>
-      </div>
+      <Skeleton class="h-10 w-96 rounded-md" />
+      <Skeleton class="h-[480px] w-full rounded-lg" />
     </div>
 
     <template v-else-if="agent">
@@ -309,12 +384,6 @@ async function onRemove() {
         <div class="flex flex-col items-end gap-1">
           <div class="flex gap-2">
             <Button variant="outline" as-child>
-              <NuxtLink :to="`/agents/${agent.id}/paddock`">
-                <FlaskConical class="size-4" />
-                Paddock
-              </NuxtLink>
-            </Button>
-            <Button variant="outline" as-child>
               <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
             </Button>
             <Button
@@ -329,7 +398,6 @@ async function onRemove() {
               <IconRefresh v-else class="size-4" />
               {{ isRestarting ? 'Restarting…' : 'Restart' }}
             </Button>
-            <Button variant="ghost" class="text-destructive" @click="confirmRemoveOpen = true">Delete</Button>
           </div>
           <p
             v-if="restartError"
@@ -340,16 +408,128 @@ async function onRemove() {
         </div>
       </div>
 
-      <ConfirmDialog
-        v-model:open="confirmRemoveOpen"
-        title="Delete agent"
-        :description="`Permanently delete agent “${agent.name}”? This cannot be undone.`"
-        confirm-label="Delete agent"
-        @confirm="onRemove"
-      />
+      <Tabs
+        orientation="vertical"
+        :model-value="activeTab"
+        class="flex-row gap-8 md:grid md:grid-cols-[16rem_minmax(0,1fr)]"
+        @update:model-value="activeTab = $event as AgentTab"
+      >
+        <TabsList
+          class="flex h-auto flex-col items-stretch gap-1 self-start bg-transparent p-0"
+        >
+          <TabsTrigger
+            v-for="t in [
+              { value: 'chat', title: 'Chat', desc: 'Talk to the agent.' },
+              { value: 'overview', title: 'Overview', desc: 'Usage, runtime, visibility & embed.' },
+              { value: 'files', title: 'Files', desc: 'Browse and edit S3-stored agent data.' },
+              { value: 'secrets', title: 'Secrets', desc: 'User-scoped secrets the runtime stores.' },
+              { value: 'env', title: 'Environment', desc: 'Env vars injected at deploy time.' },
+              { value: 'logs', title: 'Logs', desc: 'Pod logs from the runtime container.' },
+              { value: 'paddock', title: 'Paddock', desc: 'Run evaluations & manage scenarios.' },
+            ]"
+            :key="t.value"
+            :value="t.value"
+            class="group h-auto flex-none justify-start whitespace-normal rounded-md border border-transparent px-3 py-2 text-left text-sm font-normal transition-colors hover:bg-muted data-[state=active]:border-border data-[state=active]:bg-muted data-[state=active]:shadow-none"
+          >
+            <span class="flex flex-col items-start gap-0.5">
+              <span class="font-medium">{{ t.title }}</span>
+              <span class="text-xs text-muted-foreground">{{ t.desc }}</span>
+            </span>
+          </TabsTrigger>
+        </TabsList>
 
-      <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(380px,480px)]">
-        <div class="flex flex-col gap-6">
+        <div class="min-w-0">
+        <TabsContent value="chat" class="mt-0">
+          <div class="flex items-center justify-center gap-3">
+            <BridleProvider
+              v-if="authStore.accessToken"
+              :api-url="apiUrl"
+              :agent-id="agent.id"
+              :token="authStore.accessToken"
+              :title="`Chat with ${agent.name}`"
+              class="h-[calc(100vh-15.5rem)] min-h-[480px] w-full min-w-[400px] max-w-[800px] basis-1/2"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              class="shrink-0"
+              :class="showSideLogs ? 'bg-muted' : ''"
+              :title="showSideLogs ? 'Hide logs' : 'Show logs'"
+              :aria-pressed="showSideLogs"
+              @click="showSideLogs = !showSideLogs"
+            >
+              <FileText class="size-4" />
+            </Button>
+            <Card
+              v-if="showSideLogs"
+              class="flex h-[calc(100vh-15.5rem)] min-h-[480px] w-full min-w-[400px] max-w-[800px] basis-1/2 flex-col gap-0"
+            >
+                <CardHeader class="flex flex-row items-center justify-between gap-2 space-y-0 border-b pb-3">
+                  <div class="flex items-center gap-2">
+                    <CardTitle class="text-sm font-semibold">Logs</CardTitle>
+                    <Label
+                      for="chat-logs-auto"
+                      class="flex items-center gap-1.5 text-xs font-normal text-muted-foreground"
+                    >
+                      <Checkbox id="chat-logs-auto" v-model="logsAutoRefresh" />
+                      Auto 5s
+                    </Label>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      class="h-7 px-2"
+                      :disabled="logsLoading"
+                      @click="refreshLogs"
+                    >
+                      <IconRefresh
+                        class="size-4"
+                        :class="{ 'animate-spin': logsLoading }"
+                      />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      class="h-7 px-2"
+                      title="Hide logs panel"
+                      @click="showSideLogs = false"
+                    >
+                      <X class="size-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent class="flex-1 overflow-hidden p-0">
+                  <div
+                    v-if="logsError"
+                    class="m-3 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
+                  >
+                    {{ logsError }}
+                  </div>
+                  <div class="h-full overflow-auto bg-muted/30 p-3">
+                    <pre
+                      v-if="logs"
+                      class="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-relaxed"
+                    >{{ logs }}</pre>
+                    <div
+                      v-else-if="logsLoading"
+                      class="py-8 text-center text-xs text-muted-foreground"
+                    >
+                      Loading…
+                    </div>
+                    <div
+                      v-else
+                      class="py-8 text-center text-xs text-muted-foreground"
+                    >
+                      No logs yet.
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+        </TabsContent>
+
+        <TabsContent value="overview" class="mt-0 flex flex-col gap-6">
           <Card>
             <CardHeader>
               <CardTitle>Usage</CardTitle>
@@ -409,6 +589,67 @@ async function onRemove() {
 
           <Card>
             <CardHeader>
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>LLM</CardTitle>
+                  <CardDescription>
+                    Credential the agent uses for completions. Switch in the
+                    <NuxtLink :to="`/agents/${agent.id}/edit`" class="underline">edit</NuxtLink>
+                    page or manage credentials in
+                    <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>.
+                  </CardDescription>
+                </div>
+                <Button v-if="currentLlm" variant="outline" size="sm" as-child>
+                  <NuxtLink :to="`/llms/${currentLlm.id}/edit`">Manage</NuxtLink>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div v-if="llmsPending && !currentLlm" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div v-for="i in 4" :key="i" class="space-y-2">
+                  <Skeleton class="h-3 w-20" />
+                  <Skeleton class="h-4 w-32" />
+                </div>
+              </div>
+              <div v-else-if="!currentLlm" class="text-sm text-muted-foreground">
+                No LLM credential assigned. Pick one in the
+                <NuxtLink :to="`/agents/${agent.id}/edit`" class="underline">edit</NuxtLink>
+                page.
+              </div>
+              <dl v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <dt class="text-xs text-muted-foreground">Provider</dt>
+                  <dd class="mt-1 text-sm font-medium capitalize">{{ currentLlm.provider }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">Model</dt>
+                  <dd class="mt-1 font-mono text-sm">{{ currentLlm.model }}</dd>
+                </div>
+                <div v-if="currentLlm.fallbackModel">
+                  <dt class="text-xs text-muted-foreground">Fallback model</dt>
+                  <dd class="mt-1 font-mono text-sm">{{ currentLlm.fallbackModel }}</dd>
+                </div>
+                <div v-if="currentLlm.label">
+                  <dt class="text-xs text-muted-foreground">Label</dt>
+                  <dd class="mt-1 text-sm">{{ currentLlm.label }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-muted-foreground">Status</dt>
+                  <dd class="mt-1">
+                    <Badge
+                      :variant="currentLlm.status === 'active' ? 'default' : 'outline'"
+                      class="capitalize"
+                    >
+                      {{ currentLlm.status }}
+                    </Badge>
+                  </dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Runtime</CardTitle>
               <CardDescription>Current state of this agent.</CardDescription>
             </CardHeader>
@@ -460,6 +701,16 @@ async function onRemove() {
             </CardContent>
           </Card>
 
+          <AgentVisibilityProvider
+            :agent-id="agent.id"
+            :api-url="apiUrl"
+            :is-public="agent.isPublic"
+            :allowed-origins="agent.allowedOrigins"
+            @saved="(updated) => (agent = updated)"
+          />
+        </TabsContent>
+
+        <TabsContent value="files" class="mt-0">
           <Card>
             <CardHeader>
               <CardTitle>Files</CardTitle>
@@ -473,7 +724,9 @@ async function onRemove() {
               <AgentFileProvider :id="agent.id" />
             </CardContent>
           </Card>
+        </TabsContent>
 
+        <TabsContent value="secrets" class="mt-0">
           <Card>
             <CardHeader>
               <CardTitle>Secrets</CardTitle>
@@ -491,7 +744,9 @@ async function onRemove() {
               <AgentSecretProvider :id="agent.id" />
             </CardContent>
           </Card>
+        </TabsContent>
 
+        <TabsContent value="env" class="mt-0">
           <Card>
             <CardHeader>
               <CardTitle>Environment</CardTitle>
@@ -542,18 +797,9 @@ async function onRemove() {
               </dl>
             </CardContent>
           </Card>
-        </div>
+        </TabsContent>
 
-        <div class="flex flex-col gap-6">
-          <BridleProvider
-            v-if="authStore.accessToken"
-            :api-url="apiUrl"
-            :agent-id="agent.id"
-            :token="authStore.accessToken"
-            :title="`Chat with ${agent.name}`"
-            class="h-[600px] w-full max-w-none"
-          />
-
+        <TabsContent value="logs" class="mt-0">
           <Card>
             <CardHeader>
               <div class="flex items-start justify-between gap-2">
@@ -588,11 +834,11 @@ async function onRemove() {
               </div>
               <div
                 ref="logsScrollRef"
-                class="max-h-[480px] overflow-auto rounded-md border bg-muted/30 p-3"
+                class="max-h-[calc(100vh-21.5rem)] min-h-[480px] overflow-auto rounded-md border bg-muted/30 p-3"
               >
                 <pre
                   v-if="logs"
-                  class="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed"
+                  class="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-relaxed"
                 >{{ logs }}</pre>
                 <div
                   v-else-if="logsLoading"
@@ -609,8 +855,43 @@ async function onRemove() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="paddock" class="mt-0 flex flex-col gap-6">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-semibold">Paddock</h2>
+              <p class="text-sm text-muted-foreground">
+                Run evaluations and manage agent-specific scenario overrides.
+              </p>
+            </div>
+            <PaddockEvaluationRunProvider
+              :agent-id="agent.id"
+              @started="onPaddockEvalStarted"
+            />
+          </div>
+
+          <PaddockEvaluationListProvider
+            ref="paddockEvalListRef"
+            :agent-id="agent.id"
+          />
+
+          <PaddockScenarioListProvider
+            ref="paddockScenarioListRef"
+            :agent-id="agent.id"
+            @create="onPaddockCreate"
+            @edit="onPaddockEdit"
+          />
+
+          <PaddockScenarioFormProvider
+            v-model:open="paddockFormOpen"
+            :agent-id="agent.id"
+            :scenario="paddockEditing"
+            @saved="onPaddockScenarioSaved"
+          />
+        </TabsContent>
         </div>
-      </div>
+      </Tabs>
     </template>
 
     <div v-else class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">

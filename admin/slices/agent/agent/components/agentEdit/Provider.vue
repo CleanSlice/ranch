@@ -14,6 +14,7 @@ import {
   IconLoader2,
   IconShield,
   IconShieldOff,
+  IconTrash,
 } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
@@ -21,6 +22,11 @@ const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
 const templateStore = useTemplateStore();
 const llmStore = useLlmStore();
+const config = useRuntimeConfig();
+const apiUrl =
+  (config.public as { apiUrl?: string }).apiUrl ??
+  (typeof process !== 'undefined' ? process.env.API_URL : undefined) ??
+  'http://localhost:3333';
 
 const [
   { data: agent, pending: pendingAgent, refresh: refreshAgent },
@@ -52,6 +58,7 @@ async function onSubmit(values: ICreateAgentData) {
       allowedOrigins: values.allowedOrigins,
     };
     await agentStore.update(props.id, update);
+    agentStore.markPendingRestart(props.id);
     await navigateTo(`/agents/${props.id}`);
   } catch (err: unknown) {
     const e = err as {
@@ -88,6 +95,25 @@ async function onPromote() {
     promoteError.value = (err as Error).message || 'Promote failed';
   } finally {
     promoting.value = false;
+  }
+}
+
+// ─── Delete ────────────────────────────────────────────────────────────────
+const removing = ref(false);
+const removeError = ref<string | null>(null);
+const confirmRemoveOpen = ref(false);
+
+async function onRemove() {
+  if (!agent.value || removing.value) return;
+  removing.value = true;
+  removeError.value = null;
+  try {
+    await agentStore.remove(agent.value.id);
+    await navigateTo('/agents');
+  } catch (err) {
+    removeError.value = (err as Error).message || 'Delete failed';
+  } finally {
+    removing.value = false;
   }
 }
 </script>
@@ -127,6 +153,14 @@ async function onPromote() {
         disable-template
         @submit="onSubmit"
         @cancel="onCancel"
+      />
+
+      <AgentVisibilityProvider
+        :agent-id="agent.id"
+        :api-url="apiUrl"
+        :is-public="agent.isPublic"
+        :allowed-origins="agent.allowedOrigins"
+        @saved="(updated) => (agent = updated)"
       />
 
       <Card>
@@ -169,6 +203,57 @@ async function onPromote() {
         confirm-label="Promote"
         :variant="'default'"
         @confirm="onPromote"
+      />
+
+      <Card class="border-destructive/40">
+        <CardHeader>
+          <CardTitle class="flex items-center gap-2 text-base text-destructive">
+            <IconTrash class="size-4" />
+            Danger zone
+          </CardTitle>
+          <CardDescription>
+            Deleting this agent is permanent and cannot be undone. This will:
+          </CardDescription>
+        </CardHeader>
+        <CardContent class="flex flex-col gap-4">
+          <ul class="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+            <li>stop the running pod and cancel its Argo workflow</li>
+            <li>
+              remove all S3-stored agent data under
+              <code class="font-mono text-xs">agents/{{ agent.id }}/</code>
+              (files, secrets, usage)
+            </li>
+            <li>delete agent-scoped paddock scenarios and evaluation history</li>
+            <li>revoke any service tokens minted for this agent</li>
+          </ul>
+          <div class="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+            <div class="text-sm">
+              <p class="font-medium">Delete agent “{{ agent.name }}”</p>
+              <p class="text-xs text-muted-foreground">
+                This action is irreversible.
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              :disabled="removing"
+              @click="confirmRemoveOpen = true"
+            >
+              <IconLoader2 v-if="removing" class="size-4 animate-spin" />
+              <IconTrash v-else class="size-4" />
+              {{ removing ? 'Deleting…' : 'Delete agent' }}
+            </Button>
+          </div>
+          <p v-if="removeError" class="text-xs text-destructive">{{ removeError }}</p>
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        v-model:open="confirmRemoveOpen"
+        title="Delete agent"
+        :description="`Permanently delete agent “${agent.name}”? Pod, S3 data, scenarios and evaluations will be removed. This cannot be undone.`"
+        confirm-label="Delete agent"
+        :busy="removing"
+        @confirm="onRemove"
       />
     </template>
 

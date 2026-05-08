@@ -85,21 +85,20 @@ export type IInstallParamValues = Record<string, string | number | boolean>;
 export type IInstallSecretValues = Record<string, string>;
 
 export const useTemplateInstallStore = defineStore('templateInstall', () => {
+  // SDK can't pass FormData through as multipart — it JSON-serializes
+  // the body and the file gets dropped, so the server returns
+  // "archive is required". Use direct fetch for the two multipart
+  // endpoints; git endpoints stay on the SDK because they're JSON.
   async function previewFromZip(
     archive: File,
     params: IInstallParamValues,
   ): Promise<IInstallPreview> {
-    const fd = new FormData();
-    fd.append('archive', archive);
-    fd.append('params', JSON.stringify(params));
-    const res = await TemplatesService.previewTemplateInstall({
-      body: fd as unknown as { archive?: Blob | File; params?: string },
-    });
-    const env = res.data as ApiEnvelope<IInstallPreview> | undefined;
-    if (!env || !env.success) {
-      throw new Error(extractError(res) ?? 'Preview failed');
-    }
-    return env.data;
+    return postMultipart<IInstallPreview>(
+      '/templates/install/preview',
+      archive,
+      params,
+      {},
+    );
   }
 
   async function installFromZip(
@@ -107,21 +106,43 @@ export const useTemplateInstallStore = defineStore('templateInstall', () => {
     params: IInstallParamValues,
     secrets: IInstallSecretValues,
   ): Promise<IInstallResult> {
+    return postMultipart<IInstallResult>(
+      '/templates/install',
+      archive,
+      params,
+      secrets,
+    );
+  }
+
+  async function postMultipart<T>(
+    path: string,
+    archive: File,
+    params: IInstallParamValues,
+    secrets: IInstallSecretValues,
+  ): Promise<T> {
+    const runtime = useRuntimeConfig();
     const fd = new FormData();
     fd.append('archive', archive);
     fd.append('params', JSON.stringify(params));
     fd.append('secrets', JSON.stringify(secrets));
-    const res = await TemplatesService.installTemplate({
-      body: fd as unknown as {
-        archive?: Blob | File;
-        params?: string;
-        secrets?: string;
-      },
+    const res = await fetch(`${runtime.public.apiUrl}${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      body: fd,
     });
-    const env = res.data as ApiEnvelope<IInstallResult> | undefined;
-    if (!env || !env.success) {
-      throw new Error(extractError(res) ?? 'Install failed');
+    const json = (await res.json().catch(() => null)) as
+      | ApiEnvelope<T>
+      | { error?: string; message?: string }
+      | null;
+    if (!res.ok || !json || (typeof json === 'object' && 'error' in json && json.error)) {
+      const msg =
+        json && 'message' in json && typeof json.message === 'string'
+          ? json.message
+          : `${res.status} ${res.statusText}`;
+      throw new Error(msg);
     }
+    const env = json as ApiEnvelope<T>;
+    if (!env.success) throw new Error('Request failed');
     return env.data;
   }
 

@@ -20,6 +20,8 @@ import type {
   LlmControllerRemoveData,
   LlmControllerFindByIdData,
   LlmControllerUpdateData,
+  HealthCheckLlmCredentialData,
+  HealthCheckLlmCredentialResponse,
   TemplateControllerFindAllData,
   TemplateControllerCreateData,
   TemplateControllerRemoveData,
@@ -384,6 +386,22 @@ export class LlmsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Health-check an LLM credential
+   */
+  public static healthCheckLlmCredential<ThrowOnError extends boolean = false>(
+    options: Options<HealthCheckLlmCredentialData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      HealthCheckLlmCredentialResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/llms/{id}/health-check",
+      ...options,
     });
   }
 }

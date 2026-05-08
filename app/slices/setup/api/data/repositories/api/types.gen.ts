@@ -34,6 +34,14 @@ export type UpdateLlmCredentialDto = {
   status?: "active" | "disabled";
 };
 
+export type LlmHealthCheckResultDto = {
+  ok: boolean;
+  latencyMs: number;
+  provider: string;
+  model: string;
+  error?: string;
+};
+
 export type CreateTemplateDto = {
   name: string;
   description: string;
@@ -42,6 +50,9 @@ export type CreateTemplateDto = {
     [key: string]: unknown;
   };
   defaultResources?: {
+    [key: string]: unknown;
+  };
+  paddockConfig?: {
     [key: string]: unknown;
   };
 };
@@ -54,6 +65,9 @@ export type UpdateTemplateDto = {
     [key: string]: unknown;
   };
   defaultResources?: {
+    [key: string]: unknown;
+  };
+  paddockConfig?: {
     [key: string]: unknown;
   };
 };
@@ -184,6 +198,12 @@ export type InstallFromGitDto = {
    * Operator-supplied params (e.g. {"language":"ru"}). Validated against the manifest at install time.
    */
   params?: {
+    [key: string]: unknown;
+  };
+  /**
+   * Operator-supplied secrets (e.g. {"MCP_RANCH_AUTH":"sk-..."}). Used to resolve $secret:NAME references in the manifest at install time (currently for mcp[].authValue). Never echoed back.
+   */
+  secrets?: {
     [key: string]: unknown;
   };
 };
@@ -799,6 +819,22 @@ export type LlmControllerUpdateResponses = {
   200: unknown;
 };
 
+export type HealthCheckLlmCredentialData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/llms/{id}/health-check";
+};
+
+export type HealthCheckLlmCredentialResponses = {
+  200: LlmHealthCheckResultDto;
+};
+
+export type HealthCheckLlmCredentialResponse =
+  HealthCheckLlmCredentialResponses[keyof HealthCheckLlmCredentialResponses];
+
 export type TemplateControllerFindAllData = {
   body?: never;
   path?: never;
@@ -1069,6 +1105,10 @@ export type InstallTemplateData = {
      * JSON object of operator-supplied params.
      */
     params?: string;
+    /**
+     * JSON object of operator-supplied secrets used to resolve $secret:NAME references in the manifest (e.g. mcp[].authValue).
+     */
+    secrets?: string;
   };
   path?: never;
   query?: never;

@@ -93,6 +93,33 @@ export const UpdateLlmCredentialDtoSchema = {
   },
 } as const;
 
+export const LlmHealthCheckResultDtoSchema = {
+  type: "object",
+  properties: {
+    ok: {
+      type: "boolean",
+      example: true,
+    },
+    latencyMs: {
+      type: "number",
+      example: 482,
+    },
+    provider: {
+      type: "string",
+      example: "anthropic",
+    },
+    model: {
+      type: "string",
+      example: "claude-sonnet-4-6",
+    },
+    error: {
+      type: "string",
+      example: "Anthropic 401: invalid x-api-key",
+    },
+  },
+  required: ["ok", "latencyMs", "provider", "model"],
+} as const;
+
 export const CreateTemplateDtoSchema = {
   type: "object",
   properties: {
@@ -110,6 +137,9 @@ export const CreateTemplateDtoSchema = {
       type: "object",
     },
     defaultResources: {
+      type: "object",
+    },
+    paddockConfig: {
       type: "object",
     },
   },
@@ -133,6 +163,9 @@ export const UpdateTemplateDtoSchema = {
       type: "object",
     },
     defaultResources: {
+      type: "object",
+    },
+    paddockConfig: {
       type: "object",
     },
   },

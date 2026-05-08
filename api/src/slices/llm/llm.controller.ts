@@ -8,14 +8,21 @@ import {
   Param,
   NotFoundException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { ILlmGateway } from './domain';
-import { CreateLlmCredentialDto, UpdateLlmCredentialDto } from './dtos';
+import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
+import { ILlmGateway, ILlmHealthGateway } from './domain';
+import {
+  CreateLlmCredentialDto,
+  UpdateLlmCredentialDto,
+  LlmHealthCheckResultDto,
+} from './dtos';
 
 @ApiTags('llms')
 @Controller('llms')
 export class LlmController {
-  constructor(private gateway: ILlmGateway) {}
+  constructor(
+    private gateway: ILlmGateway,
+    private health: ILlmHealthGateway,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List all LLM credentials' })
@@ -47,5 +54,17 @@ export class LlmController {
   @ApiOperation({ summary: 'Delete an LLM credential' })
   remove(@Param('id') id: string) {
     return this.gateway.delete(id);
+  }
+
+  @Post(':id/health-check')
+  @ApiOperation({
+    summary: 'Health-check an LLM credential',
+    operationId: 'healthCheckLlmCredential',
+  })
+  @ApiOkResponse({ type: LlmHealthCheckResultDto })
+  async healthCheck(@Param('id') id: string): Promise<LlmHealthCheckResultDto> {
+    const credential = await this.gateway.findById(id);
+    if (!credential) throw new NotFoundException('LLM credential not found');
+    return this.health.check(credential);
   }
 }

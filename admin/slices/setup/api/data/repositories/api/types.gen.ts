@@ -34,6 +34,14 @@ export type UpdateLlmCredentialDto = {
   status?: "active" | "disabled";
 };
 
+export type LlmHealthCheckResultDto = {
+  ok: boolean;
+  latencyMs: number;
+  provider: string;
+  model: string;
+  error?: string;
+};
+
 export type CreateTemplateDto = {
   name: string;
   description: string;
@@ -42,6 +50,9 @@ export type CreateTemplateDto = {
     [key: string]: unknown;
   };
   defaultResources?: {
+    [key: string]: unknown;
+  };
+  paddockConfig?: {
     [key: string]: unknown;
   };
 };
@@ -54,6 +65,9 @@ export type UpdateTemplateDto = {
     [key: string]: unknown;
   };
   defaultResources?: {
+    [key: string]: unknown;
+  };
+  paddockConfig?: {
     [key: string]: unknown;
   };
 };
@@ -804,6 +818,22 @@ export type LlmControllerUpdateData = {
 export type LlmControllerUpdateResponses = {
   200: unknown;
 };
+
+export type HealthCheckLlmCredentialData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/llms/{id}/health-check";
+};
+
+export type HealthCheckLlmCredentialResponses = {
+  200: LlmHealthCheckResultDto;
+};
+
+export type HealthCheckLlmCredentialResponse =
+  HealthCheckLlmCredentialResponses[keyof HealthCheckLlmCredentialResponses];
 
 export type TemplateControllerFindAllData = {
   body?: never;

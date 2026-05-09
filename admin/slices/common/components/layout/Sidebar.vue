@@ -33,7 +33,7 @@ import {
   IconPlug,
   IconUserCircle,
 } from '@tabler/icons-vue';
-import { Bot, FlaskConical } from 'lucide-vue-next';
+import { Bot, FlaskConical, KeyRound } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const ranchVersion = useRuntimeConfig().public.ranchVersion;
@@ -57,6 +57,7 @@ const iconMap: Record<string, unknown> = {
   Shield: IconShield,
   Plug: IconPlug,
   FlaskConical,
+  KeyRound,
 };
 
 const groups = [

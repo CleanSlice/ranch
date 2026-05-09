@@ -1,0 +1,13 @@
+model ApiKey {
+  id         String    @id @default(uuid())
+  name       String
+  keyHash    String    @unique
+  prefix     String
+  scopes     String[]
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+
+  @@index([createdBy])
+}

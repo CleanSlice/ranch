@@ -295,6 +295,71 @@ export const RegisterDtoSchema = {
   required: ["name", "email", "password"],
 } as const;
 
+export const UserRoleTypesSchema = {
+  type: "string",
+  enum: ["Owner", "Admin", "User", "Agent"],
+  description:
+    "Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.",
+} as const;
+
+export const EmbedTokenDtoSchema = {
+  type: "object",
+  properties: {
+    sub: {
+      type: "string",
+      description:
+        "Subject — used as clientId for routing inside the bridle hub.",
+      example: "user-123",
+    },
+    email: {
+      type: "string",
+      example: "alice@example.com",
+    },
+    roles: {
+      type: "array",
+      description:
+        "Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.",
+      items: {
+        $ref: "#/components/schemas/UserRoleTypes",
+      },
+    },
+    expiresIn: {
+      type: "string",
+      description: "Duration string (s/m/h/d). Defaults to 15m.",
+      example: "15m",
+    },
+  },
+  required: ["sub"],
+} as const;
+
+export const ApiKeyScopeTypesSchema = {
+  type: "string",
+  enum: ["embed:mint", "admin"],
+} as const;
+
+export const CreateApiKeyDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "Marketing site embed",
+    },
+    scopes: {
+      type: "array",
+      example: ["embed:mint"],
+      items: {
+        $ref: "#/components/schemas/ApiKeyScopeTypes",
+      },
+    },
+    expiresAt: {
+      type: "string",
+      description: "ISO date string. Omit for a non-expiring key.",
+      example: "2027-01-01T00:00:00.000Z",
+    },
+  },
+  required: ["name", "scopes"],
+} as const;
+
 export const SaveTemplateFileDtoSchema = {
   type: "object",
   properties: {
@@ -1241,11 +1306,6 @@ export const SecretListDtoSchema = {
     },
   },
   required: ["provider", "secrets"],
-} as const;
-
-export const UserRoleTypesSchema = {
-  type: "string",
-  enum: ["Owner", "Admin", "User", "Agent"],
 } as const;
 
 export const CreateUserDtoSchema = {

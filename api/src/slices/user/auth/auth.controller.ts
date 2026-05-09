@@ -11,9 +11,16 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { AuthService } from './domain';
 import { IAuthTokenPayload } from './domain/auth.types';
-import { AuthDto, LoginDto, RegisterDto } from './dtos';
+import {
+  AuthDto,
+  EmbedTokenDto,
+  EmbedTokenResultDto,
+  LoginDto,
+  RegisterDto,
+} from './dtos';
 import { UserDto } from '../user/dtos';
-import { JwtAuthGuard } from './guards';
+import { ApiKeyScopeTypes } from '../apiKey/domain';
+import { ApiKeyGuard, JwtAuthGuard, Scopes, ScopesGuard } from './guards';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -45,5 +52,23 @@ export class AuthController {
     @Req() req: Request & { user: IAuthTokenPayload },
   ): Promise<UserDto> {
     return this.authService.me(req.user.sub);
+  }
+
+  @Post('embed/token')
+  @HttpCode(200)
+  @UseGuards(ApiKeyGuard, ScopesGuard)
+  @Scopes(ApiKeyScopeTypes.EmbedMint)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Mint a short-lived browser embed JWT for the bridle widget. Auth: API key with embed:mint scope. Owner/Admin roles are stripped from the result regardless of input.',
+  })
+  embedToken(@Body() dto: EmbedTokenDto): Promise<EmbedTokenResultDto> {
+    return this.authService.mintEmbedToken({
+      sub: dto.sub,
+      email: dto.email,
+      roles: dto.roles,
+      expiresIn: dto.expiresIn,
+    });
   }
 }

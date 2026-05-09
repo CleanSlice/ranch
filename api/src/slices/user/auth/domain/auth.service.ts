@@ -112,6 +112,37 @@ export class AuthService {
     return this.jwt.signAsync(payload, { expiresIn: '365d' });
   }
 
+  /**
+   * Mint a short-lived browser embed JWT for the bridle widget. Strips
+   * `Owner` and `Admin` roles regardless of what was requested — an
+   * embed:mint API key cannot escalate a visitor to platform admin even
+   * if the caller passes those roles in the body.
+   */
+  async mintEmbedToken(claims: {
+    sub: string;
+    email?: string;
+    roles?: UserRoleTypes[];
+    expiresIn?: string;
+  }): Promise<{ token: string; expiresAt: Date }> {
+    const safeRoles = (claims.roles ?? []).filter(
+      (r) => r !== UserRoleTypes.Owner && r !== UserRoleTypes.Admin,
+    );
+    const expiresIn = (claims.expiresIn ?? '15m') as `${number}${
+      | 's'
+      | 'm'
+      | 'h'
+      | 'd'}`;
+    const payload: IAuthTokenPayload = {
+      sub: claims.sub,
+      email: claims.email ?? '',
+      roles: safeRoles,
+    };
+    const token = await this.jwt.signAsync(payload, { expiresIn });
+    const decoded = this.jwt.decode(token) as { exp?: number } | null;
+    const expiresAt = new Date((decoded?.exp ?? 0) * 1000);
+    return { token, expiresAt };
+  }
+
   private async isRegistrationEnabled(): Promise<boolean> {
     const setting = await this.settings.findByKey(
       'auth',

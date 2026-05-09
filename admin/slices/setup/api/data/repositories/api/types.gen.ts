@@ -125,6 +125,46 @@ export type RegisterDto = {
   password: string;
 };
 
+/**
+ * Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.
+ */
+export enum UserRoleTypes {
+  OWNER = "Owner",
+  ADMIN = "Admin",
+  USER = "User",
+  AGENT = "Agent",
+}
+
+export type EmbedTokenDto = {
+  /**
+   * Subject — used as clientId for routing inside the bridle hub.
+   */
+  sub: string;
+  email?: string;
+  /**
+   * Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.
+   */
+  roles?: Array<UserRoleTypes>;
+  /**
+   * Duration string (s/m/h/d). Defaults to 15m.
+   */
+  expiresIn?: string;
+};
+
+export enum ApiKeyScopeTypes {
+  "EMBED:MINT" = "embed:mint",
+  ADMIN = "admin",
+}
+
+export type CreateApiKeyDto = {
+  name: string;
+  scopes: Array<ApiKeyScopeTypes>;
+  /**
+   * ISO date string. Omit for a non-expiring key.
+   */
+  expiresAt?: string;
+};
+
 export type SaveTemplateFileDto = {
   /**
    * Full file content as text
@@ -548,13 +588,6 @@ export type SecretListDto = {
   provider: "aws" | "file";
   secrets: Array<SecretEntryDto>;
 };
-
-export enum UserRoleTypes {
-  OWNER = "Owner",
-  ADMIN = "Admin",
-  USER = "User",
-  AGENT = "Agent",
-}
 
 export type CreateUserDto = {
   name: string;
@@ -1015,6 +1048,55 @@ export type AuthControllerMeData = {
 export type AuthControllerMeResponses = {
   200: unknown;
 };
+
+export type AuthControllerEmbedTokenData = {
+  body: EmbedTokenDto;
+  path?: never;
+  query?: never;
+  url: "/auth/embed/token";
+};
+
+export type AuthControllerEmbedTokenResponses = {
+  200: unknown;
+};
+
+export type ApiKeyControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/api-keys";
+};
+
+export type ApiKeyControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type ApiKeyControllerCreateData = {
+  body: CreateApiKeyDto;
+  path?: never;
+  query?: never;
+  url: "/api-keys";
+};
+
+export type ApiKeyControllerCreateResponses = {
+  201: unknown;
+};
+
+export type ApiKeyControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api-keys/{id}";
+};
+
+export type ApiKeyControllerRemoveResponses = {
+  204: void;
+};
+
+export type ApiKeyControllerRemoveResponse =
+  ApiKeyControllerRemoveResponses[keyof ApiKeyControllerRemoveResponses];
 
 export type TemplateFileControllerListData = {
   body?: never;

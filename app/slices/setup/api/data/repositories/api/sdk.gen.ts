@@ -37,6 +37,11 @@ import type {
   AuthControllerLoginData,
   AuthControllerRegisterData,
   AuthControllerMeData,
+  AuthControllerEmbedTokenData,
+  ApiKeyControllerFindAllData,
+  ApiKeyControllerCreateData,
+  ApiKeyControllerRemoveData,
+  ApiKeyControllerRemoveResponse,
   TemplateFileControllerListData,
   TemplateFileControllerReadData,
   TemplateFileControllerSaveData,
@@ -777,6 +782,80 @@ export class AuthService {
       ThrowOnError
     >({
       url: "/auth/me",
+      ...options,
+    });
+  }
+
+  /**
+   * Mint a short-lived browser embed JWT for the bridle widget. Auth: API key with embed:mint scope. Owner/Admin roles are stripped from the result regardless of input.
+   */
+  public static authControllerEmbedToken<ThrowOnError extends boolean = false>(
+    options: Options<AuthControllerEmbedTokenData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/auth/embed/token",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
+export class ApiKeysService {
+  /**
+   * List all API keys
+   */
+  public static apiKeyControllerFindAll<ThrowOnError extends boolean = false>(
+    options?: Options<ApiKeyControllerFindAllData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api-keys",
+      ...options,
+    });
+  }
+
+  /**
+   * Create a new API key. The plaintext key is returned exactly once — only its hash is persisted.
+   */
+  public static apiKeyControllerCreate<ThrowOnError extends boolean = false>(
+    options: Options<ApiKeyControllerCreateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api-keys",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Revoke (delete) an API key.
+   */
+  public static apiKeyControllerRemove<ThrowOnError extends boolean = false>(
+    options: Options<ApiKeyControllerRemoveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      ApiKeyControllerRemoveResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api-keys/{id}",
       ...options,
     });
   }

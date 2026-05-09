@@ -17,6 +17,7 @@ import { WorkflowModule } from './slices/workflow/workflow.module';
 import { LogModule } from './slices/log/log.module';
 import { UserModule } from './slices/user/user/user.module';
 import { AuthModule } from './slices/user/auth/auth.module';
+import { ApiKeyModule } from './slices/user/apiKey/apiKey.module';
 import { SettingModule } from './slices/setting/setting.module';
 import { BridleModule } from './slices/bridle/bridle.module';
 import { LlmModule } from './slices/llm/llm.module';
@@ -51,6 +52,7 @@ import { PaddockModule } from './slices/paddock/paddock.module';
     LogModule,
     UserModule,
     AuthModule,
+    ApiKeyModule,
     SettingModule,
     BridleModule,
     LlmModule,

@@ -91,7 +91,11 @@ spec:
       resource:
         action: create
         successCondition: status.phase == Running
-        failureCondition: status.phase == Failed
+        # Treat Succeeded as failure: a runtime image with no command (e.g.
+        # vanilla `node:18-alpine`) exits with code 0 in <1s, so the pod
+        # skips Running and goes straight to Succeeded. Without this,
+        # Argo retries the resource watch forever.
+        failureCondition: status.phase in (Failed, Succeeded)
         manifest: |
           apiVersion: v1
           kind: Pod

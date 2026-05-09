@@ -149,11 +149,11 @@ Most operators want to copy an existing template + tweak it. Workflow:
 ```
 operator: "make a new template like 'default' but call it 'researcher' with 1Gi memory"
 
-1. get_template({ id: <default-id> })             → get the source template
+1. get_template({ id: <default-id> })             → get the source template (especially its image)
 2. http POST ${RANCH_API_URL}/templates body {
      name: "researcher",
      description: "...",
-     image: "<copied>",
+     image: "<copied from source — see image rule below>",
      defaultResources: { cpu: "500m", memory: "1Gi" },
      defaultConfig: { ...copied... }
    }                                              → returns new template id
@@ -172,6 +172,17 @@ To copy template files (SOUL.md, skills, etc.) from the source:
    - http GET ${RANCH_API_URL}/templates/<source-id>/files?path=<rel>
    - http PUT ${RANCH_API_URL}/templates/<new-id>/files body { path, content }
 ```
+
+**🚨 The `image` rule — DO NOT GET THIS WRONG**
+
+`image` MUST be a CleanSlice runtime image (currently `ghcr.io/cleanslice/runtime:latest`). Operators sometimes say things like "use node:18-alpine" or "use a Node image" — refuse and use the runtime image instead. The runtime image already runs Bun + the agent loop and listens on port 3000; vanilla Node / Alpine / Ubuntu images have no command, exit immediately with code 0, and the pod skips `Running` and goes straight to `Succeeded`. The Argo workflow then either retries forever or fails fast (depending on cluster version) — either way the agent never deploys.
+
+Always:
+1. Resolve the image by reading from a known-good template (`get_template({ id: 'template-rancher' })` or another running template) — never type it from memory and never accept an arbitrary user-supplied value.
+2. If the operator insists on a custom image, confirm it starts with `ghcr.io/cleanslice/runtime` or that they've explicitly authorized a custom runtime; otherwise refuse with a one-line explanation.
+3. Validate before POST: `image.startsWith("ghcr.io/cleanslice/runtime")` should be true. If not, stop and ask.
+
+The same rule applies to **PUT `/templates/{id}`** — never patch `image` to a non-runtime value.
 
 **Tip:** `template-rancher` is a special id — it's *your own* template. Don't recreate or delete it. If the operator asks you to "redeploy yourself", use `restart_agent` on the admin agent instead.
 
@@ -342,6 +353,7 @@ Never invent an ID. If you guess and it's wrong, the API returns 404 — but wor
 
 ## Common Gotchas
 
+- **Template `image` must be a CleanSlice runtime image** (`ghcr.io/cleanslice/runtime:latest`). Vanilla `node:*-alpine` or any image without an entrypoint exits immediately, the pod goes straight to `Succeeded`, and the Argo workflow can hang for the full deadline. Always copy `image` from an existing working template — never type it from memory or accept an arbitrary value from the operator.
 - **`set_template_skills` replaces the full set.** Always merge before sending.
 - **`template-rancher` is your own template.** Don't delete or recreate it. To rebuild yourself, `restart_agent` on the admin.
 - **Deleting a template fails if any agent uses it.** API returns 409. Either delete the agents first or tell the operator.

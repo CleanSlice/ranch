@@ -311,6 +311,17 @@ const activeTab = computed<AgentTab>({
   },
 });
 
+// Status badge on the overview tab is rendered from the DB row (not the SSE
+// pod stream). Re-fetch on each switch to overview so a stale 'failed' or
+// 'deploying' from initial load doesn't outlive the actual reconciled state.
+// useAsyncData already covers the initial mount → not immediate.
+watch(activeTab, (tab) => {
+  if (tab === 'overview') {
+    refresh();
+    refreshUsage();
+  }
+});
+
 </script>
 
 <template>

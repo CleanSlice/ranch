@@ -61,7 +61,7 @@ export class KubePodGateway
     }
     this.coreApi = this.kc.makeApiClient(CoreV1Api);
 
-    await this.bootstrapInitialState();
+    await this.resync();
     this.startWatch();
   }
 
@@ -100,24 +100,78 @@ export class KubePodGateway
     return this.events.asObservable();
   }
 
-  private async bootstrapInitialState(): Promise<void> {
+  async resync(): Promise<void> {
+    let res;
     try {
-      const res = await this.coreApi.listNamespacedPod({
+      res = await this.coreApi.listNamespacedPod({
         namespace: this.namespace,
         labelSelector: POD_LABEL_SELECTOR,
       });
-      for (const pod of res.items ?? []) {
-        const status = this.mapPodStatus(pod);
-        if (status) this.statuses.set(status.agentId, status);
-      }
-      this.logger.log(
-        `Bootstrapped ${this.statuses.size} agent pod statuses from ${this.namespace}`,
-      );
     } catch (err) {
       this.logger.warn(
-        `Initial pod list failed: ${this.extractKubeError(err)} — watch will populate state`,
+        `Pod resync failed: ${this.extractKubeError(err)} — cache stays as-is`,
+      );
+      return;
+    }
+
+    const fresh = new Map<string, IAgentPodStatus>();
+    for (const pod of res.items ?? []) {
+      const status = this.mapPodStatus(pod);
+      if (status) fresh.set(status.agentId, status);
+    }
+
+    let added = 0;
+    let modified = 0;
+    let deleted = 0;
+
+    // Pods that disappeared while we weren't looking. Subscribers can choose
+    // to ignore (the agent status reconciler does — pod deletion is an
+    // expected step of restart and shouldn't flip DB to failed).
+    for (const [agentId, prev] of this.statuses) {
+      if (!fresh.has(agentId)) {
+        this.events.next({ type: 'deleted', status: prev });
+        deleted += 1;
+      }
+    }
+
+    // Replay state changes the watch may have missed (no resourceVersion →
+    // events resume from "now" on reconnect, so any phase/ready transition
+    // during the gap is otherwise invisible).
+    for (const [agentId, status] of fresh) {
+      const prev = this.statuses.get(agentId);
+      if (!prev) {
+        this.events.next({ type: 'added', status });
+        added += 1;
+      } else if (this.statusChanged(prev, status)) {
+        this.events.next({ type: 'modified', status });
+        modified += 1;
+      }
+    }
+
+    this.statuses.clear();
+    for (const [agentId, status] of fresh) {
+      this.statuses.set(agentId, status);
+    }
+
+    if (added || modified || deleted) {
+      this.logger.log(
+        `Pod resync (${this.namespace}): ${fresh.size} pods — ${added} added, ${modified} modified, ${deleted} deleted`,
       );
     }
+  }
+
+  private statusChanged(
+    prev: IAgentPodStatus,
+    next: IAgentPodStatus,
+  ): boolean {
+    return (
+      prev.phase !== next.phase ||
+      prev.ready !== next.ready ||
+      prev.containerWaitingReason !== next.containerWaitingReason ||
+      prev.lastTerminationReason !== next.lastTerminationReason ||
+      prev.restartCount !== next.restartCount ||
+      prev.podName !== next.podName
+    );
   }
 
   private startWatch(): void {
@@ -172,7 +226,7 @@ export class KubePodGateway
         this.reconnectDelayMs * 2,
         RECONNECT_MAX_MS,
       );
-      this.startWatch();
+      void this.resync().finally(() => this.startWatch());
     }, this.reconnectDelayMs);
   }
 

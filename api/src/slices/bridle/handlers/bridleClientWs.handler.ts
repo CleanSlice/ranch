@@ -28,12 +28,13 @@ import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
  *   "ping"     {}
  *
  * Events (hub → browser):
- *   "welcome"     { clientId }
- *   "message"     { text, messageId, ts }
- *   "stream"      { text, messageId, ts }
- *   "stream_end"  { text, messageId, ts }
- *   "typing"      { ts }
- *   "pong"        { ts }
+ *   "welcome"       { clientId }
+ *   "message"       { text, messageId, ts }
+ *   "stream"        { text, messageId, ts }
+ *   "stream_end"    { text, messageId, ts }
+ *   "typing"        { ts }
+ *   "pong"          { ts }
+ *   "bridle_error"  { code, agentId?, origin? }  // emitted just before a rejected handshake disconnects, so the SDK can show a reason
  */
 @WebSocketGateway({ namespace: '/ws/client', cors: { origin: '*' } })
 export class BridleClientWsHandler
@@ -60,13 +61,27 @@ export class BridleClientWsHandler
     // Accept legacy `botId` from browsers running cached pre-0.3.0 SDK
     // bundles. Drop after CDN/embedders have rolled forward.
     const agentId = auth.agentId ?? auth.botId;
+    const origin = client.handshake.headers.origin;
+
+    // Emit a structured reason then drop the connection. Plain `disconnect()`
+    // sends a namespace DISCONNECT after the queued event, so the SDK
+    // reliably sees `bridle_error` first; `disconnect(true)` would force the
+    // engine.io transport closed before the event packet flushes.
+    const reject = (code: string, extra?: Record<string, unknown>) => {
+      client.emit('bridle_error', {
+        code,
+        agentId,
+        origin,
+        ...(extra ?? {}),
+      });
+      client.disconnect();
+    };
+
     if (!agentId) {
       this.logger.warn('Browser connection rejected: missing agentId');
-      client.disconnect(true);
-      return;
+      return reject('MISSING_AGENT_ID');
     }
 
-    const origin = client.handshake.headers.origin;
     const agent = await this.agentGateway.findById(agentId);
 
     let clientId: string;
@@ -79,24 +94,14 @@ export class BridleClientWsHandler
       this.logger.log(
         `Browser connected (public): clientId=${clientId} agentId=${agentId} origin=${origin}`,
       );
-    } else {
+    } else if (auth.token) {
       // Authenticated path: JWT required.
-      const token = auth.token;
-      if (!token) {
-        this.logger.warn(
-          `Browser connection rejected: missing token (agentId=${agentId}, origin=${origin ?? 'none'})`,
-        );
-        client.disconnect(true);
-        return;
-      }
-
       let payload: Record<string, unknown>;
       try {
-        payload = this.jwt.verify(token);
+        payload = this.jwt.verify(auth.token);
       } catch {
         this.logger.warn('Browser connection rejected: invalid JWT');
-        client.disconnect(true);
-        return;
+        return reject('INVALID_TOKEN');
       }
 
       const roles = payload.roles as string[] | undefined;
@@ -105,6 +110,15 @@ export class BridleClientWsHandler
         (roles.includes('Owner') || roles.includes('Admin'));
       clientId = isAdmin ? 'admin' : (payload.sub as string);
       email = payload.email as string | undefined;
+    } else {
+      // No token AND public flow either disabled or origin not whitelisted.
+      // When the agent IS configured public, surface ORIGIN_NOT_ALLOWED so
+      // the embed UI can prompt the integrator to whitelist their domain.
+      const code = agent?.isPublic ? 'ORIGIN_NOT_ALLOWED' : 'MISSING_TOKEN';
+      this.logger.warn(
+        `Browser connection rejected: ${code} (agentId=${agentId}, origin=${origin ?? 'none'})`,
+      );
+      return reject(code);
     }
 
     client.data = { clientId, agentId, email, isAdmin };

@@ -20,6 +20,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '#theme/components/ui/dropdown-menu';
+import { Button } from '#theme/components/ui/button';
 import {
   IconTractor,
   IconTemplate,
@@ -172,16 +173,17 @@ const itemsByGroup = (group: MenuGroupTypes) =>
       </SidebarMenu>
       <div class="flex items-center justify-between gap-2 px-3 pb-1 pt-2 text-[11px] text-muted-foreground group-has-data-[collapsible=icon]/sidebar-wrapper:hidden">
         <span class="truncate">Ranch v{{ ranchVersion }}</span>
-        <button
+        <Button
           v-if="update.state.value.hasUpdate && update.state.value.latest && update.state.value.releaseUrl"
-          type="button"
-          class="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-primary hover:underline"
+          size="sm"
+          variant="secondary"
+          class="h-6 gap-1 px-2 text-[11px] font-medium"
           :title="`Update to v${update.state.value.latest}`"
           @click="upgradeDialogOpen = true"
         >
           Update v{{ update.state.value.latest }}
           <IconExternalLink class="size-3" />
-        </button>
+        </Button>
       </div>
     </SidebarFooter>
     <SidebarRail />

@@ -110,3 +110,18 @@ jobs:
             --notes-file /tmp/platform-notes.md \
             --target "${{ github.sha }}" \
             --latest
+
+      - name: Dispatch build-images for the new tag
+        if: steps.tag.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Tag pushes from GITHUB_TOKEN do not trigger other workflows
+          # (anti-recursion). workflow_dispatch is the exception, so we kick
+          # build-images explicitly at the freshly-pushed tag — it bakes the
+          # real version (e.g. 0.2.0) into RANCH_VERSION instead of the
+          # 0.0.0-<sha> fallback that the prior main-branch run used.
+          gh workflow run "Build, push & deploy" \
+            --repo "${{ github.repository }}" \
+            --ref "v${{ steps.ver.outputs.version }}" \
+            -f target=all

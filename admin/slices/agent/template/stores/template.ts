@@ -1,4 +1,4 @@
-import { TemplatesService } from '#api/data';
+import { AgentsService, TemplatesService } from '#api/data';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
 
@@ -98,5 +98,32 @@ export const useTemplateStore = defineStore('template', () => {
     return env.data;
   }
 
-  return { templates, fetchAll, fetchById, create, update, remove, setSkills, setMcps };
+  // Restart every agent using this template. The endpoint lives on the agent
+  // controller (to avoid TemplateModule ↔ AgentModule circular deps) — the
+  // store wraps it so UI components don't need to import AgentsService.
+  async function restartAgents(templateId: string) {
+    const res = await AgentsService.restartByTemplate({
+      path: { templateId },
+    });
+    if (res.error) {
+      const err = res.error as { message?: string };
+      throw new Error(err.message ?? 'Failed to restart agents');
+    }
+    const env = res.data as
+      | ApiEnvelope<{ restarted: number; failed: number; total: number }>
+      | undefined;
+    return env?.data ?? { restarted: 0, failed: 0, total: 0 };
+  }
+
+  return {
+    templates,
+    fetchAll,
+    fetchById,
+    create,
+    update,
+    remove,
+    setSkills,
+    setMcps,
+    restartAgents,
+  };
 });

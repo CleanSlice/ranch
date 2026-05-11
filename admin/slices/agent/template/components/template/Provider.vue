@@ -8,7 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from '#theme/components/ui/card';
-import { IconArrowLeft, IconDownload } from '@tabler/icons-vue';
+import { IconArrowLeft, IconDownload, IconRefresh } from '@tabler/icons-vue';
 import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 
 const props = defineProps<{ id: string }>();
@@ -93,6 +93,25 @@ async function onRemove() {
   await navigateTo('/templates');
 }
 
+const confirmRestartOpen = ref(false);
+const restarting = ref(false);
+const restartError = ref<string | null>(null);
+const restartResult = ref<{ restarted: number; failed: number; total: number } | null>(null);
+
+async function onRestartAgents() {
+  if (!template.value) return;
+  restarting.value = true;
+  restartError.value = null;
+  restartResult.value = null;
+  try {
+    restartResult.value = await templateStore.restartAgents(template.value.id);
+  } catch (err: unknown) {
+    restartError.value = err instanceof Error ? err.message : 'Failed to restart agents.';
+  } finally {
+    restarting.value = false;
+  }
+}
+
 async function onSkillsSaved() {
   await refresh();
 }
@@ -121,6 +140,14 @@ async function onMcpsSaved() {
             <IconDownload class="size-4" />
             {{ downloadingTemplate ? 'Downloading…' : 'Download' }}
           </Button>
+          <Button
+            variant="outline"
+            :disabled="restarting"
+            @click="confirmRestartOpen = true"
+          >
+            <IconRefresh class="size-4" :class="restarting && 'animate-spin'" />
+            {{ restarting ? 'Restarting…' : 'Restart agents' }}
+          </Button>
           <Button variant="outline" as-child>
             <NuxtLink :to="`/templates/${template.id}/edit`">Edit</NuxtLink>
           </Button>
@@ -135,12 +162,35 @@ async function onMcpsSaved() {
         {{ downloadError }}
       </div>
 
+      <div
+        v-if="restartError"
+        class="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+      >
+        {{ restartError }}
+      </div>
+
+      <div
+        v-if="restartResult"
+        class="rounded-md border border-primary/30 bg-primary/5 px-4 py-3 text-sm"
+      >
+        Restart triggered: {{ restartResult.restarted }} restarted,
+        {{ restartResult.failed }} failed out of {{ restartResult.total }} agent(s).
+      </div>
+
       <ConfirmDialog
         v-model:open="confirmRemoveOpen"
         title="Delete template"
         :description="`Permanently delete template “${template.name}”? Existing agents using it will keep running, but you can no longer create new ones from it.`"
         confirm-label="Delete template"
         @confirm="onRemove"
+      />
+
+      <ConfirmDialog
+        v-model:open="confirmRestartOpen"
+        title="Restart all agents on this template"
+        :description="`Restart every agent that uses “${template.name}”? Each agent's pod will be redeployed with the latest template files (skills, instructions). Runtime state (memory, sessions, workspace) is preserved.`"
+        confirm-label="Restart all"
+        @confirm="onRestartAgents"
       />
 
       <div class="grid gap-8 md:grid-cols-[16rem_1fr]">

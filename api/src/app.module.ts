@@ -25,6 +25,7 @@ import { UsageModule } from './slices/usage/usage.module';
 import { ReinsModule } from './slices/reins/reins.module';
 import { SkillModule } from './slices/skill/skill.module';
 import { RancherModule } from './slices/rancher/rancher.module';
+import { UpgradeModule } from './slices/upgrade/upgrade.module';
 import { McpServerModule } from './slices/mcpServer/mcpServer.module';
 import { McpModule } from './slices/mcp';
 import { PaddockModule } from './slices/paddock/paddock.module';
@@ -60,6 +61,7 @@ import { PaddockModule } from './slices/paddock/paddock.module';
     ReinsModule,
     SkillModule,
     RancherModule,
+    UpgradeModule,
     McpServerModule,
     PaddockModule,
     McpModule.forRoot({

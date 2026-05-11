@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IAgentGateway } from './agent.gateway';
+import { IFileGateway } from '#/agent/file/domain';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
 import { AuthService } from '#/user/auth/domain';
@@ -13,7 +14,43 @@ export class AgentDeployService {
     private readonly templateGateway: ITemplateGateway,
     private readonly workflowService: WorkflowService,
     private readonly authService: AuthService,
+    private readonly fileGateway: IFileGateway,
   ) {}
+
+  // Full restart sequence: pull latest template-owned files, cancel the
+  // previous workflow, redeploy. Each step is best-effort — failures are
+  // logged but don't abort the next step (the deploy must always run so a
+  // partial earlier failure doesn't leave the agent stuck).
+  async restartAgent(agentId: string): Promise<void> {
+    const agent = await this.agentGateway.findById(agentId);
+    if (!agent) return;
+
+    try {
+      const synced = await this.fileGateway.resyncFromTemplate(
+        agentId,
+        agent.templateId,
+      );
+      if (synced > 0) {
+        this.logger.log(
+          `Resynced ${synced} template file(s) into agent ${agentId}`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Template resync failed for agent ${agentId}: ${(err as Error).message}`,
+      );
+    }
+
+    try {
+      await this.workflowService.cancelAgentWorkflow(agent.workflowId);
+    } catch (err) {
+      this.logger.warn(
+        `Cancel workflow failed for agent ${agentId}: ${(err as Error).message}`,
+      );
+    }
+
+    await this.deploy(agentId);
+  }
 
   async deploy(agentId: string): Promise<void> {
     const agent = await this.agentGateway.findById(agentId);

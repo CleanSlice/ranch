@@ -10,6 +10,7 @@ export abstract class IAgentGateway {
   abstract findPublic(): Promise<IAgentData[]>;
   abstract findAdmin(): Promise<IAgentData | null>;
   abstract findById(id: string): Promise<IAgentData | null>;
+  abstract findByTemplateId(templateId: string): Promise<IAgentData[]>;
   abstract create(data: ICreateAgentData): Promise<IAgentData>;
   abstract update(id: string, data: IUpdateAgentData): Promise<IAgentData>;
   abstract updateStatus(

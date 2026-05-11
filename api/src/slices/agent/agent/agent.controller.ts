@@ -340,35 +340,51 @@ export class AgentController {
   async restart(@Param('id') id: string) {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
-
-    // Pull latest template-owned files (skills, instructions, docs) so edits
-    // made to the template propagate to this agent on next pod boot. Agent-
-    // owned dirs (data/memory/sessions/workspace) are preserved.
-    try {
-      const synced = await this.fileGateway.resyncFromTemplate(
-        id,
-        agent.templateId,
-      );
-      if (synced > 0) {
-        this.logger.log(
-          `Resynced ${synced} template file(s) into agent ${id}`,
-        );
-      }
-    } catch (err) {
-      this.logger.warn(
-        `Template resync failed for agent ${id}: ${(err as Error).message}`,
-      );
-    }
-
-    try {
-      await this.workflowService.cancelAgentWorkflow(agent.workflowId);
-    } catch (err) {
-      this.logger.warn(
-        `Cancel workflow failed for agent ${id}: ${(err as Error).message}`,
-      );
-    }
-    await this.deploy(id);
+    await this.agentDeployService.restartAgent(id);
     return this.agentGateway.findById(id);
+  }
+
+  @Post('restart-by-template/:templateId')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiOperation({
+    operationId: 'restartByTemplate',
+    summary:
+      'Restart every agent that uses this template. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner.',
+  })
+  async restartByTemplate(
+    @Param('templateId') templateId: string,
+  ): Promise<{ restarted: number; failed: number; total: number }> {
+    const agents = await this.agentGateway.findByTemplateId(templateId);
+    if (agents.length === 0) return { restarted: 0, failed: 0, total: 0 };
+
+    const CONCURRENCY = 5;
+    let index = 0;
+    let restarted = 0;
+    let failed = 0;
+
+    const worker = async (): Promise<void> => {
+      while (index < agents.length) {
+        const a = agents[index++];
+        try {
+          await this.agentDeployService.restartAgent(a.id);
+          restarted += 1;
+        } catch (err) {
+          failed += 1;
+          this.logger.warn(
+            `Restart-by-template ${templateId}: agent ${a.id} failed — ${(err as Error).message}`,
+          );
+        }
+      }
+    };
+
+    const workers = Math.min(CONCURRENCY, agents.length);
+    await Promise.all(Array.from({ length: workers }, () => worker()));
+
+    this.logger.log(
+      `Restart-by-template ${templateId}: ${restarted} restarted, ${failed} failed of ${agents.length} total`,
+    );
+
+    return { restarted, failed, total: agents.length };
   }
 
   @Delete(':id')

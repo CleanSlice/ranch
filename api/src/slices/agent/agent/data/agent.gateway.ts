@@ -46,6 +46,11 @@ export class AgentGateway extends IAgentGateway {
     return record ? this.mapper.toEntity(record) : null;
   }
 
+  async findByTemplateId(templateId: string): Promise<IAgentData[]> {
+    const records = await this.prisma.agent.findMany({ where: { templateId } });
+    return records.map((r) => this.mapper.toEntity(r));
+  }
+
   async create(data: ICreateAgentData): Promise<IAgentData> {
     const record = await this.prisma.agent.create({
       data: this.mapper.toCreate(data),

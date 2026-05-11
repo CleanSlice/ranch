@@ -132,6 +132,8 @@ import type {
   DeleteKnowledgeSourceResponse,
   RancherControllerStatusData,
   RancherControllerEnsureTemplateData,
+  UpgradeControllerStatusData,
+  UpgradeControllerRunData,
   PaddockEvaluationControllerListData,
   PaddockEvaluationControllerStartData,
   PaddockEvaluationControllerGetData,
@@ -2079,6 +2081,40 @@ export class RancherService {
       ThrowOnError
     >({
       url: "/rancher/template",
+      ...options,
+    });
+  }
+}
+
+export class UpgradeService {
+  /**
+   * Whether the local checkout can be upgraded in place (clean tree, on main, .git present, not in deployed mode).
+   */
+  public static upgradeControllerStatus<ThrowOnError extends boolean = false>(
+    options?: Options<UpgradeControllerStatusData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/upgrade/status",
+      ...options,
+    });
+  }
+
+  /**
+   * Pull latest Ranch from main, bun install, prisma migrate deploy. nest's --watch and Nuxt HMR pick up the new code automatically. Response may not return cleanly if the watcher restarts mid-call — the client should reload after a short delay.
+   */
+  public static upgradeControllerRun<ThrowOnError extends boolean = false>(
+    options?: Options<UpgradeControllerRunData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/upgrade",
       ...options,
     });
   }

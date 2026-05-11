@@ -2104,6 +2104,28 @@ export type RancherControllerEnsureTemplateResponses = {
   201: unknown;
 };
 
+export type UpgradeControllerStatusData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/upgrade/status";
+};
+
+export type UpgradeControllerStatusResponses = {
+  200: unknown;
+};
+
+export type UpgradeControllerRunData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/upgrade";
+};
+
+export type UpgradeControllerRunResponses = {
+  201: unknown;
+};
+
 export type PaddockEvaluationControllerListData = {
   body?: never;
   path?: never;

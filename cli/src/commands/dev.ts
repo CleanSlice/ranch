@@ -7,6 +7,7 @@ import { ensureK3dRunning } from "../utils/k3d";
 import { ensurePortForwards } from "../utils/port-forward";
 import { ensureDepsInstalled } from "../utils/deps";
 import { ensureDockerRunning } from "../utils/docker";
+import { maybeUpdatePlatform } from "../utils/platform-update";
 
 export const devCommand = defineCommand({
   meta: {
@@ -30,6 +31,8 @@ export const devCommand = defineCommand({
   },
   async run({ args }) {
     const root = await ensureRanchRoot();
+
+    await maybeUpdatePlatform(root);
 
     const target = args.target;
     if (target && !["api", "app", "admin"].includes(target)) {

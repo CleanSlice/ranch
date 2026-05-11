@@ -134,6 +134,16 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     const mcpServersB64 = Buffer.from(JSON.stringify(mcpServers)).toString(
       'base64',
     );
+    // Default auxiliary model per provider — used by runtime ≥ 0.4.0 for
+    // background work (compaction, memory-flush) so the cheap model handles
+    // it instead of contending with the main LLM's prompt cache.
+    // Empty string means "no aux configured" → runtime falls back to main.
+    const provider = credential?.provider?.toLowerCase();
+    const auxModelDefault =
+      provider === 'claude' || provider === 'anthropic'
+        ? 'claude-haiku-4-5'
+        : '';
+
     const llmParams = [
       { name: 'llm-provider', value: credential?.provider ?? '' },
       { name: 'llm-model', value: credential?.model ?? '' },
@@ -145,6 +155,12 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
         name: 'llm-api-key',
         value: credential?.apiKey ? normalizeCredential(credential.apiKey) : '',
       },
+      // Aux LLM — empty unless we have a sensible per-provider default.
+      // Runtime activates aux only when at least one of these is non-empty.
+      { name: 'llm-aux-provider', value: '' },
+      { name: 'llm-aux-model', value: auxModelDefault },
+      { name: 'llm-aux-fallback-model', value: '' },
+      { name: 'llm-aux-api-key', value: '' },
     ];
 
     const workflow = {

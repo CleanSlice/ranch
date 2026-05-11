@@ -86,6 +86,7 @@ import type {
   AgentControllerDemoteAdminData,
   AgentControllerPromoteAdminData,
   AgentControllerRestartData,
+  RestartByTemplateData,
   FileControllerListData,
   FileControllerReadData,
   FileControllerSaveData,
@@ -1441,6 +1442,22 @@ export class AgentsService {
       ThrowOnError
     >({
       url: "/agents/{id}/restart",
+      ...options,
+    });
+  }
+
+  /**
+   * Restart every agent that uses this template. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner.
+   */
+  public static restartByTemplate<ThrowOnError extends boolean = false>(
+    options: Options<RestartByTemplateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/restart-by-template/{templateId}",
       ...options,
     });
   }

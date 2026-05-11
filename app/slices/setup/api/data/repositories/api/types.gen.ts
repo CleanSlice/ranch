@@ -1603,6 +1603,19 @@ export type AgentControllerRestartResponses = {
   201: unknown;
 };
 
+export type RestartByTemplateData = {
+  body?: never;
+  path: {
+    templateId: string;
+  };
+  query?: never;
+  url: "/agents/restart-by-template/{templateId}";
+};
+
+export type RestartByTemplateResponses = {
+  201: unknown;
+};
+
 export type FileControllerListData = {
   body?: never;
   path: {

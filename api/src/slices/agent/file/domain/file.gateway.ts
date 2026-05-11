@@ -9,4 +9,8 @@ export abstract class IFileGateway {
     agentId: string,
     templateId: string,
   ): Promise<number>;
+  abstract resyncFromTemplate(
+    agentId: string,
+    templateId: string,
+  ): Promise<number>;
 }

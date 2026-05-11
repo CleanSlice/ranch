@@ -341,6 +341,25 @@ export class AgentController {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
 
+    // Pull latest template-owned files (skills, instructions, docs) so edits
+    // made to the template propagate to this agent on next pod boot. Agent-
+    // owned dirs (data/memory/sessions/workspace) are preserved.
+    try {
+      const synced = await this.fileGateway.resyncFromTemplate(
+        id,
+        agent.templateId,
+      );
+      if (synced > 0) {
+        this.logger.log(
+          `Resynced ${synced} template file(s) into agent ${id}`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Template resync failed for agent ${id}: ${(err as Error).message}`,
+      );
+    }
+
     try {
       await this.workflowService.cancelAgentWorkflow(agent.workflowId);
     } catch (err) {

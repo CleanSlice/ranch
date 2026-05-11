@@ -39,6 +39,7 @@ import { Bot, FlaskConical, KeyRound } from 'lucide-vue-next';
 const authStore = useAuthStore();
 const ranchVersion = useRuntimeConfig().public.ranchVersion;
 const update = useRanchUpdate();
+const upgradeDialogOpen = ref(false);
 onMounted(() => {
   void update.check();
 });
@@ -171,19 +172,26 @@ const itemsByGroup = (group: MenuGroupTypes) =>
       </SidebarMenu>
       <div class="flex items-center justify-between gap-2 px-3 pb-1 pt-2 text-[11px] text-muted-foreground group-has-data-[collapsible=icon]/sidebar-wrapper:hidden">
         <span class="truncate">Ranch v{{ ranchVersion }}</span>
-        <a
-          v-if="update.state.value.hasUpdate && update.state.value.releaseUrl"
-          :href="update.state.value.releaseUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-primary hover:underline"
-          :title="`Release notes for v${update.state.value.latest}`"
+        <button
+          v-if="update.state.value.hasUpdate && update.state.value.latest && update.state.value.releaseUrl"
+          type="button"
+          class="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-primary hover:underline"
+          :title="`Update to v${update.state.value.latest}`"
+          @click="upgradeDialogOpen = true"
         >
           Update v{{ update.state.value.latest }}
           <IconExternalLink class="size-3" />
-        </a>
+        </button>
       </div>
     </SidebarFooter>
     <SidebarRail />
   </Sidebar>
+
+  <UpdateDialog
+    v-if="update.state.value.latest && update.state.value.releaseUrl"
+    v-model:open="upgradeDialogOpen"
+    :current-version="update.state.value.current"
+    :latest-version="update.state.value.latest"
+    :release-url="update.state.value.releaseUrl"
+  />
 </template>

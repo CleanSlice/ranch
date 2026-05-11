@@ -176,7 +176,7 @@ const itemsByGroup = (group: MenuGroupTypes) =>
         <Button
           v-if="update.state.value.hasUpdate && update.state.value.latest && update.state.value.releaseUrl"
           size="sm"
-          variant="secondary"
+          variant="default"
           class="h-6 gap-1 px-2 text-[11px] font-medium"
           :title="`Update to v${update.state.value.latest}`"
           @click="upgradeDialogOpen = true"

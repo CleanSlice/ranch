@@ -22,8 +22,9 @@ const emit = defineEmits<{
   (e: 'update:open', value: boolean): void;
 }>();
 
-type Phase = 'idle' | 'upgrading' | 'reloading';
+type Phase = 'idle' | 'upgrading' | 'reloading' | 'blocked';
 const phase = ref<Phase>('idle');
+const blockedReason = ref<string | null>(null);
 const releaseNotes = ref<string | null>(null);
 const notesLoading = ref(false);
 
@@ -56,6 +57,7 @@ watch(
   (open) => {
     if (open) {
       phase.value = 'idle';
+      blockedReason.value = null;
       void loadReleaseNotes();
     }
   },
@@ -64,6 +66,7 @@ watch(
 
 async function runUpgrade() {
   phase.value = 'upgrading';
+  blockedReason.value = null;
 
   const config = useRuntimeConfig();
   const auth = useAuthStore();
@@ -73,13 +76,13 @@ async function runUpgrade() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5 * 60 * 1000);
 
-  // Whether we get a clean 200 or the response is interrupted by the
-  // nest --watch restart triggered by pulled source files, the right
-  // thing is to give the watcher a moment to settle and then reload.
-  // We swallow errors here because the API process is expected to die
-  // mid-call as the watcher rebuilds.
+  // The API may either (a) return cleanly, (b) return 403 if eligibility
+  // changed between the badge appearing and the click, or (c) die
+  // mid-call when nest --watch restarts on the freshly-pulled sources.
+  // We surface 403 as a blocking message; everything else falls through
+  // to the reload phase.
   try {
-    await fetch(`${apiUrl}/upgrade`, {
+    const res = await fetch(`${apiUrl}/upgrade`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -87,6 +90,12 @@ async function runUpgrade() {
       },
       signal: controller.signal,
     });
+    if (!res.ok && res.status === 403) {
+      const body = (await res.json().catch(() => ({}))) as { message?: string };
+      blockedReason.value = body.message ?? 'Upgrade not allowed.';
+      phase.value = 'blocked';
+      return;
+    }
   } catch {
     // Expected when nest --watch restarts mid-call. Fall through to reload.
   } finally {
@@ -152,6 +161,13 @@ async function runUpgrade() {
           </div>
         </div>
 
+        <div v-else-if="phase === 'blocked'" class="flex flex-col gap-3 py-2">
+          <div class="rounded-md border border-amber-300/50 bg-amber-50/50 p-3 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-200">
+            <div class="font-medium mb-1">Cannot upgrade right now</div>
+            <div>{{ blockedReason }}</div>
+          </div>
+        </div>
+
         <div v-if="phase === 'idle'" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="outline" @click="emit('update:open', false)">
             Cancel
@@ -164,6 +180,12 @@ async function runUpgrade() {
           </Button>
           <Button @click="runUpgrade">
             Update now
+          </Button>
+        </div>
+
+        <div v-else-if="phase === 'blocked'" class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="outline" @click="emit('update:open', false)">
+            Close
           </Button>
         </div>
       </DialogContent>

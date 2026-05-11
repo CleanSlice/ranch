@@ -28,6 +28,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -114,3 +116,65 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "$TAG"
           git push origin "$TAG"
+
+      - name: Create GitHub Release
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${{ steps.versions.outputs.package }}"
+          TAG="cli-v$VERSION"
+          DIST_TAG="${{ github.event.inputs.tag || 'latest' }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — skipping"
+            exit 0
+          fi
+
+          git fetch --tags --quiet
+          PREV_TAG=$(git tag --list 'cli-v*' --sort=-v:refname \
+            | grep -vx "$TAG" \
+            | head -n1 || true)
+
+          {
+            echo "## What's Changed"
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              CHANGES=$(git log "${PREV_TAG}..${TAG}" \
+                --pretty='format:- %s (%h)' --no-merges -- cli/ || true)
+              if [ -z "$CHANGES" ]; then
+                echo "_No CLI-scoped changes since $PREV_TAG._"
+              else
+                echo "$CHANGES"
+              fi
+              echo ""
+              echo "**Full diff:** https://github.com/$REPO/compare/$PREV_TAG...$TAG"
+            else
+              echo "Initial release."
+            fi
+            echo ""
+            echo "## Install / Upgrade"
+            echo ""
+            echo '```bash'
+            echo "bun add -g @cleanslice/ranch@$VERSION"
+            echo "# or"
+            echo "npm install -g @cleanslice/ranch@$VERSION"
+            echo "# or, if already installed:"
+            echo "ranch upgrade"
+            echo '```'
+          } > /tmp/release-notes.md
+
+          PRERELEASE_FLAG=""
+          if [ "$DIST_TAG" != "latest" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          # CLI releases never claim the "Latest" badge — that's reserved for
+          # platform releases (v*). Pass --latest=false explicitly.
+          gh release create "$TAG" \
+            --title "Ranch CLI v$VERSION" \
+            --notes-file /tmp/release-notes.md \
+            --target "${{ github.sha }}" \
+            --latest=false \
+            $PRERELEASE_FLAG

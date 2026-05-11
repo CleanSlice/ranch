@@ -24,6 +24,7 @@ const authStore = useAuthStore();
 const settingStore = useSettingStore();
 const llmStore = useLlmStore();
 const usageStore = useUsageStore();
+const templateStore = useTemplateStore();
 const config = useRuntimeConfig();
 
 const apiUrl =
@@ -56,6 +57,15 @@ const { data: usage, pending: usagePending, refresh: refreshUsage } = useAsyncDa
   `admin-agent-usage-${props.id}`,
   () => usageStore.fetchForAgent(props.id),
   { lazy: true },
+);
+const { data: template } = useAsyncData(
+  `admin-agent-template-${props.id}`,
+  async () => {
+    const tplId = agent.value?.templateId;
+    if (!tplId) return null;
+    return templateStore.fetchById(tplId);
+  },
+  { lazy: true, watch: [agent] },
 );
 
 const envPending = computed(() => settingsPending.value || llmsPending.value);
@@ -690,7 +700,14 @@ watch(activeTab, (tab) => {
                 </div>
                 <div>
                   <dt class="text-xs text-muted-foreground">Template</dt>
-                  <dd class="mt-1 text-sm text-muted-foreground">{{ agent.templateId }}</dd>
+                  <dd class="mt-1 text-sm">
+                    <NuxtLink
+                      :to="`/templates/${agent.templateId}`"
+                      class="text-primary hover:underline"
+                    >
+                      {{ template?.name || agent.templateId }}
+                    </NuxtLink>
+                  </dd>
                 </div>
                 <div>
                   <dt class="text-xs text-muted-foreground">Resources</dt>

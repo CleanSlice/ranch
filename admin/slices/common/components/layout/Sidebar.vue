@@ -32,11 +32,16 @@ import {
   IconShield,
   IconPlug,
   IconUserCircle,
+  IconExternalLink,
 } from '@tabler/icons-vue';
 import { Bot, FlaskConical, KeyRound } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const ranchVersion = useRuntimeConfig().public.ranchVersion;
+const update = useRanchUpdate();
+onMounted(() => {
+  void update.check();
+});
 
 async function onLogout() {
   authStore.logout();
@@ -164,8 +169,19 @@ const itemsByGroup = (group: MenuGroupTypes) =>
           </DropdownMenu>
         </SidebarMenuItem>
       </SidebarMenu>
-      <div class="px-3 pb-1 pt-2 text-[11px] text-muted-foreground group-has-data-[collapsible=icon]/sidebar-wrapper:hidden">
-        Ranch v{{ ranchVersion }}
+      <div class="flex items-center justify-between gap-2 px-3 pb-1 pt-2 text-[11px] text-muted-foreground group-has-data-[collapsible=icon]/sidebar-wrapper:hidden">
+        <span class="truncate">Ranch v{{ ranchVersion }}</span>
+        <a
+          v-if="update.state.value.hasUpdate && update.state.value.releaseUrl"
+          :href="update.state.value.releaseUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-primary hover:underline"
+          :title="`Release notes for v${update.state.value.latest}`"
+        >
+          Update v{{ update.state.value.latest }}
+          <IconExternalLink class="size-3" />
+        </a>
       </div>
     </SidebarFooter>
     <SidebarRail />

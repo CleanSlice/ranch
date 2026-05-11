@@ -75,7 +75,7 @@
               class="absolute -top-24 -right-24 w-64 h-64 rounded-full bg-primary/10 blur-3xl pointer-events-none"
             />
             <BridleChatProvider
-              :bot-id="featured.id"
+              :agent-id="featured.id"
               :title="featured.name"
               :subtitle="featured.templateId"
             />

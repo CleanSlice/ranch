@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { IBridleHealthData, IBridleBotHealthData } from '../domain';
+import type { IBridleHealthData, IBridleAgentHealthData } from '../domain';
 
 export class BridleHealthDto implements IBridleHealthData {
   @ApiProperty({ example: true })
@@ -14,20 +14,20 @@ export class BridleHealthDto implements IBridleHealthData {
   browserClients: number;
 }
 
-export class BridleBotHealthDto implements IBridleBotHealthData {
+export class BridleAgentHealthDto implements IBridleAgentHealthData {
   @ApiProperty({ example: true })
   ok: boolean;
 
   @ApiProperty({
-    description: 'Whether this bot agent is connected via WebSocket',
+    description: 'Whether this agent is connected via WebSocket',
   })
   agentConnected: boolean;
 
   @ApiProperty({
-    description: 'Number of browser clients connected to this bot',
+    description: 'Number of browser clients connected to this agent',
   })
   browserClients: number;
 
   @ApiProperty({ description: 'Bot identifier' })
-  botId: string;
+  agentId: string;
 }

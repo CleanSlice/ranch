@@ -32,7 +32,7 @@ export type BridlePart = IBridleTextPart | IBridleImagePart | IBridleFilePart;
 export interface IBridleIncomingMessage {
   type: 'message';
   clientId: string;
-  botId: string;
+  agentId: string;
   text: string;
   messageId: string;
   parts: BridlePart[];
@@ -100,17 +100,17 @@ export interface IBridleHealthData {
   browserClients: number;
 }
 
-/** Per-bot health check response */
-export interface IBridleBotHealthData {
+/** Per-agent health check response */
+export interface IBridleAgentHealthData {
   ok: boolean;
   agentConnected: boolean;
   browserClients: number;
-  botId: string;
+  agentId: string;
 }
 
 /** Registered client metadata */
 export interface IBridleClientData {
-  botId: string;
+  agentId: string;
   send: (data: unknown) => void;
   isAdmin: boolean;
 }

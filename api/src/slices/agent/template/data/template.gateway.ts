@@ -90,6 +90,18 @@ export class TemplateGateway extends ITemplateGateway {
         ...(data.defaultKnowledgeIds !== undefined && {
           defaultKnowledgeIds: data.defaultKnowledgeIds,
         }),
+        ...(data.paddockConfig !== undefined && {
+          paddockConfig: data.paddockConfig as unknown as Prisma.InputJsonValue,
+        }),
+        ...(data.sourceUrl !== undefined && { sourceUrl: data.sourceUrl }),
+        ...(data.sourceType !== undefined && { sourceType: data.sourceType }),
+        ...(data.manifestJson !== undefined && {
+          manifestJson:
+            data.manifestJson === null
+              ? Prisma.JsonNull
+              : (data.manifestJson as unknown as Prisma.InputJsonValue),
+        }),
+        ...(data.version !== undefined && { version: data.version }),
       },
       include: {
         skills: { select: { id: true } },

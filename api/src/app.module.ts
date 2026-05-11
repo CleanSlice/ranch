@@ -10,12 +10,14 @@ import { InitModule } from './slices/setup/init/init.module';
 import { AgentModule } from './slices/agent/agent/agent.module';
 import { TemplateModule } from './slices/agent/template/template.module';
 import { TemplateFileModule } from './slices/agent/templateFile/templateFile.module';
+import { TemplateInstallModule } from './slices/agent/templateInstall/templateInstall.module';
 import { FileModule } from './slices/agent/file/file.module';
 import { SecretModule } from './slices/agent/secret/secret.module';
 import { WorkflowModule } from './slices/workflow/workflow.module';
 import { LogModule } from './slices/log/log.module';
 import { UserModule } from './slices/user/user/user.module';
 import { AuthModule } from './slices/user/auth/auth.module';
+import { ApiKeyModule } from './slices/user/apiKey/apiKey.module';
 import { SettingModule } from './slices/setting/setting.module';
 import { BridleModule } from './slices/bridle/bridle.module';
 import { LlmModule } from './slices/llm/llm.module';
@@ -44,12 +46,14 @@ import { PaddockModule } from './slices/paddock/paddock.module';
     WorkflowModule,
     TemplateModule,
     TemplateFileModule,
+    TemplateInstallModule,
     AgentModule,
     FileModule,
     SecretModule,
     LogModule,
     UserModule,
     AuthModule,
+    ApiKeyModule,
     SettingModule,
     BridleModule,
     LlmModule,

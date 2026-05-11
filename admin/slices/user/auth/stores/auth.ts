@@ -3,6 +3,8 @@ import { handleApiAuthentication } from '#api/utils/handleApiAuthentication';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
 
+const ADMIN_ROLES = ['Owner', 'Admin'] as const;
+
 export interface IAuthUser {
   id: string;
   name: string;
@@ -27,6 +29,9 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<IAuthUser | null>(null);
 
   const isAuthenticated = computed(() => !!accessToken.value);
+  const hasAdminAccess = computed(() =>
+    !!user.value?.roles?.some((role) => (ADMIN_ROLES as readonly string[]).includes(role)),
+  );
 
   function applyToken(token: string | null) {
     accessToken.value = token;
@@ -49,9 +54,32 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null;
   }
 
-  function hydrate() {
-    if (accessToken.value) handleApiAuthentication(accessToken.value);
+  async function fetchMe() {
+    const res = await AuthService.authControllerMe();
+    const env = res.data as ApiEnvelope<IAuthUser> | undefined;
+    user.value = env?.data ?? null;
+    return user.value;
   }
 
-  return { accessToken, user, isAuthenticated, login, logout, hydrate };
+  async function hydrate() {
+    if (!accessToken.value) return;
+    handleApiAuthentication(accessToken.value);
+    if (user.value) return;
+    try {
+      await fetchMe();
+    } catch {
+      logout();
+    }
+  }
+
+  return {
+    accessToken,
+    user,
+    isAuthenticated,
+    hasAdminAccess,
+    login,
+    logout,
+    hydrate,
+    fetchMe,
+  };
 });

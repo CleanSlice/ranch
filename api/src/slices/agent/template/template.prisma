@@ -12,6 +12,10 @@ model Template {
   defaultResources    Json              @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
   paddockConfig       Json              @default("{}")
   defaultKnowledgeIds String[]          @default([])
+  sourceUrl           String?
+  sourceType          String?
+  manifestJson        Json?
+  version             String?
   agents              Agent[]
   skills              Skill[]
   mcpServers          McpServer[]

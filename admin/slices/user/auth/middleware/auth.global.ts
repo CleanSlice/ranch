@@ -3,11 +3,22 @@ export default defineNuxtRouteMiddleware((to) => {
 
   const authStore = useAuthStore();
   const isLoginPage = to.path === '/login';
+  const isAccessDeniedPage = to.path === '/access-denied';
 
-  if (!authStore.isAuthenticated && !isLoginPage) {
+  if (!authStore.isAuthenticated) {
+    if (isLoginPage) return;
     return navigateTo('/login');
   }
-  if (authStore.isAuthenticated && isLoginPage) {
+
+  if (isLoginPage) {
+    return navigateTo(authStore.hasAdminAccess ? '/agents' : '/access-denied');
+  }
+
+  if (!authStore.hasAdminAccess && !isAccessDeniedPage) {
+    return navigateTo('/access-denied');
+  }
+
+  if (authStore.hasAdminAccess && isAccessDeniedPage) {
     return navigateTo('/agents');
   }
 });

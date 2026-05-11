@@ -20,6 +20,11 @@ import { IFileContent, IFileNode } from '../domain/file.types';
 const MAX_BYTES = 256 * 1024;
 const ALLOWED_WRITE_EXT = new Set(['.md', '.json']);
 
+// Prefixes the runtime writes to at runtime (state that must survive restarts).
+// resyncFromTemplate refuses to overwrite anything under these — only template-
+// owned files (skills, instructions, etc.) get pushed on every restart.
+const AGENT_OWNED_PREFIXES = ['data/', 'memory/', 'sessions/', 'workspace/'];
+
 @Injectable()
 export class S3FileGateway extends IFileGateway {
   constructor(private settings: ISettingGateway) {
@@ -173,6 +178,47 @@ export class S3FileGateway extends IFileGateway {
         if (!obj.Key) continue;
         const rel = obj.Key.slice(srcPrefix.length);
         if (!rel) continue;
+        await client.send(
+          new CopyObjectCommand({
+            Bucket: bucket,
+            Key: destPrefix + rel,
+            CopySource: encodeURI(`${bucket}/${obj.Key}`),
+          }),
+        );
+        copied++;
+      }
+      continuationToken = list.IsTruncated
+        ? list.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+
+    return copied;
+  }
+
+  // Force-copies template-owned files into the agent's prefix, preserving
+  // anything under AGENT_OWNED_PREFIXES (runtime state). Called from restart
+  // so template edits (new skills, updated instructions) propagate without
+  // wiping out the agent's memory / sessions / workspace.
+  async resyncFromTemplate(agentId: string, templateId: string): Promise<number> {
+    const { client, bucket } = await this.connect();
+    const destPrefix = this.prefix(agentId);
+    const srcPrefix = `templates/${templateId}/`;
+
+    let copied = 0;
+    let continuationToken: string | undefined;
+    do {
+      const list = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: srcPrefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      for (const obj of list.Contents ?? []) {
+        if (!obj.Key) continue;
+        const rel = obj.Key.slice(srcPrefix.length);
+        if (!rel) continue;
+        if (AGENT_OWNED_PREFIXES.some((p) => rel.startsWith(p))) continue;
         await client.send(
           new CopyObjectCommand({
             Bucket: bucket,

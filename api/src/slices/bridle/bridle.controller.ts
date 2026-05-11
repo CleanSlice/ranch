@@ -23,7 +23,7 @@ import { IBridleGateway, buildParts } from './domain';
 import {
   SendMessageDto,
   BridleHealthDto,
-  BridleBotHealthDto,
+  BridleAgentHealthDto,
   TranscriptResponseDto,
   TranscriptMessageDto,
 } from './dtos';
@@ -42,37 +42,35 @@ export class BridleController {
   ) {}
 
   @ApiOperation({
-    description:
-      'Send a message to a bot agent (HTTP fallback — fire & forget)',
+    description: 'Send a message to a agent (HTTP fallback — fire & forget)',
     operationId: 'sendBridleMessage',
   })
   @ApiBody({ type: SendMessageDto })
   @FlatResponse()
-  @Post(':botId/message')
+  @Post(':agentId/message')
   @HttpCode(200)
   async sendMessage(
-    @Param('botId') botId: string,
+    @Param('agentId') agentId: string,
     @Req() req: Record<string, unknown>,
     @Body() body: SendMessageDto,
   ) {
     const user = req.user as Record<string, unknown> | undefined;
     const clientId = (user?.id as string) ?? 'http-' + crypto.randomUUID();
     const parts = body.parts ?? buildParts(body.text, body.images);
-    this.hub.sendToAgent(clientId, botId, body.text, parts);
+    this.hub.sendToAgent(clientId, agentId, body.text, parts);
     return { ok: true };
   }
 
   @ApiOperation({
-    description:
-      'Send a message and wait for the bot agent response (synchronous)',
+    description: 'Send a message and wait for the agent response (synchronous)',
     operationId: 'sendBridleMessageSync',
   })
   @ApiBody({ type: SendMessageDto })
   @FlatResponse()
-  @Post(':botId/message/sync')
+  @Post(':agentId/message/sync')
   @HttpCode(200)
   async sendMessageSync(
-    @Param('botId') botId: string,
+    @Param('agentId') agentId: string,
     @Req() req: Record<string, unknown>,
     @Body() body: SendMessageDto,
   ) {
@@ -91,7 +89,7 @@ export class BridleController {
 
       this.hub.registerClient(
         clientId,
-        botId,
+        agentId,
         (data: unknown) => {
           const event = data as Record<string, unknown>;
           if (event.type === 'message' || event.type === 'stream_end') {
@@ -110,7 +108,7 @@ export class BridleController {
       );
 
       const parts = body.parts ?? buildParts(body.text, body.images);
-      this.hub.sendToAgent(clientId, botId, body.text, parts);
+      this.hub.sendToAgent(clientId, agentId, body.text, parts);
     });
   }
 
@@ -126,14 +124,14 @@ export class BridleController {
   }
 
   @ApiOperation({
-    description: 'Check bot agent connection status',
-    operationId: 'bridleBotHealth',
+    description: 'Check agent connection status',
+    operationId: 'bridleAgentHealth',
   })
   @FlatResponse()
-  @ApiOkResponse({ type: BridleBotHealthDto })
-  @Get(':botId/health')
-  async botHealth(@Param('botId') botId: string) {
-    return this.hub.botHealth(botId);
+  @ApiOkResponse({ type: BridleAgentHealthDto })
+  @Get(':agentId/health')
+  async agentHealth(@Param('agentId') agentId: string) {
+    return this.hub.agentHealth(agentId);
   }
 
   @ApiOperation({
@@ -148,7 +146,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      "Replay the persisted chat transcript for a bot (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Used to restore the chat UI on page refresh — live updates still arrive via /ws/chat.",
+      "Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Used to restore the chat UI on page refresh — live updates still arrive via /ws/client.",
     operationId: 'getBridleTranscript',
   })
   @ApiQuery({
@@ -158,9 +156,9 @@ export class BridleController {
   })
   @FlatResponse()
   @ApiOkResponse({ type: TranscriptResponseDto })
-  @Get(':botId/transcript')
+  @Get(':agentId/transcript')
   async transcript(
-    @Param('botId') botId: string,
+    @Param('agentId') agentId: string,
     @Query('channel') channelRaw?: string,
   ): Promise<TranscriptResponseDto> {
     const channel = (channelRaw ?? 'admin').trim() || 'admin';
@@ -168,13 +166,13 @@ export class BridleController {
 
     let content: string;
     try {
-      const file = await this.fileGateway.read(botId, path);
+      const file = await this.fileGateway.read(agentId, path);
       content = file.content;
     } catch (err) {
       const status = (err as { status?: number; statusCode?: number }).status;
       if (status === 404) return { messages: [], channel };
       this.logger.warn(
-        `Transcript read failed for ${botId}/${channel}: ${(err as Error).message}`,
+        `Transcript read failed for ${agentId}/${channel}: ${(err as Error).message}`,
       );
       return { messages: [], channel };
     }
@@ -206,7 +204,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      "Delete the persisted chat transcript for a bot/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart.",
+      "Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart.",
     operationId: 'resetBridleTranscript',
   })
   @ApiQuery({
@@ -215,19 +213,19 @@ export class BridleController {
     description: 'Session channel — defaults to "admin".',
   })
   @FlatResponse()
-  @Delete(':botId/transcript')
+  @Delete(':agentId/transcript')
   @HttpCode(204)
   async resetTranscript(
-    @Param('botId') botId: string,
+    @Param('agentId') agentId: string,
     @Query('channel') channelRaw?: string,
   ): Promise<void> {
     const channel = (channelRaw ?? 'admin').trim() || 'admin';
     const path = `data/sessions/bridle:${channel}.jsonl`;
     try {
-      await this.fileGateway.delete(botId, path);
+      await this.fileGateway.delete(agentId, path);
     } catch (err) {
       this.logger.warn(
-        `Transcript reset failed for ${botId}/${channel}: ${(err as Error).message}`,
+        `Transcript reset failed for ${agentId}/${channel}: ${(err as Error).message}`,
       );
     }
   }

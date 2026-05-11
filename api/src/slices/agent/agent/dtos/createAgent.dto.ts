@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsObject,
   IsBoolean,
+  IsArray,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -50,6 +51,17 @@ export class CreateAgentDto {
   @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.',
+    example: ['https://bridle.cleanslice.org', 'http://localhost:5173'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowedOrigins?: string[];
 
   @ApiPropertyOptional({
     description:

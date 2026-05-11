@@ -1,11 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   IWorkflowGateway,
   ISubmitWorkflowData,
 } from '../domain/IWorkflowGateway';
 import { IWorkflowStatus } from '../domain/workflow.types';
-import { ISettingGateway } from '#/setting/domain';
+import { IInfraConfigGateway, ISettingGateway } from '#/setting/domain';
 import { ILlmGateway } from '#/llm/domain';
 import { normalizeCredential } from '#/llm/domain/llm.utils';
 import { ITemplateGateway } from '#/agent/template/domain';
@@ -25,27 +24,25 @@ const DEFAULTS = {
   aws_secret_access_key: '',
   secret_provider: 'file',
   aws_secret_prefix: 'cleanslice/users',
-  // Ranch API URL as seen from agent pods (in-cluster). Defaults to the
-  // API service inside k8s. Override via integrations.ranch_api_url.
-  ranch_api_url: 'http://api:3001',
+  // Ranch API URL as seen from agent pods. The default targets the host
+  // network from inside k3d (matching bridle_url). On a real cluster
+  // override via integrations.ranch_api_url, e.g.
+  // `http://ranch-api.platform.svc.cluster.local`.
+  ranch_api_url: 'http://host.k3d.internal:3333',
 };
 
 @Injectable()
 export class ArgoWorkflowGateway extends IWorkflowGateway {
   private readonly logger = new Logger(ArgoWorkflowGateway.name);
-  private readonly argoUrl: string;
 
   constructor(
-    private config: ConfigService,
+    private infraConfig: IInfraConfigGateway,
     private settingGateway: ISettingGateway,
     private llmGateway: ILlmGateway,
     private templateGateway: ITemplateGateway,
     private mcpServerGateway: IMcpServerGateway,
   ) {
     super();
-    this.argoUrl =
-      this.config.get<string>('ARGO_WORKFLOWS_URL') ||
-      'http://argo-workflows-server.argo:2746';
   }
 
   private async getIntegration(name: keyof typeof DEFAULTS): Promise<string> {
@@ -126,6 +123,17 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     const credential = data.llmCredentialId
       ? await this.llmGateway.findById(data.llmCredentialId)
       : null;
+
+    // JSON parameters are base64-encoded before injection. Argo substitutes
+    // {{workflow.parameters.X}} as raw text into a YAML manifest; an inner `"`
+    // would terminate the surrounding double-quoted string and produce
+    // "manifest must be a valid yaml". Base64 has no YAML-significant chars.
+    const agentConfigB64 = Buffer.from(JSON.stringify(data.config)).toString(
+      'base64',
+    );
+    const mcpServersB64 = Buffer.from(JSON.stringify(mcpServers)).toString(
+      'base64',
+    );
     const llmParams = [
       { name: 'llm-provider', value: credential?.provider ?? '' },
       { name: 'llm-model', value: credential?.model ?? '' },
@@ -160,7 +168,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'agent-name', value: data.agentName },
             { name: 'template-id', value: data.templateId },
             { name: 'agent-image', value: data.image },
-            { name: 'agent-config', value: JSON.stringify(data.config) },
+            { name: 'agent-config-b64', value: agentConfigB64 },
             { name: 'cpu-limit', value: data.resources.cpu },
             { name: 'memory-limit', value: data.resources.memory },
             { name: 'bridle-url', value: bridleUrl },
@@ -176,14 +184,15 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'ranch-admin', value: data.isAdmin ? 'true' : 'false' },
             { name: 'ranch-api-url', value: ranchApiUrl },
             { name: 'ranch-api-token', value: data.ranchApiToken },
-            { name: 'mcp-servers', value: JSON.stringify(mcpServers) },
+            { name: 'mcp-servers-b64', value: mcpServersB64 },
             ...llmParams,
           ],
         },
       },
     };
 
-    const response = await fetch(`${this.argoUrl}/api/v1/workflows/agents`, {
+    const argoUrl = await this.infraConfig.getArgoUrl();
+    const response = await fetch(`${argoUrl}/api/v1/workflows/agents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workflow }),
@@ -200,15 +209,16 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
   }
 
   async cancel(workflowId: string): Promise<void> {
-    await fetch(
-      `${this.argoUrl}/api/v1/workflows/agents/${workflowId}/terminate`,
-      { method: 'PUT' },
-    );
+    const argoUrl = await this.infraConfig.getArgoUrl();
+    await fetch(`${argoUrl}/api/v1/workflows/agents/${workflowId}/terminate`, {
+      method: 'PUT',
+    });
   }
 
   async getStatus(workflowId: string): Promise<IWorkflowStatus> {
+    const argoUrl = await this.infraConfig.getArgoUrl();
     const response = await fetch(
-      `${this.argoUrl}/api/v1/workflows/agents/${workflowId}`,
+      `${argoUrl}/api/v1/workflows/agents/${workflowId}`,
     );
     const data = await response.json();
 
@@ -221,8 +231,9 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
   }
 
   async getLogs(workflowId: string): Promise<string> {
+    const argoUrl = await this.infraConfig.getArgoUrl();
     const response = await fetch(
-      `${this.argoUrl}/api/v1/workflows/agents/${workflowId}/log`,
+      `${argoUrl}/api/v1/workflows/agents/${workflowId}/log`,
     );
     return response.text();
   }

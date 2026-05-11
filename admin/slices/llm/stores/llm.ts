@@ -16,6 +16,14 @@ export interface ILlmCredentialData {
   updatedAt: string;
 }
 
+export interface ILlmHealthCheckResult {
+  ok: boolean;
+  latencyMs: number;
+  provider: string;
+  model: string;
+  error?: string;
+}
+
 export interface ILlmCredentialInput {
   provider: string;
   model: string;
@@ -83,5 +91,24 @@ export const useLlmStore = defineStore('llm', () => {
     items.value = items.value.filter((x) => x.id !== id);
   }
 
-  return { items, loading, error, fetchAll, fetchById, create, update, remove };
+  async function checkHealth(id: string): Promise<ILlmHealthCheckResult> {
+    const res = await LlmsService.healthCheckLlmCredential({ path: { id } });
+    const result = unwrap<ILlmHealthCheckResult>(res.data);
+    if (!result) {
+      throw new Error('Empty response from health-check endpoint');
+    }
+    return result;
+  }
+
+  return {
+    items,
+    loading,
+    error,
+    fetchAll,
+    fetchById,
+    create,
+    update,
+    remove,
+    checkHealth,
+  };
 });

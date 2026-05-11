@@ -57,7 +57,7 @@ export class PaddockEvaluationController {
   @Get(':id/logs')
   @ApiOperation({
     summary:
-      'Live tail of paddock CLI stdout+stderr. In-memory ring buffer (~2000 lines), keyed by the evaluation\'s agent. Cleared on API restart or when a fresh run starts for the same agent.',
+      "Live tail of paddock CLI stdout+stderr. In-memory ring buffer (~2000 lines), keyed by the evaluation's agent. Cleared on API restart or when a fresh run starts for the same agent.",
   })
   logs(@Param('id') id: string) {
     return this.service.getLogs(id);
@@ -68,10 +68,7 @@ export class PaddockEvaluationController {
     summary:
       "Fetch one scenario as captured in this evaluation's snapshot (messages, expectedBehavior, successCriteria). Reliable across template re-seeds that change scenario UUIDs in the live `paddock_scenarios` table.",
   })
-  scenario(
-    @Param('id') id: string,
-    @Param('scenarioId') scenarioId: string,
-  ) {
+  scenario(@Param('id') id: string, @Param('scenarioId') scenarioId: string) {
     return this.service.getScenario(id, scenarioId);
   }
 

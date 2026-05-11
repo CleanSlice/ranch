@@ -340,6 +340,7 @@ async function onDeploy() {
           <Skeleton class="h-32 w-full rounded-lg" />
           <Skeleton class="h-32 w-full rounded-lg" />
           <Skeleton class="h-32 w-full rounded-lg" />
+          <Skeleton class="h-32 w-full rounded-lg" />
         </div>
 
         <div v-else-if="!allDone" class="flex flex-col gap-4">
@@ -499,10 +500,9 @@ async function onDeploy() {
           <BridleProvider
             v-if="authStore.accessToken"
             :api-url="apiUrl"
-            :bot-id="admin.id"
+            :agent-id="admin.id"
             :token="authStore.accessToken"
             :title="`Chat with ${admin.name}`"
-            :agent-connected="adminConnected"
             class="h-full min-h-0 w-full max-w-none flex-1"
           />
         </template>

@@ -63,7 +63,7 @@ export interface IBridleDebugData {
 
 /**
  * localStorage persistence for debug snapshots — survives a page refresh so
- * the inspect icon doesn't disappear after every reload. Scoped per botId so
+ * the inspect icon doesn't disappear after every reload. Scoped per agentId so
  * switching agents doesn't bleed.
  */
 const DEBUG_STORAGE_PREFIX = 'bridle:debug:'
@@ -94,10 +94,10 @@ interface IPersistedDebug {
   lastDebug: IBridleDebugData | null
 }
 
-function loadDebugFromStorage(botId: string): IPersistedDebug | null {
+function loadDebugFromStorage(agentId: string): IPersistedDebug | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = window.localStorage.getItem(DEBUG_STORAGE_PREFIX + botId)
+    const raw = window.localStorage.getItem(DEBUG_STORAGE_PREFIX + agentId)
     if (!raw) return null
     return JSON.parse(raw) as IPersistedDebug
   } catch (err) {
@@ -106,11 +106,11 @@ function loadDebugFromStorage(botId: string): IPersistedDebug | null {
   }
 }
 
-function saveDebugToStorage(botId: string, payload: IPersistedDebug): void {
+function saveDebugToStorage(agentId: string, payload: IPersistedDebug): void {
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(
-      DEBUG_STORAGE_PREFIX + botId,
+      DEBUG_STORAGE_PREFIX + agentId,
       JSON.stringify(payload),
     )
   } catch (err) {
@@ -119,10 +119,10 @@ function saveDebugToStorage(botId: string, payload: IPersistedDebug): void {
   }
 }
 
-function clearDebugFromStorage(botId: string): void {
+function clearDebugFromStorage(agentId: string): void {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.removeItem(DEBUG_STORAGE_PREFIX + botId)
+    window.localStorage.removeItem(DEBUG_STORAGE_PREFIX + agentId)
   } catch {
     // ignore
   }
@@ -139,10 +139,28 @@ function buildParts(text: string, images?: Array<{ base64: string; mediaType: st
   return parts
 }
 
+// Tool-only LLM iterations cause the runtime's bridle channel to emit
+// stream/stream_end events with empty text. Without this guard each one
+// renders as an empty chat bubble.
+function hasVisibleContent(text: string, parts: BridlePart[]): boolean {
+  if (text && text.trim().length > 0) return true
+  return parts.some(p => {
+    if (p.type === BridlePartTypes.Image || p.type === BridlePartTypes.File) return true
+    return p.type === BridlePartTypes.Text && p.text.trim().length > 0
+  })
+}
+
 export const useBridleStore = defineStore('bridle', {
   state: () => ({
     messages: [] as IBridleMessageData[],
     isConnected: false,
+    /**
+     * Whether the agent runtime is currently registered with the bridle hub.
+     * Pushed by the hub via the `agent_status` event on connect and on every
+     * runtime register/unregister. Independent of `isConnected` (the client's
+     * own WS) — the chat header needs both signals to color the indicator.
+     */
+    isAgentConnected: false,
     isTyping: false,
     isOpen: false,
     clientId: null as string | null,
@@ -165,8 +183,8 @@ export const useBridleStore = defineStore('bridle', {
      */
     markdownEnabled: loadMarkdownPref(),
     _socket: null as Socket | null,
-    /** Active botId — captured on connect, used to scope persisted debug. */
-    _botId: null as string | null,
+    /** Active agentId — captured on connect, used to scope persisted debug. */
+    _agentId: null as string | null,
   }),
 
   getters: {
@@ -184,16 +202,16 @@ export const useBridleStore = defineStore('bridle', {
   },
 
   actions: {
-    connect(apiUrl: string, botId: string, token: string) {
+    connect(apiUrl: string, agentId: string, token: string) {
       if (this._socket) return
 
-      this._botId = botId
+      this._agentId = agentId
 
-      const socket = io(`${apiUrl}/ws/chat`, {
+      const socket = io(`${apiUrl}/ws/client`, {
         transports: ['websocket'],
         reconnection: true,
         reconnectionDelay: 2000,
-        auth: { token, botId },
+        auth: { token, agentId },
       })
 
       socket.on('connect', () => {
@@ -202,10 +220,15 @@ export const useBridleStore = defineStore('bridle', {
 
       socket.on('disconnect', () => {
         this.isConnected = false
+        // We can't observe agent register/unregister while our own socket is
+        // down; reset to false so the indicator doesn't lie about a stale
+        // value while we're trying to reconnect.
+        this.isAgentConnected = false
       })
 
       socket.on('connect_error', (err) => {
         this.isConnected = false
+        this.isAgentConnected = false
         console.error('[bridle] connection error:', err.message)
       })
 
@@ -213,10 +236,15 @@ export const useBridleStore = defineStore('bridle', {
         this.clientId = data.clientId
       })
 
+      socket.on('agent_status', (data: { connected?: boolean }) => {
+        this.isAgentConnected = !!data?.connected
+      })
+
       socket.on('message', (data: { text?: string; parts?: BridlePart[]; messageId?: string; ts?: number }) => {
         this.isTyping = false
         const text = data.text ?? ''
         const parts = data.parts ?? (text ? [{ type: BridlePartTypes.Text as const, text }] : [])
+        if (!hasVisibleContent(text, parts)) return
         this.messages.push({
           id: data.messageId ?? crypto.randomUUID(),
           role: 'assistant',
@@ -238,6 +266,9 @@ export const useBridleStore = defineStore('bridle', {
         if (idx >= 0) {
           this.messages[idx] = { ...this.messages[idx], text, parts, streaming: true }
         } else {
+          // Don't create a fresh bubble for an empty initial chunk — wait
+          // until the runtime actually has visible content.
+          if (!hasVisibleContent(text, parts)) return
           this.messages.push({
             id: data.messageId ?? crypto.randomUUID(),
             role: 'assistant',
@@ -258,8 +289,8 @@ export const useBridleStore = defineStore('bridle', {
         // message via the getter.
         this._lastDebug = data
         // Persist for survival across page reloads. Scoped per bot.
-        if (this._botId) {
-          saveDebugToStorage(this._botId, {
+        if (this._agentId) {
+          saveDebugToStorage(this._agentId, {
             byMessageId: { ...this.debugByMessageId },
             lastDebug: this._lastDebug,
           })
@@ -274,6 +305,7 @@ export const useBridleStore = defineStore('bridle', {
         if (idx >= 0) {
           this.messages[idx] = { ...this.messages[idx], text, parts, streaming: false }
         } else {
+          if (!hasVisibleContent(text, parts)) return
           this.messages.push({
             id: data.messageId ?? crypto.randomUUID(),
             role: 'assistant',
@@ -291,6 +323,7 @@ export const useBridleStore = defineStore('bridle', {
       this._socket?.disconnect()
       this._socket = null
       this.isConnected = false
+      this.isAgentConnected = false
     },
 
     sendMessage(text: string, images?: Array<{ base64: string; mediaType: string }>) {
@@ -317,8 +350,8 @@ export const useBridleStore = defineStore('bridle', {
       this._lastDebug = null
     },
 
-    async loadAgentMeta(apiUrl: string, botId: string, token: string): Promise<void> {
-      const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(botId)}`
+    async loadAgentMeta(apiUrl: string, agentId: string, token: string): Promise<void> {
+      const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}`
       try {
         const res = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` },
@@ -333,8 +366,8 @@ export const useBridleStore = defineStore('bridle', {
       }
     },
 
-    async setDebugEnabled(apiUrl: string, botId: string, token: string, enabled: boolean): Promise<boolean> {
-      const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(botId)}/debug`
+    async setDebugEnabled(apiUrl: string, agentId: string, token: string, enabled: boolean): Promise<boolean> {
+      const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}/debug`
       try {
         const res = await fetch(url, {
           method: 'PATCH',
@@ -362,8 +395,8 @@ export const useBridleStore = defineStore('bridle', {
       }
     },
 
-    async resetTranscript(apiUrl: string, botId: string, token: string, channel = 'admin') {
-      const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(botId)}/transcript?channel=${encodeURIComponent(channel)}`
+    async resetTranscript(apiUrl: string, agentId: string, token: string, channel = 'admin') {
+      const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/transcript?channel=${encodeURIComponent(channel)}`
       try {
         const res = await fetch(url, {
           method: 'DELETE',
@@ -376,7 +409,7 @@ export const useBridleStore = defineStore('bridle', {
         this.messages = []
         this.debugByMessageId = {}
         this._lastDebug = null
-        clearDebugFromStorage(botId)
+        clearDebugFromStorage(agentId)
         return true
       } catch (err) {
         console.warn('[bridle] failed to reset transcript', err)
@@ -388,16 +421,16 @@ export const useBridleStore = defineStore('bridle', {
      * Hydrate debug snapshots for the given bot from localStorage. Called from
      * the Provider on mount so the inspect icon survives a page refresh.
      */
-    loadPersistedDebug(botId: string): void {
-      const stored = loadDebugFromStorage(botId)
+    loadPersistedDebug(agentId: string): void {
+      const stored = loadDebugFromStorage(agentId)
       if (!stored) return
       this.debugByMessageId = stored.byMessageId ?? {}
       this._lastDebug = stored.lastDebug ?? null
     },
 
-    async loadTranscript(apiUrl: string, botId: string, token: string, channel = 'admin') {
+    async loadTranscript(apiUrl: string, agentId: string, token: string, channel = 'admin') {
       try {
-        const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(botId)}/transcript?channel=${encodeURIComponent(channel)}`
+        const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/transcript?channel=${encodeURIComponent(channel)}`
         const res = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` },
         })

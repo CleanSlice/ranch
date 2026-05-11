@@ -24,6 +24,7 @@ export interface IAgentData {
   config: Record<string, unknown>;
   resources: IAgentResources;
   isPublic: boolean;
+  allowedOrigins: string[];
   isAdmin: boolean;
   createdAt: string;
   updatedAt: string;
@@ -36,6 +37,7 @@ export interface ICreateAgentData {
   config?: Record<string, unknown>;
   resources?: IAgentResources;
   isPublic?: boolean;
+  allowedOrigins?: string[];
   isAdmin?: boolean;
 }
 
@@ -46,10 +48,57 @@ export interface IUpdateAgentData {
   config?: Record<string, unknown>;
   resources?: IAgentResources;
   isPublic?: boolean;
+  allowedOrigins?: string[];
+}
+
+const PENDING_RESTART_KEY = 'agent:pendingRestart';
+
+function loadPendingRestartFromStorage(): Record<string, true> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(PENDING_RESTART_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      return parsed as Record<string, true>;
+    }
+  } catch {
+    // ignore corrupted storage
+  }
+  return {};
+}
+
+function savePendingRestartToStorage(state: Record<string, true>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PENDING_RESTART_KEY, JSON.stringify(state));
+  } catch {
+    // quota exceeded — give up silently
+  }
 }
 
 export const useAgentStore = defineStore('agent', () => {
   const agents = ref<IAgentData[]>([]);
+  const pendingRestart = ref<Record<string, true>>(
+    loadPendingRestartFromStorage(),
+  );
+
+  function isPendingRestart(agentId: string): boolean {
+    return pendingRestart.value[agentId] === true;
+  }
+
+  function markPendingRestart(agentId: string): void {
+    pendingRestart.value = { ...pendingRestart.value, [agentId]: true };
+    savePendingRestartToStorage(pendingRestart.value);
+  }
+
+  function clearPendingRestart(agentId: string): void {
+    if (!pendingRestart.value[agentId]) return;
+    const next = { ...pendingRestart.value };
+    delete next[agentId];
+    pendingRestart.value = next;
+    savePendingRestartToStorage(pendingRestart.value);
+  }
 
   async function fetchAll() {
     const res = await AgentsService.agentControllerFindAll();
@@ -154,5 +203,20 @@ export const useAgentStore = defineStore('agent', () => {
     return env?.data?.logs ?? '';
   }
 
-  return { agents, fetchAll, fetchById, fetchAdmin, create, update, restart, remove, promoteAdmin, demoteAdmin, fetchLogs };
+  return {
+    agents,
+    fetchAll,
+    fetchById,
+    fetchAdmin,
+    create,
+    update,
+    restart,
+    remove,
+    promoteAdmin,
+    demoteAdmin,
+    fetchLogs,
+    isPendingRestart,
+    markPendingRestart,
+    clearPendingRestart,
+  };
 });

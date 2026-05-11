@@ -43,7 +43,9 @@ const DIFFICULTY_ORDER: Record<string, number> = {
   adversarial: 3,
 };
 
-function sortScenarios(scenarios: IPaddockScenarioData[]): IPaddockScenarioData[] {
+function sortScenarios(
+  scenarios: IPaddockScenarioData[],
+): IPaddockScenarioData[] {
   return [...scenarios].sort((a, b) => {
     const catA = CATEGORY_ORDER[a.category] ?? 99;
     const catB = CATEGORY_ORDER[b.category] ?? 99;

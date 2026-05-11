@@ -5,6 +5,7 @@ import { Button } from '#theme/components/ui/button';
 import { Checkbox } from '#theme/components/ui/checkbox';
 import { Input } from '#theme/components/ui/input';
 import { Label } from '#theme/components/ui/label';
+import { Textarea } from '#theme/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -45,6 +46,7 @@ const form = reactive<
     llmCredentialId: string;
     resources: { cpu: string; memory: string };
     isPublic: boolean;
+    allowedOriginsText: string;
   }
 >({
   name: props.initialValues?.name ?? '',
@@ -55,6 +57,7 @@ const form = reactive<
     memory: props.initialValues?.resources?.memory ?? firstTemplate?.defaultResources.memory ?? '512Mi',
   },
   isPublic: props.initialValues?.isPublic ?? false,
+  allowedOriginsText: (props.initialValues?.allowedOrigins ?? []).join('\n'),
 });
 
 watch(
@@ -75,6 +78,13 @@ function validate() {
   return !errors.name && !errors.templateId;
 }
 
+function parseOrigins(text: string): string[] {
+  return text
+    .split(/[\n,]/)
+    .map((s) => s.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+}
+
 function onSubmit() {
   if (!validate()) return;
   emit('submit', {
@@ -89,6 +99,7 @@ function onSubmit() {
       memory: form.resources.memory.trim() || '512Mi',
     },
     isPublic: form.isPublic,
+    allowedOrigins: form.isPublic ? parseOrigins(form.allowedOriginsText) : [],
   });
 }
 </script>
@@ -175,7 +186,7 @@ function onSubmit() {
           Public agents appear on the marketing landing page to unauthenticated visitors.
         </CardDescription>
       </CardHeader>
-      <CardContent class="grid max-w-xl gap-2">
+      <CardContent class="grid max-w-xl gap-4">
         <label for="isPublic" class="flex items-start gap-3 text-sm">
           <Checkbox
             id="isPublic"
@@ -189,6 +200,20 @@ function onSubmit() {
             </span>
           </span>
         </label>
+
+        <div v-if="form.isPublic" class="grid gap-2">
+          <Label for="allowedOrigins">Allowed origins</Label>
+          <Textarea
+            id="allowedOrigins"
+            v-model="form.allowedOriginsText"
+            rows="4"
+            placeholder="https://bridle.cleanslice.org&#10;http://localhost:5173"
+          />
+          <p class="text-xs text-muted-foreground">
+            One origin per line (scheme + host + optional port, no path). Browser sites at these origins
+            can open chat WebSockets without a JWT. Leave empty to require a token even when public.
+          </p>
+        </div>
       </CardContent>
     </Card>
 

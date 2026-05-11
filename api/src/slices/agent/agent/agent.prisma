@@ -17,6 +17,7 @@ model Agent {
   resources       Json           @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
   debugEnabled    Boolean        @default(false)
   isPublic        Boolean        @default(false)
+  allowedOrigins  String[]       @default([])
   isAdmin         Boolean        @default(false)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt

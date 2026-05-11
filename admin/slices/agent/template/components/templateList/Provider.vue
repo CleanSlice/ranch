@@ -16,7 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '#theme/components/ui/dropdown-menu';
-import { IconDotsVertical, IconTrash } from '@tabler/icons-vue';
+import { IconDotsVertical, IconRefresh, IconTrash, IconPackageImport } from '@tabler/icons-vue';
 
 const templateStore = useTemplateStore();
 const rancherStore = useRancherStore();
@@ -71,6 +71,29 @@ async function onRemove() {
     removeError.value = err instanceof Error ? err.message : 'Failed to delete template.';
   }
 }
+
+const pendingRestart = ref<ITemplateData | null>(null);
+const confirmRestartOpen = computed({
+  get: () => pendingRestart.value !== null,
+  set: (v: boolean) => {
+    if (!v) pendingRestart.value = null;
+  },
+});
+const restartError = ref<string | null>(null);
+const restartResult = ref<{ restarted: number; failed: number; total: number } | null>(null);
+
+async function onRestartAgents() {
+  const template = pendingRestart.value;
+  if (!template) return;
+  pendingRestart.value = null;
+  restartError.value = null;
+  restartResult.value = null;
+  try {
+    restartResult.value = await templateStore.restartAgents(template.id);
+  } catch (err: unknown) {
+    restartError.value = err instanceof Error ? err.message : 'Failed to restart agents.';
+  }
+}
 </script>
 
 <template>
@@ -80,9 +103,17 @@ async function onRemove() {
         <h1 class="text-2xl font-semibold">Templates</h1>
         <p class="text-sm text-muted-foreground">Agent blueprints used when spawning runtime instances.</p>
       </div>
-      <Button as-child>
-        <NuxtLink to="/templates/create">New template</NuxtLink>
-      </Button>
+      <div class="flex gap-2">
+        <Button variant="outline" as-child>
+          <NuxtLink to="/templates/install" class="inline-flex items-center gap-1.5">
+            <IconPackageImport class="size-4" />
+            Install
+          </NuxtLink>
+        </Button>
+        <Button as-child>
+          <NuxtLink to="/templates/create">New template</NuxtLink>
+        </Button>
+      </div>
     </div>
 
     <div
@@ -90,6 +121,21 @@ async function onRemove() {
       class="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
     >
       {{ removeError }}
+    </div>
+
+    <div
+      v-if="restartError"
+      class="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+    >
+      {{ restartError }}
+    </div>
+
+    <div
+      v-if="restartResult"
+      class="rounded-md border border-primary/30 bg-primary/5 px-4 py-3 text-sm"
+    >
+      Restart triggered: {{ restartResult.restarted }} restarted, {{ restartResult.failed }} failed
+      out of {{ restartResult.total }} agent(s).
     </div>
 
     <div
@@ -155,6 +201,10 @@ async function onRemove() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem @select="pendingRestart = template">
+                      <IconRefresh class="size-4" />
+                      Restart all agents
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       class="text-destructive focus:text-destructive"
                       @select="pendingRemoval = template"
@@ -181,6 +231,14 @@ async function onRemove() {
       :description="pendingRemoval ? `Permanently delete template “${pendingRemoval.name}”? Existing agents using it will keep running, but you can no longer create new ones from it.` : ''"
       confirm-label="Delete template"
       @confirm="onRemove"
+    />
+
+    <ConfirmDialog
+      v-model:open="confirmRestartOpen"
+      title="Restart all agents on this template"
+      :description="pendingRestart ? `Restart every agent that uses “${pendingRestart.name}”? Each agent's pod will be redeployed with the latest template files (skills, instructions). Runtime state (memory, sessions, workspace) is preserved.` : ''"
+      confirm-label="Restart all"
+      @confirm="onRestartAgents"
     />
   </div>
 </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const props = withDefaults(
   defineProps<{
-    botId: string | null;
+    agentId: string | null;
     title?: string;
     subtitle?: string;
     /** Hide the inner header — useful when the parent already shows agent identity. */
@@ -14,24 +14,24 @@ const { t } = useI18n();
 const bridleStore = useBridleStore();
 
 // Replay persisted conversation so the chat isn't blank after a refresh.
-// Watcher (not just onMounted) covers the case where the parent swaps botId
+// Watcher (not just onMounted) covers the case where the parent swaps agentId
 // without remounting this component.
 watch(
-  () => props.botId,
-  (botId) => {
-    if (botId) bridleStore.hydrate(botId);
+  () => props.agentId,
+  (agentId) => {
+    if (agentId) bridleStore.hydrate(agentId);
   },
   { immediate: true },
 );
 
 const messages = computed(() =>
-  props.botId ? bridleStore.messagesFor(props.botId) : [],
+  props.agentId ? bridleStore.messagesFor(props.agentId) : [],
 );
 const sending = computed(() =>
-  props.botId ? bridleStore.isPending(props.botId) : false,
+  props.agentId ? bridleStore.isPending(props.agentId) : false,
 );
 const error = computed(() =>
-  props.botId ? bridleStore.errorFor(props.botId) : null,
+  props.agentId ? bridleStore.errorFor(props.agentId) : null,
 );
 
 const scrollEl = ref<HTMLElement | null>(null);
@@ -45,8 +45,8 @@ function scrollToBottom() {
 }
 
 async function onSend(text: string) {
-  if (!props.botId) return;
-  await bridleStore.sendMessage(props.botId, text);
+  if (!props.agentId) return;
+  await bridleStore.sendMessage(props.agentId, text);
 }
 
 watch(
@@ -64,21 +64,21 @@ onMounted(async () => {
 });
 
 const agentInitial = computed(() => {
-  const source = props.title?.trim() || props.botId || 'Agent';
+  const source = props.title?.trim() || props.agentId || 'Agent';
   return source.split(/\s+/).filter(Boolean)[0]?.[0]?.toUpperCase() ?? 'A';
 });
 </script>
 
 <template>
   <div class="flex h-full flex-col">
-    <BridleChatEmpty v-if="!botId" />
+    <BridleChatEmpty v-if="!agentId" />
 
     <template v-else>
       <header
         v-if="showHeader"
         class="shrink-0 border-b px-4 py-3"
       >
-        <h2 class="font-semibold">{{ title ?? botId }}</h2>
+        <h2 class="font-semibold">{{ title ?? agentId }}</h2>
         <p v-if="subtitle" class="text-xs text-muted-foreground">
           {{ subtitle }}
         </p>

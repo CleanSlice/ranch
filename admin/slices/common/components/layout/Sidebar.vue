@@ -14,6 +14,13 @@ import {
   SidebarRail,
 } from '#theme/components/ui/sidebar';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '#theme/components/ui/dropdown-menu';
+import {
   IconTractor,
   IconTemplate,
   IconUsers,
@@ -24,8 +31,9 @@ import {
   IconDatabase,
   IconShield,
   IconPlug,
+  IconUserCircle,
 } from '@tabler/icons-vue';
-import { Bot, FlaskConical } from 'lucide-vue-next';
+import { Bot, FlaskConical, KeyRound } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const ranchVersion = useRuntimeConfig().public.ranchVersion;
@@ -49,6 +57,7 @@ const iconMap: Record<string, unknown> = {
   Shield: IconShield,
   Plug: IconPlug,
   FlaskConical,
+  KeyRound,
 };
 
 const groups = [
@@ -113,21 +122,46 @@ const itemsByGroup = (group: MenuGroupTypes) =>
     <SidebarFooter>
       <SidebarMenu>
         <SidebarMenuItem v-if="authStore.user">
-          <SidebarMenuButton size="lg" class="pointer-events-none">
-            <div class="flex aspect-square size-8 items-center justify-center rounded-lg bg-muted text-muted-foreground text-xs font-semibold">
-              {{ (authStore.user.name ?? '?').charAt(0).toUpperCase() }}
-            </div>
-            <div class="flex flex-col">
-              <span class="truncate text-sm font-medium">{{ authStore.user.name }}</span>
-              <span class="truncate text-xs text-muted-foreground">{{ authStore.user.email }}</span>
-            </div>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton tooltip="Sign out" @click="onLogout">
-            <IconLogout />
-            <span>Sign out</span>
-          </SidebarMenuButton>
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <SidebarMenuButton size="lg" class="cursor-pointer" :tooltip="authStore.user.name ?? authStore.user.email">
+                <div class="flex aspect-square size-8 items-center justify-center rounded-lg bg-muted text-muted-foreground text-xs font-semibold">
+                  {{ (authStore.user.name ?? '?').charAt(0).toUpperCase() }}
+                </div>
+                <div class="flex flex-col">
+                  <span class="truncate text-sm font-medium">{{ authStore.user.name }}</span>
+                  <span class="truncate text-xs text-muted-foreground">{{ authStore.user.email }}</span>
+                </div>
+              </SidebarMenuButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="right"
+              align="end"
+              class="min-w-56 rounded-lg"
+            >
+              <DropdownMenuLabel class="p-0 font-normal">
+                <div class="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                  <div class="flex aspect-square size-8 items-center justify-center rounded-lg bg-muted text-muted-foreground text-xs font-semibold">
+                    {{ (authStore.user.name ?? '?').charAt(0).toUpperCase() }}
+                  </div>
+                  <div class="grid flex-1 text-left text-sm leading-tight">
+                    <span class="truncate font-medium">{{ authStore.user.name }}</span>
+                    <span class="truncate text-xs text-muted-foreground">{{ authStore.user.email }}</span>
+                  </div>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuItem as-child class="cursor-pointer">
+                <NuxtLink :to="`/users/${authStore.user.id}`">
+                  <IconUserCircle />
+                  Account
+                </NuxtLink>
+              </DropdownMenuItem>
+              <DropdownMenuItem class="cursor-pointer" @select="onLogout">
+                <IconLogout />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SidebarMenuItem>
       </SidebarMenu>
       <div class="px-3 pb-1 pt-2 text-[11px] text-muted-foreground group-has-data-[collapsible=icon]/sidebar-wrapper:hidden">

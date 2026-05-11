@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { AgentController } from './agent.controller';
 import { IAgentGateway } from './domain/agent.gateway';
 import { AgentStatusService } from './domain/agentStatus.service';
+import { AgentDeployService } from './domain/agentDeploy.service';
 import { AgentGateway } from './data/agent.gateway';
 import { AgentMapper } from './data/agent.mapper';
 import { WorkflowModule } from '#/workflow/workflow.module';
@@ -26,6 +27,7 @@ import { McpServerModule } from '#/mcpServer/mcpServer.module';
   providers: [
     AgentMapper,
     AgentStatusService,
+    AgentDeployService,
     {
       provide: IAgentGateway,
       useClass: AgentGateway,

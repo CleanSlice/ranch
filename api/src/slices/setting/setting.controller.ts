@@ -8,13 +8,16 @@ import {
   Put,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ISettingGateway } from './domain';
+import { IInfraConfigGateway, ISettingGateway } from './domain';
 import { UpsertSettingDto } from './dtos';
 
 @ApiTags('settings')
 @Controller('settings')
 export class SettingController {
-  constructor(private gateway: ISettingGateway) {}
+  constructor(
+    private gateway: ISettingGateway,
+    private infraConfig: IInfraConfigGateway,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List all settings' })
@@ -38,17 +41,20 @@ export class SettingController {
 
   @Put(':group/:name')
   @ApiOperation({ summary: 'Create or replace a setting' })
-  upsert(
+  async upsert(
     @Param('group') group: string,
     @Param('name') name: string,
     @Body() dto: UpsertSettingDto,
   ) {
-    return this.gateway.upsert(group, name, dto);
+    const result = await this.gateway.upsert(group, name, dto);
+    if (group === 'infrastructure') this.infraConfig.invalidate();
+    return result;
   }
 
   @Delete(':group/:name')
   @ApiOperation({ summary: 'Delete a setting' })
-  remove(@Param('group') group: string, @Param('name') name: string) {
-    return this.gateway.delete(group, name);
+  async remove(@Param('group') group: string, @Param('name') name: string) {
+    await this.gateway.delete(group, name);
+    if (group === 'infrastructure') this.infraConfig.invalidate();
   }
 }

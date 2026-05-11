@@ -8,27 +8,25 @@ import DebugPanel from './DebugPanel.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
 import { ScrollArea } from '#theme/components/ui/scroll-area'
 import { Button } from '#theme/components/ui/button'
-import { Bot, Circle, MessageSquarePlus } from 'lucide-vue-next'
+import { Bot, Circle, MessageSquarePlus, RotateCw } from 'lucide-vue-next'
 import { cn } from '#theme/utils/cn'
 
 const props = withDefaults(defineProps<{
   apiUrl: string
-  botId: string
+  agentId: string
   token: string
   title?: string
   placeholder?: string
   class?: HTMLAttributes['class']
   showStatus?: boolean
-  agentConnected?: boolean
 }>(), {
   title: 'Agent Chat',
   placeholder: 'Type a message...',
   showStatus: true,
-  agentConnected: true,
 })
 
 const store = useBridleStore()
-const { messages, isConnected, isTyping, debugEnabled, markdownEnabled } = storeToRefs(store)
+const { messages, isConnected, isAgentConnected, isTyping, debugEnabled, markdownEnabled } = storeToRefs(store)
 
 function onMarkdownChange(v: boolean | 'indeterminate') {
   store.setMarkdownEnabled(v === true)
@@ -38,7 +36,7 @@ const togglingDebug = ref(false)
 async function onToggleDebug() {
   togglingDebug.value = true
   try {
-    await store.setDebugEnabled(props.apiUrl, props.botId, props.token, !debugEnabled.value)
+    await store.setDebugEnabled(props.apiUrl, props.agentId, props.token, !debugEnabled.value)
   } finally {
     togglingDebug.value = false
   }
@@ -57,16 +55,78 @@ const isDebugOpen = computed({
 
 const connectionStatus = computed(() => {
   const chat = isConnected.value
-  const agent = props.agentConnected
+  const agent = isAgentConnected.value
   if (chat && agent) return { label: 'Connected', color: 'text-green-500' }
-  if (chat || agent) {
-    return {
-      label: chat ? 'Agent offline' : 'Chat offline',
-      color: 'text-orange-500',
-    }
+  if (chat) {
+    // Chat WS is up but the runtime hasn't registered with the hub. Most often
+    // a transient state during agent pod restart — surface that we're waiting.
+    return { label: 'Agent reconnecting…', color: 'text-orange-500' }
+  }
+  if (agent) {
+    // Rare in practice (we lose `agent_status` events the moment our own
+    // socket drops), but keep the case so a partial-network state is visible.
+    return { label: 'Chat reconnecting…', color: 'text-orange-500' }
   }
   return { label: 'Disconnected', color: 'text-red-500' }
 })
+
+// Track how long the agent has been disconnected so we can offer a manual
+// restart after the runtime has clearly failed to reconnect on its own.
+// 30s comfortably covers normal pod-restart turnaround (~10–15s); anything
+// longer almost always means the runtime is stuck and needs a kick.
+const RESTART_PROMPT_AFTER_MS = 30_000
+const agentDownSinceMs = ref<number | null>(null)
+const nowMs = ref(Date.now())
+let nowTimer: ReturnType<typeof setInterval> | null = null
+
+watch(
+  () => isAgentConnected.value,
+  (agentUp) => {
+    if (agentUp) {
+      agentDownSinceMs.value = null
+    } else if (agentDownSinceMs.value === null) {
+      agentDownSinceMs.value = Date.now()
+    }
+  },
+  { immediate: true },
+)
+
+const showRestartPrompt = computed(() => {
+  if (isAgentConnected.value) return false
+  // Only nudge a restart when the chat WS itself is up — if both are offline
+  // it's likely the user's network, not the agent.
+  if (!isConnected.value) return false
+  const since = agentDownSinceMs.value
+  if (since === null) return false
+  return nowMs.value - since >= RESTART_PROMPT_AFTER_MS
+})
+
+const restarting = ref(false)
+const restartError = ref<string | null>(null)
+
+async function onRestartAgent() {
+  if (restarting.value) return
+  restarting.value = true
+  restartError.value = null
+  try {
+    const url = `${props.apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(props.agentId)}/restart`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${props.token}` },
+    })
+    if (!res.ok) {
+      restartError.value = `Restart failed (${res.status})`
+      return
+    }
+    // Reset the down-since timer so we don't immediately re-prompt while the
+    // new pod is coming up. agent_status will flip to true on register.
+    agentDownSinceMs.value = Date.now()
+  } catch (err) {
+    restartError.value = (err as Error).message ?? 'Restart failed'
+  } finally {
+    restarting.value = false
+  }
+}
 
 const scrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
 
@@ -96,18 +156,27 @@ onMounted(async () => {
   // through (the store is a shared singleton across providers).
   store.clearMessages()
   await Promise.all([
-    store.loadTranscript(props.apiUrl, props.botId, props.token),
-    store.loadAgentMeta(props.apiUrl, props.botId, props.token),
+    store.loadTranscript(props.apiUrl, props.agentId, props.token),
+    store.loadAgentMeta(props.apiUrl, props.agentId, props.token),
   ])
   // Re-attach debug snapshots saved in localStorage from previous sessions —
   // makes the inspect icon survive a page refresh.
-  store.loadPersistedDebug(props.botId)
-  store.connect(props.apiUrl, props.botId, props.token)
+  store.loadPersistedDebug(props.agentId)
+  store.connect(props.apiUrl, props.agentId, props.token)
+  // 1s tick is fine — we only need it to re-evaluate `showRestartPrompt`
+  // around the 30s threshold. Cheaper than a per-frame raf loop.
+  nowTimer = setInterval(() => {
+    nowMs.value = Date.now()
+  }, 1000)
   await nextTick()
   scrollToBottom('auto')
 })
 
 onUnmounted(() => {
+  if (nowTimer) {
+    clearInterval(nowTimer)
+    nowTimer = null
+  }
   store.disconnect()
 })
 
@@ -122,8 +191,8 @@ async function onConfirmReset() {
   resetting.value = true
   try {
     store.disconnect()
-    await store.resetTranscript(props.apiUrl, props.botId, props.token)
-    store.connect(props.apiUrl, props.botId, props.token)
+    await store.resetTranscript(props.apiUrl, props.agentId, props.token)
+    store.connect(props.apiUrl, props.agentId, props.token)
   } finally {
     resetting.value = false
   }
@@ -138,6 +207,18 @@ async function onConfirmReset() {
         <h3 class="font-semibold text-sm">{{ title }}</h3>
       </div>
       <div class="flex items-center gap-3">
+        <Button
+          v-if="showRestartPrompt"
+          variant="outline"
+          size="sm"
+          class="h-7 px-2 text-xs"
+          :disabled="restarting"
+          :title="restartError ?? 'Agent has not reconnected — kick the pod'"
+          @click="onRestartAgent"
+        >
+          <RotateCw :class="cn('h-3.5 w-3.5', restarting && 'animate-spin')" />
+          {{ restarting ? 'Restarting…' : 'Restart agent' }}
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -307,6 +388,55 @@ async function onConfirmReset() {
   padding: 0;
   border-radius: 0;
   font-size: inherit;
+}
+
+.chat-md .code-block {
+  position: relative;
+}
+.chat-md .code-copy {
+  position: absolute;
+  top: 0.85em;
+  right: 0.5em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  border-radius: 0.3rem;
+  background-color: var(--color-background);
+  border: 1px solid var(--color-border);
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.chat-md .code-block:hover .code-copy,
+.chat-md .code-copy:focus-visible,
+.chat-md .code-copy.copied {
+  opacity: 1;
+  pointer-events: auto;
+}
+.chat-md .code-copy:hover {
+  background-color: var(--color-accent);
+  color: var(--color-accent-foreground);
+}
+.chat-md .code-copy.copied {
+  color: var(--color-foreground);
+  border-color: color-mix(in srgb, currentColor 30%, transparent);
+}
+.chat-md .code-copy svg {
+  display: block;
+}
+.chat-md .code-copy .icon-check {
+  display: none;
+}
+.chat-md .code-copy.copied .icon-copy {
+  display: none;
+}
+.chat-md .code-copy.copied .icon-check {
+  display: block;
 }
 
 .chat-md blockquote {

@@ -16,6 +16,7 @@ import {
 } from 'rxjs';
 import { IAgentGateway } from './agent.gateway';
 import { IAgentData } from './agent.types';
+import { AgentDeployService } from './agentDeploy.service';
 import { IPodGateway } from '#/agent/pod/domain';
 import { IAgentPodStatus, PodEventTypes } from '#/agent/pod/domain/pod.types';
 
@@ -41,14 +42,20 @@ const FAIL_WAITING_REASONS = new Set([
 
 const LIVE_DB_STATUSES = new Set<string>(['pending', 'deploying', 'running']);
 
+const DRIFT_INTERVAL_MS = 30_000;
+const AUTO_RESTART_CONCURRENCY = 5;
+
 @Injectable()
 export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentStatusService.name);
   private reconcileSub: Subscription | null = null;
+  private driftTimer: NodeJS.Timeout | null = null;
+  private driftRunning = false;
 
   constructor(
     private readonly agentGateway: IAgentGateway,
     private readonly podGateway: IPodGateway,
+    private readonly agentDeployService: AgentDeployService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -68,22 +75,41 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    // Pod gateway has already finished its initial list (it's a dependency
-    // of this module). Walk the joined view once at boot to catch agents
-    // whose pod vanished while the API was down — those won't ever produce
-    // a watch event so the per-event reconciler can't see them.
     try {
-      await this.detectStartupDrift();
+      const driftFailed = await this.detectDrift('startup');
+      if (driftFailed.length > 0) {
+        // Don't await — restart is fire-and-forget so onModuleInit doesn't
+        // block API boot on N parallel workflow submits. Failures are logged
+        // inside the worker.
+        void this.autoRestartDriftFailed(driftFailed);
+      }
     } catch (err) {
       this.logger.warn(
         `Startup drift detection failed: ${(err as Error).message}`,
       );
     }
+
+    // Safety net for K8s watch missing transitions (no-resourceVersion
+    // reconnects, silent stream stalls, transient apiserver hiccups). Calls
+    // gateway.resync() which refreshes the cache from K8s and re-emits diff
+    // events — those flow through the reconciler. Then we sweep for agents
+    // whose pods vanished entirely (events alone don't catch DB-only drift).
+    this.driftTimer = setInterval(() => {
+      void this.detectDrift('periodic').catch((err) => {
+        this.logger.warn(
+          `Periodic drift detection failed: ${(err as Error).message}`,
+        );
+      });
+    }, DRIFT_INTERVAL_MS);
   }
 
   onModuleDestroy(): void {
     this.reconcileSub?.unsubscribe();
     this.reconcileSub = null;
+    if (this.driftTimer) {
+      clearInterval(this.driftTimer);
+      this.driftTimer = null;
+    }
   }
 
   async snapshot(): Promise<IAgentStatus[]> {
@@ -131,42 +157,94 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     return merge(initial$, updates$);
   }
 
-  private async detectStartupDrift(): Promise<void> {
-    const [agents, pods] = await Promise.all([
-      this.agentGateway.findAll(),
-      this.podGateway.list(),
-    ]);
-    const podByAgent = new Map(pods.map((p) => [p.agentId, p]));
+  private async detectDrift(reason: 'startup' | 'periodic'): Promise<string[]> {
+    if (this.driftRunning) return [];
+    this.driftRunning = true;
+    try {
+      // Refresh the gateway cache from K8s. This emits diff events for any
+      // pods whose state changed since last observation — those flow through
+      // the reconciler subscription and update DB rows.
+      if (reason === 'periodic') await this.podGateway.resync();
 
-    let driftCount = 0;
-    let podReconcileCount = 0;
+      const [agents, pods] = await Promise.all([
+        this.agentGateway.findAll(),
+        this.podGateway.list(),
+      ]);
+      const podByAgent = new Map(pods.map((p) => [p.agentId, p]));
 
-    for (const agent of agents) {
-      const pod = podByAgent.get(agent.id);
-      if (!pod) {
-        if (LIVE_DB_STATUSES.has(agent.status) && agent.status !== 'failed') {
-          this.logger.warn(
-            `Drift: agent ${agent.id} (${agent.name}) is ${agent.status} in DB but no pod exists — marking failed`,
-          );
-          await this.agentGateway.updateStatus(
-            agent.id,
-            'failed',
-            agent.workflowId ?? undefined,
-          );
-          driftCount += 1;
+      const driftFailedIds: string[] = [];
+      let podReconcileCount = 0;
+
+      for (const agent of agents) {
+        const pod = podByAgent.get(agent.id);
+        if (!pod) {
+          if (LIVE_DB_STATUSES.has(agent.status) && agent.status !== 'failed') {
+            this.logger.warn(
+              `Drift: agent ${agent.id} (${agent.name}) is ${agent.status} in DB but no pod exists — marking failed`,
+            );
+            await this.agentGateway.updateStatus(
+              agent.id,
+              'failed',
+              agent.workflowId ?? undefined,
+            );
+            driftFailedIds.push(agent.id);
+          }
+          continue;
         }
-        continue;
+
+        // Startup must reconcile inline since events$ is a Subject (no
+        // replay) and our subscription happens after the gateway's bootstrap.
+        // Periodic also reconciles defensively — idempotent and cheap.
+        await this.reconcileDbStatus(pod);
+        if (pod.phase === 'Failed') podReconcileCount += 1;
       }
 
-      // Pod exists — let the normal reconciler check Failed / CrashLoopBackOff
-      // etc. Bootstrap reads pods via list() and bypasses events$, so without
-      // this pass an already-failed pod found at boot wouldn't flip the DB row.
-      await this.reconcileDbStatus(pod);
-      if (pod.phase === 'Failed') podReconcileCount += 1;
+      if (reason === 'startup' || driftFailedIds.length > 0) {
+        this.logger.log(
+          `Drift check (${reason}): ${agents.length} agents, ${pods.length} pods, ${driftFailedIds.length} marked failed (missing pod), ${podReconcileCount} pods in Failed`,
+        );
+      }
+
+      return driftFailedIds;
+    } finally {
+      this.driftRunning = false;
     }
+  }
+
+  // Re-deploys agents that drift detection just marked `failed` because their
+  // pod vanished — typically: API was down while K8s lost the pods, or local
+  // dev cluster (Docker) was stopped and restarted. We only auto-restart this
+  // specific failure class — agents that crashed in real CrashLoopBackOff are
+  // left for the operator to inspect (restarting them just spams the cluster).
+  private async autoRestartDriftFailed(agentIds: string[]): Promise<void> {
+    this.logger.log(
+      `Auto-restart: queueing ${agentIds.length} drift-failed agent(s) at concurrency ${AUTO_RESTART_CONCURRENCY}`,
+    );
+
+    let index = 0;
+    let succeeded = 0;
+    let failed = 0;
+
+    const worker = async (): Promise<void> => {
+      while (index < agentIds.length) {
+        const id = agentIds[index++];
+        try {
+          await this.agentDeployService.deploy(id);
+          succeeded += 1;
+        } catch (err) {
+          failed += 1;
+          this.logger.warn(
+            `Auto-restart failed for agent ${id}: ${(err as Error).message}`,
+          );
+        }
+      }
+    };
+
+    const workerCount = Math.min(AUTO_RESTART_CONCURRENCY, agentIds.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
     this.logger.log(
-      `Startup drift check: ${agents.length} agents, ${pods.length} pods, ${driftCount} marked failed (missing pod), ${podReconcileCount} pods already in Failed`,
+      `Auto-restart finished: ${succeeded} redeployed, ${failed} failed`,
     );
   }
 

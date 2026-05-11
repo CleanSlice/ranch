@@ -27,7 +27,8 @@
     "migrate:prod": "dotenv -e .env.prod -- npx prisma migrate deploy",
     "studio": "dotenv -e .env.dev -- npx prisma studio",
     "docker": "docker compose up -d",
-    "predev": "npm run docker && npm run migrate"
+    "freeport": "lsof -ti:3333 | xargs kill -9 2>/dev/null || true",
+    "predev": "npm run docker && npm run migrate && npm run freeport"
   },
   "prisma": {
     "import": {
@@ -36,9 +37,9 @@
     }
   },
   "dependencies": {
-    "@cleanslice/paddock": "^0.2.3",
     "@aws-sdk/client-s3": "^3.1037.0",
     "@aws-sdk/client-secrets-manager": "^3.1037.0",
+    "@cleanslice/paddock": "^0.2.3",
     "@kubernetes/client-node": "^1.4.0",
     "@modelcontextprotocol/sdk": "1.10.0",
     "@nestjs/common": "^11.0.1",
@@ -50,6 +51,9 @@
     "@nestjs/swagger": "^11",
     "@nestjs/websockets": "^11.1.19",
     "@prisma/client": "^6.0.0",
+    "@types/archiver": "^7.0.0",
+    "@types/unzipper": "^0.10.11",
+    "archiver": "^7.0.1",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5",
     "class-validator": "^0.14",
@@ -57,6 +61,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",
+    "unzipper": "^0.12.3",
     "yaml": "^2.8.4",
     "zod": "^3.25.0",
     "zod-to-json-schema": "^3.24.1"

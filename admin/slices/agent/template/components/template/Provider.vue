@@ -8,12 +8,45 @@ import {
   CardHeader,
   CardTitle,
 } from '#theme/components/ui/card';
-import { IconArrowLeft } from '@tabler/icons-vue';
+import { IconArrowLeft, IconDownload, IconRefresh } from '@tabler/icons-vue';
 import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 
 const props = defineProps<{ id: string }>();
 const templateStore = useTemplateStore();
 const knowledgeStore = useKnowledgeStore();
+const runtime = useRuntimeConfig();
+const downloadingTemplate = ref(false);
+const downloadError = ref<string | null>(null);
+
+async function onDownload() {
+  if (!template.value) return;
+  downloadingTemplate.value = true;
+  downloadError.value = null;
+  try {
+    const res = await fetch(
+      `${runtime.public.apiUrl}/templates/${template.value.id}/download`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = template.value.version
+      ? `${template.value.id}-v${template.value.version}.zip`
+      : `${template.value.id}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    downloadError.value = err instanceof Error ? err.message : 'Download failed';
+  } finally {
+    downloadingTemplate.value = false;
+  }
+}
 
 const [{ data: template, pending, refresh }, { data: knowledges }] =
   await Promise.all([
@@ -82,6 +115,25 @@ async function onRemove(): Promise<void> {
   await navigateTo('/templates');
 }
 
+const confirmRestartOpen = ref(false);
+const restarting = ref(false);
+const restartError = ref<string | null>(null);
+const restartResult = ref<{ restarted: number; failed: number; total: number } | null>(null);
+
+async function onRestartAgents() {
+  if (!template.value) return;
+  restarting.value = true;
+  restartError.value = null;
+  restartResult.value = null;
+  try {
+    restartResult.value = await templateStore.restartAgents(template.value.id);
+  } catch (err: unknown) {
+    restartError.value = err instanceof Error ? err.message : 'Failed to restart agents.';
+  } finally {
+    restarting.value = false;
+  }
+}
+
 async function onSkillsSaved() {
   await refresh();
 }
@@ -106,11 +158,45 @@ async function onMcpsSaved() {
           <p class="text-sm text-muted-foreground">{{ template.description }}</p>
         </div>
         <div class="flex gap-2">
+          <Button variant="outline" :disabled="downloadingTemplate" @click="onDownload">
+            <IconDownload class="size-4" />
+            {{ downloadingTemplate ? 'Downloading…' : 'Download' }}
+          </Button>
+          <Button
+            variant="outline"
+            :disabled="restarting"
+            @click="confirmRestartOpen = true"
+          >
+            <IconRefresh class="size-4" :class="restarting && 'animate-spin'" />
+            {{ restarting ? 'Restarting…' : 'Restart agents' }}
+          </Button>
           <Button variant="outline" as-child>
             <NuxtLink :to="`/templates/${template.id}/edit`">Edit</NuxtLink>
           </Button>
           <Button variant="ghost" class="text-destructive" @click="confirmRemoveOpen = true">Delete</Button>
         </div>
+      </div>
+
+      <div
+        v-if="downloadError"
+        class="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+      >
+        {{ downloadError }}
+      </div>
+
+      <div
+        v-if="restartError"
+        class="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+      >
+        {{ restartError }}
+      </div>
+
+      <div
+        v-if="restartResult"
+        class="rounded-md border border-primary/30 bg-primary/5 px-4 py-3 text-sm"
+      >
+        Restart triggered: {{ restartResult.restarted }} restarted,
+        {{ restartResult.failed }} failed out of {{ restartResult.total }} agent(s).
       </div>
 
       <ConfirmDialog
@@ -119,6 +205,14 @@ async function onMcpsSaved() {
         :description="`Permanently delete template “${template.name}”? Existing agents using it will keep running, but you can no longer create new ones from it.`"
         confirm-label="Delete template"
         @confirm="onRemove"
+      />
+
+      <ConfirmDialog
+        v-model:open="confirmRestartOpen"
+        title="Restart all agents on this template"
+        :description="`Restart every agent that uses “${template.name}”? Each agent's pod will be redeployed with the latest template files (skills, instructions). Runtime state (memory, sessions, workspace) is preserved.`"
+        confirm-label="Restart all"
+        @confirm="onRestartAgents"
       />
 
       <div class="grid gap-8 md:grid-cols-[16rem_1fr]">

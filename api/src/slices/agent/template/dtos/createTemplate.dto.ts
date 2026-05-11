@@ -24,6 +24,11 @@ export class CreateTemplateDto {
   @IsObject()
   defaultResources?: { cpu: string; memory: string };
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  paddockConfig?: Record<string, unknown>;
+
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()

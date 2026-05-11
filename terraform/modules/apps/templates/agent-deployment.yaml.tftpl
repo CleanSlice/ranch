@@ -12,16 +12,21 @@ spec:
       - name: agent-name
       - name: template-id
       - name: agent-image
-      - name: agent-config
-        value: "{}"
+      # Base64-encoded JSON. Raw JSON cannot be safely substituted into the
+      # double-quoted YAML scalar in agent-pod.manifest below — its inner `"`
+      # would terminate the surrounding string. Base64 sidesteps that.
+      - name: agent-config-b64
+        value: "e30="
       - name: cpu-limit
         value: "500m"
       - name: memory-limit
         value: "512Mi"
+      - name: image-pull-policy
+        value: "Always"
       - name: bridle-url
-        value: "http://host.k3d.internal:3333"
+        value: ""
       - name: bridle-api-key
-        value: "dev-bridle-api-key-change-me"
+        value: ""
       - name: s3-bucket
         value: ""
       - name: s3-prefix
@@ -34,6 +39,24 @@ spec:
         value: ""
       - name: aws-secret-access-key
         value: ""
+      # Secret storage backend for the runtime (file | aws)
+      - name: secret-provider
+        value: "file"
+      - name: aws-secret-prefix
+        value: "cleanslice/users"
+      # Ranch admin mode — when "true" the runtime registers ranch_* tools
+      # and the agent can manage this Ranch through its REST API.
+      - name: ranch-admin
+        value: "false"
+      - name: ranch-api-url
+        value: ""
+      - name: ranch-api-token
+        value: ""
+      # MCP servers — base64(JSON array of IMcpServerConfig), populated by the
+      # api at deploy time from the agent's template's attached MCP servers.
+      # Base64 to avoid breaking the surrounding YAML string (see agent-config-b64).
+      - name: mcp-servers-b64
+        value: "W10="
       # LLM contract for the runtime (LLM_* env on the pod)
       - name: llm-provider
         value: ""
@@ -68,7 +91,11 @@ spec:
       resource:
         action: create
         successCondition: status.phase == Running
-        failureCondition: status.phase == Failed
+        # Treat Succeeded as failure: a runtime image with no command (e.g.
+        # vanilla `node:18-alpine`) exits with code 0 in <1s, so the pod
+        # skips Running and goes straight to Succeeded. Without this,
+        # Argo retries the resource watch forever.
+        failureCondition: status.phase in (Failed, Succeeded)
         manifest: |
           apiVersion: v1
           kind: Pod
@@ -81,24 +108,30 @@ spec:
               ranch/template-id: "{{workflow.parameters.template-id}}"
           spec:
             restartPolicy: Never
+            nodeSelector:
+              node-role: agents
+            tolerations:
+              - key: workload
+                value: agent
+                effect: NoSchedule
             imagePullSecrets:
               - name: ghcr
             containers:
               - name: agent
                 image: "{{workflow.parameters.agent-image}}"
-                imagePullPolicy: Always
+                imagePullPolicy: "{{workflow.parameters.image-pull-policy}}"
                 env:
                   - name: AGENT_ID
                     value: "{{workflow.parameters.agent-id}}"
                   - name: AGENT_NAME
                     value: "{{workflow.parameters.agent-name}}"
-                  - name: AGENT_CONFIG
-                    value: "{{workflow.parameters.agent-config}}"
+                  - name: AGENT_CONFIG_B64
+                    value: "{{workflow.parameters.agent-config-b64}}"
                   - name: BRIDLE_URL
                     value: "{{workflow.parameters.bridle-url}}"
                   - name: BRIDLE_API_KEY
                     value: "{{workflow.parameters.bridle-api-key}}"
-                  - name: BRIDLE_BOT_ID
+                  - name: BRIDLE_AGENT_ID
                     value: "{{workflow.parameters.agent-id}}"
                   - name: S3_BUCKET
                     value: "{{workflow.parameters.s3-bucket}}"
@@ -112,6 +145,10 @@ spec:
                     value: "{{workflow.parameters.aws-access-key-id}}"
                   - name: AWS_SECRET_ACCESS_KEY
                     value: "{{workflow.parameters.aws-secret-access-key}}"
+                  - name: SECRET_PROVIDER
+                    value: "{{workflow.parameters.secret-provider}}"
+                  - name: AWS_SECRET_PREFIX
+                    value: "{{workflow.parameters.aws-secret-prefix}}"
                   - name: LLM_PROVIDER
                     value: "{{workflow.parameters.llm-provider}}"
                   - name: LLM_MODEL
@@ -120,6 +157,14 @@ spec:
                     value: "{{workflow.parameters.llm-fallback-model}}"
                   - name: LLM_API_KEY
                     value: "{{workflow.parameters.llm-api-key}}"
+                  - name: RANCH_ADMIN
+                    value: "{{workflow.parameters.ranch-admin}}"
+                  - name: RANCH_API_URL
+                    value: "{{workflow.parameters.ranch-api-url}}"
+                  - name: RANCH_API_TOKEN
+                    value: "{{workflow.parameters.ranch-api-token}}"
+                  - name: MCP_SERVERS_B64
+                    value: "{{workflow.parameters.mcp-servers-b64}}"
                 resources:
                   requests:
                     cpu: "{{workflow.parameters.cpu-limit}}"
@@ -127,3 +172,22 @@ spec:
                   limits:
                     cpu: "{{workflow.parameters.cpu-limit}}"
                     memory: "{{workflow.parameters.memory-limit}}"
+                ports:
+                  - containerPort: 3000
+                # Runtime starts Bun.serve AFTER await runtime.start() finishes —
+                # the channels are connected, S3 is pulled, the loop is wired.
+                # Probing port 3000 means "agent is actually ready", not just
+                # "container PID 1 exists". Without this the API reconciler flips
+                # status to 'running' the moment kubelet reports container started.
+                startupProbe:
+                  httpGet:
+                    path: /
+                    port: 3000
+                  periodSeconds: 2
+                  failureThreshold: 90
+                readinessProbe:
+                  httpGet:
+                    path: /
+                    port: 3000
+                  periodSeconds: 5
+                  failureThreshold: 3

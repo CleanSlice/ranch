@@ -1,0 +1,5 @@
+{
+  "templateInstall.title": "Install template",
+  "templateInstall.subtitle": "Install a Ranch agent template from a zip archive or a git repository.",
+  "templateInstall.menu": "Install template"
+}

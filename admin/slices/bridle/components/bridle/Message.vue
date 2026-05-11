@@ -23,6 +23,19 @@ const isUser = computed(() => props.message.role === 'user')
 function htmlFor(text: string): string {
   return renderMarkdown(text)
 }
+
+function onMarkdownClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  const btn = target?.closest<HTMLButtonElement>('button[data-action="copy"]')
+  if (!btn) return
+  const pre = btn.parentElement?.querySelector('pre')
+  const text = pre?.textContent ?? ''
+  if (!text) return
+  navigator.clipboard.writeText(text).then(() => {
+    btn.classList.add('copied')
+    setTimeout(() => btn.classList.remove('copied'), 1500)
+  }).catch(() => {})
+}
 </script>
 
 <template>
@@ -44,7 +57,7 @@ function htmlFor(text: string): string {
 
     <div
       :class="cn(
-        'rounded-lg px-3 py-2 text-sm space-y-2',
+        'min-w-0 rounded-lg px-3 py-2 text-sm space-y-2',
         isUser ? 'bg-primary text-primary-foreground' : 'bg-muted',
         !isUser && markdownEnabled && 'chat-md',
         message.streaming && 'border-l-2 border-primary',
@@ -54,8 +67,9 @@ function htmlFor(text: string): string {
         <template v-if="part.type === BridlePartTypes.Text">
           <div
             v-if="!isUser && markdownEnabled"
-            class="wrap-break-word"
+            class="min-w-0 wrap-break-word"
             v-html="htmlFor(part.text)"
+            @click="onMarkdownClick"
           />
           <p v-else class="whitespace-pre-wrap wrap-break-word">{{ part.text }}</p>
         </template>
@@ -83,8 +97,9 @@ function htmlFor(text: string): string {
       <template v-if="message.parts.length === 0">
         <div
           v-if="!isUser && markdownEnabled"
-          class="wrap-break-word"
+          class="min-w-0 wrap-break-word"
           v-html="htmlFor(message.text)"
+          @click="onMarkdownClick"
         />
         <p v-else class="whitespace-pre-wrap wrap-break-word">{{ message.text }}</p>
       </template>

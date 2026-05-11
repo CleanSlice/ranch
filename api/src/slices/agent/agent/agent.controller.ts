@@ -26,6 +26,7 @@ import { Observable, map } from 'rxjs';
 import { IAgentGateway } from './domain';
 import { AgentStatusTypes } from './domain/agent.types';
 import { AgentStatusService } from './domain/agentStatus.service';
+import { AgentDeployService } from './domain/agentDeploy.service';
 import {
   AgentMcpDto,
   AgentStatusDto,
@@ -42,7 +43,6 @@ import { IBridleGateway } from '#/bridle/domain';
 import { IMcpServerGateway } from '#/mcpServer/domain';
 import { JwtAuthGuard, Public, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
-import { AuthService } from '#/user/auth/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 
 // Workflow ends as soon as the pod hits phase=Running, but pod=Running does
@@ -71,49 +71,13 @@ export class AgentController {
     private podGateway: IPodGateway,
     private agentStatusService: AgentStatusService,
     private bridleHub: IBridleGateway,
-    private authService: AuthService,
     private fileGateway: IFileGateway,
     private mcpServerGateway: IMcpServerGateway,
+    private agentDeployService: AgentDeployService,
   ) {}
 
-  private async deploy(agentId: string) {
-    const agent = await this.agentGateway.findById(agentId);
-    if (!agent) return;
-    const template = await this.templateGateway.findById(agent.templateId);
-    if (!template) {
-      this.logger.error(
-        `Template ${agent.templateId} not found for agent ${agentId}`,
-      );
-      await this.agentGateway.updateStatus(agentId, 'failed');
-      return;
-    }
-    // Mark deploying BEFORE submitting the workflow. Submit + getStatus take
-    // seconds — long enough for the pod to come up and AgentStatusService to
-    // flip status to 'running'. If we wrote status here after submit we'd
-    // overwrite that 'running' with 'deploying' (last-writer-wins race).
-    await this.agentGateway.updateStatus(agentId, 'deploying');
-    try {
-      // Every agent gets a JWT scoped to its own id. Admin agents get Owner
-      // (full Ranch control), non-admins get the Agent role (self-only
-      // endpoints — needed so the runtime can fetch its MCP list at boot).
-      const ranchApiToken = await this.authService.issueAgentServiceToken(
-        agent.id,
-        agent.isAdmin,
-      );
-      const workflowId = await this.workflowService.submitAgentWorkflow(
-        agent,
-        template.image,
-        ranchApiToken,
-      );
-      // Only attach the new workflowId — never touch status post-submit.
-      // Reconciler is the single source of truth for 'running'.
-      await this.agentGateway.setWorkflowId(agentId, workflowId);
-    } catch (err) {
-      this.logger.error(
-        `Workflow submit failed for agent ${agentId}: ${(err as Error).message}`,
-      );
-      await this.agentGateway.updateStatus(agentId, 'failed');
-    }
+  private deploy(agentId: string): Promise<void> {
+    return this.agentDeployService.deploy(agentId);
   }
 
   private async syncStatus(agentId: string) {
@@ -376,16 +340,51 @@ export class AgentController {
   async restart(@Param('id') id: string) {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
-
-    try {
-      await this.workflowService.cancelAgentWorkflow(agent.workflowId);
-    } catch (err) {
-      this.logger.warn(
-        `Cancel workflow failed for agent ${id}: ${(err as Error).message}`,
-      );
-    }
-    await this.deploy(id);
+    await this.agentDeployService.restartAgent(id);
     return this.agentGateway.findById(id);
+  }
+
+  @Post('restart-by-template/:templateId')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiOperation({
+    operationId: 'restartByTemplate',
+    summary:
+      'Restart every agent that uses this template. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner.',
+  })
+  async restartByTemplate(
+    @Param('templateId') templateId: string,
+  ): Promise<{ restarted: number; failed: number; total: number }> {
+    const agents = await this.agentGateway.findByTemplateId(templateId);
+    if (agents.length === 0) return { restarted: 0, failed: 0, total: 0 };
+
+    const CONCURRENCY = 5;
+    let index = 0;
+    let restarted = 0;
+    let failed = 0;
+
+    const worker = async (): Promise<void> => {
+      while (index < agents.length) {
+        const a = agents[index++];
+        try {
+          await this.agentDeployService.restartAgent(a.id);
+          restarted += 1;
+        } catch (err) {
+          failed += 1;
+          this.logger.warn(
+            `Restart-by-template ${templateId}: agent ${a.id} failed — ${(err as Error).message}`,
+          );
+        }
+      }
+    };
+
+    const workers = Math.min(CONCURRENCY, agents.length);
+    await Promise.all(Array.from({ length: workers }, () => worker()));
+
+    this.logger.log(
+      `Restart-by-template ${templateId}: ${restarted} restarted, ${failed} failed of ${agents.length} total`,
+    );
+
+    return { restarted, failed, total: agents.length };
   }
 
   @Delete(':id')

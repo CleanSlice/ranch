@@ -91,6 +91,7 @@ import type {
   FileControllerReadData,
   FileControllerSaveData,
   FileControllerSyncData,
+  ExportAgentFilesData,
   SendBridleMessageData,
   SendBridleMessageSyncData,
   BridleHealthData,
@@ -1297,7 +1298,7 @@ export class AgentsService {
   }
 
   /**
-   * Stop and delete an agent. Admin or Owner.
+   * Stop and delete an agent. Pass `?wipeS3=true` to also drop every object under `agents/{id}/` — opt-in so accidental deletes don’t nuke files. Admin or Owner.
    */
   public static agentControllerRemove<ThrowOnError extends boolean = false>(
     options: Options<AgentControllerRemoveData, ThrowOnError>,
@@ -1530,6 +1531,22 @@ export class FilesService {
       ThrowOnError
     >({
       url: "/agents/{agentId}/files/sync",
+      ...options,
+    });
+  }
+
+  /**
+   * Download a ZIP archive of the agent’s entire S3 prefix (files, skills, runtime state). Used as a safety net before destructive actions.
+   */
+  public static exportAgentFiles<ThrowOnError extends boolean = false>(
+    options: Options<ExportAgentFilesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/export",
       ...options,
     });
   }

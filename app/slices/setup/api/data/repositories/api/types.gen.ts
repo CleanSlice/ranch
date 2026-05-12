@@ -1490,7 +1490,9 @@ export type AgentControllerRemoveData = {
   path: {
     id: string;
   };
-  query?: never;
+  query: {
+    wipeS3: string;
+  };
   url: "/agents/{id}";
 };
 
@@ -1669,6 +1671,19 @@ export type FileControllerSyncData = {
 };
 
 export type FileControllerSyncResponses = {
+  200: unknown;
+};
+
+export type ExportAgentFilesData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/export";
+};
+
+export type ExportAgentFilesResponses = {
   200: unknown;
 };
 

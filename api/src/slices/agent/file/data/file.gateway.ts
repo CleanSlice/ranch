@@ -10,12 +10,14 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   CopyObjectCommand,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
+import * as archiver from 'archiver';
 import { ISettingGateway } from '#/setting/domain';
 import { IFileGateway } from '../domain/file.gateway';
-import { IFileContent, IFileNode } from '../domain/file.types';
+import { IFileContent, IFileNode, ISkillBundle } from '../domain/file.types';
 
 const MAX_BYTES = 256 * 1024;
 const ALLOWED_WRITE_EXT = new Set(['.md', '.json']);
@@ -178,6 +180,9 @@ export class S3FileGateway extends IFileGateway {
         if (!obj.Key) continue;
         const rel = obj.Key.slice(srcPrefix.length);
         if (!rel) continue;
+        // Skip legacy `.agent/*` keys from old template installs — they
+        // map to `.agent/.agent/*` on the pod and runtime ignores them.
+        if (rel.startsWith('.agent/')) continue;
         await client.send(
           new CopyObjectCommand({
             Bucket: bucket,
@@ -199,10 +204,19 @@ export class S3FileGateway extends IFileGateway {
   // anything under AGENT_OWNED_PREFIXES (runtime state). Called from restart
   // so template edits (new skills, updated instructions) propagate without
   // wiping out the agent's memory / sessions / workspace.
-  async resyncFromTemplate(agentId: string, templateId: string): Promise<number> {
+  async resyncFromTemplate(
+    agentId: string,
+    templateId: string,
+  ): Promise<number> {
     const { client, bucket } = await this.connect();
     const destPrefix = this.prefix(agentId);
     const srcPrefix = `templates/${templateId}/`;
+
+    // One-time heal: drop any stray `agents/{id}/.agent/*` keys left over
+    // from the legacy templateInstall layout. The runtime never reads them
+    // (S3 path == runtime path == agent prefix root) so they were just
+    // storage clutter pulled in as `.agent/.agent/*` on the pod.
+    await this.wipeLegacyAgentPrefix(client, bucket, destPrefix);
 
     let copied = 0;
     let continuationToken: string | undefined;
@@ -219,6 +233,9 @@ export class S3FileGateway extends IFileGateway {
         const rel = obj.Key.slice(srcPrefix.length);
         if (!rel) continue;
         if (AGENT_OWNED_PREFIXES.some((p) => rel.startsWith(p))) continue;
+        // Skip legacy `.agent/*` keys from old template installs — they
+        // map to `.agent/.agent/*` on the pod and runtime ignores them.
+        if (rel.startsWith('.agent/')) continue;
         await client.send(
           new CopyObjectCommand({
             Bucket: bucket,
@@ -234,6 +251,188 @@ export class S3FileGateway extends IFileGateway {
     } while (continuationToken);
 
     return copied;
+  }
+
+  private async wipeLegacyAgentPrefix(
+    client: S3Client,
+    bucket: string,
+    agentPrefix: string,
+  ): Promise<void> {
+    const legacyPrefix = agentPrefix + '.agent/';
+    let continuationToken: string | undefined;
+    do {
+      const list = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: legacyPrefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      const keys = (list.Contents ?? [])
+        .map((o) => o.Key)
+        .filter((k): k is string => Boolean(k));
+      if (keys.length > 0) {
+        await client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+      }
+      continuationToken = list.IsTruncated
+        ? list.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+  }
+
+  // Wipe `skills/` for this agent and rewrite from the supplied bundle.
+  // Called from deploy / restart so the runtime sees exactly the set
+  // currently attached to the template (skill.body + sibling files).
+  // Wipe-then-write makes detached skills disappear instead of lingering
+  // forever like they would under a copy-only resync. Skill paths live
+  // at the agent prefix root (no `.agent/` segment) — that path is the
+  // runtime's local convention, not the S3 storage layout.
+  async syncSkills(agentId: string, skills: ISkillBundle[]): Promise<number> {
+    const { client, bucket } = await this.connect();
+    const skillsPrefix = this.prefix(agentId) + 'skills/';
+
+    let continuationToken: string | undefined;
+    do {
+      const list = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: skillsPrefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      const keys = (list.Contents ?? [])
+        .map((o) => o.Key)
+        .filter((k): k is string => Boolean(k));
+      if (keys.length > 0) {
+        await client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+      }
+      continuationToken = list.IsTruncated
+        ? list.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+
+    let written = 0;
+    for (const skill of skills) {
+      const base = `${skillsPrefix}${skill.name}/`;
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: base + 'SKILL.md',
+          Body: skill.body,
+          ContentType: this.contentType('SKILL.md'),
+        }),
+      );
+      written++;
+      for (const file of skill.files ?? []) {
+        if (!file.path) continue;
+        await client.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: base + file.path,
+            Body: file.content,
+            ContentType: this.contentType(file.path),
+          }),
+        );
+        written++;
+      }
+    }
+    return written;
+  }
+
+  // Wipe everything under `agents/{agentId}/`. S3 DELETE is idempotent —
+  // no error if the prefix is already empty. Returns the number of keys
+  // deleted so the controller can log.
+  async wipe(agentId: string): Promise<number> {
+    const { client, bucket } = await this.connect();
+    const prefix = this.prefix(agentId);
+    let deleted = 0;
+    let continuationToken: string | undefined;
+    do {
+      const list = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      const keys = (list.Contents ?? [])
+        .map((o) => o.Key)
+        .filter((k): k is string => Boolean(k));
+      if (keys.length > 0) {
+        await client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+        deleted += keys.length;
+      }
+      continuationToken = list.IsTruncated
+        ? list.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+    return deleted;
+  }
+
+  // Pack every object under `agents/{agentId}/` into a ZIP. Skips
+  // pathological keys (empty rel, traversal segments) defensively.
+  async exportZip(
+    agentId: string,
+  ): Promise<{ filename: string; buffer: Buffer }> {
+    const { client, bucket } = await this.connect();
+    const prefix = this.prefix(agentId);
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    const chunks: Buffer[] = [];
+    archive.on('data', (chunk: Buffer) => chunks.push(chunk));
+    const done = new Promise<void>((resolve, reject) => {
+      archive.on('end', resolve);
+      archive.on('error', reject);
+    });
+
+    let continuationToken: string | undefined;
+    do {
+      const list = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      for (const obj of list.Contents ?? []) {
+        if (!obj.Key) continue;
+        const rel = obj.Key.slice(prefix.length);
+        if (!rel) continue;
+        if (rel.split('/').some((s) => s === '..' || s === '.')) continue;
+        const res = await client.send(
+          new GetObjectCommand({ Bucket: bucket, Key: obj.Key }),
+        );
+        const body =
+          (await res.Body?.transformToByteArray()) ?? new Uint8Array();
+        archive.append(Buffer.from(body), { name: rel });
+      }
+      continuationToken = list.IsTruncated
+        ? list.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+
+    await archive.finalize();
+    await done;
+
+    return {
+      filename: `agent-${agentId}.zip`,
+      buffer: Buffer.concat(chunks),
+    };
   }
 
   private prefix(agentId: string): string {

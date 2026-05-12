@@ -170,9 +170,32 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
-  async function remove(id: string) {
-    await AgentsService.agentControllerRemove({ path: { id } });
+  async function remove(id: string, options: { wipeS3?: boolean } = {}) {
+    // Use raw fetch because the OpenAPI spec doesn't yet expose `wipeS3`
+    // as a typed query param. We re-attach the Bearer token from the
+    // access_token cookie ourselves — same job the SDK's axios
+    // interceptor does in api/plugins/apiBaseUrl.ts.
+    const runtime = useRuntimeConfig();
+    const url = new URL(`${runtime.public.apiUrl}/agents/${id}`);
+    if (options.wipeS3) url.searchParams.set('wipeS3', 'true');
+    const headers: Record<string, string> = {};
+    const token = readAccessToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(url.toString(), {
+      method: 'DELETE',
+      credentials: 'include',
+      headers,
+    });
+    if (!res.ok) {
+      throw new Error(`Delete failed: ${res.status} ${res.statusText}`);
+    }
     agents.value = agents.value.filter((a) => a.id !== id);
+  }
+
+  function readAccessToken(): string | null {
+    if (typeof document === 'undefined') return null;
+    const m = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
   }
 
   async function promoteAdmin(id: string) {

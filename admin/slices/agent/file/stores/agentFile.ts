@@ -112,12 +112,46 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     return env?.data ?? { agentOnline: false, pushed: 0 };
   }
 
+  // Streams the agent's S3 prefix as a ZIP into a browser download.
+  // Uses raw fetch (not the generated SDK) because the endpoint returns
+  // raw bytes; we replicate the Bearer-token attachment that the SDK's
+  // axios interceptor handles automatically — see api/plugins/apiBaseUrl.ts.
+  async function downloadZip(agentId: string): Promise<void> {
+    const runtime = useRuntimeConfig();
+    const headers: Record<string, string> = {};
+    const token = readAccessToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(
+      `${runtime.public.apiUrl}/agents/${agentId}/files/export`,
+      { credentials: 'include', headers },
+    );
+    if (!res.ok) {
+      throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agent-${agentId}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function readAccessToken(): string | null {
+    if (typeof document === 'undefined') return null;
+    const m = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
   return {
     nodes,
     fetchList,
     fetchContent,
     save,
     sync,
+    downloadZip,
     isPendingRestart,
     markPendingRestart,
     clearPendingRestart,

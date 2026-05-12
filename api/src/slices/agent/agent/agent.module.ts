@@ -12,6 +12,7 @@ import { FileModule } from '#/agent/file/file.module';
 import { AuthModule } from '#/user/auth/auth.module';
 import { BridleModule } from '#/bridle/bridle.module';
 import { McpServerModule } from '#/mcpServer/mcpServer.module';
+import { SkillModule } from '#/skill/skill.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { McpServerModule } from '#/mcpServer/mcpServer.module';
     AuthModule,
     forwardRef(() => BridleModule),
     McpServerModule,
+    SkillModule,
   ],
   controllers: [AgentController],
   providers: [

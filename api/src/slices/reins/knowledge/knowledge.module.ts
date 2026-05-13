@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { PrismaModule } from '#/setup/prisma/prisma.module';
 import { LlmModule } from '#/llm/llm.module';
 import { AgentModule } from '#/agent/agent/agent.module';
@@ -20,7 +20,7 @@ import { KnowledgeTool } from './knowledge.tool';
     LightragModule,
     SourceModule,
     LlmModule,
-    AgentModule,
+    forwardRef(() => AgentModule),
     TemplateModule,
   ],
   controllers: [KnowledgeController],

@@ -12,6 +12,8 @@ import { FileModule } from '#/agent/file/file.module';
 import { AuthModule } from '#/user/auth/auth.module';
 import { BridleModule } from '#/bridle/bridle.module';
 import { McpServerModule } from '#/mcpServer/mcpServer.module';
+import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
+import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { McpServerModule } from '#/mcpServer/mcpServer.module';
     AuthModule,
     forwardRef(() => BridleModule),
     McpServerModule,
+    forwardRef(() => KnowledgeModule),
+    KnowledgeConfigModule,
   ],
   controllers: [AgentController],
   providers: [

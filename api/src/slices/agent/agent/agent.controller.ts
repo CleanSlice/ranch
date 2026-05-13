@@ -40,7 +40,10 @@ import { ITemplateGateway } from '#/agent/template/domain';
 import { IPodGateway } from '#/agent/pod/domain';
 import { IFileGateway } from '#/agent/file/domain';
 import { IBridleGateway } from '#/bridle/domain';
-import { IMcpServerGateway } from '#/mcpServer/domain';
+import { IMcpServerGateway, IMcpServerData } from '#/mcpServer/domain';
+import { KNOWLEDGE_MCP_ID } from '#/mcpServer/domain/mcpServer.seeder';
+import { IKnowledgeGateway } from '#/reins/knowledge/domain';
+import { IKnowledgeConfigGateway } from '#/reins/config/domain';
 import { JwtAuthGuard, Public, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
@@ -74,6 +77,8 @@ export class AgentController {
     private fileGateway: IFileGateway,
     private mcpServerGateway: IMcpServerGateway,
     private agentDeployService: AgentDeployService,
+    private knowledgeGateway: IKnowledgeGateway,
+    private knowledgeConfig: IKnowledgeConfigGateway,
   ) {}
 
   private deploy(agentId: string): Promise<void> {
@@ -190,19 +195,45 @@ export class AgentController {
     const template = await this.templateGateway.findById(agent.templateId);
     if (!template) return [];
 
-    const servers = await this.mcpServerGateway.findByIds(
+    const baseServers = await this.mcpServerGateway.findByIds(
       template.mcpServerIds,
     );
-    return servers
-      .filter((s) => s.enabled)
-      .map((s) => ({
-        name: s.name,
-        transport: s.transport,
-        url: s.url,
-        authType: s.authType,
-        authValue: s.authValue,
-        enabled: s.enabled,
-      }));
+    const enabledServers = baseServers.filter((s) => s.enabled);
+
+    const effectiveKnowledgeIds =
+      agent.knowledgeIds.length > 0
+        ? agent.knowledgeIds
+        : template.defaultKnowledgeIds;
+
+    if (await this.shouldInjectKnowledge(effectiveKnowledgeIds, enabledServers)) {
+      const knowledgeMcp =
+        await this.mcpServerGateway.findById(KNOWLEDGE_MCP_ID);
+      if (knowledgeMcp && knowledgeMcp.enabled) {
+        enabledServers.push(knowledgeMcp);
+      }
+    }
+
+    return enabledServers.map((s) => ({
+      name: s.name,
+      transport: s.transport,
+      url: s.url,
+      authType: s.authType,
+      authValue: s.authValue,
+      enabled: true,
+    }));
+  }
+
+  private async shouldInjectKnowledge(
+    effectiveKnowledgeIds: string[],
+    alreadyAttached: IMcpServerData[],
+  ): Promise<boolean> {
+    if (effectiveKnowledgeIds.length === 0) return false;
+    if (alreadyAttached.some((m) => m.id === KNOWLEDGE_MCP_ID)) return false;
+    const isEnabled = await this.knowledgeConfig.isEnabled();
+    if (!isEnabled) return false;
+    const existing =
+      await this.knowledgeGateway.findExistingByIds(effectiveKnowledgeIds);
+    return existing.length > 0;
   }
 
   @Post()

@@ -29,6 +29,7 @@ import { RancherModule } from './slices/rancher/rancher.module';
 import { McpServerModule } from './slices/mcpServer/mcpServer.module';
 import { McpModule } from './slices/mcp';
 import { PaddockModule } from './slices/paddock/paddock.module';
+import { JwtAuthGuard } from './slices/user/auth/guards';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { PaddockModule } from './slices/paddock/paddock.module';
       sseEndpoint: 'mcp/sse',
       messagesEndpoint: 'mcp/messages',
       mcpEndpoint: 'mcp/mcp',
+      guards: [JwtAuthGuard],
     }),
   ],
 })

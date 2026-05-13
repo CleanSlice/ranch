@@ -24,6 +24,8 @@ const authStore = useAuthStore();
 const settingStore = useSettingStore();
 const llmStore = useLlmStore();
 const usageStore = useUsageStore();
+const templateStore = useTemplateStore();
+const knowledgeStore = useKnowledgeStore();
 const config = useRuntimeConfig();
 
 const apiUrl =
@@ -58,7 +60,43 @@ const { data: usage, pending: usagePending, refresh: refreshUsage } = useAsyncDa
   { lazy: true },
 );
 
+const { data: template, pending: templatePending } = useAsyncData(
+  `admin-agent-template-${props.id}`,
+  async () => {
+    if (!agent.value) return null;
+    return templateStore.fetchById(agent.value.templateId);
+  },
+  { lazy: true, watch: [agent] },
+);
+
+const { data: knowledges, pending: knowledgesPending } = useAsyncData(
+  `admin-agent-knowledges-${props.id}`,
+  () => knowledgeStore.fetchAll(),
+  { lazy: true },
+);
+
 const envPending = computed(() => settingsPending.value || llmsPending.value);
+
+const effectiveKnowledges = computed(() => {
+  if (!agent.value || !template.value) {
+    return { ids: [] as string[], source: 'none' as const };
+  }
+  if (agent.value.knowledgeIds.length > 0) {
+    return {
+      ids: agent.value.knowledgeIds,
+      source: 'agent-override' as const,
+    };
+  }
+  return {
+    ids: template.value.defaultKnowledgeIds,
+    source: 'from-template' as const,
+  };
+});
+
+const effectiveKnowledgesResolved = computed(() => {
+  const idSet = new Set(effectiveKnowledges.value.ids);
+  return (knowledges.value ?? []).filter((k) => idSet.has(k.id));
+});
 
 const currentLlm = computed(() =>
   agent.value?.llmCredentialId
@@ -656,6 +694,41 @@ watch(activeTab, (tab) => {
                   </dd>
                 </div>
               </dl>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Knowledge bases</CardTitle>
+              <CardDescription>
+                Bases this agent can query via the query_knowledge tool.
+                <span v-if="effectiveKnowledges.source === 'agent-override'">
+                  Source: per-agent override.
+                </span>
+                <span v-else-if="effectiveKnowledges.source === 'from-template'">
+                  Source: inherited from template.
+                </span>
+                <span v-else>No bases bound.</span>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div
+                v-if="(knowledgesPending || templatePending) && !knowledges"
+                class="flex flex-wrap gap-2"
+              >
+                <Skeleton class="h-6 w-24" />
+                <Skeleton class="h-6 w-32" />
+                <Skeleton class="h-6 w-20" />
+              </div>
+              <ul
+                v-else-if="effectiveKnowledgesResolved.length"
+                class="flex flex-wrap gap-2"
+              >
+                <li v-for="k in effectiveKnowledgesResolved" :key="k.id">
+                  <Badge variant="outline">{{ k.name }}</Badge>
+                </li>
+              </ul>
+              <p v-else class="text-sm text-muted-foreground">None bound.</p>
             </CardContent>
           </Card>
 

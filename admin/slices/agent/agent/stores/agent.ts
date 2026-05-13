@@ -25,6 +25,7 @@ export interface IAgentData {
   resources: IAgentResources;
   isPublic: boolean;
   allowedOrigins: string[];
+  knowledgeIds: string[];
   isAdmin: boolean;
   createdAt: string;
   updatedAt: string;
@@ -38,6 +39,7 @@ export interface ICreateAgentData {
   resources?: IAgentResources;
   isPublic?: boolean;
   allowedOrigins?: string[];
+  knowledgeIds?: string[];
   isAdmin?: boolean;
 }
 
@@ -49,6 +51,7 @@ export interface IUpdateAgentData {
   resources?: IAgentResources;
   isPublic?: boolean;
   allowedOrigins?: string[];
+  knowledgeIds?: string[];
 }
 
 const PENDING_RESTART_KEY = 'agent:pendingRestart';

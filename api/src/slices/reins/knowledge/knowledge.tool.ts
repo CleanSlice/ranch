@@ -7,18 +7,23 @@ import { IAgentGateway } from '#/agent/agent/domain';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { KnowledgeService } from './domain/knowledge.service';
 
-const ok = (value: unknown) => ({
+interface ToolResult {
+  content: { type: 'text'; text: string }[];
+  isError?: boolean;
+}
+
+const ok = (value: unknown): ToolResult => ({
   content: [
     {
-      type: 'text' as const,
+      type: 'text',
       text:
         typeof value === 'string' ? value : JSON.stringify(value, null, 2),
     },
   ],
 });
 
-const err = (message: string) => ({
-  content: [{ type: 'text' as const, text: message }],
+const err = (message: string): ToolResult => ({
+  content: [{ type: 'text', text: message }],
   isError: true,
 });
 
@@ -47,7 +52,7 @@ export class KnowledgeTool {
     { knowledge_id, query }: { knowledge_id: string; query: string },
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
-  ) {
+  ): Promise<ToolResult> {
     const callerAgentId = this.extractAgentId(httpRequest);
     if (!callerAgentId) {
       return err('query_knowledge can only be called by an agent runtime.');

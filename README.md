@@ -312,9 +312,6 @@ helm install cnpg cnpg/cloudnative-pg \
 # Create namespaces
 kubectl create namespace platform
 kubectl create namespace agents
-
-# Apply workflow templates
-kubectl apply -f k8s/templates/agent-workflow.yaml
 ```
 
 ### 6. Configure DNS

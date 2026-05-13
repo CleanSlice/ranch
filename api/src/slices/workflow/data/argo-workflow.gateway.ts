@@ -125,10 +125,10 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       ? await this.llmGateway.findById(data.llmCredentialId)
       : null;
 
-    // JSON parameters are base64-encoded before injection. Argo substitutes
-    // {{workflow.parameters.X}} as raw text into a YAML manifest; an inner `"`
-    // would terminate the surrounding double-quoted string and produce
-    // "manifest must be a valid yaml". Base64 has no YAML-significant chars.
+    // AGENT_CONFIG_B64 / MCP_SERVERS_B64 stay base64-encoded because the
+    // runtime image reads them that way from env. Other values are passed
+    // verbatim through JSON — no more Argo parameter substitution into a YAML
+    // string, so the historic escape hazard is gone.
     const agentConfigB64 = Buffer.from(JSON.stringify(data.config)).toString(
       'base64',
     );
@@ -137,91 +137,61 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     );
     // Default auxiliary model per provider — used by runtime ≥ 0.4.0 for
     // background work (compaction, memory-flush) so the cheap model handles
-    // it instead of contending with the main LLM's prompt cache.
-    // Empty string means "no aux configured" → runtime falls back to main.
+    // it instead of contending with the main LLM's prompt cache. Empty string
+    // means "no aux configured" → runtime falls back to main.
     const provider = credential?.provider?.toLowerCase();
     const auxModelDefault =
       provider === 'claude' || provider === 'anthropic'
         ? 'claude-haiku-4-5'
         : '';
 
-    const llmParams = [
-      { name: 'llm-provider', value: credential?.provider ?? '' },
-      { name: 'llm-model', value: credential?.model ?? '' },
-      {
-        name: 'llm-fallback-model',
-        value: credential?.fallbackModel ?? credential?.model ?? '',
-      },
-      {
-        name: 'llm-api-key',
-        value: credential?.apiKey ? normalizeCredential(credential.apiKey) : '',
-      },
-      // Aux LLM — empty unless we have a sensible per-provider default.
-      // Runtime activates aux only when at least one of these is non-empty.
-      { name: 'llm-aux-provider', value: '' },
-      { name: 'llm-aux-model', value: auxModelDefault },
-      { name: 'llm-aux-fallback-model', value: '' },
-      { name: 'llm-aux-api-key', value: '' },
-    ];
-
     // Channels → runtime env vars. The runtime detects a channel by the
     // presence of its token env. Multiple channels of the same type would
-    // overwrite (we keep the last one) — by design: an agent has one bot
-    // per platform.
+    // overwrite (we keep the last one) — by design: an agent has one bot per
+    // platform.
     const telegram = data.channels.find((c) => c.type === 'telegram');
-    const channelParams = [
-      { name: 'telegram-bot-token', value: telegram?.config.botToken ?? '' },
-      { name: 'telegram-bot-name', value: telegram?.config.botName ?? '' },
-      {
-        name: 'telegram-bot-admin-ids',
-        value: telegram?.config.adminIds ?? '',
-      },
-    ];
 
-    const workflow = {
-      apiVersion: 'argoproj.io/v1alpha1',
-      kind: 'Workflow',
-      metadata: {
-        generateName: `agent-${data.agentId}-`,
-        namespace: 'agents',
-        labels: {
-          'ranch/agent-id': data.agentId,
-          'ranch/template-id': data.templateId,
-        },
+    const workflow = buildAgentWorkflow({
+      agentId: data.agentId,
+      agentName: data.agentName,
+      templateId: data.templateId,
+      image: data.image,
+      imagePullPolicy: 'Always',
+      cpu: data.resources.cpu,
+      memory: data.resources.memory,
+      isAdmin: data.isAdmin,
+      ranchApiUrl,
+      ranchApiToken: data.ranchApiToken,
+      bridleUrl,
+      bridleApiKey,
+      s3Bucket,
+      s3Prefix,
+      s3Endpoint: s3EndpointForPod,
+      awsRegion,
+      awsAccessKeyId,
+      awsSecretAccessKey,
+      secretProvider,
+      awsSecretPrefix,
+      agentConfigB64,
+      mcpServersB64,
+      llm: {
+        provider: credential?.provider ?? '',
+        model: credential?.model ?? '',
+        fallbackModel: credential?.fallbackModel ?? credential?.model ?? '',
+        apiKey: credential?.apiKey
+          ? normalizeCredential(credential.apiKey)
+          : '',
+        auxProvider: '',
+        auxModel: auxModelDefault,
+        auxFallbackModel: '',
+        auxApiKey: '',
       },
-      spec: {
-        workflowTemplateRef: {
-          name: 'agent-deployment',
-        },
-        arguments: {
-          parameters: [
-            { name: 'agent-id', value: data.agentId },
-            { name: 'agent-name', value: data.agentName },
-            { name: 'template-id', value: data.templateId },
-            { name: 'agent-image', value: data.image },
-            { name: 'agent-config-b64', value: agentConfigB64 },
-            { name: 'cpu-limit', value: data.resources.cpu },
-            { name: 'memory-limit', value: data.resources.memory },
-            { name: 'bridle-url', value: bridleUrl },
-            { name: 'bridle-api-key', value: bridleApiKey },
-            { name: 's3-bucket', value: s3Bucket },
-            { name: 's3-prefix', value: s3Prefix },
-            { name: 's3-endpoint', value: s3EndpointForPod },
-            { name: 'aws-region', value: awsRegion },
-            { name: 'aws-access-key-id', value: awsAccessKeyId },
-            { name: 'aws-secret-access-key', value: awsSecretAccessKey },
-            { name: 'secret-provider', value: secretProvider },
-            { name: 'aws-secret-prefix', value: awsSecretPrefix },
-            { name: 'ranch-admin', value: data.isAdmin ? 'true' : 'false' },
-            { name: 'ranch-api-url', value: ranchApiUrl },
-            { name: 'ranch-api-token', value: data.ranchApiToken },
-            { name: 'mcp-servers-b64', value: mcpServersB64 },
-            ...llmParams,
-            ...channelParams,
-          ],
-        },
+      telegram: {
+        botToken: telegram?.config.botToken ?? '',
+        botName: telegram?.config.botName ?? '',
+        adminIds: telegram?.config.adminIds ?? '',
       },
-    };
+    });
 
     const argoUrl = await this.infraConfig.getArgoUrl();
     const response = await fetch(`${argoUrl}/api/v1/workflows/agents`, {

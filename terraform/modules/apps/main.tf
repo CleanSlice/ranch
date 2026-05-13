@@ -193,17 +193,6 @@ resource "kubectl_manifest" "workflow_rolebinding" {
 }
 
 # ---------------------------------------------------------------------
-# WorkflowTemplate that spawns each agent pod
-# ---------------------------------------------------------------------
-
-resource "kubectl_manifest" "agent_deployment_workflow" {
-  depends_on        = [kubectl_manifest.workflow_sa]
-  server_side_apply = true
-  force_conflicts   = true
-  yaml_body         = templatefile("${path.module}/templates/agent-deployment.yaml.tftpl", {})
-}
-
-# ---------------------------------------------------------------------
 # ranch-api: Deployment + Service + Ingress
 # ---------------------------------------------------------------------
 

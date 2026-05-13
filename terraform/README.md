@@ -98,7 +98,7 @@ A fresh apply creates:
 - `ranch-api` (with init-container running `prisma migrate deploy`)
 - `ranch-admin`
 - Ingresses with Let's Encrypt TLS for `{domain}` (app), `admin.{domain}`, `api.{domain}`, `argocd.{domain}`
-- `agents/workflow` ServiceAccount + RBAC + WorkflowTemplate `agent-deployment`
+- `agents/workflow` ServiceAccount + RBAC (the Argo Workflow that spawns each agent is built and submitted directly by `ranch-api`'s `ArgoWorkflowGateway` — no pre-registered `WorkflowTemplate`)
 
 ### 1.3 DNS (manual)
 

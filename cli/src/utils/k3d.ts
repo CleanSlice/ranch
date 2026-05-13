@@ -120,7 +120,6 @@ async function bootstrap(root: string): Promise<void> {
     }
   };
   await apply("k8s/templates/rbac.yaml");
-  await apply("k8s/templates/agent-workflow.yaml");
   await apply("k8s/local/coredns-host-alias.yaml");
 
   await tryRun("kubectl", ["-n", "kube-system", "rollout", "restart", "deploy", "coredns"], {

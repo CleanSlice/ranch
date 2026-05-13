@@ -144,7 +144,6 @@ k3d kubeconfig get "$CLUSTER" > "$KUBECONFIG_LOCAL"
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl create namespace platform 2>/dev/null || true
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl create namespace agents 2>/dev/null || true
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl apply -f k8s/templates/rbac.yaml 2>/dev/null || true
-KUBECONFIG="$KUBECONFIG_LOCAL" kubectl apply -f k8s/templates/agent-workflow.yaml 2>/dev/null || true
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl apply -f k8s/local/coredns-host-alias.yaml 2>/dev/null || true
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl -n kube-system rollout restart deploy coredns 2>/dev/null || true
 KUBECONFIG="$KUBECONFIG_LOCAL" kubectl label node --all node-role=agents --overwrite 2>/dev/null || true
@@ -331,8 +330,7 @@ ok "CloudNativePG installed"
 kubectl create namespace platform >/dev/null 2>&1
 kubectl create namespace agents >/dev/null 2>&1
 kubectl apply -f k8s/templates/rbac.yaml >/dev/null 2>&1
-kubectl apply -f k8s/templates/agent-workflow.yaml >/dev/null 2>&1
-ok "Namespaces, RBAC, and workflow templates created"
+ok "Namespaces and RBAC created"
 
 # ============================================
 # Step 10: Summary

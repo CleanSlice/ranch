@@ -34,6 +34,7 @@ const [
   { data: templates, pending: pendingTemplates },
   { pending: pendingLlms },
   { data: knowledges, pending: pendingKnowledges },
+  { pending: pendingKnowledgeStatus },
 ] = await Promise.all([
   useAsyncData(`admin-agent-${props.id}-edit`, () =>
     agentStore.fetchById(props.id),
@@ -52,7 +53,8 @@ const pending = computed(
     pendingAgent.value ||
     pendingTemplates.value ||
     pendingLlms.value ||
-    pendingKnowledges.value,
+    pendingKnowledges.value ||
+    pendingKnowledgeStatus.value,
 );
 
 const submitting = ref(false);

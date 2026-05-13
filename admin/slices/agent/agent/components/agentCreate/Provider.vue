@@ -11,6 +11,7 @@ const [
   { data: templates, pending: pendingTemplates },
   { pending: pendingLlms },
   { data: knowledges, pending: pendingKnowledges },
+  { pending: pendingKnowledgeStatus },
 ] = await Promise.all([
   useAsyncData('agent-create-templates', () => templateStore.fetchAll()),
   useAsyncData('agent-create-llms', () => llmStore.fetchAll()),
@@ -20,7 +21,11 @@ const [
   ),
 ]);
 const pending = computed(
-  () => pendingTemplates.value || pendingLlms.value || pendingKnowledges.value,
+  () =>
+    pendingTemplates.value ||
+    pendingLlms.value ||
+    pendingKnowledges.value ||
+    pendingKnowledgeStatus.value,
 );
 
 const submitting = ref(false);

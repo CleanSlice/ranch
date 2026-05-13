@@ -37,6 +37,14 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     return record ? this.mapper.toEntity(record) : null;
   }
 
+  async findExistingByIds(ids: string[]): Promise<IKnowledgeData[]> {
+    if (ids.length === 0) return [];
+    const records = await this.prisma.knowledge.findMany({
+      where: { id: { in: ids } },
+    });
+    return records.map((r) => this.mapper.toEntity(r));
+  }
+
   async create(data: ICreateKnowledgeData): Promise<IKnowledgeData> {
     const created = await this.prisma.$transaction(async (tx) => {
       const initial = await tx.knowledge.create({

@@ -12,6 +12,7 @@ import {
 export abstract class IKnowledgeGateway {
   abstract findAll(): Promise<IKnowledgeData[]>;
   abstract findById(id: string): Promise<IKnowledgeData | null>;
+  abstract findExistingByIds(ids: string[]): Promise<IKnowledgeData[]>;
   abstract create(data: ICreateKnowledgeData): Promise<IKnowledgeData>;
   abstract update(
     id: string,

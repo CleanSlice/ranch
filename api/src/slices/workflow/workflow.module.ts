@@ -8,9 +8,18 @@ import { SettingModule } from '#/setting/setting.module';
 import { LlmModule } from '#/llm/llm.module';
 import { TemplateModule } from '#/agent/template/template.module';
 import { McpServerModule } from '#/mcpServer/mcpServer.module';
+import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
+import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.module';
 
 @Module({
-  imports: [SettingModule, LlmModule, TemplateModule, McpServerModule],
+  imports: [
+    SettingModule,
+    LlmModule,
+    TemplateModule,
+    McpServerModule,
+    KnowledgeModule,
+    KnowledgeConfigModule,
+  ],
   providers: [
     WorkflowService,
     ArgoWorkflowGateway,

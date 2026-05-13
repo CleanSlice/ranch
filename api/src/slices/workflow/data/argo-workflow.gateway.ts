@@ -9,6 +9,9 @@ import { ILlmGateway } from '#/llm/domain';
 import { normalizeCredential } from '#/llm/domain/llm.utils';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { IMcpServerGateway, IMcpServerData } from '#/mcpServer/domain';
+import { IKnowledgeGateway } from '#/reins/knowledge/domain';
+import { IKnowledgeConfigGateway } from '#/reins/config/domain';
+import { KNOWLEDGE_MCP_ID } from '#/mcpServer/domain/mcpServer.seeder';
 
 const DEFAULTS = {
   bridle_url: 'http://host.k3d.internal:3333/ws/agent',
@@ -41,6 +44,8 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     private llmGateway: ILlmGateway,
     private templateGateway: ITemplateGateway,
     private mcpServerGateway: IMcpServerGateway,
+    private knowledgeGateway: IKnowledgeGateway,
+    private knowledgeConfig: IKnowledgeConfigGateway,
   ) {
     super();
   }
@@ -59,16 +64,43 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
    */
   private async resolveMcpServers(
     templateId: string,
+    effectiveKnowledgeIds: string[],
     ranchApiToken: string,
   ): Promise<unknown[]> {
     const template = await this.templateGateway.findById(templateId);
-    if (!template || template.mcpServerIds.length === 0) return [];
-    const servers = await this.mcpServerGateway.findByIds(
-      template.mcpServerIds,
+    const baseServers =
+      template && template.mcpServerIds.length > 0
+        ? await this.mcpServerGateway.findByIds(template.mcpServerIds)
+        : [];
+
+    const enabledServers = baseServers.filter((m) => m.enabled);
+
+    const shouldInjectKnowledge = await this.shouldInjectKnowledge(
+      effectiveKnowledgeIds,
+      enabledServers,
     );
-    return servers
-      .filter((m) => m.enabled)
-      .map((m) => this.toRuntimeConfig(m, ranchApiToken));
+    if (shouldInjectKnowledge) {
+      const knowledgeMcp =
+        await this.mcpServerGateway.findById(KNOWLEDGE_MCP_ID);
+      if (knowledgeMcp && knowledgeMcp.enabled) {
+        enabledServers.push(knowledgeMcp);
+      }
+    }
+
+    return enabledServers.map((m) => this.toRuntimeConfig(m, ranchApiToken));
+  }
+
+  private async shouldInjectKnowledge(
+    effectiveKnowledgeIds: string[],
+    alreadyAttached: IMcpServerData[],
+  ): Promise<boolean> {
+    if (effectiveKnowledgeIds.length === 0) return false;
+    if (alreadyAttached.some((m) => m.id === KNOWLEDGE_MCP_ID)) return false;
+    const isEnabled = await this.knowledgeConfig.isEnabled();
+    if (!isEnabled) return false;
+    const existing =
+      await this.knowledgeGateway.findExistingByIds(effectiveKnowledgeIds);
+    return existing.length > 0;
   }
 
   private toRuntimeConfig(server: IMcpServerData, ranchApiToken: string) {
@@ -86,6 +118,11 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
   }
 
   async submit(data: ISubmitWorkflowData): Promise<string> {
+    const template = await this.templateGateway.findById(data.templateId);
+    const effectiveKnowledgeIds =
+      data.knowledgeIds.length > 0
+        ? data.knowledgeIds
+        : (template?.defaultKnowledgeIds ?? []);
     const [
       bridleUrl,
       bridleApiKey,
@@ -111,7 +148,11 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       this.getIntegration('secret_provider'),
       this.getIntegration('aws_secret_prefix'),
       this.getIntegration('ranch_api_url'),
-      this.resolveMcpServers(data.templateId, data.ranchApiToken),
+      this.resolveMcpServers(
+        data.templateId,
+        effectiveKnowledgeIds,
+        data.ranchApiToken,
+      ),
     ]);
     // Pods use the agent-side endpoint when set, otherwise fall back to the
     // shared one. The API itself keeps using s3_endpoint for its own SDK.

@@ -9,6 +9,7 @@ export interface ISubmitWorkflowData {
   config: Record<string, unknown>;
   resources: { cpu: string; memory: string };
   isAdmin: boolean;
+  knowledgeIds: string[];
   ranchApiToken: string;
 }
 

@@ -20,6 +20,7 @@ export class WorkflowService {
       config: agent.config,
       resources: agent.resources,
       isAdmin: agent.isAdmin,
+      knowledgeIds: agent.knowledgeIds,
       ranchApiToken,
     });
   }

@@ -18,6 +18,7 @@ model Agent {
   debugEnabled    Boolean        @default(false)
   isPublic        Boolean        @default(false)
   allowedOrigins  String[]       @default([])
+  knowledgeIds    String[]       @default([])
   isAdmin         Boolean        @default(false)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt

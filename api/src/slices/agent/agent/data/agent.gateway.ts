@@ -76,6 +76,9 @@ export class AgentGateway extends IAgentGateway {
         ...(data.allowedOrigins !== undefined && {
           allowedOrigins: data.allowedOrigins,
         }),
+        ...(data.knowledgeIds !== undefined && {
+          knowledgeIds: data.knowledgeIds,
+        }),
       },
     });
     return this.mapper.toEntity(record);

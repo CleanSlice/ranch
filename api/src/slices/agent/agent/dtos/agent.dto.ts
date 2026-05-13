@@ -45,6 +45,9 @@ export class AgentDto {
   })
   allowedOrigins: string[];
 
+  @ApiProperty({ type: [String] })
+  knowledgeIds: string[];
+
   @ApiProperty()
   createdAt: Date;
 

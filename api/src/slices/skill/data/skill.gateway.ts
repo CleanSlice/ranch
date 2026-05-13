@@ -5,6 +5,7 @@ import {
   ISkillData,
   ICreateSkillData,
   IUpdateSkillData,
+  ISkillDependentAgent,
 } from '../domain/skill.types';
 import { SkillMapper } from './skill.mapper';
 
@@ -58,5 +59,33 @@ export class SkillGateway extends ISkillGateway {
 
   async delete(id: string): Promise<void> {
     await this.prisma.skill.delete({ where: { id } });
+  }
+
+  async findDependentAgents(id: string): Promise<ISkillDependentAgent[]> {
+    const record = await this.prisma.skill.findUnique({
+      where: { id },
+      select: {
+        templates: {
+          select: {
+            id: true,
+            name: true,
+            agents: {
+              select: { id: true, name: true, status: true },
+              orderBy: { createdAt: 'desc' },
+            },
+          },
+        },
+      },
+    });
+    if (!record) return [];
+    return record.templates.flatMap((t) =>
+      t.agents.map((a) => ({
+        id: a.id,
+        name: a.name,
+        status: a.status,
+        templateId: t.id,
+        templateName: t.name,
+      })),
+    );
   }
 }

@@ -1352,6 +1352,19 @@ export type SkillControllerUpdateResponses = {
   200: unknown;
 };
 
+export type FindDependentAgentsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/skills/{id}/agents";
+};
+
+export type FindDependentAgentsResponses = {
+  200: unknown;
+};
+
 export type PaddockScenarioControllerFindAllData = {
   body?: never;
   path?: never;

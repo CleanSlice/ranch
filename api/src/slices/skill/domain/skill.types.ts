@@ -34,6 +34,14 @@ export interface IUpdateSkillData {
   source?: string | null;
 }
 
+export interface ISkillDependentAgent {
+  id: string;
+  name: string;
+  status: string;
+  templateId: string;
+  templateName: string;
+}
+
 export interface ISkillSearchHit {
   /** Stable identifier for the result (used for import) */
   source: string; // e.g. "github:anthropics/skills"

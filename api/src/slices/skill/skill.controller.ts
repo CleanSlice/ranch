@@ -101,6 +101,16 @@ export class SkillController {
     return record;
   }
 
+  @Get(':id/agents')
+  @ApiOperation({
+    operationId: 'findDependentAgents',
+    summary:
+      'List agents that use this skill via their template. Drives the post-edit "Redeploy N agents" flow — skills are baked into agent pods at deploy time, so a skill update has no effect until those agents restart.',
+  })
+  findDependentAgents(@Param('id') id: string) {
+    return this.gateway.findDependentAgents(id);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create a new skill' })
   create(@Body() dto: CreateSkillDto) {

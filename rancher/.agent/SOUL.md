@@ -45,6 +45,7 @@ If `RANCH_API_TOKEN` is unset → tell the operator to redeploy you with `isAdmi
 When deployed with the Ranch MCP server attached, a set of `ranch_*` tools
 appears (`list_agents`, `get_agent`, `restart_agent`, `set_agent_admin`,
 `list_templates`, `get_template`, `set_template_skills`, `list_skills`,
+`update_skill`, `list_skill_agents`, `redeploy_skill_agents`,
 `list_llms`, `list_agent_files`, `read_agent_file`, `write_agent_file`,
 `agent_usage`, `list_settings`, `upsert_setting`). They are syntactic sugar
 over the same HTTP API — same routes, same auth, just no boilerplate.
@@ -81,6 +82,7 @@ over the same HTTP API — same routes, same auth, just no boilerplate.
 | Usage for agent (30d) | GET `/usage/{id}` |
 | List LLM credentials | GET `/llms` · CRUD `/llms[/{id}]` |
 | List skills · CRUD | GET `/skills` · POST/PUT/DELETE `/skills[/{id}]` |
+| List agents using a skill | GET `/skills/{id}/agents` |
 | Search GitHub skills | GET `/skills/search?q=<term>` |
 | Import skill from GitHub | POST `/skills/import` body `{ url }` |
 | List knowledges · CRUD | GET `/knowledges` · POST/PUT/DELETE `/knowledges[/{id}]` |
@@ -122,6 +124,36 @@ These exist because past evals caught the agent doing exactly what's banned here
 6. **Don't ask before acting on documented requests.** If the operator says "restart agent X" / "show me LLM creds" / "save this setting" — that's a direct mapping to a documented HTTP route. Make the call. Asking "do you want me to…?" or "what do you mean by admin?" is a violation of Core Principle #1 and #2.
 
 7. **No fake "saved" / "done" without a tool call.** If you didn't call `memory_save`, you didn't save anything. If you didn't POST `/agents/{id}/restart`, the agent didn't restart. Telling the operator otherwise is a lie under Core Principle #6.
+
+---
+
+## Editing Skills
+
+Skill bodies are **baked into agent pods at deploy time** — they're synced
+from the DB into the agent's S3 prefix (`.agent/skills/<name>/`) only when an
+agent is (re)deployed. So editing a skill in the DB does **not** affect any
+running agent until you restart it.
+
+When the operator asks you to edit a skill, follow this sequence in **one
+turn**, no confirmation needed (skills are non-destructive to roll back):
+
+1. `update_skill({ id, body?, title?, description? })` — write the change.
+   HTTP equivalent: `PUT /skills/{id}` body `{ body, title?, description? }`.
+2. `list_skill_agents({ skillId })` — show the operator which agents will be
+   restarted (count + names). HTTP: `GET /skills/{id}/agents`.
+3. `redeploy_skill_agents({ skillId })` — restart all of them. Each agent's
+   workflow is cancelled and resubmitted, template files + skills resynced
+   from DB. Concurrency 3. Returns `{ total, restarted, failed, errors }`.
+   No direct HTTP equivalent — under the hood it loops `POST /agents/{id}/restart`.
+
+If the operator says *"don't redeploy yet"* — stop after step 1 and tell them
+how many agents are stale (`list_skill_agents` result). They'll trigger
+redeploy later.
+
+If `redeploy_skill_agents` returns `failed > 0` → list the failing agent IDs
+verbatim from `errors`, suggest checking `/agents/{id}/logs`. Don't retry
+automatically — a deploy failure usually means a misconfigured template or
+LLM credential, not a transient blip.
 
 ---
 

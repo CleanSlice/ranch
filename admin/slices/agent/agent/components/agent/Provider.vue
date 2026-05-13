@@ -25,6 +25,10 @@ const settingStore = useSettingStore();
 const llmStore = useLlmStore();
 const usageStore = useUsageStore();
 const templateStore = useTemplateStore();
+// Bridle is the only signal that means "agent is actually talking to us right
+// now" — strongest source of truth for the overlay, beats both DB status and
+// pod.ready. The chat panel below mounts a BridleProvider that drives this.
+const bridleStore = useBridleStore();
 const config = useRuntimeConfig();
 
 const apiUrl =
@@ -168,6 +172,10 @@ async function onRestart() {
   if (!agent.value || isRestarting.value) return;
   restarting.value = true;
   restartError.value = null;
+  // Persist BEFORE the API call so an F5 in the next 1–3 sec (while the
+  // server is still cancelling the old workflow and hasn't yet written
+  // status='deploying') still shows the overlay.
+  agentStore.markRestartInFlight(agent.value.id);
   // Optimistic — flip to "deploying" right away so the badge reacts before
   // the API call resolves (cancel + submit takes a few seconds).
   const previousStatus = agent.value.status;
@@ -179,6 +187,7 @@ async function onRestart() {
     await refreshUsage();
   } catch (err) {
     if (agent.value) agent.value = { ...agent.value, status: previousStatus };
+    agentStore.clearRestartInFlight(props.id);
     restartError.value = (err as Error).message || 'Restart failed';
   } finally {
     restarting.value = false;
@@ -208,10 +217,107 @@ const podPhaseLabel = computed(() => {
   return pod.phase;
 });
 
+// Combined "agent is not ready for chat" overlay state. Falls out of the
+// reconciled DB status plus the live pod readiness flag (the same two signals
+// AgentStatusService merges) — gives the user a clear "starting…" indication
+// during the seconds-long gap between Restart click and the chat WS
+// reconnecting. Returns null when chat is fully usable.
+type ChatOverlay =
+  | { kind: 'starting'; title: string; detail: string }
+  | { kind: 'failed'; title: string; detail: string }
+  | null;
+
+const chatOverlay = computed<ChatOverlay>(() => {
+  if (!agent.value) return null;
+  const s = agent.value.status;
+  const pod = podStatus.value;
+  // localStorage-backed — survives F5 during the seconds-long window between
+  // Restart click and the API writing status='deploying'.
+  const inFlight = agentStore.isRestartInFlight(props.id);
+  // Strongest "agent is up" signal: chat WS is connected AND the runtime is
+  // registered with the hub. This bypasses DB/pod entirely — if the agent is
+  // actually talking to us, nothing else matters.
+  const chatLive = bridleStore.isConnected && bridleStore.isAgentConnected;
+
+  if (chatLive) return null;
+
+  if (s === 'failed') {
+    return {
+      kind: 'failed',
+      title: 'Agent failed to start',
+      detail:
+        pod?.message ??
+        pod?.containerWaitingReason ??
+        'Pod did not come up. Check logs and restart.',
+    };
+  }
+
+  if (s === 'pending' || s === 'deploying' || inFlight) {
+    return {
+      kind: 'starting',
+      title: 'Starting agent…',
+      detail: pod
+        ? `Pod ${pod.podName}: ${podPhaseLabel.value ?? pod.phase}`
+        : 'Cancelling old workflow and submitting a fresh one.',
+    };
+  }
+
+  // status='running' but pod still not Ready — brief window right after the
+  // reconciler flipped the DB but before the readiness probe passes.
+  if (s === 'running' && pod && !pod.ready) {
+    return {
+      kind: 'starting',
+      title: 'Starting agent…',
+      detail: podPhaseLabel.value ?? 'Waiting for container readiness',
+    };
+  }
+
+  return null;
+});
+
+// Clear the persisted in-flight flag once we have ANY confirmation the agent
+// is back: bridle chat live, status=running+pod ready, or terminal failure.
+// Bridle is the primary trigger — it fires before the K8s probe can pass.
+watch(
+  () =>
+    [
+      agent.value?.status,
+      podStatus.value?.ready,
+      bridleStore.isConnected,
+      bridleStore.isAgentConnected,
+    ] as const,
+  ([status, ready, chatConnected, agentConnected]) => {
+    const chatLive = chatConnected && agentConnected;
+    if (chatLive || (status === 'running' && ready === true)) {
+      agentStore.clearRestartInFlight(props.id);
+    } else if (status === 'failed') {
+      agentStore.clearRestartInFlight(props.id);
+    }
+  },
+);
+
 // ── Pod logs ────────────────────────────────────────────────────────────
 const logs = ref<string>('');
 const logsLoading = ref(false);
 const logsError = ref<string | null>(null);
+
+// Backend returns `[container <reason>]` (e.g., "containercreating",
+// "podinitializing") instead of the cryptic K8s 400 when the pod exists but
+// the container hasn't booted yet. Detect that shape so we can render a
+// spinner+message instead of a literal "[container containercreating]" line.
+const containerWaitingReason = computed(() => {
+  const m = logs.value.trim().match(/^\[container ([a-z0-9_]+)\]$/i);
+  return m?.[1] ?? null;
+});
+const containerWaitingLabel = computed(() => {
+  const r = containerWaitingReason.value;
+  if (!r) return null;
+  // Camel-case the K8s reason for display: containercreating → ContainerCreating
+  // (k8s sends it CamelCase originally; backend lowercases it for the marker).
+  if (r === 'containercreating') return 'Container creating';
+  if (r === 'podinitializing') return 'Pod initializing';
+  return r.replace(/\b\w/g, (c) => c.toUpperCase());
+});
 const logsAutoRefresh = ref(true);
 const logsScrollRef = ref<HTMLElement | null>(null);
 let logsTimer: ReturnType<typeof setInterval> | null = null;
@@ -462,14 +568,57 @@ watch(activeTab, (tab) => {
         <div class="min-w-0">
         <TabsContent value="chat" class="mt-0">
           <div class="flex items-center justify-center gap-3">
-            <BridleProvider
+            <div
               v-if="authStore.accessToken"
-              :api-url="apiUrl"
-              :agent-id="agent.id"
-              :token="authStore.accessToken"
-              :title="`Chat with ${agent.name}`"
-              class="h-[calc(100vh-15.5rem)] min-h-[480px] w-full min-w-[400px] max-w-[800px] basis-1/2"
-            />
+              class="relative h-[calc(100vh-15.5rem)] min-h-[480px] w-full min-w-[400px] max-w-[800px] basis-1/2"
+            >
+              <BridleProvider
+                :api-url="apiUrl"
+                :agent-id="agent.id"
+                :token="authStore.accessToken"
+                :title="`Chat with ${agent.name}`"
+                class="h-full w-full"
+              />
+              <Transition
+                enter-active-class="transition-opacity duration-200"
+                leave-active-class="transition-opacity duration-200"
+                enter-from-class="opacity-0"
+                leave-to-class="opacity-0"
+              >
+                <div
+                  v-if="chatOverlay"
+                  class="pointer-events-auto absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-xl bg-background/85 backdrop-blur-sm"
+                >
+                  <IconLoader2
+                    v-if="chatOverlay.kind === 'starting'"
+                    class="size-10 animate-spin text-primary"
+                  />
+                  <IconAlertTriangle
+                    v-else
+                    class="size-10 text-destructive"
+                  />
+                  <div class="max-w-sm text-center">
+                    <p class="text-sm font-medium">{{ chatOverlay.title }}</p>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                      {{ chatOverlay.detail }}
+                    </p>
+                  </div>
+                  <Button
+                    v-if="chatOverlay.kind === 'failed'"
+                    size="sm"
+                    :disabled="isRestarting"
+                    @click="onRestart"
+                  >
+                    <IconLoader2
+                      v-if="isRestarting"
+                      class="size-4 animate-spin"
+                    />
+                    <IconRefresh v-else class="size-4" />
+                    {{ isRestarting ? 'Restarting…' : 'Restart agent' }}
+                  </Button>
+                </div>
+              </Transition>
+            </div>
             <Button
               variant="outline"
               size="icon"
@@ -528,8 +677,16 @@ watch(activeTab, (tab) => {
                     {{ logsError }}
                   </div>
                   <div class="h-full overflow-auto bg-muted/30 p-3">
+                    <div
+                      v-if="containerWaitingLabel"
+                      class="flex flex-col items-center gap-2 py-8 text-center text-xs text-muted-foreground"
+                    >
+                      <IconLoader2 class="size-5 animate-spin text-primary" />
+                      <span>{{ containerWaitingLabel }}…</span>
+                      <span class="text-[10px]">Logs will appear when the container starts.</span>
+                    </div>
                     <pre
-                      v-if="logs"
+                      v-else-if="logs"
                       class="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-relaxed"
                     >{{ logs }}</pre>
                     <div
@@ -864,8 +1021,16 @@ watch(activeTab, (tab) => {
                 ref="logsScrollRef"
                 class="max-h-[calc(100vh-21.5rem)] min-h-[480px] overflow-auto rounded-md border bg-muted/30 p-3"
               >
+                <div
+                  v-if="containerWaitingLabel"
+                  class="flex flex-col items-center gap-2 py-12 text-center text-sm text-muted-foreground"
+                >
+                  <IconLoader2 class="size-6 animate-spin text-primary" />
+                  <span class="font-medium">{{ containerWaitingLabel }}…</span>
+                  <span class="text-xs">Logs will appear when the container starts.</span>
+                </div>
                 <pre
-                  v-if="logs"
+                  v-else-if="logs"
                   class="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-relaxed"
                 >{{ logs }}</pre>
                 <div

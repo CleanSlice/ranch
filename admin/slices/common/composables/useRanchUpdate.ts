@@ -64,11 +64,33 @@ function writeCache(entry: CachedCheck): void {
   }
 }
 
+async function fetchLiveCurrent(): Promise<string | null> {
+  // The runtime config value is baked in at admin dev startup, so after an
+  // in-place upgrade it stays stale until `ranch dev` is restarted. The API
+  // re-reads its own package.json on the fly, so use that as the source of
+  // truth for the running version.
+  if (typeof window === 'undefined') return null;
+  try {
+    const config = useRuntimeConfig();
+    const apiUrl = config.public.apiUrl as string;
+    const match = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/);
+    const token = match ? decodeURIComponent(match[1]) : null;
+    const res = await fetch(`${apiUrl}/upgrade/status`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { currentVersion?: string };
+    return data.currentVersion ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function useRanchUpdate() {
-  const current = useRuntimeConfig().public.ranchVersion as string;
+  const configured = useRuntimeConfig().public.ranchVersion as string;
 
   const state = useState<UpdateState>('ranchUpdate', () => ({
-    current,
+    current: configured,
     latest: null,
     hasUpdate: false,
     releaseUrl: null,
@@ -77,6 +99,10 @@ export function useRanchUpdate() {
 
   async function check(force = false): Promise<void> {
     if (state.value.loading) return;
+
+    const live = await fetchLiveCurrent();
+    if (live) state.value.current = live;
+    const current = state.value.current;
 
     if (!force) {
       const cached = readCache();

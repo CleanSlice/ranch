@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { IBridleGateway, ISyncAgentResult } from '../domain/bridle.gateway';
+import { Observable, Subject } from 'rxjs';
+import {
+  IBridleGateway,
+  ISyncAgentResult,
+  IBridleAgentEvent,
+} from '../domain/bridle.gateway';
 import type {
   IBridleHealthData,
   IBridleAgentHealthData,
@@ -37,12 +42,16 @@ export class BridleGateway extends IBridleGateway {
   /** Pending sync requests awaiting agent ack: requestId → pending */
   private pendingSyncs = new Map<string, IPendingSync>();
 
+  /** Connect/disconnect events for AgentStatusService to reconcile DB status. */
+  private readonly agentEvents = new Subject<IBridleAgentEvent>();
+
   registerAgent(agentId: string, send: (data: unknown) => void): void {
     this.agents.set(agentId, send);
     this.logger.log(
       `Agent registered: agentId=${agentId} (total agents: ${this.agents.size})`,
     );
     this.broadcastAgentStatus(agentId, true);
+    this.agentEvents.next({ type: 'connected', agentId });
   }
 
   unregisterAgent(agentId: string): void {
@@ -58,6 +67,11 @@ export class BridleGateway extends IBridleGateway {
       pending.reject(new Error('Agent disconnected before sync completed'));
     }
     this.broadcastAgentStatus(agentId, false);
+    this.agentEvents.next({ type: 'disconnected', agentId });
+  }
+
+  agentEvents$(): Observable<IBridleAgentEvent> {
+    return this.agentEvents.asObservable();
   }
 
   /**

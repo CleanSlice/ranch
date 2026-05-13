@@ -1,4 +1,6 @@
 import {
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -17,8 +19,10 @@ import {
 import { IAgentGateway } from './agent.gateway';
 import { IAgentData } from './agent.types';
 import { AgentDeployService } from './agentDeploy.service';
+import { DeployTracker } from './deployTracker';
 import { IPodGateway } from '#/agent/pod/domain';
 import { IAgentPodStatus, PodEventTypes } from '#/agent/pod/domain/pod.types';
+import { IBridleGateway } from '#/bridle/domain';
 
 export interface IAgentStatus {
   agent: IAgentData;
@@ -49,6 +53,7 @@ const AUTO_RESTART_CONCURRENCY = 5;
 export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentStatusService.name);
   private reconcileSub: Subscription | null = null;
+  private bridleSub: Subscription | null = null;
   private driftTimer: NodeJS.Timeout | null = null;
   private driftRunning = false;
 
@@ -56,6 +61,11 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     private readonly agentGateway: IAgentGateway,
     private readonly podGateway: IPodGateway,
     private readonly agentDeployService: AgentDeployService,
+    private readonly deployTracker: DeployTracker,
+    // forwardRef: BridleModule also imports AgentModule (via forwardRef) for
+    // AuthService access; same dependency cycle, same workaround.
+    @Inject(forwardRef(() => IBridleGateway))
+    private readonly bridleGateway: IBridleGateway,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -70,6 +80,22 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
         void this.reconcileDbStatus(evt.status).catch((err) => {
           this.logger.warn(
             `Reconcile failed for agent ${evt.status.agentId}: ${(err as Error).message}`,
+          );
+        });
+      },
+    });
+
+    // Primary "agent is up" signal. The runtime opens its bridle WS inside
+    // `runtime.start()` — BEFORE Bun.serve binds port 3000 — so this event
+    // fires before the K8s readiness probe ever has a chance to pass. If the
+    // runtime then hangs or crashes between bridle-connect and Bun.serve, the
+    // pod-event reconciler still catches it via Failed/CrashLoopBackOff.
+    this.bridleSub = this.bridleGateway.agentEvents$().subscribe({
+      next: (evt) => {
+        if (evt.type !== 'connected') return;
+        void this.markRunningFromBridle(evt.agentId).catch((err) => {
+          this.logger.warn(
+            `Bridle-driven reconcile failed for agent ${evt.agentId}: ${(err as Error).message}`,
           );
         });
       },
@@ -106,10 +132,32 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
   onModuleDestroy(): void {
     this.reconcileSub?.unsubscribe();
     this.reconcileSub = null;
+    this.bridleSub?.unsubscribe();
+    this.bridleSub = null;
     if (this.driftTimer) {
       clearInterval(this.driftTimer);
       this.driftTimer = null;
     }
+  }
+
+  // Bridle-driven path: the runtime announced itself, so it's definitely up.
+  // Forward-only — never demotes; pod events handle the failure side.
+  private async markRunningFromBridle(agentId: string): Promise<void> {
+    const agent = await this.agentGateway.findById(agentId);
+    if (!agent) return;
+    if (agent.status === 'running') {
+      this.deployTracker.clear(agentId);
+      return;
+    }
+    this.logger.log(
+      `Reconciling agent ${agentId}: bridle runtime registered — marking running`,
+    );
+    await this.agentGateway.updateStatus(
+      agentId,
+      'running',
+      agent.workflowId ?? undefined,
+    );
+    this.deployTracker.clear(agentId);
   }
 
   async snapshot(): Promise<IAgentStatus[]> {
@@ -176,6 +224,28 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
       let podReconcileCount = 0;
 
       for (const agent of agents) {
+        // Bridle-truth wins: if the runtime is currently connected, the agent
+        // IS up regardless of what the K8s probe says. Self-heals the case
+        // where the bridle 'connected' event fired before AgentStatusService
+        // subscribed (e.g., during an API restart) — the event would be
+        // lost otherwise. We skip the pod checks below because a transient
+        // pod-missing/Failed state during a restart shouldn't override a
+        // healthy runtime that's actively talking to us.
+        if (this.bridleGateway.isAgentConnected(agent.id)) {
+          if (agent.status !== 'running') {
+            this.logger.log(
+              `Drift: agent ${agent.id} (${agent.name}) is ${agent.status} in DB but bridle has it registered — marking running`,
+            );
+            await this.agentGateway.updateStatus(
+              agent.id,
+              'running',
+              agent.workflowId ?? undefined,
+            );
+            this.deployTracker.clear(agent.id);
+          }
+          continue;
+        }
+
         const pod = podByAgent.get(agent.id);
         if (!pod) {
           if (LIVE_DB_STATUSES.has(agent.status) && agent.status !== 'failed') {
@@ -263,6 +333,16 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
         FAIL_WAITING_REASONS.has(podStatus.containerWaitingReason));
 
     if (isFailed) {
+      // Stale failure from the OLD pod during a restart — Argo cancels the
+      // previous workflow, kubelet flips its pod to Failed, the watch emits a
+      // MODIFIED event. Without this skip the DB toggles to 'failed' between
+      // deploy()'s setStatus('deploying') and the new pod going Running+Ready.
+      if (this.deployTracker.isStale(agent.id, podStatus.startedAt)) {
+        this.logger.debug(
+          `Skipping stale Failed event for agent ${agent.id} pod ${podStatus.podName} — predates current deploy`,
+        );
+        return;
+      }
       if (agent.status !== 'failed') {
         this.logger.warn(
           `Reconciling agent ${agent.id}: pod ${podStatus.podName} is ${podStatus.phase}` +
@@ -297,6 +377,9 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
         'running',
         agent.workflowId ?? undefined,
       );
+      // The new pod has stabilised — drop the cutoff so any genuine future
+      // failure on this pod is processed normally.
+      this.deployTracker.clear(agent.id);
     }
   }
 }

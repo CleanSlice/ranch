@@ -64,6 +64,7 @@ import type {
   SkillControllerRemoveData,
   SkillControllerFindByIdData,
   SkillControllerUpdateData,
+  FindDependentAgentsData,
   PaddockScenarioControllerFindAllData,
   PaddockScenarioControllerCreateData,
   PaddockScenarioControllerRemoveData,
@@ -1098,6 +1099,22 @@ export class SkillsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * List agents that use this skill via their template. Drives the post-edit "Redeploy N agents" flow — skills are baked into agent pods at deploy time, so a skill update has no effect until those agents restart.
+   */
+  public static findDependentAgents<ThrowOnError extends boolean = false>(
+    options: Options<FindDependentAgentsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/{id}/agents",
+      ...options,
     });
   }
 }

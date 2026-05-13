@@ -37,6 +37,14 @@ export interface ISkillSearchHit {
   snippet: string | null;
 }
 
+export interface ISkillDependentAgent {
+  id: string;
+  name: string;
+  status: string;
+  templateId: string;
+  templateName: string;
+}
+
 function unwrap<T>(body: unknown): T | null {
   if (body && typeof body === 'object' && 'data' in (body as ApiEnvelope<T>)) {
     return ((body as ApiEnvelope<T>).data ?? null) as T | null;
@@ -116,9 +124,15 @@ export const useSkillStore = defineStore('skill', () => {
     return created;
   }
 
+  async function fetchDependentAgents(id: string) {
+    const res = await SkillsService.findDependentAgents({ path: { id } });
+    return unwrap<ISkillDependentAgent[]>(res.data) ?? [];
+  }
+
   return {
     items, loading, error,
     fetchAll, fetchById, create, update, remove,
     search, importFromGithub, importFromUrl,
+    fetchDependentAgents,
   };
 });

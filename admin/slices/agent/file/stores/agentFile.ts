@@ -15,10 +15,26 @@ export interface IFileContent {
   updatedAt: string;
 }
 
+export interface IFileChunk {
+  path: string;
+  content: string;
+  size: number;
+  totalSize: number;
+  offset: number;
+  nextOffset: number | null;
+  hasMore: boolean;
+  updatedAt: string;
+}
+
 export interface ISyncResult {
   agentOnline: boolean;
   pushed: number;
 }
+
+// First-chunk size (matches the server default and the old editor cap).
+// Picked so that small files come back in a single round-trip, while large
+// files don't hang the UI on the initial open.
+const INITIAL_CHUNK_BYTES = 256 * 1024;
 
 const PENDING_RESTART_KEY = 'agentFile:pendingRestart';
 
@@ -76,12 +92,23 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     return nodes.value;
   }
 
-  async function fetchContent(agentId: string, path: string): Promise<IFileContent> {
+  async function fetchContent(
+    agentId: string,
+    path: string,
+    offset = 0,
+    limit = INITIAL_CHUNK_BYTES,
+  ): Promise<IFileChunk> {
     const res = await FilesService.fileControllerRead({
       path: { agentId },
-      query: { path },
+      query: { path, offset, limit },
     });
-    const env = res.data as ApiEnvelope<IFileContent>;
+    const env = res.data as ApiEnvelope<IFileChunk> | undefined;
+    if (!env?.data) {
+      throw new Error(
+        (res as { error?: { message?: string } }).error?.message ??
+          'Failed to load file',
+      );
+    }
     return env.data;
   }
 

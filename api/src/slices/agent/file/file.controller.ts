@@ -12,12 +12,17 @@ import {
   Res,
   forwardRef,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IBridleGateway } from '#/bridle/domain';
 import { IFileGateway } from './domain';
-import { SaveFileDto, SyncFilesDto } from './dtos';
+import {
+  FileChunkDto,
+  ReadFileQueryDto,
+  SaveFileDto,
+  SyncFilesDto,
+} from './dtos';
 
 @ApiTags('files')
 @Controller('agents/:agentId/files')
@@ -38,10 +43,26 @@ export class FileController {
   }
 
   @Get('content')
-  @ApiOperation({ summary: 'Read a file' })
-  async read(@Param('agentId') agentId: string, @Query('path') path: string) {
+  @ApiOperation({
+    summary:
+      'Read a chunk of a file. Omit `offset`/`limit` to read the first 256 KB. Use the returned `nextOffset` to continue.',
+  })
+  @ApiOkResponse({ type: FileChunkDto })
+  async read(
+    @Param('agentId') agentId: string,
+    @Query() query: ReadFileQueryDto,
+  ): Promise<FileChunkDto> {
     await this.assertAgent(agentId);
-    return this.fileGateway.read(agentId, path);
+    const chunk = await this.fileGateway.readRange(
+      agentId,
+      query.path,
+      query.offset ?? 0,
+      query.limit ?? 256 * 1024,
+    );
+    return {
+      ...chunk,
+      updatedAt: chunk.updatedAt.toISOString(),
+    };
   }
 
   @Put('content')

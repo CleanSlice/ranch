@@ -24,6 +24,7 @@ import {
   SendMessageDto,
   BridleHealthDto,
   BridleAgentHealthDto,
+  TranscriptQueryDto,
   TranscriptResponseDto,
   TranscriptMessageDto,
 } from './dtos';
@@ -146,35 +147,79 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      "Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Used to restore the chat UI on page refresh — live updates still arrive via /ws/client.",
+      "Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client.",
     operationId: 'getBridleTranscript',
-  })
-  @ApiQuery({
-    name: 'channel',
-    required: false,
-    description: 'Session channel — defaults to "admin" for the admin app.',
   })
   @FlatResponse()
   @ApiOkResponse({ type: TranscriptResponseDto })
   @Get(':agentId/transcript')
   async transcript(
     @Param('agentId') agentId: string,
-    @Query('channel') channelRaw?: string,
+    @Query() query: TranscriptQueryDto,
   ): Promise<TranscriptResponseDto> {
-    const channel = (channelRaw ?? 'admin').trim() || 'admin';
+    const channel = (query.channel ?? 'admin').trim() || 'admin';
+    const limit = query.limit ?? 50;
     const path = `data/sessions/bridle:${channel}.jsonl`;
 
-    let content: string;
+    let allMessages: TranscriptMessageDto[];
     try {
-      const file = await this.fileGateway.read(agentId, path);
-      content = file.content;
+      allMessages = await this.readAllTranscriptMessages(agentId, path);
     } catch (err) {
-      const status = (err as { status?: number; statusCode?: number }).status;
-      if (status === 404) return { messages: [], channel };
+      const getStatus = (err as { getStatus?: () => number }).getStatus;
+      const status =
+        typeof getStatus === 'function'
+          ? getStatus.call(err)
+          : (err as { status?: number; statusCode?: number }).status ??
+            (err as { statusCode?: number }).statusCode;
+      if (status === 404) {
+        return { messages: [], channel, nextCursor: null, hasMore: false };
+      }
       this.logger.warn(
         `Transcript read failed for ${agentId}/${channel}: ${(err as Error).message}`,
       );
-      return { messages: [], channel };
+      return { messages: [], channel, nextCursor: null, hasMore: false };
+    }
+
+    const endIdx = this.parseCursor(query.cursor, allMessages.length);
+    const startIdx = Math.max(0, endIdx - limit);
+    const page = allMessages.slice(startIdx, endIdx);
+    const hasMore = startIdx > 0;
+
+    return {
+      messages: page,
+      channel,
+      nextCursor: hasMore ? String(startIdx) : null,
+      hasMore,
+    };
+  }
+
+  // Read the full JSONL transcript via range reads, parse all visible
+  // user/assistant lines, return sorted ascending by ts. Large files are
+  // streamed in 512 KB blocks so we never hit the editor's MAX_BYTES cap.
+  // Hard ceiling: 20 MB to avoid pathological reads — anything bigger
+  // should be exported via the Files ZIP download.
+  private async readAllTranscriptMessages(
+    agentId: string,
+    path: string,
+  ): Promise<TranscriptMessageDto[]> {
+    const MAX_TRANSCRIPT_BYTES = 20 * 1024 * 1024;
+    let content = '';
+    let offset = 0;
+    while (true) {
+      const chunk = await this.fileGateway.readRange(
+        agentId,
+        path,
+        offset,
+        512 * 1024,
+      );
+      content += chunk.content;
+      if (content.length > MAX_TRANSCRIPT_BYTES) {
+        throw new Error(
+          `Transcript exceeds ${MAX_TRANSCRIPT_BYTES} bytes — export via Files instead`,
+        );
+      }
+      if (!chunk.hasMore || chunk.nextOffset === null) break;
+      offset = chunk.nextOffset;
     }
 
     const messages: TranscriptMessageDto[] = [];
@@ -197,9 +242,17 @@ export class BridleController {
         // tail mid-flush; one bad line shouldn't kill the whole replay.
       }
     }
-
     messages.sort((a, b) => a.ts - b.ts);
-    return { messages, channel };
+    return messages;
+  }
+
+  // Cursor is the index *into the sorted-ascending message list* where the
+  // next page ENDS (exclusive). Default: total length (= latest page).
+  private parseCursor(cursor: string | undefined, total: number): number {
+    if (!cursor) return total;
+    const parsed = parseInt(cursor, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) return total;
+    return Math.min(parsed, total);
   }
 
   @ApiOperation({

@@ -128,6 +128,66 @@ function clearDebugFromStorage(agentId: string): void {
   }
 }
 
+// Initial page size for transcript load + each scroll-up load. 50 messages
+// covers the typical visible window without needing an immediate second page.
+const TRANSCRIPT_PAGE_SIZE = 50
+
+interface ITranscriptPageMessage {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  ts: number
+}
+
+interface ITranscriptPage {
+  messages: ITranscriptPageMessage[]
+  channel: string
+  nextCursor: string | null
+  hasMore: boolean
+}
+
+/**
+ * GET the transcript replay endpoint. The endpoint wraps the response in the
+ * Ranch `{ success, data }` envelope; we accept either shape so the store
+ * survives changes to the global response interceptor.
+ */
+async function fetchTranscriptPage(
+  apiUrl: string,
+  agentId: string,
+  token: string,
+  channel: string,
+  cursor?: string,
+): Promise<ITranscriptPage | null> {
+  const params = new URLSearchParams({ channel })
+  params.set('limit', String(TRANSCRIPT_PAGE_SIZE))
+  if (cursor) params.set('cursor', cursor)
+  const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/transcript?${params.toString()}`
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) {
+    console.warn('[bridle] transcript fetch returned', res.status)
+    return null
+  }
+  type TranscriptEnvelope = { data?: ITranscriptPage } & ITranscriptPage
+  const body = (await res.json()) as TranscriptEnvelope
+  const payload = body.data ?? body
+  return {
+    messages: payload.messages ?? [],
+    channel: payload.channel ?? channel,
+    nextCursor: payload.nextCursor ?? null,
+    hasMore: !!payload.hasMore,
+  }
+}
+
+function toBridleMessage(m: ITranscriptPageMessage): IBridleMessageData {
+  return {
+    id: m.id,
+    role: m.role,
+    text: m.text,
+    parts: [{ type: BridlePartTypes.Text as const, text: m.text }],
+    ts: m.ts,
+  }
+}
+
 function buildParts(text: string, images?: Array<{ base64: string; mediaType: string }>): BridlePart[] {
   const parts: BridlePart[] = []
   if (text) parts.push({ type: BridlePartTypes.Text, text })
@@ -153,6 +213,14 @@ function hasVisibleContent(text: string, parts: BridlePart[]): boolean {
 export const useBridleStore = defineStore('bridle', {
   state: () => ({
     messages: [] as IBridleMessageData[],
+    /**
+     * Opaque cursor returned by the API for fetching older messages. `null`
+     * means there are no more older messages to load (or transcript hasn't
+     * been fetched yet — `hasMoreOlder` distinguishes those).
+     */
+    transcriptCursor: null as string | null,
+    hasMoreOlder: false,
+    loadingOlder: false,
     isConnected: false,
     /**
      * Whether the agent runtime is currently registered with the bridle hub.
@@ -346,6 +414,8 @@ export const useBridleStore = defineStore('bridle', {
 
     clearMessages() {
       this.messages = []
+      this.transcriptCursor = null
+      this.hasMoreOlder = false
       this.debugByMessageId = {}
       this._lastDebug = null
     },
@@ -407,6 +477,8 @@ export const useBridleStore = defineStore('bridle', {
           return false
         }
         this.messages = []
+        this.transcriptCursor = null
+        this.hasMoreOlder = false
         this.debugByMessageId = {}
         this._lastDebug = null
         clearDebugFromStorage(agentId)
@@ -430,28 +502,51 @@ export const useBridleStore = defineStore('bridle', {
 
     async loadTranscript(apiUrl: string, agentId: string, token: string, channel = 'admin') {
       try {
-        const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/transcript?channel=${encodeURIComponent(channel)}`
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (!res.ok) {
-          console.warn('[bridle] transcript fetch returned', res.status)
-          return
-        }
-        type TranscriptMessage = { id: string; role: 'user' | 'assistant'; text: string; ts: number }
-        type TranscriptPayload = { messages?: TranscriptMessage[] }
-        type TranscriptEnvelope = { data?: TranscriptPayload }
-        const body = await res.json() as TranscriptEnvelope & TranscriptPayload
-        const items = body.data?.messages ?? body.messages ?? []
-        this.messages = items.map((m: TranscriptMessage) => ({
-          id: m.id,
-          role: m.role,
-          text: m.text,
-          parts: [{ type: BridlePartTypes.Text as const, text: m.text }],
-          ts: m.ts,
-        }))
+        const page = await fetchTranscriptPage(apiUrl, agentId, token, channel)
+        if (!page) return
+        this.messages = page.messages.map(toBridleMessage)
+        this.transcriptCursor = page.nextCursor
+        this.hasMoreOlder = page.hasMore
       } catch (err) {
         console.warn('[bridle] failed to load transcript', err)
+      }
+    },
+
+    /**
+     * Prepend the next older page of messages to `messages`. No-op when there
+     * are no more older messages or a load is already in flight. Returns the
+     * count of newly-prepended messages so the caller can preserve scroll
+     * position relative to the previous top.
+     */
+    async loadOlderTranscript(
+      apiUrl: string,
+      agentId: string,
+      token: string,
+      channel = 'admin',
+    ): Promise<number> {
+      if (this.loadingOlder || !this.hasMoreOlder || !this.transcriptCursor) {
+        return 0
+      }
+      this.loadingOlder = true
+      try {
+        const page = await fetchTranscriptPage(
+          apiUrl,
+          agentId,
+          token,
+          channel,
+          this.transcriptCursor,
+        )
+        if (!page) return 0
+        const olderMessages = page.messages.map(toBridleMessage)
+        this.messages = [...olderMessages, ...this.messages]
+        this.transcriptCursor = page.nextCursor
+        this.hasMoreOlder = page.hasMore
+        return olderMessages.length
+      } catch (err) {
+        console.warn('[bridle] failed to load older transcript', err)
+        return 0
+      } finally {
+        this.loadingOlder = false
       }
     },
 

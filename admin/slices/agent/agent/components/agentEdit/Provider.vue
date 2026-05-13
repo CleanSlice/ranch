@@ -22,6 +22,7 @@ const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
 const templateStore = useTemplateStore();
 const llmStore = useLlmStore();
+const knowledgeStore = useKnowledgeStore();
 const config = useRuntimeConfig();
 const apiUrl =
   (config.public as { apiUrl?: string }).apiUrl ??
@@ -32,15 +33,26 @@ const [
   { data: agent, pending: pendingAgent, refresh: refreshAgent },
   { data: templates, pending: pendingTemplates },
   { pending: pendingLlms },
+  { data: knowledges, pending: pendingKnowledges },
 ] = await Promise.all([
   useAsyncData(`admin-agent-${props.id}-edit`, () =>
     agentStore.fetchById(props.id),
   ),
   useAsyncData('agent-edit-templates', () => templateStore.fetchAll()),
   useAsyncData('agent-edit-llms', () => llmStore.fetchAll()),
+  useAsyncData(`agent-edit-knowledges-${props.id}`, () =>
+    knowledgeStore.fetchAll(),
+  ),
+  useAsyncData(`agent-edit-knowledge-status-${props.id}`, () =>
+    knowledgeStore.fetchStatus(),
+  ),
 ]);
 const pending = computed(
-  () => pendingAgent.value || pendingTemplates.value || pendingLlms.value,
+  () =>
+    pendingAgent.value ||
+    pendingTemplates.value ||
+    pendingLlms.value ||
+    pendingKnowledges.value,
 );
 
 const submitting = ref(false);
@@ -56,6 +68,7 @@ async function onSubmit(values: ICreateAgentData) {
       resources: values.resources,
       isPublic: values.isPublic,
       allowedOrigins: values.allowedOrigins,
+      knowledgeIds: values.knowledgeIds ?? [],
     };
     await agentStore.update(props.id, update);
     agentStore.markPendingRestart(props.id);
@@ -140,6 +153,8 @@ async function onRemove() {
       <AgentForm
         :templates="templates ?? []"
         :llms="llmStore.items"
+        :knowledges="knowledges ?? []"
+        :knowledge-service-enabled="knowledgeStore.enabled"
         :initial-values="{
           name: agent.name,
           templateId: agent.templateId,
@@ -147,6 +162,7 @@ async function onRemove() {
           resources: agent.resources,
           isPublic: agent.isPublic,
           allowedOrigins: agent.allowedOrigins,
+          knowledgeIds: agent.knowledgeIds,
         }"
         :submitting="submitting"
         submit-label="Save changes"

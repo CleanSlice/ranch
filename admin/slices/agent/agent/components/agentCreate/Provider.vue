@@ -5,13 +5,23 @@ import { IconArrowLeft } from '@tabler/icons-vue';
 const agentStore = useAgentStore();
 const templateStore = useTemplateStore();
 const llmStore = useLlmStore();
+const knowledgeStore = useKnowledgeStore();
 
-const [{ data: templates, pending: pendingTemplates }, { pending: pendingLlms }] =
-  await Promise.all([
-    useAsyncData('agent-create-templates', () => templateStore.fetchAll()),
-    useAsyncData('agent-create-llms', () => llmStore.fetchAll()),
-  ]);
-const pending = computed(() => pendingTemplates.value || pendingLlms.value);
+const [
+  { data: templates, pending: pendingTemplates },
+  { pending: pendingLlms },
+  { data: knowledges, pending: pendingKnowledges },
+] = await Promise.all([
+  useAsyncData('agent-create-templates', () => templateStore.fetchAll()),
+  useAsyncData('agent-create-llms', () => llmStore.fetchAll()),
+  useAsyncData('agent-create-knowledges', () => knowledgeStore.fetchAll()),
+  useAsyncData('agent-create-knowledge-status', () =>
+    knowledgeStore.fetchStatus(),
+  ),
+]);
+const pending = computed(
+  () => pendingTemplates.value || pendingLlms.value || pendingKnowledges.value,
+);
 
 const submitting = ref(false);
 
@@ -47,6 +57,8 @@ function onCancel() {
       v-else
       :templates="templates ?? []"
       :llms="llmStore.items"
+      :knowledges="knowledges ?? []"
+      :knowledge-service-enabled="knowledgeStore.enabled"
       :submitting="submitting"
       submit-label="Create agent"
       @submit="onSubmit"

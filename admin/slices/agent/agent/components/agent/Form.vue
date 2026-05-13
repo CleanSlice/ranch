@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ICreateAgentData } from '#agent/stores/agent';
 import type { ITemplateData } from '#template/stores/template';
+import type { IKnowledge } from '#reins/stores/knowledge';
 import { Button } from '#theme/components/ui/button';
 import { Checkbox } from '#theme/components/ui/checkbox';
 import { Input } from '#theme/components/ui/input';
@@ -24,6 +25,8 @@ import {
 const props = defineProps<{
   templates: ITemplateData[];
   llms: { id: string; provider: string; model: string; label: string | null; status: string }[];
+  knowledges: IKnowledge[];
+  knowledgeServiceEnabled: boolean;
   initialValues?: ICreateAgentData;
   submitLabel?: string;
   submitting?: boolean;
@@ -47,6 +50,7 @@ const form = reactive<
     resources: { cpu: string; memory: string };
     isPublic: boolean;
     allowedOriginsText: string;
+    knowledgeIds: string[];
   }
 >({
   name: props.initialValues?.name ?? '',
@@ -58,6 +62,7 @@ const form = reactive<
   },
   isPublic: props.initialValues?.isPublic ?? false,
   allowedOriginsText: (props.initialValues?.allowedOrigins ?? []).join('\n'),
+  knowledgeIds: [...(props.initialValues?.knowledgeIds ?? [])],
 });
 
 watch(
@@ -85,6 +90,16 @@ function parseOrigins(text: string): string[] {
     .filter(Boolean);
 }
 
+function toggleKnowledge(id: string, checked: boolean | 'indeterminate'): void {
+  if (checked === true) {
+    if (!form.knowledgeIds.includes(id)) {
+      form.knowledgeIds.push(id);
+    }
+  } else {
+    form.knowledgeIds = form.knowledgeIds.filter((x) => x !== id);
+  }
+}
+
 function onSubmit() {
   if (!validate()) return;
   emit('submit', {
@@ -100,6 +115,7 @@ function onSubmit() {
     },
     isPublic: form.isPublic,
     allowedOrigins: form.isPublic ? parseOrigins(form.allowedOriginsText) : [],
+    knowledgeIds: [...form.knowledgeIds],
   });
 }
 </script>
@@ -159,6 +175,62 @@ function onSubmit() {
             <NuxtLink to="/llms" class="underline">LLMs</NuxtLink>.
           </p>
         </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle>Knowledge bases (override)</CardTitle>
+        <CardDescription>
+          Knowledge bases this agent can query at runtime. Leave empty to inherit from the template.
+        </CardDescription>
+      </CardHeader>
+      <CardContent class="grid max-w-xl gap-3">
+        <p
+          v-if="!knowledgeServiceEnabled"
+          class="text-xs text-muted-foreground"
+        >
+          Knowledge service is disabled. Configure the URL in
+          <NuxtLink to="/settings" class="underline">Settings</NuxtLink>
+          to attach knowledges.
+        </p>
+        <p
+          v-else-if="!knowledges.length"
+          class="text-xs text-muted-foreground"
+        >
+          No knowledges yet. Create one in
+          <NuxtLink to="/knowledges" class="underline">Knowledges</NuxtLink>.
+        </p>
+        <template v-else>
+          <p class="text-xs text-muted-foreground">
+            Leave empty to inherit from template.
+          </p>
+          <div
+            class="flex max-h-64 flex-col gap-2 overflow-auto rounded-md border p-3"
+          >
+            <label
+              v-for="k in knowledges"
+              :key="k.id"
+              class="flex cursor-pointer items-start gap-3"
+            >
+              <Checkbox
+                :model-value="form.knowledgeIds.includes(k.id)"
+                @update:model-value="(v) => toggleKnowledge(k.id, v)"
+              />
+              <div class="grid gap-0.5">
+                <span class="text-sm font-medium">{{ k.name }}</span>
+                <span
+                  v-if="k.description"
+                  class="text-xs text-muted-foreground"
+                >{{ k.description }}</span>
+                <span
+                  v-if="k.indexStatus !== 'ready'"
+                  class="text-xs text-muted-foreground"
+                >Index: {{ k.indexStatus }}</span>
+              </div>
+            </label>
+          </div>
+        </template>
       </CardContent>
     </Card>
 

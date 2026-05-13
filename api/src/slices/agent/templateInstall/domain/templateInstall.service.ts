@@ -423,14 +423,17 @@ export class TemplateInstallService {
     agentDir: string,
     params: IInstallParamValues,
   ): Promise<number> {
-    // Only `.agent/*` files are stored as template files (browseable +
-    // editable in the admin UI). `.paddock/config.json` lives in the
+    // Files from the manifest's `.agent/` dir are stored at the template's
+    // S3 prefix root — WITHOUT the `.agent/` segment. The runtime maps its
+    // local agentDir (e.g. `.agent/`) 1:1 onto the agent's S3 prefix, so
+    // a leading `.agent/` here would land at `.agent/.agent/` on the pod
+    // and be ignored. `.paddock/config.json` lives in the
     // Template.paddockConfig column; scenarios become DB rows.
     const agentFiles = await this.collectFiles(agentDir);
     const uploads: { path: string; buffer: Buffer; contentType?: string }[] =
       [];
     for (const abs of agentFiles) {
-      const rel = path.posix.join('.agent', path.relative(agentDir, abs));
+      const rel = path.relative(agentDir, abs).split(path.sep).join('/');
       const buffer = await fs.readFile(abs);
       const ext = path.extname(abs).toLowerCase();
       const finalBuffer = RENDERABLE_EXTENSIONS.has(ext)

@@ -9,9 +9,11 @@ import {
   Post,
   Put,
   Query,
+  Res,
   forwardRef,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IBridleGateway } from '#/bridle/domain';
 import { IFileGateway } from './domain';
@@ -64,6 +66,26 @@ export class FileController {
     await this.assertAgent(agentId);
     const result = await this.bridleGateway.syncAgent(agentId);
     return { agentOnline: result.agentOnline, pushed: result.pushed };
+  }
+
+  // Using @Res() bypasses the global ResponseInterceptor envelope so the
+  // browser receives raw bytes (not `{success, data}` wrapping the zip).
+  @Get('export')
+  @ApiOperation({
+    operationId: 'exportAgentFiles',
+    summary:
+      'Download a ZIP archive of the agent’s entire S3 prefix (files, skills, runtime state). Used as a safety net before destructive actions.',
+  })
+  async exportZip(
+    @Param('agentId') agentId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.assertAgent(agentId);
+    const { filename, buffer } = await this.fileGateway.exportZip(agentId);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length.toString());
+    res.end(buffer);
   }
 
   private async assertAgent(agentId: string): Promise<void> {

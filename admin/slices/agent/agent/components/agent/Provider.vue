@@ -59,12 +59,12 @@ const { data: usage, pending: usagePending, refresh: refreshUsage } = useAsyncDa
   () => usageStore.fetchForAgent(props.id),
   { lazy: true },
 );
-
 const { data: template, pending: templatePending } = useAsyncData(
   `admin-agent-template-${props.id}`,
   async () => {
-    if (!agent.value) return null;
-    return templateStore.fetchById(agent.value.templateId);
+    const tplId = agent.value?.templateId;
+    if (!tplId) return null;
+    return templateStore.fetchById(tplId);
   },
   { lazy: true, watch: [agent] },
 );
@@ -763,7 +763,14 @@ watch(activeTab, (tab) => {
                 </div>
                 <div>
                   <dt class="text-xs text-muted-foreground">Template</dt>
-                  <dd class="mt-1 text-sm text-muted-foreground">{{ agent.templateId }}</dd>
+                  <dd class="mt-1 text-sm">
+                    <NuxtLink
+                      :to="`/templates/${agent.templateId}`"
+                      class="text-primary hover:underline"
+                    >
+                      {{ template?.name || agent.templateId }}
+                    </NuxtLink>
+                  </dd>
                 </div>
                 <div>
                   <dt class="text-xs text-muted-foreground">Resources</dt>

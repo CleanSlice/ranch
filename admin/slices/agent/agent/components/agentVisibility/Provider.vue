@@ -107,6 +107,17 @@ const embedInline = computed(
 ><\/script>`,
 )
 
+// Backend snippet for /auth/embed/token. The Ranch API key with the
+// `embed:mint` scope mints short-lived JWTs the browser uses as
+// `data-token`. Default TTL is 15m; pass `expiresIn` to lift it (e.g.
+// '24h', '7d', '30d'). The key never leaves the server.
+const mintTokenCurl = computed(
+  () => `curl -X POST "${props.apiUrl}/auth/embed/token" \\
+  -H "Authorization: Bearer $RANCH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"sub":"user-123","email":"alice@example.com","expiresIn":"7d"}'`,
+)
+
 const copiedKey = ref<string | null>(null)
 async function copy(key: string, value: string) {
   try {
@@ -251,6 +262,44 @@ async function copy(key: string, value: string) {
             class="mt-1 overflow-x-auto rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed"
           >{{ embedInline }}</pre>
         </div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between gap-2">
+          <Label class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Mint a browser token (server-side)
+          </Label>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 px-2 text-xs"
+            @click="copy('mint', mintTokenCurl)"
+          >
+            <IconCheck v-if="copiedKey === 'mint'" class="size-3.5" />
+            <IconCopy v-else class="size-3.5" />
+            {{ copiedKey === 'mint' ? 'Copied' : 'Copy' }}
+          </Button>
+        </div>
+        <pre
+          class="mt-1 overflow-x-auto rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed"
+        >{{ mintTokenCurl }}</pre>
+        <p class="mt-2 text-xs text-muted-foreground">
+          Call this from your backend to mint the JWT used in
+          <code class="font-mono">data-token</code>. Auth is a Ranch API key
+          with the <code class="font-mono">embed:mint</code> scope —
+          create one under
+          <NuxtLink to="/api-keys" class="underline">API Keys</NuxtLink>.
+          <code class="font-mono">sub</code> becomes the visitor's
+          <code class="font-mono">clientId</code> (and transcript bucket).
+          <code class="font-mono">expiresIn</code> is optional: defaults to
+          <code class="font-mono">15m</code>, accepts
+          <code class="font-mono">{{ '<n>(s|m|h|d)' }}</code> e.g.
+          <code class="font-mono">24h</code>, <code class="font-mono">7d</code>,
+          <code class="font-mono">30d</code>. Refresh transparently by
+          passing a token-getter to the SDK
+          (<code class="font-mono">token: () =&gt; fetchJwt()</code>) instead
+          of pinning a long-lived JWT in the page.
+        </p>
       </div>
 
       <p class="text-xs text-muted-foreground">

@@ -8,6 +8,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   Req,
   NotFoundException,
   Logger,
@@ -256,6 +257,10 @@ export class AgentController {
         `Template seed skipped for agent ${agent.id}: ${(err as Error).message}`,
       );
     }
+    await this.agentDeployService.syncSkillsFromTemplate(
+      agent.id,
+      agent.templateId,
+    );
     // Promote BEFORE the first deploy so the workflow boots the pod with
     // RANCH_ADMIN=true on the first try — avoids the race of "create deploys
     // non-admin → promote cancels + redeploys" where the cancel sometimes
@@ -420,8 +425,11 @@ export class AgentController {
 
   @Delete(':id')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
-  @ApiOperation({ summary: 'Stop and delete an agent. Admin or Owner.' })
-  async remove(@Param('id') id: string) {
+  @ApiOperation({
+    summary:
+      'Stop and delete an agent. Pass `?wipeS3=true` to also drop every object under `agents/{id}/` — opt-in so accidental deletes don’t nuke files. Admin or Owner.',
+  })
+  async remove(@Param('id') id: string, @Query('wipeS3') wipeS3?: string) {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
 
@@ -446,6 +454,19 @@ export class AgentController {
       this.logger.warn(
         `Pod cleanup failed for agent ${id}: ${(err as Error).message}`,
       );
+    }
+
+    if (wipeS3 === 'true') {
+      try {
+        const deleted = await this.fileGateway.wipe(id);
+        this.logger.log(
+          `Wiped ${deleted} S3 object(s) for agent ${id} on delete`,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `S3 wipe failed for agent ${id}: ${(err as Error).message}`,
+        );
+      }
     }
   }
 }

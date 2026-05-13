@@ -194,8 +194,13 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
 
         // Startup must reconcile inline since events$ is a Subject (no
         // replay) and our subscription happens after the gateway's bootstrap.
-        // Periodic also reconciles defensively — idempotent and cheap.
-        await this.reconcileDbStatus(pod);
+        // Periodic relies on resync()'s diff events instead — defensive
+        // reconciliation here would race with deploy(): a stale Failed pod
+        // still in cache (Argo's cleanup-old hasn't yet deleted it) would
+        // overwrite the freshly-set 'deploying' back to 'failed'.
+        if (reason === 'startup') {
+          await this.reconcileDbStatus(pod);
+        }
         if (pod.phase === 'Failed') podReconcileCount += 1;
       }
 

@@ -9,6 +9,7 @@ import {
 } from '#theme/components/ui/sheet';
 import {
   IconAlertTriangle,
+  IconDownload,
   IconFiles,
   IconRefresh,
   IconX,
@@ -26,6 +27,9 @@ const confirmStore = useConfirmStore();
 const syncing = ref(false);
 const syncError = ref<string | null>(null);
 const syncMessage = ref<string | null>(null);
+
+const downloading = ref(false);
+const downloadError = ref<string | null>(null);
 
 const selected = ref<string | null>(null);
 const original = ref<string>('');
@@ -139,6 +143,19 @@ function dismissRestartBanner() {
   store.clearPendingRestart(props.id);
 }
 
+async function onDownload() {
+  if (downloading.value) return;
+  downloading.value = true;
+  downloadError.value = null;
+  try {
+    await store.downloadZip(props.id);
+  } catch (err) {
+    downloadError.value = (err as Error).message || 'Download failed';
+  } finally {
+    downloading.value = false;
+  }
+}
+
 // Lazy so this sub-provider doesn't re-suspend the page once the parent's
 // agent data resolves and this component mounts.
 useAsyncData(
@@ -217,17 +234,34 @@ useAsyncData(
           {{ store.nodes.length }} files
         </p>
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        :disabled="syncing"
-        @click="onSync"
-      >
-        <IconRefresh class="size-4" :class="syncing && 'animate-spin'" />
-        {{ syncing ? 'Syncing…' : 'Sync' }}
-      </Button>
+      <div class="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="downloading"
+          @click="onDownload"
+        >
+          <IconDownload class="size-4" />
+          {{ downloading ? 'Downloading…' : 'Download' }}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="syncing"
+          @click="onSync"
+        >
+          <IconRefresh class="size-4" :class="syncing && 'animate-spin'" />
+          {{ syncing ? 'Syncing…' : 'Sync' }}
+        </Button>
+      </div>
     </div>
 
+    <div
+      v-if="downloadError"
+      class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+    >
+      {{ downloadError }}
+    </div>
     <div
       v-if="syncError"
       class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"

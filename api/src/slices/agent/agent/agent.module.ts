@@ -14,6 +14,7 @@ import { BridleModule } from '#/bridle/bridle.module';
 import { McpServerModule } from '#/mcpServer/mcpServer.module';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.module';
+import { SkillModule } from '#/skill/skill.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.mod
     McpServerModule,
     forwardRef(() => KnowledgeModule),
     KnowledgeConfigModule,
+    SkillModule,
   ],
   controllers: [AgentController],
   providers: [

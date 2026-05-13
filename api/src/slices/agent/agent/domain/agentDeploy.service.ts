@@ -4,6 +4,7 @@ import { IFileGateway } from '#/agent/file/domain';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
 import { AuthService } from '#/user/auth/domain';
+import { ISkillGateway } from '#/skill/domain';
 
 @Injectable()
 export class AgentDeployService {
@@ -15,6 +16,7 @@ export class AgentDeployService {
     private readonly workflowService: WorkflowService,
     private readonly authService: AuthService,
     private readonly fileGateway: IFileGateway,
+    private readonly skillGateway: ISkillGateway,
   ) {}
 
   // Full restart sequence: pull latest template-owned files, cancel the
@@ -40,6 +42,8 @@ export class AgentDeployService {
         `Template resync failed for agent ${agentId}: ${(err as Error).message}`,
       );
     }
+
+    await this.syncSkillsFromTemplate(agentId, agent.templateId);
 
     try {
       await this.workflowService.cancelAgentWorkflow(agent.workflowId);
@@ -89,6 +93,37 @@ export class AgentDeployService {
         `Workflow submit failed for agent ${agentId}: ${(err as Error).message}`,
       );
       await this.agentGateway.updateStatus(agentId, 'failed');
+    }
+  }
+
+  // Mirror the template's currently-attached skills (from DB) into the
+  // agent's S3 prefix as `.agent/skills/<name>/`. Always wipes the prefix
+  // first so detached skills disappear too. Best-effort — a failure here
+  // shouldn't block deploy / restart.
+  async syncSkillsFromTemplate(
+    agentId: string,
+    templateId: string,
+  ): Promise<void> {
+    try {
+      const template = await this.templateGateway.findById(templateId);
+      if (!template) return;
+      const skills =
+        template.skillIds.length > 0
+          ? await this.skillGateway.findByIds(template.skillIds)
+          : [];
+      const bundles = skills.map((s) => ({
+        name: s.name,
+        body: s.body,
+        files: s.files,
+      }));
+      const written = await this.fileGateway.syncSkills(agentId, bundles);
+      this.logger.log(
+        `Synced ${skills.length} skill(s) into agent ${agentId} (${written} file(s) written)`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Skill sync failed for agent ${agentId}: ${(err as Error).message}`,
+      );
     }
   }
 }

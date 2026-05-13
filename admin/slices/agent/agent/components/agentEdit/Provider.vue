@@ -11,11 +11,21 @@ import {
 import { Badge } from '#theme/components/ui/badge';
 import {
   IconArrowLeft,
+  IconCheck,
+  IconDownload,
   IconLoader2,
   IconShield,
   IconShieldOff,
   IconTrash,
 } from '@tabler/icons-vue';
+import {
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogOverlay,
+  AlertDialogPortal,
+  AlertDialogRoot,
+  AlertDialogTitle,
+} from 'reka-ui';
 
 const props = defineProps<{ id: string }>();
 
@@ -114,16 +124,48 @@ async function onPromote() {
 }
 
 // ─── Delete ────────────────────────────────────────────────────────────────
+const fileStore = useAgentFileStore();
+
 const removing = ref(false);
 const removeError = ref<string | null>(null);
 const confirmRemoveOpen = ref(false);
+// Opt-in S3 wipe. Off by default so an accidental Delete doesn't nuke
+// files the operator might still want — the dialog also offers a
+// pre-download for that case.
+const wipeS3 = ref(false);
+
+const downloadingForDelete = ref(false);
+const downloadForDeleteError = ref<string | null>(null);
+
+async function onDownloadBeforeDelete() {
+  if (!agent.value || downloadingForDelete.value) return;
+  downloadingForDelete.value = true;
+  downloadForDeleteError.value = null;
+  try {
+    await fileStore.downloadZip(agent.value.id);
+  } catch (err) {
+    downloadForDeleteError.value =
+      (err as Error).message || 'Download failed';
+  } finally {
+    downloadingForDelete.value = false;
+  }
+}
+
+watch(confirmRemoveOpen, (open) => {
+  // Reset dialog state when it closes so the next open doesn't carry over
+  // a stale wipe choice or stale download error.
+  if (!open) {
+    wipeS3.value = false;
+    downloadForDeleteError.value = null;
+  }
+});
 
 async function onRemove() {
   if (!agent.value || removing.value) return;
   removing.value = true;
   removeError.value = null;
   try {
-    await agentStore.remove(agent.value.id);
+    await agentStore.remove(agent.value.id, { wipeS3: wipeS3.value });
     await navigateTo('/agents');
   } catch (err) {
     removeError.value = (err as Error).message || 'Delete failed';
@@ -236,13 +278,13 @@ async function onRemove() {
         <CardContent class="flex flex-col gap-4">
           <ul class="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
             <li>stop the running pod and cancel its Argo workflow</li>
-            <li>
-              remove all S3-stored agent data under
-              <code class="font-mono text-xs">agents/{{ agent.id }}/</code>
-              (files, secrets, usage)
-            </li>
             <li>delete agent-scoped paddock scenarios and evaluation history</li>
             <li>revoke any service tokens minted for this agent</li>
+            <li>
+              optionally wipe S3 data under
+              <code class="font-mono text-xs">agents/{{ agent.id }}/</code>
+              (files, skills, secrets, usage) — opt-in in the confirm dialog
+            </li>
           </ul>
           <div class="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3">
             <div class="text-sm">
@@ -265,14 +307,101 @@ async function onRemove() {
         </CardContent>
       </Card>
 
-      <ConfirmDialog
-        v-model:open="confirmRemoveOpen"
-        title="Delete agent"
-        :description="`Permanently delete agent “${agent.name}”? Pod, S3 data, scenarios and evaluations will be removed. This cannot be undone.`"
-        confirm-label="Delete agent"
-        :busy="removing"
-        @confirm="onRemove"
-      />
+      <AlertDialogRoot v-model:open="confirmRemoveOpen">
+        <AlertDialogPortal>
+          <AlertDialogOverlay
+            class="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/80"
+          />
+          <AlertDialogContent
+            class="bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border p-6 shadow-lg duration-200"
+          >
+            <div class="flex flex-col gap-2 text-left">
+              <AlertDialogTitle class="text-foreground text-lg font-semibold">
+                Delete agent
+              </AlertDialogTitle>
+              <AlertDialogDescription class="text-muted-foreground text-sm">
+                Permanently delete agent “{{ agent.name }}”? Pod, scenarios
+                and evaluations will be removed. This cannot be undone.
+              </AlertDialogDescription>
+            </div>
+
+            <div class="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 text-sm">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="font-medium">Download a backup first</p>
+                  <p class="text-xs text-muted-foreground">
+                    ZIP of every file under
+                    <code class="font-mono text-xs">agents/{{ agent.id }}/</code>.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="downloadingForDelete"
+                  @click="onDownloadBeforeDelete"
+                >
+                  <IconLoader2
+                    v-if="downloadingForDelete"
+                    class="size-4 animate-spin"
+                  />
+                  <IconDownload v-else class="size-4" />
+                  {{ downloadingForDelete ? 'Downloading…' : 'Download' }}
+                </Button>
+              </div>
+              <p v-if="downloadForDeleteError" class="text-xs text-destructive">
+                {{ downloadForDeleteError }}
+              </p>
+            </div>
+
+            <label
+              class="flex cursor-pointer items-start gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+            >
+              <input
+                v-model="wipeS3"
+                type="checkbox"
+                class="mt-0.5 size-4 accent-destructive"
+              />
+              <span class="flex flex-col gap-1">
+                <span class="font-medium">
+                  Also wipe S3 storage
+                  <IconCheck
+                    v-if="wipeS3"
+                    class="inline size-3 align-text-bottom text-destructive"
+                  />
+                </span>
+                <span class="text-xs text-muted-foreground">
+                  Drops every object under
+                  <code class="font-mono text-xs">agents/{{ agent.id }}/</code>.
+                  Without this, S3 data is preserved.
+                </span>
+              </span>
+            </label>
+
+            <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                variant="outline"
+                :disabled="removing"
+                @click="confirmRemoveOpen = false"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                :disabled="removing"
+                @click="onRemove"
+              >
+                <IconLoader2 v-if="removing" class="size-4 animate-spin" />
+                <IconTrash v-else class="size-4" />
+                {{ removing
+                  ? 'Deleting…'
+                  : wipeS3
+                    ? 'Delete agent + wipe S3'
+                    : 'Delete agent' }}
+              </Button>
+            </div>
+          </AlertDialogContent>
+        </AlertDialogPortal>
+      </AlertDialogRoot>
     </template>
 
     <div

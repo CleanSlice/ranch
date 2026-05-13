@@ -66,6 +66,19 @@ spec:
         value: ""
       - name: llm-api-key
         value: ""
+      # Auxiliary LLM (runtime ≥ 0.4.0): cheaper/smaller model for background
+      # work — session compaction, memory-flush, future curator/insights.
+      # When all four are empty, runtime's aux falls back to the main LLM.
+      # Setting just llm-aux-model is enough: aux inherits provider/key from
+      # main and uses the smaller model. See runtime/IMPROVEMENT_PLAN.md #1.
+      - name: llm-aux-provider
+        value: ""
+      - name: llm-aux-model
+        value: ""
+      - name: llm-aux-fallback-model
+        value: ""
+      - name: llm-aux-api-key
+        value: ""
   templates:
     - name: deploy-agent
       steps:
@@ -157,6 +170,14 @@ spec:
                     value: "{{workflow.parameters.llm-fallback-model}}"
                   - name: LLM_API_KEY
                     value: "{{workflow.parameters.llm-api-key}}"
+                  - name: LLM_AUX_PROVIDER
+                    value: "{{workflow.parameters.llm-aux-provider}}"
+                  - name: LLM_AUX_MODEL
+                    value: "{{workflow.parameters.llm-aux-model}}"
+                  - name: LLM_AUX_FALLBACK_MODEL
+                    value: "{{workflow.parameters.llm-aux-fallback-model}}"
+                  - name: LLM_AUX_API_KEY
+                    value: "{{workflow.parameters.llm-aux-api-key}}"
                   - name: RANCH_ADMIN
                     value: "{{workflow.parameters.ranch-admin}}"
                   - name: RANCH_API_URL

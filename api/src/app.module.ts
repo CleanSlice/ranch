@@ -26,6 +26,7 @@ import { KnowledgeModule } from './slices/reins/knowledge/knowledge.module';
 import { SourceModule } from './slices/reins/source/source.module';
 import { SkillModule } from './slices/skill/skill.module';
 import { RancherModule } from './slices/rancher/rancher.module';
+import { UpgradeModule } from './slices/upgrade/upgrade.module';
 import { McpServerModule } from './slices/mcpServer/mcpServer.module';
 import { McpModule } from './slices/mcp';
 import { PaddockModule } from './slices/paddock/paddock.module';
@@ -63,6 +64,7 @@ import { JwtAuthGuard } from './slices/user/auth/guards';
     SourceModule,
     SkillModule,
     RancherModule,
+    UpgradeModule,
     McpServerModule,
     PaddockModule,
     McpModule.forRoot({

@@ -20,6 +20,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '#theme/components/ui/dropdown-menu';
+import { Button } from '#theme/components/ui/button';
 import {
   IconTractor,
   IconTemplate,
@@ -32,11 +33,17 @@ import {
   IconShield,
   IconPlug,
   IconUserCircle,
+  IconExternalLink,
 } from '@tabler/icons-vue';
 import { Bot, FlaskConical, KeyRound } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const ranchVersion = useRuntimeConfig().public.ranchVersion;
+const update = useRanchUpdate();
+const upgradeDialogOpen = ref(false);
+onMounted(() => {
+  void update.check();
+});
 
 async function onLogout() {
   authStore.logout();
@@ -164,10 +171,29 @@ const itemsByGroup = (group: MenuGroupTypes) =>
           </DropdownMenu>
         </SidebarMenuItem>
       </SidebarMenu>
-      <div class="px-3 pb-1 pt-2 text-[11px] text-muted-foreground group-has-data-[collapsible=icon]/sidebar-wrapper:hidden">
-        Ranch v{{ ranchVersion }}
+      <div class="flex items-center justify-between gap-2 px-3 pb-1 pt-2 text-[11px] text-muted-foreground group-has-data-[collapsible=icon]/sidebar-wrapper:hidden">
+        <span class="truncate">Ranch v{{ ranchVersion }}</span>
+        <Button
+          v-if="update.state.value.hasUpdate && update.state.value.latest && update.state.value.releaseUrl"
+          size="sm"
+          variant="default"
+          class="h-6 gap-1 px-2 text-[11px] font-medium"
+          :title="`Update to v${update.state.value.latest}`"
+          @click="upgradeDialogOpen = true"
+        >
+          Update v{{ update.state.value.latest }}
+          <IconExternalLink class="size-3" />
+        </Button>
       </div>
     </SidebarFooter>
     <SidebarRail />
   </Sidebar>
+
+  <UpdateDialog
+    v-if="update.state.value.latest && update.state.value.releaseUrl"
+    v-model:open="upgradeDialogOpen"
+    :current-version="update.state.value.current"
+    :latest-version="update.state.value.latest"
+    :release-url="update.state.value.releaseUrl"
+  />
 </template>

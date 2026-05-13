@@ -493,6 +493,36 @@ export type SetAgentDebugDto = {
   enabled: boolean;
 };
 
+export type TelegramChannelConfigDto = {
+  /**
+   * Telegram bot HTTP API token (issued by @BotFather).
+   */
+  botToken: string;
+  /**
+   * Public bot username without @ — shown on landing pages.
+   */
+  botName?: string;
+  /**
+   * Comma-separated Telegram chat IDs treated as bot admins by the runtime.
+   */
+  adminIds?: string;
+};
+
+export type AgentChannelDto = {
+  /**
+   * Channel type. Discriminator — config shape depends on this. v1 only telegram.
+   */
+  type: "telegram";
+  config: TelegramChannelConfigDto;
+};
+
+export type SetAgentChannelsDto = {
+  /**
+   * Replace the full set of channels. Pass [] to clear all channels.
+   */
+  channels: Array<AgentChannelDto>;
+};
+
 export type FileChunkDto = {
   path: string;
   /**
@@ -1596,6 +1626,19 @@ export type AgentControllerSetDebugData = {
 };
 
 export type AgentControllerSetDebugResponses = {
+  200: unknown;
+};
+
+export type SetAgentChannelsData = {
+  body: SetAgentChannelsDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/channels";
+};
+
+export type SetAgentChannelsResponses = {
   200: unknown;
 };
 

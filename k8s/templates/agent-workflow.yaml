@@ -6,6 +6,16 @@ metadata:
 spec:
   entrypoint: deploy-agent
   serviceAccountName: workflow
+  # Delete Argo's executor pods (`*-agent-pod-*`, `*-cleanup-pod-*`) the moment
+  # each step finishes. The long-running agent pod `agent-{agent-id}` is a
+  # standalone Pod resource (not owned by the workflow), so it's unaffected.
+  podGC:
+    strategy: OnPodCompletion
+  # Garbage-collect the Workflow object itself an hour after it finishes.
+  # Long enough to inspect failures with `argo get`, short enough to keep the
+  # namespace tidy after dozens of restarts.
+  ttlStrategy:
+    secondsAfterCompletion: 3600
   arguments:
     parameters:
       - name: agent-id
@@ -78,6 +88,16 @@ spec:
       - name: llm-aux-fallback-model
         value: ""
       - name: llm-aux-api-key
+        value: ""
+      # Messaging channels — runtime detects each channel by the presence
+      # of its token env. Empty = channel disabled. Source of truth is
+      # agent.channels in the Ranch DB; api/argo-workflow.gateway projects
+      # those rows onto these parameters at submit time.
+      - name: telegram-bot-token
+        value: ""
+      - name: telegram-bot-name
+        value: ""
+      - name: telegram-bot-admin-ids
         value: ""
   templates:
     - name: deploy-agent
@@ -186,6 +206,12 @@ spec:
                     value: "{{workflow.parameters.ranch-api-token}}"
                   - name: MCP_SERVERS_B64
                     value: "{{workflow.parameters.mcp-servers-b64}}"
+                  - name: TELEGRAM_BOT_TOKEN
+                    value: "{{workflow.parameters.telegram-bot-token}}"
+                  - name: TELEGRAM_BOT_NAME
+                    value: "{{workflow.parameters.telegram-bot-name}}"
+                  - name: TELEGRAM_BOT_ADMIN_IDS
+                    value: "{{workflow.parameters.telegram-bot-admin-ids}}"
                 resources:
                   requests:
                     cpu: "{{workflow.parameters.cpu-limit}}"

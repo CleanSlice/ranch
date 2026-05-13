@@ -26,9 +26,21 @@ export interface IAgentData {
   isPublic: boolean;
   allowedOrigins: string[];
   isAdmin: boolean;
+  channels: IAgentChannel[];
   createdAt: string;
   updatedAt: string;
 }
+
+// Discriminated union — mirrors the API shape. v1 is telegram-only; add new
+// variants here as the backend gains support.
+export type IAgentChannel = {
+  type: 'telegram';
+  config: {
+    botToken: string;
+    botName?: string;
+    adminIds?: string;
+  };
+};
 
 export interface ICreateAgentData {
   name: string;
@@ -291,6 +303,19 @@ export const useAgentStore = defineStore('agent', () => {
     return env?.data?.logs ?? '';
   }
 
+  async function setChannels(id: string, channels: IAgentChannel[]) {
+    const res = await AgentsService.setAgentChannels({
+      path: { id },
+      body: { channels },
+    });
+    const env = res.data as ApiEnvelope<IAgentData> | undefined;
+    const updated = env?.data;
+    if (!updated) throw new Error('setChannels returned no agent data');
+    agents.value = agents.value.map((a) => (a.id === id ? updated : a));
+    markPendingRestart(id);
+    return updated;
+  }
+
   return {
     agents,
     fetchAll,
@@ -303,6 +328,7 @@ export const useAgentStore = defineStore('agent', () => {
     promoteAdmin,
     demoteAdmin,
     fetchLogs,
+    setChannels,
     isPendingRestart,
     markPendingRestart,
     clearPendingRestart,

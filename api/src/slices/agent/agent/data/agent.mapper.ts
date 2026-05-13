@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Agent, Prisma } from '@prisma/client';
-import { IAgentData, ICreateAgentData } from '../domain';
+import { IAgentData, IAgentChannel, ICreateAgentData } from '../domain';
 
 @Injectable()
 export class AgentMapper {
@@ -18,6 +18,11 @@ export class AgentMapper {
       isPublic: record.isPublic,
       allowedOrigins: record.allowedOrigins,
       isAdmin: record.isAdmin,
+      // Channels — null/legacy rows default to []. Cast lossy; UI / mappers
+      // validate the discriminated shape before use.
+      channels: Array.isArray(record.channels)
+        ? (record.channels as unknown as IAgentChannel[])
+        : [],
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

@@ -9,6 +9,7 @@ import { ILlmGateway } from '#/llm/domain';
 import { normalizeCredential } from '#/llm/domain/llm.utils';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { IMcpServerGateway, IMcpServerData } from '#/mcpServer/domain';
+import { buildAgentWorkflow } from './agent-workflow.manifest';
 
 const DEFAULTS = {
   bridle_url: 'http://host.k3d.internal:3333/ws/agent',
@@ -163,6 +164,20 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       { name: 'llm-aux-api-key', value: '' },
     ];
 
+    // Channels → runtime env vars. The runtime detects a channel by the
+    // presence of its token env. Multiple channels of the same type would
+    // overwrite (we keep the last one) — by design: an agent has one bot
+    // per platform.
+    const telegram = data.channels.find((c) => c.type === 'telegram');
+    const channelParams = [
+      { name: 'telegram-bot-token', value: telegram?.config.botToken ?? '' },
+      { name: 'telegram-bot-name', value: telegram?.config.botName ?? '' },
+      {
+        name: 'telegram-bot-admin-ids',
+        value: telegram?.config.adminIds ?? '',
+      },
+    ];
+
     const workflow = {
       apiVersion: 'argoproj.io/v1alpha1',
       kind: 'Workflow',
@@ -202,6 +217,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
             { name: 'ranch-api-token', value: data.ranchApiToken },
             { name: 'mcp-servers-b64', value: mcpServersB64 },
             ...llmParams,
+            ...channelParams,
           ],
         },
       },

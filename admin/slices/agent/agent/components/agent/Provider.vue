@@ -95,6 +95,7 @@ const SECRET_ENV_KEYS = new Set([
   'BRIDLE_API_KEY',
   'AWS_SECRET_ACCESS_KEY',
   'LLM_API_KEY',
+  'TELEGRAM_BOT_TOKEN',
 ]);
 
 const BRIDLE_URL_DEFAULT = 'http://host.k3d.internal:3333/ws/agent';
@@ -139,6 +140,26 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     // a placeholder so the admin can see the slot exists without leaking the
     // value (which is in the pod env, AWS Secrets Manager, or S3 only).
     { name: 'RANCH_API_TOKEN', value: agent.value.isAdmin ? '<service-token>' : '' },
+    // Channels — projected onto runtime env vars by the workflow gateway.
+    // Empty values mean the channel isn't configured (runtime skips it).
+    {
+      name: 'TELEGRAM_BOT_TOKEN',
+      value:
+        agent.value.channels?.find((c) => c.type === 'telegram')?.config
+          .botToken ?? '',
+    },
+    {
+      name: 'TELEGRAM_BOT_NAME',
+      value:
+        agent.value.channels?.find((c) => c.type === 'telegram')?.config
+          .botName ?? '',
+    },
+    {
+      name: 'TELEGRAM_BOT_ADMIN_IDS',
+      value:
+        agent.value.channels?.find((c) => c.type === 'telegram')?.config
+          .adminIds ?? '',
+    },
   ];
 });
 
@@ -413,7 +434,7 @@ async function onPaddockEvalStarted() {
 // Tab state — persisted in the URL so deep links + browser back work.
 // `chat` is the default since 99% of the time the user is here to talk to the
 // agent, not to inspect its plumbing.
-const TABS = ['chat', 'overview', 'files', 'secrets', 'env', 'logs', 'paddock'] as const;
+const TABS = ['chat', 'overview', 'files', 'secrets', 'env', 'channels', 'logs', 'paddock'] as const;
 type AgentTab = (typeof TABS)[number];
 const route = useRoute();
 const router = useRouter();
@@ -551,6 +572,7 @@ watch(activeTab, (tab) => {
               { value: 'files', title: 'Files', desc: 'Browse and edit S3-stored agent data.' },
               { value: 'secrets', title: 'Secrets', desc: 'User-scoped secrets the runtime stores.' },
               { value: 'env', title: 'Environment', desc: 'Env vars injected at deploy time.' },
+              { value: 'channels', title: 'Channels', desc: 'Messaging platforms (Telegram, …) the agent talks on.' },
               { value: 'logs', title: 'Logs', desc: 'Pod logs from the runtime container.' },
               { value: 'paddock', title: 'Paddock', desc: 'Run evaluations & manage scenarios.' },
             ]"
@@ -982,6 +1004,14 @@ watch(activeTab, (tab) => {
               </dl>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="channels" class="mt-0">
+          <AgentChannelsProvider
+            :agent-id="agent.id"
+            :channels="agent.channels ?? []"
+            @saved="(updated) => (agent = updated)"
+          />
         </TabsContent>
 
         <TabsContent value="logs" class="mt-0">

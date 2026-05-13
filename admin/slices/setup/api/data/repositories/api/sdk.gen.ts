@@ -83,6 +83,7 @@ import type {
   GetAgentMcpsData,
   GetAgentMcpsResponse,
   AgentControllerSetDebugData,
+  SetAgentChannelsData,
   AgentControllerFindAdminData,
   AgentControllerDemoteAdminData,
   AgentControllerPromoteAdminData,
@@ -1395,6 +1396,26 @@ export class AgentsService {
       ThrowOnError
     >({
       url: "/agents/{id}/debug",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Replace the agent's messaging channels (telegram, …). Body is the exhaustive list — anything omitted is removed. Restart the agent to apply: channel-derived env vars (TELEGRAM_BOT_TOKEN etc.) are injected at pod submit time.
+   */
+  public static setAgentChannels<ThrowOnError extends boolean = false>(
+    options: Options<SetAgentChannelsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/channels",
       ...options,
       headers: {
         "Content-Type": "application/json",

@@ -45,6 +45,16 @@ export class AgentDto {
   })
   allowedOrigins: string[];
 
+  @ApiProperty({
+    description:
+      'Messaging channels the runtime should connect to (telegram, …). Each entry is { type, config }; mapped to runtime env vars at deploy time.',
+    isArray: true,
+    example: [
+      { type: 'telegram', config: { botToken: 'xxx', botName: 'mybot' } },
+    ],
+  })
+  channels: unknown[];
+
   @ApiProperty()
   createdAt: Date;
 

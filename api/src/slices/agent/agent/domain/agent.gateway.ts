@@ -1,5 +1,6 @@
 import {
   IAgentData,
+  IAgentChannel,
   ICreateAgentData,
   IUpdateAgentData,
   AgentStatusTypes,
@@ -21,5 +22,9 @@ export abstract class IAgentGateway {
   abstract setWorkflowId(id: string, workflowId: string): Promise<IAgentData>;
   abstract setDebugEnabled(id: string, enabled: boolean): Promise<IAgentData>;
   abstract setAdmin(id: string, enabled: boolean): Promise<IAgentData>;
+  abstract setChannels(
+    id: string,
+    channels: IAgentChannel[],
+  ): Promise<IAgentData>;
   abstract delete(id: string): Promise<void>;
 }

@@ -4,3 +4,8 @@ export { CreateAgentDto } from './createAgent.dto';
 export { UpdateAgentDto } from './updateAgent.dto';
 export { SetAgentDebugDto } from './setAgentDebug.dto';
 export { AgentPodStatusDto, AgentStatusDto } from './agentStatus.dto';
+export {
+  AgentChannelDto,
+  SetAgentChannelsDto,
+  TelegramChannelConfigDto,
+} from './setAgentChannels.dto';

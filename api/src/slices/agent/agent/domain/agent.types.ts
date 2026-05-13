@@ -18,9 +18,23 @@ export interface IAgentData {
   isPublic: boolean;
   allowedOrigins: string[];
   isAdmin: boolean;
+  channels: IAgentChannel[];
   createdAt: Date;
   updatedAt: Date;
 }
+
+// Discriminated union — extend with `| { type: 'slack'; config: … }` etc.
+// when adding new channel types. The runtime reads channel-specific env
+// vars (TELEGRAM_BOT_TOKEN, SLACK_BOT_TOKEN, …) — the workflow gateway
+// flattens this shape into those env vars at submit time.
+export type IAgentChannel = {
+  type: 'telegram';
+  config: {
+    botToken: string;
+    botName?: string;
+    adminIds?: string;
+  };
+};
 
 export interface IAgentResources {
   cpu: string;

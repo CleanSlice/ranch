@@ -1113,6 +1113,57 @@ export const SetAgentDebugDtoSchema = {
   required: ["enabled"],
 } as const;
 
+export const TelegramChannelConfigDtoSchema = {
+  type: "object",
+  properties: {
+    botToken: {
+      type: "string",
+      description: "Telegram bot HTTP API token (issued by @BotFather).",
+    },
+    botName: {
+      type: "string",
+      description: "Public bot username without @ — shown on landing pages.",
+    },
+    adminIds: {
+      type: "string",
+      description:
+        "Comma-separated Telegram chat IDs treated as bot admins by the runtime.",
+    },
+  },
+  required: ["botToken"],
+} as const;
+
+export const AgentChannelDtoSchema = {
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      enum: ["telegram"],
+      description:
+        "Channel type. Discriminator — config shape depends on this. v1 only telegram.",
+    },
+    config: {
+      $ref: "#/components/schemas/TelegramChannelConfigDto",
+    },
+  },
+  required: ["type", "config"],
+} as const;
+
+export const SetAgentChannelsDtoSchema = {
+  type: "object",
+  properties: {
+    channels: {
+      description:
+        "Replace the full set of channels. Pass [] to clear all channels.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentChannelDto",
+      },
+    },
+  },
+  required: ["channels"],
+} as const;
+
 export const FileChunkDtoSchema = {
   type: "object",
   properties: {

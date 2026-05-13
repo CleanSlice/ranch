@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { Request } from 'express';
 import { z } from 'zod';
 import { Tool } from '#mcp';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -9,6 +10,8 @@ import { ISkillGateway } from '#/skill/domain';
 import { ISettingGateway } from '#/setting/domain';
 import { IUsageGateway } from '#/usage/domain';
 import { IFileGateway } from '#/agent/file/domain';
+import { IAuthTokenPayload } from '#/user/auth/domain';
+import { UserRoleTypes } from '#/user/user/domain';
 
 const asText = (value: unknown): string => {
   if (typeof value === 'string') return value;
@@ -34,6 +37,17 @@ export class RancherTool {
     private readonly files: IFileGateway,
   ) {}
 
+  private requireOwner(
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ): void {
+    const roles = httpRequest.user?.roles ?? [];
+    if (!roles.includes(UserRoleTypes.Owner)) {
+      throw new ForbiddenException(
+        'This tool requires platform admin role.',
+      );
+    }
+  }
+
   // ─── Agents ──────────────────────────────────────────────────────────
 
   @Tool({
@@ -42,7 +56,12 @@ export class RancherTool {
       'List every agent on this Ranch with their status, template, and resources.',
     parameters: z.object({}),
   })
-  async listAgents() {
+  async listAgents(
+    _args: Record<string, never>,
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     const items = await this.agents.findAll();
     return ok(items);
   }
@@ -55,7 +74,12 @@ export class RancherTool {
       id: z.string().describe('Agent id, e.g. agent-abc123'),
     }),
   })
-  async getAgent({ id }: { id: string }) {
+  async getAgent(
+    { id }: { id: string },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     const agent = await this.agents.findById(id);
     if (!agent) return ok({ error: `Agent ${id} not found` });
     return ok(agent);
@@ -69,7 +93,12 @@ export class RancherTool {
       id: z.string(),
     }),
   })
-  async restartAgent({ id }: { id: string }) {
+  async restartAgent(
+    { id }: { id: string },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     const agent = await this.agents.findById(id);
     if (!agent) return ok({ error: `Agent ${id} not found` });
     await this.agents.updateStatus(id, 'deploying');
@@ -89,7 +118,12 @@ export class RancherTool {
       enabled: z.boolean(),
     }),
   })
-  async setAgentAdmin({ id, enabled }: { id: string; enabled: boolean }) {
+  async setAgentAdmin(
+    { id, enabled }: { id: string; enabled: boolean },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     const updated = await this.agents.setAdmin(id, enabled);
     return ok(updated);
   }
@@ -102,7 +136,12 @@ export class RancherTool {
       'List all agent templates (image + defaults that pods are spawned from).',
     parameters: z.object({}),
   })
-  async listTemplates() {
+  async listTemplates(
+    _args: Record<string, never>,
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     return ok(await this.templates.findAll());
   }
 
@@ -112,7 +151,12 @@ export class RancherTool {
       'Get a template by id, including image, defaultResources, and attached skill ids.',
     parameters: z.object({ id: z.string() }),
   })
-  async getTemplate({ id }: { id: string }) {
+  async getTemplate(
+    { id }: { id: string },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     const template = await this.templates.findById(id);
     return ok(template ?? { error: `Template ${id} not found` });
   }
@@ -126,13 +170,18 @@ export class RancherTool {
       skillIds: z.array(z.string()),
     }),
   })
-  async setTemplateSkills({
-    id,
-    skillIds,
-  }: {
-    id: string;
-    skillIds: string[];
-  }) {
+  async setTemplateSkills(
+    {
+      id,
+      skillIds,
+    }: {
+      id: string;
+      skillIds: string[];
+    },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     return ok(await this.templates.setSkills(id, skillIds));
   }
 
@@ -154,18 +203,23 @@ export class RancherTool {
       paddockConfig: z.record(z.unknown()).optional(),
     }),
   })
-  async updateTemplate({
-    id,
-    ...patch
-  }: {
-    id: string;
-    name?: string;
-    description?: string;
-    image?: string;
-    defaultConfig?: Record<string, unknown>;
-    defaultResources?: { cpu: string; memory: string };
-    paddockConfig?: Record<string, unknown>;
-  }) {
+  async updateTemplate(
+    {
+      id,
+      ...patch
+    }: {
+      id: string;
+      name?: string;
+      description?: string;
+      image?: string;
+      defaultConfig?: Record<string, unknown>;
+      defaultResources?: { cpu: string; memory: string };
+      paddockConfig?: Record<string, unknown>;
+    },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     const updated = await this.templates.update(id, patch);
@@ -179,7 +233,12 @@ export class RancherTool {
       'seeded into every new agent that uses this template.',
     parameters: z.object({ id: z.string() }),
   })
-  async listTemplateFiles({ id }: { id: string }) {
+  async listTemplateFiles(
+    { id }: { id: string },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     return ok(await this.templateFiles.list(id));
@@ -197,7 +256,12 @@ export class RancherTool {
         .describe('Relative path inside the template, no leading "/"'),
     }),
   })
-  async readTemplateFile({ id, path }: { id: string; path: string }) {
+  async readTemplateFile(
+    { id, path }: { id: string; path: string },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     return ok(await this.templateFiles.read(id, path));
@@ -215,15 +279,20 @@ export class RancherTool {
       content: z.string(),
     }),
   })
-  async writeTemplateFile({
-    id,
-    path,
-    content,
-  }: {
-    id: string;
-    path: string;
-    content: string;
-  }) {
+  async writeTemplateFile(
+    {
+      id,
+      path,
+      content,
+    }: {
+      id: string;
+      path: string;
+      content: string;
+    },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     await this.templateFiles.save(id, path, content);
@@ -238,7 +307,12 @@ export class RancherTool {
     description: 'List configured LLM credentials (provider, model, status).',
     parameters: z.object({}),
   })
-  async listLlms() {
+  async listLlms(
+    _args: Record<string, never>,
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     return ok(await this.llms.findAll());
   }
 
@@ -250,7 +324,12 @@ export class RancherTool {
       'List skills available in the Ranch. Skills are bundles of instructions + helper files attached to templates.',
     parameters: z.object({}),
   })
-  async listSkills() {
+  async listSkills(
+    _args: Record<string, never>,
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     return ok(await this.skills.findAll());
   }
 
@@ -262,7 +341,12 @@ export class RancherTool {
       "List files in an agent's S3 prefix (the files mounted into its pod's `.agent/` dir).",
     parameters: z.object({ agentId: z.string() }),
   })
-  async listAgentFiles({ agentId }: { agentId: string }) {
+  async listAgentFiles(
+    { agentId }: { agentId: string },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     return ok(await this.files.list(agentId));
   }
 
@@ -275,7 +359,12 @@ export class RancherTool {
       path: z.string(),
     }),
   })
-  async readAgentFile({ agentId, path }: { agentId: string; path: string }) {
+  async readAgentFile(
+    { agentId, path }: { agentId: string; path: string },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     return ok(await this.files.read(agentId, path));
   }
 
@@ -289,15 +378,20 @@ export class RancherTool {
       content: z.string(),
     }),
   })
-  async writeAgentFile({
-    agentId,
-    path,
-    content,
-  }: {
-    agentId: string;
-    path: string;
-    content: string;
-  }) {
+  async writeAgentFile(
+    {
+      agentId,
+      path,
+      content,
+    }: {
+      agentId: string;
+      path: string;
+      content: string;
+    },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     await this.files.save(agentId, path, content);
     return ok({ ok: true, agentId, path });
   }
@@ -317,7 +411,12 @@ export class RancherTool {
         .describe('How many days back to fetch (default: 30).'),
     }),
   })
-  async agentUsage({ agentId, days }: { agentId: string; days?: number }) {
+  async agentUsage(
+    { agentId, days }: { agentId: string; days?: number },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     return ok(await this.usage.findRecentForAgent(agentId, days ?? 30));
   }
 
@@ -331,7 +430,12 @@ export class RancherTool {
       group: z.string().optional(),
     }),
   })
-  async listSettings({ group }: { group?: string }) {
+  async listSettings(
+    { group }: { group?: string },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     if (group) return ok(await this.settings.findByGroup(group));
     return ok(await this.settings.findAll());
   }
@@ -351,17 +455,22 @@ export class RancherTool {
       valueType: z.enum(['string', 'json']).optional().default('string'),
     }),
   })
-  async upsertSetting({
-    group,
-    name,
-    value,
-    valueType,
-  }: {
-    group: string;
-    name: string;
-    value: unknown;
-    valueType?: 'string' | 'json';
-  }) {
+  async upsertSetting(
+    {
+      group,
+      name,
+      value,
+      valueType,
+    }: {
+      group: string;
+      name: string;
+      value: unknown;
+      valueType?: 'string' | 'json';
+    },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     return ok(
       await this.settings.upsert(group, name, {
         value,

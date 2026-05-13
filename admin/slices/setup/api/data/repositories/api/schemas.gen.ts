@@ -1113,6 +1113,60 @@ export const SetAgentDebugDtoSchema = {
   required: ["enabled"],
 } as const;
 
+export const FileChunkDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "data/sessions/bridle:admin.jsonl",
+    },
+    content: {
+      type: "string",
+      description: "UTF-8 slice of the file from `offset`.",
+    },
+    size: {
+      type: "number",
+      example: 262144,
+      description: "Byte length of `content`.",
+    },
+    totalSize: {
+      type: "number",
+      example: 393216,
+      description: "Full byte length of the file.",
+    },
+    offset: {
+      type: "number",
+      example: 0,
+      description: "Byte offset of the first byte of `content`.",
+    },
+    nextOffset: {
+      type: "number",
+      nullable: true,
+      example: 262144,
+      description:
+        "Pass as `offset` on the next request. `null` when there is no more data.",
+    },
+    hasMore: {
+      type: "boolean",
+      example: true,
+    },
+    updatedAt: {
+      type: "string",
+      format: "date-time",
+    },
+  },
+  required: [
+    "path",
+    "content",
+    "size",
+    "totalSize",
+    "offset",
+    "nextOffset",
+    "hasMore",
+    "updatedAt",
+  ],
+} as const;
+
 export const SaveFileDtoSchema = {
   type: "object",
   properties: {
@@ -1266,8 +1320,18 @@ export const TranscriptResponseDtoSchema = {
       example: "admin",
       description: "Channel the transcript was loaded from.",
     },
+    nextCursor: {
+      type: "string",
+      nullable: true,
+      description:
+        "Pass back as `cursor` to fetch the previous page. `null` when no older messages.",
+    },
+    hasMore: {
+      type: "boolean",
+      example: false,
+    },
   },
-  required: ["messages", "channel"],
+  required: ["messages", "channel", "nextCursor", "hasMore"],
 } as const;
 
 export const SecretEntryDtoSchema = {

@@ -493,6 +493,32 @@ export type SetAgentDebugDto = {
   enabled: boolean;
 };
 
+export type FileChunkDto = {
+  path: string;
+  /**
+   * UTF-8 slice of the file from `offset`.
+   */
+  content: string;
+  /**
+   * Byte length of `content`.
+   */
+  size: number;
+  /**
+   * Full byte length of the file.
+   */
+  totalSize: number;
+  /**
+   * Byte offset of the first byte of `content`.
+   */
+  offset: number;
+  /**
+   * Pass as `offset` on the next request. `null` when there is no more data.
+   */
+  nextOffset: number | null;
+  hasMore: boolean;
+  updatedAt: string;
+};
+
 export type SaveFileDto = {
   /**
    * Full file content as text
@@ -576,6 +602,11 @@ export type TranscriptResponseDto = {
    * Channel the transcript was loaded from.
    */
   channel: string;
+  /**
+   * Pass back as `cursor` to fetch the previous page. `null` when no older messages.
+   */
+  nextCursor: string | null;
+  hasMore: boolean;
 };
 
 export type SecretEntryDto = {
@@ -1651,13 +1682,24 @@ export type FileControllerReadData = {
   };
   query: {
     path: string;
+    /**
+     * Byte offset to start reading from.
+     */
+    offset?: number;
+    /**
+     * Max bytes to return. Server caps at 512 KB.
+     */
+    limit?: number;
   };
   url: "/agents/{agentId}/files/content";
 };
 
 export type FileControllerReadResponses = {
-  200: unknown;
+  200: FileChunkDto;
 };
+
+export type FileControllerReadResponse =
+  FileControllerReadResponses[keyof FileControllerReadResponses];
 
 export type FileControllerSaveData = {
   body: SaveFileDto;
@@ -1798,6 +1840,14 @@ export type GetBridleTranscriptData = {
      * Session channel — defaults to "admin" for the admin app.
      */
     channel?: string;
+    /**
+     * Max messages to return in this page (newest first by file order).
+     */
+    limit?: number;
+    /**
+     * Opaque cursor returned by the previous page. Omit for the latest page.
+     */
+    cursor?: string;
   };
   url: "/api/agent/{agentId}/transcript";
 };

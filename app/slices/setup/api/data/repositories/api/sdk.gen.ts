@@ -64,6 +64,7 @@ import type {
   SkillControllerRemoveData,
   SkillControllerFindByIdData,
   SkillControllerUpdateData,
+  FindDependentAgentsData,
   PaddockScenarioControllerFindAllData,
   PaddockScenarioControllerCreateData,
   PaddockScenarioControllerRemoveData,
@@ -89,6 +90,7 @@ import type {
   RestartByTemplateData,
   FileControllerListData,
   FileControllerReadData,
+  FileControllerReadResponse,
   FileControllerSaveData,
   FileControllerSyncData,
   ExportAgentFilesData,
@@ -1100,6 +1102,22 @@ export class SkillsService {
       },
     });
   }
+
+  /**
+   * List agents that use this skill via their template. Drives the post-edit "Redeploy N agents" flow — skills are baked into agent pods at deploy time, so a skill update has no effect until those agents restart.
+   */
+  public static findDependentAgents<ThrowOnError extends boolean = false>(
+    options: Options<FindDependentAgentsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/{id}/agents",
+      ...options,
+    });
+  }
 }
 
 export class PaddockScenariosService {
@@ -1484,13 +1502,13 @@ export class FilesService {
   }
 
   /**
-   * Read a file
+   * Read a chunk of a file. Omit `offset`/`limit` to read the first 256 KB. Use the returned `nextOffset` to continue.
    */
   public static fileControllerRead<ThrowOnError extends boolean = false>(
     options: Options<FileControllerReadData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).get<
-      unknown,
+      FileControllerReadResponse,
       unknown,
       ThrowOnError
     >({
@@ -1658,7 +1676,7 @@ export class BridleService {
   }
 
   /**
-   * Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Used to restore the chat UI on page refresh — live updates still arrive via /ws/client.
+   * Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client.
    */
   public static getBridleTranscript<ThrowOnError extends boolean = false>(
     options: Options<GetBridleTranscriptData, ThrowOnError>,

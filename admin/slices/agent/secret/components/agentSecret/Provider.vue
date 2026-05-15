@@ -3,9 +3,12 @@ import { Badge } from '#theme/components/ui/badge';
 import { Button } from '#theme/components/ui/button';
 import { Input } from '#theme/components/ui/input';
 import { Label } from '#theme/components/ui/label';
+import { Textarea } from '#theme/components/ui/textarea';
 import {
+  IconBraces,
   IconEye,
   IconEyeOff,
+  IconList,
   IconPencil,
   IconPlus,
   IconRefresh,
@@ -117,22 +120,124 @@ async function onDelete(entry: ISecretEntry) {
     submitting.value = false;
   }
 }
+
+// ── JSON view ─────────────────────────────────────────────────────────────
+// Mirrors AWS Secrets Manager's "Plaintext" tab — show & edit the whole store
+// as one JSON object. Save uses the atomic replaceAll endpoint so partial
+// failures aren't a thing.
+type ViewMode = 'kv' | 'json';
+const viewMode = ref<ViewMode>('kv');
+const jsonOriginal = ref('{}');
+const jsonText = ref('{}');
+const jsonEditing = ref(false);
+const jsonSaving = ref(false);
+const jsonError = ref<string | null>(null);
+
+function buildJson(secrets: ISecretEntry[]): string {
+  const sorted = [...secrets].sort((a, b) => a.name.localeCompare(b.name));
+  const obj: Record<string, string> = {};
+  for (const s of sorted) obj[s.name] = s.value;
+  return JSON.stringify(obj, null, 2);
+}
+
+watch(
+  () => store.data?.secrets,
+  (secrets) => {
+    // Don't clobber in-progress edits — only refresh the textarea when the
+    // user isn't actively editing.
+    if (jsonEditing.value) return;
+    const text = secrets ? buildJson(secrets) : '{}';
+    jsonOriginal.value = text;
+    jsonText.value = text;
+  },
+  { immediate: true },
+);
+
+function jsonEdit() {
+  jsonEditing.value = true;
+  jsonError.value = null;
+}
+
+function jsonCancel() {
+  jsonText.value = jsonOriginal.value;
+  jsonEditing.value = false;
+  jsonError.value = null;
+}
+
+async function jsonSave() {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText.value);
+  } catch (err) {
+    jsonError.value = `Invalid JSON: ${(err as Error).message}`;
+    return;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    jsonError.value = 'JSON must be a flat object of string values.';
+    return;
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof v !== 'string') {
+      jsonError.value = `Value for "${k}" must be a string (got ${typeof v}).`;
+      return;
+    }
+    out[k] = v;
+  }
+  jsonSaving.value = true;
+  jsonError.value = null;
+  try {
+    await store.replaceAllSecrets(props.id, out);
+    jsonEditing.value = false;
+    revealed.value = {};
+  } catch (err) {
+    jsonError.value = (err as Error).message || 'Save failed';
+  } finally {
+    jsonSaving.value = false;
+  }
+}
 </script>
 
 <template>
   <div class="flex flex-col gap-3">
     <div class="flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <span>Provider</span>
-        <Badge v-if="store.data" variant="outline" class="font-mono uppercase">
-          {{ store.data.provider }}
-        </Badge>
-        <Badge v-else-if="store.loading" variant="outline">loading…</Badge>
-        <Badge v-else variant="outline">—</Badge>
+      <div class="flex items-center gap-3">
+        <div class="inline-flex rounded-md border bg-background p-0.5">
+          <Button
+            size="sm"
+            :variant="viewMode === 'kv' ? 'secondary' : 'ghost'"
+            class="h-7 gap-1 px-2"
+            :disabled="jsonEditing"
+            :title="jsonEditing ? 'Finish JSON edit first' : 'Key/value view'"
+            @click="viewMode = 'kv'"
+          >
+            <IconList class="size-3.5" />
+            <span class="text-xs">Key/value</span>
+          </Button>
+          <Button
+            size="sm"
+            :variant="viewMode === 'json' ? 'secondary' : 'ghost'"
+            class="h-7 gap-1 px-2"
+            :disabled="formOpen"
+            :title="formOpen ? 'Close the inline form first' : 'JSON view (like AWS plaintext)'"
+            @click="viewMode = 'json'"
+          >
+            <IconBraces class="size-3.5" />
+            <span class="text-xs">JSON</span>
+          </Button>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Provider</span>
+          <Badge v-if="store.data" variant="outline" class="font-mono uppercase">
+            {{ store.data.provider }}
+          </Badge>
+          <Badge v-else-if="store.loading" variant="outline">loading…</Badge>
+          <Badge v-else variant="outline">—</Badge>
+        </div>
       </div>
       <div class="flex items-center gap-2">
         <Button
-          v-if="!formOpen"
+          v-if="viewMode === 'kv' && !formOpen"
           size="sm"
           :disabled="store.loading"
           @click="openAddForm"
@@ -143,7 +248,7 @@ async function onDelete(entry: ISecretEntry) {
         <Button
           size="sm"
           variant="outline"
-          :disabled="store.loading"
+          :disabled="store.loading || jsonEditing"
           @click="refresh"
         >
           <IconRefresh
@@ -161,6 +266,7 @@ async function onDelete(entry: ISecretEntry) {
       {{ store.error }}
     </div>
 
+    <template v-if="viewMode === 'kv'">
     <div v-if="formOpen" class="flex flex-col gap-3 rounded-md border p-3">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold">
@@ -278,5 +384,42 @@ async function onDelete(entry: ISecretEntry) {
         </dd>
       </template>
     </dl>
+    </template>
+
+    <div v-else-if="viewMode === 'json'" class="flex flex-col gap-2">
+      <Textarea
+        v-model="jsonText"
+        :disabled="!jsonEditing || jsonSaving"
+        rows="14"
+        spellcheck="false"
+        class="font-mono text-xs"
+      />
+      <p v-if="jsonError" class="text-xs text-destructive">{{ jsonError }}</p>
+      <div class="flex justify-end gap-2">
+        <template v-if="!jsonEditing">
+          <Button
+            size="sm"
+            :disabled="store.loading || !store.data"
+            @click="jsonEdit"
+          >
+            <IconPencil class="size-4" />
+            Edit JSON
+          </Button>
+        </template>
+        <template v-else>
+          <Button
+            size="sm"
+            variant="outline"
+            :disabled="jsonSaving"
+            @click="jsonCancel"
+          >
+            Cancel
+          </Button>
+          <Button size="sm" :disabled="jsonSaving" @click="jsonSave">
+            {{ jsonSaving ? 'Saving…' : 'Save' }}
+          </Button>
+        </template>
+      </div>
+    </div>
   </div>
 </template>

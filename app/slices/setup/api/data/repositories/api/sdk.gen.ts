@@ -112,6 +112,8 @@ import type {
   SecretControllerListResponse,
   SecretControllerSetData,
   SecretControllerSetResponse,
+  SecretControllerReplaceData,
+  SecretControllerReplaceResponse,
   LogControllerGetLogsData,
   UserControllerFindAllData,
   UserControllerCreateData,
@@ -1766,6 +1768,26 @@ export class SecretsService {
       ThrowOnError
     >({
       url: "/agents/{agentId}/secrets",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Atomic full-store replace. Mirrors AWS Secrets Manager's plaintext-edit semantics — the whole agent secret store becomes the supplied object. Returns the full secret list.
+   */
+  public static secretControllerReplace<ThrowOnError extends boolean = false>(
+    options: Options<SecretControllerReplaceData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      SecretControllerReplaceResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/secrets/replace",
       ...options,
       headers: {
         "Content-Type": "application/json",

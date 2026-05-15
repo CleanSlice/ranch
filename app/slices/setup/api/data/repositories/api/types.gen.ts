@@ -668,6 +668,15 @@ export type DeleteSecretDto = {
   key: string;
 };
 
+export type ReplaceSecretsDto = {
+  /**
+   * Full secret store for the agent — replaces everything. Pass {} to clear. Mirrors AWS Secrets Manager's plaintext-edit semantics.
+   */
+  store: {
+    [key: string]: string;
+  };
+};
+
 export type CreateUserDto = {
   name: string;
   email: string;
@@ -1967,6 +1976,22 @@ export type SecretControllerSetResponses = {
 
 export type SecretControllerSetResponse =
   SecretControllerSetResponses[keyof SecretControllerSetResponses];
+
+export type SecretControllerReplaceData = {
+  body: ReplaceSecretsDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/secrets/replace";
+};
+
+export type SecretControllerReplaceResponses = {
+  200: SecretListDto;
+};
+
+export type SecretControllerReplaceResponse =
+  SecretControllerReplaceResponses[keyof SecretControllerReplaceResponses];
 
 export type LogControllerGetLogsData = {
   body?: never;

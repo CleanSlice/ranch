@@ -78,6 +78,18 @@ export const useAgentSecretStore = defineStore('agentSecret', () => {
     return applyResult(res);
   }
 
+  // Atomic full-store replace — used by the JSON-view editor. Pass {} to clear.
+  async function replaceAllSecrets(
+    agentId: string,
+    store: Record<string, string>,
+  ): Promise<ISecretListData> {
+    const res = await SecretsService.secretControllerReplace({
+      path: { agentId },
+      body: { store },
+    });
+    return applyResult(res);
+  }
+
   function clear() {
     data.value = null;
     error.value = null;
@@ -90,6 +102,7 @@ export const useAgentSecretStore = defineStore('agentSecret', () => {
     fetchForAgent,
     setSecret,
     deleteSecret,
+    replaceAllSecrets,
     clear,
   };
 });

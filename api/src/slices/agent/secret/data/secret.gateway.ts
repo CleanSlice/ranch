@@ -33,6 +33,15 @@ export class SecretGateway extends ISecretGateway {
       : this.file.delete(agentId, key);
   }
 
+  async replaceAll(
+    agentId: string,
+    store: Record<string, string>,
+  ): Promise<void> {
+    return (await this.isAws())
+      ? this.aws.replaceAll(agentId, store)
+      : this.file.replaceAll(agentId, store);
+  }
+
   private async isAws(): Promise<boolean> {
     const setting = await this.settings.findByKey(
       'integrations',

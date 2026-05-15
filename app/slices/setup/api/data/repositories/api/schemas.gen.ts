@@ -1453,6 +1453,25 @@ export const DeleteSecretDtoSchema = {
   required: ["key"],
 } as const;
 
+export const ReplaceSecretsDtoSchema = {
+  type: "object",
+  properties: {
+    store: {
+      type: "object",
+      additionalProperties: {
+        type: "string",
+      },
+      example: {
+        "instagram:password": "p@ss",
+        "paypal:api_token": "sk-...",
+      },
+      description:
+        "Full secret store for the agent — replaces everything. Pass {} to clear. Mirrors AWS Secrets Manager's plaintext-edit semantics.",
+    },
+  },
+  required: ["store"],
+} as const;
+
 export const CreateUserDtoSchema = {
   type: "object",
   properties: {

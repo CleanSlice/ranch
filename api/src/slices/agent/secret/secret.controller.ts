@@ -5,12 +5,18 @@ import {
   Get,
   NotFoundException,
   Param,
+  Post,
   Put,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { ISecretGateway } from './domain';
-import { SecretListDto, SetSecretDto, DeleteSecretDto } from './dtos';
+import {
+  SecretListDto,
+  SetSecretDto,
+  DeleteSecretDto,
+  ReplaceSecretsDto,
+} from './dtos';
 
 @ApiTags('secrets')
 @Controller('agents/:agentId/secrets')
@@ -57,6 +63,21 @@ export class SecretController {
   ): Promise<SecretListDto> {
     await this.requireAgent(agentId);
     await this.secretGateway.delete(agentId, body.key);
+    return this.buildList(agentId);
+  }
+
+  @Post('replace')
+  @ApiOperation({
+    summary:
+      "Atomic full-store replace. Mirrors AWS Secrets Manager's plaintext-edit semantics — the whole agent secret store becomes the supplied object. Returns the full secret list.",
+  })
+  @ApiOkResponse({ type: SecretListDto })
+  async replace(
+    @Param('agentId') agentId: string,
+    @Body() body: ReplaceSecretsDto,
+  ): Promise<SecretListDto> {
+    await this.requireAgent(agentId);
+    await this.secretGateway.replaceAll(agentId, body.store);
     return this.buildList(agentId);
   }
 

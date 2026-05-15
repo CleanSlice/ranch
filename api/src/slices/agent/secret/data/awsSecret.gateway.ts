@@ -59,6 +59,14 @@ export class AwsSecretGateway {
     await this.writeStore(client, secretId, store);
   }
 
+  async replaceAll(
+    agentId: string,
+    store: Record<string, string>,
+  ): Promise<void> {
+    const { client, prefix } = await this.connect();
+    await this.writeStore(client, `${prefix}/${agentId}`, store);
+  }
+
   // The whole agent store is one JSON blob. Read it, mutate one key, write it
   // back — so set/delete must round-trip the full object.
   private async loadRaw(

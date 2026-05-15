@@ -75,6 +75,19 @@ export class FileSecretGateway {
     await this.saveFile(client, bucket, objectKey, store);
   }
 
+  // Atomic full replace writes to the canonical per-agent file. Any legacy
+  // multi-scope files are left untouched (and will keep showing up in list()
+  // until the user clears them manually) — JSON-mode editing is meant for the
+  // AWS provider, which has no scope concept.
+  async replaceAll(
+    agentId: string,
+    store: Record<string, string>,
+  ): Promise<void> {
+    const { client, bucket } = await this.connect();
+    const objectKey = `agents/${agentId}/data/secrets/${agentId}.json`;
+    await this.saveFile(client, bucket, objectKey, store);
+  }
+
   private async loadFile(
     client: S3Client,
     bucket: string,

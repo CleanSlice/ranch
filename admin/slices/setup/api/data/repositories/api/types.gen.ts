@@ -650,6 +650,24 @@ export type SecretListDto = {
   secrets: Array<SecretEntryDto>;
 };
 
+export type SetSecretDto = {
+  /**
+   * Secret key. Upsert: an existing key is overwritten, a new key is created.
+   */
+  key: string;
+  /**
+   * Secret value to store.
+   */
+  value: string;
+};
+
+export type DeleteSecretDto = {
+  /**
+   * Secret key to delete. No-op if the key does not exist.
+   */
+  key: string;
+};
+
 export type CreateUserDto = {
   name: string;
   email: string;
@@ -1902,6 +1920,22 @@ export type GetBridleTranscriptResponses = {
 export type GetBridleTranscriptResponse =
   GetBridleTranscriptResponses[keyof GetBridleTranscriptResponses];
 
+export type SecretControllerDeleteData = {
+  body: DeleteSecretDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/secrets";
+};
+
+export type SecretControllerDeleteResponses = {
+  200: SecretListDto;
+};
+
+export type SecretControllerDeleteResponse =
+  SecretControllerDeleteResponses[keyof SecretControllerDeleteResponses];
+
 export type SecretControllerListData = {
   body?: never;
   path: {
@@ -1917,6 +1951,22 @@ export type SecretControllerListResponses = {
 
 export type SecretControllerListResponse =
   SecretControllerListResponses[keyof SecretControllerListResponses];
+
+export type SecretControllerSetData = {
+  body: SetSecretDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/secrets";
+};
+
+export type SecretControllerSetResponses = {
+  200: SecretListDto;
+};
+
+export type SecretControllerSetResponse =
+  SecretControllerSetResponses[keyof SecretControllerSetResponses];
 
 export type LogControllerGetLogsData = {
   body?: never;

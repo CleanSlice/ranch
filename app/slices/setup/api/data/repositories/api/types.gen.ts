@@ -493,6 +493,36 @@ export type SetAgentDebugDto = {
   enabled: boolean;
 };
 
+export type TelegramChannelConfigDto = {
+  /**
+   * Telegram bot HTTP API token (issued by @BotFather).
+   */
+  botToken: string;
+  /**
+   * Public bot username without @ — shown on landing pages.
+   */
+  botName?: string;
+  /**
+   * Comma-separated Telegram chat IDs treated as bot admins by the runtime.
+   */
+  adminIds?: string;
+};
+
+export type AgentChannelDto = {
+  /**
+   * Channel type. Discriminator — config shape depends on this. v1 only telegram.
+   */
+  type: "telegram";
+  config: TelegramChannelConfigDto;
+};
+
+export type SetAgentChannelsDto = {
+  /**
+   * Replace the full set of channels. Pass [] to clear all channels.
+   */
+  channels: Array<AgentChannelDto>;
+};
+
 export type FileChunkDto = {
   path: string;
   /**
@@ -618,6 +648,24 @@ export type SecretEntryDto = {
 export type SecretListDto = {
   provider: "aws" | "file";
   secrets: Array<SecretEntryDto>;
+};
+
+export type SetSecretDto = {
+  /**
+   * Secret key. Upsert: an existing key is overwritten, a new key is created.
+   */
+  key: string;
+  /**
+   * Secret value to store.
+   */
+  value: string;
+};
+
+export type DeleteSecretDto = {
+  /**
+   * Secret key to delete. No-op if the key does not exist.
+   */
+  key: string;
 };
 
 export type CreateUserDto = {
@@ -1599,6 +1647,19 @@ export type AgentControllerSetDebugResponses = {
   200: unknown;
 };
 
+export type SetAgentChannelsData = {
+  body: SetAgentChannelsDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/channels";
+};
+
+export type SetAgentChannelsResponses = {
+  200: unknown;
+};
+
 export type AgentControllerFindAdminData = {
   body?: never;
   path?: never;
@@ -1859,6 +1920,22 @@ export type GetBridleTranscriptResponses = {
 export type GetBridleTranscriptResponse =
   GetBridleTranscriptResponses[keyof GetBridleTranscriptResponses];
 
+export type SecretControllerDeleteData = {
+  body: DeleteSecretDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/secrets";
+};
+
+export type SecretControllerDeleteResponses = {
+  200: SecretListDto;
+};
+
+export type SecretControllerDeleteResponse =
+  SecretControllerDeleteResponses[keyof SecretControllerDeleteResponses];
+
 export type SecretControllerListData = {
   body?: never;
   path: {
@@ -1874,6 +1951,22 @@ export type SecretControllerListResponses = {
 
 export type SecretControllerListResponse =
   SecretControllerListResponses[keyof SecretControllerListResponses];
+
+export type SecretControllerSetData = {
+  body: SetSecretDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/secrets";
+};
+
+export type SecretControllerSetResponses = {
+  200: SecretListDto;
+};
+
+export type SecretControllerSetResponse =
+  SecretControllerSetResponses[keyof SecretControllerSetResponses];
 
 export type LogControllerGetLogsData = {
   body?: never;

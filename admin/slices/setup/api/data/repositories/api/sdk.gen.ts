@@ -106,8 +106,12 @@ import type {
   ResetBridleTranscriptResponse,
   GetBridleTranscriptData,
   GetBridleTranscriptResponse,
+  SecretControllerDeleteData,
+  SecretControllerDeleteResponse,
   SecretControllerListData,
   SecretControllerListResponse,
+  SecretControllerSetData,
+  SecretControllerSetResponse,
   LogControllerGetLogsData,
   UserControllerFindAllData,
   UserControllerCreateData,
@@ -1715,6 +1719,26 @@ export class BridleService {
 
 export class SecretsService {
   /**
+   * Delete a secret for an agent. No-op if the key does not exist. Returns the full secret list.
+   */
+  public static secretControllerDelete<ThrowOnError extends boolean = false>(
+    options: Options<SecretControllerDeleteData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      SecretControllerDeleteResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/secrets",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
    * List secrets stored for an agent. AWS source pulls from AWS Secrets Manager (aws_secret_prefix/<agentId>); file source lists S3 under agents/<agentId>/data/secrets/.
    */
   public static secretControllerList<ThrowOnError extends boolean = false>(
@@ -1727,6 +1751,26 @@ export class SecretsService {
     >({
       url: "/agents/{agentId}/secrets",
       ...options,
+    });
+  }
+
+  /**
+   * Create or update a secret for an agent (upsert). Returns the full secret list.
+   */
+  public static secretControllerSet<ThrowOnError extends boolean = false>(
+    options: Options<SecretControllerSetData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SecretControllerSetResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/secrets",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
     });
   }
 }

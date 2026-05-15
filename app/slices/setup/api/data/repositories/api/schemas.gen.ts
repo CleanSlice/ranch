@@ -1113,6 +1113,57 @@ export const SetAgentDebugDtoSchema = {
   required: ["enabled"],
 } as const;
 
+export const TelegramChannelConfigDtoSchema = {
+  type: "object",
+  properties: {
+    botToken: {
+      type: "string",
+      description: "Telegram bot HTTP API token (issued by @BotFather).",
+    },
+    botName: {
+      type: "string",
+      description: "Public bot username without @ — shown on landing pages.",
+    },
+    adminIds: {
+      type: "string",
+      description:
+        "Comma-separated Telegram chat IDs treated as bot admins by the runtime.",
+    },
+  },
+  required: ["botToken"],
+} as const;
+
+export const AgentChannelDtoSchema = {
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      enum: ["telegram"],
+      description:
+        "Channel type. Discriminator — config shape depends on this. v1 only telegram.",
+    },
+    config: {
+      $ref: "#/components/schemas/TelegramChannelConfigDto",
+    },
+  },
+  required: ["type", "config"],
+} as const;
+
+export const SetAgentChannelsDtoSchema = {
+  type: "object",
+  properties: {
+    channels: {
+      description:
+        "Replace the full set of channels. Pass [] to clear all channels.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentChannelDto",
+      },
+    },
+  },
+  required: ["channels"],
+} as const;
+
 export const FileChunkDtoSchema = {
   type: "object",
   properties: {
@@ -1370,6 +1421,36 @@ export const SecretListDtoSchema = {
     },
   },
   required: ["provider", "secrets"],
+} as const;
+
+export const SetSecretDtoSchema = {
+  type: "object",
+  properties: {
+    key: {
+      type: "string",
+      example: "instagram:password",
+      description:
+        "Secret key. Upsert: an existing key is overwritten, a new key is created.",
+    },
+    value: {
+      type: "string",
+      example: "sk-...",
+      description: "Secret value to store.",
+    },
+  },
+  required: ["key", "value"],
+} as const;
+
+export const DeleteSecretDtoSchema = {
+  type: "object",
+  properties: {
+    key: {
+      type: "string",
+      example: "instagram:password",
+      description: "Secret key to delete. No-op if the key does not exist.",
+    },
+  },
+  required: ["key"],
 } as const;
 
 export const CreateUserDtoSchema = {

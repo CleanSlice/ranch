@@ -1423,6 +1423,36 @@ export const SecretListDtoSchema = {
   required: ["provider", "secrets"],
 } as const;
 
+export const SetSecretDtoSchema = {
+  type: "object",
+  properties: {
+    key: {
+      type: "string",
+      example: "instagram:password",
+      description:
+        "Secret key. Upsert: an existing key is overwritten, a new key is created.",
+    },
+    value: {
+      type: "string",
+      example: "sk-...",
+      description: "Secret value to store.",
+    },
+  },
+  required: ["key", "value"],
+} as const;
+
+export const DeleteSecretDtoSchema = {
+  type: "object",
+  properties: {
+    key: {
+      type: "string",
+      example: "instagram:password",
+      description: "Secret key to delete. No-op if the key does not exist.",
+    },
+  },
+  required: ["key"],
+} as const;
+
 export const CreateUserDtoSchema = {
   type: "object",
   properties: {

@@ -83,6 +83,7 @@ import type {
   GetAgentMcpsData,
   GetAgentMcpsResponse,
   AgentControllerSetDebugData,
+  SetAgentChannelsData,
   AgentControllerFindAdminData,
   AgentControllerDemoteAdminData,
   AgentControllerPromoteAdminData,
@@ -105,8 +106,12 @@ import type {
   ResetBridleTranscriptResponse,
   GetBridleTranscriptData,
   GetBridleTranscriptResponse,
+  SecretControllerDeleteData,
+  SecretControllerDeleteResponse,
   SecretControllerListData,
   SecretControllerListResponse,
+  SecretControllerSetData,
+  SecretControllerSetResponse,
   LogControllerGetLogsData,
   UserControllerFindAllData,
   UserControllerCreateData,
@@ -1404,6 +1409,26 @@ export class AgentsService {
   }
 
   /**
+   * Replace the agent's messaging channels (telegram, …). Body is the exhaustive list — anything omitted is removed. Restart the agent to apply: channel-derived env vars (TELEGRAM_BOT_TOKEN etc.) are injected at pod submit time.
+   */
+  public static setAgentChannels<ThrowOnError extends boolean = false>(
+    options: Options<SetAgentChannelsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/channels",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
    * Get the agent currently flagged as Ranch admin (or null).
    */
   public static agentControllerFindAdmin<ThrowOnError extends boolean = false>(
@@ -1694,6 +1719,26 @@ export class BridleService {
 
 export class SecretsService {
   /**
+   * Delete a secret for an agent. No-op if the key does not exist. Returns the full secret list.
+   */
+  public static secretControllerDelete<ThrowOnError extends boolean = false>(
+    options: Options<SecretControllerDeleteData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      SecretControllerDeleteResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/secrets",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
    * List secrets stored for an agent. AWS source pulls from AWS Secrets Manager (aws_secret_prefix/<agentId>); file source lists S3 under agents/<agentId>/data/secrets/.
    */
   public static secretControllerList<ThrowOnError extends boolean = false>(
@@ -1706,6 +1751,26 @@ export class SecretsService {
     >({
       url: "/agents/{agentId}/secrets",
       ...options,
+    });
+  }
+
+  /**
+   * Create or update a secret for an agent (upsert). Returns the full secret list.
+   */
+  public static secretControllerSet<ThrowOnError extends boolean = false>(
+    options: Options<SecretControllerSetData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SecretControllerSetResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/secrets",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
     });
   }
 }

@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  CreateSecretCommand,
   GetSecretValueCommand,
   ListSecretsCommand,
+  PutSecretValueCommand,
   SecretsManagerClient,
   SecretsManagerServiceException,
 } from '@aws-sdk/client-secrets-manager';
@@ -38,6 +40,71 @@ export class AwsSecretGateway {
     const updated = await this.fetchLastChanged(client, secretId, updatedAt);
     const entries = parseSecretJson(payload, updated);
     return { provider: PROVIDER, secrets: entries };
+  }
+
+  async set(agentId: string, key: string, value: string): Promise<void> {
+    const { client, prefix } = await this.connect();
+    const secretId = `${prefix}/${agentId}`;
+    const store = await this.loadRaw(client, secretId);
+    store[key] = value;
+    await this.writeStore(client, secretId, store);
+  }
+
+  async delete(agentId: string, key: string): Promise<void> {
+    const { client, prefix } = await this.connect();
+    const secretId = `${prefix}/${agentId}`;
+    const store = await this.loadRaw(client, secretId);
+    if (!(key in store)) return;
+    delete store[key];
+    await this.writeStore(client, secretId, store);
+  }
+
+  // The whole agent store is one JSON blob. Read it, mutate one key, write it
+  // back — so set/delete must round-trip the full object.
+  private async loadRaw(
+    client: SecretsManagerClient,
+    secretId: string,
+  ): Promise<Record<string, string>> {
+    try {
+      const res = await client.send(
+        new GetSecretValueCommand({ SecretId: secretId }),
+      );
+      const parsed: unknown = res.SecretString
+        ? JSON.parse(res.SecretString)
+        : {};
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {};
+      }
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        out[k] = typeof v === 'string' ? v : JSON.stringify(v);
+      }
+      return out;
+    } catch (err) {
+      if (this.isNotFound(err)) return {};
+      throw err;
+    }
+  }
+
+  private async writeStore(
+    client: SecretsManagerClient,
+    secretId: string,
+    store: Record<string, string>,
+  ): Promise<void> {
+    const SecretString = JSON.stringify(store);
+    try {
+      await client.send(
+        new PutSecretValueCommand({ SecretId: secretId, SecretString }),
+      );
+    } catch (err) {
+      if (this.isNotFound(err)) {
+        await client.send(
+          new CreateSecretCommand({ Name: secretId, SecretString }),
+        );
+        return;
+      }
+      throw err;
+    }
   }
 
   private async fetchLastChanged(

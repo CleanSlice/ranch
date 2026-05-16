@@ -98,11 +98,12 @@ module "apps" {
   admin_image = var.admin_image
   app_image   = var.app_image
 
-  database_url   = var.database_url
-  jwt_secret     = var.jwt_secret
-  bridle_api_key = var.bridle_api_key
-  ghcr_username  = var.ghcr_username
-  ghcr_pat       = var.ghcr_pat
+  database_url       = var.database_url
+  jwt_secret         = var.jwt_secret
+  bridle_api_key     = var.bridle_api_key
+  browser_pool_token = var.browser_pool_token
+  ghcr_username      = var.ghcr_username
+  ghcr_pat           = var.ghcr_pat
 
   depends_on = [module.bootstrap]
 }

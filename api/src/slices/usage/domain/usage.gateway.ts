@@ -6,4 +6,12 @@ export abstract class IUsageGateway {
     agentId: string,
     days: number,
   ): Promise<IUsageData[]>;
+  /**
+   * All usage rows that reference the given LlmCredential within the last
+   * N days. Used to roll up per-credential spend across agents.
+   */
+  abstract findRecentForCredential(
+    credentialId: string,
+    days: number,
+  ): Promise<IUsageData[]>;
 }

@@ -33,7 +33,6 @@ import {
   AgentStatusDto,
   CreateAgentDto,
   SetAgentDebugDto,
-  SetAgentChannelsDto,
   UpdateAgentDto,
 } from './dtos';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
@@ -276,19 +275,6 @@ export class AgentController {
     const updated = await this.agentGateway.setDebugEnabled(id, dto.enabled);
     this.bridleHub.setDebug(id, dto.enabled);
     return { id: updated.id, debugEnabled: updated.debugEnabled };
-  }
-
-  @Put(':id/channels')
-  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
-  @ApiOperation({
-    operationId: 'setAgentChannels',
-    summary:
-      'Replace the agent\'s messaging channels (telegram, …). Body is the exhaustive list — anything omitted is removed. Restart the agent to apply: channel-derived env vars (TELEGRAM_BOT_TOKEN etc.) are injected at pod submit time.',
-  })
-  async setChannels(@Param('id') id: string, @Body() dto: SetAgentChannelsDto) {
-    const agent = await this.agentGateway.findById(id);
-    if (!agent) throw new NotFoundException('Agent not found');
-    return this.agentGateway.setChannels(id, dto.channels);
   }
 
   @Get('admin/current')

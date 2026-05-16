@@ -9,6 +9,7 @@ import { ILlmGateway } from '#/llm/domain';
 import { normalizeCredential } from '#/llm/domain/llm.utils';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { IMcpServerGateway, IMcpServerData } from '#/mcpServer/domain';
+import { IAgentChannelGateway } from '#/agent/agentChannel/domain';
 import { buildAgentWorkflow } from './agent-workflow.manifest';
 
 const DEFAULTS = {
@@ -42,6 +43,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     private llmGateway: ILlmGateway,
     private templateGateway: ITemplateGateway,
     private mcpServerGateway: IMcpServerGateway,
+    private channelGateway: IAgentChannelGateway,
   ) {
     super();
   }
@@ -100,6 +102,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       awsSecretPrefix,
       ranchApiUrl,
       mcpServers,
+      channels,
     ] = await Promise.all([
       this.getIntegration('bridle_url'),
       this.getIntegration('bridle_api_key'),
@@ -113,6 +116,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       this.getIntegration('aws_secret_prefix'),
       this.getIntegration('ranch_api_url'),
       this.resolveMcpServers(data.templateId, data.ranchApiToken),
+      this.channelGateway.getForAgent(data.agentId),
     ]);
     // Pods use the agent-side endpoint when set, otherwise fall back to the
     // shared one. The API itself keeps using s3_endpoint for its own SDK.
@@ -145,11 +149,13 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
         ? 'claude-haiku-4-5'
         : '';
 
-    // Channels → runtime env vars. The runtime detects a channel by the
-    // presence of its token env. Multiple channels of the same type would
-    // overwrite (we keep the last one) — by design: an agent has one bot per
-    // platform.
-    const telegram = data.channels.find((c) => c.type === 'telegram');
+    // Channels → runtime env vars. Source of truth is the agent's
+    // channels.json in S3 (resolved above via channelGateway). The runtime
+    // detects a channel by the presence of its token env, and on boot it
+    // also reads channels.json directly — env values are a fallback for
+    // channels not yet present in the file. Multiple channels of the same
+    // type would overwrite (last wins) — by design: one bot per platform.
+    const telegram = channels.find((c) => c.type === 'telegram');
 
     const workflow = buildAgentWorkflow({
       agentId: data.agentId,

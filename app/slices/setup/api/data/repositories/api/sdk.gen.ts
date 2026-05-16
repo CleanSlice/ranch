@@ -42,6 +42,54 @@ import type {
   ApiKeyControllerCreateData,
   ApiKeyControllerRemoveData,
   ApiKeyControllerRemoveResponse,
+  GetAgentChannelsData,
+  GetAgentChannelsResponse,
+  SetAgentChannelsData,
+  SetAgentChannelsResponse,
+  FileControllerListData,
+  FileControllerReadData,
+  FileControllerReadResponse,
+  FileControllerSaveData,
+  FileControllerSyncData,
+  ExportAgentFilesData,
+  AgentControllerFindAllData,
+  AgentControllerCreateData,
+  AgentControllerFindPublicData,
+  AgentControllerStatusData,
+  AgentControllerStatusResponse,
+  AgentControllerStatusStreamData,
+  AgentControllerRemoveData,
+  AgentControllerFindByIdData,
+  AgentControllerUpdateData,
+  GetAgentMcpsData,
+  GetAgentMcpsResponse,
+  AgentControllerSetDebugData,
+  AgentControllerFindAdminData,
+  AgentControllerDemoteAdminData,
+  AgentControllerPromoteAdminData,
+  AgentControllerRestartData,
+  RestartByTemplateData,
+  SendBridleMessageData,
+  SendBridleMessageSyncData,
+  BridleHealthData,
+  BridleHealthResponse,
+  BridleAgentHealthData,
+  BridleAgentHealthResponse,
+  ListAgentsData,
+  ResetBridleTranscriptData,
+  ResetBridleTranscriptResponse,
+  GetBridleTranscriptData,
+  GetBridleTranscriptResponse,
+  SkillControllerFindAllData,
+  SkillControllerCreateData,
+  SkillControllerListSourcesData,
+  SkillControllerSearchData,
+  SkillControllerImportFromUrlData,
+  SkillControllerImportFromGithubData,
+  SkillControllerRemoveData,
+  SkillControllerFindByIdData,
+  SkillControllerUpdateData,
+  FindDependentAgentsData,
   TemplateFileControllerListData,
   TemplateFileControllerReadData,
   TemplateFileControllerSaveData,
@@ -55,57 +103,12 @@ import type {
   InstallTemplateFromGitData,
   InstallTemplateFromGitResponse,
   DownloadTemplateData,
-  SkillControllerFindAllData,
-  SkillControllerCreateData,
-  SkillControllerListSourcesData,
-  SkillControllerSearchData,
-  SkillControllerImportFromUrlData,
-  SkillControllerImportFromGithubData,
-  SkillControllerRemoveData,
-  SkillControllerFindByIdData,
-  SkillControllerUpdateData,
-  FindDependentAgentsData,
   PaddockScenarioControllerFindAllData,
   PaddockScenarioControllerCreateData,
   PaddockScenarioControllerRemoveData,
   PaddockScenarioControllerFindByIdData,
   PaddockScenarioControllerUpdateData,
   PaddockScenarioControllerGenerateData,
-  AgentControllerFindAllData,
-  AgentControllerCreateData,
-  AgentControllerFindPublicData,
-  AgentControllerStatusData,
-  AgentControllerStatusResponse,
-  AgentControllerStatusStreamData,
-  AgentControllerRemoveData,
-  AgentControllerFindByIdData,
-  AgentControllerUpdateData,
-  GetAgentMcpsData,
-  GetAgentMcpsResponse,
-  AgentControllerSetDebugData,
-  SetAgentChannelsData,
-  AgentControllerFindAdminData,
-  AgentControllerDemoteAdminData,
-  AgentControllerPromoteAdminData,
-  AgentControllerRestartData,
-  RestartByTemplateData,
-  FileControllerListData,
-  FileControllerReadData,
-  FileControllerReadResponse,
-  FileControllerSaveData,
-  FileControllerSyncData,
-  ExportAgentFilesData,
-  SendBridleMessageData,
-  SendBridleMessageSyncData,
-  BridleHealthData,
-  BridleHealthResponse,
-  BridleAgentHealthData,
-  BridleAgentHealthResponse,
-  ListAgentsData,
-  ResetBridleTranscriptData,
-  ResetBridleTranscriptResponse,
-  GetBridleTranscriptData,
-  GetBridleTranscriptResponse,
   SecretControllerDeleteData,
   SecretControllerDeleteResponse,
   SecretControllerListData,
@@ -124,6 +127,7 @@ import type {
   UsageControllerFindForAgentData,
   UsageControllerReportData,
   UsageControllerReportResponse,
+  UsageControllerFindForCredentialData,
   GetKnowledgesData,
   CreateKnowledgeData,
   GetGraphLabelsData,
@@ -874,370 +878,43 @@ export class ApiKeysService {
   }
 }
 
-export class TemplateFilesService {
-  /**
-   * List files for a template
-   */
-  public static templateFileControllerList<
-    ThrowOnError extends boolean = false,
-  >(options: Options<TemplateFileControllerListData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/templates/{id}/files",
-      ...options,
-    });
-  }
-
-  /**
-   * Read a template file
-   */
-  public static templateFileControllerRead<
-    ThrowOnError extends boolean = false,
-  >(options: Options<TemplateFileControllerReadData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/templates/{id}/files/content",
-      ...options,
-    });
-  }
-
-  /**
-   * Save a template file (.md / .json only)
-   */
-  public static templateFileControllerSave<
-    ThrowOnError extends boolean = false,
-  >(options: Options<TemplateFileControllerSaveData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/templates/{id}/files/content",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Replace template files in S3 with the uploaded folder. The body is multipart/form-data; pass a parallel "paths[]" field with the relative path for each file.
-   */
-  public static templateFileControllerUpload<
-    ThrowOnError extends boolean = false,
-  >(options: Options<TemplateFileControllerUploadData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      ...formDataBodySerializer,
-      url: "/templates/{id}/files/upload",
-      ...options,
-      headers: {
-        "Content-Type": null,
-        ...options?.headers,
-      },
-    });
-  }
-}
-
-export class SkillsService {
-  /**
-   * List all skills
-   */
-  public static skillControllerFindAll<ThrowOnError extends boolean = false>(
-    options?: Options<SkillControllerFindAllData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/skills",
-      ...options,
-    });
-  }
-
-  /**
-   * Create a new skill
-   */
-  public static skillControllerCreate<ThrowOnError extends boolean = false>(
-    options: Options<SkillControllerCreateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/skills",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Curated GitHub repos searched for skills
-   */
-  public static skillControllerListSources<
-    ThrowOnError extends boolean = false,
-  >(options?: Options<SkillControllerListSourcesData, ThrowOnError>) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/skills/sources",
-      ...options,
-    });
-  }
-
-  /**
-   * Search skills across curated GitHub repos
-   */
-  public static skillControllerSearch<ThrowOnError extends boolean = false>(
-    options: Options<SkillControllerSearchData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/skills/search",
-      ...options,
-    });
-  }
-
-  /**
-   * Import a skill from any GitHub URL (folder or SKILL.md)
-   */
-  public static skillControllerImportFromUrl<
-    ThrowOnError extends boolean = false,
-  >(options: Options<SkillControllerImportFromUrlData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/skills/import-url",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Import a skill from GitHub into the local DB
-   */
-  public static skillControllerImportFromGithub<
-    ThrowOnError extends boolean = false,
-  >(options: Options<SkillControllerImportFromGithubData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/skills/import",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Delete a skill
-   */
-  public static skillControllerRemove<ThrowOnError extends boolean = false>(
-    options: Options<SkillControllerRemoveData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/skills/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Get skill by ID
-   */
-  public static skillControllerFindById<ThrowOnError extends boolean = false>(
-    options: Options<SkillControllerFindByIdData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/skills/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Update a skill
-   */
-  public static skillControllerUpdate<ThrowOnError extends boolean = false>(
-    options: Options<SkillControllerUpdateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/skills/{id}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * List agents that use this skill via their template. Drives the post-edit "Redeploy N agents" flow — skills are baked into agent pods at deploy time, so a skill update has no effect until those agents restart.
-   */
-  public static findDependentAgents<ThrowOnError extends boolean = false>(
-    options: Options<FindDependentAgentsData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/skills/{id}/agents",
-      ...options,
-    });
-  }
-}
-
-export class PaddockScenariosService {
-  /**
-   * List paddock scenarios. Filter by templateId or agentId; without filters returns all.
-   */
-  public static paddockScenarioControllerFindAll<
-    ThrowOnError extends boolean = false,
-  >(options?: Options<PaddockScenarioControllerFindAllData, ThrowOnError>) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/paddock-scenarios",
-      ...options,
-    });
-  }
-
-  /**
-   * Create a paddock scenario scoped to either a template or an agent (XOR — exactly one).
-   */
-  public static paddockScenarioControllerCreate<
-    ThrowOnError extends boolean = false,
-  >(options: Options<PaddockScenarioControllerCreateData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/paddock-scenarios",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Delete a paddock scenario
-   */
-  public static paddockScenarioControllerRemove<
-    ThrowOnError extends boolean = false,
-  >(options: Options<PaddockScenarioControllerRemoveData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).delete<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/paddock-scenarios/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Get a paddock scenario by id
-   */
-  public static paddockScenarioControllerFindById<
-    ThrowOnError extends boolean = false,
-  >(options: Options<PaddockScenarioControllerFindByIdData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/paddock-scenarios/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Update a paddock scenario. Scope (templateId/agentId) is immutable — create a new scenario to change scope.
-   */
-  public static paddockScenarioControllerUpdate<
-    ThrowOnError extends boolean = false,
-  >(options: Options<PaddockScenarioControllerUpdateData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).patch<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/paddock-scenarios/{id}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Generate a scenario draft from a natural-language description via LLM. Result is NOT persisted — review + POST / to save.
-   */
-  public static paddockScenarioControllerGenerate<
-    ThrowOnError extends boolean = false,
-  >(options: Options<PaddockScenarioControllerGenerateData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/paddock-scenarios/generate",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-}
-
 export class AgentsService {
+  /**
+   * List the agent's configured channels. Reads agents/{id}/data/channels.json from S3 — the single source of truth (the runtime mutates the same file via its channel_* tools). Returns [] when the file is absent. Always fresh, no caching.
+   */
+  public static getAgentChannels<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentChannelsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentChannelsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/channels",
+      ...options,
+    });
+  }
+
+  /**
+   * Replace the agent's channels. Writes agents/{id}/data/channels.json — restart the agent to pick up new env vars (TELEGRAM_BOT_TOKEN etc.) injected at pod submit time. Body is the exhaustive list — anything omitted is removed. Pass [] to clear.
+   */
+  public static setAgentChannels<ThrowOnError extends boolean = false>(
+    options: Options<SetAgentChannelsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SetAgentChannelsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/channels",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
   /**
    * List all agents. Public — landing/chat pages render without auth. Mutations and details still require login.
    */
@@ -1402,26 +1079,6 @@ export class AgentsService {
       ThrowOnError
     >({
       url: "/agents/{id}/debug",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Replace the agent's messaging channels (telegram, …). Body is the exhaustive list — anything omitted is removed. Restart the agent to apply: channel-derived env vars (TELEGRAM_BOT_TOKEN etc.) are injected at pod submit time.
-   */
-  public static setAgentChannels<ThrowOnError extends boolean = false>(
-    options: Options<SetAgentChannelsData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/channels",
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -1719,6 +1376,369 @@ export class BridleService {
   }
 }
 
+export class SkillsService {
+  /**
+   * List all skills
+   */
+  public static skillControllerFindAll<ThrowOnError extends boolean = false>(
+    options?: Options<SkillControllerFindAllData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills",
+      ...options,
+    });
+  }
+
+  /**
+   * Create a new skill
+   */
+  public static skillControllerCreate<ThrowOnError extends boolean = false>(
+    options: Options<SkillControllerCreateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Curated GitHub repos searched for skills
+   */
+  public static skillControllerListSources<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<SkillControllerListSourcesData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/sources",
+      ...options,
+    });
+  }
+
+  /**
+   * Search skills across curated GitHub repos
+   */
+  public static skillControllerSearch<ThrowOnError extends boolean = false>(
+    options: Options<SkillControllerSearchData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/search",
+      ...options,
+    });
+  }
+
+  /**
+   * Import a skill from any GitHub URL (folder or SKILL.md)
+   */
+  public static skillControllerImportFromUrl<
+    ThrowOnError extends boolean = false,
+  >(options: Options<SkillControllerImportFromUrlData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/import-url",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Import a skill from GitHub into the local DB
+   */
+  public static skillControllerImportFromGithub<
+    ThrowOnError extends boolean = false,
+  >(options: Options<SkillControllerImportFromGithubData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/import",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Delete a skill
+   */
+  public static skillControllerRemove<ThrowOnError extends boolean = false>(
+    options: Options<SkillControllerRemoveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Get skill by ID
+   */
+  public static skillControllerFindById<ThrowOnError extends boolean = false>(
+    options: Options<SkillControllerFindByIdData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Update a skill
+   */
+  public static skillControllerUpdate<ThrowOnError extends boolean = false>(
+    options: Options<SkillControllerUpdateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/{id}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * List agents that use this skill via their template. Drives the post-edit "Redeploy N agents" flow — skills are baked into agent pods at deploy time, so a skill update has no effect until those agents restart.
+   */
+  public static findDependentAgents<ThrowOnError extends boolean = false>(
+    options: Options<FindDependentAgentsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/{id}/agents",
+      ...options,
+    });
+  }
+}
+
+export class TemplateFilesService {
+  /**
+   * List files for a template
+   */
+  public static templateFileControllerList<
+    ThrowOnError extends boolean = false,
+  >(options: Options<TemplateFileControllerListData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/templates/{id}/files",
+      ...options,
+    });
+  }
+
+  /**
+   * Read a template file
+   */
+  public static templateFileControllerRead<
+    ThrowOnError extends boolean = false,
+  >(options: Options<TemplateFileControllerReadData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/templates/{id}/files/content",
+      ...options,
+    });
+  }
+
+  /**
+   * Save a template file (.md / .json only)
+   */
+  public static templateFileControllerSave<
+    ThrowOnError extends boolean = false,
+  >(options: Options<TemplateFileControllerSaveData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/templates/{id}/files/content",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Replace template files in S3 with the uploaded folder. The body is multipart/form-data; pass a parallel "paths[]" field with the relative path for each file.
+   */
+  public static templateFileControllerUpload<
+    ThrowOnError extends boolean = false,
+  >(options: Options<TemplateFileControllerUploadData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/templates/{id}/files/upload",
+      ...options,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+      },
+    });
+  }
+}
+
+export class PaddockScenariosService {
+  /**
+   * List paddock scenarios. Filter by templateId or agentId; without filters returns all.
+   */
+  public static paddockScenarioControllerFindAll<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<PaddockScenarioControllerFindAllData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios",
+      ...options,
+    });
+  }
+
+  /**
+   * Create a paddock scenario scoped to either a template or an agent (XOR — exactly one).
+   */
+  public static paddockScenarioControllerCreate<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockScenarioControllerCreateData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Delete a paddock scenario
+   */
+  public static paddockScenarioControllerRemove<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockScenarioControllerRemoveData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Get a paddock scenario by id
+   */
+  public static paddockScenarioControllerFindById<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockScenarioControllerFindByIdData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Update a paddock scenario. Scope (templateId/agentId) is immutable — create a new scenario to change scope.
+   */
+  public static paddockScenarioControllerUpdate<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockScenarioControllerUpdateData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).patch<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios/{id}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Generate a scenario draft from a natural-language description via LLM. Result is NOT persisted — review + POST / to save.
+   */
+  public static paddockScenarioControllerGenerate<
+    ThrowOnError extends boolean = false,
+  >(options: Options<PaddockScenarioControllerGenerateData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/paddock-scenarios/generate",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
 export class SecretsService {
   /**
    * Delete a secret for an agent. No-op if the key does not exist. Returns the full secret list.
@@ -1959,6 +1979,22 @@ export class UsageService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Get 30-day usage for a single LLM credential across all agents
+   */
+  public static usageControllerFindForCredential<
+    ThrowOnError extends boolean = false,
+  >(options: Options<UsageControllerFindForCredentialData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/llms/{id}/usage",
+      ...options,
     });
   }
 }

@@ -1,0 +1,141 @@
+# Browser-pool: shared headless Chromium instances for runtime browser tools.
+#
+# Runtime agents connect via CDP (ws://browser-pool:3000?token=...) and pass
+# `--user-data-dir=/profiles/<userId>/<accountKey>` per session, so cookies and
+# logged-in state survive pod restarts (PVC) and never cross tenants
+# (path namespaced by userId in the API slice).
+#
+# Per-session VNC streaming is exposed via Ingress at browser.ranch.cleanslice.org
+# so end users can hand-finish 2FA / CAPTCHA flows.
+#
+# Resource sizing: single replica handles ~10 concurrent sessions. Scale via
+# `replicas` once /browser/sessions consistently hits CONCURRENT cap; profiles
+# are pinned to a pod ordinal via the API slice's consistent-hash scheduler.
+#
+# Secret: the pool reads its TOKEN from `ranch-secrets.BROWSER_POOL_TOKEN`
+# (provisioned by terraform/modules/apps, never committed to git). Same
+# Secret is also referenced by ranch-api for URL minting — both pods MUST
+# see the same value or the runtime gets 401 on every CDP connect.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: browser-pool
+  namespace: platform
+spec:
+  serviceName: browser-pool
+  replicas: 1
+  selector:
+    matchLabels:
+      app: browser-pool
+  template:
+    metadata:
+      labels:
+        app: browser-pool
+    spec:
+      containers:
+        - name: chromium
+          image: ghcr.io/browserless/chromium:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-secrets
+                  key: BROWSER_POOL_TOKEN
+            - name: CONCURRENT
+              value: "10"
+            - name: QUEUED
+              value: "20"
+            - name: TIMEOUT
+              value: "600000"
+            - name: DATA_DIR
+              value: "/profiles"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: ALLOW_FILE_PROTOCOL
+              value: "false"
+            - name: ENABLE_CORS
+              value: "true"
+            # Required so the API can pass --user-data-dir per session via
+            # the `launch` query param. Without this, browserless ignores
+            # custom args and tenants would share a single Chrome profile.
+            - name: ALLOW_GET
+              value: "true"
+            - name: ALLOW_ARG_FROM_REQUEST
+              value: "true"
+            # Live VNC view at /live?id=<sessionId>. If you swap to an image
+            # that uses a different path, update BROWSER_POOL_VNC_URL_TEMPLATE
+            # on ranch-api too.
+            - name: ENABLE_LIVE
+              value: "true"
+          volumeMounts:
+            - name: profiles
+              mountPath: /profiles
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: profiles
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: hcloud-volumes
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: browser-pool
+  namespace: platform
+spec:
+  selector:
+    app: browser-pool
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: browser-pool
+  namespace: platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - browser.ranch.cleanslice.org
+      secretName: browser-pool-tls
+  rules:
+    - host: browser.ranch.cleanslice.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: browser-pool
+                port:
+                  number: 3000

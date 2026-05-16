@@ -1,0 +1,20 @@
+// One row per (userId, accountKey) — e.g. "instagram:miybot", "paypal:main".
+// Profile data (cookies, localStorage) lives on the browser-pool PVC at
+// /profiles/<userId>/<accountKey>; this table just tracks lifecycle state
+// and surfaces it to admin UI + runtime tools.
+//
+// userId is a foreign key to User by convention (matching apiKey.prisma's
+// `createdBy` pattern) — no @relation, so user.prisma stays untouched and
+// merges cleanly with prisma-import.
+model BrowserSession {
+  id          String   @id
+  userId      String
+  accountKey  String
+  status      String   @default("idle")
+  lastUsedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, accountKey])
+  @@index([userId])
+}

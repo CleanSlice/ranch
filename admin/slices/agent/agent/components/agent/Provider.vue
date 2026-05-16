@@ -19,6 +19,7 @@ import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 
 const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
+const agentChannelStore = useAgentChannelStore();
 const agentStatusStore = useAgentStatusStore();
 const authStore = useAuthStore();
 const settingStore = useSettingStore();
@@ -61,6 +62,14 @@ const { data: usage, pending: usagePending, refresh: refreshUsage } = useAsyncDa
   `admin-agent-usage-${props.id}`,
   () => usageStore.fetchForAgent(props.id),
   { lazy: true },
+);
+// Channels live in S3 (agents/{id}/data/channels.json), not on the agent
+// row — fetched here so the Env tab can show TELEGRAM_* values that the
+// workflow gateway will inject at submit time.
+const { data: channels } = useAsyncData(
+  `admin-agent-channels-${props.id}`,
+  () => agentChannelStore.fetchForAgent(props.id),
+  { lazy: true, default: () => [] },
 );
 const { data: template } = useAsyncData(
   `admin-agent-template-${props.id}`,
@@ -140,25 +149,26 @@ const envVars = computed<{ name: string; value: string }[]>(() => {
     // a placeholder so the admin can see the slot exists without leaking the
     // value (which is in the pod env, AWS Secrets Manager, or S3 only).
     { name: 'RANCH_API_TOKEN', value: agent.value.isAdmin ? '<service-token>' : '' },
-    // Channels — projected onto runtime env vars by the workflow gateway.
-    // Empty values mean the channel isn't configured (runtime skips it).
+    // Channels — projected onto runtime env vars by the workflow gateway,
+    // sourced from agents/{id}/data/channels.json in S3. Empty values mean
+    // the channel isn't configured (runtime skips it).
     {
       name: 'TELEGRAM_BOT_TOKEN',
       value:
-        agent.value.channels?.find((c) => c.type === 'telegram')?.config
-          .botToken ?? '',
+        channels.value?.find((c) => c.type === 'telegram')?.config.botToken ??
+        '',
     },
     {
       name: 'TELEGRAM_BOT_NAME',
       value:
-        agent.value.channels?.find((c) => c.type === 'telegram')?.config
-          .botName ?? '',
+        channels.value?.find((c) => c.type === 'telegram')?.config.botName ??
+        '',
     },
     {
       name: 'TELEGRAM_BOT_ADMIN_IDS',
       value:
-        agent.value.channels?.find((c) => c.type === 'telegram')?.config
-          .adminIds ?? '',
+        channels.value?.find((c) => c.type === 'telegram')?.config.adminIds ??
+        '',
     },
   ];
 });
@@ -1007,11 +1017,7 @@ watch(activeTab, (tab) => {
         </TabsContent>
 
         <TabsContent value="channels" class="mt-0">
-          <AgentChannelsProvider
-            :agent-id="agent.id"
-            :channels="agent.channels ?? []"
-            @saved="(updated) => (agent = updated)"
-          />
+          <AgentChannelProvider :agent-id="agent.id" />
         </TabsContent>
 
         <TabsContent value="logs" class="mt-0">

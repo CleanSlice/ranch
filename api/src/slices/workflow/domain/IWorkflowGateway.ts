@@ -1,5 +1,4 @@
 import { IWorkflowStatus } from './workflow.types';
-import { IAgentChannel } from '#/agent/agent/domain';
 
 export interface ISubmitWorkflowData {
   agentId: string;
@@ -11,7 +10,6 @@ export interface ISubmitWorkflowData {
   resources: { cpu: string; memory: string };
   isAdmin: boolean;
   ranchApiToken: string;
-  channels: IAgentChannel[];
 }
 
 export abstract class IWorkflowGateway {

@@ -1,0 +1,45 @@
+# Cleanup CronJob — every 5 minutes, asks ranch-api to mark idle browser
+# sessions as `expired`. Profile data on the pool PVC stays — only the DB
+# row's status flips, so the user can re-login through the admin UI when
+# they come back.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: browser-pool-cleanup
+  namespace: platform
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: cleanup
+              image: curlimages/curl:8.10.1
+              env:
+                - name: BRIDLE_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: ranch-secrets
+                      key: BRIDLE_API_KEY
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -e
+                  curl -fsS -X POST \
+                    -H "x-bridle-api-key: $BRIDLE_API_KEY" \
+                    -H "content-type: application/json" \
+                    --data '{"idleMinutes": 30}' \
+                    http://ranch-api.platform.svc.cluster.local/browser/internal/sessions/cleanup
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi

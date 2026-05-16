@@ -165,223 +165,67 @@ export type CreateApiKeyDto = {
   expiresAt?: string;
 };
 
-export type SaveTemplateFileDto = {
+export type TelegramChannelConfigDto = {
+  /**
+   * Telegram bot HTTP API token (issued by @BotFather).
+   */
+  botToken: string;
+  /**
+   * Public bot username without @ — shown on landing pages.
+   */
+  botName?: string;
+  /**
+   * Comma-separated Telegram chat IDs treated as bot admins by the runtime.
+   */
+  adminIds?: string;
+};
+
+export type AgentChannelDto = {
+  /**
+   * Channel type. Discriminator — config shape depends on this. v1 only telegram.
+   */
+  type: "telegram";
+  config: TelegramChannelConfigDto;
+};
+
+export type SetAgentChannelsDto = {
+  /**
+   * Replace the full set of channels. Pass [] to clear all channels.
+   */
+  channels: Array<AgentChannelDto>;
+};
+
+export type FileChunkDto = {
+  path: string;
+  /**
+   * UTF-8 slice of the file from `offset`.
+   */
+  content: string;
+  /**
+   * Byte length of `content`.
+   */
+  size: number;
+  /**
+   * Full byte length of the file.
+   */
+  totalSize: number;
+  /**
+   * Byte offset of the first byte of `content`.
+   */
+  offset: number;
+  /**
+   * Pass as `offset` on the next request. `null` when there is no more data.
+   */
+  nextOffset: number | null;
+  hasMore: boolean;
+  updatedAt: string;
+};
+
+export type SaveFileDto = {
   /**
    * Full file content as text
    */
   content: string;
-};
-
-export type InstallDeclaredSkillDto = {
-  id: string;
-  resolved: boolean;
-};
-
-export type InstallDeclaredMcpDto = {
-  id: string;
-  resolved: boolean;
-};
-
-export type InstallDeclaredSecretDto = {
-  name: string;
-  required: boolean;
-};
-
-export type InstallDeclaredDto = {
-  skills: Array<InstallDeclaredSkillDto>;
-  mcp: Array<InstallDeclaredMcpDto>;
-  secrets: Array<InstallDeclaredSecretDto>;
-};
-
-export type InstallFileCountsDto = {
-  agentFiles: number;
-  scenarioFiles: number;
-};
-
-export type InstallPreviewDto = {
-  /**
-   * The parsed manifest. Returned as raw JSON so the UI can render any field without typed coupling.
-   */
-  manifest: {
-    [key: string]: unknown;
-  };
-  willCreate: boolean;
-  willUpgrade: boolean;
-  existingTemplateId?: string;
-  declared: InstallDeclaredDto;
-  files: InstallFileCountsDto;
-  warnings: Array<string>;
-};
-
-export type InstallResultDto = {
-  templateId: string;
-  templateName: string;
-  filesUploaded: number;
-  scenariosSeeded: number;
-  mcpAttached: Array<string>;
-  skillsAttached: Array<string>;
-  unresolvedMcp: Array<string>;
-  unresolvedSkills: Array<string>;
-  warnings: Array<string>;
-};
-
-export type InstallFromGitDto = {
-  /**
-   * Git URL — https://, http://, git@host:..., or ssh://host/.../repo.git
-   */
-  gitUrl: string;
-  /**
-   * Optional ref — branch, tag, or short SHA. Defaults to the remote default branch.
-   */
-  gitRef?: string;
-  /**
-   * Operator-supplied params (e.g. {"language":"ru"}). Validated against the manifest at install time.
-   */
-  params?: {
-    [key: string]: unknown;
-  };
-  /**
-   * Operator-supplied secrets (e.g. {"MCP_RANCH_AUTH":"sk-..."}). Used to resolve $secret:NAME references in the manifest at install time (currently for mcp[].authValue). Never echoed back.
-   */
-  secrets?: {
-    [key: string]: unknown;
-  };
-};
-
-export type ImportSkillUrlDto = {
-  /**
-   * GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.
-   */
-  url: string;
-  name?: string;
-};
-
-export type ImportSkillDto = {
-  /**
-   * GitHub owner/repo as returned by /skills/search
-   */
-  repo: string;
-  /**
-   * Path to the SKILL.md file inside the repo
-   */
-  path: string;
-  /**
-   * Override the auto-derived slug. Lowercase letters, digits and dashes.
-   */
-  name?: string;
-};
-
-export type CreateSkillDto = {
-  /**
-   * Unique slug — lowercase letters, digits, dashes
-   */
-  name: string;
-  title: string;
-  /**
-   * Markdown body of the skill
-   */
-  body: string;
-  description?: string;
-};
-
-export type UpdateSkillDto = {
-  /**
-   * Unique slug — lowercase letters, digits, dashes
-   */
-  name?: string;
-  title?: string;
-  /**
-   * Markdown body of the skill
-   */
-  body?: string;
-  description?: string;
-};
-
-export type CreatePaddockScenarioMessageDto = {
-  text: string;
-  from: string;
-  delayMs?: number;
-};
-
-export type CreatePaddockSuccessCriterionDto = {
-  dimension:
-    | "correctness"
-    | "tool_usage"
-    | "soul_compliance"
-    | "response_quality"
-    | "error_handling";
-  description: string;
-  weight: number;
-};
-
-export type CreatePaddockScenarioSetupDto = {
-  files?: {
-    [key: string]: string;
-  };
-  env?: {
-    [key: string]: string;
-  };
-  tools?: Array<string>;
-};
-
-export type CreatePaddockScenarioDto = {
-  templateId?: string | null;
-  agentId?: string | null;
-  category:
-    | "tool_use"
-    | "memory"
-    | "conversation"
-    | "patching_workflow"
-    | "edge_case"
-    | "multi_turn"
-    | "error_recovery";
-  difficulty: "easy" | "medium" | "hard" | "adversarial";
-  name: string;
-  description: string;
-  expectedBehavior: string;
-  messages: Array<CreatePaddockScenarioMessageDto>;
-  successCriteria: Array<CreatePaddockSuccessCriterionDto>;
-  setup?: CreatePaddockScenarioSetupDto | null;
-};
-
-export type GeneratePaddockScenarioDto = {
-  /**
-   * Free-form description of the problem / behavior the user wants to test.
-   */
-  description: string;
-  templateId?: string | null;
-  agentId?: string | null;
-  category?:
-    | "tool_use"
-    | "memory"
-    | "conversation"
-    | "patching_workflow"
-    | "edge_case"
-    | "multi_turn"
-    | "error_recovery";
-  difficulty?: "easy" | "medium" | "hard" | "adversarial";
-  /**
-   * Optional LlmCredential id; if omitted, the first active Anthropic credential is used.
-   */
-  credentialId?: string;
-};
-
-export type UpdatePaddockScenarioDto = {
-  category?:
-    | "tool_use"
-    | "memory"
-    | "conversation"
-    | "patching_workflow"
-    | "edge_case"
-    | "multi_turn"
-    | "error_recovery";
-  difficulty?: "easy" | "medium" | "hard" | "adversarial";
-  name?: string;
-  description?: string;
-  expectedBehavior?: string;
-  messages?: Array<CreatePaddockScenarioMessageDto>;
-  successCriteria?: Array<CreatePaddockSuccessCriterionDto>;
-  setup?: CreatePaddockScenarioSetupDto | null;
 };
 
 export type AgentPodStatusDto = {
@@ -493,69 +337,6 @@ export type SetAgentDebugDto = {
   enabled: boolean;
 };
 
-export type TelegramChannelConfigDto = {
-  /**
-   * Telegram bot HTTP API token (issued by @BotFather).
-   */
-  botToken: string;
-  /**
-   * Public bot username without @ — shown on landing pages.
-   */
-  botName?: string;
-  /**
-   * Comma-separated Telegram chat IDs treated as bot admins by the runtime.
-   */
-  adminIds?: string;
-};
-
-export type AgentChannelDto = {
-  /**
-   * Channel type. Discriminator — config shape depends on this. v1 only telegram.
-   */
-  type: "telegram";
-  config: TelegramChannelConfigDto;
-};
-
-export type SetAgentChannelsDto = {
-  /**
-   * Replace the full set of channels. Pass [] to clear all channels.
-   */
-  channels: Array<AgentChannelDto>;
-};
-
-export type FileChunkDto = {
-  path: string;
-  /**
-   * UTF-8 slice of the file from `offset`.
-   */
-  content: string;
-  /**
-   * Byte length of `content`.
-   */
-  size: number;
-  /**
-   * Full byte length of the file.
-   */
-  totalSize: number;
-  /**
-   * Byte offset of the first byte of `content`.
-   */
-  offset: number;
-  /**
-   * Pass as `offset` on the next request. `null` when there is no more data.
-   */
-  nextOffset: number | null;
-  hasMore: boolean;
-  updatedAt: string;
-};
-
-export type SaveFileDto = {
-  /**
-   * Full file content as text
-   */
-  content: string;
-};
-
 export type BridleTextPartDto = {
   type: "text" | "image" | "file";
   text: string;
@@ -637,6 +418,225 @@ export type TranscriptResponseDto = {
    */
   nextCursor: string | null;
   hasMore: boolean;
+};
+
+export type ImportSkillUrlDto = {
+  /**
+   * GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.
+   */
+  url: string;
+  name?: string;
+};
+
+export type ImportSkillDto = {
+  /**
+   * GitHub owner/repo as returned by /skills/search
+   */
+  repo: string;
+  /**
+   * Path to the SKILL.md file inside the repo
+   */
+  path: string;
+  /**
+   * Override the auto-derived slug. Lowercase letters, digits and dashes.
+   */
+  name?: string;
+};
+
+export type CreateSkillDto = {
+  /**
+   * Unique slug — lowercase letters, digits, dashes
+   */
+  name: string;
+  title: string;
+  /**
+   * Markdown body of the skill
+   */
+  body: string;
+  description?: string;
+};
+
+export type UpdateSkillDto = {
+  /**
+   * Unique slug — lowercase letters, digits, dashes
+   */
+  name?: string;
+  title?: string;
+  /**
+   * Markdown body of the skill
+   */
+  body?: string;
+  description?: string;
+};
+
+export type SaveTemplateFileDto = {
+  /**
+   * Full file content as text
+   */
+  content: string;
+};
+
+export type InstallDeclaredSkillDto = {
+  id: string;
+  resolved: boolean;
+};
+
+export type InstallDeclaredMcpDto = {
+  id: string;
+  resolved: boolean;
+};
+
+export type InstallDeclaredSecretDto = {
+  name: string;
+  required: boolean;
+};
+
+export type InstallDeclaredDto = {
+  skills: Array<InstallDeclaredSkillDto>;
+  mcp: Array<InstallDeclaredMcpDto>;
+  secrets: Array<InstallDeclaredSecretDto>;
+};
+
+export type InstallFileCountsDto = {
+  agentFiles: number;
+  scenarioFiles: number;
+};
+
+export type InstallPreviewDto = {
+  /**
+   * The parsed manifest. Returned as raw JSON so the UI can render any field without typed coupling.
+   */
+  manifest: {
+    [key: string]: unknown;
+  };
+  willCreate: boolean;
+  willUpgrade: boolean;
+  existingTemplateId?: string;
+  declared: InstallDeclaredDto;
+  files: InstallFileCountsDto;
+  warnings: Array<string>;
+};
+
+export type InstallResultDto = {
+  templateId: string;
+  templateName: string;
+  filesUploaded: number;
+  scenariosSeeded: number;
+  mcpAttached: Array<string>;
+  skillsAttached: Array<string>;
+  unresolvedMcp: Array<string>;
+  unresolvedSkills: Array<string>;
+  warnings: Array<string>;
+};
+
+export type InstallFromGitDto = {
+  /**
+   * Git URL — https://, http://, git@host:..., or ssh://host/.../repo.git
+   */
+  gitUrl: string;
+  /**
+   * Optional ref — branch, tag, or short SHA. Defaults to the remote default branch.
+   */
+  gitRef?: string;
+  /**
+   * Operator-supplied params (e.g. {"language":"ru"}). Validated against the manifest at install time.
+   */
+  params?: {
+    [key: string]: unknown;
+  };
+  /**
+   * Operator-supplied secrets (e.g. {"MCP_RANCH_AUTH":"sk-..."}). Used to resolve $secret:NAME references in the manifest at install time (currently for mcp[].authValue). Never echoed back.
+   */
+  secrets?: {
+    [key: string]: unknown;
+  };
+};
+
+export type CreatePaddockScenarioMessageDto = {
+  text: string;
+  from: string;
+  delayMs?: number;
+};
+
+export type CreatePaddockSuccessCriterionDto = {
+  dimension:
+    | "correctness"
+    | "tool_usage"
+    | "soul_compliance"
+    | "response_quality"
+    | "error_handling";
+  description: string;
+  weight: number;
+};
+
+export type CreatePaddockScenarioSetupDto = {
+  files?: {
+    [key: string]: string;
+  };
+  env?: {
+    [key: string]: string;
+  };
+  tools?: Array<string>;
+};
+
+export type CreatePaddockScenarioDto = {
+  templateId?: string | null;
+  agentId?: string | null;
+  category:
+    | "tool_use"
+    | "memory"
+    | "conversation"
+    | "patching_workflow"
+    | "edge_case"
+    | "multi_turn"
+    | "error_recovery";
+  difficulty: "easy" | "medium" | "hard" | "adversarial";
+  name: string;
+  description: string;
+  expectedBehavior: string;
+  messages: Array<CreatePaddockScenarioMessageDto>;
+  successCriteria: Array<CreatePaddockSuccessCriterionDto>;
+  setup?: CreatePaddockScenarioSetupDto | null;
+};
+
+export type GeneratePaddockScenarioDto = {
+  /**
+   * Free-form description of the problem / behavior the user wants to test.
+   */
+  description: string;
+  templateId?: string | null;
+  agentId?: string | null;
+  category?:
+    | "tool_use"
+    | "memory"
+    | "conversation"
+    | "patching_workflow"
+    | "edge_case"
+    | "multi_turn"
+    | "error_recovery";
+  difficulty?: "easy" | "medium" | "hard" | "adversarial";
+  /**
+   * Optional LlmCredential id; if omitted, the first active Anthropic credential is used.
+   */
+  credentialId?: string;
+};
+
+export type UpdatePaddockScenarioDto = {
+  category?:
+    | "tool_use"
+    | "memory"
+    | "conversation"
+    | "patching_workflow"
+    | "edge_case"
+    | "multi_turn"
+    | "error_recovery";
+  difficulty?: "easy" | "medium" | "hard" | "adversarial";
+  name?: string;
+  description?: string;
+  expectedBehavior?: string;
+  messages?: Array<CreatePaddockScenarioMessageDto>;
+  successCriteria?: Array<CreatePaddockSuccessCriterionDto>;
+  setup?: CreatePaddockScenarioSetupDto | null;
 };
 
 export type SecretEntryDto = {
@@ -1186,6 +1186,546 @@ export type ApiKeyControllerRemoveResponses = {
 export type ApiKeyControllerRemoveResponse =
   ApiKeyControllerRemoveResponses[keyof ApiKeyControllerRemoveResponses];
 
+export type GetAgentChannelsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/channels";
+};
+
+export type GetAgentChannelsResponses = {
+  200: Array<AgentChannelDto>;
+};
+
+export type GetAgentChannelsResponse =
+  GetAgentChannelsResponses[keyof GetAgentChannelsResponses];
+
+export type SetAgentChannelsData = {
+  body: SetAgentChannelsDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/channels";
+};
+
+export type SetAgentChannelsResponses = {
+  200: Array<AgentChannelDto>;
+};
+
+export type SetAgentChannelsResponse =
+  SetAgentChannelsResponses[keyof SetAgentChannelsResponses];
+
+export type FileControllerListData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files";
+};
+
+export type FileControllerListResponses = {
+  200: unknown;
+};
+
+export type FileControllerReadData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query: {
+    path: string;
+    /**
+     * Byte offset to start reading from.
+     */
+    offset?: number;
+    /**
+     * Max bytes to return. Server caps at 512 KB.
+     */
+    limit?: number;
+  };
+  url: "/agents/{agentId}/files/content";
+};
+
+export type FileControllerReadResponses = {
+  200: FileChunkDto;
+};
+
+export type FileControllerReadResponse =
+  FileControllerReadResponses[keyof FileControllerReadResponses];
+
+export type FileControllerSaveData = {
+  body: SaveFileDto;
+  path: {
+    agentId: string;
+  };
+  query: {
+    path: string;
+  };
+  url: "/agents/{agentId}/files/content";
+};
+
+export type FileControllerSaveResponses = {
+  200: unknown;
+};
+
+export type FileControllerSyncData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/sync";
+};
+
+export type FileControllerSyncResponses = {
+  200: unknown;
+};
+
+export type ExportAgentFilesData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/export";
+};
+
+export type ExportAgentFilesResponses = {
+  200: unknown;
+};
+
+export type AgentControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agents";
+};
+
+export type AgentControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type AgentControllerCreateData = {
+  body: CreateAgentDto;
+  path?: never;
+  query?: never;
+  url: "/agents";
+};
+
+export type AgentControllerCreateResponses = {
+  201: unknown;
+};
+
+export type AgentControllerFindPublicData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agents/public";
+};
+
+export type AgentControllerFindPublicResponses = {
+  200: unknown;
+};
+
+export type AgentControllerStatusData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agents/status";
+};
+
+export type AgentControllerStatusResponses = {
+  200: Array<AgentStatusDto>;
+};
+
+export type AgentControllerStatusResponse =
+  AgentControllerStatusResponses[keyof AgentControllerStatusResponses];
+
+export type AgentControllerStatusStreamData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agents/status/stream";
+};
+
+export type AgentControllerStatusStreamResponses = {
+  200: unknown;
+};
+
+export type AgentControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query: {
+    wipeS3: string;
+  };
+  url: "/agents/{id}";
+};
+
+export type AgentControllerRemoveResponses = {
+  200: unknown;
+};
+
+export type AgentControllerFindByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}";
+};
+
+export type AgentControllerFindByIdResponses = {
+  200: unknown;
+};
+
+export type AgentControllerUpdateData = {
+  body: UpdateAgentDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}";
+};
+
+export type AgentControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type GetAgentMcpsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/mcps";
+};
+
+export type GetAgentMcpsResponses = {
+  200: Array<AgentMcpDto>;
+};
+
+export type GetAgentMcpsResponse =
+  GetAgentMcpsResponses[keyof GetAgentMcpsResponses];
+
+export type AgentControllerSetDebugData = {
+  body: SetAgentDebugDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/debug";
+};
+
+export type AgentControllerSetDebugResponses = {
+  200: unknown;
+};
+
+export type AgentControllerFindAdminData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agents/admin/current";
+};
+
+export type AgentControllerFindAdminResponses = {
+  200: unknown;
+};
+
+export type AgentControllerDemoteAdminData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/promote-admin";
+};
+
+export type AgentControllerDemoteAdminResponses = {
+  200: unknown;
+};
+
+export type AgentControllerPromoteAdminData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/promote-admin";
+};
+
+export type AgentControllerPromoteAdminResponses = {
+  201: unknown;
+};
+
+export type AgentControllerRestartData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/restart";
+};
+
+export type AgentControllerRestartResponses = {
+  201: unknown;
+};
+
+export type RestartByTemplateData = {
+  body?: never;
+  path: {
+    templateId: string;
+  };
+  query?: never;
+  url: "/agents/restart-by-template/{templateId}";
+};
+
+export type RestartByTemplateResponses = {
+  201: unknown;
+};
+
+export type SendBridleMessageData = {
+  body: SendMessageDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/api/agent/{agentId}/message";
+};
+
+export type SendBridleMessageResponses = {
+  200: unknown;
+};
+
+export type SendBridleMessageSyncData = {
+  body: SendMessageDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/api/agent/{agentId}/message/sync";
+};
+
+export type SendBridleMessageSyncResponses = {
+  200: unknown;
+};
+
+export type BridleHealthData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/api/agent/health";
+};
+
+export type BridleHealthResponses = {
+  200: BridleHealthDto;
+};
+
+export type BridleHealthResponse =
+  BridleHealthResponses[keyof BridleHealthResponses];
+
+export type BridleAgentHealthData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/api/agent/{agentId}/health";
+};
+
+export type BridleAgentHealthResponses = {
+  200: BridleAgentHealthDto;
+};
+
+export type BridleAgentHealthResponse =
+  BridleAgentHealthResponses[keyof BridleAgentHealthResponses];
+
+export type ListAgentsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/api/agent/list";
+};
+
+export type ListAgentsResponses = {
+  200: unknown;
+};
+
+export type ResetBridleTranscriptData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: {
+    /**
+     * Session channel — defaults to "admin".
+     */
+    channel?: string;
+  };
+  url: "/api/agent/{agentId}/transcript";
+};
+
+export type ResetBridleTranscriptResponses = {
+  204: void;
+};
+
+export type ResetBridleTranscriptResponse =
+  ResetBridleTranscriptResponses[keyof ResetBridleTranscriptResponses];
+
+export type GetBridleTranscriptData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: {
+    /**
+     * Session channel — defaults to "admin" for the admin app.
+     */
+    channel?: string;
+    /**
+     * Max messages to return in this page (newest first by file order).
+     */
+    limit?: number;
+    /**
+     * Opaque cursor returned by the previous page. Omit for the latest page.
+     */
+    cursor?: string;
+  };
+  url: "/api/agent/{agentId}/transcript";
+};
+
+export type GetBridleTranscriptResponses = {
+  200: TranscriptResponseDto;
+};
+
+export type GetBridleTranscriptResponse =
+  GetBridleTranscriptResponses[keyof GetBridleTranscriptResponses];
+
+export type SkillControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/skills";
+};
+
+export type SkillControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type SkillControllerCreateData = {
+  body: CreateSkillDto;
+  path?: never;
+  query?: never;
+  url: "/skills";
+};
+
+export type SkillControllerCreateResponses = {
+  201: unknown;
+};
+
+export type SkillControllerListSourcesData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/skills/sources";
+};
+
+export type SkillControllerListSourcesResponses = {
+  200: unknown;
+};
+
+export type SkillControllerSearchData = {
+  body?: never;
+  path?: never;
+  query: {
+    q: string;
+  };
+  url: "/skills/search";
+};
+
+export type SkillControllerSearchResponses = {
+  200: unknown;
+};
+
+export type SkillControllerImportFromUrlData = {
+  body: ImportSkillUrlDto;
+  path?: never;
+  query?: never;
+  url: "/skills/import-url";
+};
+
+export type SkillControllerImportFromUrlResponses = {
+  201: unknown;
+};
+
+export type SkillControllerImportFromGithubData = {
+  body: ImportSkillDto;
+  path?: never;
+  query?: never;
+  url: "/skills/import";
+};
+
+export type SkillControllerImportFromGithubResponses = {
+  201: unknown;
+};
+
+export type SkillControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/skills/{id}";
+};
+
+export type SkillControllerRemoveResponses = {
+  200: unknown;
+};
+
+export type SkillControllerFindByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/skills/{id}";
+};
+
+export type SkillControllerFindByIdResponses = {
+  200: unknown;
+};
+
+export type SkillControllerUpdateData = {
+  body: UpdateSkillDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/skills/{id}";
+};
+
+export type SkillControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type FindDependentAgentsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/skills/{id}/agents";
+};
+
+export type FindDependentAgentsResponses = {
+  200: unknown;
+};
+
 export type TemplateFileControllerListData = {
   body?: never;
   path: {
@@ -1333,126 +1873,6 @@ export type DownloadTemplateResponses = {
   200: unknown;
 };
 
-export type SkillControllerFindAllData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/skills";
-};
-
-export type SkillControllerFindAllResponses = {
-  200: unknown;
-};
-
-export type SkillControllerCreateData = {
-  body: CreateSkillDto;
-  path?: never;
-  query?: never;
-  url: "/skills";
-};
-
-export type SkillControllerCreateResponses = {
-  201: unknown;
-};
-
-export type SkillControllerListSourcesData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/skills/sources";
-};
-
-export type SkillControllerListSourcesResponses = {
-  200: unknown;
-};
-
-export type SkillControllerSearchData = {
-  body?: never;
-  path?: never;
-  query: {
-    q: string;
-  };
-  url: "/skills/search";
-};
-
-export type SkillControllerSearchResponses = {
-  200: unknown;
-};
-
-export type SkillControllerImportFromUrlData = {
-  body: ImportSkillUrlDto;
-  path?: never;
-  query?: never;
-  url: "/skills/import-url";
-};
-
-export type SkillControllerImportFromUrlResponses = {
-  201: unknown;
-};
-
-export type SkillControllerImportFromGithubData = {
-  body: ImportSkillDto;
-  path?: never;
-  query?: never;
-  url: "/skills/import";
-};
-
-export type SkillControllerImportFromGithubResponses = {
-  201: unknown;
-};
-
-export type SkillControllerRemoveData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/skills/{id}";
-};
-
-export type SkillControllerRemoveResponses = {
-  200: unknown;
-};
-
-export type SkillControllerFindByIdData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/skills/{id}";
-};
-
-export type SkillControllerFindByIdResponses = {
-  200: unknown;
-};
-
-export type SkillControllerUpdateData = {
-  body: UpdateSkillDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/skills/{id}";
-};
-
-export type SkillControllerUpdateResponses = {
-  200: unknown;
-};
-
-export type FindDependentAgentsData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/skills/{id}/agents";
-};
-
-export type FindDependentAgentsResponses = {
-  200: unknown;
-};
-
 export type PaddockScenarioControllerFindAllData = {
   body?: never;
   path?: never;
@@ -1527,407 +1947,6 @@ export type PaddockScenarioControllerGenerateData = {
 export type PaddockScenarioControllerGenerateResponses = {
   201: unknown;
 };
-
-export type AgentControllerFindAllData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/agents";
-};
-
-export type AgentControllerFindAllResponses = {
-  200: unknown;
-};
-
-export type AgentControllerCreateData = {
-  body: CreateAgentDto;
-  path?: never;
-  query?: never;
-  url: "/agents";
-};
-
-export type AgentControllerCreateResponses = {
-  201: unknown;
-};
-
-export type AgentControllerFindPublicData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/agents/public";
-};
-
-export type AgentControllerFindPublicResponses = {
-  200: unknown;
-};
-
-export type AgentControllerStatusData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/agents/status";
-};
-
-export type AgentControllerStatusResponses = {
-  200: Array<AgentStatusDto>;
-};
-
-export type AgentControllerStatusResponse =
-  AgentControllerStatusResponses[keyof AgentControllerStatusResponses];
-
-export type AgentControllerStatusStreamData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/agents/status/stream";
-};
-
-export type AgentControllerStatusStreamResponses = {
-  200: unknown;
-};
-
-export type AgentControllerRemoveData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query: {
-    wipeS3: string;
-  };
-  url: "/agents/{id}";
-};
-
-export type AgentControllerRemoveResponses = {
-  200: unknown;
-};
-
-export type AgentControllerFindByIdData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/agents/{id}";
-};
-
-export type AgentControllerFindByIdResponses = {
-  200: unknown;
-};
-
-export type AgentControllerUpdateData = {
-  body: UpdateAgentDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/agents/{id}";
-};
-
-export type AgentControllerUpdateResponses = {
-  200: unknown;
-};
-
-export type GetAgentMcpsData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/agents/{id}/mcps";
-};
-
-export type GetAgentMcpsResponses = {
-  200: Array<AgentMcpDto>;
-};
-
-export type GetAgentMcpsResponse =
-  GetAgentMcpsResponses[keyof GetAgentMcpsResponses];
-
-export type AgentControllerSetDebugData = {
-  body: SetAgentDebugDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/agents/{id}/debug";
-};
-
-export type AgentControllerSetDebugResponses = {
-  200: unknown;
-};
-
-export type SetAgentChannelsData = {
-  body: SetAgentChannelsDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/agents/{id}/channels";
-};
-
-export type SetAgentChannelsResponses = {
-  200: unknown;
-};
-
-export type AgentControllerFindAdminData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/agents/admin/current";
-};
-
-export type AgentControllerFindAdminResponses = {
-  200: unknown;
-};
-
-export type AgentControllerDemoteAdminData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/agents/{id}/promote-admin";
-};
-
-export type AgentControllerDemoteAdminResponses = {
-  200: unknown;
-};
-
-export type AgentControllerPromoteAdminData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/agents/{id}/promote-admin";
-};
-
-export type AgentControllerPromoteAdminResponses = {
-  201: unknown;
-};
-
-export type AgentControllerRestartData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/agents/{id}/restart";
-};
-
-export type AgentControllerRestartResponses = {
-  201: unknown;
-};
-
-export type RestartByTemplateData = {
-  body?: never;
-  path: {
-    templateId: string;
-  };
-  query?: never;
-  url: "/agents/restart-by-template/{templateId}";
-};
-
-export type RestartByTemplateResponses = {
-  201: unknown;
-};
-
-export type FileControllerListData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query?: never;
-  url: "/agents/{agentId}/files";
-};
-
-export type FileControllerListResponses = {
-  200: unknown;
-};
-
-export type FileControllerReadData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query: {
-    path: string;
-    /**
-     * Byte offset to start reading from.
-     */
-    offset?: number;
-    /**
-     * Max bytes to return. Server caps at 512 KB.
-     */
-    limit?: number;
-  };
-  url: "/agents/{agentId}/files/content";
-};
-
-export type FileControllerReadResponses = {
-  200: FileChunkDto;
-};
-
-export type FileControllerReadResponse =
-  FileControllerReadResponses[keyof FileControllerReadResponses];
-
-export type FileControllerSaveData = {
-  body: SaveFileDto;
-  path: {
-    agentId: string;
-  };
-  query: {
-    path: string;
-  };
-  url: "/agents/{agentId}/files/content";
-};
-
-export type FileControllerSaveResponses = {
-  200: unknown;
-};
-
-export type FileControllerSyncData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query?: never;
-  url: "/agents/{agentId}/files/sync";
-};
-
-export type FileControllerSyncResponses = {
-  200: unknown;
-};
-
-export type ExportAgentFilesData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query?: never;
-  url: "/agents/{agentId}/files/export";
-};
-
-export type ExportAgentFilesResponses = {
-  200: unknown;
-};
-
-export type SendBridleMessageData = {
-  body: SendMessageDto;
-  path: {
-    agentId: string;
-  };
-  query?: never;
-  url: "/api/agent/{agentId}/message";
-};
-
-export type SendBridleMessageResponses = {
-  200: unknown;
-};
-
-export type SendBridleMessageSyncData = {
-  body: SendMessageDto;
-  path: {
-    agentId: string;
-  };
-  query?: never;
-  url: "/api/agent/{agentId}/message/sync";
-};
-
-export type SendBridleMessageSyncResponses = {
-  200: unknown;
-};
-
-export type BridleHealthData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/api/agent/health";
-};
-
-export type BridleHealthResponses = {
-  200: BridleHealthDto;
-};
-
-export type BridleHealthResponse =
-  BridleHealthResponses[keyof BridleHealthResponses];
-
-export type BridleAgentHealthData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query?: never;
-  url: "/api/agent/{agentId}/health";
-};
-
-export type BridleAgentHealthResponses = {
-  200: BridleAgentHealthDto;
-};
-
-export type BridleAgentHealthResponse =
-  BridleAgentHealthResponses[keyof BridleAgentHealthResponses];
-
-export type ListAgentsData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/api/agent/list";
-};
-
-export type ListAgentsResponses = {
-  200: unknown;
-};
-
-export type ResetBridleTranscriptData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query?: {
-    /**
-     * Session channel — defaults to "admin".
-     */
-    channel?: string;
-  };
-  url: "/api/agent/{agentId}/transcript";
-};
-
-export type ResetBridleTranscriptResponses = {
-  204: void;
-};
-
-export type ResetBridleTranscriptResponse =
-  ResetBridleTranscriptResponses[keyof ResetBridleTranscriptResponses];
-
-export type GetBridleTranscriptData = {
-  body?: never;
-  path: {
-    agentId: string;
-  };
-  query?: {
-    /**
-     * Session channel — defaults to "admin" for the admin app.
-     */
-    channel?: string;
-    /**
-     * Max messages to return in this page (newest first by file order).
-     */
-    limit?: number;
-    /**
-     * Opaque cursor returned by the previous page. Omit for the latest page.
-     */
-    cursor?: string;
-  };
-  url: "/api/agent/{agentId}/transcript";
-};
-
-export type GetBridleTranscriptResponses = {
-  200: TranscriptResponseDto;
-};
-
-export type GetBridleTranscriptResponse =
-  GetBridleTranscriptResponses[keyof GetBridleTranscriptResponses];
 
 export type SecretControllerDeleteData = {
   body: DeleteSecretDto;
@@ -2113,6 +2132,19 @@ export type UsageControllerReportResponses = {
 
 export type UsageControllerReportResponse =
   UsageControllerReportResponses[keyof UsageControllerReportResponses];
+
+export type UsageControllerFindForCredentialData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/llms/{id}/usage";
+};
+
+export type UsageControllerFindForCredentialResponses = {
+  200: unknown;
+};
 
 export type GetKnowledgesData = {
   body?: never;

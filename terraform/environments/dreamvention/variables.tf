@@ -72,6 +72,12 @@ variable "bridle_api_key" {
   sensitive = true
 }
 
+variable "browser_pool_token" {
+  type        = string
+  sensitive   = true
+  description = "Shared secret for the browserless StatefulSet. Generate with `openssl rand -hex 32`."
+}
+
 variable "ghcr_username" {
   type    = string
   default = "dmitriyzhuk"

@@ -19,9 +19,6 @@ model Agent {
   isPublic        Boolean        @default(false)
   allowedOrigins  String[]       @default([])
   isAdmin         Boolean        @default(false)
-  // Configured messaging channels (telegram, slack, …). Discriminated-union
-  // shape `[{ type, config }]`. Mapped to runtime env vars at workflow submit.
-  channels        Json           @default("[]")
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

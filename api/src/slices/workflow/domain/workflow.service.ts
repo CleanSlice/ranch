@@ -21,7 +21,6 @@ export class WorkflowService {
       resources: agent.resources,
       isAdmin: agent.isAdmin,
       ranchApiToken,
-      channels: agent.channels,
     });
   }
 

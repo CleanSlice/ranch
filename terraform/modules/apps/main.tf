@@ -46,6 +46,12 @@ variable "bridle_api_key" {
   sensitive = true
 }
 
+variable "browser_pool_token" {
+  type      = string
+  sensitive = true
+  description = "Shared secret for the browserless StatefulSet. Read by both ranch-api (URL minting) and the browser-pool pod (request auth). Generate with `openssl rand -hex 32`."
+}
+
 variable "ghcr_username" {
   type = string
 }
@@ -117,6 +123,7 @@ resource "kubectl_manifest" "ranch_secrets" {
     data:
       JWT_SECRET: ${base64encode(var.jwt_secret)}
       BRIDLE_API_KEY: ${base64encode(var.bridle_api_key)}
+      BROWSER_POOL_TOKEN: ${base64encode(var.browser_pool_token)}
   YAML
 }
 

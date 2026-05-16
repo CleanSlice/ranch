@@ -3,9 +3,10 @@ domain              = "ranch.dreamvention.com"
 admin_ip            = "YOUR_IP/32"
 ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 
-jwt_secret     = "generate-with: openssl rand -hex 32"
-bridle_api_key = "your-bridle-api-key"
-ghcr_pat       = "ghp_xxx (read:packages PAT)"
+jwt_secret         = "generate-with: openssl rand -hex 32"
+bridle_api_key     = "your-bridle-api-key"
+browser_pool_token = "generate-with: openssl rand -hex 32"
+ghcr_pat           = "ghp_xxx (read:packages PAT)"
 
 # database_url is intentionally NOT here — provide via env:
 # export TF_VAR_database_url="postgresql://..."

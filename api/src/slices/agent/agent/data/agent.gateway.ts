@@ -4,7 +4,6 @@ import { PrismaService } from '#/setup/prisma/prisma.service';
 import { IAgentGateway } from '../domain/agent.gateway';
 import {
   IAgentData,
-  IAgentChannel,
   ICreateAgentData,
   IUpdateAgentData,
   AgentStatusTypes,
@@ -132,17 +131,6 @@ export class AgentGateway extends IAgentGateway {
         data: { isAdmin: true },
       }),
     ]);
-    return this.mapper.toEntity(record);
-  }
-
-  async setChannels(
-    id: string,
-    channels: IAgentChannel[],
-  ): Promise<IAgentData> {
-    const record = await this.prisma.agent.update({
-      where: { id },
-      data: { channels: channels as unknown as Prisma.InputJsonValue },
-    });
     return this.mapper.toEntity(record);
   }
 

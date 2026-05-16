@@ -71,6 +71,13 @@ spec:
             # on ranch-api too.
             - name: ENABLE_LIVE
               value: "true"
+            # If unset, browserless's error hook itself throws "TypeError:
+            # Invalid URL" the first time anything goes wrong, which trips
+            # uncaughtException and crashes the whole pod. Pointing it at
+            # an unreachable but syntactically valid URL keeps the hook
+            # happy — the alert POST silently fails, the pod stays up.
+            - name: ERROR_ALERT_URL
+              value: "http://127.0.0.1:65535/sink"
           volumeMounts:
             - name: profiles
               mountPath: /profiles

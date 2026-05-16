@@ -34,6 +34,7 @@ import {
   IconPlug,
   IconUserCircle,
   IconExternalLink,
+  IconBrowser,
 } from '@tabler/icons-vue';
 import { Bot, FlaskConical, KeyRound } from 'lucide-vue-next';
 
@@ -64,6 +65,7 @@ const iconMap: Record<string, unknown> = {
   Plug: IconPlug,
   FlaskConical,
   KeyRound,
+  Browser: IconBrowser,
 };
 
 const groups = [

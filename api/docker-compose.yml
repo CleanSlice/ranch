@@ -44,6 +44,35 @@ services:
       timeout: 5s
       retries: 5
 
+  # Browserless — local mirror of the prod browser-pool StatefulSet.
+  # Attached to the k3d network so agent runtime pods can resolve the
+  # hostname `ranch-browserless:3000` for CDP connects. The pool token
+  # matches BROWSER_POOL_TOKEN in api/.env.dev — change one, change both.
+  browserless:
+    image: ghcr.io/browserless/chromium:latest
+    container_name: ranch-browserless
+    ports:
+      - '13000:3000'
+    environment:
+      TOKEN: dev-browser-pool-token-change-me
+      CONCURRENT: '4'
+      QUEUED: '8'
+      TIMEOUT: '600000'
+      DATA_DIR: '/profiles'
+      HOST: '0.0.0.0'
+      ENABLE_CORS: 'true'
+      ALLOW_GET: 'true'
+      ALLOW_ARG_FROM_REQUEST: 'true'
+      ENABLE_LIVE: 'true'
+      # Without this, the pool crashes whenever any client sends a malformed
+      # request — the error hook itself throws TypeError on the unset URL.
+      ERROR_ALERT_URL: 'http://127.0.0.1:65535/sink'
+    volumes:
+      - ./.docker/browserless-profiles:/profiles
+    networks:
+      - default
+      - k3d
+
   minio-init:
     image: minio/mc:latest
     depends_on:

@@ -157,6 +157,23 @@ import type {
   PaddockEvaluationControllerTraceData,
   PaddockEvaluationControllerAbortData,
   PaddockEvaluationControllerRerunData,
+  ListBrowserSessionsData,
+  ListBrowserSessionsResponse,
+  OpenBrowserSessionData,
+  OpenBrowserSessionResponse,
+  DeleteBrowserSessionData,
+  DeleteBrowserSessionResponse,
+  GetBrowserSessionData,
+  GetBrowserSessionResponse,
+  ResetBrowserSessionData,
+  ResetBrowserSessionResponse,
+  SetBrowserSessionStatusData,
+  SetBrowserSessionStatusResponse,
+  MintBrowserSessionVncUrlData,
+  OpenBrowserSessionInternalData,
+  SetBrowserSessionStatusInternalData,
+  ResetBrowserSessionInternalData,
+  CleanupBrowserSessionsInternalData,
   SseControllerSseData,
   SseControllerMessagesData,
   SseControllerDebugSessionsData,
@@ -2423,6 +2440,204 @@ export class PaddockEvaluationsService {
       ThrowOnError
     >({
       url: "/paddock-evaluations/{id}/rerun",
+      ...options,
+    });
+  }
+}
+
+export class BrowserService {
+  /**
+   * List the calling user’s browser sessions.
+   */
+  public static listBrowserSessions<ThrowOnError extends boolean = false>(
+    options?: Options<ListBrowserSessionsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      ListBrowserSessionsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/sessions",
+      ...options,
+    });
+  }
+
+  /**
+   * Open or reuse a browser session for the given accountKey. Returns a CDP URL the runtime uses to connect a Playwright/CDP client.
+   */
+  public static openBrowserSession<ThrowOnError extends boolean = false>(
+    options: Options<OpenBrowserSessionData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      OpenBrowserSessionResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/sessions",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Disconnect the account — drops the session row and schedules the profile directory for cleanup.
+   */
+  public static deleteBrowserSession<ThrowOnError extends boolean = false>(
+    options: Options<DeleteBrowserSessionData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      DeleteBrowserSessionResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/sessions/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Get a single session (only sessions you own).
+   */
+  public static getBrowserSession<ThrowOnError extends boolean = false>(
+    options: Options<GetBrowserSessionData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetBrowserSessionResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/sessions/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Discard the current browser instance for this session and return a fresh CDP URL. Use when a browser_play call has been stuck on a 120s timeout.
+   */
+  public static resetBrowserSession<ThrowOnError extends boolean = false>(
+    options: Options<ResetBrowserSessionData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ResetBrowserSessionResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/sessions/{id}/reset",
+      ...options,
+    });
+  }
+
+  /**
+   * Update session status. Called by the runtime after each tool batch (idle / needs_login / stuck), or by the admin UI to mark a session for relogin.
+   */
+  public static setBrowserSessionStatus<ThrowOnError extends boolean = false>(
+    options: Options<SetBrowserSessionStatusData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      SetBrowserSessionStatusResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/sessions/{id}/status",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Mint a short-lived (15 min) VNC URL the end user can open to finish a 2FA/CAPTCHA flow manually.
+   */
+  public static mintBrowserSessionVncUrl<ThrowOnError extends boolean = false>(
+    options: Options<MintBrowserSessionVncUrlData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/sessions/{id}/vnc-url",
+      ...options,
+    });
+  }
+
+  /**
+   * Open or reuse a session on behalf of a user. Used by the runtime before each browser_play call.
+   */
+  public static openBrowserSessionInternal<
+    ThrowOnError extends boolean = false,
+  >(options: Options<OpenBrowserSessionInternalData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/internal/sessions",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Report session status back from the runtime — typically idle after success or needs_login when Instagram redirected to /login.
+   */
+  public static setBrowserSessionStatusInternal<
+    ThrowOnError extends boolean = false,
+  >(options: Options<SetBrowserSessionStatusInternalData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/internal/sessions/{id}/status",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Hard-reset a stuck session and return a fresh CDP URL on the same profile.
+   */
+  public static resetBrowserSessionInternal<
+    ThrowOnError extends boolean = false,
+  >(options: Options<ResetBrowserSessionInternalData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/internal/sessions/{id}/reset",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Mark sessions idle for longer than `idleMinutes` (default 30) as expired. Called by the browser-pool-cleanup CronJob.
+   */
+  public static cleanupBrowserSessionsInternal<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<CleanupBrowserSessionsInternalData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/browser/internal/sessions/cleanup",
       ...options,
     });
   }

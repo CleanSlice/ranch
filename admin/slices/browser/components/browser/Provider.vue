@@ -3,7 +3,6 @@ import { Button } from '#theme/components/ui/button';
 import {
   type IBrowserSessionData,
   type IBrowserSessionConnectionData,
-  BrowserSessionStatusTypes,
 } from '#browser/stores/browser';
 import BrowserList from './List.vue';
 import BrowserLoginDialog from './LoginDialog.vue';

@@ -780,6 +780,61 @@ export type RunPaddockEvaluationDto = {
   judgeOverride?: RunPaddockJudgeOverrideDto;
 };
 
+export type BrowserSessionDto = {
+  id: string;
+  userId: string;
+  accountKey: string;
+  status: "idle" | "active" | "needs_login" | "expired" | "stuck";
+  lastUsedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OpenSessionDto = {
+  /**
+   * Account identifier scoped to the calling user, e.g. "instagram:miybot" or "paypal:main". Must match /^[a-zA-Z0-9_:\-]+$/ — anything else is rejected before it can touch the profile filesystem path.
+   */
+  accountKey: string;
+};
+
+export type BrowserSessionConnectionDto = {
+  session: BrowserSessionDto;
+  /**
+   * CDP WebSocket URL. Carries a single-use launch payload and the pool token — never expose to UI, only to authenticated runtime calls.
+   */
+  cdpUrl: string;
+  /**
+   * Live VNC URL (signed JWT, 15 min TTL). Send to the end user when they need to finish a 2FA/CAPTCHA flow manually.
+   */
+  vncUrl?: {
+    [key: string]: unknown;
+  } | null;
+};
+
+export type SetStatusDto = {
+  status: "idle" | "active" | "needs_login" | "expired" | "stuck";
+};
+
+export type OpenInternalSessionDto = {
+  /**
+   * Account identifier scoped to the calling user, e.g. "instagram:miybot" or "paypal:main". Must match /^[a-zA-Z0-9_:\-]+$/ — anything else is rejected before it can touch the profile filesystem path.
+   */
+  accountKey: string;
+  /**
+   * Owning user. Trusted only because the bridle key gates this endpoint — the runtime forwards ctx.from from the authenticated chat session.
+   */
+  userId: string;
+};
+
+export type InternalSetStatusDto = {
+  status: "idle" | "active" | "needs_login" | "expired" | "stuck";
+  userId: string;
+};
+
+export type InternalSessionRefDto = {
+  userId: string;
+};
+
 export type HealthControllerCheckData = {
   body?: never;
   path?: never;
@@ -2471,6 +2526,159 @@ export type PaddockEvaluationControllerRerunData = {
 };
 
 export type PaddockEvaluationControllerRerunResponses = {
+  201: unknown;
+};
+
+export type ListBrowserSessionsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/browser/sessions";
+};
+
+export type ListBrowserSessionsResponses = {
+  200: Array<BrowserSessionDto>;
+};
+
+export type ListBrowserSessionsResponse =
+  ListBrowserSessionsResponses[keyof ListBrowserSessionsResponses];
+
+export type OpenBrowserSessionData = {
+  body: OpenSessionDto;
+  path?: never;
+  query?: never;
+  url: "/browser/sessions";
+};
+
+export type OpenBrowserSessionResponses = {
+  200: BrowserSessionConnectionDto;
+};
+
+export type OpenBrowserSessionResponse =
+  OpenBrowserSessionResponses[keyof OpenBrowserSessionResponses];
+
+export type DeleteBrowserSessionData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/browser/sessions/{id}";
+};
+
+export type DeleteBrowserSessionResponses = {
+  204: void;
+};
+
+export type DeleteBrowserSessionResponse =
+  DeleteBrowserSessionResponses[keyof DeleteBrowserSessionResponses];
+
+export type GetBrowserSessionData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/browser/sessions/{id}";
+};
+
+export type GetBrowserSessionResponses = {
+  200: BrowserSessionDto;
+};
+
+export type GetBrowserSessionResponse =
+  GetBrowserSessionResponses[keyof GetBrowserSessionResponses];
+
+export type ResetBrowserSessionData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/browser/sessions/{id}/reset";
+};
+
+export type ResetBrowserSessionResponses = {
+  200: BrowserSessionConnectionDto;
+};
+
+export type ResetBrowserSessionResponse =
+  ResetBrowserSessionResponses[keyof ResetBrowserSessionResponses];
+
+export type SetBrowserSessionStatusData = {
+  body: SetStatusDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/browser/sessions/{id}/status";
+};
+
+export type SetBrowserSessionStatusResponses = {
+  200: BrowserSessionDto;
+};
+
+export type SetBrowserSessionStatusResponse =
+  SetBrowserSessionStatusResponses[keyof SetBrowserSessionStatusResponses];
+
+export type MintBrowserSessionVncUrlData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/browser/sessions/{id}/vnc-url";
+};
+
+export type MintBrowserSessionVncUrlResponses = {
+  201: unknown;
+};
+
+export type OpenBrowserSessionInternalData = {
+  body: OpenInternalSessionDto;
+  path?: never;
+  query?: never;
+  url: "/browser/internal/sessions";
+};
+
+export type OpenBrowserSessionInternalResponses = {
+  201: unknown;
+};
+
+export type SetBrowserSessionStatusInternalData = {
+  body: InternalSetStatusDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/browser/internal/sessions/{id}/status";
+};
+
+export type SetBrowserSessionStatusInternalResponses = {
+  201: unknown;
+};
+
+export type ResetBrowserSessionInternalData = {
+  body: InternalSessionRefDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/browser/internal/sessions/{id}/reset";
+};
+
+export type ResetBrowserSessionInternalResponses = {
+  201: unknown;
+};
+
+export type CleanupBrowserSessionsInternalData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/browser/internal/sessions/cleanup";
+};
+
+export type CleanupBrowserSessionsInternalResponses = {
   201: unknown;
 };
 

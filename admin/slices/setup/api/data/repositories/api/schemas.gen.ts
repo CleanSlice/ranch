@@ -1784,3 +1784,132 @@ export const RunPaddockEvaluationDtoSchema = {
   },
   required: ["agentId"],
 } as const;
+
+export const BrowserSessionDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      example: "browser-7b8c2e22-...",
+    },
+    userId: {
+      type: "string",
+    },
+    accountKey: {
+      type: "string",
+      example: "instagram:miybot",
+    },
+    status: {
+      type: "string",
+      enum: ["idle", "active", "needs_login", "expired", "stuck"],
+    },
+    lastUsedAt: {
+      format: "date-time",
+      type: "string",
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "userId",
+    "accountKey",
+    "status",
+    "lastUsedAt",
+    "createdAt",
+    "updatedAt",
+  ],
+} as const;
+
+export const OpenSessionDtoSchema = {
+  type: "object",
+  properties: {
+    accountKey: {
+      type: "string",
+      description:
+        'Account identifier scoped to the calling user, e.g. "instagram:miybot" or "paypal:main". Must match /^[a-zA-Z0-9_:\\-]+$/ — anything else is rejected before it can touch the profile filesystem path.',
+      example: "instagram:miybot",
+    },
+  },
+  required: ["accountKey"],
+} as const;
+
+export const BrowserSessionConnectionDtoSchema = {
+  type: "object",
+  properties: {
+    session: {
+      $ref: "#/components/schemas/BrowserSessionDto",
+    },
+    cdpUrl: {
+      type: "string",
+      description:
+        "CDP WebSocket URL. Carries a single-use launch payload and the pool token — never expose to UI, only to authenticated runtime calls.",
+    },
+    vncUrl: {
+      type: "object",
+      description:
+        "Live VNC URL (signed JWT, 15 min TTL). Send to the end user when they need to finish a 2FA/CAPTCHA flow manually.",
+      nullable: true,
+    },
+  },
+  required: ["session", "cdpUrl"],
+} as const;
+
+export const SetStatusDtoSchema = {
+  type: "object",
+  properties: {
+    status: {
+      type: "string",
+      enum: ["idle", "active", "needs_login", "expired", "stuck"],
+    },
+  },
+  required: ["status"],
+} as const;
+
+export const OpenInternalSessionDtoSchema = {
+  type: "object",
+  properties: {
+    accountKey: {
+      type: "string",
+      description:
+        'Account identifier scoped to the calling user, e.g. "instagram:miybot" or "paypal:main". Must match /^[a-zA-Z0-9_:\\-]+$/ — anything else is rejected before it can touch the profile filesystem path.',
+      example: "instagram:miybot",
+    },
+    userId: {
+      type: "string",
+      description:
+        "Owning user. Trusted only because the bridle key gates this endpoint — the runtime forwards ctx.from from the authenticated chat session.",
+    },
+  },
+  required: ["accountKey", "userId"],
+} as const;
+
+export const InternalSetStatusDtoSchema = {
+  type: "object",
+  properties: {
+    status: {
+      type: "string",
+      enum: ["idle", "active", "needs_login", "expired", "stuck"],
+    },
+    userId: {
+      type: "string",
+    },
+  },
+  required: ["status", "userId"],
+} as const;
+
+export const InternalSessionRefDtoSchema = {
+  type: "object",
+  properties: {
+    userId: {
+      type: "string",
+    },
+  },
+  required: ["userId"],
+} as const;

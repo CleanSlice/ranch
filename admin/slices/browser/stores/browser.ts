@@ -41,14 +41,14 @@ export const useBrowserStore = defineStore('browser', () => {
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  // hey-api/openapi-ts names methods as `<controllerName>Controller<MethodName>`
-  // — operationId in @ApiOperation does NOT change this (it only affects the
-  // openapi spec metadata). Keep these names in sync with browser.controller.ts.
+  // hey-api/openapi-ts uses each route's `operationId` as the method name.
+  // Keep these in sync with the @ApiOperation operationId fields in
+  // browser.controller.ts.
   async function fetchAll() {
     loading.value = true;
     error.value = null;
     try {
-      const res = await BrowserService.browserControllerList();
+      const res = await BrowserService.listBrowserSessions();
       items.value = unwrap<IBrowserSessionData[]>(res.data) ?? [];
     } catch (err) {
       error.value = (err as Error).message;
@@ -61,7 +61,7 @@ export const useBrowserStore = defineStore('browser', () => {
   async function open(
     accountKey: string,
   ): Promise<IBrowserSessionConnectionData | null> {
-    const res = await BrowserService.browserControllerOpen({
+    const res = await BrowserService.openBrowserSession({
       body: { accountKey },
     });
     const conn = unwrap<IBrowserSessionConnectionData>(res.data);
@@ -74,7 +74,7 @@ export const useBrowserStore = defineStore('browser', () => {
   }
 
   async function reset(id: string): Promise<IBrowserSessionConnectionData | null> {
-    const res = await BrowserService.browserControllerReset({ path: { id } });
+    const res = await BrowserService.resetBrowserSession({ path: { id } });
     const conn = unwrap<IBrowserSessionConnectionData>(res.data);
     if (conn) {
       const existing = items.value.findIndex((x) => x.id === conn.session.id);
@@ -84,18 +84,18 @@ export const useBrowserStore = defineStore('browser', () => {
   }
 
   async function remove(id: string) {
-    await BrowserService.browserControllerRemove({ path: { id } });
+    await BrowserService.deleteBrowserSession({ path: { id } });
     items.value = items.value.filter((x) => x.id !== id);
   }
 
   async function mintVncUrl(id: string): Promise<string | null> {
-    const res = await BrowserService.browserControllerVncUrl({ path: { id } });
+    const res = await BrowserService.mintBrowserSessionVncUrl({ path: { id } });
     const data = unwrap<{ vncUrl: string | null }>(res.data);
     return data?.vncUrl ?? null;
   }
 
   async function refreshOne(id: string): Promise<IBrowserSessionData | null> {
-    const res = await BrowserService.browserControllerGet({ path: { id } });
+    const res = await BrowserService.getBrowserSession({ path: { id } });
     const session = unwrap<IBrowserSessionData>(res.data);
     if (session) {
       const idx = items.value.findIndex((x) => x.id === id);

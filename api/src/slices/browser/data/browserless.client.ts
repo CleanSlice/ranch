@@ -19,9 +19,11 @@ export class BrowserlessClient {
     private readonly jwt: JwtService,
   ) {}
 
-  // Internal WS endpoint — Playwright `chromium.connect()` target. Browserless
-  // v2 exposes `/chromium/playwright` for connections that respect a `launch`
-  // query param (which is how we pass --user-data-dir per tenant).
+  // Internal WS endpoint — runtime opens this via Playwright's
+  // `chromium.connectOverCDP()`. We deliberately use `/chromium` (raw CDP
+  // route, Puppeteer-backed launcher) rather than `/chromium/playwright`:
+  // the latter routes through Playwright's launchServer which forbids
+  // `--user-data-dir` in launch args, breaking persistent profiles.
   private get internalBase(): string {
     return this.config.get(
       'BROWSER_POOL_INTERNAL_URL',
@@ -29,11 +31,8 @@ export class BrowserlessClient {
     );
   }
 
-  private get internalPlaywrightPath(): string {
-    return this.config.get(
-      'BROWSER_POOL_PLAYWRIGHT_PATH',
-      '/chromium/playwright',
-    );
+  private get internalCdpPath(): string {
+    return this.config.get('BROWSER_POOL_CDP_PATH', '/chromium');
   }
 
   // Public host — only used for live VNC URLs humans open in a browser.
@@ -67,25 +66,20 @@ export class BrowserlessClient {
   }
 
   /**
-   * Build the Playwright WS endpoint for `chromium.connect()`. Profile path
-   * embeds userId so two tenants can never share Chrome storage — even if
-   * the pool is compromised, an attacker would need to forge a userId match
-   * before the path collides with another user's profile.
+   * Build the raw CDP WS endpoint. Profile path embeds userId so two
+   * tenants can never share Chrome storage — even if the pool is
+   * compromised, an attacker would need to forge a userId match before
+   * the path collides with another user's profile.
    *
-   * The `launch` query option is a browserless-specific extension; it is
-   * honoured at `/chromium/playwright` (v2) and ignored at the bare CDP
-   * endpoint. Use `chromium.connect({ wsEndpoint })` in the runtime, NOT
-   * `connectOverCDP`.
+   * Use `chromium.connectOverCDP(wsEndpoint)` in the runtime — the
+   * `/chromium` route uses Puppeteer's launcher, which accepts
+   * `--user-data-dir` cleanly (Playwright's launcher would reject it).
    */
   buildCdpUrl(userId: string, accountKey: string): string {
     const profilePath = this.profilePath(userId, accountKey);
-    // Playwright refuses `--user-data-dir` as a CLI arg in launch() — it
-    // demands `launchPersistentContext(userDataDir, options)`. browserless
-    // exposes this as the top-level `userDataDir` launch option, so the
-    // arg list stays clean and the path goes through the right code path.
     const launch = {
-      userDataDir: profilePath,
       args: [
+        `--user-data-dir=${profilePath}`,
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
       ],
@@ -96,7 +90,7 @@ export class BrowserlessClient {
       token: this.token,
       launch: JSON.stringify(launch),
     });
-    return `${this.internalBase}${this.internalPlaywrightPath}?${query.toString()}`;
+    return `${this.internalBase}${this.internalCdpPath}?${query.toString()}`;
   }
 
   /**

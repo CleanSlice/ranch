@@ -79,9 +79,13 @@ export class BrowserlessClient {
    */
   buildCdpUrl(userId: string, accountKey: string): string {
     const profilePath = this.profilePath(userId, accountKey);
+    // Playwright refuses `--user-data-dir` as a CLI arg in launch() — it
+    // demands `launchPersistentContext(userDataDir, options)`. browserless
+    // exposes this as the top-level `userDataDir` launch option, so the
+    // arg list stays clean and the path goes through the right code path.
     const launch = {
+      userDataDir: profilePath,
       args: [
-        `--user-data-dir=${profilePath}`,
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
       ],

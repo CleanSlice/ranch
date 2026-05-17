@@ -24,6 +24,21 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 interface IHeldSocket {
   ws: WebSocket;
   timer: ReturnType<typeof setTimeout>;
+  // Round-robin CDP id counter — the same WS is shared between the
+  // Target.createTarget that opens the login page and any later
+  // Storage.getCookies we run for cookie harvest.
+  nextCdpId: number;
+}
+
+export interface IHarvestedCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: 'Strict' | 'Lax' | 'None';
 }
 
 @Injectable()
@@ -103,8 +118,73 @@ export class BrowserWarmerService implements OnModuleDestroy {
       }
     });
 
-    this.holds.set(sessionId, { ws, timer });
+    this.holds.set(sessionId, { ws, timer, nextCdpId: 2 });
     return { ok: true };
+  }
+
+  /**
+   * Pull cookies off the live Chrome attached to this session over the
+   * SAME warm WebSocket. A second WS to /chromium?launch=... would spawn
+   * a parallel Chrome trying to claim the same `--user-data-dir`, and
+   * Chrome refuses the second one.
+   *
+   * Returns cookies in Playwright `storageState.cookies` shape so callers
+   * can drop the result straight into a state file.
+   */
+  async harvestCookies(
+    sessionId: string,
+    timeoutMs = 15_000,
+  ): Promise<
+    | { ok: true; cookies: IHarvestedCookie[] }
+    | { ok: false; error: string }
+  > {
+    const held = this.holds.get(sessionId);
+    if (!held) {
+      return {
+        ok: false,
+        error: `No warm hold for ${sessionId} — call openSession first`,
+      };
+    }
+    const id = held.nextCdpId++;
+    return new Promise((resolve) => {
+      const onMessage = (event: MessageEvent) => {
+        let msg: { id?: number; result?: { cookies?: IHarvestedCookie[] }; error?: { message: string } };
+        try {
+          msg = JSON.parse(event.data as string) as typeof msg;
+        } catch {
+          return;
+        }
+        if (msg.id !== id) return;
+        held.ws.removeEventListener('message', onMessage);
+        clearTimeout(timer);
+        if (msg.error) {
+          resolve({ ok: false, error: `CDP error: ${msg.error.message}` });
+          return;
+        }
+        const raw = msg.result?.cookies ?? [];
+        resolve({
+          ok: true,
+          cookies: raw.map((c) => ({
+            name: c.name,
+            value: c.value,
+            domain: c.domain,
+            path: c.path,
+            // CDP returns -1 for session cookies; Playwright's storageState
+            // shape uses the same sentinel, so pass through unchanged.
+            expires: c.expires,
+            httpOnly: c.httpOnly,
+            secure: c.secure,
+            sameSite: c.sameSite ?? 'Lax',
+          })),
+        });
+      };
+      const timer = setTimeout(() => {
+        held.ws.removeEventListener('message', onMessage);
+        resolve({ ok: false, error: `Cookie harvest timeout (${timeoutMs}ms)` });
+      }, timeoutMs);
+      held.ws.addEventListener('message', onMessage);
+      held.ws.send(JSON.stringify({ id, method: 'Storage.getCookies' }));
+    });
   }
 
   release(sessionId: string): void {

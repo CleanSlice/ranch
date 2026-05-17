@@ -101,6 +101,22 @@ export class BrowserInternalController {
     )) as BrowserSessionConnectionDto;
   }
 
+  @Post(':id/harvest')
+  @ApiOperation({
+    summary:
+      'Pull cookies off the live Chrome attached to this session in Playwright storageState shape. The runtime calls this from browser_login_done after the user signs in via the VNC URL, then writes the result to .agent/browser-state/.',
+    operationId: 'harvestBrowserSessionInternal',
+  })
+  async harvest(
+    @Param('id') id: string,
+    @Body() dto: InternalSessionRefDto,
+  ): Promise<{
+    cookies: unknown[];
+    origins: unknown[];
+  }> {
+    return this.gateway.harvestStorageState(dto.userId, id);
+  }
+
   @Post('cleanup')
   @ApiOperation({
     summary:

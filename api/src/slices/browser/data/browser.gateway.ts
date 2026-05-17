@@ -161,6 +161,21 @@ export class BrowserGateway extends IBrowserGateway {
     return this.pool.buildVncUrl(userId, sessionId);
   }
 
+  async harvestStorageState(userId: string, sessionId: string) {
+    await this.requireOwned(userId, sessionId);
+    const res = await this.warmer.harvestCookies(sessionId);
+    if (!res.ok) {
+      // 500 is the right semantic here — the session exists, the user is
+      // authorised, but the pool didn't cough up the cookies. Caller can
+      // retry after re-opening the session.
+      throw new Error(`Harvest failed: ${res.error}`);
+    }
+    // localStorage harvest is intentionally skipped — see cookieHarvest.ts
+    // in the runtime for the rationale (per-origin attach round-trips, and
+    // login cookies cover what we need for auth).
+    return { cookies: res.cookies, origins: [] };
+  }
+
   async expireIdleSessions(idleMinutes: number): Promise<number> {
     const cutoff = new Date(Date.now() - idleMinutes * 60_000);
     const result = await this.prisma.browserSession.updateMany({

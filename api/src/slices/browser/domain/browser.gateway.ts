@@ -82,4 +82,30 @@ export abstract class IBrowserGateway {
    * user can re-login when they come back.
    */
   abstract expireIdleSessions(idleMinutes: number): Promise<number>;
+
+  /**
+   * Extract cookies from the live Chrome attached to this session in
+   * Playwright `storageState.cookies` shape. Called after an interactive
+   * VNC login so the runtime can drop the result straight into its local
+   * profile state file and run subsequent automation locally.
+   */
+  abstract harvestStorageState(
+    userId: string,
+    sessionId: string,
+  ): Promise<{
+    cookies: Array<{
+      name: string;
+      value: string;
+      domain: string;
+      path: string;
+      expires: number;
+      httpOnly: boolean;
+      secure: boolean;
+      sameSite: 'Strict' | 'Lax' | 'None';
+    }>;
+    origins: Array<{
+      origin: string;
+      localStorage: Array<{ name: string; value: string }>;
+    }>;
+  }>;
 }

@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { BrowserGateway } from './browser.gateway';
 import { BrowserMapper } from './browser.mapper';
 import { BrowserlessClient } from './browserless.client';
+import { BrowserWarmerService } from './browser-warmer.service';
 import { BrowserSessionStatusTypes } from '../domain';
 
 // Minimal in-memory stub for the parts of PrismaService the gateway uses.
@@ -102,20 +103,40 @@ function makePool(): BrowserlessClient {
   } as unknown as BrowserlessClient;
 }
 
+// Warmer normally opens a CDP WebSocket; in tests we just track that it was
+// asked to warm/release so we can assert lifecycle integration without
+// pulling in `ws` or pretending to be browserless.
+function makeWarmer(): BrowserWarmerService & {
+  warm: jest.Mock;
+  release: jest.Mock;
+} {
+  return {
+    warm: jest.fn(async () => ({ ok: true })),
+    release: jest.fn(),
+    onModuleDestroy: jest.fn(),
+  } as unknown as BrowserWarmerService & {
+    warm: jest.Mock;
+    release: jest.Mock;
+  };
+}
+
 describe('BrowserGateway', () => {
   let prisma: ReturnType<typeof makePrismaStub>;
   let pool: BrowserlessClient;
+  let warmer: ReturnType<typeof makeWarmer>;
   let gateway: BrowserGateway;
 
   beforeEach(() => {
     prisma = makePrismaStub();
     pool = makePool();
+    warmer = makeWarmer();
     gateway = new BrowserGateway(
       // The PrismaService dep is typed as the full client; the gateway only
       // touches `browserSession`, so a structural stub is enough.
       prisma as unknown as ConstructorParameters<typeof BrowserGateway>[0],
       new BrowserMapper(),
       pool,
+      warmer,
     );
   });
 

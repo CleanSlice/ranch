@@ -19,10 +19,16 @@ export abstract class IBrowserGateway {
    * Open (or reuse) a session for the given accountKey on behalf of userId.
    * Returns a fresh CDP URL and (optionally) a VNC URL the user can open
    * in a browser to finish login flows manually.
+   *
+   * `loginUrl` is the page the gateway navigates Chrome to at warm-up so
+   * the VNC view isn't a blank Xvfb desktop. Defaults to `about:blank` —
+   * useful for "Add account" in the admin UI when the agent already
+   * surfaced the right URL elsewhere.
    */
   abstract openSession(
     userId: string,
     accountKey: string,
+    loginUrl?: string,
   ): Promise<IBrowserSessionConnection>;
 
   /** Close the session and free the underlying browser. Profile data stays. */

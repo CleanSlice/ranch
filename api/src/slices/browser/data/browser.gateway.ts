@@ -14,6 +14,7 @@ import {
 } from '../domain';
 import { BrowserMapper } from './browser.mapper';
 import { BrowserlessClient } from './browserless.client';
+import { BrowserWarmerService } from './browser-warmer.service';
 
 @Injectable()
 export class BrowserGateway extends IBrowserGateway {
@@ -23,6 +24,7 @@ export class BrowserGateway extends IBrowserGateway {
     private readonly prisma: PrismaService,
     private readonly mapper: BrowserMapper,
     private readonly pool: BrowserlessClient,
+    private readonly warmer: BrowserWarmerService,
   ) {
     super();
   }
@@ -30,6 +32,7 @@ export class BrowserGateway extends IBrowserGateway {
   async openSession(
     userId: string,
     accountKey: string,
+    loginUrl?: string,
   ): Promise<IBrowserSessionConnection> {
     // Upsert is intentional — repeated `openSession` for the same
     // (userId, accountKey) must reuse the same profile path. A new row
@@ -44,15 +47,34 @@ export class BrowserGateway extends IBrowserGateway {
     });
 
     const session = this.mapper.toEntity(record);
+    const cdpUrl = this.pool.buildCdpUrl(userId, accountKey);
+
+    // Warm via the API-local pool URL (matters in dev where api runs on
+    // the host and the pool container's docker hostname isn't resolvable).
+    // The CDP URL we return to callers still uses internalBase so the
+    // runtime, which lives inside the cluster's docker network, can reach
+    // it by service name.
+    const warmed = await this.warmer.warm(
+      session.id,
+      this.pool.buildWarmCdpUrl(userId, accountKey),
+      loginUrl ?? 'about:blank',
+    );
+    if (!warmed.ok) {
+      this.logger.warn(
+        `Could not warm Chrome for ${session.id}: ${warmed.error} (vncUrl will render blank until the user navigates manually)`,
+      );
+    }
+
     return {
       session,
-      cdpUrl: this.pool.buildCdpUrl(userId, accountKey),
+      cdpUrl,
       vncUrl: this.pool.buildVncUrl(userId, session.id),
     };
   }
 
   async closeSession(userId: string, sessionId: string): Promise<void> {
     const session = await this.requireOwned(userId, sessionId);
+    this.warmer.release(session.id);
     await this.prisma.browserSession.update({
       where: { id: session.id },
       data: {
@@ -67,9 +89,10 @@ export class BrowserGateway extends IBrowserGateway {
     sessionId: string,
   ): Promise<IBrowserSessionConnection> {
     const session = await this.requireOwned(userId, sessionId);
-    // Browserless spawns a fresh Chrome on each CDP connect; we don't need
-    // to talk to the pool to "kill" anything. Just flip status so the next
-    // openSession returns a clean URL.
+    // Drop the warm hold so the current Chrome dies; openSession() below
+    // re-warms on the same profile path. Flip status in between so the
+    // admin UI shows "idle" instead of a stale "stuck" state.
+    this.warmer.release(session.id);
     await this.prisma.browserSession.update({
       where: { id: session.id },
       data: {
@@ -82,6 +105,7 @@ export class BrowserGateway extends IBrowserGateway {
 
   async deleteSession(userId: string, sessionId: string): Promise<void> {
     const session = await this.requireOwned(userId, sessionId);
+    this.warmer.release(session.id);
     await this.prisma.browserSession.delete({ where: { id: session.id } });
     // Wiping the on-disk profile is handled by a separate cleanup CronJob
     // (Phase 4) — we don't block the user-facing request on a network call

@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, Matches, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, IsUrl, Matches, MaxLength } from 'class-validator';
 
 export class OpenSessionDto {
   @ApiProperty({
@@ -14,4 +14,14 @@ export class OpenSessionDto {
       'accountKey may only contain alphanumerics, underscore, colon, and dash',
   })
   accountKey: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Page to navigate to in the pre-warmed Chrome. Drives what the VNC viewer renders when the user opens the returned vncUrl — set this to the service\'s login page (e.g. "https://www.instagram.com/accounts/login/"). Defaults to about:blank if omitted; the user can still type a URL in the address bar.',
+    example: 'https://www.instagram.com/accounts/login/',
+  })
+  @IsOptional()
+  @IsString()
+  @IsUrl({ require_protocol: true })
+  loginUrl?: string;
 }

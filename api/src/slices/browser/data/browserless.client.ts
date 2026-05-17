@@ -33,6 +33,16 @@ export class BrowserlessClient {
     return this.config.get('BROWSER_POOL_CDP_PATH', '/chromium');
   }
 
+  // Where THE API ITSELF reaches the pool to warm Chrome on openSession().
+  // In prod this equals `internalBase` (same k8s Service hostname works from
+  // every pod in the cluster). In local dev, the API runs on the host while
+  // the pool runs in a docker container — the api can't resolve the
+  // container's docker-network hostname, so we point it at the mapped
+  // localhost port. Defaults to internalBase when unset.
+  private get warmBase(): string {
+    return this.config.get('BROWSER_POOL_WARM_URL', this.internalBase);
+  }
+
   // Public host — only used for live VNC URLs humans open in a browser.
   private get publicBase(): string {
     return this.config.get(
@@ -74,6 +84,23 @@ export class BrowserlessClient {
    * `--user-data-dir` cleanly (Playwright's launcher would reject it).
    */
   buildCdpUrl(userId: string, accountKey: string): string {
+    return this.buildCdpUrlAt(this.internalBase, userId, accountKey);
+  }
+
+  /**
+   * Same CDP URL the runtime gets, but anchored at `warmBase` — used by
+   * BrowserWarmerService since the api process runs outside the docker
+   * network in dev and needs the mapped host port.
+   */
+  buildWarmCdpUrl(userId: string, accountKey: string): string {
+    return this.buildCdpUrlAt(this.warmBase, userId, accountKey);
+  }
+
+  private buildCdpUrlAt(
+    base: string,
+    userId: string,
+    accountKey: string,
+  ): string {
     const profilePath = this.profilePath(userId, accountKey);
     const launch = {
       args: [
@@ -88,7 +115,7 @@ export class BrowserlessClient {
       token: this.token,
       launch: JSON.stringify(launch),
     });
-    return `${this.internalBase}${this.internalCdpPath}?${query.toString()}`;
+    return `${base}${this.internalCdpPath}?${query.toString()}`;
   }
 
   /**

@@ -5,7 +5,12 @@ import { BrowserController } from './browser.controller';
 import { BrowserInternalController } from './browser.internal.controller';
 import { BrowserTool } from './browser.tool';
 import { IBrowserGateway } from './domain';
-import { BrowserGateway, BrowserMapper, BrowserlessClient } from './data';
+import {
+  BrowserGateway,
+  BrowserMapper,
+  BrowserlessClient,
+  BrowserWarmerService,
+} from './data';
 import { PrismaModule } from '#/setup/prisma';
 import { AuthModule } from '../user/auth/auth.module';
 import { BridleApiKeyGuard } from '../bridle/guards/bridleApiKey.guard';
@@ -38,6 +43,7 @@ import { BridleApiKeyGuard } from '../bridle/guards/bridleApiKey.guard';
     { provide: IBrowserGateway, useClass: BrowserGateway },
     BrowserMapper,
     BrowserlessClient,
+    BrowserWarmerService,
     BrowserTool,
     BridleApiKeyGuard,
   ],

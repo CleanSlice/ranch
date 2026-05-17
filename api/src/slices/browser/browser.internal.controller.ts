@@ -64,6 +64,7 @@ export class BrowserInternalController {
     return (await this.gateway.openSession(
       dto.userId,
       dto.accountKey,
+      dto.loginUrl,
     )) as BrowserSessionConnectionDto;
   }
 

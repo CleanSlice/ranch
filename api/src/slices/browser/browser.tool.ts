@@ -40,16 +40,31 @@ export class BrowserTool {
   @Tool({
     name: 'browser_session_open',
     description:
-      'Open or reuse a browser session for the given accountKey. Returns the session metadata and a VNC URL the user can open to finish a login manually. The runtime uses the returned cdpUrl internally — agents should not forward it anywhere.',
+      'Open or reuse a browser session for the given accountKey. Returns the session metadata and a VNC URL the user can open to finish a login manually. The runtime uses the returned cdpUrl internally — agents should not forward it anywhere. Pass loginUrl so the VNC view renders the right page immediately instead of about:blank.',
     parameters: z.object({
       userId: z
         .string()
         .describe('Owning user — must match the calling principal.'),
       accountKey: accountKeyParam,
+      loginUrl: z
+        .string()
+        .url()
+        .optional()
+        .describe(
+          'Page the pool\'s Chrome should land on before the user opens vncUrl (e.g. https://www.instagram.com/accounts/login/). Defaults to about:blank.',
+        ),
     }),
   })
-  async open({ userId, accountKey }: { userId: string; accountKey: string }) {
-    return ok(await this.gateway.openSession(userId, accountKey));
+  async open({
+    userId,
+    accountKey,
+    loginUrl,
+  }: {
+    userId: string;
+    accountKey: string;
+    loginUrl?: string;
+  }) {
+    return ok(await this.gateway.openSession(userId, accountKey, loginUrl));
   }
 
   @Tool({

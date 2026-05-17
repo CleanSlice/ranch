@@ -1,81 +1,112 @@
-// Popup UI controller. Talks to chrome.storage.local for connection
-// settings, chrome.cookies for the current tab's cookies, and the Ranch
-// API for the actual upload.
+// Popup controller. State machine: setup → login → pick-agent → ready.
+//
+// The flow auto-derives almost everything from the Ranch admin URL the
+// user pastes once:
+//   - Admin URL (e.g. https://admin.ranch.cleanslice.org) — we read the
+//     `access_token` cookie from this origin using chrome.cookies.get.
+//   - API URL — derived by swapping the leading "admin." host segment
+//     for "api." (the cleanslice convention). If that produces a
+//     different host the user can override later via the URL prompt.
+//   - Agent list — pulled from GET /agents using the admin JWT as Bearer.
+//   - Agent ID + userId chosen by the user from the list.
+//   - Extension token — minted server-side at /browser/extension/token
+//     with the admin JWT, scoped to the chosen agent + userId. Stored
+//     in chrome.storage.local for subsequent cookie uploads.
 
+const STORE_KEY = 'ranch-cookies:v2';
 const $ = (id) => document.getElementById(id);
 
-const profileEl = $('profile');
-const apiUrlEl = $('api-url');
-const tokenEl = $('token');
-const sendBtn = $('send-btn');
-const saveConnBtn = $('save-conn-btn');
-const settingsBtn = $('settings-btn');
-const statusEl = $('status');
-const emptyState = $('empty-state');
-const currentSite = $('current-site');
-const domainLabel = $('domain-label');
-const cookieCount = $('cookie-count');
+// ── persistence ──────────────────────────────────────────────────────
 
-let activeTab = null;
-let cookiesForSite = [];
-
-const STORAGE_KEY = 'ranch-cookies-settings:v1';
-
-function setStatus(msg, kind) {
-  if (!msg) {
-    statusEl.hidden = true;
-    return;
-  }
-  statusEl.textContent = msg;
-  statusEl.className = 'status ' + kind;
-  statusEl.hidden = false;
+async function loadState() {
+  const data = await chrome.storage.local.get(STORE_KEY);
+  return data[STORE_KEY] ?? {};
+}
+async function saveState(patch) {
+  const cur = await loadState();
+  const merged = { ...cur, ...patch };
+  await chrome.storage.local.set({ [STORE_KEY]: merged });
+  return merged;
+}
+async function clearState() {
+  await chrome.storage.local.remove(STORE_KEY);
 }
 
-function updateSendEnabled() {
-  const ready =
-    activeTab &&
-    cookiesForSite.length > 0 &&
-    profileEl.value.trim().length > 0 &&
-    apiUrlEl.value.trim().length > 0 &&
-    tokenEl.value.trim().length > 0;
-  sendBtn.disabled = !ready;
-}
+// ── url helpers ──────────────────────────────────────────────────────
 
-// Cookies live on the registrable domain (e.g. `.instagram.com`). Filtering
-// by URL hostname misses the leading-dot variants Chrome stores for
-// HttpOnly/secure cookies — `chrome.cookies.getAll({ domain })` is the
-// right surface here.
-async function loadCookiesForTab(tab) {
-  cookiesForSite = [];
-  if (!tab?.url) return;
+function normalize(raw) {
+  if (!raw) return null;
+  let u;
   try {
-    const url = new URL(tab.url);
-    if (!/^https?:$/.test(url.protocol)) {
-      domainLabel.textContent = '(non-http page)';
-      cookieCount.textContent = 'Open the site you want to export, then reopen this popup.';
-      return;
+    u = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  if (!/^https?:$/.test(u.protocol)) return null;
+  return u.origin;
+}
+
+// Convention used by ranch deploys: admin.{domain} ↔ api.{domain}. If the
+// admin host doesn't start with `admin.`, fall back to the same origin
+// and let the user paste an API URL separately later. Most installs use
+// the convention.
+function deriveApiUrl(adminOrigin) {
+  try {
+    const u = new URL(adminOrigin);
+    if (u.hostname.startsWith('admin.')) {
+      u.hostname = 'api.' + u.hostname.slice('admin.'.length);
+      return u.origin;
     }
-    domainLabel.textContent = url.hostname;
-    // strip a leading "www." so we capture the apex cookies too — Chrome
-    // returns subdomain matches automatically.
-    const apex = url.hostname.replace(/^www\./, '');
-    const cookies = await chrome.cookies.getAll({ domain: apex });
-    cookiesForSite = cookies;
-    cookieCount.textContent =
-      cookies.length === 0
-        ? 'No cookies stored for this site yet. Log in first, then click again.'
-        : `${cookies.length} cookies found.`;
-  } catch (err) {
-    domainLabel.textContent = '(error)';
-    cookieCount.textContent = String(err.message || err);
+    return adminOrigin;
+  } catch {
+    return adminOrigin;
   }
 }
 
-// CDP / Playwright storageState expects sameSite values "Strict" | "Lax" |
-// "None". chrome.cookies returns lowercase ("strict") + the special
-// "unspecified" / "no_restriction" values. Normalize at the boundary so
-// the runtime can drop the file straight into `chromium.launch({
-// storageState })`.
+// ── ranch HTTP ──────────────────────────────────────────────────────
+
+async function getAdminJwt(adminUrl) {
+  // chrome.cookies.get is name-scoped to a host. Nuxt's `useCookie` sets
+  // the cookie path-agnostic so the host match alone is enough.
+  try {
+    const cookie = await chrome.cookies.get({ url: adminUrl, name: 'access_token' });
+    return cookie?.value || null;
+  } catch (err) {
+    console.warn('chrome.cookies.get failed:', err);
+    return null;
+  }
+}
+
+async function fetchJson(url, opts = {}) {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const body = await res.json();
+  // ranch-api wraps responses in `{success, data}`; pass either shape through.
+  return body?.data ?? body;
+}
+
+async function listAgents(apiUrl, jwt) {
+  return fetchJson(`${apiUrl}/agents`, {
+    headers: { Authorization: `Bearer ${jwt}` },
+  });
+}
+
+async function mintExtensionToken(apiUrl, jwt, agentId, userId) {
+  return fetchJson(`${apiUrl}/browser/extension/token`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ agentId, userId, ttlDays: 365 }),
+  });
+}
+
+// ── cookies ──────────────────────────────────────────────────────────
+
 function normalizeSameSite(s) {
   switch ((s || '').toLowerCase()) {
     case 'strict': return 'Strict';
@@ -92,8 +123,6 @@ function toStorageStateCookies(raw) {
     value: c.value,
     domain: c.domain,
     path: c.path,
-    // Session cookies have no expirationDate from Chrome — Playwright
-    // expects -1 for those.
     expires: typeof c.expirationDate === 'number' ? Math.floor(c.expirationDate) : -1,
     httpOnly: !!c.httpOnly,
     secure: !!c.secure,
@@ -101,89 +130,199 @@ function toStorageStateCookies(raw) {
   }));
 }
 
-async function loadSettings() {
-  const data = await chrome.storage.local.get(STORAGE_KEY);
-  const s = data[STORAGE_KEY] ?? {};
-  apiUrlEl.value = s.apiUrl ?? '';
-  tokenEl.value = s.token ?? '';
-  profileEl.value = s.lastProfile ?? '';
-  const connConfigured = !!(s.apiUrl && s.token);
-  emptyState.hidden = connConfigured;
-  currentSite.hidden = !connConfigured;
-  // Auto-expand the connection panel until first save.
-  if (!connConfigured) document.querySelector('details').open = true;
-}
-
-async function saveSettings(patch) {
-  const data = await chrome.storage.local.get(STORAGE_KEY);
-  const merged = { ...(data[STORAGE_KEY] ?? {}), ...patch };
-  await chrome.storage.local.set({ [STORAGE_KEY]: merged });
-}
-
-async function sendCookies() {
-  setStatus('Uploading…', 'ok');
-  sendBtn.disabled = true;
+async function readCookiesForTab(tab) {
+  if (!tab?.url) return { host: '(no tab)', cookies: [] };
   try {
-    const apiUrl = apiUrlEl.value.trim().replace(/\/+$/, '');
-    const token = tokenEl.value.trim();
-    const profile = profileEl.value.trim();
-    const cookies = toStorageStateCookies(cookiesForSite);
-
-    const res = await fetch(`${apiUrl}/browser/sessions/import-state`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        profile,
-        // localStorage is intentionally omitted — the agent's existing
-        // `storageState` consumer only restores cookies anyway, and
-        // reading localStorage per-origin from the extension would
-        // require a content script injected into each origin we touched.
-        cookies,
-        origins: [],
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
+    const url = new URL(tab.url);
+    if (!/^https?:$/.test(url.protocol)) {
+      return { host: '(non-http page)', cookies: [] };
     }
-    const data = await res.json();
-    await saveSettings({ lastProfile: profile });
-    setStatus(
-      `Sent ${cookies.length} cookies to profile "${profile}". ` +
-        (data?.data?.path ? `(${data.data.path})` : ''),
-      'ok',
-    );
+    const apex = url.hostname.replace(/^www\./, '');
+    const cookies = await chrome.cookies.getAll({ domain: apex });
+    return { host: url.hostname, cookies };
   } catch (err) {
-    setStatus(`Failed: ${err.message ?? err}`, 'err');
-  } finally {
-    updateSendEnabled();
+    return { host: '(error)', cookies: [], error: err.message };
   }
 }
 
-sendBtn.addEventListener('click', sendCookies);
-saveConnBtn.addEventListener('click', async () => {
-  await saveSettings({
-    apiUrl: apiUrlEl.value.trim().replace(/\/+$/, ''),
-    token: tokenEl.value.trim(),
-  });
-  await loadSettings();
-  setStatus('Connection saved.', 'ok');
-});
-settingsBtn.addEventListener('click', () => {
-  document.querySelector('details').open = true;
-  apiUrlEl.focus();
-});
-profileEl.addEventListener('input', updateSendEnabled);
-apiUrlEl.addEventListener('input', updateSendEnabled);
-tokenEl.addEventListener('input', updateSendEnabled);
+// ── ui rendering ─────────────────────────────────────────────────────
 
-(async () => {
-  await loadSettings();
+function showScreen(name) {
+  for (const s of ['setup', 'login', 'agent', 'main']) {
+    $(`screen-${s}`).hidden = s !== name;
+  }
+}
+
+function setStatus(msg, kind) {
+  const el = $('status');
+  if (!msg) {
+    el.hidden = true;
+    return;
+  }
+  el.textContent = msg;
+  el.className = 'status ' + kind;
+  el.hidden = false;
+}
+
+// ── controllers per screen ───────────────────────────────────────────
+
+async function startup() {
+  const state = await loadState();
+  if (!state.adminUrl) return showScreen('setup');
+
+  const jwt = await getAdminJwt(state.adminUrl);
+  if (!jwt) {
+    $('login-host').textContent = new URL(state.adminUrl).hostname;
+    return showScreen('login');
+  }
+
+  if (!state.extToken || !state.agentId) {
+    return await renderAgentPicker(state.adminUrl, jwt);
+  }
+
+  // Refresh: make sure the token is still parseable / not obviously expired.
+  // We don't try to verify the signature in the popup — the server does that.
+  if (state.exp && state.exp * 1000 < Date.now() + 60_000) {
+    return await renderAgentPicker(state.adminUrl, jwt);
+  }
+
+  return await renderMain(state);
+}
+
+async function renderAgentPicker(adminUrl, jwt) {
+  showScreen('agent');
+  const apiUrl = deriveApiUrl(adminUrl);
+  const sel = $('agent-select');
+  sel.innerHTML = '<option>Loading…</option>';
+  sel.disabled = true;
+
+  let agents;
+  try {
+    agents = await listAgents(apiUrl, jwt);
+  } catch (err) {
+    sel.innerHTML = `<option>Failed: ${err.message.slice(0, 80)}</option>`;
+    return;
+  }
+  if (!Array.isArray(agents) || agents.length === 0) {
+    sel.innerHTML = '<option>No agents found for this account</option>';
+    return;
+  }
+
+  sel.disabled = false;
+  // Sort admin agent to the top — that's the most common pick.
+  agents.sort((a, b) => Number(!!b.isAdmin) - Number(!!a.isAdmin) || a.name.localeCompare(b.name));
+  sel.innerHTML = agents
+    .map(
+      (a) =>
+        `<option value="${a.id}">${a.isAdmin ? '★ ' : ''}${a.name} — ${a.id.slice(0, 12)}…</option>`,
+    )
+    .join('');
+
+  $('agent-pick').onclick = async () => {
+    const agentId = sel.value;
+    const userId = $('agent-user').value.trim() || 'admin';
+    $('agent-pick').disabled = true;
+    try {
+      const minted = await mintExtensionToken(apiUrl, jwt, agentId, userId);
+      const agentName = agents.find((a) => a.id === agentId)?.name ?? agentId;
+      const state = await saveState({
+        adminUrl,
+        apiUrl,
+        extToken: minted.token,
+        exp: minted.exp,
+        agentId,
+        agentName,
+        userId,
+      });
+      await renderMain(state);
+    } catch (err) {
+      $('agent-pick').disabled = false;
+      alert(`Could not mint token:\n${err.message}`);
+    }
+  };
+}
+
+async function renderMain(state) {
+  showScreen('main');
+  $('connected-summary').textContent = `${state.agentName ?? state.agentId}  ·  user=${state.userId}`;
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  activeTab = tab;
-  await loadCookiesForTab(tab);
-  updateSendEnabled();
-})();
+  const { host, cookies } = await readCookiesForTab(tab);
+  $('site-host').textContent = host;
+  $('site-cookies').textContent =
+    cookies.length === 0
+      ? 'No cookies stored for this site yet. Log in first, then click again.'
+      : `${cookies.length} cookies found.`;
+
+  const profileEl = $('profile');
+  const sendBtn = $('send-btn');
+  profileEl.value = '';
+  const updateEnabled = () => {
+    sendBtn.disabled = cookies.length === 0 || profileEl.value.trim().length === 0;
+  };
+  profileEl.oninput = updateEnabled;
+  updateEnabled();
+
+  sendBtn.onclick = async () => {
+    const profile = profileEl.value.trim();
+    sendBtn.disabled = true;
+    setStatus('Uploading…', 'ok');
+    try {
+      const payload = {
+        profile,
+        cookies: toStorageStateCookies(cookies),
+        origins: [],
+      };
+      const res = await fetchJson(`${state.apiUrl}/browser/extension/import-state`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${state.extToken}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      setStatus(
+        `Sent ${res.cookies} cookies to "${profile}" (${res.path}). Run browser_play(profile: "${profile}") in your agent.`,
+        'ok',
+      );
+    } catch (err) {
+      setStatus(`Failed: ${err.message}`, 'err');
+    } finally {
+      updateEnabled();
+    }
+  };
+}
+
+// ── event wiring ─────────────────────────────────────────────────────
+
+$('setup-continue').onclick = async () => {
+  const origin = normalize($('setup-url').value);
+  if (!origin) {
+    alert('Enter a valid http(s) URL, e.g. https://admin.ranch.cleanslice.org');
+    return;
+  }
+  await saveState({ adminUrl: origin, apiUrl: deriveApiUrl(origin) });
+  await startup();
+};
+
+$('login-open').onclick = async () => {
+  const { adminUrl } = await loadState();
+  if (adminUrl) chrome.tabs.create({ url: `${adminUrl}/login` });
+};
+$('login-retry').onclick = () => startup();
+$('login-reset').onclick = async () => {
+  await clearState();
+  showScreen('setup');
+};
+
+$('agent-reset').onclick = async () => {
+  await clearState();
+  showScreen('setup');
+};
+
+$('disconnect').onclick = async () => {
+  await clearState();
+  showScreen('setup');
+};
+
+startup();

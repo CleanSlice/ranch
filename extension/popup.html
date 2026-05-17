@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Ranch — Send cookies</title>
+    <title>Ranch Cookies</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -28,14 +28,10 @@
         }
       }
       html, body { margin: 0; padding: 0; width: 360px; }
-      body {
-        font: 13px/1.45 system-ui, -apple-system, sans-serif;
-        color: var(--fg);
-        background: var(--bg);
-        padding: 16px;
-      }
-      h1 { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
-      label { display: block; font-size: 11px; font-weight: 500; color: var(--fg-muted); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+      body { font: 13px/1.45 system-ui, -apple-system, sans-serif; color: var(--fg); background: var(--bg); padding: 16px; }
+      h1 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+      h1 .sub { font-weight: 400; color: var(--fg-muted); }
+      label { display: block; font-size: 11px; font-weight: 500; color: var(--fg-muted); margin: 12px 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
       input, select {
         width: 100%; box-sizing: border-box;
         padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
@@ -43,59 +39,80 @@
       }
       input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
       button {
-        display: block; width: 100%; margin-top: 14px;
+        display: block; width: 100%; margin-top: 12px;
         padding: 9px 12px; border: 0; border-radius: 6px;
         background: var(--accent); color: var(--accent-fg);
         font: inherit; font-weight: 600; cursor: pointer;
       }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
       button.secondary { background: transparent; color: var(--fg); border: 1px solid var(--border); }
-      .row { display: flex; gap: 8px; align-items: center; }
-      .row > * { flex: 1; }
+      button.link { background: transparent; color: var(--fg); border: 0; padding: 4px 0; margin-top: 6px; text-decoration: underline; font-weight: 400; font-size: 12px; text-align: left; width: auto; }
       .status { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
       .status.ok { background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success); }
       .status.err { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
-      .hint { color: var(--fg-muted); font-size: 11px; margin-top: 6px; }
-      .domain { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-      details > summary { font-size: 11px; color: var(--fg-muted); cursor: pointer; margin-top: 12px; user-select: none; }
-      details[open] > summary { margin-bottom: 6px; }
+      .hint { color: var(--fg-muted); font-size: 11px; margin-top: 4px; }
+      .domain { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px 10px; background: var(--bg-soft); border-radius: 6px; }
+      .connected-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--fg-muted); margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+      .connected-row .name { color: var(--fg); font-weight: 500; flex: 1; }
+      .connected-row .link { color: var(--fg-muted); text-decoration: underline; cursor: pointer; font-size: 11px; }
+      .empty { padding: 24px 12px; text-align: center; color: var(--fg-muted); font-size: 12px; }
+      .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--fg-muted); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
-    <h1>Send cookies → Ranch</h1>
+    <!-- ========== STATE: unconfigured ========== -->
+    <section id="screen-setup" hidden>
+      <h1>Connect Ranch <span class="sub">— first run</span></h1>
+      <p class="hint">Paste your Ranch admin URL. The extension reads your login cookie from that domain so you don't have to copy tokens.</p>
+      <label for="setup-url">Ranch admin URL</label>
+      <input id="setup-url" type="url" placeholder="https://admin.ranch.cleanslice.org" autocomplete="off" />
+      <button id="setup-continue">Continue</button>
+    </section>
 
-    <div id="empty-state" hidden>
-      <p style="color: var(--fg-muted);">Configure your Ranch connection below to start sending cookies.</p>
-    </div>
+    <!-- ========== STATE: needs-login ========== -->
+    <section id="screen-login" hidden>
+      <h1>Sign in to Ranch</h1>
+      <p class="hint">No login cookie found at <code class="domain" id="login-host"></code>. Sign in there, then come back and click below.</p>
+      <button id="login-open">Open Ranch login</button>
+      <button id="login-retry" class="secondary">I've signed in — check again</button>
+      <button id="login-reset" class="link">Use a different URL</button>
+    </section>
 
-    <div id="current-site" hidden>
+    <!-- ========== STATE: pick-agent ========== -->
+    <section id="screen-agent" hidden>
+      <h1>Pick an agent</h1>
+      <p class="hint">Cookies you send will be saved under this agent's S3 prefix and restored by <code>browser_play</code>.</p>
+      <label for="agent-select">Agent</label>
+      <select id="agent-select"></select>
+      <label for="agent-user">User ID inside agent</label>
+      <input id="agent-user" type="text" value="admin" autocomplete="off" />
+      <p class="hint">Use <code>admin</code> for the admin agent, or a Telegram user ID (e.g. <code>55212224</code>) for chat-driven agents. Multiple humans share an agent by using different user IDs.</p>
+      <button id="agent-pick">Connect</button>
+      <button id="agent-reset" class="link">Use a different Ranch URL</button>
+    </section>
+
+    <!-- ========== STATE: ready ========== -->
+    <section id="screen-main" hidden>
+      <h1>Send cookies → Ranch</h1>
       <label>Current site</label>
-      <div class="domain" id="domain-label">—</div>
-      <p class="hint" id="cookie-count">No cookies detected yet.</p>
-    </div>
+      <div class="domain" id="site-host">—</div>
+      <p class="hint" id="site-cookies">No cookies detected yet.</p>
 
-    <label for="profile">Profile name</label>
-    <input id="profile" type="text" placeholder="instagram, paypal:main, …" autocomplete="off" />
-    <p class="hint">Same string you (or the agent) use as <code>profile</code> in <code>browser_play</code>.</p>
+      <label for="profile">Profile name</label>
+      <input id="profile" type="text" placeholder="instagram, paypal:main, …" autocomplete="off" />
+      <p class="hint">Same string you (or the agent) use as <code>profile</code> in <code>browser_play</code>.</p>
 
-    <button id="send-btn" disabled>Send cookies</button>
-    <button id="settings-btn" class="secondary">Settings</button>
+      <button id="send-btn" disabled>Send cookies</button>
 
-    <div id="status" class="status" hidden></div>
+      <div id="status" class="status" hidden></div>
 
-    <details>
-      <summary>Connection</summary>
-      <label for="api-url">Ranch API URL</label>
-      <input id="api-url" type="url" placeholder="https://api.ranch.cleanslice.org" autocomplete="off" />
-      <label for="token">Bearer token (Ranch JWT)</label>
-      <input id="token" type="password" placeholder="eyJhbGci…" autocomplete="off" />
-      <p class="hint">
-        Get this from the Ranch admin: <strong>Browser sessions → Connect via
-        extension</strong>. The token is scoped to your user and used only
-        to forward cookies — store it locally, never in sync.
-      </p>
-      <button id="save-conn-btn" class="secondary">Save</button>
-    </details>
+      <div class="connected-row">
+        <span>Connected:</span>
+        <span class="name" id="connected-summary">—</span>
+        <span class="link" id="disconnect">Disconnect</span>
+      </div>
+    </section>
 
     <script src="popup.js" type="module"></script>
   </body>

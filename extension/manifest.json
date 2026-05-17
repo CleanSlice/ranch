@@ -13,7 +13,7 @@
     "default_popup": "popup.html",
     "default_title": "Send cookies to Ranch"
   },
-  "permissions": ["cookies", "storage", "activeTab"],
+  "permissions": ["cookies", "storage", "activeTab", "tabs"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js",

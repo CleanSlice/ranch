@@ -24,14 +24,29 @@ storageState. Next `browser_play` with that profile name is logged in.
 
 ## Configure
 
-The first popup ask for two things:
+First popup asks for one thing:
 
-- **Ranch API URL** — e.g. `https://api.ranch.cleanslice.org` (prod) or
-  `http://localhost:3333` (local dev).
-- **Bearer token** — your Ranch JWT. Get it from the admin UI:
-  `https://admin.ranch.cleanslice.org/browser` → **Connect via extension**.
-  The token is scoped to your user and used only to forward cookies; we
-  store it locally via `chrome.storage.local`, never in cloud sync.
+- **Ranch admin URL** — e.g. `https://admin.ranch.cleanslice.org` (prod)
+  or `http://localhost:3001` (local dev).
+
+After that:
+
+1. If you're not signed in to Ranch admin yet, the popup gives you a
+   button to open the login page. Sign in there, come back, click
+   "I've signed in — check again".
+2. The popup pulls your agents from the Ranch API and shows a
+   dropdown. Pick one. (The admin agent is starred and sorted first.)
+3. Confirm the user ID inside the agent — defaults to `admin`. Use a
+   Telegram chat user ID instead if you're connecting cookies for a
+   chat-driven agent.
+4. The popup mints a `browser:cookies`-scoped JWT server-side and
+   stores it in `chrome.storage.local`. From now on you just open the
+   popup and click **Send cookies**.
+
+The API URL is auto-derived by swapping the leading `admin.` host
+segment for `api.` (the cleanslice deployment convention). If your
+install doesn't follow that convention, you can edit
+`chrome.storage.local` manually under `ranch-cookies:v2.apiUrl`.
 
 ## Use
 

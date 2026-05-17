@@ -109,11 +109,19 @@ export class BrowserlessClient {
     // login flow doesn't need stealth — the user is signing in like any
     // other human. Apply stealth in the runtime where we drive Playwright
     // ourselves and can pin it to playwright-extra.
+    //
+    // We DO override the User-Agent: browserless ships Chrome For Testing,
+    // whose default UA includes "HeadlessChrome/<ver>" even with
+    // `headless: false`. Twitter/X and Meta fingerprint this and trap the
+    // login form into an infinite reload. Rewriting it to "Chrome/<ver>"
+    // lets a human sign in normally — anti-bot heuristics that hinge on
+    // the UA string then see a plain stable Chrome.
     const launch = {
       args: [
         `--user-data-dir=${profilePath}`,
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
+        '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       ],
       headless: false,
     };

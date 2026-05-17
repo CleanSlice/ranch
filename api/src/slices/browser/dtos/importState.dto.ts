@@ -84,6 +84,16 @@ export class ImportStateDto {
   @IsOptional()
   @IsArray()
   origins?: unknown[];
+
+  @ApiPropertyOptional({
+    description:
+      'User-Agent string of the browser the cookies were exported from. The agent runtime applies this to its Playwright context so Instagram/Facebook/banks see the SAME browser fingerprint as the one that issued the session — a mismatch (Mac Chrome → Linux HeadlessChrome) is the main reason replayed cookies still hit the login page.',
+    maxLength: 512,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  userAgent?: string;
 }
 
 export class ImportStateResponseDto {

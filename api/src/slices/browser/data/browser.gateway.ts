@@ -206,6 +206,7 @@ export class BrowserGateway extends IBrowserGateway {
     profile: string,
     cookies: unknown[],
     origins: unknown[] = [],
+    userAgent?: string,
   ) {
     // Runtime composes the same path as BrowserGateway here in
     // playwright.repository.localStatePath. Keep the sanitization regex
@@ -214,10 +215,17 @@ export class BrowserGateway extends IBrowserGateway {
     const safeUser = userId.replace(/[^a-zA-Z0-9_\-.]/g, '_');
     const safeProfile = profile.replace(/[^a-zA-Z0-9_:.\-]/g, '_');
     const path = `browser-state/${safeUser}-${safeProfile}.json`;
-    const content = JSON.stringify({ cookies, origins }, null, 2);
-    await this.files.save(agentId, path, content);
+    // Wrap format when userAgent is supplied so the runtime can replay
+    // the SAME browser fingerprint that issued the cookies (Instagram
+    // and friends invalidate sessions whose UA shifts between Mac Chrome
+    // and Linux HeadlessChrome). Plain `{cookies, origins}` is preserved
+    // for back-compat with state files that pre-dated this change.
+    const payload = userAgent
+      ? { userAgent, storageState: { cookies, origins } }
+      : { cookies, origins };
+    await this.files.save(agentId, path, JSON.stringify(payload, null, 2));
     this.logger.log(
-      `Imported ${cookies.length} cookies into ${agentId}:${path}`,
+      `Imported ${cookies.length} cookies into ${agentId}:${path}${userAgent ? ' (with UA)' : ''}`,
     );
     return { path, cookies: cookies.length };
   }

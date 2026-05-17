@@ -272,6 +272,13 @@ async function renderMain(state) {
         profile,
         cookies: toStorageStateCookies(cookies),
         origins: [],
+        // Ship the local browser's UA along with the cookies. Sites that
+        // tie sessions to a device fingerprint (Instagram, Facebook,
+        // banks) invalidate cookies replayed from a different UA — the
+        // runtime uses this value to spin up Playwright with a matching
+        // userAgent so the agent looks like the same browser to the
+        // service.
+        userAgent: navigator.userAgent,
       };
       const res = await fetchJson(`${state.apiUrl}/browser/extension/import-state`, {
         method: 'POST',

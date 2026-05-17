@@ -125,5 +125,6 @@ export abstract class IBrowserGateway {
     profile: string,
     cookies: unknown[],
     origins?: unknown[],
+    userAgent?: string,
   ): Promise<{ path: string; cookies: number }>;
 }

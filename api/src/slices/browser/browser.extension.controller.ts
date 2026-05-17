@@ -107,6 +107,7 @@ export class BrowserExtensionController {
       dto.profile,
       dto.cookies,
       dto.origins ?? [],
+      dto.userAgent,
     );
     // Return the raw payload — ResponseInterceptor wraps it as
     // {success: true, data: <this>}. Pre-wrapping here would produce

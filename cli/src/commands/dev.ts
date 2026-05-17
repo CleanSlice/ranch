@@ -28,6 +28,10 @@ export const devCommand = defineCommand({
       type: "boolean",
       description: "Skip dependency freshness check",
     },
+    "no-test": {
+      type: "boolean",
+      description: "Skip the pre-flight test run",
+    },
   },
   async run({ args }) {
     const root = await ensureRanchRoot();
@@ -47,6 +51,24 @@ export const devCommand = defineCommand({
 
     if (!args["no-install"]) {
       await ensureDepsInstalled(root);
+    }
+
+    // Pre-flight tests — fail fast before booting k3d / port-forwards /
+    // turbo. We honour the same --filter as `dev` so `ranch dev api` only
+    // exercises api tests. Skip with `--no-test` when you just need the
+    // server up (e.g. mid-debug, or when other workspaces are red).
+    if (!args["no-test"]) {
+      const testArgs = ["run", "turbo", "test"];
+      if (target) testArgs.push(`--filter=${target}`);
+      consola.start(target ? `Testing ${target}...` : "Testing api + app + admin...");
+      const testCode = await run("bun", testArgs, { cwd: root });
+      if (testCode !== 0) {
+        consola.error(
+          "Tests failed — refusing to start dev. Re-run with --no-test to bypass.",
+        );
+        process.exit(testCode);
+      }
+      consola.success("Tests passed");
     }
 
     freePorts([3000, 3001, 3002]);

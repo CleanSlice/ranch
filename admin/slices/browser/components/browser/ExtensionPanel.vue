@@ -24,7 +24,11 @@ const config = useRuntimeConfig();
 const auth = useAuthStore();
 
 const agentId = ref('');
-const userId = ref(auth.user?.id ?? 'admin');
+// "User ID within agent" = ctx.from on the runtime side (Telegram chat
+// user, or "admin" for the admin agent). It is NOT the Ranch login user
+// UUID — that one auto-completes nothing useful here. Default to the
+// most common case ("admin") and let the operator override.
+const userId = ref('admin');
 const ttlDays = ref(30);
 const token = ref<string | null>(null);
 const tokenExp = ref<number | null>(null);

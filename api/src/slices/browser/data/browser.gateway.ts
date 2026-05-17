@@ -201,6 +201,7 @@ export class BrowserGateway extends IBrowserGateway {
   }
 
   async importStorageState(
+    rancherUserId: string,
     agentId: string,
     userId: string,
     profile: string,
@@ -224,6 +225,24 @@ export class BrowserGateway extends IBrowserGateway {
       ? { userAgent, storageState: { cookies, origins } }
       : { cookies, origins };
     await this.files.save(agentId, path, JSON.stringify(payload, null, 2));
+    // Mirror the import as a BrowserSession row so the admin UI shows
+    // "you have cookies for X profile" in the same place pool sessions
+    // appear. Same (userId, accountKey) upsert convention used by
+    // openSession — repeated imports refresh lastUsedAt instead of
+    // stacking rows.
+    await this.prisma.browserSession.upsert({
+      where: {
+        userId_accountKey: { userId: rancherUserId, accountKey: profile },
+      },
+      create: this.mapper.toCreate({
+        userId: rancherUserId,
+        accountKey: profile,
+      }),
+      update: {
+        lastUsedAt: new Date(),
+        status: BrowserSessionStatusTypes.Idle,
+      },
+    });
     this.logger.log(
       `Imported ${cookies.length} cookies into ${agentId}:${path}${userAgent ? ' (with UA)' : ''}`,
     );

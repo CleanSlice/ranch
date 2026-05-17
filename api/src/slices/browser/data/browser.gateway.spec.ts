@@ -256,6 +256,7 @@ describe('BrowserGateway', () => {
 
     it('writes a Playwright-shaped storageState file under the agent prefix', async () => {
       const res = await gateway.importStorageState(
+        'rancher-user-1',
         'agent-abc',
         'admin',
         'instagram',
@@ -282,6 +283,7 @@ describe('BrowserGateway', () => {
 
     it('sanitises userId and profile to filename-safe segments', async () => {
       await gateway.importStorageState(
+        'rancher-user-1',
         'agent-abc',
         '55212224/../../etc',
         'paypal:business main',

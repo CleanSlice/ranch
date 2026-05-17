@@ -102,6 +102,7 @@ export class BrowserExtensionController {
     const token = this.parseBearer(auth);
     const payload = this.verifyExtensionToken(token);
     const result = await this.gateway.importStorageState(
+      payload.sub,
       payload.agentId,
       payload.userId,
       dto.profile,

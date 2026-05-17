@@ -120,6 +120,7 @@ export abstract class IBrowserGateway {
    * extension UI.
    */
   abstract importStorageState(
+    rancherUserId: string,
     agentId: string,
     userId: string,
     profile: string,

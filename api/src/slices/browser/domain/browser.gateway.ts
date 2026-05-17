@@ -108,4 +108,22 @@ export abstract class IBrowserGateway {
       localStorage: Array<{ name: string; value: string }>;
     }>;
   }>;
+
+  /**
+   * Drop a Playwright-shaped storageState into the target agent's S3
+   * prefix so the runtime sees `<agentDir>/browser-state/<userId>-<profile>.json`
+   * on its next sync tick. Called by the Chrome extension import flow:
+   * the user logs in to a site in their normal browser, the extension
+   * reads cookies via the chrome.cookies API, and posts them here.
+   *
+   * Returns the relative path so the caller can echo it back to the
+   * extension UI.
+   */
+  abstract importStorageState(
+    agentId: string,
+    userId: string,
+    profile: string,
+    cookies: unknown[],
+    origins?: unknown[],
+  ): Promise<{ path: string; cookies: number }>;
 }

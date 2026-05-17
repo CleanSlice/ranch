@@ -126,16 +126,26 @@ function makeWarmer(): BrowserWarmerService & {
   };
 }
 
+// FileGateway here is just a `.save()` spy — the gateway tests assert
+// what we ask it to write, not the actual S3 round-trip (covered by the
+// existing FileGateway tests in agent/file).
+type IFileGatewayMock = { save: jest.Mock };
+function makeFiles(): IFileGatewayMock {
+  return { save: jest.fn(async () => undefined) };
+}
+
 describe('BrowserGateway', () => {
   let prisma: ReturnType<typeof makePrismaStub>;
   let pool: BrowserlessClient;
   let warmer: ReturnType<typeof makeWarmer>;
+  let files: IFileGatewayMock;
   let gateway: BrowserGateway;
 
   beforeEach(() => {
     prisma = makePrismaStub();
     pool = makePool();
     warmer = makeWarmer();
+    files = makeFiles();
     gateway = new BrowserGateway(
       // The PrismaService dep is typed as the full client; the gateway only
       // touches `browserSession`, so a structural stub is enough.
@@ -143,6 +153,7 @@ describe('BrowserGateway', () => {
       new BrowserMapper(),
       pool,
       warmer,
+      files as unknown as ConstructorParameters<typeof BrowserGateway>[4],
     );
   });
 
@@ -226,6 +237,63 @@ describe('BrowserGateway', () => {
         expect.any(String),
         'about:blank',
       );
+    });
+  });
+
+  describe('importStorageState', () => {
+    const cookies = [
+      {
+        name: 'sessionid',
+        value: 'xyz',
+        domain: '.instagram.com',
+        path: '/',
+        expires: -1,
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax' as const,
+      },
+    ];
+
+    it('writes a Playwright-shaped storageState file under the agent prefix', async () => {
+      const res = await gateway.importStorageState(
+        'agent-abc',
+        'admin',
+        'instagram',
+        cookies,
+      );
+      // Single-source-of-truth for the path shape: runtime\'s localStatePath
+      // must compose the same value or the file lands somewhere browser_play
+      // doesn\'t look.
+      expect(res).toEqual({
+        path: 'browser-state/admin-instagram.json',
+        cookies: 1,
+      });
+      expect(files.save).toHaveBeenCalledTimes(1);
+      const [agentId, path, content] = files.save.mock.calls[0];
+      expect(agentId).toBe('agent-abc');
+      expect(path).toBe('browser-state/admin-instagram.json');
+      const parsed = JSON.parse(content as string) as {
+        cookies: unknown[];
+        origins: unknown[];
+      };
+      expect(parsed.cookies).toHaveLength(1);
+      expect(parsed.origins).toEqual([]);
+    });
+
+    it('sanitises userId and profile to filename-safe segments', async () => {
+      await gateway.importStorageState(
+        'agent-abc',
+        '55212224/../../etc',
+        'paypal:business main',
+        cookies,
+      );
+      const [, path] = files.save.mock.calls[0];
+      // No slashes, no spaces, no dots-as-traversal: the runtime\'s
+      // localStatePath uses the same regex pair so they line up.
+      expect(path).toBe(
+        'browser-state/55212224_.._.._etc-paypal:business_main.json',
+      );
+      expect(path).not.toContain('/etc');
     });
   });
 

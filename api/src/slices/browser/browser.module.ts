@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { BrowserController } from './browser.controller';
 import { BrowserInternalController } from './browser.internal.controller';
+import { BrowserExtensionController } from './browser.extension.controller';
 import { BrowserTool } from './browser.tool';
 import { IBrowserGateway } from './domain';
 import {
@@ -14,6 +15,7 @@ import {
 import { PrismaModule } from '#/setup/prisma';
 import { AuthModule } from '../user/auth/auth.module';
 import { BridleApiKeyGuard } from '../bridle/guards/bridleApiKey.guard';
+import { FileModule } from '#/agent/file/file.module';
 
 /**
  * Browser module — owns browser-pool session lifecycle.
@@ -31,6 +33,7 @@ import { BridleApiKeyGuard } from '../bridle/guards/bridleApiKey.guard';
     ConfigModule,
     PrismaModule,
     AuthModule,
+    FileModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
@@ -47,7 +50,11 @@ import { BridleApiKeyGuard } from '../bridle/guards/bridleApiKey.guard';
     BrowserTool,
     BridleApiKeyGuard,
   ],
-  controllers: [BrowserController, BrowserInternalController],
+  controllers: [
+    BrowserController,
+    BrowserInternalController,
+    BrowserExtensionController,
+  ],
   exports: [IBrowserGateway],
 })
 export class BrowserModule {}

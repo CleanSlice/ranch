@@ -15,6 +15,7 @@ import {
 import { BrowserMapper } from './browser.mapper';
 import { BrowserlessClient } from './browserless.client';
 import { BrowserWarmerService } from './browser-warmer.service';
+import { IFileGateway } from '#/agent/file/domain';
 
 @Injectable()
 export class BrowserGateway extends IBrowserGateway {
@@ -25,6 +26,7 @@ export class BrowserGateway extends IBrowserGateway {
     private readonly mapper: BrowserMapper,
     private readonly pool: BrowserlessClient,
     private readonly warmer: BrowserWarmerService,
+    private readonly files: IFileGateway,
   ) {
     super();
   }
@@ -196,6 +198,28 @@ export class BrowserGateway extends IBrowserGateway {
       );
     }
     return result.count;
+  }
+
+  async importStorageState(
+    agentId: string,
+    userId: string,
+    profile: string,
+    cookies: unknown[],
+    origins: unknown[] = [],
+  ) {
+    // Runtime composes the same path as BrowserGateway here in
+    // playwright.repository.localStatePath. Keep the sanitization regex
+    // in sync — diverging means the file would land at a path the agent
+    // never looks at.
+    const safeUser = userId.replace(/[^a-zA-Z0-9_\-.]/g, '_');
+    const safeProfile = profile.replace(/[^a-zA-Z0-9_:.\-]/g, '_');
+    const path = `browser-state/${safeUser}-${safeProfile}.json`;
+    const content = JSON.stringify({ cookies, origins }, null, 2);
+    await this.files.save(agentId, path, content);
+    this.logger.log(
+      `Imported ${cookies.length} cookies into ${agentId}:${path}`,
+    );
+    return { path, cookies: cookies.length };
   }
 
   /**

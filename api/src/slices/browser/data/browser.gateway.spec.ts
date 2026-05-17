@@ -174,6 +174,40 @@ describe('BrowserGateway', () => {
       const c = await gateway.openSession('alice', 'paypal');
       expect(new Set([a.session.id, b.session.id, c.session.id]).size).toBe(3);
     });
+
+    it('warms Chrome with a service-specific login URL when caller omits it', async () => {
+      await gateway.openSession('alice', 'instagram:miybot');
+      // 3rd warmer arg is the URL we navigate Chrome to. Verifies the
+      // accountKey → loginUrl mapping kicks in for the common case where
+      // the agent forgot to pass loginUrl.
+      expect(warmer.warm).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        'https://www.instagram.com/accounts/login/',
+      );
+    });
+
+    it('warms with caller-provided loginUrl when present', async () => {
+      await gateway.openSession(
+        'alice',
+        'paypal',
+        'https://www.paypal.com/some/deep/link',
+      );
+      expect(warmer.warm).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        'https://www.paypal.com/some/deep/link',
+      );
+    });
+
+    it('falls back to about:blank for an unknown service prefix', async () => {
+      await gateway.openSession('alice', 'novel:thing');
+      expect(warmer.warm).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        'about:blank',
+      );
+    });
   });
 
   describe('authz (requireOwned via mutating methods)', () => {

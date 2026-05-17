@@ -54,10 +54,16 @@ export class BrowserGateway extends IBrowserGateway {
     // The CDP URL we return to callers still uses internalBase so the
     // runtime, which lives inside the cluster's docker network, can reach
     // it by service name.
+    //
+    // Fall back to a per-service known login URL if the caller didn't pass
+    // one — agents often forget the parameter and we'd rather hand the
+    // user a usable VNC view than a stack of about:blank tabs.
+    const effectiveLoginUrl =
+      loginUrl ?? BrowserGateway.defaultLoginUrl(accountKey);
     const warmed = await this.warmer.warm(
       session.id,
       this.pool.buildWarmCdpUrl(userId, accountKey),
-      loginUrl ?? 'about:blank',
+      effectiveLoginUrl,
     );
     if (!warmed.ok) {
       this.logger.warn(
@@ -175,6 +181,37 @@ export class BrowserGateway extends IBrowserGateway {
       );
     }
     return result.count;
+  }
+
+  /**
+   * Map an accountKey to the canonical login URL of the corresponding
+   * service so the VNC view lands on something useful when the caller
+   * forgot to pass loginUrl. The service token is read from the prefix
+   * before the first `:` (case-insensitive) — so `instagram`,
+   * `instagram:miybot`, and `INSTAGRAM:foo` all match.
+   *
+   * Add new mappings here when a new vertical (TikTok, Reddit, etc.)
+   * shows up; don't sprinkle them across callers.
+   */
+  static defaultLoginUrl(accountKey: string): string {
+    const service = accountKey.split(':')[0]?.toLowerCase() ?? '';
+    const map: Record<string, string> = {
+      instagram: 'https://www.instagram.com/accounts/login/',
+      twitter: 'https://x.com/login',
+      x: 'https://x.com/login',
+      facebook: 'https://www.facebook.com/login/',
+      facebook_ads: 'https://www.facebook.com/login/',
+      meta: 'https://www.facebook.com/login/',
+      paypal: 'https://www.paypal.com/signin',
+      linkedin: 'https://www.linkedin.com/login',
+      google: 'https://accounts.google.com/',
+      gmail: 'https://accounts.google.com/',
+      stripe: 'https://dashboard.stripe.com/login',
+      github: 'https://github.com/login',
+      tiktok: 'https://www.tiktok.com/login',
+      youtube: 'https://accounts.google.com/',
+    };
+    return map[service] ?? 'about:blank';
   }
 
   // Returns the session if owned by userId; otherwise throws 404 (we don't

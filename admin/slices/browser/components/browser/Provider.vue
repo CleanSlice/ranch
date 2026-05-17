@@ -7,6 +7,7 @@ import {
 import BrowserList from './List.vue';
 import BrowserLoginDialog from './LoginDialog.vue';
 import BrowserAddDialog from './AddDialog.vue';
+import BrowserExtensionPanel from './ExtensionPanel.vue';
 
 const store = useBrowserStore();
 const route = useRoute();
@@ -108,6 +109,8 @@ async function onLoginClosed(needsRefresh: boolean) {
       @reset="onReset"
       @remove="(item) => (pendingRemoval = item)"
     />
+
+    <BrowserExtensionPanel />
 
     <BrowserAddDialog v-model:open="addOpen" @added="onAdded" />
 

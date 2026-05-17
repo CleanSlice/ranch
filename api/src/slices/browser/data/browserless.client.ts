@@ -102,6 +102,13 @@ export class BrowserlessClient {
     accountKey: string,
   ): string {
     const profilePath = this.profilePath(userId, accountKey);
+    // No `stealth: true` here: browserless v2's stealth plugin patches the
+    // page in a way that conflicts with its own internal page tracking and
+    // crashes Chromium with "Requesting main frame too early!" on any
+    // moderately heavy site (Twitter, Instagram). The interactive VNC
+    // login flow doesn't need stealth — the user is signing in like any
+    // other human. Apply stealth in the runtime where we drive Playwright
+    // ourselves and can pin it to playwright-extra.
     const launch = {
       args: [
         `--user-data-dir=${profilePath}`,
@@ -109,7 +116,6 @@ export class BrowserlessClient {
         '--no-sandbox',
       ],
       headless: false,
-      stealth: true,
     };
     const query = new URLSearchParams({
       token: this.token,

@@ -108,14 +108,17 @@ describe('BrowserlessClient', () => {
       const launch = JSON.parse(url.searchParams.get('launch') ?? '{}') as {
         args: string[];
         headless: boolean;
-        stealth: boolean;
+        stealth?: boolean;
       };
       expect(launch.args).toContain(
         '--user-data-dir=/profiles/alice/instagram',
       );
       expect(launch.args).toContain('--no-sandbox');
       expect(launch.headless).toBe(false);
-      expect(launch.stealth).toBe(true);
+      // No stealth on the pool launch — see browserless.client.ts comment.
+      // Pinned in the test so a future re-add gets caught alongside the
+      // browserless crash repro.
+      expect(launch.stealth).toBeUndefined();
     });
 
     it('throws if BROWSER_POOL_TOKEN is unset (no half-authenticated URLs)', () => {

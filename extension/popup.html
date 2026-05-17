@@ -27,7 +27,10 @@
           --accent-fg: #0a0a0a;
         }
       }
-      html, body { margin: 0; padding: 0; width: 360px; }
+      /* Chrome popups max at 800×600. 460 fits typical hostnames + JWTs
+         on one line without horizontal scroll, leaves room for the agent
+         dropdown to render full IDs. */
+      html, body { margin: 0; padding: 0; width: 460px; }
       body { font: 13px/1.45 system-ui, -apple-system, sans-serif; color: var(--fg); background: var(--bg); padding: 16px; }
       h1 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
       h1 .sub { font-weight: 400; color: var(--fg-muted); }

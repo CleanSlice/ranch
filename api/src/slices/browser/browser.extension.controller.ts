@@ -98,7 +98,7 @@ export class BrowserExtensionController {
   async importState(
     @Body() dto: ImportStateDto,
     @Headers('authorization') auth?: string,
-  ): Promise<{ success: true; data: ImportStateResponseDto }> {
+  ): Promise<ImportStateResponseDto> {
     const token = this.parseBearer(auth);
     const payload = this.verifyExtensionToken(token);
     const result = await this.gateway.importStorageState(
@@ -108,13 +108,11 @@ export class BrowserExtensionController {
       dto.cookies,
       dto.origins ?? [],
     );
-    // Response wrapper matches the FlatResponse interceptor's envelope
-    // ({success, data}) so the extension can parse identically against
-    // dev/prod.
-    return {
-      success: true,
-      data: { ok: true, path: result.path, cookies: result.cookies },
-    };
+    // Return the raw payload — ResponseInterceptor wraps it as
+    // {success: true, data: <this>}. Pre-wrapping here would produce
+    // {success, data: {success, data: …}} and break the extension's
+    // single-level unwrap.
+    return { ok: true, path: result.path, cookies: result.cookies };
   }
 
   private parseBearer(header: string | undefined): string {

@@ -37,10 +37,7 @@ export class AgentChannelController {
       "Replace the agent's channels. Writes agents/{id}/data/channels.json — restart the agent to pick up new env vars (TELEGRAM_BOT_TOKEN etc.) injected at pod submit time. Body is the exhaustive list — anything omitted is removed. Pass [] to clear.",
   })
   @ApiOkResponse({ type: AgentChannelDto, isArray: true })
-  async setChannels(
-    @Param('id') id: string,
-    @Body() dto: SetAgentChannelsDto,
-  ) {
+  async setChannels(@Param('id') id: string, @Body() dto: SetAgentChannelsDto) {
     return this.gateway.setForAgent(id, dto.channels);
   }
 }

@@ -42,7 +42,9 @@ export class BrowserController {
   async list(
     @Req() req: Request & { user: IAuthTokenPayload },
   ): Promise<BrowserSessionDto[]> {
-    return (await this.gateway.findAll({ userId: req.user.sub })) as BrowserSessionDto[];
+    return (await this.gateway.findAll({
+      userId: req.user.sub,
+    })) as BrowserSessionDto[];
   }
 
   @Post()

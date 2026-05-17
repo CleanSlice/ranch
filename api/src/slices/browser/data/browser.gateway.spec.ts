@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { BrowserGateway } from './browser.gateway';
 import { BrowserMapper } from './browser.mapper';
 import { BrowserlessClient } from './browserless.client';
@@ -8,16 +8,18 @@ import { BrowserSessionStatusTypes } from '../domain';
 // Keeps tests free of a real DB while still exercising the gateway's own
 // logic (authz, status transitions, expiry rules).
 function makePrismaStub() {
-  const rows: Record<string, ReturnType<BrowserMapper['toCreate']> & {
-    createdAt: Date;
-    updatedAt: Date;
-  }> = {};
+  const rows: Record<
+    string,
+    ReturnType<BrowserMapper['toCreate']> & {
+      createdAt: Date;
+      updatedAt: Date;
+    }
+  > = {};
 
   return {
     rows,
     browserSession: {
       upsert: jest.fn(async ({ where, create, update }) => {
-        const key = `${where.userId_accountKey.userId}|${where.userId_accountKey.accountKey}`;
         const existing = Object.values(rows).find(
           (r) =>
             r.userId === where.userId_accountKey.userId &&
@@ -29,29 +31,45 @@ function makePrismaStub() {
           return existing;
         }
         const row = { ...create, createdAt: now, updatedAt: now };
-        rows[create.id] = row as typeof rows[string];
+        rows[create.id] = row as (typeof rows)[string];
         return row;
       }),
-      findFirst: jest.fn(async ({ where }: { where: { id: string; userId: string } }) => {
-        const row = rows[where.id];
-        if (!row) return null;
-        return row.userId === where.userId ? row : null;
-      }),
-      findMany: jest.fn(async ({ where }: { where: { userId: string; status?: string } }) => {
-        return Object.values(rows)
-          .filter(
-            (r) =>
-              r.userId === where.userId &&
-              (where.status === undefined || r.status === where.status),
-          )
-          .sort((a, b) => b.lastUsedAt.getTime() - a.lastUsedAt.getTime());
-      }),
-      update: jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        const row = rows[where.id];
-        if (!row) throw new Error('record not found');
-        Object.assign(row, data, { updatedAt: new Date() });
-        return row;
-      }),
+      findFirst: jest.fn(
+        async ({ where }: { where: { id: string; userId: string } }) => {
+          const row = rows[where.id];
+          if (!row) return null;
+          return row.userId === where.userId ? row : null;
+        },
+      ),
+      findMany: jest.fn(
+        async ({ where }: { where: { userId: string; status?: string } }) => {
+          return Object.values(rows)
+            .filter(
+              (r) =>
+                r.userId === where.userId &&
+                // Enum and string compare by value via String() — eslint's
+                // no-unsafe-enum-comparison flags raw `===` between branded
+                // enum and plain string.
+                (where.status === undefined ||
+                  String(r.status) === String(where.status)),
+            )
+            .sort((a, b) => b.lastUsedAt.getTime() - a.lastUsedAt.getTime());
+        },
+      ),
+      update: jest.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { id: string };
+          data: Record<string, unknown>;
+        }) => {
+          const row = rows[where.id];
+          if (!row) throw new Error('record not found');
+          Object.assign(row, data, { updatedAt: new Date() });
+          return row;
+        },
+      ),
       delete: jest.fn(async ({ where }: { where: { id: string } }) => {
         const row = rows[where.id];
         delete rows[where.id];
@@ -60,7 +78,8 @@ function makePrismaStub() {
       updateMany: jest.fn(async ({ where, data }) => {
         let count = 0;
         for (const row of Object.values(rows)) {
-          if (where.lastUsedAt?.lt && row.lastUsedAt >= where.lastUsedAt.lt) continue;
+          if (where.lastUsedAt?.lt && row.lastUsedAt >= where.lastUsedAt.lt)
+            continue;
           if (where.status?.notIn?.includes(row.status)) continue;
           Object.assign(row, data, { updatedAt: new Date() });
           count++;
@@ -73,8 +92,12 @@ function makePrismaStub() {
 
 function makePool(): BrowserlessClient {
   return {
-    buildCdpUrl: jest.fn((u: string, a: string) => `ws://pool/chromium?u=${u}&a=${a}`),
-    buildVncUrl: jest.fn((u: string, s: string) => `https://browser.example/live?id=${s}&u=${u}`),
+    buildCdpUrl: jest.fn(
+      (u: string, a: string) => `ws://pool/chromium?u=${u}&a=${a}`,
+    ),
+    buildVncUrl: jest.fn(
+      (u: string, s: string) => `https://browser.example/live?id=${s}&u=${u}`,
+    ),
     profilePath: jest.fn((u: string, a: string) => `/profiles/${u}/${a}`),
   } as unknown as BrowserlessClient;
 }
@@ -127,7 +150,7 @@ describe('BrowserGateway', () => {
   });
 
   describe('authz (requireOwned via mutating methods)', () => {
-    it('throws 404 when one user tries to act on another user\'s session', async () => {
+    it("throws 404 when one user tries to act on another user's session", async () => {
       const conn = await gateway.openSession('alice', 'instagram');
 
       // 404 (not 403) — we deliberately conflate "doesn't exist" with "not
@@ -212,7 +235,7 @@ describe('BrowserGateway', () => {
       expect(oldRow.status).toBe(BrowserSessionStatusTypes.Expired);
     });
 
-    it('leaves NeedsLogin sessions alone (user is mid-login, don\'t reset state)', async () => {
+    it("leaves NeedsLogin sessions alone (user is mid-login, don't reset state)", async () => {
       const conn = await gateway.openSession('alice', 'needslogin');
       await gateway.setStatus(
         'alice',

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 
@@ -12,8 +12,6 @@ import { JwtService } from '@nestjs/jwt';
  */
 @Injectable()
 export class BrowserlessClient {
-  private readonly logger = new Logger(BrowserlessClient.name);
-
   constructor(
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
@@ -118,7 +116,7 @@ export class BrowserlessClient {
    * user input — userId always comes from JWT context one frame up.
    */
   profilePath(userId: string, accountKey: string): string {
-    const safeAccount = this.slug(accountKey);
+    const safeAccount = BrowserlessClient.slug(accountKey);
     if (!userId || !safeAccount) {
       throw new Error('Refusing to build profile path with empty segments');
     }
@@ -127,11 +125,12 @@ export class BrowserlessClient {
 
   // Conservative slug — accountKey is user-provided ("instagram:miybot"),
   // so anything outside [a-z0-9_:-] gets stripped before it ever touches
-  // a filesystem path.
-  private slug(input: string): string {
+  // a filesystem path. Pure transform, declared static so eslint's
+  // unbound-method rule doesn't flag the call site.
+  private static slug(input: string): string {
     return input
       .toLowerCase()
-      .replace(/[^a-z0-9_:\-]/g, '-')
+      .replace(/[^a-z0-9_:-]/g, '-')
       .replace(/^-+|-+$/g, '');
   }
 }

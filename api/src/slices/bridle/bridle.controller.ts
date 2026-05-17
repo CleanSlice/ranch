@@ -169,8 +169,8 @@ export class BridleController {
       const status =
         typeof getStatus === 'function'
           ? getStatus.call(err)
-          : (err as { status?: number; statusCode?: number }).status ??
-            (err as { statusCode?: number }).statusCode;
+          : ((err as { status?: number; statusCode?: number }).status ??
+            (err as { statusCode?: number }).statusCode);
       if (status === 404) {
         return { messages: [], channel, nextCursor: null, hasMore: false };
       }

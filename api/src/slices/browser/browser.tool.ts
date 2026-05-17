@@ -14,8 +14,9 @@ const accountKeyParam = z
   .string()
   .min(1)
   .max(80)
-  .regex(/^[a-zA-Z0-9_:\-]+$/, {
-    message: 'accountKey may only contain alphanumerics, underscore, colon, dash',
+  .regex(/^[a-zA-Z0-9_:-]+$/, {
+    message:
+      'accountKey may only contain alphanumerics, underscore, colon, dash',
   })
   .describe(
     'Account label scoped to the calling user, e.g. "instagram:miybot", "paypal:main".',
@@ -41,23 +42,20 @@ export class BrowserTool {
     description:
       'Open or reuse a browser session for the given accountKey. Returns the session metadata and a VNC URL the user can open to finish a login manually. The runtime uses the returned cdpUrl internally — agents should not forward it anywhere.',
     parameters: z.object({
-      userId: z.string().describe('Owning user — must match the calling principal.'),
+      userId: z
+        .string()
+        .describe('Owning user — must match the calling principal.'),
       accountKey: accountKeyParam,
     }),
   })
-  async open({
-    userId,
-    accountKey,
-  }: {
-    userId: string;
-    accountKey: string;
-  }) {
+  async open({ userId, accountKey }: { userId: string; accountKey: string }) {
     return ok(await this.gateway.openSession(userId, accountKey));
   }
 
   @Tool({
     name: 'browser_session_close',
-    description: 'Close (release) a browser session. Profile data stays on disk.',
+    description:
+      'Close (release) a browser session. Profile data stays on disk.',
     parameters: z.object({
       userId: z.string(),
       sessionId: z.string(),
@@ -90,13 +88,7 @@ export class BrowserTool {
       sessionId: z.string(),
     }),
   })
-  async loginUrl({
-    userId,
-    sessionId,
-  }: {
-    userId: string;
-    sessionId: string;
-  }) {
+  async loginUrl({ userId, sessionId }: { userId: string; sessionId: string }) {
     const vncUrl = await this.gateway.mintVncUrl(userId, sessionId);
     return ok({ vncUrl });
   }

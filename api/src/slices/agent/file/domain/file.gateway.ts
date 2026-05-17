@@ -1,4 +1,9 @@
-import { IFileChunk, IFileContent, IFileNode, ISkillBundle } from './file.types';
+import {
+  IFileChunk,
+  IFileContent,
+  IFileNode,
+  ISkillBundle,
+} from './file.types';
 
 export abstract class IFileGateway {
   abstract list(agentId: string): Promise<IFileNode[]>;

@@ -32,7 +32,8 @@ export class TranscriptQueryDto {
     minimum: 1,
     maximum: 200,
     default: 50,
-    description: 'Max messages to return in this page (newest first by file order).',
+    description:
+      'Max messages to return in this page (newest first by file order).',
   })
   @IsOptional()
   @Type(() => Number)
@@ -42,7 +43,8 @@ export class TranscriptQueryDto {
   limit?: number;
 
   @ApiPropertyOptional({
-    description: 'Opaque cursor returned by the previous page. Omit for the latest page.',
+    description:
+      'Opaque cursor returned by the previous page. Omit for the latest page.',
   })
   @IsOptional()
   @IsString()
@@ -62,7 +64,8 @@ export class TranscriptResponseDto {
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'Pass back as `cursor` to fetch the previous page. `null` when no older messages.',
+    description:
+      'Pass back as `cursor` to fetch the previous page. `null` when no older messages.',
   })
   nextCursor!: string | null;
 

@@ -125,10 +125,7 @@ export class BrowserGateway extends IBrowserGateway {
     return row ? this.mapper.toEntity(row) : null;
   }
 
-  async mintVncUrl(
-    userId: string,
-    sessionId: string,
-  ): Promise<string | null> {
+  async mintVncUrl(userId: string, sessionId: string): Promise<string | null> {
     const session = await this.findById(userId, sessionId);
     if (!session) return null;
     return this.pool.buildVncUrl(userId, sessionId);

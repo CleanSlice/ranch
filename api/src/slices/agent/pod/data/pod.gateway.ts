@@ -160,10 +160,7 @@ export class KubePodGateway
     }
   }
 
-  private statusChanged(
-    prev: IAgentPodStatus,
-    next: IAgentPodStatus,
-  ): boolean {
+  private statusChanged(prev: IAgentPodStatus, next: IAgentPodStatus): boolean {
     return (
       prev.phase !== next.phase ||
       prev.ready !== next.ready ||

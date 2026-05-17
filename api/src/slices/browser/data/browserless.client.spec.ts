@@ -1,4 +1,3 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { BrowserlessClient } from './browserless.client';
@@ -6,17 +5,25 @@ import { BrowserlessClient } from './browserless.client';
 // ConfigService stub — returns whatever the test puts in `values`, falls back
 // to the default the production code provides. Keeps the test focused on what
 // `BrowserlessClient` does with config, not on Nest's config plumbing.
-function makeConfig(values: Record<string, string | undefined> = {}): ConfigService {
+function makeConfig(
+  values: Record<string, string | undefined> = {},
+): ConfigService {
   return {
     get: <T>(key: string, defaultValue?: T) =>
       (values[key] ?? defaultValue ?? undefined) as T,
   } as unknown as ConfigService;
 }
 
-function makeJwt(): JwtService {
+// JwtService has ~9 methods; BrowserlessClient only ever calls .sign(). The
+// cast happens here so call sites stay readable, and the intersection with
+// `{ sign: jest.Mock }` lets test code call `.mockClear()` / inspect the spy
+// without re-casting on every line.
+type JwtServiceMock = JwtService & { sign: jest.Mock };
+
+function makeJwt(): JwtServiceMock {
   return {
     sign: jest.fn(() => 'signed.jwt.value'),
-  } as unknown as JwtService;
+  } as unknown as JwtServiceMock;
 }
 
 describe('BrowserlessClient', () => {
@@ -96,8 +103,16 @@ describe('BrowserlessClient', () => {
       expect(url.pathname).toBe('/chromium');
       expect(url.searchParams.get('token')).toBe('secret-token');
 
-      const launch = JSON.parse(url.searchParams.get('launch') ?? '{}');
-      expect(launch.args).toContain('--user-data-dir=/profiles/alice/instagram');
+      // Type the parse result up front — JSON.parse returns `any`, and the
+      // surrounding asserts are noisy with no-unsafe-* warnings otherwise.
+      const launch = JSON.parse(url.searchParams.get('launch') ?? '{}') as {
+        args: string[];
+        headless: boolean;
+        stealth: boolean;
+      };
+      expect(launch.args).toContain(
+        '--user-data-dir=/profiles/alice/instagram',
+      );
       expect(launch.args).toContain('--no-sandbox');
       expect(launch.headless).toBe(false);
       expect(launch.stealth).toBe(true);

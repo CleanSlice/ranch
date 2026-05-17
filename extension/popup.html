@@ -27,10 +27,16 @@
           --accent-fg: #0a0a0a;
         }
       }
+      /* box-sizing: border-box on every element so `body`'s 16px padding
+         lives INSIDE its declared 600px instead of stacking outside it.
+         Without this the actual rendered width was 600 + 16 + 16 = 632
+         and Chrome clipped the rightmost ~32px (taking "Disconnect"
+         with it). */
+      *, *::before, *::after { box-sizing: border-box; }
       /* Chrome popups max at 800×600. 600 fits full hostnames, JWT
          previews, and the connected-row (agent name + user=...) on a
          single line without truncation. */
-      html, body { margin: 0; padding: 0; width: 600px; }
+      html, body { margin: 0; padding: 0; width: 600px; max-width: 600px; }
       body { font: 13px/1.45 system-ui, -apple-system, sans-serif; color: var(--fg); background: var(--bg); padding: 16px; }
       h1 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
       h1 .sub { font-weight: 400; color: var(--fg-muted); }

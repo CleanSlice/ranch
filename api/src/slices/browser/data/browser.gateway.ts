@@ -194,24 +194,34 @@ export class BrowserGateway extends IBrowserGateway {
    * shows up; don't sprinkle them across callers.
    */
   static defaultLoginUrl(accountKey: string): string {
-    const service = accountKey.split(':')[0]?.toLowerCase() ?? '';
-    const map: Record<string, string> = {
-      instagram: 'https://www.instagram.com/accounts/login/',
-      twitter: 'https://x.com/login',
-      x: 'https://x.com/login',
-      facebook: 'https://www.facebook.com/login/',
-      facebook_ads: 'https://www.facebook.com/login/',
-      meta: 'https://www.facebook.com/login/',
-      paypal: 'https://www.paypal.com/signin',
-      linkedin: 'https://www.linkedin.com/login',
-      google: 'https://accounts.google.com/',
-      gmail: 'https://accounts.google.com/',
-      stripe: 'https://dashboard.stripe.com/login',
-      github: 'https://github.com/login',
-      tiktok: 'https://www.tiktok.com/login',
-      youtube: 'https://accounts.google.com/',
-    };
-    return map[service] ?? 'about:blank';
+    // Agents pass accountKey in a few shapes: "instagram", "instagram:miybot",
+    // "instagram_miybot_v3", "instagram-test". Match by the service name
+    // appearing as a token at the start of the slug — split on anything
+    // that's not a lowercase letter, take the first non-empty chunk. Then
+    // try a prefix match against our known list so "facebook_ads_main" and
+    // "facebook:main" both land on facebook.
+    const normalized = accountKey.toLowerCase();
+    const head = normalized.split(/[^a-z]+/).filter(Boolean)[0] ?? '';
+
+    // Order matters: longer / more specific matches win — facebook_ads
+    // before facebook so "facebookads…" doesn't degrade to plain fb login.
+    const matchers: Array<[RegExp, string]> = [
+      [/^facebook_?ads/, 'https://www.facebook.com/login/'],
+      [/^(facebook|meta)/, 'https://www.facebook.com/login/'],
+      [/^instagram/, 'https://www.instagram.com/accounts/login/'],
+      [/^(twitter|x)$/, 'https://x.com/login'],
+      [/^twitter/, 'https://x.com/login'],
+      [/^paypal/, 'https://www.paypal.com/signin'],
+      [/^linkedin/, 'https://www.linkedin.com/login'],
+      [/^(google|gmail|youtube)/, 'https://accounts.google.com/'],
+      [/^stripe/, 'https://dashboard.stripe.com/login'],
+      [/^github/, 'https://github.com/login'],
+      [/^tiktok/, 'https://www.tiktok.com/login'],
+    ];
+    for (const [re, url] of matchers) {
+      if (re.test(normalized) || re.test(head)) return url;
+    }
+    return 'about:blank';
   }
 
   // Returns the session if owned by userId; otherwise throws 404 (we don't

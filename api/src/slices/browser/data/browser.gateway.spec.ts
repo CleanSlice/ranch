@@ -187,6 +187,25 @@ describe('BrowserGateway', () => {
       );
     });
 
+    it.each([
+      ['instagram', 'https://www.instagram.com/accounts/login/'],
+      ['instagram_miybot_v3', 'https://www.instagram.com/accounts/login/'],
+      ['Instagram-test', 'https://www.instagram.com/accounts/login/'],
+      ['twitter', 'https://x.com/login'],
+      ['x', 'https://x.com/login'],
+      ['twitter_main', 'https://x.com/login'],
+      ['facebook_ads_q2', 'https://www.facebook.com/login/'],
+      ['facebook:personal', 'https://www.facebook.com/login/'],
+      ['paypal_business', 'https://www.paypal.com/signin'],
+    ])('routes %s → %s regardless of delimiter', async (key, expected) => {
+      await gateway.openSession('alice', key);
+      expect(warmer.warm).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expected,
+      );
+    });
+
     it('warms with caller-provided loginUrl when present', async () => {
       await gateway.openSession(
         'alice',

@@ -96,6 +96,12 @@ function makePool(): BrowserlessClient {
     buildCdpUrl: jest.fn(
       (u: string, a: string) => `ws://pool/chromium?u=${u}&a=${a}`,
     ),
+    // Same URL pattern as the runtime-facing one in tests — the
+    // host-vs-cluster distinction the production code makes doesn't
+    // matter for the gateway's logic.
+    buildWarmCdpUrl: jest.fn(
+      (u: string, a: string) => `ws://pool-warm/chromium?u=${u}&a=${a}`,
+    ),
     buildVncUrl: jest.fn(
       (u: string, s: string) => `https://browser.example/live?id=${s}&u=${u}`,
     ),

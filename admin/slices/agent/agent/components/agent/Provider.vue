@@ -12,6 +12,14 @@ import {
 import { Checkbox } from '#theme/components/ui/checkbox';
 import { Label } from '#theme/components/ui/label';
 import { Skeleton } from '#theme/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '#theme/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '#theme/components/ui/tabs';
 import { IconAlertTriangle, IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh, IconShield, IconX } from '@tabler/icons-vue';
 import { FileText, X } from 'lucide-vue-next';
@@ -335,7 +343,7 @@ async function onPaddockEvalStarted() {
 // Tab state — persisted in the URL so deep links + browser back work.
 // `chat` is the default since 99% of the time the user is here to talk to the
 // agent, not to inspect its plumbing.
-const TABS = ['chat', 'overview', 'files', 'secrets', 'env', 'logs', 'paddock'] as const;
+const TABS = ['chat', 'overview', 'knowledge', 'files', 'secrets', 'env', 'logs', 'paddock'] as const;
 type AgentTab = (typeof TABS)[number];
 const route = useRoute();
 const router = useRouter();
@@ -470,6 +478,7 @@ watch(activeTab, (tab) => {
             v-for="t in [
               { value: 'chat', title: 'Chat', desc: 'Talk to the agent.' },
               { value: 'overview', title: 'Overview', desc: 'Usage, runtime, visibility & embed.' },
+              { value: 'knowledge', title: 'Knowledge', desc: 'Knowledge bases the agent can query.' },
               { value: 'files', title: 'Files', desc: 'Browse and edit S3-stored agent data.' },
               { value: 'secrets', title: 'Secrets', desc: 'User-scoped secrets the runtime stores.' },
               { value: 'env', title: 'Environment', desc: 'Env vars injected at deploy time.' },
@@ -799,6 +808,94 @@ watch(activeTab, (tab) => {
             :allowed-origins="agent.allowedOrigins"
             @saved="(updated) => (agent = updated)"
           />
+        </TabsContent>
+
+        <TabsContent value="knowledge" class="mt-0">
+          <Card>
+            <CardHeader>
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Knowledge bases</CardTitle>
+                  <CardDescription>
+                    Bases this agent can query via the <code>query_knowledge</code> tool.
+                    <span v-if="effectiveKnowledges.source === 'agent-override'">
+                      Source: per-agent override.
+                    </span>
+                    <span v-else-if="effectiveKnowledges.source === 'from-template'">
+                      Source: inherited from template.
+                    </span>
+                    <span v-else>No bases bound.</span>
+                    Manage bindings in the
+                    <NuxtLink :to="`/agents/${agent.id}/edit`" class="underline">edit</NuxtLink>
+                    page.
+                  </CardDescription>
+                </div>
+                <Button variant="outline" size="sm" as-child>
+                  <NuxtLink to="/knowledges">Manage</NuxtLink>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div
+                v-if="(knowledgesPending || templatePending) && !knowledges"
+                class="space-y-2"
+              >
+                <Skeleton class="h-9 w-full" />
+                <Skeleton class="h-9 w-full" />
+                <Skeleton class="h-9 w-full" />
+              </div>
+              <div
+                v-else-if="effectiveKnowledgesResolved.length"
+                class="rounded-md border bg-card"
+              >
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Updated</TableHead>
+                      <TableHead class="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow
+                      v-for="k in effectiveKnowledgesResolved"
+                      :key="k.id"
+                      class="cursor-pointer"
+                      @click="navigateTo(`/knowledges/${k.id}/edit`)"
+                    >
+                      <TableCell class="font-medium">{{ k.name }}</TableCell>
+                      <TableCell class="max-w-md truncate text-muted-foreground">
+                        {{ k.description || '-' }}
+                      </TableCell>
+                      <TableCell>
+                        <KnowledgeIndexStatusBadge :status="k.indexStatus" />
+                      </TableCell>
+                      <TableCell class="text-muted-foreground">
+                        {{ formatDate(k.updatedAt) }}
+                      </TableCell>
+                      <TableCell @click.stop>
+                        <div class="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" as-child>
+                            <NuxtLink :to="`/knowledges/${k.id}/edit`">Open</NuxtLink>
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+              <div
+                v-else
+                class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground"
+              >
+                No knowledge bases bound. Bind in the
+                <NuxtLink :to="`/agents/${agent.id}/edit`" class="underline">edit</NuxtLink>
+                page.
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="files" class="mt-0">

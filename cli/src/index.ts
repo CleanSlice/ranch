@@ -3,6 +3,7 @@ import { consola } from "consola";
 import { spawn } from "node:child_process";
 import pkg from "../package.json" with { type: "json" };
 import { devCommand } from "./commands/dev";
+import { upCommand } from "./commands/up";
 import { downCommand } from "./commands/down";
 import { dbCommand } from "./commands/db";
 import { generateCommand } from "./commands/generate";
@@ -23,6 +24,7 @@ const main = defineCommand({
   },
   subCommands: {
     dev: devCommand,
+    up: upCommand,
     down: downCommand,
     stop: downCommand,
     db: dbCommand,

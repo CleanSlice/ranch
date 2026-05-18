@@ -16,15 +16,39 @@ export class SecretGateway extends ISecretGateway {
   }
 
   async list(agentId: string): Promise<ISecretListData> {
+    return (await this.isAws())
+      ? this.aws.list(agentId)
+      : this.file.list(agentId);
+  }
+
+  async set(agentId: string, key: string, value: string): Promise<void> {
+    return (await this.isAws())
+      ? this.aws.set(agentId, key, value)
+      : this.file.set(agentId, key, value);
+  }
+
+  async delete(agentId: string, key: string): Promise<void> {
+    return (await this.isAws())
+      ? this.aws.delete(agentId, key)
+      : this.file.delete(agentId, key);
+  }
+
+  async replaceAll(
+    agentId: string,
+    store: Record<string, string>,
+  ): Promise<void> {
+    return (await this.isAws())
+      ? this.aws.replaceAll(agentId, store)
+      : this.file.replaceAll(agentId, store);
+  }
+
+  private async isAws(): Promise<boolean> {
     const setting = await this.settings.findByKey(
       'integrations',
       'secret_provider',
     );
     const value =
       typeof setting?.value === 'string' ? setting.value.toLowerCase() : '';
-    const provider = value === 'aws' ? 'aws' : 'file';
-    return provider === 'aws'
-      ? this.aws.list(agentId)
-      : this.file.list(agentId);
+    return value === 'aws';
   }
 }

@@ -26,7 +26,16 @@ const props = withDefaults(defineProps<{
 })
 
 const store = useBridleStore()
-const { messages, isConnected, isAgentConnected, isTyping, debugEnabled, markdownEnabled } = storeToRefs(store)
+const {
+  messages,
+  isConnected,
+  isAgentConnected,
+  isTyping,
+  debugEnabled,
+  markdownEnabled,
+  hasMoreOlder,
+  loadingOlder,
+} = storeToRefs(store)
 
 function onMarkdownChange(v: boolean | 'indeterminate') {
   store.setMarkdownEnabled(v === true)
@@ -130,15 +139,47 @@ async function onRestartAgent() {
 
 const scrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
 
-function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
+function getViewport(): HTMLElement | null {
   const root = scrollRef.value?.$el as HTMLElement | undefined
-  const viewport = root?.querySelector(
+  return (root?.querySelector(
     '[data-slot="scroll-area-viewport"]',
-  ) as HTMLElement | null
+  ) ?? null) as HTMLElement | null
+}
+
+function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
+  const viewport = getViewport()
   if (!viewport) return
   requestAnimationFrame(() => {
     viewport.scrollTo({ top: viewport.scrollHeight, behavior })
   })
+}
+
+/**
+ * Pixels from the top below which we trigger an older-page load. Anything
+ * smaller and a single wheel tick can blow past the threshold before the
+ * fetch returns; anything larger triggers too eagerly with no visible cue.
+ */
+const SCROLL_LOAD_THRESHOLD_PX = 80
+
+async function onScroll() {
+  if (!hasMoreOlder.value || loadingOlder.value) return
+  const viewport = getViewport()
+  if (!viewport || viewport.scrollTop > SCROLL_LOAD_THRESHOLD_PX) return
+
+  const prevScrollHeight = viewport.scrollHeight
+  const prevScrollTop = viewport.scrollTop
+  const added = await store.loadOlderTranscript(
+    props.apiUrl,
+    props.agentId,
+    props.token,
+  )
+  if (added <= 0) return
+
+  // Preserve the visual position of whatever the user was looking at by
+  // offsetting the scroll by the height delta of the newly-prepended rows.
+  await nextTick()
+  const newScrollHeight = viewport.scrollHeight
+  viewport.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight)
 }
 
 watch(
@@ -148,6 +189,10 @@ watch(
     scrollToBottom()
   },
 )
+
+// Cleanup handle for the viewport scroll listener attached in onMounted.
+// Stored as a let so onUnmounted can detach the exact same callback.
+let detachScrollListener: (() => void) | null = null
 
 onMounted(async () => {
   // Replay persisted history first so the chat isn't blank between
@@ -170,12 +215,25 @@ onMounted(async () => {
   }, 1000)
   await nextTick()
   scrollToBottom('auto')
+
+  // Scroll listener must be attached to the inner viewport — the ScrollArea
+  // root is overflow:hidden and never emits `scroll`. Attaching here (after
+  // first render) ensures the viewport node exists.
+  const viewport = getViewport()
+  if (viewport) {
+    viewport.addEventListener('scroll', onScroll, { passive: true })
+    detachScrollListener = () => viewport.removeEventListener('scroll', onScroll)
+  }
 })
 
 onUnmounted(() => {
   if (nowTimer) {
     clearInterval(nowTimer)
     nowTimer = null
+  }
+  if (detachScrollListener) {
+    detachScrollListener()
+    detachScrollListener = null
   }
   store.disconnect()
 })
@@ -249,7 +307,20 @@ async function onConfirmReset() {
       <ScrollArea ref="scrollRef" class="h-full">
         <div class="flex flex-col gap-4 p-4">
           <div
-            v-if="messages.length === 0"
+            v-if="loadingOlder"
+            class="flex items-center justify-center py-2 text-xs text-muted-foreground"
+          >
+            Loading older messages…
+          </div>
+          <div
+            v-else-if="hasMoreOlder"
+            class="flex items-center justify-center py-1 text-[10px] uppercase tracking-wide text-muted-foreground/60"
+          >
+            Scroll up to load older messages
+          </div>
+
+          <div
+            v-if="messages.length === 0 && !loadingOlder"
             class="flex-1 flex items-center justify-center text-muted-foreground text-sm py-12"
           >
             Start a conversation with the agent

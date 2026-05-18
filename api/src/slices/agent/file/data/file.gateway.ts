@@ -17,9 +17,19 @@ import {
 import * as archiver from 'archiver';
 import { ISettingGateway } from '#/setting/domain';
 import { IFileGateway } from '../domain/file.gateway';
-import { IFileContent, IFileNode, ISkillBundle } from '../domain/file.types';
+import {
+  IFileChunk,
+  IFileContent,
+  IFileNode,
+  ISkillBundle,
+} from '../domain/file.types';
 
 const MAX_BYTES = 256 * 1024;
+// Range reads bypass the editor cap — used by the chunked viewer and the
+// transcript replay. Per-request cap so a malicious / buggy caller can't
+// ask for a 100 MB slice in one go.
+const MAX_RANGE_BYTES = 512 * 1024;
+const DEFAULT_RANGE_BYTES = 256 * 1024;
 const ALLOWED_WRITE_EXT = new Set(['.md', '.json']);
 
 // Prefixes the runtime writes to at runtime (state that must survive restarts).
@@ -96,6 +106,75 @@ export class S3FileGateway extends IFileGateway {
       content,
       size,
       updatedAt: head.LastModified ?? new Date(0),
+    };
+  }
+
+  async readRange(
+    agentId: string,
+    path: string,
+    offset: number,
+    limit: number,
+  ): Promise<IFileChunk> {
+    this.assertSafePath(path);
+
+    const safeOffset = Math.max(0, Math.floor(offset || 0));
+    const requested = Math.floor(limit || DEFAULT_RANGE_BYTES);
+    const safeLimit = Math.min(
+      MAX_RANGE_BYTES,
+      Math.max(1, requested || DEFAULT_RANGE_BYTES),
+    );
+
+    const { client, bucket } = await this.connect();
+    const key = this.prefix(agentId) + path;
+
+    let head;
+    try {
+      head = await client.send(
+        new HeadObjectCommand({ Bucket: bucket, Key: key }),
+      );
+    } catch (err) {
+      if (this.isNotFound(err)) throw new NotFoundException('File not found');
+      throw err;
+    }
+
+    const totalSize = head.ContentLength ?? 0;
+    const updatedAt = head.LastModified ?? new Date(0);
+
+    if (totalSize === 0 || safeOffset >= totalSize) {
+      return {
+        path,
+        content: '',
+        size: 0,
+        totalSize,
+        offset: safeOffset,
+        nextOffset: null,
+        hasMore: false,
+        updatedAt,
+      };
+    }
+
+    const end = Math.min(totalSize - 1, safeOffset + safeLimit - 1);
+    const res = await client.send(
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Range: `bytes=${safeOffset}-${end}`,
+      }),
+    );
+    const content = (await res.Body?.transformToString('utf-8')) ?? '';
+    const bytesRead = Buffer.byteLength(content, 'utf-8');
+    const nextOffset = safeOffset + bytesRead;
+    const hasMore = nextOffset < totalSize;
+
+    return {
+      path,
+      content,
+      size: bytesRead,
+      totalSize,
+      offset: safeOffset,
+      nextOffset: hasMore ? nextOffset : null,
+      hasMore,
+      updatedAt,
     };
   }
 

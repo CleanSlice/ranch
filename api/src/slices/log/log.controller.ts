@@ -100,6 +100,15 @@ export class LogController {
       if (this.isNotFound(err)) {
         return { logs: `[no pod yet for ${agent.status} agent]` };
       }
+      // 400 BadRequest with "is waiting to start: ContainerCreating /
+      // PodInitializing / …" — pod exists but the container hasn't booted
+      // yet. Transient (2–15s during restart while kubelet pulls image and
+      // mounts volumes). The raw K8s 400 looks scary in the UI, so report a
+      // friendly "container starting" line that the frontend can detect.
+      const waitingReason = this.extractWaitingReason(err);
+      if (waitingReason) {
+        return { logs: `[container ${waitingReason.toLowerCase()}]` };
+      }
       const message = this.extractKubeError(err);
       this.logger.warn(`log fetch failed for ${podName}: ${message}`);
       return { logs: `[log fetch failed: ${message}]` };
@@ -110,6 +119,24 @@ export class LogController {
     if (!err || typeof err !== 'object') return false;
     const e = err as { statusCode?: number; code?: number };
     return e.statusCode === 404 || e.code === 404;
+  }
+
+  // K8s returns 400 BadRequest with a body like:
+  //   container "agent" in pod "…" is waiting to start: ContainerCreating
+  // The reason after "is waiting to start: " is what we want for the UI.
+  // Same shape covers PodInitializing, CreateContainerConfigError, etc.
+  private extractWaitingReason(err: unknown): string | null {
+    if (!err || typeof err !== 'object') return null;
+    const e = err as {
+      statusCode?: number;
+      code?: number;
+      body?: { message?: string };
+    };
+    const status = e.statusCode ?? e.code;
+    if (status !== 400) return null;
+    const msg = e.body?.message ?? '';
+    const match = msg.match(/is waiting to start:\s*([A-Za-z0-9_]+)/);
+    return match?.[1] ?? null;
   }
 
   private parseTail(raw?: string): number {

@@ -5,6 +5,7 @@ import { ITemplateGateway } from '#/agent/template/domain';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
 import { AuthService } from '#/user/auth/domain';
 import { ISkillGateway } from '#/skill/domain';
+import { DeployTracker } from './deployTracker';
 
 @Injectable()
 export class AgentDeployService {
@@ -17,6 +18,7 @@ export class AgentDeployService {
     private readonly authService: AuthService,
     private readonly fileGateway: IFileGateway,
     private readonly skillGateway: ISkillGateway,
+    private readonly deployTracker: DeployTracker,
   ) {}
 
   // Full restart sequence: pull latest template-owned files, cancel the
@@ -26,6 +28,10 @@ export class AgentDeployService {
   async restartAgent(agentId: string): Promise<void> {
     const agent = await this.agentGateway.findById(agentId);
     if (!agent) return;
+
+    // Mark BEFORE cancel so the old pod's MODIFIED phase=Failed event (emitted
+    // by Argo's cancellation) is recognised as stale by the reconciler.
+    this.deployTracker.mark(agentId);
 
     try {
       const synced = await this.fileGateway.resyncFromTemplate(
@@ -67,6 +73,9 @@ export class AgentDeployService {
       await this.agentGateway.updateStatus(agentId, 'failed');
       return;
     }
+    // Idempotent — restartAgent already marked it, but cold deploys (initial
+    // create) call deploy() directly without going through restartAgent.
+    this.deployTracker.mark(agentId);
     // Mark deploying BEFORE submitting the workflow. Submit + getStatus take
     // seconds — long enough for the pod to come up and AgentStatusService to
     // flip status to 'running'. If we wrote status here after submit we'd

@@ -37,6 +37,14 @@ const content = ref<string>('');
 
 const contentLoading = ref(false);
 const contentError = ref<string | null>(null);
+const loadingMore = ref(false);
+
+// Pagination state for the currently-open file. `nextOffset === null` means
+// the editor has the whole file. `totalSize` is the server-reported byte
+// length of the underlying object (matches the file tree's size column).
+const totalSize = ref<number>(0);
+const nextOffset = ref<number | null>(null);
+const hasMore = computed(() => nextOffset.value !== null);
 
 const saving = ref(false);
 const saveError = ref<string | null>(null);
@@ -97,17 +105,44 @@ async function openFile(path: string) {
   contentLoading.value = true;
   contentError.value = null;
   saveError.value = null;
+  totalSize.value = 0;
+  nextOffset.value = null;
   sheetOpen.value = false;
   try {
-    const file = await store.fetchContent(props.id, path);
-    original.value = file.content;
-    content.value = file.content;
+    const chunk = await store.fetchContent(props.id, path);
+    original.value = chunk.content;
+    content.value = chunk.content;
+    totalSize.value = chunk.totalSize;
+    nextOffset.value = chunk.nextOffset;
   } catch (err) {
     original.value = '';
     content.value = '';
     contentError.value = (err as Error).message || 'Failed to load file';
   } finally {
     contentLoading.value = false;
+  }
+}
+
+async function loadMore() {
+  if (!selected.value || nextOffset.value === null || loadingMore.value) return;
+  loadingMore.value = true;
+  contentError.value = null;
+  try {
+    const chunk = await store.fetchContent(
+      props.id,
+      selected.value,
+      nextOffset.value,
+    );
+    // Append to both `original` and `content` so `dirty` stays false until
+    // the user actually edits something. (Editing is blocked while
+    // `hasMore` is true — see Viewer — but this keeps the invariant honest.)
+    original.value = original.value + chunk.content;
+    content.value = content.value + chunk.content;
+    nextOffset.value = chunk.nextOffset;
+  } catch (err) {
+    contentError.value = (err as Error).message || 'Failed to load more';
+  } finally {
+    loadingMore.value = false;
   }
 }
 
@@ -292,8 +327,13 @@ useAsyncData(
           :load-error="contentError"
           :save-error="saveError"
           :dirty="dirty"
+          :total-size="totalSize"
+          :loaded-size="content.length"
+          :has-more="hasMore"
+          :loading-more="loadingMore"
           @update:content="(v: string) => (content = v)"
           @save="onSave"
+          @load-more="loadMore"
         />
       </div>
     </div>

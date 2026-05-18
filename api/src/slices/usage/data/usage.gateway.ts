@@ -50,4 +50,19 @@ export class UsageGateway extends IUsageGateway {
     });
     return records.map((r) => this.mapper.toEntity(r));
   }
+
+  async findRecentForCredential(
+    credentialId: string,
+    days: number,
+  ): Promise<IUsageData[]> {
+    const since = new Date();
+    since.setUTCDate(since.getUTCDate() - days);
+    since.setUTCHours(0, 0, 0, 0);
+
+    const records = await this.prisma.usage.findMany({
+      where: { llmCredentialId: credentialId, date: { gte: since } },
+      orderBy: [{ date: 'desc' }, { model: 'asc' }],
+    });
+    return records.map((r) => this.mapper.toEntity(r));
+  }
 }

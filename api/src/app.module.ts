@@ -8,6 +8,7 @@ import { InitModule } from './slices/setup/init/init.module';
 
 // Feature slices
 import { AgentModule } from './slices/agent/agent/agent.module';
+import { AgentChannelModule } from './slices/agent/agentChannel/agentChannel.module';
 import { TemplateModule } from './slices/agent/template/template.module';
 import { TemplateFileModule } from './slices/agent/templateFile/templateFile.module';
 import { TemplateInstallModule } from './slices/agent/templateInstall/templateInstall.module';
@@ -30,6 +31,7 @@ import { UpgradeModule } from './slices/upgrade/upgrade.module';
 import { McpServerModule } from './slices/mcpServer/mcpServer.module';
 import { McpModule } from './slices/mcp';
 import { PaddockModule } from './slices/paddock/paddock.module';
+import { BrowserModule } from './slices/browser/browser.module';
 import { JwtAuthGuard } from './slices/user/auth/guards';
 
 @Module({
@@ -50,6 +52,7 @@ import { JwtAuthGuard } from './slices/user/auth/guards';
     TemplateFileModule,
     TemplateInstallModule,
     AgentModule,
+    AgentChannelModule,
     FileModule,
     SecretModule,
     LogModule,
@@ -67,6 +70,7 @@ import { JwtAuthGuard } from './slices/user/auth/guards';
     UpgradeModule,
     McpServerModule,
     PaddockModule,
+    BrowserModule,
     McpModule.forRoot({
       name: 'ranch',
       version: '1.0.0',

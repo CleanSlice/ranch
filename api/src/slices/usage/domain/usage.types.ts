@@ -49,3 +49,29 @@ export interface IAgentUsageResponse {
     callCount: number;
   };
 }
+
+/**
+ * Aggregate usage for a single LlmCredential across all agents using it.
+ * Shape mirrors IAgentUsageResponse so the admin UI can render the same
+ * cards; adds per-agent breakdown since that's the missing dimension.
+ */
+export interface ICredentialUsageResponse {
+  /** Daily totals across all agents on this credential. */
+  last30days: IUsageDailyEntry[];
+  totals: {
+    inputTokens: number;
+    outputTokens: number;
+    callCount: number;
+    costUsd: number;
+  };
+  topModel: string | null;
+  /** One row per agent that has reported usage on this credential. */
+  byAgent: Array<{
+    agentId: string;
+    agentName: string;
+    inputTokens: number;
+    outputTokens: number;
+    callCount: number;
+    costUsd: number;
+  }>;
+}

@@ -312,27 +312,55 @@ helm install cnpg cnpg/cloudnative-pg \
 # Create namespaces
 kubectl create namespace platform
 kubectl create namespace agents
-
-# Apply workflow templates
-kubectl apply -f k8s/templates/agent-workflow.yaml
 ```
 
 ### 6. Configure DNS
 
-Add A records at your DNS provider pointing to the Load Balancer IP:
+Ranch ships five public services behind one shared Hetzner Load Balancer.
+You need an **A record per subdomain** at your DNS provider — the records
+themselves are not managed by Terraform (intentional: keeps the DNS zone
+your single source of truth and lets you change provider without touching
+the platform module).
 
-```
-api.ranch.yourdomain.com      A  → <LB_IP>
-app.ranch.yourdomain.com      A  → <LB_IP>
-admin.ranch.yourdomain.com    A  → <LB_IP>
-argocd.ranch.yourdomain.com   A  → <LB_IP>
-```
+**Required A records** — point each at the same Load Balancer IP:
 
-Get the LB IP:
+| Subdomain                       | Serves                       | Required? |
+|---------------------------------|------------------------------|-----------|
+| `ranch.yourdomain.com`          | App (root, end-user UI)      | yes       |
+| `api.ranch.yourdomain.com`      | NestJS API                   | yes       |
+| `admin.ranch.yourdomain.com`    | Admin panel (Nuxt)           | yes       |
+| `argocd.ranch.yourdomain.com`   | ArgoCD UI                    | yes       |
+| `browser.ranch.yourdomain.com`  | Browser-pool live VNC view   | yes — agents send users this URL for manual logins (Instagram, Meta Ads, etc.). Without it, every site that needs an interactive login is unreachable. |
+
+Get the Load Balancer IP after `terraform apply`:
 
 ```bash
 kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# or, equivalently, ask Terraform:
+terraform -chdir=terraform/environments/<env> output dns_records_needed
 ```
+
+The `dns_records_needed` output lists every subdomain that needs a record
+and the IP to point it at — keep this in sync if you ever add a new
+public-facing ingress (otherwise `cert-manager` will spin forever on a
+challenge that can't resolve).
+
+**Propagation**: 1–5 min typical (set TTL=300). `cert-manager` then
+issues a Let's Encrypt cert automatically via the HTTP-01 challenge —
+the first hit to `https://<subdomain>/` after propagation triggers it.
+
+**Smoke test once propagated**:
+
+```bash
+for sub in "" api. admin. argocd. browser.; do
+  host="${sub}ranch.yourdomain.com"
+  printf "%-45s " "$host"
+  curl -sS -o /dev/null -w "%{http_code}\n" "https://$host/" --max-time 5 || echo "(timeout)"
+done
+```
+
+All five should return a non-zero HTTP code (200/301/302/401 are all fine —
+means the cert handshake succeeded and Traefik routed the request).
 
 ### 7. Connect ArgoCD to Repository
 

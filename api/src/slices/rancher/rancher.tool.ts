@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool } from '#mcp';
 import { IAgentGateway } from '#/agent/agent/domain';
+import { AgentDeployService } from '#/agent/agent/domain/agentDeploy.service';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { ITemplateFileGateway } from '#/agent/templateFile/domain';
 import { ILlmGateway } from '#/llm/domain';
@@ -28,6 +29,7 @@ export class RancherTool {
 
   constructor(
     private readonly agents: IAgentGateway,
+    private readonly agentDeploy: AgentDeployService,
     private readonly templates: ITemplateGateway,
     private readonly templateFiles: ITemplateFileGateway,
     private readonly llms: ILlmGateway,
@@ -331,6 +333,104 @@ export class RancherTool {
   ) {
     this.requireOwner(httpRequest);
     return ok(await this.skills.findAll());
+  }
+
+  @Tool({
+    name: 'update_skill',
+    description:
+      'Edit a skill in place. Pass only the fields you want to change. ' +
+      'Skills are baked into agent pods at deploy time — after editing, ' +
+      'call `redeploy_skill_agents` so running agents pick up the new body.',
+    parameters: z.object({
+      id: z.string(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      body: z
+        .string()
+        .optional()
+        .describe('Full SKILL.md markdown body — replaces existing content.'),
+    }),
+  })
+  async updateSkill({
+    id,
+    ...patch
+  }: {
+    id: string;
+    title?: string;
+    description?: string;
+    body?: string;
+  }) {
+    const skill = await this.skills.findById(id);
+    if (!skill) return ok({ error: `Skill ${id} not found` });
+    const updated = await this.skills.update(id, patch);
+    return ok(updated);
+  }
+
+  @Tool({
+    name: 'list_skill_agents',
+    description:
+      'List agents currently using this skill (via their template). Use this ' +
+      'before `redeploy_skill_agents` to preview what will be restarted.',
+    parameters: z.object({
+      skillId: z.string(),
+    }),
+  })
+  async listSkillAgents({ skillId }: { skillId: string }) {
+    return ok(await this.skills.findDependentAgents(skillId));
+  }
+
+  @Tool({
+    name: 'redeploy_skill_agents',
+    description:
+      'Restart every agent whose template includes this skill so it picks up ' +
+      "the edited SKILL.md. Each agent's workflow is cancelled and resubmitted " +
+      '(template files + skills resynced from DB). Sequential with concurrency 3 ' +
+      'to avoid slamming the cluster. Returns aggregate counts and per-agent errors.',
+    parameters: z.object({
+      skillId: z.string(),
+    }),
+  })
+  async redeploySkillAgents({ skillId }: { skillId: string }) {
+    const skill = await this.skills.findById(skillId);
+    if (!skill) return ok({ error: `Skill ${skillId} not found` });
+
+    const dependents = await this.skills.findDependentAgents(skillId);
+    if (dependents.length === 0) {
+      return ok({ skillId, total: 0, restarted: 0, failed: 0, errors: [] });
+    }
+
+    const CONCURRENCY = 3;
+    const errors: { agentId: string; error: string }[] = [];
+    let index = 0;
+    let restarted = 0;
+    let failed = 0;
+
+    const worker = async (): Promise<void> => {
+      while (index < dependents.length) {
+        const dep = dependents[index++];
+        try {
+          await this.agentDeploy.restartAgent(dep.id);
+          restarted += 1;
+        } catch (err) {
+          failed += 1;
+          errors.push({ agentId: dep.id, error: (err as Error).message });
+          this.logger.warn(
+            `redeploy_skill_agents ${skillId}: agent ${dep.id} failed — ${(err as Error).message}`,
+          );
+        }
+      }
+    };
+
+    const workers = Math.min(CONCURRENCY, dependents.length);
+    await Promise.all(Array.from({ length: workers }, () => worker()));
+
+    return ok({
+      skillId,
+      total: dependents.length,
+      restarted,
+      failed,
+      errors,
+    });
   }
 
   // ─── Files (per-agent) ───────────────────────────────────────────────

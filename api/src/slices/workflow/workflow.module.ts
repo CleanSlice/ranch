@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { WorkflowService } from './domain/workflow.service';
 import { IWorkflowGateway } from './domain/IWorkflowGateway';
 import { ArgoWorkflowGateway } from './data/argo-workflow.gateway';
@@ -10,7 +10,12 @@ import { TemplateModule } from '#/agent/template/template.module';
 import { McpServerModule } from '#/mcpServer/mcpServer.module';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.module';
+import { AgentChannelModule } from '#/agent/agentChannel/agentChannel.module';
 
+// AgentChannelModule is forwardRef'd because it ultimately imports
+// FileModule, which already participates in the AgentModule ↔ FileModule
+// cycle (AgentModule imports WorkflowModule). Without forwardRef the
+// cycle re-enters here at boot.
 @Module({
   imports: [
     SettingModule,
@@ -19,6 +24,7 @@ import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.mod
     McpServerModule,
     KnowledgeModule,
     KnowledgeConfigModule,
+    forwardRef(() => AgentChannelModule),
   ],
   providers: [
     WorkflowService,

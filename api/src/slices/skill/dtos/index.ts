@@ -4,3 +4,4 @@ export { UpdateSkillDto } from './updateSkill.dto';
 export { SearchSkillsDto } from './searchSkills.dto';
 export { ImportSkillDto, ImportSkillUrlDto } from './importSkill.dto';
 export { SkillSearchResultDto } from './skillSearchResult.dto';
+export { SkillAgentDto } from './skillAgent.dto';

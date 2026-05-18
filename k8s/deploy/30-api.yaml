@@ -86,6 +86,18 @@ spec:
               value: /usr/src/app/rancher/.agent
             - name: RANCHER_PADDOCK_DIR
               value: /usr/src/app/rancher/.paddock/scenarios
+            # Browser-pool — shared headless Chromium for runtime tools.
+            # Internal URL is reached over the in-cluster Service; public URL
+            # is the user-facing host for VNC live views during 2FA logins.
+            - name: BROWSER_POOL_INTERNAL_URL
+              value: "ws://browser-pool.platform.svc.cluster.local:3000"
+            - name: BROWSER_POOL_PUBLIC_URL
+              value: "https://browser.ranch.cleanslice.org"
+            - name: BROWSER_POOL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-secrets
+                  key: BROWSER_POOL_TOKEN
           volumeMounts:
             - name: paddock-work
               mountPath: /usr/src/app/runtime/.paddock

@@ -11,7 +11,11 @@ import {
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { IUsageGateway } from './domain';
 import { costUsd } from './domain/model-pricing';
-import { IAgentUsageResponse, IUsageDailyEntry } from './domain/usage.types';
+import {
+  IAgentUsageResponse,
+  ICredentialUsageResponse,
+  IUsageDailyEntry,
+} from './domain/usage.types';
 import { ReportUsageDto } from './dtos';
 import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
 import { IFileGateway } from '#/agent/file/domain';
@@ -195,5 +199,121 @@ export class UsageController {
     if (!agent?.llmCredentialId) return null;
     const credential = await this.llmGateway.findById(agent.llmCredentialId);
     return credential?.model ?? null;
+  }
+
+  @Get('llms/:id/usage')
+  @ApiOperation({
+    summary: 'Get 30-day usage for a single LLM credential across all agents',
+  })
+  async findForCredential(
+    @Param('id') credentialId: string,
+  ): Promise<ICredentialUsageResponse> {
+    const rows = await this.gateway.findRecentForCredential(credentialId, 30);
+
+    // Daily roll-up keyed by `${date}|${model}` — preserves the per-model
+    // grain that the per-agent endpoint already uses.
+    const dailyMap = new Map<string, IUsageDailyEntry>();
+    // Per-agent roll-up keyed by agentId.
+    const agentMap = new Map<
+      string,
+      {
+        agentId: string;
+        inputTokens: number;
+        outputTokens: number;
+        callCount: number;
+        costUsd: number;
+      }
+    >();
+
+    for (const r of rows) {
+      const date = dayKey(r.date);
+      const dailyKey = `${date}|${r.model}`;
+      const cost = costUsd(r.model, r.inputTokens, r.outputTokens);
+
+      const daily = dailyMap.get(dailyKey);
+      if (daily) {
+        daily.inputTokens += r.inputTokens;
+        daily.outputTokens += r.outputTokens;
+        daily.callCount += r.callCount;
+        daily.costUsd += cost;
+      } else {
+        dailyMap.set(dailyKey, {
+          date,
+          model: r.model,
+          inputTokens: r.inputTokens,
+          outputTokens: r.outputTokens,
+          callCount: r.callCount,
+          costUsd: cost,
+        });
+      }
+
+      const agent = agentMap.get(r.agentId);
+      if (agent) {
+        agent.inputTokens += r.inputTokens;
+        agent.outputTokens += r.outputTokens;
+        agent.callCount += r.callCount;
+        agent.costUsd += cost;
+      } else {
+        agentMap.set(r.agentId, {
+          agentId: r.agentId,
+          inputTokens: r.inputTokens,
+          outputTokens: r.outputTokens,
+          callCount: r.callCount,
+          costUsd: cost,
+        });
+      }
+    }
+
+    const last30days = Array.from(dailyMap.values()).sort((a, b) =>
+      b.date.localeCompare(a.date),
+    );
+
+    const totals = last30days.reduce(
+      (acc, e) => ({
+        inputTokens: acc.inputTokens + e.inputTokens,
+        outputTokens: acc.outputTokens + e.outputTokens,
+        callCount: acc.callCount + e.callCount,
+        costUsd: acc.costUsd + e.costUsd,
+      }),
+      { inputTokens: 0, outputTokens: 0, callCount: 0, costUsd: 0 },
+    );
+
+    const perModelTokens = new Map<string, number>();
+    for (const e of last30days) {
+      perModelTokens.set(
+        e.model,
+        (perModelTokens.get(e.model) ?? 0) + e.inputTokens + e.outputTokens,
+      );
+    }
+    let topModel: string | null = null;
+    let topTokens = -1;
+    for (const [m, t] of perModelTokens) {
+      if (t > topTokens) {
+        topTokens = t;
+        topModel = m;
+      }
+    }
+
+    // Resolve agent names. Failed lookups (deleted agents) fall back to the
+    // raw ID so the row is still visible — usage outlives the agent record.
+    const byAgent = await Promise.all(
+      Array.from(agentMap.values())
+        .sort((a, b) => b.costUsd - a.costUsd)
+        .map(async (entry) => {
+          const agent = await this.agentGateway
+            .findById(entry.agentId)
+            .catch(() => null);
+          return {
+            agentId: entry.agentId,
+            agentName: agent?.name ?? entry.agentId,
+            inputTokens: entry.inputTokens,
+            outputTokens: entry.outputTokens,
+            callCount: entry.callCount,
+            costUsd: entry.costUsd,
+          };
+        }),
+    );
+
+    return { last30days, totals, topModel, byAgent };
   }
 }

@@ -1,3 +1,4 @@
+import type { Observable } from 'rxjs';
 import type {
   IBridleHealthData,
   IBridleAgentHealthData,
@@ -10,6 +11,11 @@ import type {
 export interface ISyncAgentResult {
   agentOnline: boolean;
   pushed: number;
+}
+
+export interface IBridleAgentEvent {
+  type: 'connected' | 'disconnected';
+  agentId: string;
 }
 
 /**
@@ -52,6 +58,13 @@ export abstract class IBridleGateway {
   abstract agentHealth(agentId: string): IBridleAgentHealthData;
   /** Whether an agent runtime is currently registered for this agentId. */
   abstract isAgentConnected(agentId: string): boolean;
+  /**
+   * Observable stream of agent connect/disconnect events. Consumed by
+   * AgentStatusService to flip the DB status the moment a runtime registers
+   * (faster + more reliable than the K8s readiness probe — runtime connects
+   * to bridle inside `runtime.start()`, before Bun.serve binds port 3000).
+   */
+  abstract agentEvents$(): Observable<IBridleAgentEvent>;
   /** List all connected agents with their client counts */
   abstract listAgents(): Array<{ agentId: string; clients: number }>;
   /**

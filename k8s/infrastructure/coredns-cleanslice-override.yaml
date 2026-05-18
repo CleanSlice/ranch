@@ -1,0 +1,39 @@
+# Local override for the cleanslice.org zone inside CoreDNS.
+#
+# k3s wires this in via `import /etc/coredns/custom/*.server` in the main
+# Corefile (created automatically by the k3s coredns addon when this
+# ConfigMap exists).
+#
+# Why this exists: Hetzner's recursive resolvers (185.12.64.1, .2 — the
+# default on every Hetzner node) cache NXDOMAIN aggressively. When a new
+# *.cleanslice.org subdomain is added at the DNS provider, the in-cluster
+# CoreDNS keeps returning "no such host" for hours after the record is
+# live externally, because Hetzner's resolver doesn't refresh negative
+# answers. cert-manager's HTTP-01 self-check fails on its own self lookup
+# and the certificate spins in `pending` until Hetzner finally evicts the
+# negative entry.
+#
+# A scoped server block for cleanslice.org with the `hosts` plugin pins
+# the LoadBalancer IP locally. Anything outside this zone still falls
+# through to the standard `forward . /etc/resolv.conf`.
+#
+# When adding a new public subdomain (see README "Configure DNS"), append
+# its A entry here too — same `<LB-IP>  <fqdn>` shape.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  cleanslice.server: |
+    cleanslice.org:53 {
+      hosts {
+        46.225.62.248 browser.ranch.cleanslice.org
+        46.225.62.248 admin.ranch.cleanslice.org
+        46.225.62.248 api.ranch.cleanslice.org
+        46.225.62.248 ranch.cleanslice.org
+        46.225.62.248 argocd.ranch.cleanslice.org
+        fallthrough
+      }
+      forward . /etc/resolv.conf
+    }

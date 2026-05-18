@@ -151,7 +151,6 @@ k3d: ## Create/start local k3d cluster
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl create namespace platform 2>/dev/null || true
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl create namespace agents 2>/dev/null || true
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl apply -f k8s/templates/rbac.yaml 2>/dev/null || true
-	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl apply -f k8s/templates/agent-workflow.yaml 2>/dev/null || true
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl apply -f k8s/local/coredns-host-alias.yaml 2>/dev/null || true
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl -n kube-system rollout restart deploy coredns 2>/dev/null || true
 	@KUBECONFIG=$(KUBECONFIG_LOCAL) kubectl label node --all node-role=agents --overwrite 2>/dev/null || true
@@ -216,9 +215,8 @@ kubeconfig: ## Get kubeconfig from Terraform (ENV=dev|prod)
 argocd-password: ## Get ArgoCD admin password
 	@kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo
 
-deploy: ## Deploy app-of-apps + workflow templates to cluster
+deploy: ## Deploy app-of-apps to cluster
 	kubectl apply -f k8s/argocd/app-of-apps.yaml
-	kubectl apply -f k8s/templates/agent-workflow.yaml
 	@echo "Deployed. ArgoCD will sync the rest."
 
 k8s-secrets: ## Create API secrets in cluster (interactive)

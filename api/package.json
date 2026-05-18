@@ -109,6 +109,10 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "moduleNameMapper": {
+      "^#$": "<rootDir>/slices",
+      "^#/(.*)$": "<rootDir>/slices/$1"
+    },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],

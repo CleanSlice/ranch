@@ -22,7 +22,7 @@ This will:
 
 1. Create a k3d cluster named `ranch-local` (single node, no traefik).
 2. Install Argo Workflows into the `argo` namespace via Helm.
-3. Apply `agents` namespace + RBAC + the `agent-deployment` WorkflowTemplate.
+3. Apply `agents` namespace + RBAC. (The Argo Workflow for each agent is built and submitted directly by `ranch-api`; no pre-registered `WorkflowTemplate`.)
 4. Background a `kubectl port-forward` so `http://localhost:2746` talks to argo-server.
 
 Then in `ranch/api/.env.dev` set:

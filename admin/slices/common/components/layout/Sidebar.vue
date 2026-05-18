@@ -34,11 +34,11 @@ import {
   IconPlug,
   IconUserCircle,
   IconExternalLink,
+  IconBrowser,
 } from '@tabler/icons-vue';
 import { Bot, FlaskConical, KeyRound } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
-const ranchVersion = useRuntimeConfig().public.ranchVersion;
 const update = useRanchUpdate();
 const upgradeDialogOpen = ref(false);
 onMounted(() => {
@@ -65,6 +65,7 @@ const iconMap: Record<string, unknown> = {
   Plug: IconPlug,
   FlaskConical,
   KeyRound,
+  Browser: IconBrowser,
 };
 
 const groups = [
@@ -172,7 +173,7 @@ const itemsByGroup = (group: MenuGroupTypes) =>
         </SidebarMenuItem>
       </SidebarMenu>
       <div class="flex items-center justify-between gap-2 px-3 pb-1 pt-2 text-[11px] text-muted-foreground group-has-data-[collapsible=icon]/sidebar-wrapper:hidden">
-        <span class="truncate">Ranch v{{ ranchVersion }}</span>
+        <span class="truncate">Ranch v{{ update.state.value.current }}</span>
         <Button
           v-if="update.state.value.hasUpdate && update.state.value.latest && update.state.value.releaseUrl"
           size="sm"

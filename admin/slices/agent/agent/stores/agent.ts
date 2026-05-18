@@ -80,6 +80,43 @@ function savePendingRestartToStorage(state: Record<string, true>): void {
   }
 }
 
+// "Restart is happening right now" — distinct from pendingRestart (which is
+// "settings changed, agent needs restart"). Persisted so the chat-loading
+// overlay survives an F5 during the seconds between Restart click and the DB
+// row flipping to status='deploying'. TTL caps the entry so a tab that
+// crashed mid-restart doesn't pin the overlay forever.
+const RESTART_IN_FLIGHT_KEY = 'agent:restartInFlight';
+const RESTART_IN_FLIGHT_TTL_MS = 5 * 60_000;
+
+function loadRestartInFlightFromStorage(): Record<string, number> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(RESTART_IN_FLIGHT_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const now = Date.now();
+    const fresh: Record<string, number> = {};
+    for (const [id, ts] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof ts === 'number' && now - ts < RESTART_IN_FLIGHT_TTL_MS) {
+        fresh[id] = ts;
+      }
+    }
+    return fresh;
+  } catch {
+    return {};
+  }
+}
+
+function saveRestartInFlightToStorage(state: Record<string, number>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(RESTART_IN_FLIGHT_KEY, JSON.stringify(state));
+  } catch {
+    // quota exceeded — give up silently
+  }
+}
+
 export const useAgentStore = defineStore('agent', () => {
   const agents = ref<IAgentData[]>([]);
   const pendingRestart = ref<Record<string, true>>(
@@ -101,6 +138,34 @@ export const useAgentStore = defineStore('agent', () => {
     delete next[agentId];
     pendingRestart.value = next;
     savePendingRestartToStorage(pendingRestart.value);
+  }
+
+  const restartInFlight = ref<Record<string, number>>(
+    loadRestartInFlightFromStorage(),
+  );
+
+  // Pure read — no side effects, safe to call from a Vue computed. Expired
+  // entries are filtered out on next page load (loadRestartInFlightFromStorage).
+  function isRestartInFlight(agentId: string): boolean {
+    const ts = restartInFlight.value[agentId];
+    if (ts === undefined) return false;
+    return Date.now() - ts < RESTART_IN_FLIGHT_TTL_MS;
+  }
+
+  function markRestartInFlight(agentId: string): void {
+    restartInFlight.value = {
+      ...restartInFlight.value,
+      [agentId]: Date.now(),
+    };
+    saveRestartInFlightToStorage(restartInFlight.value);
+  }
+
+  function clearRestartInFlight(agentId: string): void {
+    if (restartInFlight.value[agentId] === undefined) return;
+    const next = { ...restartInFlight.value };
+    delete next[agentId];
+    restartInFlight.value = next;
+    saveRestartInFlightToStorage(restartInFlight.value);
   }
 
   async function fetchAll() {
@@ -244,5 +309,8 @@ export const useAgentStore = defineStore('agent', () => {
     isPendingRestart,
     markPendingRestart,
     clearPendingRestart,
+    isRestartInFlight,
+    markRestartInFlight,
+    clearRestartInFlight,
   };
 });

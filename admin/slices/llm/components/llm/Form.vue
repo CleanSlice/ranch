@@ -5,7 +5,6 @@ import {
   getProvider,
   getModel,
   isKnownProvider,
-  isKnownModel,
 } from '#llm/data/providers';
 import { Button } from '#theme/components/ui/button';
 import { Input } from '#theme/components/ui/input';
@@ -60,15 +59,6 @@ const modelOptions = computed(() => {
   }));
 });
 
-const modelHasCustom = computed(() => {
-  if (form.model === '') return false;
-  return !isKnownModel(form.provider, form.model);
-});
-
-const fallbackHasCustom = computed(() => {
-  if (form.fallbackModel === '') return false;
-  return !isKnownModel(form.provider, form.fallbackModel);
-});
 
 function onProviderChange(): void {
   form.model = '';
@@ -148,21 +138,20 @@ function onSubmit(): void {
           </div>
           <div class="grid gap-2">
             <Label for="model">Model</Label>
-            <select
+            <input
               id="model"
+              list="model-list"
               v-model="form.model"
               class="h-9 rounded-md border bg-background px-3 text-sm"
               :aria-invalid="!!errors.model"
+              placeholder="Pick a model or type custom"
               @change="onModelChange"
-            >
-              <option value="" disabled>Select a model</option>
+            />
+            <datalist id="model-list">
               <option v-for="m in modelOptions" :key="m.id" :value="m.id">
                 {{ m.label }}
               </option>
-              <option v-if="modelHasCustom" :value="form.model">
-                {{ form.model }} (custom)
-              </option>
-            </select>
+            </datalist>
             <p v-if="errors.model" class="text-xs text-destructive">
               {{ errors.model }}
             </p>
@@ -172,19 +161,18 @@ function onSubmit(): void {
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="grid gap-2">
             <Label for="fallbackModel">Fallback model (optional)</Label>
-            <select
+            <input
               id="fallbackModel"
+              list="fallback-model-list"
               v-model="form.fallbackModel"
               class="h-9 rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="">(none)</option>
+              placeholder="Pick a fallback or type custom"
+            />
+            <datalist id="fallback-model-list">
               <option v-for="m in modelOptions" :key="m.id" :value="m.id">
                 {{ m.label }}
               </option>
-              <option v-if="fallbackHasCustom" :value="form.fallbackModel">
-                {{ form.fallbackModel }} (custom)
-              </option>
-            </select>
+            </datalist>
           </div>
           <div class="grid gap-2">
             <Label for="label">Label (optional)</Label>

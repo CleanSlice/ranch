@@ -74,7 +74,6 @@ export class BrowserExtensionController {
     // Cap at 365 days — practical upper bound for "set it once" UX
     // without making compromised tokens valid forever.
     const ttlDays = Math.max(1, Math.min(365, dto.ttlDays ?? 30));
-    const expiresIn = `${ttlDays}d`;
     const token = this.jwt.sign(
       {
         sub: req.user.sub,
@@ -82,7 +81,7 @@ export class BrowserExtensionController {
         userId: dto.userId,
         scope: 'browser:cookies',
       } satisfies Omit<IExtensionTokenPayload, 'iat' | 'exp'>,
-      { expiresIn },
+      { expiresIn: `${ttlDays} days` },
     );
     const decoded = this.jwt.decode<IExtensionTokenPayload>(token);
     return { token, exp: decoded?.exp ?? 0 };

@@ -62,6 +62,8 @@ export const devCommand = defineCommand({
       ensurePortForwards([
         { label: "Argo Workflows", namespace: "argo", service: "argo-workflows-server", port: 2746 },
       ]);
+      consola.start("Starting LightRAG stack (Ollama + Postgres + LightRAG)...");
+      await run("docker", ["compose", "-f", "api/docker-compose.yml", "--profile", "rag", "up", "-d"], { cwd: root });
     }
 
     if (target) {

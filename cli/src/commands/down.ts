@@ -16,8 +16,8 @@ export const downCommand = defineCommand({
     consola.start("Freeing dev ports...");
     freePorts([3000, 3001, 3002, 3333]);
 
-    consola.start("Stopping docker compose (api)...");
-    await tryRun("docker", ["compose", "down"], { cwd: join(root, "api") });
+    consola.start("Stopping docker compose (api and LightRAG)...");
+    await tryRun("docker", ["compose", "-f", "api/docker-compose.yml", "--profile", "rag", "down"], { cwd: root });
 
     consola.start("Stopping k3d cluster ranch...");
     await tryRun("k3d", ["cluster", "stop", "ranch"]);

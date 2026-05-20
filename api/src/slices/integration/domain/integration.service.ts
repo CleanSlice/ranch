@@ -130,7 +130,12 @@ export class IntegrationService {
       );
     }
     const item = this.requireCatalogueItem(account.service);
-    await this.setStatus(userId, account.id, 'needs_login');
+    // Deliberately NOT flipping status to needs_login here. Asking for
+    // login instructions is advisory — the agent may call this
+    // proactively. Flipping the status made integration_list report
+    // "needs_login" on a perfectly valid session, which made agents
+    // skip browser_play entirely. Status only changes on a real
+    // importCookies / disconnect.
     return this.buildLoginInstructions(account, item);
   }
 
@@ -155,17 +160,14 @@ export class IntegrationService {
 
     // Prefer an existing account this identity can act as (owner or alias)
     // — without this check, a Telegram-driven agent would always create a
-    // new row, duplicating the admin's UUID-owned account.
+    // new row, duplicating the admin's UUID-owned account. Status is left
+    // untouched (see openLogin comment) — instructions are advisory.
     const reachable = (await this.gateway.findByIdentity(identityId, service))
       .find((a) => a.accountKey === accountKey);
 
-    const account = reachable
-      ? await this.setStatus(reachable.userId, reachable.id, 'needs_login')
-      : await this.connect(identityId, service, accountKey);
+    const account =
+      reachable ?? (await this.connect(identityId, service, accountKey));
 
-    if (!reachable) {
-      await this.setStatus(identityId, account.id, 'needs_login');
-    }
     return this.buildLoginInstructions(account, item);
   }
 

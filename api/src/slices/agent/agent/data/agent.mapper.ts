@@ -32,9 +32,13 @@ export class AgentMapper {
       llmCredentialId: data.llmCredentialId ?? null,
       status: 'pending',
       config: (data.config ?? {}) as unknown as Prisma.InputJsonValue,
+      // 2Gi default — agents routinely launch Chromium via browser_play,
+      // and Chromium alone needs ~300-500MB. 512Mi OOM-kills any agent
+      // that touches a browser. Override per-agent in the admin UI if a
+      // lighter footprint is genuinely enough.
       resources: (data.resources ?? {
-        cpu: '500m',
-        memory: '512Mi',
+        cpu: '1000m',
+        memory: '2Gi',
       }) as unknown as Prisma.InputJsonValue,
       isPublic: data.isPublic ?? false,
       allowedOrigins: data.allowedOrigins ?? [],

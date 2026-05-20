@@ -33,6 +33,9 @@ import { McpModule } from './slices/mcp';
 import { PaddockModule } from './slices/paddock/paddock.module';
 import { BrowserModule } from './slices/browser/browser.module';
 import { JwtAuthGuard } from './slices/user/auth/guards';
+import { IntegrationModule } from './slices/integration/integration.module';
+import { UserSecretModule } from './slices/user/secret/secret.module';
+import { UserBrowserStateModule } from './slices/user/browserState/browserState.module';
 
 @Module({
   imports: [
@@ -71,6 +74,9 @@ import { JwtAuthGuard } from './slices/user/auth/guards';
     McpServerModule,
     PaddockModule,
     BrowserModule,
+    UserSecretModule,
+    UserBrowserStateModule,
+    IntegrationModule,
     McpModule.forRoot({
       name: 'ranch',
       version: '1.0.0',

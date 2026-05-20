@@ -1,0 +1,31 @@
+// One row per user-connected service account. Stays minimal on purpose:
+// the actual credential payload lives elsewhere — browser-mechanism rows
+// pair with a BrowserSession on the pool PVC, secret-mechanism rows pair
+// with a value in the per-user secret store (extends agent/secret).
+//
+// userId is a foreign key to User by convention (matching apiKey.prisma /
+// browser.prisma) — no @relation, so user.prisma merges cleanly with
+// prisma-import.
+model IntegrationAccount {
+  id         String   @id
+  userId     String
+  service    String
+  accountKey String
+  mechanism  String
+  label      String?
+  status     String   @default("pending")
+  // Alternate runtime identities this integration is also available
+  // under. Required because the admin UI authenticates as ranch-user
+  // UUID (req.user.sub), but the runtime resolves resources by ctx.from
+  // — a Telegram chat ID, the literal "admin", or some channel-specific
+  // ID. When the service writes cookies/secrets, it fans out to userId
+  // + every alias path so the runtime finds the same payload under any
+  // of the user's identities.
+  aliases    String[] @default([])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, service, accountKey])
+  @@index([userId, service])
+  @@index([aliases])
+}

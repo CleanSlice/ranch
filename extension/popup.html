@@ -67,6 +67,13 @@
       .empty { padding: 24px 12px; text-align: center; color: var(--fg-muted); font-size: 12px; }
       .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--fg-muted); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
       @keyframes spin { to { transform: rotate(360deg); } }
+      .mode-toggle { display: flex; gap: 0; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 2px; background: var(--bg-soft); }
+      .mode-toggle button { flex: 1; margin: 0; padding: 6px 10px; background: transparent; color: var(--fg-muted); border: 0; border-radius: 4px; font-size: 12px; font-weight: 500; }
+      .mode-toggle button.active { background: var(--bg); color: var(--fg); }
+      .detected { padding: 8px 10px; background: color-mix(in srgb, var(--success) 8%, transparent); border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); border-radius: 6px; font-size: 12px; }
+      .detected strong { color: var(--success); }
+      .detected.unsupported { background: color-mix(in srgb, var(--danger) 6%, transparent); border-color: color-mix(in srgb, var(--danger) 25%, transparent); }
+      .detected.unsupported strong { color: var(--danger); }
     </style>
   </head>
   <body>
@@ -104,15 +111,39 @@
     <!-- ========== STATE: ready ========== -->
     <section id="screen-main" hidden>
       <h1>Send cookies → Ranch</h1>
-      <label>Current site</label>
-      <div class="domain" id="site-host">—</div>
-      <p class="hint" id="site-cookies">No cookies detected yet.</p>
 
-      <label for="profile">Profile name</label>
-      <input id="profile" type="text" placeholder="instagram, paypal:main, …" autocomplete="off" />
-      <p class="hint">Same string you (or the agent) use as <code>profile</code> in <code>browser_play</code>.</p>
+      <div class="mode-toggle">
+        <button id="mode-integration" class="active" type="button">Integration</button>
+        <button id="mode-agent" type="button">Agent (legacy)</button>
+      </div>
 
-      <button id="send-btn" disabled>Send cookies</button>
+      <!-- INTEGRATION sub-screen (default) -->
+      <div id="mode-integration-panel">
+        <label>Current site</label>
+        <div class="domain" id="int-site-host">—</div>
+        <p class="hint" id="int-site-cookies">No cookies detected yet.</p>
+
+        <div id="int-detected" class="detected" hidden></div>
+
+        <label for="int-account-key">Account label</label>
+        <input id="int-account-key" type="text" placeholder="miybot, default, …" autocomplete="off" />
+        <p class="hint" id="int-account-hint">User-friendly identifier for this account. Shows up in the /integrations admin page.</p>
+
+        <button id="int-send-btn" disabled>Send cookies</button>
+      </div>
+
+      <!-- AGENT sub-screen (legacy) -->
+      <div id="mode-agent-panel" hidden>
+        <label>Current site</label>
+        <div class="domain" id="site-host">—</div>
+        <p class="hint" id="site-cookies">No cookies detected yet.</p>
+
+        <label for="profile">Profile name</label>
+        <input id="profile" type="text" placeholder="instagram, paypal:main, …" autocomplete="off" />
+        <p class="hint">Same string you (or the agent) use as <code>profile</code> in <code>browser_play</code>. This writes to the agent-scoped S3 prefix — use the Integration tab for per-user imports.</p>
+
+        <button id="send-btn" disabled>Send cookies</button>
+      </div>
 
       <div id="status" class="status" hidden></div>
 

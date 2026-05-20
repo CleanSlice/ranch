@@ -48,6 +48,45 @@ class ResolveBrowserStateQueryDto {
   profile: string;
 }
 
+class ListAccountsQueryDto {
+  @ApiProperty({
+    description:
+      'Identity the runtime is acting on behalf of (ctx.from). Returns every integration this identity owns or is an alias of.',
+  })
+  @IsString()
+  @MaxLength(80)
+  userId: string;
+}
+
+class RuntimeAccountDto {
+  @ApiProperty({ example: 'x' })
+  service: string;
+
+  @ApiProperty({ example: 'dimzhuk' })
+  accountKey: string;
+
+  @ApiProperty({
+    example: 'x:dimzhuk',
+    description:
+      'Exact value to pass as `profile` to browser_play (browser-mechanism only).',
+  })
+  profile: string;
+
+  @ApiProperty({ enum: ['browser', 'secret'] })
+  mechanism: string;
+
+  @ApiProperty({ enum: ['pending', 'connected', 'needs_login', 'revoked'] })
+  status: string;
+
+  @ApiProperty({ type: [String] })
+  aliases: string[];
+}
+
+class ListAccountsResponseDto {
+  @ApiProperty({ type: [RuntimeAccountDto] })
+  accounts: RuntimeAccountDto[];
+}
+
 class RequestLoginBodyDto {
   @ApiProperty({
     description:
@@ -105,6 +144,29 @@ export class IntegrationInternalController {
       query.service,
     );
     return { env };
+  }
+
+  @Get('accounts')
+  @ApiOperation({
+    summary:
+      'List every integration an identity can act as (owner or alias). The runtime’s integration_list tool exposes this so an agent passes the exact browser_play profile instead of guessing.',
+    operationId: 'listIntegrationAccountsForRuntime',
+  })
+  @ApiOkResponse({ type: ListAccountsResponseDto })
+  async listAccounts(
+    @Query() query: ListAccountsQueryDto,
+  ): Promise<ListAccountsResponseDto> {
+    const rows = await this.service.listForIdentity(query.userId);
+    return {
+      accounts: rows.map((a) => ({
+        service: a.service,
+        accountKey: a.accountKey,
+        profile: `${a.service}:${a.accountKey}`,
+        mechanism: a.mechanism,
+        status: a.status,
+        aliases: a.aliases,
+      })),
+    };
   }
 
   @Post('request-login')

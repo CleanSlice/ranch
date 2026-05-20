@@ -138,7 +138,7 @@ export class AuthService {
       roles: safeRoles,
     };
     const token = await this.jwt.signAsync(payload, { expiresIn });
-    const decoded = this.jwt.decode(token) as { exp?: number } | null;
+    const decoded = this.jwt.decode(token);
     const expiresAt = new Date((decoded?.exp ?? 0) * 1000);
     return { token, expiresAt };
   }

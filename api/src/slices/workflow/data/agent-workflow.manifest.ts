@@ -146,9 +146,7 @@ function buildAgentPod(
     spec: {
       restartPolicy: 'Never',
       nodeSelector: { 'node-role': 'agents' },
-      tolerations: [
-        { key: 'workload', value: 'agent', effect: 'NoSchedule' },
-      ],
+      tolerations: [{ key: 'workload', value: 'agent', effect: 'NoSchedule' }],
       imagePullSecrets: [{ name: 'ghcr' }],
       containers: [
         {

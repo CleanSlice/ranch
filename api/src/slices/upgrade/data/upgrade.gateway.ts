@@ -91,7 +91,10 @@ export class UpgradeGateway extends IUpgradeGateway {
       };
     }
 
-    const branch = await this.tryGit(['rev-parse', '--abbrev-ref', 'HEAD'], root);
+    const branch = await this.tryGit(
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      root,
+    );
     const status = await this.tryGit(['status', '--porcelain'], root);
     const dirty = status.length > 0;
 
@@ -149,16 +152,28 @@ export class UpgradeGateway extends IUpgradeGateway {
         stages.push({
           name,
           durationMs: Date.now() - startedAt,
-          output: ((e.stdout ?? '') + (e.stderr ?? '') + (e.message ?? '')).slice(
-            -2000,
-          ),
+          output: (
+            (e.stdout ?? '') +
+            (e.stderr ?? '') +
+            (e.message ?? '')
+          ).slice(-2000),
         });
         throw err;
       }
     };
 
-    await runStage('git-fetch', 'git', ['fetch', '--prune', 'origin', 'main'], root);
-    await runStage('git-pull', 'git', ['pull', '--ff-only', 'origin', 'main'], root);
+    await runStage(
+      'git-fetch',
+      'git',
+      ['fetch', '--prune', 'origin', 'main'],
+      root,
+    );
+    await runStage(
+      'git-pull',
+      'git',
+      ['pull', '--ff-only', 'origin', 'main'],
+      root,
+    );
     await runStage('bun-install', 'bun', ['install'], root);
     await runStage(
       'prisma-migrate',

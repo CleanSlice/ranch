@@ -1,4 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ISettingGateway } from '#/setting/domain';
 import { ISkillSearchHit, ISkillFile } from '../domain';
 
@@ -40,9 +44,21 @@ interface GhCodeSearchItem {
   text_matches?: { fragment: string }[];
 }
 
+// GitHub's /search/code endpoint trips a secondary rate limit when hit with
+// many parallel requests. Cap concurrency, cache repeat queries briefly,
+// and refuse to call upstream while a Retry-After window is active.
+const SEARCH_CONCURRENCY = 3;
+const SEARCH_CACHE_TTL_MS = 60_000;
+
 @Injectable()
 export class GithubSearch {
   private readonly logger = new Logger(GithubSearch.name);
+
+  private searchCache = new Map<
+    string,
+    { at: number; hits: ISkillSearchHit[] }
+  >();
+  private rateLimitedUntil = 0;
 
   constructor(private settingGateway: ISettingGateway) {}
 
@@ -51,19 +67,58 @@ export class GithubSearch {
   }
 
   async search(query: string): Promise<ISkillSearchHit[]> {
-    const token = await this.getToken();
     const trimmed = query.trim();
 
-    const requests = SOURCES.map((s) =>
-      this.searchOne(s.repo, trimmed, token).catch((err) => {
-        this.logger.warn(
-          `search failed for ${s.repo}: ${(err as Error).message}`,
-        );
-        return [] as ISkillSearchHit[];
-      }),
+    const cached = this.searchCache.get(trimmed);
+    if (cached && Date.now() - cached.at < SEARCH_CACHE_TTL_MS) {
+      return cached.hits;
+    }
+
+    if (Date.now() < this.rateLimitedUntil) {
+      const waitS = Math.ceil((this.rateLimitedUntil - Date.now()) / 1000);
+      throw new ServiceUnavailableException(
+        `GitHub search rate-limited. Retry in ${waitS}s.`,
+      );
+    }
+
+    const token = await this.getToken();
+
+    const results = await mapWithConcurrency(SOURCES, SEARCH_CONCURRENCY, (s) =>
+      this.searchOne(s.repo, trimmed, token).then(
+        (hits) => ({ ok: true as const, repo: s.repo, hits }),
+        (err: Error) => ({ ok: false as const, repo: s.repo, err }),
+      ),
     );
-    const lists = await Promise.all(requests);
-    return dedupe(lists.flat());
+
+    const errors = results.filter(
+      (r): r is { ok: false; repo: string; err: Error } => !r.ok,
+    );
+    const successHits = results
+      .filter(
+        (r): r is { ok: true; repo: string; hits: ISkillSearchHit[] } => r.ok,
+      )
+      .flatMap((r) => r.hits);
+
+    for (const e of errors) {
+      this.logger.warn(`search failed for ${e.repo}: ${e.err.message}`);
+    }
+
+    // If every source failed, surface the failure instead of returning
+    // an empty list that looks like "no results" to the UI.
+    if (errors.length === SOURCES.length) {
+      const rateLimited = errors.find((e) =>
+        /\b403\b|\b429\b|rate limit|abuse/i.test(e.err.message),
+      );
+      throw new ServiceUnavailableException(
+        rateLimited
+          ? `GitHub search rate-limited: ${rateLimited.err.message}`
+          : `GitHub search failed: ${errors[0].err.message}`,
+      );
+    }
+
+    const deduped = dedupe(successHits);
+    this.searchCache.set(trimmed, { at: Date.now(), hits: deduped });
+    return deduped;
   }
 
   /**
@@ -265,10 +320,27 @@ export class GithubSearch {
     const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=10`;
     const res = await fetch(url, { headers: githubHeaders(token, true) });
     if (!res.ok) {
+      this.rememberRateLimit(res);
       throw new Error(`GitHub search ${res.status} for ${repo}`);
     }
     const data = (await res.json()) as { items?: GhCodeSearchItem[] };
     return (data.items ?? []).map((item) => toHit(item));
+  }
+
+  private rememberRateLimit(res: Response): void {
+    if (res.status !== 403 && res.status !== 429) return;
+    const retryAfter = Number(res.headers.get('retry-after'));
+    if (Number.isFinite(retryAfter) && retryAfter > 0) {
+      this.rateLimitedUntil = Math.max(
+        this.rateLimitedUntil,
+        Date.now() + retryAfter * 1000,
+      );
+      return;
+    }
+    const reset = Number(res.headers.get('x-ratelimit-reset'));
+    if (Number.isFinite(reset) && reset > 0) {
+      this.rateLimitedUntil = Math.max(this.rateLimitedUntil, reset * 1000);
+    }
   }
 
   private async getToken(): Promise<string | null> {
@@ -394,6 +466,24 @@ function isLikelyText(path: string): boolean {
     ) ||
     /^(Dockerfile|Makefile|README|LICENSE)/.test(path.split('/').pop() ?? '')
   );
+}
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < items.length) {
+      const i = cursor++;
+      results[i] = await fn(items[i]);
+    }
+  };
+  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
+  await Promise.all(workers);
+  return results;
 }
 
 function dedupe(hits: ISkillSearchHit[]): ISkillSearchHit[] {

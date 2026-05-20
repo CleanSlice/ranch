@@ -37,7 +37,9 @@ export class ApiKeyMapper {
   }
 
   /** Drop unknown values, dedupe; never falls back — empty scopes means a key that authenticates but unlocks no endpoints. */
-  normalizeScopes(scopes: readonly string[] | null | undefined): ApiKeyScopeTypes[] {
+  normalizeScopes(
+    scopes: readonly string[] | null | undefined,
+  ): ApiKeyScopeTypes[] {
     if (!scopes?.length) return [];
     return Array.from(
       new Set(scopes.filter((s): s is ApiKeyScopeTypes => VALID_SCOPES.has(s))),

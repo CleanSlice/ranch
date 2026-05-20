@@ -44,17 +44,29 @@ services:
       timeout: 5s
       retries: 5
 
-  # Browserless — local mirror of the prod browser-pool StatefulSet.
+  # Browser-pool — local mirror of the prod browser-pool StatefulSet.
+  # Same image as prod: browserless + x11vnc + websockify + noVNC + a JWT-
+  # gated auth-proxy on :7900. Built from ranch/k8s/browser-pool-image/.
+  # See that folder's README for the design notes.
+  #
   # Attached to the k3d network so agent runtime pods can resolve the
-  # hostname `ranch-browserless:3000` for CDP connects. The pool token
-  # matches BROWSER_POOL_TOKEN in api/.env.dev — change one, change both.
+  # hostname `ranch-browserless:3000` for CDP. The pool token matches
+  # BROWSER_POOL_TOKEN in api/.env.dev — change one, change both.
+  #
+  # Ports:
+  #   13000 → 3000  browserless CDP / REST
+  #   17900 → 7900  auth-proxy /live + /websockify + /vnc/*  (open this in a browser)
   browserless:
-    image: ghcr.io/browserless/chromium:latest
+    image: ghcr.io/cleanslice/browser-pool:latest
     container_name: ranch-browserless
     ports:
       - '13000:3000'
+      - '17900:7900'
     environment:
       TOKEN: dev-browser-pool-token-change-me
+      # The auth-proxy verifies VNC URL JWTs against this — must match
+      # JWT_SECRET in api/.env.dev so URLs minted by the local API verify.
+      JWT_SECRET: dev-secret-change-me
       CONCURRENT: '4'
       QUEUED: '8'
       TIMEOUT: '600000'
@@ -63,7 +75,6 @@ services:
       ENABLE_CORS: 'true'
       ALLOW_GET: 'true'
       ALLOW_ARG_FROM_REQUEST: 'true'
-      ENABLE_LIVE: 'true'
       # Without this, the pool crashes whenever any client sends a malformed
       # request — the error hook itself throws TypeError on the unset URL.
       ERROR_ALERT_URL: 'http://127.0.0.1:65535/sink'

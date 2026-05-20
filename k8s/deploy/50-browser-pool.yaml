@@ -1,21 +1,31 @@
-# Browser-pool: shared headless Chromium instances for runtime browser tools.
+# Browser-pool: shared Chromium instances for runtime browser tools, plus
+# noVNC live takeover for human-in-the-loop 2FA / CAPTCHA.
 #
 # Runtime agents connect via CDP (ws://browser-pool:3000?token=...) and pass
 # `--user-data-dir=/profiles/<userId>/<accountKey>` per session, so cookies and
 # logged-in state survive pod restarts (PVC) and never cross tenants
 # (path namespaced by userId in the API slice).
 #
-# Per-session VNC streaming is exposed via Ingress at browser.ranch.cleanslice.org
-# so end users can hand-finish 2FA / CAPTCHA flows.
+# Image: ghcr.io/cleanslice/browser-pool. Built from ranch/k8s/browser-pool-image/.
+# It's browserless v2 with x11vnc + websockify + noVNC layered on. A small
+# Node auth-proxy (port 7900) gates `/live` and `/websockify` on the same
+# JWT_SECRET ranch-api uses, so only freshly-minted VNC URLs are accepted.
+# Anything not under `/live`, `/vnc/`, or `/websockify` falls through to
+# browserless on :3000.
 #
 # Resource sizing: single replica handles ~10 concurrent sessions. Scale via
 # `replicas` once /browser/sessions consistently hits CONCURRENT cap; profiles
 # are pinned to a pod ordinal via the API slice's consistent-hash scheduler.
 #
-# Secret: the pool reads its TOKEN from `ranch-secrets.BROWSER_POOL_TOKEN`
-# (provisioned by terraform/modules/apps, never committed to git). Same
-# Secret is also referenced by ranch-api for URL minting — both pods MUST
-# see the same value or the runtime gets 401 on every CDP connect.
+# Tenancy note: all sessions on a pod share one Xvfb, so a valid VNC JWT
+# sees every active Chrome window in that pod. Acceptable while the pool is
+# effectively single-tenant; per-session viewport isolation requires
+# per-session Xvfb (out of scope here).
+#
+# Secrets:
+#   BROWSER_POOL_TOKEN — browserless's own auth, for CDP connects.
+#   JWT_SECRET         — same value as ranch-api; the auth-proxy verifies
+#                        the URL token against it.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -32,19 +42,31 @@ spec:
       labels:
         app: browser-pool
     spec:
+      imagePullSecrets:
+        - name: ghcr
       containers:
         - name: chromium
-          image: ghcr.io/browserless/chromium:latest
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/cleanslice/browser-pool:latest
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 3000
+            - name: vnc
+              containerPort: 7900
           env:
             - name: TOKEN
               valueFrom:
                 secretKeyRef:
                   name: ranch-secrets
                   key: BROWSER_POOL_TOKEN
+            # Same secret ranch-api signs VNC URL JWTs with — the auth-proxy
+            # in this container verifies the `?token=` query param against it.
+            # If the two drift, every /live link returns 401.
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-secrets
+                  key: JWT_SECRET
             - name: CONCURRENT
               value: "10"
             - name: QUEUED
@@ -65,11 +87,6 @@ spec:
             - name: ALLOW_GET
               value: "true"
             - name: ALLOW_ARG_FROM_REQUEST
-              value: "true"
-            # Live VNC view at /live?id=<sessionId>. If you swap to an image
-            # that uses a different path, update BROWSER_POOL_VNC_URL_TEMPLATE
-            # on ranch-api too.
-            - name: ENABLE_LIVE
               value: "true"
             # If unset, browserless's error hook itself throws "TypeError:
             # Invalid URL" the first time anything goes wrong, which trips
@@ -120,6 +137,9 @@ spec:
     - name: http
       port: 3000
       targetPort: 3000
+    - name: vnc
+      port: 7900
+      targetPort: 7900
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -139,6 +159,32 @@ spec:
     - host: browser.ranch.cleanslice.org
       http:
         paths:
+          # Auth-proxy paths: the JWT-gated noVNC viewer and the WS bridge
+          # to local websockify. Order matters — more-specific prefixes
+          # are listed first so Traefik routes /live before /.
+          - path: /live
+            pathType: Prefix
+            backend:
+              service:
+                name: browser-pool
+                port:
+                  number: 7900
+          - path: /vnc
+            pathType: Prefix
+            backend:
+              service:
+                name: browser-pool
+                port:
+                  number: 7900
+          - path: /websockify
+            pathType: Prefix
+            backend:
+              service:
+                name: browser-pool
+                port:
+                  number: 7900
+          # Everything else (CDP, /sessions, /json/*, /chromium/*) stays on
+          # browserless's own port.
           - path: /
             pathType: Prefix
             backend:

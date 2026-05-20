@@ -299,6 +299,18 @@ export class IntegrationService {
   }
 
   /**
+   * Runtime discovery — every integration an identity can act as
+   * (canonical owner or alias). The runtime's `integration_list` tool
+   * exposes this so an agent picks the exact `browser_play` profile
+   * (`<service>:<accountKey>`) instead of guessing "default" / "x".
+   */
+  listForIdentity(
+    identityId: string,
+  ): Promise<IIntegrationAccountData[]> {
+    return this.gateway.findByIdentity(identityId);
+  }
+
+  /**
    * Runtime lookup — fetches a state file for an identity that may be
    * the canonical owner OR an alias. Most of the time direct lookup
    * succeeds (we fan-out writes), but if the alias was added AFTER the

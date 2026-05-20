@@ -1,5 +1,5 @@
 <template>
   <div>
-    <IntegrationProvider />
+    <SessionProvider />
   </div>
 </template>

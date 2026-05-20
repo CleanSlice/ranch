@@ -467,7 +467,7 @@ export class IntegrationService {
       this.config?.get<string>('ADMIN_BASE_URL') ??
       ''
     ).replace(/\/+$/, '');
-    const path = `/integrations/connect/${encodeURIComponent(account.id)}`;
+    const path = '/sessions';
     const helpUrl = adminBase ? `${adminBase}${path}` : path;
     const siteUrl = item.loginUrl ?? '';
 

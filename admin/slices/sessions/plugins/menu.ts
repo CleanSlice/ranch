@@ -4,12 +4,12 @@ export default defineNuxtPlugin(() => {
   const menu = useMenuStore();
 
   menu.addSidebar({
-    id: 'integration',
+    id: 'sessions',
     group: MenuGroupTypes.Admin,
-    title: 'Integrations',
-    link: 'integrations',
+    title: 'Sessions',
+    link: 'sessions',
     active: false,
-    icon: 'Plug',
-    sortOrder: 14,
+    icon: 'Browser',
+    sortOrder: 13,
   });
 });

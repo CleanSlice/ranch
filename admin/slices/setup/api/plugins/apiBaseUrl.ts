@@ -4,7 +4,16 @@ export default defineNuxtPlugin({
   enforce: 'pre',
   setup() {
     const config = useRuntimeConfig();
-    client.setConfig({ baseURL: config.public.apiUrl as string });
+    const apiUrl = config.public.apiUrl as string;
+    client.setConfig({ baseURL: apiUrl });
+
+    // Publish the API URL as a meta tag so the Ranch Cookies browser
+    // extension can auto-detect this deployment when its popup is opened
+    // on an admin page — the user picks "Use this site" instead of
+    // typing the admin + API URLs by hand. Public, non-sensitive.
+    useHead({
+      meta: [{ name: 'ranch-api-url', content: apiUrl }],
+    });
 
     // Attach the bearer token on every request from the access_token cookie.
     // Reading per-request avoids depending on plugin order or on a separate

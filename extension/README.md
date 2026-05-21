@@ -24,42 +24,55 @@ storageState. Next `browser_play` with that profile name is logged in.
 
 ## Configure
 
-First popup asks for one thing:
+**Fastest path:** open your Ranch admin in a tab, then click the
+extension icon. The admin page advertises its API URL via a
+`<meta name="ranch-api-url">` tag, so the popup shows a **Use this site**
+card — one click and you're connected (works on localhost too, no port
+guessing). Manual entry below is the fallback when the popup is opened
+on some other page.
+
+Manual setup asks for two URLs:
 
 - **Ranch admin URL** — e.g. `https://admin.ranch.cleanslice.org` (prod)
-  or `http://localhost:3001` (local dev).
+  or `http://localhost:3001` (local dev). The extension reads your login
+  cookie from this origin.
+- **Ranch API URL** — auto-filled by swapping the leading `admin.` host
+  segment for `api.`. **For local dev you must edit it** — admin and API
+  run on different ports (e.g. `http://localhost:3000`).
 
 After that:
 
 1. If you're not signed in to Ranch admin yet, the popup gives you a
    button to open the login page. Sign in there, come back, click
    "I've signed in — check again".
-2. The popup pulls your agents from the Ranch API and shows a
-   dropdown. Pick one. (The admin agent is starred and sorted first.)
-3. Confirm the user ID inside the agent — defaults to `admin`. Use a
-   Telegram chat user ID instead if you're connecting cookies for a
-   chat-driven agent.
-4. The popup mints a `browser:cookies`-scoped JWT server-side and
-   stores it in `chrome.storage.local`. From now on you just open the
-   popup and click **Send cookies**.
+2. That's it — there is no separate agent-picker step. The popup mints
+   an `integration:cookies`-scoped JWT server-side and stores it in
+   `chrome.storage.local`. From now on you just open the popup and
+   click **Send cookies**.
 
-The API URL is auto-derived by swapping the leading `admin.` host
-segment for `api.` (the cleanslice deployment convention). If your
-install doesn't follow that convention, you can edit
-`chrome.storage.local` manually under `ranch-cookies:v2.apiUrl`.
+If API calls fail with a "Can't reach the Ranch API" banner, the API
+URL is wrong — click **Disconnect** and re-enter it.
 
 ## Use
 
 1. Open the site you want the agent to drive (`instagram.com`,
    `paypal.com`, anything). Log in if you aren't already.
 2. Click the Ranch icon.
-3. Pick a profile name — the same string you'll pass as `profile` to
-   `browser_play`. Examples: `instagram`, `instagram:miybot`,
-   `paypal:business`.
-4. Click **Send cookies**.
+3. Type an **account label** — the friendly name for this account
+   (e.g. `miybot`, `business`).
+4. Choose **who gets the cookies**:
+   - **All my agents** (default) — cookies land in your per-user
+     integration store; every agent you run can use them. The site
+     must be a known catalogue service.
+   - **Specific agents** — tick the agents from the list; cookies go
+     to each agent's own browser store. Works for any site, in or out
+     of the catalogue.
+5. Click **Send cookies**.
 
-The agent now has the cookies. Run `browser_play(profile: "<that name>")`
-and it'll be logged in.
+The agent now has the cookies. For a catalogue service the profile is
+`<service>:<label>` (e.g. `instagram:miybot`); for an unlisted site it's
+just the label. Run `browser_play(profile: "<that name>")` and it'll be
+logged in.
 
 ## What's NOT sent
 

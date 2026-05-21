@@ -7,14 +7,14 @@
       :root {
         color-scheme: light dark;
         --fg: #0a0a0a;
-        --fg-muted: #6b7280;
+        --fg-muted: #71717a;
         --bg: #ffffff;
-        --bg-soft: #f5f5f5;
-        --border: #e5e7eb;
+        --bg-soft: #f4f4f5;
+        --border: #e4e4e7;
         --accent: #18181b;
         --accent-fg: #fafafa;
-        --danger: #b91c1c;
-        --success: #047857;
+        --danger: #dc2626;
+        --success: #059669;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -25,132 +25,297 @@
           --border: #27272a;
           --accent: #fafafa;
           --accent-fg: #0a0a0a;
+          --danger: #f87171;
+          --success: #34d399;
         }
       }
-      /* box-sizing: border-box on every element so `body`'s 16px padding
-         lives INSIDE its declared 600px instead of stacking outside it.
-         Without this the actual rendered width was 600 + 16 + 16 = 632
-         and Chrome clipped the rightmost ~32px (taking "Disconnect"
-         with it). */
       *, *::before, *::after { box-sizing: border-box; }
-      /* Chrome popups max at 800×600. 600 fits full hostnames, JWT
-         previews, and the connected-row (agent name + user=...) on a
-         single line without truncation. */
-      html, body { margin: 0; padding: 0; width: 600px; max-width: 600px; }
-      body { font: 13px/1.45 system-ui, -apple-system, sans-serif; color: var(--fg); background: var(--bg); padding: 16px; }
-      h1 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
-      h1 .sub { font-weight: 400; color: var(--fg-muted); }
-      label { display: block; font-size: 11px; font-weight: 500; color: var(--fg-muted); margin: 12px 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
-      input, select {
-        width: 100%; box-sizing: border-box;
-        padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+      html, body { margin: 0; padding: 0; width: 380px; }
+      body {
+        font: 13px/1.5 system-ui, -apple-system, sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      section { padding: 16px; }
+
+      /* ── header ───────────────────────────────────────────────── */
+      .head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+      .head img { width: 28px; height: 28px; border-radius: 6px; }
+      .head .title { font-size: 14px; font-weight: 600; line-height: 1.2; }
+      .head .meta {
+        font-size: 11px; color: var(--fg-muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+
+      /* ── typography ───────────────────────────────────────────── */
+      h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+      p.hint { color: var(--fg-muted); font-size: 12px; margin: 4px 0 0; }
+      label.field-label {
+        display: block; font-size: 11px; font-weight: 600;
+        color: var(--fg-muted); margin: 14px 0 6px;
+        text-transform: uppercase; letter-spacing: 0.05em;
+      }
+
+      /* ── inputs ───────────────────────────────────────────────── */
+      input[type="url"], input[type="text"] {
+        width: 100%; padding: 9px 11px;
+        border: 1px solid var(--border); border-radius: 8px;
         background: var(--bg); color: var(--fg); font: inherit;
       }
-      input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
-      button {
-        display: block; width: 100%; margin-top: 12px;
-        padding: 9px 12px; border: 0; border-radius: 6px;
+      input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+      /* ── buttons ──────────────────────────────────────────────── */
+      button.primary {
+        display: block; width: 100%; margin-top: 14px;
+        padding: 10px 14px; border: 0; border-radius: 8px;
         background: var(--accent); color: var(--accent-fg);
         font: inherit; font-weight: 600; cursor: pointer;
       }
-      button:disabled { opacity: 0.5; cursor: not-allowed; }
-      button.secondary { background: transparent; color: var(--fg); border: 1px solid var(--border); }
-      button.link { background: transparent; color: var(--fg); border: 0; padding: 4px 0; margin-top: 6px; text-decoration: underline; font-weight: 400; font-size: 12px; text-align: left; width: auto; }
-      .status { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
+      button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+      button.secondary {
+        display: block; width: 100%; margin-top: 8px;
+        padding: 9px 14px; border: 1px solid var(--border); border-radius: 8px;
+        background: transparent; color: var(--fg); font: inherit;
+        font-weight: 500; cursor: pointer;
+      }
+      button.link {
+        background: transparent; border: 0; padding: 0;
+        color: var(--fg-muted); font: inherit; font-size: 12px;
+        text-decoration: underline; cursor: pointer;
+      }
+
+      /* ── site card ────────────────────────────────────────────── */
+      .site {
+        display: flex; align-items: center; gap: 9px;
+        padding: 10px 12px; background: var(--bg-soft);
+        border-radius: 8px;
+      }
+      .site .dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: var(--fg-muted); flex: none;
+      }
+      .site .dot.on { background: var(--success); }
+      .site .host {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; font-weight: 600; flex: 1;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .site .count { font-size: 11px; color: var(--fg-muted); flex: none; }
+
+      /* ── banner ───────────────────────────────────────────────── */
+      .banner {
+        margin-top: 10px; padding: 9px 11px; border-radius: 8px;
+        font-size: 12px; line-height: 1.45;
+      }
+      .banner.ok {
+        background: color-mix(in srgb, var(--success) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+      }
+      .banner.ok strong { color: var(--success); }
+      .banner.warn {
+        background: color-mix(in srgb, var(--danger) 9%, transparent);
+        border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
+      }
+      .banner.warn strong { color: var(--danger); }
+
+      /* ── setup screen ─────────────────────────────────────────── */
+      .setup-hero { text-align: center; padding: 10px 0 2px; }
+      .setup-hero img { width: 56px; height: 56px; border-radius: 13px; }
+      .setup-hero h1 { margin: 12px 0 2px; }
+      .setup-checking {
+        text-align: center; color: var(--fg-muted); font-size: 12px;
+        padding: 22px 0;
+      }
+      .detect-card {
+        margin: 14px 0; padding: 13px 12px; text-align: center;
+        background: color-mix(in srgb, var(--success) 10%, transparent);
+        border: 1px solid color-mix(in srgb, var(--success) 32%, transparent);
+        border-radius: 10px;
+      }
+      .detect-card .detect-host {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px; font-weight: 600; color: var(--success);
+      }
+      .detect-card .detect-status {
+        margin-top: 4px; color: var(--fg-muted); font-size: 11px;
+      }
+      .tip {
+        margin-bottom: 4px; padding: 10px 12px;
+        background: var(--bg-soft); border-radius: 9px;
+        font-size: 12px; line-height: 1.5; color: var(--fg-muted);
+      }
+      button.link.center { display: block; margin: 12px auto 0; }
+
+      /* ── segmented control (share scope) ──────────────────────── */
+      .seg {
+        display: flex; gap: 2px; padding: 3px;
+        background: var(--bg-soft); border-radius: 9px;
+      }
+      .seg label {
+        flex: 1; text-align: center; cursor: pointer;
+        padding: 7px 8px; border-radius: 6px;
+        font-size: 12px; font-weight: 600; color: var(--fg-muted);
+      }
+      .seg label:has(input:checked) {
+        background: var(--bg); color: var(--fg);
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+      }
+      .seg input { position: absolute; opacity: 0; pointer-events: none; }
+
+      /* ── agent checklist ──────────────────────────────────────── */
+      .agents {
+        margin-top: 8px; border: 1px solid var(--border);
+        border-radius: 8px; overflow: hidden;
+        max-height: 168px; overflow-y: auto;
+      }
+      .agent {
+        display: flex; align-items: center; gap: 9px;
+        padding: 8px 11px; cursor: pointer;
+        border-top: 1px solid var(--border);
+      }
+      .agent:first-child { border-top: 0; }
+      .agent:hover { background: var(--bg-soft); }
+      .agent input { width: 15px; height: 15px; accent-color: var(--accent); flex: none; }
+      .agent .name { flex: 1; font-weight: 500; }
+      .agent .badge {
+        font-size: 10px; font-weight: 600; color: var(--fg-muted);
+        background: var(--bg-soft); border: 1px solid var(--border);
+        padding: 1px 6px; border-radius: 5px;
+      }
+      .agents-msg { padding: 14px 12px; text-align: center; color: var(--fg-muted); font-size: 12px; }
+
+      /* ── status ───────────────────────────────────────────────── */
+      .status { margin-top: 12px; padding: 9px 11px; border-radius: 8px; font-size: 12px; line-height: 1.45; }
       .status.ok { background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success); }
       .status.err { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
-      .hint { color: var(--fg-muted); font-size: 11px; margin-top: 4px; }
-      .domain { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px 10px; background: var(--bg-soft); border-radius: 6px; }
-      .connected-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--fg-muted); margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-      .connected-row .name { color: var(--fg); font-weight: 500; flex: 1; }
-      .connected-row .link { color: var(--fg-muted); text-decoration: underline; cursor: pointer; font-size: 11px; }
-      .empty { padding: 24px 12px; text-align: center; color: var(--fg-muted); font-size: 12px; }
-      .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--fg-muted); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+
+      /* ── footer ───────────────────────────────────────────────── */
+      .foot {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);
+        font-size: 11px; color: var(--fg-muted);
+      }
+
+      .spinner {
+        display: inline-block; width: 13px; height: 13px;
+        border: 2px solid currentColor; border-top-color: transparent;
+        border-radius: 50%; animation: spin 0.7s linear infinite;
+        vertical-align: -2px; margin-right: 6px;
+      }
       @keyframes spin { to { transform: rotate(360deg); } }
-      .mode-toggle { display: flex; gap: 0; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 2px; background: var(--bg-soft); }
-      .mode-toggle button { flex: 1; margin: 0; padding: 6px 10px; background: transparent; color: var(--fg-muted); border: 0; border-radius: 4px; font-size: 12px; font-weight: 500; }
-      .mode-toggle button.active { background: var(--bg); color: var(--fg); }
-      .detected { padding: 8px 10px; background: color-mix(in srgb, var(--success) 8%, transparent); border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); border-radius: 6px; font-size: 12px; }
-      .detected strong { color: var(--success); }
-      .detected.unsupported { background: color-mix(in srgb, var(--danger) 6%, transparent); border-color: color-mix(in srgb, var(--danger) 25%, transparent); }
-      .detected.unsupported strong { color: var(--danger); }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
     <!-- ========== STATE: unconfigured ========== -->
     <section id="screen-setup" hidden>
-      <h1>Connect Ranch <span class="sub">— first run</span></h1>
-      <p class="hint">Paste your Ranch admin URL. The extension reads your login cookie from that domain so you don't have to copy tokens.</p>
-      <label for="setup-url">Ranch admin URL</label>
-      <input id="setup-url" type="url" placeholder="https://admin.ranch.cleanslice.org" autocomplete="off" />
-      <button id="setup-continue">Continue</button>
+      <div class="setup-hero">
+        <img src="icons/icon-128.png" alt="Ranch" />
+        <h1>Connect Ranch</h1>
+      </div>
+
+      <!-- detection in progress -->
+      <div id="setup-checking" class="setup-checking">
+        <span class="spinner"></span> Checking this tab…
+      </div>
+
+      <!-- A: opened on a Ranch admin tab — one click, no fields -->
+      <div id="detect-block" hidden>
+        <div class="detect-card">
+          <div class="detect-host" id="detect-host">—</div>
+          <div class="detect-status" id="detect-status"></div>
+        </div>
+        <button id="detect-use" class="primary">Use this site</button>
+        <button id="detect-manual" type="button" class="link center">
+          Enter URLs manually
+        </button>
+      </div>
+
+      <!-- B: opened on any other page — manual entry + tip -->
+      <div id="manual-block" hidden>
+        <div class="tip" id="setup-tip">
+          Tip: open your Ranch admin in a tab and click the extension
+          there — it connects in one click, no URLs to type.
+        </div>
+        <label class="field-label" for="setup-url">Ranch admin URL</label>
+        <input id="setup-url" type="url" placeholder="https://admin.ranch.cleanslice.org" autocomplete="off" />
+        <label class="field-label" for="setup-api">Ranch API URL</label>
+        <input id="setup-api" type="url" placeholder="https://api.ranch.cleanslice.org" autocomplete="off" />
+        <p class="hint">
+          Auto-filled from the admin URL. Edit it for local dev — admin
+          and API run on different ports (e.g. <code>localhost:3000</code>).
+        </p>
+        <button id="setup-continue" class="primary">Continue</button>
+      </div>
     </section>
 
     <!-- ========== STATE: needs-login ========== -->
     <section id="screen-login" hidden>
       <h1>Sign in to Ranch</h1>
-      <p class="hint">No login cookie found at <code class="domain" id="login-host"></code>. Sign in there, then come back and click below.</p>
-      <button id="login-open">Open Ranch login</button>
+      <p class="hint">
+        No login cookie found at <strong id="login-host"></strong>.
+        Sign in there, then come back and click below.
+      </p>
+      <button id="login-open" class="primary">Open Ranch login</button>
       <button id="login-retry" class="secondary">I've signed in — check again</button>
-      <button id="login-reset" class="link">Use a different URL</button>
-    </section>
-
-    <!-- ========== STATE: pick-agent ========== -->
-    <section id="screen-agent" hidden>
-      <h1>Pick an agent</h1>
-      <p class="hint">Cookies you send will be saved under this agent's S3 prefix and restored by <code>browser_play</code>.</p>
-      <label for="agent-select">Agent</label>
-      <select id="agent-select"></select>
-      <label for="agent-user">User ID inside agent</label>
-      <input id="agent-user" type="text" value="admin" autocomplete="off" />
-      <p class="hint">Use <code>admin</code> for the admin agent, or a Telegram user ID (e.g. <code>55212224</code>) for chat-driven agents. Multiple humans share an agent by using different user IDs.</p>
-      <button id="agent-pick">Connect</button>
-      <button id="agent-reset" class="link">Use a different Ranch URL</button>
+      <div class="foot">
+        <span></span>
+        <button id="login-reset" class="link">Use a different URL</button>
+      </div>
     </section>
 
     <!-- ========== STATE: ready ========== -->
     <section id="screen-main" hidden>
-      <h1>Send cookies → Ranch</h1>
-
-      <div class="mode-toggle">
-        <button id="mode-integration" class="active" type="button">Integration</button>
-        <button id="mode-agent" type="button">Agent (legacy)</button>
+      <div class="head">
+        <img src="icons/icon-48.png" alt="" />
+        <div style="min-width:0;flex:1;">
+          <div class="title">Send cookies → Ranch</div>
+          <div class="meta" id="head-host">—</div>
+        </div>
       </div>
 
-      <!-- INTEGRATION sub-screen (default) -->
-      <div id="mode-integration-panel">
-        <label>Current site</label>
-        <div class="domain" id="int-site-host">—</div>
-        <p class="hint" id="int-site-cookies">No cookies detected yet.</p>
-
-        <div id="int-detected" class="detected" hidden></div>
-
-        <label for="int-account-key">Account label</label>
-        <input id="int-account-key" type="text" placeholder="miybot, default, …" autocomplete="off" />
-        <p class="hint" id="int-account-hint">User-friendly identifier for this account. Shows up in the /integrations admin page.</p>
-
-        <button id="int-send-btn" disabled>Send cookies</button>
+      <!-- current site -->
+      <div class="site">
+        <span class="dot" id="site-dot"></span>
+        <span class="host" id="site-host">—</span>
+        <span class="count" id="site-count">no cookies</span>
       </div>
 
-      <!-- AGENT sub-screen (legacy) -->
-      <div id="mode-agent-panel" hidden>
-        <label>Current site</label>
-        <div class="domain" id="site-host">—</div>
-        <p class="hint" id="site-cookies">No cookies detected yet.</p>
+      <!-- service detection banner -->
+      <div id="detected" class="banner" hidden></div>
 
-        <label for="profile">Profile name</label>
-        <input id="profile" type="text" placeholder="instagram, paypal:main, …" autocomplete="off" />
-        <p class="hint">Same string you (or the agent) use as <code>profile</code> in <code>browser_play</code>. This writes to the agent-scoped S3 prefix — use the Integration tab for per-user imports.</p>
+      <!-- account label -->
+      <label class="field-label" for="account-key">Account label</label>
+      <input id="account-key" type="text" placeholder="miybot, default, …" autocomplete="off" />
+      <p class="hint" id="account-hint">A friendly name for this account.</p>
 
-        <button id="send-btn" disabled>Send cookies</button>
+      <!-- share scope -->
+      <label class="field-label">Share with</label>
+      <div class="seg" role="radiogroup">
+        <label>
+          <input type="radio" name="scope" value="all" checked />
+          <span>All my agents</span>
+        </label>
+        <label>
+          <input type="radio" name="scope" value="some" />
+          <span>Specific agents</span>
+        </label>
       </div>
+      <p class="hint" id="scope-hint">
+        Cookies go to your per-user store — every agent you run can use them.
+      </p>
+
+      <!-- agent checklist (only when scope = some) -->
+      <div id="agents" class="agents" hidden></div>
+
+      <button id="send-btn" class="primary" disabled>Send cookies</button>
 
       <div id="status" class="status" hidden></div>
 
-      <div class="connected-row">
-        <span>Connected:</span>
-        <span class="name" id="connected-summary">—</span>
-        <span class="link" id="disconnect">Disconnect</span>
+      <div class="foot">
+        <button id="edit-urls" class="link">Edit URLs</button>
+        <button id="disconnect" class="link">Disconnect</button>
       </div>
     </section>
 

@@ -9,6 +9,8 @@
 // (a strict subset of YAML), so the inner pod specs are JSON-stringified
 // objects rather than YAML strings with escape hazards.
 
+import type { IAgentEnvVar } from '../domain/workflow.types';
+
 export interface IAgentWorkflowManifestInput {
   agentId: string;
   agentName: string;
@@ -18,6 +20,7 @@ export interface IAgentWorkflowManifestInput {
   cpu: string;
   memory: string;
   isAdmin: boolean;
+  debugEnabled: boolean;
   ranchApiUrl: string;
   ranchApiToken: string;
   bridleUrl: string;
@@ -127,6 +130,57 @@ export function buildAgentWorkflow(input: IAgentWorkflowManifestInput): object {
   };
 }
 
+/**
+ * The exact env var list injected into an agent pod. SINGLE SOURCE OF
+ * TRUTH — `buildAgentPod` uses it for the real pod spec, and the env
+ * preview endpoint (`GET /agents/:id/env`) uses it so the admin UI never
+ * drifts from what the pod actually gets. Adding an env var here makes
+ * it appear in both places automatically.
+ */
+export function buildAgentEnv(i: IAgentWorkflowManifestInput): IAgentEnvVar[] {
+  const entries: IAgentEnvVar[] = [
+    { name: 'AGENT_ID', value: i.agentId },
+    { name: 'AGENT_NAME', value: i.agentName },
+    { name: 'AGENT_CONFIG_B64', value: i.agentConfigB64 },
+    { name: 'BRIDLE_URL', value: i.bridleUrl },
+    { name: 'BRIDLE_API_KEY', value: i.bridleApiKey },
+    { name: 'BRIDLE_AGENT_ID', value: i.agentId },
+    { name: 'S3_BUCKET', value: i.s3Bucket },
+    { name: 'S3_PREFIX', value: i.s3Prefix },
+    { name: 'S3_ENDPOINT', value: i.s3Endpoint },
+    { name: 'AWS_REGION', value: i.awsRegion },
+    { name: 'AWS_ACCESS_KEY_ID', value: i.awsAccessKeyId },
+    { name: 'AWS_SECRET_ACCESS_KEY', value: i.awsSecretAccessKey },
+    { name: 'SECRET_PROVIDER', value: i.secretProvider },
+    { name: 'AWS_SECRET_PREFIX', value: i.awsSecretPrefix },
+    { name: 'LLM_PROVIDER', value: i.llm.provider },
+    { name: 'LLM_MODEL', value: i.llm.model },
+    { name: 'LLM_FALLBACK_MODEL', value: i.llm.fallbackModel },
+    { name: 'LLM_API_KEY', value: i.llm.apiKey },
+    { name: 'LLM_AUX_PROVIDER', value: i.llm.auxProvider },
+    { name: 'LLM_AUX_MODEL', value: i.llm.auxModel },
+    { name: 'LLM_AUX_FALLBACK_MODEL', value: i.llm.auxFallbackModel },
+    { name: 'LLM_AUX_API_KEY', value: i.llm.auxApiKey },
+    { name: 'RANCH_ADMIN', value: i.isAdmin ? 'true' : 'false' },
+    // Debug toggle — `LOG_LEVEL=debug` makes the runtime emit full error
+    // traces (the truncated "+N more lines") and the live debug event
+    // stream. Off → normal `info` verbosity.
+    { name: 'LOG_LEVEL', value: i.debugEnabled ? 'debug' : 'info' },
+    { name: 'RANCH_API_URL', value: i.ranchApiUrl },
+    { name: 'RANCH_API_TOKEN', value: i.ranchApiToken },
+    { name: 'MCP_SERVERS_B64', value: i.mcpServersB64 },
+    { name: 'TELEGRAM_BOT_TOKEN', value: i.telegram.botToken },
+    { name: 'TELEGRAM_BOT_NAME', value: i.telegram.botName },
+    { name: 'TELEGRAM_BOT_ADMIN_IDS', value: i.telegram.adminIds },
+  ];
+  // Drop empty-valued entries. The pod treats `FOO=""` and `FOO` (unset) as
+  // different — `??` on the runtime side keeps the empty string, masking the
+  // intended fallback. The classic burn: `LLM_AUX_API_KEY=""` made the
+  // runtime's auxiliary Claude init fail with "No credentials" instead of
+  // inheriting `LLM_API_KEY`.
+  return entries.filter((e) => e.value !== '' && e.value !== undefined);
+}
+
 function buildAgentPod(
   podName: string,
   i: IAgentWorkflowManifestInput,
@@ -153,37 +207,7 @@ function buildAgentPod(
           name: 'agent',
           image: i.image,
           imagePullPolicy: i.imagePullPolicy,
-          env: [
-            { name: 'AGENT_ID', value: i.agentId },
-            { name: 'AGENT_NAME', value: i.agentName },
-            { name: 'AGENT_CONFIG_B64', value: i.agentConfigB64 },
-            { name: 'BRIDLE_URL', value: i.bridleUrl },
-            { name: 'BRIDLE_API_KEY', value: i.bridleApiKey },
-            { name: 'BRIDLE_AGENT_ID', value: i.agentId },
-            { name: 'S3_BUCKET', value: i.s3Bucket },
-            { name: 'S3_PREFIX', value: i.s3Prefix },
-            { name: 'S3_ENDPOINT', value: i.s3Endpoint },
-            { name: 'AWS_REGION', value: i.awsRegion },
-            { name: 'AWS_ACCESS_KEY_ID', value: i.awsAccessKeyId },
-            { name: 'AWS_SECRET_ACCESS_KEY', value: i.awsSecretAccessKey },
-            { name: 'SECRET_PROVIDER', value: i.secretProvider },
-            { name: 'AWS_SECRET_PREFIX', value: i.awsSecretPrefix },
-            { name: 'LLM_PROVIDER', value: i.llm.provider },
-            { name: 'LLM_MODEL', value: i.llm.model },
-            { name: 'LLM_FALLBACK_MODEL', value: i.llm.fallbackModel },
-            { name: 'LLM_API_KEY', value: i.llm.apiKey },
-            { name: 'LLM_AUX_PROVIDER', value: i.llm.auxProvider },
-            { name: 'LLM_AUX_MODEL', value: i.llm.auxModel },
-            { name: 'LLM_AUX_FALLBACK_MODEL', value: i.llm.auxFallbackModel },
-            { name: 'LLM_AUX_API_KEY', value: i.llm.auxApiKey },
-            { name: 'RANCH_ADMIN', value: i.isAdmin ? 'true' : 'false' },
-            { name: 'RANCH_API_URL', value: i.ranchApiUrl },
-            { name: 'RANCH_API_TOKEN', value: i.ranchApiToken },
-            { name: 'MCP_SERVERS_B64', value: i.mcpServersB64 },
-            { name: 'TELEGRAM_BOT_TOKEN', value: i.telegram.botToken },
-            { name: 'TELEGRAM_BOT_NAME', value: i.telegram.botName },
-            { name: 'TELEGRAM_BOT_ADMIN_IDS', value: i.telegram.adminIds },
-          ],
+          env: buildAgentEnv(i),
           resources: {
             requests: { cpu: i.cpu, memory: i.memory },
             limits: { cpu: i.cpu, memory: i.memory },

@@ -208,8 +208,14 @@ function buildAgentPod(
           image: i.image,
           imagePullPolicy: i.imagePullPolicy,
           env: buildAgentEnv(i),
+          // Burstable QoS: requests are a low floor (so the scheduler can
+          // fit many agents per node), limits are what the user configured
+          // (so each agent can burst up to its full budget when actually
+          // running browser_play / Chromium). Guaranteed (requests == limits
+          // at 2 CPU / 2Gi) made schedules fail on small Hetzner nodes —
+          // even one agent didn't fit alongside the platform pods.
           resources: {
-            requests: { cpu: i.cpu, memory: i.memory },
+            requests: { cpu: '500m', memory: '512Mi' },
             limits: { cpu: i.cpu, memory: i.memory },
           },
           ports: [{ containerPort: 3000 }],

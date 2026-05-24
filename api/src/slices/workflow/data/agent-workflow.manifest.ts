@@ -21,6 +21,11 @@ export interface IAgentWorkflowManifestInput {
   memory: string;
   isAdmin: boolean;
   debugEnabled: boolean;
+  // Ranch user the agent acts on behalf of when calling
+  // /integrations/internal/* — cookies and integrations are user-scoped,
+  // the runtime's ranch-session adapter forwards this as
+  // RANCH_AGENT_OWNER_ID.
+  ownerUserId: string;
   ranchApiUrl: string;
   ranchApiToken: string;
   bridleUrl: string;
@@ -166,6 +171,7 @@ export function buildAgentEnv(i: IAgentWorkflowManifestInput): IAgentEnvVar[] {
     // traces (the truncated "+N more lines") and the live debug event
     // stream. Off → normal `info` verbosity.
     { name: 'LOG_LEVEL', value: i.debugEnabled ? 'debug' : 'info' },
+    { name: 'RANCH_AGENT_OWNER_ID', value: i.ownerUserId },
     { name: 'RANCH_API_URL', value: i.ranchApiUrl },
     { name: 'RANCH_API_TOKEN', value: i.ranchApiToken },
     { name: 'MCP_SERVERS_B64', value: i.mcpServersB64 },

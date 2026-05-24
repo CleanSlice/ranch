@@ -3,7 +3,7 @@ import {
   IWorkflowGateway,
   ISubmitWorkflowData,
 } from '../domain/IWorkflowGateway';
-import { IWorkflowStatus } from '../domain/workflow.types';
+import { IWorkflowStatus, IAgentEnvVar } from '../domain/workflow.types';
 import { IInfraConfigGateway, ISettingGateway } from '#/setting/domain';
 import { ILlmGateway } from '#/llm/domain';
 import { normalizeCredential } from '#/llm/domain/llm.utils';
@@ -13,7 +13,12 @@ import { IKnowledgeGateway } from '#/reins/knowledge/domain';
 import { IKnowledgeConfigGateway } from '#/reins/config/domain';
 import { KNOWLEDGE_MCP_ID } from '#/mcpServer/domain/mcpServer.seeder';
 import { IAgentChannelGateway } from '#/agent/agentChannel/domain';
-import { buildAgentWorkflow } from './agent-workflow.manifest';
+import { IUserGateway, UserRoleTypes } from '#/user/user/domain';
+import {
+  buildAgentWorkflow,
+  buildAgentEnv,
+  IAgentWorkflowManifestInput,
+} from './agent-workflow.manifest';
 
 const DEFAULTS = {
   bridle_url: 'http://host.k3d.internal:3333/ws/agent',
@@ -49,8 +54,21 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     private knowledgeGateway: IKnowledgeGateway,
     private knowledgeConfig: IKnowledgeConfigGateway,
     private channelGateway: IAgentChannelGateway,
+    private userGateway: IUserGateway,
   ) {
     super();
+  }
+
+  // Agents act on behalf of a Ranch user when reaching back into
+  // /integrations/internal/* (cookies belong to a user, not the agent).
+  // Single-tenant assumption: the earliest Owner-role user. Multi-tenant
+  // setups will need Agent.userId — out of scope for this fix.
+  private async resolveOwnerUserId(): Promise<string> {
+    const all = await this.userGateway.findAll();
+    const owner = all
+      .filter((u) => u.roles.includes(UserRoleTypes.Owner))
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+    return owner?.id ?? 'admin';
   }
 
   private async getIntegration(name: keyof typeof DEFAULTS): Promise<string> {
@@ -120,7 +138,15 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     };
   }
 
-  async submit(data: ISubmitWorkflowData): Promise<string> {
+  /**
+   * Resolve a deploy request into the fully-baked manifest input —
+   * settings, LLM credential, MCP servers and channels all looked up.
+   * Shared by `submit` (real deploy) and `previewEnv` (admin UI preview)
+   * so the two never drift.
+   */
+  private async resolveManifestInput(
+    data: ISubmitWorkflowData,
+  ): Promise<IAgentWorkflowManifestInput> {
     const template = await this.templateGateway.findById(data.templateId);
     const effectiveKnowledgeIds =
       data.knowledgeIds.length > 0
@@ -171,34 +197,26 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       : null;
 
     // AGENT_CONFIG_B64 / MCP_SERVERS_B64 stay base64-encoded because the
-    // runtime image reads them that way from env. Other values are passed
-    // verbatim through JSON — no more Argo parameter substitution into a YAML
-    // string, so the historic escape hazard is gone.
+    // runtime image reads them that way from env.
     const agentConfigB64 = Buffer.from(JSON.stringify(data.config)).toString(
       'base64',
     );
     const mcpServersB64 = Buffer.from(JSON.stringify(mcpServers)).toString(
       'base64',
     );
-    // Default auxiliary model per provider — used by runtime ≥ 0.4.0 for
-    // background work (compaction, memory-flush) so the cheap model handles
-    // it instead of contending with the main LLM's prompt cache. Empty string
-    // means "no aux configured" → runtime falls back to main.
+    // Default auxiliary model per provider — used by runtime for background
+    // work (compaction, memory-flush). Empty string → runtime falls back.
     const provider = credential?.provider?.toLowerCase();
     const auxModelDefault =
       provider === 'claude' || provider === 'anthropic'
         ? 'claude-haiku-4-5'
         : '';
 
-    // Channels → runtime env vars. Source of truth is the agent's
-    // channels.json in S3 (resolved above via channelGateway). The runtime
-    // detects a channel by the presence of its token env, and on boot it
-    // also reads channels.json directly — env values are a fallback for
-    // channels not yet present in the file. Multiple channels of the same
-    // type would overwrite (last wins) — by design: one bot per platform.
     const telegram = channels.find((c) => c.type === 'telegram');
 
-    const workflow = buildAgentWorkflow({
+    const ownerUserId = await this.resolveOwnerUserId();
+
+    return {
       agentId: data.agentId,
       agentName: data.agentName,
       templateId: data.templateId,
@@ -207,6 +225,8 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       cpu: data.resources.cpu,
       memory: data.resources.memory,
       isAdmin: data.isAdmin,
+      debugEnabled: data.debugEnabled,
+      ownerUserId,
       ranchApiUrl,
       ranchApiToken: data.ranchApiToken,
       bridleUrl,
@@ -238,7 +258,22 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
         botName: telegram?.config.botName ?? '',
         adminIds: telegram?.config.adminIds ?? '',
       },
-    });
+    };
+  }
+
+  /**
+   * The env vars an agent pod would receive on its next deploy — built
+   * by the SAME resolution + `buildAgentEnv` as a real submit. Backs the
+   * admin "Environment" panel so it can never drift from the pod spec.
+   * Secret values are returned verbatim (the caller is an authed admin,
+   * same exposure as before); the UI masks them for display.
+   */
+  async previewEnv(data: ISubmitWorkflowData): Promise<IAgentEnvVar[]> {
+    return buildAgentEnv(await this.resolveManifestInput(data));
+  }
+
+  async submit(data: ISubmitWorkflowData): Promise<string> {
+    const workflow = buildAgentWorkflow(await this.resolveManifestInput(data));
 
     const argoUrl = await this.infraConfig.getArgoUrl();
     const response = await fetch(`${argoUrl}/api/v1/workflows/agents`, {

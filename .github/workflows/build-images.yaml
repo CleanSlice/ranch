@@ -1,8 +1,12 @@
 name: Build, push & deploy
 
-# On every push to main, build images for whatever changed (api / admin / app),
-# push to GHCR under ghcr.io/dmitriyzhuk/ranch-* (both :latest and :sha),
-# then trigger a rolling restart of the affected Deployment on the prod cluster.
+# On every push to main, build images for whatever changed (api / admin / app)
+# and push to GHCR under ghcr.io/cleanslice/ranch-* tagged with the commit
+# SHA only — `:latest` and the rolling deploy are reserved for tag pushes
+# (v*), which release-platform.yaml dispatches automatically after a version
+# bump. This keeps `:latest` deterministic and avoids the push-vs-tag race
+# where a parallel main-branch build would overwrite the tag-run's :latest
+# with a 0.0.0-<sha> image and then deploy that stale tag.
 #
 # Required repo secrets:
 #   GHCR_PAT          — GitHub PAT with write:packages + read:packages
@@ -40,11 +44,15 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      api:     ${{ steps.tag.outputs.all || steps.filter.outputs.api   || steps.manual.outputs.api }}
-      admin:   ${{ steps.tag.outputs.all || steps.filter.outputs.admin || steps.manual.outputs.admin }}
-      app:     ${{ steps.tag.outputs.all || steps.filter.outputs.app   || steps.manual.outputs.app }}
-      version: ${{ steps.version.outputs.value }}
-      tag:     ${{ steps.version.outputs.tag }}
+      api:        ${{ steps.tag.outputs.all || steps.filter.outputs.api   || steps.manual.outputs.api }}
+      admin:      ${{ steps.tag.outputs.all || steps.filter.outputs.admin || steps.manual.outputs.admin }}
+      app:        ${{ steps.tag.outputs.all || steps.filter.outputs.app   || steps.manual.outputs.app }}
+      version:    ${{ steps.version.outputs.value }}
+      tag:        ${{ steps.version.outputs.tag }}
+      # Release runs are the only ones that publish :latest and roll out
+      # deployments. Push-on-main builds keep their :sha images on GHCR for
+      # debugging but do not touch the live cluster.
+      is_release: ${{ steps.tag.outputs.all || 'false' }}
     steps:
       - uses: actions/checkout@v4
       - id: tag
@@ -114,8 +122,8 @@ jobs:
           build-args: |
             RANCH_VERSION=${{ needs.changes.outputs.version }}
           tags: |
-            ${{ env.IMAGE_PREFIX }}-api:latest
             ${{ env.IMAGE_PREFIX }}-api:${{ needs.changes.outputs.tag }}
+            ${{ needs.changes.outputs.is_release == 'true' && format('{0}-api:latest', env.IMAGE_PREFIX) || '' }}
           cache-from: type=gha,scope=ranch-api
           cache-to: type=gha,mode=max,scope=ranch-api
 
@@ -141,8 +149,8 @@ jobs:
             API_URL=${{ vars.API_URL }}
             RANCH_VERSION=${{ needs.changes.outputs.version }}
           tags: |
-            ${{ env.IMAGE_PREFIX }}-admin:latest
             ${{ env.IMAGE_PREFIX }}-admin:${{ needs.changes.outputs.tag }}
+            ${{ needs.changes.outputs.is_release == 'true' && format('{0}-admin:latest', env.IMAGE_PREFIX) || '' }}
           cache-from: type=gha,scope=ranch-admin
           cache-to: type=gha,mode=max,scope=ranch-admin
 
@@ -168,15 +176,19 @@ jobs:
             API_URL=${{ vars.API_URL }}
             RANCH_VERSION=${{ needs.changes.outputs.version }}
           tags: |
-            ${{ env.IMAGE_PREFIX }}-app:latest
             ${{ env.IMAGE_PREFIX }}-app:${{ needs.changes.outputs.tag }}
+            ${{ needs.changes.outputs.is_release == 'true' && format('{0}-app:latest', env.IMAGE_PREFIX) || '' }}
           cache-from: type=gha,scope=ranch-app
           cache-to: type=gha,mode=max,scope=ranch-app
 
   deploy:
     needs: [changes, build-api, build-admin, build-app]
+    # Deploy only from tag pushes (release runs). Push-on-main builds publish
+    # their :sha image but never touch the live cluster — this avoids racing
+    # with the tag-run that should be the authoritative source of :latest.
     if: |
       always() &&
+      needs.changes.outputs.is_release == 'true' &&
       (needs.build-api.result == 'success' ||
        needs.build-admin.result == 'success' ||
        needs.build-app.result == 'success')

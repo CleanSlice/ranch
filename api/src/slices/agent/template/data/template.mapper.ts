@@ -42,9 +42,12 @@ export class TemplateMapper {
       image: data.image,
       defaultConfig: (data.defaultConfig ??
         {}) as unknown as Prisma.InputJsonValue,
+      // Mirrored from template.prisma @default and templateInstall.service
+      // DEFAULT_RESOURCES — keep all three in sync. browser_play's headless
+      // Chromium needs >512Mi to even boot.
       defaultResources: (data.defaultResources ?? {
-        cpu: '500m',
-        memory: '512Mi',
+        cpu: '2000m',
+        memory: '2Gi',
       }) as unknown as Prisma.InputJsonValue,
       defaultKnowledgeIds: data.defaultKnowledgeIds ?? [],
       ...(data.paddockConfig !== undefined && {

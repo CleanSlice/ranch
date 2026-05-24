@@ -9,7 +9,11 @@ model Template {
   description         String
   image               String
   defaultConfig       Json              @default("{}")
-  defaultResources    Json              @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
+  // 2 CPU / 2Gi RAM is the realistic minimum for a runtime that spins up
+  // its own headless Chromium for browser_play. 500m/512Mi (the original
+  // default) starved Chromium on launch — every X/Instagram screenshot
+  // hit the 120s tool timeout because the browser never finished booting.
+  defaultResources    Json              @default("{\"cpu\": \"2000m\", \"memory\": \"2Gi\"}")
   paddockConfig       Json              @default("{}")
   defaultKnowledgeIds String[]          @default([])
   sourceUrl           String?

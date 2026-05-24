@@ -25,7 +25,11 @@ import {
 } from './templateInstall.types';
 
 const DEFAULT_IMAGE = 'ghcr.io/cleanslice/runtime:latest';
-const DEFAULT_RESOURCES = { cpu: '500m', memory: '512Mi' };
+// Realistic minimum for the runtime + a headless Chromium launched by
+// browser_play. The old 500m/512Mi default OOMed Chromium on every
+// X/Instagram screenshot. Mirror this in template.prisma's @default and
+// in template.mapper.ts's fallback.
+const DEFAULT_RESOURCES = { cpu: '2000m', memory: '2Gi' };
 
 // Files in `.agent/` whose contents are rendered against params.
 // Binary files would be skipped — the default template ships only text.

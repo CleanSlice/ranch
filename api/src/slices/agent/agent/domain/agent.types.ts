@@ -47,4 +47,5 @@ export interface IUpdateAgentData {
   isPublic?: boolean;
   allowedOrigins?: string[];
   knowledgeIds?: string[];
+  debugEnabled?: boolean;
 }

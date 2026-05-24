@@ -10,9 +10,9 @@ import {
  * in IntegrationService, not here, so the gateway stays a thin Prisma
  * wrapper that can be unit-tested without touching browser/secret slices.
  *
- * Every method is userId-scoped: rows from one user must never leak into
- * another's response. userId comes from the authenticated request — never
- * from request body.
+ * The admin (JWT) path is userId-scoped — userId comes from the
+ * authenticated request. The runtime path is instance-global (findGlobal)
+ * — the runtime has no per-user identity, only the bridle key.
  */
 export abstract class IIntegrationGateway {
   abstract findAll(userId: string): Promise<IIntegrationAccountData[]>;
@@ -29,19 +29,12 @@ export abstract class IIntegrationGateway {
   ): Promise<IIntegrationAccountData | null>;
 
   /**
-   * Find every account that an identity can act as — either as its
-   * canonical owner (`userId == identityId`) or via an alias
-   * (`identityId IN aliases`). Used by runtime-facing resolvers where
-   * the caller is `ctx.from` (Telegram ID / "admin" / channel ID) and
-   * may not match the canonical owner.
-   *
-   * When `service` is given, narrows the result. Used by the secrets
-   * resolver to fetch only e.g. "openai" rows.
+   * Every integration account in the instance, no userId filter. Used by
+   * the runtime-facing resolvers — the runtime is authenticated by the
+   * bridle key, has no per-user identity, and acts on the whole instance.
+   * When `service` is given, narrows the result.
    */
-  abstract findByIdentity(
-    identityId: string,
-    service?: string,
-  ): Promise<IIntegrationAccountData[]>;
+  abstract findGlobal(service?: string): Promise<IIntegrationAccountData[]>;
 
   abstract create(
     data: ICreateIntegrationAccountData,

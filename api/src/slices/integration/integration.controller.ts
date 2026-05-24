@@ -5,7 +5,6 @@ import {
   Get,
   HttpCode,
   Param,
-  Patch,
   Post,
   Req,
   UseGuards,
@@ -27,7 +26,6 @@ import {
   IntegrationAccountDto,
   LoginInstructionDto,
   SaveSecretDto,
-  UpdateIntegrationAliasesDto,
 } from './dtos';
 
 @ApiTags('integrations')
@@ -78,7 +76,6 @@ export class IntegrationController {
       dto.service,
       dto.accountKey,
       dto.label,
-      dto.aliases,
     )) as IntegrationAccountDto;
   }
 
@@ -114,25 +111,6 @@ export class IntegrationController {
       req.user.sub,
       id,
     )) as LoginInstructionDto;
-  }
-
-  @Patch('accounts/:id/aliases')
-  @ApiOperation({
-    summary:
-      'Replace the aliases list for an account. Service computes the diff: new aliases get the existing cookies/secret mirrored to them, removed aliases get their copy wiped. Pass [] to clear.',
-    operationId: 'updateIntegrationAliases',
-  })
-  @ApiOkResponse({ type: IntegrationAccountDto })
-  async updateAliases(
-    @Param('id') id: string,
-    @Body() dto: UpdateIntegrationAliasesDto,
-    @Req() req: Request & { user: IAuthTokenPayload },
-  ): Promise<IntegrationAccountDto> {
-    return (await this.service.updateAliases(
-      req.user.sub,
-      id,
-      dto.aliases,
-    )) as IntegrationAccountDto;
   }
 
   @Post('accounts/:id/import-cookies')

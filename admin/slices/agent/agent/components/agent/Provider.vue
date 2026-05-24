@@ -27,7 +27,6 @@ import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 
 const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
-const agentChannelStore = useAgentChannelStore();
 const agentStatusStore = useAgentStatusStore();
 const authStore = useAuthStore();
 const settingStore = useSettingStore();
@@ -68,11 +67,6 @@ const { data: usage, pending: usagePending, refresh: refreshUsage } = useAsyncDa
   `admin-agent-usage-${props.id}`,
   () => usageStore.fetchForAgent(props.id),
   { lazy: true },
-);
-const { data: channels } = useAsyncData(
-  `admin-agent-channels-${props.id}`,
-  () => agentChannelStore.fetchForAgent(props.id),
-  { lazy: true, default: () => [] },
 );
 const { data: template, pending: templatePending } = useAsyncData(
   `admin-agent-template-${props.id}`,
@@ -137,71 +131,18 @@ const SECRET_ENV_KEYS = new Set([
   'TELEGRAM_BOT_TOKEN',
 ]);
 
-const BRIDLE_URL_DEFAULT = 'http://host.k3d.internal:3333/ws/agent';
-const BRIDLE_API_KEY_DEFAULT = 'dev-bridle-api-key-change-me';
-
-const envVars = computed<{ name: string; value: string }[]>(() => {
-  if (!agent.value) return [];
-  const settingValue = (name: string, fallback = '') => {
-    const v = settingStore.get('integrations', name)?.value;
-    return (typeof v === 'string' && v) || fallback;
-  };
-  const bucket = settingValue('s3_bucket');
-  const cred = agent.value.llmCredentialId
-    ? llmStore.items.find((c) => c.id === agent.value!.llmCredentialId) ?? null
-    : null;
-  return [
-    { name: 'AGENT_ID', value: agent.value.id },
-    { name: 'AGENT_NAME', value: agent.value.name },
-    { name: 'AGENT_CONFIG', value: JSON.stringify(agent.value.config) },
-    { name: 'BRIDLE_URL', value: settingValue('bridle_url', BRIDLE_URL_DEFAULT) },
-    { name: 'BRIDLE_API_KEY', value: settingValue('bridle_api_key', BRIDLE_API_KEY_DEFAULT) },
-    { name: 'BRIDLE_AGENT_ID', value: agent.value.id },
-    { name: 'LLM_PROVIDER', value: cred?.provider ?? '' },
-    { name: 'LLM_MODEL', value: cred?.model ?? '' },
-    { name: 'LLM_FALLBACK_MODEL', value: cred?.fallbackModel ?? cred?.model ?? '' },
-    { name: 'LLM_API_KEY', value: cred?.apiKey ?? '' },
-    { name: 'S3_BUCKET', value: bucket },
-    { name: 'S3_PREFIX', value: bucket ? `agents/${agent.value.id}` : '' },
-    {
-      name: 'S3_ENDPOINT',
-      value:
-        settingValue('s3_endpoint_agent') || settingValue('s3_endpoint'),
-    },
-    { name: 'AWS_REGION', value: settingValue('aws_region', 'us-east-1') },
-    { name: 'AWS_ACCESS_KEY_ID', value: settingValue('aws_access_key_id') },
-    { name: 'AWS_SECRET_ACCESS_KEY', value: settingValue('aws_secret_access_key') },
-    { name: 'SECRET_PROVIDER', value: settingValue('secret_provider', 'file') },
-    { name: 'AWS_SECRET_PREFIX', value: settingValue('aws_secret_prefix', 'cleanslice/users') },
-    { name: 'RANCH_ADMIN', value: agent.value.isAdmin ? 'true' : 'false' },
-    { name: 'RANCH_API_URL', value: agent.value.isAdmin ? settingValue('ranch_api_url', 'http://host.k3d.internal:3333') : '' },
-    // Token is minted at deploy time and never echoed back over the API. Show
-    // a placeholder so the admin can see the slot exists without leaking the
-    // value (which is in the pod env, AWS Secrets Manager, or S3 only).
-    { name: 'RANCH_API_TOKEN', value: agent.value.isAdmin ? '<service-token>' : '' },
-    // Channels — projected onto runtime env vars by the workflow gateway,
-    // sourced from agents/{id}/data/channels.json in S3. Empty values mean
-    // the channel isn't configured (runtime skips it).
-    {
-      name: 'TELEGRAM_BOT_TOKEN',
-      value:
-        channels.value?.find((c) => c.type === 'telegram')?.config.botToken ??
-        '',
-    },
-    {
-      name: 'TELEGRAM_BOT_NAME',
-      value:
-        channels.value?.find((c) => c.type === 'telegram')?.config.botName ??
-        '',
-    },
-    {
-      name: 'TELEGRAM_BOT_ADMIN_IDS',
-      value:
-        channels.value?.find((c) => c.type === 'telegram')?.config.adminIds ??
-        '',
-    },
-  ];
-});
+// Env preview comes from the API (GET /agents/:id/env), which builds it
+// with the SAME code as the real pod manifest — so this panel can never
+// drift from what the pod actually receives. Previously this list was
+// hand-maintained here, duplicating the manifest.
+const envVars = ref<{ name: string; value: string }[]>([]);
+watch(
+  () => agent.value?.id,
+  async (id) => {
+    envVars.value = id ? await agentStore.fetchEnv(id) : [];
+  },
+  { immediate: true },
+);
 
 const revealed = ref<Record<string, boolean>>({});
 const mask = (v: string) =>

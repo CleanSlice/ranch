@@ -34,7 +34,11 @@ const pageTitle = computed(() => {
           <AgentStatusIndicator />
         </div>
       </header>
-      <div class="flex flex-1 flex-col gap-4 p-6 min-w-0 overflow-x-auto">
+      <!-- overflow-x-clip (not -auto): `-auto` coerces overflow-y to `auto`,
+           turning this into a scroll container that breaks `position: sticky`
+           for every page inside it. `clip` contains horizontal blow-out
+           without that side effect. -->
+      <div class="flex flex-1 flex-col gap-4 p-6 min-w-0 overflow-x-clip">
         <slot />
       </div>
     </SidebarInset>

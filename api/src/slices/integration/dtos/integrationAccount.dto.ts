@@ -30,14 +30,6 @@ export class IntegrationAccountDto {
   })
   status: string;
 
-  @ApiProperty({
-    type: [String],
-    description:
-      'Alternate runtime identities this account is available under (Telegram chat IDs, "admin", channel-specific IDs). The admin UI authenticates as a ranch-user UUID, but the runtime resolves resources by ctx.from — aliases bridge that gap. On every cookie/secret write the service fans the same payload out to userId + every alias path.',
-    example: ['55212224', 'admin'],
-  })
-  aliases: string[];
-
   @ApiProperty()
   createdAt: Date;
 

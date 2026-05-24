@@ -10,13 +10,16 @@ import {
 } from '#theme/components/ui/card';
 import { Badge } from '#theme/components/ui/badge';
 import {
+  IconAlertTriangle,
   IconArrowLeft,
   IconCheck,
   IconDownload,
   IconLoader2,
+  IconRefresh,
   IconShield,
   IconShieldOff,
   IconTrash,
+  IconX,
 } from '@tabler/icons-vue';
 import {
   AlertDialogContent,
@@ -70,6 +73,14 @@ const pending = computed(
 const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
 
+// Debug mode is a pending value that gets persisted as part of "Save
+// changes" — it travels in the normal agent-update payload (PUT /agents/:id),
+// the same request the rest of the form uses.
+const pendingDebug = ref(agent.value?.debugEnabled ?? false);
+const debugDirty = computed(
+  () => !!agent.value && pendingDebug.value !== agent.value.debugEnabled,
+);
+
 async function onSubmit(values: ICreateAgentData) {
   submitting.value = true;
   errorMessage.value = null;
@@ -81,6 +92,7 @@ async function onSubmit(values: ICreateAgentData) {
       isPublic: values.isPublic,
       allowedOrigins: values.allowedOrigins,
       knowledgeIds: values.knowledgeIds ?? [],
+      debugEnabled: pendingDebug.value,
     };
     await agentStore.update(props.id, update);
     agentStore.markPendingRestart(props.id);
@@ -100,6 +112,71 @@ async function onSubmit(values: ICreateAgentData) {
 function onCancel() {
   navigateTo(`/agents/${props.id}`);
 }
+
+// ─── Pending-restart banner ────────────────────────────────────────────────
+// Settings like the Debug toggle persist immediately but only take full
+// effect after a pod restart (LOG_LEVEL=debug is a boot-time env). The child
+// panels call `markPendingRestart`; this banner is the visible "restart now?"
+// prompt — without it, toggling Debug looked like nothing happened.
+const pendingRestart = computed(() => agentStore.isPendingRestart(props.id));
+const restarting = ref(false);
+const restartError = ref<string | null>(null);
+const isRestarting = computed(
+  () => restarting.value || agent.value?.status === 'deploying',
+);
+
+async function onRestart() {
+  if (!agent.value || isRestarting.value) return;
+  restarting.value = true;
+  restartError.value = null;
+  agentStore.markRestartInFlight(agent.value.id);
+  try {
+    await agentStore.restart(agent.value.id);
+    agentStore.clearPendingRestart(agent.value.id);
+  } catch (err) {
+    agentStore.clearRestartInFlight(props.id);
+    restartError.value = (err as Error).message || 'Restart failed';
+  } finally {
+    restarting.value = false;
+  }
+}
+
+function dismissRestartBanner() {
+  agentStore.clearPendingRestart(props.id);
+}
+
+// ─── Section nav — left rail of the two-column layout, with scroll-spy ──────
+const SECTIONS = [
+  { id: 'general', label: 'General' },
+  { id: 'access', label: 'Visibility & embed' },
+  { id: 'diagnostics', label: 'Diagnostics' },
+  { id: 'admin', label: 'Ranch admin' },
+  { id: 'danger', label: 'Danger zone' },
+] as const;
+
+const activeSection = ref<string>('general');
+let sectionObserver: IntersectionObserver | null = null;
+
+onMounted(() => {
+  sectionObserver = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          activeSection.value = e.target.id.replace('sec-', '');
+        }
+      }
+    },
+    // Top inset clears the sticky action bar; the -55% bottom inset makes a
+    // section "active" once its top reaches the upper part of the viewport.
+    { rootMargin: '-110px 0px -55% 0px' },
+  );
+  for (const s of SECTIONS) {
+    const el = document.getElementById(`sec-${s.id}`);
+    if (el) sectionObserver.observe(el);
+  }
+});
+
+onBeforeUnmount(() => sectionObserver?.disconnect());
 
 // ─── Promote / demote ──────────────────────────────────────────────────────
 const promoting = ref(false);
@@ -187,74 +264,198 @@ async function onRemove() {
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 
     <template v-else-if="agent">
-      <div>
-        <h1 class="text-2xl font-semibold">Edit agent</h1>
-        <p class="text-sm text-muted-foreground">{{ agent.name }}</p>
+      <!-- Sticky action bar — title + Save/Cancel always reachable without
+           scrolling to the bottom of the form. Save submits #agent-form. -->
+      <div
+        class="sticky top-0 z-20 flex items-center justify-between gap-4 border-b bg-background/95 py-3 backdrop-blur supports-backdrop-filter:bg-background/80"
+      >
+        <div class="min-w-0">
+          <h1 class="truncate text-xl font-semibold">Edit agent</h1>
+          <p class="truncate text-sm text-muted-foreground">{{ agent.name }}</p>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+          <Button variant="ghost" :disabled="submitting" @click="onCancel">
+            Cancel
+          </Button>
+          <Button type="submit" form="agent-form" :disabled="submitting">
+            <IconLoader2 v-if="submitting" class="size-4 animate-spin" />
+            {{ submitting ? 'Saving…' : 'Save changes' }}
+          </Button>
+        </div>
       </div>
 
       <p v-if="errorMessage" class="text-xs text-destructive">{{ errorMessage }}</p>
 
-      <AgentForm
-        :templates="templates ?? []"
-        :llms="llmStore.items"
-        :knowledges="knowledges ?? []"
-        :knowledge-service-enabled="knowledgeStore.enabled"
-        :initial-values="{
-          name: agent.name,
-          templateId: agent.templateId,
-          llmCredentialId: agent.llmCredentialId,
-          resources: agent.resources,
-          isPublic: agent.isPublic,
-          allowedOrigins: agent.allowedOrigins,
-          knowledgeIds: agent.knowledgeIds,
-        }"
-        :submitting="submitting"
-        submit-label="Save changes"
-        disable-template
-        @submit="onSubmit"
-        @cancel="onCancel"
-      />
+      <div
+        v-if="pendingRestart"
+        class="flex flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
+      >
+        <IconAlertTriangle class="size-4 shrink-0" />
+        <p class="min-w-56 flex-1">
+          Agent settings were updated. Restart the agent to apply the changes.
+        </p>
+        <div class="flex items-center gap-2">
+          <Button size="sm" :disabled="isRestarting" @click="onRestart">
+            <IconRefresh
+              class="size-4"
+              :class="isRestarting && 'animate-spin'"
+            />
+            {{ isRestarting ? 'Restarting…' : 'Restart agent' }}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            :disabled="isRestarting"
+            @click="dismissRestartBanner"
+          >
+            <IconX class="size-4" />
+          </Button>
+        </div>
+      </div>
+      <p v-if="restartError" class="text-xs text-destructive">{{ restartError }}</p>
 
-      <AgentVisibilityProvider
-        :agent-id="agent.id"
-        :api-url="apiUrl"
-        :is-public="agent.isPublic"
-        :allowed-origins="agent.allowedOrigins"
-        @saved="(updated) => (agent = updated)"
-      />
+      <div class="grid gap-8 lg:grid-cols-[180px_minmax(0,1fr)]">
+        <!-- Left rail — section nav. Hidden on narrow screens (single col). -->
+        <nav class="hidden lg:block">
+          <ul class="sticky top-24 flex flex-col gap-1 text-sm">
+            <li v-for="s in SECTIONS" :key="s.id">
+              <a
+                :href="`#sec-${s.id}`"
+                :class="[
+                  'block rounded-md px-3 py-1.5 transition-colors',
+                  activeSection === s.id
+                    ? 'bg-accent font-medium text-foreground'
+                    : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                ]"
+              >{{ s.label }}</a>
+            </li>
+          </ul>
+        </nav>
 
-      <Card>
-        <CardHeader>
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <CardTitle class="flex items-center gap-2 text-base">
-                Ranch admin access
-                <Badge v-if="agent.isAdmin" variant="default" class="gap-1">
-                  <IconShield class="size-3" /> Admin
-                </Badge>
-              </CardTitle>
-              <CardDescription>
-                {{ agent.isAdmin
-                  ? 'This agent has the ranch_* admin tools enabled and was deployed with RANCH_ADMIN=true. Demoting it drops those tools and redeploys.'
-                  : 'Promote this agent to grant ranch_* admin tools and redeploy with RANCH_ADMIN=true. The flag is cleared from any other admin agent.' }}
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              :disabled="promoting"
-              @click="agent.isAdmin ? onPromote() : (confirmPromoteOpen = true)"
-            >
-              <IconLoader2 v-if="promoting" class="size-4 animate-spin" />
-              <IconShieldOff v-else-if="agent.isAdmin" class="size-4" />
-              <IconShield v-else class="size-4" />
-              {{ agent.isAdmin ? 'Demote' : 'Promote to admin' }}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent v-if="promoteError">
-          <p class="text-xs text-destructive">{{ promoteError }}</p>
-        </CardContent>
-      </Card>
+        <!-- Right column — the actual sections. -->
+        <div class="flex min-w-0 flex-col gap-6">
+          <section id="sec-general" class="scroll-mt-28">
+            <AgentForm
+              :templates="templates ?? []"
+              :llms="llmStore.items"
+              :knowledges="knowledges ?? []"
+              :knowledge-service-enabled="knowledgeStore.enabled"
+              :initial-values="{
+                name: agent.name,
+                templateId: agent.templateId,
+                llmCredentialId: agent.llmCredentialId,
+                resources: agent.resources,
+                isPublic: agent.isPublic,
+                allowedOrigins: agent.allowedOrigins,
+                knowledgeIds: agent.knowledgeIds,
+              }"
+              :submitting="submitting"
+              submit-label="Save changes"
+              disable-template
+              :hide-actions="true"
+              @submit="onSubmit"
+              @cancel="onCancel"
+            />
+          </section>
+
+          <section id="sec-access" class="scroll-mt-28">
+            <AgentVisibilityProvider
+              :agent-id="agent.id"
+              :api-url="apiUrl"
+              :is-public="agent.isPublic"
+              :allowed-origins="agent.allowedOrigins"
+              @saved="(updated) => (agent = updated)"
+            />
+          </section>
+
+          <section id="sec-diagnostics" class="scroll-mt-28">
+            <AgentDebugProvider
+              :debug-enabled="pendingDebug"
+              :dirty="debugDirty"
+              @update:debug-enabled="(v) => (pendingDebug = v)"
+            />
+          </section>
+
+          <section id="sec-admin" class="scroll-mt-28">
+            <Card>
+              <CardHeader>
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <CardTitle class="flex items-center gap-2 text-base">
+                      Ranch admin access
+                      <Badge v-if="agent.isAdmin" variant="default" class="gap-1">
+                        <IconShield class="size-3" /> Admin
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription>
+                      {{ agent.isAdmin
+                        ? 'This agent has the ranch_* admin tools enabled and was deployed with RANCH_ADMIN=true. Demoting it drops those tools and redeploys.'
+                        : 'Promote this agent to grant ranch_* admin tools and redeploy with RANCH_ADMIN=true. The flag is cleared from any other admin agent.' }}
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    :disabled="promoting"
+                    @click="agent.isAdmin ? onPromote() : (confirmPromoteOpen = true)"
+                  >
+                    <IconLoader2 v-if="promoting" class="size-4 animate-spin" />
+                    <IconShieldOff v-else-if="agent.isAdmin" class="size-4" />
+                    <IconShield v-else class="size-4" />
+                    {{ agent.isAdmin ? 'Demote' : 'Promote to admin' }}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent v-if="promoteError">
+                <p class="text-xs text-destructive">{{ promoteError }}</p>
+              </CardContent>
+            </Card>
+          </section>
+
+          <section id="sec-danger" class="scroll-mt-28">
+            <Card class="border-destructive/40">
+              <CardHeader>
+                <CardTitle class="flex items-center gap-2 text-base text-destructive">
+                  <IconTrash class="size-4" />
+                  Danger zone
+                </CardTitle>
+                <CardDescription>
+                  Deleting this agent is permanent and cannot be undone. This will:
+                </CardDescription>
+              </CardHeader>
+              <CardContent class="flex flex-col gap-4">
+                <ul class="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                  <li>stop the running pod and cancel its Argo workflow</li>
+                  <li>delete agent-scoped paddock scenarios and evaluation history</li>
+                  <li>revoke any service tokens minted for this agent</li>
+                  <li>
+                    optionally wipe S3 data under
+                    <code class="font-mono text-xs">agents/{{ agent.id }}/</code>
+                    (files, skills, secrets, usage) — opt-in in the confirm dialog
+                  </li>
+                </ul>
+                <div class="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+                  <div class="text-sm">
+                    <p class="font-medium">Delete agent “{{ agent.name }}”</p>
+                    <p class="text-xs text-muted-foreground">
+                      This action is irreversible.
+                    </p>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    :disabled="removing"
+                    @click="confirmRemoveOpen = true"
+                  >
+                    <IconLoader2 v-if="removing" class="size-4 animate-spin" />
+                    <IconTrash v-else class="size-4" />
+                    {{ removing ? 'Deleting…' : 'Delete agent' }}
+                  </Button>
+                </div>
+                <p v-if="removeError" class="text-xs text-destructive">{{ removeError }}</p>
+              </CardContent>
+            </Card>
+          </section>
+        </div>
+      </div>
 
       <ConfirmDialog
         v-model:open="confirmPromoteOpen"
@@ -264,48 +465,6 @@ async function onRemove() {
         :variant="'default'"
         @confirm="onPromote"
       />
-
-      <Card class="border-destructive/40">
-        <CardHeader>
-          <CardTitle class="flex items-center gap-2 text-base text-destructive">
-            <IconTrash class="size-4" />
-            Danger zone
-          </CardTitle>
-          <CardDescription>
-            Deleting this agent is permanent and cannot be undone. This will:
-          </CardDescription>
-        </CardHeader>
-        <CardContent class="flex flex-col gap-4">
-          <ul class="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-            <li>stop the running pod and cancel its Argo workflow</li>
-            <li>delete agent-scoped paddock scenarios and evaluation history</li>
-            <li>revoke any service tokens minted for this agent</li>
-            <li>
-              optionally wipe S3 data under
-              <code class="font-mono text-xs">agents/{{ agent.id }}/</code>
-              (files, skills, secrets, usage) — opt-in in the confirm dialog
-            </li>
-          </ul>
-          <div class="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3">
-            <div class="text-sm">
-              <p class="font-medium">Delete agent “{{ agent.name }}”</p>
-              <p class="text-xs text-muted-foreground">
-                This action is irreversible.
-              </p>
-            </div>
-            <Button
-              variant="destructive"
-              :disabled="removing"
-              @click="confirmRemoveOpen = true"
-            >
-              <IconLoader2 v-if="removing" class="size-4 animate-spin" />
-              <IconTrash v-else class="size-4" />
-              {{ removing ? 'Deleting…' : 'Delete agent' }}
-            </Button>
-          </div>
-          <p v-if="removeError" class="text-xs text-destructive">{{ removeError }}</p>
-        </CardContent>
-      </Card>
 
       <AlertDialogRoot v-model:open="confirmRemoveOpen">
         <AlertDialogPortal>

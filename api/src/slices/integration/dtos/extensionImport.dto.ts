@@ -1,12 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  ArrayMaxSize,
-  IsArray,
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-} from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, Matches, MaxLength } from 'class-validator';
 import { ImportCookiesDto } from './importCookies.dto';
 
 /**
@@ -37,23 +30,6 @@ export class ExtensionImportStateDto extends ImportCookiesDto {
       'accountKey may only contain alphanumerics, underscore, colon, dot, dash',
   })
   accountKey: string;
-
-  @ApiPropertyOptional({
-    type: [String],
-    description:
-      'Optional alternate runtime identities to attach on this push. Merged into the existing aliases — never destructive. Typical use: the extension knows the user is also Telegram-ID 55212224 and includes it so the cookies become visible to the bot immediately.',
-  })
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(16)
-  @IsString({ each: true })
-  @MaxLength(80, { each: true })
-  @Matches(/^[a-zA-Z0-9_:.\-]+$/, {
-    each: true,
-    message:
-      'each alias may only contain alphanumerics, underscore, colon, dot, dash',
-  })
-  aliases?: string[];
 }
 
 export class ExtensionImportStateResponseDto {

@@ -19,7 +19,6 @@ export abstract class IAgentGateway {
     workflowId?: string,
   ): Promise<IAgentData>;
   abstract setWorkflowId(id: string, workflowId: string): Promise<IAgentData>;
-  abstract setDebugEnabled(id: string, enabled: boolean): Promise<IAgentData>;
   abstract setAdmin(id: string, enabled: boolean): Promise<IAgentData>;
   abstract delete(id: string): Promise<void>;
 }

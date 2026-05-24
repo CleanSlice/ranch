@@ -31,6 +31,9 @@ const props = defineProps<{
   submitLabel?: string;
   submitting?: boolean;
   disableTemplate?: boolean;
+  // When true the form renders no Save/Cancel row — the host page drives
+  // submission via a button with `form="agent-form"` (see agentEdit).
+  hideActions?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -121,7 +124,7 @@ function onSubmit() {
 </script>
 
 <template>
-  <form class="flex flex-col gap-6" @submit.prevent="onSubmit">
+  <form id="agent-form" class="flex flex-col gap-6" @submit.prevent="onSubmit">
     <Card>
       <CardHeader>
         <CardTitle>Agent details</CardTitle>
@@ -289,7 +292,7 @@ function onSubmit() {
       </CardContent>
     </Card>
 
-    <div class="flex items-center gap-3">
+    <div v-if="!hideActions" class="flex items-center gap-3">
       <Button type="submit" :disabled="submitting">
         {{ submitting ? 'Saving…' : (submitLabel ?? 'Create agent') }}
       </Button>

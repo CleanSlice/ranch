@@ -13,4 +13,3 @@ export {
   ExtensionImportStateDto,
   ExtensionImportStateResponseDto,
 } from './extensionImport.dto';
-export { UpdateIntegrationAliasesDto } from './updateAliases.dto';

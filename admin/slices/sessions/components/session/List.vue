@@ -9,12 +9,15 @@ import {
   TableHeader,
   TableRow,
 } from '#theme/components/ui/table';
-import { IconTrash } from '@tabler/icons-vue';
+import { IconTrash, IconEye } from '@tabler/icons-vue';
 import type { ISessionData, SessionStatusTypes } from '#sessions/stores/session';
 
 defineProps<{ items: ISessionData[] }>();
 
-defineEmits<{ (event: 'remove', item: ISessionData): void }>();
+defineEmits<{
+  (event: 'view', item: ISessionData): void;
+  (event: 'remove', item: ISessionData): void;
+}>();
 
 function statusBadge(status: SessionStatusTypes): {
   variant: 'default' | 'secondary' | 'outline' | 'destructive';
@@ -76,7 +79,15 @@ function formatDate(value: string | null): string {
             {{ formatDate(item.updatedAt) }}
           </TableCell>
           <TableCell>
-            <div class="flex justify-end">
+            <div class="flex justify-end gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                title="View session"
+                @click="$emit('view', item)"
+              >
+                <IconEye class="size-4" />
+              </Button>
               <Button
                 size="sm"
                 variant="ghost"

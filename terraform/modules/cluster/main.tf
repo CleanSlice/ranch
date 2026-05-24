@@ -53,8 +53,7 @@ module "kube-hetzner" {
   microos_x86_snapshot_id = "374341457"
   microos_arm_snapshot_id = "374341457"
 
-  # Minimal setup: 1 CP node (also runs workloads)
-  # Scale up later: 3 CP + 2 system + 1 agent
+  # 1 CP node (runs system + control plane) + 1 agent node (runs ranch agents)
   control_plane_nodepools = [
     {
       name        = "cp"
@@ -66,7 +65,16 @@ module "kube-hetzner" {
     }
   ]
 
-  agent_nodepools = []
+  agent_nodepools = [
+    {
+      name        = "agent"
+      server_type = "cx43"
+      location    = var.location
+      labels      = ["node-role=agents"]
+      taints      = ["workload=agent:NoSchedule"]
+      count       = 1
+    }
+  ]
 
   load_balancer_type     = "lb11"
   load_balancer_location = var.location
@@ -84,11 +92,62 @@ module "kube-hetzner" {
   ]
 }
 
+# ---------------------------------------------------------------------
+# Load Balancer listeners
+#
+# kube-hetzner creates the LB (k3s-traefik) when agent_nodepools is non-empty,
+# but does NOT create the port listeners. hcloud-cloud-controller-manager is
+# supposed to add them from traefik Service annotations, but it skips LBs that
+# carry the `provisioner=terraform` label, so we manage the listeners here.
+#
+# Destination ports = traefik Service NodePorts. These are k8s-assigned and
+# not guaranteed stable across helm reinstalls — if traefik is recreated and
+# gets new NodePorts, update these values to match `kubectl get svc -n traefik
+# traefik`.
+# ---------------------------------------------------------------------
+
+data "hcloud_load_balancer" "traefik" {
+  name       = "k3s-traefik"
+  depends_on = [module.kube-hetzner]
+}
+
+resource "hcloud_load_balancer_service" "traefik_http" {
+  load_balancer_id = data.hcloud_load_balancer.traefik.id
+  protocol         = "tcp"
+  listen_port      = 80
+  destination_port = 30376
+  proxyprotocol    = true
+
+  health_check {
+    protocol = "tcp"
+    port     = 30376
+    interval = 15
+    timeout  = 10
+    retries  = 3
+  }
+}
+
+resource "hcloud_load_balancer_service" "traefik_https" {
+  load_balancer_id = data.hcloud_load_balancer.traefik.id
+  protocol         = "tcp"
+  listen_port      = 443
+  destination_port = 31019
+  proxyprotocol    = true
+
+  health_check {
+    protocol = "tcp"
+    port     = 31019
+    interval = 15
+    timeout  = 10
+    retries  = 3
+  }
+}
+
 output "kubeconfig" {
   value     = module.kube-hetzner.kubeconfig
   sensitive = true
 }
 
 output "load_balancer_ip" {
-  value = module.kube-hetzner.ingress_public_ipv4
+  value = data.hcloud_load_balancer.traefik.ipv4
 }

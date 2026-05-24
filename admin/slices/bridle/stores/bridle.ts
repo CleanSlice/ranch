@@ -437,22 +437,25 @@ export const useBridleStore = defineStore('bridle', {
     },
 
     async setDebugEnabled(apiUrl: string, agentId: string, token: string, enabled: boolean): Promise<boolean> {
-      const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}/debug`
+      // Debug is persisted through the regular agent-update endpoint
+      // (PUT /agents/:id). The API still pushes the live prompt-debug control
+      // event over the bridle WS when `debugEnabled` is in the payload.
+      const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}`
       try {
         const res = await fetch(url, {
-          method: 'PATCH',
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ enabled }),
+          body: JSON.stringify({ debugEnabled: enabled }),
         })
         if (!res.ok) {
           console.warn('[bridle] setDebugEnabled returned', res.status)
           return false
         }
-        // The endpoint returns { id, debugEnabled } — we trust the server's
-        // echo over the optimistic value to avoid drift.
+        // PUT returns the full agent — trust the server's echo over the
+        // optimistic value to avoid drift.
         type Resp = { debugEnabled?: boolean }
         type Envelope = { data?: Resp }
         const body = (await res.json()) as Envelope & Resp

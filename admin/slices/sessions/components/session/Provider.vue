@@ -2,6 +2,7 @@
 import type { ISessionData } from '#sessions/stores/session';
 import SessionInstallPanel from './InstallPanel.vue';
 import SessionList from './List.vue';
+import SessionDetail from './Detail.vue';
 
 const store = useSessionStore();
 
@@ -21,6 +22,7 @@ onUnmounted(() => {
   if (pollHandle.value) clearInterval(pollHandle.value);
 });
 
+const viewTarget = ref<ISessionData | null>(null);
 const pendingRemoval = ref<ISessionData | null>(null);
 const confirmRemoveOpen = computed({
   get: () => pendingRemoval.value !== null,
@@ -49,7 +51,7 @@ async function onRemove() {
       </p>
     </div>
 
-    <SessionInstallPanel />
+    <SessionInstallPanel :has-sessions="(items ?? []).length > 0" />
 
     <section class="flex flex-col gap-3">
       <h2 class="text-lg font-medium">Your sessions</h2>
@@ -57,9 +59,12 @@ async function onRemove() {
       <SessionList
         v-else
         :items="items ?? []"
+        @view="(item) => (viewTarget = item)"
         @remove="(item) => (pendingRemoval = item)"
       />
     </section>
+
+    <SessionDetail :session="viewTarget" @close="viewTarget = null" />
 
     <ConfirmDialog
       v-model:open="confirmRemoveOpen"

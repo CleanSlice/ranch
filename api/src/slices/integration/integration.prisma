@@ -14,18 +14,9 @@ model IntegrationAccount {
   mechanism  String
   label      String?
   status     String   @default("pending")
-  // Alternate runtime identities this integration is also available
-  // under. Required because the admin UI authenticates as ranch-user
-  // UUID (req.user.sub), but the runtime resolves resources by ctx.from
-  // — a Telegram chat ID, the literal "admin", or some channel-specific
-  // ID. When the service writes cookies/secrets, it fans out to userId
-  // + every alias path so the runtime finds the same payload under any
-  // of the user's identities.
-  aliases    String[] @default([])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@unique([userId, service, accountKey])
   @@index([userId, service])
-  @@index([aliases])
 }

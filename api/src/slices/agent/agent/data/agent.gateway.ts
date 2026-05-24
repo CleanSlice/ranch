@@ -79,6 +79,9 @@ export class AgentGateway extends IAgentGateway {
         ...(data.knowledgeIds !== undefined && {
           knowledgeIds: data.knowledgeIds,
         }),
+        ...(data.debugEnabled !== undefined && {
+          debugEnabled: data.debugEnabled,
+        }),
       },
     });
     return this.mapper.toEntity(record);
@@ -103,14 +106,6 @@ export class AgentGateway extends IAgentGateway {
     const record = await this.prisma.agent.update({
       where: { id },
       data: { workflowId },
-    });
-    return this.mapper.toEntity(record);
-  }
-
-  async setDebugEnabled(id: string, enabled: boolean): Promise<IAgentData> {
-    const record = await this.prisma.agent.update({
-      where: { id },
-      data: { debugEnabled: enabled },
     });
     return this.mapper.toEntity(record);
   }

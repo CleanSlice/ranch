@@ -4,7 +4,6 @@ import {
   Get,
   Post,
   Put,
-  Patch,
   Delete,
   Body,
   Param,
@@ -30,9 +29,9 @@ import { AgentStatusService } from './domain/agentStatus.service';
 import { AgentDeployService } from './domain/agentDeploy.service';
 import {
   AgentMcpDto,
+  AgentEnvVarDto,
   AgentStatusDto,
   CreateAgentDto,
-  SetAgentDebugDto,
   UpdateAgentDto,
 } from './dtos';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
@@ -166,6 +165,20 @@ export class AgentController {
     return agent;
   }
 
+  @Get(':id/env')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiOperation({
+    operationId: 'getAgentEnv',
+    summary:
+      'Env vars the agent pod receives on its next deploy. Built from the same code as the real pod manifest — the source of truth, never a hand-maintained copy. The UI masks secret values for display.',
+  })
+  @ApiOkResponse({ type: AgentEnvVarDto, isArray: true })
+  async getAgentEnv(@Param('id') id: string): Promise<AgentEnvVarDto[]> {
+    const agent = await this.agentGateway.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+    return this.workflowService.previewAgentEnv(agent);
+  }
+
   @Get(':id/mcps')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin, UserRoleTypes.Agent)
   @ApiOperation({
@@ -287,25 +300,16 @@ export class AgentController {
   @Put(':id')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({ summary: 'Update agent configuration. Admin or Owner.' })
-  update(@Param('id') id: string, @Body() dto: UpdateAgentDto) {
-    return this.agentGateway.update(id, dto);
-  }
-
-  @Patch(':id/debug')
-  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
-  @ApiOperation({
-    summary:
-      'Toggle prompt-debug emission for an agent. Persists to DB and pushes a control event over the bridle WS so the running agent picks it up live without a restart.',
-  })
-  async setDebug(
-    @Param('id') id: string,
-    @Body() dto: SetAgentDebugDto,
-  ): Promise<{ id: string; debugEnabled: boolean }> {
-    const agent = await this.agentGateway.findById(id);
-    if (!agent) throw new NotFoundException('Agent not found');
-    const updated = await this.agentGateway.setDebugEnabled(id, dto.enabled);
-    this.bridleHub.setDebug(id, dto.enabled);
-    return { id: updated.id, debugEnabled: updated.debugEnabled };
+  async update(@Param('id') id: string, @Body() dto: UpdateAgentDto) {
+    const agent = await this.agentGateway.update(id, dto);
+    // Debug mode has a live half: when `debugEnabled` is in the payload, push
+    // a control event over the bridle WS so a running agent flips its
+    // prompt-debug stream immediately — the LOG_LEVEL=debug half still needs
+    // the restart the caller is prompted for.
+    if (dto.debugEnabled !== undefined) {
+      this.bridleHub.setDebug(id, dto.debugEnabled);
+    }
+    return agent;
   }
 
   @Get('admin/current')

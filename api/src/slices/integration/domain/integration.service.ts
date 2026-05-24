@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   NotFoundException,
   Optional,
@@ -21,30 +20,20 @@ import {
 } from './integration.types';
 
 /**
- * Orchestrates user-facing integration operations across three storage
- * boundaries:
+ * Orchestrates integration operations across three storage boundaries:
  *
  *  - IntegrationAccount row (Prisma, this slice)        — lifecycle/metadata
- *  - BrowserSession        (browser slice)              — cookies + profile
+ *  - per-user browser-state store (user/browserState)   — cookies
  *  - per-user secret store (user/secret slice)          — API keys / tokens
  *
- * The runtime never talks to those underlying stores directly for
- * integrations — it asks this service via the internal controller, so
- * resolution rules (which account is "active", how envKey is derived)
- * stay in one place.
+ * Two access paths:
  *
- * ## Aliases (the userId-mismatch fix)
- *
- * The admin UI authenticates as a ranch-user UUID. The runtime resolves
- * resources by `ctx.from`, which is a Telegram chat ID, the literal
- * "admin", or some channel-specific ID — never the UUID. To bridge
- * these without rewriting auth, each IntegrationAccount carries an
- * `aliases: string[]` list of alternate identities. On every write
- * (cookies, secret), this service fans the same payload out to the
- * canonical userId path AND every alias path. On disconnect or alias
- * removal, the corresponding alias paths are cleaned up. The runtime
- * keeps doing direct `userId == identityId` lookups against the
- * underlying stores — no special-casing needed there.
+ *  - **admin (JWT)** — scoped to `req.user.sub`. The admin connects,
+ *    lists and removes accounts owned by their ranch user.
+ *  - **runtime (bridle key)** — instance-global. The agent runtime has
+ *    no per-user identity; it lists every integration and dereferences
+ *    each account's own `userId` to read the underlying cookie/secret
+ *    store. No identity matching, no fan-out.
  */
 @Injectable()
 export class IntegrationService {
@@ -77,7 +66,6 @@ export class IntegrationService {
     service: string,
     accountKey: string,
     label?: string,
-    aliases?: string[],
   ): Promise<IIntegrationAccountData> {
     const item = this.requireCatalogueItem(service);
 
@@ -86,21 +74,7 @@ export class IntegrationService {
       service,
       accountKey,
     );
-    if (existing) {
-      // If the caller supplied a non-empty aliases list, merge it into
-      // the row — connecting twice with new aliases should be additive
-      // (not destructive), so users can paste a cookies dump and add a
-      // new Telegram ID in the same step.
-      if (aliases && aliases.length > 0) {
-        const merged = Array.from(
-          new Set([...existing.aliases, ...aliases]),
-        ).filter((a) => a !== existing.userId);
-        if (merged.length !== existing.aliases.length) {
-          return this.updateAliases(userId, existing.id, merged);
-        }
-      }
-      return this.syncStatus(existing);
-    }
+    if (existing) return this.syncStatus(existing);
 
     return this.gateway.create({
       userId,
@@ -108,7 +82,6 @@ export class IntegrationService {
       accountKey,
       mechanism: item.mechanism,
       label: label ?? null,
-      aliases,
     });
   }
 
@@ -117,7 +90,7 @@ export class IntegrationService {
    * browser-mechanism integration needs cookies (first connect, or
    * cookies expired). No VNC, no pool — the user logs in to the
    * service in their own Chrome and pushes cookies via the Ranch
-   * extension (or pastes them manually).
+   * extension.
    */
   async openLogin(
     userId: string,
@@ -130,24 +103,20 @@ export class IntegrationService {
       );
     }
     const item = this.requireCatalogueItem(account.service);
-    // Deliberately NOT flipping status to needs_login here. Asking for
-    // login instructions is advisory — the agent may call this
-    // proactively. Flipping the status made integration_list report
-    // "needs_login" on a perfectly valid session, which made agents
-    // skip browser_play entirely. Status only changes on a real
-    // importCookies / disconnect.
-    return this.buildLoginInstructions(account, item);
+    return this.buildLoginInstructions(
+      { accountId: account.id, accountKey: account.accountKey },
+      item,
+    );
   }
 
   /**
    * Same as openLogin but resolves by (service, accountKey) — runtime
    * uses this when an agent tool returns needsLogin and only the
-   * profile string ("x:dimzhuk") is known. Creates the
-   * IntegrationAccount on the fly if missing so the user has somewhere
-   * to send cookies to.
+   * profile string ("x:dimzhuk") is known. Pure read: it returns the
+   * help URL + instructions; the IntegrationAccount is created later,
+   * on the fly, when the extension actually posts cookies.
    */
   async requestLoginByProfile(
-    identityId: string,
     service: string,
     accountKey: string,
   ): Promise<ILoginInstructionData> {
@@ -157,18 +126,13 @@ export class IntegrationService {
         `Service "${service}" uses mechanism "${item.mechanism}". Login instructions are only valid for browser-mechanism services.`,
       );
     }
-
-    // Prefer an existing account this identity can act as (owner or alias)
-    // — without this check, a Telegram-driven agent would always create a
-    // new row, duplicating the admin's UUID-owned account. Status is left
-    // untouched (see openLogin comment) — instructions are advisory.
-    const reachable = (await this.gateway.findByIdentity(identityId, service))
-      .find((a) => a.accountKey === accountKey);
-
-    const account =
-      reachable ?? (await this.connect(identityId, service, accountKey));
-
-    return this.buildLoginInstructions(account, item);
+    const existing = (await this.gateway.findGlobal(service)).find(
+      (a) => a.accountKey === accountKey,
+    );
+    return this.buildLoginInstructions(
+      { accountId: existing?.id ?? '', accountKey },
+      item,
+    );
   }
 
   async saveSecret(
@@ -190,13 +154,7 @@ export class IntegrationService {
       );
     }
 
-    const key = this.secretKey(account);
-    // Fan-out: write the same value to every identity this account can be
-    // accessed under. Runtime resolves secrets via per-identity stores,
-    // so without this the value is only visible to the canonical owner.
-    for (const identity of this.allIdentities(account)) {
-      await this.secrets.set(identity, key, value);
-    }
+    await this.secrets.set(account.userId, this.secretKey(account), value);
     return this.setStatus(userId, account.id, 'connected');
   }
 
@@ -211,15 +169,8 @@ export class IntegrationService {
     cookies: Parameters<IntegrationService['importCookies']>[2],
     origins?: Parameters<IntegrationService['importCookies']>[3],
     userAgent?: string,
-    aliases?: string[],
   ): Promise<IIntegrationAccountData> {
-    const account = await this.connect(
-      userId,
-      service,
-      accountKey,
-      undefined,
-      aliases,
-    );
+    const account = await this.connect(userId, service, accountKey);
     return this.importCookies(
       userId,
       account.id,
@@ -247,125 +198,64 @@ export class IntegrationService {
       ...(userAgent ? { userAgent } : {}),
       storageState: { cookies, origins: origins ?? [] },
     };
-    const profile = this.browserAccountKey(account);
-    // Fan-out write to canonical + every alias. The runtime's fallback
-    // does a direct path lookup by `ctx.from` — without the fan-out a
-    // Telegram-driven agent would 404 even after a successful import.
-    for (const identity of this.allIdentities(account)) {
-      await this.browserState.set(identity, profile, payload);
-    }
+    await this.browserState.set(
+      account.userId,
+      this.browserAccountKey(account),
+      payload,
+    );
 
     return this.setStatus(userId, account.id, 'connected');
   }
 
   /**
-   * Add or remove runtime identities this integration is available under.
-   * New aliases get the current cookies/secret mirrored to them; removed
-   * aliases get their copy wiped. Owner (`userId`) is never demoted to
-   * an alias — sanitize drops it if present in the incoming list.
+   * Runtime discovery — every integration in the instance. The runtime's
+   * `integration_list` tool exposes this so an agent picks the exact
+   * `browser_play` profile (`<service>:<accountKey>`) instead of guessing.
    */
-  async updateAliases(
-    userId: string,
-    id: string,
-    nextAliases: string[],
-  ): Promise<IIntegrationAccountData> {
-    const account = await this.requireAccount(userId, id);
-
-    const currentSet = new Set(account.aliases);
-    const nextSet = new Set(
-      nextAliases.filter((a) => a && a.trim() !== '' && a !== account.userId),
-    );
-
-    const added = [...nextSet].filter((a) => !currentSet.has(a));
-    const removed = [...currentSet].filter((a) => !nextSet.has(a));
-
-    if (account.mechanism === 'browser') {
-      const profile = this.browserAccountKey(account);
-      // Snapshot the canonical-owner copy so newly added aliases get
-      // the exact same payload (cookies + UA) the owner sees.
-      const source = await this.browserState.get(account.userId, profile);
-      if (source) {
-        for (const a of added) await this.browserState.set(a, profile, source);
-      }
-      for (const a of removed) await this.browserState.delete(a, profile);
-    } else if (account.mechanism === 'secret') {
-      const key = this.secretKey(account);
-      const source = await this.secrets.get(account.userId, key);
-      if (source != null) {
-        for (const a of added) await this.secrets.set(a, key, source);
-      }
-      for (const a of removed) await this.secrets.delete(a, key);
-    }
-
-    return this.gateway.update(userId, id, { aliases: [...nextSet] });
+  listAllForRuntime(): Promise<IIntegrationAccountData[]> {
+    return this.gateway.findGlobal();
   }
 
   /**
-   * Runtime discovery — every integration an identity can act as
-   * (canonical owner or alias). The runtime's `integration_list` tool
-   * exposes this so an agent picks the exact `browser_play` profile
-   * (`<service>:<accountKey>`) instead of guessing "default" / "x".
-   */
-  listForIdentity(
-    identityId: string,
-  ): Promise<IIntegrationAccountData[]> {
-    return this.gateway.findByIdentity(identityId);
-  }
-
-  /**
-   * Runtime lookup — fetches a state file for an identity that may be
-   * the canonical owner OR an alias. Most of the time direct lookup
-   * succeeds (we fan-out writes), but if the alias was added AFTER the
-   * last import and `updateAliases` hasn't yet mirrored, fall through
-   * to the canonical owner.
+   * Runtime lookup — fetch the cookie state for a `<service>:<accountKey>`
+   * profile. Finds the account, then reads the store under that account's
+   * own userId. Returns null when nothing is connected for the profile.
    */
   async resolveBrowserState(
-    identityId: string,
     profile: string,
   ): Promise<IUserBrowserStatePayload | null> {
-    const direct = await this.browserState.get(identityId, profile);
-    if (direct) return direct;
-
-    const owner = await this.findOwnerByIdentityAndProfile(
-      identityId,
-      profile,
-    );
-    if (!owner) return null;
-    return this.browserState.get(owner.userId, profile);
+    const account = await this.findAccountByProfile(profile);
+    if (!account) return null;
+    return this.browserState.get(account.userId, profile);
   }
 
   async disconnect(userId: string, id: string): Promise<void> {
     const account = await this.requireAccount(userId, id);
 
     if (account.mechanism === 'browser') {
-      const profile = this.browserAccountKey(account);
-      for (const identity of this.allIdentities(account)) {
-        await this.browserState.delete(identity, profile);
-      }
+      await this.browserState.delete(
+        account.userId,
+        this.browserAccountKey(account),
+      );
     } else if (account.mechanism === 'secret') {
-      const key = this.secretKey(account);
-      for (const identity of this.allIdentities(account)) {
-        await this.secrets.delete(identity, key);
-      }
+      await this.secrets.delete(account.userId, this.secretKey(account));
     }
 
     await this.gateway.delete(userId, id);
   }
 
   /**
-   * Resolve the secret-mechanism integrations visible to an identity
-   * into a flat env map. Identity matches canonical owner OR any alias.
-   *
-   * Multiple accounts on the same service: most recently updated wins
-   * the bare env var, each is also surfaced under a per-accountKey
-   * suffixed alias so workflows that need to pick can opt in.
+   * Resolve every connected secret-mechanism integration into a flat env
+   * map for the runtime. Multiple accounts on the same service: most
+   * recently updated wins the bare env var; each is also surfaced under a
+   * per-accountKey suffixed env var so workflows that need to pick can.
    */
   async resolveSecretsForRuntime(
-    identityId: string,
     service?: string,
   ): Promise<Record<string, string>> {
-    const accounts = (await this.gateway.findByIdentity(identityId, service))
-      .filter((a) => a.mechanism === 'secret' && a.status === 'connected');
+    const accounts = (await this.gateway.findGlobal(service)).filter(
+      (a) => a.mechanism === 'secret' && a.status === 'connected',
+    );
     if (accounts.length === 0) return {};
 
     accounts.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
@@ -375,47 +265,35 @@ export class IntegrationService {
     for (const account of accounts) {
       const item = findCatalogueItem(account.service);
       if (!item?.secretEnvKey) continue;
-      // Read the value under the SAME identity the runtime is asking on
-      // behalf of — fan-out writes guarantee the entry exists here too.
-      // Falls back to the canonical owner if the fan-out didn't reach
-      // (e.g. alias added before updateAliases mirrored).
-      const value =
-        (await this.secrets.get(identityId, this.secretKey(account))) ??
-        (await this.secrets.get(account.userId, this.secretKey(account)));
+      const value = await this.secrets.get(
+        account.userId,
+        this.secretKey(account),
+      );
       if (value == null) continue;
 
       if (!claimed.has(item.secretEnvKey)) {
         env[item.secretEnvKey] = value;
         claimed.add(item.secretEnvKey);
       }
-      const alias = `${item.secretEnvKey}_${account.accountKey
+      const envAlias = `${item.secretEnvKey}_${account.accountKey
         .replace(/[^a-zA-Z0-9]/g, '_')
         .toUpperCase()}`;
-      env[alias] = value;
+      env[envAlias] = value;
     }
     return env;
   }
 
   // ── internals ────────────────────────────────────────────────────────────
 
-  /** Canonical userId + every alias, deduped. Used for fan-out writes. */
-  private allIdentities(account: IIntegrationAccountData): string[] {
-    return Array.from(new Set([account.userId, ...account.aliases]));
-  }
-
-  private async findOwnerByIdentityAndProfile(
-    identityId: string,
+  /** Resolve a `<service>:<accountKey>` profile string to its account. */
+  private async findAccountByProfile(
     profile: string,
   ): Promise<IIntegrationAccountData | null> {
-    // profile is "<service>:<accountKey>" — split once so an accountKey
-    // with a colon in it (rare but allowed by the validator) still
-    // matches.
     const sep = profile.indexOf(':');
     if (sep === -1) return null;
     const service = profile.slice(0, sep);
     const accountKey = profile.slice(sep + 1);
-
-    const matches = await this.gateway.findByIdentity(identityId, service);
+    const matches = await this.gateway.findGlobal(service);
     return matches.find((m) => m.accountKey === accountKey) ?? null;
   }
 
@@ -459,7 +337,7 @@ export class IntegrationService {
   }
 
   private buildLoginInstructions(
-    account: IIntegrationAccountData,
+    target: { accountId: string; accountKey: string },
     item: IIntegrationCatalogueItem,
   ): ILoginInstructionData {
     const adminBase = (
@@ -472,13 +350,13 @@ export class IntegrationService {
     const siteUrl = item.loginUrl ?? '';
 
     const lines = [
-      `Open ${siteUrl || item.title} and log in as @${account.accountKey}.`,
-      'Click the Ranch Cookies extension icon, switch to "Integration" mode if needed, and press "Send cookies".',
+      `Open ${siteUrl || item.title} and log in as @${target.accountKey}.`,
+      'Click the Ranch Cookies extension icon and press "Send cookies".',
       `If you don't have the extension installed yet, the help page walks you through it: ${helpUrl}`,
     ];
 
     return {
-      accountId: account.id,
+      accountId: target.accountId,
       siteUrl,
       helpUrl,
       instructions: lines.join('\n'),

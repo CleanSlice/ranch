@@ -16,7 +16,6 @@ export interface ISessionData {
   mechanism: 'browser' | 'secret';
   label: string | null;
   status: SessionStatusTypes;
-  aliases: string[];
   createdAt: string;
   updatedAt: string;
 }

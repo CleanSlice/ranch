@@ -1,0 +1,10 @@
+{
+  "name": "browser-pool-auth-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "JWT-gated noVNC bridge for the browser-pool container.",
+  "dependencies": {
+    "ws": "8.18.0"
+  }
+}

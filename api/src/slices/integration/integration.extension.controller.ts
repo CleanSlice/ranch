@@ -103,7 +103,6 @@ export class IntegrationExtensionController {
       dto.cookies,
       dto.origins as never,
       dto.userAgent,
-      dto.aliases,
     );
 
     return {

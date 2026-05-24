@@ -42,8 +42,6 @@ export interface IIntegrationAccountData {
   mechanism: IntegrationMechanismTypes;
   label: string | null;
   status: IntegrationStatusTypes;
-  /** Alternate runtime identities — see prisma model comment. */
-  aliases: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,13 +52,11 @@ export interface ICreateIntegrationAccountData {
   accountKey: string;
   mechanism: IntegrationMechanismTypes;
   label?: string | null;
-  aliases?: string[];
 }
 
 export interface IUpdateIntegrationAccountData {
   label?: string | null;
   status?: IntegrationStatusTypes;
-  aliases?: string[];
 }
 
 /**

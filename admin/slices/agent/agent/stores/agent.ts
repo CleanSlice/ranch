@@ -1,6 +1,45 @@
 import { AgentsService, LogsService } from '#api/data';
+import { client } from '#api/data/repositories/api/client.gen';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
+
+/**
+ * Hey API's axios client never throws by default — it returns
+ * `{ data, error, response }`. Crucially, on a *network-level* failure (the
+ * request never gets an HTTP response — CORS rejection, API down, blocked by
+ * an extension) it sets `error` to an empty `{}`. That object is truthy but
+ * has no `.message`, so a naive `error.message ?? 'fallback'` surfaces a
+ * meaningless fallback and hides the real cause.
+ *
+ * This helper turns every failure mode into an Error that says what actually
+ * happened, and returns the unwrapped `data` payload on success.
+ */
+function unwrapResponse<T>(res: unknown, action: string): T {
+  const r = res as {
+    data?: ApiEnvelope<T>;
+    error?: unknown;
+    response?: { status?: number };
+  };
+  const status = r.response?.status;
+  const err = r.error;
+  if (err !== undefined && err !== null) {
+    const message = (err as { message?: string }).message;
+    if (message) throw new Error(`${action} failed: ${message}`);
+    if (status && status >= 400) {
+      throw new Error(`${action} failed: HTTP ${status}`);
+    }
+    // Empty error + no status → the request never reached the API.
+    throw new Error(
+      `${action} failed: could not reach the API. Check that the API is ` +
+        'running and that this app\'s origin is listed in CORS_ORIGIN.',
+    );
+  }
+  const env = r.data;
+  if (!env || env.success === false || env.data === undefined) {
+    throw new Error(`${action} failed: the API returned no data.`);
+  }
+  return env.data;
+}
 
 export type AgentStatusTypes =
   | 'pending'
@@ -27,6 +66,7 @@ export interface IAgentData {
   allowedOrigins: string[];
   knowledgeIds: string[];
   isAdmin: boolean;
+  debugEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +92,7 @@ export interface IUpdateAgentData {
   isPublic?: boolean;
   allowedOrigins?: string[];
   knowledgeIds?: string[];
+  debugEnabled?: boolean;
 }
 
 const PENDING_RESTART_KEY = 'agent:pendingRestart';
@@ -199,9 +240,9 @@ export const useAgentStore = defineStore('agent', () => {
       path: { id },
       body: data,
     });
-    const env = res.data as ApiEnvelope<IAgentData>;
-    agents.value = agents.value.map((a) => (a.id === id ? env.data : a));
-    return env.data;
+    const updated = unwrapResponse<IAgentData>(res, 'Agent update');
+    agents.value = agents.value.map((a) => (a.id === id ? updated : a));
+    return updated;
   }
 
   async function restart(id: string) {
@@ -294,6 +335,19 @@ export const useAgentStore = defineStore('agent', () => {
     return env?.data?.logs ?? '';
   }
 
+  // Env preview — the API builds it with the same code as the real pod
+  // manifest, so the admin panel can't drift. Raw axios call: the generated
+  // SDK hasn't been regenerated for this endpoint yet.
+  async function fetchEnv(
+    id: string,
+  ): Promise<{ name: string; value: string }[]> {
+    const res = await client.instance.get(`/agents/${id}/env`);
+    const env = res.data as
+      | ApiEnvelope<{ name: string; value: string }[]>
+      | undefined;
+    return env?.data ?? [];
+  }
+
   return {
     agents,
     fetchAll,
@@ -306,6 +360,7 @@ export const useAgentStore = defineStore('agent', () => {
     promoteAdmin,
     demoteAdmin,
     fetchLogs,
+    fetchEnv,
     isPendingRestart,
     markPendingRestart,
     clearPendingRestart,

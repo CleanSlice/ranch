@@ -4,7 +4,7 @@ import {
   IWorkflowGateway,
   ISubmitWorkflowData,
 } from '../domain/IWorkflowGateway';
-import { IWorkflowStatus } from '../domain/workflow.types';
+import { IWorkflowStatus, IAgentEnvVar } from '../domain/workflow.types';
 import { ArgoWorkflowGateway } from './argo-workflow.gateway';
 import { MockWorkflowGateway } from './mock-workflow.gateway';
 
@@ -25,6 +25,9 @@ export class RouterWorkflowGateway extends IWorkflowGateway {
 
   async submit(data: ISubmitWorkflowData): Promise<string> {
     return (await this.pick()).submit(data);
+  }
+  async previewEnv(data: ISubmitWorkflowData): Promise<IAgentEnvVar[]> {
+    return (await this.pick()).previewEnv(data);
   }
   async cancel(workflowId: string): Promise<void> {
     return (await this.pick()).cancel(workflowId);

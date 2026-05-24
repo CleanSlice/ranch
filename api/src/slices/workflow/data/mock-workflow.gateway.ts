@@ -3,7 +3,7 @@ import {
   IWorkflowGateway,
   ISubmitWorkflowData,
 } from '../domain/IWorkflowGateway';
-import { IWorkflowStatus } from '../domain/workflow.types';
+import { IWorkflowStatus, IAgentEnvVar } from '../domain/workflow.types';
 
 @Injectable()
 export class MockWorkflowGateway extends IWorkflowGateway {
@@ -21,6 +21,11 @@ export class MockWorkflowGateway extends IWorkflowGateway {
     });
     this.logger.log(`[mock] submit → ${workflowId} for agent ${data.agentId}`);
     return workflowId;
+  }
+
+  async previewEnv(_data: ISubmitWorkflowData): Promise<IAgentEnvVar[]> {
+    // Mock provider has no real settings/manifest resolution.
+    return [];
   }
 
   async cancel(workflowId: string): Promise<void> {

@@ -6,7 +6,7 @@ import {
   ICreateIntegrationAccountData,
   IUpdateIntegrationAccountData,
 } from '../domain/integration.types';
-import { IntegrationMapper, sanitizeAliases } from './integration.mapper';
+import { IntegrationMapper } from './integration.mapper';
 
 @Injectable()
 export class IntegrationGateway extends IIntegrationGateway {
@@ -48,21 +48,9 @@ export class IntegrationGateway extends IIntegrationGateway {
     return record ? this.mapper.toEntity(record) : null;
   }
 
-  async findByIdentity(
-    identityId: string,
-    service?: string,
-  ): Promise<IIntegrationAccountData[]> {
-    // Postgres `has` works against the String[] column directly. `OR` lets
-    // us match canonical-owner rows + alias rows in one query.
+  async findGlobal(service?: string): Promise<IIntegrationAccountData[]> {
     const records = await this.prisma.integrationAccount.findMany({
-      where: {
-        AND: [
-          ...(service ? [{ service }] : []),
-          {
-            OR: [{ userId: identityId }, { aliases: { has: identityId } }],
-          },
-        ],
-      },
+      where: service ? { service } : {},
       orderBy: [{ service: 'asc' }, { updatedAt: 'desc' }],
     });
     return records.map((r) => this.mapper.toEntity(r));
@@ -89,9 +77,6 @@ export class IntegrationGateway extends IIntegrationGateway {
       data: {
         ...(data.label !== undefined ? { label: data.label } : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
-        ...(data.aliases !== undefined
-          ? { aliases: sanitizeAliases(data.aliases, userId) }
-          : {}),
       },
     });
     return this.mapper.toEntity(record);

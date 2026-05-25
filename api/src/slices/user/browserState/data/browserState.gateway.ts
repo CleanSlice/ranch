@@ -69,13 +69,16 @@ export class UserBrowserStateGateway extends IUserBrowserStateGateway {
   }
 
   /**
-   * Same sanitization the runtime applies in playwright.repository.ts —
-   * diverging means the runtime would look at a path that doesn't exist.
-   * Keep these regexes in sync.
+   * Same sanitization (and lowercase normalization on profile) the
+   * runtime applies in browserLogin.repository / playwright.repository
+   * and that browser.gateway.canonicalAccountKey applies before
+   * upserting BrowserSession rows. Diverging on either step means the
+   * runtime would look at a path that doesn't exist OR case variants
+   * would each create their own file. Keep all three in sync.
    */
   private objectKey(userId: string, profile: string): string {
     const safeUser = userId.replace(/[^a-zA-Z0-9_\-.]/g, '_');
-    const safeProfile = profile.replace(/[^a-zA-Z0-9_:.\-]/g, '_');
+    const safeProfile = profile.toLowerCase().replace(/[^a-z0-9_:.-]/g, '_');
     return `users/${safeUser}/browser-state/${safeProfile}.json`;
   }
 
@@ -90,7 +93,8 @@ export class UserBrowserStateGateway extends IUserBrowserStateGateway {
     if ('storageState' in obj) {
       const ss = obj.storageState as { cookies?: unknown; origins?: unknown };
       return {
-        userAgent: typeof obj.userAgent === 'string' ? obj.userAgent : undefined,
+        userAgent:
+          typeof obj.userAgent === 'string' ? obj.userAgent : undefined,
         storageState: {
           cookies: Array.isArray(ss?.cookies)
             ? (ss.cookies as IUserBrowserStatePayload['storageState']['cookies'])

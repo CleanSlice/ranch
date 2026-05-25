@@ -36,6 +36,12 @@ export class BrowserGateway extends IBrowserGateway {
     accountKey: string,
     loginUrl?: string,
   ): Promise<IBrowserSessionConnection> {
+    // Canonicalise so `Instagram` and `instagram` collapse onto one
+    // session row + one S3 state file. Without this the upsert below
+    // and the pool's profilePath diverge per case variant — that's how
+    // `admin-instagram.json` and `admin-Instagram.json` ended up living
+    // side by side in S3.
+    accountKey = BrowserGateway.canonicalAccountKey(accountKey);
     // Upsert is intentional — repeated `openSession` for the same
     // (userId, accountKey) must reuse the same profile path. A new row
     // every call would orphan cookies on the PVC.
@@ -210,12 +216,14 @@ export class BrowserGateway extends IBrowserGateway {
     userAgent?: string,
   ) {
     // Runtime composes the same path as BrowserGateway here in
-    // playwright.repository.localStatePath. Keep the sanitization regex
-    // in sync — diverging means the file would land at a path the agent
-    // never looks at.
+    // playwright.repository.localStatePath / browserLogin.repository.
+    // Keep the sanitization regex AND the lowercase step in sync —
+    // diverging means the file would land at a path the agent never
+    // looks at, or split into case variants the way the legacy
+    // admin-instagram.json / admin-Instagram.json files did.
+    profile = BrowserGateway.canonicalAccountKey(profile);
     const safeUser = userId.replace(/[^a-zA-Z0-9_\-.]/g, '_');
-    const safeProfile = profile.replace(/[^a-zA-Z0-9_:.\-]/g, '_');
-    const path = `browser-state/${safeUser}-${safeProfile}.json`;
+    const path = `browser-state/${safeUser}-${profile}.json`;
     // Wrap format when userAgent is supplied so the runtime can replay
     // the SAME browser fingerprint that issued the cookies (Instagram
     // and friends invalidate sessions whose UA shifts between Mac Chrome
@@ -247,6 +255,18 @@ export class BrowserGateway extends IBrowserGateway {
       `Imported ${cookies.length} cookies into ${agentId}:${path}${userAgent ? ' (with UA)' : ''}`,
     );
     return { path, cookies: cookies.length };
+  }
+
+  /**
+   * Single source of truth for "what does this accountKey look like on
+   * disk and in the DB". Lowercase + the same character whitelist as
+   * the legacy regex, so two callers passing `Instagram` and
+   * `instagram` end up upserting one BrowserSession row and writing one
+   * S3 file. Mirrored in user/browserState.gateway.ts and the runtime's
+   * browserLogin.repository — keep all three in sync.
+   */
+  static canonicalAccountKey(accountKey: string): string {
+    return accountKey.toLowerCase().replace(/[^a-z0-9_:.-]/g, '_');
   }
 
   /**

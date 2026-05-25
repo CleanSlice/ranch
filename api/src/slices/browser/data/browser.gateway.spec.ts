@@ -297,6 +297,23 @@ describe('BrowserGateway', () => {
       );
       expect(path).not.toContain('/etc');
     });
+
+    it('case-folds profile so Instagram and instagram share one file', async () => {
+      // Regression for legacy state where `admin-instagram.json` and
+      // `admin-Instagram.json` both existed: any caller mismatching the
+      // case stored cookies the next caller would never read. The
+      // runtime\'s localStatePath applies the same .toLowerCase() before
+      // the sanitization regex.
+      await gateway.importStorageState(
+        'rancher-user-1',
+        'agent-abc',
+        'admin',
+        'Instagram',
+        cookies,
+      );
+      const [, path] = files.save.mock.calls[0];
+      expect(path).toBe('browser-state/admin-instagram.json');
+    });
   });
 
   describe('authz (requireOwned via mutating methods)', () => {

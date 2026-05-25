@@ -1,53 +1,127 @@
-apiVersion: postgresql.cnpg.io/v1
-kind: Cluster
+# Plain Postgres for LightRAG, mirrors the local docker-compose setup.
+# Image gzdaniel/postgres-for-rag ships with pgvector + Apache AGE installed
+# and pre-seeded with user/db/password "rag/rag/rag" (POSTGRES_* env vars
+# are ignored by this image's entrypoint). Kept off CNPG because that
+# operator's stock image lacks the AGE extension and refuses to override
+# shared_preload_libraries.
+#
+# Backups are not configured here; treat this DB as ephemeral until the
+# custom CNPG image (with AGE) lands.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lightrag-postgres-data
+  namespace: platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: hcloud-volumes
+---
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: lightrag-postgres
   namespace: platform
 spec:
-  instances: 1
-  imageName: ghcr.io/cloudnative-pg/postgresql:16
-
-  postgresql:
-    parameters:
-      shared_preload_libraries: "age"
-
-  bootstrap:
-    initdb:
-      database: lightrag
-      owner: lightrag
-      postInitApplicationSQL:
-        - CREATE EXTENSION IF NOT EXISTS vector;
-        - CREATE EXTENSION IF NOT EXISTS age;
-        - LOAD 'age';
-        - SET search_path = ag_catalog, "$user", public;
-      secret:
-        name: lightrag-postgres-credentials
-
-  storage:
-    size: 20Gi
-
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://ranch-pg-backups-dreamvention/lightrag
-      s3Credentials:
-        accessKeyId:
-          name: pg-backup-aws
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: pg-backup-aws
-          key: ACCESS_SECRET_KEY
-      data:
-        compression: gzip
-        immediateCheckpoint: true
-    retentionPolicy: "30d"
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: lightrag-postgres
+  template:
+    metadata:
+      labels:
+        app: lightrag-postgres
+    spec:
+      # PVC requires hcloud-csi-node which Hetzner's DaemonSet schedules only
+      # on worker nodes (it excludes control-plane via nodeAffinity). So pin
+      # to agents pool and tolerate its workload=agent taint.
+      nodeSelector:
+        node-role: agents
+      tolerations:
+        - key: workload
+          value: agent
+          effect: NoSchedule
+      # Image ships pre-initialised PGDATA at /var/lib/postgresql/16/main.
+      # Docker named volumes auto-seed from image on first mount, but
+      # Kubernetes PVCs do not, so we copy the shipped data into the empty
+      # PVC on first start. Subsequent restarts skip the copy.
+      initContainers:
+        - name: seed-data
+          image: gzdaniel/postgres-for-rag:16.6
+          command: ["sh", "-c"]
+          args:
+            - |
+              if [ ! -d /target/16/main ]; then
+                echo "Seeding empty PVC from image..."
+                cp -a /var/lib/postgresql/. /target/
+                echo "Done."
+              else
+                echo "PVC already seeded, skipping."
+              fi
+          volumeMounts:
+            - name: data
+              mountPath: /target
+      containers:
+        - name: postgres
+          image: gzdaniel/postgres-for-rag:16.6
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -h
+                - 127.0.0.1
+                - -U
+                - rag
+                - -d
+                - rag
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -h
+                - 127.0.0.1
+                - -U
+                - rag
+                - -d
+                - rag
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: lightrag-postgres-data
 ---
-apiVersion: postgresql.cnpg.io/v1
-kind: ScheduledBackup
+apiVersion: v1
+kind: Service
 metadata:
-  name: lightrag-postgres-daily
+  name: lightrag-postgres
   namespace: platform
 spec:
-  schedule: "0 0 3 * * *"
-  cluster:
-    name: lightrag-postgres
-  backupOwnerReference: self
+  type: ClusterIP
+  selector:
+    app: lightrag-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres

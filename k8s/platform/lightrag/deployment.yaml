@@ -1,3 +1,29 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lightrag-data
+  namespace: platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: hcloud-volumes
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lightrag-inputs
+  namespace: platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: hcloud-volumes
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,6 +31,8 @@ metadata:
   namespace: platform
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: lightrag
@@ -13,6 +41,14 @@ spec:
       labels:
         app: lightrag
     spec:
+      # Co-located with lightrag-postgres on the agents pool. PVCs need
+      # hcloud-csi-node which Hetzner pins to workers only.
+      nodeSelector:
+        node-role: agents
+      tolerations:
+        - key: workload
+          value: agent
+          effect: NoSchedule
       containers:
         - name: lightrag
           image: ghcr.io/hkuds/lightrag:latest
@@ -37,27 +73,29 @@ spec:
               value: openai
             - name: EMBEDDING_MODEL
               value: text-embedding-3-small
+            # text-embedding-3-small returns 1536-dim vectors; LightRAG needs
+            # this set explicitly so the Postgres vector column is sized right
+            # on first init. Changing it later requires re-indexing.
+            - name: EMBEDDING_DIM
+              value: "1536"
             - name: EMBEDDING_BINDING_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: lightrag-api
                   key: openaiApiKey
+            # Postgres creds are baked into gzdaniel/postgres-for-rag image
+            # as rag/rag/rag and cannot be overridden via env, so we set the
+            # client side to match.
             - name: POSTGRES_HOST
-              value: lightrag-postgres-rw
+              value: lightrag-postgres
             - name: POSTGRES_PORT
               value: "5432"
             - name: POSTGRES_USER
-              valueFrom:
-                secretKeyRef:
-                  name: lightrag-postgres-credentials
-                  key: username
+              value: rag
             - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: lightrag-postgres-credentials
-                  key: password
+              value: rag
             - name: POSTGRES_DATABASE
-              value: lightrag
+              value: rag
             - name: LIGHTRAG_KV_STORAGE
               value: PGKVStorage
             - name: LIGHTRAG_DOC_STATUS_STORAGE
@@ -66,6 +104,11 @@ spec:
               value: PGVectorStorage
             - name: LIGHTRAG_GRAPH_STORAGE
               value: PGGraphStorage
+          volumeMounts:
+            - name: rag-storage
+              mountPath: /app/data/rag_storage
+            - name: inputs
+              mountPath: /app/data/inputs
           readinessProbe:
             tcpSocket:
               port: 9621
@@ -78,3 +121,10 @@ spec:
             limits:
               cpu: "2"
               memory: "4Gi"
+      volumes:
+        - name: rag-storage
+          persistentVolumeClaim:
+            claimName: lightrag-data
+        - name: inputs
+          persistentVolumeClaim:
+            claimName: lightrag-inputs

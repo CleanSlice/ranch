@@ -84,6 +84,17 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
       messagesEndpoint: 'mcp/messages',
       mcpEndpoint: 'mcp/mcp',
       guards: [JwtAuthGuard],
+      // Stateful streamable-http: clients send `initialize`, get an
+      // `Mcp-Session-Id`, then route subsequent calls to that session.
+      // The module default is stateless, which breaks the standard MCP
+      // SDK client used by the agent runtime - it expects a session id
+      // after initialize and otherwise treats the connection as
+      // uninitialized. Safe while ranch-api is a single replica;
+      // horizontal scaling would need session affinity at the ingress.
+      streamableHttp: {
+        statelessMode: false,
+        enableJsonResponse: true,
+      },
     }),
   ],
 })

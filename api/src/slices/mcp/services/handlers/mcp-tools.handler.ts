@@ -11,6 +11,7 @@ import { Request } from 'express';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
+import { isDynamicallyDescribed } from '../../interfaces/dynamic-description.interface';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -27,14 +28,45 @@ export class McpToolsHandler extends McpHandlerBase {
   }
 
   registerHandlers(mcpServer: McpServer, httpRequest: Request) {
-    mcpServer.server.setRequestHandler(ListToolsRequestSchema, () => {
-      const tools = this.registry.getTools().map((tool) => ({
-        name: tool.metadata.name,
-        description: tool.metadata.description,
-        inputSchema: tool.metadata.parameters
-          ? this.convertZodToJsonSchema(tool.metadata.parameters)
-          : undefined,
-      }));
+    mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      const contextId = ContextIdFactory.getByRequest(httpRequest);
+      this.moduleRef.registerRequestByContextId(httpRequest, contextId);
+
+      const tools = await Promise.all(
+        this.registry.getTools().map(async (tool) => {
+          let description = tool.metadata.description;
+          // Tools may opt into per-caller descriptions by implementing
+          // IDynamicallyDescribedTool. Failure to resolve or describe falls
+          // back to the static decorator description so a broken tool can't
+          // hide the rest of the list.
+          try {
+            const instance = await this.moduleRef.resolve(
+              tool.providerClass,
+              contextId,
+              { strict: false },
+            );
+            if (isDynamicallyDescribed(instance)) {
+              const dyn = await instance.describeForRequest(httpRequest);
+              if (typeof dyn === 'string' && dyn.length > 0) {
+                description = dyn;
+              }
+            }
+          } catch (e) {
+            this.logger.debug(
+              `describeForRequest failed for ${tool.metadata.name}: ${
+                e instanceof Error ? e.message : String(e)
+              }`,
+            );
+          }
+          return {
+            name: tool.metadata.name,
+            description,
+            inputSchema: tool.metadata.parameters
+              ? this.convertZodToJsonSchema(tool.metadata.parameters)
+              : undefined,
+          };
+        }),
+      );
 
       return {
         tools,

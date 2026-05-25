@@ -5,7 +5,12 @@ import { Request } from 'express';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { ITemplateGateway } from '#/agent/template/domain';
+import { IDynamicallyDescribedTool } from '#/mcp/interfaces/dynamic-description.interface';
 import { KnowledgeService } from './domain/knowledge.service';
+import { IKnowledgeGateway } from './domain/knowledge.gateway';
+
+const BASE_DESCRIPTION =
+  'Search your bound knowledge bases for factual information. ALWAYS try this BEFORE web_search when the user asks about specific facts, company details, product specs, internal documentation, or anything the user might have uploaded. Returns matched content with citations. The knowledge_id parameter is optional - omit it to search across all your bound bases at once.';
 
 interface ToolResult {
   content: { type: 'text'; text: string }[];
@@ -28,28 +33,65 @@ const err = (message: string): ToolResult => ({
 });
 
 @Injectable()
-export class KnowledgeTool {
+export class KnowledgeTool implements IDynamicallyDescribedTool {
   private readonly logger = new Logger(KnowledgeTool.name);
 
   constructor(
     private readonly knowledgeService: KnowledgeService,
     private readonly agentGateway: IAgentGateway,
     private readonly templateGateway: ITemplateGateway,
+    private readonly knowledgeGateway: IKnowledgeGateway,
   ) {}
+
+  /**
+   * MCP tools/list is invoked per-session at agent startup. Returning a
+   * description that lists the bases bound to the calling agent (name +
+   * description) gives the LLM enough context to decide when to query
+   * without first having to enumerate via a separate tool. Returns null
+   * (= use static description) when the caller isn't an agent or has no
+   * bound bases.
+   */
+  async describeForRequest(
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ): Promise<string | null> {
+    const agentId = this.extractAgentId(httpRequest);
+    if (!agentId) return null;
+
+    const allowedIds = await this.resolveAllowedIds(agentId);
+    if (allowedIds.length === 0) return null;
+
+    const bases = await this.knowledgeGateway.findExistingByIds(allowedIds);
+    if (bases.length === 0) return null;
+
+    const lines = bases.map((b) => {
+      const description = b.description?.trim();
+      return description
+        ? `- "${b.name}" (id: ${b.id}) - ${description}`
+        : `- "${b.name}" (id: ${b.id})`;
+    });
+    return [
+      BASE_DESCRIPTION,
+      '',
+      'Knowledge bases bound to this agent (you can omit knowledge_id to search all of them):',
+      ...lines,
+    ].join('\n');
+  }
 
   @Tool({
     name: 'query_knowledge',
-    description:
-      'Query a knowledge base bound to this agent. Bases are configured per-template (defaultKnowledgeIds) or per-agent (knowledgeIds override). The caller must pass a knowledge_id from its allowed list.',
+    description: BASE_DESCRIPTION,
     parameters: z.object({
       knowledge_id: z
         .string()
-        .describe('Knowledge base id, e.g. knowledge-abc123'),
+        .optional()
+        .describe(
+          'Optional. Omit to search all knowledge bases bound to this agent. Provide only when you already know the specific knowledge base id.',
+        ),
       query: z.string().describe('Natural-language search query.'),
     }),
   })
   async query(
-    { knowledge_id, query }: { knowledge_id: string; query: string },
+    { knowledge_id, query }: { knowledge_id?: string; query: string },
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ): Promise<ToolResult> {
@@ -59,17 +101,44 @@ export class KnowledgeTool {
     }
 
     const allowedIds = await this.resolveAllowedIds(callerAgentId);
-    if (!allowedIds.includes(knowledge_id)) {
-      return err(`Knowledge ${knowledge_id} not bound to this agent.`);
+    if (allowedIds.length === 0) {
+      return err(
+        'No knowledge bases are bound to this agent. Skip this tool and try web_search or other sources.',
+      );
     }
 
+    if (knowledge_id && !allowedIds.includes(knowledge_id)) {
+      return err(
+        `Knowledge ${knowledge_id} not bound to this agent. Available: ${allowedIds.join(', ')}. Omit knowledge_id to search all of them.`,
+      );
+    }
+
+    const targetIds = knowledge_id ? [knowledge_id] : allowedIds;
+
     try {
-      const result = await this.knowledgeService.query(knowledge_id, query);
-      return ok(result);
+      if (targetIds.length === 1) {
+        const result = await this.knowledgeService.query(targetIds[0], query);
+        return ok(result);
+      }
+      // Multi-base search: per-base errors are surfaced inline so one broken
+      // base doesn't sink the others. LLM sees a `results` array and picks
+      // the relevant entry.
+      const results = await Promise.all(
+        targetIds.map(async (id) => {
+          try {
+            const r = await this.knowledgeService.query(id, query);
+            return { ...r, knowledge_id: id };
+          } catch (e) {
+            const message = e instanceof Error ? e.message : 'query failed';
+            return { knowledge_id: id, error: message };
+          }
+        }),
+      );
+      return ok({ results });
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Knowledge query failed';
       this.logger.warn(
-        `query_knowledge failed for agent=${callerAgentId} knowledge=${knowledge_id}: ${message}`,
+        `query_knowledge failed for agent=${callerAgentId}: ${message}`,
       );
       return err(message);
     }

@@ -22,6 +22,9 @@ spec:
           image: ghcr.io/cleanslice/ranch-app:latest
           ports:
             - containerPort: 3000
+          env:
+            - name: NUXT_PUBLIC_API_URL
+              value: https://api.ranch.cleanslice.org
           readinessProbe:
             tcpSocket:
               port: 3000

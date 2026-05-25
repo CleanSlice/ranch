@@ -8,8 +8,8 @@ import { ISkillSearchHit, ISkillFile } from '../domain';
 
 /**
  * Curated list of public GitHub repositories that publish reusable
- * SKILL.md documents. Each query is fan-out across these repos via the
- * GitHub Code Search API — first matching SKILL.md / README.md wins
+ * SKILL.md documents. Each query is fan-out across these repos via a
+ * per-repo tree index — the first matching SKILL.md / README.md wins
  * the "title" slot, the repo URL is recorded as `source` on import.
  *
  * To add a source:
@@ -36,29 +36,46 @@ const SOURCES: { repo: string; label: string }[] = [
   { repo: 'alirezarezvani/claude-skills', label: 'Claude Skills (mixed)' },
 ];
 
-interface GhCodeSearchItem {
-  name: string;
+// Repos rarely add skills, so an hour is plenty between refreshes. The /git/trees
+// endpoint is part of the standard 5000 RPH bucket — at 10 sources × ~2 calls
+// per refresh we use ~20 of those per hour vs. /search/code's 30 RPM ceiling.
+const INDEX_TTL_MS = 60 * 60 * 1000;
+
+// Per-search caps. Indexing is cheap when warm; metadata enrichment hits
+// raw.githubusercontent (no API quota) so we can be a bit more parallel.
+const INDEX_CONCURRENCY = 3;
+const ENRICH_CONCURRENCY = 6;
+const MAX_HITS = 30;
+
+interface SkillCandidate {
+  /** Path of SKILL.md inside the repo, e.g. "skills/pdf-export/SKILL.md" */
   path: string;
-  html_url: string;
-  repository: { full_name: string; html_url: string };
-  text_matches?: { fragment: string }[];
+  /** Folder containing SKILL.md, e.g. "skills/pdf-export" */
+  folder: string;
+  /** Slug derived from folder name, e.g. "pdf-export" */
+  slug: string;
 }
 
-// GitHub's /search/code endpoint trips a secondary rate limit when hit with
-// many parallel requests. Cap concurrency, cache repeat queries briefly,
-// and refuse to call upstream while a Retry-After window is active.
-const SEARCH_CONCURRENCY = 3;
-const SEARCH_CACHE_TTL_MS = 60_000;
+interface SkillMeta {
+  title: string;
+  description: string | null;
+}
+
+interface IndexEntry {
+  at: number;
+  sha: string;
+  candidates: SkillCandidate[];
+  /** path → metadata cache, scoped to this SHA (GC'd when entry is replaced) */
+  meta: Map<string, SkillMeta>;
+}
 
 @Injectable()
 export class GithubSearch {
   private readonly logger = new Logger(GithubSearch.name);
 
-  private searchCache = new Map<
-    string,
-    { at: number; hits: ISkillSearchHit[] }
-  >();
-  private rateLimitedUntil = 0;
+  // Per-repo tree index. Single source of truth for "which SKILL.md files
+  // exist where" — populated lazily on first search after TTL expiry.
+  private indexCache = new Map<string, IndexEntry>();
 
   constructor(private settingGateway: ISettingGateway) {}
 
@@ -67,58 +84,74 @@ export class GithubSearch {
   }
 
   async search(query: string): Promise<ISkillSearchHit[]> {
-    const trimmed = query.trim();
+    const q = query.trim().toLowerCase();
+    if (q.length === 0) return [];
 
-    const cached = this.searchCache.get(trimmed);
-    if (cached && Date.now() - cached.at < SEARCH_CACHE_TTL_MS) {
-      return cached.hits;
-    }
-
-    if (Date.now() < this.rateLimitedUntil) {
-      const waitS = Math.ceil((this.rateLimitedUntil - Date.now()) / 1000);
+    const token = await this.getToken();
+    if (!token) {
       throw new ServiceUnavailableException(
-        `GitHub search rate-limited. Retry in ${waitS}s.`,
+        'GitHub token not configured. Set integrations/github_pat in Settings.',
       );
     }
 
-    const token = await this.getToken();
-
-    const results = await mapWithConcurrency(SOURCES, SEARCH_CONCURRENCY, (s) =>
-      this.searchOne(s.repo, trimmed, token).then(
-        (hits) => ({ ok: true as const, repo: s.repo, hits }),
+    const indexed = await mapWithConcurrency(SOURCES, INDEX_CONCURRENCY, (s) =>
+      this.ensureIndex(s.repo, token).then(
+        (entry) => ({ ok: true as const, repo: s.repo, entry }),
         (err: Error) => ({ ok: false as const, repo: s.repo, err }),
       ),
     );
 
-    const errors = results.filter(
+    const errors = indexed.filter(
       (r): r is { ok: false; repo: string; err: Error } => !r.ok,
     );
-    const successHits = results
-      .filter(
-        (r): r is { ok: true; repo: string; hits: ISkillSearchHit[] } => r.ok,
-      )
-      .flatMap((r) => r.hits);
-
+    const ok = indexed.filter(
+      (r): r is { ok: true; repo: string; entry: IndexEntry } => r.ok,
+    );
     for (const e of errors) {
-      this.logger.warn(`search failed for ${e.repo}: ${e.err.message}`);
+      this.logger.warn(`index ${e.repo}: ${e.err.message}`);
     }
-
-    // If every source failed, surface the failure instead of returning
-    // an empty list that looks like "no results" to the UI.
-    if (errors.length === SOURCES.length) {
-      const rateLimited = errors.find((e) =>
-        /\b403\b|\b429\b|rate limit|abuse/i.test(e.err.message),
-      );
+    if (ok.length === 0) {
       throw new ServiceUnavailableException(
-        rateLimited
-          ? `GitHub search rate-limited: ${rateLimited.err.message}`
-          : `GitHub search failed: ${errors[0].err.message}`,
+        `GitHub indexing failed: ${errors[0]?.err.message ?? 'unknown'}`,
       );
     }
 
-    const deduped = dedupe(successHits);
-    this.searchCache.set(trimmed, { at: Date.now(), hits: deduped });
-    return deduped;
+    const matches: {
+      repo: string;
+      sha: string;
+      cand: SkillCandidate;
+      metaStore: Map<string, SkillMeta>;
+      score: number;
+    }[] = [];
+    for (const { repo, entry } of ok) {
+      for (const cand of entry.candidates) {
+        const score = scoreMatch(cand, q);
+        if (score > 0) {
+          matches.push({
+            repo,
+            sha: entry.sha,
+            cand,
+            metaStore: entry.meta,
+            score,
+          });
+        }
+      }
+    }
+    matches.sort(
+      (a, b) => b.score - a.score || a.cand.slug.localeCompare(b.cand.slug),
+    );
+    const top = matches.slice(0, MAX_HITS);
+
+    return mapWithConcurrency(top, ENRICH_CONCURRENCY, async (m) => {
+      const meta = await this.getMeta(
+        m.repo,
+        m.sha,
+        m.cand.path,
+        m.metaStore,
+        token,
+      );
+      return toHit(m.repo, m.sha, m.cand, meta);
+    });
   }
 
   /**
@@ -276,6 +309,72 @@ export class GithubSearch {
     };
   }
 
+  // ── internals ───────────────────────────────────────────────────────
+
+  private async ensureIndex(repo: string, token: string): Promise<IndexEntry> {
+    const cached = this.indexCache.get(repo);
+    if (cached && Date.now() - cached.at < INDEX_TTL_MS) return cached;
+
+    const sha = await this.getHeadSha(repo, token);
+
+    // SHA unchanged → keep candidates and per-path meta, just bump the timestamp.
+    if (cached && cached.sha === sha) {
+      cached.at = Date.now();
+      return cached;
+    }
+
+    const tree = await this.getRecursiveTree(repo, sha, token);
+    const candidates: SkillCandidate[] = [];
+    for (const t of tree.tree) {
+      if (t.type !== 'blob') continue;
+      if (!(t.path === 'SKILL.md' || t.path.endsWith('/SKILL.md'))) continue;
+      candidates.push({
+        path: t.path,
+        folder: parentDir(t.path),
+        slug: guessSlug(t.path),
+      });
+    }
+
+    const entry: IndexEntry = {
+      at: Date.now(),
+      sha,
+      candidates,
+      meta: new Map(),
+    };
+    this.indexCache.set(repo, entry);
+    return entry;
+  }
+
+  private async getMeta(
+    repo: string,
+    sha: string,
+    path: string,
+    store: Map<string, SkillMeta>,
+    token: string,
+  ): Promise<SkillMeta> {
+    const cached = store.get(path);
+    if (cached) return cached;
+    try {
+      const res = await fetch(
+        `https://raw.githubusercontent.com/${repo}/${sha}/${path}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) throw new Error(`raw ${res.status}`);
+      const content = await res.text();
+      const meta = parseSkillMetadata(content, path);
+      store.set(path, meta);
+      return meta;
+    } catch (e) {
+      this.logger.warn(`meta ${repo}:${path} ${(e as Error).message}`);
+      const fallback: SkillMeta = {
+        title: humanize(guessSlug(path)),
+        description: null,
+      };
+      store.set(path, fallback);
+      return fallback;
+    }
+  }
+
   private async getRecursiveTree(
     repo: string,
     sha: string,
@@ -306,43 +405,6 @@ export class GithubSearch {
     return data.sha;
   }
 
-  // ── internals ───────────────────────────────────────────────────────
-
-  private async searchOne(
-    repo: string,
-    query: string,
-    token: string | null,
-  ): Promise<ISkillSearchHit[]> {
-    // Find SKILL.md files in this repo that match the query.
-    // Code Search needs auth — without it we get 422 on every call.
-    if (!token) return [];
-    const q = `${query} repo:${repo} filename:SKILL extension:md`;
-    const url = `https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=10`;
-    const res = await fetch(url, { headers: githubHeaders(token, true) });
-    if (!res.ok) {
-      this.rememberRateLimit(res);
-      throw new Error(`GitHub search ${res.status} for ${repo}`);
-    }
-    const data = (await res.json()) as { items?: GhCodeSearchItem[] };
-    return (data.items ?? []).map((item) => toHit(item));
-  }
-
-  private rememberRateLimit(res: Response): void {
-    if (res.status !== 403 && res.status !== 429) return;
-    const retryAfter = Number(res.headers.get('retry-after'));
-    if (Number.isFinite(retryAfter) && retryAfter > 0) {
-      this.rateLimitedUntil = Math.max(
-        this.rateLimitedUntil,
-        Date.now() + retryAfter * 1000,
-      );
-      return;
-    }
-    const reset = Number(res.headers.get('x-ratelimit-reset'));
-    if (Number.isFinite(reset) && reset > 0) {
-      this.rateLimitedUntil = Math.max(this.rateLimitedUntil, reset * 1000);
-    }
-  }
-
   private async getToken(): Promise<string | null> {
     const setting = await this.settingGateway.findByKey(
       'integrations',
@@ -353,14 +415,9 @@ export class GithubSearch {
   }
 }
 
-function githubHeaders(
-  token: string | null,
-  withTextMatches = false,
-): Record<string, string> {
+function githubHeaders(token: string | null): Record<string, string> {
   const h: Record<string, string> = {
-    Accept: withTextMatches
-      ? 'application/vnd.github.text-match+json'
-      : 'application/vnd.github+json',
+    Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
     'User-Agent': 'ranch-skill-search',
   };
@@ -368,20 +425,40 @@ function githubHeaders(
   return h;
 }
 
-function toHit(item: GhCodeSearchItem): ISkillSearchHit {
-  const repo = item.repository.full_name;
-  const slug = guessSlug(item.path);
-  const title = humanize(slug);
+function toHit(
+  repo: string,
+  sha: string,
+  cand: SkillCandidate,
+  meta: SkillMeta,
+): ISkillSearchHit {
   return {
     source: `github:${repo}`,
     repo,
-    path: item.path,
-    name: slug,
-    title,
-    description: null,
-    url: item.html_url,
-    snippet: item.text_matches?.[0]?.fragment ?? null,
+    path: cand.path,
+    name: cand.slug,
+    title: meta.title,
+    description: meta.description,
+    url: `https://github.com/${repo}/blob/${sha}/${cand.path}`,
+    snippet: meta.description,
   };
+}
+
+function scoreMatch(cand: SkillCandidate, q: string): number {
+  const tokens = q.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return 0;
+  const slug = cand.slug.toLowerCase();
+  const folder = cand.folder.toLowerCase();
+  const path = cand.path.toLowerCase();
+  let score = 0;
+  for (const t of tokens) {
+    if (slug === t) score += 100;
+    else if (slug.startsWith(t)) score += 70;
+    else if (slug.includes(t)) score += 50;
+    else if (folder.includes(t)) score += 30;
+    else if (path.includes(t)) score += 10;
+    else return 0;
+  }
+  return score;
 }
 
 function guessSlug(path: string): string {
@@ -484,21 +561,6 @@ async function mapWithConcurrency<T, R>(
   const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
   await Promise.all(workers);
   return results;
-}
-
-function dedupe(hits: ISkillSearchHit[]): ISkillSearchHit[] {
-  const seen = new Set<string>();
-  return hits.filter((h) => {
-    const k = `${h.repo}:${h.path}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-}
-
-interface SkillMeta {
-  title: string;
-  description: string | null;
 }
 
 function parseSkillMetadata(body: string, path: string): SkillMeta {

@@ -11,9 +11,9 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiConsumes, ApiResponse } from '@nestjs/swagger';
 import { SourceService } from './domain/source.service';
-import { CreateSourceDto } from './dtos';
+import { AddFromSitemapDto, AddFromSitemapResultDto, CreateSourceDto } from './dtos';
 
 interface UploadedFileLike {
   originalname: string;
@@ -76,6 +76,25 @@ export class SourceController {
     }
     const exhaustive: never = dto.type;
     throw new BadRequestException(`Unknown source type: ${String(exhaustive)}`);
+  }
+
+  @Post('from-sitemap')
+  @ApiOperation({
+    summary: 'Add url sources from a sitemap',
+    operationId: 'addKnowledgeSourcesFromSitemap',
+    description:
+      'Fetches a sitemap.xml (or sitemap-index), filters by optional URL prefix, then creates one url-type source per discovered page. Indexing into LightRAG happens through the normal reindex flow.',
+  })
+  @ApiResponse({ status: 201, type: AddFromSitemapResultDto })
+  addFromSitemap(
+    @Param('knowledgeId') knowledgeId: string,
+    @Body() dto: AddFromSitemapDto,
+  ): Promise<AddFromSitemapResultDto> {
+    return this.service.addFromSitemap(
+      knowledgeId,
+      dto.sitemapUrl,
+      dto.urlPrefix,
+    );
   }
 
   @Delete(':sourceId')

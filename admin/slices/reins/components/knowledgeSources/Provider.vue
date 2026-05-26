@@ -58,6 +58,11 @@ async function onAdded() {
       @added="onAdded"
     />
 
+    <KnowledgeSourcesAddFromSitemapForm
+      :knowledge-id="(route.params.id as string)"
+      @added="onAdded"
+    />
+
     <div v-if="loading" class="text-sm text-muted-foreground">Loading…</div>
 
     <div v-else-if="sources.length" class="rounded-md border bg-card">

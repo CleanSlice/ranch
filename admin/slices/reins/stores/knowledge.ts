@@ -4,6 +4,14 @@ import { client as apiClient } from '#api/data/repositories/api/client.gen';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
 
+function isSitemapResult(
+  value: unknown,
+): value is { added: number; discovered: number } {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.added === 'number' && typeof obj.discovered === 'number';
+}
+
 export type IndexStatus = 'idle' | 'indexing' | 'ready' | 'failed';
 export type SourceType = 'file' | 'url' | 'text';
 
@@ -228,6 +236,22 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     return unwrap<ISource>(res);
   }
 
+  async function addSourcesFromSitemap(
+    id: string,
+    sitemapUrl: string,
+    urlPrefix?: string,
+  ): Promise<{ added: number; discovered: number }> {
+    const body: { sitemapUrl: string; urlPrefix?: string } = { sitemapUrl };
+    if (urlPrefix) body.urlPrefix = urlPrefix;
+    const res = await $fetch<unknown>(
+      `/api/knowledges/${id}/sources/from-sitemap`,
+      { method: 'POST', body },
+    );
+    const data = unwrap<unknown>(res);
+    if (isSitemapResult(data)) return data;
+    return { added: 0, discovered: 0 };
+  }
+
   async function removeSource(id: string, sourceId: string) {
     await KnowledgeSourcesService.deleteKnowledgeSource({
       path: { knowledgeId: id, sourceId },
@@ -272,6 +296,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     addTextSource,
     addUrlSource,
     addFileSource,
+    addSourcesFromSitemap,
     removeSource,
     getGraphLabels,
     getGraph,

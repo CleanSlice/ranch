@@ -1,6 +1,20 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ISourceGateway } from './source.gateway';
 import { ISourceData } from './source.types';
+import {
+  fetchSitemapUrls,
+  SitemapError,
+} from '../data/sitemap.fetcher';
+
+export interface IAddFromSitemapResult {
+  added: number;
+  discovered: number;
+}
 
 export interface IUploadedFile {
   name: string;
@@ -93,6 +107,51 @@ export class SourceService {
 
   indexSource(source: ISourceData): Promise<void> {
     return this.gateway.indexSource(source);
+  }
+
+  /**
+   * Walk a sitemap, optionally filter by URL prefix, then create one
+   * url-type Source per discovered page. Indexing into LightRAG happens
+   * later through the normal reindex flow - this method only enqueues the
+   * sources. Existing url sources with the same URL are skipped so calling
+   * this twice doesn't duplicate them (useful as a manual refresh until
+   * scheduled refresh lands).
+   */
+  async addFromSitemap(
+    knowledgeId: string,
+    sitemapUrl: string,
+    urlPrefix?: string,
+  ): Promise<IAddFromSitemapResult> {
+    let urls: string[];
+    try {
+      urls = await fetchSitemapUrls(sitemapUrl, { urlPrefix });
+    } catch (e) {
+      if (e instanceof SitemapError) {
+        throw new BadRequestException(e.message);
+      }
+      throw e;
+    }
+
+    const existing = await this.gateway.findByKnowledgeId(knowledgeId);
+    const existingUrls = new Set(
+      existing
+        .filter((s) => s.type === 'url' && s.url !== null)
+        .map((s) => s.url),
+    );
+
+    let added = 0;
+    for (const url of urls) {
+      if (existingUrls.has(url)) continue;
+      await this.gateway.create({
+        knowledgeId,
+        type: 'url',
+        name: url,
+        url,
+      });
+      added += 1;
+    }
+
+    return { added, discovered: urls.length };
   }
 
   async removeAllByKnowledge(knowledgeId: string): Promise<void> {

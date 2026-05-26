@@ -3,6 +3,7 @@ import { IKnowledgeGateway } from './knowledge.gateway';
 import {
   IKnowledgeData,
   ICreateKnowledgeData,
+  IndexStatusTypes,
   IUpdateKnowledgeData,
   IKnowledgeQueryResult,
   QueryModeTypes,
@@ -115,10 +116,13 @@ export class KnowledgeService {
     try {
       const sources = await this.sources.findByKnowledge(knowledgeId);
       const failures: { sourceId: string; name: string; error: string }[] = [];
+      const previouslyIndexed = sources.filter((s) => s.indexed).length;
+      let newlyIndexed = 0;
       for (const source of sources) {
         if (source.indexed) continue;
         try {
           await this.sources.indexSource(source);
+          newlyIndexed += 1;
         } catch (err) {
           // Per-source failures are isolated so one bad URL (404, empty
           // body, etc.) does not strand the rest of the batch. The
@@ -142,9 +146,19 @@ export class KnowledgeService {
               .slice(0, 5)
               .map((f) => `${f.name} (${f.error})`)
               .join('; ')}${failures.length > 5 ? '; ...' : ''}`;
+      const totalIndexed = previouslyIndexed + newlyIndexed;
+      // 'ready' when at least one document is indexed OR the KB is empty
+      // (nothing to do is a trivially "ready" state). 'failed' only when
+      // there are sources but none ever indexed - so the UI doesn't claim
+      // a KB is queryable when it physically has zero documents.
+      const status: IndexStatusTypes =
+        totalIndexed > 0 || sources.length === 0 ? 'ready' : 'failed';
       await this.gateway.updateIndexState(knowledgeId, {
-        indexStatus: 'ready',
-        indexedAt: new Date(),
+        indexStatus: status,
+        // Bump indexedAt only when this run actually added something.
+        // Preserves the timestamp of the last successful run when the
+        // current run failed everything but earlier runs had succeeded.
+        indexedAt: newlyIndexed > 0 ? new Date() : undefined,
         indexError: summary,
       });
     } catch (err) {

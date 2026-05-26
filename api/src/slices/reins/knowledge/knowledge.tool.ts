@@ -10,7 +10,7 @@ import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
 
 const BASE_DESCRIPTION =
-  'Search your bound knowledge bases for factual information. ALWAYS try this BEFORE web_search when the user asks about specific facts, company details, product specs, internal documentation, or anything the user might have uploaded. Returns matched content with citations. The knowledge_id parameter is optional - omit it to search across all your bound bases at once.';
+  'Search your bound knowledge bases for factual information. MUST be called FIRST, before drafting any response, when the user asks about a topic that could plausibly be covered by your bound knowledge bases (see the list below). Do NOT hedge with phrases like "isn\'t explicitly detailed" or "based on what I know" before calling this tool - drafting an answer first and then querying is a bug, it wastes the user\'s time and produces a confusing two-phase response. Prefer this over web_search for anything that could be in user-uploaded content. Returns matched content with citations. The knowledge_id parameter is optional - omit it to search across all your bound bases at once.';
 
 interface ToolResult {
   content: { type: 'text'; text: string }[];

@@ -83,18 +83,44 @@ export class LightragHttpClient extends ILightragClient {
 
   async ingestUrl(input: IIngestUrlInput): Promise<IIngestResult> {
     const cfg = await this.requireEnabled();
-    const res = await this.fetchImpl(`${cfg.baseUrl}/documents/url`, {
+    // LightRAG dropped /documents/url; fetch + extract text in ranch-api
+    // and forward to /documents/text. file_source carries the URL so the
+    // resulting document remains traceable in the LightRAG dashboard.
+    const text = await this.fetchAsCleanText(input.url);
+    const res = await this.fetchImpl(`${cfg.baseUrl}/documents/text`, {
       method: 'POST',
       headers: this.headers(cfg.apiKey, {
         'content-type': 'application/json',
       }),
       body: JSON.stringify({
         workspace: input.workspace,
-        url: input.url,
+        text,
+        file_source: input.url,
       }),
     });
-    await this.ensureOk(res, '/documents/url');
-    return this.extractDocId(res, '/documents/url');
+    await this.ensureOk(res, '/documents/text');
+    return this.extractDocId(res, '/documents/text');
+  }
+
+  private async fetchAsCleanText(url: string): Promise<string> {
+    const res = await this.fetchImpl(url, {
+      signal: AbortSignal.timeout(15000),
+      headers: {
+        // Some docs sites return a generic shell to unknown user agents.
+        // A real browser UA gets the rendered HTML reliably.
+        'user-agent':
+          'Mozilla/5.0 (compatible; RanchKnowledgeBot/1.0; +https://ranch.cleanslice.org)',
+      },
+    });
+    if (!res.ok) {
+      throw new LightragClientError(
+        `URL fetch failed: ${url} -> HTTP ${res.status}`,
+        res.status,
+        url,
+      );
+    }
+    const html = await res.text();
+    return stripHtmlToText(html);
   }
 
   async ingestFile(input: IIngestFileInput): Promise<IIngestResult> {
@@ -368,4 +394,27 @@ function extractGraph(body: unknown): ILightragGraph {
     isTruncated:
       typeof body.is_truncated === 'boolean' ? body.is_truncated : false,
   };
+}
+
+// Crude HTML -> text. Drops script/style bodies first so their JS doesn't
+// end up as "content", strips remaining tags, decodes the handful of HTML
+// entities that show up most often in docs sites, and collapses
+// whitespace. Good enough to feed LightRAG entity extraction; a structured
+// Readability + Turndown pipeline would be nicer but adds two deps.
+function stripHtmlToText(html: string): string {
+  let s = html.replace(
+    /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+    ' ',
+  );
+  s = s.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ');
+  s = s.replace(/<!--[\s\S]*?-->/g, ' ');
+  s = s.replace(/<[^>]+>/g, ' ');
+  s = s
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&');
+  return s.replace(/\s+/g, ' ').trim();
 }

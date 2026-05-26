@@ -114,14 +114,38 @@ export class KnowledgeService {
   private async runIndex(knowledgeId: string): Promise<void> {
     try {
       const sources = await this.sources.findByKnowledge(knowledgeId);
+      const failures: { sourceId: string; name: string; error: string }[] = [];
       for (const source of sources) {
         if (source.indexed) continue;
-        await this.sources.indexSource(source);
+        try {
+          await this.sources.indexSource(source);
+        } catch (err) {
+          // Per-source failures are isolated so one bad URL (404, empty
+          // body, etc.) does not strand the rest of the batch. The
+          // aggregate result is reported via indexError once the loop
+          // finishes.
+          const message = errorMessage(err);
+          failures.push({
+            sourceId: source.id,
+            name: source.name,
+            error: message,
+          });
+          this.logger.warn(
+            `indexSource failed for ${source.id} (${source.name}): ${message}`,
+          );
+        }
       }
+      const summary =
+        failures.length === 0
+          ? null
+          : `${failures.length} source(s) failed: ${failures
+              .slice(0, 5)
+              .map((f) => `${f.name} (${f.error})`)
+              .join('; ')}${failures.length > 5 ? '; ...' : ''}`;
       await this.gateway.updateIndexState(knowledgeId, {
         indexStatus: 'ready',
         indexedAt: new Date(),
-        indexError: null,
+        indexError: summary,
       });
     } catch (err) {
       this.logger.error(

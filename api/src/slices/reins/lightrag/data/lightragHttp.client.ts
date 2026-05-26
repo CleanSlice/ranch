@@ -87,6 +87,13 @@ export class LightragHttpClient extends ILightragClient {
     // and forward to /documents/text. file_source carries the URL so the
     // resulting document remains traceable in the LightRAG dashboard.
     const text = await this.fetchAsCleanText(input.url);
+    if (text.length === 0) {
+      throw new LightragClientError(
+        `URL produced no extractable text after HTML strip: ${input.url}`,
+        422,
+        input.url,
+      );
+    }
     const res = await this.fetchImpl(`${cfg.baseUrl}/documents/text`, {
       method: 'POST',
       headers: this.headers(cfg.apiKey, {

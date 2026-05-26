@@ -11,7 +11,10 @@ import { ITemplateGateway } from '#/agent/template/domain';
 import { IMcpServerGateway, IMcpServerData } from '#/mcpServer/domain';
 import { IKnowledgeGateway } from '#/reins/knowledge/domain';
 import { IKnowledgeConfigGateway } from '#/reins/config/domain';
-import { KNOWLEDGE_MCP_ID } from '#/mcpServer/domain/mcpServer.seeder';
+import {
+  CLEANSLICE_MCP_ID,
+  KNOWLEDGE_MCP_ID,
+} from '#/mcpServer/domain/mcpServer.seeder';
 import { IAgentChannelGateway } from '#/agent/agentChannel/domain';
 import { IUserGateway, UserRoleTypes } from '#/user/user/domain';
 import {
@@ -96,6 +99,17 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
 
     const enabledServers = baseServers.filter((m) => m.enabled);
 
+    // CleanSlice MCP is built-in and attached to every agent by default,
+    // regardless of the template. Operators can disable it by toggling the
+    // `enabled` flag on the DB record (or deleting the record entirely).
+    if (!enabledServers.some((m) => m.id === CLEANSLICE_MCP_ID)) {
+      const cleansliceMcp =
+        await this.mcpServerGateway.findById(CLEANSLICE_MCP_ID);
+      if (cleansliceMcp && cleansliceMcp.enabled) {
+        enabledServers.push(cleansliceMcp);
+      }
+    }
+
     const shouldInjectKnowledge = await this.shouldInjectKnowledge(
       effectiveKnowledgeIds,
       enabledServers,
@@ -119,8 +133,9 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     if (alreadyAttached.some((m) => m.id === KNOWLEDGE_MCP_ID)) return false;
     const isEnabled = await this.knowledgeConfig.isEnabled();
     if (!isEnabled) return false;
-    const existing =
-      await this.knowledgeGateway.findExistingByIds(effectiveKnowledgeIds);
+    const existing = await this.knowledgeGateway.findExistingByIds(
+      effectiveKnowledgeIds,
+    );
     return existing.length > 0;
   }
 

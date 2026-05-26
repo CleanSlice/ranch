@@ -4,6 +4,7 @@ import { IMcpServerGateway } from './mcpServer.gateway';
 
 export const RANCH_MCP_ID = 'mcp-ranch';
 export const KNOWLEDGE_MCP_ID = 'mcp-knowledge';
+export const CLEANSLICE_MCP_ID = 'mcp-cleanslice';
 
 @Injectable()
 export class McpServerSeeder implements OnApplicationBootstrap {
@@ -53,6 +54,29 @@ export class McpServerSeeder implements OnApplicationBootstrap {
         builtIn: true,
       });
       this.logger.log(`Seeded built-in Knowledge MCP server at ${url}`);
+    }
+
+    const cleansliceUrl =
+      this.config.get<string>('CLEANSLICE_MCP_URL') ??
+      'https://mcp.cleanslice.org/';
+
+    const existingCleanslice = await this.gateway.findById(CLEANSLICE_MCP_ID);
+    if (!existingCleanslice) {
+      await this.gateway.create({
+        id: CLEANSLICE_MCP_ID,
+        name: 'CleanSlice',
+        description:
+          'Built-in MCP server hosted at mcp.cleanslice.org. Exposes CleanSlice architecture documentation and helpers (get-started, list-categories, search, read-doc). Auto-attached to every agent.',
+        url: cleansliceUrl,
+        transport: 'streamableHttp',
+        authType: 'none',
+        authValue: null,
+        enabled: true,
+        builtIn: true,
+      });
+      this.logger.log(
+        `Seeded built-in CleanSlice MCP server at ${cleansliceUrl}`,
+      );
     }
   }
 }

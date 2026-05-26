@@ -30,6 +30,11 @@ export class SkillGateway extends ISkillGateway {
     return record ? this.mapper.toEntity(record) : null;
   }
 
+  async findByName(name: string): Promise<ISkillData | null> {
+    const record = await this.prisma.skill.findUnique({ where: { name } });
+    return record ? this.mapper.toEntity(record) : null;
+  }
+
   async findByIds(ids: string[]): Promise<ISkillData[]> {
     if (ids.length === 0) return [];
     const records = await this.prisma.skill.findMany({

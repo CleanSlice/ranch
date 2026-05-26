@@ -8,6 +8,7 @@ import {
 export abstract class ISkillGateway {
   abstract findAll(): Promise<ISkillData[]>;
   abstract findById(id: string): Promise<ISkillData | null>;
+  abstract findByName(name: string): Promise<ISkillData | null>;
   abstract findByIds(ids: string[]): Promise<ISkillData[]>;
   abstract create(data: ICreateSkillData): Promise<ISkillData>;
   abstract update(id: string, data: IUpdateSkillData): Promise<ISkillData>;

@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, Matches, IsUrl } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  Matches,
+  IsUrl,
+  IsBoolean,
+} from 'class-validator';
 
 export class ImportSkillDto {
   @ApiProperty({
@@ -24,6 +30,14 @@ export class ImportSkillDto {
   @IsString()
   @Matches(/^[a-z0-9][a-z0-9-]*$/)
   name?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'If true and a skill with the same slug already exists, fully replace it instead of returning 409.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  overwrite?: boolean;
 }
 
 export class ImportSkillUrlDto {
@@ -42,4 +56,12 @@ export class ImportSkillUrlDto {
   @IsString()
   @Matches(/^[a-z0-9][a-z0-9-]*$/)
   name?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'If true and a skill with the same slug already exists, fully replace it instead of returning 409.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  overwrite?: boolean;
 }

@@ -45,6 +45,19 @@ export interface ISkillDependentAgent {
   templateName: string;
 }
 
+export interface ISkillExistsConflict {
+  code: 'SKILL_EXISTS';
+  message: string;
+  existing: {
+    id: string;
+    name: string;
+    title: string;
+    description: string | null;
+    source: string | null;
+    updatedAt: string;
+  };
+}
+
 function unwrap<T>(body: unknown): T | null {
   if (body && typeof body === 'object' && 'data' in (body as ApiEnvelope<T>)) {
     return ((body as ApiEnvelope<T>).data ?? null) as T | null;
@@ -106,22 +119,31 @@ export const useSkillStore = defineStore('skill', () => {
     return unwrap<ISkillSearchHit[]>(res.data) ?? [];
   }
 
+  function placeImported(record: ISkillData | null) {
+    if (!record) return null;
+    const idx = items.value.findIndex((x) => x.id === record.id);
+    if (idx >= 0) items.value.splice(idx, 1, record);
+    else items.value.push(record);
+    return record;
+  }
+
   async function importFromGithub(body: {
     repo: string;
     path: string;
     name?: string;
+    overwrite?: boolean;
   }) {
     const res = await SkillsService.skillControllerImportFromGithub({ body });
-    const created = unwrap<ISkillData>(res.data);
-    if (created) items.value.push(created);
-    return created;
+    return placeImported(unwrap<ISkillData>(res.data));
   }
 
-  async function importFromUrl(body: { url: string; name?: string }) {
+  async function importFromUrl(body: {
+    url: string;
+    name?: string;
+    overwrite?: boolean;
+  }) {
     const res = await SkillsService.skillControllerImportFromUrl({ body });
-    const created = unwrap<ISkillData>(res.data);
-    if (created) items.value.push(created);
-    return created;
+    return placeImported(unwrap<ISkillData>(res.data));
   }
 
   async function fetchDependentAgents(id: string) {

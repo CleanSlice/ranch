@@ -465,6 +465,10 @@ export type ImportSkillUrlDto = {
    */
   url: string;
   name?: string;
+  /**
+   * If true and a skill with the same slug already exists, fully replace it instead of returning 409.
+   */
+  overwrite?: boolean;
 };
 
 export type ImportSkillDto = {
@@ -480,6 +484,10 @@ export type ImportSkillDto = {
    * Override the auto-derived slug. Lowercase letters, digits and dashes.
    */
   name?: string;
+  /**
+   * If true and a skill with the same slug already exists, fully replace it instead of returning 409.
+   */
+  overwrite?: boolean;
 };
 
 export type CreateSkillDto = {

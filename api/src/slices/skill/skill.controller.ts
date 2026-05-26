@@ -56,14 +56,7 @@ export class SkillController {
       dto.url,
     );
     const slug = dto.name ?? deriveSlug(skillPath);
-    const existing = await this.gateway.findAll();
-    if (existing.some((s) => s.name === slug)) {
-      throw new ConflictException(
-        `Skill "${slug}" already exists. Pass a different "name" to override.`,
-      );
-    }
-    return this.gateway.create({
-      name: slug,
+    return this.upsertSkill(slug, dto.overwrite === true, {
       title: bundle.title,
       body: bundle.body,
       description: bundle.description,
@@ -77,20 +70,55 @@ export class SkillController {
   async importFromGithub(@Body() dto: ImportSkillDto) {
     const bundle = await this.github.fetchBundle(dto.repo, dto.path);
     const slug = dto.name ?? deriveSlug(dto.path);
-    const existing = await this.gateway.findAll();
-    if (existing.some((s) => s.name === slug)) {
-      throw new ConflictException(
-        `Skill "${slug}" already exists. Pass a different "name" to override.`,
-      );
-    }
-    return this.gateway.create({
-      name: slug,
+    return this.upsertSkill(slug, dto.overwrite === true, {
       title: bundle.title,
       body: bundle.body,
       description: bundle.description,
       files: bundle.files,
       source: `https://github.com/${dto.repo}/blob/HEAD/${dto.path}`,
     });
+  }
+
+  private async upsertSkill(
+    slug: string,
+    overwrite: boolean,
+    data: {
+      title: string;
+      body: string;
+      description: string | null;
+      files: { path: string; content: string }[];
+      source: string;
+    },
+  ) {
+    const existing = await this.gateway.findByName(slug);
+    if (existing && !overwrite) {
+      // Structured body so the admin UI can render a confirm-overwrite modal
+      // with details of the conflicting skill instead of just a flat message.
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        code: 'SKILL_EXISTS',
+        message: `Skill "${slug}" already exists. Pass "overwrite": true to replace it.`,
+        existing: {
+          id: existing.id,
+          name: existing.name,
+          title: existing.title,
+          description: existing.description,
+          source: existing.source,
+          updatedAt: existing.updatedAt,
+        },
+      });
+    }
+    if (existing && overwrite) {
+      return this.gateway.update(existing.id, {
+        title: data.title,
+        body: data.body,
+        description: data.description,
+        files: data.files,
+        source: data.source,
+      });
+    }
+    return this.gateway.create({ name: slug, ...data });
   }
 
   @Get(':id')

@@ -139,19 +139,25 @@ export class SourceService {
         .map((s) => s.url),
     );
 
-    let added = 0;
-    for (const url of urls) {
-      if (existingUrls.has(url)) continue;
-      await this.gateway.create({
+    // Sitemaps occasionally list the same <loc> twice (mirrored sections,
+    // paginated archives) - dedup within the batch before checking against
+    // existing rows so a single duplicate can't trip a unique-index error.
+    const uniqueUrls = Array.from(new Set(urls));
+
+    const toCreate = uniqueUrls
+      .filter((url) => !existingUrls.has(url))
+      .map((url) => ({
         knowledgeId,
-        type: 'url',
+        type: 'url' as const,
         name: url,
         url,
-      });
-      added += 1;
+      }));
+
+    if (toCreate.length > 0) {
+      await this.gateway.createMany(toCreate);
     }
 
-    return { added, discovered: urls.length };
+    return { added: toCreate.length, discovered: urls.length };
   }
 
   async removeAllByKnowledge(knowledgeId: string): Promise<void> {

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -64,6 +65,34 @@ export class SourceGateway extends ISourceGateway {
       data: this.mapper.toCreate(data),
     });
     return this.mapper.toEntity(record);
+  }
+
+  /**
+   * Bulk insert. Used by the sitemap importer where N sequential round
+   * trips to a remote Postgres (Neon, us-east-1) would otherwise blow past
+   * any reasonable HTTP timeout. All items must belong to the same
+   * knowledge - the existence check runs once for that knowledge. The
+   * caller only ever needs the count back, so we skip the re-fetch that a
+   * full ISourceData[] would require.
+   */
+  async createMany(data: ICreateSourceData[]): Promise<ISourceData[]> {
+    if (data.length === 0) return [];
+    const knowledgeId = data[0].knowledgeId;
+    if (!data.every((d) => d.knowledgeId === knowledgeId)) {
+      throw new BadRequestException(
+        'createMany requires all items to share the same knowledgeId',
+      );
+    }
+    const knowledge = await this.prisma.knowledge.findUnique({
+      where: { id: knowledgeId },
+      select: { id: true },
+    });
+    if (!knowledge) {
+      throw new NotFoundException(`Knowledge ${knowledgeId} not found`);
+    }
+    const rows = data.map((d) => this.mapper.toCreate(d));
+    await this.prisma.source.createMany({ data: rows });
+    return [];
   }
 
   async delete(id: string): Promise<void> {

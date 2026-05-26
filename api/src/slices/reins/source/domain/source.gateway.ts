@@ -9,6 +9,7 @@ export abstract class ISourceGateway {
   abstract findByKnowledgeId(knowledgeId: string): Promise<ISourceData[]>;
   abstract findById(id: string): Promise<ISourceData | null>;
   abstract create(data: ICreateSourceData): Promise<ISourceData>;
+  abstract createMany(data: ICreateSourceData[]): Promise<ISourceData[]>;
   abstract delete(id: string): Promise<void>;
 
   abstract uploadFile(

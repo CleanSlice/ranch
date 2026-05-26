@@ -60,7 +60,7 @@ export class ImportStateDto {
   })
   @IsString()
   @MaxLength(80)
-  @Matches(/^[a-zA-Z0-9_:.\-]+$/, {
+  @Matches(/^[a-zA-Z0-9_:.-]+$/, {
     message:
       'profile may only contain alphanumerics, underscore, colon, dot, dash',
   })
@@ -114,7 +114,7 @@ export class ImportStateResponseDto {
 export class IssueExtensionTokenDto {
   @ApiProperty({
     description:
-      'Agent the extension token will be scoped to. The token only allows writing state files under this agent\'s S3 prefix.',
+      "Agent the extension token will be scoped to. The token only allows writing state files under this agent's S3 prefix.",
   })
   @IsString()
   @MaxLength(80)

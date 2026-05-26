@@ -76,7 +76,7 @@ class RequestLoginBodyDto {
   })
   @IsString()
   @MaxLength(80)
-  @Matches(/^[a-zA-Z0-9_:.\-]+$/, {
+  @Matches(/^[a-zA-Z0-9_:.-]+$/, {
     message:
       'accountKey may only contain alphanumerics, underscore, colon, dot, dash',
   })

@@ -1,11 +1,11 @@
 import { client } from '../data/repositories/api/client.gen';
 
 export default defineNuxtPlugin({
-  enforce: 'pre',
+  name: 'api-base-url',
   setup() {
     const config = useRuntimeConfig();
     const apiUrl = config.public.apiUrl as string;
-    client.setConfig({ baseURL: apiUrl });
+    if (apiUrl) client.setConfig({ baseURL: apiUrl });
 
     // Publish the API URL as a meta tag so the Ranch Cookies browser
     // extension can auto-detect this deployment when its popup is opened

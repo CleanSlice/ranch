@@ -58,7 +58,12 @@ export class UsageGateway extends IUsageGateway {
           where: {
             agentId_model_date: { agentId, model, date },
           },
-          create: this.mapper.toCreate({ agentId, model, date, entry: safeEntry }),
+          create: this.mapper.toCreate({
+            agentId,
+            model,
+            date,
+            entry: safeEntry,
+          }),
           update: this.mapper.toUpdate(safeEntry),
         });
       }),

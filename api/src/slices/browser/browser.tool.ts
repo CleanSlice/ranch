@@ -51,7 +51,7 @@ export class BrowserTool {
         .url()
         .optional()
         .describe(
-          'Page the pool\'s Chrome should land on before the user opens vncUrl (e.g. https://www.instagram.com/accounts/login/). Defaults to about:blank.',
+          "Page the pool's Chrome should land on before the user opens vncUrl (e.g. https://www.instagram.com/accounts/login/). Defaults to about:blank.",
         ),
     }),
   })

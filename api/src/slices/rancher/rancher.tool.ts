@@ -44,9 +44,7 @@ export class RancherTool {
   ): void {
     const roles = httpRequest.user?.roles ?? [];
     if (!roles.includes(UserRoleTypes.Owner)) {
-      throw new ForbiddenException(
-        'This tool requires platform admin role.',
-      );
+      throw new ForbiddenException('This tool requires platform admin role.');
     }
   }
 

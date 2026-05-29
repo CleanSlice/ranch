@@ -92,10 +92,7 @@ export class IntegrationService {
    * service in their own Chrome and pushes cookies via the Ranch
    * extension.
    */
-  async openLogin(
-    userId: string,
-    id: string,
-  ): Promise<ILoginInstructionData> {
+  async openLogin(userId: string, id: string): Promise<ILoginInstructionData> {
     const account = await this.requireAccount(userId, id);
     if (account.mechanism !== 'browser') {
       throw new BadRequestException(
@@ -171,13 +168,7 @@ export class IntegrationService {
     userAgent?: string,
   ): Promise<IIntegrationAccountData> {
     const account = await this.connect(userId, service, accountKey);
-    return this.importCookies(
-      userId,
-      account.id,
-      cookies,
-      origins,
-      userAgent,
-    );
+    return this.importCookies(userId, account.id, cookies, origins, userAgent);
   }
 
   async importCookies(

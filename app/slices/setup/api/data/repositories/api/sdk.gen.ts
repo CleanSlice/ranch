@@ -57,6 +57,8 @@ import type {
   QueryKnowledgeResponse,
   GetKnowledgeSourcesData,
   AddKnowledgeSourceData,
+  AddKnowledgeSourcesFromSitemapData,
+  AddKnowledgeSourcesFromSitemapResponse,
   DeleteKnowledgeSourceData,
   DeleteKnowledgeSourceResponse,
   AgentControllerFindAllData,
@@ -68,6 +70,8 @@ import type {
   AgentControllerRemoveData,
   AgentControllerFindByIdData,
   AgentControllerUpdateData,
+  GetAgentMetricsData,
+  GetAgentMetricsResponse,
   GetAgentEnvData,
   GetAgentEnvResponse,
   GetAgentMcpsData,
@@ -1143,6 +1147,27 @@ export class KnowledgeSourcesService {
   }
 
   /**
+   * Add url sources from a sitemap
+   * Fetches a sitemap.xml (or sitemap-index), filters by optional URL prefix, then creates one url-type source per discovered page. Indexing into LightRAG happens through the normal reindex flow.
+   */
+  public static addKnowledgeSourcesFromSitemap<
+    ThrowOnError extends boolean = false,
+  >(options: Options<AddKnowledgeSourcesFromSitemapData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      AddKnowledgeSourcesFromSitemapResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/from-sitemap",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
    * Delete source
    */
   public static deleteKnowledgeSource<ThrowOnError extends boolean = false>(
@@ -1293,6 +1318,22 @@ export class AgentsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Live resource usage for the agent: pod CPU/memory (from metrics-server) and free disk space on the K8s node hosting the pod (from kubelet stats/summary). Returns null while no pod exists yet.
+   */
+  public static getAgentMetrics<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentMetricsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentMetricsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/metrics",
+      ...options,
     });
   }
 

@@ -68,6 +68,11 @@ const { data: usage, pending: usagePending, refresh: refreshUsage } = useAsyncDa
   () => usageStore.fetchForAgent(props.id),
   { lazy: true },
 );
+const { data: metrics, pending: metricsPending, refresh: refreshMetrics } = useAsyncData(
+  `admin-agent-metrics-${props.id}`,
+  () => agentStore.fetchMetrics(props.id),
+  { lazy: true },
+);
 const { data: template, pending: templatePending } = useAsyncData(
   `admin-agent-template-${props.id}`,
   async () => {
@@ -158,6 +163,35 @@ function fmtUsd(n: number) {
   if (n <= 0) return '$0';
   if (n < 0.01) return '<$0.01';
   return '$' + n.toFixed(2);
+}
+
+function fmtBytes(bytes: number): string {
+  if (!bytes || bytes < 0) return '0 B';
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  let i = 0;
+  let n = bytes;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i += 1;
+  }
+  return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+}
+
+function fmtCpu(milli: number): string {
+  if (!milli || milli < 0) return '0';
+  if (milli < 1000) return `${Math.round(milli)}m`;
+  return `${(milli / 1000).toFixed(2)} CPU`;
+}
+
+function pct(used: number, total: number): number {
+  if (!total) return 0;
+  return Math.min(100, Math.max(0, Math.round((used / total) * 100)));
+}
+
+function pctClass(p: number): string {
+  if (p >= 90) return 'bg-destructive';
+  if (p >= 70) return 'bg-amber-500';
+  return 'bg-primary';
 }
 
 const restarting = ref(false);
@@ -437,8 +471,36 @@ watch(activeTab, (tab) => {
   if (tab === 'overview') {
     refresh();
     refreshUsage();
+    refreshMetrics();
   }
 });
+
+// Metrics polling while the Overview tab is active. metrics-server samples on
+// a ~15s window — 10s polling gives the user near-live numbers without
+// hammering the API.
+let metricsTimer: ReturnType<typeof setInterval> | null = null;
+function stopMetricsPolling() {
+  if (metricsTimer) {
+    clearInterval(metricsTimer);
+    metricsTimer = null;
+  }
+}
+function startMetricsPolling() {
+  stopMetricsPolling();
+  metricsTimer = setInterval(() => refreshMetrics(), 10_000);
+}
+watch(
+  activeTab,
+  (tab) => {
+    if (tab === 'overview') {
+      startMetricsPolling();
+    } else {
+      stopMetricsPolling();
+    }
+  },
+  { immediate: true },
+);
+onBeforeUnmount(stopMetricsPolling);
 
 </script>
 
@@ -862,6 +924,117 @@ watch(activeTab, (tab) => {
                 </li>
               </ul>
               <p v-else class="text-sm text-muted-foreground">None bound.</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Resource usage</CardTitle>
+                  <CardDescription>
+                    Live pod CPU / memory (metrics-server) and free disk on the
+                    K8s node hosting the pod. Refreshes every 10 seconds.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="metricsPending"
+                  @click="refreshMetrics"
+                >
+                  <IconRefresh
+                    class="size-4"
+                    :class="{ 'animate-spin': metricsPending }"
+                  />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div v-if="metricsPending && !metrics" class="space-y-4">
+                <Skeleton v-for="i in 3" :key="i" class="h-12 w-full" />
+              </div>
+              <div
+                v-else-if="!metrics"
+                class="text-sm text-muted-foreground"
+              >
+                No metrics available. Either no pod is running yet, or
+                <code>metrics-server</code> is not installed in the cluster.
+              </div>
+              <div v-else class="space-y-5">
+                <div>
+                  <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                    <span class="font-medium">CPU</span>
+                    <span class="font-mono text-xs text-muted-foreground">
+                      {{ fmtCpu(metrics.pod.cpuMilli) }} /
+                      {{ metrics.pod.cpuLimitMilli ? fmtCpu(metrics.pod.cpuLimitMilli) : '—' }}
+                      <span class="ml-1">({{ pct(metrics.pod.cpuMilli, metrics.pod.cpuLimitMilli) }}%)</span>
+                    </span>
+                  </div>
+                  <div class="h-2 w-full overflow-hidden rounded bg-muted">
+                    <div
+                      class="h-full transition-all"
+                      :class="pctClass(pct(metrics.pod.cpuMilli, metrics.pod.cpuLimitMilli))"
+                      :style="{ width: pct(metrics.pod.cpuMilli, metrics.pod.cpuLimitMilli) + '%' }"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                    <span class="font-medium">Memory</span>
+                    <span class="font-mono text-xs text-muted-foreground">
+                      {{ fmtBytes(metrics.pod.memBytes) }} /
+                      {{ metrics.pod.memLimitBytes ? fmtBytes(metrics.pod.memLimitBytes) : '—' }}
+                      <span class="ml-1">({{ pct(metrics.pod.memBytes, metrics.pod.memLimitBytes) }}%)</span>
+                    </span>
+                  </div>
+                  <div class="h-2 w-full overflow-hidden rounded bg-muted">
+                    <div
+                      class="h-full transition-all"
+                      :class="pctClass(pct(metrics.pod.memBytes, metrics.pod.memLimitBytes))"
+                      :style="{ width: pct(metrics.pod.memBytes, metrics.pod.memLimitBytes) + '%' }"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                    <span class="font-medium">
+                      Node disk
+                      <span class="ml-1 font-mono text-xs text-muted-foreground">
+                        {{ metrics.node.name }}
+                      </span>
+                    </span>
+                    <span class="font-mono text-xs text-muted-foreground">
+                      {{ fmtBytes(metrics.node.diskCapacityBytes - metrics.node.diskAvailBytes) }} /
+                      {{ fmtBytes(metrics.node.diskCapacityBytes) }}
+                      <span class="ml-1">
+                        ({{ pct(
+                          metrics.node.diskCapacityBytes - metrics.node.diskAvailBytes,
+                          metrics.node.diskCapacityBytes
+                        ) }}%)
+                      </span>
+                    </span>
+                  </div>
+                  <div class="h-2 w-full overflow-hidden rounded bg-muted">
+                    <div
+                      class="h-full transition-all"
+                      :class="pctClass(pct(
+                        metrics.node.diskCapacityBytes - metrics.node.diskAvailBytes,
+                        metrics.node.diskCapacityBytes
+                      ))"
+                      :style="{ width: pct(
+                        metrics.node.diskCapacityBytes - metrics.node.diskAvailBytes,
+                        metrics.node.diskCapacityBytes
+                      ) + '%' }"
+                    />
+                  </div>
+                  <p class="mt-1 text-xs text-muted-foreground">
+                    {{ fmtBytes(metrics.node.diskAvailBytes) }} free
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

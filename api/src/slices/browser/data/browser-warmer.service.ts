@@ -60,13 +60,20 @@ export class BrowserWarmerService implements OnModuleDestroy {
     try {
       ws = new WebSocket(cdpUrl);
     } catch (err) {
-      return { ok: false, error: `Failed to construct CDP WS: ${(err as Error).message}` };
+      return {
+        ok: false,
+        error: `Failed to construct CDP WS: ${(err as Error).message}`,
+      };
     }
 
     try {
       await new Promise<void>((resolve, reject) => {
         const openTimer = setTimeout(() => {
-          try { ws.close(); } catch { /* ignore */ }
+          try {
+            ws.close();
+          } catch {
+            /* ignore */
+          }
           reject(new Error('CDP open timeout — pool unreachable'));
         }, 15_000);
 
@@ -105,16 +112,22 @@ export class BrowserWarmerService implements OnModuleDestroy {
 
     const timer = setTimeout(() => {
       this.logger.log(`Warm hold for ${sessionId} expired (${ttlMs}ms)`);
-      try { ws.close(); } catch { /* ignore */ }
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
       this.holds.delete(sessionId);
     }, ttlMs);
 
     ws.addEventListener('close', (event) => {
       clearTimeout(timer);
       this.holds.delete(sessionId);
-      const code = (event as CloseEvent).code;
+      const code = event.code;
       if (code !== 1000) {
-        this.logger.warn(`Warm hold for ${sessionId} dropped early (close ${code})`);
+        this.logger.warn(
+          `Warm hold for ${sessionId} dropped early (close ${code})`,
+        );
       }
     });
 
@@ -135,8 +148,7 @@ export class BrowserWarmerService implements OnModuleDestroy {
     sessionId: string,
     timeoutMs = 15_000,
   ): Promise<
-    | { ok: true; cookies: IHarvestedCookie[] }
-    | { ok: false; error: string }
+    { ok: true; cookies: IHarvestedCookie[] } | { ok: false; error: string }
   > {
     const held = this.holds.get(sessionId);
     if (!held) {
@@ -148,7 +160,11 @@ export class BrowserWarmerService implements OnModuleDestroy {
     const id = held.nextCdpId++;
     return new Promise((resolve) => {
       const onMessage = (event: MessageEvent) => {
-        let msg: { id?: number; result?: { cookies?: IHarvestedCookie[] }; error?: { message: string } };
+        let msg: {
+          id?: number;
+          result?: { cookies?: IHarvestedCookie[] };
+          error?: { message: string };
+        };
         try {
           msg = JSON.parse(event.data as string) as typeof msg;
         } catch {
@@ -180,7 +196,10 @@ export class BrowserWarmerService implements OnModuleDestroy {
       };
       const timer = setTimeout(() => {
         held.ws.removeEventListener('message', onMessage);
-        resolve({ ok: false, error: `Cookie harvest timeout (${timeoutMs}ms)` });
+        resolve({
+          ok: false,
+          error: `Cookie harvest timeout (${timeoutMs}ms)`,
+        });
       }, timeoutMs);
       held.ws.addEventListener('message', onMessage);
       held.ws.send(JSON.stringify({ id, method: 'Storage.getCookies' }));
@@ -191,14 +210,22 @@ export class BrowserWarmerService implements OnModuleDestroy {
     const held = this.holds.get(sessionId);
     if (!held) return;
     clearTimeout(held.timer);
-    try { held.ws.close(); } catch { /* ignore */ }
+    try {
+      held.ws.close();
+    } catch {
+      /* ignore */
+    }
     this.holds.delete(sessionId);
   }
 
   onModuleDestroy(): void {
     for (const [sessionId, held] of this.holds.entries()) {
       clearTimeout(held.timer);
-      try { held.ws.close(); } catch { /* ignore */ }
+      try {
+        held.ws.close();
+      } catch {
+        /* ignore */
+      }
       this.holds.delete(sessionId);
     }
   }

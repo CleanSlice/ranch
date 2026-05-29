@@ -30,6 +30,7 @@ import { AgentDeployService } from './domain/agentDeploy.service';
 import {
   AgentMcpDto,
   AgentEnvVarDto,
+  AgentMetricsDto,
   AgentStatusDto,
   CreateAgentDto,
   UpdateAgentDto,
@@ -165,6 +166,22 @@ export class AgentController {
     return agent;
   }
 
+  @Get(':id/metrics')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiOperation({
+    operationId: 'getAgentMetrics',
+    summary:
+      'Live resource usage for the agent: pod CPU/memory (from metrics-server) and free disk space on the K8s node hosting the pod (from kubelet stats/summary). Returns null while no pod exists yet.',
+  })
+  @ApiOkResponse({ type: AgentMetricsDto })
+  async getAgentMetrics(
+    @Param('id') id: string,
+  ): Promise<AgentMetricsDto | null> {
+    const agent = await this.agentGateway.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+    return this.podGateway.getMetrics(id);
+  }
+
   @Get(':id/env')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({
@@ -219,7 +236,9 @@ export class AgentController {
         ? agent.knowledgeIds
         : template.defaultKnowledgeIds;
 
-    if (await this.shouldInjectKnowledge(effectiveKnowledgeIds, enabledServers)) {
+    if (
+      await this.shouldInjectKnowledge(effectiveKnowledgeIds, enabledServers)
+    ) {
       const knowledgeMcp =
         await this.mcpServerGateway.findById(KNOWLEDGE_MCP_ID);
       if (knowledgeMcp && knowledgeMcp.enabled) {
@@ -245,8 +264,9 @@ export class AgentController {
     if (alreadyAttached.some((m) => m.id === KNOWLEDGE_MCP_ID)) return false;
     const isEnabled = await this.knowledgeConfig.isEnabled();
     if (!isEnabled) return false;
-    const existing =
-      await this.knowledgeGateway.findExistingByIds(effectiveKnowledgeIds);
+    const existing = await this.knowledgeGateway.findExistingByIds(
+      effectiveKnowledgeIds,
+    );
     return existing.length > 0;
   }
 

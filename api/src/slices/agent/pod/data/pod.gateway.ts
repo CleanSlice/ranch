@@ -4,11 +4,18 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { CoreV1Api, KubeConfig, V1Pod, Watch } from '@kubernetes/client-node';
+import {
+  CoreV1Api,
+  KubeConfig,
+  Metrics,
+  V1Pod,
+  Watch,
+} from '@kubernetes/client-node';
 import { Observable, Subject } from 'rxjs';
 import { IPodGateway } from '../domain/pod.gateway';
 import { IInfraConfigGateway } from '#/setting/domain';
 import {
+  IAgentMetrics,
   IAgentPodEvent,
   IAgentPodStatus,
   PodEventTypes,
@@ -28,6 +35,7 @@ export class KubePodGateway
   private readonly logger = new Logger(KubePodGateway.name);
   private kc!: KubeConfig;
   private coreApi!: CoreV1Api;
+  private metricsClient!: Metrics;
   private namespace!: string;
 
   private readonly statuses = new Map<string, IAgentPodStatus>();
@@ -60,6 +68,7 @@ export class KubePodGateway
       }
     }
     this.coreApi = this.kc.makeApiClient(CoreV1Api);
+    this.metricsClient = new Metrics(this.kc);
 
     await this.resync();
     this.startWatch();
@@ -299,4 +308,120 @@ export class KubePodGateway
       return `${e.statusCode ?? ''} ${e.body.message}`.trim();
     return e.message ?? JSON.stringify(e).slice(0, 200);
   }
+
+  async getMetrics(agentId: string): Promise<IAgentMetrics | null> {
+    const name = `agent-${agentId}`;
+
+    let pod: V1Pod;
+    try {
+      pod = await this.coreApi.readNamespacedPod({
+        name,
+        namespace: this.namespace,
+      });
+    } catch (err) {
+      if (this.isNotFound(err)) return null;
+      this.logger.warn(
+        `Pod read failed for ${name}: ${this.extractKubeError(err)}`,
+      );
+      return null;
+    }
+
+    const nodeName = pod.spec?.nodeName;
+    if (!nodeName) return null;
+
+    const limits = pod.spec?.containers?.[0]?.resources?.limits ?? {};
+    const cpuLimitMilli = parseCpuToMilli(limits.cpu) ?? 0;
+    const memLimitBytes = parseMemoryToBytes(limits.memory) ?? 0;
+
+    // Pod CPU/memory usage (metrics-server). Sum across containers — for the
+    // ranch-agent pod there's only one, but staying generic is harmless.
+    let cpuMilli = 0;
+    let memBytes = 0;
+    try {
+      const list = await this.metricsClient.getPodMetrics(this.namespace);
+      const podMetric = list.items.find((p) => p.metadata.name === name);
+      if (podMetric) {
+        for (const c of podMetric.containers) {
+          cpuMilli += parseCpuToMilli(c.usage.cpu) ?? 0;
+          memBytes += parseMemoryToBytes(c.usage.memory) ?? 0;
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Pod metrics fetch failed for ${name}: ${this.extractKubeError(err)}`,
+      );
+    }
+
+    // Node-level filesystem stats come from the kubelet summary endpoint —
+    // metrics-server doesn't expose disk. proxyResponse is the raw JSON body.
+    let diskAvailBytes = 0;
+    let diskCapacityBytes = 0;
+    try {
+      const raw = await this.coreApi.connectGetNodeProxyWithPath({
+        name: nodeName,
+        path: 'stats/summary',
+      });
+      const summary = JSON.parse(raw) as {
+        node?: { fs?: { availableBytes?: number; capacityBytes?: number } };
+      };
+      diskAvailBytes = summary.node?.fs?.availableBytes ?? 0;
+      diskCapacityBytes = summary.node?.fs?.capacityBytes ?? 0;
+    } catch (err) {
+      this.logger.warn(
+        `Node stats/summary failed for ${nodeName}: ${this.extractKubeError(err)}`,
+      );
+    }
+
+    return {
+      pod: { cpuMilli, memBytes, cpuLimitMilli, memLimitBytes },
+      node: { name: nodeName, diskAvailBytes, diskCapacityBytes },
+    };
+  }
+}
+
+// Kubernetes resource quantity parsers — handles the forms the agent manifest
+// and the metrics API emit. Not a full spec implementation; just enough for
+// CPU (cores/m/n/u) and memory (decimal + binary suffixes).
+function parseCpuToMilli(value: string | undefined): number | null {
+  if (!value) return null;
+  const match = /^(\d+(?:\.\d+)?)([a-zA-Z]*)$/.exec(value);
+  if (!match) return null;
+  const num = parseFloat(match[1]);
+  switch (match[2]) {
+    case '':
+      return Math.round(num * 1000);
+    case 'm':
+      return Math.round(num);
+    case 'u':
+      return Math.round(num / 1000);
+    case 'n':
+      return Math.round(num / 1_000_000);
+    default:
+      return null;
+  }
+}
+
+function parseMemoryToBytes(value: string | undefined): number | null {
+  if (!value) return null;
+  const match = /^(\d+(?:\.\d+)?)([a-zA-Z]*)$/.exec(value);
+  if (!match) return null;
+  const num = parseFloat(match[1]);
+  const SUFFIX: Record<string, number> = {
+    '': 1,
+    K: 1e3,
+    M: 1e6,
+    G: 1e9,
+    T: 1e12,
+    P: 1e15,
+    E: 1e18,
+    Ki: 1024,
+    Mi: 1024 ** 2,
+    Gi: 1024 ** 3,
+    Ti: 1024 ** 4,
+    Pi: 1024 ** 5,
+    Ei: 1024 ** 6,
+  };
+  const mult = SUFFIX[match[2]];
+  if (mult === undefined) return null;
+  return Math.round(num * mult);
 }

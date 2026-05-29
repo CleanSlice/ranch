@@ -53,6 +53,20 @@ export interface IAgentResources {
   memory: string;
 }
 
+export interface IAgentMetrics {
+  pod: {
+    cpuMilli: number;
+    memBytes: number;
+    cpuLimitMilli: number;
+    memLimitBytes: number;
+  };
+  node: {
+    name: string;
+    diskAvailBytes: number;
+    diskCapacityBytes: number;
+  };
+}
+
 export interface IAgentData {
   id: string;
   name: string;
@@ -348,6 +362,12 @@ export const useAgentStore = defineStore('agent', () => {
     return env?.data ?? [];
   }
 
+  async function fetchMetrics(id: string): Promise<IAgentMetrics | null> {
+    const res = await client.instance.get(`/agents/${id}/metrics`);
+    const env = res.data as ApiEnvelope<IAgentMetrics | null> | undefined;
+    return env?.data ?? null;
+  }
+
   return {
     agents,
     fetchAll,
@@ -361,6 +381,7 @@ export const useAgentStore = defineStore('agent', () => {
     demoteAdmin,
     fetchLogs,
     fetchEnv,
+    fetchMetrics,
     isPendingRestart,
     markPendingRestart,
     clearPendingRestart,

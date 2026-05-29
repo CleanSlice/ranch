@@ -24,7 +24,11 @@ export const INTEGRATION_CATALOGUE: IIntegrationCatalogueItem[] = [
     mechanism: 'browser',
     loginUrl: 'https://www.facebook.com/login/',
     accountKeyHint: 'Label for this Facebook account, e.g. "main" or page name',
-    domains: ['facebook.com', 'business.facebook.com', 'adsmanager.facebook.com'],
+    domains: [
+      'facebook.com',
+      'business.facebook.com',
+      'adsmanager.facebook.com',
+    ],
   },
   {
     service: 'tiktok',

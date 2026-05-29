@@ -3,8 +3,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class CatalogueItemDto {
   @ApiProperty({
     example: 'instagram',
-    description:
-      'Stable service key. Use this in POST /integrations/accounts.',
+    description: 'Stable service key. Use this in POST /integrations/accounts.',
   })
   service: string;
 

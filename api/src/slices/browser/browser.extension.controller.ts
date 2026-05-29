@@ -90,7 +90,7 @@ export class BrowserExtensionController {
   @Post('import-state')
   @ApiOperation({
     summary:
-      'Receive cookies harvested from the user\'s own Chrome and write them as a Playwright storageState file under the agent\'s S3 prefix. Authentication: Bearer <ext-token> minted via /browser/extension/token.',
+      "Receive cookies harvested from the user's own Chrome and write them as a Playwright storageState file under the agent's S3 prefix. Authentication: Bearer <ext-token> minted via /browser/extension/token.",
     operationId: 'importBrowserStorageState',
   })
   @ApiOkResponse({ type: ImportStateResponseDto })

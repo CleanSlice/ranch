@@ -88,9 +88,7 @@ export class SourceService {
       try {
         await this.gateway.removeFromIndex(source);
       } catch (err) {
-        this.logger.warn(
-          `removeFromIndex(${id}) failed: ${errorMessage(err)}`,
-        );
+        this.logger.warn(`removeFromIndex(${id}) failed: ${errorMessage(err)}`);
       }
     }
     if (source.type === 'file' && source.url) {

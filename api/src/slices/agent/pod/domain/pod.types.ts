@@ -24,3 +24,17 @@ export interface IAgentPodEvent {
   type: PodEventTypes;
   status: IAgentPodStatus;
 }
+
+export interface IAgentMetrics {
+  pod: {
+    cpuMilli: number;
+    memBytes: number;
+    cpuLimitMilli: number;
+    memLimitBytes: number;
+  };
+  node: {
+    name: string;
+    diskAvailBytes: number;
+    diskCapacityBytes: number;
+  };
+}

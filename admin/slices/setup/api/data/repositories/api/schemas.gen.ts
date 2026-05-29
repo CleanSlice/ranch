@@ -572,6 +572,36 @@ export const CreateSourceDtoSchema = {
   required: ["type", "name"],
 } as const;
 
+export const AddFromSitemapDtoSchema = {
+  type: "object",
+  properties: {
+    sitemapUrl: {
+      type: "string",
+      example: "https://developer.paypal.com/sitemap.xml",
+    },
+    urlPrefix: {
+      type: "string",
+      example: "https://developer.paypal.com/docs/checkout/",
+    },
+  },
+  required: ["sitemapUrl"],
+} as const;
+
+export const AddFromSitemapResultDtoSchema = {
+  type: "object",
+  properties: {
+    added: {
+      type: "number",
+      example: 47,
+    },
+    discovered: {
+      type: "number",
+      example: 51,
+    },
+  },
+  required: ["added", "discovered"],
+} as const;
+
 export const AgentPodStatusDtoSchema = {
   type: "object",
   properties: {
@@ -653,6 +683,65 @@ export const AgentStatusDtoSchema = {
     },
   },
   required: ["agent", "pod"],
+} as const;
+
+export const AgentPodMetricsDtoSchema = {
+  type: "object",
+  properties: {
+    cpuMilli: {
+      type: "number",
+      example: 234,
+      description: "Current CPU usage in millicores",
+    },
+    memBytes: {
+      type: "number",
+      example: 471859200,
+      description: "Current memory usage in bytes",
+    },
+    cpuLimitMilli: {
+      type: "number",
+      example: 2000,
+      description: "CPU limit in millicores",
+    },
+    memLimitBytes: {
+      type: "number",
+      example: 2147483648,
+      description: "Memory limit in bytes",
+    },
+  },
+  required: ["cpuMilli", "memBytes", "cpuLimitMilli", "memLimitBytes"],
+} as const;
+
+export const AgentNodeMetricsDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "k3s-agent-gnk",
+    },
+    diskAvailBytes: {
+      type: "number",
+      example: 157109764096,
+    },
+    diskCapacityBytes: {
+      type: "number",
+      example: 163817959424,
+    },
+  },
+  required: ["name", "diskAvailBytes", "diskCapacityBytes"],
+} as const;
+
+export const AgentMetricsDtoSchema = {
+  type: "object",
+  properties: {
+    pod: {
+      $ref: "#/components/schemas/AgentPodMetricsDto",
+    },
+    node: {
+      $ref: "#/components/schemas/AgentNodeMetricsDto",
+    },
+  },
+  required: ["pod", "node"],
 } as const;
 
 export const AgentEnvVarDtoSchema = {
@@ -1053,6 +1142,11 @@ export const ImportSkillUrlDtoSchema = {
     name: {
       type: "string",
     },
+    overwrite: {
+      type: "boolean",
+      description:
+        "If true and a skill with the same slug already exists, fully replace it instead of returning 409.",
+    },
   },
   required: ["url"],
 } as const;
@@ -1074,6 +1168,11 @@ export const ImportSkillDtoSchema = {
       type: "string",
       description:
         "Override the auto-derived slug. Lowercase letters, digits and dashes.",
+    },
+    overwrite: {
+      type: "boolean",
+      description:
+        "If true and a skill with the same slug already exists, fully replace it instead of returning 409.",
     },
   },
   required: ["repo", "path"],

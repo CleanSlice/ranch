@@ -42,7 +42,10 @@ export class KnowledgeService {
     return this.gateway.create(data);
   }
 
-  async update(id: string, data: IUpdateKnowledgeData): Promise<IKnowledgeData> {
+  async update(
+    id: string,
+    data: IUpdateKnowledgeData,
+  ): Promise<IKnowledgeData> {
     await this.get(id);
     return this.gateway.update(id, data);
   }

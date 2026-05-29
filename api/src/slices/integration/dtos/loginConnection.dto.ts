@@ -8,7 +8,9 @@ import { ApiProperty } from '@nestjs/swagger';
  * import-state POST lands.
  */
 export class LoginInstructionDto {
-  @ApiProperty({ description: 'IntegrationAccount.id these instructions are for.' })
+  @ApiProperty({
+    description: 'IntegrationAccount.id these instructions are for.',
+  })
   accountId: string;
 
   @ApiProperty({

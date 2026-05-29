@@ -70,13 +70,12 @@ export class IntegrationExtensionController {
     @Req() req: Request & { user: IAuthTokenPayload },
   ): Promise<IssueIntegrationExtensionTokenResponseDto> {
     const ttlDays = Math.max(1, Math.min(365, dto.ttlDays ?? 30));
-    const expiresIn = `${ttlDays}d` as `${number}d`;
     const token = this.jwt.sign(
       {
         sub: req.user.sub,
         scope: 'integration:cookies',
       } satisfies Omit<IIntegrationExtensionTokenPayload, 'iat' | 'exp'>,
-      { expiresIn },
+      { expiresIn: `${ttlDays} days` },
     );
     const decoded = this.jwt.decode<IIntegrationExtensionTokenPayload>(token);
     return { token, exp: decoded?.exp ?? 0 };

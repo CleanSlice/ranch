@@ -35,10 +35,10 @@ const form = reactive<{
 }>({
   name: props.initialValues?.name ?? '',
   description: props.initialValues?.description ?? '',
-  image: props.initialValues?.image ?? '',
+  image: props.initialValues?.image ?? 'ghcr.io/cleanslice/runtime:latest',
   defaultResources: {
-    cpu: props.initialValues?.defaultResources?.cpu ?? '500m',
-    memory: props.initialValues?.defaultResources?.memory ?? '512Mi',
+    cpu: props.initialValues?.defaultResources?.cpu ?? '2000m',
+    memory: props.initialValues?.defaultResources?.memory ?? '2Gi',
   },
   defaultKnowledgeIds: [...(props.initialValues?.defaultKnowledgeIds ?? [])],
 });
@@ -70,8 +70,8 @@ function onSubmit(): void {
     description: form.description.trim(),
     image: form.image.trim(),
     defaultResources: {
-      cpu: form.defaultResources.cpu.trim() || '500m',
-      memory: form.defaultResources.memory.trim() || '512Mi',
+      cpu: form.defaultResources.cpu.trim() || '2000m',
+      memory: form.defaultResources.memory.trim() || '2Gi',
     },
     defaultKnowledgeIds: [...form.defaultKnowledgeIds],
   });

@@ -230,6 +230,16 @@ export type CreateSourceDto = {
   content?: string;
 };
 
+export type AddFromSitemapDto = {
+  sitemapUrl: string;
+  urlPrefix?: string;
+};
+
+export type AddFromSitemapResultDto = {
+  added: number;
+  discovered: number;
+};
+
 export type AgentPodStatusDto = {
   agentId: string;
   podName: string;
@@ -254,6 +264,36 @@ export type AgentStatusDto = {
    * Live pod status; null if no pod is currently running for this agent.
    */
   pod: AgentPodStatusDto | null;
+};
+
+export type AgentPodMetricsDto = {
+  /**
+   * Current CPU usage in millicores
+   */
+  cpuMilli: number;
+  /**
+   * Current memory usage in bytes
+   */
+  memBytes: number;
+  /**
+   * CPU limit in millicores
+   */
+  cpuLimitMilli: number;
+  /**
+   * Memory limit in bytes
+   */
+  memLimitBytes: number;
+};
+
+export type AgentNodeMetricsDto = {
+  name: string;
+  diskAvailBytes: number;
+  diskCapacityBytes: number;
+};
+
+export type AgentMetricsDto = {
+  pod: AgentPodMetricsDto;
+  node: AgentNodeMetricsDto;
 };
 
 export type AgentEnvVarDto = {
@@ -465,6 +505,10 @@ export type ImportSkillUrlDto = {
    */
   url: string;
   name?: string;
+  /**
+   * If true and a skill with the same slug already exists, fully replace it instead of returning 409.
+   */
+  overwrite?: boolean;
 };
 
 export type ImportSkillDto = {
@@ -480,6 +524,10 @@ export type ImportSkillDto = {
    * Override the auto-derived slug. Lowercase letters, digits and dashes.
    */
   name?: string;
+  /**
+   * If true and a skill with the same slug already exists, fully replace it instead of returning 409.
+   */
+  overwrite?: boolean;
 };
 
 export type CreateSkillDto = {
@@ -1687,6 +1735,22 @@ export type AddKnowledgeSourceResponses = {
   201: unknown;
 };
 
+export type AddKnowledgeSourcesFromSitemapData = {
+  body: AddFromSitemapDto;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/from-sitemap";
+};
+
+export type AddKnowledgeSourcesFromSitemapResponses = {
+  201: AddFromSitemapResultDto;
+};
+
+export type AddKnowledgeSourcesFromSitemapResponse =
+  AddKnowledgeSourcesFromSitemapResponses[keyof AddKnowledgeSourcesFromSitemapResponses];
+
 export type DeleteKnowledgeSourceData = {
   body?: never;
   path: {
@@ -1802,6 +1866,22 @@ export type AgentControllerUpdateData = {
 export type AgentControllerUpdateResponses = {
   200: unknown;
 };
+
+export type GetAgentMetricsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/metrics";
+};
+
+export type GetAgentMetricsResponses = {
+  200: AgentMetricsDto;
+};
+
+export type GetAgentMetricsResponse =
+  GetAgentMetricsResponses[keyof GetAgentMetricsResponses];
 
 export type GetAgentEnvData = {
   body?: never;

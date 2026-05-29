@@ -17,11 +17,14 @@ import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
  * WebSocket gateway for BROWSER clients.
  * Browsers connect here: ws://hub-host/ws/client
  *
- * Auth (two paths):
- *   1. Public agent — agent has `isPublic: true` and the request `Origin` header
- *      matches one of `allowedOrigins`. No JWT required; clientId is anonymous.
- *   2. Authenticated — JWT token + agentId in handshake auth, JWT verified.
- *      Admin role grants `clientId = "admin"` for runtime ACL.
+ * Auth (token-first):
+ *   1. Authenticated — if a JWT is present it is verified and WINS: clientId is
+ *      the JWT `sub` (or "admin" for the admin role). Takes precedence over the
+ *      public path so a token-carrying embed keeps its stable per-user channel
+ *      even on a public agent + whitelisted origin.
+ *   2. Public agent — no token (or an invalid one on a public agent): allowed
+ *      when `isPublic: true` and the request `Origin` matches `allowedOrigins`.
+ *      clientId is `anon-<id>`, reusing a client-supplied stable id when given.
  *
  * Events (browser → hub):
  *   "message"  { text, images? }
@@ -57,6 +60,7 @@ export class BridleClientWsHandler
       agentId?: string;
       botId?: string;
       token?: string;
+      anonId?: string;
     };
     // Accept legacy `botId` from browsers running cached pre-0.3.0 SDK
     // bundles. Drop after CDN/embedders have rolled forward.
@@ -84,32 +88,63 @@ export class BridleClientWsHandler
 
     const agent = await this.agentGateway.findById(agentId);
 
+    // Public (token-less) embeds are allowed only when the agent opts in AND
+    // the browser's Origin is whitelisted.
+    const publicAllowed = !!(
+      agent?.isPublic &&
+      origin &&
+      agent.allowedOrigins.includes(origin)
+    );
+
+    // Stable anonymous channel. Honor a client-supplied id (the SDK persists
+    // one in the browser's localStorage) so a visitor keeps the SAME transcript
+    // across reconnects and page reloads — otherwise we mint a fresh random id
+    // on every connection, which churns through empty channels and loses
+    // history. Always namespaced under `anon-` and sanitized, so a supplied id
+    // can never collide with a JWT `sub`/`admin` nor escape the
+    // `bridle:<clientId>.jsonl` session path. Falls back to a fresh random id.
+    const anonClientId = () =>
+      `anon-${sanitizeAnonId(auth.anonId) ?? randomId()}`;
+
     let clientId: string;
     let isAdmin = false;
     let email: string | undefined;
 
-    if (agent?.isPublic && origin && agent.allowedOrigins.includes(origin)) {
-      // Public-agent path: anonymous browser session, no token required.
-      clientId = `anon-${randomId()}`;
-      this.logger.log(
-        `Browser connected (public): clientId=${clientId} agentId=${agentId} origin=${origin}`,
-      );
-    } else if (auth.token) {
-      // Authenticated path: JWT required.
-      let payload: Record<string, unknown>;
+    if (auth.token) {
+      // Authenticated path takes PRECEDENCE over the public/anon path: a
+      // token-carrying embed must get its stable per-user channel (JWT `sub`)
+      // even when the agent is also public on a whitelisted origin.
+      let payload: Record<string, unknown> | null = null;
       try {
-        payload = this.jwt.verify(auth.token);
+        payload = this.jwt.verify<Record<string, unknown>>(auth.token);
       } catch {
+        payload = null;
+      }
+
+      if (payload) {
+        const roles = payload.roles as string[] | undefined;
+        isAdmin =
+          Array.isArray(roles) &&
+          (roles.includes('Owner') || roles.includes('Admin'));
+        clientId = isAdmin ? 'admin' : (payload.sub as string);
+        email = payload.email as string | undefined;
+      } else if (publicAllowed) {
+        // A bad/expired token on an otherwise-public embed shouldn't hard-fail
+        // the visitor — degrade to the anonymous path instead of rejecting.
+        clientId = anonClientId();
+        this.logger.log(
+          `Browser connected (public, invalid token ignored): clientId=${clientId} agentId=${agentId} origin=${origin}`,
+        );
+      } else {
         this.logger.warn('Browser connection rejected: invalid JWT');
         return reject('INVALID_TOKEN');
       }
-
-      const roles = payload.roles as string[] | undefined;
-      isAdmin =
-        Array.isArray(roles) &&
-        (roles.includes('Owner') || roles.includes('Admin'));
-      clientId = isAdmin ? 'admin' : (payload.sub as string);
-      email = payload.email as string | undefined;
+    } else if (publicAllowed) {
+      // Public-agent path: anonymous browser session, no token required.
+      clientId = anonClientId();
+      this.logger.log(
+        `Browser connected (public): clientId=${clientId} agentId=${agentId} origin=${origin}`,
+      );
     } else {
       // No token AND public flow either disabled or origin not whitelisted.
       // When the agent IS configured public, surface ORIGIN_NOT_ALLOWED so
@@ -184,4 +219,14 @@ function randomId(): string {
   return (
     Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
   );
+}
+
+// Restrict a client-supplied anonymous id to a safe, bounded token so it can
+// only ever produce an `anon-<id>` channel — never a path-traversal into the
+// `bridle:<clientId>.jsonl` session store, and never a value that could
+// impersonate a JWT `sub` or the reserved `admin` id.
+function sanitizeAnonId(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return /^[A-Za-z0-9_-]{1,64}$/.test(trimmed) ? trimmed : undefined;
 }

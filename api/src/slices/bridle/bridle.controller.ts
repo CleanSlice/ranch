@@ -282,4 +282,51 @@ export class BridleController {
       );
     }
   }
+
+  @ApiOperation({
+    description:
+      'Archive the persisted chat transcript for an agent/channel — the live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`) and the live slot starts empty. Used by the embed\'s "New chat" action when the visitor wants a clean slate but we still want the prior conversation for admin/audit. No-op (returns `{}`) when there\'s nothing to archive.',
+    operationId: 'archiveBridleTranscript',
+  })
+  @ApiQuery({
+    name: 'channel',
+    required: false,
+    description: 'Session channel — defaults to "admin".',
+  })
+  @FlatResponse()
+  @Post(':agentId/transcript/archive')
+  @HttpCode(200)
+  async archiveTranscript(
+    @Param('agentId') agentId: string,
+    @Query('channel') channelRaw?: string,
+  ): Promise<{ archivedPath?: string }> {
+    const channel = (channelRaw ?? 'admin').trim() || 'admin';
+    const livePath = `data/sessions/bridle:${channel}.jsonl`;
+    try {
+      // Read current — if nothing's there, there's nothing to archive.
+      const current = await this.fileGateway
+        .read(agentId, livePath)
+        .catch(() => null);
+      if (!current?.content || !current.content.trim()) return {};
+
+      // Timestamp suffix friendly to filesystems that disallow ':' in
+      // names. Date.now() is fine here — this is request-time code, not
+      // a workflow script.
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const archivedPath = `data/sessions/bridle:${channel}.${ts}.archived.jsonl`;
+
+      await this.fileGateway.save(agentId, archivedPath, current.content);
+      // Now that the archive exists, drop the live file. If this step
+      // fails, both files exist briefly — recoverable by replaying the
+      // archived copy; preferable to having neither.
+      await this.fileGateway.delete(agentId, livePath);
+
+      return { archivedPath };
+    } catch (err) {
+      this.logger.warn(
+        `Transcript archive failed for ${agentId}/${channel}: ${(err as Error).message}`,
+      );
+      return {};
+    }
+  }
 }

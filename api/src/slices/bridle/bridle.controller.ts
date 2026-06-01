@@ -302,31 +302,66 @@ export class BridleController {
   ): Promise<{ archivedPath?: string }> {
     const channel = (channelRaw ?? 'admin').trim() || 'admin';
     const livePath = `data/sessions/bridle:${channel}.jsonl`;
+
+    // Read current — NotFound is expected (nothing to archive yet);
+    // everything else we want to see in logs so a silent {} doesn't
+    // mask a real bug. Same treatment downstream.
+    let content: string | undefined;
     try {
-      // Read current — if nothing's there, there's nothing to archive.
-      const current = await this.fileGateway
-        .read(agentId, livePath)
-        .catch(() => null);
-      if (!current?.content || !current.content.trim()) return {};
+      const current = await this.fileGateway.read(agentId, livePath);
+      content = current.content;
+    } catch (err) {
+      const e = err as { status?: number; message?: string };
+      // NestJS NotFoundException carries .status = 404
+      if (e?.status === 404) {
+        this.logger.log(
+          `Transcript archive: nothing to archive (${agentId}/${channel})`,
+        );
+        return {};
+      }
+      this.logger.warn(
+        `Transcript archive read failed for ${agentId}/${channel}: ${e?.message ?? String(err)}`,
+      );
+      throw err;
+    }
 
-      // Timestamp suffix friendly to filesystems that disallow ':' in
-      // names. Date.now() is fine here — this is request-time code, not
-      // a workflow script.
-      const ts = new Date().toISOString().replace(/[:.]/g, '-');
-      const archivedPath = `data/sessions/bridle:${channel}.${ts}.archived.jsonl`;
+    if (!content || !content.trim()) {
+      this.logger.log(
+        `Transcript archive: empty content (${agentId}/${channel})`,
+      );
+      return {};
+    }
 
-      await this.fileGateway.save(agentId, archivedPath, current.content);
+    // Timestamp suffix friendly to filesystems that disallow ':' in
+    // names. Date.now() is fine here — request-time code, not a
+    // workflow script.
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const archivedPath = `data/sessions/bridle:${channel}.${ts}.archived.jsonl`;
+
+    try {
+      await this.fileGateway.save(agentId, archivedPath, content);
+    } catch (err) {
+      this.logger.warn(
+        `Transcript archive save failed for ${agentId}/${channel} → ${archivedPath}: ${(err as Error).message}`,
+      );
+      throw err;
+    }
+
+    try {
       // Now that the archive exists, drop the live file. If this step
       // fails, both files exist briefly — recoverable by replaying the
       // archived copy; preferable to having neither.
       await this.fileGateway.delete(agentId, livePath);
-
-      return { archivedPath };
     } catch (err) {
       this.logger.warn(
-        `Transcript archive failed for ${agentId}/${channel}: ${(err as Error).message}`,
+        `Transcript archive delete-live failed for ${agentId}/${channel}: ${(err as Error).message} — archive still at ${archivedPath}`,
       );
-      return {};
+      throw err;
     }
+
+    this.logger.log(
+      `Transcript archived for ${agentId}/${channel} → ${archivedPath} (${content.length} bytes)`,
+    );
+    return { archivedPath };
   }
 }

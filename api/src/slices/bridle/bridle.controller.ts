@@ -339,7 +339,10 @@ export class BridleController {
     const archivedPath = `data/sessions/bridle:${channel}.${ts}.archived.jsonl`;
 
     try {
-      await this.fileGateway.save(agentId, archivedPath, content);
+      // saveRaw bypasses the .md/.json editable-extension guard — that
+      // guard is for the user-facing file editor, not for internal
+      // controllers archiving a .jsonl transcript.
+      await this.fileGateway.saveRaw(agentId, archivedPath, content);
     } catch (err) {
       this.logger.warn(
         `Transcript archive save failed for ${agentId}/${channel} → ${archivedPath}: ${(err as Error).message}`,

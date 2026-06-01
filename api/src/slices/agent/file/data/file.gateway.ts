@@ -199,6 +199,25 @@ export class S3FileGateway extends IFileGateway {
       }
     }
 
+    await this.putObject(agentId, path, content);
+  }
+
+  async saveRaw(agentId: string, path: string, content: string): Promise<void> {
+    this.assertSafePath(path);
+    const bytes = Buffer.byteLength(content, 'utf-8');
+    if (bytes > MAX_BYTES) {
+      throw new BadRequestException(
+        `File too large to save (${bytes} > ${MAX_BYTES} bytes)`,
+      );
+    }
+    await this.putObject(agentId, path, content);
+  }
+
+  private async putObject(
+    agentId: string,
+    path: string,
+    content: string,
+  ): Promise<void> {
     const { client, bucket } = await this.connect();
     const key = this.prefix(agentId) + path;
 

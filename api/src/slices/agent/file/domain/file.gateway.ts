@@ -18,6 +18,14 @@ export abstract class IFileGateway {
     limit: number,
   ): Promise<IFileChunk>;
   abstract save(agentId: string, path: string, content: string): Promise<void>;
+  /**
+   * Like save(), but without the editable-extension guard. For internal
+   * callers that legitimately need to write non-.md/.json files — e.g.
+   * the bridle controller archiving a .jsonl transcript. Do NOT wire
+   * this to user-facing endpoints; the guard on save() exists to keep
+   * the file-editor UI from being used to overwrite binary blobs.
+   */
+  abstract saveRaw(agentId: string, path: string, content: string): Promise<void>;
   abstract delete(agentId: string, path: string): Promise<void>;
   abstract seedFromTemplate(
     agentId: string,

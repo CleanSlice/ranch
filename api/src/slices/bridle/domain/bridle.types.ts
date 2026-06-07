@@ -36,6 +36,9 @@ export interface IBridleIncomingMessage {
   text: string;
   messageId: string;
   parts: BridlePart[];
+  /** Integrator context from the embed's `data-prompt`, carried on every
+   * message so the agent runtime can fold it into the system prompt. */
+  prompt?: string;
 }
 
 /** Agent → Hub: events routed to browser clients */
@@ -113,6 +116,9 @@ export interface IBridleClientData {
   agentId: string;
   send: (data: unknown) => void;
   isAdmin: boolean;
+  /** Integrator context from the embed's `data-prompt` (handshake-supplied);
+   * forwarded to the agent on every message in this session. */
+  prompt?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────

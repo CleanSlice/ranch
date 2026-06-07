@@ -61,6 +61,7 @@ export class BridleClientWsHandler
       botId?: string;
       token?: string;
       anonId?: string;
+      prompt?: string;
     };
     // Accept legacy `botId` from browsers running cached pre-0.3.0 SDK
     // bundles. Drop after CDN/embedders have rolled forward.
@@ -158,13 +159,22 @@ export class BridleClientWsHandler
 
     client.data = { clientId, agentId, email, isAdmin };
 
+    // Integrator context from the embed's `data-prompt` (set on the `<script>`
+    // tag or `<bridle-chat>` element). Sent once at handshake; the hub stores
+    // it per-client and forwards it on every message so the agent runtime can
+    // fold it into the system prompt. Treated as untrusted downstream.
+    const prompt =
+      typeof auth.prompt === 'string' && auth.prompt.trim()
+        ? auth.prompt
+        : undefined;
+
     const send = (data: unknown) => {
       const event =
         ((data as Record<string, unknown>)?.type as string) ?? 'data';
       client.emit(event, data);
     };
 
-    this.hub.registerClient(clientId, agentId, send, isAdmin);
+    this.hub.registerClient(clientId, agentId, send, isAdmin, prompt);
     client.emit('welcome', { clientId });
     // Tell the new client whether the agent runtime is currently online so the
     // chat header can render the right indicator color before any subsequent

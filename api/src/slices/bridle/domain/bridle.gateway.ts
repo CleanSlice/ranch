@@ -38,6 +38,9 @@ export abstract class IBridleGateway {
     agentId: string,
     send: (data: unknown) => void,
     isAdmin: boolean,
+    /** Integrator context from the embed's `data-prompt`; forwarded to the
+     * agent on every message in this session. */
+    prompt?: string,
   ): void;
   /** Unregister a browser client */
   abstract unregisterClient(clientId: string): void;

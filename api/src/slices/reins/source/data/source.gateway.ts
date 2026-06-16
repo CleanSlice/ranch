@@ -14,6 +14,7 @@ import {
   ISourceData,
   ICreateSourceData,
   IUploadSourceFileInput,
+  IUploadSourceStreamInput,
   IUploadedSourceFile,
 } from '../domain/source.types';
 import { SourceMapper } from './source.mapper';
@@ -108,6 +109,33 @@ export class SourceGateway extends ISourceGateway {
       bucket,
       key,
       body: input.body,
+      contentType: input.contentType,
+    });
+    return { url: stored.uri };
+  }
+
+  async uploadFileStream(
+    input: IUploadSourceStreamInput,
+  ): Promise<IUploadedSourceFile> {
+    const bucket = await this.requireBucket();
+    const key = `${input.knowledgeId}/${crypto.randomUUID()}-${input.filename}`;
+    // S3Repository uploads buffers via PutObject; the custom/MinIO endpoint
+    // doesn't accept unbounded streaming bodies. Archive entries are
+    // processed one at a time, so materializing a single entry keeps peak
+    // memory bounded to that one file - the same profile as uploadFile.
+    const chunks: Buffer[] = [];
+    for await (const chunk of input.body) {
+      if (!(chunk instanceof Uint8Array)) {
+        throw new BadRequestException(
+          'archive entry stream emitted a non-binary chunk',
+        );
+      }
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const stored = await this.s3.upload({
+      bucket,
+      key,
+      body: Buffer.concat(chunks),
       contentType: input.contentType,
     });
     return { url: stored.uri };

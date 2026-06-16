@@ -1,3 +1,5 @@
+import { Readable } from 'stream';
+
 export type SourceTypes = 'file' | 'url' | 'text';
 
 export interface ISourceData {
@@ -31,6 +33,18 @@ export interface IUploadSourceFileInput {
   contentType: string;
 }
 
+export interface IUploadSourceStreamInput {
+  knowledgeId: string;
+  filename: string;
+  body: Readable;
+  contentType: string;
+}
+
 export interface IUploadedSourceFile {
   url: string;
+}
+
+export interface IArchiveImportResult {
+  detected: number;
+  started: boolean;
 }

@@ -11,9 +11,30 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+  ApiResponse,
+} from '@nestjs/swagger';
+import { promises as fs } from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { randomUUID } from 'crypto';
 import { SourceService } from './domain/source.service';
-import { AddFromSitemapDto, AddFromSitemapResultDto, CreateSourceDto } from './dtos';
+import {
+  AddFromArchiveResultDto,
+  AddFromSitemapDto,
+  AddFromSitemapResultDto,
+  CreateSourceDto,
+} from './dtos';
+
+// Cap archive uploads at 1 GiB. The upload is buffered in memory (multer's
+// default storage) and then written to a temp file for extraction. We can't
+// use multer's diskStorage here: under the Bun workspace `multer` is a phantom
+// dependency of @nestjs/platform-express, so `import { diskStorage } from
+// 'multer'` does not resolve at runtime.
+const ONE_GIB = 1024 * 1024 * 1024;
 
 interface UploadedFileLike {
   originalname: string;
@@ -95,6 +116,33 @@ export class SourceController {
       dto.sitemapUrl,
       dto.urlPrefix,
     );
+  }
+
+  @Post('from-archive')
+  @ApiOperation({
+    summary: 'Bulk-import sources from a zip archive',
+    operationId: 'addKnowledgeSourcesFromArchive',
+    description:
+      'Accepts a .zip, extracts every ingestable file (pdf, docx, xlsx, txt, html, ...), and creates one file-type source per entry. Upload runs in the background and streams each entry to S3; the response returns immediately with the detected file count. Indexing into LightRAG happens through the normal reindex flow.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 201, type: AddFromArchiveResultDto })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: ONE_GIB } }))
+  async addFromArchive(
+    @Param('knowledgeId') knowledgeId: string,
+    @UploadedFile() file?: UploadedFileLike,
+  ): Promise<AddFromArchiveResultDto> {
+    if (!file) {
+      throw new BadRequestException('zip file is required (field "file")');
+    }
+    // The service consumes and then deletes a zip already saved on disk (see
+    // its doc comment), so persist the in-memory upload to a temp file first.
+    const zipPath = path.join(
+      os.tmpdir(),
+      `ranch-knowledge-archive-${randomUUID()}.zip`,
+    );
+    await fs.writeFile(zipPath, file.buffer);
+    return this.service.addFromArchive(knowledgeId, zipPath);
   }
 
   @Delete(':sourceId')

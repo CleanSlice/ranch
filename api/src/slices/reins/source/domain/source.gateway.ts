@@ -2,6 +2,7 @@ import {
   ISourceData,
   ICreateSourceData,
   IUploadSourceFileInput,
+  IUploadSourceStreamInput,
   IUploadedSourceFile,
 } from './source.types';
 
@@ -14,6 +15,9 @@ export abstract class ISourceGateway {
 
   abstract uploadFile(
     input: IUploadSourceFileInput,
+  ): Promise<IUploadedSourceFile>;
+  abstract uploadFileStream(
+    input: IUploadSourceStreamInput,
   ): Promise<IUploadedSourceFile>;
   abstract deleteFile(url: string): Promise<void>;
 

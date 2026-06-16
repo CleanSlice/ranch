@@ -12,6 +12,14 @@ function isSitemapResult(
   return typeof obj.added === 'number' && typeof obj.discovered === 'number';
 }
 
+function isArchiveResult(
+  value: unknown,
+): value is { detected: number; started: boolean } {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.detected === 'number' && typeof obj.started === 'boolean';
+}
+
 export type IndexStatus = 'idle' | 'indexing' | 'ready' | 'failed';
 export type SourceType = 'file' | 'url' | 'text';
 
@@ -229,11 +237,30 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     form.append('type', 'file');
     form.append('name', file.name);
     form.append('file', file);
-    const res = await $fetch<unknown>(`/api/knowledges/${id}/sources`, {
-      method: 'POST',
-      body: form,
-    });
-    return unwrap<ISource>(res);
+    // Multipart can't go through the generated SDK, so post on its axios
+    // instance directly: that reuses the configured apiUrl base and the
+    // Bearer-token interceptor (setup/api apiBaseUrl.ts). A bare '/api/...'
+    // URL would instead hit the admin origin with no auth.
+    const res = await apiClient.instance.post<unknown>(
+      `/knowledges/${id}/sources`,
+      form,
+    );
+    return unwrap<ISource>(res.data);
+  }
+
+  async function addSourcesFromArchive(
+    id: string,
+    file: File,
+  ): Promise<{ detected: number; started: boolean }> {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await apiClient.instance.post<unknown>(
+      `/knowledges/${id}/sources/from-archive`,
+      form,
+    );
+    const data = unwrap<unknown>(res.data);
+    if (isArchiveResult(data)) return data;
+    return { detected: 0, started: false };
   }
 
   async function addSourcesFromSitemap(
@@ -243,11 +270,11 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
   ): Promise<{ added: number; discovered: number }> {
     const body: { sitemapUrl: string; urlPrefix?: string } = { sitemapUrl };
     if (urlPrefix) body.urlPrefix = urlPrefix;
-    const res = await $fetch<unknown>(
-      `/api/knowledges/${id}/sources/from-sitemap`,
-      { method: 'POST', body },
+    const res = await apiClient.instance.post<unknown>(
+      `/knowledges/${id}/sources/from-sitemap`,
+      body,
     );
-    const data = unwrap<unknown>(res);
+    const data = unwrap<unknown>(res.data);
     if (isSitemapResult(data)) return data;
     return { added: 0, discovered: 0 };
   }
@@ -297,6 +324,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     addUrlSource,
     addFileSource,
     addSourcesFromSitemap,
+    addSourcesFromArchive,
     removeSource,
     getGraphLabels,
     getGraph,

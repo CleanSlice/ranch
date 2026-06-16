@@ -9,7 +9,7 @@ terraform {
 
 variable "environment" {
   type        = string
-  description = "Environment name — used as suffix on bucket + IAM user (e.g. dreamvention)"
+  description = "Environment name - used as suffix on bucket + IAM user (e.g. dreamvention)"
 }
 
 variable "bucket_name" {
@@ -31,8 +31,9 @@ variable "secret_name_prefix" {
 }
 
 locals {
-  bucket_name = var.bucket_name != "" ? var.bucket_name : "ranch-agent-data-${var.environment}"
-  iam_user    = "ranch-agent-${var.environment}"
+  bucket_name        = var.bucket_name != "" ? var.bucket_name : "ranch-agent-data-${var.environment}"
+  reins_bucket_name  = "ranch-reins-sources-${var.environment}"
+  iam_user           = "ranch-agent-${var.environment}"
 }
 
 # ---------------------------------------------------------------------
@@ -71,23 +72,26 @@ resource "aws_s3_bucket_public_access_block" "agent_data" {
 }
 
 # ---------------------------------------------------------------------
-# S3 bucket for Postgres backups (CNPG barmanObjectStore)
+# S3 bucket for Reins / Knowledge source files (PDFs, docs, archives
+# uploaded by operators via the knowledge admin UI). ranch-api stores
+# files here under <knowledgeId>/<uuid>-<filename>; LightRAG ingests
+# them through ranch-api which fetches the bytes back from S3.
 # ---------------------------------------------------------------------
 
-resource "aws_s3_bucket" "pg_backups" {
-  bucket = "ranch-pg-backups-${var.environment}"
+resource "aws_s3_bucket" "reins_sources" {
+  bucket = local.reins_bucket_name
 }
 
-resource "aws_s3_bucket_versioning" "pg_backups" {
-  bucket = aws_s3_bucket.pg_backups.id
+resource "aws_s3_bucket_versioning" "reins_sources" {
+  bucket = aws_s3_bucket.reins_sources.id
 
   versioning_configuration {
     status = "Enabled"
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "pg_backups" {
-  bucket = aws_s3_bucket.pg_backups.id
+resource "aws_s3_bucket_server_side_encryption_configuration" "reins_sources" {
+  bucket = aws_s3_bucket.reins_sources.id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -96,13 +100,54 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "pg_backups" {
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "pg_backups" {
-  bucket = aws_s3_bucket.pg_backups.id
+resource "aws_s3_bucket_public_access_block" "reins_sources" {
+  bucket = aws_s3_bucket.reins_sources.id
 
   block_public_acls       = true
   ignore_public_acls      = true
   block_public_policy     = true
   restrict_public_buckets = true
+}
+
+# ---------------------------------------------------------------------
+# Postgres backups bucket retired.
+#
+# The original lightrag-postgres lived on CloudNativePG with
+# barmanObjectStore writing to ranch-pg-backups-<env>. We migrated to a
+# plain Postgres Deployment that does not back up; the bucket is now
+# unused. The `removed` block instructs terraform to drop these
+# resources from state without deleting the AWS bucket itself, so any
+# residual backup archive stays around for manual cleanup.
+# Requires terraform >= 1.7. On older versions, replace with
+# `terraform state rm` before deleting the resource blocks.
+# ---------------------------------------------------------------------
+
+removed {
+  from = aws_s3_bucket.pg_backups
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = aws_s3_bucket_versioning.pg_backups
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = aws_s3_bucket_server_side_encryption_configuration.pg_backups
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = aws_s3_bucket_public_access_block.pg_backups
+  lifecycle {
+    destroy = false
+  }
 }
 
 # ---------------------------------------------------------------------
@@ -149,13 +194,13 @@ data "aws_iam_policy_document" "agent_bucket_access" {
   }
 
   statement {
-    sid       = "PgBackupsBucketLevel"
+    sid       = "ReinsSourcesBucketLevel"
     actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
-    resources = [aws_s3_bucket.pg_backups.arn]
+    resources = [aws_s3_bucket.reins_sources.arn]
   }
 
   statement {
-    sid = "PgBackupsObjectLevel"
+    sid = "ReinsSourcesObjectLevel"
     actions = [
       "s3:GetObject",
       "s3:PutObject",
@@ -163,7 +208,7 @@ data "aws_iam_policy_document" "agent_bucket_access" {
       "s3:AbortMultipartUpload",
       "s3:ListMultipartUploadParts",
     ]
-    resources = ["${aws_s3_bucket.pg_backups.arn}/*"]
+    resources = ["${aws_s3_bucket.reins_sources.arn}/*"]
   }
 }
 
@@ -205,10 +250,10 @@ output "secret_access_key" {
   sensitive = true
 }
 
-output "pg_backups_bucket_name" {
-  value = aws_s3_bucket.pg_backups.id
+output "reins_sources_bucket_name" {
+  value = aws_s3_bucket.reins_sources.id
 }
 
-output "pg_backups_bucket_region" {
-  value = aws_s3_bucket.pg_backups.region
+output "reins_sources_bucket_region" {
+  value = aws_s3_bucket.reins_sources.region
 }

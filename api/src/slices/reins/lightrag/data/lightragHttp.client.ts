@@ -139,13 +139,17 @@ export class LightragHttpClient extends ILightragClient {
       new Blob([new Uint8Array(input.content)], { type: input.mimeType }),
       input.filename,
     );
-    const res = await this.fetchImpl(`${cfg.baseUrl}/documents/file`, {
+    // LightRAG renamed /documents/file -> /documents/upload (the old path
+    // now 404s, same drift that killed /documents/url). Upload saves the
+    // file to the input dir and processes it in the background, returning a
+    // track_id like the text endpoints.
+    const res = await this.fetchImpl(`${cfg.baseUrl}/documents/upload`, {
       method: 'POST',
       headers: this.headers(cfg.apiKey),
       body: form,
     });
-    await this.ensureOk(res, '/documents/file');
-    return this.extractDocId(res, '/documents/file');
+    await this.ensureOk(res, '/documents/upload');
+    return this.extractDocId(res, '/documents/upload');
   }
 
   async query(input: IQueryInput): Promise<IQueryResult> {

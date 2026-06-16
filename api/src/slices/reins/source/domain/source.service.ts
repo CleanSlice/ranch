@@ -4,12 +4,19 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { promises as fs } from 'fs';
 import { ISourceGateway } from './source.gateway';
-import { ISourceData } from './source.types';
+import { IArchiveImportResult, ISourceData } from './source.types';
 import {
   fetchSitemapUrls,
   SitemapError,
 } from '../data/sitemap.fetcher';
+import {
+  ArchiveEntry,
+  contentTypeForEntry,
+  displayNameForEntry,
+  listIngestableEntries,
+} from '../data/archive.extractor';
 
 export interface IAddFromSitemapResult {
   added: number;
@@ -101,6 +108,104 @@ export class SourceService {
       }
     }
     await this.gateway.delete(id);
+  }
+
+  /**
+   * Accepts an already-saved zip on disk, lists its ingestable entries, and
+   * kicks off a background import (one file-source per entry, streamed to
+   * S3). Returns immediately with the detected count so the HTTP request
+   * doesn't hang for the minutes a large archive takes. The caller-owned
+   * zip at zipPath is deleted once the background pass finishes. Indexing
+   * into LightRAG is NOT triggered here - that stays the explicit Index
+   * action.
+   */
+  async addFromArchive(
+    knowledgeId: string,
+    zipPath: string,
+  ): Promise<IArchiveImportResult> {
+    let entries: ArchiveEntry[];
+    try {
+      entries = await listIngestableEntries(zipPath);
+    } catch (err) {
+      await this.safeUnlink(zipPath);
+      throw new BadRequestException(
+        `Could not read archive: ${errorMessage(err)}`,
+      );
+    }
+    if (entries.length === 0) {
+      await this.safeUnlink(zipPath);
+      throw new BadRequestException(
+        'Archive contains no ingestable files (pdf, docx, xlsx, txt, html, ...).',
+      );
+    }
+    void this.runArchiveImport(knowledgeId, zipPath, entries);
+    return { detected: entries.length, started: true };
+  }
+
+  private async runArchiveImport(
+    knowledgeId: string,
+    zipPath: string,
+    entries: ArchiveEntry[],
+  ): Promise<void> {
+    let added = 0;
+    let skipped = 0;
+    let failed = 0;
+    try {
+      const existing = await this.gateway.findByKnowledgeId(knowledgeId);
+      const existingNames = new Set(
+        existing.filter((s) => s.type === 'file').map((s) => s.name),
+      );
+      const seenPaths = new Set<string>();
+
+      for (const entry of entries) {
+        const name = displayNameForEntry(entry.path);
+        if (seenPaths.has(entry.path) || existingNames.has(name)) {
+          skipped += 1;
+          continue;
+        }
+        seenPaths.add(entry.path);
+        const contentType = contentTypeForEntry(entry.path);
+        try {
+          const stored = await this.gateway.uploadFileStream({
+            knowledgeId,
+            filename: name,
+            body: entry.openStream(),
+            contentType,
+          });
+          await this.gateway.create({
+            knowledgeId,
+            type: 'file',
+            name,
+            url: stored.url,
+            mimeType: contentType,
+            sizeBytes: entry.size,
+          });
+          added += 1;
+        } catch (err) {
+          failed += 1;
+          this.logger.warn(
+            `archive entry failed ${entry.path}: ${errorMessage(err)}`,
+          );
+        }
+      }
+      this.logger.log(
+        `archive import for ${knowledgeId}: added=${added} skipped=${skipped} failed=${failed}`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `archive import crashed for ${knowledgeId}: ${errorMessage(err)}`,
+      );
+    } finally {
+      await this.safeUnlink(zipPath);
+    }
+  }
+
+  private async safeUnlink(filePath: string): Promise<void> {
+    try {
+      await fs.unlink(filePath);
+    } catch (err) {
+      this.logger.warn(`failed to remove temp archive ${filePath}: ${errorMessage(err)}`);
+    }
   }
 
   indexSource(source: ISourceData): Promise<void> {

@@ -21,6 +21,8 @@ import {
 import {
   IconDotsVertical,
   IconLoader2,
+  IconPlayerPlay,
+  IconPlayerStop,
   IconRefresh,
   IconShield,
   IconTrash,
@@ -63,6 +65,42 @@ async function onRestart(agent: IAgentData) {
     const next = new Set(restartingIds.value);
     next.delete(agent.id);
     restartingIds.value = next;
+  }
+}
+
+// Statuses that consume cluster resources (a pod is or will be running) — the
+// only states where "Stop" makes sense. Everything else gets "Start".
+const RESOURCE_HOLDING: ReadonlySet<AgentStatusTypes> = new Set([
+  'running',
+  'deploying',
+  'pending',
+]);
+
+function canStop(status: AgentStatusTypes): boolean {
+  return RESOURCE_HOLDING.has(status);
+}
+
+// Per-row busy guard for stop/start so one row's spinner doesn't block others.
+const togglingIds = ref<Set<string>>(new Set());
+
+function isToggling(id: string): boolean {
+  return togglingIds.value.has(id);
+}
+
+async function onToggleRunning(agent: IAgentData) {
+  if (togglingIds.value.has(agent.id)) return;
+  togglingIds.value = new Set([...togglingIds.value, agent.id]);
+  try {
+    if (canStop(agent.status)) {
+      await agentStore.stop(agent.id);
+    } else {
+      await agentStore.start(agent.id);
+    }
+    await refresh();
+  } finally {
+    const next = new Set(togglingIds.value);
+    next.delete(agent.id);
+    togglingIds.value = next;
   }
 }
 
@@ -159,7 +197,7 @@ async function onRemove() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
-                      :disabled="isRestarting(agent.id)"
+                      :disabled="isRestarting(agent.id) || isToggling(agent.id)"
                       @select="onRestart(agent)"
                     >
                       <IconLoader2
@@ -168,6 +206,26 @@ async function onRemove() {
                       />
                       <IconRefresh v-else class="size-4" />
                       {{ isRestarting(agent.id) ? 'Restarting…' : 'Restart' }}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      :disabled="isToggling(agent.id) || isRestarting(agent.id)"
+                      @select="onToggleRunning(agent)"
+                    >
+                      <IconLoader2
+                        v-if="isToggling(agent.id)"
+                        class="size-4 animate-spin"
+                      />
+                      <IconPlayerStop v-else-if="canStop(agent.status)" class="size-4" />
+                      <IconPlayerPlay v-else class="size-4" />
+                      {{
+                        isToggling(agent.id)
+                          ? canStop(agent.status)
+                            ? 'Stopping…'
+                            : 'Starting…'
+                          : canStop(agent.status)
+                            ? 'Stop'
+                            : 'Start'
+                      }}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem

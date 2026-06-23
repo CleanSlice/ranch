@@ -89,6 +89,9 @@ export class AgentController {
   private async syncStatus(agentId: string) {
     const agent = await this.agentGateway.findById(agentId);
     if (!agent?.workflowId) return agent;
+    // A stopped agent intentionally has no live pod — never resurrect its
+    // status from the (now cancelled) workflow phase.
+    if (agent.status === 'stopped') return agent;
     // Forward-only: only flip to 'failed' (terminal) here. We never demote
     // 'running' back to 'deploying' on a Pending workflow phase — pod-event
     // reconciler owns the running/deploying transitions and a workflow can
@@ -401,6 +404,32 @@ export class AgentController {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
     await this.agentDeployService.restartAgent(id);
+    return this.agentGateway.findById(id);
+  }
+
+  @Post(':id/stop')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiOperation({
+    summary:
+      'Stop an agent without deleting it: cancels its workflow and deletes its pod to free cluster CPU/memory, then marks it `stopped`. Use this to free a slot so another agent can start. Bring it back with POST :id/start. Admin or Owner.',
+  })
+  async stop(@Param('id') id: string) {
+    const agent = await this.agentGateway.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+    await this.agentDeployService.stopAgent(id);
+    return this.agentGateway.findById(id);
+  }
+
+  @Post(':id/start')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiOperation({
+    summary:
+      'Start a stopped agent: deploys a fresh pod and reattaches the runtime. Inverse of POST :id/stop. Admin or Owner.',
+  })
+  async start(@Param('id') id: string) {
+    const agent = await this.agentGateway.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+    await this.deploy(id);
     return this.agentGateway.findById(id);
   }
 

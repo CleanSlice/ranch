@@ -30,8 +30,8 @@ export abstract class IBridleGateway {
     text: string,
     parts: BridlePart[],
   ): void;
-  /** Send an event to a specific browser client */
-  abstract sendToClient(clientId: string, data: unknown): void;
+  /** Send an event to a specific browser client (scoped to clientId + agentId) */
+  abstract sendToClient(clientId: string, agentId: string, data: unknown): void;
   /** Register a browser client for a specific agent */
   abstract registerClient(
     clientId: string,
@@ -42,8 +42,8 @@ export abstract class IBridleGateway {
      * agent on every message in this session. */
     prompt?: string,
   ): void;
-  /** Unregister a browser client */
-  abstract unregisterClient(clientId: string): void;
+  /** Unregister a browser client (scoped to clientId + agentId) */
+  abstract unregisterClient(clientId: string, agentId: string): void;
   /** Register an agent connection for a specific agent */
   abstract registerAgent(agentId: string, send: (data: unknown) => void): void;
   /** Unregister an agent connection for a specific agent */

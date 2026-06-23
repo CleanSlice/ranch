@@ -80,7 +80,7 @@ export class BridleController {
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.hub.unregisterClient(clientId);
+        this.hub.unregisterClient(clientId, agentId);
         resolve({
           text: chunks.join('') || 'Timeout: no response from agent',
           messageId: '',
@@ -95,7 +95,7 @@ export class BridleController {
           const event = data as Record<string, unknown>;
           if (event.type === 'message' || event.type === 'stream_end') {
             clearTimeout(timeout);
-            this.hub.unregisterClient(clientId);
+            this.hub.unregisterClient(clientId, agentId);
             resolve({
               text: event.text ?? chunks.join(''),
               messageId: event.messageId,

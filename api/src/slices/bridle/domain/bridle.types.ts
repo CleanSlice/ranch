@@ -113,6 +113,7 @@ export interface IBridleAgentHealthData {
 
 /** Registered client metadata */
 export interface IBridleClientData {
+  clientId: string;
   agentId: string;
   send: (data: unknown) => void;
   isAdmin: boolean;

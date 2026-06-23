@@ -1965,6 +1965,32 @@ export type AgentControllerRestartResponses = {
   201: unknown;
 };
 
+export type AgentControllerStopData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/stop";
+};
+
+export type AgentControllerStopResponses = {
+  201: unknown;
+};
+
+export type AgentControllerStartData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/start";
+};
+
+export type AgentControllerStartResponses = {
+  201: unknown;
+};
+
 export type RestartByTemplateData = {
   body?: never;
   path: {
@@ -2174,6 +2200,24 @@ export type GetBridleTranscriptResponses = {
 
 export type GetBridleTranscriptResponse =
   GetBridleTranscriptResponses[keyof GetBridleTranscriptResponses];
+
+export type ArchiveBridleTranscriptData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: {
+    /**
+     * Session channel — defaults to "admin".
+     */
+    channel?: string;
+  };
+  url: "/api/agent/{agentId}/transcript/archive";
+};
+
+export type ArchiveBridleTranscriptResponses = {
+  200: unknown;
+};
 
 export type SkillControllerFindAllData = {
   body?: never;

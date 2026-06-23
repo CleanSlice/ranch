@@ -1,7 +1,6 @@
 import { defineCommand, runMain as _runMain } from "citty";
 import { consola } from "consola";
 import { spawn } from "node:child_process";
-import pkg from "../package.json" with { type: "json" };
 import { devCommand } from "./commands/dev";
 import { upCommand } from "./commands/up";
 import { downCommand } from "./commands/down";
@@ -11,6 +10,7 @@ import { statusCommand } from "./commands/status";
 import { whereCommand } from "./commands/where";
 import { upgradeCommand } from "./commands/upgrade";
 import {
+  currentVersion,
   isCacheStale,
   readCachedCheck,
   refreshCache,
@@ -19,7 +19,7 @@ import {
 const main = defineCommand({
   meta: {
     name: "ranch",
-    version: pkg.version,
+    version: currentVersion(),
     description: "Ranch project CLI",
   },
   subCommands: {

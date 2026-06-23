@@ -80,6 +80,8 @@ import type {
   AgentControllerDemoteAdminData,
   AgentControllerPromoteAdminData,
   AgentControllerRestartData,
+  AgentControllerStopData,
+  AgentControllerStartData,
   RestartByTemplateData,
   FileControllerListData,
   FileControllerReadData,
@@ -98,6 +100,7 @@ import type {
   ResetBridleTranscriptResponse,
   GetBridleTranscriptData,
   GetBridleTranscriptResponse,
+  ArchiveBridleTranscriptData,
   SkillControllerFindAllData,
   SkillControllerCreateData,
   SkillControllerListSourcesData,
@@ -1434,6 +1437,38 @@ export class AgentsService {
   }
 
   /**
+   * Stop an agent without deleting it: cancels its workflow and deletes its pod to free cluster CPU/memory, then marks it `stopped`. Use this to free a slot so another agent can start. Bring it back with POST :id/start. Admin or Owner.
+   */
+  public static agentControllerStop<ThrowOnError extends boolean = false>(
+    options: Options<AgentControllerStopData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/stop",
+      ...options,
+    });
+  }
+
+  /**
+   * Start a stopped agent: deploys a fresh pod and reattaches the runtime. Inverse of POST :id/stop. Admin or Owner.
+   */
+  public static agentControllerStart<ThrowOnError extends boolean = false>(
+    options: Options<AgentControllerStartData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/start",
+      ...options,
+    });
+  }
+
+  /**
    * Restart every agent that uses this template. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner.
    */
   public static restartByTemplate<ThrowOnError extends boolean = false>(
@@ -1689,6 +1724,22 @@ export class BridleService {
       ThrowOnError
     >({
       url: "/api/agent/{agentId}/transcript",
+      ...options,
+    });
+  }
+
+  /**
+   * Archive the persisted chat transcript for an agent/channel — the live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`) and the live slot starts empty. Used by the embed's "New chat" action when the visitor wants a clean slate but we still want the prior conversation for admin/audit. No-op (returns `{}`) when there's nothing to archive.
+   */
+  public static archiveBridleTranscript<ThrowOnError extends boolean = false>(
+    options: Options<ArchiveBridleTranscriptData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/transcript/archive",
       ...options,
     });
   }

@@ -192,9 +192,12 @@ export class BridleClientWsHandler
 
   handleDisconnect(client: Socket) {
     const clientId = client.data?.clientId as string | undefined;
-    if (clientId) {
-      this.hub.unregisterClient(clientId);
-      this.logger.log(`Browser disconnected: clientId=${clientId}`);
+    const agentId = client.data?.agentId as string | undefined;
+    if (clientId && agentId) {
+      this.hub.unregisterClient(clientId, agentId);
+      this.logger.log(
+        `Browser disconnected: clientId=${clientId} agentId=${agentId}`,
+      );
     }
   }
 

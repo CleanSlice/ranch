@@ -220,8 +220,16 @@ function buildAgentPod(
           // running browser_play / Chromium). Guaranteed (requests == limits
           // at 2 CPU / 2Gi) made schedules fail on small Hetzner nodes —
           // even one agent didn't fit alongside the platform pods.
+          //
+          // CPU request is 100m, not 500m: idle agents actually use ~10-20m,
+          // so 500m × ~14 agents reserved 100% of an 8-vCPU cx43 node while it
+          // ran at 8% — new agents stuck Pending on "Insufficient cpu" despite
+          // a near-idle node. The scheduler packs by requests, not usage, so
+          // an honest low floor is what lets agents fit. Bursting is unaffected
+          // (limits still come from i.cpu). Memory floor stays 512Mi — that's
+          // a real idle footprint and becomes the next ceiling (~28/node).
           resources: {
-            requests: { cpu: '500m', memory: '512Mi' },
+            requests: { cpu: '100m', memory: '512Mi' },
             limits: { cpu: i.cpu, memory: i.memory },
           },
           ports: [{ containerPort: 3000 }],

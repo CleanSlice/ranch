@@ -293,6 +293,56 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  // Stop an agent — cancels its workflow and deletes its pod to free cluster
+  // resources, keeping the row so it can be started again. Raw axios call:
+  // the generated SDK hasn't been regenerated for this endpoint yet (same
+  // approach as fetchEnv/fetchMetrics). Optimistic flip to 'stopped'.
+  async function stop(id: string) {
+    const previous = agents.value.find((a) => a.id === id);
+    if (previous && previous.status !== 'stopped') {
+      agents.value = agents.value.map((a) =>
+        a.id === id ? { ...a, status: 'stopped' } : a,
+      );
+    }
+    try {
+      const res = await client.instance.post(`/agents/${id}/stop`);
+      const env = res.data as ApiEnvelope<IAgentData> | undefined;
+      const updated = env?.data;
+      if (!updated) throw new Error('Stop returned no agent data');
+      agents.value = agents.value.map((a) => (a.id === id ? updated : a));
+      return updated;
+    } catch (err) {
+      if (previous) {
+        agents.value = agents.value.map((a) => (a.id === id ? previous : a));
+      }
+      throw err;
+    }
+  }
+
+  // Start a stopped agent — deploys a fresh pod. Optimistic flip to
+  // 'deploying' so the badge reacts before the API resolves.
+  async function start(id: string) {
+    const previous = agents.value.find((a) => a.id === id);
+    if (previous && previous.status !== 'deploying') {
+      agents.value = agents.value.map((a) =>
+        a.id === id ? { ...a, status: 'deploying' } : a,
+      );
+    }
+    try {
+      const res = await client.instance.post(`/agents/${id}/start`);
+      const env = res.data as ApiEnvelope<IAgentData> | undefined;
+      const updated = env?.data;
+      if (!updated) throw new Error('Start returned no agent data');
+      agents.value = agents.value.map((a) => (a.id === id ? updated : a));
+      return updated;
+    } catch (err) {
+      if (previous) {
+        agents.value = agents.value.map((a) => (a.id === id ? previous : a));
+      }
+      throw err;
+    }
+  }
+
   async function remove(id: string, options: { wipeS3?: boolean } = {}) {
     // Use raw fetch because the OpenAPI spec doesn't yet expose `wipeS3`
     // as a typed query param. We re-attach the Bearer token from the
@@ -376,6 +426,8 @@ export const useAgentStore = defineStore('agent', () => {
     create,
     update,
     restart,
+    stop,
+    start,
     remove,
     promoteAdmin,
     demoteAdmin,

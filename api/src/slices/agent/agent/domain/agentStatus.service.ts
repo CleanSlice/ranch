@@ -367,7 +367,12 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     if (
       podStatus.phase === 'Running' &&
       podStatus.ready &&
-      agent.status !== 'running'
+      agent.status !== 'running' &&
+      // Ignore a Running+Ready event from a pod that predates the current
+      // deploy/stop. Without this, the OLD pod's last Running event (still in
+      // flight while Argo tears it down) could revert a freshly 'stopped' agent
+      // back to 'running', or mask a restart's new pod with the old one.
+      !this.deployTracker.isStale(agent.id, podStatus.startedAt)
     ) {
       this.logger.log(
         `Reconciling agent ${agent.id}: pod ${podStatus.podName} is Running+Ready — marking running`,

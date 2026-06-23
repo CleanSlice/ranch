@@ -5,6 +5,7 @@ import { ITemplateGateway } from '#/agent/template/domain';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
 import { AuthService } from '#/user/auth/domain';
 import { ISkillGateway } from '#/skill/domain';
+import { IPodGateway } from '#/agent/pod/domain';
 import { DeployTracker } from './deployTracker';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class AgentDeployService {
     private readonly authService: AuthService,
     private readonly fileGateway: IFileGateway,
     private readonly skillGateway: ISkillGateway,
+    private readonly podGateway: IPodGateway,
     private readonly deployTracker: DeployTracker,
   ) {}
 
@@ -60,6 +62,42 @@ export class AgentDeployService {
     }
 
     await this.deploy(agentId);
+  }
+
+  // Stop a running agent: cancel its workflow and delete the pod so the
+  // cluster resources (CPU/memory) are freed, then mark it 'stopped'. The DB
+  // row is kept so the agent can be brought back later via deploy(). Unlike
+  // restartAgent this does NOT redeploy — that's the whole point: free a slot
+  // on the cluster so another agent can start.
+  async stopAgent(agentId: string): Promise<void> {
+    const agent = await this.agentGateway.findById(agentId);
+    if (!agent) return;
+
+    // Mark BEFORE cancel so the dying pod's MODIFIED phase=Failed event
+    // (emitted by Argo's cancellation) is recognised as stale by the
+    // reconciler and doesn't flip the row from 'stopped' to 'failed'.
+    this.deployTracker.mark(agentId);
+
+    // Set 'stopped' (and clear the workflow id) up front so the UI reflects
+    // the intent immediately and the controller's syncStatus stops polling the
+    // about-to-be-cancelled workflow.
+    await this.agentGateway.updateStatus(agentId, 'stopped', null);
+
+    try {
+      await this.workflowService.cancelAgentWorkflow(agent.workflowId);
+    } catch (err) {
+      this.logger.warn(
+        `Cancel workflow failed for agent ${agentId}: ${(err as Error).message}`,
+      );
+    }
+
+    try {
+      await this.podGateway.delete(agentId);
+    } catch (err) {
+      this.logger.warn(
+        `Pod cleanup failed for agent ${agentId}: ${(err as Error).message}`,
+      );
+    }
   }
 
   async deploy(agentId: string): Promise<void> {

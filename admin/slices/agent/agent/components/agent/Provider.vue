@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '#theme/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '#theme/components/ui/tabs';
-import { IconAlertTriangle, IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconRefresh, IconShield, IconX } from '@tabler/icons-vue';
+import { IconAlertTriangle, IconArrowLeft, IconEye, IconEyeOff, IconLoader2, IconPlayerPlay, IconPlayerStop, IconRefresh, IconShield, IconX } from '@tabler/icons-vue';
 import { FileText, X } from 'lucide-vue-next';
 import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 
@@ -236,6 +236,50 @@ function dismissRestartBanner() {
   agentStore.clearPendingRestart(props.id);
 }
 
+// ── Stop / Start ─────────────────────────────────────────────────────────
+// Stop cancels the workflow and deletes the pod to free cluster CPU/memory
+// (so another agent can start when the cluster is full); Start deploys a fresh
+// pod. Which one we show depends on whether the agent currently holds a pod.
+const RESOURCE_HOLDING: ReadonlySet<AgentStatusTypes> = new Set([
+  'running',
+  'deploying',
+  'pending',
+]);
+const canStop = computed(() =>
+  agent.value ? RESOURCE_HOLDING.has(agent.value.status) : false,
+);
+const toggling = ref(false);
+const toggleError = ref<string | null>(null);
+
+async function onToggleRunning() {
+  if (!agent.value || toggling.value) return;
+  toggling.value = true;
+  toggleError.value = null;
+  const previousStatus = agent.value.status;
+  const stopping = canStop.value;
+  // Optimistic flip so the badge reacts before the API resolves.
+  agent.value = {
+    ...agent.value,
+    status: stopping ? 'stopped' : 'deploying',
+  };
+  try {
+    if (stopping) {
+      await agentStore.stop(agent.value.id);
+    } else {
+      agentStore.markRestartInFlight(agent.value.id);
+      await agentStore.start(agent.value.id);
+    }
+    await refresh();
+  } catch (err) {
+    if (agent.value) agent.value = { ...agent.value, status: previousStatus };
+    if (!stopping) agentStore.clearRestartInFlight(props.id);
+    toggleError.value =
+      (err as Error).message || (stopping ? 'Stop failed' : 'Start failed');
+  } finally {
+    toggling.value = false;
+  }
+}
+
 // ── Live pod state from SSE ─────────────────────────────────────────────
 // Lets the user watch sub-second pod transitions (Pending → ContainerCreating
 // → Running) instead of waiting on the 5s status poll below.
@@ -261,6 +305,7 @@ const podPhaseLabel = computed(() => {
 type ChatOverlay =
   | { kind: 'starting'; title: string; detail: string }
   | { kind: 'failed'; title: string; detail: string }
+  | { kind: 'stopped'; title: string; detail: string }
   | null;
 
 const chatOverlay = computed<ChatOverlay>(() => {
@@ -276,6 +321,15 @@ const chatOverlay = computed<ChatOverlay>(() => {
   const chatLive = bridleStore.isConnected && bridleStore.isAgentConnected;
 
   if (chatLive) return null;
+
+  if (s === 'stopped') {
+    return {
+      kind: 'stopped',
+      title: 'Agent stopped',
+      detail:
+        'The pod was deleted to free cluster resources. Start it to chat again.',
+    };
+  }
 
   if (s === 'failed') {
     return {
@@ -579,7 +633,29 @@ onBeforeUnmount(stopMetricsPolling);
             </Button>
             <Button
               variant="outline"
-              :disabled="isRestarting"
+              :disabled="toggling || isRestarting"
+              :title="canStop ? 'Cancel the workflow and delete the pod to free cluster resources' : 'Deploy a fresh pod'"
+              @click="onToggleRunning"
+            >
+              <IconLoader2
+                v-if="toggling"
+                class="size-4 animate-spin"
+              />
+              <IconPlayerStop v-else-if="canStop" class="size-4" />
+              <IconPlayerPlay v-else class="size-4" />
+              {{
+                toggling
+                  ? canStop
+                    ? 'Stopping…'
+                    : 'Starting…'
+                  : canStop
+                    ? 'Stop'
+                    : 'Start'
+              }}
+            </Button>
+            <Button
+              variant="outline"
+              :disabled="isRestarting || toggling"
               @click="onRestart"
             >
               <IconLoader2
@@ -591,10 +667,10 @@ onBeforeUnmount(stopMetricsPolling);
             </Button>
           </div>
           <p
-            v-if="restartError"
+            v-if="restartError || toggleError"
             class="text-xs text-destructive"
           >
-            {{ restartError }}
+            {{ restartError || toggleError }}
           </p>
         </div>
       </div>
@@ -659,6 +735,10 @@ onBeforeUnmount(stopMetricsPolling);
                     v-if="chatOverlay.kind === 'starting'"
                     class="size-10 animate-spin text-primary"
                   />
+                  <IconPlayerStop
+                    v-else-if="chatOverlay.kind === 'stopped'"
+                    class="size-10 text-muted-foreground"
+                  />
                   <IconAlertTriangle
                     v-else
                     class="size-10 text-destructive"
@@ -669,6 +749,19 @@ onBeforeUnmount(stopMetricsPolling);
                       {{ chatOverlay.detail }}
                     </p>
                   </div>
+                  <Button
+                    v-if="chatOverlay.kind === 'stopped'"
+                    size="sm"
+                    :disabled="toggling"
+                    @click="onToggleRunning"
+                  >
+                    <IconLoader2
+                      v-if="toggling"
+                      class="size-4 animate-spin"
+                    />
+                    <IconPlayerPlay v-else class="size-4" />
+                    {{ toggling ? 'Starting…' : 'Start agent' }}
+                  </Button>
                   <Button
                     v-if="chatOverlay.kind === 'failed'"
                     size="sm"

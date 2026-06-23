@@ -16,7 +16,7 @@ export abstract class IAgentGateway {
   abstract updateStatus(
     id: string,
     status: AgentStatusTypes,
-    workflowId?: string,
+    workflowId?: string | null,
   ): Promise<IAgentData>;
   abstract setWorkflowId(id: string, workflowId: string): Promise<IAgentData>;
   abstract setAdmin(id: string, enabled: boolean): Promise<IAgentData>;

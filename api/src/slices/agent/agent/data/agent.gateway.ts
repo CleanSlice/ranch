@@ -90,13 +90,15 @@ export class AgentGateway extends IAgentGateway {
   async updateStatus(
     id: string,
     status: AgentStatusTypes,
-    workflowId?: string,
+    workflowId?: string | null,
   ): Promise<IAgentData> {
     const record = await this.prisma.agent.update({
       where: { id },
       data: {
         status,
-        ...(workflowId && { workflowId }),
+        // `undefined` leaves the column untouched; `null` clears it (used when
+        // stopping an agent so the now-cancelled workflow id isn't kept around).
+        ...(workflowId !== undefined && { workflowId }),
       },
     });
     return this.mapper.toEntity(record);

@@ -79,6 +79,16 @@ export function runMain(): void {
     return;
   }
 
+  // Print a clean, parseable version and exit before citty handles it. citty
+  // routes `--version` through consola, whose CI reporter (active when CI=1)
+  // prefixes output with "[log] " — that breaks scripts doing
+  // `ranch --version` and the publish-time stale-dist check.
+  const argv = process.argv.slice(2);
+  if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v")) {
+    console.log(currentVersion());
+    process.exit(0);
+  }
+
   if (!updatesDisabled()) scheduleBackgroundCheck();
 
   if (!updatesDisabled() && !skipNoticeForCommand()) {

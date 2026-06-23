@@ -36,8 +36,17 @@ export class BridleGateway extends IBridleGateway {
   /** Agent connections: agentId → send function */
   private agents = new Map<string, (data: unknown) => void>();
 
-  /** Browser clients: clientId → { agentId, send } */
+  /**
+   * Browser clients keyed by `${clientId}\u0000${agentId}`. Keying by the pair
+   * (not clientId alone) lets ONE user hold several concurrent conversations —
+   * e.g. a multi-slot dashboard chatting with N agents on N sockets — without
+   * later sockets overwriting earlier ones (they share clientId='admin'/sub).
+   */
   private clients = new Map<string, IBridleClientData>();
+
+  private clientKey(clientId: string, agentId: string): string {
+    return `${clientId}\u0000${agentId}`;
+  }
 
   /** Pending sync requests awaiting agent ack: requestId → pending */
   private pendingSyncs = new Map<string, IPendingSync>();
@@ -97,7 +106,8 @@ export class BridleGateway extends IBridleGateway {
     isAdmin: boolean,
     prompt?: string,
   ): void {
-    this.clients.set(clientId, {
+    this.clients.set(this.clientKey(clientId, agentId), {
+      clientId,
       agentId,
       send,
       isAdmin,
@@ -108,10 +118,10 @@ export class BridleGateway extends IBridleGateway {
     );
   }
 
-  unregisterClient(clientId: string): void {
-    this.clients.delete(clientId);
+  unregisterClient(clientId: string, agentId: string): void {
+    this.clients.delete(this.clientKey(clientId, agentId));
     this.logger.log(
-      `Browser client unregistered: ${clientId} (total: ${this.clients.size})`,
+      `Browser client unregistered: ${clientId} agentId=${agentId} (total: ${this.clients.size})`,
     );
   }
 
@@ -126,7 +136,7 @@ export class BridleGateway extends IBridleGateway {
       this.logger.warn(
         `Cannot send to agent — not connected (agentId=${agentId})`,
       );
-      this.sendToClient(clientId, {
+      this.sendToClient(clientId, agentId, {
         type: 'message',
         text: 'Agent is not connected. Please try again later.',
         parts: [
@@ -141,7 +151,7 @@ export class BridleGateway extends IBridleGateway {
       return;
     }
 
-    const client = this.clients.get(clientId);
+    const client = this.clients.get(this.clientKey(clientId, agentId));
     agentSend({
       type: 'message',
       clientId,
@@ -152,8 +162,8 @@ export class BridleGateway extends IBridleGateway {
     });
   }
 
-  sendToClient(clientId: string, data: unknown): void {
-    const client = this.clients.get(clientId);
+  sendToClient(clientId: string, agentId: string, data: unknown): void {
+    const client = this.clients.get(this.clientKey(clientId, agentId));
     if (client) {
       client.send(data);
     }
@@ -163,8 +173,8 @@ export class BridleGateway extends IBridleGateway {
     const clientId = data.clientId;
     if (!clientId) return;
 
-    const client = this.clients.get(clientId);
-    if (client && client.agentId === agentId) {
+    const client = this.clients.get(this.clientKey(clientId, agentId));
+    if (client) {
       client.send(data);
     }
   }

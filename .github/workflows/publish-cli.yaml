@@ -88,6 +88,18 @@ jobs:
         working-directory: cli
         run: bun run build
 
+      - name: Verify built binary reports the package version
+        if: steps.gate.outputs.publish == 'true'
+        working-directory: cli
+        run: |
+          EXPECTED="${{ steps.versions.outputs.package }}"
+          ACTUAL=$(node dist/ranch.mjs --version)
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Built binary reports v$ACTUAL but package.json is v$EXPECTED — refusing to publish a stale dist."
+            exit 1
+          fi
+          echo "Built binary reports v$ACTUAL ✓"
+
       - name: Pack (dry run, sanity check)
         if: steps.gate.outputs.publish == 'true'
         working-directory: cli

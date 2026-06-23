@@ -1,4 +1,6 @@
-import pkg from "../../package.json" with { type: "json" };
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readCache, writeCache } from "./cache";
 
 const REPO = "CleanSlice/Ranch";
@@ -24,8 +26,32 @@ interface GhTag {
   name: string;
 }
 
+// Resolve the version from the installed package.json at runtime, NOT at build
+// time. Baking it into the bundle let a stale `dist/` (built before a version
+// bump) ship a binary that self-reported the old version — making the update
+// banner loop forever. npm always includes package.json in the tarball, so the
+// installed file is the source of truth regardless of when dist/ was built.
+let cachedVersion: string | undefined;
+
 export function currentVersion(): string {
-  return pkg.version;
+  if (cachedVersion) return cachedVersion;
+  const here = dirname(fileURLToPath(import.meta.url));
+  // Bundled: <pkg>/dist/ranch.mjs → ../package.json
+  // Dev:     <pkg>/src/utils/version-check.ts → ../../package.json
+  for (const rel of ["../package.json", "../../package.json"]) {
+    try {
+      const raw = readFileSync(join(here, rel), "utf8");
+      const pkg = JSON.parse(raw) as { name?: string; version?: string };
+      if (pkg.name === "@cleanslice/ranch" && pkg.version) {
+        cachedVersion = pkg.version;
+        return cachedVersion;
+      }
+    } catch {
+      // try the next candidate path
+    }
+  }
+  cachedVersion = "0.0.0";
+  return cachedVersion;
 }
 
 function parseSemver(v: string): [number, number, number] | null {
@@ -58,7 +84,7 @@ export async function fetchLatestVersion(): Promise<string | null> {
         headers: {
           Accept: "application/vnd.github+json",
           "X-GitHub-Api-Version": "2022-11-28",
-          "User-Agent": `cleanslice-ranch-cli/${pkg.version}`,
+          "User-Agent": `cleanslice-ranch-cli/${currentVersion()}`,
         },
         signal: controller.signal,
       },

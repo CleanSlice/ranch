@@ -11,9 +11,11 @@ import { ITemplateGateway } from '#/agent/template/domain';
 import { IMcpServerGateway, IMcpServerData } from '#/mcpServer/domain';
 import { IKnowledgeGateway } from '#/reins/knowledge/domain';
 import { IKnowledgeConfigGateway } from '#/reins/config/domain';
+import { IRlmConfigGateway } from '#/rlm/config/domain/rlmConfig.gateway';
 import {
   CLEANSLICE_MCP_ID,
   KNOWLEDGE_MCP_ID,
+  RANCH_MCP_ID,
 } from '#/mcpServer/domain/mcpServer.seeder';
 import { IAgentChannelGateway } from '#/agent/agentChannel/domain';
 import { IUserGateway, UserRoleTypes } from '#/user/user/domain';
@@ -56,6 +58,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     private mcpServerGateway: IMcpServerGateway,
     private knowledgeGateway: IKnowledgeGateway,
     private knowledgeConfig: IKnowledgeConfigGateway,
+    private rlmConfig: IRlmConfigGateway,
     private channelGateway: IAgentChannelGateway,
     private userGateway: IUserGateway,
   ) {
@@ -119,6 +122,22 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
         await this.mcpServerGateway.findById(KNOWLEDGE_MCP_ID);
       if (knowledgeMcp && knowledgeMcp.enabled) {
         enabledServers.push(knowledgeMcp);
+      }
+    }
+
+    // rlm_query is just another @Tool() on this same API - it surfaces
+    // through ANY MCP server row whose url points back at this API's own
+    // /mcp/mcp endpoint (mcp-ranch and mcp-knowledge both do, see
+    // mcpServer.seeder.ts). So no new "mcp-rlm" row: reuse mcp-ranch,
+    // auto-attaching it exactly like mcp-knowledge above whenever the
+    // platform toggle is on and it isn't already attached some other way.
+    if (
+      (await this.rlmConfig.isEnabled()) &&
+      !enabledServers.some((m) => m.id === RANCH_MCP_ID)
+    ) {
+      const ranchMcp = await this.mcpServerGateway.findById(RANCH_MCP_ID);
+      if (ranchMcp && ranchMcp.enabled) {
+        enabledServers.push(ranchMcp);
       }
     }
 

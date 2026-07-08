@@ -16,6 +16,13 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "watch"]
+  # RLM executor runs use a native batch/v1 Job (see
+  # api/src/slices/rlm/data/rlm-job.manifest.ts) instead of a bare Pod like
+  # agent deploys - Argo's `resource: create/delete` action still needs
+  # these verbs on Jobs to manage them.
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["argoproj.io"]
     resources:
       - workflows

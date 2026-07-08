@@ -10,6 +10,7 @@ import { TemplateModule } from '#/agent/template/template.module';
 import { McpServerModule } from '#/mcpServer/mcpServer.module';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.module';
+import { RlmConfigModule } from '#/rlm/config/rlmConfig.module';
 import { AgentChannelModule } from '#/agent/agentChannel/agentChannel.module';
 import { UserModule } from '#/user/user/user.module';
 
@@ -25,6 +26,7 @@ import { UserModule } from '#/user/user/user.module';
     McpServerModule,
     KnowledgeModule,
     KnowledgeConfigModule,
+    RlmConfigModule,
     forwardRef(() => AgentChannelModule),
     UserModule,
   ],

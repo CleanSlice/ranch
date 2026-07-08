@@ -59,6 +59,8 @@ import type {
   AddKnowledgeSourceData,
   AddKnowledgeSourcesFromSitemapData,
   AddKnowledgeSourcesFromSitemapResponse,
+  AddKnowledgeSourcesFromArchiveData,
+  AddKnowledgeSourcesFromArchiveResponse,
   DeleteKnowledgeSourceData,
   DeleteKnowledgeSourceResponse,
   AgentControllerFindAllData,
@@ -1167,6 +1169,23 @@ export class KnowledgeSourcesService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Bulk-import sources from a zip archive
+   * Accepts a .zip, extracts every ingestable file (pdf, docx, xlsx, txt, html, ...), and creates one file-type source per entry. Upload runs in the background and streams each entry to S3; the response returns immediately with the detected file count. Indexing into LightRAG happens through the normal reindex flow.
+   */
+  public static addKnowledgeSourcesFromArchive<
+    ThrowOnError extends boolean = false,
+  >(options: Options<AddKnowledgeSourcesFromArchiveData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      AddKnowledgeSourcesFromArchiveResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/from-archive",
+      ...options,
     });
   }
 

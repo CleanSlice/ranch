@@ -12,6 +12,7 @@ import { ISettingGateway } from '#/setting/domain';
 import { UserMapper } from '../../user/data/user.mapper';
 import { IUserData, UserRoleTypes } from '../../user/domain';
 import { IAuthResult, IAuthTokenPayload } from './auth.types';
+import type { IRlmJobScope } from '#/rlm/domain/rlm-scope.types';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -110,6 +111,27 @@ export class AuthService {
       roles: isAdmin ? [UserRoleTypes.Owner] : [UserRoleTypes.Agent],
     };
     return this.jwt.signAsync(payload, { expiresIn: '365d' });
+  }
+
+  /**
+   * Mint a short-lived, self-contained JWT for an RLM executor job pod.
+   * No DB registry - the scope claim IS the authorization, re-checked by
+   * RlmJobGuard on every internal-context request, which keeps this safe
+   * across multiple API replicas. `roles` stays empty: this subject is
+   * only ever authorized by RlmJobGuard's scope check, never by
+   * role-based guards.
+   */
+  async issueRlmJobToken(
+    scope: IRlmJobScope,
+    expiresIn: `${number}${'s' | 'm' | 'h' | 'd'}` = '10m',
+  ): Promise<string> {
+    const payload: IAuthTokenPayload = {
+      sub: `rlm-job:${scope.jobId}`,
+      email: '',
+      roles: [],
+      rlmScope: scope,
+    };
+    return this.jwt.signAsync(payload, { expiresIn });
   }
 
   /**

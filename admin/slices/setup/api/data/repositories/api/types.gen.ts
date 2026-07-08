@@ -240,6 +240,14 @@ export type AddFromSitemapResultDto = {
   discovered: number;
 };
 
+export type AddFromArchiveResultDto = {
+  /**
+   * Number of ingestable files detected in the archive. Import runs in the background; refresh the sources list to watch them appear.
+   */
+  detected: number;
+  started: boolean;
+};
+
 export type AgentPodStatusDto = {
   agentId: string;
   podName: string;
@@ -446,6 +454,10 @@ export type SendMessageDto = {
    * Attached images (legacy — prefer parts)
    */
   images?: Array<BridleImagePartDto>;
+  /**
+   * Force this message to use the RLM tool instead of letting the agent decide. Per-message, not sticky.
+   */
+  forceRlm?: boolean;
 };
 
 export type BridleHealthDto = {
@@ -1750,6 +1762,22 @@ export type AddKnowledgeSourcesFromSitemapResponses = {
 
 export type AddKnowledgeSourcesFromSitemapResponse =
   AddKnowledgeSourcesFromSitemapResponses[keyof AddKnowledgeSourcesFromSitemapResponses];
+
+export type AddKnowledgeSourcesFromArchiveData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/from-archive";
+};
+
+export type AddKnowledgeSourcesFromArchiveResponses = {
+  201: AddFromArchiveResultDto;
+};
+
+export type AddKnowledgeSourcesFromArchiveResponse =
+  AddKnowledgeSourcesFromArchiveResponses[keyof AddKnowledgeSourcesFromArchiveResponses];
 
 export type DeleteKnowledgeSourceData = {
   body?: never;

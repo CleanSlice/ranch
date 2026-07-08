@@ -44,9 +44,9 @@ function scrollToBottom() {
   });
 }
 
-async function onSend(text: string) {
+async function onSend(text: string, forceRlm: boolean) {
   if (!props.agentId) return;
-  await bridleStore.sendMessage(props.agentId, text);
+  await bridleStore.sendMessage(props.agentId, text, forceRlm);
 }
 
 watch(

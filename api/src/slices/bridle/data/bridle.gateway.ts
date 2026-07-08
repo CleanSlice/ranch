@@ -130,6 +130,7 @@ export class BridleGateway extends IBridleGateway {
     agentId: string,
     text: string,
     parts: BridlePart[],
+    forceRlm?: boolean,
   ): void {
     const agentSend = this.agents.get(agentId);
     if (!agentSend) {
@@ -158,6 +159,9 @@ export class BridleGateway extends IBridleGateway {
       text,
       parts,
       ...(client?.prompt ? { prompt: client.prompt } : {}),
+      // Per-call, not read off `client` — genuinely per-message, unlike
+      // `prompt` which is handshake-scoped and re-sent every time.
+      ...(forceRlm ? { forceRlm: true } : {}),
       messageId: randomUUID(),
     });
   }

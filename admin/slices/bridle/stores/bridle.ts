@@ -394,7 +394,11 @@ export const useBridleStore = defineStore('bridle', {
       this.isAgentConnected = false
     },
 
-    sendMessage(text: string, images?: Array<{ base64: string; mediaType: string }>) {
+    sendMessage(
+      text: string,
+      images?: Array<{ base64: string; mediaType: string }>,
+      forceRlm?: boolean,
+    ) {
       if (!text.trim()) return
 
       const parts = buildParts(text.trim(), images)
@@ -409,7 +413,11 @@ export const useBridleStore = defineStore('bridle', {
 
       this.isTyping = true
 
-      this._socket?.emit('message', { text: text.trim(), parts })
+      this._socket?.emit('message', {
+        text: text.trim(),
+        parts,
+        ...(forceRlm ? { forceRlm: true } : {}),
+      })
     },
 
     clearMessages() {

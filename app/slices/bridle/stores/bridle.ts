@@ -110,7 +110,7 @@ export const useBridleStore = defineStore('bridle', () => {
     persist(agentId);
   }
 
-  async function sendMessage(agentId: string, text: string) {
+  async function sendMessage(agentId: string, text: string, forceRlm = false) {
     const trimmed = text.trim();
     if (!trimmed || pending.value[agentId]) return;
 
@@ -125,9 +125,16 @@ export const useBridleStore = defineStore('bridle', () => {
     errors.value[agentId] = null;
 
     try {
+      // TODO: drop this cast once the generated SDK picks up SendMessageDto's
+      // new `forceRlm` field (regenerated via the admin/app `predev` hook
+      // against a running API - see api/src/slices/bridle/dtos/sendMessage.dto.ts).
+      const body = {
+        text: trimmed,
+        ...(forceRlm ? { forceRlm: true } : {}),
+      } as { text: string; forceRlm?: boolean };
       const res = await BridleService.sendBridleMessageSync({
         path: { agentId },
-        body: { text: trimmed },
+        body,
       });
       const data = unwrap<ISyncResponse>(res.data) ?? {};
       appendMessage(agentId, {

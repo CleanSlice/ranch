@@ -42,6 +42,11 @@ function onMarkdownChange(v: boolean | 'indeterminate') {
 }
 const togglingDebug = ref(false)
 
+// Per-message, not persisted anywhere — unlike debugEnabled/markdownEnabled
+// this resets to off right after the message it was sent with (see
+// handleSend below).
+const forceRlmNext = ref(false)
+
 async function onToggleDebug() {
   togglingDebug.value = true
   try {
@@ -239,7 +244,8 @@ onUnmounted(() => {
 })
 
 const handleSend = (text: string) => {
-  store.sendMessage(text)
+  store.sendMessage(text, undefined, forceRlmNext.value)
+  forceRlmNext.value = false
 }
 
 const confirmResetOpen = ref(false)
@@ -381,6 +387,17 @@ async function onConfirmReset() {
           @click="onMarkdownChange(!markdownEnabled)"
         >
           Markdown
+        </button>
+        <button
+          type="button"
+          title="Force this message to use the Recursive Language Model tool instead of letting the agent decide. Applies to the next message only."
+          class="cursor-pointer rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/70"
+          :class="forceRlmNext
+            ? 'border border-foreground/30 text-foreground'
+            : 'border border-transparent'"
+          @click="forceRlmNext = !forceRlmNext"
+        >
+          RLM
         </button>
       </div>
     </CardFooter>

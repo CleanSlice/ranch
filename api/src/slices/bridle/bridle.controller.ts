@@ -58,7 +58,7 @@ export class BridleController {
     const user = req.user as Record<string, unknown> | undefined;
     const clientId = (user?.id as string) ?? 'http-' + crypto.randomUUID();
     const parts = body.parts ?? buildParts(body.text, body.images);
-    this.hub.sendToAgent(clientId, agentId, body.text, parts);
+    this.hub.sendToAgent(clientId, agentId, body.text, parts, body.forceRlm);
     return { ok: true };
   }
 
@@ -109,7 +109,7 @@ export class BridleController {
       );
 
       const parts = body.parts ?? buildParts(body.text, body.images);
-      this.hub.sendToAgent(clientId, agentId, body.text, parts);
+      this.hub.sendToAgent(clientId, agentId, body.text, parts, body.forceRlm);
     });
   }
 

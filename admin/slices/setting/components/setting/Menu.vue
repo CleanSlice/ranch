@@ -13,6 +13,7 @@ const items: IMenuItem[] = [
   { title: 'Bridle', description: 'Chat hub URL agents connect to.', to: '/settings/bridle' },
   { title: 'Knowledge', description: 'External RAG / knowledge service.', to: '/settings/knowledge' },
   { title: 'Rancher', description: 'API URL the admin agent calls for ranch_* tools.', to: '/settings/rancher' },
+  { title: 'RLM', description: 'Root/sub model pair for the Recursive Language Model tool.', to: '/settings/rlm' },
   { title: 'MCP', description: 'Connect external agents to this Ranch as an MCP server.', to: '/settings/mcp' },
   { title: 'Storage', description: 'S3 / MinIO persistence.', to: '/settings/storage' },
   { title: 'Secrets', description: 'Where agents store user secrets.', to: '/settings/secrets' },

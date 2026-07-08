@@ -209,6 +209,10 @@ export class BridleClientWsHandler
       text?: string;
       parts?: BridlePart[];
       images?: Array<{ base64: string; mediaType: string }>;
+      // Explicit "use RLM this message" toggle from the chat UI — per
+      // message, never sticky, so it's read straight off this payload
+      // rather than the handshake-scoped `client.prompt` mechanism.
+      forceRlm?: boolean;
     },
   ) {
     const clientId = client.data?.clientId as string;
@@ -219,7 +223,7 @@ export class BridleClientWsHandler
     const parts = data.parts ?? buildParts(text, data.images);
     if (!text && parts.length === 0) return;
 
-    this.hub.sendToAgent(clientId, agentId, text, parts);
+    this.hub.sendToAgent(clientId, agentId, text, parts, !!data.forceRlm);
   }
 
   @SubscribeMessage('ping')

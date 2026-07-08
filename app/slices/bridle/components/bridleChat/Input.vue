@@ -1,10 +1,12 @@
 <script setup lang="ts">
 const props = defineProps<{ disabled?: boolean }>();
-const emit = defineEmits<{ send: [text: string] }>();
+const emit = defineEmits<{ send: [text: string, forceRlm: boolean] }>();
 const { t } = useI18n();
 
 const draft = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+// Per-message, resets after every send — not a persisted preference.
+const forceRlm = ref(false);
 
 const canSend = computed(() => draft.value.trim().length > 0 && !props.disabled);
 
@@ -20,8 +22,9 @@ function autoResize() {
 function submit() {
   const text = draft.value.trim();
   if (!text || props.disabled) return;
-  emit('send', text);
+  emit('send', text, forceRlm.value);
   draft.value = '';
+  forceRlm.value = false;
   nextTick(() => autoResize());
 }
 
@@ -66,12 +69,25 @@ watch(draft, () => nextTick(autoResize));
           />
         </button>
       </div>
-      <p class="mt-1.5 px-1 text-[11px] text-muted-foreground/60">
-        <kbd class="rounded border bg-muted px-1 font-mono text-[10px]">Enter</kbd>
-        to send,
-        <kbd class="rounded border bg-muted px-1 font-mono text-[10px]">Shift+Enter</kbd>
-        for newline
-      </p>
+      <div class="mt-1.5 flex items-center justify-between px-1">
+        <p class="text-[11px] text-muted-foreground/60">
+          <kbd class="rounded border bg-muted px-1 font-mono text-[10px]">Enter</kbd>
+          to send,
+          <kbd class="rounded border bg-muted px-1 font-mono text-[10px]">Shift+Enter</kbd>
+          for newline
+        </p>
+        <button
+          type="button"
+          title="Force this message to use the Recursive Language Model tool instead of letting the agent decide. Applies to the next message only."
+          class="cursor-pointer rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/70"
+          :class="forceRlm
+            ? 'border border-foreground/30 text-foreground'
+            : 'border border-transparent'"
+          @click="forceRlm = !forceRlm"
+        >
+          RLM
+        </button>
+      </div>
     </div>
   </form>
 </template>

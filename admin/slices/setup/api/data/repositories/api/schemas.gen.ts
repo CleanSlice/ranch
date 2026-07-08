@@ -602,6 +602,23 @@ export const AddFromSitemapResultDtoSchema = {
   required: ["added", "discovered"],
 } as const;
 
+export const AddFromArchiveResultDtoSchema = {
+  type: "object",
+  properties: {
+    detected: {
+      type: "number",
+      example: 288,
+      description:
+        "Number of ingestable files detected in the archive. Import runs in the background; refresh the sources list to watch them appear.",
+    },
+    started: {
+      type: "boolean",
+      example: true,
+    },
+  },
+  required: ["detected", "started"],
+} as const;
+
 export const AgentPodStatusDtoSchema = {
   type: "object",
   properties: {
@@ -1029,6 +1046,11 @@ export const SendMessageDtoSchema = {
       items: {
         $ref: "#/components/schemas/BridleImagePartDto",
       },
+    },
+    forceRlm: {
+      type: "boolean",
+      description:
+        "Force this message to use the RLM tool instead of letting the agent decide. Per-message, not sticky.",
     },
   },
   required: ["text"],

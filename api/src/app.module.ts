@@ -32,6 +32,7 @@ import { McpServerModule } from './slices/mcpServer/mcpServer.module';
 import { McpModule } from './slices/mcp';
 import { PaddockModule } from './slices/paddock/paddock.module';
 import { BrowserModule } from './slices/browser/browser.module';
+import { RlmModule } from './slices/rlm/rlm.module';
 import { JwtAuthGuard } from './slices/user/auth/guards';
 import { IntegrationModule } from './slices/integration/integration.module';
 import { UserSecretModule } from './slices/user/secret/secret.module';
@@ -74,6 +75,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     McpServerModule,
     PaddockModule,
     BrowserModule,
+    RlmModule,
     UserSecretModule,
     UserBrowserStateModule,
     IntegrationModule,

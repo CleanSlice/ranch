@@ -1,0 +1,13 @@
+# ServiceAccount for the pod inside an RLM executor Job (see
+# api/src/slices/rlm/data/rlm-job.manifest.ts). Deliberately has NO Role or
+# RoleBinding - the RLM job process itself never calls the Kubernetes API
+# (unlike agent pods, which currently run under the namespace's default SA
+# with no explicit lockdown). Only Argo's own `workflow` ServiceAccount
+# (k8s/templates/rbac.yaml) creates/deletes the Job object, from outside
+# this pod.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rlm-job
+  namespace: agents
+automountServiceAccountToken: false

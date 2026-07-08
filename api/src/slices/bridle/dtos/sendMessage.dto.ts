@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsArray,
   IsOptional,
+  IsBoolean,
   ValidateNested,
   IsEnum,
 } from 'class-validator';
@@ -93,4 +94,12 @@ export class SendMessageDto {
   @ValidateNested({ each: true })
   @Type(() => BridleImagePartDto)
   images?: BridleImagePartDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Force this message to use the RLM tool instead of letting the agent decide. Per-message, not sticky.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  forceRlm?: boolean;
 }

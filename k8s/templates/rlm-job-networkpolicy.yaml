@@ -1,0 +1,39 @@
+# First NetworkPolicy in this repo - scoped ONLY to pods carrying
+# app=ranch-rlm-job (see rlm-job.manifest.ts), so it can't change behavior
+# for existing agent pods or anything else in the `agents` namespace.
+#
+# The RLM job calls back into the Ranch API for context (peek/search) and
+# out to whichever LLM provider is configured for the platform's root/sub
+# credentials (Claude, OpenAI, Google, ...) - those vary by operator config,
+# so this allows broad 443 egress rather than pinning provider IPs/CIDRs
+# (brittle - providers rotate ranges). It still denies everything else,
+# including all in-cluster traffic on non-443 ports and all ingress (this
+# pod never serves requests) - strictly tighter than the current (absent)
+# policy on agent pods. Tightening egress to an explicit allowlist of the
+# Ranch API's ClusterIP + provider domains is a documented v2 follow-up.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rlm-job-egress
+  namespace: agents
+spec:
+  podSelector:
+    matchLabels:
+      app: ranch-rlm-job
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53

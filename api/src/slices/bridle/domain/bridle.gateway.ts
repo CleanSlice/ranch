@@ -29,6 +29,10 @@ export abstract class IBridleGateway {
     agentId: string,
     text: string,
     parts: BridlePart[],
+    /** Per-message "use RLM this turn" flag — not sticky, not stored on
+     * the client (unlike `prompt`). Threaded straight through to the
+     * outgoing envelope for the one message it was sent with. */
+    forceRlm?: boolean,
   ): void;
   /** Send an event to a specific browser client (scoped to clientId + agentId) */
   abstract sendToClient(clientId: string, agentId: string, data: unknown): void;

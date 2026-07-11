@@ -28,7 +28,7 @@ export class EmbedTokenDto {
 
   @ApiPropertyOptional({
     description:
-      'Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.',
+      'Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.',
     isArray: true,
     enum: UserRoleTypes,
     enumName: 'UserRoleTypes',

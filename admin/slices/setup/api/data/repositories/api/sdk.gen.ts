@@ -38,7 +38,6 @@ import type {
   AuthControllerRegisterData,
   AuthControllerMeData,
   AuthControllerEmbedTokenData,
-  AuthControllerAdminEmbedTokenData,
   ApiKeyControllerFindAllData,
   ApiKeyControllerCreateData,
   ApiKeyControllerRemoveData,
@@ -866,7 +865,7 @@ export class AuthService {
   }
 
   /**
-   * Mint a short-lived browser embed JWT for the bridle widget. Auth: API key with embed:mint scope. Owner/Admin roles are stripped from the result regardless of input.
+   * Mint a short-lived browser embed JWT for the bridle widget. Auth: API key with embed:mint scope. Owner/Admin roles are stripped from the result unless the key also carries embed:mint-admin — then they are kept and the TTL is capped at 7d.
    */
   public static authControllerEmbedToken<ThrowOnError extends boolean = false>(
     options: Options<AuthControllerEmbedTokenData, ThrowOnError>,
@@ -877,26 +876,6 @@ export class AuthService {
       ThrowOnError
     >({
       url: "/auth/embed/token",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Mint a short-lived ADMIN embed JWT for the bridle widget. Auth: logged-in Owner/Admin (not API key). Keeps the caller roles, so the hub routes the chat to the admin channel — embed only on private pages. TTL defaults to 12h, capped at 7d.
-   */
-  public static authControllerAdminEmbedToken<
-    ThrowOnError extends boolean = false,
-  >(options: Options<AuthControllerAdminEmbedTokenData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/auth/embed/admin-token",
       ...options,
       headers: {
         "Content-Type": "application/json",

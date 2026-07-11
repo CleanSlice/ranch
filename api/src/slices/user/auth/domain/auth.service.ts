@@ -18,7 +18,6 @@ const BCRYPT_ROUNDS = 10;
 
 type DurationString = `${number}${'s' | 'm' | 'h' | 'd'}`;
 
-const ADMIN_EMBED_DEFAULT_TTL: DurationString = '12h';
 const ADMIN_EMBED_MAX_TTL: DurationString = '7d';
 
 const DURATION_MS: Record<string, number> = {
@@ -135,28 +134,39 @@ export class AuthService {
 
   /**
    * Mint a short-lived browser embed JWT for the bridle widget. Strips
-   * `Owner` and `Admin` roles regardless of what was requested — an
-   * embed:mint API key cannot escalate a visitor to platform admin even
-   * if the caller passes those roles in the body.
+   * `Owner` and `Admin` roles from what was requested — an embed:mint API
+   * key cannot escalate a visitor to platform admin even if the caller
+   * passes those roles in the body. Keys carrying the `embed:mint-admin`
+   * scope set `allowAdminRoles` at the controller: the roles are then kept
+   * verbatim, but the TTL falls under the same cap as admin embed tokens —
+   * the long-lived credential must stay the server-side key, never the
+   * browser JWT.
    */
   async mintEmbedToken(claims: {
     sub: string;
     email?: string;
     roles?: UserRoleTypes[];
     expiresIn?: string;
+    allowAdminRoles?: boolean;
   }): Promise<{ token: string; expiresAt: Date }> {
-    const safeRoles = (claims.roles ?? []).filter(
-      (r) => r !== UserRoleTypes.Owner && r !== UserRoleTypes.Admin,
+    const roles = claims.allowAdminRoles
+      ? (claims.roles ?? [])
+      : (claims.roles ?? []).filter(
+          (r) => r !== UserRoleTypes.Owner && r !== UserRoleTypes.Admin,
+        );
+    const isAdminToken = roles.some(
+      (r) => r === UserRoleTypes.Owner || r === UserRoleTypes.Admin,
     );
-    const expiresIn = (claims.expiresIn ?? '15m') as `${number}${
-      | 's'
-      | 'm'
-      | 'h'
-      | 'd'}`;
+    const expiresIn = (claims.expiresIn ?? '15m') as DurationString;
+    if (isAdminToken && durationToMs(expiresIn) > durationToMs(ADMIN_EMBED_MAX_TTL)) {
+      throw new BadRequestException(
+        `expiresIn exceeds the ${ADMIN_EMBED_MAX_TTL} maximum for admin embed tokens`,
+      );
+    }
     const payload: IAuthTokenPayload = {
       sub: claims.sub,
       email: claims.email ?? '',
-      roles: safeRoles,
+      roles,
     };
     const token = await this.jwt.signAsync(payload, { expiresIn });
     const decoded = this.jwt.decode(token);
@@ -164,35 +174,6 @@ export class AuthService {
     return { token, expiresAt };
   }
 
-  /**
-   * Re-issue the calling Owner/Admin's identity as a short-lived embed JWT
-   * for the bridle widget. Unlike mintEmbedToken (API-key path, admin roles
-   * stripped), this is reachable only by a logged-in Owner/Admin — guarded
-   * at the controller — and keeps the caller's roles, so the hub routes the
-   * chat to the `admin` client channel and the agent treats the peer as its
-   * operator. TTL is deliberately capped: the token ends up in page markup,
-   * and a leaked admin token IS admin access to the agent.
-   */
-  async mintAdminEmbedToken(
-    caller: IAuthTokenPayload,
-    expiresIn?: string,
-  ): Promise<{ token: string; expiresAt: Date }> {
-    const requested = (expiresIn ?? ADMIN_EMBED_DEFAULT_TTL) as DurationString;
-    if (durationToMs(requested) > durationToMs(ADMIN_EMBED_MAX_TTL)) {
-      throw new BadRequestException(
-        `expiresIn exceeds the ${ADMIN_EMBED_MAX_TTL} maximum for admin embed tokens`,
-      );
-    }
-    const payload: IAuthTokenPayload = {
-      sub: caller.sub,
-      email: caller.email,
-      roles: caller.roles,
-    };
-    const token = await this.jwt.signAsync(payload, { expiresIn: requested });
-    const decoded = this.jwt.decode(token);
-    const expiresAt = new Date((decoded?.exp ?? 0) * 1000);
-    return { token, expiresAt };
-  }
 
   private async isRegistrationEnabled(): Promise<boolean> {
     const setting = await this.settings.findByKey(

@@ -7,6 +7,7 @@ type ApiEnvelope<T> = { success: boolean; data: T };
  *  what the generated SDK / hub expect on the wire. */
 export enum ApiKeyScopeTypes {
   EmbedMint = 'embed:mint',
+  EmbedMintAdmin = 'embed:mint-admin',
   Admin = 'admin',
 }
 

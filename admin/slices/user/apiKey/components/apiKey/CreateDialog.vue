@@ -74,7 +74,13 @@ const SCOPE_OPTIONS: Array<{ value: ApiKeyScopeTypes; label: string; description
     value: ApiKeyScopeTypes.EmbedMint,
     label: 'embed:mint',
     description:
-      'Sign short-lived browser embed JWTs via POST /auth/embed/token. Owner/Admin roles are stripped from minted tokens server-side.',
+      'Sign short-lived browser embed JWTs via POST /auth/embed/token. Owner/Admin roles are stripped from minted tokens unless the key also has embed:mint-admin.',
+  },
+  {
+    value: ApiKeyScopeTypes.EmbedMintAdmin,
+    label: 'embed:mint-admin',
+    description:
+      'Lets /auth/embed/token keep Owner/Admin roles in minted tokens (TTL capped at 7d). A widget with such a token chats as the agent\'s admin — this key is effectively admin access to your agents. Keep it server-side only.',
   },
   {
     value: ApiKeyScopeTypes.Admin,

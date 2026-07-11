@@ -327,7 +327,7 @@ export const UserRoleTypesSchema = {
   type: "string",
   enum: ["Owner", "Admin", "User", "Agent"],
   description:
-    "Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.",
+    "Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.",
 } as const;
 
 export const EmbedTokenDtoSchema = {
@@ -346,7 +346,7 @@ export const EmbedTokenDtoSchema = {
     roles: {
       type: "array",
       description:
-        "Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.",
+        "Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.",
       items: {
         $ref: "#/components/schemas/UserRoleTypes",
       },
@@ -360,21 +360,9 @@ export const EmbedTokenDtoSchema = {
   required: ["sub"],
 } as const;
 
-export const AdminEmbedTokenDtoSchema = {
-  type: "object",
-  properties: {
-    expiresIn: {
-      type: "string",
-      description:
-        "Duration string (s/m/h/d). Defaults to 12h; capped at 7d — admin embed tokens end up in page markup, so long TTLs are refused.",
-      example: "12h",
-    },
-  },
-} as const;
-
 export const ApiKeyScopeTypesSchema = {
   type: "string",
-  enum: ["embed:mint", "admin"],
+  enum: ["embed:mint", "embed:mint-admin", "admin"],
 } as const;
 
 export const CreateApiKeyDtoSchema = {

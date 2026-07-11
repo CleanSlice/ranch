@@ -132,7 +132,7 @@ export type RegisterDto = {
 };
 
 /**
- * Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.
+ * Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.
  */
 export enum UserRoleTypes {
   OWNER = "Owner",
@@ -148,7 +148,7 @@ export type EmbedTokenDto = {
   sub: string;
   email?: string;
   /**
-   * Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.
+   * Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.
    */
   roles?: Array<UserRoleTypes>;
   /**
@@ -157,15 +157,9 @@ export type EmbedTokenDto = {
   expiresIn?: string;
 };
 
-export type AdminEmbedTokenDto = {
-  /**
-   * Duration string (s/m/h/d). Defaults to 12h; capped at 7d — admin embed tokens end up in page markup, so long TTLs are refused.
-   */
-  expiresIn?: string;
-};
-
 export enum ApiKeyScopeTypes {
   "EMBED:MINT" = "embed:mint",
+  "EMBED:MINT_ADMIN" = "embed:mint-admin",
   ADMIN = "admin",
 }
 
@@ -1551,17 +1545,6 @@ export type AuthControllerEmbedTokenData = {
 };
 
 export type AuthControllerEmbedTokenResponses = {
-  200: unknown;
-};
-
-export type AuthControllerAdminEmbedTokenData = {
-  body: AdminEmbedTokenDto;
-  path?: never;
-  query?: never;
-  url: "/auth/embed/admin-token";
-};
-
-export type AuthControllerAdminEmbedTokenResponses = {
   200: unknown;
 };
 

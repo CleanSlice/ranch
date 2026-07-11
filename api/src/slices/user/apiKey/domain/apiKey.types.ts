@@ -1,12 +1,19 @@
 export enum ApiKeyScopeTypes {
   /** Mint short-lived browser embed JWTs via POST /auth/embed/token. */
   EmbedMint = 'embed:mint',
+  /**
+   * Lets POST /auth/embed/token keep Owner/Admin roles in minted tokens
+   * (normally stripped). A key with this scope is effectively admin access
+   * to every agent's chat — treat it like the `admin` scope.
+   */
+  EmbedMintAdmin = 'embed:mint-admin',
   /** Full API surface (escape hatch). */
   Admin = 'admin',
 }
 
 export const ALL_API_KEY_SCOPES: ApiKeyScopeTypes[] = [
   ApiKeyScopeTypes.EmbedMint,
+  ApiKeyScopeTypes.EmbedMintAdmin,
   ApiKeyScopeTypes.Admin,
 ];
 

@@ -12,6 +12,7 @@ import { Request } from 'express';
 import { AuthService } from './domain';
 import { IAuthTokenPayload } from './domain/auth.types';
 import {
+  AdminEmbedTokenDto,
   AuthDto,
   EmbedTokenDto,
   EmbedTokenResultDto,
@@ -20,7 +21,15 @@ import {
 } from './dtos';
 import { UserDto } from '../user/dtos';
 import { ApiKeyScopeTypes } from '../apiKey/domain';
-import { ApiKeyGuard, JwtAuthGuard, Scopes, ScopesGuard } from './guards';
+import { UserRoleTypes } from '../user/domain';
+import {
+  ApiKeyGuard,
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+  Scopes,
+  ScopesGuard,
+} from './guards';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -70,5 +79,21 @@ export class AuthController {
       roles: dto.roles,
       expiresIn: dto.expiresIn,
     });
+  }
+
+  @Post('embed/admin-token')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Mint a short-lived ADMIN embed JWT for the bridle widget. Auth: logged-in Owner/Admin (not API key). Keeps the caller roles, so the hub routes the chat to the admin channel — embed only on private pages. TTL defaults to 12h, capped at 7d.',
+  })
+  adminEmbedToken(
+    @Req() req: Request & { user: IAuthTokenPayload },
+    @Body() dto: AdminEmbedTokenDto,
+  ): Promise<EmbedTokenResultDto> {
+    return this.authService.mintAdminEmbedToken(req.user, dto.expiresIn);
   }
 }

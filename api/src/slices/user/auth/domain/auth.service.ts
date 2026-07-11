@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -14,6 +15,26 @@ import { IUserData, UserRoleTypes } from '../../user/domain';
 import { IAuthResult, IAuthTokenPayload } from './auth.types';
 
 const BCRYPT_ROUNDS = 10;
+
+type DurationString = `${number}${'s' | 'm' | 'h' | 'd'}`;
+
+const ADMIN_EMBED_DEFAULT_TTL: DurationString = '12h';
+const ADMIN_EMBED_MAX_TTL: DurationString = '7d';
+
+const DURATION_MS: Record<string, number> = {
+  s: 1_000,
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
+};
+
+function durationToMs(value: string): number {
+  const match = /^(\d+)([smhd])$/.exec(value);
+  if (!match) {
+    throw new BadRequestException(`Invalid duration: ${value}`);
+  }
+  return Number(match[1]) * DURATION_MS[match[2]];
+}
 
 @Injectable()
 export class AuthService {
@@ -138,6 +159,36 @@ export class AuthService {
       roles: safeRoles,
     };
     const token = await this.jwt.signAsync(payload, { expiresIn });
+    const decoded = this.jwt.decode(token);
+    const expiresAt = new Date((decoded?.exp ?? 0) * 1000);
+    return { token, expiresAt };
+  }
+
+  /**
+   * Re-issue the calling Owner/Admin's identity as a short-lived embed JWT
+   * for the bridle widget. Unlike mintEmbedToken (API-key path, admin roles
+   * stripped), this is reachable only by a logged-in Owner/Admin — guarded
+   * at the controller — and keeps the caller's roles, so the hub routes the
+   * chat to the `admin` client channel and the agent treats the peer as its
+   * operator. TTL is deliberately capped: the token ends up in page markup,
+   * and a leaked admin token IS admin access to the agent.
+   */
+  async mintAdminEmbedToken(
+    caller: IAuthTokenPayload,
+    expiresIn?: string,
+  ): Promise<{ token: string; expiresAt: Date }> {
+    const requested = (expiresIn ?? ADMIN_EMBED_DEFAULT_TTL) as DurationString;
+    if (durationToMs(requested) > durationToMs(ADMIN_EMBED_MAX_TTL)) {
+      throw new BadRequestException(
+        `expiresIn exceeds the ${ADMIN_EMBED_MAX_TTL} maximum for admin embed tokens`,
+      );
+    }
+    const payload: IAuthTokenPayload = {
+      sub: caller.sub,
+      email: caller.email,
+      roles: caller.roles,
+    };
+    const token = await this.jwt.signAsync(payload, { expiresIn: requested });
     const decoded = this.jwt.decode(token);
     const expiresAt = new Date((decoded?.exp ?? 0) * 1000);
     return { token, expiresAt };

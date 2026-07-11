@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { AuthService } from '#api/data'
 import type { IAgentData } from '#agent/stores/agent'
 import {
   Card,
@@ -116,6 +117,55 @@ const mintTokenCurl = computed(
   -H "Authorization: Bearer $RANCH_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"sub":"user-123","email":"alice@example.com","expiresIn":"7d"}'`,
+)
+
+// Admin embed token: re-issues the logged-in Owner/Admin's JWT with a short
+// TTL. The hub maps it to the `admin` client channel, so a widget carrying it
+// chats as the agent's operator (admin prompt + admin tools). Server caps the
+// TTL at 7d — this string ends up in page markup.
+type ApiEnvelope<T> = { success: boolean; data: T }
+
+const ADMIN_TTL_OPTIONS = ['12h', '24h', '7d'] as const
+
+const adminTtl = ref<(typeof ADMIN_TTL_OPTIONS)[number]>('12h')
+const adminToken = ref<string | null>(null)
+const adminTokenExpiresAt = ref<string | null>(null)
+const minting = ref(false)
+const mintError = ref<string | null>(null)
+
+async function mintAdminToken() {
+  if (minting.value) return
+  minting.value = true
+  mintError.value = null
+  try {
+    const res = await AuthService.authControllerAdminEmbedToken({
+      body: { expiresIn: adminTtl.value },
+    })
+    const env = res.data as ApiEnvelope<{ token: string; expiresAt: string }>
+    adminToken.value = env.data.token
+    adminTokenExpiresAt.value = env.data.expiresAt
+  } catch (err) {
+    mintError.value = (err as Error).message || 'Mint failed'
+  } finally {
+    minting.value = false
+  }
+}
+
+const adminTokenExpiryLabel = computed(() =>
+  adminTokenExpiresAt.value
+    ? new Date(adminTokenExpiresAt.value).toLocaleString()
+    : '',
+)
+
+const adminEmbedSnippet = computed(() =>
+  adminToken.value
+    ? `<script
+  src="${SDK_URL}"
+  data-api-url="${props.apiUrl}"
+  data-agent-id="${props.agentId}"
+  data-token="${adminToken.value}"
+><\/script>`
+    : '',
 )
 
 const copiedKey = ref<string | null>(null)
@@ -300,6 +350,73 @@ async function copy(key: string, value: string) {
           (<code class="font-mono">token: () =&gt; fetchJwt()</code>) instead
           of pinning a long-lived JWT in the page.
         </p>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between gap-2">
+          <Label class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Admin embed token
+          </Label>
+          <div class="flex items-center gap-1">
+            <Button
+              v-for="ttl in ADMIN_TTL_OPTIONS"
+              :key="ttl"
+              :variant="adminTtl === ttl ? 'secondary' : 'ghost'"
+              size="sm"
+              class="h-7 px-2 font-mono text-xs"
+              :disabled="minting"
+              @click="adminTtl = ttl"
+            >{{ ttl }}</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 px-2 text-xs"
+              :disabled="minting"
+              @click="mintAdminToken"
+            >
+              <IconLoader2 v-if="minting" class="size-3.5 animate-spin" />
+              {{ minting ? 'Minting…' : 'Mint token' }}
+            </Button>
+          </div>
+        </div>
+        <p class="mt-1 text-xs text-muted-foreground">
+          Mints a token with <strong>your</strong> identity and roles — a widget
+          carrying it chats as this agent's admin (admin prompt + admin tools).
+          Embed it only on pages behind your own login, never on a public site.
+        </p>
+        <p v-if="mintError" class="mt-1 text-xs text-destructive">{{ mintError }}</p>
+        <template v-if="adminToken">
+          <div class="mt-2 flex items-center justify-between gap-2">
+            <span class="text-xs text-muted-foreground">
+              Expires {{ adminTokenExpiryLabel }}
+            </span>
+            <div class="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-7 px-2 text-xs"
+                @click="copy('adminToken', adminToken)"
+              >
+                <IconCheck v-if="copiedKey === 'adminToken'" class="size-3.5" />
+                <IconCopy v-else class="size-3.5" />
+                {{ copiedKey === 'adminToken' ? 'Copied' : 'Copy token' }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-7 px-2 text-xs"
+                @click="copy('adminSnippet', adminEmbedSnippet)"
+              >
+                <IconCheck v-if="copiedKey === 'adminSnippet'" class="size-3.5" />
+                <IconCopy v-else class="size-3.5" />
+                {{ copiedKey === 'adminSnippet' ? 'Copied' : 'Copy snippet' }}
+              </Button>
+            </div>
+          </div>
+          <pre
+            class="mt-1 overflow-x-auto rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed"
+          >{{ adminEmbedSnippet }}</pre>
+        </template>
       </div>
 
       <p class="text-xs text-muted-foreground">

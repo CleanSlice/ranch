@@ -360,6 +360,18 @@ export const EmbedTokenDtoSchema = {
   required: ["sub"],
 } as const;
 
+export const AdminEmbedTokenDtoSchema = {
+  type: "object",
+  properties: {
+    expiresIn: {
+      type: "string",
+      description:
+        "Duration string (s/m/h/d). Defaults to 12h; capped at 7d — admin embed tokens end up in page markup, so long TTLs are refused.",
+      example: "12h",
+    },
+  },
+} as const;
+
 export const ApiKeyScopeTypesSchema = {
   type: "string",
   enum: ["embed:mint", "admin"],
@@ -600,6 +612,23 @@ export const AddFromSitemapResultDtoSchema = {
     },
   },
   required: ["added", "discovered"],
+} as const;
+
+export const AddFromArchiveResultDtoSchema = {
+  type: "object",
+  properties: {
+    detected: {
+      type: "number",
+      example: 288,
+      description:
+        "Number of ingestable files detected in the archive. Import runs in the background; refresh the sources list to watch them appear.",
+    },
+    started: {
+      type: "boolean",
+      example: true,
+    },
+  },
+  required: ["detected", "started"],
 } as const;
 
 export const AgentPodStatusDtoSchema = {

@@ -157,6 +157,13 @@ export type EmbedTokenDto = {
   expiresIn?: string;
 };
 
+export type AdminEmbedTokenDto = {
+  /**
+   * Duration string (s/m/h/d). Defaults to 12h; capped at 7d — admin embed tokens end up in page markup, so long TTLs are refused.
+   */
+  expiresIn?: string;
+};
+
 export enum ApiKeyScopeTypes {
   "EMBED:MINT" = "embed:mint",
   ADMIN = "admin",
@@ -238,6 +245,14 @@ export type AddFromSitemapDto = {
 export type AddFromSitemapResultDto = {
   added: number;
   discovered: number;
+};
+
+export type AddFromArchiveResultDto = {
+  /**
+   * Number of ingestable files detected in the archive. Import runs in the background; refresh the sources list to watch them appear.
+   */
+  detected: number;
+  started: boolean;
 };
 
 export type AgentPodStatusDto = {
@@ -1539,6 +1554,17 @@ export type AuthControllerEmbedTokenResponses = {
   200: unknown;
 };
 
+export type AuthControllerAdminEmbedTokenData = {
+  body: AdminEmbedTokenDto;
+  path?: never;
+  query?: never;
+  url: "/auth/embed/admin-token";
+};
+
+export type AuthControllerAdminEmbedTokenResponses = {
+  200: unknown;
+};
+
 export type ApiKeyControllerFindAllData = {
   body?: never;
   path?: never;
@@ -1750,6 +1776,22 @@ export type AddKnowledgeSourcesFromSitemapResponses = {
 
 export type AddKnowledgeSourcesFromSitemapResponse =
   AddKnowledgeSourcesFromSitemapResponses[keyof AddKnowledgeSourcesFromSitemapResponses];
+
+export type AddKnowledgeSourcesFromArchiveData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/from-archive";
+};
+
+export type AddKnowledgeSourcesFromArchiveResponses = {
+  201: AddFromArchiveResultDto;
+};
+
+export type AddKnowledgeSourcesFromArchiveResponse =
+  AddKnowledgeSourcesFromArchiveResponses[keyof AddKnowledgeSourcesFromArchiveResponses];
 
 export type DeleteKnowledgeSourceData = {
   body?: never;

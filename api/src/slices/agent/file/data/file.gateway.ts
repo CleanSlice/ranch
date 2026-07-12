@@ -39,6 +39,11 @@ const AGENT_OWNED_PREFIXES = ['data/', 'memory/', 'sessions/', 'workspace/'];
 
 @Injectable()
 export class S3FileGateway extends IFileGateway {
+  // Sentinel file written into every template-managed skill dir. syncSkills
+  // wipes only dirs carrying it — agent-created skills (skill_write) never
+  // get one and survive restarts.
+  static readonly MANAGED_MARKER = '.ranch-managed';
+
   constructor(private settings: ISettingGateway) {
     super();
   }
@@ -383,17 +388,28 @@ export class S3FileGateway extends IFileGateway {
     } while (continuationToken);
   }
 
-  // Wipe `skills/` for this agent and rewrite from the supplied bundle.
-  // Called from deploy / restart so the runtime sees exactly the set
-  // currently attached to the template (skill.body + sibling files).
-  // Wipe-then-write makes detached skills disappear instead of lingering
-  // forever like they would under a copy-only resync. Skill paths live
-  // at the agent prefix root (no `.agent/` segment) — that path is the
-  // runtime's local convention, not the S3 storage layout.
+  // Resync `skills/` for this agent from the supplied bundle. Called from
+  // deploy / restart so the runtime sees the set currently attached to the
+  // template (skill.body + sibling files). Skill paths live at the agent
+  // prefix root (no `.agent/` segment) — that path is the runtime's local
+  // convention, not the S3 storage layout.
+  //
+  // Only TEMPLATE-MANAGED skill dirs are wiped before the rewrite — the ones
+  // carrying the MANAGED_MARKER sentinel this method writes. Dirs without it
+  // (created by the agent itself via skill_write, or uploaded by hand) are
+  // left untouched: the previous wipe-the-whole-prefix behavior deleted the
+  // agent's own skills from S3 on every restart, and the dying pod's final
+  // diff push couldn't restore them (its manifest saw them as unchanged).
+  // Detached template skills still disappear — they carry the marker.
+  // Trade-off: skills written by pre-marker ranch versions are treated as
+  // agent-owned and linger until removed by hand.
   async syncSkills(agentId: string, skills: ISkillBundle[]): Promise<number> {
     const { client, bucket } = await this.connect();
     const skillsPrefix = this.prefix(agentId) + 'skills/';
 
+    // One listing pass: collect every key under skills/ and note which
+    // top-level skill dirs carry the managed marker.
+    const allKeys: string[] = [];
     let continuationToken: string | undefined;
     do {
       const list = await client.send(
@@ -403,21 +419,35 @@ export class S3FileGateway extends IFileGateway {
           ContinuationToken: continuationToken,
         }),
       );
-      const keys = (list.Contents ?? [])
-        .map((o) => o.Key)
-        .filter((k): k is string => Boolean(k));
-      if (keys.length > 0) {
-        await client.send(
-          new DeleteObjectsCommand({
-            Bucket: bucket,
-            Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
-          }),
-        );
+      for (const obj of list.Contents ?? []) {
+        if (obj.Key) allKeys.push(obj.Key);
       }
       continuationToken = list.IsTruncated
         ? list.NextContinuationToken
         : undefined;
     } while (continuationToken);
+
+    const skillDirOf = (key: string): string =>
+      key.slice(skillsPrefix.length).split('/')[0];
+    const managedDirs = new Set<string>(
+      allKeys
+        .filter((k) => k.endsWith('/' + S3FileGateway.MANAGED_MARKER))
+        .map(skillDirOf),
+    );
+
+    const doomed = allKeys.filter((k) => managedDirs.has(skillDirOf(k)));
+    // DeleteObjects caps at 1000 keys per request.
+    for (let i = 0; i < doomed.length; i += 1000) {
+      await client.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: {
+            Objects: doomed.slice(i, i + 1000).map((Key) => ({ Key })),
+            Quiet: true,
+          },
+        }),
+      );
+    }
 
     let written = 0;
     for (const skill of skills) {
@@ -443,6 +473,15 @@ export class S3FileGateway extends IFileGateway {
         );
         written++;
       }
+      // Sentinel marking this dir as template-managed → wipeable on the
+      // next resync. Not counted in `written` (it's bookkeeping, not content).
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: base + S3FileGateway.MANAGED_MARKER,
+          Body: '',
+        }),
+      );
     }
     return written;
   }

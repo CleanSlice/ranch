@@ -252,6 +252,41 @@ export class S3FileGateway extends IFileGateway {
     }
   }
 
+  async deletePrefix(agentId: string, path: string): Promise<number> {
+    this.assertSafePath(path);
+    const { client, bucket } = await this.connect();
+    const folderPrefix =
+      this.prefix(agentId) + (path.endsWith('/') ? path : path + '/');
+
+    let deleted = 0;
+    let continuationToken: string | undefined;
+    do {
+      const list = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: folderPrefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      const keys = (list.Contents ?? [])
+        .map((o) => o.Key)
+        .filter((k): k is string => Boolean(k));
+      if (keys.length > 0) {
+        await client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+        deleted += keys.length;
+      }
+      continuationToken = list.IsTruncated
+        ? list.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+    return deleted;
+  }
+
   // Server-side copy of every file under templates/{templateId}/ into
   // agents/{agentId}/. Skips agents that already have files (re-deploys
   // must not overwrite evolved state). Returns the number of files copied.

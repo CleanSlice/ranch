@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { IconFile, IconFolder, IconFolderOpen } from '@tabler/icons-vue';
+import { IconFile, IconFolder, IconFolderOpen, IconTrash } from '@tabler/icons-vue';
 
 defineOptions({ name: 'TreeNode' });
 
@@ -29,6 +29,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'select', path: string): void;
   (e: 'toggle', path: string): void;
+  (e: 'delete', path: string, type: 'file' | 'folder'): void;
 }>();
 
 const isExpanded = computed(() =>
@@ -46,16 +47,26 @@ function formatSize(n: number) {
 
 <template>
   <template v-if="node.type === 'folder'">
-    <button
-      type="button"
-      class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent"
-      :style="{ paddingLeft: `calc(0.5rem + ${indent})` }"
-      @click="emit('toggle', node.path)"
-    >
-      <IconFolderOpen v-if="isExpanded" class="size-4 shrink-0 text-muted-foreground" />
-      <IconFolder v-else class="size-4 shrink-0 text-muted-foreground" />
-      <span class="truncate">{{ node.name }}</span>
-    </button>
+    <div class="group flex w-full items-center rounded-md hover:bg-accent">
+      <button
+        type="button"
+        class="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+        :style="{ paddingLeft: `calc(0.5rem + ${indent})` }"
+        @click="emit('toggle', node.path)"
+      >
+        <IconFolderOpen v-if="isExpanded" class="size-4 shrink-0 text-muted-foreground" />
+        <IconFolder v-else class="size-4 shrink-0 text-muted-foreground" />
+        <span class="truncate">{{ node.name }}</span>
+      </button>
+      <button
+        type="button"
+        class="mr-1 hidden shrink-0 rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
+        :title="`Delete folder ${node.path}`"
+        @click.stop="emit('delete', node.path, 'folder')"
+      >
+        <IconTrash class="size-4" />
+      </button>
+    </div>
     <template v-if="isExpanded">
       <TreeNode
         v-for="child in node.children"
@@ -66,20 +77,33 @@ function formatSize(n: number) {
         :expanded-map="expandedMap"
         @select="(p) => emit('select', p)"
         @toggle="(p) => emit('toggle', p)"
+        @delete="(p, t) => emit('delete', p, t)"
       />
     </template>
   </template>
-  <button
+  <div
     v-else
-    type="button"
-    class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent"
+    class="group flex w-full items-center rounded-md hover:bg-accent"
     :class="selected === node.path && 'bg-accent text-accent-foreground'"
-    :style="{ paddingLeft: `calc(0.5rem + ${indent})` }"
-    @click="emit('select', node.path)"
   >
-    <IconFile class="size-4 shrink-0 text-muted-foreground" />
-    <span class="flex-1 truncate">{{ node.name }}</span>
-    <span class="text-xs text-muted-foreground">{{ formatSize(node.size) }}</span>
-  </button>
+    <button
+      type="button"
+      class="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+      :style="{ paddingLeft: `calc(0.5rem + ${indent})` }"
+      @click="emit('select', node.path)"
+    >
+      <IconFile class="size-4 shrink-0 text-muted-foreground" />
+      <span class="flex-1 truncate">{{ node.name }}</span>
+      <span class="text-xs text-muted-foreground group-hover:hidden">{{ formatSize(node.size) }}</span>
+    </button>
+    <button
+      type="button"
+      class="mr-1 hidden shrink-0 rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
+      :title="`Delete ${node.path}`"
+      @click.stop="emit('delete', node.path, 'file')"
+    >
+      <IconTrash class="size-4" />
+    </button>
+  </div>
 </template>
 

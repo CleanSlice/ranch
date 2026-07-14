@@ -990,6 +990,18 @@ export const SaveFileDtoSchema = {
   required: ["content"],
 } as const;
 
+export const DeleteFilesDtoSchema = {
+  type: "object",
+  properties: {
+    deleted: {
+      type: "number",
+      example: 3,
+      description: "Number of S3 objects deleted by this request.",
+    },
+  },
+  required: ["deleted"],
+} as const;
+
 export const BridleTextPartDtoSchema = {
   type: "object",
   properties: {

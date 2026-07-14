@@ -425,6 +425,13 @@ export type SaveFileDto = {
   content: string;
 };
 
+export type DeleteFilesDto = {
+  /**
+   * Number of S3 objects deleted by this request.
+   */
+  deleted: number;
+};
+
 export type BridleTextPartDto = {
   type: "text" | "image" | "file";
   text: string;
@@ -2041,6 +2048,28 @@ export type FileControllerListData = {
 export type FileControllerListResponses = {
   200: unknown;
 };
+
+export type FileControllerDeleteData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query: {
+    path: string;
+    /**
+     * When true, `path` is treated as a folder and every file under it is deleted.
+     */
+    recursive?: boolean;
+  };
+  url: "/agents/{agentId}/files/content";
+};
+
+export type FileControllerDeleteResponses = {
+  200: DeleteFilesDto;
+};
+
+export type FileControllerDeleteResponse =
+  FileControllerDeleteResponses[keyof FileControllerDeleteResponses];
 
 export type FileControllerReadData = {
   body?: never;

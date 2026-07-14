@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Inject,
@@ -18,6 +19,8 @@ import { IAgentGateway } from '#/agent/agent/domain';
 import { IBridleGateway } from '#/bridle/domain';
 import { IFileGateway } from './domain';
 import {
+  DeleteFileQueryDto,
+  DeleteFilesDto,
   FileChunkDto,
   ReadFileQueryDto,
   SaveFileDto,
@@ -75,6 +78,25 @@ export class FileController {
     await this.assertAgent(agentId);
     await this.fileGateway.save(agentId, path, dto.content);
     return this.fileGateway.read(agentId, path);
+  }
+
+  @Delete('content')
+  @ApiOperation({
+    summary:
+      'Delete a file, or a whole folder (e.g. a skill dir) when `recursive=true`. Template-managed skills are recreated on the next restart unless detached from the template first.',
+  })
+  @ApiOkResponse({ type: DeleteFilesDto })
+  async delete(
+    @Param('agentId') agentId: string,
+    @Query() query: DeleteFileQueryDto,
+  ): Promise<DeleteFilesDto> {
+    await this.assertAgent(agentId);
+    if (query.recursive) {
+      const deleted = await this.fileGateway.deletePrefix(agentId, query.path);
+      return { deleted };
+    }
+    await this.fileGateway.delete(agentId, query.path);
+    return { deleted: 1 };
   }
 
   @Post('sync')

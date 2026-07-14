@@ -86,6 +86,8 @@ import type {
   AgentControllerStartData,
   RestartByTemplateData,
   FileControllerListData,
+  FileControllerDeleteData,
+  FileControllerDeleteResponse,
   FileControllerReadData,
   FileControllerReadResponse,
   FileControllerSaveData,
@@ -1553,6 +1555,22 @@ export class FilesService {
       ThrowOnError
     >({
       url: "/agents/{agentId}/files",
+      ...options,
+    });
+  }
+
+  /**
+   * Delete a file, or a whole folder (e.g. a skill dir) when `recursive=true`. Template-managed skills are recreated on the next restart unless detached from the template first.
+   */
+  public static fileControllerDelete<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerDeleteData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      FileControllerDeleteResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/content",
       ...options,
     });
   }

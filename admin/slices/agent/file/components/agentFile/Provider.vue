@@ -31,6 +31,9 @@ const syncMessage = ref<string | null>(null);
 const downloading = ref(false);
 const downloadError = ref<string | null>(null);
 
+const deleting = ref(false);
+const deleteError = ref<string | null>(null);
+
 const selected = ref<string | null>(null);
 const original = ref<string>('');
 const content = ref<string>('');
@@ -178,6 +181,47 @@ function dismissRestartBanner() {
   store.clearPendingRestart(props.id);
 }
 
+async function onDelete(path: string, type: 'file' | 'folder') {
+  if (deleting.value) return;
+  const base =
+    type === 'folder'
+      ? 'This permanently deletes the folder and every file inside it from S3.'
+      : 'This permanently deletes the file from S3.';
+  // Skills synced from the template carry a managed marker and get rewritten
+  // by syncSkills on every restart — deleting them here is only temporary.
+  const skillNote = path.startsWith('skills/')
+    ? ' If this skill is attached to the agent’s template, it will be re-created on the next restart — detach it from the template to remove it for good.'
+    : '';
+  const ok = await confirmStore.ask({
+    title: `Delete ${type === 'folder' ? 'folder' : 'file'} "${path}"?`,
+    description: base + skillNote,
+    confirmLabel: 'Delete',
+    cancelLabel: 'Cancel',
+    variant: 'destructive',
+  });
+  if (!ok) return;
+  deleting.value = true;
+  deleteError.value = null;
+  try {
+    await store.remove(props.id, path, type === 'folder');
+    const coversSelected =
+      selected.value === path ||
+      (type === 'folder' && selected.value?.startsWith(path + '/'));
+    if (coversSelected) {
+      selected.value = null;
+      original.value = '';
+      content.value = '';
+      contentError.value = null;
+      totalSize.value = 0;
+      nextOffset.value = null;
+    }
+  } catch (err) {
+    deleteError.value = (err as Error).message || 'Failed to delete';
+  } finally {
+    deleting.value = false;
+  }
+}
+
 async function onDownload() {
   if (downloading.value) return;
   downloading.value = true;
@@ -261,6 +305,7 @@ useAsyncData(
                 :files="store.nodes"
                 :selected="selected"
                 @select="openFile"
+                @delete="onDelete"
               />
             </div>
           </SheetContent>
@@ -298,6 +343,12 @@ useAsyncData(
       {{ downloadError }}
     </div>
     <div
+      v-if="deleteError"
+      class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+    >
+      {{ deleteError }}
+    </div>
+    <div
       v-if="syncError"
       class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
     >
@@ -316,6 +367,7 @@ useAsyncData(
           :files="store.nodes"
           :selected="selected"
           @select="openFile"
+          @delete="onDelete"
         />
       </div>
       <div class="min-h-[480px]">

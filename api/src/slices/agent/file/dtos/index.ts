@@ -1,3 +1,5 @@
+export * from './deleteFile.query.dto';
+export * from './deleteFiles.dto';
 export * from './fileChunk.dto';
 export * from './fileContent.dto';
 export * from './fileNode.dto';

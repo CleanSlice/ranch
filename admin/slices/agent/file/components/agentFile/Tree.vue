@@ -25,6 +25,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'select', path: string): void;
+  (e: 'delete', path: string, type: 'file' | 'folder'): void;
 }>();
 
 const tree = computed<TreeNode[]>(() => buildTree(props.files));
@@ -89,6 +90,7 @@ function isExpanded(path: string) {
       :expanded-map="expanded"
       @select="(p) => emit('select', p)"
       @toggle="toggle"
+      @delete="(p, t) => emit('delete', p, t)"
     />
     <div
       v-if="!tree.length"

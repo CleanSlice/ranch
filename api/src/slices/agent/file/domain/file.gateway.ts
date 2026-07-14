@@ -27,6 +27,10 @@ export abstract class IFileGateway {
    */
   abstract saveRaw(agentId: string, path: string, content: string): Promise<void>;
   abstract delete(agentId: string, path: string): Promise<void>;
+  // Delete every object under `agents/{agentId}/{path}/`. Used by the admin
+  // Files tab to remove whole folders (e.g. an agent-owned skill dir that
+  // syncSkills won't touch). Returns the number of keys deleted.
+  abstract deletePrefix(agentId: string, path: string): Promise<number>;
   abstract seedFromTemplate(
     agentId: string,
     templateId: string,

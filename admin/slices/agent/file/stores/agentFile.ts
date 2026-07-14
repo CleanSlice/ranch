@@ -133,6 +133,29 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     return updated;
   }
 
+  // Deletes a single file, or a whole folder when `recursive` is true
+  // (e.g. a skill dir under `skills/`). Returns the number of S3 objects
+  // deleted and prunes the local tree so the UI updates without a refetch.
+  async function remove(
+    agentId: string,
+    path: string,
+    recursive = false,
+  ): Promise<number> {
+    const res = await FilesService.fileControllerDelete({
+      path: { agentId },
+      query: { path, recursive },
+    });
+    const env = res.data as ApiEnvelope<{ deleted: number }> | undefined;
+    const folderPrefix = path.endsWith('/') ? path : path + '/';
+    nodes.value = nodes.value.filter((n) =>
+      recursive
+        ? n.path !== path && !n.path.startsWith(folderPrefix)
+        : n.path !== path,
+    );
+    markPendingRestart(agentId);
+    return env?.data?.deleted ?? 0;
+  }
+
   async function sync(agentId: string): Promise<ISyncResult> {
     const res = await FilesService.fileControllerSync({ path: { agentId } });
     const env = res.data as ApiEnvelope<ISyncResult> | undefined;
@@ -177,6 +200,7 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     fetchList,
     fetchContent,
     save,
+    remove,
     sync,
     downloadZip,
     isPendingRestart,

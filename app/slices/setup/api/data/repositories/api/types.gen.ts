@@ -132,7 +132,7 @@ export type RegisterDto = {
 };
 
 /**
- * Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.
+ * Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.
  */
 export enum UserRoleTypes {
   OWNER = "Owner",
@@ -148,7 +148,7 @@ export type EmbedTokenDto = {
   sub: string;
   email?: string;
   /**
-   * Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.
+   * Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.
    */
   roles?: Array<UserRoleTypes>;
   /**
@@ -159,6 +159,7 @@ export type EmbedTokenDto = {
 
 export enum ApiKeyScopeTypes {
   "EMBED:MINT" = "embed:mint",
+  "EMBED:MINT_ADMIN" = "embed:mint-admin",
   ADMIN = "admin",
 }
 
@@ -238,6 +239,14 @@ export type AddFromSitemapDto = {
 export type AddFromSitemapResultDto = {
   added: number;
   discovered: number;
+};
+
+export type AddFromArchiveResultDto = {
+  /**
+   * Number of ingestable files detected in the archive. Import runs in the background; refresh the sources list to watch them appear.
+   */
+  detected: number;
+  started: boolean;
 };
 
 export type AgentPodStatusDto = {
@@ -414,6 +423,13 @@ export type SaveFileDto = {
    * Full file content as text
    */
   content: string;
+};
+
+export type DeleteFilesDto = {
+  /**
+   * Number of S3 objects deleted by this request.
+   */
+  deleted: number;
 };
 
 export type BridleTextPartDto = {
@@ -1751,6 +1767,22 @@ export type AddKnowledgeSourcesFromSitemapResponses = {
 export type AddKnowledgeSourcesFromSitemapResponse =
   AddKnowledgeSourcesFromSitemapResponses[keyof AddKnowledgeSourcesFromSitemapResponses];
 
+export type AddKnowledgeSourcesFromArchiveData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/from-archive";
+};
+
+export type AddKnowledgeSourcesFromArchiveResponses = {
+  201: AddFromArchiveResultDto;
+};
+
+export type AddKnowledgeSourcesFromArchiveResponse =
+  AddKnowledgeSourcesFromArchiveResponses[keyof AddKnowledgeSourcesFromArchiveResponses];
+
 export type DeleteKnowledgeSourceData = {
   body?: never;
   path: {
@@ -2016,6 +2048,28 @@ export type FileControllerListData = {
 export type FileControllerListResponses = {
   200: unknown;
 };
+
+export type FileControllerDeleteData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query: {
+    path: string;
+    /**
+     * When true, `path` is treated as a folder and every file under it is deleted.
+     */
+    recursive?: boolean;
+  };
+  url: "/agents/{agentId}/files/content";
+};
+
+export type FileControllerDeleteResponses = {
+  200: DeleteFilesDto;
+};
+
+export type FileControllerDeleteResponse =
+  FileControllerDeleteResponses[keyof FileControllerDeleteResponses];
 
 export type FileControllerReadData = {
   body?: never;

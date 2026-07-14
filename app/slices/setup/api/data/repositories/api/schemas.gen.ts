@@ -327,7 +327,7 @@ export const UserRoleTypesSchema = {
   type: "string",
   enum: ["Owner", "Admin", "User", "Agent"],
   description:
-    "Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.",
+    "Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.",
 } as const;
 
 export const EmbedTokenDtoSchema = {
@@ -346,7 +346,7 @@ export const EmbedTokenDtoSchema = {
     roles: {
       type: "array",
       description:
-        "Server filters Owner/Admin out regardless of what is passed; embed keys cannot grant platform-admin to a visitor.",
+        "Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.",
       items: {
         $ref: "#/components/schemas/UserRoleTypes",
       },
@@ -362,7 +362,7 @@ export const EmbedTokenDtoSchema = {
 
 export const ApiKeyScopeTypesSchema = {
   type: "string",
-  enum: ["embed:mint", "admin"],
+  enum: ["embed:mint", "embed:mint-admin", "admin"],
 } as const;
 
 export const CreateApiKeyDtoSchema = {
@@ -600,6 +600,23 @@ export const AddFromSitemapResultDtoSchema = {
     },
   },
   required: ["added", "discovered"],
+} as const;
+
+export const AddFromArchiveResultDtoSchema = {
+  type: "object",
+  properties: {
+    detected: {
+      type: "number",
+      example: 288,
+      description:
+        "Number of ingestable files detected in the archive. Import runs in the background; refresh the sources list to watch them appear.",
+    },
+    started: {
+      type: "boolean",
+      example: true,
+    },
+  },
+  required: ["detected", "started"],
 } as const;
 
 export const AgentPodStatusDtoSchema = {
@@ -971,6 +988,18 @@ export const SaveFileDtoSchema = {
     },
   },
   required: ["content"],
+} as const;
+
+export const DeleteFilesDtoSchema = {
+  type: "object",
+  properties: {
+    deleted: {
+      type: "number",
+      example: 3,
+      description: "Number of S3 objects deleted by this request.",
+    },
+  },
+  required: ["deleted"],
 } as const;
 
 export const BridleTextPartDtoSchema = {

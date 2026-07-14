@@ -58,6 +58,11 @@ services:
   #   17900 → 7900  auth-proxy /live + /websockify + /vnc/*  (open this in a browser)
   browserless:
     image: ghcr.io/cleanslice/browser-pool:latest
+    # Only published for linux/amd64 (see k8s/browser-pool-image/README.md) —
+    # without this, `docker compose up` on Apple Silicon fails with
+    # "no matching manifest for linux/arm64/v8". Runs fine under Docker
+    # Desktop's Rosetta/QEMU emulation.
+    platform: linux/amd64
     container_name: ranch-browserless
     ports:
       - '13000:3000'

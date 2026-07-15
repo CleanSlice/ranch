@@ -6,20 +6,31 @@ export class ChatMessageDto {
   @ApiProperty({ example: 'c94dbcf2-…' }) id: string;
 
   @ApiProperty({
-    enum: ['user', 'assistant', 'summary', 'tool_call', 'tool_result', 'system'],
+    enum: [
+      'user',
+      'assistant',
+      'summary',
+      'tool_call',
+      'tool_result',
+      'system',
+    ],
     example: 'assistant',
   })
   role: string;
 
   @ApiProperty({ example: 'Hello, how can I help?' }) text: string;
 
-  @ApiProperty({ example: 1777562539964, description: 'Unix epoch ms' }) ts: number;
+  @ApiProperty({ example: 1777562539964, description: 'Unix epoch ms' })
+  ts: number;
 }
 
 export class ChatMessagesResponseDto {
   @ApiProperty({ type: [ChatMessageDto] }) messages: ChatMessageDto[];
 
-  @ApiPropertyOptional({ nullable: true, description: 'Pass to fetch the previous (older) page' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Pass to fetch the previous (older) page',
+  })
   nextCursor: string | null;
 
   @ApiProperty() hasMore: boolean;

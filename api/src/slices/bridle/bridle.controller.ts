@@ -196,7 +196,12 @@ export class BridleController {
       query.cursor,
       limit,
     );
-    return { messages: messages as TranscriptMessageDto[], channel, nextCursor, hasMore };
+    return {
+      messages: messages as TranscriptMessageDto[],
+      channel,
+      nextCursor,
+      hasMore,
+    };
   }
 
   @ApiOperation({

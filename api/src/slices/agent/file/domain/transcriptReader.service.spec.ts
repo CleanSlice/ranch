@@ -1,4 +1,7 @@
-import { TranscriptReaderService, TranscriptMessage } from './transcriptReader.service';
+import {
+  TranscriptReaderService,
+  TranscriptMessage,
+} from './transcriptReader.service';
 import { IFileGateway } from './file.gateway';
 import { IFileChunk } from './file.types';
 
@@ -6,10 +9,7 @@ import { IFileChunk } from './file.types';
 function fileStub(content: string): IFileGateway {
   const size = Buffer.byteLength(content);
   return {
-    readRange: async (
-      _agentId: string,
-      path: string,
-    ): Promise<IFileChunk> => ({
+    readRange: async (_agentId: string, path: string): Promise<IFileChunk> => ({
       path,
       content,
       size,
@@ -26,7 +26,8 @@ function jsonl(...events: unknown[]): string {
   return events.map((e) => JSON.stringify(e)).join('\n') + '\n';
 }
 
-const reader = (content: string) => new TranscriptReaderService(fileStub(content));
+const reader = (content: string) =>
+  new TranscriptReaderService(fileStub(content));
 const roles = (m: TranscriptMessage[]) => m.map((x) => x.role);
 const texts = (m: TranscriptMessage[]) => m.map((x) => x.text);
 
@@ -44,7 +45,12 @@ describe('TranscriptReaderService', () => {
 
   it('surfaces summary events when requested', async () => {
     const content = jsonl(
-      { id: 's', type: 'summary', ts: 1, data: { text: '[ARCHIVED CONTEXT] gist [END]' } },
+      {
+        id: 's',
+        type: 'summary',
+        ts: 1,
+        data: { text: '[ARCHIVED CONTEXT] gist [END]' },
+      },
       { id: 'u', type: 'user', ts: 2, data: { text: 'and then?' } },
     );
     const withSummary = await reader(content).read('agent', 'p', {
@@ -60,18 +66,41 @@ describe('TranscriptReaderService', () => {
     const content = jsonl(
       { id: 'u', type: 'user', ts: 1, data: { text: 'write a poem' } },
       { id: 'p', type: 'assistant', ts: 2, data: { text: 'Roses are red,' } }, // partial
-      { id: 'c', type: 'user', ts: 3, data: { text: 'Your response was cut off. Continue…' } },
-      { id: 'f', type: 'assistant', ts: 4, data: { text: 'Roses are red, violets are blue.' } },
+      {
+        id: 'c',
+        type: 'user',
+        ts: 3,
+        data: { text: 'Your response was cut off. Continue…' },
+      },
+      {
+        id: 'f',
+        type: 'assistant',
+        ts: 4,
+        data: { text: 'Roses are red, violets are blue.' },
+      },
     );
     const out = await reader(content).read('agent', 'p');
-    expect(texts(out)).toEqual(['write a poem', 'Roses are red, violets are blue.']);
+    expect(texts(out)).toEqual([
+      'write a poem',
+      'Roses are red, violets are blue.',
+    ]);
   });
 
   it('drops synthetic events tagged data.transient (new data)', async () => {
     const content = jsonl(
       { id: 'u', type: 'user', ts: 1, data: { text: 'q' } },
-      { id: 'p', type: 'assistant', ts: 2, data: { text: 'chunk', transient: true } },
-      { id: 'c', type: 'user', ts: 3, data: { text: 'continue', transient: true } },
+      {
+        id: 'p',
+        type: 'assistant',
+        ts: 2,
+        data: { text: 'chunk', transient: true },
+      },
+      {
+        id: 'c',
+        type: 'user',
+        ts: 3,
+        data: { text: 'continue', transient: true },
+      },
       { id: 'f', type: 'assistant', ts: 4, data: { text: 'full answer' } },
     );
     const out = await reader(content).read('agent', 'p');
@@ -82,10 +111,17 @@ describe('TranscriptReaderService', () => {
     const content = jsonl(
       { id: 'u', type: 'user', ts: 1, data: { text: 'q' } },
       { id: 'p', type: 'assistant', ts: 2, data: { text: 'part' } },
-      { id: 'c', type: 'user', ts: 3, data: { text: 'Your response was cut off. Continue…' } },
+      {
+        id: 'c',
+        type: 'user',
+        ts: 3,
+        data: { text: 'Your response was cut off. Continue…' },
+      },
       { id: 'f', type: 'assistant', ts: 4, data: { text: 'part full' } },
     );
-    const out = await reader(content).read('agent', 'p', { filterTransient: false });
+    const out = await reader(content).read('agent', 'p', {
+      filterTransient: false,
+    });
     expect(out).toHaveLength(4); // nothing filtered
   });
 

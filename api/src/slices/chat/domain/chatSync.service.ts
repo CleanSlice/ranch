@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { IFileGateway, TranscriptReaderService } from '#/agent/file/domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { IChatGateway } from './chat.gateway';
@@ -34,7 +39,9 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`chat reconcile interval enabled: every ${sec}s`);
     this.timer = setInterval(() => {
       void this.syncAll().catch((err) =>
-        this.logger.error(`scheduled reconcile failed: ${(err as Error).message}`),
+        this.logger.error(
+          `scheduled reconcile failed: ${(err as Error).message}`,
+        ),
       );
     }, sec * 1000);
   }
@@ -74,7 +81,10 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  private async syncAgent(agentId: string, result: IChatSyncResult): Promise<void> {
+  private async syncAgent(
+    agentId: string,
+    result: IChatSyncResult,
+  ): Promise<void> {
     let nodes;
     try {
       nodes = await this.files.list(agentId);
@@ -109,7 +119,12 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
       }
 
       try {
-        const input = await this.buildReconcileInput(agentId, node.path, node.size, meta);
+        const input = await this.buildReconcileInput(
+          agentId,
+          node.path,
+          node.size,
+          meta,
+        );
         await this.chats.reconcileUpsert(input);
         result.upserted++;
       } catch (err) {
@@ -124,7 +139,12 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     agentId: string,
     path: string,
     size: number,
-    meta: { sessionKey: string; channel: string; externalUserId: string; archived: boolean },
+    meta: {
+      sessionKey: string;
+      channel: string;
+      externalUserId: string;
+      archived: boolean;
+    },
   ): Promise<IChatReconcileInput> {
     const messages = await this.reader.read(agentId, path, {
       types: ['user', 'assistant'],
@@ -151,9 +171,12 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
   // `data/sessions/bridle:admin.jsonl` → { sessionKey:'bridle:admin', channel:'bridle',
   // externalUserId:'admin', archived:false }. Archived files are
   // `bridle:admin.<iso-ts>.archived.jsonl` → their own row, archived:true.
-  private parseName(
-    path: string,
-  ): { sessionKey: string; channel: string; externalUserId: string; archived: boolean } | null {
+  private parseName(path: string): {
+    sessionKey: string;
+    channel: string;
+    externalUserId: string;
+    archived: boolean;
+  } | null {
     const base = path.slice(SESSIONS_PREFIX.length, -'.jsonl'.length);
     const colon = base.indexOf(':');
     if (colon < 0) return null;

@@ -47,7 +47,12 @@ export class ChatGateway extends IChatGateway {
 
   async reconcileUpsert(input: IChatReconcileInput): Promise<IChatSessionData> {
     const existing = await this.prisma.chatSession.findUnique({
-      where: { agentId_sessionKey: { agentId: input.agentId, sessionKey: input.sessionKey } },
+      where: {
+        agentId_sessionKey: {
+          agentId: input.agentId,
+          sessionKey: input.sessionKey,
+        },
+      },
     });
 
     const record = existing
@@ -55,7 +60,9 @@ export class ChatGateway extends IChatGateway {
           where: { id: existing.id },
           data: this.mapper.toReconcileUpdate(input, existing),
         })
-      : await this.prisma.chatSession.create({ data: this.mapper.toCreate(input) });
+      : await this.prisma.chatSession.create({
+          data: this.mapper.toCreate(input),
+        });
 
     return this.mapper.toEntity(record);
   }
@@ -83,9 +90,16 @@ export class ChatGateway extends IChatGateway {
     }
   }
 
-  private async incrementActivity(agentId: string, a: IChatActivity): Promise<boolean> {
+  private async incrementActivity(
+    agentId: string,
+    a: IChatActivity,
+  ): Promise<boolean> {
     const res = await this.prisma.chatSession.updateMany({
-      where: { agentId, sessionKey: a.sessionKey, NOT: { lastIndexedEventId: a.eventId } },
+      where: {
+        agentId,
+        sessionKey: a.sessionKey,
+        NOT: { lastIndexedEventId: a.eventId },
+      },
       data: {
         messageCount: { increment: 1 },
         ...(a.role === 'user' ? { userMessageCount: { increment: 1 } } : {}),

@@ -1,8 +1,16 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
-const toBool = ({ value }: { value: unknown }) => value === true || value === 'true';
+const toBool = ({ value }: { value: unknown }) =>
+  value === true || value === 'true';
 
 export class FilterChatsDto {
   @ApiPropertyOptional({ description: 'Restrict to one agent' })
@@ -15,18 +23,26 @@ export class FilterChatsDto {
   @IsString()
   channel?: string;
 
-  @ApiPropertyOptional({ description: 'Matches title / preview / externalUserId' })
+  @ApiPropertyOptional({
+    description: 'Matches title / preview / externalUserId',
+  })
   @IsOptional()
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ default: false, description: 'Show archived sessions' })
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Show archived sessions',
+  })
   @IsOptional()
   @Transform(toBool)
   @IsBoolean()
   archived?: boolean;
 
-  @ApiPropertyOptional({ default: false, description: 'Include internal (cron/heartbeat) sessions' })
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Include internal (cron/heartbeat) sessions',
+  })
   @IsOptional()
   @Transform(toBool)
   @IsBoolean()

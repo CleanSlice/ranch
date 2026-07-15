@@ -6,7 +6,10 @@ export class ChatSessionDto {
 
   @ApiProperty() agentId: string;
 
-  @ApiProperty({ enum: ['bridle', 'telegram', 'slack', 'internal'], example: 'bridle' })
+  @ApiProperty({
+    enum: ['bridle', 'telegram', 'slack', 'internal'],
+    example: 'bridle',
+  })
   channel: string;
 
   @ApiProperty({ example: 'admin' }) externalUserId: string;
@@ -15,16 +18,23 @@ export class ChatSessionDto {
 
   @ApiPropertyOptional({ nullable: true }) title: string | null;
 
-  @ApiPropertyOptional({ nullable: true, description: 'Last message text, truncated' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Last message text, truncated',
+  })
   preview: string | null;
 
   @ApiPropertyOptional({ enum: ['user', 'assistant'], nullable: true })
   lastRole: string | null;
 
-  @ApiProperty({ description: 'Unix ms via ISO', example: '2026-07-15T09:12:00.000Z' })
+  @ApiProperty({
+    description: 'Unix ms via ISO',
+    example: '2026-07-15T09:12:00.000Z',
+  })
   lastMessageAt: Date;
 
-  @ApiProperty({ description: 'Monotonic lifetime total' }) messageCount: number;
+  @ApiProperty({ description: 'Monotonic lifetime total' })
+  messageCount: number;
 
   @ApiProperty() userMessageCount: number;
 
@@ -32,8 +42,11 @@ export class ChatSessionDto {
 
   @ApiPropertyOptional({ nullable: true }) summaryAt: Date | null;
 
-  @ApiPropertyOptional({ nullable: true, description: 'topics/sentiment/resolved/language' })
-  insights: unknown | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'topics/sentiment/resolved/language',
+  })
+  insights: unknown;
 
   @ApiProperty() archived: boolean;
 

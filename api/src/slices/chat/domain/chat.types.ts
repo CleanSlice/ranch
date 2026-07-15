@@ -6,7 +6,8 @@ export const ChatChannelTypes = {
   Slack: 'slack',
   Internal: 'internal',
 } as const;
-export type ChatChannel = (typeof ChatChannelTypes)[keyof typeof ChatChannelTypes];
+export type ChatChannel =
+  (typeof ChatChannelTypes)[keyof typeof ChatChannelTypes];
 
 /** A ChatSession index row (domain view of the Prisma model). */
 export interface IChatSessionData {
@@ -25,7 +26,7 @@ export interface IChatSessionData {
   lastIndexedSize: number;
   summary: string | null;
   summaryAt: Date | null;
-  insights: unknown | null;
+  insights: unknown; // Prisma Json? — null when not yet computed
   archived: boolean;
   createdAt: Date;
   updatedAt: Date;

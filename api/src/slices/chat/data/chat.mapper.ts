@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ChatSession } from '@prisma/client';
-import { IChatActivity, IChatReconcileInput, IChatSessionData } from '../domain';
+import {
+  IChatActivity,
+  IChatReconcileInput,
+  IChatSessionData,
+} from '../domain';
 
 @Injectable()
 export class ChatMapper {
@@ -78,7 +82,10 @@ export class ChatMapper {
       archived: input.archived,
       lastIndexedSize: input.size,
       messageCount: Math.max(existing.messageCount, input.messageCount),
-      userMessageCount: Math.max(existing.userMessageCount, input.userMessageCount),
+      userMessageCount: Math.max(
+        existing.userMessageCount,
+        input.userMessageCount,
+      ),
     };
   }
 }

@@ -20,12 +20,17 @@ export abstract class IChatGateway {
    * counts are monotonic — seeded on first index, only ever raised, never
    * lowered (compaction shrinks the file, realtime owns the true total).
    */
-  abstract reconcileUpsert(input: IChatReconcileInput): Promise<IChatSessionData>;
+  abstract reconcileUpsert(
+    input: IChatReconcileInput,
+  ): Promise<IChatSessionData>;
 
   /**
    * Apply a live activity signal: create the row if new, else bump the
    * monotonic counts (+1, dedup'd by eventId) and refresh
    * lastMessageAt/preview/lastRole. Realtime is the authoritative count owner.
    */
-  abstract recordActivity(agentId: string, activity: IChatActivity): Promise<void>;
+  abstract recordActivity(
+    agentId: string,
+    activity: IChatActivity,
+  ): Promise<void>;
 }

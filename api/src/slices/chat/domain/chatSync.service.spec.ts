@@ -2,7 +2,11 @@ import { ChatSyncService } from './chatSync.service';
 import { IChatReconcileInput, IChatSessionData } from './chat.types';
 import { IChatGateway } from './chat.gateway';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
-import { IFileGateway, IFileChunk, TranscriptReaderService } from '#/agent/file/domain';
+import {
+  IFileGateway,
+  IFileChunk,
+  TranscriptReaderService,
+} from '#/agent/file/domain';
 
 function jsonl(...events: unknown[]): string {
   return events.map((e) => JSON.stringify(e)).join('\n') + '\n';
@@ -13,11 +17,25 @@ function fileStub(
   contents: Record<string, string>,
 ): IFileGateway {
   return {
-    list: async () => files.map((f) => ({ path: f.path, size: f.size, updatedAt: new Date(0) })),
+    list: async () =>
+      files.map((f) => ({
+        path: f.path,
+        size: f.size,
+        updatedAt: new Date(0),
+      })),
     readRange: async (_a: string, path: string): Promise<IFileChunk> => {
       const content = contents[path] ?? '';
       const size = Buffer.byteLength(content);
-      return { path, content, size, totalSize: size, offset: 0, nextOffset: null, hasMore: false, updatedAt: new Date(0) };
+      return {
+        path,
+        content,
+        size,
+        totalSize: size,
+        offset: 0,
+        nextOffset: null,
+        hasMore: false,
+        updatedAt: new Date(0),
+      };
     },
   } as unknown as IFileGateway;
 }
@@ -25,7 +43,10 @@ function fileStub(
 function chatsStub(existing: Partial<IChatSessionData>[]) {
   const upserts: IChatReconcileInput[] = [];
   const chats = {
-    list: async () => ({ items: existing as IChatSessionData[], total: existing.length }),
+    list: async () => ({
+      items: existing as IChatSessionData[],
+      total: existing.length,
+    }),
     reconcileUpsert: async (i: IChatReconcileInput) => {
       upserts.push(i);
       return i as unknown as IChatSessionData;
@@ -35,22 +56,37 @@ function chatsStub(existing: Partial<IChatSessionData>[]) {
   return { chats, upserts };
 }
 
-const agentsStub = { findAll: async () => [{ id: 'agent-1' }] } as unknown as IAgentGateway;
+const agentsStub = {
+  findAll: async () => [{ id: 'agent-1' }],
+} as unknown as IAgentGateway;
 
 describe('ChatSyncService.syncAll', () => {
   it('indexes session files, skips unchanged (by size) and non-session files, and parses names', async () => {
     const bridleLive = jsonl(
       { id: 'u1', type: 'user', ts: 1, data: { text: 'hi' } },
       { id: 'p', type: 'assistant', ts: 2, data: { text: 'part' } },
-      { id: 'c', type: 'user', ts: 3, data: { text: 'Your response was cut off. Continue' } },
+      {
+        id: 'c',
+        type: 'user',
+        ts: 3,
+        data: { text: 'Your response was cut off. Continue' },
+      },
       { id: 'a1', type: 'assistant', ts: 4, data: { text: 'part full' } },
     );
-    const archived = jsonl({ id: 'x', type: 'user', ts: 9, data: { text: 'old chat' } });
+    const archived = jsonl({
+      id: 'x',
+      type: 'user',
+      ts: 9,
+      data: { text: 'old chat' },
+    });
 
     const files = [
       { path: 'data/sessions/bridle:admin.jsonl', size: 111 },
       { path: 'data/sessions/telegram:555.jsonl', size: 50 }, // unchanged → skipped
-      { path: 'data/sessions/bridle:admin.2026-01-01T00-00-00.archived.jsonl', size: 22 },
+      {
+        path: 'data/sessions/bridle:admin.2026-01-01T00-00-00.archived.jsonl',
+        size: 22,
+      },
       { path: 'SOUL.md', size: 10 }, // not a session file
     ];
     const contents = {

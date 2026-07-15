@@ -17,7 +17,10 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
-import { TranscriptReaderService, TranscriptMessage } from '#/agent/file/domain';
+import {
+  TranscriptReaderService,
+  TranscriptMessage,
+} from '#/agent/file/domain';
 import { IChatGateway, ChatSyncService } from './domain';
 import {
   FilterChatsDto,
@@ -37,7 +40,11 @@ const ALLOWED_TYPES: TranscriptMessage['role'][] = [
   'tool_result',
   'system',
 ];
-const DEFAULT_TYPES: TranscriptMessage['role'][] = ['user', 'assistant', 'summary'];
+const DEFAULT_TYPES: TranscriptMessage['role'][] = [
+  'user',
+  'assistant',
+  'summary',
+];
 
 @ApiTags('chats')
 @ApiBearerAuth()
@@ -54,7 +61,8 @@ export class ChatController {
   ) {}
 
   @ApiOperation({
-    description: 'List chat sessions (index). Filter by agent, channel, search; paginated.',
+    description:
+      'List chat sessions (index). Filter by agent, channel, search; paginated.',
     operationId: 'getChats',
   })
   @ApiOkResponse({ type: ChatListResponseDto })
@@ -62,11 +70,18 @@ export class ChatController {
   async list(@Query() filter: FilterChatsDto): Promise<ChatListResponseDto> {
     const page = filter.page ?? 1;
     const perPage = filter.perPage ?? 50;
-    const { items, total } = await this.chats.list({ ...filter, page, perPage });
+    const { items, total } = await this.chats.list({
+      ...filter,
+      page,
+      perPage,
+    });
     return { items, total, page, perPage };
   }
 
-  @ApiOperation({ description: 'Get one chat session (index metadata).', operationId: 'getChat' })
+  @ApiOperation({
+    description: 'Get one chat session (index metadata).',
+    operationId: 'getChat',
+  })
   @ApiOkResponse({ type: ChatSessionDto })
   @Get(':id')
   async detail(@Param('id') id: string): Promise<ChatSessionDto> {
@@ -95,13 +110,18 @@ export class ChatController {
       ? (q.types
           .split(',')
           .map((t) => t.trim())
-          .filter((t) => (ALLOWED_TYPES as string[]).includes(t)) as TranscriptMessage['role'][])
+          .filter((t) =>
+            (ALLOWED_TYPES as string[]).includes(t),
+          ) as TranscriptMessage['role'][])
       : DEFAULT_TYPES;
 
     const path = `data/sessions/${session.sessionKey}.jsonl`;
     let all: TranscriptMessage[];
     try {
-      all = await this.reader.read(session.agentId, path, { types, filterTransient: true });
+      all = await this.reader.read(session.agentId, path, {
+        types,
+        filterTransient: true,
+      });
     } catch (err) {
       // Missing/unreadable file → empty transcript (row may predate the file, or
       // it was archived/reset). Don't 500 the whole page.
@@ -115,7 +135,8 @@ export class ChatController {
   }
 
   @ApiOperation({
-    description: 'Reconcile the chat index against S3 session files (all agents, or one).',
+    description:
+      'Reconcile the chat index against S3 session files (all agents, or one).',
     operationId: 'syncChats',
   })
   @ApiOkResponse({ type: SyncChatsResponseDto })

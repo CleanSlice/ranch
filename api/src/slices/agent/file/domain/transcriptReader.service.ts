@@ -4,7 +4,13 @@ import { IFileGateway } from './file.gateway';
 /** One replayable line of a chat transcript. `role` is the source Event type. */
 export interface TranscriptMessage {
   id: string;
-  role: 'user' | 'assistant' | 'summary' | 'tool_call' | 'tool_result' | 'system';
+  role:
+    | 'user'
+    | 'assistant'
+    | 'summary'
+    | 'tool_call'
+    | 'tool_result'
+    | 'system';
   text: string;
   ts: number;
 }
@@ -35,7 +41,13 @@ interface RawEvent {
   id?: string;
   type?: string;
   ts?: number;
-  data?: { text?: string; transient?: boolean; name?: string; params?: unknown; result?: unknown };
+  data?: {
+    text?: string;
+    transient?: boolean;
+    name?: string;
+    params?: unknown;
+    result?: unknown;
+  };
 }
 
 /**
@@ -74,7 +86,12 @@ export class TranscriptReaderService {
       if (!types.has(evt.type)) return;
       const text = this.render(evt);
       if (text === null) return;
-      messages.push({ id: evt.id, role: evt.type as TranscriptMessage['role'], text, ts: evt.ts });
+      messages.push({
+        id: evt.id,
+        role: evt.type as TranscriptMessage['role'],
+        text,
+        ts: evt.ts,
+      });
     });
     messages.sort((a, b) => a.ts - b.ts);
     return messages;
@@ -89,7 +106,11 @@ export class TranscriptReaderService {
     all: TranscriptMessage[],
     cursor: string | undefined,
     limit: number,
-  ): { messages: TranscriptMessage[]; nextCursor: string | null; hasMore: boolean } {
+  ): {
+    messages: TranscriptMessage[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  } {
     const end = TranscriptReaderService.parseCursor(cursor, all.length);
     const start = Math.max(0, end - limit);
     const hasMore = start > 0;
@@ -100,7 +121,10 @@ export class TranscriptReaderService {
     };
   }
 
-  private static parseCursor(cursor: string | undefined, total: number): number {
+  private static parseCursor(
+    cursor: string | undefined,
+    total: number,
+  ): number {
     if (!cursor) return total;
     const parsed = parseInt(cursor, 10);
     if (!Number.isFinite(parsed) || parsed < 0) return total;
@@ -111,7 +135,12 @@ export class TranscriptReaderService {
     let content = '';
     let offset = 0;
     for (;;) {
-      const chunk = await this.files.readRange(agentId, path, offset, BLOCK_BYTES);
+      const chunk = await this.files.readRange(
+        agentId,
+        path,
+        offset,
+        BLOCK_BYTES,
+      );
       content += chunk.content;
       if (content.length > MAX_TRANSCRIPT_BYTES) {
         throw new Error(
@@ -150,13 +179,15 @@ export class TranscriptReaderService {
       !!e &&
       e.type === 'user' &&
       (e.data?.transient === true ||
-        (typeof e.data?.text === 'string' && e.data.text.startsWith(CONTINUATION_PREFIX)));
+        (typeof e.data?.text === 'string' &&
+          e.data.text.startsWith(CONTINUATION_PREFIX)));
 
     const drop = new Set<number>();
     events.forEach((e, i) => {
       if (e.data?.transient === true) drop.add(i);
       if (isContinuationUser(e)) drop.add(i);
-      if (e.type === 'assistant' && isContinuationUser(events[i + 1])) drop.add(i);
+      if (e.type === 'assistant' && isContinuationUser(events[i + 1]))
+        drop.add(i);
     });
     return drop;
   }

@@ -6,14 +6,19 @@ import { IChatActivity, IChatReconcileInput } from '../domain';
 function makePrismaStub() {
   const rows: Record<string, Record<string, unknown>> = {};
 
-  const matches = (r: Record<string, unknown>, where: Record<string, unknown> = {}) => {
+  const matches = (
+    r: Record<string, unknown>,
+    where: Record<string, unknown> = {},
+  ) => {
     if (where.agentId && r.agentId !== where.agentId) return false;
     if (where.channel !== undefined) {
       const c = where.channel as string | { not?: string };
       if (typeof c === 'string' && r.channel !== c) return false;
-      if (typeof c === 'object' && c.not !== undefined && r.channel === c.not) return false;
+      if (typeof c === 'object' && c.not !== undefined && r.channel === c.not)
+        return false;
     }
-    if (where.archived !== undefined && r.archived !== where.archived) return false;
+    if (where.archived !== undefined && r.archived !== where.archived)
+      return false;
     return true;
   };
 
@@ -37,7 +42,9 @@ function makePrismaStub() {
         (r) => r.agentId === data.agentId && r.sessionKey === data.sessionKey,
       );
       if (clash) {
-        throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+        throw Object.assign(new Error('Unique constraint failed'), {
+          code: 'P2002',
+        });
       }
       rows[data.id as string] = {
         summary: null,
@@ -51,17 +58,35 @@ function makePrismaStub() {
       };
       return rows[data.id as string];
     }),
-    update: jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-      rows[where.id] = { ...rows[where.id], ...data };
-      return rows[where.id];
-    }),
+    update: jest.fn(
+      async ({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: Record<string, unknown>;
+      }) => {
+        rows[where.id] = { ...rows[where.id], ...data };
+        return rows[where.id];
+      },
+    ),
     updateMany: jest.fn(
-      async ({ where, data }: { where: Record<string, any>; data: Record<string, any> }) => {
+      async ({
+        where,
+        data,
+      }: {
+        where: Record<string, any>;
+        data: Record<string, any>;
+      }) => {
         let count = 0;
         for (const r of Object.values(rows)) {
           if (where.agentId && r.agentId !== where.agentId) continue;
           if (where.sessionKey && r.sessionKey !== where.sessionKey) continue;
-          if (where.NOT?.lastIndexedEventId !== undefined && r.lastIndexedEventId === where.NOT.lastIndexedEventId) continue;
+          if (
+            where.NOT?.lastIndexedEventId !== undefined &&
+            r.lastIndexedEventId === where.NOT.lastIndexedEventId
+          )
+            continue;
           for (const [k, v] of Object.entries(data)) {
             if (v && typeof v === 'object' && 'increment' in v) {
               r[k] = ((r[k] as number) ?? 0) + (v.increment as number);
@@ -75,15 +100,28 @@ function makePrismaStub() {
       },
     ),
     findMany: jest.fn(
-      async ({ where, skip = 0, take = 1000 }: { where?: Record<string, unknown>; skip?: number; take?: number }) => {
+      async ({
+        where,
+        skip = 0,
+        take = 1000,
+      }: {
+        where?: Record<string, unknown>;
+        skip?: number;
+        take?: number;
+      }) => {
         const list = Object.values(rows)
           .filter((r) => matches(r, where))
-          .sort((a, b) => (b.lastMessageAt as Date).getTime() - (a.lastMessageAt as Date).getTime());
+          .sort(
+            (a, b) =>
+              (b.lastMessageAt as Date).getTime() -
+              (a.lastMessageAt as Date).getTime(),
+          );
         return list.slice(skip, skip + take);
       },
     ),
-    count: jest.fn(async ({ where }: { where?: Record<string, unknown> }) =>
-      Object.values(rows).filter((r) => matches(r, where)).length,
+    count: jest.fn(
+      async ({ where }: { where?: Record<string, unknown> }) =>
+        Object.values(rows).filter((r) => matches(r, where)).length,
     ),
   };
 
@@ -124,7 +162,9 @@ function newGateway() {
 describe('ChatGateway.reconcileUpsert', () => {
   it('creates a row on first index with the file counts as the floor', async () => {
     const { gw } = newGateway();
-    const s = await gw.reconcileUpsert(input({ messageCount: 4, userMessageCount: 2 }));
+    const s = await gw.reconcileUpsert(
+      input({ messageCount: 4, userMessageCount: 2 }),
+    );
     expect(s.messageCount).toBe(4);
     expect(s.userMessageCount).toBe(2);
     expect(s.lastIndexedSize).toBe(100);
@@ -132,7 +172,9 @@ describe('ChatGateway.reconcileUpsert', () => {
 
   it('never lowers counts after compaction shrinks the file, but refreshes preview/lastMessageAt', async () => {
     const { gw } = newGateway();
-    await gw.reconcileUpsert(input({ messageCount: 40, userMessageCount: 20, size: 5000 }));
+    await gw.reconcileUpsert(
+      input({ messageCount: 40, userMessageCount: 20, size: 5000 }),
+    );
 
     // Compaction shrank the file → fewer viewable messages, newer last message.
     const after = await gw.reconcileUpsert(
@@ -155,7 +197,9 @@ describe('ChatGateway.reconcileUpsert', () => {
   it('raises counts when the file grew', async () => {
     const { gw } = newGateway();
     await gw.reconcileUpsert(input({ messageCount: 4, userMessageCount: 2 }));
-    const after = await gw.reconcileUpsert(input({ messageCount: 9, userMessageCount: 5 }));
+    const after = await gw.reconcileUpsert(
+      input({ messageCount: 9, userMessageCount: 5 }),
+    );
     expect(after.messageCount).toBe(9);
     expect(after.userMessageCount).toBe(5);
   });
@@ -177,7 +221,10 @@ function activity(over: Partial<IChatActivity> = {}): IChatActivity {
 describe('ChatGateway.recordActivity', () => {
   it('creates the row on the first activity with count 1', async () => {
     const { gw } = newGateway();
-    await gw.recordActivity('agent-1', activity({ role: 'user', preview: 'first' }));
+    await gw.recordActivity(
+      'agent-1',
+      activity({ role: 'user', preview: 'first' }),
+    );
     const { items } = await gw.list({ agentId: 'agent-1' });
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -190,10 +237,18 @@ describe('ChatGateway.recordActivity', () => {
 
   it('increments monotonic counts and refreshes freshness on later activities', async () => {
     const { gw } = newGateway();
-    await gw.recordActivity('agent-1', activity({ eventId: 'e1', role: 'user' }));
     await gw.recordActivity(
       'agent-1',
-      activity({ eventId: 'e2', role: 'assistant', preview: 'reply', ts: 3000 }),
+      activity({ eventId: 'e1', role: 'user' }),
+    );
+    await gw.recordActivity(
+      'agent-1',
+      activity({
+        eventId: 'e2',
+        role: 'assistant',
+        preview: 'reply',
+        ts: 3000,
+      }),
     );
     const s = (await gw.list({ agentId: 'agent-1' })).items[0];
     expect(s.messageCount).toBe(2);
@@ -214,9 +269,27 @@ describe('ChatGateway.recordActivity', () => {
 describe('ChatGateway.list', () => {
   it('hides internal channel unless includeInternal, and returns total', async () => {
     const { gw } = newGateway();
-    await gw.reconcileUpsert(input({ sessionKey: 'bridle:a', channel: 'bridle', lastMessageAt: new Date(3000) }));
-    await gw.reconcileUpsert(input({ sessionKey: 'telegram:b', channel: 'telegram', lastMessageAt: new Date(2000) }));
-    await gw.reconcileUpsert(input({ sessionKey: 'internal:heartbeat', channel: 'internal', lastMessageAt: new Date(1000) }));
+    await gw.reconcileUpsert(
+      input({
+        sessionKey: 'bridle:a',
+        channel: 'bridle',
+        lastMessageAt: new Date(3000),
+      }),
+    );
+    await gw.reconcileUpsert(
+      input({
+        sessionKey: 'telegram:b',
+        channel: 'telegram',
+        lastMessageAt: new Date(2000),
+      }),
+    );
+    await gw.reconcileUpsert(
+      input({
+        sessionKey: 'internal:heartbeat',
+        channel: 'internal',
+        lastMessageAt: new Date(1000),
+      }),
+    );
 
     const visible = await gw.list({ agentId: 'agent-1' });
     expect(visible.total).toBe(2);

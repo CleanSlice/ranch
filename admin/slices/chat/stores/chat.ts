@@ -25,7 +25,7 @@ export interface IChatSession {
   userMessageCount: number;
   summary: string | null;
   summaryAt: string | null;
-  insights: unknown | null;
+  insights: unknown; // null when not yet computed
   archived: boolean;
   createdAt: string;
   updatedAt: string;

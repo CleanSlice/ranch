@@ -838,6 +838,96 @@ export type ReportUsageDto = {
   };
 };
 
+export type ChatSessionDto = {
+  id: string;
+  agentId: string;
+  channel: "bridle" | "telegram" | "slack" | "internal";
+  externalUserId: string;
+  sessionKey: string;
+  title?: {
+    [key: string]: unknown;
+  } | null;
+  /**
+   * Last message text, truncated
+   */
+  preview?: {
+    [key: string]: unknown;
+  } | null;
+  lastRole?: "user" | "assistant";
+  /**
+   * Unix ms via ISO
+   */
+  lastMessageAt: string;
+  /**
+   * Monotonic lifetime total
+   */
+  messageCount: number;
+  userMessageCount: number;
+  summary?: {
+    [key: string]: unknown;
+  } | null;
+  summaryAt?: {
+    [key: string]: unknown;
+  } | null;
+  /**
+   * topics/sentiment/resolved/language
+   */
+  insights?: {
+    [key: string]: unknown;
+  } | null;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChatListResponseDto = {
+  items: Array<ChatSessionDto>;
+  total: number;
+  page: number;
+  perPage: number;
+};
+
+export type ChatMessageDto = {
+  id: string;
+  role:
+    | "user"
+    | "assistant"
+    | "summary"
+    | "tool_call"
+    | "tool_result"
+    | "system";
+  text: string;
+  /**
+   * Unix epoch ms
+   */
+  ts: number;
+};
+
+export type ChatMessagesResponseDto = {
+  messages: Array<ChatMessageDto>;
+  /**
+   * Pass to fetch the previous (older) page
+   */
+  nextCursor?: {
+    [key: string]: unknown;
+  } | null;
+  hasMore: boolean;
+};
+
+export type SyncChatsDto = {
+  /**
+   * Reconcile only this agent; omit for all agents
+   */
+  agentId?: string;
+};
+
+export type SyncChatsResponseDto = {
+  scannedAgents: number;
+  scannedFiles: number;
+  upserted: number;
+  skipped: number;
+};
+
 export type RunPaddockJudgeOverrideDto = {
   credentialIds?: Array<string>;
   threshold?: number;
@@ -2844,6 +2934,93 @@ export type UsageControllerFindForCredentialData = {
 export type UsageControllerFindForCredentialResponses = {
   200: unknown;
 };
+
+export type GetChatsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Restrict to one agent
+     */
+    agentId?: string;
+    channel?: "bridle" | "telegram" | "slack" | "internal";
+    /**
+     * Matches title / preview / externalUserId
+     */
+    search?: string;
+    /**
+     * Show archived sessions
+     */
+    archived?: boolean;
+    /**
+     * Include internal (cron/heartbeat) sessions
+     */
+    includeInternal?: boolean;
+    page?: number;
+    perPage?: number;
+  };
+  url: "/chats";
+};
+
+export type GetChatsResponses = {
+  200: ChatListResponseDto;
+};
+
+export type GetChatsResponse = GetChatsResponses[keyof GetChatsResponses];
+
+export type GetChatData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/chats/{id}";
+};
+
+export type GetChatResponses = {
+  200: ChatSessionDto;
+};
+
+export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
+
+export type GetChatMessagesData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    limit?: number;
+    /**
+     * Opaque cursor from a previous page
+     */
+    cursor?: string;
+    /**
+     * Comma-separated event types (debug toggle). Default user,assistant,summary. Admins may add tool_call,tool_result,system.
+     */
+    types?: string;
+  };
+  url: "/chats/{id}/messages";
+};
+
+export type GetChatMessagesResponses = {
+  200: ChatMessagesResponseDto;
+};
+
+export type GetChatMessagesResponse =
+  GetChatMessagesResponses[keyof GetChatMessagesResponses];
+
+export type SyncChatsData = {
+  body: SyncChatsDto;
+  path?: never;
+  query?: never;
+  url: "/chats/sync";
+};
+
+export type SyncChatsResponses = {
+  200: SyncChatsResponseDto;
+};
+
+export type SyncChatsResponse = SyncChatsResponses[keyof SyncChatsResponses];
 
 export type RancherControllerStatusData = {
   body?: never;

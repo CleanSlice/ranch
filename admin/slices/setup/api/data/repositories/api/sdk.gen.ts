@@ -157,6 +157,14 @@ import type {
   UsageControllerReportData,
   UsageControllerReportResponse,
   UsageControllerFindForCredentialData,
+  GetChatsData,
+  GetChatsResponse,
+  GetChatData,
+  GetChatResponse,
+  GetChatMessagesData,
+  GetChatMessagesResponse,
+  SyncChatsData,
+  SyncChatsResponse,
   RancherControllerStatusData,
   RancherControllerEnsureTemplateData,
   UpgradeControllerStatusData,
@@ -2401,6 +2409,76 @@ export class UsageService {
     >({
       url: "/llms/{id}/usage",
       ...options,
+    });
+  }
+}
+
+export class ChatsService {
+  /**
+   * List chat sessions (index). Filter by agent, channel, search; paginated.
+   */
+  public static getChats<ThrowOnError extends boolean = false>(
+    options?: Options<GetChatsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetChatsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats",
+      ...options,
+    });
+  }
+
+  /**
+   * Get one chat session (index metadata).
+   */
+  public static getChat<ThrowOnError extends boolean = false>(
+    options: Options<GetChatData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetChatResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Replay a chat session's transcript from S3, tail-first. `summary` markers are shown inline (compaction folds old turns into them); synthetic loop-control events are filtered. Admins may add tool_call,tool_result via `types`.
+   */
+  public static getChatMessages<ThrowOnError extends boolean = false>(
+    options: Options<GetChatMessagesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetChatMessagesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/messages",
+      ...options,
+    });
+  }
+
+  /**
+   * Reconcile the chat index against S3 session files (all agents, or one).
+   */
+  public static syncChats<ThrowOnError extends boolean = false>(
+    options: Options<SyncChatsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      SyncChatsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/sync",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
     });
   }
 }

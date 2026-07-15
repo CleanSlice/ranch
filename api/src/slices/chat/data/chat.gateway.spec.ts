@@ -1,6 +1,6 @@
 import { ChatGateway } from './chat.gateway';
 import { ChatMapper } from './chat.mapper';
-import { IChatReconcileInput } from '../domain';
+import { IChatActivity, IChatReconcileInput } from '../domain';
 
 // In-memory Prisma stub — mirrors ranch's browser.gateway.spec pattern.
 function makePrismaStub() {
@@ -31,6 +31,14 @@ function makePrismaStub() {
       return null;
     }),
     create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      // Enforce @@unique([agentId, sessionKey]) so recordActivity's create-race
+      // fallback is exercised.
+      const clash = Object.values(rows).find(
+        (r) => r.agentId === data.agentId && r.sessionKey === data.sessionKey,
+      );
+      if (clash) {
+        throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+      }
       rows[data.id as string] = {
         summary: null,
         summaryAt: null,
@@ -47,6 +55,25 @@ function makePrismaStub() {
       rows[where.id] = { ...rows[where.id], ...data };
       return rows[where.id];
     }),
+    updateMany: jest.fn(
+      async ({ where, data }: { where: Record<string, any>; data: Record<string, any> }) => {
+        let count = 0;
+        for (const r of Object.values(rows)) {
+          if (where.agentId && r.agentId !== where.agentId) continue;
+          if (where.sessionKey && r.sessionKey !== where.sessionKey) continue;
+          if (where.NOT?.lastIndexedEventId !== undefined && r.lastIndexedEventId === where.NOT.lastIndexedEventId) continue;
+          for (const [k, v] of Object.entries(data)) {
+            if (v && typeof v === 'object' && 'increment' in v) {
+              r[k] = ((r[k] as number) ?? 0) + (v.increment as number);
+            } else {
+              r[k] = v;
+            }
+          }
+          count++;
+        }
+        return { count };
+      },
+    ),
     findMany: jest.fn(
       async ({ where, skip = 0, take = 1000 }: { where?: Record<string, unknown>; skip?: number; take?: number }) => {
         const list = Object.values(rows)
@@ -131,6 +158,56 @@ describe('ChatGateway.reconcileUpsert', () => {
     const after = await gw.reconcileUpsert(input({ messageCount: 9, userMessageCount: 5 }));
     expect(after.messageCount).toBe(9);
     expect(after.userMessageCount).toBe(5);
+  });
+});
+
+function activity(over: Partial<IChatActivity> = {}): IChatActivity {
+  return {
+    sessionKey: 'bridle:admin',
+    channel: 'bridle',
+    externalUserId: 'admin',
+    eventId: 'ev-1',
+    role: 'user',
+    ts: 2000,
+    preview: 'hi',
+    ...over,
+  };
+}
+
+describe('ChatGateway.recordActivity', () => {
+  it('creates the row on the first activity with count 1', async () => {
+    const { gw } = newGateway();
+    await gw.recordActivity('agent-1', activity({ role: 'user', preview: 'first' }));
+    const { items } = await gw.list({ agentId: 'agent-1' });
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      messageCount: 1,
+      userMessageCount: 1,
+      preview: 'first',
+      lastRole: 'user',
+    });
+  });
+
+  it('increments monotonic counts and refreshes freshness on later activities', async () => {
+    const { gw } = newGateway();
+    await gw.recordActivity('agent-1', activity({ eventId: 'e1', role: 'user' }));
+    await gw.recordActivity(
+      'agent-1',
+      activity({ eventId: 'e2', role: 'assistant', preview: 'reply', ts: 3000 }),
+    );
+    const s = (await gw.list({ agentId: 'agent-1' })).items[0];
+    expect(s.messageCount).toBe(2);
+    expect(s.userMessageCount).toBe(1); // only the user event counted
+    expect(s.preview).toBe('reply');
+    expect(s.lastRole).toBe('assistant');
+  });
+
+  it('is idempotent for a repeated eventId (socket retry)', async () => {
+    const { gw } = newGateway();
+    await gw.recordActivity('agent-1', activity({ eventId: 'dup' }));
+    await gw.recordActivity('agent-1', activity({ eventId: 'dup' }));
+    const s = (await gw.list({ agentId: 'agent-1' })).items[0];
+    expect(s.messageCount).toBe(1);
   });
 });
 

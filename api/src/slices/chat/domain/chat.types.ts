@@ -72,3 +72,18 @@ export interface IChatSyncResult {
   upserted: number;
   skipped: number; // unchanged since last reconcile
 }
+
+/**
+ * A live per-message signal emitted by the agent runtime over the hub socket
+ * (Phase 3). `agentId` is NOT here — it's taken from the authenticated socket,
+ * never trusted from the payload.
+ */
+export interface IChatActivity {
+  sessionKey: string;
+  channel: string;
+  externalUserId: string;
+  eventId: string; // Event.id — monotonic-count dedup watermark
+  role: 'user' | 'assistant';
+  ts: number; // unix ms
+  preview: string;
+}

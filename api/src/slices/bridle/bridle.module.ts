@@ -8,6 +8,7 @@ import { BridleGateway } from './data';
 import { BridleApiKeyGuard } from './guards/bridleApiKey.guard';
 import { FileModule } from '#/agent/file/file.module';
 import { AgentModule } from '#/agent/agent/agent.module';
+import { ChatModule } from '#/chat/chat.module';
 
 /**
  * Bridle Module — authenticated hub between browsers and agents.
@@ -46,6 +47,7 @@ import { AgentModule } from '#/agent/agent/agent.module';
     ConfigModule,
     forwardRef(() => FileModule),
     forwardRef(() => AgentModule),
+    forwardRef(() => ChatModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({

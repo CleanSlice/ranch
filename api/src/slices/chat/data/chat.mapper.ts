@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ChatSession } from '@prisma/client';
-import { IChatReconcileInput, IChatSessionData } from '../domain';
+import { IChatActivity, IChatReconcileInput, IChatSessionData } from '../domain';
 
 @Injectable()
 export class ChatMapper {
@@ -43,6 +43,25 @@ export class ChatMapper {
       userMessageCount: input.userMessageCount,
       lastIndexedSize: input.size,
       archived: input.archived,
+    };
+  }
+
+  // First-ever activity for a session → create the row with count 1.
+  toActivityCreate(agentId: string, a: IChatActivity) {
+    return {
+      id: `chat-${crypto.randomUUID()}`,
+      agentId,
+      channel: a.channel,
+      externalUserId: a.externalUserId,
+      sessionKey: a.sessionKey,
+      preview: a.preview,
+      lastRole: a.role,
+      lastMessageAt: new Date(a.ts),
+      messageCount: 1,
+      userMessageCount: a.role === 'user' ? 1 : 0,
+      lastIndexedEventId: a.eventId,
+      lastIndexedSize: 0, // realtime doesn't know the S3 size; reconcile sets it
+      archived: false,
     };
   }
 

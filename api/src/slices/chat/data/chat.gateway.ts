@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import {
   IChatGateway,
+  IChatActivity,
   IChatFilter,
   IChatListResult,
   IChatReconcileInput,
@@ -57,6 +58,44 @@ export class ChatGateway extends IChatGateway {
       : await this.prisma.chatSession.create({ data: this.mapper.toCreate(input) });
 
     return this.mapper.toEntity(record);
+  }
+
+  async recordActivity(agentId: string, a: IChatActivity): Promise<void> {
+    // Atomic increment in the DB — no read-modify-write, so concurrent events
+    // for the same session can't lose an increment. The NOT-filter dedups a
+    // redelivered event (eventId watermark).
+    if (await this.incrementActivity(agentId, a)) return;
+
+    // No row matched: either a brand-new session, or a duplicate event on an
+    // existing one. Try to create; a unique violation means the row now exists
+    // (created by a concurrent event, or it's the dup) — re-run the increment,
+    // which applies for a real event and no-ops for a dup.
+    try {
+      await this.prisma.chatSession.create({
+        data: this.mapper.toActivityCreate(agentId, a),
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') {
+        await this.incrementActivity(agentId, a);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  private async incrementActivity(agentId: string, a: IChatActivity): Promise<boolean> {
+    const res = await this.prisma.chatSession.updateMany({
+      where: { agentId, sessionKey: a.sessionKey, NOT: { lastIndexedEventId: a.eventId } },
+      data: {
+        messageCount: { increment: 1 },
+        ...(a.role === 'user' ? { userMessageCount: { increment: 1 } } : {}),
+        lastMessageAt: new Date(a.ts),
+        preview: a.preview,
+        lastRole: a.role,
+        lastIndexedEventId: a.eventId,
+      },
+    });
+    return res.count > 0;
   }
 
   private buildWhere(filter: IChatFilter): Prisma.ChatSessionWhereInput {

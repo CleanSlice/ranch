@@ -23,7 +23,12 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       ranchVersion: rootRanchVersion(),
-      apiUrl: '',
+      // Prod (k8s) sets NUXT_PUBLIC_API_URL, which Nuxt's runtimeConfig env
+      // override picks up automatically. Local `ranch dev` only sets plain
+      // API_URL (see app/.env) — without this fallback, apiUrl stays ''
+      // and the axios client resolves requests against its own origin
+      // instead of the api.
+      apiUrl: process.env.API_URL || '',
     },
   },
   app: {

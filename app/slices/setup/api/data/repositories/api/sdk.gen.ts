@@ -59,6 +59,8 @@ import type {
   AddKnowledgeSourceData,
   AddKnowledgeSourcesFromSitemapData,
   AddKnowledgeSourcesFromSitemapResponse,
+  AddKnowledgeSourcesFromArchiveData,
+  AddKnowledgeSourcesFromArchiveResponse,
   DeleteKnowledgeSourceData,
   DeleteKnowledgeSourceResponse,
   AgentControllerFindAllData,
@@ -84,6 +86,8 @@ import type {
   AgentControllerStartData,
   RestartByTemplateData,
   FileControllerListData,
+  FileControllerDeleteData,
+  FileControllerDeleteResponse,
   FileControllerReadData,
   FileControllerReadResponse,
   FileControllerSaveData,
@@ -863,7 +867,7 @@ export class AuthService {
   }
 
   /**
-   * Mint a short-lived browser embed JWT for the bridle widget. Auth: API key with embed:mint scope. Owner/Admin roles are stripped from the result regardless of input.
+   * Mint a short-lived browser embed JWT for the bridle widget. Auth: API key with embed:mint scope. Owner/Admin roles are stripped from the result unless the key also carries embed:mint-admin — then they are kept and the TTL is capped at 7d.
    */
   public static authControllerEmbedToken<ThrowOnError extends boolean = false>(
     options: Options<AuthControllerEmbedTokenData, ThrowOnError>,
@@ -1167,6 +1171,23 @@ export class KnowledgeSourcesService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Bulk-import sources from a zip archive
+   * Accepts a .zip, extracts every ingestable file (pdf, docx, xlsx, txt, html, ...), and creates one file-type source per entry. Upload runs in the background and streams each entry to S3; the response returns immediately with the detected file count. Indexing into LightRAG happens through the normal reindex flow.
+   */
+  public static addKnowledgeSourcesFromArchive<
+    ThrowOnError extends boolean = false,
+  >(options: Options<AddKnowledgeSourcesFromArchiveData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      AddKnowledgeSourcesFromArchiveResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/from-archive",
+      ...options,
     });
   }
 
@@ -1534,6 +1555,22 @@ export class FilesService {
       ThrowOnError
     >({
       url: "/agents/{agentId}/files",
+      ...options,
+    });
+  }
+
+  /**
+   * Delete a file, or a whole folder (e.g. a skill dir) when `recursive=true`. Template-managed skills are recreated on the next restart unless detached from the template first.
+   */
+  public static fileControllerDelete<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerDeleteData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      FileControllerDeleteResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/content",
       ...options,
     });
   }

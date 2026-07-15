@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "openapi-ts",
+    "predev": "node ../scripts/wait-for-swagger.mjs && openapi-ts",
     "dev": "nuxt dev --port 3000",
     "prebuild": "openapi-ts",
     "build": "nuxt build",

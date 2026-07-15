@@ -1,0 +1,55 @@
+import { Agent } from "../agent/agent/agent"
+
+// Chat history index. The message CONTENT stays in the agent runtime's
+// append-only JSONL (S3, `agents/{agentId}/data/sessions/{channel}:{userId}.jsonl`);
+// this table is only a queryable INDEX — one row per session — so the admin can
+// list/filter chats without fanning out to agent pods, and history survives a
+// pod being down. Populated by S3 reconciliation (ChatSyncService) and, later,
+// realtime `session_activity` events over the agent↔hub socket.
+model ChatSession {
+  id               String    @id @default(uuid())
+  agentId          String
+  agent            Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  channel          String                            // bridle | telegram | slack | internal
+  externalUserId   String                            // bridle clientId | tg chat_id | slack user id
+  sessionKey       String                            // "{channel}:{externalUserId}" = JSONL file basename
+  title            String?                           // tg chat title / slack username / null
+  preview          String?                           // last message text, truncated ~200 chars
+  lastRole         String?                           // user | assistant
+  lastMessageAt    DateTime
+
+  // Counts are MONOTONIC lifetime totals owned by the realtime path — compaction
+  // shrinks the JSONL, so re-counting the file would regress them. Reconcile only
+  // seeds/raises them (floor), never lowers. See lastIndexedEventId watermark.
+  messageCount     Int       @default(0)
+  userMessageCount Int       @default(0)
+  lastIndexedEventId String?                         // last Event.id folded into the counts (dedup)
+  lastIndexedSize  Int       @default(0)             // S3 object byte size at last reconcile (change detect)
+
+  summary          String?   @db.Text                // LLM gist (Phase 4)
+  summaryAt        DateTime?
+  insights         Json?                             // { topics[], sentiment, resolved, language }
+  archived         Boolean   @default(false)         // *.archived.jsonl sessions get their own row
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  feedback         ChatFeedback[]
+
+  @@unique([agentId, sessionKey])
+  @@index([agentId, lastMessageAt])
+  @@index([channel, lastMessageAt])
+}
+
+model ChatFeedback {
+  id        String      @id @default(uuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  messageId String                                    // Event.id of the rated assistant message
+  rating    Int                                       // 1 | -1
+  comment   String?
+  source    String                                    // admin | app | telegram
+  authorId  String?                                   // clientId / tg user / admin user id
+  createdAt DateTime    @default(now())
+
+  @@unique([sessionId, messageId, authorId])
+}

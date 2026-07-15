@@ -3,6 +3,7 @@ import { Usage } from "../../usage/usage"
 import { LlmCredential } from "../../llm/llm"
 import { PaddockScenario } from "../../paddock/scenario/scenario"
 import { PaddockEvaluation } from "../../paddock/evaluation/evaluation"
+import { ChatSession } from "../../chat/chat"
 
 model Agent {
   id              String         @id @default(uuid())
@@ -26,4 +27,5 @@ model Agent {
   usages             Usage[]
   paddockScenarios   PaddockScenario[]
   paddockEvaluations PaddockEvaluation[]
+  chatSessions       ChatSession[]
 }

@@ -32,8 +32,22 @@ const OWNED: IChatSessionData = {
 
 function makeChats(findById: jest.Mock) {
   const list = jest.fn(async () => ({ items: [OWNED], total: 1 }));
-  const chats = { findById, list } as unknown as IChatGateway;
-  return { chats, findById, list };
+  const upsertFeedback = jest.fn(async (i: Record<string, unknown>) => ({
+    id: 'f1',
+    createdAt: new Date(0),
+    comment: null,
+    ...i,
+  }));
+  const deleteFeedback = jest.fn(async () => {});
+  const listFeedbackByAuthor = jest.fn(async () => []);
+  const chats = {
+    findById,
+    list,
+    upsertFeedback,
+    deleteFeedback,
+    listFeedbackByAuthor,
+  } as unknown as IChatGateway;
+  return { chats, findById, list, upsertFeedback, deleteFeedback };
 }
 
 function readerStub(read?: jest.Mock) {
@@ -66,10 +80,10 @@ const req = (sub?: string, roles: UserRoleTypes[] = []) =>
   }) as Request & { user?: IAuthTokenPayload };
 
 function makeController(findById: jest.Mock, read?: jest.Mock) {
-  const { chats, list } = makeChats(findById);
+  const { chats, list, upsertFeedback, deleteFeedback } = makeChats(findById);
   const { sync, syncForExternalUser } = syncStub();
   const ctrl = new MyChatController(chats, readerStub(read), sync);
-  return { ctrl, list, syncForExternalUser };
+  return { ctrl, list, syncForExternalUser, upsertFeedback, deleteFeedback };
 }
 
 describe('MyChatController.list', () => {
@@ -179,6 +193,44 @@ describe('MyChatController.messages', () => {
     );
     const res = await ctrl.messages('c1', {}, req(SUB));
     expect(res).toEqual({ messages: [], nextCursor: null, hasMore: false });
+  });
+});
+
+describe('MyChatController feedback', () => {
+  it("records feedback with source='app' and the caller's real sub as author", async () => {
+    // Owner: ownership resolves to 'admin', but the feedback author must stay
+    // the real user id (sub), not the shared channel.
+    const adminChat = { ...OWNED, externalUserId: 'admin' };
+    const { ctrl, upsertFeedback } = makeController(
+      jest.fn(async () => adminChat),
+    );
+    await ctrl.createFeedback(
+      'c1',
+      { messageId: 'm2', rating: 1 },
+      req(SUB, [UserRoleTypes.Owner]),
+    );
+    expect(upsertFeedback).toHaveBeenCalledWith({
+      sessionId: 'c1',
+      messageId: 'm2',
+      rating: 1,
+      comment: undefined,
+      source: 'app',
+      authorId: SUB,
+    });
+  });
+
+  it("won't record feedback on someone else's chat", async () => {
+    const { ctrl, upsertFeedback } = makeController(jest.fn(async () => OWNED));
+    await expect(
+      ctrl.createFeedback('c1', { messageId: 'm2', rating: 1 }, req('other')),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(upsertFeedback).not.toHaveBeenCalled();
+  });
+
+  it('clears feedback keyed by the real sub', async () => {
+    const { ctrl, deleteFeedback } = makeController(jest.fn(async () => OWNED));
+    await ctrl.deleteFeedback('c1', 'm2', req(SUB));
+    expect(deleteFeedback).toHaveBeenCalledWith('c1', 'm2', SUB);
   });
 });
 

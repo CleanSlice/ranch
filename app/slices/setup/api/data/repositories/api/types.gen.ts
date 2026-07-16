@@ -2754,6 +2754,73 @@ export type SyncMyChatsResponses = {
 export type SyncMyChatsResponse =
   SyncMyChatsResponses[keyof SyncMyChatsResponses];
 
+export type ListMyChatFeedbackData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/me/chats/{id}/feedback";
+};
+
+export type ListMyChatFeedbackResponses = {
+  200: Array<ChatFeedbackDto>;
+};
+
+export type ListMyChatFeedbackResponse =
+  ListMyChatFeedbackResponses[keyof ListMyChatFeedbackResponses];
+
+export type CreateMyChatFeedbackData = {
+  body: CreateChatFeedbackDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/me/chats/{id}/feedback";
+};
+
+export type CreateMyChatFeedbackResponses = {
+  200: ChatFeedbackDto;
+};
+
+export type CreateMyChatFeedbackResponse =
+  CreateMyChatFeedbackResponses[keyof CreateMyChatFeedbackResponses];
+
+export type DeleteMyChatFeedbackData = {
+  body?: never;
+  path: {
+    id: string;
+    messageId: string;
+  };
+  query?: never;
+  url: "/me/chats/{id}/feedback/{messageId}";
+};
+
+export type DeleteMyChatFeedbackResponses = {
+  204: void;
+};
+
+export type DeleteMyChatFeedbackResponse =
+  DeleteMyChatFeedbackResponses[keyof DeleteMyChatFeedbackResponses];
+
+export type ExportMyChatData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    /**
+     * Download format. json = raw messages, markdown/csv = transcript.
+     */
+    format?: "json" | "markdown" | "csv";
+  };
+  url: "/me/chats/{id}/export";
+};
+
+export type ExportMyChatResponses = {
+  200: unknown;
+};
+
 export type GetAgentChannelsData = {
   body?: never;
   path: {

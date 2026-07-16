@@ -5,7 +5,9 @@ import type { IChatMessage } from '#chat/stores/chat';
 // Read-only transcript message. Renders one persisted event by role: user /
 // assistant bubbles, plus a collapsible marker for `summary` events (where
 // compaction folded older turns into a gist). Tool events never reach the app.
-const props = defineProps<{ message: IChatMessage }>();
+// `rating` is the current user's 👍/👎 on this assistant message (1 | -1 | null).
+const props = defineProps<{ message: IChatMessage; rating?: number | null }>();
+const emit = defineEmits<{ rate: [rating: 1 | -1] }>();
 
 const isUser = computed(() => props.message.role === 'user');
 
@@ -75,7 +77,30 @@ const summaryText = computed(() =>
       "
     >
       <template v-if="isUser">{{ message.text }}</template>
-      <div v-else v-html="html" />
+      <template v-else>
+        <div v-html="html" />
+        <!-- Was this reply helpful? -->
+        <div class="mt-1.5 flex items-center gap-0.5">
+          <button
+            type="button"
+            aria-label="Helpful"
+            class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+            :class="rating === 1 && 'text-emerald-600'"
+            @click="emit('rate', 1)"
+          >
+            <Icon name="thumbs-up" :size="14" />
+          </button>
+          <button
+            type="button"
+            aria-label="Not helpful"
+            class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+            :class="rating === -1 && 'text-rose-600'"
+            @click="emit('rate', -1)"
+          >
+            <Icon name="thumbs-down" :size="14" />
+          </button>
+        </div>
+      </template>
     </div>
   </div>
 </template>

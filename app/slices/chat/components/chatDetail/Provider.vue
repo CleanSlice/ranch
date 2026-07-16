@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IChatMessage } from '#chat/stores/chat';
+import type { ChatExportFormat, IChatMessage } from '#chat/stores/chat';
 
 const props = defineProps<{ id: string }>();
 const chatStore = useChatStore();
@@ -52,14 +52,53 @@ async function loadOlder() {
   }
 }
 
+// Current user's 👍/👎 per messageId.
+const feedbackByMsg = ref<Record<string, number>>({});
+async function loadFeedback() {
+  const fb = await chatStore.feedback(props.id);
+  const map: Record<string, number> = {};
+  for (const f of fb) map[f.messageId] = f.rating;
+  feedbackByMsg.value = map;
+}
+async function onRate(messageId: string, rating: 1 | -1) {
+  const current = feedbackByMsg.value[messageId];
+  if (current === rating) {
+    await chatStore.unrate(props.id, messageId); // toggle off
+    delete feedbackByMsg.value[messageId];
+  } else {
+    await chatStore.rate(props.id, messageId, rating);
+    feedbackByMsg.value[messageId] = rating;
+  }
+}
+
+function onExport(format: ChatExportFormat) {
+  void chatStore.exportChat(props.id, format);
+}
+
 onMounted(() => {
-  if (session.value) void loadLatest();
+  if (session.value) {
+    void loadLatest();
+    void loadFeedback();
+  }
 });
 
 const heading = computed(() => session.value?.title?.trim() || 'Conversation');
 function fmt(iso?: string | null): string {
   return iso ? new Date(iso).toLocaleString() : '—';
 }
+
+const sentimentClass = computed(() => {
+  switch (session.value?.insights?.sentiment) {
+    case 'positive':
+      return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400';
+    case 'negative':
+      return 'bg-rose-500/15 text-rose-700 dark:text-rose-400';
+    case 'mixed':
+      return 'bg-amber-500/15 text-amber-700 dark:text-amber-400';
+    default:
+      return 'bg-muted text-muted-foreground';
+  }
+});
 </script>
 
 <template>
@@ -92,11 +131,61 @@ function fmt(iso?: string | null): string {
           <span>{{ session.messageCount }} messages</span>
           <span>Last activity {{ fmt(session.lastMessageAt) }}</span>
         </div>
-        <!-- LLM gist -->
-        <div v-if="session.summary" class="mt-3 rounded bg-muted/40 p-3">
-          <span class="text-xs font-medium text-muted-foreground">Summary</span>
-          <p class="mt-1 text-sm text-muted-foreground">{{ session.summary }}</p>
+
+        <!-- LLM gist: summary + insights -->
+        <div
+          v-if="session.summary || session.insights"
+          class="mt-3 rounded bg-muted/40 p-3"
+        >
+          <span class="text-xs font-medium text-muted-foreground">
+            Summary &amp; insights
+          </span>
+          <p v-if="session.summary" class="mt-1 text-sm text-muted-foreground">
+            {{ session.summary }}
+          </p>
+          <div
+            v-if="session.insights"
+            class="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]"
+          >
+            <span
+              v-for="topic in session.insights.topics"
+              :key="topic"
+              class="rounded border px-2 py-0.5 text-muted-foreground"
+            >
+              {{ topic }}
+            </span>
+            <span
+              class="rounded px-2 py-0.5 capitalize"
+              :class="sentimentClass"
+            >
+              {{ session.insights.sentiment }}
+            </span>
+            <span
+              class="rounded border px-2 py-0.5 capitalize text-muted-foreground"
+            >
+              {{ session.insights.resolved ? 'resolved' : 'unresolved' }}
+            </span>
+            <span
+              class="rounded border px-2 py-0.5 capitalize text-muted-foreground"
+            >
+              {{ session.insights.language }}
+            </span>
+          </div>
         </div>
+      </div>
+
+      <!-- Export controls -->
+      <div class="flex items-center justify-end gap-1.5">
+        <span class="text-xs text-muted-foreground">Export</span>
+        <button
+          v-for="f in (['json', 'markdown', 'csv'] as ChatExportFormat[])"
+          :key="f"
+          type="button"
+          class="rounded-md border px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:text-foreground"
+          @click="onExport(f)"
+        >
+          {{ f === 'markdown' ? 'MD' : f.toUpperCase() }}
+        </button>
       </div>
 
       <!-- Transcript -->
@@ -126,6 +215,8 @@ function fmt(iso?: string | null): string {
           v-for="m in messages"
           :key="m.id"
           :message="m"
+          :rating="feedbackByMsg[m.id] ?? null"
+          @rate="(r: 1 | -1) => onRate(m.id, r)"
         />
       </div>
     </template>

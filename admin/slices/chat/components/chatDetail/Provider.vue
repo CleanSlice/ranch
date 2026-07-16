@@ -27,9 +27,9 @@ async function onSummarize() {
   }
 }
 
-const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
+const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   positive: 'default',
-  neutral: 'secondary',
+  neutral: 'destructive',
   negative: 'outline',
   mixed: 'secondary',
 };
@@ -146,7 +146,24 @@ function fmt(iso?: string | null): string {
       <!-- LLM summary + insights (Phase 4) -->
       <div class="mt-3 rounded bg-muted/40 p-3">
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs font-medium text-muted-foreground">Summary &amp; insights</span>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-xs font-medium text-muted-foreground">Summary &amp; insights</span>
+            <!-- sentiment / resolved / language sit by the header, apart from topics -->
+            <template v-if="session.insights">
+              <Badge
+                :variant="sentimentVariant[session.insights.sentiment] ?? 'secondary'"
+                class="capitalize"
+              >
+                {{ session.insights.sentiment }}
+              </Badge>
+              <Badge variant="outline" class="capitalize">
+                {{ session.insights.resolved ? 'resolved' : 'unresolved' }}
+              </Badge>
+              <Badge variant="outline" class="capitalize">
+                {{ session.insights.language }}
+              </Badge>
+            </template>
+          </div>
           <Button size="sm" variant="outline" :disabled="summarizing" @click="onSummarize">
             {{ summarizing ? 'Summarizing…' : session.summary ? 'Re-summarize' : 'Summarize' }}
           </Button>
@@ -160,21 +177,19 @@ function fmt(iso?: string | null): string {
         <p v-else class="mt-2 text-sm text-muted-foreground">
           No summary yet — click Summarize to generate one.
         </p>
-        <div v-if="session.insights" class="mt-2 flex flex-wrap items-center gap-1.5">
+        <!-- Topic tags only -->
+        <div
+          v-if="session.insights?.topics?.length"
+          class="mt-2 flex flex-wrap items-center gap-1.5"
+        >
           <Badge
             v-for="topic in session.insights.topics"
             :key="topic"
             variant="outline"
+            class="capitalize"
           >
             {{ topic }}
           </Badge>
-          <Badge :variant="sentimentVariant[session.insights.sentiment] ?? 'secondary'" class="capitalize">
-            {{ session.insights.sentiment }}
-          </Badge>
-          <Badge variant="outline">
-            {{ session.insights.resolved ? 'resolved' : 'unresolved' }}
-          </Badge>
-          <Badge variant="outline" class="uppercase">{{ session.insights.language }}</Badge>
         </div>
       </div>
     </div>

@@ -68,10 +68,18 @@
     </header>
 
     <main class="flex-1 min-h-0 flex flex-col">
-      <div v-if="!isFlush" class="container mx-auto px-4 py-6 w-full">
-        <slot />
-      </div>
-      <div v-else class="flex-1 min-h-0 flex flex-col">
+      <!-- Single slot with a toggled wrapper class. Splitting this into
+           v-if/v-else branches (each with its own <slot/>) tears down and
+           recreates the page subtree whenever `isFlush` flips — i.e. on every
+           navigation into/out of /agents/:id — which remounts the page and
+           re-fires all its useAsyncData requests. One element = no remount. -->
+      <div
+        :class="
+          isFlush
+            ? 'flex-1 min-h-0 flex flex-col'
+            : 'container mx-auto px-4 py-6 w-full'
+        "
+      >
         <slot />
       </div>
     </main>

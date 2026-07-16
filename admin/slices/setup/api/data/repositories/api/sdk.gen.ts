@@ -131,6 +131,7 @@ import type {
   CreateChatFeedbackResponse,
   DeleteChatFeedbackData,
   DeleteChatFeedbackResponse,
+  ExportChatData,
   GetAgentChannelsData,
   GetAgentChannelsResponse,
   SetAgentChannelsData,
@@ -2109,6 +2110,22 @@ export class ChatsService {
       ThrowOnError
     >({
       url: "/chats/{id}/feedback/{messageId}",
+      ...options,
+    });
+  }
+
+  /**
+   * Download a chat transcript as json / markdown / csv.
+   */
+  public static exportChat<ThrowOnError extends boolean = false>(
+    options: Options<ExportChatData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/export",
       ...options,
     });
   }

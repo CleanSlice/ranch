@@ -2661,6 +2661,24 @@ export type DeleteChatFeedbackResponses = {
 export type DeleteChatFeedbackResponse =
   DeleteChatFeedbackResponses[keyof DeleteChatFeedbackResponses];
 
+export type ExportChatData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    /**
+     * Download format. json = raw messages, markdown/csv = transcript.
+     */
+    format?: "json" | "markdown" | "csv";
+  };
+  url: "/chats/{id}/export";
+};
+
+export type ExportChatResponses = {
+  200: unknown;
+};
+
 export type GetAgentChannelsData = {
   body?: never;
   path: {

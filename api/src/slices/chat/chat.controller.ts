@@ -7,6 +7,7 @@ import {
   Query,
   Body,
   Req,
+  Res,
   HttpCode,
   ForbiddenException,
   NotFoundException,
@@ -19,7 +20,7 @@ import {
   ApiOperation,
   ApiOkResponse,
 } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
@@ -27,7 +28,12 @@ import {
   TranscriptReaderService,
   TranscriptMessage,
 } from '#/agent/file/domain';
-import { IChatGateway, ChatSyncService, ChatInsightService } from './domain';
+import {
+  IChatGateway,
+  ChatSyncService,
+  ChatInsightService,
+  formatChatExport,
+} from './domain';
 import {
   FilterChatsDto,
   ChatListResponseDto,
@@ -38,6 +44,7 @@ import {
   SyncChatsResponseDto,
   CreateChatFeedbackDto,
   ChatFeedbackDto,
+  ExportChatQueryDto,
 } from './dtos';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
@@ -221,5 +228,50 @@ export class ChatController {
   ): Promise<ChatFeedbackDto[]> {
     const authorId = req.user?.sub ?? '';
     return this.chats.listFeedbackByAuthor(id, authorId);
+  }
+
+  @ApiOperation({
+    description: 'Download a chat transcript as json / markdown / csv.',
+    operationId: 'exportChat',
+  })
+  // @Res() bypasses the global {success,data} interceptor so we return the raw
+  // file with download headers (same pattern as file export).
+  @Get(':id/export')
+  async export(
+    @Param('id') id: string,
+    @Query() q: ExportChatQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const session = await this.chats.findById(id);
+    if (!session) throw new NotFoundException(`Chat ${id} not found`);
+
+    const format = q.format ?? 'json';
+    const types: TranscriptMessage['role'][] =
+      format === 'json' ? ALLOWED_TYPES : ['user', 'assistant', 'summary'];
+    const path = `data/sessions/${session.sessionKey}.jsonl`;
+    let messages: TranscriptMessage[] = [];
+    try {
+      messages = await this.reader.read(session.agentId, path, {
+        types,
+        filterTransient: true,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `export read failed for ${session.agentId}/${session.sessionKey}: ${(err as Error).message}`,
+      );
+    }
+
+    const { body, contentType, ext } = formatChatExport(
+      format,
+      session,
+      messages,
+    );
+    const safeKey = session.sessionKey.replace(/[^\w.-]/g, '_');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="chat-${safeKey}.${ext}"`,
+    );
+    res.end(body);
   }
 }

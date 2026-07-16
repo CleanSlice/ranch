@@ -30,6 +30,10 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
   mixed: 'secondary',
 };
 
+function onExport(format: 'json' | 'markdown' | 'csv') {
+  void store.exportChat(props.id, format);
+}
+
 const PAGE = 50;
 const messages = ref<IChatMessage[]>([]);
 const cursor = ref<string | null>(null);
@@ -173,9 +177,15 @@ function fmt(iso?: string | null): string {
       <label class="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Checkbox v-model="showTools" /> Show tool events
       </label>
-      <Button size="sm" variant="ghost" :disabled="loading" @click="loadLatest">
-        Refresh
-      </Button>
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs text-muted-foreground">Export</span>
+        <Button size="sm" variant="outline" @click="onExport('json')">JSON</Button>
+        <Button size="sm" variant="outline" @click="onExport('markdown')">MD</Button>
+        <Button size="sm" variant="outline" @click="onExport('csv')">CSV</Button>
+        <Button size="sm" variant="ghost" :disabled="loading" @click="loadLatest">
+          Refresh
+        </Button>
+      </div>
     </div>
 
     <!-- Transcript -->

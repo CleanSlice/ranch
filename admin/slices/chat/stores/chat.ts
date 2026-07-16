@@ -1,4 +1,7 @@
 import { ChatsService } from '#api/data';
+import { client as apiClient } from '#api/data/repositories/api/client.gen';
+
+export type ChatExportFormat = 'json' | 'markdown' | 'csv';
 
 // The API wraps every response in { success, data }; unwrap to the payload.
 type ApiEnvelope<T> = { success: boolean; data: T };
@@ -156,5 +159,34 @@ export const useChatStore = defineStore('chat', () => {
     await ChatsService.deleteChatFeedback({ path: { id, messageId } });
   }
 
-  return { list, getById, messages, sync, summarize, feedback, rate, unrate };
+  // Export is a file download — use the raw axios client (adds the Bearer header
+  // via the interceptor) with a blob response, then trigger a browser download.
+  async function exportChat(id: string, format: ChatExportFormat): Promise<void> {
+    const res = await apiClient.instance.get(`/chats/${id}/export`, {
+      params: { format },
+      responseType: 'blob',
+    });
+    const dispo = (res.headers['content-disposition'] as string) ?? '';
+    const filename =
+      dispo.match(/filename="?([^"]+)"?/)?.[1] ??
+      `chat-${id}.${format === 'markdown' ? 'md' : format}`;
+    const url = URL.createObjectURL(res.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return {
+    list,
+    getById,
+    messages,
+    sync,
+    summarize,
+    feedback,
+    rate,
+    unrate,
+    exportChat,
+  };
 });

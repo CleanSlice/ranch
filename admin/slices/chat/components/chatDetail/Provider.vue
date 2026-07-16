@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import { Checkbox } from '#theme/components/ui/checkbox';
 import { IconArrowLeft } from '@tabler/icons-vue';
 import type { IChatMessage } from '#chat/stores/chat';
 
@@ -28,9 +25,9 @@ async function onSummarize() {
 }
 
 const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-  positive: 'default',
-  neutral: 'destructive',
-  negative: 'outline',
+  positive: 'secondary',
+  neutral: 'default',
+  negative: 'destructive',
   mixed: 'secondary',
 };
 

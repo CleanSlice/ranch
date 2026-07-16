@@ -88,9 +88,9 @@ function fmt(iso?: string | null): string {
 }
 
 const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-  positive: 'default',
-  neutral: 'destructive',
-  negative: 'outline',
+  positive: 'secondary',
+  neutral: 'default',
+  negative: 'destructive',
   mixed: 'secondary',
 };
 </script>
@@ -152,7 +152,7 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
           {{ session.summary }}
         </p>
         <p v-else class="mt-2 text-sm text-muted-foreground">
-          No summary yet — click Summarize to generate one.
+          No summary yet
         </p>
         <!-- Topic tags only -->
         <div

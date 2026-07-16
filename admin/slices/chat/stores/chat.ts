@@ -11,6 +11,13 @@ function unwrap<T>(body: unknown): T | null {
 
 export type ChatChannel = 'bridle' | 'telegram' | 'slack' | 'internal';
 
+export interface IChatInsights {
+  topics: string[];
+  sentiment: 'positive' | 'neutral' | 'negative' | 'mixed';
+  resolved: boolean;
+  language: string;
+}
+
 export interface IChatSession {
   id: string;
   agentId: string;
@@ -25,7 +32,7 @@ export interface IChatSession {
   userMessageCount: number;
   summary: string | null;
   summaryAt: string | null;
-  insights: unknown; // null when not yet computed
+  insights: IChatInsights | null; // null when not yet computed
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -121,5 +128,10 @@ export const useChatStore = defineStore('chat', () => {
     return unwrap<IChatSyncResult>(res.data);
   }
 
-  return { list, getById, messages, sync };
+  async function summarize(id: string): Promise<IChatSession | null> {
+    const res = await ChatsService.summarizeChat({ path: { id } });
+    return unwrap<IChatSession>(res.data);
+  }
+
+  return { list, getById, messages, sync, summarize };
 });

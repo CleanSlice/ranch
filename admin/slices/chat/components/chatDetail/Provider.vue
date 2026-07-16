@@ -12,6 +12,24 @@ const { data: session } = await useAsyncData(`chat-detail-${props.id}`, () =>
   store.getById(props.id),
 );
 
+const summarizing = ref(false);
+async function onSummarize() {
+  summarizing.value = true;
+  try {
+    const updated = await store.summarize(props.id);
+    if (updated) session.value = updated;
+  } finally {
+    summarizing.value = false;
+  }
+}
+
+const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
+  positive: 'default',
+  neutral: 'secondary',
+  negative: 'outline',
+  mixed: 'secondary',
+};
+
 const PAGE = 50;
 const messages = ref<IChatMessage[]>([]);
 const cursor = ref<string | null>(null);
@@ -95,12 +113,37 @@ function fmt(iso?: string | null): string {
         <span>Last activity {{ fmt(session.lastMessageAt) }}</span>
         <span class="font-mono">{{ session.sessionKey }}</span>
       </div>
-      <p
-        v-if="session.summary"
-        class="mt-3 rounded bg-muted/40 p-3 text-sm text-muted-foreground"
-      >
-        {{ session.summary }}
-      </p>
+      <!-- LLM summary + insights (Phase 4) -->
+      <div class="mt-3 rounded bg-muted/40 p-3">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-medium text-muted-foreground">Summary &amp; insights</span>
+          <Button size="sm" variant="outline" :disabled="summarizing" @click="onSummarize">
+            {{ summarizing ? 'Summarizing…' : session.summary ? 'Re-summarize' : 'Summarize' }}
+          </Button>
+        </div>
+        <p v-if="session.summary" class="mt-2 text-sm text-muted-foreground">
+          {{ session.summary }}
+        </p>
+        <p v-else class="mt-2 text-sm text-muted-foreground">
+          No summary yet — click Summarize to generate one.
+        </p>
+        <div v-if="session.insights" class="mt-2 flex flex-wrap items-center gap-1.5">
+          <Badge
+            v-for="topic in session.insights.topics"
+            :key="topic"
+            variant="outline"
+          >
+            {{ topic }}
+          </Badge>
+          <Badge :variant="sentimentVariant[session.insights.sentiment] ?? 'secondary'" class="capitalize">
+            {{ session.insights.sentiment }}
+          </Badge>
+          <Badge variant="outline">
+            {{ session.insights.resolved ? 'resolved' : 'unresolved' }}
+          </Badge>
+          <Badge variant="outline" class="uppercase">{{ session.insights.language }}</Badge>
+        </div>
+      </div>
     </div>
 
     <!-- Controls -->

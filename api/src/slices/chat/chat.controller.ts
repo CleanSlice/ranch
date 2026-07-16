@@ -21,7 +21,7 @@ import {
   TranscriptReaderService,
   TranscriptMessage,
 } from '#/agent/file/domain';
-import { IChatGateway, ChatSyncService } from './domain';
+import { IChatGateway, ChatSyncService, ChatInsightService } from './domain';
 import {
   FilterChatsDto,
   ChatListResponseDto,
@@ -58,6 +58,7 @@ export class ChatController {
     private readonly chats: IChatGateway,
     private readonly reader: TranscriptReaderService,
     private readonly sync: ChatSyncService,
+    private readonly insight: ChatInsightService,
   ) {}
 
   @ApiOperation({
@@ -143,5 +144,16 @@ export class ChatController {
   @Post('sync')
   async syncChats(@Body() dto: SyncChatsDto): Promise<SyncChatsResponseDto> {
     return this.sync.syncAll(dto.agentId);
+  }
+
+  @ApiOperation({
+    description:
+      'Generate (or refresh) an LLM summary + insights for one chat, on demand.',
+    operationId: 'summarizeChat',
+  })
+  @ApiOkResponse({ type: ChatSessionDto })
+  @Post(':id/summarize')
+  async summarize(@Param('id') id: string): Promise<ChatSessionDto> {
+    return this.insight.summarize(id);
   }
 }

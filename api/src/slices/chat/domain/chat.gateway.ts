@@ -1,6 +1,8 @@
 import {
   IChatActivity,
   IChatFilter,
+  IChatInsightGate,
+  IChatInsights,
   IChatListResult,
   IChatReconcileInput,
   IChatSessionData,
@@ -32,5 +34,22 @@ export abstract class IChatGateway {
   abstract recordActivity(
     agentId: string,
     activity: IChatActivity,
+  ): Promise<void>;
+
+  /**
+   * Sessions eligible for insight generation: not internal, not archived,
+   * enough user messages, settled (no recent activity), and with new activity
+   * since the last summary (`summaryAt IS NULL OR lastMessageAt > summaryAt`).
+   * Ordered most-recently-active first, capped at `gate.limit`.
+   */
+  abstract findEligibleForInsight(
+    gate: IChatInsightGate,
+  ): Promise<IChatSessionData[]>;
+
+  /** Persist an LLM summary + structured insights; stamps `summaryAt = now`. */
+  abstract saveInsights(
+    id: string,
+    summary: string,
+    insights: IChatInsights,
   ): Promise<void>;
 }

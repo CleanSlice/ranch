@@ -5,6 +5,8 @@ import {
   IChatGateway,
   IChatActivity,
   IChatFilter,
+  IChatInsightGate,
+  IChatInsights,
   IChatListResult,
   IChatReconcileInput,
   IChatSessionData,
@@ -110,6 +112,43 @@ export class ChatGateway extends IChatGateway {
       },
     });
     return res.count > 0;
+  }
+
+  async findEligibleForInsight(
+    gate: IChatInsightGate,
+  ): Promise<IChatSessionData[]> {
+    const settledBefore = new Date(Date.now() - gate.cooldownMs);
+    const records = await this.prisma.chatSession.findMany({
+      where: {
+        channel: { not: 'internal' },
+        archived: false,
+        userMessageCount: { gte: gate.minUserMessages },
+        lastMessageAt: { lt: settledBefore },
+        // New activity since the last summary (null = never summarized).
+        OR: [
+          { summaryAt: null },
+          { lastMessageAt: { gt: this.prisma.chatSession.fields.summaryAt } },
+        ],
+      },
+      orderBy: { lastMessageAt: 'desc' },
+      take: gate.limit,
+    });
+    return records.map((r) => this.mapper.toEntity(r));
+  }
+
+  async saveInsights(
+    id: string,
+    summary: string,
+    insights: IChatInsights,
+  ): Promise<void> {
+    await this.prisma.chatSession.update({
+      where: { id },
+      data: {
+        summary,
+        insights: insights as unknown as Prisma.InputJsonValue,
+        summaryAt: new Date(),
+      },
+    });
   }
 
   private buildWhere(filter: IChatFilter): Prisma.ChatSessionWhereInput {

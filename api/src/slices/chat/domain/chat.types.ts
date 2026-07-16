@@ -88,3 +88,26 @@ export interface IChatActivity {
   ts: number; // unix ms
   preview: string;
 }
+
+export type ChatSentiment = 'positive' | 'neutral' | 'negative' | 'mixed';
+
+/** LLM-derived structured insights, stored in `ChatSession.insights` (Json). */
+export interface IChatInsights {
+  topics: string[];
+  sentiment: ChatSentiment;
+  resolved: boolean;
+  language: string; // ISO 639-1, e.g. "en", "ru"
+}
+
+/** Eligibility gate for the insight cron-batch (never summarize empty/unchanged). */
+export interface IChatInsightGate {
+  cooldownMs: number; // lastMessageAt must be older than now - cooldown (settled)
+  minUserMessages: number; // skip trivial chats
+  limit: number; // per-run batch cap (bounds token spend)
+}
+
+export interface IChatInsightBatchResult {
+  eligible: number;
+  summarized: number;
+  failed: number;
+}

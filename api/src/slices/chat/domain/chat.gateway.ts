@@ -1,11 +1,13 @@
 import {
   IChatActivity,
+  IChatFeedbackData,
   IChatFilter,
   IChatInsightGate,
   IChatInsights,
   IChatListResult,
   IChatReconcileInput,
   IChatSessionData,
+  IUpsertChatFeedback,
 } from './chat.types';
 
 /**
@@ -52,4 +54,22 @@ export abstract class IChatGateway {
     summary: string,
     insights: IChatInsights,
   ): Promise<void>;
+
+  /** Upsert one author's 👍/👎 on a message (unique per session+message+author). */
+  abstract upsertFeedback(
+    input: IUpsertChatFeedback,
+  ): Promise<IChatFeedbackData>;
+
+  /** Remove an author's feedback on a message (toggle-off / clear). */
+  abstract deleteFeedback(
+    sessionId: string,
+    messageId: string,
+    authorId: string,
+  ): Promise<void>;
+
+  /** One author's feedback across a session (for rendering their ratings). */
+  abstract listFeedbackByAuthor(
+    sessionId: string,
+    authorId: string,
+  ): Promise<IChatFeedbackData[]>;
 }

@@ -662,6 +662,32 @@ export type SyncChatsResponseDto = {
   skipped: number;
 };
 
+export type CreateChatFeedbackDto = {
+  /**
+   * Event.id of the rated assistant message
+   */
+  messageId: string;
+  /**
+   * 1 = 👍, -1 = 👎
+   */
+  rating: 1 | -1;
+  comment?: string;
+};
+
+export type ChatFeedbackDto = {
+  id: string;
+  messageId: string;
+  rating: 1 | -1;
+  comment?: {
+    [key: string]: unknown;
+  } | null;
+  source: string;
+  authorId?: {
+    [key: string]: unknown;
+  } | null;
+  createdAt: string;
+};
+
 export type TelegramChannelConfigDto = {
   /**
    * Telegram bot HTTP API token (issued by @BotFather).
@@ -2585,6 +2611,55 @@ export type SummarizeChatResponses = {
 
 export type SummarizeChatResponse =
   SummarizeChatResponses[keyof SummarizeChatResponses];
+
+export type GetMyChatFeedbackData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/chats/{id}/feedback";
+};
+
+export type GetMyChatFeedbackResponses = {
+  200: Array<ChatFeedbackDto>;
+};
+
+export type GetMyChatFeedbackResponse =
+  GetMyChatFeedbackResponses[keyof GetMyChatFeedbackResponses];
+
+export type CreateChatFeedbackData = {
+  body: CreateChatFeedbackDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/chats/{id}/feedback";
+};
+
+export type CreateChatFeedbackResponses = {
+  200: ChatFeedbackDto;
+};
+
+export type CreateChatFeedbackResponse =
+  CreateChatFeedbackResponses[keyof CreateChatFeedbackResponses];
+
+export type DeleteChatFeedbackData = {
+  body?: never;
+  path: {
+    id: string;
+    messageId: string;
+  };
+  query?: never;
+  url: "/chats/{id}/feedback/{messageId}";
+};
+
+export type DeleteChatFeedbackResponses = {
+  204: void;
+};
+
+export type DeleteChatFeedbackResponse =
+  DeleteChatFeedbackResponses[keyof DeleteChatFeedbackResponses];
 
 export type GetAgentChannelsData = {
   body?: never;

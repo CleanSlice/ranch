@@ -81,7 +81,29 @@ async function loadOlder() {
   }
 }
 
-onMounted(loadLatest);
+// Current user's 👍/👎 per messageId.
+const feedbackByMsg = ref<Record<string, number>>({});
+async function loadFeedback() {
+  const fb = await store.feedback(props.id);
+  const map: Record<string, number> = {};
+  for (const f of fb) map[f.messageId] = f.rating;
+  feedbackByMsg.value = map;
+}
+async function onRate(messageId: string, rating: 1 | -1) {
+  const current = feedbackByMsg.value[messageId];
+  if (current === rating) {
+    await store.unrate(props.id, messageId); // toggle off
+    delete feedbackByMsg.value[messageId];
+  } else {
+    await store.rate(props.id, messageId, rating);
+    feedbackByMsg.value[messageId] = rating;
+  }
+}
+
+onMounted(() => {
+  void loadLatest();
+  void loadFeedback();
+});
 watch(showTools, loadLatest); // re-fetch from latest when toggling tool events
 
 const who = computed(
@@ -171,7 +193,13 @@ function fmt(iso?: string | null): string {
         No messages in this session.
       </div>
 
-      <ChatMessageBubble v-for="m in messages" :key="m.id" :message="m" />
+      <ChatMessageBubble
+        v-for="m in messages"
+        :key="m.id"
+        :message="m"
+        :rating="feedbackByMsg[m.id] ?? null"
+        @rate="(r: 1 | -1) => onRate(m.id, r)"
+      />
     </div>
   </div>
 </template>

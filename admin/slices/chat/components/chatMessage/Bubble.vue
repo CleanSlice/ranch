@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { renderMarkdown } from '#bridle/utils/markdown';
 import { cn } from '#theme/utils/cn';
-import { User, Bot, Wrench, FileText } from 'lucide-vue-next';
+import { User, Bot, Wrench, FileText, ThumbsUp, ThumbsDown } from 'lucide-vue-next';
 import type { IChatMessage } from '#chat/stores/chat';
 
 // Read-only transcript message. Unlike the bridle widget's Message.vue (coupled
 // to live parts / streaming / debug inspect), this renders a single persisted
 // event by role: user/assistant bubbles, a collapsible summary marker for
 // compacted history, and compact tool_call/tool_result blocks for the debug view.
-const props = defineProps<{ message: IChatMessage }>();
+// `rating` is the current user's 👍/👎 on this message (1 | -1 | null).
+const props = defineProps<{ message: IChatMessage; rating?: number | null }>();
+const emit = defineEmits<{ rate: [rating: 1 | -1] }>();
 
 const role = computed(() => props.message.role);
 const isUser = computed(() => role.value === 'user');
@@ -100,6 +102,36 @@ function onMarkdownClick(event: MouseEvent) {
     >
       <p v-if="isUser" class="whitespace-pre-wrap wrap-break-word">{{ message.text }}</p>
       <div v-else class="prose prose-sm max-w-none dark:prose-invert wrap-break-word" v-html="html" @click="onMarkdownClick" />
+
+      <!-- Feedback (assistant only) -->
+      <div v-if="!isUser" class="mt-1.5 flex items-center gap-0.5">
+        <button
+          type="button"
+          aria-label="Helpful"
+          :class="
+            cn(
+              'rounded p-1 text-muted-foreground transition-colors hover:text-foreground',
+              rating === 1 && 'text-green-600',
+            )
+          "
+          @click="emit('rate', 1)"
+        >
+          <ThumbsUp class="size-3.5" />
+        </button>
+        <button
+          type="button"
+          aria-label="Not helpful"
+          :class="
+            cn(
+              'rounded p-1 text-muted-foreground transition-colors hover:text-foreground',
+              rating === -1 && 'text-red-600',
+            )
+          "
+          @click="emit('rate', -1)"
+        >
+          <ThumbsDown class="size-3.5" />
+        </button>
+      </div>
     </div>
   </div>
 </template>

@@ -1449,6 +1449,58 @@ export const SyncChatsResponseDtoSchema = {
   required: ["scannedAgents", "scannedFiles", "upserted", "skipped"],
 } as const;
 
+export const CreateChatFeedbackDtoSchema = {
+  type: "object",
+  properties: {
+    messageId: {
+      type: "string",
+      description: "Event.id of the rated assistant message",
+    },
+    rating: {
+      type: "number",
+      enum: [1, -1],
+      description: "1 = 👍, -1 = 👎",
+    },
+    comment: {
+      type: "string",
+    },
+  },
+  required: ["messageId", "rating"],
+} as const;
+
+export const ChatFeedbackDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    messageId: {
+      type: "string",
+    },
+    rating: {
+      type: "number",
+      enum: [1, -1],
+    },
+    comment: {
+      type: "object",
+      nullable: true,
+    },
+    source: {
+      type: "string",
+      example: "admin",
+    },
+    authorId: {
+      type: "object",
+      nullable: true,
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: ["id", "messageId", "rating", "source", "createdAt"],
+} as const;
+
 export const TelegramChannelConfigDtoSchema = {
   type: "object",
   properties: {

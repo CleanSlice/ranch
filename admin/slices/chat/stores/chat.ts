@@ -18,6 +18,16 @@ export interface IChatInsights {
   language: string;
 }
 
+export interface IChatFeedback {
+  id: string;
+  messageId: string;
+  rating: number; // 1 | -1
+  comment: string | null;
+  source: string;
+  authorId: string | null;
+  createdAt: string;
+}
+
 export interface IChatSession {
   id: string;
   agentId: string;
@@ -133,5 +143,18 @@ export const useChatStore = defineStore('chat', () => {
     return unwrap<IChatSession>(res.data);
   }
 
-  return { list, getById, messages, sync, summarize };
+  async function feedback(id: string): Promise<IChatFeedback[]> {
+    const res = await ChatsService.getMyChatFeedback({ path: { id } });
+    return unwrap<IChatFeedback[]>(res.data) ?? [];
+  }
+
+  async function rate(id: string, messageId: string, rating: 1 | -1): Promise<void> {
+    await ChatsService.createChatFeedback({ path: { id }, body: { messageId, rating } });
+  }
+
+  async function unrate(id: string, messageId: string): Promise<void> {
+    await ChatsService.deleteChatFeedback({ path: { id, messageId } });
+  }
+
+  return { list, getById, messages, sync, summarize, feedback, rate, unrate };
 });

@@ -1,15 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, ChatFeedback } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import {
   IChatGateway,
   IChatActivity,
+  IChatFeedbackData,
   IChatFilter,
   IChatInsightGate,
   IChatInsights,
   IChatListResult,
   IChatReconcileInput,
   IChatSessionData,
+  IUpsertChatFeedback,
 } from '../domain';
 import { ChatMapper } from './chat.mapper';
 
@@ -149,6 +151,63 @@ export class ChatGateway extends IChatGateway {
         summaryAt: new Date(),
       },
     });
+  }
+
+  async upsertFeedback(i: IUpsertChatFeedback): Promise<IChatFeedbackData> {
+    const record = await this.prisma.chatFeedback.upsert({
+      where: {
+        sessionId_messageId_authorId: {
+          sessionId: i.sessionId,
+          messageId: i.messageId,
+          authorId: i.authorId,
+        },
+      },
+      create: {
+        id: `feedback-${crypto.randomUUID()}`,
+        sessionId: i.sessionId,
+        messageId: i.messageId,
+        authorId: i.authorId,
+        rating: i.rating,
+        comment: i.comment ?? null,
+        source: i.source,
+      },
+      update: { rating: i.rating, comment: i.comment ?? null },
+    });
+    return this.toFeedback(record);
+  }
+
+  async deleteFeedback(
+    sessionId: string,
+    messageId: string,
+    authorId: string,
+  ): Promise<void> {
+    await this.prisma.chatFeedback.deleteMany({
+      where: { sessionId, messageId, authorId },
+    });
+  }
+
+  async listFeedbackByAuthor(
+    sessionId: string,
+    authorId: string,
+  ): Promise<IChatFeedbackData[]> {
+    const records = await this.prisma.chatFeedback.findMany({
+      where: { sessionId, authorId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return records.map((r) => this.toFeedback(r));
+  }
+
+  private toFeedback(r: ChatFeedback): IChatFeedbackData {
+    return {
+      id: r.id,
+      sessionId: r.sessionId,
+      messageId: r.messageId,
+      rating: r.rating,
+      comment: r.comment,
+      source: r.source,
+      authorId: r.authorId,
+      createdAt: r.createdAt,
+    };
   }
 
   private buildWhere(filter: IChatFilter): Prisma.ChatSessionWhereInput {

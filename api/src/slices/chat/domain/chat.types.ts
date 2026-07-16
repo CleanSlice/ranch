@@ -111,3 +111,24 @@ export interface IChatInsightBatchResult {
   summarized: number;
   failed: number;
 }
+
+/** A 👍/👎 on one assistant message. `source` = admin | app | telegram. */
+export interface IChatFeedbackData {
+  id: string;
+  sessionId: string;
+  messageId: string; // Event.id of the rated assistant message
+  rating: number; // 1 | -1
+  comment: string | null;
+  source: string;
+  authorId: string | null;
+  createdAt: Date;
+}
+
+export interface IUpsertChatFeedback {
+  sessionId: string;
+  messageId: string;
+  rating: number; // 1 | -1
+  comment?: string | null;
+  source: string;
+  authorId: string;
+}

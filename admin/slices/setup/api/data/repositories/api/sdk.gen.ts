@@ -125,6 +125,12 @@ import type {
   SyncChatsResponse,
   SummarizeChatData,
   SummarizeChatResponse,
+  GetMyChatFeedbackData,
+  GetMyChatFeedbackResponse,
+  CreateChatFeedbackData,
+  CreateChatFeedbackResponse,
+  DeleteChatFeedbackData,
+  DeleteChatFeedbackResponse,
   GetAgentChannelsData,
   GetAgentChannelsResponse,
   SetAgentChannelsData,
@@ -2051,6 +2057,58 @@ export class ChatsService {
       ThrowOnError
     >({
       url: "/chats/{id}/summarize",
+      ...options,
+    });
+  }
+
+  /**
+   * List the current user’s feedback for a chat session.
+   */
+  public static getMyChatFeedback<ThrowOnError extends boolean = false>(
+    options: Options<GetMyChatFeedbackData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetMyChatFeedbackResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/feedback",
+      ...options,
+    });
+  }
+
+  /**
+   * Set the current user’s 👍/👎 on an assistant message.
+   */
+  public static createChatFeedback<ThrowOnError extends boolean = false>(
+    options: Options<CreateChatFeedbackData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      CreateChatFeedbackResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/feedback",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Clear the current user’s feedback on a message (toggle-off).
+   */
+  public static deleteChatFeedback<ThrowOnError extends boolean = false>(
+    options: Options<DeleteChatFeedbackData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      DeleteChatFeedbackResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/feedback/{messageId}",
       ...options,
     });
   }

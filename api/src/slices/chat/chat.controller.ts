@@ -2,9 +2,13 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Param,
   Query,
   Body,
+  Req,
+  HttpCode,
+  ForbiddenException,
   NotFoundException,
   UseGuards,
   Logger,
@@ -15,8 +19,10 @@ import {
   ApiOperation,
   ApiOkResponse,
 } from '@nestjs/swagger';
+import { Request } from 'express';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
+import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import {
   TranscriptReaderService,
   TranscriptMessage,
@@ -30,7 +36,12 @@ import {
   ChatMessagesResponseDto,
   SyncChatsDto,
   SyncChatsResponseDto,
+  CreateChatFeedbackDto,
+  ChatFeedbackDto,
 } from './dtos';
+
+type AuthedRequest = Request & { user?: IAuthTokenPayload };
+const FEEDBACK_SOURCE = 'admin';
 
 const ALLOWED_TYPES: TranscriptMessage['role'][] = [
   'user',
@@ -155,5 +166,60 @@ export class ChatController {
   @Post(':id/summarize')
   async summarize(@Param('id') id: string): Promise<ChatSessionDto> {
     return this.insight.summarize(id);
+  }
+
+  @ApiOperation({
+    description: 'Set the current user’s 👍/👎 on an assistant message.',
+    operationId: 'createChatFeedback',
+  })
+  @ApiOkResponse({ type: ChatFeedbackDto })
+  @Post(':id/feedback')
+  async createFeedback(
+    @Param('id') id: string,
+    @Body() dto: CreateChatFeedbackDto,
+    @Req() req: AuthedRequest,
+  ): Promise<ChatFeedbackDto> {
+    const authorId = req.user?.sub;
+    if (!authorId) throw new ForbiddenException('No authenticated user');
+    const session = await this.chats.findById(id);
+    if (!session) throw new NotFoundException(`Chat ${id} not found`);
+    return this.chats.upsertFeedback({
+      sessionId: id,
+      messageId: dto.messageId,
+      rating: dto.rating,
+      comment: dto.comment,
+      source: FEEDBACK_SOURCE,
+      authorId,
+    });
+  }
+
+  @ApiOperation({
+    description: 'Clear the current user’s feedback on a message (toggle-off).',
+    operationId: 'deleteChatFeedback',
+  })
+  @HttpCode(204)
+  @Delete(':id/feedback/:messageId')
+  async deleteFeedback(
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Req() req: AuthedRequest,
+  ): Promise<void> {
+    const authorId = req.user?.sub;
+    if (!authorId) throw new ForbiddenException('No authenticated user');
+    await this.chats.deleteFeedback(id, messageId, authorId);
+  }
+
+  @ApiOperation({
+    description: 'List the current user’s feedback for a chat session.',
+    operationId: 'getMyChatFeedback',
+  })
+  @ApiOkResponse({ type: [ChatFeedbackDto] })
+  @Get(':id/feedback')
+  async myFeedback(
+    @Param('id') id: string,
+    @Req() req: AuthedRequest,
+  ): Promise<ChatFeedbackDto[]> {
+    const authorId = req.user?.sub ?? '';
+    return this.chats.listFeedbackByAuthor(id, authorId);
   }
 }

@@ -125,11 +125,60 @@ function makePrismaStub() {
     ),
   };
 
+  const feedback: Record<string, Record<string, any>> = {};
+  const fbMatch = (r: Record<string, any>, w: Record<string, any>) =>
+    r.sessionId === w.sessionId &&
+    (w.messageId === undefined || r.messageId === w.messageId) &&
+    r.authorId === w.authorId;
+
+  const chatFeedback = {
+    upsert: jest.fn(
+      async ({
+        where,
+        create,
+        update,
+      }: {
+        where: { sessionId_messageId_authorId: Record<string, any> };
+        create: Record<string, any>;
+        update: Record<string, any>;
+      }) => {
+        const key = where.sessionId_messageId_authorId;
+        const existing = Object.values(feedback).find(
+          (r) =>
+            r.sessionId === key.sessionId &&
+            r.messageId === key.messageId &&
+            r.authorId === key.authorId,
+        );
+        if (existing) return Object.assign(existing, update);
+        feedback[create.id as string] = {
+          comment: null,
+          createdAt: new Date(0),
+          ...create,
+        };
+        return feedback[create.id as string];
+      },
+    ),
+    deleteMany: jest.fn(async ({ where }: { where: Record<string, any> }) => {
+      let count = 0;
+      for (const [id, r] of Object.entries(feedback)) {
+        if (fbMatch(r, where)) {
+          delete feedback[id];
+          count++;
+        }
+      }
+      return { count };
+    }),
+    findMany: jest.fn(async ({ where }: { where: Record<string, any> }) =>
+      Object.values(feedback).filter((r) => fbMatch(r, where)),
+    ),
+  };
+
   const prisma = {
     chatSession,
+    chatFeedback,
     $transaction: jest.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
   };
-  return { prisma, rows };
+  return { prisma, rows, feedback };
 }
 
 function input(over: Partial<IChatReconcileInput> = {}): IChatReconcileInput {
@@ -297,5 +346,48 @@ describe('ChatGateway.list', () => {
 
     const all = await gw.list({ agentId: 'agent-1', includeInternal: true });
     expect(all.total).toBe(3);
+  });
+});
+
+describe('ChatGateway feedback', () => {
+  const fb = (over: Record<string, unknown> = {}) => ({
+    sessionId: 'c1',
+    messageId: 'm1',
+    rating: 1,
+    source: 'admin',
+    authorId: 'u1',
+    ...over,
+  });
+
+  it('upserts then lists an author’s feedback', async () => {
+    const { gw } = newGateway();
+    await gw.upsertFeedback(fb({ rating: 1 }));
+    const list = await gw.listFeedbackByAuthor('c1', 'u1');
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ messageId: 'm1', rating: 1 });
+  });
+
+  it('re-rating the same message updates in place (no duplicate row)', async () => {
+    const { gw } = newGateway();
+    await gw.upsertFeedback(fb({ rating: 1 }));
+    await gw.upsertFeedback(fb({ rating: -1 }));
+    const list = await gw.listFeedbackByAuthor('c1', 'u1');
+    expect(list).toHaveLength(1);
+    expect(list[0].rating).toBe(-1);
+  });
+
+  it('deleteFeedback clears it (toggle-off)', async () => {
+    const { gw } = newGateway();
+    await gw.upsertFeedback(fb());
+    await gw.deleteFeedback('c1', 'm1', 'u1');
+    expect(await gw.listFeedbackByAuthor('c1', 'u1')).toHaveLength(0);
+  });
+
+  it('scopes listing to the requesting author', async () => {
+    const { gw } = newGateway();
+    await gw.upsertFeedback(fb({ authorId: 'u1' }));
+    await gw.upsertFeedback(fb({ authorId: 'u2', messageId: 'm2' }));
+    expect(await gw.listFeedbackByAuthor('c1', 'u1')).toHaveLength(1);
+    expect(await gw.listFeedbackByAuthor('c1', 'u2')).toHaveLength(1);
   });
 });

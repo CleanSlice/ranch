@@ -4,3 +4,4 @@ export * from './chatMessage.dto';
 export * from './syncChats.dto';
 export * from './chatFeedback.dto';
 export * from './exportChat.dto';
+export * from './myChats.dto';

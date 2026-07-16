@@ -4,10 +4,10 @@
  *   - /login         self
  *   - /register      self (gated by setting on the server side)
  *
- * Anything under /agents/** requires login. The auth plugin awaits init()
- * before navigation kicks in, so isHydrated is always true when this runs.
+ * Anything under /agents/** or /chats/** requires login. The auth plugin awaits
+ * init() before navigation kicks in, so isHydrated is always true when this runs.
  */
-const PROTECTED_PREFIXES = ['/agents'];
+const PROTECTED_PREFIXES = ['/agents', '/chats'];
 const AUTH_PAGES = new Set(['/login', '/register']);
 
 export default defineNuxtRouteMiddleware((to) => {

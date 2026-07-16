@@ -21,6 +21,14 @@
           >
             Agents
           </NuxtLink>
+          <NuxtLink
+            v-if="authStore.isAuthenticated"
+            to="/chats"
+            class="text-muted-foreground hover:text-foreground transition-colors"
+            active-class="text-foreground font-medium"
+          >
+            History
+          </NuxtLink>
         </nav>
 
         <div class="flex-1" />

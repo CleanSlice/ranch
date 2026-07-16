@@ -35,6 +35,7 @@ export interface IChatSessionData {
 export interface IChatFilter {
   agentId?: string;
   channel?: string;
+  externalUserId?: string; // scope to one end user (App "my history")
   search?: string; // matches title / preview / externalUserId
   archived?: boolean; // default false (hide archived)
   includeInternal?: boolean; // default false (hide internal channel)

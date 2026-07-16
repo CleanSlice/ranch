@@ -3,6 +3,7 @@ import { FileModule } from '#/agent/file/file.module';
 import { AgentModule } from '#/agent/agent/agent.module';
 import { LlmModule } from '#/llm/llm.module';
 import { ChatController } from './chat.controller';
+import { MyChatController } from './myChat.controller';
 import { IChatGateway, ChatSyncService, ChatInsightService } from './domain';
 import { ChatGateway } from './data/chat.gateway';
 import { ChatMapper } from './data/chat.mapper';
@@ -15,7 +16,7 @@ import { ChatMapper } from './data/chat.mapper';
     forwardRef(() => AgentModule),
     LlmModule,
   ],
-  controllers: [ChatController],
+  controllers: [ChatController, MyChatController],
   providers: [
     ChatMapper,
     ChatSyncService,

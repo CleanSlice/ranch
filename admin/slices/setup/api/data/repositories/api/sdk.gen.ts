@@ -132,6 +132,12 @@ import type {
   DeleteChatFeedbackData,
   DeleteChatFeedbackResponse,
   ExportChatData,
+  GetMyChatsData,
+  GetMyChatsResponse,
+  GetMyChatData,
+  GetMyChatResponse,
+  GetMyChatMessagesData,
+  GetMyChatMessagesResponse,
   GetAgentChannelsData,
   GetAgentChannelsResponse,
   SetAgentChannelsData,
@@ -2126,6 +2132,54 @@ export class ChatsService {
       ThrowOnError
     >({
       url: "/chats/{id}/export",
+      ...options,
+    });
+  }
+
+  /**
+   * List the current user's own chat sessions, newest first.
+   */
+  public static getMyChats<ThrowOnError extends boolean = false>(
+    options?: Options<GetMyChatsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetMyChatsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats",
+      ...options,
+    });
+  }
+
+  /**
+   * Get one of the current user's own chat sessions.
+   */
+  public static getMyChat<ThrowOnError extends boolean = false>(
+    options: Options<GetMyChatData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetMyChatResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Replay one of the current user's own chats, tail-first. `summary` markers are shown inline; tool events are never exposed to end users.
+   */
+  public static getMyChatMessages<ThrowOnError extends boolean = false>(
+    options: Options<GetMyChatMessagesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetMyChatMessagesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats/{id}/messages",
       ...options,
     });
   }

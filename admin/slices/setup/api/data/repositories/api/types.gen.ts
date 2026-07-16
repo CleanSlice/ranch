@@ -2679,6 +2679,67 @@ export type ExportChatResponses = {
   200: unknown;
 };
 
+export type GetMyChatsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Include archived chats
+     */
+    archived?: boolean;
+    page?: number;
+    perPage?: number;
+  };
+  url: "/me/chats";
+};
+
+export type GetMyChatsResponses = {
+  200: ChatListResponseDto;
+};
+
+export type GetMyChatsResponse = GetMyChatsResponses[keyof GetMyChatsResponses];
+
+export type GetMyChatData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/me/chats/{id}";
+};
+
+export type GetMyChatResponses = {
+  200: ChatSessionDto;
+};
+
+export type GetMyChatResponse = GetMyChatResponses[keyof GetMyChatResponses];
+
+export type GetMyChatMessagesData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    limit?: number;
+    /**
+     * Opaque cursor from a previous page
+     */
+    cursor?: string;
+    /**
+     * Comma-separated event types (debug toggle). Default user,assistant,summary. Admins may add tool_call,tool_result,system.
+     */
+    types?: string;
+  };
+  url: "/me/chats/{id}/messages";
+};
+
+export type GetMyChatMessagesResponses = {
+  200: ChatMessagesResponseDto;
+};
+
+export type GetMyChatMessagesResponse =
+  GetMyChatMessagesResponses[keyof GetMyChatMessagesResponses];
+
 export type GetAgentChannelsData = {
   body?: never;
   path: {

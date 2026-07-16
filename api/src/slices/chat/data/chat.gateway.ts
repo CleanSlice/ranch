@@ -213,6 +213,7 @@ export class ChatGateway extends IChatGateway {
   private buildWhere(filter: IChatFilter): Prisma.ChatSessionWhereInput {
     const where: Prisma.ChatSessionWhereInput = {};
     if (filter.agentId) where.agentId = filter.agentId;
+    if (filter.externalUserId) where.externalUserId = filter.externalUserId;
 
     if (filter.channel) where.channel = filter.channel;
     else if (!filter.includeInternal) where.channel = { not: 'internal' };

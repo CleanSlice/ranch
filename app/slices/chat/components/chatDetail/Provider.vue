@@ -137,14 +137,36 @@ const sentimentClass = computed(() => {
           v-if="session.summary || session.insights"
           class="mt-3 rounded bg-muted/40 p-3"
         >
-          <span class="text-xs font-medium text-muted-foreground">
-            Summary &amp; insights
-          </span>
-          <p v-if="session.summary" class="mt-1 text-sm text-muted-foreground">
+          <!-- sentiment / resolved / language sit by the header, apart from topics -->
+          <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span class="text-xs font-medium text-muted-foreground">
+              Summary &amp; insights
+            </span>
+            <template v-if="session.insights">
+              <span
+                class="rounded px-2 py-0.5 capitalize"
+                :class="sentimentClass"
+              >
+                {{ session.insights.sentiment }}
+              </span>
+              <span
+                class="rounded border px-2 py-0.5 capitalize text-muted-foreground"
+              >
+                {{ session.insights.resolved ? 'resolved' : 'unresolved' }}
+              </span>
+              <span
+                class="rounded border px-2 py-0.5 capitalize text-muted-foreground"
+              >
+                {{ session.insights.language }}
+              </span>
+            </template>
+          </div>
+          <p v-if="session.summary" class="mt-2 text-sm text-muted-foreground">
             {{ session.summary }}
           </p>
+          <!-- Topic tags only -->
           <div
-            v-if="session.insights"
+            v-if="session.insights?.topics?.length"
             class="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]"
           >
             <span
@@ -153,22 +175,6 @@ const sentimentClass = computed(() => {
               class="rounded border px-2 py-0.5 text-muted-foreground"
             >
               {{ topic }}
-            </span>
-            <span
-              class="rounded px-2 py-0.5 capitalize"
-              :class="sentimentClass"
-            >
-              {{ session.insights.sentiment }}
-            </span>
-            <span
-              class="rounded border px-2 py-0.5 capitalize text-muted-foreground"
-            >
-              {{ session.insights.resolved ? 'resolved' : 'unresolved' }}
-            </span>
-            <span
-              class="rounded border px-2 py-0.5 capitalize text-muted-foreground"
-            >
-              {{ session.insights.language }}
             </span>
           </div>
         </div>

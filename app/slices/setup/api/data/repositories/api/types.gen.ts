@@ -2740,6 +2740,20 @@ export type GetMyChatMessagesResponses = {
 export type GetMyChatMessagesResponse =
   GetMyChatMessagesResponses[keyof GetMyChatMessagesResponses];
 
+export type SyncMyChatsData = {
+  body: SyncChatsDto;
+  path?: never;
+  query?: never;
+  url: "/me/chats/sync";
+};
+
+export type SyncMyChatsResponses = {
+  200: SyncChatsResponseDto;
+};
+
+export type SyncMyChatsResponse =
+  SyncMyChatsResponses[keyof SyncMyChatsResponses];
+
 export type GetAgentChannelsData = {
   body?: never;
   path: {

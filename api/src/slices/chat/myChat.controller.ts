@@ -1,10 +1,12 @@
 import {
+  Body,
   Controller,
   ForbiddenException,
   Get,
   Logger,
   NotFoundException,
   Param,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -18,25 +20,24 @@ import {
 import { Request } from 'express';
 import { JwtAuthGuard } from '#/user/auth/guards';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
+import { UserRoleTypes } from '#/user/user/domain';
 import {
   TranscriptMessage,
   TranscriptReaderService,
 } from '#/agent/file/domain';
-import { IChatGateway, IChatSessionData } from './domain';
+import { IChatGateway, IChatSessionData, ChatSyncService } from './domain';
 import {
   ChatListResponseDto,
   ChatMessagesQueryDto,
   ChatMessagesResponseDto,
   ChatSessionDto,
   MyChatsQueryDto,
+  SyncChatsDto,
+  SyncChatsResponseDto,
 } from './dtos';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 
-// End users only ever own their web/Bridle chats: a logged-in browser's
-// clientId is the JWT `sub` (bridleClientWs.handler), so the session lives at
-// `bridle:<sub>`. Telegram/slack chats key on the channel's own id, never the
-// JWT sub — so scoping to bridle + sub is the exact "mine" set.
 const OWN_CHANNEL = 'bridle';
 
 // End users never see tool-call debug events — hard-capped, no `types` override.
@@ -50,7 +51,7 @@ const USER_TYPES: TranscriptMessage['role'][] = [
  * End-user-facing "my chat history" (Phase 6). Unlike the admin ChatController
  * (Owner/Admin, sees every chat), this is JWT-only (any authenticated user) and
  * scoped server-side to the caller's OWN bridle sessions — a user can never
- * read another user's chat, and the id in the path is ownership-checked.
+ * read another user's chat, and every id in the path is ownership-checked.
  */
 @ApiTags('chats')
 @ApiBearerAuth()
@@ -62,6 +63,7 @@ export class MyChatController {
   constructor(
     private readonly chats: IChatGateway,
     private readonly reader: TranscriptReaderService,
+    private readonly sync: ChatSyncService,
   ) {}
 
   @ApiOperation({
@@ -74,12 +76,11 @@ export class MyChatController {
     @Query() q: MyChatsQueryDto,
     @Req() req: AuthedRequest,
   ): Promise<ChatListResponseDto> {
-    const sub = this.requireSub(req);
     const page = q.page ?? 1;
     const perPage = q.perPage ?? 50;
     const { items, total } = await this.chats.list({
       channel: OWN_CHANNEL,
-      externalUserId: sub,
+      externalUserId: this.ownExternalId(req),
       archived: q.archived ?? false,
       page,
       perPage,
@@ -97,7 +98,7 @@ export class MyChatController {
     @Param('id') id: string,
     @Req() req: AuthedRequest,
   ): Promise<ChatSessionDto> {
-    return this.requireOwned(id, this.requireSub(req));
+    return this.requireOwned(id, this.ownExternalId(req));
   }
 
   @ApiOperation({
@@ -113,7 +114,7 @@ export class MyChatController {
     @Query() q: ChatMessagesQueryDto,
     @Req() req: AuthedRequest,
   ): Promise<ChatMessagesResponseDto> {
-    const session = await this.requireOwned(id, this.requireSub(req));
+    const session = await this.requireOwned(id, this.ownExternalId(req));
 
     const path = `data/sessions/${session.sessionKey}.jsonl`;
     let all: TranscriptMessage[];
@@ -132,10 +133,37 @@ export class MyChatController {
     return TranscriptReaderService.page(all, q.cursor, q.limit ?? 50);
   }
 
-  private requireSub(req: AuthedRequest): string {
+  @ApiOperation({
+    description:
+      "Reconcile the current user's OWN chats from S3 into the index " +
+      '(self-service, non-admin). Only sessions belonging to the caller are ' +
+      'touched. A manual fallback when realtime indexing has not caught up.',
+    operationId: 'syncMyChats',
+  })
+  @ApiOkResponse({ type: SyncChatsResponseDto })
+  @Post('sync')
+  async syncMine(
+    @Body() dto: SyncChatsDto,
+    @Req() req: AuthedRequest,
+  ): Promise<SyncChatsResponseDto> {
+    return this.sync.syncForExternalUser(this.ownExternalId(req), dto.agentId);
+  }
+
+  /**
+   * The caller's OWN bridle identity — the exact value their chats are keyed
+   * under (ChatSession.externalUserId / `bridle:<id>`). Mirrors the bridle
+   * client handler + HTTP resolveClientId: owners/admins collapse to the shared
+   * `admin` channel; everyone else is their JWT `sub`. Keep these in lockstep —
+   * if they diverge, "my history" silently shows nothing.
+   */
+  private ownExternalId(req: AuthedRequest): string {
     const sub = req.user?.sub;
     if (!sub) throw new ForbiddenException('No authenticated user');
-    return sub;
+    const roles = req.user?.roles ?? [];
+    const isAdmin =
+      roles.includes(UserRoleTypes.Owner) ||
+      roles.includes(UserRoleTypes.Admin);
+    return isAdmin ? 'admin' : sub;
   }
 
   /**
@@ -144,13 +172,13 @@ export class MyChatController {
    */
   private async requireOwned(
     id: string,
-    sub: string,
+    externalUserId: string,
   ): Promise<IChatSessionData> {
     const session = await this.chats.findById(id);
     if (
       !session ||
       session.channel !== OWN_CHANNEL ||
-      session.externalUserId !== sub
+      session.externalUserId !== externalUserId
     ) {
       throw new NotFoundException(`Chat ${id} not found`);
     }

@@ -81,9 +81,43 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
+  /**
+   * Reconcile only ONE end user's own bridle sessions (App "my history" —
+   * `POST /me/chats/sync`). Scans the agent(s) but reconciles just files whose
+   * parsed externalUserId matches: a self-service, non-admin equivalent of
+   * syncAll. Not guarded by `running` (scoped + read-only), so it can run
+   * alongside the interval reconcile.
+   */
+  async syncForExternalUser(
+    externalUserId: string,
+    agentId?: string,
+  ): Promise<IChatSyncResult> {
+    const result: IChatSyncResult = {
+      scannedAgents: 0,
+      scannedFiles: 0,
+      upserted: 0,
+      skipped: 0,
+    };
+    const agentIds = agentId
+      ? [agentId]
+      : (await this.agents.findAll()).map((a) => a.id);
+    const mine = (m: { channel: string; externalUserId: string }): boolean =>
+      m.channel === 'bridle' && m.externalUserId === externalUserId;
+    for (const id of agentIds) {
+      result.scannedAgents++;
+      await this.syncAgent(id, result, mine);
+    }
+    this.logger.log(
+      `user reconcile (${externalUserId}) done: agents=${result.scannedAgents} ` +
+        `files=${result.scannedFiles} upserted=${result.upserted} skipped=${result.skipped}`,
+    );
+    return result;
+  }
+
   private async syncAgent(
     agentId: string,
     result: IChatSyncResult,
+    filter?: (meta: { channel: string; externalUserId: string }) => boolean,
   ): Promise<void> {
     let nodes;
     try {
@@ -109,9 +143,10 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     );
 
     for (const node of sessionFiles) {
-      result.scannedFiles++;
       const meta = this.parseName(node.path);
       if (!meta) continue;
+      if (filter && !filter(meta)) continue;
+      result.scannedFiles++;
 
       if (sizeByKey.get(meta.sessionKey) === node.size) {
         result.skipped++;

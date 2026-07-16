@@ -1,20 +1,48 @@
 <script setup lang="ts">
 const chatStore = useChatStore();
 
-const { data: result, pending } = await useAsyncData('my-chats', () =>
+const { data: result, pending, refresh } = await useAsyncData('my-chats', () =>
   chatStore.listMine(),
 );
 
 const sessions = computed(() => result.value?.items ?? []);
+
+// Manual reconcile fallback for when realtime indexing hasn't caught up yet.
+const syncing = ref(false);
+async function onSync() {
+  if (syncing.value) return;
+  syncing.value = true;
+  try {
+    await chatStore.syncMine();
+    await refresh();
+  } finally {
+    syncing.value = false;
+  }
+}
 </script>
 
 <template>
   <div class="flex flex-col gap-6">
-    <header>
-      <h1 class="text-2xl font-bold tracking-tight">History</h1>
-      <p class="mt-1 text-sm text-muted-foreground">
-        Your past conversations. Open one to pick up where you left off.
-      </p>
+    <header class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">History</h1>
+        <p class="mt-1 text-sm text-muted-foreground">
+          Your past conversations. Open one to pick up where you left off.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:text-foreground disabled:opacity-60"
+        :disabled="syncing"
+        @click="onSync"
+      >
+        <Icon
+          name="refresh-cw"
+          :size="14"
+          :class="syncing && 'animate-spin'"
+        />
+        {{ syncing ? 'Syncing…' : 'Sync' }}
+      </button>
     </header>
 
     <!-- Loading skeletons (initial load only) -->

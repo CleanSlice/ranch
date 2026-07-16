@@ -60,6 +60,13 @@ export interface IChatMessagesQuery {
   cursor?: string;
 }
 
+export interface IChatSyncResult {
+  scannedAgents: number;
+  scannedFiles: number;
+  upserted: number;
+  skipped: number;
+}
+
 export const useChatStore = defineStore('chat', () => {
   async function listMine(page = 1, perPage = 50): Promise<IChatListResult> {
     const res = await ChatsService.getMyChats({ query: { page, perPage } });
@@ -92,5 +99,14 @@ export const useChatStore = defineStore('chat', () => {
     );
   }
 
-  return { listMine, getMine, messages };
+  // Self-service reconcile — pull the caller's own chats from S3 into the index
+  // when realtime indexing hasn't caught up. Server-scoped to the current user.
+  async function syncMine(agentId?: string): Promise<IChatSyncResult | null> {
+    const res = await ChatsService.syncMyChats({
+      body: agentId ? { agentId } : {},
+    });
+    return unwrap<IChatSyncResult>(res.data);
+  }
+
+  return { listMine, getMine, messages, syncMine };
 });

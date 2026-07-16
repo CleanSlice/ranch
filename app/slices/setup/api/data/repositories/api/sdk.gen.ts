@@ -138,6 +138,8 @@ import type {
   GetMyChatResponse,
   GetMyChatMessagesData,
   GetMyChatMessagesResponse,
+  SyncMyChatsData,
+  SyncMyChatsResponse,
   GetAgentChannelsData,
   GetAgentChannelsResponse,
   SetAgentChannelsData,
@@ -2181,6 +2183,26 @@ export class ChatsService {
     >({
       url: "/me/chats/{id}/messages",
       ...options,
+    });
+  }
+
+  /**
+   * Reconcile the current user's OWN chats from S3 into the index (self-service, non-admin). Only sessions belonging to the caller are touched. A manual fallback when realtime indexing has not caught up.
+   */
+  public static syncMyChats<ThrowOnError extends boolean = false>(
+    options: Options<SyncMyChatsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      SyncMyChatsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats/sync",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
     });
   }
 }

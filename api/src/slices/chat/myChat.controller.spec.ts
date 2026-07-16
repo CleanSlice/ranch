@@ -1,9 +1,10 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Request } from 'express';
 import { MyChatController } from './myChat.controller';
-import { IChatGateway, IChatSessionData } from './domain';
+import { IChatGateway, IChatSessionData, ChatSyncService } from './domain';
 import { TranscriptReaderService } from '#/agent/file/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
+import { UserRoleTypes } from '#/user/user/domain';
 
 const SUB = 'user-1';
 
@@ -46,15 +47,34 @@ function readerStub(read?: jest.Mock) {
   } as unknown as TranscriptReaderService;
 }
 
-const req = (sub?: string) =>
-  ({ user: sub ? ({ sub } as IAuthTokenPayload) : undefined }) as Request & {
-    user?: IAuthTokenPayload;
-  };
+function syncStub(fn?: jest.Mock) {
+  const syncForExternalUser =
+    fn ??
+    jest.fn(async () => ({
+      scannedAgents: 1,
+      scannedFiles: 1,
+      upserted: 1,
+      skipped: 0,
+    }));
+  const sync = { syncForExternalUser } as unknown as ChatSyncService;
+  return { sync, syncForExternalUser };
+}
+
+const req = (sub?: string, roles: UserRoleTypes[] = []) =>
+  ({
+    user: sub ? ({ sub, roles, email: '' } as IAuthTokenPayload) : undefined,
+  }) as Request & { user?: IAuthTokenPayload };
+
+function makeController(findById: jest.Mock, read?: jest.Mock) {
+  const { chats, list } = makeChats(findById);
+  const { sync, syncForExternalUser } = syncStub();
+  const ctrl = new MyChatController(chats, readerStub(read), sync);
+  return { ctrl, list, syncForExternalUser };
+}
 
 describe('MyChatController.list', () => {
-  it('scopes the query to the caller (bridle + their sub)', async () => {
-    const { chats, list } = makeChats(jest.fn());
-    const ctrl = new MyChatController(chats, readerStub());
+  it('scopes the query to a regular caller (bridle + their sub)', async () => {
+    const { ctrl, list } = makeController(jest.fn());
     const res = await ctrl.list({ page: 2, perPage: 10 }, req(SUB));
     expect(list).toHaveBeenCalledWith({
       channel: 'bridle',
@@ -66,9 +86,16 @@ describe('MyChatController.list', () => {
     expect(res).toEqual({ items: [OWNED], total: 1, page: 2, perPage: 10 });
   });
 
+  it("scopes an owner/admin to the shared 'admin' channel", async () => {
+    const { ctrl, list } = makeController(jest.fn());
+    await ctrl.list({}, req(SUB, [UserRoleTypes.Owner]));
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: 'bridle', externalUserId: 'admin' }),
+    );
+  });
+
   it('rejects an unauthenticated request', async () => {
-    const { chats } = makeChats(jest.fn());
-    const ctrl = new MyChatController(chats, readerStub());
+    const { ctrl } = makeController(jest.fn());
     await expect(ctrl.list({}, req(undefined))).rejects.toBeInstanceOf(
       ForbiddenException,
     );
@@ -76,15 +103,21 @@ describe('MyChatController.list', () => {
 });
 
 describe('MyChatController.detail', () => {
-  it('returns the session when the caller owns it', async () => {
-    const { chats } = makeChats(jest.fn(async () => OWNED));
-    const ctrl = new MyChatController(chats, readerStub());
+  it('returns the session when a regular caller owns it', async () => {
+    const { ctrl } = makeController(jest.fn(async () => OWNED));
     await expect(ctrl.detail('c1', req(SUB))).resolves.toEqual(OWNED);
   });
 
+  it("lets an owner/admin read the shared 'admin' session", async () => {
+    const adminChat = { ...OWNED, externalUserId: 'admin' };
+    const { ctrl } = makeController(jest.fn(async () => adminChat));
+    await expect(
+      ctrl.detail('c1', req(SUB, [UserRoleTypes.Admin])),
+    ).resolves.toEqual(adminChat);
+  });
+
   it('404s when the chat belongs to someone else (no existence leak)', async () => {
-    const { chats } = makeChats(jest.fn(async () => OWNED));
-    const ctrl = new MyChatController(chats, readerStub());
+    const { ctrl } = makeController(jest.fn(async () => OWNED));
     await expect(ctrl.detail('c1', req('someone-else'))).rejects.toBeInstanceOf(
       NotFoundException,
     );
@@ -92,16 +125,14 @@ describe('MyChatController.detail', () => {
 
   it('404s a non-bridle session even with a matching externalUserId', async () => {
     const telegram = { ...OWNED, channel: 'telegram' };
-    const { chats } = makeChats(jest.fn(async () => telegram));
-    const ctrl = new MyChatController(chats, readerStub());
+    const { ctrl } = makeController(jest.fn(async () => telegram));
     await expect(ctrl.detail('c1', req(SUB))).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
 
   it('404s a missing chat', async () => {
-    const { chats } = makeChats(jest.fn(async () => null));
-    const ctrl = new MyChatController(chats, readerStub());
+    const { ctrl } = makeController(jest.fn(async () => null));
     await expect(ctrl.detail('nope', req(SUB))).rejects.toBeInstanceOf(
       NotFoundException,
     );
@@ -113,8 +144,10 @@ describe('MyChatController.messages', () => {
     const read = jest.fn(async () => [
       { id: 'm1', role: 'user', text: 'hi', ts: 1 },
     ]);
-    const { chats } = makeChats(jest.fn(async () => OWNED));
-    const ctrl = new MyChatController(chats, readerStub(read));
+    const { ctrl } = makeController(
+      jest.fn(async () => OWNED),
+      read,
+    );
     const res = await ctrl.messages('c1', {}, req(SUB));
     expect(read).toHaveBeenCalledWith(
       'a1',
@@ -126,8 +159,10 @@ describe('MyChatController.messages', () => {
 
   it("does not read another user's transcript", async () => {
     const read = jest.fn(async () => []);
-    const { chats } = makeChats(jest.fn(async () => OWNED));
-    const ctrl = new MyChatController(chats, readerStub(read));
+    const { ctrl } = makeController(
+      jest.fn(async () => OWNED),
+      read,
+    );
     await expect(
       ctrl.messages('c1', {}, req('someone-else')),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -138,9 +173,25 @@ describe('MyChatController.messages', () => {
     const read = jest.fn(async () => {
       throw new Error('gone');
     });
-    const { chats } = makeChats(jest.fn(async () => OWNED));
-    const ctrl = new MyChatController(chats, readerStub(read));
+    const { ctrl } = makeController(
+      jest.fn(async () => OWNED),
+      read,
+    );
     const res = await ctrl.messages('c1', {}, req(SUB));
     expect(res).toEqual({ messages: [], nextCursor: null, hasMore: false });
+  });
+});
+
+describe('MyChatController.syncMine', () => {
+  it('reconciles only the caller (regular user → their sub)', async () => {
+    const { ctrl, syncForExternalUser } = makeController(jest.fn());
+    await ctrl.syncMine({ agentId: 'a1' }, req(SUB));
+    expect(syncForExternalUser).toHaveBeenCalledWith(SUB, 'a1');
+  });
+
+  it("reconciles the 'admin' channel for an owner/admin", async () => {
+    const { ctrl, syncForExternalUser } = makeController(jest.fn());
+    await ctrl.syncMine({}, req(SUB, [UserRoleTypes.Owner]));
+    expect(syncForExternalUser).toHaveBeenCalledWith('admin', undefined);
   });
 });

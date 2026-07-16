@@ -86,6 +86,11 @@ spec:
               value: /usr/src/app/rancher/.agent
             - name: RANCHER_PADDOCK_DIR
               value: /usr/src/app/rancher/.paddock/scenarios
+            # Chat insight cron-batch: LLM-summarize settled chats every N seconds
+            # (unset / <= 0 disables it; on-demand POST /chats/:id/summarize still
+            # works either way — see ChatInsightService).
+            - name: CHAT_INSIGHT_INTERVAL_SEC
+              value: "900"
             # Browser-pool — shared headless Chromium for runtime tools.
             # Internal URL is reached over the in-cluster Service; public URL
             # is the user-facing host for VNC live views during 2FA logins.

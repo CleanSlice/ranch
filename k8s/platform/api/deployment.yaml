@@ -45,6 +45,11 @@ spec:
               value: /usr/src/app/rancher/.agent
             - name: RANCHER_PADDOCK_DIR
               value: /usr/src/app/rancher/.paddock/scenarios
+            # Chat insight cron-batch: LLM-summarize settled chats every N seconds
+            # (unset / <= 0 disables it; on-demand POST /chats/:id/summarize still
+            # works either way — see ChatInsightService).
+            - name: CHAT_INSIGHT_INTERVAL_SEC
+              value: "900"
           volumeMounts:
             - name: paddock-work
               mountPath: /usr/src/app/runtime/.paddock

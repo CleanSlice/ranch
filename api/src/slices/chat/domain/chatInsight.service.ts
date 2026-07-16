@@ -7,7 +7,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { ILlmGateway } from '#/llm/domain';
+import { ILlmGateway, anthropicAuthHeaders } from '#/llm/domain';
 import type { ILlmCredentialData } from '#/llm/domain';
 import { TranscriptReaderService } from '#/agent/file/domain';
 import { IChatGateway } from './chat.gateway';
@@ -191,8 +191,10 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        // OAuth subscription tokens (sk-ant-oat…, what the bots run on) must go
+        // as Bearer + claude-code beta, not x-api-key — see anthropicAuthHeaders.
+        ...anthropicAuthHeaders(apiKey),
       },
       body: JSON.stringify({
         model,

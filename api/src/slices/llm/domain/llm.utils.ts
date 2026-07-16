@@ -22,3 +22,26 @@ export function normalizeCredential(raw: string): string {
   }
   return v.trim();
 }
+
+/**
+ * Anthropic accepts two credential types over DIFFERENT transports — sending
+ * one the other's way is a hard 401 (`invalid x-api-key`):
+ *  - `sk-ant-oat…` — a Claude **subscription OAuth token** (what our agents/bots
+ *    run on). Must be sent as a Bearer token with the Claude Code beta headers,
+ *    NOT via `x-api-key`.
+ *  - anything else — a standard API key (`sk-ant-api…`), sent via `x-api-key`.
+ *
+ * Returns only the auth-related headers so callers merge them into their own
+ * (`content-type`, `anthropic-version`). Mirrors the runtime's ClaudeRepository
+ * (`data/repositories/claude`) so ranch-side calls (health check, chat
+ * summaries, scenario generation) work with the exact credential the bots use.
+ */
+export function anthropicAuthHeaders(apiKey: string): Record<string, string> {
+  if (apiKey.startsWith('sk-ant-oat')) {
+    return {
+      authorization: `Bearer ${apiKey}`,
+      'anthropic-beta': 'oauth-2025-04-20,claude-code-20250219',
+    };
+  }
+  return { 'x-api-key': apiKey };
+}

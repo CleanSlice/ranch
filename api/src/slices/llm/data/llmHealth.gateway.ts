@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ILlmCredentialData } from '../domain/llm.types';
+import { anthropicAuthHeaders } from '../domain/llm.utils';
 import {
   ILlmHealthGateway,
   ILlmHealthCheckResult,
@@ -61,8 +62,10 @@ export class LlmHealthGateway extends ILlmHealthGateway {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          // OAuth subscription tokens (sk-ant-oat…) need Bearer + claude-code
+          // beta, not x-api-key — else a working bot credential reads as invalid.
+          ...anthropicAuthHeaders(apiKey),
         },
         body: JSON.stringify({
           model,

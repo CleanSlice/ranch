@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ILlmGateway } from '#/llm/domain';
+import { ILlmGateway, anthropicAuthHeaders } from '#/llm/domain';
 import {
   IPaddockScenarioGeneratorGateway,
   IGeneratePaddockScenarioInput,
@@ -143,8 +143,10 @@ export class PaddockScenarioGeneratorGateway extends IPaddockScenarioGeneratorGa
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        // OAuth subscription tokens (sk-ant-oat…) need Bearer + claude-code beta,
+        // not x-api-key — see anthropicAuthHeaders.
+        ...anthropicAuthHeaders(apiKey),
       },
       body: JSON.stringify({
         model,

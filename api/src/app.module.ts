@@ -23,6 +23,7 @@ import { SettingModule } from './slices/setting/setting.module';
 import { BridleModule } from './slices/bridle/bridle.module';
 import { LlmModule } from './slices/llm/llm.module';
 import { UsageModule } from './slices/usage/usage.module';
+import { ChatModule } from './slices/chat/chat.module';
 import { KnowledgeModule } from './slices/reins/knowledge/knowledge.module';
 import { SourceModule } from './slices/reins/source/source.module';
 import { SkillModule } from './slices/skill/skill.module';
@@ -66,6 +67,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     BridleModule,
     LlmModule,
     UsageModule,
+    ChatModule,
     KnowledgeModule,
     SourceModule,
     SkillModule,

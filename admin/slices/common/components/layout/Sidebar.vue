@@ -36,7 +36,7 @@ import {
   IconExternalLink,
   IconBrowser,
 } from '@tabler/icons-vue';
-import { Bot, FlaskConical, KeyRound } from 'lucide-vue-next';
+import { Bot, FlaskConical, KeyRound, MessageSquare } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const update = useRanchUpdate();
@@ -65,6 +65,7 @@ const iconMap: Record<string, unknown> = {
   Plug: IconPlug,
   FlaskConical,
   KeyRound,
+  MessageSquare,
   Browser: IconBrowser,
 };
 

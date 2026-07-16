@@ -5,6 +5,7 @@ import { BridleModule } from '#/bridle/bridle.module';
 import { FileController } from './file.controller';
 import { IFileGateway } from './domain/file.gateway';
 import { S3FileGateway } from './data/file.gateway';
+import { TranscriptReaderService } from './domain/transcriptReader.service';
 
 // AgentModule must be a forwardRef here because BridleModule (which imports
 // FileModule) is now also imported by AgentModule, creating
@@ -21,7 +22,8 @@ import { S3FileGateway } from './data/file.gateway';
       provide: IFileGateway,
       useClass: S3FileGateway,
     },
+    TranscriptReaderService,
   ],
-  exports: [IFileGateway],
+  exports: [IFileGateway, TranscriptReaderService],
 })
 export class FileModule {}

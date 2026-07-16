@@ -115,6 +115,38 @@ import type {
   SkillControllerFindByIdData,
   SkillControllerUpdateData,
   FindDependentAgentsData,
+  GetChatsData,
+  GetChatsResponse,
+  GetChatData,
+  GetChatResponse,
+  GetChatMessagesData,
+  GetChatMessagesResponse,
+  SyncChatsData,
+  SyncChatsResponse,
+  SummarizeChatData,
+  SummarizeChatResponse,
+  GetMyChatFeedbackData,
+  GetMyChatFeedbackResponse,
+  CreateChatFeedbackData,
+  CreateChatFeedbackResponse,
+  DeleteChatFeedbackData,
+  DeleteChatFeedbackResponse,
+  ExportChatData,
+  GetMyChatsData,
+  GetMyChatsResponse,
+  GetMyChatData,
+  GetMyChatResponse,
+  GetMyChatMessagesData,
+  GetMyChatMessagesResponse,
+  SyncMyChatsData,
+  SyncMyChatsResponse,
+  ListMyChatFeedbackData,
+  ListMyChatFeedbackResponse,
+  CreateMyChatFeedbackData,
+  CreateMyChatFeedbackResponse,
+  DeleteMyChatFeedbackData,
+  DeleteMyChatFeedbackResponse,
+  ExportMyChatData,
   GetAgentChannelsData,
   GetAgentChannelsResponse,
   SetAgentChannelsData,
@@ -1955,6 +1987,296 @@ export class SkillsService {
       ThrowOnError
     >({
       url: "/skills/{id}/agents",
+      ...options,
+    });
+  }
+}
+
+export class ChatsService {
+  /**
+   * List chat sessions (index). Filter by agent, channel, search; paginated.
+   */
+  public static getChats<ThrowOnError extends boolean = false>(
+    options?: Options<GetChatsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetChatsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats",
+      ...options,
+    });
+  }
+
+  /**
+   * Get one chat session (index metadata).
+   */
+  public static getChat<ThrowOnError extends boolean = false>(
+    options: Options<GetChatData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetChatResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Replay a chat session's transcript from S3, tail-first. `summary` markers are shown inline (compaction folds old turns into them); synthetic loop-control events are filtered. Admins may add tool_call,tool_result via `types`.
+   */
+  public static getChatMessages<ThrowOnError extends boolean = false>(
+    options: Options<GetChatMessagesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetChatMessagesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/messages",
+      ...options,
+    });
+  }
+
+  /**
+   * Reconcile the chat index against S3 session files (all agents, or one).
+   */
+  public static syncChats<ThrowOnError extends boolean = false>(
+    options: Options<SyncChatsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      SyncChatsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/sync",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Generate (or refresh) an LLM summary + insights for one chat, on demand.
+   */
+  public static summarizeChat<ThrowOnError extends boolean = false>(
+    options: Options<SummarizeChatData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      SummarizeChatResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/summarize",
+      ...options,
+    });
+  }
+
+  /**
+   * List the current user’s feedback for a chat session.
+   */
+  public static getMyChatFeedback<ThrowOnError extends boolean = false>(
+    options: Options<GetMyChatFeedbackData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetMyChatFeedbackResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/feedback",
+      ...options,
+    });
+  }
+
+  /**
+   * Set the current user’s 👍/👎 on an assistant message.
+   */
+  public static createChatFeedback<ThrowOnError extends boolean = false>(
+    options: Options<CreateChatFeedbackData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      CreateChatFeedbackResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/feedback",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Clear the current user’s feedback on a message (toggle-off).
+   */
+  public static deleteChatFeedback<ThrowOnError extends boolean = false>(
+    options: Options<DeleteChatFeedbackData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      DeleteChatFeedbackResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/feedback/{messageId}",
+      ...options,
+    });
+  }
+
+  /**
+   * Download a chat transcript as json / markdown / csv.
+   */
+  public static exportChat<ThrowOnError extends boolean = false>(
+    options: Options<ExportChatData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/chats/{id}/export",
+      ...options,
+    });
+  }
+
+  /**
+   * List the current user's own chat sessions, newest first.
+   */
+  public static getMyChats<ThrowOnError extends boolean = false>(
+    options?: Options<GetMyChatsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetMyChatsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats",
+      ...options,
+    });
+  }
+
+  /**
+   * Get one of the current user's own chat sessions.
+   */
+  public static getMyChat<ThrowOnError extends boolean = false>(
+    options: Options<GetMyChatData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetMyChatResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Replay one of the current user's own chats, tail-first. `summary` markers are shown inline; tool events are never exposed to end users.
+   */
+  public static getMyChatMessages<ThrowOnError extends boolean = false>(
+    options: Options<GetMyChatMessagesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetMyChatMessagesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats/{id}/messages",
+      ...options,
+    });
+  }
+
+  /**
+   * Reconcile the current user's OWN chats from S3 into the index (self-service, non-admin). Only sessions belonging to the caller are touched. A manual fallback when realtime indexing has not caught up.
+   */
+  public static syncMyChats<ThrowOnError extends boolean = false>(
+    options: Options<SyncMyChatsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      SyncMyChatsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats/sync",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * List the current user's own feedback for one of their chats.
+   */
+  public static listMyChatFeedback<ThrowOnError extends boolean = false>(
+    options: Options<ListMyChatFeedbackData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      ListMyChatFeedbackResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats/{id}/feedback",
+      ...options,
+    });
+  }
+
+  /**
+   * Set the current user's 👍/👎 on a message in their own chat.
+   */
+  public static createMyChatFeedback<ThrowOnError extends boolean = false>(
+    options: Options<CreateMyChatFeedbackData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      CreateMyChatFeedbackResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats/{id}/feedback",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Clear the current user's feedback on a message (toggle-off).
+   */
+  public static deleteMyChatFeedback<ThrowOnError extends boolean = false>(
+    options: Options<DeleteMyChatFeedbackData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      DeleteMyChatFeedbackResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats/{id}/feedback/{messageId}",
+      ...options,
+    });
+  }
+
+  /**
+   * Download the current user's own chat as json / markdown / csv.
+   */
+  public static exportMyChat<ThrowOnError extends boolean = false>(
+    options: Options<ExportMyChatData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/chats/{id}/export",
       ...options,
     });
   }

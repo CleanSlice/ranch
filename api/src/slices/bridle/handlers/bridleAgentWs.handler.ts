@@ -16,6 +16,7 @@ import {
   type IBridleDebugEvent,
 } from '../domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
+import { IChatGateway, type IChatActivity } from '#/chat/domain';
 
 /**
  * WebSocket gateway for AGENT runtime connections.
@@ -51,6 +52,7 @@ export class BridleAgentWsHandler
     private readonly config: ConfigService,
     @Inject(forwardRef(() => IAgentGateway))
     private readonly agentGateway: IAgentGateway,
+    private readonly chats: IChatGateway,
   ) {}
 
   handleConnection(client: Socket) {
@@ -163,6 +165,24 @@ export class BridleAgentWsHandler
     if (agentId && data?.requestId) {
       this.hub.handleSyncResponse(agentId, data);
     }
+  }
+
+  @SubscribeMessage('session_activity')
+  handleSessionActivity(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: IChatActivity,
+  ) {
+    // agentId comes from the authenticated socket — never trusted from payload.
+    const agentId = client.data?.agentId as string;
+    if (!agentId || !data?.sessionKey) return;
+    if (data.role !== 'user' && data.role !== 'assistant') return;
+    void this.chats
+      .recordActivity(agentId, data)
+      .catch((err: Error) =>
+        this.logger.warn(
+          `session_activity record failed for ${agentId}: ${err.message}`,
+        ),
+      );
   }
 
   @SubscribeMessage('debug')

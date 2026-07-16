@@ -19,6 +19,7 @@ import {
   ApiOkResponse,
   ApiQuery,
 } from '@nestjs/swagger';
+import { JwtService } from '@nestjs/jwt';
 import { IBridleGateway, buildParts } from './domain';
 import {
   SendMessageDto,
@@ -29,7 +30,11 @@ import {
   TranscriptMessageDto,
 } from './dtos';
 import { FlatResponse } from './core';
-import { IFileGateway } from '#/agent/file/domain';
+import {
+  IFileGateway,
+  TranscriptReaderService,
+  TranscriptMessage,
+} from '#/agent/file/domain';
 
 @ApiTags('bridle')
 @Controller('api/agent')
@@ -38,9 +43,37 @@ export class BridleController {
 
   constructor(
     private readonly hub: IBridleGateway,
+    private readonly jwt: JwtService,
     @Inject(forwardRef(() => IFileGateway))
     private readonly fileGateway: IFileGateway,
+    @Inject(forwardRef(() => TranscriptReaderService))
+    private readonly transcriptReader: TranscriptReaderService,
   ) {}
+
+  /**
+   * Resolve a STABLE client identity for HTTP chat calls, the same way the WS
+   * client handler does: verify the Bearer JWT the app already sends and use its
+   * `sub` (or `admin` for owners/admins). A stable id is essential — the agent
+   * runtime keys access-approval AND session history on this id, so a fresh id
+   * per request re-triggers the "send the owner your code" flow on every message
+   * and scatters history across throwaway channels. Returns null for anonymous
+   * callers (no/invalid token) → the caller mints a per-request throwaway id.
+   */
+  private resolveClientId(req: Record<string, unknown>): string | null {
+    const headers = req.headers as Record<string, string | undefined>;
+    const [scheme, token] = (headers?.authorization ?? '').split(' ');
+    if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
+    try {
+      const payload = this.jwt.verify<Record<string, unknown>>(token);
+      const roles = payload.roles as string[] | undefined;
+      const isAdmin =
+        Array.isArray(roles) &&
+        (roles.includes('Owner') || roles.includes('Admin'));
+      return isAdmin ? 'admin' : ((payload.sub as string) ?? null);
+    } catch {
+      return null;
+    }
+  }
 
   @ApiOperation({
     description: 'Send a message to a agent (HTTP fallback — fire & forget)',
@@ -55,8 +88,7 @@ export class BridleController {
     @Req() req: Record<string, unknown>,
     @Body() body: SendMessageDto,
   ) {
-    const user = req.user as Record<string, unknown> | undefined;
-    const clientId = (user?.id as string) ?? 'http-' + crypto.randomUUID();
+    const clientId = this.resolveClientId(req) ?? 'http-' + crypto.randomUUID();
     const parts = body.parts ?? buildParts(body.text, body.images);
     this.hub.sendToAgent(clientId, agentId, body.text, parts);
     return { ok: true };
@@ -75,7 +107,7 @@ export class BridleController {
     @Req() req: Record<string, unknown>,
     @Body() body: SendMessageDto,
   ) {
-    const clientId = 'sync-' + crypto.randomUUID();
+    const clientId = this.resolveClientId(req) ?? 'sync-' + crypto.randomUUID();
     const chunks: string[] = [];
 
     return new Promise((resolve) => {
@@ -161,9 +193,15 @@ export class BridleController {
     const limit = query.limit ?? 50;
     const path = `data/sessions/bridle:${channel}.jsonl`;
 
-    let allMessages: TranscriptMessageDto[];
+    let all: TranscriptMessage[];
     try {
-      allMessages = await this.readAllTranscriptMessages(agentId, path);
+      // Byte-identical to the previous inline reader: user/assistant only, raw
+      // order (no transient filtering). The admin chat-history view uses the
+      // same service but opts into summaries + hygiene.
+      all = await this.transcriptReader.read(agentId, path, {
+        types: ['user', 'assistant'],
+        filterTransient: false,
+      });
     } catch (err) {
       const getStatus = (err as { getStatus?: () => number }).getStatus;
       const status =
@@ -171,88 +209,25 @@ export class BridleController {
           ? getStatus.call(err)
           : ((err as { status?: number; statusCode?: number }).status ??
             (err as { statusCode?: number }).statusCode);
-      if (status === 404) {
-        return { messages: [], channel, nextCursor: null, hasMore: false };
+      if (status !== 404) {
+        this.logger.warn(
+          `Transcript read failed for ${agentId}/${channel}: ${(err as Error).message}`,
+        );
       }
-      this.logger.warn(
-        `Transcript read failed for ${agentId}/${channel}: ${(err as Error).message}`,
-      );
       return { messages: [], channel, nextCursor: null, hasMore: false };
     }
 
-    const endIdx = this.parseCursor(query.cursor, allMessages.length);
-    const startIdx = Math.max(0, endIdx - limit);
-    const page = allMessages.slice(startIdx, endIdx);
-    const hasMore = startIdx > 0;
-
+    const { messages, nextCursor, hasMore } = TranscriptReaderService.page(
+      all,
+      query.cursor,
+      limit,
+    );
     return {
-      messages: page,
+      messages: messages as TranscriptMessageDto[],
       channel,
-      nextCursor: hasMore ? String(startIdx) : null,
+      nextCursor,
       hasMore,
     };
-  }
-
-  // Read the full JSONL transcript via range reads, parse all visible
-  // user/assistant lines, return sorted ascending by ts. Large files are
-  // streamed in 512 KB blocks so we never hit the editor's MAX_BYTES cap.
-  // Hard ceiling: 20 MB to avoid pathological reads — anything bigger
-  // should be exported via the Files ZIP download.
-  private async readAllTranscriptMessages(
-    agentId: string,
-    path: string,
-  ): Promise<TranscriptMessageDto[]> {
-    const MAX_TRANSCRIPT_BYTES = 20 * 1024 * 1024;
-    let content = '';
-    let offset = 0;
-    while (true) {
-      const chunk = await this.fileGateway.readRange(
-        agentId,
-        path,
-        offset,
-        512 * 1024,
-      );
-      content += chunk.content;
-      if (content.length > MAX_TRANSCRIPT_BYTES) {
-        throw new Error(
-          `Transcript exceeds ${MAX_TRANSCRIPT_BYTES} bytes — export via Files instead`,
-        );
-      }
-      if (!chunk.hasMore || chunk.nextOffset === null) break;
-      offset = chunk.nextOffset;
-    }
-
-    const messages: TranscriptMessageDto[] = [];
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const evt = JSON.parse(trimmed) as {
-          id?: string;
-          type?: string;
-          ts?: number;
-          data?: { text?: string };
-        };
-        if (evt.type !== 'user' && evt.type !== 'assistant') continue;
-        const text = evt.data?.text;
-        if (!text || !evt.id || typeof evt.ts !== 'number') continue;
-        messages.push({ id: evt.id, role: evt.type, text, ts: evt.ts });
-      } catch {
-        // Skip malformed lines — JSONL writers occasionally truncate the
-        // tail mid-flush; one bad line shouldn't kill the whole replay.
-      }
-    }
-    messages.sort((a, b) => a.ts - b.ts);
-    return messages;
-  }
-
-  // Cursor is the index *into the sorted-ascending message list* where the
-  // next page ENDS (exclusive). Default: total length (= latest page).
-  private parseCursor(cursor: string | undefined, total: number): number {
-    if (!cursor) return total;
-    const parsed = parseInt(cursor, 10);
-    if (!Number.isFinite(parsed) || parsed < 0) return total;
-    return Math.min(parsed, total);
   }
 
   @ApiOperation({

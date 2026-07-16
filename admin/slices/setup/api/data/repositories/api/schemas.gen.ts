@@ -1252,6 +1252,255 @@ export const UpdateSkillDtoSchema = {
   },
 } as const;
 
+export const ChatSessionDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      example: "chat-9f2c…",
+    },
+    agentId: {
+      type: "string",
+    },
+    channel: {
+      type: "string",
+      enum: ["bridle", "telegram", "slack", "internal"],
+      example: "bridle",
+    },
+    externalUserId: {
+      type: "string",
+      example: "admin",
+    },
+    sessionKey: {
+      type: "string",
+      example: "bridle:admin",
+    },
+    title: {
+      type: "object",
+      nullable: true,
+    },
+    preview: {
+      type: "object",
+      nullable: true,
+      description: "Last message text, truncated",
+    },
+    lastRole: {
+      type: "string",
+      enum: ["user", "assistant"],
+      nullable: true,
+    },
+    lastMessageAt: {
+      format: "date-time",
+      type: "string",
+      description: "Unix ms via ISO",
+      example: "2026-07-15T09:12:00.000Z",
+    },
+    messageCount: {
+      type: "number",
+      description: "Monotonic lifetime total",
+    },
+    userMessageCount: {
+      type: "number",
+    },
+    summary: {
+      type: "object",
+      nullable: true,
+    },
+    summaryAt: {
+      type: "object",
+      nullable: true,
+    },
+    insights: {
+      type: "object",
+      nullable: true,
+      description: "topics/sentiment/resolved/language",
+    },
+    archived: {
+      type: "boolean",
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "agentId",
+    "channel",
+    "externalUserId",
+    "sessionKey",
+    "lastMessageAt",
+    "messageCount",
+    "userMessageCount",
+    "archived",
+    "createdAt",
+    "updatedAt",
+  ],
+} as const;
+
+export const ChatListResponseDtoSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ChatSessionDto",
+      },
+    },
+    total: {
+      type: "number",
+      example: 128,
+    },
+    page: {
+      type: "number",
+      example: 1,
+    },
+    perPage: {
+      type: "number",
+      example: 50,
+    },
+  },
+  required: ["items", "total", "page", "perPage"],
+} as const;
+
+export const ChatMessageDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      example: "c94dbcf2-…",
+    },
+    role: {
+      type: "string",
+      enum: [
+        "user",
+        "assistant",
+        "summary",
+        "tool_call",
+        "tool_result",
+        "system",
+      ],
+      example: "assistant",
+    },
+    text: {
+      type: "string",
+      example: "Hello, how can I help?",
+    },
+    ts: {
+      type: "number",
+      example: 1777562539964,
+      description: "Unix epoch ms",
+    },
+  },
+  required: ["id", "role", "text", "ts"],
+} as const;
+
+export const ChatMessagesResponseDtoSchema = {
+  type: "object",
+  properties: {
+    messages: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ChatMessageDto",
+      },
+    },
+    nextCursor: {
+      type: "object",
+      nullable: true,
+      description: "Pass to fetch the previous (older) page",
+    },
+    hasMore: {
+      type: "boolean",
+    },
+  },
+  required: ["messages", "hasMore"],
+} as const;
+
+export const SyncChatsDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+      description: "Reconcile only this agent; omit for all agents",
+    },
+  },
+} as const;
+
+export const SyncChatsResponseDtoSchema = {
+  type: "object",
+  properties: {
+    scannedAgents: {
+      type: "number",
+    },
+    scannedFiles: {
+      type: "number",
+    },
+    upserted: {
+      type: "number",
+    },
+    skipped: {
+      type: "number",
+    },
+  },
+  required: ["scannedAgents", "scannedFiles", "upserted", "skipped"],
+} as const;
+
+export const CreateChatFeedbackDtoSchema = {
+  type: "object",
+  properties: {
+    messageId: {
+      type: "string",
+      description: "Event.id of the rated assistant message",
+    },
+    rating: {
+      type: "number",
+      enum: [1, -1],
+      description: "1 = 👍, -1 = 👎",
+    },
+    comment: {
+      type: "string",
+    },
+  },
+  required: ["messageId", "rating"],
+} as const;
+
+export const ChatFeedbackDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    messageId: {
+      type: "string",
+    },
+    rating: {
+      type: "number",
+      enum: [1, -1],
+    },
+    comment: {
+      type: "object",
+      nullable: true,
+    },
+    source: {
+      type: "string",
+      example: "admin",
+    },
+    authorId: {
+      type: "object",
+      nullable: true,
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: ["id", "messageId", "rating", "source", "createdAt"],
+} as const;
+
 export const TelegramChannelConfigDtoSchema = {
   type: "object",
   properties: {

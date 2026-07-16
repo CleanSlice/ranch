@@ -503,7 +503,7 @@ async function onPaddockEvalStarted() {
 // Tab state — persisted in the URL so deep links + browser back work.
 // `chat` is the default since 99% of the time the user is here to talk to the
 // agent, not to inspect its plumbing.
-const TABS = ['chat', 'overview', 'knowledge', 'files', 'secrets', 'env', 'channels', 'logs', 'paddock'] as const;
+const TABS = ['chat', 'overview', 'knowledge', 'files', 'secrets', 'env', 'channels', 'chats', 'logs', 'paddock'] as const;
 type AgentTab = (typeof TABS)[number];
 const route = useRoute();
 const router = useRouter();
@@ -693,6 +693,7 @@ onBeforeUnmount(stopMetricsPolling);
               { value: 'secrets', title: 'Secrets', desc: 'User-scoped secrets the runtime stores.' },
               { value: 'env', title: 'Environment', desc: 'Env vars injected at deploy time.' },
               { value: 'channels', title: 'Channels', desc: 'Messaging platforms (Telegram, …) the agent talks on.' },
+              { value: 'chats', title: 'Chats', desc: 'Conversation history across channels.' },
               { value: 'logs', title: 'Logs', desc: 'Pod logs from the runtime container.' },
               { value: 'paddock', title: 'Paddock', desc: 'Run evaluations & manage scenarios.' },
             ]"
@@ -1379,6 +1380,10 @@ onBeforeUnmount(stopMetricsPolling);
 
         <TabsContent value="channels" class="mt-0">
           <AgentChannelProvider :agent-id="agent.id" />
+        </TabsContent>
+
+        <TabsContent value="chats" class="mt-0">
+          <ChatListProvider :agent-id="agent.id" />
         </TabsContent>
 
         <TabsContent value="logs" class="mt-0">

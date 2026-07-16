@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Injectable,
   Logger,
@@ -109,6 +110,14 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
           result.summarized++;
         } catch (err) {
           result.failed++;
+          // A rejected credential (401/403 → BadRequestException) dooms every
+          // session — abort the batch instead of hammering the LLM with a bad key.
+          if (err instanceof BadRequestException) {
+            this.logger.error(
+              `insight batch aborted — ${(err as Error).message}`,
+            );
+            break;
+          }
           this.logger.warn(
             `insight failed for ${session.id}: ${(err as Error).message}`,
           );
@@ -193,7 +202,14 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(`Anthropic API ${res.status}: ${body.slice(0, 200)}`);
+      if (res.status === 401 || res.status === 403) {
+        throw new BadRequestException(
+          `Anthropic rejected the API key (${res.status}) — update the Anthropic credential in Settings → LLM credentials.`,
+        );
+      }
+      throw new BadGatewayException(
+        `Anthropic API ${res.status}: ${body.slice(0, 200)}`,
+      );
     }
     const json = (await res.json()) as {
       content?: Array<{ type: string; text?: string }>;

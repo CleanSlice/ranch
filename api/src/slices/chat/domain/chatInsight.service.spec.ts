@@ -166,4 +166,21 @@ describe('ChatInsightService.runBatch', () => {
     expect(r.summarized).toBe(0);
     expect(findEligibleForInsight).not.toHaveBeenCalled();
   });
+
+  it('aborts after the first rejected credential (does not hammer every session)', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+      text: async () => 'invalid x-api-key',
+    })) as unknown as typeof fetch;
+    const { chats, saveInsights } = makeChats({
+      eligible: [SESSION, { ...SESSION, id: 'c2' }, { ...SESSION, id: 'c3' }],
+    });
+    const svc = new ChatInsightService(chats, readerStub(), llmsStub());
+    const r = await svc.runBatch();
+    expect(r.summarized).toBe(0);
+    expect(r.failed).toBe(1); // stopped after the first, not 3
+    expect(saveInsights).not.toHaveBeenCalled();
+  });
 });

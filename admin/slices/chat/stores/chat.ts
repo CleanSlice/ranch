@@ -12,6 +12,20 @@ function unwrap<T>(body: unknown): T | null {
   return (body ?? null) as T | null;
 }
 
+// hey-api doesn't throw on 4xx/5xx — it returns { error }. Surface it so the UI
+// can show the API's message (e.g. a rejected LLM credential) instead of a
+// silent no-op.
+function throwIfError(
+  res: { error?: unknown; response?: { status?: number } },
+  action: string,
+): void {
+  if (res.error === undefined || res.error === null) return;
+  const msg = (res.error as { message?: string }).message;
+  throw new Error(
+    msg ? `${action}: ${msg}` : `${action} failed (HTTP ${res.response?.status ?? '?'})`,
+  );
+}
+
 export type ChatChannel = 'bridle' | 'telegram' | 'slack' | 'internal';
 
 export interface IChatInsights {
@@ -143,6 +157,7 @@ export const useChatStore = defineStore('chat', () => {
 
   async function summarize(id: string): Promise<IChatSession | null> {
     const res = await ChatsService.summarizeChat({ path: { id } });
+    throwIfError(res, 'Summarize');
     return unwrap<IChatSession>(res.data);
   }
 

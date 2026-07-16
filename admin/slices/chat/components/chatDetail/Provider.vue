@@ -13,11 +13,15 @@ const { data: session } = await useAsyncData(`chat-detail-${props.id}`, () =>
 );
 
 const summarizing = ref(false);
+const insightError = ref<string | null>(null);
 async function onSummarize() {
   summarizing.value = true;
+  insightError.value = null;
   try {
     const updated = await store.summarize(props.id);
     if (updated) session.value = updated;
+  } catch (err) {
+    insightError.value = (err as Error).message;
   } finally {
     summarizing.value = false;
   }
@@ -147,6 +151,9 @@ function fmt(iso?: string | null): string {
             {{ summarizing ? 'Summarizing…' : session.summary ? 'Re-summarize' : 'Summarize' }}
           </Button>
         </div>
+        <p v-if="insightError" class="mt-2 text-sm text-destructive">
+          {{ insightError }}
+        </p>
         <p v-if="session.summary" class="mt-2 text-sm text-muted-foreground">
           {{ session.summary }}
         </p>

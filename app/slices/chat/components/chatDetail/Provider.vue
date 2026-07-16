@@ -87,18 +87,12 @@ function fmt(iso?: string | null): string {
   return iso ? new Date(iso).toLocaleString() : '—';
 }
 
-const sentimentClass = computed(() => {
-  switch (session.value?.insights?.sentiment) {
-    case 'positive':
-      return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400';
-    case 'negative':
-      return 'bg-rose-500/15 text-rose-700 dark:text-rose-400';
-    case 'mixed':
-      return 'bg-amber-500/15 text-amber-700 dark:text-amber-400';
-    default:
-      return 'bg-muted text-muted-foreground';
-  }
-});
+const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
+  positive: 'default',
+  neutral: 'destructive',
+  negative: 'outline',
+  mixed: 'secondary',
+};
 </script>
 
 <template>
@@ -133,51 +127,48 @@ const sentimentClass = computed(() => {
         </div>
 
         <!-- LLM gist: summary + insights -->
-        <div
-          v-if="session.summary || session.insights"
-          class="mt-3 rounded bg-muted/40 p-3"
-        >
-          <!-- sentiment / resolved / language sit by the header, apart from topics -->
-          <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span class="text-xs font-medium text-muted-foreground">
-              Summary &amp; insights
-            </span>
+        <div class="mt-3 rounded bg-muted/40 p-3">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-xs font-medium text-muted-foreground">Summary &amp; insights</span>
+            <!-- sentiment / resolved / language sit by the header, apart from topics -->
             <template v-if="session.insights">
-              <span
-                class="rounded px-2 py-0.5 capitalize"
-                :class="sentimentClass"
+              <Badge
+                :variant="sentimentVariant[session.insights.sentiment] ?? 'secondary'"
+                class="capitalize"
               >
                 {{ session.insights.sentiment }}
-              </span>
-              <span
-                class="rounded border px-2 py-0.5 capitalize text-muted-foreground"
-              >
+              </Badge>
+              <Badge variant="outline" class="capitalize">
                 {{ session.insights.resolved ? 'resolved' : 'unresolved' }}
-              </span>
-              <span
-                class="rounded border px-2 py-0.5 capitalize text-muted-foreground"
-              >
+              </Badge>
+              <Badge variant="outline" class="capitalize">
                 {{ session.insights.language }}
-              </span>
+              </Badge>
             </template>
           </div>
-          <p v-if="session.summary" class="mt-2 text-sm text-muted-foreground">
-            {{ session.summary }}
-          </p>
-          <!-- Topic tags only -->
-          <div
-            v-if="session.insights?.topics?.length"
-            class="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]"
-          >
-            <span
-              v-for="topic in session.insights.topics"
-              :key="topic"
-              class="rounded border px-2 py-0.5 text-muted-foreground"
-            >
-              {{ topic }}
-            </span>
-          </div>
         </div>
+        <p v-if="session.summary" class="mt-2 text-sm text-muted-foreground">
+          {{ session.summary }}
+        </p>
+        <p v-else class="mt-2 text-sm text-muted-foreground">
+          No summary yet — click Summarize to generate one.
+        </p>
+        <!-- Topic tags only -->
+        <div
+          v-if="session.insights?.topics?.length"
+          class="mt-2 flex flex-wrap items-center gap-1.5"
+        >
+          <Badge
+            v-for="topic in session.insights.topics"
+            :key="topic"
+            variant="outline"
+            class="capitalize"
+          >
+            {{ topic }}
+          </Badge>
+        </div>
+      </div>
       </div>
 
       <!-- Export controls -->

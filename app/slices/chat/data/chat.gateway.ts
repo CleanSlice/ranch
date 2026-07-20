@@ -8,6 +8,7 @@ import type {
   SyncChatsResponseDto,
 } from '#api/data/repositories/api/types.gen';
 import { BaseGateway } from '#common/data/BaseGateway';
+import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IChatGateway } from '../domain/chat.gateway';
 import {
   emptyChatList,
@@ -22,7 +23,6 @@ import {
   type IChatSyncResult,
 } from '../domain/chat.types';
 import { ChatMapper } from './chat.mapper';
-import { unwrapEnvelope } from './unwrapEnvelope';
 
 export class ChatGateway extends BaseGateway implements IChatGateway {
   private mapper = new ChatMapper();

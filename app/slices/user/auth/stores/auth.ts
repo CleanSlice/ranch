@@ -1,21 +1,16 @@
-import { AuthService } from '#api/data';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
 import { handleApiAuthentication } from '#api/utils/handleApiAuthentication';
+import { UserRoleTypes } from '#auth/domain';
+import type { AuthService, IAuthUser } from '#auth/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain enum/types so consumers that import them from
+// `#auth/stores/auth` — and the auto-import (imports.dirs) that exposes
+// `UserRoleTypes` globally — keep working. `UserRoleTypes` is used as a runtime
+// value, so it's a value re-export.
+export { UserRoleTypes } from '#auth/domain';
+export type { IAuthUser, IAuthSession } from '#auth/domain';
 
-export enum UserRoleTypes {
-  Owner = 'Owner',
-  Admin = 'Admin',
-  User = 'User',
-}
-
-export interface IAuthUser {
-  id: string;
-  name: string;
-  email: string;
-  roles: UserRoleTypes[];
-  status: string;
-}
+const getService = createServiceGetter<AuthService>('$authService');
 
 const TOKEN_STORAGE_KEY = 'ranch.access_token';
 
@@ -59,36 +54,22 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchMe() {
-    const res = await AuthService.authControllerMe();
-    const env = res.data as ApiEnvelope<IAuthUser> | undefined;
-    user.value = env?.data ?? null;
+    user.value = await getService().me();
     return user.value;
   }
 
   async function login(email: string, password: string) {
-    const res = await AuthService.authControllerLogin({
-      body: { email, password },
-    });
-    const env = res.data as ApiEnvelope<{
-      accessToken: string;
-      user: IAuthUser;
-    }>;
-    applyToken(env.data.accessToken);
-    user.value = env.data.user;
-    return env.data;
+    const session = await getService().login(email, password);
+    applyToken(session.accessToken);
+    user.value = session.user;
+    return session;
   }
 
   async function register(name: string, email: string, password: string) {
-    const res = await AuthService.authControllerRegister({
-      body: { name, email, password },
-    });
-    const env = res.data as ApiEnvelope<{
-      accessToken: string;
-      user: IAuthUser;
-    }>;
-    applyToken(env.data.accessToken);
-    user.value = env.data.user;
-    return env.data;
+    const session = await getService().register(name, email, password);
+    applyToken(session.accessToken);
+    user.value = session.user;
+    return session;
   }
 
   function logout() {

@@ -6,7 +6,8 @@
 export default defineNuxtPlugin({
   name: 'auth-init',
   parallel: false,
-  dependsOn: ['api-base-url'],
+  // `auth-di` must provide $authService before init() → me() runs here.
+  dependsOn: ['api-base-url', 'auth-di'],
   async setup() {
     if (!import.meta.client) return;
     const authStore = useAuthStore();

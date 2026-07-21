@@ -1,46 +1,33 @@
-export type ConnectionStateTypes = 'idle' | 'connecting' | 'connected' | 'disconnected';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type { AgentStatusService } from '#agent/domain';
+import type {
+  AgentStatusStreamMessage,
+  ConnectionStateTypes,
+  IAgentPodStatus,
+  IAgentRecord,
+} from '#agent/domain';
 
-export interface IAgentPodStatus {
-  agentId: string;
-  podName: string;
-  phase: 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Unknown';
-  ready: boolean;
-  restartCount: number;
-  startedAt: string | null;
-  lastTerminationReason: string | null;
-  containerWaitingReason: string | null;
-  message: string | null;
-  observedAt: string;
-}
+// Re-export the domain types so any consumer importing them from
+// `#agent/stores/agentStatus` keeps working.
+export type {
+  ConnectionStateTypes,
+  IAgentPodStatus,
+  IAgentRecord,
+  IAgentStatus,
+} from '#agent/domain';
 
-interface IAgentRecord {
-  id: string;
-  name: string;
-  status: string;
-}
-
-interface IAgentStatus {
-  agent: IAgentRecord;
-  pod: IAgentPodStatus | null;
-}
-
-type StreamMessage =
-  | { type: 'snapshot'; payload: IAgentStatus[] }
-  | {
-      type: 'event';
-      payload: { eventType: 'added' | 'modified' | 'deleted'; status: IAgentStatus };
-    };
+const getService = createServiceGetter<AgentStatusService>('$agentStatusService');
 
 export const useAgentStatusStore = defineStore('agentStatus', () => {
-  const config = useRuntimeConfig();
-
   const connectionState = ref<ConnectionStateTypes>('idle');
   const lastEventAt = ref<number | null>(null);
   const statuses = ref<Record<string, IAgentPodStatus>>({});
   const agents = ref<Record<string, IAgentRecord>>({});
 
-  let source: EventSource | null = null;
+  // Consumer ref-count: multiple components mount/unmount the stream, but only
+  // one EventSource should be open. `active` guards the single subscribe.
   let subscribers = 0;
+  let active = false;
 
   const connected = computed(() => connectionState.value === 'connected');
 
@@ -55,7 +42,7 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
       ).length,
   );
 
-  function applyMessage(msg: StreamMessage) {
+  function applyMessage(msg: AgentStatusStreamMessage) {
     lastEventAt.value = Date.now();
     if (msg.type === 'snapshot') {
       const nextAgents: Record<string, IAgentRecord> = {};
@@ -83,36 +70,21 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
 
   function connect() {
     subscribers += 1;
-    if (source || !import.meta.client) return;
-
-    connectionState.value = 'connecting';
-    const baseUrl = (config.public.apiUrl as string).replace(/\/$/, '');
-    source = new EventSource(`${baseUrl}/agents/status/stream`);
-
-    source.onopen = () => {
-      connectionState.value = 'connected';
-    };
-
-    source.onmessage = (raw: MessageEvent) => {
-      try {
-        applyMessage(JSON.parse(raw.data) as StreamMessage);
-      } catch (err) {
-        // malformed payload — keep the connection but skip the message
-        console.warn('[agentStatus] failed to parse SSE payload', err);
-      }
-    };
-
-    source.onerror = () => {
-      // EventSource handles reconnection on its own; reflect intermediate state
-      connectionState.value = 'disconnected';
-    };
+    if (active || !import.meta.client) return;
+    active = true;
+    getService().subscribe({
+      onMessage: applyMessage,
+      onConnectionStateChange: (state) => {
+        connectionState.value = state;
+      },
+    });
   }
 
   function disconnect() {
     subscribers = Math.max(0, subscribers - 1);
-    if (subscribers > 0 || !source) return;
-    source.close();
-    source = null;
+    if (subscribers > 0 || !active) return;
+    active = false;
+    getService().unsubscribe();
     connectionState.value = 'idle';
   }
 

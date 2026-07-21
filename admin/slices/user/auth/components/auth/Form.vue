@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { IconAlertTriangle, IconEye, IconEyeOff } from '@tabler/icons-vue';
 import { Button } from '#theme/components/ui/button';
 import { Input } from '#theme/components/ui/input';
 import { Label } from '#theme/components/ui/label';
@@ -14,6 +15,8 @@ const props = defineProps<{
   submitting?: boolean;
   errorMessage?: string | null;
 }>();
+
+const showPassword = ref(false);
 
 const emit = defineEmits<{
   submit: [values: { email: string; password: string }];
@@ -60,16 +63,34 @@ function onSubmit() {
         </div>
         <div class="grid gap-2">
           <Label for="password">Password</Label>
-          <Input
-            id="password"
-            v-model="form.password"
-            type="password"
-            autocomplete="current-password"
-            :aria-invalid="!!errors.password"
-          />
+          <div class="relative">
+            <Input
+              id="password"
+              v-model="form.password"
+              :type="showPassword ? 'text' : 'password'"
+              autocomplete="current-password"
+              :aria-invalid="!!errors.password"
+              class="pr-9"
+            />
+            <button
+              type="button"
+              class="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition hover:text-foreground"
+              :aria-label="showPassword ? 'Hide password' : 'Show password'"
+              @click="showPassword = !showPassword"
+            >
+              <IconEyeOff v-if="showPassword" class="size-4" />
+              <IconEye v-else class="size-4" />
+            </button>
+          </div>
           <p v-if="errors.password" class="text-xs text-destructive">{{ errors.password }}</p>
         </div>
-        <p v-if="props.errorMessage" class="text-xs text-destructive">{{ props.errorMessage }}</p>
+        <div
+          v-if="props.errorMessage"
+          class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive"
+        >
+          <IconAlertTriangle class="mt-px size-3.5 shrink-0" />
+          <span>{{ props.errorMessage }}</span>
+        </div>
         <Button type="submit" :disabled="submitting" class="w-full">
           {{ submitting ? 'Signing in…' : 'Sign in' }}
         </Button>

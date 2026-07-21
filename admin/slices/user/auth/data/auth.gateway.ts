@@ -10,9 +10,12 @@ import { AuthMapper } from './auth.mapper';
 export class AuthGateway extends BaseGateway implements IAuthGateway {
   private mapper = new AuthMapper();
 
+  // `throwOnError: true` — the axios client returns the error object instead of
+  // throwing by default; opt in so a 401 surfaces to the caller (login form /
+  // hydrate) instead of silently yielding an empty session.
   me(): Promise<IAuthUser | null> {
     return this.execute(async () => {
-      const res = await AuthApi.authControllerMe();
+      const res = await AuthApi.authControllerMe({ throwOnError: true });
       return this.mapper.toUser(unwrapEnvelope(res.data));
     });
   }
@@ -21,6 +24,7 @@ export class AuthGateway extends BaseGateway implements IAuthGateway {
     return this.execute(async () => {
       const res = await AuthApi.authControllerLogin({
         body: { email, password },
+        throwOnError: true,
       });
       return this.mapper.toSession(unwrapEnvelope(res.data));
     });

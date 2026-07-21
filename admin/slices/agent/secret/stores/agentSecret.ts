@@ -1,19 +1,17 @@
-import { SecretsService } from '#api/data';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type { AgentSecretService, ISecretListData } from '#agentSecret/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain types so `agentSecret/Provider.vue` (and any future
+// consumer importing from `#agentSecret/stores/agentSecret`) keeps working.
+export type {
+  ISecretEntry,
+  ISecretListData,
+  SecretProviderTypes,
+} from '#agentSecret/domain';
 
-export type SecretProviderTypes = 'aws' | 'file';
-
-export interface ISecretEntry {
-  name: string;
-  value: string;
-  updatedAt: string | null;
-}
-
-export interface ISecretListData {
-  provider: SecretProviderTypes;
-  secrets: ISecretEntry[];
-}
+const getService = createServiceGetter<AgentSecretService>(
+  '$agentSecretService',
+);
 
 export const useAgentSecretStore = defineStore('agentSecret', () => {
   const data = ref<ISecretListData | null>(null);
@@ -24,11 +22,7 @@ export const useAgentSecretStore = defineStore('agentSecret', () => {
     loading.value = true;
     error.value = null;
     try {
-      const res = await SecretsService.secretControllerList({
-        path: { agentId },
-      });
-      const env = res.data as ApiEnvelope<ISecretListData> | undefined;
-      data.value = env?.data ?? null;
+      data.value = await getService().list(agentId);
       return data.value;
     } catch (err) {
       error.value = (err as Error).message;
@@ -39,43 +33,26 @@ export const useAgentSecretStore = defineStore('agentSecret', () => {
     }
   }
 
-  // set/delete return the full refreshed list — apply it so the UI updates in
-  // one round-trip. Throws with the API's message on failure so the caller can
-  // surface it (e.g. "AWS credentials are not configured").
-  function applyResult(res: {
-    data?: unknown;
-    error?: unknown;
-  }): ISecretListData {
-    const env = res.data as ApiEnvelope<ISecretListData> | undefined;
-    if (env?.data) {
-      data.value = env.data;
-      return env.data;
-    }
-    const err = res.error as { message?: string } | undefined;
-    throw new Error(err?.message || 'Secret operation failed');
-  }
-
+  // set/delete/replace return the full refreshed list — apply it so the UI
+  // updates in one round-trip. The service throws the API's message on failure
+  // so the caller can surface it (e.g. "AWS credentials are not configured").
   async function setSecret(
     agentId: string,
     key: string,
     value: string,
   ): Promise<ISecretListData> {
-    const res = await SecretsService.secretControllerSet({
-      path: { agentId },
-      body: { key, value },
-    });
-    return applyResult(res);
+    const updated = await getService().set(agentId, key, value);
+    data.value = updated;
+    return updated;
   }
 
   async function deleteSecret(
     agentId: string,
     key: string,
   ): Promise<ISecretListData> {
-    const res = await SecretsService.secretControllerDelete({
-      path: { agentId },
-      body: { key },
-    });
-    return applyResult(res);
+    const updated = await getService().remove(agentId, key);
+    data.value = updated;
+    return updated;
   }
 
   // Atomic full-store replace — used by the JSON-view editor. Pass {} to clear.
@@ -83,11 +60,9 @@ export const useAgentSecretStore = defineStore('agentSecret', () => {
     agentId: string,
     store: Record<string, string>,
   ): Promise<ISecretListData> {
-    const res = await SecretsService.secretControllerReplace({
-      path: { agentId },
-      body: { store },
-    });
-    return applyResult(res);
+    const updated = await getService().replaceAll(agentId, store);
+    data.value = updated;
+    return updated;
   }
 
   function clear() {

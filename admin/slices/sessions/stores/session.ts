@@ -1,38 +1,16 @@
-import { client } from '#api/data/repositories/api/client.gen';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type { ISessionData, SessionService } from '#sessions/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain types so consumers importing them from
+// `#sessions/stores/session` (session List/Detail/Provider) keep working.
+export type { ISessionData, SessionStatusTypes } from '#sessions/domain';
 
-export type SessionStatusTypes =
-  | 'pending'
-  | 'connected'
-  | 'needs_login'
-  | 'revoked';
-
-export interface ISessionData {
-  id: string;
-  userId: string;
-  service: string;
-  accountKey: string;
-  mechanism: 'browser' | 'secret';
-  label: string | null;
-  status: SessionStatusTypes;
-  createdAt: string;
-  updatedAt: string;
-}
-
-function unwrap<T>(body: unknown): T | null {
-  if (body && typeof body === 'object' && 'data' in (body as ApiEnvelope<T>)) {
-    return ((body as ApiEnvelope<T>).data ?? null) as T | null;
-  }
-  return (body ?? null) as T | null;
-}
+const getService = createServiceGetter<SessionService>('$sessionService');
 
 /**
  * A "session" is a set of browser cookies the user shipped from their own
- * Chrome via the Ranch Cookies extension — the extension's import-state
- * call creates the row on the fly, so the admin only ever lists and
- * removes them. Talks to ranch-api over the same axios client the SDK
- * uses (inherits the JWT interceptors).
+ * Chrome via the Ranch Cookies extension — the extension's import-state call
+ * creates the row on the fly, so the admin only ever lists and removes them.
  */
 export const useSessionStore = defineStore('session', () => {
   const items = ref<ISessionData[]>([]);
@@ -43,11 +21,7 @@ export const useSessionStore = defineStore('session', () => {
     loading.value = true;
     error.value = null;
     try {
-      const res = await client.get<ApiEnvelope<ISessionData[]>>({
-        url: '/integrations/accounts',
-      });
-      const all = unwrap<ISessionData[]>(res.data) ?? [];
-      items.value = all.filter((x) => x.mechanism === 'browser');
+      items.value = await getService().listBrowser();
     } catch (err) {
       error.value = (err as Error).message;
     } finally {
@@ -57,9 +31,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   async function disconnect(id: string): Promise<void> {
-    await client.delete({
-      url: `/integrations/accounts/${encodeURIComponent(id)}`,
-    });
+    await getService().disconnect(id);
     items.value = items.value.filter((x) => x.id !== id);
   }
 

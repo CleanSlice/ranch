@@ -1,88 +1,30 @@
-import { KnowledgesService, KnowledgeSourcesService } from '#api/data';
-import type { GraphDto, KnowledgeQueryResultDto } from '#api/data';
-import { client as apiClient } from '#api/data/repositories/api/client.gen';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type {
+  ICreateKnowledgeInput,
+  IGraph,
+  IKnowledge,
+  IKnowledgeSetupStatus,
+  IQueryResult,
+  ISource,
+  IUpdateKnowledgeInput,
+  KnowledgeQueryMode,
+  KnowledgeService,
+} from '#reins/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
-
-function isSitemapResult(
-  value: unknown,
-): value is { added: number; discovered: number } {
-  if (typeof value !== 'object' || value === null) return false;
-  const obj = value as Record<string, unknown>;
-  return typeof obj.added === 'number' && typeof obj.discovered === 'number';
-}
-
-function isArchiveResult(
-  value: unknown,
-): value is { detected: number; started: boolean } {
-  if (typeof value !== 'object' || value === null) return false;
-  const obj = value as Record<string, unknown>;
-  return typeof obj.detected === 'number' && typeof obj.started === 'boolean';
-}
-
-export type IndexStatus = 'idle' | 'indexing' | 'ready' | 'failed';
-export type SourceType = 'file' | 'url' | 'text';
-
-export interface IKnowledge {
-  id: string;
-  name: string;
-  description: string | null;
-  entityTypes: string[];
-  relationshipTypes: string[];
-  indexStatus: IndexStatus;
-  indexError: string | null;
-  indexedAt: string | null;
-  indexStartedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  sources?: ISource[];
-}
-
-export interface ISource {
-  id: string;
-  knowledgeId: string;
-  type: SourceType;
-  name: string;
-  url: string | null;
-  mimeType: string | null;
-  content: string | null;
-  sizeBytes: number | null;
-  indexed: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ICreateKnowledgeInput {
-  name: string;
-  description?: string;
-  entityTypes?: string[];
-  relationshipTypes?: string[];
-}
-
-export interface IUpdateKnowledgeInput {
-  name?: string;
-  description?: string | null;
-  entityTypes?: string[];
-  relationshipTypes?: string[];
-}
-
-export type IQueryResult = KnowledgeQueryResultDto;
-
-function unwrap<T>(body: unknown): T | null {
-  if (body && typeof body === 'object' && 'data' in (body as ApiEnvelope<T>)) {
-    return ((body as ApiEnvelope<T>).data ?? null) as T | null;
-  }
-  return (body ?? null) as T | null;
-}
-
-export interface IKnowledgeSetupStatus {
-  hasChatCredential: boolean;
-  hasEmbeddingCredential: boolean;
-  hasUrl: boolean;
-  hasBucket: boolean;
-  hasCredentialsSelected: boolean;
-  isHealthy: boolean;
-}
+// Re-export the domain types so consumers importing them from
+// `#reins/stores/knowledge` (knowledge List/Edit/Query/Sources/Setup, badges)
+// keep working.
+export type {
+  ICreateKnowledgeInput,
+  IGraph,
+  IKnowledge,
+  IKnowledgeSetupStatus,
+  IndexStatus,
+  IQueryResult,
+  ISource,
+  IUpdateKnowledgeInput,
+  SourceType,
+} from '#reins/domain';
 
 const EMPTY_SETUP: IKnowledgeSetupStatus = {
   hasChatCredential: false,
@@ -93,28 +35,7 @@ const EMPTY_SETUP: IKnowledgeSetupStatus = {
   isHealthy: false,
 };
 
-function isSetupBody(value: unknown): value is IKnowledgeSetupStatus {
-  if (typeof value !== 'object' || value === null) return false;
-  const o = value as Record<string, unknown>;
-  return (
-    typeof o.hasChatCredential === 'boolean' &&
-    typeof o.hasEmbeddingCredential === 'boolean' &&
-    typeof o.hasUrl === 'boolean' &&
-    typeof o.hasBucket === 'boolean' &&
-    typeof o.hasCredentialsSelected === 'boolean' &&
-    typeof o.isHealthy === 'boolean'
-  );
-}
-
-function isStatusBody(
-  value: unknown,
-): value is { enabled: boolean; setup?: IKnowledgeSetupStatus } {
-  if (typeof value !== 'object' || value === null) return false;
-  const o = value as Record<string, unknown>;
-  if (typeof o.enabled !== 'boolean') return false;
-  if (o.setup !== undefined && !isSetupBody(o.setup)) return false;
-  return true;
-}
+const getService = createServiceGetter<KnowledgeService>('$knowledgeService');
 
 export const useKnowledgeStore = defineStore('reins-knowledge', () => {
   const items = ref<IKnowledge[]>([]);
@@ -125,20 +46,9 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
   const setup = ref<IKnowledgeSetupStatus>(EMPTY_SETUP);
 
   async function fetchStatus(): Promise<boolean> {
-    try {
-      const res = await apiClient.get<unknown>({ url: '/knowledges/status' });
-      const body = unwrap<unknown>(res.data);
-      if (isStatusBody(body)) {
-        enabled.value = body.enabled;
-        setup.value = body.setup ?? EMPTY_SETUP;
-      } else {
-        enabled.value = false;
-        setup.value = EMPTY_SETUP;
-      }
-    } catch {
-      enabled.value = false;
-      setup.value = EMPTY_SETUP;
-    }
+    const status = await getService().status();
+    enabled.value = status.enabled;
+    setup.value = status.setup;
     statusChecked.value = true;
     return enabled.value;
   }
@@ -147,8 +57,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     loading.value = true;
     error.value = null;
     try {
-      const res = await KnowledgesService.getKnowledges();
-      items.value = unwrap<IKnowledge[]>(res.data) ?? [];
+      items.value = await getService().findAll();
     } catch (err) {
       error.value = (err as Error).message;
     } finally {
@@ -157,21 +66,18 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     return items.value;
   }
 
-  async function fetchById(id: string) {
-    const res = await KnowledgesService.getKnowledge({ path: { id } });
-    return unwrap<IKnowledge>(res.data);
+  function fetchById(id: string) {
+    return getService().findById(id);
   }
 
   async function create(body: ICreateKnowledgeInput) {
-    const res = await KnowledgesService.createKnowledge({ body });
-    const created = unwrap<IKnowledge>(res.data);
+    const created = await getService().create(body);
     if (created) items.value.unshift(created);
     return created;
   }
 
   async function update(id: string, body: IUpdateKnowledgeInput) {
-    const res = await KnowledgesService.updateKnowledge({ path: { id }, body });
-    const updated = unwrap<IKnowledge>(res.data);
+    const updated = await getService().update(id, body);
     if (updated) {
       const idx = items.value.findIndex((x) => x.id === id);
       if (idx >= 0) items.value.splice(idx, 1, updated);
@@ -180,12 +86,12 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
   }
 
   async function remove(id: string) {
-    await KnowledgesService.deleteKnowledge({ path: { id } });
+    await getService().remove(id);
     items.value = items.value.filter((x) => x.id !== id);
   }
 
   async function startIndex(id: string) {
-    await KnowledgesService.indexKnowledge({ path: { id } });
+    await getService().index(id);
     const fresh = await fetchById(id);
     if (fresh) {
       const idx = items.value.findIndex((x) => x.id === id);
@@ -194,114 +100,57 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     return fresh;
   }
 
-  async function query(
+  function query(
     id: string,
     q: string,
-    mode: 'hybrid' | 'local' | 'global' | 'naive' = 'hybrid',
+    mode: KnowledgeQueryMode = 'hybrid',
     topK = 10,
   ): Promise<IQueryResult> {
-    const res = await KnowledgesService.queryKnowledge({
-      path: { id },
-      body: { query: q, mode, topK },
-    });
-    return (
-      unwrap<IQueryResult>(res.data) ?? { answer: '', references: [] }
-    );
+    return getService().query(id, q, mode, topK);
   }
 
-  async function listSources(id: string) {
-    const res = await KnowledgeSourcesService.getKnowledgeSources({
-      path: { knowledgeId: id },
-    });
-    return unwrap<ISource[]>(res.data) ?? [];
+  function listSources(id: string) {
+    return getService().listSources(id);
   }
 
-  async function addTextSource(id: string, name: string, content: string) {
-    const res = await KnowledgeSourcesService.addKnowledgeSource({
-      path: { knowledgeId: id },
-      body: { type: 'text', name, content },
-    });
-    return unwrap<ISource>(res.data);
+  function addTextSource(id: string, name: string, content: string) {
+    return getService().addTextSource(id, name, content);
   }
 
-  async function addUrlSource(id: string, name: string, url: string) {
-    const res = await KnowledgeSourcesService.addKnowledgeSource({
-      path: { knowledgeId: id },
-      body: { type: 'url', name, url },
-    });
-    return unwrap<ISource>(res.data);
+  function addUrlSource(id: string, name: string, url: string) {
+    return getService().addUrlSource(id, name, url);
   }
 
-  async function addFileSource(id: string, file: File) {
-    const form = new FormData();
-    form.append('type', 'file');
-    form.append('name', file.name);
-    form.append('file', file);
-    // Multipart can't go through the generated SDK, so post on its axios
-    // instance directly: that reuses the configured apiUrl base and the
-    // Bearer-token interceptor (setup/api apiBaseUrl.ts). A bare '/api/...'
-    // URL would instead hit the admin origin with no auth.
-    const res = await apiClient.instance.post<unknown>(
-      `/knowledges/${id}/sources`,
-      form,
-    );
-    return unwrap<ISource>(res.data);
+  function addFileSource(id: string, file: File) {
+    return getService().addFileSource(id, file);
   }
 
-  async function addSourcesFromArchive(
-    id: string,
-    file: File,
-  ): Promise<{ detected: number; started: boolean }> {
-    const form = new FormData();
-    form.append('file', file);
-    const res = await apiClient.instance.post<unknown>(
-      `/knowledges/${id}/sources/from-archive`,
-      form,
-    );
-    const data = unwrap<unknown>(res.data);
-    if (isArchiveResult(data)) return data;
-    return { detected: 0, started: false };
+  function addSourcesFromArchive(id: string, file: File) {
+    return getService().addSourcesFromArchive(id, file);
   }
 
-  async function addSourcesFromSitemap(
+  function addSourcesFromSitemap(
     id: string,
     sitemapUrl: string,
     urlPrefix?: string,
-  ): Promise<{ added: number; discovered: number }> {
-    const body: { sitemapUrl: string; urlPrefix?: string } = { sitemapUrl };
-    if (urlPrefix) body.urlPrefix = urlPrefix;
-    const res = await apiClient.instance.post<unknown>(
-      `/knowledges/${id}/sources/from-sitemap`,
-      body,
-    );
-    const data = unwrap<unknown>(res.data);
-    if (isSitemapResult(data)) return data;
-    return { added: 0, discovered: 0 };
+  ) {
+    return getService().addSourcesFromSitemap(id, sitemapUrl, urlPrefix);
   }
 
-  async function removeSource(id: string, sourceId: string) {
-    await KnowledgeSourcesService.deleteKnowledgeSource({
-      path: { knowledgeId: id, sourceId },
-    });
+  function removeSource(id: string, sourceId: string) {
+    return getService().removeSource(id, sourceId);
   }
 
-  async function getGraphLabels(): Promise<string[]> {
-    const res = await KnowledgesService.getGraphLabels();
-    const list = unwrap<unknown>(res.data);
-    if (!Array.isArray(list)) return [];
-    return list.filter((x): x is string => typeof x === 'string');
+  function getGraphLabels() {
+    return getService().graphLabels();
   }
 
-  async function getGraph(
+  function getGraph(
     label: string,
     maxDepth: number,
     maxNodes: number,
-  ): Promise<GraphDto> {
-    const res = await KnowledgesService.getGraph({
-      query: { label, maxDepth, maxNodes },
-    });
-    const data = unwrap<GraphDto>(res.data);
-    return data ?? { nodes: [], edges: [], isTruncated: false };
+  ): Promise<IGraph> {
+    return getService().graph(label, maxDepth, maxNodes);
   }
 
   return {

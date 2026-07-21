@@ -1,69 +1,25 @@
-import { SkillsService } from '#api/data';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type {
+  IImportFromGithubInput,
+  IImportFromUrlInput,
+  ISkillData,
+  ISkillInput,
+  SkillService,
+} from '#skill/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain types so consumers importing them from
+// `#skill/stores/skill` (Form, skillList/Create/Edit/Import Providers) keep
+// working.
+export type {
+  ISkillData,
+  ISkillDependentAgent,
+  ISkillExistsConflict,
+  ISkillFile,
+  ISkillInput,
+  ISkillSearchHit,
+} from '#skill/domain';
 
-export interface ISkillFile {
-  path: string;
-  content: string;
-}
-
-export interface ISkillData {
-  id: string;
-  name: string;
-  title: string;
-  description: string | null;
-  body: string;
-  files: ISkillFile[];
-  source: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ISkillInput {
-  name: string;
-  title: string;
-  body: string;
-  description?: string;
-}
-
-export interface ISkillSearchHit {
-  source: string;
-  repo: string;
-  path: string;
-  name: string;
-  title: string;
-  description: string | null;
-  url: string;
-  snippet: string | null;
-}
-
-export interface ISkillDependentAgent {
-  id: string;
-  name: string;
-  status: string;
-  templateId: string;
-  templateName: string;
-}
-
-export interface ISkillExistsConflict {
-  code: 'SKILL_EXISTS';
-  message: string;
-  existing: {
-    id: string;
-    name: string;
-    title: string;
-    description: string | null;
-    source: string | null;
-    updatedAt: string;
-  };
-}
-
-function unwrap<T>(body: unknown): T | null {
-  if (body && typeof body === 'object' && 'data' in (body as ApiEnvelope<T>)) {
-    return ((body as ApiEnvelope<T>).data ?? null) as T | null;
-  }
-  return (body ?? null) as T | null;
-}
+const getService = createServiceGetter<SkillService>('$skillService');
 
 export const useSkillStore = defineStore('skill', () => {
   const items = ref<ISkillData[]>([]);
@@ -74,8 +30,7 @@ export const useSkillStore = defineStore('skill', () => {
     loading.value = true;
     error.value = null;
     try {
-      const res = await SkillsService.skillControllerFindAll();
-      items.value = unwrap<ISkillData[]>(res.data) ?? [];
+      items.value = await getService().findAll();
     } catch (err) {
       error.value = (err as Error).message;
     } finally {
@@ -84,24 +39,18 @@ export const useSkillStore = defineStore('skill', () => {
     return items.value;
   }
 
-  async function fetchById(id: string) {
-    const res = await SkillsService.skillControllerFindById({ path: { id } });
-    return unwrap<ISkillData>(res.data);
+  function fetchById(id: string) {
+    return getService().findById(id);
   }
 
   async function create(body: ISkillInput) {
-    const res = await SkillsService.skillControllerCreate({ body });
-    const created = unwrap<ISkillData>(res.data);
+    const created = await getService().create(body);
     if (created) items.value.push(created);
     return created;
   }
 
   async function update(id: string, body: Partial<ISkillInput>) {
-    const res = await SkillsService.skillControllerUpdate({
-      path: { id },
-      body,
-    });
-    const updated = unwrap<ISkillData>(res.data);
+    const updated = await getService().update(id, body);
     if (updated) {
       const idx = items.value.findIndex((x) => x.id === id);
       if (idx >= 0) items.value.splice(idx, 1, updated);
@@ -110,13 +59,12 @@ export const useSkillStore = defineStore('skill', () => {
   }
 
   async function remove(id: string) {
-    await SkillsService.skillControllerRemove({ path: { id } });
+    await getService().remove(id);
     items.value = items.value.filter((x) => x.id !== id);
   }
 
-  async function search(q: string) {
-    const res = await SkillsService.skillControllerSearch({ query: { q } });
-    return unwrap<ISkillSearchHit[]>(res.data) ?? [];
+  function search(q: string) {
+    return getService().search(q);
   }
 
   function placeImported(record: ISkillData | null) {
@@ -127,34 +75,30 @@ export const useSkillStore = defineStore('skill', () => {
     return record;
   }
 
-  async function importFromGithub(body: {
-    repo: string;
-    path: string;
-    name?: string;
-    overwrite?: boolean;
-  }) {
-    const res = await SkillsService.skillControllerImportFromGithub({ body });
-    return placeImported(unwrap<ISkillData>(res.data));
+  async function importFromGithub(body: IImportFromGithubInput) {
+    return placeImported(await getService().importFromGithub(body));
   }
 
-  async function importFromUrl(body: {
-    url: string;
-    name?: string;
-    overwrite?: boolean;
-  }) {
-    const res = await SkillsService.skillControllerImportFromUrl({ body });
-    return placeImported(unwrap<ISkillData>(res.data));
+  async function importFromUrl(body: IImportFromUrlInput) {
+    return placeImported(await getService().importFromUrl(body));
   }
 
-  async function fetchDependentAgents(id: string) {
-    const res = await SkillsService.findDependentAgents({ path: { id } });
-    return unwrap<ISkillDependentAgent[]>(res.data) ?? [];
+  function fetchDependentAgents(id: string) {
+    return getService().findDependentAgents(id);
   }
 
   return {
-    items, loading, error,
-    fetchAll, fetchById, create, update, remove,
-    search, importFromGithub, importFromUrl,
+    items,
+    loading,
+    error,
+    fetchAll,
+    fetchById,
+    create,
+    update,
+    remove,
+    search,
+    importFromGithub,
+    importFromUrl,
     fetchDependentAgents,
   };
 });

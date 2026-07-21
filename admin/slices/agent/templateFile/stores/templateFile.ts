@@ -1,42 +1,31 @@
-import { TemplateFilesService } from '#api/data';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type {
+  IFileContent,
+  IFileNode,
+  TemplateFileService,
+} from '#templateFile/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain types for consumers importing from
+// `#templateFile/stores/templateFile`.
+export type { IFileContent, IFileNode } from '#templateFile/domain';
 
-export interface IFileNode {
-  path: string;
-  size: number;
-  updatedAt: string;
-}
-
-export interface IFileContent {
-  path: string;
-  content: string;
-  size: number;
-  updatedAt: string;
-}
+const getService = createServiceGetter<TemplateFileService>(
+  '$templateFileService',
+);
 
 export const useTemplateFileStore = defineStore('templateFile', () => {
   const nodes = ref<IFileNode[]>([]);
 
   async function fetchList(templateId: string) {
-    const res = await TemplateFilesService.templateFileControllerList({
-      path: { id: templateId },
-    });
-    const env = res.data as ApiEnvelope<IFileNode[]> | undefined;
-    nodes.value = env?.data ?? [];
+    nodes.value = await getService().list(templateId);
     return nodes.value;
   }
 
-  async function fetchContent(
+  function fetchContent(
     templateId: string,
     path: string,
   ): Promise<IFileContent> {
-    const res = await TemplateFilesService.templateFileControllerRead({
-      path: { id: templateId },
-      query: { path },
-    });
-    const env = res.data as ApiEnvelope<IFileContent>;
-    return env.data;
+    return getService().read(templateId, path);
   }
 
   async function save(
@@ -44,13 +33,7 @@ export const useTemplateFileStore = defineStore('templateFile', () => {
     path: string,
     content: string,
   ): Promise<IFileContent> {
-    const res = await TemplateFilesService.templateFileControllerSave({
-      path: { id: templateId },
-      query: { path },
-      body: { content },
-    });
-    const env = res.data as ApiEnvelope<IFileContent>;
-    const updated = env.data;
+    const updated = await getService().save(templateId, path, content);
     nodes.value = nodes.value.map((n) =>
       n.path === path
         ? { path: n.path, size: updated.size, updatedAt: updated.updatedAt }
@@ -63,16 +46,7 @@ export const useTemplateFileStore = defineStore('templateFile', () => {
     templateId: string,
     files: File[],
   ): Promise<IFileNode[]> {
-    const paths = files.map(
-      (f) =>
-        (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name,
-    );
-    const res = await TemplateFilesService.templateFileControllerUpload({
-      path: { id: templateId },
-      body: { files, paths },
-    });
-    const env = res.data as ApiEnvelope<IFileNode[]> | undefined;
-    nodes.value = env?.data ?? [];
+    nodes.value = await getService().upload(templateId, files);
     return nodes.value;
   }
 

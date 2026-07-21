@@ -1,17 +1,13 @@
-import { AgentsService } from '#api/data';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type { AgentChannelService, IAgentChannel } from '#agentChannel/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain type so `agentChannel/Provider.vue` (and any future
+// consumer importing from `#agentChannel/stores/agentChannel`) keeps working.
+export type { IAgentChannel } from '#agentChannel/domain';
 
-// Discriminated union — mirrors the API shape. v1 is telegram-only; add new
-// variants here as the backend gains support.
-export type IAgentChannel = {
-  type: 'telegram';
-  config: {
-    botToken: string;
-    botName?: string;
-    adminIds?: string;
-  };
-};
+const getService = createServiceGetter<AgentChannelService>(
+  '$agentChannelService',
+);
 
 export const useAgentChannelStore = defineStore('agentChannel', () => {
   // Per-agent cache. Reads always go to S3 (no client-side TTL — the tab
@@ -25,9 +21,7 @@ export const useAgentChannelStore = defineStore('agentChannel', () => {
   }
 
   async function fetchForAgent(agentId: string): Promise<IAgentChannel[]> {
-    const res = await AgentsService.getAgentChannels({ path: { id: agentId } });
-    const env = res.data as ApiEnvelope<IAgentChannel[]> | undefined;
-    const list = env?.data ?? [];
+    const list = await getService().fetchForAgent(agentId);
     channelsByAgent.value = { ...channelsByAgent.value, [agentId]: list };
     return list;
   }
@@ -36,12 +30,7 @@ export const useAgentChannelStore = defineStore('agentChannel', () => {
     agentId: string,
     channels: IAgentChannel[],
   ): Promise<IAgentChannel[]> {
-    const res = await AgentsService.setAgentChannels({
-      path: { id: agentId },
-      body: { channels },
-    });
-    const env = res.data as ApiEnvelope<IAgentChannel[]> | undefined;
-    const updated = env?.data ?? channels;
+    const updated = await getService().setForAgent(agentId, channels);
     channelsByAgent.value = { ...channelsByAgent.value, [agentId]: updated };
     return updated;
   }

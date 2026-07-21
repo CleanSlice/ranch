@@ -1,35 +1,21 @@
-import { FilesService } from '#api/data';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type {
+  AgentFileService,
+  IFileChunk,
+  IFileContent,
+  IFileNode,
+} from '#agentFile/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain types so `agentFile/Tree.vue` (and any future consumer
+// importing from `#agentFile/stores/agentFile`) keeps working.
+export type {
+  IFileChunk,
+  IFileContent,
+  IFileNode,
+  ISyncResult,
+} from '#agentFile/domain';
 
-export interface IFileNode {
-  path: string;
-  size: number;
-  updatedAt: string;
-}
-
-export interface IFileContent {
-  path: string;
-  content: string;
-  size: number;
-  updatedAt: string;
-}
-
-export interface IFileChunk {
-  path: string;
-  content: string;
-  size: number;
-  totalSize: number;
-  offset: number;
-  nextOffset: number | null;
-  hasMore: boolean;
-  updatedAt: string;
-}
-
-export interface ISyncResult {
-  agentOnline: boolean;
-  pushed: number;
-}
+const getService = createServiceGetter<AgentFileService>('$agentFileService');
 
 // First-chunk size (matches the server default and the old editor cap).
 // Picked so that small files come back in a single round-trip, while large
@@ -86,30 +72,17 @@ export const useAgentFileStore = defineStore('agentFile', () => {
   }
 
   async function fetchList(agentId: string) {
-    const res = await FilesService.fileControllerList({ path: { agentId } });
-    const env = res.data as ApiEnvelope<IFileNode[]> | undefined;
-    nodes.value = env?.data ?? [];
+    nodes.value = await getService().list(agentId);
     return nodes.value;
   }
 
-  async function fetchContent(
+  function fetchContent(
     agentId: string,
     path: string,
     offset = 0,
     limit = INITIAL_CHUNK_BYTES,
   ): Promise<IFileChunk> {
-    const res = await FilesService.fileControllerRead({
-      path: { agentId },
-      query: { path, offset, limit },
-    });
-    const env = res.data as ApiEnvelope<IFileChunk> | undefined;
-    if (!env?.data) {
-      throw new Error(
-        (res as { error?: { message?: string } }).error?.message ??
-          'Failed to load file',
-      );
-    }
-    return env.data;
+    return getService().read(agentId, path, offset, limit);
   }
 
   async function save(
@@ -117,13 +90,7 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     path: string,
     content: string,
   ): Promise<IFileContent> {
-    const res = await FilesService.fileControllerSave({
-      path: { agentId },
-      query: { path },
-      body: { content },
-    });
-    const env = res.data as ApiEnvelope<IFileContent>;
-    const updated = env.data;
+    const updated = await getService().save(agentId, path, content);
     nodes.value = nodes.value.map((n) =>
       n.path === path
         ? { path: n.path, size: updated.size, updatedAt: updated.updatedAt }
@@ -141,11 +108,7 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     path: string,
     recursive = false,
   ): Promise<number> {
-    const res = await FilesService.fileControllerDelete({
-      path: { agentId },
-      query: { path, recursive },
-    });
-    const env = res.data as ApiEnvelope<{ deleted: number }> | undefined;
+    const deleted = await getService().remove(agentId, path, recursive);
     const folderPrefix = path.endsWith('/') ? path : path + '/';
     nodes.value = nodes.value.filter((n) =>
       recursive
@@ -153,32 +116,16 @@ export const useAgentFileStore = defineStore('agentFile', () => {
         : n.path !== path,
     );
     markPendingRestart(agentId);
-    return env?.data?.deleted ?? 0;
+    return deleted;
   }
 
-  async function sync(agentId: string): Promise<ISyncResult> {
-    const res = await FilesService.fileControllerSync({ path: { agentId } });
-    const env = res.data as ApiEnvelope<ISyncResult> | undefined;
-    return env?.data ?? { agentOnline: false, pushed: 0 };
+  function sync(agentId: string) {
+    return getService().sync(agentId);
   }
 
   // Streams the agent's S3 prefix as a ZIP into a browser download.
-  // Uses raw fetch (not the generated SDK) because the endpoint returns
-  // raw bytes; we replicate the Bearer-token attachment that the SDK's
-  // axios interceptor handles automatically — see api/plugins/apiBaseUrl.ts.
   async function downloadZip(agentId: string): Promise<void> {
-    const runtime = useRuntimeConfig();
-    const headers: Record<string, string> = {};
-    const token = readAccessToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(
-      `${runtime.public.apiUrl}/agents/${agentId}/files/export`,
-      { credentials: 'include', headers },
-    );
-    if (!res.ok) {
-      throw new Error(`Download failed: ${res.status} ${res.statusText}`);
-    }
-    const blob = await res.blob();
+    const blob = await getService().exportZip(agentId);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -187,12 +134,6 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  }
-
-  function readAccessToken(): string | null {
-    if (typeof document === 'undefined') return null;
-    const m = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : null;
   }
 
   return {

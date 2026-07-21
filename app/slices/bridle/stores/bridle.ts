@@ -1,34 +1,14 @@
-import { BridleService } from '#api';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import { BridleRoleTypes } from '#bridle/domain';
+import type { BridleService, IBridleMessage } from '#bridle/domain';
 
-export enum BridleRoleTypes {
-  User = 'user',
-  Agent = 'agent',
-}
+// Re-export the domain enum/types so consumers importing them from
+// `#bridle/stores/bridle` (Message.vue) keep working. `BridleRoleTypes` is used
+// as a runtime value, so it's a value re-export (not `export type`).
+export { BridleRoleTypes } from '#bridle/domain';
+export type { IBridleMessage, IBridleReply } from '#bridle/domain';
 
-export interface IBridleMessage {
-  id: string;
-  role: BridleRoleTypes;
-  text: string;
-  ts: number;
-}
-
-interface ISyncResponse {
-  text?: string;
-  messageId?: string;
-  ts?: number;
-}
-
-interface IEnvelope<T> {
-  success?: boolean;
-  data?: T;
-}
-
-function unwrap<T>(body: unknown): T | null {
-  if (body && typeof body === 'object' && 'data' in (body as IEnvelope<T>)) {
-    return ((body as IEnvelope<T>).data ?? null) as T | null;
-  }
-  return (body ?? null) as T | null;
-}
+const getService = createServiceGetter<BridleService>('$bridleService');
 
 // localStorage persistence for chat conversations — survives page refresh.
 // Scoped per agentId so switching agents doesn't bleed history. Mirrors the
@@ -125,16 +105,12 @@ export const useBridleStore = defineStore('bridle', () => {
     errors.value[agentId] = null;
 
     try {
-      const res = await BridleService.sendBridleMessageSync({
-        path: { agentId },
-        body: { text: trimmed },
-      });
-      const data = unwrap<ISyncResponse>(res.data) ?? {};
+      const reply = await getService().sendMessage(agentId, trimmed);
       appendMessage(agentId, {
-        id: data.messageId || `a-${Date.now()}`,
+        id: reply.messageId || `a-${Date.now()}`,
         role: BridleRoleTypes.Agent,
-        text: data.text ?? '',
-        ts: data.ts ?? Date.now(),
+        text: reply.text,
+        ts: reply.ts ?? Date.now(),
       });
     } catch (err) {
       errors.value[agentId] =

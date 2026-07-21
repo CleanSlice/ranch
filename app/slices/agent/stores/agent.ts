@@ -1,33 +1,20 @@
-import {
-  AgentsService,
-  type CreateAgentDto,
-  type UpdateAgentDto,
-} from '#api';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type {
+  AgentService,
+  IAgentCreateInput,
+  IAgentData,
+  IAgentUpdateInput,
+} from '#agent/domain';
 
-export interface IAgentData {
-  id: string;
-  name: string;
-  status: string;
-  templateId: string;
-  workflowId: string | null;
-  config: Record<string, unknown>;
-  resources: { cpu: string; memory: string };
-  isPublic: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+// Re-export domain types so consumers importing them from `#agent/stores/agent`
+// (landingHero AgentCard/Provider) keep working.
+export type {
+  IAgentCreateInput,
+  IAgentData,
+  IAgentUpdateInput,
+} from '#agent/domain';
 
-interface IEnvelope<T> {
-  success?: boolean;
-  data?: T;
-}
-
-function unwrap<T>(body: unknown): T | null {
-  if (body && typeof body === 'object' && 'data' in (body as IEnvelope<T>)) {
-    return ((body as IEnvelope<T>).data ?? null) as T | null;
-  }
-  return (body ?? null) as T | null;
-}
+const getService = createServiceGetter<AgentService>('$agentService');
 
 export const useAgentStore = defineStore('agent', () => {
   const agents = ref<IAgentData[]>([]);
@@ -40,9 +27,7 @@ export const useAgentStore = defineStore('agent', () => {
     loading.value = true;
     error.value = null;
     try {
-      const res = await AgentsService.agentControllerFindAll();
-      const list = unwrap<IAgentData[]>(res.data);
-      agents.value = Array.isArray(list) ? list : [];
+      agents.value = await getService().findAll();
     } catch (err) {
       error.value = (err as Error).message;
       agents.value = [];
@@ -56,9 +41,7 @@ export const useAgentStore = defineStore('agent', () => {
     loading.value = true;
     error.value = null;
     try {
-      const res = await AgentsService.agentControllerFindPublic();
-      const list = unwrap<IAgentData[]>(res.data);
-      publicAgents.value = Array.isArray(list) ? list : [];
+      publicAgents.value = await getService().findPublic();
     } catch (err) {
       error.value = (err as Error).message;
       publicAgents.value = [];
@@ -72,8 +55,7 @@ export const useAgentStore = defineStore('agent', () => {
     loading.value = true;
     error.value = null;
     try {
-      const res = await AgentsService.agentControllerFindById({ path: { id } });
-      current.value = unwrap<IAgentData>(res.data);
+      current.value = await getService().findById(id);
     } catch (err) {
       error.value = (err as Error).message;
       current.value = null;
@@ -83,19 +65,14 @@ export const useAgentStore = defineStore('agent', () => {
     return current.value;
   }
 
-  async function create(body: CreateAgentDto) {
-    const res = await AgentsService.agentControllerCreate({ body });
-    const created = unwrap<IAgentData>(res.data);
+  async function create(input: IAgentCreateInput) {
+    const created = await getService().create(input);
     if (created) agents.value.push(created);
     return created;
   }
 
-  async function update(id: string, body: UpdateAgentDto) {
-    const res = await AgentsService.agentControllerUpdate({
-      path: { id },
-      body,
-    });
-    const updated = unwrap<IAgentData>(res.data);
+  async function update(id: string, input: IAgentUpdateInput) {
+    const updated = await getService().update(id, input);
     if (updated) {
       const idx = agents.value.findIndex((a) => a.id === id);
       if (idx >= 0) agents.value[idx] = updated;
@@ -104,13 +81,12 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   async function remove(id: string) {
-    await AgentsService.agentControllerRemove({ path: { id } });
+    await getService().remove(id);
     agents.value = agents.value.filter((a) => a.id !== id);
   }
 
   async function restart(id: string) {
-    const res = await AgentsService.agentControllerRestart({ path: { id } });
-    const updated = unwrap<IAgentData>(res.data);
+    const updated = await getService().restart(id);
     if (updated) {
       const idx = agents.value.findIndex((a) => a.id === id);
       if (idx >= 0) agents.value[idx] = updated;

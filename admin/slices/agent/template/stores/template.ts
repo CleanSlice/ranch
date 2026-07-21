@@ -1,121 +1,70 @@
-import { AgentsService, TemplatesService } from '#api/data';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type {
+  ICreateTemplateData,
+  ITemplateData,
+  IUpdateTemplateData,
+  TemplateService,
+} from '#template/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain types so consumers importing them from
+// `#template/stores/template` (template Form, templateList/Create/Edit
+// Providers, agent Form, rancher store, …) keep working.
+export type {
+  ICreateTemplateData,
+  IRestartAgentsResult,
+  ITemplateData,
+  ITemplateResources,
+  IUpdateTemplateData,
+} from '#template/domain';
 
-export interface ITemplateResources {
-  cpu: string;
-  memory: string;
-}
-
-export interface ITemplateData {
-  id: string;
-  name: string;
-  description: string;
-  image: string;
-  defaultConfig: Record<string, unknown>;
-  defaultResources: ITemplateResources;
-  defaultKnowledgeIds: string[];
-  skillIds: string[];
-  mcpServerIds: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ICreateTemplateData {
-  name: string;
-  description: string;
-  image: string;
-  defaultConfig?: Record<string, unknown>;
-  defaultResources?: ITemplateResources;
-  defaultKnowledgeIds?: string[];
-}
-
-export interface IUpdateTemplateData {
-  name?: string;
-  description?: string;
-  image?: string;
-  defaultConfig?: Record<string, unknown>;
-  defaultResources?: ITemplateResources;
-  defaultKnowledgeIds?: string[];
-}
+const getService = createServiceGetter<TemplateService>('$templateService');
 
 export const useTemplateStore = defineStore('template', () => {
   const templates = ref<ITemplateData[]>([]);
 
   async function fetchAll() {
-    const res = await TemplatesService.templateControllerFindAll();
-    const env = res.data as ApiEnvelope<ITemplateData[]> | undefined;
-    templates.value = env?.data ?? [];
+    templates.value = await getService().findAll();
     return templates.value;
   }
 
-  async function fetchById(id: string) {
-    const res = await TemplatesService.templateControllerFindById({ path: { id } });
-    const env = res.data as ApiEnvelope<ITemplateData | null> | undefined;
-    return env?.data ?? null;
+  function fetchById(id: string) {
+    return getService().findById(id);
   }
 
   async function create(data: ICreateTemplateData) {
-    const res = await TemplatesService.templateControllerCreate({ body: data });
-    const env = res.data as ApiEnvelope<ITemplateData>;
-    templates.value = [env.data, ...templates.value];
-    return env.data;
+    const created = await getService().create(data);
+    templates.value = [created, ...templates.value];
+    return created;
   }
 
   async function update(id: string, data: IUpdateTemplateData) {
-    const res = await TemplatesService.templateControllerUpdate({
-      path: { id },
-      body: data,
-    });
-    const env = res.data as ApiEnvelope<ITemplateData>;
-    templates.value = templates.value.map((t) => (t.id === id ? env.data : t));
-    return env.data;
+    const updated = await getService().update(id, data);
+    templates.value = templates.value.map((t) => (t.id === id ? updated : t));
+    return updated;
   }
 
   async function remove(id: string) {
-    const res = await TemplatesService.templateControllerRemove({ path: { id } });
-    if (res.error) {
-      const err = res.error as { message?: string };
-      throw new Error(err.message ?? 'Failed to delete template');
-    }
+    await getService().remove(id);
     templates.value = templates.value.filter((t) => t.id !== id);
   }
 
   async function setSkills(id: string, skillIds: string[]) {
-    const res = await TemplatesService.templateControllerSetSkills({
-      path: { id },
-      body: { skillIds },
-    });
-    const env = res.data as ApiEnvelope<ITemplateData>;
-    templates.value = templates.value.map((t) => (t.id === id ? env.data : t));
-    return env.data;
+    const updated = await getService().setSkills(id, skillIds);
+    templates.value = templates.value.map((t) => (t.id === id ? updated : t));
+    return updated;
   }
 
   async function setMcps(id: string, mcpServerIds: string[]) {
-    const res = await TemplatesService.templateControllerSetMcps({
-      path: { id },
-      body: { mcpServerIds },
-    });
-    const env = res.data as ApiEnvelope<ITemplateData>;
-    templates.value = templates.value.map((t) => (t.id === id ? env.data : t));
-    return env.data;
+    const updated = await getService().setMcps(id, mcpServerIds);
+    templates.value = templates.value.map((t) => (t.id === id ? updated : t));
+    return updated;
   }
 
   // Restart every agent using this template. The endpoint lives on the agent
   // controller (to avoid TemplateModule ↔ AgentModule circular deps) — the
-  // store wraps it so UI components don't need to import AgentsService.
-  async function restartAgents(templateId: string) {
-    const res = await AgentsService.restartByTemplate({
-      path: { templateId },
-    });
-    if (res.error) {
-      const err = res.error as { message?: string };
-      throw new Error(err.message ?? 'Failed to restart agents');
-    }
-    const env = res.data as
-      | ApiEnvelope<{ restarted: number; failed: number; total: number }>
-      | undefined;
-    return env?.data ?? { restarted: 0, failed: 0, total: 0 };
+  // service wraps it so UI components don't need to import AgentsService.
+  function restartAgents(templateId: string) {
+    return getService().restartAgents(templateId);
   }
 
   return {

@@ -60,7 +60,7 @@ async function onSubmit(values: {
     </div>
   </div>
 
-  <AuthForm
+  <AuthCommonForm
     v-else
     mode="register"
     :submitting="submitting"

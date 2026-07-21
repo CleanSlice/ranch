@@ -35,7 +35,7 @@ async function onSubmit(values: { email: string; password: string }) {
 </script>
 
 <template>
-  <AuthForm
+  <AuthCommonForm
     mode="login"
     :submitting="submitting"
     :error-message="errorMessage"

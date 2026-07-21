@@ -12,29 +12,17 @@ export type { IAuthUser, IAuthSession } from '#auth/domain';
 
 const getService = createServiceGetter<AuthService>('$authService');
 
-const TOKEN_STORAGE_KEY = 'ranch.access_token';
-
-function readStoredToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredToken(token: string | null): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (token) window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    else window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-  } catch {
-    // quota / privacy mode — silently ignore, in-memory state still works
-  }
-}
-
 export const useAuthStore = defineStore('auth', () => {
-  const accessToken = ref<string | null>(null);
+  // Token persistence lives in a cookie (7-day, JS-readable) — same convention
+  // as the admin. The Bearer header is still attached via
+  // handleApiAuthentication; the cookie is only the store.
+  const tokenCookie = useCookie<string | null>('access_token', {
+    default: () => null,
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 7,
+  });
+
+  const accessToken = ref<string | null>(tokenCookie.value);
   const user = ref<IAuthUser | null>(null);
   /** True after init() has run at least once (used by middleware to wait for hydration). */
   const isHydrated = ref(false);
@@ -49,7 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function applyToken(token: string | null) {
     accessToken.value = token;
-    writeStoredToken(token);
+    tokenCookie.value = token;
     handleApiAuthentication(token ?? undefined);
   }
 
@@ -78,13 +66,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Restore session from storage on first paint. Called by the auth plugin
-   * before any guarded navigation. Token in storage but invalid on server →
+   * Restore session from the cookie on first paint. Called by the auth plugin
+   * before any guarded navigation. Token present but invalid on server →
    * silently clear, treat as logged out.
    */
   async function init(): Promise<void> {
     if (isHydrated.value) return;
-    const stored = readStoredToken();
+    const stored = accessToken.value;
     if (!stored) {
       isHydrated.value = true;
       return;

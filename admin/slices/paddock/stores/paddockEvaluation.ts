@@ -1,201 +1,83 @@
-import { PaddockEvaluationsService } from '#api/data';
-import { client as apiClient } from '#api/data/repositories/api/client.gen';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type {
+  IPaddockEvaluation,
+  IPaddockEvaluationReport,
+  IRunPaddockEvaluation,
+  PaddockEvaluationService,
+} from '#paddock/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain types so consumers importing them from
+// `#paddock/stores/paddockEvaluation` keep working.
+export type {
+  IPaddockEvaluation,
+  IPaddockEvaluationResult,
+  IPaddockEvaluationScenarioSummary,
+  IPaddockJudgeConfig,
+  IPaddockJudgeScore,
+  IRunPaddockEvaluation,
+  PaddockEvaluationStatus,
+  PaddockVerdict,
+} from '#paddock/domain';
 
-export type PaddockEvaluationStatus =
-  | 'running'
-  | 'done'
-  | 'failed'
-  | 'aborted';
-export type PaddockVerdict = 'pass' | 'fail' | 'partial' | 'skipped';
-
-export interface IPaddockJudgeConfig {
-  credentialIds: string[];
-  threshold: number;
-  maxLlmCalls: number;
-  maxTimeMs: number;
-}
-
-export interface IPaddockJudgeScore {
-  judgeModel: string;
-  scores: Record<string, number>;
-  reasoning: Record<string, string>;
-  overallScore: number;
-  verdict: PaddockVerdict;
-  confidence: number;
-  suggestions: string[];
-}
-
-export interface IPaddockEvaluationResult {
-  id: string;
-  evaluationId: string;
-  scenarioId: string;
-  verdict: PaddockVerdict;
-  finalScore: number;
-  agreement: number;
-  dimensionScores: Record<string, number>;
-  judges: IPaddockJudgeScore[];
-  failureReasons: string[];
-}
-
-export interface IPaddockEvaluationScenarioSummary {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  difficulty: string;
-}
-
-export interface IPaddockEvaluation {
-  id: string;
-  agentId: string;
-  templateId: string | null;
-  status: PaddockEvaluationStatus;
-  startedAt: string;
-  finishedAt: string | null;
-  currentScenarioId: string | null;
-  passRate: number | null;
-  scenarioCount: number;
-  passCount: number;
-  failCount: number;
-  partialCount: number;
-  skippedCount: number;
-  judgeConfig: IPaddockJudgeConfig;
-  scenarios: IPaddockEvaluationScenarioSummary[];
-  reportS3Key: string | null;
-  errorMessage: string | null;
-  results: IPaddockEvaluationResult[];
-}
-
-export interface IRunPaddockEvaluation {
-  agentId: string;
-  scenarioIds?: string[];
-  judgeOverride?: Partial<IPaddockJudgeConfig>;
-}
+const getService = createServiceGetter<PaddockEvaluationService>(
+  '$paddockEvaluationService',
+);
 
 export const usePaddockEvaluationStore = defineStore(
   'paddockEvaluation',
   () => {
     const evaluations = ref<IPaddockEvaluation[]>([]);
 
-    async function fetchAll(filter: {
-      agentId?: string;
-      templateId?: string;
-      limit?: number;
-    } = {}) {
-      const res =
-        await PaddockEvaluationsService.paddockEvaluationControllerList({
-          query: {
-            agentId: filter.agentId,
-            templateId: filter.templateId,
-            limit: filter.limit?.toString(),
-          },
-        });
-      const env = res.data as ApiEnvelope<IPaddockEvaluation[]> | undefined;
-      evaluations.value = env?.data ?? [];
+    async function fetchAll(
+      filter: { agentId?: string; templateId?: string; limit?: number } = {},
+    ) {
+      evaluations.value = await getService().list(filter);
       return evaluations.value;
     }
 
-    async function fetchById(id: string) {
-      const res = await PaddockEvaluationsService.paddockEvaluationControllerGet(
-        { path: { id } },
-      );
-      const env = res.data as ApiEnvelope<IPaddockEvaluation | null> | undefined;
-      return env?.data ?? null;
+    function fetchById(id: string) {
+      return getService().get(id);
     }
 
     async function start(input: IRunPaddockEvaluation) {
-      const res =
-        await PaddockEvaluationsService.paddockEvaluationControllerStart({
-          body: input,
-        });
-      const env = res.data as ApiEnvelope<IPaddockEvaluation>;
-      evaluations.value = [env.data, ...evaluations.value];
-      return env.data;
+      const created = await getService().start(input);
+      evaluations.value = [created, ...evaluations.value];
+      return created;
     }
 
     async function abort(id: string) {
-      const res =
-        await PaddockEvaluationsService.paddockEvaluationControllerAbort({
-          path: { id },
-        });
-      const env = res.data as ApiEnvelope<IPaddockEvaluation>;
+      const updated = await getService().abort(id);
       evaluations.value = evaluations.value.map((e) =>
-        e.id === id ? env.data : e,
+        e.id === id ? updated : e,
       );
-      return env.data;
+      return updated;
     }
 
     async function rerun(id: string): Promise<IPaddockEvaluation> {
-      const res =
-        await PaddockEvaluationsService.paddockEvaluationControllerRerun({
-          path: { id },
-        });
-      const env = res.data as ApiEnvelope<IPaddockEvaluation> | undefined;
-      if (!env) {
-        const err = res.error as { message?: string } | undefined;
-        throw new Error(err?.message ?? 'Failed to rerun evaluation');
-      }
-      evaluations.value = [env.data, ...evaluations.value];
-      return env.data;
+      const created = await getService().rerun(id);
+      evaluations.value = [created, ...evaluations.value];
+      return created;
     }
 
-    async function fetchReport(id: string): Promise<{
-      json: object;
-      md: string;
-    }> {
-      const res =
-        await PaddockEvaluationsService.paddockEvaluationControllerReport({
-          path: { id },
-        });
-      const env = res.data as
-        | ApiEnvelope<{ json: object; md: string }>
-        | undefined;
-      if (!env) throw new Error('Report not available');
-      return env.data;
+    function fetchReport(id: string): Promise<IPaddockEvaluationReport> {
+      return getService().report(id);
     }
 
-    async function fetchTrace(
-      id: string,
-      scenarioId: string,
-    ): Promise<object | null> {
-      const res =
-        await PaddockEvaluationsService.paddockEvaluationControllerTrace({
-          path: { id },
-          query: { scenarioId },
-        });
-      const env = res.data as ApiEnvelope<object | null> | undefined;
-      return env?.data ?? null;
+    function fetchTrace(id: string, scenarioId: string): Promise<object | null> {
+      return getService().trace(id, scenarioId);
     }
 
-    // Logs use the underlying client directly so we don't need to regenerate
-    // the SDK after adding the GET /paddock-evaluations/:id/logs route.
-    async function fetchLogs(id: string): Promise<string[]> {
-      const res = await apiClient.get<unknown>({
-        url: `/paddock-evaluations/${id}/logs`,
-      });
-      const env = res.data as ApiEnvelope<{ lines: string[] }> | undefined;
-      return env?.data?.lines ?? [];
+    function fetchLogs(id: string): Promise<string[]> {
+      return getService().logs(id);
     }
 
     // Fetch a scenario from the evaluation's snapshot — survives template
-    // re-seeds that change scenario UUIDs in the live `paddock_scenarios`
-    // table. Use this in evaluation views; only fall back to the global
-    // scenario store for scenario CRUD on templates.
-    async function fetchEvalScenario(
+    // re-seeds that change scenario UUIDs in the live table.
+    function fetchEvalScenario(
       id: string,
       scenarioId: string,
     ): Promise<unknown | null> {
-      try {
-        const res = await apiClient.get<unknown>({
-          url: `/paddock-evaluations/${id}/scenarios/${scenarioId}`,
-        });
-        const env = res.data as ApiEnvelope<unknown> | undefined;
-        return env?.data ?? null;
-      } catch {
-        return null;
-      }
+      return getService().evalScenario(id, scenarioId);
     }
 
     return {

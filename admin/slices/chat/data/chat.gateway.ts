@@ -9,6 +9,7 @@ import type {
 } from '#api/data/repositories/api/types.gen';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
+import { ErrorMapper } from '#error/data/error.mapper';
 import { IChatGateway } from '../domain/chat.gateway';
 import {
   emptyChatList,
@@ -25,24 +26,15 @@ import {
 } from '../domain/chat.types';
 import { ChatMapper } from './chat.mapper';
 
-// hey-api doesn't throw on 4xx/5xx — it returns `{ error }`. Surface it so the
-// UI can show the API's message (e.g. a rejected LLM credential) instead of a
-// silent no-op.
-function throwIfError(
-  res: { error?: unknown; response?: { status?: number } },
-  action: string,
-): void {
-  if (res.error === undefined || res.error === null) return;
-  const msg = (res.error as { message?: string }).message;
-  throw new Error(
-    msg
-      ? `${action}: ${msg}`
-      : `${action} failed (HTTP ${res.response?.status ?? '?'})`,
-  );
-}
-
 export class ChatGateway extends BaseGateway implements IChatGateway {
   private mapper = new ChatMapper();
+
+  constructor() {
+    // Route thrown SDK failures through the shared error mapper so callers get
+    // a typed ErrorEntity (surfaced inline by the component / toasted by the
+    // global handler) instead of an ad-hoc Error.
+    super(new ErrorMapper());
+  }
 
   list(query: IChatListQuery): Promise<IChatListResult> {
     return this.execute(async () => {
@@ -83,10 +75,13 @@ export class ChatGateway extends BaseGateway implements IChatGateway {
 
   summarize(id: string): Promise<IChatSession | null> {
     return this.execute(async () => {
-      const res = await ChatsService.summarizeChat({ path: { id } });
-      // On-demand LLM summary can fail (bad credential, provider error) — surface
-      // the message rather than silently returning the unchanged session.
-      throwIfError(res, 'Summarize');
+      // On-demand LLM summary can fail (bad credential, provider error).
+      // `throwOnError: true` makes the axios client throw so `execute()` maps it
+      // via ErrorMapper instead of silently returning the unchanged session.
+      const res = await ChatsService.summarizeChat({
+        path: { id },
+        throwOnError: true,
+      });
       const dto = unwrapEnvelope<ChatSessionDto>(res.data);
       return dto ? this.mapper.toSession(dto) : null;
     });

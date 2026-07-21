@@ -8,7 +8,7 @@ export class ErrorMapper {
   toErrorEntity(error: unknown): ErrorEntity {
     const fetchError = error as { response?: { status?: number; _data?: ErrorResponseBody; data?: ErrorResponseBody }; statusCode?: number; data?: ErrorResponseBody };
     const status = fetchError.response?.status ?? fetchError.statusCode ?? 500;
-    // `_data` is ofetch's parsed body; `response.data` is axios's. The app uses
+    // `_data` is ofetch's parsed body; `response.data` is axios's. The admin uses
     // the axios client, so read both (ofetch first for compatibility).
     const responseData = fetchError.response?._data ?? fetchError.response?.data ?? fetchError.data;
 

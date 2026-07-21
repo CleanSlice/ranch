@@ -1,25 +1,17 @@
-import { SettingsService } from '#api/data';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type { ISettingData, SettingService, SettingValueTypes } from '#setting/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain types so consumers importing them from
+// `#setting/stores/setting` keep working.
+export type { ISettingData, SettingValueTypes } from '#setting/domain';
 
-export type SettingValueTypes = 'string' | 'json';
-
-export interface ISettingData {
-  id: string;
-  group: string;
-  name: string;
-  valueType: SettingValueTypes;
-  value: unknown;
-  updatedAt: string;
-}
+const getService = createServiceGetter<SettingService>('$settingService');
 
 export const useSettingStore = defineStore('setting', () => {
   const settings = ref<ISettingData[]>([]);
 
   async function fetchAll() {
-    const res = await SettingsService.settingControllerFindAll();
-    const env = res.data as ApiEnvelope<ISettingData[]> | undefined;
-    settings.value = env?.data ?? [];
+    settings.value = await getService().list();
     return settings.value;
   }
 
@@ -38,12 +30,7 @@ export const useSettingStore = defineStore('setting', () => {
     value: unknown,
     valueType: SettingValueTypes = 'string',
   ) {
-    const res = await SettingsService.settingControllerUpsert({
-      path: { group, name },
-      body: { valueType, value },
-    });
-    const env = res.data as ApiEnvelope<ISettingData>;
-    const updated = env.data;
+    const updated = await getService().upsert(group, name, value, valueType);
     const existing = settings.value.findIndex(
       (s) => s.group === group && s.name === name,
     );
@@ -56,7 +43,7 @@ export const useSettingStore = defineStore('setting', () => {
   }
 
   async function remove(group: string, name: string) {
-    await SettingsService.settingControllerRemove({ path: { group, name } });
+    await getService().remove(group, name);
     settings.value = settings.value.filter(
       (s) => !(s.group === group && s.name === name),
     );

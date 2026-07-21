@@ -1,9 +1,4 @@
 <script setup lang="ts">
-import { Badge } from '#theme/components/ui/badge';
-import { Button } from '#theme/components/ui/button';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import { Textarea } from '#theme/components/ui/textarea';
 import {
   IconBraces,
   IconEye,

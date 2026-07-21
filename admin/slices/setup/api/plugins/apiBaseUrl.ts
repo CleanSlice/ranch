@@ -4,6 +4,7 @@ export default defineNuxtPlugin({
   name: 'api-base-url',
   setup() {
     const config = useRuntimeConfig();
+    const nuxtApp = useNuxtApp();
     const apiUrl = config.public.apiUrl as string;
     if (apiUrl) {
       client.setConfig({ baseURL: apiUrl });
@@ -31,5 +32,29 @@ export default defineNuxtPlugin({
       }
       return requestConfig;
     });
+
+    // Kick the user out on a session 401 (expired / missing token, e.g.
+    // "Missing access token"). Login/register 401s are credential errors shown
+    // inline on the form, so leave those for the caller to handle. logout()
+    // resets the store's auth state so the middleware sees "not authenticated"
+    // and doesn't bounce /login back to /agents.
+    client.instance.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        const status = error?.response?.status;
+        const url = String(error?.config?.url ?? '');
+        const isAuthEndpoint =
+          url.includes('/auth/login') || url.includes('/auth/register');
+        if (import.meta.client && status === 401 && !isAuthEndpoint) {
+          nuxtApp.runWithContext(() => {
+            useAuthStore().logout();
+            if (nuxtApp.$router.currentRoute.value.path !== '/login') {
+              return navigateTo('/login');
+            }
+          });
+        }
+        return Promise.reject(error);
+      },
+    );
   },
 });

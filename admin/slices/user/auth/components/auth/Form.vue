@@ -1,16 +1,5 @@
 <script setup lang="ts">
 import { IconAlertTriangle, IconEye, IconEyeOff } from '@tabler/icons-vue';
-import { Button } from '#theme/components/ui/button';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
-
 const props = defineProps<{
   submitting?: boolean;
   errorMessage?: string | null;

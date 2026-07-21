@@ -1,46 +1,20 @@
-import { LlmsService } from '#api/data';
+import { createServiceGetter } from '#common/composables/createServiceGetter';
+import type {
+  ILlmCredentialData,
+  ILlmCredentialInput,
+  LlmService,
+} from '#llm/domain';
 
-type ApiEnvelope<T> = { success: boolean; data: T };
+// Re-export the domain types so consumers importing them from
+// `#llm/stores/llm` (Form, llmList/Create/Edit Providers, settings/knowledge)
+// keep working.
+export type {
+  ILlmCredentialData,
+  ILlmCredentialInput,
+  ILlmHealthCheckResult,
+} from '#llm/domain';
 
-export interface ILlmCredentialData {
-  id: string;
-  provider: string;
-  model: string;
-  fallbackModel: string | null;
-  label: string | null;
-  apiKey: string;
-  status: string;
-  supportsChat: boolean;
-  supportsEmbedding: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ILlmHealthCheckResult {
-  ok: boolean;
-  latencyMs: number;
-  provider: string;
-  model: string;
-  error?: string;
-}
-
-export interface ILlmCredentialInput {
-  provider: string;
-  model: string;
-  apiKey: string;
-  fallbackModel?: string;
-  label?: string;
-  status?: string;
-  supportsChat?: boolean;
-  supportsEmbedding?: boolean;
-}
-
-function unwrap<T>(body: unknown): T | null {
-  if (body && typeof body === 'object' && 'data' in (body as ApiEnvelope<T>)) {
-    return ((body as ApiEnvelope<T>).data ?? null) as T | null;
-  }
-  return (body ?? null) as T | null;
-}
+const getService = createServiceGetter<LlmService>('$llmService');
 
 export const useLlmStore = defineStore('llm', () => {
   const items = ref<ILlmCredentialData[]>([]);
@@ -51,8 +25,7 @@ export const useLlmStore = defineStore('llm', () => {
     loading.value = true;
     error.value = null;
     try {
-      const res = await LlmsService.llmControllerFindAll();
-      items.value = unwrap<ILlmCredentialData[]>(res.data) ?? [];
+      items.value = await getService().findAll();
     } catch (err) {
       error.value = (err as Error).message;
     } finally {
@@ -61,24 +34,18 @@ export const useLlmStore = defineStore('llm', () => {
     return items.value;
   }
 
-  async function fetchById(id: string) {
-    const res = await LlmsService.llmControllerFindById({ path: { id } });
-    return unwrap<ILlmCredentialData>(res.data);
+  function fetchById(id: string) {
+    return getService().findById(id);
   }
 
   async function create(body: ILlmCredentialInput) {
-    const res = await LlmsService.llmControllerCreate({ body });
-    const created = unwrap<ILlmCredentialData>(res.data);
+    const created = await getService().create(body);
     if (created) items.value.push(created);
     return created;
   }
 
   async function update(id: string, body: Partial<ILlmCredentialInput>) {
-    const res = await LlmsService.llmControllerUpdate({
-      path: { id },
-      body,
-    });
-    const updated = unwrap<ILlmCredentialData>(res.data);
+    const updated = await getService().update(id, body);
     if (updated) {
       const idx = items.value.findIndex((x) => x.id === id);
       if (idx >= 0) items.value.splice(idx, 1, updated);
@@ -87,17 +54,12 @@ export const useLlmStore = defineStore('llm', () => {
   }
 
   async function remove(id: string) {
-    await LlmsService.llmControllerRemove({ path: { id } });
+    await getService().remove(id);
     items.value = items.value.filter((x) => x.id !== id);
   }
 
-  async function checkHealth(id: string): Promise<ILlmHealthCheckResult> {
-    const res = await LlmsService.healthCheckLlmCredential({ path: { id } });
-    const result = unwrap<ILlmHealthCheckResult>(res.data);
-    if (!result) {
-      throw new Error('Empty response from health-check endpoint');
-    }
-    return result;
+  function checkHealth(id: string) {
+    return getService().checkHealth(id);
   }
 
   return {

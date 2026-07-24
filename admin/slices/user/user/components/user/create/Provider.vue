@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ICreateUserData } from '#user/stores/user';
+import type { ICreateUserData } from '#user/domain/user.types';
 import { IconArrowLeft } from '@tabler/icons-vue';
 
 const userStore = useUserStore();

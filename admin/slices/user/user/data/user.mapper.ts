@@ -27,10 +27,12 @@ export class UserMapper {
     if (!raw || typeof raw !== 'object') return null;
     const o = raw as Record<string, unknown>;
     if (typeof o.id !== 'string') return null;
+    const name = str(o.name);
     return {
       id: o.id,
-      name: str(o.name),
+      name,
       email: str(o.email),
+      initials: this.toInitials(name),
       roles: this.toRoles(o.roles),
       status: this.toStatus(o.status),
       createdAt: str(o.createdAt),
@@ -77,5 +79,15 @@ export class UserMapper {
     return typeof raw === 'string' && STATUS_VALUES.has(raw)
       ? (raw as UserStatusTypes)
       : UserStatusTypes.Active;
+  }
+
+  private toInitials(name: string): string {
+    return name
+      .split(' ')
+      .filter(Boolean)
+      .map((p) => p[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
   }
 }

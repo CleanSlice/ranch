@@ -3,18 +3,7 @@ import {
   ALL_USER_ROLES,
   UserRoleTypes,
   type ICreateUserData,
-} from '#user/stores/user';
-import { Button } from '#theme/components/ui/button';
-import { Checkbox } from '#theme/components/ui/checkbox';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
+} from '#user/domain/user.types';
 
 const props = withDefaults(
   defineProps<{

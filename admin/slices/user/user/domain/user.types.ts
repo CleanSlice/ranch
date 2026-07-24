@@ -22,6 +22,10 @@ export interface IUserData {
   id: string;
   name: string;
   email: string;
+  // Derived from `name` in UserMapper.toEntity — carried on the entity so
+  // avatar UIs (userList, user detail) don't each reimplement the same
+  // split/slice/uppercase logic.
+  initials: string;
   roles: UserRoleTypes[];
   status: UserStatusTypes;
   createdAt: string;

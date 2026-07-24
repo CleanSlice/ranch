@@ -4,5 +4,5 @@ const id = route.params.id as string;
 </script>
 
 <template>
-  <UserProvider :id="id" />
+  <UserItemProvider :id="id" />
 </template>

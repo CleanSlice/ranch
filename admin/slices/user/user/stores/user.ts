@@ -7,12 +7,6 @@ import type {
   UserService,
 } from '#user/domain';
 
-// Re-export the domain enums/types so consumers importing them from
-// `#user/stores/user` (user Form/Provider, userList/Create/Edit) keep working.
-// The enums are used as runtime values, so they're value re-exports.
-export { ALL_USER_ROLES, UserRoleTypes, UserStatusTypes } from '#user/domain';
-export type { ICreateUserData, IUpdateUserData, IUserData } from '#user/domain';
-
 const getService = createServiceGetter<UserService>('$userService');
 
 export const useUserStore = defineStore('user', () => {

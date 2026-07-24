@@ -1,19 +1,5 @@
 <script setup lang="ts">
-import { UserStatusTypes, type IUserData } from '#user/stores/user';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import {
-  Avatar,
-  AvatarFallback,
-} from '#theme/components/ui/avatar';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
+import { UserStatusTypes, UserRoleTypes, type IUserData } from '#user/domain/user.types';
 
 const userStore = useUserStore();
 
@@ -27,14 +13,6 @@ const statusVariant: Record<UserStatusTypes, 'default' | 'secondary' | 'outline'
   [UserStatusTypes.Invited]: 'secondary',
   [UserStatusTypes.Disabled]: 'outline',
 };
-
-const initials = (name: string) =>
-  name
-    .split(' ')
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
 
 const pendingRemoval = ref<IUserData | null>(null);
 const confirmRemoveOpen = computed({
@@ -88,7 +66,7 @@ async function onRemove() {
             <TableCell>
               <div class="flex items-center gap-3">
                 <Avatar class="size-8">
-                  <AvatarFallback>{{ initials(user.name) }}</AvatarFallback>
+                  <AvatarFallback>{{ user.initials }}</AvatarFallback>
                 </Avatar>
                 <div>
                   <div class="font-medium">{{ user.name }}</div>
@@ -122,7 +100,7 @@ async function onRemove() {
                   size="sm"
                   variant="ghost"
                   class="text-destructive"
-                  :disabled="user.roles.includes('Owner')"
+                  :disabled="user.roles.includes(UserRoleTypes.Owner)"
                   @click="pendingRemoval = user"
                 >
                   Remove

@@ -3,7 +3,7 @@ import {
   UserRoleTypes,
   type ICreateUserData,
   type IUpdateUserData,
-} from '#user/stores/user';
+} from '#user/domain/user.types';
 import { IconArrowLeft } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();

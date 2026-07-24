@@ -72,9 +72,13 @@ export class RancherService implements OnApplicationBootstrap {
     };
   }
 
-  // S3 is "configured" when bucket + AWS credentials are all present in
-  // settings → integrations. Endpoint/region are optional (region falls
-  // back to us-east-1; endpoint blank means real AWS).
+  // S3 is "configured" once a bucket is set. AWS credentials are OPTIONAL:
+  // on EKS the pod authenticates through its IRSA / Pod Identity role via the
+  // SDK's default provider chain, so no static keys are needed. When keys are
+  // supplied (static keys / local MinIO) they must come as a pair — a lone
+  // key or secret is a half-filled, unusable state, so we don't count it.
+  // Endpoint/region stay optional (region falls back to us-east-1; blank
+  // endpoint means real AWS).
   private async checkS3Configured(): Promise<boolean> {
     const get = async (name: string): Promise<string> => {
       const s = await this.settingGateway.findByKey('integrations', name);
@@ -85,7 +89,9 @@ export class RancherService implements OnApplicationBootstrap {
       get('aws_access_key_id'),
       get('aws_secret_access_key'),
     ]);
-    return !!(bucket && key && secret);
+    // both-or-neither: reject a partially-entered credential pair
+    const credsConsistent = !!key === !!secret;
+    return !!bucket && credsConsistent;
   }
 
   // Idempotent — returns the existing Rancher template if one exists,

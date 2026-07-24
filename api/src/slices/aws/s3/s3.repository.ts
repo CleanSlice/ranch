@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -80,16 +80,15 @@ export class S3Repository {
       get('s3_secret_key'),
     ]);
 
-    if (!accessKeyId || !secretAccessKey) {
-      throw new BadRequestException(
-        'S3 is not configured (settings → integrations → s3_access_key, s3_secret_key)',
-      );
-    }
-
+    // Credentials optional — when both are present we use them explicitly
+    // (static keys / MinIO); when blank we omit `credentials` so the SDK
+    // default provider chain (IRSA / Pod Identity on EKS) supplies them.
     this.client = new S3Client({
       endpoint: endpoint || undefined,
       region: region || 'us-east-1',
-      credentials: { accessKeyId, secretAccessKey },
+      ...(accessKeyId && secretAccessKey
+        ? { credentials: { accessKeyId, secretAccessKey } }
+        : {}),
       forcePathStyle: Boolean(endpoint),
     });
     return this.client;

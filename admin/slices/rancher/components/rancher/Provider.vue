@@ -390,9 +390,10 @@ async function onDeploy() {
               <CardTitle class="text-base">Configure S3 storage</CardTitle>
               <CardDescription>
                 Required to seed template files and persist agent state. Set
-                <code>s3_bucket</code>, <code>aws_access_key_id</code> and
-                <code>aws_secret_access_key</code>. Local dev: use the included
-                MinIO defaults.
+                <code>s3_bucket</code> (and optionally <code>aws_region</code>).
+                <code>aws_access_key_id</code> / <code>aws_secret_access_key</code>
+                are optional — on EKS the pod's IRSA role is used automatically.
+                Local dev: use the included MinIO defaults.
               </CardDescription>
             </div>
             <Badge v-if="stepDone.s3" variant="default">Done</Badge>

@@ -157,20 +157,19 @@ export class AwsSecretGateway {
       get('aws_secret_prefix'),
     ]);
 
-    if (!accessKeyId || !secretAccessKey) {
-      throw new BadRequestException(
-        'AWS credentials are not configured (settings → integrations)',
-      );
-    }
     if (!prefix) {
       throw new BadRequestException(
         'AWS Secrets Manager prefix is not configured (settings → integrations → aws_secret_prefix)',
       );
     }
 
+    // Credentials optional — omit `credentials` when blank so the SDK default
+    // provider chain (IRSA / Pod Identity on EKS) supplies them.
     const client = new SecretsManagerClient({
       region: region || 'us-east-1',
-      credentials: { accessKeyId, secretAccessKey },
+      ...(accessKeyId && secretAccessKey
+        ? { credentials: { accessKeyId, secretAccessKey } }
+        : {}),
     });
 
     return { client, prefix: prefix.replace(/\/+$/, '') };

@@ -1,14 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  ArrayUnique,
-  IsArray,
-  IsEmail,
-  IsEnum,
-  IsOptional,
-  IsString,
-  MinLength,
-} from 'class-validator';
-import { UserRoleTypes } from '../domain';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { ASSIGNABLE_USER_ROLES, UserRoleTypes } from '../domain';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Jane Doe' })
@@ -25,15 +17,13 @@ export class CreateUserDto {
   @MinLength(8)
   password: string;
 
+  // Owner is deliberately not assignable — it exists once, created via /init.
   @ApiPropertyOptional({
-    isArray: true,
-    enum: UserRoleTypes,
-    enumName: 'UserRoleTypes',
-    example: [UserRoleTypes.User],
+    enum: ASSIGNABLE_USER_ROLES,
+    enumName: 'AssignableUserRoleTypes',
+    example: UserRoleTypes.User,
   })
   @IsOptional()
-  @IsArray()
-  @ArrayUnique()
-  @IsEnum(UserRoleTypes, { each: true })
-  roles?: UserRoleTypes[];
+  @IsIn(ASSIGNABLE_USER_ROLES)
+  role?: UserRoleTypes;
 }

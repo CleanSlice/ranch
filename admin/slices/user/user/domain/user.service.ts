@@ -26,8 +26,8 @@ export class UserService {
     return this.gateway.update(id, input);
   }
 
-  updateRoles(id: string, roles: UserRoleTypes[]): Promise<IUserData> {
-    return this.gateway.updateRoles(id, roles);
+  updateRole(id: string, role: UserRoleTypes): Promise<IUserData> {
+    return this.gateway.updateRole(id, role);
   }
 
   remove(id: string): Promise<void> {

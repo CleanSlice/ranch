@@ -33,8 +33,8 @@ export const useUserStore = defineStore('user', () => {
     return updated;
   }
 
-  async function updateRoles(id: string, roles: UserRoleTypes[]) {
-    const updated = await getService().updateRoles(id, roles);
+  async function updateRole(id: string, role: UserRoleTypes) {
+    const updated = await getService().updateRole(id, role);
     users.value = users.value.map((u) => (u.id === id ? updated : u));
     return updated;
   }
@@ -44,5 +44,5 @@ export const useUserStore = defineStore('user', () => {
     users.value = users.value.filter((u) => u.id !== id);
   }
 
-  return { users, fetchAll, fetchById, create, update, updateRoles, remove };
+  return { users, fetchAll, fetchById, create, update, updateRole, remove };
 });

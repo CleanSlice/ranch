@@ -12,6 +12,13 @@ export const ALL_USER_ROLES: UserRoleTypes[] = [
   UserRoleTypes.User,
 ];
 
+// Roles an admin may assign. Owner exists once and is created at install
+// time (POST /init) — the API rejects granting or revoking it.
+export const ASSIGNABLE_USER_ROLES: UserRoleTypes[] = [
+  UserRoleTypes.Admin,
+  UserRoleTypes.User,
+];
+
 export enum UserStatusTypes {
   Active = 'active',
   Invited = 'invited',
@@ -26,7 +33,7 @@ export interface IUserData {
   // avatar UIs (userList, user detail) don't each reimplement the same
   // split/slice/uppercase logic.
   initials: string;
-  roles: UserRoleTypes[];
+  role: UserRoleTypes;
   status: UserStatusTypes;
   createdAt: string;
 }
@@ -35,7 +42,7 @@ export interface ICreateUserData {
   name: string;
   email: string;
   password: string;
-  roles: UserRoleTypes[];
+  role: UserRoleTypes;
 }
 
 export interface IUpdateUserData {

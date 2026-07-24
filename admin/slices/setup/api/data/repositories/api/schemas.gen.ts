@@ -1552,6 +1552,11 @@ export const SetAgentChannelsDtoSchema = {
   required: ["channels"],
 } as const;
 
+export const AssignableUserRoleTypesSchema = {
+  type: "string",
+  enum: ["Admin", "User"],
+} as const;
+
 export const CreateUserDtoSchema = {
   type: "object",
   properties: {
@@ -1568,12 +1573,13 @@ export const CreateUserDtoSchema = {
       example: "strongPassword1",
       minLength: 8,
     },
-    roles: {
-      type: "array",
-      example: ["User"],
-      items: {
-        $ref: "#/components/schemas/UserRoleTypes",
-      },
+    role: {
+      example: "User",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssignableUserRoleTypes",
+        },
+      ],
     },
   },
   required: ["name", "email", "password"],
@@ -1602,18 +1608,19 @@ export const UpdateUserDtoSchema = {
   },
 } as const;
 
-export const UpdateUserRolesDtoSchema = {
+export const UpdateUserRoleDtoSchema = {
   type: "object",
   properties: {
-    roles: {
-      type: "array",
-      example: ["User"],
-      items: {
-        $ref: "#/components/schemas/UserRoleTypes",
-      },
+    role: {
+      example: "User",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssignableUserRoleTypes",
+        },
+      ],
     },
   },
-  required: ["roles"],
+  required: ["role"],
 } as const;
 
 export const SaveTemplateFileDtoSchema = {

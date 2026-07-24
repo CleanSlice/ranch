@@ -12,12 +12,11 @@ export class UserDto {
   email: string;
 
   @ApiProperty({
-    isArray: true,
     enum: UserRoleTypes,
     enumName: 'UserRoleTypes',
-    example: [UserRoleTypes.User],
+    example: UserRoleTypes.User,
   })
-  roles: UserRoleTypes[];
+  role: UserRoleTypes;
 
   @ApiProperty()
   status: string;

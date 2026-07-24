@@ -3,7 +3,7 @@ model User {
   name      String
   email     String   @unique
   password  String
-  roles     String[] @default(["User"])
+  role      String   @default("User")
   status    String   @default("invited")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

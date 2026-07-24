@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { UserStatusTypes, UserRoleTypes } from '#user/domain/user.types';
+import {IconArrowLeft} from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 const userStore = useUserStore();
@@ -51,7 +52,7 @@ async function onRemove() {
           <Button
             variant="ghost"
             class="text-destructive"
-            :disabled="user.roles.includes(UserRoleTypes.Owner)"
+            :disabled="user.role === UserRoleTypes.Owner"
             @click="confirmRemoveOpen = true"
           >
             Remove
@@ -75,15 +76,9 @@ async function onRemove() {
         <CardContent>
           <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <dt class="text-xs text-muted-foreground">Roles</dt>
-              <dd class="mt-1 flex flex-wrap gap-1">
-                <Badge
-                  v-for="role in user.roles"
-                  :key="role"
-                  variant="secondary"
-                >
-                  {{ role }}
-                </Badge>
+              <dt class="text-xs text-muted-foreground">Role</dt>
+              <dd class="mt-1">
+                <Badge variant="secondary">{{ user.role }}</Badge>
               </dd>
             </div>
             <div>

@@ -19,7 +19,7 @@ function str(value: unknown): string {
 
 /**
  * Maps the users API onto domain shapes. The generated wire enums share the
- * domain enums' string values but not their TS identity, so role/status arrays
+ * domain enums' string values but not their TS identity, so role/status values
  * are cast at the DTO boundary.
  */
 export class UserMapper {
@@ -33,7 +33,7 @@ export class UserMapper {
       name,
       email: str(o.email),
       initials: this.toInitials(name),
-      roles: this.toRoles(o.roles),
+      role: this.toRole(o.role),
       status: this.toStatus(o.status),
       createdAt: str(o.createdAt),
     };
@@ -51,7 +51,7 @@ export class UserMapper {
       name: input.name,
       email: input.email,
       password: input.password,
-      roles: input.roles as unknown as CreateUserDto['roles'],
+      role: input.role as unknown as CreateUserDto['role'],
     };
   }
 
@@ -64,15 +64,14 @@ export class UserMapper {
     };
   }
 
-  toRolesBody(roles: UserRoleTypes[]): NonNullable<CreateUserDto['roles']> {
-    return roles as unknown as NonNullable<CreateUserDto['roles']>;
+  toRoleBody(role: UserRoleTypes): NonNullable<CreateUserDto['role']> {
+    return role as unknown as NonNullable<CreateUserDto['role']>;
   }
 
-  private toRoles(raw: unknown): UserRoleTypes[] {
-    if (!Array.isArray(raw)) return [];
-    return raw.filter(
-      (r): r is UserRoleTypes => typeof r === 'string' && ROLE_VALUES.has(r),
-    );
+  private toRole(raw: unknown): UserRoleTypes {
+    return typeof raw === 'string' && ROLE_VALUES.has(raw)
+      ? (raw as UserRoleTypes)
+      : UserRoleTypes.User;
   }
 
   private toStatus(raw: unknown): UserStatusTypes {

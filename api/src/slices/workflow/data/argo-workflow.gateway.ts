@@ -69,7 +69,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
   private async resolveOwnerUserId(): Promise<string> {
     const all = await this.userGateway.findAll();
     const owner = all
-      .filter((u) => u.roles.includes(UserRoleTypes.Owner))
+      .filter((u) => u.role === UserRoleTypes.Owner)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
     return owner?.id ?? 'admin';
   }

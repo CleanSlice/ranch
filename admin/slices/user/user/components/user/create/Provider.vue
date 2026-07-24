@@ -27,13 +27,12 @@ function onCancel() {
     </NuxtLink>
 
     <div>
-      <h1 class="text-2xl font-semibold">Invite user</h1>
+      <h1 class="text-2xl font-semibold">Create user</h1>
       <p class="text-sm text-muted-foreground">Grant access to this workspace.</p>
     </div>
 
-    <UserForm
+    <UserItemForm
       :submitting="submitting"
-      submit-label="Send invite"
       @submit="onSubmit"
       @cancel="onCancel"
     />

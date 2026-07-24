@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { UserStatusTypes, UserRoleTypes, type IUserData } from '#user/domain/user.types';
+import { pages } from '#user/pages';
 
 const userStore = useUserStore();
 
@@ -39,7 +40,7 @@ async function onRemove() {
         <p class="text-sm text-muted-foreground">People with access to this workspace.</p>
       </div>
       <Button as-child>
-        <NuxtLink to="/users/create">Invite user</NuxtLink>
+        <NuxtLink :to="pages.userCreate">Create user</NuxtLink>
       </Button>
     </div>
 
@@ -52,7 +53,7 @@ async function onRemove() {
             <TableHead>Name</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>Joined</TableHead>
+            <TableHead class="text-right">Joined</TableHead>
             <TableHead class="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -61,7 +62,7 @@ async function onRemove() {
             v-for="user in users"
             :key="user.id"
             class="cursor-pointer"
-            @click="navigateTo(`/users/${user.id}`)"
+            @click="navigateTo(pages.user.replace(':id', user.id))"
           >
             <TableCell>
               <div class="flex items-center gap-3">
@@ -75,32 +76,26 @@ async function onRemove() {
               </div>
             </TableCell>
             <TableCell>
-              <div class="flex flex-wrap gap-1">
-                <Badge
-                  v-for="role in user.roles"
-                  :key="role"
-                  variant="secondary"
-                >
-                  {{ role }}
-                </Badge>
-              </div>
+              <Badge variant="secondary">{{ user.role }}</Badge>
             </TableCell>
             <TableCell>
               <Badge :variant="statusVariant[user.status]" class="capitalize">
                 {{ user.status }}
               </Badge>
             </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ new Date(user.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' }) }}
+            <TableCell>
+              <DateTimeAgo :date="user.createdAt" />
             </TableCell>
             <TableCell @click.stop>
               <div class="flex justify-end gap-2">
-                <Button size="sm" variant="outline">Edit</Button>
+                <Button size="sm" variant="outline"
+                @click="navigateTo(pages.userEdit.replace(':id', user.id))"
+                >Edit</Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   class="text-destructive"
-                  :disabled="user.roles.includes(UserRoleTypes.Owner)"
+                  :disabled="user.role === UserRoleTypes.Owner"
                   @click="pendingRemoval = user"
                 >
                   Remove

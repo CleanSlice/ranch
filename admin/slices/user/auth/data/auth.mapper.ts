@@ -4,7 +4,7 @@ const EMPTY_USER: IAuthUser = {
   id: '',
   name: '',
   email: '',
-  roles: [],
+  role: '',
   status: '',
 };
 
@@ -22,9 +22,7 @@ export class AuthMapper {
       id: o.id,
       name: str(o.name),
       email: str(o.email),
-      roles: Array.isArray(o.roles)
-        ? o.roles.filter((r): r is string => typeof r === 'string')
-        : [],
+      role: str(o.role),
       status: str(o.status),
     };
   }

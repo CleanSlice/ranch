@@ -28,11 +28,11 @@ export const useAuthStore = defineStore('auth', () => {
   const isHydrated = ref(false);
 
   const isAuthenticated = computed(() => !!accessToken.value && !!user.value);
-  const roles = computed<UserRoleTypes[]>(() => user.value?.roles ?? []);
+  const role = computed<UserRoleTypes | null>(() => user.value?.role ?? null);
 
   function hasRole(...required: UserRoleTypes[]): boolean {
     if (!required.length) return isAuthenticated.value;
-    return required.some((r) => roles.value.includes(r));
+    return required.some((r) => r === role.value);
   }
 
   function applyToken(token: string | null) {
@@ -91,7 +91,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     accessToken,
     user,
-    roles,
+    role,
     isHydrated,
     isAuthenticated,
     hasRole,

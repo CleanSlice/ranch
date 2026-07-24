@@ -3,11 +3,11 @@ import { IsEnum, IsOptional } from 'class-validator';
 import { CreateUserDto } from './createUser.dto';
 
 /**
- * Mutable user fields *except* roles — role changes require the dedicated
- * UpdateUserRolesDto endpoint guarded by Owner.
+ * Mutable user fields *except* the role — role changes require the dedicated
+ * UpdateUserRoleDto endpoint guarded by Owner.
  */
 export class UpdateUserDto extends PartialType(
-  OmitType(CreateUserDto, ['roles'] as const),
+  OmitType(CreateUserDto, ['role'] as const),
 ) {
   @ApiPropertyOptional({ enum: ['active', 'invited', 'disabled'] })
   @IsOptional()

@@ -718,11 +718,16 @@ export type SetAgentChannelsDto = {
   channels: Array<AgentChannelDto>;
 };
 
+export enum AssignableUserRoleTypes {
+  ADMIN = "Admin",
+  USER = "User",
+}
+
 export type CreateUserDto = {
   name: string;
   email: string;
   password: string;
-  roles?: Array<UserRoleTypes>;
+  role?: AssignableUserRoleTypes;
 };
 
 export type UpdateUserDto = {
@@ -732,8 +737,8 @@ export type UpdateUserDto = {
   status?: "active" | "invited" | "disabled";
 };
 
-export type UpdateUserRolesDto = {
-  roles: Array<UserRoleTypes>;
+export type UpdateUserRoleDto = {
+  role: AssignableUserRoleTypes;
 };
 
 export type SaveTemplateFileDto = {
@@ -2914,16 +2919,16 @@ export type UserControllerUpdateResponses = {
   200: unknown;
 };
 
-export type UserControllerUpdateRolesData = {
-  body: UpdateUserRolesDto;
+export type UserControllerUpdateRoleData = {
+  body: UpdateUserRoleDto;
   path: {
     id: string;
   };
   query?: never;
-  url: "/users/{id}/roles";
+  url: "/users/{id}/role";
 };
 
-export type UserControllerUpdateRolesResponses = {
+export type UserControllerUpdateRoleResponses = {
   200: unknown;
 };
 

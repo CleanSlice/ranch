@@ -1,38 +1,24 @@
 <script setup lang="ts">
 import {
-  ALL_USER_ROLES,
+  ASSIGNABLE_USER_ROLES,
   UserRoleTypes,
   type ICreateUserData,
-} from '#user/stores/user';
-import { Button } from '#theme/components/ui/button';
-import { Checkbox } from '#theme/components/ui/checkbox';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
+} from '#user/domain/user.types';
 
 const props = withDefaults(
   defineProps<{
     mode?: 'create' | 'edit';
     initialValues?: Partial<ICreateUserData>;
-    showRoles?: boolean;
-    disabledRoles?: UserRoleTypes[];
+    showRole?: boolean;
+    // Editing the Owner: the role is fixed — render a badge instead of the picker.
+    roleLocked?: boolean;
     submitLabel?: string;
     submitting?: boolean;
     cardTitle?: string;
     cardDescription?: string;
   }>(),
-  { mode: 'create', showRoles: true, disabledRoles: () => [] },
+  { mode: 'create', showRole: true, roleLocked: false },
 );
-
-function isRoleDisabled(role: UserRoleTypes) {
-  return props.disabledRoles.includes(role);
-}
 
 const emit = defineEmits<{
   submit: [values: ICreateUserData];
@@ -43,26 +29,12 @@ const form = reactive<ICreateUserData>({
   name: props.initialValues?.name ?? '',
   email: props.initialValues?.email ?? '',
   password: props.initialValues?.password ?? '',
-  roles: props.initialValues?.roles?.length
-    ? [...props.initialValues.roles]
-    : [UserRoleTypes.User],
+  role: props.initialValues?.role ?? UserRoleTypes.User,
 });
 
 const errors = reactive<
-  Partial<Record<'name' | 'email' | 'password' | 'roles', string>>
+  Partial<Record<'name' | 'email' | 'password', string>>
 >({});
-
-function isChecked(role: UserRoleTypes) {
-  return form.roles.includes(role);
-}
-
-function toggleRole(role: UserRoleTypes, checked: boolean) {
-  if (checked) {
-    if (!form.roles.includes(role)) form.roles = [...form.roles, role];
-  } else {
-    form.roles = form.roles.filter((r) => r !== role);
-  }
-}
 
 function validate() {
   errors.name = form.name.trim() ? undefined : 'Name is required';
@@ -80,8 +52,7 @@ function validate() {
     else errors.password = undefined;
   }
 
-  errors.roles = props.showRoles && !form.roles.length ? 'Pick at least one role' : undefined;
-  return !errors.name && !errors.email && !errors.password && !errors.roles;
+  return !errors.name && !errors.email && !errors.password;
 }
 
 function onSubmit() {
@@ -90,7 +61,7 @@ function onSubmit() {
     name: form.name.trim(),
     email: form.email.trim(),
     password: form.password,
-    roles: [...form.roles],
+    role: form.role,
   });
 }
 </script>
@@ -99,13 +70,13 @@ function onSubmit() {
   <form class="flex flex-col gap-6" @submit.prevent="onSubmit">
     <Card>
       <CardHeader>
-        <CardTitle>{{ cardTitle ?? (mode === 'edit' ? 'Profile' : 'Invite') }}</CardTitle>
+        <CardTitle>{{ cardTitle ?? (mode === 'edit' ? 'Profile' : 'New user') }}</CardTitle>
         <CardDescription>
           {{
             cardDescription ??
             (mode === 'edit'
               ? 'Update the user\'s profile.'
-              : 'An invitation email will be sent to the address below.')
+              : 'Set a password and share it with the user — no email is sent.')
           }}
         </CardDescription>
       </CardHeader>
@@ -132,29 +103,32 @@ function onSubmit() {
           />
           <p v-if="errors.password" class="text-xs text-destructive">{{ errors.password }}</p>
         </div>
-        <div v-if="showRoles" class="grid gap-2">
-          <Label>Roles</Label>
-          <p class="text-xs text-muted-foreground">
-            A user can hold any combination. Owner can change other users' roles.
-          </p>
-          <div class="flex flex-wrap gap-4 pt-1">
-            <label
-              v-for="role in ALL_USER_ROLES"
-              :key="role"
-              :for="`role-${role}`"
-              class="flex items-center gap-2 text-sm"
-              :class="{ 'opacity-60': isRoleDisabled(role) }"
-            >
-              <Checkbox
-                :id="`role-${role}`"
-                :model-value="isChecked(role)"
-                :disabled="isRoleDisabled(role)"
-                @update:model-value="(v: boolean | 'indeterminate') => toggleRole(role, v === true)"
-              />
-              {{ role }}
-            </label>
-          </div>
-          <p v-if="errors.roles" class="text-xs text-destructive">{{ errors.roles }}</p>
+        <div v-if="showRole" class="grid gap-2">
+          <Label>Role</Label>
+          <template v-if="roleLocked">
+            <div class="pt-1">
+              <Badge variant="secondary">{{ form.role }}</Badge>
+            </div>
+            <p class="text-xs text-muted-foreground">
+              The Owner role is fixed — it cannot be granted or revoked.
+            </p>
+          </template>
+          <template v-else>
+            <p class="text-xs text-muted-foreground">
+              Admins can manage the workspace; the single Owner is set at install time.
+            </p>
+            <RadioGroup v-model="form.role" class="flex flex-wrap gap-4 pt-1">
+              <label
+                v-for="role in ASSIGNABLE_USER_ROLES"
+                :key="role"
+                :for="`role-${role}`"
+                class="flex items-center gap-2 text-sm"
+              >
+                <RadioGroupItem :id="`role-${role}`" :value="role" />
+                {{ role }}
+              </label>
+            </RadioGroup>
+          </template>
         </div>
       </CardContent>
     </Card>
@@ -163,8 +137,8 @@ function onSubmit() {
       <Button type="submit" :disabled="submitting">
         {{
           submitting
-            ? (mode === 'edit' ? 'Saving…' : 'Sending…')
-            : (submitLabel ?? (mode === 'edit' ? 'Save' : 'Send invite'))
+            ? (mode === 'edit' ? 'Saving…' : 'Creating…')
+            : (submitLabel ?? (mode === 'edit' ? 'Save' : 'Create user'))
         }}
       </Button>
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>

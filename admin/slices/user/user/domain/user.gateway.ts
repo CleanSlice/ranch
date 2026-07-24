@@ -11,6 +11,6 @@ export abstract class IUserGateway {
   abstract findById(id: string): Promise<IUserData | null>;
   abstract create(input: ICreateUserData): Promise<IUserData>;
   abstract update(id: string, input: IUpdateUserData): Promise<IUserData>;
-  abstract updateRoles(id: string, roles: UserRoleTypes[]): Promise<IUserData>;
+  abstract updateRole(id: string, role: UserRoleTypes): Promise<IUserData>;
   abstract remove(id: string): Promise<void>;
 }

@@ -58,7 +58,17 @@ export class AuthService {
       throw new UnauthorizedException('Account disabled');
     }
 
-    return this.issueToken(this.mapper.toEntity(record));
+    // Invited accounts are activated by their first successful sign-in —
+    // there is no separate accept-invite flow.
+    let current = record;
+    if (current.status === 'invited') {
+      current = await this.prisma.user.update({
+        where: { id: current.id },
+        data: { status: 'active' },
+      });
+    }
+
+    return this.issueToken(this.mapper.toEntity(current));
   }
 
   async register(
@@ -86,7 +96,7 @@ export class AuthService {
           name,
           email: normalizedEmail,
           password: hashed,
-          roles: [UserRoleTypes.User],
+          role: UserRoleTypes.User,
         }),
         status: 'active',
       },
@@ -108,7 +118,7 @@ export class AuthService {
     const payload: IAuthTokenPayload = {
       sub: user.id,
       email: user.email,
-      roles: user.roles,
+      roles: [user.role],
     };
     return {
       accessToken: await this.jwt.signAsync(payload),

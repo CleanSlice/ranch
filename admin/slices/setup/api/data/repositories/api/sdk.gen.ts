@@ -156,7 +156,7 @@ import type {
   UserControllerRemoveData,
   UserControllerFindByIdData,
   UserControllerUpdateData,
-  UserControllerUpdateRolesData,
+  UserControllerUpdateRoleData,
   TemplateFileControllerListData,
   TemplateFileControllerReadData,
   TemplateFileControllerSaveData,
@@ -2300,7 +2300,7 @@ export class UsersService {
   }
 
   /**
-   * Invite a new user
+   * Create a user (admin sets the password)
    */
   public static userControllerCreate<ThrowOnError extends boolean = false>(
     options: Options<UserControllerCreateData, ThrowOnError>,
@@ -2352,7 +2352,7 @@ export class UsersService {
   }
 
   /**
-   * Update user (name, email, password, status). Use /roles to change roles.
+   * Update user (name, email, password, status). Use /role to change the role.
    */
   public static userControllerUpdate<ThrowOnError extends boolean = false>(
     options: Options<UserControllerUpdateData, ThrowOnError>,
@@ -2372,17 +2372,17 @@ export class UsersService {
   }
 
   /**
-   * Replace the user's roles. Owner only.
+   * Set the user's role. Owner only.
    */
-  public static userControllerUpdateRoles<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerUpdateRolesData, ThrowOnError>,
+  public static userControllerUpdateRole<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerUpdateRoleData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).put<
       unknown,
       unknown,
       ThrowOnError
     >({
-      url: "/users/{id}/roles",
+      url: "/users/{id}/role",
       ...options,
       headers: {
         "Content-Type": "application/json",

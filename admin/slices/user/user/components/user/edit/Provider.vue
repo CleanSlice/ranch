@@ -3,7 +3,7 @@ import {
   UserRoleTypes,
   type ICreateUserData,
   type IUpdateUserData,
-} from '#user/stores/user';
+} from '#user/domain/user.types';
 import { IconArrowLeft } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
@@ -14,14 +14,9 @@ const { data: user, pending } = await useAsyncData(
   () => userStore.fetchById(props.id),
 );
 
-const submitting = ref(false);
+const roleLocked = computed(() => user.value?.role === UserRoleTypes.Owner);
 
-function rolesEqual(a: UserRoleTypes[], b: UserRoleTypes[]) {
-  if (a.length !== b.length) return false;
-  const sa = [...a].sort();
-  const sb = [...b].sort();
-  return sa.every((r, i) => r === sb[i]);
-}
+const submitting = ref(false);
 
 async function onSubmit(values: ICreateUserData) {
   if (!user.value) return;
@@ -31,10 +26,10 @@ async function onSubmit(values: ICreateUserData) {
   if (values.email && values.email !== user.value.email) patch.email = values.email;
   if (values.password) patch.password = values.password;
 
-  const rolesChanged = !rolesEqual(values.roles, user.value.roles);
+  const roleChanged = !roleLocked.value && values.role !== user.value.role;
   const profileChanged = Object.keys(patch).length > 0;
 
-  if (!rolesChanged && !profileChanged) {
+  if (!roleChanged && !profileChanged) {
     await navigateTo(`/users/${props.id}`);
     return;
   }
@@ -42,7 +37,7 @@ async function onSubmit(values: ICreateUserData) {
   submitting.value = true;
   try {
     if (profileChanged) await userStore.update(props.id, patch);
-    if (rolesChanged) await userStore.updateRoles(props.id, values.roles);
+    if (roleChanged) await userStore.updateRole(props.id, values.role);
   } finally {
     submitting.value = false;
   }
@@ -68,18 +63,18 @@ function onCancel() {
     <template v-else-if="user">
       <div>
         <h1 class="text-2xl font-semibold">Edit {{ user.name }}</h1>
-        <p class="text-sm text-muted-foreground">Update profile and roles. The Owner role cannot be changed here.</p>
+        <p class="text-sm text-muted-foreground">Update profile and role. The Owner role cannot be changed.</p>
       </div>
 
-      <UserForm
+      <UserItemForm
         mode="edit"
         :submitting="submitting"
-        :disabled-roles="[UserRoleTypes.Owner]"
+        :role-locked="roleLocked"
         :initial-values="{
           name: user.name,
           email: user.email,
           password: '',
-          roles: user.roles,
+          role: user.role,
         }"
         @submit="onSubmit"
         @cancel="onCancel"

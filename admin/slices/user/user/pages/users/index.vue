@@ -1,5 +1,3 @@
 <template>
-  <div>
-    <UserListProvider />
-  </div>
+  <UserListProvider />
 </template>

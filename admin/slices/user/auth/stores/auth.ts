@@ -22,9 +22,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!accessToken.value);
   const hasAdminAccess = computed(() =>
-    !!user.value?.roles?.some((role) =>
-      (ADMIN_ROLES as readonly string[]).includes(role),
-    ),
+    (ADMIN_ROLES as readonly string[]).includes(user.value?.role ?? ''),
   );
 
   function applyToken(token: string | null) {

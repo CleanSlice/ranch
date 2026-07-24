@@ -5,9 +5,11 @@ import {
   ICreateUserData,
   UserRoleTypes,
   ALL_USER_ROLES,
+  ASSIGNABLE_USER_ROLES,
 } from '../domain';
 
 const VALID_ROLES = new Set<string>(ALL_USER_ROLES);
+const ASSIGNABLE_ROLES = new Set<string>(ASSIGNABLE_USER_ROLES);
 
 @Injectable()
 export class UserMapper {
@@ -16,7 +18,7 @@ export class UserMapper {
       id: record.id,
       name: record.name,
       email: record.email,
-      roles: this.normalizeRoles(record.roles),
+      role: this.toRole(record.role),
       status: record.status as IUserData['status'],
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
@@ -29,17 +31,22 @@ export class UserMapper {
       name: data.name,
       email: data.email.toLowerCase(),
       password: data.password,
-      roles: this.normalizeRoles(data.roles ?? [UserRoleTypes.User]),
+      role: this.toAssignableRole(data.role),
       status: 'invited',
     };
   }
 
-  /** Drop unknown values, dedupe, fall back to ['User'] when empty. */
-  normalizeRoles(roles: readonly string[] | null | undefined): UserRoleTypes[] {
-    if (!roles?.length) return [UserRoleTypes.User];
-    const filtered = Array.from(
-      new Set(roles.filter((r): r is UserRoleTypes => VALID_ROLES.has(r))),
-    );
-    return filtered.length ? filtered : [UserRoleTypes.User];
+  /** Any valid enum member (Owner included — stored rows carry it), else User. */
+  toRole(role: string | null | undefined): UserRoleTypes {
+    return role && VALID_ROLES.has(role)
+      ? (role as UserRoleTypes)
+      : UserRoleTypes.User;
+  }
+
+  /** Only Admin/User can be written through create/update paths, else User. */
+  toAssignableRole(role: string | null | undefined): UserRoleTypes {
+    return role && ASSIGNABLE_ROLES.has(role)
+      ? (role as UserRoleTypes)
+      : UserRoleTypes.User;
   }
 }

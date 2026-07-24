@@ -4,7 +4,7 @@ export interface IAuthUser {
   id: string;
   name: string;
   email: string;
-  roles: string[];
+  role: string;
   status: string;
 }
 

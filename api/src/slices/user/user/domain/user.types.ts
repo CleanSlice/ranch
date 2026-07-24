@@ -16,11 +16,41 @@ export const ALL_USER_ROLES: UserRoleTypes[] = [
   UserRoleTypes.Agent,
 ];
 
+/**
+ * Roles an admin may assign to a user. Owner exists only once and is created
+ * exclusively via POST /init; Agent lives only inside JWTs.
+ */
+export const ASSIGNABLE_USER_ROLES = [
+  UserRoleTypes.Admin,
+  UserRoleTypes.User,
+] as const;
+
+export const ROLE_LEVELS: Record<UserRoleTypes, number> = {
+  [UserRoleTypes.Owner]: 3,
+  [UserRoleTypes.Admin]: 2,
+  [UserRoleTypes.User]: 1,
+  // Outside the hierarchy — matched exactly, never by level.
+  [UserRoleTypes.Agent]: 0,
+};
+
+/**
+ * Hierarchical role check: Owner > Admin > User, a higher role implies the
+ * lower ones. Agent is exact-match only, in both directions.
+ */
+export function hasAtLeastRole(
+  actual: UserRoleTypes,
+  required: UserRoleTypes,
+): boolean {
+  if (required === UserRoleTypes.Agent) return actual === UserRoleTypes.Agent;
+  if (actual === UserRoleTypes.Agent) return false;
+  return ROLE_LEVELS[actual] >= ROLE_LEVELS[required];
+}
+
 export interface IUserData {
   id: string;
   name: string;
   email: string;
-  roles: UserRoleTypes[];
+  role: UserRoleTypes;
   status: UserStatusTypes;
   createdAt: Date;
   updatedAt: Date;
@@ -30,13 +60,13 @@ export interface ICreateUserData {
   name: string;
   email: string;
   password: string;
-  roles?: UserRoleTypes[];
+  role?: UserRoleTypes;
 }
 
 export interface IUpdateUserData {
   name?: string;
   email?: string;
   password?: string;
-  roles?: UserRoleTypes[];
+  role?: UserRoleTypes;
   status?: UserStatusTypes;
 }

@@ -8,7 +8,7 @@ const EMPTY_USER: IAuthUser = {
   id: '',
   name: '',
   email: '',
-  roles: [],
+  role: UserRoleTypes.User,
   status: '',
 };
 
@@ -16,8 +16,8 @@ const VALID_ROLES = new Set<string>(Object.values(UserRoleTypes));
 
 /**
  * Maps the (untyped) auth responses onto domain shapes. Reads defensively and
- * keeps only recognized roles so an unexpected backend value can't crash the
- * role checks.
+ * falls back to the lowest role so an unexpected backend value can't crash
+ * (or escalate) the role checks.
  */
 export class AuthMapper {
   toUser(raw: unknown): IAuthUser | null {
@@ -28,7 +28,7 @@ export class AuthMapper {
       id: o.id,
       name: typeof o.name === 'string' ? o.name : '',
       email: typeof o.email === 'string' ? o.email : '',
-      roles: this.toRoles(o.roles),
+      role: this.toRole(o.role),
       status: typeof o.status === 'string' ? o.status : '',
     };
   }
@@ -42,10 +42,9 @@ export class AuthMapper {
     };
   }
 
-  private toRoles(raw: unknown): UserRoleTypes[] {
-    if (!Array.isArray(raw)) return [];
-    return raw.filter(
-      (r): r is UserRoleTypes => typeof r === 'string' && VALID_ROLES.has(r),
-    );
+  private toRole(raw: unknown): UserRoleTypes {
+    return typeof raw === 'string' && VALID_ROLES.has(raw)
+      ? (raw as UserRoleTypes)
+      : UserRoleTypes.User;
   }
 }

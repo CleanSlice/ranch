@@ -46,13 +46,13 @@ export class UserGateway extends BaseGateway implements IUserGateway {
     });
   }
 
-  updateRoles(id: string, roles: UserRoleTypes[]): Promise<IUserData> {
+  updateRole(id: string, role: UserRoleTypes): Promise<IUserData> {
     return this.execute(async () => {
-      const res = await UsersService.userControllerUpdateRoles({
+      const res = await UsersService.userControllerUpdateRole({
         path: { id },
-        body: { roles: this.mapper.toRolesBody(roles) },
+        body: { role: this.mapper.toRoleBody(role) },
       });
-      return this.entityOrThrow(res.data, 'Update roles');
+      return this.entityOrThrow(res.data, 'Update role');
     });
   }
 

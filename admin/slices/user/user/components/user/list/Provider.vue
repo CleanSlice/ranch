@@ -1,19 +1,6 @@
 <script setup lang="ts">
-import { UserStatusTypes, type IUserData } from '#user/stores/user';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import {
-  Avatar,
-  AvatarFallback,
-} from '#theme/components/ui/avatar';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
+import { UserStatusTypes, UserRoleTypes, type IUserData } from '#user/domain/user.types';
+import { pages } from '#user/pages';
 
 const userStore = useUserStore();
 
@@ -27,14 +14,6 @@ const statusVariant: Record<UserStatusTypes, 'default' | 'secondary' | 'outline'
   [UserStatusTypes.Invited]: 'secondary',
   [UserStatusTypes.Disabled]: 'outline',
 };
-
-const initials = (name: string) =>
-  name
-    .split(' ')
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
 
 const pendingRemoval = ref<IUserData | null>(null);
 const confirmRemoveOpen = computed({
@@ -61,7 +40,7 @@ async function onRemove() {
         <p class="text-sm text-muted-foreground">People with access to this workspace.</p>
       </div>
       <Button as-child>
-        <NuxtLink to="/users/create">Invite user</NuxtLink>
+        <NuxtLink :to="pages.userCreate">Create user</NuxtLink>
       </Button>
     </div>
 
@@ -74,7 +53,7 @@ async function onRemove() {
             <TableHead>Name</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>Joined</TableHead>
+            <TableHead class="text-right">Joined</TableHead>
             <TableHead class="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -83,12 +62,12 @@ async function onRemove() {
             v-for="user in users"
             :key="user.id"
             class="cursor-pointer"
-            @click="navigateTo(`/users/${user.id}`)"
+            @click="navigateTo(pages.user.replace(':id', user.id))"
           >
             <TableCell>
               <div class="flex items-center gap-3">
                 <Avatar class="size-8">
-                  <AvatarFallback>{{ initials(user.name) }}</AvatarFallback>
+                  <AvatarFallback>{{ user.initials }}</AvatarFallback>
                 </Avatar>
                 <div>
                   <div class="font-medium">{{ user.name }}</div>
@@ -97,32 +76,26 @@ async function onRemove() {
               </div>
             </TableCell>
             <TableCell>
-              <div class="flex flex-wrap gap-1">
-                <Badge
-                  v-for="role in user.roles"
-                  :key="role"
-                  variant="secondary"
-                >
-                  {{ role }}
-                </Badge>
-              </div>
+              <Badge variant="secondary">{{ user.role }}</Badge>
             </TableCell>
             <TableCell>
               <Badge :variant="statusVariant[user.status]" class="capitalize">
                 {{ user.status }}
               </Badge>
             </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ new Date(user.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' }) }}
+            <TableCell>
+              <DateTimeAgo :date="user.createdAt" />
             </TableCell>
             <TableCell @click.stop>
               <div class="flex justify-end gap-2">
-                <Button size="sm" variant="outline">Edit</Button>
+                <Button size="sm" variant="outline"
+                @click="navigateTo(pages.userEdit.replace(':id', user.id))"
+                >Edit</Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   class="text-destructive"
-                  :disabled="user.roles.includes('Owner')"
+                  :disabled="user.role === UserRoleTypes.Owner"
                   @click="pendingRemoval = user"
                 >
                   Remove

@@ -38,11 +38,10 @@
             {{ authStore.user?.name ?? authStore.user?.email }}
           </span>
           <span
-            v-for="role in authStore.roles"
-            :key="role"
+            v-if="authStore.role"
             class="hidden sm:inline rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
           >
-            {{ role }}
+            {{ authStore.role }}
           </span>
           <button
             type="button"

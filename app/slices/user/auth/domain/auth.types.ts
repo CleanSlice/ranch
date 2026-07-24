@@ -11,7 +11,7 @@ export interface IAuthUser {
   id: string;
   name: string;
   email: string;
-  roles: UserRoleTypes[];
+  role: UserRoleTypes;
   status: string;
 }
 

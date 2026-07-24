@@ -18,7 +18,7 @@ export class InitService {
 
   async getStatus(): Promise<{ requiresInit: boolean }> {
     const ownerCount = await this.prisma.user.count({
-      where: { roles: { has: UserRoleTypes.Owner } },
+      where: { role: UserRoleTypes.Owner },
     });
     return { requiresInit: ownerCount === 0 };
   }
@@ -38,7 +38,7 @@ export class InitService {
         name,
         email: email.toLowerCase(),
         password: await bcrypt.hash(password, BCRYPT_ROUNDS),
-        roles: [UserRoleTypes.Owner],
+        role: UserRoleTypes.Owner,
         status: 'active',
       },
     });
@@ -47,7 +47,7 @@ export class InitService {
     const payload: IAuthTokenPayload = {
       sub: user.id,
       email: user.email,
-      roles: user.roles,
+      roles: [user.role],
     };
 
     return {

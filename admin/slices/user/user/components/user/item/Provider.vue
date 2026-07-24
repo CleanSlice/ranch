@@ -1,16 +1,6 @@
 <script setup lang="ts">
-import { UserStatusTypes } from '#user/stores/user';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import { Avatar, AvatarFallback } from '#theme/components/ui/avatar';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
-import { IconArrowLeft } from '@tabler/icons-vue';
+import { UserStatusTypes, UserRoleTypes } from '#user/domain/user.types';
+import {IconArrowLeft} from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 const userStore = useUserStore();
@@ -25,14 +15,6 @@ const statusVariant: Record<UserStatusTypes, 'default' | 'secondary' | 'outline'
   [UserStatusTypes.Invited]: 'secondary',
   [UserStatusTypes.Disabled]: 'outline',
 };
-
-const initials = (name: string) =>
-  name
-    .split(' ')
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
@@ -58,7 +40,7 @@ async function onRemove() {
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-center gap-4">
           <Avatar class="size-14">
-            <AvatarFallback class="text-base">{{ initials(user.name) }}</AvatarFallback>
+            <AvatarFallback class="text-base">{{ user.initials }}</AvatarFallback>
           </Avatar>
           <div>
             <h1 class="text-2xl font-semibold">{{ user.name }}</h1>
@@ -70,7 +52,7 @@ async function onRemove() {
           <Button
             variant="ghost"
             class="text-destructive"
-            :disabled="user.roles.includes('Owner')"
+            :disabled="user.role === UserRoleTypes.Owner"
             @click="confirmRemoveOpen = true"
           >
             Remove
@@ -94,15 +76,9 @@ async function onRemove() {
         <CardContent>
           <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <dt class="text-xs text-muted-foreground">Roles</dt>
-              <dd class="mt-1 flex flex-wrap gap-1">
-                <Badge
-                  v-for="role in user.roles"
-                  :key="role"
-                  variant="secondary"
-                >
-                  {{ role }}
-                </Badge>
+              <dt class="text-xs text-muted-foreground">Role</dt>
+              <dd class="mt-1">
+                <Badge variant="secondary">{{ user.role }}</Badge>
               </dd>
             </div>
             <div>

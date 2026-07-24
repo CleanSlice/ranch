@@ -19,7 +19,7 @@ function str(value: unknown): string {
 
 /**
  * Maps the users API onto domain shapes. The generated wire enums share the
- * domain enums' string values but not their TS identity, so role/status arrays
+ * domain enums' string values but not their TS identity, so role/status values
  * are cast at the DTO boundary.
  */
 export class UserMapper {
@@ -27,11 +27,13 @@ export class UserMapper {
     if (!raw || typeof raw !== 'object') return null;
     const o = raw as Record<string, unknown>;
     if (typeof o.id !== 'string') return null;
+    const name = str(o.name);
     return {
       id: o.id,
-      name: str(o.name),
+      name,
       email: str(o.email),
-      roles: this.toRoles(o.roles),
+      initials: this.toInitials(name),
+      role: this.toRole(o.role),
       status: this.toStatus(o.status),
       createdAt: str(o.createdAt),
     };
@@ -49,7 +51,7 @@ export class UserMapper {
       name: input.name,
       email: input.email,
       password: input.password,
-      roles: input.roles as unknown as CreateUserDto['roles'],
+      role: input.role as unknown as CreateUserDto['role'],
     };
   }
 
@@ -62,20 +64,29 @@ export class UserMapper {
     };
   }
 
-  toRolesBody(roles: UserRoleTypes[]): NonNullable<CreateUserDto['roles']> {
-    return roles as unknown as NonNullable<CreateUserDto['roles']>;
+  toRoleBody(role: UserRoleTypes): NonNullable<CreateUserDto['role']> {
+    return role as unknown as NonNullable<CreateUserDto['role']>;
   }
 
-  private toRoles(raw: unknown): UserRoleTypes[] {
-    if (!Array.isArray(raw)) return [];
-    return raw.filter(
-      (r): r is UserRoleTypes => typeof r === 'string' && ROLE_VALUES.has(r),
-    );
+  private toRole(raw: unknown): UserRoleTypes {
+    return typeof raw === 'string' && ROLE_VALUES.has(raw)
+      ? (raw as UserRoleTypes)
+      : UserRoleTypes.User;
   }
 
   private toStatus(raw: unknown): UserStatusTypes {
     return typeof raw === 'string' && STATUS_VALUES.has(raw)
       ? (raw as UserStatusTypes)
       : UserStatusTypes.Active;
+  }
+
+  private toInitials(name: string): string {
+    return name
+      .split(' ')
+      .filter(Boolean)
+      .map((p) => p[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
   }
 }

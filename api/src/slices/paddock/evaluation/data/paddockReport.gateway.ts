@@ -190,14 +190,13 @@ export class PaddockReportGateway extends IPaddockReportGateway {
         'S3 bucket is not configured (settings → integrations → s3_bucket)',
       );
     }
-    if (!accessKeyId || !secretAccessKey) {
-      throw new BadRequestException(
-        'AWS credentials are not configured (settings → integrations)',
-      );
-    }
+    // Credentials optional — omit `credentials` when blank so the SDK default
+    // provider chain (IRSA / Pod Identity on EKS) supplies them.
     const client = new S3Client({
       region: region || 'us-east-1',
-      credentials: { accessKeyId, secretAccessKey },
+      ...(accessKeyId && secretAccessKey
+        ? { credentials: { accessKeyId, secretAccessKey } }
+        : {}),
       ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
     });
     return { client, bucket };

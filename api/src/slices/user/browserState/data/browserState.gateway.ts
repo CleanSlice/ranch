@@ -143,15 +143,15 @@ export class UserBrowserStateGateway extends IUserBrowserStateGateway {
         'S3 bucket is not configured (settings → integrations → s3_bucket)',
       );
     }
-    if (!accessKeyId || !secretAccessKey) {
-      throw new BadRequestException(
-        'AWS credentials are not configured (settings → integrations)',
-      );
-    }
-
+    // Credentials are optional: when both are present we pass them explicitly
+    // (static keys / local MinIO). When blank we OMIT `credentials` so the AWS
+    // SDK default provider chain resolves them — this is what lets an EKS pod
+    // authenticate through its IRSA / Pod Identity role with no static keys.
     const client = new S3Client({
       region: region || 'us-east-1',
-      credentials: { accessKeyId, secretAccessKey },
+      ...(accessKeyId && secretAccessKey
+        ? { credentials: { accessKeyId, secretAccessKey } }
+        : {}),
       ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
     });
 

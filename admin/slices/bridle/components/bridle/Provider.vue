@@ -324,9 +324,6 @@ async function onConfirmReset() {
           <Circle :class="cn('h-2 w-2 fill-current', connectionStatus.color)" />
           {{ connectionStatus.label }}
         </div>
-        <!-- Host-provided actions pinned to the header's right corner
-             (e.g. the admin agent page mounts its Logs toggle here). -->
-        <slot name="header-actions" />
       </div>
     </CardHeader>
 

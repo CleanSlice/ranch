@@ -22,10 +22,12 @@ const emit = defineEmits<{ restart: []; toggleRunning: [] }>();
 
 const authStore = useAuthStore();
 
-// Side-by-side logs panel — the only logs surface on this page, toggled from
-// the chat header. The panel is only mounted while open, so its 5s polling
-// stops the moment it's hidden.
-const showSideLogs = ref(false);
+// Side-by-side logs panel — the only logs surface on this page. Open by
+// default; closing collapses it into a page-level "Logs" button next to the
+// chat's top-right corner (the chat widget itself stays uniform across hosts
+// — no host-specific controls in its header). The panel is only mounted
+// while open, so its 5s polling stops the moment it's collapsed.
+const showSideLogs = ref(true);
 
 // One "restart is underway" signal for every surface (bridle header status,
 // disabled input, logs overlay) — covers both an explicit Restart click and
@@ -93,22 +95,7 @@ watch(
         :restart-prompt="false"
         :agent-state="bridleAgentState"
         class="h-full w-full"
-      >
-        <template #header-actions>
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-7 px-2 text-xs"
-            :class="showSideLogs && 'bg-muted'"
-            :title="showSideLogs ? 'Hide pod logs' : 'Show pod logs'"
-            :aria-pressed="showSideLogs"
-            @click="showSideLogs = !showSideLogs"
-          >
-            <IconFileText class="size-3.5" />
-            Logs
-          </Button>
-        </template>
-      </BridleProvider>
+      />
       <Transition
         enter-active-class="transition-opacity duration-200"
         leave-active-class="transition-opacity duration-200"
@@ -161,15 +148,22 @@ watch(
         </div>
       </Transition>
     </div>
-    <!-- max-width (not flex-basis) is what animates: the inner panel keeps its
-         min-width, so opening reads as a slide-reveal instead of a reflow. -->
+    <!-- Genie effect: closing sucks the panel into the spot where the "Logs"
+         button appears (its own top-left corner, next to the chat's top-right)
+         — scale collapses toward that origin while max-width reflows the row;
+         the button then pops in at the same point. The transition classes are
+         conditional because out-in animates a different element per phase:
+         showSideLogs=true → panel enters / button leaves, false → the reverse. -->
     <Transition
-      enter-active-class="transition-all duration-300 ease-out"
-      enter-from-class="max-w-0 opacity-0"
-      enter-to-class="max-w-200 opacity-100"
-      leave-active-class="transition-all duration-300 ease-in"
-      leave-from-class="max-w-200 opacity-100"
-      leave-to-class="max-w-0 opacity-0"
+      mode="out-in"
+      :enter-active-class="showSideLogs
+        ? 'origin-top-left transition-all duration-300 ease-out'
+        : 'origin-top-left transition-all duration-150 ease-out'"
+      :enter-from-class="showSideLogs ? 'max-w-0 scale-50 opacity-0' : 'scale-75 opacity-0'"
+      :leave-active-class="showSideLogs
+        ? 'origin-top-left transition-all duration-150 ease-in'
+        : 'origin-top-left transition-all duration-300 ease-in'"
+      :leave-to-class="showSideLogs ? 'scale-75 opacity-0' : 'max-w-0 scale-0 opacity-0'"
     >
       <div
         v-if="showSideLogs"
@@ -183,6 +177,17 @@ watch(
           @close="showSideLogs = false"
         />
       </div>
+      <Button
+        v-else
+        variant="outline"
+        size="sm"
+        class="self-start"
+        title="Show pod logs"
+        @click="showSideLogs = true"
+      >
+        <IconFileText class="size-4" />
+        Logs
+      </Button>
     </Transition>
   </div>
 </template>

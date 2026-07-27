@@ -94,7 +94,7 @@ watch(
         :title="`Chat with ${agent.name}`"
         :restart-prompt="false"
         :agent-state="bridleAgentState"
-        class="h-full w-full"
+        class="h-full w-full gap-0"
       />
       <Transition
         enter-active-class="transition-opacity duration-200"

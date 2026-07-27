@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { AgentLogLevel } from '#agent/utils/agentLogs';
 import { IconLoader2, IconReload, IconX } from '@tabler/icons-vue';
 
 const props = defineProps<{
@@ -15,7 +16,8 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>();
 
 const {
-  logs,
+  logGroups,
+  statusLabel,
   loading,
   error,
   autoRefresh,
@@ -23,6 +25,17 @@ const {
   containerWaitingLabel,
   refresh,
 } = useAgentLogs(props.agentId);
+
+// Terminal-style level colors (light+dark), same palette approach as
+// bridle's DebugPanel event-type map.
+const LOG_LEVEL_CHIP: Record<AgentLogLevel, string> = {
+  error: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30',
+  warn: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30',
+};
+const LOG_LEVEL_TEXT: Record<AgentLogLevel, string> = {
+  error: 'text-red-700 dark:text-red-300',
+  warn: 'text-amber-700 dark:text-amber-300',
+};
 </script>
 
 <template>
@@ -97,10 +110,42 @@ const {
           <span>{{ containerWaitingLabel }}…</span>
           <span class="text-[10px]">Logs will appear when the container starts.</span>
         </div>
-        <pre
-          v-else-if="logs"
-          class="whitespace-pre-wrap wrap-break-word font-mono text-xs leading-relaxed"
-        >{{ logs }}</pre>
+        <div
+          v-else-if="statusLabel"
+          class="py-8 text-center text-xs italic text-muted-foreground"
+        >
+          {{ statusLabel }}
+        </div>
+        <div v-else-if="logGroups.length" class="font-mono text-xs leading-relaxed">
+          <template v-for="group in logGroups" :key="group.key">
+            <div v-if="group.day" class="my-2 flex items-center gap-2 first:mt-0">
+              <div class="h-px flex-1 bg-border" />
+              <span class="shrink-0 text-[10px] font-medium tracking-wide text-muted-foreground">
+                {{ group.day }}
+              </span>
+              <div class="h-px flex-1 bg-border" />
+            </div>
+            <div
+              v-for="(line, i) in group.lines"
+              :key="`${group.key}-${i}`"
+              class="flex items-start gap-2"
+            >
+              <span
+                v-if="line.time"
+                class="shrink-0 select-none tabular-nums text-muted-foreground/70"
+              >{{ line.time }}</span>
+              <span
+                v-if="line.level"
+                class="mt-px shrink-0 select-none rounded border px-1 text-[10px] font-semibold uppercase leading-4"
+                :class="LOG_LEVEL_CHIP[line.level]"
+              >{{ line.level }}</span>
+              <span
+                class="min-w-0 flex-1 whitespace-pre-wrap wrap-break-word"
+                :class="line.level ? LOG_LEVEL_TEXT[line.level] : ''"
+              >{{ line.text }}</span>
+            </div>
+          </template>
+        </div>
         <div
           v-else-if="loading"
           class="py-8 text-center text-xs text-muted-foreground"

@@ -29,13 +29,35 @@ export function useAgentLogs(agentId: string) {
     return r.replace(/\b\w/g, (c) => c.toUpperCase());
   });
 
+  // The other whole-response backend markers (the `[container …]` one has its
+  // own spinner branch above). Never mixed with real log lines — check this
+  // before rendering logGroups so markers don't leak in as an undated group.
+  const statusLabel = computed<string | null>(() => {
+    const t = logs.value.trim();
+    const noPod = t.match(/^\[no pod yet for (\w+) agent\]$/);
+    if (noPod) return `No pod yet — agent is ${noPod[1]}.`;
+    const failed = t.match(/^\[log fetch failed: ([\s\S]+)\]$/);
+    if (failed) return `Log fetch failed: ${failed[1]}`;
+    return null;
+  });
+
+  const logGroups = computed(() => parseAgentLogs(logs.value));
+
+  // Terminal-style stickiness: after a refresh, jump to the bottom only when
+  // the user was already there — if they scrolled up to read, the 5s poll
+  // must not yank their position away.
+  const STICK_THRESHOLD_PX = 40;
+
   async function refresh() {
     loading.value = true;
     error.value = null;
+    const el = scrollRef.value;
+    const stickToBottom =
+      !el || el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD_PX;
     try {
       logs.value = await agentStore.fetchLogs(agentId);
       await nextTick();
-      if (scrollRef.value) {
+      if (scrollRef.value && stickToBottom) {
         scrollRef.value.scrollTop = scrollRef.value.scrollHeight;
       }
     } catch (err) {
@@ -65,6 +87,8 @@ export function useAgentLogs(agentId: string) {
 
   return {
     logs,
+    logGroups,
+    statusLabel,
     loading,
     error,
     autoRefresh,

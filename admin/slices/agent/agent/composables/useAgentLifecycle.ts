@@ -142,14 +142,20 @@ export function useAgentLifecycle(
   const pendingRestart = computed(() => agentStore.isPendingRestart(agentId));
   const dismissRestartBanner = () => agentStore.clearPendingRestart(agentId);
 
-  // ── Status polling while deploying ───────────────────────────────────
+  // ── Status polling while deploying or restart-in-flight ──────────────
   // Backend syncStatus runs on each fetchById; refreshing pulls the latest
-  // workflow phase. Stops as soon as the agent reaches a terminal state.
+  // workflow phase. Also polls while the persisted restart flag is set even
+  // if the DB already says 'running': after a restart the server can report
+  // 'running' while the pod is still being recreated (or is gone) — without
+  // polling nothing reactive ever changes, the overlay computed freezes and
+  // the flag's TTL never gets re-evaluated, pinning "restarting" forever.
+  // Each refresh replaces the agent ref, which re-runs the computeds (fresh
+  // Date.now() → TTL honored) and gives the server a chance to reconcile.
   let statusTimer: ReturnType<typeof setInterval> | null = null;
   watch(
-    () => agent.value?.status,
-    (status) => {
-      if (status && POLL_STATUSES.has(status)) {
+    () => [agent.value?.status, agentStore.isRestartInFlight(agentId)] as const,
+    ([status, inFlight]) => {
+      if ((status && POLL_STATUSES.has(status)) || inFlight) {
         if (!statusTimer) statusTimer = setInterval(refresh, 5000);
       } else if (statusTimer) {
         clearInterval(statusTimer);
@@ -247,8 +253,13 @@ export function useAgentLifecycle(
       ] as const,
     ([status, ready, chatConnected, agentConnected]) => {
       const chatLive = chatConnected && agentConnected;
+      // `chatLive && status === 'running'` covers the post-F5 recovery:
+      // `agentWentDown` resets on reload, and requiring it would leave the
+      // flag stuck until the SSE ready signal. Premature-clear risk is only
+      // the 1–2s window before the server writes 'deploying' — and even
+      // then the status flip re-raises the overlay by itself.
       if (
-        (chatLive && agentWentDown.value) ||
+        (chatLive && (agentWentDown.value || status === 'running')) ||
         (status === 'running' && ready === true) ||
         status === 'failed'
       ) {

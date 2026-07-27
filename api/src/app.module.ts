@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 
 // Setup slices
 import { PrismaModule } from './slices/setup/prisma/prisma.module';
@@ -98,6 +99,17 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
         enableJsonResponse: true,
       },
     }),
+  ],
+  providers: [
+    // Authentication is mandatory by DEFAULT for every route in the app.
+    // Previously there was no global guard, so any controller that forgot
+    // @UseGuards was silently exposed to the internet (settings leaked
+    // github_pat / bridle_api_key, etc.). With this in place a route is
+    // reachable unauthenticated only if it explicitly opts out via @Public().
+    // Routes using an alternative auth mechanism (BridleApiKeyGuard for the
+    // agent runtime, ApiKeyGuard for embed tokens) are marked @Public() to
+    // bypass the JWT check and rely on their own guard instead.
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })
 export class AppModule {}

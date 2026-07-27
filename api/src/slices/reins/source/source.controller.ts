@@ -9,8 +9,11 @@ import {
   UploadedFile,
   UseInterceptors,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import {
   ApiTags,
   ApiOperation,
@@ -44,6 +47,8 @@ interface UploadedFileLike {
 }
 
 @ApiTags('knowledge-sources')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('knowledges/:knowledgeId/sources')
 export class SourceController {
   constructor(private readonly service: SourceService) {}

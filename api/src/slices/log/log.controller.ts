@@ -5,8 +5,11 @@ import {
   NotFoundException,
   Query,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { CoreV1Api, KubeConfig } from '@kubernetes/client-node';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IInfraConfigGateway } from '#/setting/domain';
@@ -26,6 +29,8 @@ import { IInfraConfigGateway } from '#/setting/domain';
  * `pods/log` in the agents namespace (see k8s/templates/rbac.yaml).
  */
 @ApiTags('logs')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('agents/:agentId/logs')
 export class LogController {
   private readonly logger = new Logger(LogController.name);

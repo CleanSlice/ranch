@@ -1,9 +1,13 @@
-import { Controller, Get, Param, Res } from '@nestjs/common';
+import { Controller, Get, Param, Res, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { TemplateExportService } from './domain/templateExport.service';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 
 @ApiTags('templates')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('templates')
 export class TemplateExportController {
   constructor(private readonly service: TemplateExportService) {}

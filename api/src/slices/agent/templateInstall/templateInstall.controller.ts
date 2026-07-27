@@ -5,8 +5,11 @@ import {
   UploadedFile,
   UseInterceptors,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import {
   ApiTags,
   ApiOperation,
@@ -26,6 +29,8 @@ interface UploadedFileLike {
 }
 
 @ApiTags('templates')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('templates/install')
 export class TemplateInstallController {
   constructor(private readonly service: TemplateInstallService) {}

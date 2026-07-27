@@ -12,8 +12,11 @@ import {
   Query,
   Res,
   forwardRef,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { Response } from 'express';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IBridleGateway } from '#/bridle/domain';
@@ -28,6 +31,8 @@ import {
 } from './dtos';
 
 @ApiTags('files')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('agents/:agentId/files')
 export class FileController {
   constructor(

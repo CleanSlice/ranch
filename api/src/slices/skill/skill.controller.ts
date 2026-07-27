@@ -9,8 +9,11 @@ import {
   Query,
   NotFoundException,
   ConflictException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { ISkillGateway } from './domain';
 import {
   CreateSkillDto,
@@ -22,6 +25,8 @@ import {
 import { GithubSearch } from './data/github.search';
 
 @ApiTags('skills')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('skills')
 export class SkillController {
   constructor(

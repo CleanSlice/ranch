@@ -35,8 +35,13 @@ import {
   TranscriptReaderService,
   TranscriptMessage,
 } from '#/agent/file/domain';
+import { Public } from '#/user/auth/guards';
 
+// Public chat surface. Anonymous visitors send messages here; resolveClientId
+// verifies an OPTIONAL Bearer token when present but never requires one. Kept
+// @Public so the global JWT guard doesn't break unauthenticated chat.
 @ApiTags('bridle')
+@Public()
 @Controller('api/agent')
 export class BridleController {
   private readonly logger = new Logger(BridleController.name);

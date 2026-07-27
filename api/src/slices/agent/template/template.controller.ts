@@ -8,8 +8,11 @@ import {
   Param,
   NotFoundException,
   ConflictException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { ITemplateGateway } from './domain';
 import {
   CreateTemplateDto,
@@ -19,6 +22,8 @@ import {
 } from './dtos';
 
 @ApiTags('templates')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('templates')
 export class TemplateController {
   constructor(private templateGateway: ITemplateGateway) {}

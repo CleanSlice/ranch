@@ -18,6 +18,7 @@ import {
 } from './domain/usage.types';
 import { ReportUsageDto } from './dtos';
 import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
+import { Public } from '#/user/auth/guards';
 import { IFileGateway } from '#/agent/file/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { ILlmGateway } from '#/llm/domain';
@@ -48,6 +49,9 @@ export class UsageController {
 
   @Post('agents/:agentId/usage')
   @HttpCode(204)
+  // Runtime reports usage with x-bridle-api-key, not a JWT. @Public bypasses
+  // the global JWT guard; BridleApiKeyGuard still enforces the key.
+  @Public()
   @UseGuards(BridleApiKeyGuard)
   @ApiHeader({ name: 'x-bridle-api-key', required: true })
   @ApiOperation({

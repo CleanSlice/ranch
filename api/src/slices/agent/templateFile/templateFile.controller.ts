@@ -10,9 +10,12 @@ import {
   Query,
   UploadedFiles,
   UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { ITemplateFileGateway } from './domain';
 import { ITemplateFileUpload } from './domain/templateFile.types';
@@ -28,6 +31,8 @@ interface IMulterFile {
 }
 
 @ApiTags('template-files')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('templates/:id/files')
 export class TemplateFileController {
   constructor(

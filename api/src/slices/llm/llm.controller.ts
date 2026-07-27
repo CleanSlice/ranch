@@ -7,8 +7,11 @@ import {
   Body,
   Param,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { ILlmGateway, ILlmHealthGateway } from './domain';
 import {
   CreateLlmCredentialDto,
@@ -17,6 +20,9 @@ import {
 } from './dtos';
 
 @ApiTags('llms')
+// LLM provider credentials. Owner/Admin only.
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('llms')
 export class LlmController {
   constructor(

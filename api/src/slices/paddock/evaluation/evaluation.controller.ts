@@ -1,10 +1,22 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { PaddockEvaluationService } from './domain/evaluation.service';
 import { PaddockEvaluationReportDto, RunPaddockEvaluationDto } from './dtos';
 import { IRunPaddockEvaluationData } from './domain/evaluation.types';
 
 @ApiTags('paddock-evaluations')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('paddock-evaluations')
 export class PaddockEvaluationController {
   constructor(private service: PaddockEvaluationService) {}

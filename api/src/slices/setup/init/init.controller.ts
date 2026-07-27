@@ -3,8 +3,12 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InitService } from './domain';
 import { CreateOwnerDto, InitStatusDto } from './dtos';
 import { AuthDto } from '#/user/auth/dtos';
+import { Public } from '#/user/auth/guards';
 
+// First-run bootstrap: no owner/user exists yet, so these must be reachable
+// without a token. `init` itself refuses once an owner exists.
 @ApiTags('setup')
+@Public()
 @Controller('setup')
 export class InitController {
   constructor(private initService: InitService) {}

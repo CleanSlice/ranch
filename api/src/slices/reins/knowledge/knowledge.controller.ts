@@ -9,8 +9,11 @@ import {
   Query,
   HttpCode,
   ServiceUnavailableException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeConfigGateway } from '../config/domain/knowledgeConfig.gateway';
 import { IGraphData } from './domain/knowledge.types';
@@ -26,6 +29,8 @@ import {
 } from './dtos';
 
 @ApiTags('knowledges')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('knowledges')
 export class KnowledgeController {
   constructor(

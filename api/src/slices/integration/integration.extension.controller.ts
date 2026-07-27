@@ -23,7 +23,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as archiver from 'archiver';
 import { Request, Response } from 'express';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
-import { JwtAuthGuard } from '#/user/auth/guards';
+import { JwtAuthGuard, Public } from '#/user/auth/guards';
 import { IntegrationService } from './domain/integration.service';
 import {
   ExtensionImportStateDto,
@@ -114,6 +114,8 @@ export class IntegrationExtensionController {
   }
 
   @Get('download')
+  // Static extension zip — served without auth (preserves prior behavior).
+  @Public()
   @ApiOperation({
     summary:
       'Download the Ranch Cookies Chrome extension as a zip — load it unpacked in chrome://extensions/. Path source: EXTENSION_DIR env var, falls back to ranch-repo-root/extension/.',

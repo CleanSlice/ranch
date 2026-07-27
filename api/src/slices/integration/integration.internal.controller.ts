@@ -11,6 +11,7 @@ import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
+import { Public } from '#/user/auth/guards';
 import { IntegrationService } from './domain/integration.service';
 import { LoginInstructionDto, ResolvedSecretsDto } from './dtos';
 
@@ -89,6 +90,9 @@ class RequestLoginBodyDto {
  * expose them on the public router.
  */
 @ApiTags('integrations-internal')
+// @Public bypasses the global JWT guard; the agent runtime authenticates
+// with x-bridle-api-key, enforced by BridleApiKeyGuard below.
+@Public()
 @Controller('integrations/internal')
 @UseGuards(BridleApiKeyGuard)
 export class IntegrationInternalController {

@@ -21,7 +21,13 @@ import {
 import { UserDto } from '../user/dtos';
 import { ApiKeyScopeTypes, IApiKeyData } from '../apiKey/domain';
 import { ApiKeyService } from '../apiKey/domain/apiKey.service';
-import { ApiKeyGuard, JwtAuthGuard, Scopes, ScopesGuard } from './guards';
+import {
+  ApiKeyGuard,
+  JwtAuthGuard,
+  Public,
+  Scopes,
+  ScopesGuard,
+} from './guards';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -32,6 +38,7 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  @Public()
   @HttpCode(200)
   @ApiOperation({ summary: 'Authenticate and receive an access token' })
   async login(@Body() dto: LoginDto): Promise<AuthDto> {
@@ -39,6 +46,7 @@ export class AuthController {
   }
 
   @Post('register')
+  @Public()
   @HttpCode(200)
   @ApiOperation({
     summary:
@@ -60,6 +68,9 @@ export class AuthController {
 
   @Post('embed/token')
   @HttpCode(200)
+  // Authenticated by an API key (not a user JWT). @Public bypasses the global
+  // JWT guard; ApiKeyGuard + ScopesGuard enforce the key and its scope.
+  @Public()
   @UseGuards(ApiKeyGuard, ScopesGuard)
   @Scopes(ApiKeyScopeTypes.EmbedMint)
   @ApiBearerAuth()

@@ -9,8 +9,11 @@ import {
   Query,
   BadRequestException,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import {
   IPaddockScenarioGateway,
   IPaddockScenarioGeneratorGateway,
@@ -28,6 +31,8 @@ import {
 } from './domain/scenario.types';
 
 @ApiTags('paddock-scenarios')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('paddock-scenarios')
 export class PaddockScenarioController {
   constructor(

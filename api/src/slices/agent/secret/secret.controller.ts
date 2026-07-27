@@ -7,8 +7,11 @@ import {
   Param,
   Post,
   Put,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { ISecretGateway } from './domain';
 import {
@@ -19,6 +22,9 @@ import {
 } from './dtos';
 
 @ApiTags('secrets')
+// Per-agent secret store. Owner/Admin only.
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('agents/:agentId/secrets')
 export class SecretController {
   constructor(

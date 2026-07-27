@@ -6,12 +6,20 @@ import {
   NotFoundException,
   Param,
   Put,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { IInfraConfigGateway, ISettingGateway } from './domain';
 import { UpsertSettingDto } from './dtos';
 
 @ApiTags('settings')
+@ApiBearerAuth()
+// Holds credentials in plaintext (github_pat, bridle_api_key, etc.).
+// Owner/Admin only — never expose to unauthenticated or plain User callers.
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 @Controller('settings')
 export class SettingController {
   constructor(

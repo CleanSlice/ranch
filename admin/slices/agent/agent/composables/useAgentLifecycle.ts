@@ -49,6 +49,20 @@ export function useAgentLifecycle(
   const restarting = ref(false);
   const restartError = ref<string | null>(null);
 
+  // The old pod's chat WS stays connected for a few seconds after the restart
+  // call — "agent is connected" alone can't tell the dying pod from the fresh
+  // one. A restart only counts as finished once the agent has actually gone
+  // DOWN and come back (or the reconciled status confirms running/failed).
+  const agentWentDown = ref(false);
+  watch(
+    () => bridleStore.isAgentConnected,
+    (up) => {
+      if (!up && (restarting.value || agentStore.isRestartInFlight(agentId))) {
+        agentWentDown.value = true;
+      }
+    },
+  );
+
   // Busy while the API call is in flight AND while the pod is still coming up
   // (status='deploying'). Reverts to idle once the AgentStatusService
   // reconciler flips the agent to 'running'.
@@ -64,6 +78,8 @@ export function useAgentLifecycle(
     // server is still cancelling the old workflow and hasn't yet written
     // status='deploying') still shows the overlay.
     agentStore.markRestartInFlight(agentId);
+    // Restarting a dead pod skips the "goes down" phase — it's already down.
+    agentWentDown.value = !bridleStore.isAgentConnected;
     // Optimistic — flip to "deploying" right away so the badge reacts before
     // the API call resolves (cancel + submit takes a few seconds).
     const previousStatus = agent.value.status;
@@ -107,6 +123,8 @@ export function useAgentLifecycle(
         await agentStore.stop(agentId);
       } else {
         agentStore.markRestartInFlight(agentId);
+        // Starting from stopped/failed: there is no old pod to go down.
+        agentWentDown.value = true;
         await agentStore.start(agentId);
       }
       await refresh();
@@ -156,7 +174,24 @@ export function useAgentLifecycle(
     const pod = podStatus.value;
     // localStorage-backed — survives F5 during the seconds-long window
     // between Restart click and the API writing status='deploying'.
-    const inFlight = agentStore.isRestartInFlight(agentId);
+    const inFlight = restarting.value || agentStore.isRestartInFlight(agentId);
+
+    // An explicit restart/deploy wins over the live-chat bypass below: the
+    // OLD pod's WS stays connected for a few seconds after the restart call,
+    // and reading that as "all good" hid the restart from the user entirely.
+    if (inFlight || s === 'pending' || s === 'deploying') {
+      // Pod info only describes the FRESH pod; while the old one is still
+      // being torn down it would misleadingly read "Ready".
+      const freshPod = pod && (agentWentDown.value || !inFlight) ? pod : null;
+      return {
+        kind: 'starting',
+        title: 'Starting agent…',
+        detail: freshPod
+          ? `Pod ${freshPod.podName}: ${podLabel.value ?? freshPod.phase}`
+          : 'Cancelling old workflow and submitting a fresh one.',
+      };
+    }
+
     // Strongest "agent is up" signal: chat WS is connected AND the runtime is
     // registered with the hub. This bypasses DB/pod entirely — if the agent
     // is actually talking to us, nothing else matters.
@@ -184,16 +219,6 @@ export function useAgentLifecycle(
       };
     }
 
-    if (s === 'pending' || s === 'deploying' || inFlight) {
-      return {
-        kind: 'starting',
-        title: 'Starting agent…',
-        detail: pod
-          ? `Pod ${pod.podName}: ${podLabel.value ?? pod.phase}`
-          : 'Cancelling old workflow and submitting a fresh one.',
-      };
-    }
-
     // status='running' but pod still not Ready — brief window right after the
     // reconciler flipped the DB but before the readiness probe passes.
     if (s === 'running' && pod && !pod.ready) {
@@ -207,10 +232,11 @@ export function useAgentLifecycle(
     return null;
   });
 
-  // Clear the persisted in-flight flag once we have ANY confirmation the
-  // agent is back: bridle chat live, status=running+pod ready, or terminal
-  // failure. Bridle is the primary trigger — it fires before the K8s probe
-  // can pass.
+  // Clear the persisted in-flight flag once we have confirmation the agent is
+  // back: bridle chat live (fastest — fires before the K8s probe passes, but
+  // only counts after the agent actually went DOWN, else the old pod's
+  // still-open WS clears the flag the instant Restart is clicked),
+  // status=running+pod ready, or terminal failure.
   watch(
     () =>
       [
@@ -221,9 +247,11 @@ export function useAgentLifecycle(
       ] as const,
     ([status, ready, chatConnected, agentConnected]) => {
       const chatLive = chatConnected && agentConnected;
-      if (chatLive || (status === 'running' && ready === true)) {
-        agentStore.clearRestartInFlight(agentId);
-      } else if (status === 'failed') {
+      if (
+        (chatLive && agentWentDown.value) ||
+        (status === 'running' && ready === true) ||
+        status === 'failed'
+      ) {
         agentStore.clearRestartInFlight(agentId);
       }
     },

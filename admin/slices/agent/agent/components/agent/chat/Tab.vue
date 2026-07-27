@@ -27,6 +27,23 @@ const authStore = useAuthStore();
 // stops the moment it's hidden.
 const showSideLogs = ref(false);
 
+// One "restart is underway" signal for every surface (bridle header status,
+// disabled input, logs overlay) — covers both an explicit Restart click and
+// a deploy in progress, so nothing lags behind the WS state.
+const restartUnderway = computed(
+  () => props.restarting || props.overlay?.kind === 'starting',
+);
+
+// Reconciled agent state for the bridle header — without it a failed agent
+// reads as "Agent reconnecting…" for 30s on a freshly opened page, because
+// bridle only sees its own WS.
+const bridleAgentState = computed(() => {
+  if (restartUnderway.value) return 'restarting';
+  if (props.overlay?.kind === 'failed') return 'failed';
+  if (props.overlay?.kind === 'stopped') return 'stopped';
+  return null;
+});
+
 // The failure overlay blurs only the MESSAGE AREA (the card-content box).
 // Header (title, status, Logs toggle), footer (input, disabled by bridle
 // while the agent is down) and the card border all stay visible — the user
@@ -74,6 +91,7 @@ watch(
         :token="authStore.accessToken"
         :title="`Chat with ${agent.name}`"
         :restart-prompt="false"
+        :agent-state="bridleAgentState"
         class="h-full w-full"
       >
         <template #header-actions>
@@ -160,6 +178,7 @@ watch(
         <AgentLogsPanel
           :agent-id="agent.id"
           closable
+          :restarting="restartUnderway"
           class="h-full min-w-100"
           @close="showSideLogs = false"
         />

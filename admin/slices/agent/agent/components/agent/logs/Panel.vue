@@ -6,6 +6,10 @@ const props = defineProps<{
   // Side-panel mode (chat tab): shows a close button and hides the label
   // on the refresh button to stay compact.
   closable?: boolean;
+  // While the agent restarts, log fetches return transient K8s errors
+  // (ContainerCreating 400s and the like). An overlay says what's actually
+  // happening instead of surfacing that noise.
+  restarting?: boolean;
 }>();
 
 const emit = defineEmits<{ close: [] }>();
@@ -60,9 +64,26 @@ const {
         </Button>
       </div>
     </CardHeader>
-    <CardContent class="flex-1 overflow-hidden p-0">
+    <CardContent class="relative flex-1 overflow-hidden p-0">
+      <Transition
+        enter-active-class="transition-opacity duration-200"
+        leave-active-class="transition-opacity duration-200"
+        enter-from-class="opacity-0"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="restarting"
+          class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/70 backdrop-blur-[2px]"
+        >
+          <IconLoader2 class="size-6 animate-spin text-primary" />
+          <span class="text-sm font-medium">Agent is restarting…</span>
+          <span class="text-xs text-muted-foreground">
+            Logs will resume when the new pod is up.
+          </span>
+        </div>
+      </Transition>
       <div
-        v-if="error"
+        v-if="error && !restarting"
         class="m-3 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
       >
         {{ error }}

@@ -148,46 +148,28 @@ watch(
         </div>
       </Transition>
     </div>
-    <!-- Genie effect: closing sucks the panel into the spot where the "Logs"
-         button appears (its own top-left corner, next to the chat's top-right)
-         — scale collapses toward that origin while max-width reflows the row;
-         the button then pops in at the same point. The transition classes are
-         conditional because out-in animates a different element per phase:
-         showSideLogs=true → panel enters / button leaves, false → the reverse. -->
-    <Transition
-      mode="out-in"
-      :enter-active-class="showSideLogs
-        ? 'origin-top-left transition-all duration-300 ease-out'
-        : 'origin-top-left transition-all duration-150 ease-out'"
-      :enter-from-class="showSideLogs ? 'max-w-0 scale-50 opacity-0' : 'scale-75 opacity-0'"
-      :leave-active-class="showSideLogs
-        ? 'origin-top-left transition-all duration-150 ease-in'
-        : 'origin-top-left transition-all duration-300 ease-in'"
-      :leave-to-class="showSideLogs ? 'scale-75 opacity-0' : 'max-w-0 scale-0 opacity-0'"
+    <div
+      v-if="showSideLogs"
+      class="h-[calc(100vh-15.5rem)] min-h-120 w-full max-w-200 basis-1/2 overflow-hidden"
     >
-      <div
-        v-if="showSideLogs"
-        class="h-[calc(100vh-15.5rem)] min-h-120 w-full max-w-200 basis-1/2 overflow-hidden"
-      >
-        <AgentLogsPanel
-          :agent-id="agent.id"
-          closable
-          :restarting="restartUnderway"
-          class="h-full min-w-100"
-          @close="showSideLogs = false"
-        />
-      </div>
-      <Button
-        v-else
-        variant="outline"
-        size="sm"
-        class="self-start"
-        title="Show pod logs"
-        @click="showSideLogs = true"
-      >
-        <IconFileText class="size-4" />
-        Logs
-      </Button>
-    </Transition>
+      <AgentLogsPanel
+        :agent-id="agent.id"
+        closable
+        :restarting="restartUnderway"
+        class="h-full min-w-100"
+        @close="showSideLogs = false"
+      />
+    </div>
+    <Button
+      v-else
+      variant="outline"
+      size="sm"
+      class="self-start"
+      title="Show pod logs"
+      @click="showSideLogs = true"
+    >
+      <IconFileText class="size-4" />
+      Logs
+    </Button>
   </div>
 </template>

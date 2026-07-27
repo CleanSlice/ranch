@@ -1,17 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
 import type { IAgentData } from '#agent/stores/agent'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card'
-import { Badge } from '#theme/components/ui/badge'
-import { Button } from '#theme/components/ui/button'
-import { Label } from '#theme/components/ui/label'
-import { Textarea } from '#theme/components/ui/textarea'
 import {
   IconCheck,
   IconCopy,

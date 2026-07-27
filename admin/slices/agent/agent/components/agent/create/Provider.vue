@@ -58,7 +58,7 @@ function onCancel() {
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 
-    <AgentForm
+    <AgentItemForm
       v-else
       :templates="templates ?? []"
       :llms="llmStore.items"
@@ -71,3 +71,4 @@ function onCancel() {
     />
   </div>
 </template>
+

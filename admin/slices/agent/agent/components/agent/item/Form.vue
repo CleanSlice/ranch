@@ -2,25 +2,6 @@
 import type { ICreateAgentData } from '#agent/stores/agent';
 import type { ITemplateData } from '#template/stores/template';
 import type { IKnowledge } from '#reins/stores/knowledge';
-import { Button } from '#theme/components/ui/button';
-import { Checkbox } from '#theme/components/ui/checkbox';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import { Textarea } from '#theme/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '#theme/components/ui/select';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
 
 const props = defineProps<{
   templates: ITemplateData[];

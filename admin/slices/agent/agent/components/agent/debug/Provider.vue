@@ -1,13 +1,4 @@
 <script setup lang="ts">
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card'
-import { Checkbox } from '#theme/components/ui/checkbox'
-
 // Controlled, non-saving checkbox. The host page (agentEdit) holds the
 // pending value and persists it as part of "Save changes" — toggling here
 // only updates that pending value.

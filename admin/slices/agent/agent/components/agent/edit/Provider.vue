@@ -1,14 +1,5 @@
 <script setup lang="ts">
 import type { ICreateAgentData, IUpdateAgentData } from '#agent/stores/agent';
-import { Button } from '#theme/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
-import { Badge } from '#theme/components/ui/badge';
 import {
   IconAlertTriangle,
   IconArrowLeft,
@@ -335,7 +326,7 @@ async function onRemove() {
         <!-- Right column — the actual sections. -->
         <div class="flex min-w-0 flex-col gap-6">
           <section id="sec-general" class="scroll-mt-28">
-            <AgentForm
+            <AgentItemForm
               :templates="templates ?? []"
               :llms="llmStore.items"
               :knowledges="knowledges ?? []"

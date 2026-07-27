@@ -1,11 +1,4 @@
 <script setup lang="ts">
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '#theme/components/ui/tooltip';
-
 const store = useAgentStatusStore();
 
 onMounted(() => store.connect());

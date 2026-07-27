@@ -1,23 +1,5 @@
 <script setup lang="ts">
 import type { AgentStatusTypes, IAgentData } from '#agent/stores/agent';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import { Skeleton } from '#theme/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '#theme/components/ui/dropdown-menu';
 import {
   IconDotsVertical,
   IconLoader2,
@@ -34,17 +16,6 @@ const { data: agents, pending, refresh } = await useAsyncData(
   'admin-agents',
   () => agentStore.fetchAll(),
 );
-
-const statusVariant: Record<AgentStatusTypes, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-  running: 'default',
-  deploying: 'secondary',
-  pending: 'secondary',
-  stopped: 'outline',
-  failed: 'destructive',
-};
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 // Per-row "restarting" guard so the button shows a spinner without blocking
 // other rows. The store's restart() does an optimistic status flip, so the
@@ -178,11 +149,11 @@ async function onRemove() {
               {{ agent.resources.cpu }} / {{ agent.resources.memory }}
             </TableCell>
             <TableCell>
-              <Badge :variant="statusVariant[agent.status]" class="capitalize">
+              <Badge :variant="AGENT_STATUS_VARIANT[agent.status]" class="capitalize">
                 {{ agent.status }}
               </Badge>
             </TableCell>
-            <TableCell class="text-muted-foreground">{{ formatDate(agent.createdAt) }}</TableCell>
+            <TableCell class="text-muted-foreground">{{ formatDateTime(agent.createdAt) }}</TableCell>
             <TableCell @click.stop>
               <div class="flex justify-end gap-2">
                 <Button size="sm" variant="outline" as-child>

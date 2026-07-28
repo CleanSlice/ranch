@@ -1,9 +1,5 @@
 <script setup lang="ts">
 import type { IQueryResult } from '#reins/stores/knowledge';
-import { Button } from '#theme/components/ui/button';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import { Textarea } from '#theme/components/ui/textarea';
 
 type QueryMode = 'hybrid' | 'local' | 'global' | 'naive';
 

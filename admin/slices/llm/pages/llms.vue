@@ -9,7 +9,7 @@
 
     <div class="grid gap-8 md:grid-cols-[16rem_1fr]">
       <aside>
-        <LlmMenu />
+        <LlmNavMenu />
       </aside>
       <section class="min-w-0">
         <NuxtPage />

@@ -1,8 +1,4 @@
 <script setup lang="ts">
-import { Button } from '#theme/components/ui/button';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import { Textarea } from '#theme/components/ui/textarea';
 import type { SourceType } from '#reins/stores/knowledge';
 
 const props = defineProps<{ knowledgeId: string }>();

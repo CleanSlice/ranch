@@ -35,7 +35,7 @@ function onCancel() {
       <p class="text-sm text-muted-foreground">Register a tool server agents can connect to.</p>
     </div>
 
-    <McpServerFormProvider
+    <McpServerItemForm
       :submitting="submitting"
       submit-label="Create MCP server"
       @submit="onSubmit"

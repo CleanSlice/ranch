@@ -1,22 +1,5 @@
 <script setup lang="ts">
 import type { IMcpServerData } from '#mcpServer/stores/mcpServer';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import { Skeleton } from '#theme/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '#theme/components/ui/dropdown-menu';
 import { IconDotsVertical, IconShield, IconTrash } from '@tabler/icons-vue';
 
 const mcpServerStore = useMcpServerStore();
@@ -83,7 +66,7 @@ async function onRemove() {
             class="cursor-pointer"
             @click="navigateTo(`/mcps/${m.id}`)"
           >
-            <TableCell class="font-medium max-w-[280px]">
+            <TableCell class="font-medium max-w-70">
               <div class="flex items-center gap-2 min-w-0">
                 <span class="truncate">{{ m.name }}</span>
                 <Badge v-if="m.builtIn" variant="secondary" class="gap-1 shrink-0">
@@ -98,7 +81,7 @@ async function onRemove() {
                 {{ m.description }}
               </p>
             </TableCell>
-            <TableCell class="text-muted-foreground font-mono text-xs max-w-[260px] truncate" :title="m.url">{{ m.url }}</TableCell>
+            <TableCell class="text-muted-foreground font-mono text-xs max-w-65 truncate" :title="m.url">{{ m.url }}</TableCell>
             <TableCell class="text-muted-foreground">{{ m.transport }}</TableCell>
             <TableCell>
               <Badge :variant="m.enabled ? 'default' : 'outline'">

@@ -39,7 +39,7 @@ function onCancel(): void {
       <p class="text-sm text-muted-foreground">Define a blueprint for spawning agents.</p>
     </div>
 
-    <TemplateForm
+    <TemplateItemForm
       :knowledges="knowledges ?? []"
       :knowledge-service-enabled="knowledgeStore.enabled"
       :submitting="submitting"

@@ -1,21 +1,5 @@
 <script setup lang="ts">
 import type { ITemplateData } from '#template/stores/template';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '#theme/components/ui/dropdown-menu';
 import { IconDotsVertical, IconRefresh, IconTrash, IconPackageImport } from '@tabler/icons-vue';
 
 const templateStore = useTemplateStore();

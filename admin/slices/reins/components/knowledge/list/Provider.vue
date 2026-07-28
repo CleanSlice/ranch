@@ -1,15 +1,5 @@
 <script setup lang="ts">
 import type { IKnowledge } from '#reins/stores/knowledge';
-import { Button } from '#theme/components/ui/button';
-import { Input } from '#theme/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
 
 const store = useKnowledgeStore();
 const confirmStore = useConfirmStore();

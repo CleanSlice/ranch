@@ -1,25 +1,6 @@
 <script setup lang="ts">
-import type {
-  ILlmCredentialData,
-  ILlmHealthCheckResult,
-} from '#llm/stores/llm';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
+import type { ILlmCredentialData } from '#llm/stores/llm';
 import { CheckCircle2, XCircle, Loader2, HelpCircle } from 'lucide-vue-next';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '#theme/components/ui/dropdown-menu';
 import { IconDotsVertical, IconTrash } from '@tabler/icons-vue';
 
 const llmStore = useLlmStore();
@@ -51,33 +32,12 @@ async function onRemove() {
   await refresh();
 }
 
-const healthChecking = ref<Record<string, boolean>>({});
-const healthResults = ref<Record<string, ILlmHealthCheckResult>>({});
-
-async function onCheckHealth(item: ILlmCredentialData) {
-  healthChecking.value[item.id] = true;
-  try {
-    healthResults.value[item.id] = await llmStore.checkHealth(item.id);
-  } catch (err) {
-    healthResults.value[item.id] = {
-      ok: false,
-      latencyMs: 0,
-      provider: item.provider,
-      model: item.model,
-      error: (err as Error).message,
-    };
-  } finally {
-    healthChecking.value[item.id] = false;
-  }
-}
-
-function healthTitle(item: ILlmCredentialData): string {
-  if (healthChecking.value[item.id]) return 'Checking…';
-  const r = healthResults.value[item.id];
-  if (!r) return 'Not tested yet';
-  if (r.ok) return `OK · ${r.latencyMs} ms`;
-  return `Failed: ${r.error ?? 'unknown error'}`;
-}
+const {
+  checking: healthChecking,
+  results: healthResults,
+  check: onCheckHealth,
+  title: healthTitle,
+} = useLlmHealthChecks();
 </script>
 
 <template>

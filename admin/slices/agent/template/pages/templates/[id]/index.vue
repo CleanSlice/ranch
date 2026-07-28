@@ -4,5 +4,5 @@ const id = route.params.id as string;
 </script>
 
 <template>
-  <TemplateProvider :id="id" />
+  <TemplateItemProvider :id="id" />
 </template>

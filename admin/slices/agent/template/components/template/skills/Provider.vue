@@ -1,8 +1,4 @@
 <script setup lang="ts">
-import { Button } from '#theme/components/ui/button';
-import { Checkbox } from '#theme/components/ui/checkbox';
-import { Input } from '#theme/components/ui/input';
-import { Skeleton } from '#theme/components/ui/skeleton';
 import { IconSearch } from '@tabler/icons-vue';
 
 const props = defineProps<{

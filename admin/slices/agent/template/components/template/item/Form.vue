@@ -1,17 +1,6 @@
 <script setup lang="ts">
 import type { ICreateTemplateData } from '#template/stores/template';
 import type { IKnowledge } from '#reins/stores/knowledge';
-import { Button } from '#theme/components/ui/button';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import { Checkbox } from '#theme/components/ui/checkbox';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
 
 const props = defineProps<{
   knowledges: IKnowledge[];

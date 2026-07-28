@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IKnowledgeFormValues } from '#reins/components/knowledge/Form.vue';
+import type { IKnowledgeFormValues } from '#reins/components/knowledge/item/Form.vue';
 
 const store = useKnowledgeStore();
 const submitting = ref(false);
@@ -49,7 +49,7 @@ function onCancel() {
 
     <p v-if="errorMessage" class="text-xs text-destructive">{{ errorMessage }}</p>
 
-    <KnowledgeForm
+    <KnowledgeItemForm
       :submitting="submitting"
       submit-label="Create"
       @submit="onSubmit"

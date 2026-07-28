@@ -1,15 +1,5 @@
 <script setup lang="ts">
 import type { IKnowledge, ISource } from '#reins/stores/knowledge';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
 
 const route = useRoute();
 const store = useKnowledgeStore();

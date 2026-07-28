@@ -53,7 +53,7 @@ function onCancel() {
 
       <p v-if="errorMessage" class="text-xs text-destructive">{{ errorMessage }}</p>
 
-      <LlmForm
+      <LlmItemForm
         :initial-values="{
           provider: credential.provider,
           model: credential.model,

@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import { Button } from '#theme/components/ui/button';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
 
 const props = defineProps<{ knowledgeId: string }>();
 const emit = defineEmits<{ added: [] }>();

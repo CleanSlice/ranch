@@ -1,13 +1,4 @@
 <script setup lang="ts">
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
 import { IconArrowLeft, IconDownload, IconRefresh } from '@tabler/icons-vue';
 import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 

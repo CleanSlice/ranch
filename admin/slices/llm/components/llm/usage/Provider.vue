@@ -1,111 +1,15 @@
 <script setup lang="ts">
-import { Button } from '#theme/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
-
-interface IPerAgentUsage {
-  agentId: string;
-  agentName: string;
-  callCount: number;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-  topModel: string | null;
-  todayCallCount: number;
-  todayCostUsd: number;
-}
-
-const agentStore = useAgentStore();
-const usageStore = useUsageStore();
-
-const loading = ref(false);
-const rows = ref<IPerAgentUsage[]>([]);
-
-const totals = computed(() =>
-  rows.value.reduce(
-    (acc, r) => ({
-      callCount: acc.callCount + r.callCount,
-      inputTokens: acc.inputTokens + r.inputTokens,
-      outputTokens: acc.outputTokens + r.outputTokens,
-      costUsd: acc.costUsd + r.costUsd,
-      todayCallCount: acc.todayCallCount + r.todayCallCount,
-      todayCostUsd: acc.todayCostUsd + r.todayCostUsd,
-    }),
-    {
-      callCount: 0,
-      inputTokens: 0,
-      outputTokens: 0,
-      costUsd: 0,
-      todayCallCount: 0,
-      todayCostUsd: 0,
-    },
-  ),
-);
-
-async function load() {
-  loading.value = true;
-  try {
-    const agents = await agentStore.fetchAll();
-
-    const settled = await Promise.allSettled(
-      agents.map(async (agent) => {
-        const usage = await usageStore.fetchForAgent(agent.id);
-        if (!usage) return null;
-        const todayKey = new Date().toISOString().slice(0, 10);
-        const todayCostUsd = usage.last30days
-          .filter((e) => e.date === todayKey)
-          .reduce((a, b) => a + b.costUsd, 0);
-        return {
-          agentId: agent.id,
-          agentName: agent.name,
-          callCount: usage.totals.callCount,
-          inputTokens: usage.totals.inputTokens,
-          outputTokens: usage.totals.outputTokens,
-          costUsd: usage.totals.costUsd,
-          topModel: usage.topModel,
-          todayCallCount: usage.today.callCount,
-          todayCostUsd,
-        } satisfies IPerAgentUsage;
-      }),
-    );
-
-    rows.value = settled
-      .filter(
-        (r): r is PromiseFulfilledResult<IPerAgentUsage | null> =>
-          r.status === 'fulfilled' && r.value !== null,
-      )
-      .map((r) => r.value as IPerAgentUsage)
-      .sort((a, b) => b.costUsd - a.costUsd);
-  } finally {
-    loading.value = false;
-  }
-}
+const { rows, totals, loading, load } = useLlmUsageOverview();
 
 function formatNumber(n: number): string {
   return n.toLocaleString('en-US');
 }
 
-function formatUsd(n: number): string {
+function formatCost(n: number): string {
   if (n === 0) return '$0.00';
   if (n < 0.01) return `< $0.01`;
   return `$${n.toFixed(2)}`;
 }
-
-onMounted(() => {
-  void load();
-});
 </script>
 
 <template>
@@ -122,62 +26,19 @@ onMounted(() => {
       </Button>
     </div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm font-medium text-muted-foreground">
-            30-day calls
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div class="text-2xl font-semibold">
-            {{ formatNumber(totals.callCount) }}
-          </div>
-          <div class="text-xs text-muted-foreground">
-            Today: {{ formatNumber(totals.todayCallCount) }}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm font-medium text-muted-foreground">
-            Input tokens
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div class="text-2xl font-semibold">
-            {{ formatNumber(totals.inputTokens) }}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm font-medium text-muted-foreground">
-            Output tokens
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div class="text-2xl font-semibold">
-            {{ formatNumber(totals.outputTokens) }}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm font-medium text-muted-foreground">
-            30-day cost
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div class="text-2xl font-semibold">{{ formatUsd(totals.costUsd) }}</div>
-          <div class="text-xs text-muted-foreground">
-            Today: {{ formatUsd(totals.todayCostUsd) }}
-          </div>
-        </CardContent>
-      </Card>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <LlmUsageStatCard
+        title="30-day calls"
+        :value="formatNumber(totals.callCount)"
+        :sub="`Today: ${formatNumber(totals.todayCallCount)}`"
+      />
+      <LlmUsageStatCard title="Input tokens" :value="formatNumber(totals.inputTokens)" />
+      <LlmUsageStatCard title="Output tokens" :value="formatNumber(totals.outputTokens)" />
+      <LlmUsageStatCard
+        title="30-day cost"
+        :value="formatCost(totals.costUsd)"
+        :sub="`Today: ${formatCost(totals.todayCostUsd)}`"
+      />
     </div>
 
     <div class="rounded-md border bg-card">
@@ -194,12 +55,12 @@ onMounted(() => {
         </TableHeader>
         <TableBody>
           <TableRow v-if="loading && rows.length === 0">
-            <TableCell colspan="6" class="text-center text-muted-foreground py-6">
+            <TableCell colspan="6" class="py-6 text-center text-muted-foreground">
               Loading…
             </TableCell>
           </TableRow>
           <TableRow v-else-if="!loading && rows.length === 0">
-            <TableCell colspan="6" class="text-center text-muted-foreground py-6">
+            <TableCell colspan="6" class="py-6 text-center text-muted-foreground">
               No agents have reported usage yet.
             </TableCell>
           </TableRow>
@@ -223,7 +84,7 @@ onMounted(() => {
               {{ formatNumber(row.outputTokens) }}
             </TableCell>
             <TableCell class="text-right font-mono">
-              {{ formatUsd(row.costUsd) }}
+              {{ formatCost(row.costUsd) }}
             </TableCell>
           </TableRow>
         </TableBody>

@@ -1,16 +1,5 @@
 <script setup lang="ts">
 import type { ISkillSearchHit } from '#skill/stores/skill';
-import { Button } from '#theme/components/ui/button';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import { Badge } from '#theme/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
 import { IconSearch, IconExternalLink } from '@tabler/icons-vue';
 
 const skillStore = useSkillStore();
@@ -106,7 +95,7 @@ function isImported(hit: ISkillSearchHit) {
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-2">
-                <CardTitle class="break-words text-base">{{ hit.title }}</CardTitle>
+                <CardTitle class="wrap-break-word text-base">{{ hit.title }}</CardTitle>
                 <Badge variant="outline" class="font-mono text-[11px]">
                   {{ hit.repo }}
                 </Badge>
@@ -139,7 +128,7 @@ function isImported(hit: ISkillSearchHit) {
         </CardHeader>
         <CardContent v-if="hit.snippet" class="min-w-0">
           <pre
-            class="whitespace-pre-wrap break-words rounded-md border bg-muted/30 p-2 text-[11px] leading-relaxed"
+            class="whitespace-pre-wrap wrap-break-word rounded-md border bg-muted/30 p-2 text-[11px] leading-relaxed"
           >{{ hit.snippet }}</pre>
         </CardContent>
       </Card>

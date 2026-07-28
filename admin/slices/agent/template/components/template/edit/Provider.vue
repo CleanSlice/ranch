@@ -49,7 +49,7 @@ function onCancel(): void {
         <p class="text-sm text-muted-foreground">{{ template.name }}</p>
       </div>
 
-      <TemplateForm
+      <TemplateItemForm
         :knowledges="knowledges ?? []"
         :knowledge-service-enabled="knowledgeStore.enabled"
         :initial-values="{

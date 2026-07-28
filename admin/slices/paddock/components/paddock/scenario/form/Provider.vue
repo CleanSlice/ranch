@@ -1,23 +1,5 @@
 <script setup lang="ts">
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
-import { Button } from '#theme/components/ui/button';
-import { Textarea } from '#theme/components/ui/textarea';
-import { Label } from '#theme/components/ui/label';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '#theme/components/ui/sheet';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '#theme/components/ui/select';
 import { IconSparkles, IconCode } from '@tabler/icons-vue';
 import type {
   IPaddockScenario,

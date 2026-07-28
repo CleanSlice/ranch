@@ -1,15 +1,5 @@
 <script setup lang="ts">
 import type { ISkillData } from '#skill/stores/skill';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
 
 const skillStore = useSkillStore();
 
@@ -86,7 +76,7 @@ async function onRemove() {
               </Badge>
               <span v-else class="text-muted-foreground">—</span>
             </TableCell>
-            <TableCell class="max-w-[400px] text-muted-foreground">
+            <TableCell class="max-w-100 text-muted-foreground">
               <div class="truncate">{{ item.description ?? '—' }}</div>
             </TableCell>
             <TableCell @click.stop>

@@ -43,7 +43,7 @@ function onCancel() {
 
     <p v-if="errorMessage" class="text-xs text-destructive">{{ errorMessage }}</p>
 
-    <SkillForm
+    <SkillItemForm
       :submitting="submitting"
       submit-label="Create skill"
       @submit="onSubmit"

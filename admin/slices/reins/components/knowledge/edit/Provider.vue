@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { IKnowledge } from '#reins/stores/knowledge';
-import type { IKnowledgeFormValues } from '#reins/components/knowledge/Form.vue';
+import type { IKnowledgeFormValues } from '#reins/components/knowledge/item/Form.vue';
 
 const store = useKnowledgeStore();
 const current = inject<Ref<IKnowledge | null>>('knowledge-current');
@@ -35,7 +35,7 @@ function onCancel() {
 <template>
   <div v-if="current" class="max-w-2xl">
     <p v-if="errorMessage" class="mb-3 text-xs text-destructive">{{ errorMessage }}</p>
-    <KnowledgeForm
+    <KnowledgeItemForm
       :initial-values="{
         name: current.name,
         description: current.description ?? undefined,

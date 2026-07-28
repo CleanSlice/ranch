@@ -1,13 +1,5 @@
 <script setup lang="ts">
 import type { IKnowledgeSetupStatus } from '#reins/stores/knowledge';
-import { Button } from '#theme/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
 import { IconCheck, IconCircle, IconCopy } from '@tabler/icons-vue';
 
 interface IStep {

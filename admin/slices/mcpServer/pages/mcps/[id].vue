@@ -52,7 +52,7 @@ function onCancel() {
         <p class="text-sm text-muted-foreground">Edit MCP server connection.</p>
       </div>
 
-      <McpServerFormProvider
+      <McpServerItemForm
         :initial-values="mcp"
         :submitting="submitting"
         submit-label="Save changes"

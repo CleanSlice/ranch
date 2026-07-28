@@ -1,23 +1,5 @@
 <script setup lang="ts">
 import type { IMcpServerData, ICreateMcpServerData, McpServerAuthTypes, McpServerTransportTypes } from '#mcpServer/stores/mcpServer';
-import { Button } from '#theme/components/ui/button';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import { Checkbox } from '#theme/components/ui/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '#theme/components/ui/select';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '#theme/components/ui/card';
 
 const props = defineProps<{
   initialValues?: IMcpServerData;

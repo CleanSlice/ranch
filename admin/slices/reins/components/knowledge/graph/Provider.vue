@@ -4,16 +4,6 @@ import type { SigmaNodeEventPayload, SigmaEdgeEventPayload } from 'sigma/types';
 import Graph from 'graphology';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
 import type { GraphDto, GraphNodeDto, GraphEdgeDto } from '#api/data';
-import { Button } from '#theme/components/ui/button';
-import { Input } from '#theme/components/ui/input';
-import { Label } from '#theme/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '#theme/components/ui/select';
 
 const store = useKnowledgeStore();
 

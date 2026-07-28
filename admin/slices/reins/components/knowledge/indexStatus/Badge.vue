@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Badge } from '#theme/components/ui/badge';
 import type { IndexStatus } from '#reins/stores/knowledge';
 
 const props = defineProps<{ status: IndexStatus }>();

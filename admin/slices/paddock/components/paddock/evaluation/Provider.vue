@@ -1,23 +1,6 @@
 <script setup lang="ts">
 import { marked } from 'marked';
 import { toast } from 'vue-sonner';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '#theme/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
 import {
   IconChevronDown,
   IconChevronRight,

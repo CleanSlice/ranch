@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { renderMarkdown } from '#bridle/utils/markdown';
-import { cn } from '#theme/utils/cn';
 import { User, Bot, Wrench, FileText, ThumbsUp, ThumbsDown } from 'lucide-vue-next';
 import type { IChatMessage } from '#chat/stores/chat';
 

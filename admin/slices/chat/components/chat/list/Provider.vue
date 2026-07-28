@@ -1,16 +1,4 @@
 <script setup lang="ts">
-import { Input } from '#theme/components/ui/input';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import { Checkbox } from '#theme/components/ui/checkbox';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
 import type { ChatChannel, IChatSession } from '#chat/stores/chat';
 
 // When `agentId` is set, the list is scoped to that agent (used inside the
@@ -78,19 +66,6 @@ const channelVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
 function who(s: IChatSession): string {
   return s.title || s.externalUserId || '—';
 }
-
-function relTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const sec = Math.round(diff / 1000);
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const d = Math.round(hr / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
 </script>
 
 <template>
@@ -155,8 +130,8 @@ function relTime(iso: string): string {
               {{ s.preview || '—' }}
             </TableCell>
             <TableCell class="text-right tabular-nums">{{ s.messageCount }}</TableCell>
-            <TableCell class="text-right text-muted-foreground" :title="new Date(s.lastMessageAt).toLocaleString()">
-              {{ relTime(s.lastMessageAt) }}
+            <TableCell class="text-right text-muted-foreground">
+              <DateTimeAgo :date="s.lastMessageAt" />
             </TableCell>
           </TableRow>
         </TableBody>

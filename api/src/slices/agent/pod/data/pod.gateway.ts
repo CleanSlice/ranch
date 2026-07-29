@@ -8,6 +8,7 @@ import {
   CoreV1Api,
   KubeConfig,
   Metrics,
+  V1Node,
   V1Pod,
   Watch,
 } from '@kubernetes/client-node';
@@ -15,17 +16,32 @@ import { Observable, Subject } from 'rxjs';
 import { IPodGateway } from '../domain/pod.gateway';
 import { IInfraConfigGateway } from '#/setting/domain';
 import {
+  AGENT_SLOT_CPU_MILLI,
+  AGENT_SLOT_MEM_BYTES,
   IAgentMetrics,
   IAgentPodEvent,
   IAgentPodStatus,
+  IClusterCapacity,
+  INodeCapacity,
   PodEventTypes,
   PodPhaseTypes,
 } from '../domain/pod.types';
 
-const POD_LABEL_SELECTOR = 'app=ranch-agent';
+const AGENT_POD_LABEL_KEY = 'app';
+const AGENT_POD_LABEL_VALUE = 'ranch-agent';
+const POD_LABEL_SELECTOR = `${AGENT_POD_LABEL_KEY}=${AGENT_POD_LABEL_VALUE}`;
 const AGENT_ID_LABEL = 'ranch/agent-id';
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
+
+// Agent pods only schedule on the dedicated agent node pool — capacity on any
+// other node is irrelevant. Mirrors nodeSelector/tolerations in
+// agent-workflow.manifest.ts.
+const AGENT_NODE_LABEL_KEY = 'node-role';
+const AGENT_NODE_LABEL_VALUE = 'agents';
+const TOLERATED_TAINT = { key: 'workload', value: 'agent', effect: 'NoSchedule' };
+
+const CAPACITY_CACHE_TTL_MS = 15_000;
 
 @Injectable()
 export class KubePodGateway
@@ -45,6 +61,9 @@ export class KubePodGateway
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectDelayMs = RECONNECT_BASE_MS;
   private destroyed = false;
+
+  private capacityCache: { value: IClusterCapacity; at: number } | null = null;
+  private capacityInflight: Promise<IClusterCapacity | null> | null = null;
 
   constructor(private infraConfig: IInfraConfigGateway) {
     super();
@@ -163,6 +182,7 @@ export class KubePodGateway
     }
 
     if (added || modified || deleted) {
+      this.capacityCache = null;
       this.logger.log(
         `Pod resync (${this.namespace}): ${fresh.size} pods — ${added} added, ${modified} modified, ${deleted} deleted`,
       );
@@ -212,6 +232,11 @@ export class KubePodGateway
     } else {
       this.statuses.set(status.agentId, status);
     }
+
+    // Any agent pod change shifts the capacity math — drop the cache so the
+    // next getClusterCapacity() reflects it immediately (the TTL only guards
+    // against non-agent workload churn we can't observe).
+    this.capacityCache = null;
 
     this.events.next({ type: eventType, status });
   }
@@ -377,6 +402,149 @@ export class KubePodGateway
       node: { name: nodeName, diskAvailBytes, diskCapacityBytes },
     };
   }
+
+  // "How many more agents fit" — free schedulable CPU/memory on agent nodes
+  // divided by the fixed agent requests floor. Cached briefly; the pod watch
+  // drops the cache the moment an agent pod appears/disappears.
+  async getClusterCapacity(): Promise<IClusterCapacity | null> {
+    if (
+      this.capacityCache &&
+      Date.now() - this.capacityCache.at < CAPACITY_CACHE_TTL_MS
+    ) {
+      return this.capacityCache.value;
+    }
+    if (this.capacityInflight) return this.capacityInflight;
+
+    this.capacityInflight = this.fetchClusterCapacity().finally(() => {
+      this.capacityInflight = null;
+    });
+    return this.capacityInflight;
+  }
+
+  private async fetchClusterCapacity(): Promise<IClusterCapacity | null> {
+    try {
+      // Pods from ALL namespaces: daemonsets and platform workloads pinned to
+      // agent nodes consume the same allocatable pool as agents do.
+      const [nodeList, podList] = await Promise.all([
+        this.coreApi.listNode(),
+        this.coreApi.listPodForAllNamespaces({
+          fieldSelector: 'status.phase!=Succeeded,status.phase!=Failed',
+        }),
+      ]);
+      const value = computeClusterCapacity(
+        nodeList.items ?? [],
+        podList.items ?? [],
+      );
+      this.capacityCache = { value, at: Date.now() };
+      return value;
+    } catch (err) {
+      this.logger.warn(
+        `Cluster capacity fetch failed: ${this.extractKubeError(err)}`,
+      );
+      return null;
+    }
+  }
+}
+
+// Pure so it's unit-testable without a cluster. The scheduler packs by
+// requests, so free slots per node = floor(min(freeCpu, freeMem) / slot).
+export function computeClusterCapacity(
+  nodes: V1Node[],
+  pods: V1Pod[],
+): IClusterCapacity {
+  const requestsByNode = new Map<string, { cpuMilli: number; memBytes: number }>();
+  let usedAgentSlots = 0;
+
+  for (const pod of pods) {
+    if (
+      pod.metadata?.labels?.[AGENT_POD_LABEL_KEY] === AGENT_POD_LABEL_VALUE
+    ) {
+      usedAgentSlots += 1;
+    }
+    // Unscheduled (Pending) pods hold no node capacity yet.
+    const nodeName = pod.spec?.nodeName;
+    if (!nodeName) continue;
+
+    const req = effectivePodRequests(pod);
+    const acc = requestsByNode.get(nodeName) ?? { cpuMilli: 0, memBytes: 0 };
+    acc.cpuMilli += req.cpuMilli;
+    acc.memBytes += req.memBytes;
+    requestsByNode.set(nodeName, acc);
+  }
+
+  const nodeCapacities: INodeCapacity[] = nodes
+    .filter(isSchedulableAgentNode)
+    .map((node) => {
+      const name = node.metadata?.name ?? '';
+      const allocCpu = parseCpuToMilli(node.status?.allocatable?.cpu) ?? 0;
+      const allocMem = parseMemoryToBytes(node.status?.allocatable?.memory) ?? 0;
+      const used = requestsByNode.get(name) ?? { cpuMilli: 0, memBytes: 0 };
+      const freeCpuMilli = allocCpu - used.cpuMilli;
+      const freeMemBytes = allocMem - used.memBytes;
+      const freeSlots = Math.max(
+        0,
+        Math.floor(
+          Math.min(
+            freeCpuMilli / AGENT_SLOT_CPU_MILLI,
+            freeMemBytes / AGENT_SLOT_MEM_BYTES,
+          ),
+        ),
+      );
+      return { name, freeCpuMilli, freeMemBytes, freeSlots };
+    });
+
+  const freeAgentSlots = nodeCapacities.reduce((sum, n) => sum + n.freeSlots, 0);
+
+  return {
+    freeAgentSlots,
+    usedAgentSlots,
+    totalAgentSlots: usedAgentSlots + freeAgentSlots,
+    slotCpuMilli: AGENT_SLOT_CPU_MILLI,
+    slotMemBytes: AGENT_SLOT_MEM_BYTES,
+    nodes: nodeCapacities,
+    observedAt: new Date().toISOString(),
+  };
+}
+
+// A node counts only if the agent pod could actually land there: labeled for
+// the agent pool, not cordoned, and carrying no taint the pod doesn't
+// tolerate (which excludes not-ready/pressure taints without a separate
+// Ready-condition check).
+function isSchedulableAgentNode(node: V1Node): boolean {
+  if (
+    node.metadata?.labels?.[AGENT_NODE_LABEL_KEY] !== AGENT_NODE_LABEL_VALUE
+  ) {
+    return false;
+  }
+  if (node.spec?.unschedulable) return false;
+  return (node.spec?.taints ?? []).every(
+    (t) =>
+      t.effect === 'PreferNoSchedule' ||
+      (t.key === TOLERATED_TAINT.key &&
+        t.value === TOLERATED_TAINT.value &&
+        t.effect === TOLERATED_TAINT.effect),
+  );
+}
+
+// Scheduler formula: max(sum of app containers, max single init container).
+function effectivePodRequests(pod: V1Pod): {
+  cpuMilli: number;
+  memBytes: number;
+} {
+  let cpuMilli = 0;
+  let memBytes = 0;
+  for (const c of pod.spec?.containers ?? []) {
+    cpuMilli += parseCpuToMilli(c.resources?.requests?.cpu) ?? 0;
+    memBytes += parseMemoryToBytes(c.resources?.requests?.memory) ?? 0;
+  }
+  for (const c of pod.spec?.initContainers ?? []) {
+    cpuMilli = Math.max(cpuMilli, parseCpuToMilli(c.resources?.requests?.cpu) ?? 0);
+    memBytes = Math.max(
+      memBytes,
+      parseMemoryToBytes(c.resources?.requests?.memory) ?? 0,
+    );
+  }
+  return { cpuMilli, memBytes };
 }
 
 // Kubernetes resource quantity parsers — handles the forms the agent manifest

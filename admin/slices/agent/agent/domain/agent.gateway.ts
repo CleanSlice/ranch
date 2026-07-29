@@ -2,6 +2,7 @@ import type {
   IAgentData,
   IAgentEnvVar,
   IAgentMetrics,
+  IClusterCapacityData,
   ICreateAgentData,
   IUpdateAgentData,
 } from './agent.types';
@@ -27,4 +28,5 @@ export abstract class IAgentGateway {
   abstract logs(id: string): Promise<string>;
   abstract env(id: string): Promise<IAgentEnvVar[]>;
   abstract metrics(id: string): Promise<IAgentMetrics | null>;
+  abstract capacity(): Promise<IClusterCapacityData | null>;
 }

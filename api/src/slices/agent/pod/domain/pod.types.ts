@@ -38,3 +38,26 @@ export interface IAgentMetrics {
     diskCapacityBytes: number;
   };
 }
+
+// What one "agent slot" costs the scheduler — the fixed requests floor every
+// agent pod gets (Burstable QoS; limits vary per agent, requests never do).
+// agent-workflow.manifest.ts builds its requests block from these constants.
+export const AGENT_SLOT_CPU_MILLI = 100;
+export const AGENT_SLOT_MEM_BYTES = 512 * 1024 * 1024;
+
+export interface INodeCapacity {
+  name: string;
+  freeCpuMilli: number;
+  freeMemBytes: number;
+  freeSlots: number;
+}
+
+export interface IClusterCapacity {
+  freeAgentSlots: number;
+  usedAgentSlots: number;
+  totalAgentSlots: number;
+  slotCpuMilli: number;
+  slotMemBytes: number;
+  nodes: INodeCapacity[];
+  observedAt: string;
+}

@@ -17,6 +17,21 @@ const { data: agents, pending, refresh } = await useAsyncData(
   () => agentStore.fetchAll(),
 );
 
+// Cluster headroom for new agents. Store actions (create/remove/restart/
+// stop/start) refetch on their own; the interval catches pods actually
+// scheduling and other operators' changes. The API caches ~15s, so polling
+// is cheap. Null (K8s unreachable) simply hides the badge.
+const capacity = computed(() => agentStore.capacity);
+
+let capacityTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  void agentStore.fetchCapacity();
+  capacityTimer = setInterval(() => void agentStore.fetchCapacity(), 30_000);
+});
+onUnmounted(() => {
+  if (capacityTimer) clearInterval(capacityTimer);
+});
+
 // Per-row "restarting" guard so the button shows a spinner without blocking
 // other rows. The store's restart() does an optimistic status flip, so the
 // row's badge changes immediately even before the API resolves.
@@ -99,10 +114,41 @@ async function onRemove() {
         <h1 class="text-2xl font-semibold">Agents</h1>
         <p class="text-sm text-muted-foreground">Manage running agents.</p>
       </div>
-      <Button as-child>
-        <NuxtLink to="/agents/create">New agent</NuxtLink>
-      </Button>
+      <div class="flex items-center gap-3">
+        <div
+          v-if="capacity"
+          class="hidden sm:flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs text-muted-foreground"
+          title="How many more agents fit on the cluster (by CPU/memory requests on agent nodes)"
+        >
+          <span
+            :class="
+              capacity.freeAgentSlots === 0
+                ? 'font-medium text-amber-600'
+                : 'font-medium text-foreground'
+            "
+          >
+            {{ capacity.freeAgentSlots }}
+          </span>
+          {{ capacity.freeAgentSlots === 1 ? 'slot' : 'slots' }} free
+        </div>
+        <Button as-child>
+          <NuxtLink to="/agents/create">New agent</NuxtLink>
+        </Button>
+      </div>
     </div>
+
+    <!-- Capacity is a ~15s-stale estimate, so this warns rather than blocks:
+         creating is still legal, the pod just waits Pending for a slot. -->
+    <p
+      v-if="capacity && capacity.freeAgentSlots === 0"
+      class="text-xs text-amber-600"
+    >
+      {{
+        capacity.totalAgentSlots === 0
+          ? 'No agent nodes available in this cluster (no schedulable node labeled node-role=agents) — new agents will stay Pending.'
+          : 'Cluster is full — stop an agent to free a slot before starting a new one.'
+      }}
+    </p>
 
     <!-- Skeleton on initial load only. Refreshes after Restart/Delete keep
          the existing rows visible to avoid the page-flash effect. -->

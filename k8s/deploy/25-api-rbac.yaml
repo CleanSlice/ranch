@@ -34,3 +34,38 @@ roleRef:
   kind: Role
   name: ranch-api-agent-reader
   apiGroup: rbac.authorization.k8s.io
+---
+# Cluster-wide reads for GET /agents/capacity:
+# - nodes: allocatable CPU/memory of the agent node pool
+# - pods (all namespaces): capacity = allocatable minus EVERY pod's requests
+#   on agent nodes — daemonsets and platform workloads count too, so a
+#   namespaced list would silently overstate free slots
+# - nodes/proxy: kubelet stats/summary for node disk metrics
+#   (GET /agents/:id/metrics)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ranch-api-cluster-reader
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ranch-api-cluster-reader
+subjects:
+  - kind: ServiceAccount
+    name: ranch-api
+    namespace: platform
+roleRef:
+  kind: ClusterRole
+  name: ranch-api-cluster-reader
+  apiGroup: rbac.authorization.k8s.io

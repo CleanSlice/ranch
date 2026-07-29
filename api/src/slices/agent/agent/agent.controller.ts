@@ -32,6 +32,7 @@ import {
   AgentEnvVarDto,
   AgentMetricsDto,
   AgentStatusDto,
+  ClusterCapacityDto,
   CreateAgentDto,
   UpdateAgentDto,
 } from './dtos';
@@ -155,6 +156,23 @@ export class AgentController {
     return this.agentStatusService
       .stream$()
       .pipe(map((data) => ({ data }) as MessageEvent));
+  }
+
+  @Get('capacity')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiOperation({
+    operationId: 'getClusterCapacity',
+    summary:
+      'How many more agents fit on the cluster. Free schedulable CPU/memory ' +
+      'on node-role=agents nodes divided by the fixed agent request floor ' +
+      '(100m / 512Mi), minus agents still deploying without a pod. Cached ' +
+      '~15s; null when the Kubernetes API is unreachable. Admin or Owner — ' +
+      'the only roles that can act on the number, and the response reveals ' +
+      'node topology.',
+  })
+  @ApiOkResponse({ type: ClusterCapacityDto })
+  getClusterCapacity(): Promise<ClusterCapacityDto | null> {
+    return this.agentStatusService.getCapacity();
   }
 
   @Get(':id')

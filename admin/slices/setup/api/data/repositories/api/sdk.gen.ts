@@ -69,6 +69,8 @@ import type {
   AgentControllerStatusData,
   AgentControllerStatusResponse,
   AgentControllerStatusStreamData,
+  GetClusterCapacityData,
+  GetClusterCapacityResponse,
   AgentControllerRemoveData,
   AgentControllerFindByIdData,
   AgentControllerUpdateData,
@@ -1321,6 +1323,22 @@ export class AgentsService {
       ThrowOnError
     >({
       url: "/agents/status/stream",
+      ...options,
+    });
+  }
+
+  /**
+   * How many more agents fit on the cluster. Free schedulable CPU/memory on node-role=agents nodes divided by the fixed agent request floor (100m / 512Mi), minus agents still deploying without a pod. Cached ~15s; null when the Kubernetes API is unreachable. Admin or Owner — the only roles that can act on the number, and the response reveals node topology.
+   */
+  public static getClusterCapacity<ThrowOnError extends boolean = false>(
+    options?: Options<GetClusterCapacityData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetClusterCapacityResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/capacity",
       ...options,
     });
   }

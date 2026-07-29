@@ -14,6 +14,22 @@ const { data: agents, pending } = await useAsyncData(
 const runningCount = computed(
   () => (agents.value ?? []).filter((a) => a.status === 'running').length,
 );
+
+// Cluster headroom — fetched only for roles that can act on it (also avoids
+// 403 noise for plain users). Store actions (create/remove/restart) refetch
+// on their own; the interval catches everyone else's changes and pods
+// actually scheduling. The backend caches ~15s, so polling is cheap.
+const capacity = computed(() => agentStore.capacity);
+
+let capacityTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  if (!canCreate.value) return;
+  void agentStore.fetchCapacity();
+  capacityTimer = setInterval(() => void agentStore.fetchCapacity(), 30_000);
+});
+onUnmounted(() => {
+  if (capacityTimer) clearInterval(capacityTimer);
+});
 </script>
 
 <template>
@@ -43,6 +59,19 @@ const runningCount = computed(
           </span>
           <span class="font-medium text-foreground">{{ runningCount }}</span>
           / {{ agents.length }} running
+          <template v-if="canCreate && capacity">
+            <span class="text-muted-foreground/60">·</span>
+            <span
+              :class="
+                capacity.freeAgentSlots === 0
+                  ? 'font-medium text-amber-600'
+                  : ''
+              "
+            >
+              {{ capacity.freeAgentSlots }}
+              {{ capacity.freeAgentSlots === 1 ? 'slot' : 'slots' }} free
+            </span>
+          </template>
         </div>
 
         <NuxtLink
@@ -55,6 +84,20 @@ const runningCount = computed(
         </NuxtLink>
       </div>
     </header>
+
+    <!-- Capacity is a ~15s-stale estimate, so this warns rather than blocks:
+         creating is still legal, the pod just waits Pending for a slot. -->
+    <div
+      v-if="canCreate && capacity?.freeAgentSlots === 0"
+      class="flex items-center gap-1.5 text-xs text-amber-600"
+    >
+      <Icon name="alert-triangle" :size="14" class="shrink-0" />
+      {{
+        capacity.totalAgentSlots === 0
+          ? 'No agent nodes available in this cluster — new agents will stay Pending.'
+          : 'Cluster is full — stop an agent to free a slot before starting a new one.'
+      }}
+    </div>
 
     <!-- Loading skeletons (initial load only — refresh keeps existing list visible) -->
     <div

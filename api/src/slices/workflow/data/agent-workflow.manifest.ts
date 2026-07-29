@@ -10,6 +10,10 @@
 // objects rather than YAML strings with escape hazards.
 
 import type { IAgentEnvVar } from '../domain/workflow.types';
+import {
+  AGENT_SLOT_CPU_MILLI,
+  AGENT_SLOT_MEM_BYTES,
+} from '#/agent/pod/domain';
 
 export interface IAgentWorkflowManifestInput {
   agentId: string;
@@ -229,7 +233,13 @@ function buildAgentPod(
           // (limits still come from i.cpu). Memory floor stays 512Mi — that's
           // a real idle footprint and becomes the next ceiling (~28/node).
           resources: {
-            requests: { cpu: '100m', memory: '512Mi' },
+            // The requests floor doubles as the "agent slot" unit that
+            // GET /agents/capacity divides free node resources by — sharing
+            // the constants keeps the two from drifting apart.
+            requests: {
+              cpu: `${AGENT_SLOT_CPU_MILLI}m`,
+              memory: `${AGENT_SLOT_MEM_BYTES / (1024 * 1024)}Mi`,
+            },
             limits: { cpu: i.cpu, memory: i.memory },
           },
           ports: [{ containerPort: 3000 }],

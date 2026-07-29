@@ -3,6 +3,7 @@ import type {
   IAgentData,
   IAgentEnvVar,
   IAgentMetrics,
+  IClusterCapacityData,
   ICreateAgentData,
   IUpdateAgentData,
 } from './agent.types';
@@ -70,5 +71,9 @@ export class AgentService {
 
   metrics(id: string): Promise<IAgentMetrics | null> {
     return this.gateway.metrics(id);
+  }
+
+  capacity(): Promise<IClusterCapacityData | null> {
+    return this.gateway.capacity();
   }
 }

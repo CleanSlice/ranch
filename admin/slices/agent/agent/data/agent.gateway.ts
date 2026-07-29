@@ -7,6 +7,7 @@ import type {
   IAgentData,
   IAgentEnvVar,
   IAgentMetrics,
+  IClusterCapacityData,
   ICreateAgentData,
   IUpdateAgentData,
 } from '../domain/agent.types';
@@ -174,6 +175,13 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
     return this.execute(async () => {
       const res = await client.instance.get(`/agents/${id}/metrics`);
       return this.mapper.toMetrics(unwrapEnvelope(res.data));
+    });
+  }
+
+  capacity(): Promise<IClusterCapacityData | null> {
+    return this.execute(async () => {
+      const res = await AgentsService.getClusterCapacity();
+      return this.mapper.toCapacity(unwrapEnvelope(res.data));
     });
   }
 

@@ -9,3 +9,7 @@ export {
   AgentNodeMetricsDto,
   AgentPodMetricsDto,
 } from './agentMetrics.dto';
+export {
+  ClusterCapacityDto,
+  NodeCapacityDto,
+} from './clusterCapacity.dto';

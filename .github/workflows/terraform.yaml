@@ -46,6 +46,11 @@ env:
   AWS_REGION: us-east-1
   TF_WORKDIR: terraform/environments/dreamvention
 
+# Serialize runs so two plans/applies don't fight over the DynamoDB state lock.
+concurrency:
+  group: terraform-dreamvention
+  cancel-in-progress: false
+
 jobs:
   terraform:
     runs-on: ubuntu-latest

@@ -702,6 +702,83 @@ export const AgentStatusDtoSchema = {
   required: ["agent", "pod"],
 } as const;
 
+export const NodeCapacityDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "k3s-agent-gnk",
+    },
+    freeCpuMilli: {
+      type: "number",
+      example: 3200,
+      description: "Allocatable CPU minus summed pod requests, in millicores",
+    },
+    freeMemBytes: {
+      type: "number",
+      example: 6442450944,
+      description: "Allocatable memory minus summed pod requests, in bytes",
+    },
+    freeSlots: {
+      type: "number",
+      example: 12,
+      description: "How many more agent pods fit on this node",
+    },
+  },
+  required: ["name", "freeCpuMilli", "freeMemBytes", "freeSlots"],
+} as const;
+
+export const ClusterCapacityDtoSchema = {
+  type: "object",
+  properties: {
+    freeAgentSlots: {
+      type: "number",
+      example: 12,
+      description:
+        "How many more agents can start right now, across all agent nodes",
+    },
+    usedAgentSlots: {
+      type: "number",
+      example: 8,
+      description: "Agents currently holding a slot (live pods + deploying)",
+    },
+    totalAgentSlots: {
+      type: "number",
+      example: 20,
+      description: "usedAgentSlots + freeAgentSlots under current cluster load",
+    },
+    slotCpuMilli: {
+      type: "number",
+      example: 100,
+      description: "CPU request one agent slot reserves, in millicores",
+    },
+    slotMemBytes: {
+      type: "number",
+      example: 536870912,
+      description: "Memory request one agent slot reserves, in bytes",
+    },
+    nodes: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/NodeCapacityDto",
+      },
+    },
+    observedAt: {
+      type: "string",
+      example: "2026-07-29T12:00:00.000Z",
+    },
+  },
+  required: [
+    "freeAgentSlots",
+    "usedAgentSlots",
+    "totalAgentSlots",
+    "slotCpuMilli",
+    "slotMemBytes",
+    "nodes",
+    "observedAt",
+  ],
+} as const;
+
 export const AgentPodMetricsDtoSchema = {
   type: "object",
   properties: {

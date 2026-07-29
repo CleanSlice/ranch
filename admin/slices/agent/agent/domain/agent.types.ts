@@ -28,6 +28,16 @@ export interface IAgentMetrics {
   };
 }
 
+/** Cluster headroom for new agents. `totalAgentSlots === 0` means the cluster
+ *  has no schedulable agent nodes at all (e.g. local dev without the
+ *  node-role=agents label) — distinct from "full". `null` end-to-end when the
+ *  Kubernetes API is unreachable. */
+export interface IClusterCapacityData {
+  freeAgentSlots: number;
+  usedAgentSlots: number;
+  totalAgentSlots: number;
+}
+
 export interface IAgentEnvVar {
   name: string;
   value: string;

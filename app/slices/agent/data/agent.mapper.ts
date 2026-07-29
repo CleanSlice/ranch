@@ -6,6 +6,7 @@ import type {
   IAgentCreateInput,
   IAgentData,
   IAgentUpdateInput,
+  IClusterCapacityData,
 } from '../domain/agent.types';
 
 /**
@@ -49,6 +50,23 @@ export class AgentMapper {
     return raw
       .map((item) => this.toEntity(item))
       .filter((a): a is IAgentData => a !== null);
+  }
+
+  toCapacity(raw: unknown): IClusterCapacityData | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    if (
+      typeof o.freeAgentSlots !== 'number' ||
+      typeof o.usedAgentSlots !== 'number' ||
+      typeof o.totalAgentSlots !== 'number'
+    ) {
+      return null;
+    }
+    return {
+      freeAgentSlots: o.freeAgentSlots,
+      usedAgentSlots: o.usedAgentSlots,
+      totalAgentSlots: o.totalAgentSlots,
+    };
   }
 
   toCreateDto(input: IAgentCreateInput): CreateAgentDto {

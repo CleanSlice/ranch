@@ -3,6 +3,7 @@ import type {
   IAgentCreateInput,
   IAgentData,
   IAgentUpdateInput,
+  IClusterCapacityData,
 } from './agent.types';
 
 /**
@@ -38,5 +39,9 @@ export class AgentService {
 
   restart(id: string): Promise<IAgentData | null> {
     return this.gateway.restart(id);
+  }
+
+  getCapacity(): Promise<IClusterCapacityData | null> {
+    return this.gateway.getCapacity();
   }
 }

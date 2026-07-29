@@ -33,3 +33,11 @@ export interface IAgentCreateInput {
 export interface IAgentUpdateInput extends Partial<IAgentCreateInput> {
   debugEnabled?: boolean;
 }
+
+/** Cluster headroom for new agents — the headline numbers only; per-node
+ *  detail stays behind the API. `null` end-to-end when K8s is unreachable. */
+export interface IClusterCapacityData {
+  freeAgentSlots: number;
+  usedAgentSlots: number;
+  totalAgentSlots: number;
+}

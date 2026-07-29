@@ -275,6 +275,47 @@ export type AgentStatusDto = {
   pod: AgentPodStatusDto | null;
 };
 
+export type NodeCapacityDto = {
+  name: string;
+  /**
+   * Allocatable CPU minus summed pod requests, in millicores
+   */
+  freeCpuMilli: number;
+  /**
+   * Allocatable memory minus summed pod requests, in bytes
+   */
+  freeMemBytes: number;
+  /**
+   * How many more agent pods fit on this node
+   */
+  freeSlots: number;
+};
+
+export type ClusterCapacityDto = {
+  /**
+   * How many more agents can start right now, across all agent nodes
+   */
+  freeAgentSlots: number;
+  /**
+   * Agents currently holding a slot (live pods + deploying)
+   */
+  usedAgentSlots: number;
+  /**
+   * usedAgentSlots + freeAgentSlots under current cluster load
+   */
+  totalAgentSlots: number;
+  /**
+   * CPU request one agent slot reserves, in millicores
+   */
+  slotCpuMilli: number;
+  /**
+   * Memory request one agent slot reserves, in bytes
+   */
+  slotMemBytes: number;
+  nodes: Array<NodeCapacityDto>;
+  observedAt: string;
+};
+
 export type AgentPodMetricsDto = {
   /**
    * Current CPU usage in millicores
@@ -1978,6 +2019,20 @@ export type AgentControllerStatusStreamData = {
 export type AgentControllerStatusStreamResponses = {
   200: unknown;
 };
+
+export type GetClusterCapacityData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agents/capacity";
+};
+
+export type GetClusterCapacityResponses = {
+  200: ClusterCapacityDto;
+};
+
+export type GetClusterCapacityResponse =
+  GetClusterCapacityResponses[keyof GetClusterCapacityResponses];
 
 export type AgentControllerRemoveData = {
   body?: never;

@@ -2,6 +2,7 @@ import { createServiceGetter } from '#common/composables/createServiceGetter';
 import type { AgentService } from '#agent/domain';
 import type {
   IAgentData,
+  IClusterCapacityData,
   ICreateAgentData,
   IUpdateAgentData,
 } from '#agent/domain';
@@ -15,6 +16,7 @@ export type {
   IAgentEnvVar,
   IAgentMetrics,
   IAgentResources,
+  IClusterCapacityData,
   ICreateAgentData,
   IUpdateAgentData,
 } from '#agent/domain';
@@ -140,6 +142,19 @@ export const useAgentStore = defineStore('agent', () => {
     return agents.value;
   }
 
+  const capacity = ref<IClusterCapacityData | null>(null);
+
+  // Silent degradation on purpose: K8s unreachable or a network failure both
+  // mean "no number to show" — never an error banner.
+  async function fetchCapacity() {
+    try {
+      capacity.value = await getService().capacity();
+    } catch {
+      capacity.value = null;
+    }
+    return capacity.value;
+  }
+
   function fetchById(id: string) {
     return getService().findById(id);
   }
@@ -151,6 +166,9 @@ export const useAgentStore = defineStore('agent', () => {
   async function create(data: ICreateAgentData) {
     const created = await getService().create(data);
     agents.value = [created, ...agents.value];
+    // Fire-and-forget: the new agent reserves a slot server-side the moment
+    // create returns, so a refetch already sees the counter drop.
+    void fetchCapacity();
     return created;
   }
 
@@ -185,21 +203,34 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
-  function restart(id: string) {
-    return withOptimisticStatus(id, 'deploying', () => getService().restart(id));
+  async function restart(id: string) {
+    const updated = await withOptimisticStatus(id, 'deploying', () =>
+      getService().restart(id),
+    );
+    void fetchCapacity();
+    return updated;
   }
 
-  function stop(id: string) {
-    return withOptimisticStatus(id, 'stopped', () => getService().stop(id));
+  async function stop(id: string) {
+    const updated = await withOptimisticStatus(id, 'stopped', () =>
+      getService().stop(id),
+    );
+    void fetchCapacity();
+    return updated;
   }
 
-  function start(id: string) {
-    return withOptimisticStatus(id, 'deploying', () => getService().start(id));
+  async function start(id: string) {
+    const updated = await withOptimisticStatus(id, 'deploying', () =>
+      getService().start(id),
+    );
+    void fetchCapacity();
+    return updated;
   }
 
   async function remove(id: string, options: { wipeS3?: boolean } = {}) {
     await getService().remove(id, options.wipeS3 ?? false);
     agents.value = agents.value.filter((a) => a.id !== id);
+    void fetchCapacity();
   }
 
   async function promoteAdmin(id: string) {
@@ -232,7 +263,9 @@ export const useAgentStore = defineStore('agent', () => {
 
   return {
     agents,
+    capacity,
     fetchAll,
+    fetchCapacity,
     fetchById,
     fetchAdmin,
     create,

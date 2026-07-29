@@ -21,7 +21,11 @@ import { IAgentData } from './agent.types';
 import { AgentDeployService } from './agentDeploy.service';
 import { DeployTracker } from './deployTracker';
 import { IPodGateway } from '#/agent/pod/domain';
-import { IAgentPodStatus, PodEventTypes } from '#/agent/pod/domain/pod.types';
+import {
+  IAgentPodStatus,
+  IClusterCapacity,
+  PodEventTypes,
+} from '#/agent/pod/domain/pod.types';
 import { IBridleGateway } from '#/bridle/domain';
 
 export interface IAgentStatus {
@@ -45,6 +49,12 @@ const FAIL_WAITING_REASONS = new Set([
 ]);
 
 const LIVE_DB_STATUSES = new Set<string>(['pending', 'deploying', 'running']);
+
+// Agents that claimed a slot but whose pod K8s hasn't materialised yet —
+// right after POST /agents the DB row is 'deploying' while Argo is still
+// creating the pod. Counting them keeps GET /agents/capacity honest in that
+// window, so the UI counter drops the moment a create returns.
+const RESERVED_DB_STATUSES = new Set<string>(['pending', 'deploying']);
 
 const DRIFT_INTERVAL_MS = 30_000;
 const AUTO_RESTART_CONCURRENCY = 5;
@@ -170,6 +180,30 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
       agent,
       pod: podByAgent.get(agent.id) ?? null,
     }));
+  }
+
+  async getCapacity(): Promise<IClusterCapacity | null> {
+    const cluster = await this.podGateway.getClusterCapacity();
+    if (!cluster) return null;
+
+    const [agents, pods] = await Promise.all([
+      this.agentGateway.findAll(),
+      this.podGateway.list(),
+    ]);
+    const podded = new Set(pods.map((p) => p.agentId));
+    const reserved = agents.filter(
+      (a) => RESERVED_DB_STATUSES.has(a.status) && !podded.has(a.id),
+    ).length;
+    if (reserved === 0) return cluster;
+
+    const usedAgentSlots = cluster.usedAgentSlots + reserved;
+    const freeAgentSlots = Math.max(0, cluster.freeAgentSlots - reserved);
+    return {
+      ...cluster,
+      usedAgentSlots,
+      freeAgentSlots,
+      totalAgentSlots: usedAgentSlots + freeAgentSlots,
+    };
   }
 
   stream$(): Observable<AgentStatusStreamMessage> {

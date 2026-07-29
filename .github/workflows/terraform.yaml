@@ -52,11 +52,12 @@ jobs:
       TF_VAR_hcloud_token:   ${{ secrets.HCLOUD_TOKEN }}
       TF_VAR_domain:         ${{ vars.DOMAIN }}
       TF_VAR_admin_ip:       ${{ vars.ADMIN_IP }}
-      TF_VAR_ghcr_username:  ${{ vars.GHCR_USERNAME }}
       TF_VAR_ghcr_pat:       ${{ secrets.GHCR_PAT }}
-      TF_VAR_api_image:      ${{ vars.API_IMAGE }}
-      TF_VAR_admin_image:    ${{ vars.ADMIN_IMAGE }}
-      TF_VAR_app_image:      ${{ vars.APP_IMAGE }}
+      # ghcr_username / *_image intentionally omitted: their defaults in the
+      # dreamvention env already match production (ghcr.io/cleanslice/ranch-*
+      # :latest, user dmitriyzhuk). Passing empty `${{ vars.X }}` would
+      # override those defaults with "". Set the vars + restore these lines
+      # only if you need to pin a specific image tag from CI.
       TF_VAR_database_url:   ${{ secrets.TF_VAR_DATABASE_URL }}
       TF_VAR_jwt_secret:     ${{ secrets.TF_VAR_JWT_SECRET }}
       TF_VAR_bridle_api_key: ${{ secrets.TF_VAR_BRIDLE_API_KEY }}

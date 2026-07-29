@@ -166,9 +166,15 @@ module "kube-hetzner" {
 # traefik`.
 # ---------------------------------------------------------------------
 
+# NOTE: no depends_on here. A depends_on on a data source forces it to be
+# re-read on every apply where the referenced module changes, which makes its
+# `id` "known after apply" and cascades into a forced REPLACE of the
+# hcloud_load_balancer_service listeners below — i.e. a brief 80/443 outage on
+# every run. The LB already exists (kube-hetzner created it), so we read it
+# directly. On a from-scratch bootstrap where the LB doesn't exist yet, run
+# apply twice (cluster first, then listeners) — the kube-hetzner default flow.
 data "hcloud_load_balancer" "traefik" {
-  name       = "k3s-traefik"
-  depends_on = [module.kube-hetzner]
+  name = "k3s-traefik"
 }
 
 resource "hcloud_load_balancer_service" "traefik_http" {

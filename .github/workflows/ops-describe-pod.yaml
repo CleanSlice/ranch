@@ -1,0 +1,51 @@
+# Reusable ops diagnostic: describe one pod in the agents namespace — image,
+# pull secrets, scheduling/pull events, container state. Built for debugging
+# ErrImagePull/CrashLoop without local cluster access. The pod name is passed
+# through an env var (never interpolated into the script) and validated
+# against a strict name pattern before use.
+
+name: Ops - describe agent pod
+
+on:
+  workflow_dispatch:
+    inputs:
+      pod:
+        description: "Pod name in the agents namespace (e.g. agent-agent-<uuid>)"
+        required: true
+        type: string
+
+jobs:
+  describe:
+    runs-on: ubuntu-latest
+    env:
+      POD: ${{ inputs.pod }}
+    steps:
+      - name: Validate pod name
+        run: |
+          if ! echo "$POD" | grep -qE '^[a-z0-9]([a-z0-9-]{0,251}[a-z0-9])?$'; then
+            echo "::error::invalid pod name"; exit 1
+          fi
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Pod image & pull secrets
+        run: |
+          echo "image:            $(kubectl -n agents get pod "$POD" -o jsonpath='{.spec.containers[0].image}')"
+          echo "imagePullSecrets: $(kubectl -n agents get pod "$POD" -o jsonpath='{.spec.imagePullSecrets[*].name}')"
+          echo "ghcr secret:      $(kubectl -n agents get secret ghcr --no-headers 2>/dev/null || echo 'MISSING')"
+
+      - name: Container state & conditions
+        run: kubectl -n agents get pod "$POD" -o jsonpath='{range .status.containerStatuses[*]}{.name}{": "}{.state}{"\n"}{end}'
+
+      - name: Describe pod (events at the bottom tell the real story)
+        run: kubectl -n agents describe pod "$POD" | tail -40
+
+      - name: API logs mentioning this pod/agent
+        run: |
+          AGENT_ID="${POD#agent-}"
+          kubectl -n platform logs deploy/ranch-api --tail=3000 | grep -F "$AGENT_ID" | tail -15 \
+            || echo "no API log lines for $AGENT_ID"

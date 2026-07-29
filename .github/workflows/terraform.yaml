@@ -13,6 +13,12 @@ name: Terraform
 #   TF_VAR_BRIDLE_API_KEY
 #   TF_VAR_BROWSER_POOL_TOKEN — shared secret for the browser-pool StatefulSet
 #   GHCR_PAT               — reused from the build workflow (for imagePullSecret)
+#   SSH_PRIVATE_KEY        — the ranch-hetzner private key the k3s nodes trust
+#                            (public key is derived from it on the runner)
+#
+# Also requires the AWS IAM user behind AWS_ACCESS_KEY_ID to have IAM perms
+# for the ranch-agent-* users (iam:GetUser/CreateUser/PutUserPolicy/*AccessKey)
+# because modules/storage manages an IAM user (create_iam_user=true).
 #
 # Required repo variables:
 #   DOMAIN                 — e.g. ranch.cleanslice.org
@@ -73,6 +79,20 @@ jobs:
       - name: Terraform fmt check
         run: terraform fmt -check -recursive
         working-directory: terraform
+
+      # kube-hetzner reads the SSH keypair via file(var.ssh_*_key_path). The
+      # env defaults point at ~/.ssh/ranch-hetzner, which doesn't exist on the
+      # runner (and Terraform's file() does not expand ~). Materialize the key
+      # from a secret and hand Terraform absolute paths. The key MUST be the
+      # same pair the existing nodes trust, or plan/apply will try to rotate it.
+      - name: Materialize SSH keypair
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > "$HOME/.ssh/ranch-hetzner"
+          chmod 600 "$HOME/.ssh/ranch-hetzner"
+          ssh-keygen -y -f "$HOME/.ssh/ranch-hetzner" > "$HOME/.ssh/ranch-hetzner.pub"
+          echo "TF_VAR_ssh_private_key_path=$HOME/.ssh/ranch-hetzner" >> "$GITHUB_ENV"
+          echo "TF_VAR_ssh_public_key_path=$HOME/.ssh/ranch-hetzner.pub" >> "$GITHUB_ENV"
 
       - name: Terraform Init
         run: terraform init -input=false

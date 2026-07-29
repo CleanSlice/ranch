@@ -13,6 +13,12 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log"]
     verbs: ["get", "list", "watch"]
+  # delete: stop/remove agent kills its pod to free the slot. Was present in
+  # k8s/deploy/25-api-rbac.yaml but missing here — every stop/delete on prod
+  # silently leaked the pod (best-effort cleanup, 403 logged as warn only).
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

@@ -40,3 +40,12 @@ jobs:
           kubectl -n platform logs deploy/ranch-api --tail=2000 \
             | grep -iE "capacity|forbidden" | tail -20 \
             || echo "no capacity/forbidden lines in the last 2000 log lines"
+
+      # usedAgentSlots counts every live pod labeled app=ranch-agent, cluster
+      # wide. If this list is longer than the agents table, the extras are
+      # orphans from old deploys still holding 512Mi each.
+      - name: List live agent pods (compare against the agents table)
+        run: |
+          kubectl get pods -A -l app=ranch-agent -o wide --sort-by=.metadata.creationTimestamp
+          echo "---"
+          echo "total live agent pods: $(kubectl get pods -A -l app=ranch-agent --no-headers | grep -cv 'Succeeded\|Failed' || true)"

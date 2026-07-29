@@ -24,6 +24,25 @@ const emit = defineEmits<{
 
 const firstTemplate = props.templates[0];
 
+// Live headroom hint for the Resources fields. Values are burst limits, so
+// the useful ceiling is the largest free chunk on one agent node — not a
+// hard cap, just honest context while picking numbers.
+const agentStore = useAgentStore();
+const capacity = computed(() => agentStore.capacity);
+onMounted(() => {
+  void agentStore.fetchCapacity();
+});
+
+function formatCpuMilli(m: number): string {
+  return m >= 1000 ? `${parseFloat((m / 1000).toFixed(1))} CPU` : `${m}m`;
+}
+
+function formatMemBytes(b: number): string {
+  const gi = 1024 ** 3;
+  if (b >= gi) return `${parseFloat((b / gi).toFixed(1))}Gi`;
+  return `${Math.round(b / 1024 ** 2)}Mi`;
+}
+
 // Reka UI disallows empty-string <SelectItem value="">, so the "None"
 // option uses a sentinel that we map to/from null at the edges.
 const LLM_NONE = '__none__';
@@ -232,6 +251,24 @@ function onSubmit() {
           <Label for="memory">Memory</Label>
           <Input id="memory" v-model="form.resources.memory" placeholder="512Mi" />
         </div>
+        <p v-if="capacity" class="sm:col-span-2 text-xs text-muted-foreground">
+          These are burst limits — scheduling always reserves
+          {{ formatCpuMilli(capacity.slotCpuMilli) }} /
+          {{ formatMemBytes(capacity.slotMemBytes) }} per agent regardless.
+          Free on agent nodes right now:
+          <span class="font-medium text-foreground">
+            {{ formatCpuMilli(capacity.maxNodeFreeCpuMilli) }}</span>
+          ·
+          <span class="font-medium text-foreground">
+            {{ formatMemBytes(capacity.maxNodeFreeMemBytes) }}</span>
+          ·
+          <span
+            :class="capacity.freeAgentSlots === 0 ? 'font-medium text-amber-600' : ''"
+          >
+            {{ capacity.freeAgentSlots }}
+            {{ capacity.freeAgentSlots === 1 ? 'slot' : 'slots' }} free
+          </span>
+        </p>
       </CardContent>
     </Card>
 

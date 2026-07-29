@@ -31,11 +31,19 @@ export interface IAgentMetrics {
 /** Cluster headroom for new agents. `totalAgentSlots === 0` means the cluster
  *  has no schedulable agent nodes at all (e.g. local dev without the
  *  node-role=agents label) — distinct from "full". `null` end-to-end when the
- *  Kubernetes API is unreachable. */
+ *  Kubernetes API is unreachable.
+ *
+ *  `maxNodeFree*` is the largest free CPU/memory chunk on a single agent node
+ *  — the realistic ceiling for one agent's burst limits, since a pod lives on
+ *  one node. `slot*` is the fixed request every agent pod reserves. */
 export interface IClusterCapacityData {
   freeAgentSlots: number;
   usedAgentSlots: number;
   totalAgentSlots: number;
+  slotCpuMilli: number;
+  slotMemBytes: number;
+  maxNodeFreeCpuMilli: number;
+  maxNodeFreeMemBytes: number;
 }
 
 export interface IAgentEnvVar {

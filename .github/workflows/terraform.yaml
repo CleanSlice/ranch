@@ -94,6 +94,16 @@ jobs:
           echo "TF_VAR_ssh_private_key_path=$HOME/.ssh/ranch-hetzner" >> "$GITHUB_ENV"
           echo "TF_VAR_ssh_public_key_path=$HOME/.ssh/ranch-hetzner.pub" >> "$GITHUB_ENV"
 
+      # The helm/kubectl/kubernetes providers read k3s_kubeconfig.yaml from the
+      # env dir (normally written by kube-hetzner on apply). On a fresh runner
+      # it's absent, so provider refresh of existing k8s resources fails with
+      # "cluster unreachable / dial localhost:80". Materialize it from the
+      # KUBECONFIG_B64 secret so plan can read the live cluster.
+      - name: Provide kubeconfig for k8s providers
+        run: |
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > k3s_kubeconfig.yaml
+          chmod 600 k3s_kubeconfig.yaml
+
       - name: Terraform Init
         run: terraform init -input=false
 

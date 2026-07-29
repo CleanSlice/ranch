@@ -1,0 +1,42 @@
+# Manually-triggered ops helper: applies the ranch-api RBAC manifests to the
+# cluster using the same KUBECONFIG_B64 the deploy job uses, then prints the
+# diagnostics needed to debug GET /agents/capacity (permissions, node labels,
+# recent API errors). Idempotent — safe to run any time; ArgoCD tracks the
+# same manifest path so the applied content can never drift from the repo.
+
+name: Ops - apply RBAC & diagnose capacity
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apply-and-diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl version --client=true
+
+      - name: Apply API RBAC
+        run: kubectl apply -f k8s/platform/api/rbac.yaml
+
+      - name: Verify ranch-api service-account permissions
+        run: |
+          sa=system:serviceaccount:platform:ranch-api
+          echo "list nodes:            $(kubectl auth can-i list nodes --as=$sa)"
+          echo "list pods (all ns):    $(kubectl auth can-i list pods --all-namespaces --as=$sa)"
+          echo "get nodes/proxy:       $(kubectl auth can-i get nodes/proxy --as=$sa)"
+
+      - name: Show node labels (capacity counts only node-role=agents)
+        run: kubectl get nodes -L node-role
+
+      - name: Recent capacity/permission errors in API logs
+        run: |
+          kubectl -n platform logs deploy/ranch-api --tail=2000 \
+            | grep -iE "capacity|forbidden" | tail -20 \
+            || echo "no capacity/forbidden lines in the last 2000 log lines"

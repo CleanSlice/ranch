@@ -49,3 +49,13 @@ jobs:
           kubectl get pods -A -l app=ranch-agent -o wide --sort-by=.metadata.creationTimestamp
           echo "---"
           echo "total live agent pods: $(kubectl get pods -A -l app=ranch-agent --no-headers | grep -cv 'Succeeded\|Failed' || true)"
+
+      # GitOps health: repo says ArgoCD auto-syncs k8s/platform/* from main,
+      # but new manifests observably don't reach the cluster (the ClusterRole
+      # above came back "created" an hour after merge). Empty Applications
+      # list, missing namespace, or an error status here names the culprit.
+      - name: ArgoCD state (is GitOps actually running?)
+        run: |
+          kubectl -n argocd get pods 2>&1 || true
+          echo "---"
+          kubectl -n argocd get applications -o wide 2>&1 || true

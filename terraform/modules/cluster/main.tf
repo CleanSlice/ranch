@@ -71,6 +71,14 @@ module "kube-hetzner" {
 
   network_region = "eu-central"
 
+  # Don't let the in-cluster system-upgrade-controller auto-upgrade k3s/OS.
+  # Those upgrades cordon+drain a node and briefly bounce the API server; when
+  # they fire during a terraform apply the run can be interrupted mid-upgrade
+  # and leave a node cordoned (as happened on the first rollouts). Pin them so
+  # node upgrades are a deliberate, supervised action instead.
+  automatically_upgrade_k3s = false
+  automatically_upgrade_os  = false
+
   # Use existing x86 snapshot, skip ARM
   microos_x86_snapshot_id = "374341457"
   microos_arm_snapshot_id = "374341457"

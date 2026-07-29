@@ -88,8 +88,11 @@ const agentInitial = computed(() => {
       <div
         ref="scrollEl"
         class="flex-1 min-h-0 overflow-y-auto bg-linear-to-b from-muted/20 via-background to-background"
+        :class="{ 'flex': !messages.length }"
       >
-        <div class="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
+        <div class="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6"
+        :class="{ 'justify-center': !messages.length }"
+        >
           <!-- Conversation starter when no messages yet -->
           <div
             v-if="!messages.length"

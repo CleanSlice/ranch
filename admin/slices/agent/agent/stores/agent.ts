@@ -7,8 +7,8 @@ import type {
 } from '#agent/domain';
 
 // Re-export the domain types so consumers that import them from
-// `#agent/stores/agent` (Form, agentList/agentCreate/agentEdit/agentVisibility
-// Providers, rancher store, …) keep working.
+// `#agent/stores/agent` (the components/agent/* Providers, rancher store, …)
+// keep working.
 export type {
   AgentStatusTypes,
   IAgentData,

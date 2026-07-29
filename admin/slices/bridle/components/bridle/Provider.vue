@@ -19,10 +19,21 @@ const props = withDefaults(defineProps<{
   placeholder?: string
   class?: HTMLAttributes['class']
   showStatus?: boolean
+  // Hosts with their own restart controls (the admin agent page) turn the
+  // header's built-in restart prompt off to keep the header uncluttered.
+  restartPrompt?: boolean
+  // Host-supplied reconciled agent state. The WS alone can't tell the truth
+  // fast enough: after a restart the OLD pod keeps its socket alive for a few
+  // seconds ("Connected" while the pod is dying), and on a freshly opened
+  // page a failed agent reads as "reconnecting" for 30s. Hosts that know the
+  // real state (the admin agent page) pass it here; null = derive from WS.
+  agentState?: 'restarting' | 'failed' | 'stopped' | null
 }>(), {
   title: 'Agent Chat',
   placeholder: 'Type a message...',
   showStatus: true,
+  restartPrompt: true,
+  agentState: null,
 })
 
 const store = useBridleStore()
@@ -63,12 +74,26 @@ const isDebugOpen = computed({
 })
 
 const connectionStatus = computed(() => {
+  if (props.agentState === 'restarting') {
+    return { label: 'Agent restarting…', color: 'text-orange-500' }
+  }
+  if (props.agentState === 'failed') {
+    return { label: 'Agent offline', color: 'text-red-500' }
+  }
+  if (props.agentState === 'stopped') {
+    return { label: 'Agent stopped', color: 'text-muted-foreground' }
+  }
   const chat = isConnected.value
   const agent = isAgentConnected.value
   if (chat && agent) return { label: 'Connected', color: 'text-green-500' }
   if (chat) {
-    // Chat WS is up but the runtime hasn't registered with the hub. Most often
-    // a transient state during agent pod restart — surface that we're waiting.
+    // Chat WS is up but the runtime hasn't registered with the hub. During a
+    // normal pod restart that's transient — but once the agent has been gone
+    // past the restart-prompt window it's not "reconnecting" anymore, it's
+    // down; stop implying progress that isn't happening.
+    if (agentDownTooLong.value) {
+      return { label: 'Agent offline', color: 'text-red-500' }
+    }
     return { label: 'Agent reconnecting…', color: 'text-orange-500' }
   }
   if (agent) {
@@ -100,14 +125,18 @@ watch(
   { immediate: true },
 )
 
+const agentDownTooLong = computed(() => {
+  const since = agentDownSinceMs.value
+  return since !== null && nowMs.value - since >= RESTART_PROMPT_AFTER_MS
+})
+
 const showRestartPrompt = computed(() => {
+  if (!props.restartPrompt) return false
   if (isAgentConnected.value) return false
   // Only nudge a restart when the chat WS itself is up — if both are offline
   // it's likely the user's network, not the agent.
   if (!isConnected.value) return false
-  const since = agentDownSinceMs.value
-  if (since === null) return false
-  return nowMs.value - since >= RESTART_PROMPT_AFTER_MS
+  return agentDownTooLong.value
 })
 
 const restarting = ref(false)
@@ -277,7 +306,10 @@ async function onConfirmReset() {
           <RotateCw :class="cn('h-3.5 w-3.5', restarting && 'animate-spin')" />
           {{ restarting ? 'Restarting…' : 'Restart agent' }}
         </Button>
+        <!-- Starting a new chat needs a live agent — while it's down the
+             button is noise next to the status, so hide it entirely. -->
         <Button
+          v-if="isConnected && isAgentConnected && !agentState"
           variant="ghost"
           size="sm"
           class="h-7 px-2 text-xs"
@@ -352,9 +384,11 @@ async function onConfirmReset() {
     </CardContent>
 
     <CardFooter class="flex flex-col items-stretch gap-2 border-t">
+      <!-- Stays visible when the agent is down — a hidden input reads as a
+           broken layout; disabled communicates "chat exists, agent doesn't". -->
       <Input
         :placeholder="placeholder"
-        :disabled="!isConnected"
+        :disabled="!isConnected || !isAgentConnected || agentState !== null"
         @send="handleSend"
       />
       <div class="flex items-center justify-end gap-2">

@@ -1,14 +1,4 @@
 <script setup lang="ts">
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#theme/components/ui/table';
 import { IconTrash, IconEye } from '@tabler/icons-vue';
 import type { ISessionData, SessionStatusTypes } from '#sessions/stores/session';
 

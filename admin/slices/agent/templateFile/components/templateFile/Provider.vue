@@ -1,12 +1,4 @@
 <script setup lang="ts">
-import { Button } from '#theme/components/ui/button';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '#theme/components/ui/sheet';
 import {
   IconFiles,
   IconRefresh,

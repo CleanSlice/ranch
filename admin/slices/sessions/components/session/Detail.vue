@@ -1,14 +1,4 @@
 <script setup lang="ts">
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '#theme/components/ui/sheet';
-import { Button } from '#theme/components/ui/button';
-import { Badge } from '#theme/components/ui/badge';
 import { IconCopy, IconCheck, IconShieldLock } from '@tabler/icons-vue';
 import type { ISessionData, SessionStatusTypes } from '#sessions/stores/session';
 

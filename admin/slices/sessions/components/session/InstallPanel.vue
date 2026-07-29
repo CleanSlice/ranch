@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Button } from '#theme/components/ui/button';
 import {
   IconDownload,
   IconCopy,

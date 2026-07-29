@@ -13,5 +13,5 @@ const id = route.params.id as string;
 </script>
 
 <template>
-  <AgentProvider :id="id" />
+  <AgentItemProvider :id="id" />
 </template>

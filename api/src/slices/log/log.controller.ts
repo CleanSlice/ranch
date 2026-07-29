@@ -85,11 +85,16 @@ export class LogController {
     const { coreApi, namespace } = await this.getKubeContext();
 
     try {
+      // timestamps: K8s prefixes every line with `<RFC3339Nano-ts> ` (0–9
+      // fraction digits, `Z` zone) — the admin parses it out client-side for
+      // day grouping and a per-line time column. The `[...]` marker responses
+      // below intentionally stay timestamp-less so the frontend can tell them
+      // apart from real log lines.
       const logs = await coreApi.readNamespacedPodLog({
         name: podName,
         namespace,
         tailLines,
-        timestamps: false,
+        timestamps: true,
       });
       // SDK returns the raw log string.
       return { logs: typeof logs === 'string' ? logs : String(logs ?? '') };

@@ -139,7 +139,7 @@ const itemsByGroup = (group: MenuGroupTypes) =>
                 </div>
                 <div class="flex flex-col">
                   <span class="truncate text-sm font-medium">{{ authStore.user.name }}</span>
-                  <span class="truncate text-xs text-muted-foreground">{{ authStore.user.email }}</span>
+                  <span class="truncate text-xs text-muted-foreground max-w-42.5">{{ authStore.user.email }}</span>
                 </div>
               </SidebarMenuButton>
             </DropdownMenuTrigger>

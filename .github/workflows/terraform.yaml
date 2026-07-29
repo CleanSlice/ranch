@@ -11,7 +11,8 @@ name: Terraform
 #   TF_VAR_DATABASE_URL    — Neon direct URL (sslmode=require&channel_binding=require)
 #   TF_VAR_JWT_SECRET
 #   TF_VAR_BRIDLE_API_KEY
-#   TF_VAR_GHCR_PAT        — same PAT as build workflow (for imagePullSecret)
+#   TF_VAR_BROWSER_POOL_TOKEN — shared secret for the browser-pool StatefulSet
+#   GHCR_PAT               — reused from the build workflow (for imagePullSecret)
 #
 # Required repo variables:
 #   DOMAIN                 — e.g. ranch.cleanslice.org
@@ -52,13 +53,14 @@ jobs:
       TF_VAR_domain:         ${{ vars.DOMAIN }}
       TF_VAR_admin_ip:       ${{ vars.ADMIN_IP }}
       TF_VAR_ghcr_username:  ${{ vars.GHCR_USERNAME }}
-      TF_VAR_ghcr_pat:       ${{ secrets.TF_VAR_GHCR_PAT }}
+      TF_VAR_ghcr_pat:       ${{ secrets.GHCR_PAT }}
       TF_VAR_api_image:      ${{ vars.API_IMAGE }}
       TF_VAR_admin_image:    ${{ vars.ADMIN_IMAGE }}
       TF_VAR_app_image:      ${{ vars.APP_IMAGE }}
       TF_VAR_database_url:   ${{ secrets.TF_VAR_DATABASE_URL }}
       TF_VAR_jwt_secret:     ${{ secrets.TF_VAR_JWT_SECRET }}
       TF_VAR_bridle_api_key: ${{ secrets.TF_VAR_BRIDLE_API_KEY }}
+      TF_VAR_browser_pool_token: ${{ secrets.TF_VAR_BROWSER_POOL_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 

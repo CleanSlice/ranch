@@ -39,7 +39,9 @@ jobs:
           echo "ghcr secret:      $(kubectl -n agents get secret ghcr --no-headers 2>/dev/null || echo 'MISSING')"
 
       - name: Container state & conditions
-        run: kubectl -n agents get pod "$POD" -o jsonpath='{range .status.containerStatuses[*]}{.name}{": "}{.state}{"\n"}{end}'
+        run: |
+          kubectl -n agents get pod "$POD" \
+            -o jsonpath='{range .status.containerStatuses[*]}{.name}{" => "}{.state}{"\n"}{end}'
 
       - name: Describe pod (events at the bottom tell the real story)
         run: kubectl -n agents describe pod "$POD" | tail -40

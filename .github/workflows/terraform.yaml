@@ -11,7 +11,14 @@ name: Terraform
 #   TF_VAR_DATABASE_URL    — Neon direct URL (sslmode=require&channel_binding=require)
 #   TF_VAR_JWT_SECRET
 #   TF_VAR_BRIDLE_API_KEY
-#   TF_VAR_GHCR_PAT        — same PAT as build workflow (for imagePullSecret)
+#   TF_VAR_BROWSER_POOL_TOKEN — shared secret for the browser-pool StatefulSet
+#   GHCR_PAT               — reused from the build workflow (for imagePullSecret)
+#   SSH_PRIVATE_KEY        — the ranch-hetzner private key the k3s nodes trust
+#                            (public key is derived from it on the runner)
+#
+# Also requires the AWS IAM user behind AWS_ACCESS_KEY_ID to have IAM perms
+# for the ranch-agent-* users (iam:GetUser/CreateUser/PutUserPolicy/*AccessKey)
+# because modules/storage manages an IAM user (create_iam_user=true).
 #
 # Required repo variables:
 #   DOMAIN                 — e.g. ranch.cleanslice.org
@@ -39,6 +46,11 @@ env:
   AWS_REGION: us-east-1
   TF_WORKDIR: terraform/environments/dreamvention
 
+# Serialize runs so two plans/applies don't fight over the DynamoDB state lock.
+concurrency:
+  group: terraform-dreamvention
+  cancel-in-progress: false
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
@@ -51,24 +63,51 @@ jobs:
       TF_VAR_hcloud_token:   ${{ secrets.HCLOUD_TOKEN }}
       TF_VAR_domain:         ${{ vars.DOMAIN }}
       TF_VAR_admin_ip:       ${{ vars.ADMIN_IP }}
-      TF_VAR_ghcr_username:  ${{ vars.GHCR_USERNAME }}
-      TF_VAR_ghcr_pat:       ${{ secrets.TF_VAR_GHCR_PAT }}
-      TF_VAR_api_image:      ${{ vars.API_IMAGE }}
-      TF_VAR_admin_image:    ${{ vars.ADMIN_IMAGE }}
-      TF_VAR_app_image:      ${{ vars.APP_IMAGE }}
+      TF_VAR_ghcr_pat:       ${{ secrets.GHCR_PAT }}
+      # ghcr_username / *_image intentionally omitted: their defaults in the
+      # dreamvention env already match production (ghcr.io/cleanslice/ranch-*
+      # :latest, user dmitriyzhuk). Passing empty `${{ vars.X }}` would
+      # override those defaults with "". Set the vars + restore these lines
+      # only if you need to pin a specific image tag from CI.
       TF_VAR_database_url:   ${{ secrets.TF_VAR_DATABASE_URL }}
       TF_VAR_jwt_secret:     ${{ secrets.TF_VAR_JWT_SECRET }}
       TF_VAR_bridle_api_key: ${{ secrets.TF_VAR_BRIDLE_API_KEY }}
+      TF_VAR_browser_pool_token: ${{ secrets.TF_VAR_BROWSER_POOL_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.8
+          # kube-hetzner (pinned 2.21.0 in modules/cluster) requires >= 1.10.1.
+          terraform_version: 1.10.5
 
       - name: Terraform fmt check
         run: terraform fmt -check -recursive
         working-directory: terraform
+
+      # kube-hetzner reads the SSH keypair via file(var.ssh_*_key_path). The
+      # env defaults point at ~/.ssh/ranch-hetzner, which doesn't exist on the
+      # runner (and Terraform's file() does not expand ~). Materialize the key
+      # from a secret and hand Terraform absolute paths. The key MUST be the
+      # same pair the existing nodes trust, or plan/apply will try to rotate it.
+      - name: Materialize SSH keypair
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > "$HOME/.ssh/ranch-hetzner"
+          chmod 600 "$HOME/.ssh/ranch-hetzner"
+          ssh-keygen -y -f "$HOME/.ssh/ranch-hetzner" > "$HOME/.ssh/ranch-hetzner.pub"
+          echo "TF_VAR_ssh_private_key_path=$HOME/.ssh/ranch-hetzner" >> "$GITHUB_ENV"
+          echo "TF_VAR_ssh_public_key_path=$HOME/.ssh/ranch-hetzner.pub" >> "$GITHUB_ENV"
+
+      # The helm/kubectl/kubernetes providers read k3s_kubeconfig.yaml from the
+      # env dir (normally written by kube-hetzner on apply). On a fresh runner
+      # it's absent, so provider refresh of existing k8s resources fails with
+      # "cluster unreachable / dial localhost:80". Materialize it from the
+      # KUBECONFIG_B64 secret so plan can read the live cluster.
+      - name: Provide kubeconfig for k8s providers
+        run: |
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > k3s_kubeconfig.yaml
+          chmod 600 k3s_kubeconfig.yaml
 
       - name: Terraform Init
         run: terraform init -input=false

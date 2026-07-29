@@ -31,9 +31,9 @@ variable "secret_name_prefix" {
 }
 
 locals {
-  bucket_name        = var.bucket_name != "" ? var.bucket_name : "ranch-agent-data-${var.environment}"
-  reins_bucket_name  = "ranch-reins-sources-${var.environment}"
-  iam_user           = "ranch-agent-${var.environment}"
+  bucket_name       = var.bucket_name != "" ? var.bucket_name : "ranch-agent-data-${var.environment}"
+  reins_bucket_name = "ranch-reins-sources-${var.environment}"
+  iam_user          = "ranch-agent-${var.environment}"
 }
 
 # ---------------------------------------------------------------------
@@ -163,8 +163,8 @@ data "aws_iam_policy_document" "agent_bucket_access" {
   count = var.create_iam_user ? 1 : 0
 
   statement {
-    sid     = "BucketLevel"
-    actions = ["s3:ListBucket", "s3:GetBucketLocation"]
+    sid       = "BucketLevel"
+    actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
     resources = [aws_s3_bucket.agent_data.arn]
   }
 

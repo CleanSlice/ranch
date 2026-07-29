@@ -47,8 +47,8 @@ variable "bridle_api_key" {
 }
 
 variable "browser_pool_token" {
-  type      = string
-  sensitive = true
+  type        = string
+  sensitive   = true
   description = "Shared secret for the browserless StatefulSet. Read by both ranch-api (URL minting) and the browser-pool pod (request auth). Generate with `openssl rand -hex 32`."
 }
 

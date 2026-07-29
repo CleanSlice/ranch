@@ -53,6 +53,14 @@ resource "helm_release" "argocd" {
   namespace        = "argocd"
   create_namespace = true
 
+  # Resilience: a failed/interrupted upgrade rolls back instead of getting
+  # stuck in `pending-upgrade` (which blocks the next apply with "another
+  # operation in progress"). Longer timeout absorbs transient API blips
+  # (e.g. an in-flight k3s node upgrade briefly bouncing the API server).
+  timeout         = 900
+  atomic          = true
+  cleanup_on_fail = true
+
   values = [
     yamlencode({
       server = {
@@ -85,6 +93,10 @@ resource "helm_release" "argo_workflows" {
   namespace        = "argo"
   create_namespace = true
 
+  timeout         = 900
+  atomic          = true
+  cleanup_on_fail = true
+
   values = [
     yamlencode({
       server = {
@@ -108,6 +120,10 @@ resource "helm_release" "cnpg" {
   version          = "0.28.0"
   namespace        = "cnpg-system"
   create_namespace = true
+
+  timeout         = 900
+  atomic          = true
+  cleanup_on_fail = true
 }
 
 # Let's Encrypt ClusterIssuer (cert-manager ships in the kube-hetzner module)

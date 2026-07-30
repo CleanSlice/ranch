@@ -83,10 +83,26 @@ export class AgentMapper {
     ) {
       return null;
     }
+    let maxNodeFreeCpuMilli = 0;
+    let maxNodeFreeMemBytes = 0;
+    for (const item of Array.isArray(o.nodes) ? o.nodes : []) {
+      if (!item || typeof item !== 'object') continue;
+      const node = item as Record<string, unknown>;
+      if (typeof node.freeCpuMilli === 'number') {
+        maxNodeFreeCpuMilli = Math.max(maxNodeFreeCpuMilli, node.freeCpuMilli);
+      }
+      if (typeof node.freeMemBytes === 'number') {
+        maxNodeFreeMemBytes = Math.max(maxNodeFreeMemBytes, node.freeMemBytes);
+      }
+    }
     return {
       freeAgentSlots: o.freeAgentSlots,
       usedAgentSlots: o.usedAgentSlots,
       totalAgentSlots: o.totalAgentSlots,
+      slotCpuMilli: num(o.slotCpuMilli),
+      slotMemBytes: num(o.slotMemBytes),
+      maxNodeFreeCpuMilli,
+      maxNodeFreeMemBytes,
     };
   }
 

@@ -94,6 +94,7 @@ watch(
         :title="`Chat with ${agent.name}`"
         :restart-prompt="false"
         :agent-state="bridleAgentState"
+        :initial-debug-enabled="agent.debugEnabled"
         class="h-full w-full gap-0"
       />
       <Transition
@@ -156,6 +157,7 @@ watch(
         :agent-id="agent.id"
         closable
         :restarting="restartUnderway"
+        :first-start="agent.launchContext === 'initial'"
         class="h-full min-w-100"
         @close="showSideLogs = false"
       />

@@ -14,6 +14,7 @@ import {
 } from '@kubernetes/client-node';
 import { Observable, Subject } from 'rxjs';
 import { IPodGateway } from '../domain/pod.gateway';
+import { formatKubeError } from '../domain/kubeError';
 import { IInfraConfigGateway } from '#/setting/domain';
 import {
   AGENT_SLOT_CPU_MILLI,
@@ -323,15 +324,7 @@ export class KubePodGateway
   }
 
   private extractKubeError(err: unknown): string {
-    if (!err || typeof err !== 'object') return String(err);
-    const e = err as {
-      body?: { message?: string };
-      statusCode?: number;
-      message?: string;
-    };
-    if (e.body?.message)
-      return `${e.statusCode ?? ''} ${e.body.message}`.trim();
-    return e.message ?? JSON.stringify(e).slice(0, 200);
+    return formatKubeError(err);
   }
 
   async getMetrics(agentId: string): Promise<IAgentMetrics | null> {

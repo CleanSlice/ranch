@@ -619,6 +619,119 @@ export const AddFromArchiveResultDtoSchema = {
   required: ["detected", "started"],
 } as const;
 
+export const AgentDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+    templateId: {
+      type: "string",
+    },
+    llmCredentialId: {
+      type: "object",
+      nullable: true,
+    },
+    status: {
+      type: "string",
+      enum: ["pending", "deploying", "running", "failed", "stopped"],
+    },
+    statusReason: {
+      type: "string",
+      nullable: true,
+      description: `Human-readable reason accompanying status='failed' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff"). Null for all other statuses and for failures recorded before this field existed.`,
+    },
+    workflowId: {
+      type: "object",
+      nullable: true,
+    },
+    firstDeployedAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When this agent was first successfully deployed. Null ⇒ the agent has never been deployed.",
+    },
+    lastDeployStartedAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the current/last deploy was started. Anchor of the server-side deploy grace window.",
+    },
+    launchContext: {
+      type: "string",
+      nullable: true,
+      enum: ["initial", "restart"],
+      description:
+        "Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.",
+    },
+    config: {
+      type: "object",
+    },
+    resources: {
+      type: "object",
+    },
+    debugEnabled: {
+      type: "boolean",
+      description:
+        "When true, the agent runtime emits prompt-debug snapshots to admin clients via the bridle hub.",
+    },
+    isPublic: {
+      type: "boolean",
+      description:
+        "When true, the agent is visible on the public landing page to unauthenticated visitors.",
+    },
+    allowedOrigins: {
+      description:
+        "Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.",
+      example: ["https://bridle.cleanslice.org", "http://localhost:5173"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    knowledgeIds: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    isAdmin: {
+      type: "boolean",
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "templateId",
+    "status",
+    "statusReason",
+    "workflowId",
+    "firstDeployedAt",
+    "lastDeployStartedAt",
+    "launchContext",
+    "config",
+    "resources",
+    "debugEnabled",
+    "isPublic",
+    "allowedOrigins",
+    "knowledgeIds",
+    "isAdmin",
+    "createdAt",
+    "updatedAt",
+  ],
+} as const;
+
 export const AgentPodStatusDtoSchema = {
   type: "object",
   properties: {
@@ -685,8 +798,12 @@ export const AgentStatusDtoSchema = {
   type: "object",
   properties: {
     agent: {
-      type: "object",
-      description: "Agent DB record (id, name, status, etc.)",
+      description: "Agent DB record (id, name, status, launchContext, etc.)",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentDto",
+        },
+      ],
     },
     pod: {
       nullable: true,

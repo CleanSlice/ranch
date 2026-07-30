@@ -11,7 +11,12 @@ export class AgentMapper {
       templateId: record.templateId,
       llmCredentialId: record.llmCredentialId,
       status: record.status as IAgentData['status'],
+      statusReason: record.statusReason,
       workflowId: record.workflowId,
+      firstDeployedAt: record.firstDeployedAt,
+      lastDeployStartedAt: record.lastDeployStartedAt,
+      launchContext:
+        record.lastLaunchContext as IAgentData['launchContext'],
       config: record.config as unknown as Record<string, unknown>,
       resources: record.resources as unknown as IAgentData['resources'],
       debugEnabled: record.debugEnabled,

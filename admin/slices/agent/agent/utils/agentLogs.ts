@@ -36,12 +36,28 @@ const ERROR_TOKEN_RE =
 const WARN_TOKEN_RE =
   /(?:^|[[("']|·\s*|\blevel[=:]\s*"?)\s*warn(?:ing)?(?=[\s:\])"',]|$)/i;
 
+// The runtime's pretty format opens every line with an explicit level glyph
+// (logger.ts GLYPH map: `·` debug/info, `✓` ok, `⚠` warn, `✗` error). When
+// present it is AUTHORITATIVE — a ⚠ warn line whose body happens to contain
+// `"error":"Not Found"` (a quoted JSON payload) must not be escalated to
+// error by the substring heuristics above. Optional ANSI wrappers tolerated
+// for FORCE_COLOR runs.
+// The optional leading `HH:MM:SS.mmm` covers undated lines where the runtime's
+// own time prefix wasn't stripped (no K8s timestamp on the line).
+const GLYPH_LEVEL_RE =
+  // eslint-disable-next-line no-control-regex
+  /^\s*(?:\d{2}:\d{2}:\d{2}\.\d{3}\s+)?(?:\x1b\[[0-9;]*m)?([·✓⚠✗])(?:\x1b\[[0-9;]*m)?\s/u;
+
 // The runtime prefixes its own `HH:MM:SS.mmm ` to every line. When the K8s
 // timestamp already gives us the time column, that prefix is pure duplication
 // — strip it (the column carries milliseconds, so no precision is lost).
 const RUNTIME_TIME_PREFIX_RE = /^\d{2}:\d{2}:\d{2}\.\d{3}\s+/;
 
 export function detectLogLevel(text: string): AgentLogLevel | null {
+  const glyph = text.match(GLYPH_LEVEL_RE)?.[1];
+  if (glyph === '✗') return 'error';
+  if (glyph === '⚠') return 'warn';
+  if (glyph === '·' || glyph === '✓') return null;
   if (ERROR_UPPER_RE.test(text) || ERROR_TOKEN_RE.test(text)) return 'error';
   if (WARN_UPPER_RE.test(text) || WARN_TOKEN_RE.test(text)) return 'warn';
   return null;

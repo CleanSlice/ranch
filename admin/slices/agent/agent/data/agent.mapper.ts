@@ -11,6 +11,7 @@ import type {
   IClusterCapacityData,
   ICreateAgentData,
   IUpdateAgentData,
+  LaunchContextTypes,
 } from '../domain/agent.types';
 
 const KNOWN_STATUSES = new Set<AgentStatusTypes>([
@@ -19,6 +20,11 @@ const KNOWN_STATUSES = new Set<AgentStatusTypes>([
   'running',
   'failed',
   'stopped',
+]);
+
+const KNOWN_LAUNCH_CONTEXTS = new Set<LaunchContextTypes>([
+  'initial',
+  'restart',
 ]);
 
 function num(value: unknown): number {
@@ -50,7 +56,11 @@ export class AgentMapper {
       llmCredentialId:
         typeof o.llmCredentialId === 'string' ? o.llmCredentialId : null,
       status: this.toStatus(o.status),
+      statusReason: typeof o.statusReason === 'string' ? o.statusReason : null,
       workflowId: typeof o.workflowId === 'string' ? o.workflowId : null,
+      firstDeployedAt:
+        typeof o.firstDeployedAt === 'string' ? o.firstDeployedAt : null,
+      launchContext: this.toLaunchContext(o.launchContext),
       config:
         o.config && typeof o.config === 'object'
           ? (o.config as Record<string, unknown>)
@@ -151,6 +161,13 @@ export class AgentMapper {
     return typeof raw === 'string' && KNOWN_STATUSES.has(raw as AgentStatusTypes)
       ? (raw as AgentStatusTypes)
       : 'pending';
+  }
+
+  private toLaunchContext(raw: unknown): LaunchContextTypes | null {
+    return typeof raw === 'string' &&
+      KNOWN_LAUNCH_CONTEXTS.has(raw as LaunchContextTypes)
+      ? (raw as LaunchContextTypes)
+      : null;
   }
 
   private toResources(raw: unknown): IAgentResources {

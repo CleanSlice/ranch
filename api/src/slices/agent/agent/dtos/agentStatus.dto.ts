@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { AgentDto } from './agent.dto';
 
 export class AgentPodStatusDto {
   @ApiProperty({ example: 'agent-abc-123' })
@@ -40,8 +41,11 @@ export class AgentPodStatusDto {
 }
 
 export class AgentStatusDto {
-  @ApiProperty({ description: 'Agent DB record (id, name, status, etc.)' })
-  agent: Record<string, unknown>;
+  @ApiProperty({
+    type: AgentDto,
+    description: 'Agent DB record (id, name, status, launchContext, etc.)',
+  })
+  agent: AgentDto;
 
   @ApiProperty({
     type: AgentPodStatusDto,

@@ -64,8 +64,10 @@ import type {
   DeleteKnowledgeSourceData,
   DeleteKnowledgeSourceResponse,
   AgentControllerFindAllData,
+  AgentControllerFindAllResponse,
   AgentControllerCreateData,
   AgentControllerFindPublicData,
+  AgentControllerFindPublicResponse,
   AgentControllerStatusData,
   AgentControllerStatusResponse,
   AgentControllerStatusStreamData,
@@ -73,6 +75,7 @@ import type {
   GetClusterCapacityResponse,
   AgentControllerRemoveData,
   AgentControllerFindByIdData,
+  AgentControllerFindByIdResponse,
   AgentControllerUpdateData,
   GetAgentMetricsData,
   GetAgentMetricsResponse,
@@ -1250,7 +1253,7 @@ export class AgentsService {
     options?: Options<AgentControllerFindAllData, ThrowOnError>,
   ) {
     return (options?.client ?? _heyApiClient).get<
-      unknown,
+      AgentControllerFindAllResponse,
       unknown,
       ThrowOnError
     >({
@@ -1286,7 +1289,7 @@ export class AgentsService {
     options?: Options<AgentControllerFindPublicData, ThrowOnError>,
   ) {
     return (options?.client ?? _heyApiClient).get<
-      unknown,
+      AgentControllerFindPublicResponse,
       unknown,
       ThrowOnError
     >({
@@ -1366,7 +1369,7 @@ export class AgentsService {
     options: Options<AgentControllerFindByIdData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).get<
-      unknown,
+      AgentControllerFindByIdResponse,
       unknown,
       ThrowOnError
     >({

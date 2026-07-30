@@ -13,11 +13,45 @@ export class AgentDto {
   @ApiPropertyOptional({ nullable: true })
   llmCredentialId: string | null;
 
-  @ApiProperty()
+  @ApiProperty({
+    enum: ['pending', 'deploying', 'running', 'failed', 'stopped'],
+  })
   status: string;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      "Human-readable reason accompanying status='failed' (e.g. \"startup did not produce a running agent within 5 minutes\", \"ImagePullBackOff\"). Null for all other statuses and for failures recorded before this field existed.",
+  })
+  statusReason: string | null;
 
   @ApiProperty({ nullable: true })
   workflowId: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'When this agent was first successfully deployed. Null ⇒ the agent has never been deployed.',
+  })
+  firstDeployedAt: Date | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'When the current/last deploy was started. Anchor of the server-side deploy grace window.',
+  })
+  lastDeployStartedAt: Date | null;
+
+  @ApiProperty({
+    nullable: true,
+    enum: ['initial', 'restart'],
+    description:
+      "Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.",
+  })
+  launchContext: 'initial' | 'restart' | null;
 
   @ApiProperty()
   config: Record<string, unknown>;
@@ -48,15 +82,8 @@ export class AgentDto {
   @ApiProperty({ type: [String] })
   knowledgeIds: string[];
 
-  @ApiProperty({
-    description:
-      'Messaging channels the runtime should connect to (telegram, ...). Each entry is { type, config }; mapped to runtime env vars at deploy time.',
-    isArray: true,
-    example: [
-      { type: 'telegram', config: { botToken: 'xxx', botName: 'mybot' } },
-    ],
-  })
-  channels: unknown[];
+  @ApiProperty()
+  isAdmin: boolean;
 
   @ApiProperty()
   createdAt: Date;

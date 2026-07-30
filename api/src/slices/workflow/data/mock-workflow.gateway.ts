@@ -40,14 +40,18 @@ export class MockWorkflowGateway extends IWorkflowGateway {
   }
 
   async getStatus(workflowId: string): Promise<IWorkflowStatus> {
-    return (
-      this.workflows.get(workflowId) ?? {
-        name: workflowId,
-        phase: 'Failed',
-        startedAt: null,
-        finishedAt: null,
-      }
-    );
+    const existing = this.workflows.get(workflowId);
+    if (!existing) {
+      // The store is in-memory — an API restart forgets every workflow.
+      // Unknown must NOT read as Failed: syncStatus would then write a
+      // spurious 'failed' for a perfectly healthy agent after every dev
+      // restart. Throwing mirrors Argo's behavior for a TTL-deleted
+      // workflow (fetch error → callers treat it as "no signal").
+      throw new Error(
+        `[mock] workflow ${workflowId} not found (in-memory store reset)`,
+      );
+    }
+    return existing;
   }
 
   async getLogs(workflowId: string): Promise<string> {

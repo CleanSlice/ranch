@@ -19,6 +19,7 @@ import {
 import { IAgentGateway } from './agent.gateway';
 import { IAgentData } from './agent.types';
 import { AgentDeployService } from './agentDeploy.service';
+import { DEPLOY_GRACE_MS, isWithinDeployGrace } from './deployGrace';
 import { DeployTracker } from './deployTracker';
 import { IPodGateway } from '#/agent/pod/domain';
 import {
@@ -159,6 +160,11 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
       this.deployTracker.clear(agentId);
       return;
     }
+    // Same 'stopped' exemption as the drift sweep: a reconnect from the
+    // not-yet-dead runtime of an explicitly stopped agent must not undo the
+    // operator's stop. A subsequent Start goes through deploy() → 'deploying'
+    // and re-enables this path.
+    if (agent.status === 'stopped') return;
     this.logger.log(
       `Reconciling agent ${agentId}: bridle runtime registered — marking running`,
     );
@@ -266,7 +272,15 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
         // pod-missing/Failed state during a restart shouldn't override a
         // healthy runtime that's actively talking to us.
         if (this.bridleGateway.isAgentConnected(agent.id)) {
-          if (agent.status !== 'running') {
+          // 'stopped' is exempt from the resurrect: the operator explicitly
+          // stopped the agent, and the old runtime's WS can linger for a few
+          // seconds after the pod delete (forever on local dev, where there
+          // is no pod to kill). Flipping it back to 'running' here would undo
+          // the stop — and worse, once the WS finally dropped, the next sweep
+          // would find a pod-less 'running' agent and mark it FAILED. We
+          // still `continue` so a stopped-but-lingering runtime isn't drift
+          // -failed either.
+          if (agent.status !== 'running' && agent.status !== 'stopped') {
             this.logger.log(
               `Drift: agent ${agent.id} (${agent.name}) is ${agent.status} in DB but bridle has it registered — marking running`,
             );
@@ -283,13 +297,24 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
         const pod = podByAgent.get(agent.id);
         if (!pod) {
           if (LIVE_DB_STATUSES.has(agent.status) && agent.status !== 'failed') {
+            // A just-submitted deploy legitimately has no pod for ~10-30s
+            // (Argo runs cleanup-old before run-agent). Inside the grace
+            // window the absence of a pod is not evidence of failure — a
+            // healthy stop→start must never flash 'failed'. Once the window
+            // expires with no pod, THAT is the definitive startup timeout.
+            if (isWithinDeployGrace(agent)) continue;
+            const reason =
+              agent.status === 'running'
+                ? 'agent pod disappeared'
+                : `startup did not produce a running agent within ${Math.round(DEPLOY_GRACE_MS / 60_000)} minutes`;
             this.logger.warn(
-              `Drift: agent ${agent.id} (${agent.name}) is ${agent.status} in DB but no pod exists — marking failed`,
+              `Drift: agent ${agent.id} (${agent.name}) is ${agent.status} in DB but no pod exists — marking failed (${reason})`,
             );
             await this.agentGateway.updateStatus(
               agent.id,
               'failed',
               agent.workflowId ?? undefined,
+              reason,
             );
             driftFailedIds.push(agent.id);
           }
@@ -378,6 +403,14 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       if (agent.status !== 'failed') {
+        // Human-readable cause for the UI: prefer the waiting reason
+        // (CrashLoopBackOff, ImagePullBackOff, …), then the last termination
+        // reason (OOMKilled, …), then the bare phase.
+        const reason =
+          podStatus.containerWaitingReason ??
+          podStatus.lastTerminationReason ??
+          podStatus.message ??
+          `pod ${podStatus.phase}`;
         this.logger.warn(
           `Reconciling agent ${agent.id}: pod ${podStatus.podName} is ${podStatus.phase}` +
             (podStatus.containerWaitingReason
@@ -389,6 +422,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
           agent.id,
           'failed',
           agent.workflowId ?? undefined,
+          reason,
         );
       }
       return;

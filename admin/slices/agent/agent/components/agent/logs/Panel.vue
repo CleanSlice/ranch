@@ -11,6 +11,10 @@ const props = defineProps<{
   // (ContainerCreating 400s and the like). An overlay says what's actually
   // happening instead of surfacing that noise.
   restarting?: boolean;
+  // First-ever start of this agent (server-derived launchContext='initial'):
+  // the overlay reads "setting up" instead of "restarting", so a fresh deploy
+  // doesn't look like an update of something that already existed.
+  firstStart?: boolean;
 }>();
 
 const emit = defineEmits<{ close: [] }>();
@@ -89,9 +93,15 @@ const LOG_LEVEL_TEXT: Record<AgentLogLevel, string> = {
           class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/70 backdrop-blur-[2px]"
         >
           <IconLoader2 class="size-6 animate-spin text-primary" />
-          <span class="text-sm font-medium">Agent is restarting…</span>
+          <span class="text-sm font-medium">
+            {{ firstStart ? 'Setting up agent…' : 'Agent is restarting…' }}
+          </span>
           <span class="text-xs text-muted-foreground">
-            Logs will resume when the new pod is up.
+            {{
+              firstStart
+                ? 'First start — logs will appear once the agent’s pod is up.'
+                : 'Logs will resume when the new pod is up.'
+            }}
           </span>
         </div>
       </Transition>

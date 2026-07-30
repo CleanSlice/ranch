@@ -152,11 +152,19 @@ export function useAgentLifecycle(
   // Each refresh replaces the agent ref, which re-runs the computeds (fresh
   // Date.now() → TTL honored) and gives the server a chance to reconcile.
   let statusTimer: ReturnType<typeof setInterval> | null = null;
+  // While a lifecycle mutation (restart/stop/start) is awaiting its HTTP
+  // response, a poll tick can resolve with the PRE-mutation status and
+  // overwrite the optimistic 'deploying'/'stopped' flip wholesale. Skip
+  // ticks for that window — the mutation handlers refresh() on completion.
+  const pollTick = () => {
+    if (restarting.value || toggling.value) return;
+    void refresh();
+  };
   watch(
     () => [agent.value?.status, agentStore.isRestartInFlight(agentId)] as const,
     ([status, inFlight]) => {
       if ((status && POLL_STATUSES.has(status)) || inFlight) {
-        if (!statusTimer) statusTimer = setInterval(refresh, 5000);
+        if (!statusTimer) statusTimer = setInterval(pollTick, 5000);
       } else if (statusTimer) {
         clearInterval(statusTimer);
         statusTimer = null;
@@ -189,12 +197,31 @@ export function useAgentLifecycle(
       // Pod info only describes the FRESH pod; while the old one is still
       // being torn down it would misleadingly read "Ready".
       const freshPod = pod && (agentWentDown.value || !inFlight) ? pod : null;
+      // Server-derived launch context: a first-ever start reads "setting up",
+      // anything else reads "starting" — so a fresh deploy no longer looks
+      // like an update of something that already existed.
+      const firstStart = agent.value.launchContext === 'initial';
       return {
         kind: 'starting',
-        title: 'Starting agent…',
+        title: firstStart ? 'Setting up agent…' : 'Starting agent…',
         detail: freshPod
           ? `Pod ${freshPod.podName}: ${podLabel.value ?? freshPod.phase}`
-          : 'Cancelling old workflow and submitting a fresh one.',
+          : firstStart
+            ? 'First start — preparing the agent’s pod.'
+            : 'Cancelling old workflow and submitting a fresh one.',
+      };
+    }
+
+    // An explicit stop wins over the live-chat bypass below: the old
+    // runtime's WS can linger after the pod delete (indefinitely on local
+    // dev, where there is no pod to kill) — reading that as "all good" hid
+    // the stopped state from the user entirely.
+    if (s === 'stopped') {
+      return {
+        kind: 'stopped',
+        title: 'Agent stopped',
+        detail:
+          'The pod was deleted to free cluster resources. Start it to chat again.',
       };
     }
 
@@ -205,20 +232,15 @@ export function useAgentLifecycle(
 
     if (chatLive) return null;
 
-    if (s === 'stopped') {
-      return {
-        kind: 'stopped',
-        title: 'Agent stopped',
-        detail:
-          'The pod was deleted to free cluster resources. Start it to chat again.',
-      };
-    }
-
     if (s === 'failed') {
       return {
         kind: 'failed',
         title: 'Agent failed to start',
+        // Server-side statusReason is the authoritative cause (startup
+        // timeout, ImagePullBackOff, workflow submit error, …); live pod
+        // details are the fallback for failures recorded before it existed.
         detail:
+          agent.value.statusReason ??
           pod?.message ??
           pod?.containerWaitingReason ??
           'Pod did not come up. Check logs and restart.',

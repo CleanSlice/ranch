@@ -249,6 +249,57 @@ export type AddFromArchiveResultDto = {
   started: boolean;
 };
 
+export type AgentDto = {
+  id: string;
+  name: string;
+  templateId: string;
+  llmCredentialId?: {
+    [key: string]: unknown;
+  } | null;
+  status: "pending" | "deploying" | "running" | "failed" | "stopped";
+  /**
+   * Human-readable reason accompanying status='failed' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff"). Null for all other statuses and for failures recorded before this field existed.
+   */
+  statusReason: string | null;
+  workflowId: {
+    [key: string]: unknown;
+  } | null;
+  /**
+   * When this agent was first successfully deployed. Null ⇒ the agent has never been deployed.
+   */
+  firstDeployedAt: string | null;
+  /**
+   * When the current/last deploy was started. Anchor of the server-side deploy grace window.
+   */
+  lastDeployStartedAt: string | null;
+  /**
+   * Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.
+   */
+  launchContext: "initial" | "restart";
+  config: {
+    [key: string]: unknown;
+  };
+  resources: {
+    [key: string]: unknown;
+  };
+  /**
+   * When true, the agent runtime emits prompt-debug snapshots to admin clients via the bridle hub.
+   */
+  debugEnabled: boolean;
+  /**
+   * When true, the agent is visible on the public landing page to unauthenticated visitors.
+   */
+  isPublic: boolean;
+  /**
+   * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
+   */
+  allowedOrigins: Array<string>;
+  knowledgeIds: Array<string>;
+  isAdmin: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AgentPodStatusDto = {
   agentId: string;
   podName: string;
@@ -264,11 +315,9 @@ export type AgentPodStatusDto = {
 
 export type AgentStatusDto = {
   /**
-   * Agent DB record (id, name, status, etc.)
+   * Agent DB record (id, name, status, launchContext, etc.)
    */
-  agent: {
-    [key: string]: unknown;
-  };
+  agent: AgentDto;
   /**
    * Live pod status; null if no pod is currently running for this agent.
    */
@@ -1970,8 +2019,11 @@ export type AgentControllerFindAllData = {
 };
 
 export type AgentControllerFindAllResponses = {
-  200: unknown;
+  200: Array<AgentDto>;
 };
+
+export type AgentControllerFindAllResponse =
+  AgentControllerFindAllResponses[keyof AgentControllerFindAllResponses];
 
 export type AgentControllerCreateData = {
   body: CreateAgentDto;
@@ -1992,8 +2044,11 @@ export type AgentControllerFindPublicData = {
 };
 
 export type AgentControllerFindPublicResponses = {
-  200: unknown;
+  200: Array<AgentDto>;
 };
+
+export type AgentControllerFindPublicResponse =
+  AgentControllerFindPublicResponses[keyof AgentControllerFindPublicResponses];
 
 export type AgentControllerStatusData = {
   body?: never;
@@ -2059,8 +2114,11 @@ export type AgentControllerFindByIdData = {
 };
 
 export type AgentControllerFindByIdResponses = {
-  200: unknown;
+  200: AgentDto;
 };
+
+export type AgentControllerFindByIdResponse =
+  AgentControllerFindByIdResponses[keyof AgentControllerFindByIdResponses];
 
 export type AgentControllerUpdateData = {
   body: UpdateAgentDto;

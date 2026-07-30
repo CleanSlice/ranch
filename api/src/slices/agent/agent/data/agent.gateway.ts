@@ -7,6 +7,7 @@ import {
   ICreateAgentData,
   IUpdateAgentData,
   AgentStatusTypes,
+  LaunchContextTypes,
 } from '../domain/agent.types';
 import { AgentMapper } from './agent.mapper';
 
@@ -91,11 +92,16 @@ export class AgentGateway extends IAgentGateway {
     id: string,
     status: AgentStatusTypes,
     workflowId?: string | null,
+    statusReason?: string,
   ): Promise<IAgentData> {
     const record = await this.prisma.agent.update({
       where: { id },
       data: {
         status,
+        // statusReason lives and dies with 'failed': every transition to any
+        // other status clears it, so a reason can never outlive the failure
+        // it describes.
+        statusReason: status === 'failed' ? (statusReason ?? null) : null,
         // `undefined` leaves the column untouched; `null` clears it (used when
         // stopping an agent so the now-cancelled workflow id isn't kept around).
         ...(workflowId !== undefined && { workflowId }),
@@ -104,7 +110,35 @@ export class AgentGateway extends IAgentGateway {
     return this.mapper.toEntity(record);
   }
 
-  async setWorkflowId(id: string, workflowId: string): Promise<IAgentData> {
+  async markDeployStarted(
+    id: string,
+    launchContext: LaunchContextTypes,
+  ): Promise<IAgentData> {
+    const record = await this.prisma.agent.update({
+      where: { id },
+      data: {
+        status: 'deploying',
+        statusReason: null,
+        lastDeployStartedAt: new Date(),
+        lastLaunchContext: launchContext,
+      },
+    });
+    return this.mapper.toEntity(record);
+  }
+
+  async setFirstDeployedAt(id: string): Promise<void> {
+    // Conditional updateMany keeps set-once semantics without a read-modify-
+    // write race: only the very first deploy finds firstDeployedAt IS NULL.
+    await this.prisma.agent.updateMany({
+      where: { id, firstDeployedAt: null },
+      data: { firstDeployedAt: new Date() },
+    });
+  }
+
+  async setWorkflowId(
+    id: string,
+    workflowId: string | null,
+  ): Promise<IAgentData> {
     const record = await this.prisma.agent.update({
       where: { id },
       data: { workflowId },

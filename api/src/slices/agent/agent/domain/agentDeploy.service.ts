@@ -53,15 +53,30 @@ export class AgentDeployService {
 
     await this.syncSkillsFromTemplate(agentId, agent.templateId);
 
+    await this.detachAndCancelWorkflow(agentId, agent.workflowId);
+
+    await this.deploy(agentId);
+  }
+
+  // Detach the workflow id from the agent row BEFORE cancelling it. A
+  // concurrent GET /agents/:id (syncStatus) polls the workflow referenced by
+  // the DB row; without this ordering it can catch the just-cancelled
+  // workflow in phase=Failed and write a spurious 'failed' between the
+  // cancel and the follow-up deploy()'s 'deploying'. Best-effort — callers
+  // always deploy() afterwards, which must run regardless.
+  async detachAndCancelWorkflow(
+    agentId: string,
+    workflowId: string | null,
+  ): Promise<void> {
+    if (!workflowId) return;
     try {
-      await this.workflowService.cancelAgentWorkflow(agent.workflowId);
+      await this.agentGateway.setWorkflowId(agentId, null);
+      await this.workflowService.cancelAgentWorkflow(workflowId);
     } catch (err) {
       this.logger.warn(
         `Cancel workflow failed for agent ${agentId}: ${(err as Error).message}`,
       );
     }
-
-    await this.deploy(agentId);
   }
 
   // Stop a running agent: cancel its workflow and delete the pod so the
@@ -108,17 +123,27 @@ export class AgentDeployService {
       this.logger.error(
         `Template ${agent.templateId} not found for agent ${agentId}`,
       );
-      await this.agentGateway.updateStatus(agentId, 'failed');
+      await this.agentGateway.updateStatus(
+        agentId,
+        'failed',
+        undefined,
+        `Template ${agent.templateId} not found`,
+      );
       return;
     }
     // Idempotent — restartAgent already marked it, but cold deploys (initial
     // create) call deploy() directly without going through restartAgent.
     this.deployTracker.mark(agentId);
+    // 'initial' iff this agent has never been deployed — persisted so the UI
+    // can tell a first start from a restart even after a page reload.
+    const launchContext = agent.firstDeployedAt === null ? 'initial' : 'restart';
     // Mark deploying BEFORE submitting the workflow. Submit + getStatus take
     // seconds — long enough for the pod to come up and AgentStatusService to
     // flip status to 'running'. If we wrote status here after submit we'd
     // overwrite that 'running' with 'deploying' (last-writer-wins race).
-    await this.agentGateway.updateStatus(agentId, 'deploying');
+    // markDeployStarted also stamps lastDeployStartedAt — the anchor of the
+    // drift-detection grace window — and clears any stale statusReason.
+    await this.agentGateway.markDeployStarted(agentId, launchContext);
     try {
       // Every agent gets a JWT scoped to its own id. Admin agents get Owner
       // (full Ranch control), non-admins get the Agent role (self-only
@@ -135,11 +160,20 @@ export class AgentDeployService {
       // Only attach the new workflowId — never touch status post-submit.
       // Reconciler is the single source of truth for 'running'.
       await this.agentGateway.setWorkflowId(agentId, workflowId);
+      await this.agentGateway.setFirstDeployedAt(agentId);
     } catch (err) {
       this.logger.error(
         `Workflow submit failed for agent ${agentId}: ${(err as Error).message}`,
       );
-      await this.agentGateway.updateStatus(agentId, 'failed');
+      // Generic on purpose: statusReason is served on public agent endpoints,
+      // and raw submit errors can carry internal detail (Argo endpoints,
+      // auth specifics). The full message is in the server log above.
+      await this.agentGateway.updateStatus(
+        agentId,
+        'failed',
+        undefined,
+        'workflow submit failed',
+      );
     }
   }
 

@@ -56,9 +56,12 @@ export class McpServerSeeder implements OnApplicationBootstrap {
       this.logger.log(`Seeded built-in Knowledge MCP server at ${url}`);
     }
 
+    // The Streamable HTTP endpoint lives at /mcp — the bare origin 404s
+    // ("Cannot POST /"), which used to leave every agent with 0 CleanSlice
+    // tools and a scary connect-failed line in its startup log.
     const cleansliceUrl =
       this.config.get<string>('CLEANSLICE_MCP_URL') ??
-      'https://mcp.cleanslice.org/';
+      'https://mcp.cleanslice.org/mcp';
 
     const existingCleanslice = await this.gateway.findById(CLEANSLICE_MCP_ID);
     if (!existingCleanslice) {
@@ -76,6 +79,16 @@ export class McpServerSeeder implements OnApplicationBootstrap {
       });
       this.logger.log(
         `Seeded built-in CleanSlice MCP server at ${cleansliceUrl}`,
+      );
+    } else if (existingCleanslice.url !== cleansliceUrl) {
+      // The api owns built-in rows (url is not editable via the public API),
+      // so converge an existing row to the configured URL on every bootstrap.
+      // Idempotent: no-op once the row matches. Heals deployments seeded with
+      // the old path-less default; agents pick the fix up on their next
+      // deploy (the MCP list is baked into pod env at deploy time).
+      await this.gateway.update(CLEANSLICE_MCP_ID, { url: cleansliceUrl });
+      this.logger.log(
+        `Healed built-in CleanSlice MCP server url: ${existingCleanslice.url} → ${cleansliceUrl}`,
       );
     }
   }

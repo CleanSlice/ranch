@@ -13,7 +13,20 @@ model Agent {
   llmCredentialId String?
   llmCredential   LlmCredential? @relation(fields: [llmCredentialId], references: [id], onDelete: SetNull)
   status          String         @default("pending")
+  // Human-readable reason accompanying status='failed'; null for all other
+  // statuses (cleared on every transition out of 'failed').
+  statusReason    String?
   workflowId      String?
+  // Set once, on the first successful workflow submit. Null ⇒ never deployed.
+  firstDeployedAt DateTime?
+  // Anchor of the deploy grace window: written together with every
+  // status='deploying' transition. Drift detection won't fail a pod-less
+  // agent while `now - lastDeployStartedAt` is inside the grace period.
+  lastDeployStartedAt DateTime?
+  // 'initial' (first-ever deploy) | 'restart' (any subsequent deploy).
+  // Server-derived launch context so the UI can tell a first start from a
+  // restart even after a page reload.
+  lastLaunchContext String?
   config          Json           @default("{}")
   resources       Json           @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
   debugEnabled    Boolean        @default(false)

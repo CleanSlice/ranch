@@ -28,12 +28,17 @@ const props = withDefaults(defineProps<{
   // page a failed agent reads as "reconnecting" for 30s. Hosts that know the
   // real state (the admin agent page) pass it here; null = derive from WS.
   agentState?: 'restarting' | 'failed' | 'stopped' | null
+  // Host-supplied debugEnabled from an agent record the host already fetched.
+  // When set (non-null), the widget skips its own GET /agents/:id — the admin
+  // agent page otherwise loads the same agent twice on every open.
+  initialDebugEnabled?: boolean | null
 }>(), {
   title: 'Agent Chat',
   placeholder: 'Type a message...',
   showStatus: true,
   restartPrompt: true,
   agentState: null,
+  initialDebugEnabled: null,
 })
 
 const store = useBridleStore()
@@ -229,10 +234,17 @@ onMounted(async () => {
   // Clear before load so the previous agent's messages don't briefly leak
   // through (the store is a shared singleton across providers).
   store.clearMessages()
-  await Promise.all([
-    store.loadTranscript(props.apiUrl, props.agentId, props.token),
-    store.loadAgentMeta(props.apiUrl, props.agentId, props.token),
-  ])
+  // The host may already hold the agent record (admin page useAsyncData) —
+  // seeding from the prop avoids a duplicate GET /agents/:id on every open.
+  if (props.initialDebugEnabled !== null) {
+    store.debugEnabled = props.initialDebugEnabled
+    await store.loadTranscript(props.apiUrl, props.agentId, props.token)
+  } else {
+    await Promise.all([
+      store.loadTranscript(props.apiUrl, props.agentId, props.token),
+      store.loadAgentMeta(props.apiUrl, props.agentId, props.token),
+    ])
+  }
   // Re-attach debug snapshots saved in localStorage from previous sessions —
   // makes the inspect icon survive a page refresh.
   store.loadPersistedDebug(props.agentId)

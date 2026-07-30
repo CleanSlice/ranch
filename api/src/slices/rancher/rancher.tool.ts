@@ -101,11 +101,18 @@ export class RancherTool {
     this.requireOwner(httpRequest);
     const agent = await this.agents.findById(id);
     if (!agent) return ok({ error: `Agent ${id} not found` });
-    await this.agents.updateStatus(id, 'deploying');
+    // Fire-and-forget the real restart flow (template resync → cancel old
+    // workflow → deploy). A bare status write here would leave the agent
+    // stuck in 'deploying' with no new pod until drift detection failed it.
+    void this.agentDeploy.restartAgent(id).catch((err) => {
+      this.logger.warn(
+        `restart_agent tool: restart failed for ${id}: ${(err as Error).message}`,
+      );
+    });
     return ok({
       ok: true,
       agentId: id,
-      message: 'Restart queued — workflow controller will reconcile.',
+      message: 'Restart started — the agent pod will be replaced shortly.',
     });
   }
 

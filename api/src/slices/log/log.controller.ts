@@ -9,6 +9,11 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CoreV1Api, KubeConfig } from '@kubernetes/client-node';
 import { IAgentGateway } from '#/agent/agent/domain';
+import {
+  formatKubeError,
+  kubeErrorCode,
+  kubeErrorMessage,
+} from '#/agent/pod/domain/kubeError';
 import { IInfraConfigGateway } from '#/setting/domain';
 
 /**
@@ -121,25 +126,21 @@ export class LogController {
   }
 
   private isNotFound(err: unknown): boolean {
-    if (!err || typeof err !== 'object') return false;
-    const e = err as { statusCode?: number; code?: number };
-    return e.statusCode === 404 || e.code === 404;
+    return kubeErrorCode(err) === 404;
   }
 
   // K8s returns 400 BadRequest with a body like:
   //   container "agent" in pod "…" is waiting to start: ContainerCreating
   // The reason after "is waiting to start: " is what we want for the UI.
   // Same shape covers PodInitializing, CreateContainerConfigError, etc.
+  // kubeErrorMessage handles both body shapes the k8s SDK produces (parsed
+  // object vs raw JSON string); the ApiException `message` dump is the last
+  // resort so this branch can never silently fall through to the raw error.
   private extractWaitingReason(err: unknown): string | null {
-    if (!err || typeof err !== 'object') return null;
-    const e = err as {
-      statusCode?: number;
-      code?: number;
-      body?: { message?: string };
-    };
-    const status = e.statusCode ?? e.code;
-    if (status !== 400) return null;
-    const msg = e.body?.message ?? '';
+    if (kubeErrorCode(err) !== 400) return null;
+    const msg =
+      kubeErrorMessage(err) ??
+      ((err as { message?: string })?.message || '');
     const match = msg.match(/is waiting to start:\s*([A-Za-z0-9_]+)/);
     return match?.[1] ?? null;
   }
@@ -151,14 +152,6 @@ export class LogController {
   }
 
   private extractKubeError(err: unknown): string {
-    if (!err || typeof err !== 'object') return String(err);
-    const e = err as {
-      body?: { message?: string };
-      statusCode?: number;
-      message?: string;
-    };
-    if (e.body?.message)
-      return `${e.statusCode ?? ''} ${e.body.message}`.trim();
-    return e.message ?? JSON.stringify(e).slice(0, 200);
+    return formatKubeError(err);
   }
 }

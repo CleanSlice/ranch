@@ -34,6 +34,12 @@ const podLabel = computed(() => podPhaseLabel(podStatus.value));
                 · restarts {{ podStatus.restartCount }}</span>
             </span>
           </dd>
+          <p
+            v-if="agent.status === 'failed' && agent.statusReason"
+            class="mt-1 text-xs text-destructive"
+          >
+            {{ agent.statusReason }}
+          </p>
         </div>
         <div>
           <dt class="text-xs text-muted-foreground">Visibility</dt>

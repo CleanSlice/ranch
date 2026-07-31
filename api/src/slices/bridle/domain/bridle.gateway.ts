@@ -44,10 +44,19 @@ export abstract class IBridleGateway {
   ): void;
   /** Unregister a browser client (scoped to clientId + agentId) */
   abstract unregisterClient(clientId: string, agentId: string): void;
-  /** Register an agent connection for a specific agent */
-  abstract registerAgent(agentId: string, send: (data: unknown) => void): void;
-  /** Unregister an agent connection for a specific agent */
-  abstract unregisterAgent(agentId: string): void;
+  /** Register an agent connection for a specific agent. `socketId` marks the
+   * owning socket so a stale connection's late disconnect can't wipe a newer
+   * registration for the same agentId. */
+  abstract registerAgent(
+    agentId: string,
+    socketId: string,
+    send: (data: unknown) => void,
+  ): void;
+  /** Unregister an agent connection — no-op unless `socketId` still owns the
+   * current registration. */
+  abstract unregisterAgent(agentId: string, socketId: string): void;
+  /** Whether this exact socket owns the current registration for agentId. */
+  abstract isAgentSocket(agentId: string, socketId: string): boolean;
   /** Handle an event from the agent — route to the target browser client for that agent */
   abstract handleAgentEvent(agentId: string, data: IBridleOutgoingEvent): void;
   /**

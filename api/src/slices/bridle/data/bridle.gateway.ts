@@ -33,8 +33,16 @@ const DEFAULT_SYNC_TIMEOUT_MS = 15_000;
 export class BridleGateway extends IBridleGateway {
   private readonly logger = new Logger(BridleGateway.name);
 
-  /** Agent connections: agentId → send function */
-  private agents = new Map<string, (data: unknown) => void>();
+  /** Agent connections: agentId → owning socket + send function. Tracking the
+   * owning socketId prevents the duplicate-connection race: during a restart
+   * the OLD pod's socket can disconnect AFTER the new pod already registered
+   * (blackholed TCP is only detected by the server's ping timeout), and an
+   * agentId-keyed delete would wipe the NEW registration — leaving a healthy
+   * runtime invisible ("Agent reconnecting…") until its next restart. */
+  private agents = new Map<
+    string,
+    { socketId: string; send: (data: unknown) => void }
+  >();
 
   /**
    * Browser clients keyed by `${clientId}\u0000${agentId}`. Keying by the pair
@@ -54,16 +62,31 @@ export class BridleGateway extends IBridleGateway {
   /** Connect/disconnect events for AgentStatusService to reconcile DB status. */
   private readonly agentEvents = new Subject<IBridleAgentEvent>();
 
-  registerAgent(agentId: string, send: (data: unknown) => void): void {
-    this.agents.set(agentId, send);
+  registerAgent(
+    agentId: string,
+    socketId: string,
+    send: (data: unknown) => void,
+  ): void {
+    this.agents.set(agentId, { socketId, send });
     this.logger.log(
-      `Agent registered: agentId=${agentId} (total agents: ${this.agents.size})`,
+      `Agent registered: agentId=${agentId} socket=${socketId} (total agents: ${this.agents.size})`,
     );
     this.broadcastAgentStatus(agentId, true);
     this.agentEvents.next({ type: 'connected', agentId });
   }
 
-  unregisterAgent(agentId: string): void {
+  unregisterAgent(agentId: string, socketId: string): void {
+    const current = this.agents.get(agentId);
+    if (!current) return;
+    if (current.socketId !== socketId) {
+      // A stale socket (usually the old pod's, detected late via ping
+      // timeout) is disconnecting after a newer registration took over.
+      // The live registration must survive.
+      this.logger.log(
+        `Ignoring stale disconnect for agentId=${agentId}: socket=${socketId} is not the current owner (${current.socketId})`,
+      );
+      return;
+    }
     this.agents.delete(agentId);
     this.logger.warn(
       `Agent unregistered: agentId=${agentId} (total agents: ${this.agents.size})`,
@@ -77,6 +100,10 @@ export class BridleGateway extends IBridleGateway {
     }
     this.broadcastAgentStatus(agentId, false);
     this.agentEvents.next({ type: 'disconnected', agentId });
+  }
+
+  isAgentSocket(agentId: string, socketId: string): boolean {
+    return this.agents.get(agentId)?.socketId === socketId;
   }
 
   agentEvents$(): Observable<IBridleAgentEvent> {
@@ -131,7 +158,7 @@ export class BridleGateway extends IBridleGateway {
     text: string,
     parts: BridlePart[],
   ): void {
-    const agentSend = this.agents.get(agentId);
+    const agentSend = this.agents.get(agentId)?.send;
     if (!agentSend) {
       this.logger.warn(
         `Cannot send to agent — not connected (agentId=${agentId})`,
@@ -180,7 +207,7 @@ export class BridleGateway extends IBridleGateway {
   }
 
   setDebug(agentId: string, enabled: boolean): void {
-    const agentSend = this.agents.get(agentId);
+    const agentSend = this.agents.get(agentId)?.send;
     if (!agentSend) {
       this.logger.debug(
         `setDebug skipped: agent not connected for agentId=${agentId}`,
@@ -234,7 +261,7 @@ export class BridleGateway extends IBridleGateway {
     agentId: string,
     timeoutMs: number = DEFAULT_SYNC_TIMEOUT_MS,
   ): Promise<ISyncAgentResult> {
-    const agentSend = this.agents.get(agentId);
+    const agentSend = this.agents.get(agentId)?.send;
     if (!agentSend) {
       return Promise.resolve({ agentOnline: false, pushed: 0 });
     }

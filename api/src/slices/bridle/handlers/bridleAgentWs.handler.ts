@@ -82,8 +82,9 @@ export class BridleAgentWsHandler
         ((data as Record<string, unknown>)?.type as string) ?? 'data';
       client.emit(event, data);
     };
+    client.data.send = send;
 
-    this.hub.registerAgent(agentId, send);
+    this.hub.registerAgent(agentId, client.id, send);
     this.logger.log(`Agent connected: agentId=${agentId}`);
 
     // Rehydrate debug flag from DB so a freshly-started agent picks up
@@ -107,9 +108,27 @@ export class BridleAgentWsHandler
   handleDisconnect(client: Socket) {
     const agentId = client.data?.agentId as string | undefined;
     if (agentId) {
-      this.hub.unregisterAgent(agentId);
+      // Socket-scoped: a stale connection's late disconnect (old pod detected
+      // via ping timeout after the new pod already registered) is a no-op in
+      // the hub — see BridleGateway.unregisterAgent.
+      this.hub.unregisterAgent(agentId, client.id);
       this.logger.warn(`Agent disconnected: agentId=${agentId}`);
     }
+  }
+
+  // Self-heal: if this socket's registration was ever wiped while the socket
+  // itself stayed alive (any residue of registry races), the next inbound
+  // event restores it — the handshake already authenticated this socket for
+  // this agentId, so re-registering is safe and idempotent.
+  private ensureRegistered(client: Socket): void {
+    const agentId = client.data?.agentId as string | undefined;
+    const send = client.data?.send as ((data: unknown) => void) | undefined;
+    if (!agentId || !send) return;
+    if (this.hub.isAgentSocket(agentId, client.id)) return;
+    this.logger.warn(
+      `Re-registering live agent socket that lost its registration: agentId=${agentId}`,
+    );
+    this.hub.registerAgent(agentId, client.id, send);
   }
 
   @SubscribeMessage('message')
@@ -117,6 +136,7 @@ export class BridleAgentWsHandler
     @ConnectedSocket() client: Socket,
     @MessageBody() data: IBridleOutgoingEvent,
   ) {
+    this.ensureRegistered(client);
     const agentId = client.data?.agentId as string;
     if (data?.clientId && agentId) {
       this.hub.handleAgentEvent(agentId, { ...data, type: 'message' });
@@ -128,6 +148,7 @@ export class BridleAgentWsHandler
     @ConnectedSocket() client: Socket,
     @MessageBody() data: IBridleOutgoingEvent,
   ) {
+    this.ensureRegistered(client);
     const agentId = client.data?.agentId as string;
     if (data?.clientId && agentId) {
       this.hub.handleAgentEvent(agentId, { ...data, type: 'stream' });
@@ -139,6 +160,7 @@ export class BridleAgentWsHandler
     @ConnectedSocket() client: Socket,
     @MessageBody() data: IBridleOutgoingEvent,
   ) {
+    this.ensureRegistered(client);
     const agentId = client.data?.agentId as string;
     if (data?.clientId && agentId) {
       this.hub.handleAgentEvent(agentId, { ...data, type: 'stream_end' });
@@ -150,6 +172,7 @@ export class BridleAgentWsHandler
     @ConnectedSocket() client: Socket,
     @MessageBody() data: IBridleOutgoingEvent,
   ) {
+    this.ensureRegistered(client);
     const agentId = client.data?.agentId as string;
     if (data?.clientId && agentId) {
       this.hub.handleAgentEvent(agentId, { ...data, type: 'typing' });
@@ -161,6 +184,7 @@ export class BridleAgentWsHandler
     @ConnectedSocket() client: Socket,
     @MessageBody() data: IBridleSyncResponse,
   ) {
+    this.ensureRegistered(client);
     const agentId = client.data?.agentId as string;
     if (agentId && data?.requestId) {
       this.hub.handleSyncResponse(agentId, data);
@@ -172,6 +196,7 @@ export class BridleAgentWsHandler
     @ConnectedSocket() client: Socket,
     @MessageBody() data: IChatActivity,
   ) {
+    this.ensureRegistered(client);
     // agentId comes from the authenticated socket — never trusted from payload.
     const agentId = client.data?.agentId as string;
     if (!agentId || !data?.sessionKey) return;
@@ -190,6 +215,7 @@ export class BridleAgentWsHandler
     @ConnectedSocket() client: Socket,
     @MessageBody() data: IBridleDebugEvent,
   ) {
+    this.ensureRegistered(client);
     const agentId = client.data?.agentId as string;
     if (agentId) {
       this.hub.handleDebugEvent(agentId, { ...data, type: 'debug' });
@@ -198,6 +224,7 @@ export class BridleAgentWsHandler
 
   @SubscribeMessage('ping')
   handlePing(@ConnectedSocket() client: Socket) {
+    this.ensureRegistered(client);
     client.emit('pong', {});
   }
 }

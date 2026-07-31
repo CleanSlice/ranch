@@ -386,8 +386,15 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     const agent = await this.agentGateway.findById(podStatus.agentId);
     if (!agent) return;
 
+    // Succeeded = the runtime exited cleanly. Legal for the runtime (it
+    // self-restarts via clean exit after channel/config edits), but terminal
+    // for pods created with restartPolicy Never: nothing revives the
+    // container, so a 'running' DB row would lie forever ("Agent offline"
+    // in chat while the badge says running). New pods use restartPolicy
+    // Always and restart in place instead of ever reaching Succeeded.
     const isFailed =
       podStatus.phase === 'Failed' ||
+      podStatus.phase === 'Succeeded' ||
       (podStatus.containerWaitingReason !== null &&
         FAIL_WAITING_REASONS.has(podStatus.containerWaitingReason));
 
@@ -407,10 +414,12 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
         // (CrashLoopBackOff, ImagePullBackOff, …), then the last termination
         // reason (OOMKilled, …), then the bare phase.
         const reason =
-          podStatus.containerWaitingReason ??
-          podStatus.lastTerminationReason ??
-          podStatus.message ??
-          `pod ${podStatus.phase}`;
+          podStatus.phase === 'Succeeded'
+            ? 'agent runtime exited — restart the agent to bring it back'
+            : (podStatus.containerWaitingReason ??
+              podStatus.lastTerminationReason ??
+              podStatus.message ??
+              `pod ${podStatus.phase}`);
         this.logger.warn(
           `Reconciling agent ${agent.id}: pod ${podStatus.podName} is ${podStatus.phase}` +
             (podStatus.containerWaitingReason

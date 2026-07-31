@@ -208,7 +208,14 @@ function buildAgentPod(
       },
     },
     spec: {
-      restartPolicy: 'Never',
+      // Always: the runtime restarts ITSELF via clean exit (e.g. after
+      // editing its channels through the channel_* tools) and expects to come
+      // back. With Never, a clean exit left the pod in phase=Succeeded
+      // forever — a dead agent whose DB row still said 'running'. In-place
+      // container restarts also pick up S3-backed config (channels.json)
+      // without an Argo round-trip; genuine boot crashes surface as
+      // CrashLoopBackOff, which the reconciler already maps to 'failed'.
+      restartPolicy: 'Always',
       nodeSelector: { 'node-role': 'agents' },
       tolerations: [{ key: 'workload', value: 'agent', effect: 'NoSchedule' }],
       imagePullSecrets: [{ name: 'ghcr' }],

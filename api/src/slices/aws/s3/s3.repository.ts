@@ -75,21 +75,20 @@ export class S3Repository {
 
     const [endpoint, region, accessKeyId, secretAccessKey] = await Promise.all([
       get('s3_endpoint'),
-      get('s3_region'),
-      get('s3_access_key'),
-      get('s3_secret_key'),
+      get('aws_region'),
+      get('aws_access_key_id'),
+      get('aws_secret_access_key'),
     ]);
 
     // Credentials optional — when both are present we use them explicitly
     // (static keys / MinIO); when blank we omit `credentials` so the SDK
     // default provider chain (IRSA / Pod Identity on EKS) supplies them.
     this.client = new S3Client({
-      endpoint: endpoint || undefined,
       region: region || 'us-east-1',
       ...(accessKeyId && secretAccessKey
         ? { credentials: { accessKeyId, secretAccessKey } }
         : {}),
-      forcePathStyle: Boolean(endpoint),
+      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
     });
     return this.client;
   }

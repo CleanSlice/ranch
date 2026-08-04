@@ -31,6 +31,15 @@ export class SourceGateway extends ISourceGateway {
     super();
   }
 
+  /**
+   * Keys live under a shared `knowledges/` prefix, mirroring the
+   * `agents/{agent-id}` layout, so the knowledge bucket can be shared with
+   * agent data without either scattering folders across the bucket root.
+   */
+  private static keyFor(knowledgeId: string, filename: string): string {
+    return `knowledges/${knowledgeId}/${crypto.randomUUID()}-${filename}`;
+  }
+
   private async requireBucket(): Promise<string> {
     const cfg = await this.knowledgeConfig.resolve();
     if (!cfg.bucket) {
@@ -104,7 +113,7 @@ export class SourceGateway extends ISourceGateway {
     input: IUploadSourceFileInput,
   ): Promise<IUploadedSourceFile> {
     const bucket = await this.requireBucket();
-    const key = `${input.knowledgeId}/${crypto.randomUUID()}-${input.filename}`;
+    const key = SourceGateway.keyFor(input.knowledgeId, input.filename);
     const stored = await this.s3.upload({
       bucket,
       key,
@@ -118,7 +127,7 @@ export class SourceGateway extends ISourceGateway {
     input: IUploadSourceStreamInput,
   ): Promise<IUploadedSourceFile> {
     const bucket = await this.requireBucket();
-    const key = `${input.knowledgeId}/${crypto.randomUUID()}-${input.filename}`;
+    const key = SourceGateway.keyFor(input.knowledgeId, input.filename);
     // S3Repository uploads buffers via PutObject; the custom/MinIO endpoint
     // doesn't accept unbounded streaming bodies. Archive entries are
     // processed one at a time, so materializing a single entry keeps peak

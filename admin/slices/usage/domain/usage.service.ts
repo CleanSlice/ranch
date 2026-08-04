@@ -1,5 +1,5 @@
 import type { IUsageGateway } from './usage.gateway';
-import type { IAgentUsage } from './usage.types';
+import type { IAgentUsage, IOverviewUsage } from './usage.types';
 
 /** Domain service for per-agent usage. The store layers a per-agent cache. */
 export class UsageService {
@@ -7,5 +7,9 @@ export class UsageService {
 
   findForAgent(agentId: string): Promise<IAgentUsage | null> {
     return this.gateway.findForAgent(agentId);
+  }
+
+  findOverview(): Promise<IOverviewUsage | null> {
+    return this.gateway.findOverview();
   }
 }

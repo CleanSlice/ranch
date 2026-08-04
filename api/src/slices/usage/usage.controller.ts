@@ -14,7 +14,9 @@ import { costUsd } from './domain/model-pricing';
 import {
   IAgentUsageResponse,
   ICredentialUsageResponse,
+  IOverviewUsageResponse,
   IUsageDailyEntry,
+  IUsageData,
 } from './domain/usage.types';
 import { ReportUsageDto } from './dtos';
 import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
@@ -209,11 +211,51 @@ export class UsageController {
     @Param('id') credentialId: string,
   ): Promise<ICredentialUsageResponse> {
     const rows = await this.gateway.findRecentForCredential(credentialId, 30);
+    const { last30days, totals, topModel, agentTotals } =
+      this.rollUpAcrossAgents(rows);
+    const byAgent = await this.resolveAgentNames(agentTotals);
+    return { last30days, totals, topModel, byAgent };
+  }
 
-    // Daily roll-up keyed by `${date}|${model}` — preserves the per-model
-    // grain that the per-agent endpoint already uses.
+  @Get('usage/overview')
+  @ApiOperation({
+    summary: 'Get 30-day usage across all agents with cost',
+  })
+  async findOverview(): Promise<IOverviewUsageResponse> {
+    // DB rows only — today's not-yet-reported runtime usage is excluded
+    // until agents POST their daily report. The per-agent endpoint keeps
+    // the live usage.json merge; doing that here would cost one S3 read
+    // per agent per page view.
+    const rows = await this.gateway.findRecentAll(30);
+    const { last30days, totals, topModel, agentTotals } =
+      this.rollUpAcrossAgents(rows);
+    const byAgent = await this.resolveAgentNames(agentTotals);
+    return { last30days, totals, topModel, byAgent };
+  }
+
+  /**
+   * Rolls multi-agent usage rows up to the `${date}|${model}` grain the
+   * per-agent endpoint uses, plus per-agent totals. Shared by the
+   * credential and overview endpoints.
+   */
+  private rollUpAcrossAgents(rows: IUsageData[]): {
+    last30days: IUsageDailyEntry[];
+    totals: {
+      inputTokens: number;
+      outputTokens: number;
+      callCount: number;
+      costUsd: number;
+    };
+    topModel: string | null;
+    agentTotals: Array<{
+      agentId: string;
+      inputTokens: number;
+      outputTokens: number;
+      callCount: number;
+      costUsd: number;
+    }>;
+  } {
     const dailyMap = new Map<string, IUsageDailyEntry>();
-    // Per-agent roll-up keyed by agentId.
     const agentMap = new Map<
       string,
       {
@@ -294,26 +336,40 @@ export class UsageController {
       }
     }
 
-    // Resolve agent names. Failed lookups (deleted agents) fall back to the
-    // raw ID so the row is still visible — usage outlives the agent record.
-    const byAgent = await Promise.all(
-      Array.from(agentMap.values())
-        .sort((a, b) => b.costUsd - a.costUsd)
-        .map(async (entry) => {
-          const agent = await this.agentGateway
-            .findById(entry.agentId)
-            .catch(() => null);
-          return {
-            agentId: entry.agentId,
-            agentName: agent?.name ?? entry.agentId,
-            inputTokens: entry.inputTokens,
-            outputTokens: entry.outputTokens,
-            callCount: entry.callCount,
-            costUsd: entry.costUsd,
-          };
-        }),
+    const agentTotals = Array.from(agentMap.values()).sort(
+      (a, b) => b.costUsd - a.costUsd,
     );
 
-    return { last30days, totals, topModel, byAgent };
+    return { last30days, totals, topModel, agentTotals };
+  }
+
+  /**
+   * Resolve agent names. Failed lookups (deleted agents) fall back to the
+   * raw ID so the row is still visible — usage outlives the agent record.
+   */
+  private async resolveAgentNames(
+    agentTotals: Array<{
+      agentId: string;
+      inputTokens: number;
+      outputTokens: number;
+      callCount: number;
+      costUsd: number;
+    }>,
+  ): Promise<ICredentialUsageResponse['byAgent']> {
+    return Promise.all(
+      agentTotals.map(async (entry) => {
+        const agent = await this.agentGateway
+          .findById(entry.agentId)
+          .catch(() => null);
+        return {
+          agentId: entry.agentId,
+          agentName: agent?.name ?? entry.agentId,
+          inputTokens: entry.inputTokens,
+          outputTokens: entry.outputTokens,
+          callCount: entry.callCount,
+          costUsd: entry.costUsd,
+        };
+      }),
+    );
   }
 }

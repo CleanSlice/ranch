@@ -2,7 +2,7 @@ import { UsageService as UsageApi } from '#api/data';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IUsageGateway } from '../domain/usage.gateway';
-import type { IAgentUsage } from '../domain/usage.types';
+import type { IAgentUsage, IOverviewUsage } from '../domain/usage.types';
 import { UsageMapper } from './usage.mapper';
 
 export class UsageGateway extends BaseGateway implements IUsageGateway {
@@ -14,6 +14,13 @@ export class UsageGateway extends BaseGateway implements IUsageGateway {
         path: { agentId },
       });
       return this.mapper.toAgentUsage(unwrapEnvelope(res.data));
+    });
+  }
+
+  findOverview(): Promise<IOverviewUsage | null> {
+    return this.execute(async () => {
+      const res = await UsageApi.usageControllerFindOverview();
+      return this.mapper.toOverviewUsage(unwrapEnvelope(res.data));
     });
   }
 }

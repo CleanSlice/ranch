@@ -51,6 +51,33 @@ export interface IAgentUsageResponse {
 }
 
 /**
+ * Workspace-wide usage across ALL agents over the window. Same shape as
+ * ICredentialUsageResponse (daily grain + per-agent breakdown). Computed
+ * from DB rows only — today's not-yet-reported runtime usage is excluded
+ * until agents POST their daily report; the per-agent endpoint stays live.
+ */
+export interface IOverviewUsageResponse {
+  /** Daily totals across all agents, rolled up per date|model. */
+  last30days: IUsageDailyEntry[];
+  totals: {
+    inputTokens: number;
+    outputTokens: number;
+    callCount: number;
+    costUsd: number;
+  };
+  topModel: string | null;
+  /** One row per agent that has reported usage, sorted by cost desc. */
+  byAgent: Array<{
+    agentId: string;
+    agentName: string;
+    inputTokens: number;
+    outputTokens: number;
+    callCount: number;
+    costUsd: number;
+  }>;
+}
+
+/**
  * Aggregate usage for a single LlmCredential across all agents using it.
  * Shape mirrors IAgentUsageResponse so the admin UI can render the same
  * cards; adds per-agent breakdown since that's the missing dimension.

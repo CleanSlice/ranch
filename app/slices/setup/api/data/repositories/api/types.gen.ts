@@ -3391,6 +3391,17 @@ export type UsageControllerFindForCredentialResponses = {
   200: unknown;
 };
 
+export type UsageControllerFindOverviewData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/usage/overview";
+};
+
+export type UsageControllerFindOverviewResponses = {
+  200: unknown;
+};
+
 export type RancherControllerStatusData = {
   body?: never;
   path?: never;

@@ -9,6 +9,7 @@ import { generateCommand } from "./commands/generate";
 import { statusCommand } from "./commands/status";
 import { whereCommand } from "./commands/where";
 import { upgradeCommand } from "./commands/upgrade";
+import { ensureGlobalBinOnPath } from "./utils/pathSetup";
 import {
   currentVersion,
   isCacheStale,
@@ -88,6 +89,8 @@ export function runMain(): void {
     console.log(currentVersion());
     process.exit(0);
   }
+
+  ensureGlobalBinOnPath();
 
   if (!updatesDisabled()) scheduleBackgroundCheck();
 

@@ -6,6 +6,7 @@ import type {
   IQueryResult,
   ISource,
   ISourceArchiveResult,
+  ISourceFilesResult,
   ISourceSitemapResult,
   IUpdateKnowledgeInput,
   KnowledgeQueryMode,
@@ -41,6 +42,10 @@ export abstract class IKnowledgeGateway {
     url: string,
   ): Promise<ISource | null>;
   abstract addFileSource(id: string, file: File): Promise<ISource | null>;
+  abstract addFileSources(
+    id: string,
+    files: File[],
+  ): Promise<ISourceFilesResult>;
   abstract addSourcesFromArchive(
     id: string,
     file: File,

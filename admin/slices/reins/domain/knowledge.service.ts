@@ -7,6 +7,7 @@ import type {
   IQueryResult,
   ISource,
   ISourceArchiveResult,
+  ISourceFilesResult,
   ISourceSitemapResult,
   IUpdateKnowledgeInput,
   KnowledgeQueryMode,
@@ -77,6 +78,10 @@ export class KnowledgeService {
 
   addFileSource(id: string, file: File): Promise<ISource | null> {
     return this.gateway.addFileSource(id, file);
+  }
+
+  addFileSources(id: string, files: File[]): Promise<ISourceFilesResult> {
+    return this.gateway.addFileSources(id, files);
   }
 
   addSourcesFromArchive(id: string, file: File): Promise<ISourceArchiveResult> {

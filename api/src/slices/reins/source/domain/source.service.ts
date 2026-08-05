@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import { ISourceGateway } from './source.gateway';
-import { IArchiveImportResult, ISourceData } from './source.types';
+import {
+  IArchiveImportResult,
+  IFilesImportResult,
+  ISourceData,
+} from './source.types';
 import {
   fetchSitemapUrls,
   SitemapError,
@@ -62,6 +66,54 @@ export class SourceService {
       mimeType: file.mimeType,
       sizeBytes: file.size,
     });
+  }
+
+  /**
+   * Upload a hand-picked batch of files in one request. Unlike the archive
+   * import this runs inline rather than in the background: a manual selection
+   * is small enough that the caller wants the outcome (and a refreshed list)
+   * straight away. Names already on the knowledge are skipped, matching the
+   * archive importer, so re-submitting a selection can't duplicate sources.
+   * One bad file fails only itself - the rest of the batch still lands.
+   */
+  async addFiles(
+    knowledgeId: string,
+    files: IUploadedFile[],
+  ): Promise<IFilesImportResult> {
+    const existing = await this.gateway.findByKnowledgeId(knowledgeId);
+    const takenNames = new Set(
+      existing.filter((s) => s.type === 'file').map((s) => s.name),
+    );
+
+    const result: IFilesImportResult = {
+      added: 0,
+      skipped: 0,
+      failed: 0,
+      errors: [],
+    };
+
+    for (const file of files) {
+      if (takenNames.has(file.name)) {
+        result.skipped += 1;
+        continue;
+      }
+      takenNames.add(file.name);
+      try {
+        await this.addFile(knowledgeId, file);
+        result.added += 1;
+      } catch (err) {
+        result.failed += 1;
+        result.errors.push(`${file.name}: ${errorMessage(err)}`);
+        this.logger.warn(
+          `addFiles entry failed ${file.name}: ${errorMessage(err)}`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `file batch for ${knowledgeId}: added=${result.added} skipped=${result.skipped} failed=${result.failed}`,
+    );
+    return result;
   }
 
   addUrl(

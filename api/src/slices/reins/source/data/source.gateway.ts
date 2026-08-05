@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -21,6 +22,9 @@ import { SourceMapper } from './source.mapper';
 
 @Injectable()
 export class SourceGateway extends ISourceGateway {
+  private readonly logger = new Logger(SourceGateway.name);
+  private lastLoggedBucket = '';
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly mapper: SourceMapper,
@@ -43,9 +47,20 @@ export class SourceGateway extends ISourceGateway {
   private async requireBucket(): Promise<string> {
     const cfg = await this.knowledgeConfig.resolve();
     if (!cfg.bucket) {
+      this.logger.error(
+        'knowledge/s3_bucket is not set — cannot upload source files',
+      );
       throw new ServiceUnavailableException(
         'Knowledge S3 bucket is not configured',
       );
+    }
+    // Only on change, so a busy import doesn't repeat one constant per file.
+    // Worth logging at all because this bucket comes from knowledge/s3_bucket
+    // while its region/endpoint come from the integrations/* group - the two
+    // are edited on different settings pages and drift apart easily.
+    if (cfg.bucket !== this.lastLoggedBucket) {
+      this.logger.log(`knowledge sources bucket resolved: ${cfg.bucket}`);
+      this.lastLoggedBucket = cfg.bucket;
     }
     return cfg.bucket;
   }

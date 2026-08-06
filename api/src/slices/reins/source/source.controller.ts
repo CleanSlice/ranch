@@ -23,6 +23,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { SourceService } from './domain/source.service';
+import { UploadLimitInterceptor } from './uploadLimit.interceptor';
 import {
   AddFilesResultDto,
   AddFromArchiveResultDto,
@@ -38,10 +39,12 @@ import {
 // 'multer'` does not resolve at runtime.
 const ONE_GIB = 1024 * 1024 * 1024;
 
-// Multi-file uploads are buffered in memory the same way, so cap the batch.
-// Larger sets belong in a zip through the from-archive route, which streams
-// entries one at a time instead of holding them all at once.
-const MAX_FILES_PER_BATCH = 50;
+// Multi-file uploads are buffered in memory the same way, so the batch is
+// capped. Sized for whole documentation sets (a few hundred markdown/office
+// files), not for bulk media: the ceiling is file *count*, so N very large
+// files still peak at their combined size. Beyond this, the from-archive
+// route is the right tool - it streams zip entries one at a time.
+const MAX_FILES_PER_BATCH = 250;
 
 interface UploadedFileLike {
   originalname: string;
@@ -115,7 +118,10 @@ export class SourceController {
   })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, type: AddFilesResultDto })
-  @UseInterceptors(FilesInterceptor('files', MAX_FILES_PER_BATCH))
+  @UseInterceptors(
+    new UploadLimitInterceptor('files', MAX_FILES_PER_BATCH),
+    FilesInterceptor('files', MAX_FILES_PER_BATCH),
+  )
   addFiles(
     @Param('knowledgeId') knowledgeId: string,
     @UploadedFiles() files?: UploadedFileLike[],

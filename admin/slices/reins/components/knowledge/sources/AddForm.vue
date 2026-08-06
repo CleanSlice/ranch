@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { SourceType } from '#reins/stores/knowledge';
 
+// Mirrors MAX_FILES_PER_BATCH in the API's source.controller.
+const MAX_FILES_PER_BATCH = 250;
+
 const props = defineProps<{ knowledgeId: string }>();
 const emit = defineEmits<{ added: [] }>();
 
@@ -50,6 +53,14 @@ async function submit() {
       );
     } else if (type.value === 'file') {
       if (!files.value.length) throw new Error('Pick at least one file');
+      // Checked here as well as server-side: past the cap the upload is
+      // rejected only after the whole body has been sent, so catching it
+      // before the request saves uploading a batch that cannot be accepted.
+      if (files.value.length > MAX_FILES_PER_BATCH) {
+        throw new Error(
+          `Too many files: ${files.value.length}. Add at most ${MAX_FILES_PER_BATCH} at a time, or use "Upload archive" below for a larger set.`,
+        );
+      }
       const result = await store.addFileSources(props.knowledgeId, files.value);
       // A batch can partly succeed. Refresh the list either way, but keep the
       // form open with the reason when something was rejected, so the user
@@ -145,8 +156,9 @@ function cancel() {
           @change="onFileChange"
         />
         <p class="text-xs text-muted-foreground">
-          Pick one or several files (up to 50). Each becomes its own source;
-          names already present on this knowledge are skipped.
+          Pick one or several files (up to {{ MAX_FILES_PER_BATCH }}). Each
+          becomes its own source; names already present on this knowledge are
+          skipped. For a larger set use "Upload archive" below.
         </p>
         <p v-if="files.length" class="text-xs text-muted-foreground">
           Selected: {{ files.map((f) => f.name).join(', ') }}

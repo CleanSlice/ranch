@@ -18,8 +18,14 @@ const props = withDefaults(
     title?: string;
     /** When true the panel can collapse into a compact button (side stacks). */
     collapsible?: boolean;
+    /**
+     * Single-agent surfaces (agent chat side stack, Overview tab): no tab
+     * strip, the view is fixed to Agent and the workspace overview is never
+     * fetched.
+     */
+    agentOnly?: boolean;
   }>(),
-  { title: 'Usage · 30d', collapsible: false },
+  { title: 'Usage · 30d', collapsible: false, agentOnly: false },
 );
 
 type UsageView = 'total' | 'calls' | 'agent';
@@ -28,7 +34,8 @@ const usageStore = useUsageStore();
 
 // Both sources are fetched lazily on mount: the default Total view needs the
 // overview, and the Agent view (plus its today snapshot) is one cheap call —
-// prefetching it makes view switches instant.
+// prefetching it makes view switches instant. In agentOnly mode the overview
+// backs no visible view, so its request is never issued.
 const {
   data: overview,
   pending: overviewPending,
@@ -36,6 +43,7 @@ const {
   refresh: refreshOverview,
 } = useAsyncData('usage-panel-overview', () => usageStore.fetchOverview(), {
   lazy: true,
+  immediate: !props.agentOnly,
 });
 
 const {
@@ -49,8 +57,22 @@ const {
   { lazy: true },
 );
 
-const view = ref<UsageView>('total');
+const view = ref<UsageView>(props.agentOnly ? 'agent' : 'total');
 const collapsed = ref(false);
+
+// Total view's By agent list: top spenders first, capped so a workspace with
+// many agents can't stretch the card (Rancher page); the rest sits behind an
+// explicit toggle.
+const BY_AGENT_LIMIT = 5;
+const byAgentExpanded = ref(false);
+const byAgentSorted = computed(() =>
+  [...(overview.value?.byAgent ?? [])].sort((a, b) => b.costUsd - a.costUsd),
+);
+const byAgentShown = computed(() =>
+  byAgentExpanded.value
+    ? byAgentSorted.value
+    : byAgentSorted.value.slice(0, BY_AGENT_LIMIT),
+);
 
 const PAGE_SIZE = 7;
 const page = ref(1);
@@ -136,7 +158,7 @@ defineExpose({ refresh });
   </Button>
 
   <Card v-else v-bind="$attrs" class="flex min-h-0 flex-col gap-0 py-4">
-    <CardHeader class="flex-row items-center justify-between space-y-0 px-4 pb-3">
+    <CardHeader class="flex flex-row items-center justify-between space-y-0 px-4 pb-3">
       <CardTitle class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {{ title }}
         <span class="ml-1 normal-case tracking-normal text-muted-foreground/70">
@@ -159,6 +181,7 @@ defineExpose({ refresh });
 
     <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
       <Tabs
+        v-if="!agentOnly"
         :model-value="view"
         @update:model-value="view = $event as UsageView"
       >
@@ -218,10 +241,10 @@ defineExpose({ refresh });
             </div>
           </dl>
 
-          <div v-if="overview.byAgent.length" class="flex flex-col gap-1">
+          <div v-if="byAgentSorted.length" class="flex flex-col gap-1">
             <span class="text-xs text-muted-foreground">By agent</span>
             <div
-              v-for="a in overview.byAgent"
+              v-for="a in byAgentShown"
               :key="a.agentId"
               class="flex items-center justify-between gap-2 text-sm"
             >
@@ -230,6 +253,15 @@ defineExpose({ refresh });
                 {{ cost.format(a.costUsd) }}
               </span>
             </div>
+            <Button
+              v-if="byAgentSorted.length > BY_AGENT_LIMIT"
+              variant="ghost"
+              size="sm"
+              class="h-7 self-start px-2 text-xs"
+              @click="byAgentExpanded = !byAgentExpanded"
+            >
+              {{ byAgentExpanded ? 'Show less' : `Show all (${byAgentSorted.length})` }}
+            </Button>
           </div>
         </template>
 

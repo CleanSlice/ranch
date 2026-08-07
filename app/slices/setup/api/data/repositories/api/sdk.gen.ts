@@ -57,6 +57,8 @@ import type {
   QueryKnowledgeResponse,
   GetKnowledgeSourcesData,
   AddKnowledgeSourceData,
+  AddKnowledgeFileSourcesData,
+  AddKnowledgeFileSourcesResponse,
   AddKnowledgeSourcesFromSitemapData,
   AddKnowledgeSourcesFromSitemapResponse,
   AddKnowledgeSourcesFromArchiveData,
@@ -1188,6 +1190,23 @@ export class KnowledgeSourcesService {
         "Content-Type": null,
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Add several file sources at once
+   * Accepts a multi-file selection (field "files") and creates one file-type source per upload. Runs inline and returns per-batch counts. Files whose name already exists on this knowledge are skipped; a single failed file does not abort the rest. Indexing into LightRAG happens through the normal reindex flow.
+   */
+  public static addKnowledgeFileSources<ThrowOnError extends boolean = false>(
+    options: Options<AddKnowledgeFileSourcesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      AddKnowledgeFileSourcesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/files",
+      ...options,
     });
   }
 

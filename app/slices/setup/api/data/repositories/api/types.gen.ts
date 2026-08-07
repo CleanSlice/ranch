@@ -231,6 +231,25 @@ export type CreateSourceDto = {
   content?: string;
 };
 
+export type AddFilesResultDto = {
+  /**
+   * Files uploaded and registered.
+   */
+  added: number;
+  /**
+   * Files skipped because a file source with the same name already exists on this knowledge.
+   */
+  skipped: number;
+  /**
+   * Files that failed to upload.
+   */
+  failed: number;
+  /**
+   * One line per failed file.
+   */
+  errors: Array<string>;
+};
+
 export type AddFromSitemapDto = {
   sitemapUrl: string;
   urlPrefix?: string;
@@ -1973,6 +1992,22 @@ export type AddKnowledgeSourceData = {
 export type AddKnowledgeSourceResponses = {
   201: unknown;
 };
+
+export type AddKnowledgeFileSourcesData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/files";
+};
+
+export type AddKnowledgeFileSourcesResponses = {
+  201: AddFilesResultDto;
+};
+
+export type AddKnowledgeFileSourcesResponse =
+  AddKnowledgeFileSourcesResponses[keyof AddKnowledgeFileSourcesResponses];
 
 export type AddKnowledgeSourcesFromSitemapData = {
   body: AddFromSitemapDto;

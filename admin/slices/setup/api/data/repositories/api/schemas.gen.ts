@@ -572,6 +572,37 @@ export const CreateSourceDtoSchema = {
   required: ["type", "name"],
 } as const;
 
+export const AddFilesResultDtoSchema = {
+  type: "object",
+  properties: {
+    added: {
+      type: "number",
+      example: 8,
+      description: "Files uploaded and registered.",
+    },
+    skipped: {
+      type: "number",
+      example: 2,
+      description:
+        "Files skipped because a file source with the same name already exists on this knowledge.",
+    },
+    failed: {
+      type: "number",
+      example: 1,
+      description: "Files that failed to upload.",
+    },
+    errors: {
+      example: ["broken.pdf: S3 upload failed"],
+      description: "One line per failed file.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["added", "skipped", "failed", "errors"],
+} as const;
+
 export const AddFromSitemapDtoSchema = {
   type: "object",
   properties: {

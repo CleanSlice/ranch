@@ -54,21 +54,31 @@ jobs:
 
       - name: Locate CNPG primary and database name
         run: |
-          PRIMARY=$(kubectl -n platform get pod \
-            -l cnpg.io/cluster=ranch-db,cnpg.io/instanceRole=primary \
-            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          # The CNPG Cluster CR records its primary in status.currentPrimary —
+          # authoritative and stable across operator versions, unlike the pod
+          # labels (older CNPG used postgresql=<name>/role=primary instead of
+          # the cnpg.io/* labels, which is how the first version of this step
+          # came up empty). Errors are deliberately NOT suppressed: if
+          # discovery fails, the log must show why.
+          PRIMARY=$(kubectl -n platform get clusters.postgresql.cnpg.io ranch-db \
+            -o jsonpath='{.status.currentPrimary}' || true)
           if [ -z "$PRIMARY" ]; then
-            PRIMARY=$(kubectl -n platform get pod \
-              -l cnpg.io/cluster=ranch-db,role=primary \
-              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            echo "cluster CR gave no currentPrimary, falling back to pod names"
+            PRIMARY=$(kubectl -n platform get pods -o name \
+              | grep -E '^pod/ranch-db-[0-9]+$' | head -1 | cut -d/ -f2 || true)
           fi
           if [ -z "$PRIMARY" ]; then
-            echo "::error::no primary pod found for cluster ranch-db"; exit 1
+            echo "--- clusters.postgresql.cnpg.io in platform ---"
+            kubectl -n platform get clusters.postgresql.cnpg.io 2>&1 || true
+            echo "--- pods in platform (with labels) ---"
+            kubectl -n platform get pods --show-labels 2>&1 | head -40 || true
+            echo "::error::no primary pod found for cluster ranch-db — see diagnostics above"
+            exit 1
           fi
           # DB name comes from the API's own DATABASE_URL so we always hit the
           # database the API actually uses. The URL itself is never printed.
           DBNAME=$(kubectl -n platform get secret ranch-api-env \
-            -o jsonpath='{.data.DATABASE_URL}' 2>/dev/null \
+            -o jsonpath='{.data.DATABASE_URL}' \
             | base64 -d | sed -E 's#^.*/([^/?]+)(\?.*)?$#\1#' || true)
           DBNAME=${DBNAME:-ranch}
           echo "primary pod: $PRIMARY"

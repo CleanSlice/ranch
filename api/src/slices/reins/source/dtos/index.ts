@@ -2,3 +2,4 @@ export * from './source.dto';
 export * from './createSource.dto';
 export * from './addFromSitemap.dto';
 export * from './addFromArchive.dto';
+export * from './addFiles.dto';

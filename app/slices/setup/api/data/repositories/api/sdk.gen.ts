@@ -194,6 +194,7 @@ import type {
   UsageControllerReportData,
   UsageControllerReportResponse,
   UsageControllerFindForCredentialData,
+  UsageControllerFindOverviewData,
   RancherControllerStatusData,
   RancherControllerEnsureTemplateData,
   UpgradeControllerStatusData,
@@ -2743,6 +2744,22 @@ export class UsageService {
       ThrowOnError
     >({
       url: "/llms/{id}/usage",
+      ...options,
+    });
+  }
+
+  /**
+   * Get 30-day usage across all agents with cost
+   */
+  public static usageControllerFindOverview<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<UsageControllerFindOverviewData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/usage/overview",
       ...options,
     });
   }

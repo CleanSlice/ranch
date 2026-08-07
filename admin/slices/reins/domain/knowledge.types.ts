@@ -79,3 +79,10 @@ export interface ISourceSitemapResult {
   added: number;
   discovered: number;
 }
+
+export interface ISourceFilesResult {
+  added: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}

@@ -11,6 +11,7 @@ import type {
   IQueryResult,
   ISource,
   ISourceArchiveResult,
+  ISourceFilesResult,
   ISourceSitemapResult,
   IUpdateKnowledgeInput,
   KnowledgeQueryMode,
@@ -140,6 +141,18 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
         form,
       );
       return this.mapper.toSource(unwrapEnvelope(res.data));
+    });
+  }
+
+  addFileSources(id: string, files: File[]): Promise<ISourceFilesResult> {
+    return this.execute(async () => {
+      const form = new FormData();
+      for (const file of files) form.append('files', file);
+      const res = await apiClient.instance.post(
+        `/knowledges/${id}/sources/files`,
+        form,
+      );
+      return this.mapper.toFilesResult(unwrapEnvelope(res.data));
     });
   }
 

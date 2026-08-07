@@ -48,3 +48,11 @@ export interface IArchiveImportResult {
   detected: number;
   started: boolean;
 }
+
+export interface IFilesImportResult {
+  added: number;
+  skipped: number;
+  failed: number;
+  /** One `"<filename>: <reason>"` line per failed upload. */
+  errors: string[];
+}

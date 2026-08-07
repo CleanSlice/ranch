@@ -1,0 +1,179 @@
+# Manually-triggered ops helper: sets a user's role directly in the prod DB.
+# Exists because the API refuses to touch Owner rows (PUT /users/:id/role →
+# "The Owner role cannot be changed"), so demoting a duplicate Owner can only
+# happen at the SQL level. Guards: the target must exist, and the last
+# remaining Owner can never be demoted. Inputs travel through env vars and
+# psql variables (\getenv + set_config) — never string-interpolated into SQL.
+#
+# The DB is reached from an ephemeral psql client pod that reads the API's
+# own connection string via secretKeyRef — it never leaves the cluster and is
+# never printed (only its credential-stripped host/db part is echoed). Two
+# ops runs established the live topology: there is NO CNPG cluster (run
+# 31169336292 — the k8s CNPG manifests were never applied, the known ArgoCD
+# sync gap), and the cluster runs the k8s/deploy bootstrap manifests, whose
+# DB secret is ranch-external-db/uri — ranch-api-env from k8s/platform does
+# not exist (run 31171799091). Both secret candidates are declared optional;
+# the exec step uses whichever is present, so this keeps working if the
+# cluster ever migrates to the k8s/platform manifests.
+#
+# NOTE: the role claim lives in the JWT (RolesGuard reads the token, not the
+# DB), so a token issued before this run keeps its old role until it expires
+# (JWT_EXPIRES_IN, default 7d) or the user logs in again.
+
+name: Ops - set user role (prod DB)
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: "User id (e.g. user-462498b2-7a8f-4cbd-b91b-512ebbb2befb)"
+        required: true
+        type: string
+      role:
+        description: "New role"
+        required: true
+        type: choice
+        options:
+          - User
+          - Admin
+          - Owner
+        default: User
+
+jobs:
+  set-role:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_ID: ${{ inputs.user_id }}
+      NEW_ROLE: ${{ inputs.role }}
+    steps:
+      - name: Validate inputs
+        run: |
+          if ! echo "$TARGET_ID" | grep -qE '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'; then
+            echo "::error::invalid user id"; exit 1
+          fi
+          case "$NEW_ROLE" in
+            User|Admin|Owner) ;;
+            *) echo "::error::invalid role"; exit 1 ;;
+          esac
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      # TARGET_ID / NEW_ROLE are safe to embed in the manifest: both are
+      # validated above (strict charset / fixed choice list). DATABASE_URL is
+      # injected by Kubernetes from the secret — it never reaches the runner.
+      - name: Launch psql client pod
+        run: |
+          POD="ops-psql-${{ github.run_id }}"
+          echo "POD=$POD" >> "$GITHUB_ENV"
+          kubectl -n platform apply -f - <<MANIFEST
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: $POD
+            labels:
+              app: ops-psql
+          spec:
+            restartPolicy: Never
+            activeDeadlineSeconds: 600
+            containers:
+              - name: psql
+                image: postgres:16-alpine
+                command: ["sleep", "300"]
+                env:
+                  # The live cluster runs the k8s/deploy bootstrap manifests:
+                  # the API's DB secret is ranch-external-db/uri (run
+                  # 31171799091 proved ranch-api-env does not exist). Both
+                  # candidates are optional so the pod starts either way —
+                  # the exec step picks whichever is present and fails
+                  # clearly if neither is.
+                  - name: DB_URL_EXTERNAL
+                    valueFrom:
+                      secretKeyRef:
+                        name: ranch-external-db
+                        key: uri
+                        optional: true
+                  - name: DB_URL_APIENV
+                    valueFrom:
+                      secretKeyRef:
+                        name: ranch-api-env
+                        key: DATABASE_URL
+                        optional: true
+                  - name: TARGET_UID
+                    value: "$TARGET_ID"
+                  - name: TARGET_ROLE
+                    value: "$NEW_ROLE"
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    memory: 128Mi
+          MANIFEST
+          if ! kubectl -n platform wait --for=condition=Ready "pod/$POD" --timeout=3m; then
+            kubectl -n platform describe pod "$POD" | tail -25
+            echo "::error::psql client pod failed to start — see describe output above"
+            exit 1
+          fi
+
+      - name: Set role (guarded)
+        run: |
+          kubectl -n platform exec -i "$POD" -- sh -c '
+            DATABASE_URL="${DB_URL_EXTERNAL:-$DB_URL_APIENV}"
+            if [ -z "$DATABASE_URL" ]; then
+              echo "no DB connection string: neither ranch-external-db/uri nor ranch-api-env/DATABASE_URL exists" >&2
+              exit 1
+            fi
+            case "$DATABASE_URL" in
+              *@*) echo "db target: ${DATABASE_URL#*@}" ;;
+            esac
+            export DATABASE_URL
+            exec psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f -
+          ' <<'SQL'
+          \getenv uid TARGET_UID
+          \getenv newrole TARGET_ROLE
+          SELECT set_config('ops.uid', :'uid', false);
+          SELECT set_config('ops.newrole', :'newrole', false);
+
+          \echo '--- owners before ---'
+          SELECT id, email, role FROM "User" WHERE role = 'Owner' ORDER BY "createdAt";
+
+          \echo '--- target before ---'
+          SELECT id, email, role, "updatedAt" FROM "User" WHERE id = current_setting('ops.uid');
+
+          DO $$
+          DECLARE
+            cur text;
+            owners int;
+          BEGIN
+            SELECT role INTO cur FROM "User" WHERE id = current_setting('ops.uid');
+            IF cur IS NULL THEN
+              RAISE EXCEPTION 'user % not found', current_setting('ops.uid');
+            END IF;
+            IF cur = 'Owner' AND current_setting('ops.newrole') <> 'Owner' THEN
+              SELECT count(*) INTO owners FROM "User" WHERE role = 'Owner';
+              IF owners <= 1 THEN
+                RAISE EXCEPTION 'refusing to demote the only Owner (%)', current_setting('ops.uid');
+              END IF;
+            END IF;
+            UPDATE "User"
+            SET role = current_setting('ops.newrole'), "updatedAt" = now()
+            WHERE id = current_setting('ops.uid');
+          END $$;
+
+          \echo '--- target after ---'
+          SELECT id, email, role, "updatedAt" FROM "User" WHERE id = current_setting('ops.uid');
+
+          \echo '--- owners after ---'
+          SELECT id, email, role FROM "User" WHERE role = 'Owner' ORDER BY "createdAt";
+          SQL
+
+      - name: Cleanup client pod
+        if: always()
+        run: |
+          if [ -n "$POD" ]; then
+            kubectl -n platform delete pod "$POD" --ignore-not-found --wait=false || true
+          fi

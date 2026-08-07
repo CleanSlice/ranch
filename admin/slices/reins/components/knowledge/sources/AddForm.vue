@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { SourceType } from '#reins/stores/knowledge';
 
+// Mirrors MAX_FILES_PER_BATCH in the API's source.controller.
+const MAX_FILES_PER_BATCH = 250;
+
 const props = defineProps<{ knowledgeId: string }>();
 const emit = defineEmits<{ added: [] }>();
 
@@ -13,14 +16,16 @@ const type = ref<SourceType>('text');
 const name = ref('');
 const content = ref('');
 const url = ref('');
-const file = ref<File | null>(null);
+const files = ref<File[]>([]);
+const fileInput = ref<HTMLInputElement | null>(null);
 
 function reset() {
   type.value = 'text';
   name.value = '';
   content.value = '';
   url.value = '';
-  file.value = null;
+  files.value = [];
+  if (fileInput.value) fileInput.value.value = '';
   errorMessage.value = null;
 }
 
@@ -47,8 +52,27 @@ async function submit() {
         url.value.trim(),
       );
     } else if (type.value === 'file') {
-      if (!file.value) throw new Error('Pick a file first');
-      await store.addFileSource(props.knowledgeId, file.value);
+      if (!files.value.length) throw new Error('Pick at least one file');
+      // Checked here as well as server-side: past the cap the upload is
+      // rejected only after the whole body has been sent, so catching it
+      // before the request saves uploading a batch that cannot be accepted.
+      if (files.value.length > MAX_FILES_PER_BATCH) {
+        throw new Error(
+          `Too many files: ${files.value.length}. Add at most ${MAX_FILES_PER_BATCH} at a time, or use "Upload archive" below for a larger set.`,
+        );
+      }
+      const result = await store.addFileSources(props.knowledgeId, files.value);
+      // A batch can partly succeed. Refresh the list either way, but keep the
+      // form open with the reason when something was rejected, so the user
+      // isn't left guessing why fewer sources appeared than files picked.
+      emit('added');
+      if (result.failed > 0 || result.added === 0) {
+        errorMessage.value = summarize(result);
+        return;
+      }
+      reset();
+      open.value = false;
+      return;
     }
     emit('added');
     reset();
@@ -61,11 +85,22 @@ async function submit() {
   }
 }
 
+function summarize(result: {
+  added: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}): string {
+  const parts = [`${result.added} added`];
+  if (result.skipped) parts.push(`${result.skipped} already existed`);
+  if (result.failed) parts.push(`${result.failed} failed`);
+  const head = parts.join(', ');
+  return result.errors.length ? `${head}. ${result.errors.join('; ')}` : head;
+}
+
 function onFileChange(e: Event) {
   const target = e.target as HTMLInputElement;
-  const picked = target.files?.[0];
-  file.value = picked ?? null;
-  if (picked && !name.value) name.value = picked.name;
+  files.value = target.files ? Array.from(target.files) : [];
 }
 
 function cancel() {
@@ -77,7 +112,7 @@ function cancel() {
 <template>
   <div class="rounded-md border bg-card p-4">
     <div v-if="!open" class="flex items-center justify-between">
-      <p class="text-sm text-muted-foreground">Add a source (text, URL, or file).</p>
+      <p class="text-sm text-muted-foreground">Add a source (text, URL, or files).</p>
       <Button size="sm" @click="open = true">Add source</Button>
     </div>
 
@@ -91,7 +126,7 @@ function cancel() {
         >
           <option value="text">Text</option>
           <option value="url">URL</option>
-          <option value="file">File</option>
+          <option value="file">Files</option>
         </select>
       </div>
 
@@ -111,13 +146,23 @@ function cancel() {
       </div>
 
       <div v-if="type === 'file'" class="grid gap-2">
-        <Label for="source-file">File</Label>
+        <Label for="source-file">Files</Label>
         <input
           id="source-file"
+          ref="fileInput"
           type="file"
+          multiple
           class="text-sm"
           @change="onFileChange"
         />
+        <p class="text-xs text-muted-foreground">
+          Pick one or several files (up to {{ MAX_FILES_PER_BATCH }}). Each
+          becomes its own source; names already present on this knowledge are
+          skipped. For a larger set use "Upload archive" below.
+        </p>
+        <p v-if="files.length" class="text-xs text-muted-foreground">
+          Selected: {{ files.map((f) => f.name).join(', ') }}
+        </p>
       </div>
 
       <p v-if="errorMessage" class="text-xs text-destructive">{{ errorMessage }}</p>

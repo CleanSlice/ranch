@@ -16,14 +16,8 @@ import {
   IconCheck,
   IconCircle,
   IconExternalLink,
-  IconTemplate,
-  IconBolt,
-  IconBrain,
-  IconBook2,
-  IconActivity,
   IconCloud,
 } from '@tabler/icons-vue';
-import { Bot } from 'lucide-vue-next';
 
 const rancherStore = useRancherStore();
 const agentStore = useAgentStore();
@@ -31,10 +25,6 @@ const agentStatusStore = useAgentStatusStore();
 const bridleStore = useBridleStore();
 const authStore = useAuthStore();
 const llmStore = useLlmStore();
-const templateStore = useTemplateStore();
-const skillStore = useSkillStore();
-const knowledgeStore = useKnowledgeStore();
-const usageStore = useUsageStore();
 const config = useRuntimeConfig();
 const { t } = useI18n();
 
@@ -54,94 +44,12 @@ const { data: status, pending, refresh } = useAsyncData(
   { lazy: true },
 );
 
-const { data: dashboard, refresh: refreshDashboard } = useAsyncData(
-  'rancher-dashboard',
-  async () => {
-    const [agents, templates, skills, llms, knowledges] = await Promise.all([
-      agentStore.fetchAll(),
-      templateStore.fetchAll(),
-      skillStore.fetchAll(),
-      llmStore.fetchAll(),
-      knowledgeStore.fetchAll(),
-    ]);
-    return {
-      agents: agents.length,
-      templates: templates.length,
-      skills: skills.length,
-      llms: llms.length,
-      llmsActive: llms.filter((l) => l.status === 'active').length,
-      knowledges: knowledges.length,
-    };
-  },
-  { lazy: true },
-);
-
-const stats = computed(() => [
-  {
-    label: 'Agents',
-    value: dashboard.value?.agents ?? 0,
-    href: '/agents',
-    icon: Bot,
-  },
-  {
-    label: 'Templates',
-    value: dashboard.value?.templates ?? 0,
-    href: '/templates',
-    icon: IconTemplate,
-  },
-  {
-    label: 'Skills',
-    value: dashboard.value?.skills ?? 0,
-    href: '/skills',
-    icon: IconBolt,
-  },
-  {
-    label: 'LLMs',
-    value: dashboard.value?.llms ?? 0,
-    hint: dashboard.value
-      ? `${dashboard.value.llmsActive} active`
-      : undefined,
-    href: '/llms',
-    icon: IconBrain,
-  },
-  {
-    label: 'Knowledges',
-    value: dashboard.value?.knowledges ?? 0,
-    href: '/knowledges',
-    icon: IconBook2,
-  },
-]);
-
-const { data: adminUsage, refresh: refreshUsage } = useAsyncData(
-  'rancher-admin-usage',
-  async () => {
-    const adminAgent = await agentStore.fetchAdmin();
-    if (!adminAgent) return null;
-    return await usageStore.fetchForAgent(adminAgent.id);
-  },
-  { lazy: true },
-);
-
-const usageStats = computed(() => {
-  const u = adminUsage.value;
-  if (!u) return null;
-  const fmt = new Intl.NumberFormat('en-US');
-  const cost = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 4,
-  });
-  return {
-    cost30d: cost.format(u.totals.costUsd),
-    tokens30d: fmt.format(u.totals.inputTokens + u.totals.outputTokens),
-    calls30d: fmt.format(u.totals.callCount),
-    callsToday: fmt.format(u.today.callCount),
-    topModel: u.topModel ?? '—',
-  };
-});
+// The usage panel owns its own data; the page-level refresh just re-triggers
+// the panel's active view alongside the setup status.
+const usagePanel = ref<{ refresh: () => Promise<void> } | null>(null);
 
 async function onRefreshAll() {
-  await Promise.all([refresh(), refreshDashboard(), refreshUsage()]);
+  await Promise.all([refresh(), usagePanel.value?.refresh()]);
 }
 
 const hasLlm = computed(() => !!status.value?.hasLlm);
@@ -271,79 +179,14 @@ async function onDeploy() {
       </Button>
     </div>
 
-    <div class="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
-      <!-- LEFT — info tiles, 2 per row inside -->
-      <div class="flex flex-col gap-3">
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <NuxtLink
-            v-for="stat in stats"
-            :key="stat.label"
-            :to="stat.href"
-            class="group rounded-lg border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-accent/50"
-          >
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex flex-col gap-1">
-                <span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {{ stat.label }}
-                </span>
-                <span class="text-2xl font-semibold tabular-nums">{{ stat.value }}</span>
-                <span v-if="stat.hint" class="text-xs text-muted-foreground">{{ stat.hint }}</span>
-              </div>
-              <component
-                :is="stat.icon"
-                class="size-5 text-muted-foreground transition-colors group-hover:text-primary"
-              />
-            </div>
-          </NuxtLink>
+    <div v-if="pending && !status" class="mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <Skeleton class="h-32 w-full rounded-lg" />
+      <Skeleton class="h-32 w-full rounded-lg" />
+      <Skeleton class="h-32 w-full rounded-lg" />
+      <Skeleton class="h-32 w-full rounded-lg" />
+    </div>
 
-          <div
-            v-if="usageStats"
-            class="rounded-lg border bg-card p-4"
-          >
-            <div class="mb-3 flex items-center justify-between gap-2">
-              <span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Rancher usage · 30d
-              </span>
-              <IconActivity class="size-5 text-muted-foreground" />
-            </div>
-            <div class="grid grid-cols-2 gap-x-4 gap-y-2">
-              <div class="flex flex-col">
-                <span class="text-xs text-muted-foreground">Cost</span>
-                <span class="text-lg font-semibold tabular-nums">{{ usageStats.cost30d }}</span>
-              </div>
-              <div class="flex flex-col">
-                <span class="text-xs text-muted-foreground">Tokens</span>
-                <span class="text-sm tabular-nums">{{ usageStats.tokens30d }}</span>
-              </div>
-              <div class="flex flex-col">
-                <span class="text-xs text-muted-foreground">Calls</span>
-                <span class="text-sm tabular-nums">
-                  {{ usageStats.calls30d }}
-                  <span class="text-xs text-muted-foreground">({{ usageStats.callsToday }} today)</span>
-                </span>
-              </div>
-              <div class="flex flex-col">
-                <span class="text-xs text-muted-foreground">Top model</span>
-                <span class="font-mono text-xs">{{ usageStats.topModel }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- RIGHT — wizard or chat -->
-      <!-- 12rem = header (3.5rem) + main p-6 top (1.5rem) + page title row
-           + gap-6 (1.5rem). The extra 1.5rem subtracts main p-6 bottom so
-           the column doesn't push past the layout's bottom padding. -->
-      <div class="flex min-h-0 flex-col gap-4 lg:sticky lg:top-6 lg:h-[calc(100svh-13.5rem)] lg:self-start">
-        <div v-if="pending && !status" class="flex flex-col gap-4">
-          <Skeleton class="h-32 w-full rounded-lg" />
-          <Skeleton class="h-32 w-full rounded-lg" />
-          <Skeleton class="h-32 w-full rounded-lg" />
-          <Skeleton class="h-32 w-full rounded-lg" />
-        </div>
-
-        <div v-else-if="!allDone" class="flex flex-col gap-4">
+    <div v-else-if="!allDone" class="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <!-- Step 1 — LLM credential -->
       <Card :class="stepDone.llm ? 'border-primary/40' : ''">
         <CardHeader>
@@ -497,17 +340,33 @@ async function onDeploy() {
       </Card>
     </div>
 
-        <template v-else-if="admin">
-          <BridleProvider
-            v-if="authStore.accessToken"
-            :api-url="apiUrl"
-            :agent-id="admin.id"
-            :token="authStore.accessToken"
-            :title="`Chat with ${admin.name}`"
-            class="h-full min-h-0 w-full max-w-none flex-1"
-          />
-        </template>
+    <!-- Post-setup: the Rancher chat is the central surface, the usage panel
+         sits to its right and stacks below the chat under lg. -->
+    <!-- 13.5rem = header (3.5rem) + main p-6 top (1.5rem) + page title row
+         + gap-6 (1.5rem) + main p-6 bottom, matching the previous layout's
+         sticky chat column height. -->
+    <div
+      v-else-if="admin"
+      class="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:justify-center"
+    >
+      <div
+        class="flex min-h-0 w-full flex-1 flex-col lg:sticky lg:top-6 lg:h-[calc(100svh-13.5rem)] lg:max-w-200 lg:self-start"
+      >
+        <BridleProvider
+          v-if="authStore.accessToken"
+          :api-url="apiUrl"
+          :agent-id="admin.id"
+          :token="authStore.accessToken"
+          :title="`Chat with ${admin.name}`"
+          class="h-full min-h-0 w-full max-w-none flex-1"
+        />
       </div>
+      <UsagePanel
+        ref="usagePanel"
+        :agent-id="admin.id"
+        title="Rancher usage · 30d"
+        class="w-full lg:w-96 lg:shrink-0 lg:self-start"
+      />
     </div>
   </div>
 </template>

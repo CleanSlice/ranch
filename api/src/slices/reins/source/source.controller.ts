@@ -7,10 +7,11 @@ import {
   Param,
   HttpCode,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
   BadRequestException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiOperation,
@@ -22,7 +23,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { SourceService } from './domain/source.service';
+import { UploadLimitInterceptor } from './uploadLimit.interceptor';
 import {
+  AddFilesResultDto,
   AddFromArchiveResultDto,
   AddFromSitemapDto,
   AddFromSitemapResultDto,
@@ -35,6 +38,13 @@ import {
 // dependency of @nestjs/platform-express, so `import { diskStorage } from
 // 'multer'` does not resolve at runtime.
 const ONE_GIB = 1024 * 1024 * 1024;
+
+// Multi-file uploads are buffered in memory the same way, so the batch is
+// capped. Sized for whole documentation sets (a few hundred markdown/office
+// files), not for bulk media: the ceiling is file *count*, so N very large
+// files still peak at their combined size. Beyond this, the from-archive
+// route is the right tool - it streams zip entries one at a time.
+const MAX_FILES_PER_BATCH = 250;
 
 interface UploadedFileLike {
   originalname: string;
@@ -97,6 +107,39 @@ export class SourceController {
     }
     const exhaustive: never = dto.type;
     throw new BadRequestException(`Unknown source type: ${String(exhaustive)}`);
+  }
+
+  @Post('files')
+  @ApiOperation({
+    summary: 'Add several file sources at once',
+    operationId: 'addKnowledgeFileSources',
+    description:
+      'Accepts a multi-file selection (field "files") and creates one file-type source per upload. Runs inline and returns per-batch counts. Files whose name already exists on this knowledge are skipped; a single failed file does not abort the rest. Indexing into LightRAG happens through the normal reindex flow.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 201, type: AddFilesResultDto })
+  @UseInterceptors(
+    new UploadLimitInterceptor('files', MAX_FILES_PER_BATCH),
+    FilesInterceptor('files', MAX_FILES_PER_BATCH),
+  )
+  addFiles(
+    @Param('knowledgeId') knowledgeId: string,
+    @UploadedFiles() files?: UploadedFileLike[],
+  ): Promise<AddFilesResultDto> {
+    if (!files?.length) {
+      throw new BadRequestException(
+        'at least one file is required (field "files")',
+      );
+    }
+    return this.service.addFiles(
+      knowledgeId,
+      files.map((file) => ({
+        name: file.originalname,
+        buffer: file.buffer,
+        mimeType: file.mimetype,
+        size: file.size,
+      })),
+    );
   }
 
   @Post('from-sitemap')

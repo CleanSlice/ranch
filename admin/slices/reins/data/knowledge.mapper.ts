@@ -7,6 +7,7 @@ import type {
   IQueryResult,
   ISource,
   ISourceArchiveResult,
+  ISourceFilesResult,
   ISourceSitemapResult,
   SourceType,
 } from '../domain/knowledge.types';
@@ -134,6 +135,25 @@ export class KnowledgeMapper {
       }
     }
     return { detected: 0, started: false };
+  }
+
+  toFilesResult(raw: unknown): ISourceFilesResult {
+    if (raw && typeof raw === 'object') {
+      const o = raw as Record<string, unknown>;
+      if (
+        typeof o.added === 'number' &&
+        typeof o.skipped === 'number' &&
+        typeof o.failed === 'number'
+      ) {
+        return {
+          added: o.added,
+          skipped: o.skipped,
+          failed: o.failed,
+          errors: strList(o.errors),
+        };
+      }
+    }
+    return { added: 0, skipped: 0, failed: 0, errors: [] };
   }
 
   toSitemapResult(raw: unknown): ISourceSitemapResult {

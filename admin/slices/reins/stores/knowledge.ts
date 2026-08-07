@@ -125,6 +125,10 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     return getService().addFileSource(id, file);
   }
 
+  function addFileSources(id: string, files: File[]) {
+    return getService().addFileSources(id, files);
+  }
+
   function addSourcesFromArchive(id: string, file: File) {
     return getService().addSourcesFromArchive(id, file);
   }
@@ -172,6 +176,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     addTextSource,
     addUrlSource,
     addFileSource,
+    addFileSources,
     addSourcesFromSitemap,
     addSourcesFromArchive,
     removeSource,

@@ -1,0 +1,119 @@
+# Manually-triggered ops helper: sets a user's role directly in the prod DB.
+# Exists because the API refuses to touch Owner rows (PUT /users/:id/role →
+# "The Owner role cannot be changed"), so demoting a duplicate Owner can only
+# happen at the SQL level. Runs psql inside the CNPG primary using the same
+# KUBECONFIG_B64 the deploy job uses. Guards: the target must exist, and the
+# last remaining Owner can never be demoted. Inputs travel through env vars
+# and psql variables (set_config) — never string-interpolated into SQL.
+#
+# NOTE: the role claim lives in the JWT (RolesGuard reads the token, not the
+# DB), so a token issued before this run keeps its old role until it expires
+# (JWT_EXPIRES_IN, default 7d) or the user logs in again.
+
+name: Ops - set user role (prod DB)
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: "User id (e.g. user-462498b2-7a8f-4cbd-b91b-512ebbb2befb)"
+        required: true
+        type: string
+      role:
+        description: "New role"
+        required: true
+        type: choice
+        options:
+          - User
+          - Admin
+          - Owner
+        default: User
+
+jobs:
+  set-role:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_ID: ${{ inputs.user_id }}
+      NEW_ROLE: ${{ inputs.role }}
+    steps:
+      - name: Validate inputs
+        run: |
+          if ! echo "$TARGET_ID" | grep -qE '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'; then
+            echo "::error::invalid user id"; exit 1
+          fi
+          case "$NEW_ROLE" in
+            User|Admin|Owner) ;;
+            *) echo "::error::invalid role"; exit 1 ;;
+          esac
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Locate CNPG primary and database name
+        run: |
+          PRIMARY=$(kubectl -n platform get pod \
+            -l cnpg.io/cluster=ranch-db,cnpg.io/instanceRole=primary \
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -z "$PRIMARY" ]; then
+            PRIMARY=$(kubectl -n platform get pod \
+              -l cnpg.io/cluster=ranch-db,role=primary \
+              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          fi
+          if [ -z "$PRIMARY" ]; then
+            echo "::error::no primary pod found for cluster ranch-db"; exit 1
+          fi
+          # DB name comes from the API's own DATABASE_URL so we always hit the
+          # database the API actually uses. The URL itself is never printed.
+          DBNAME=$(kubectl -n platform get secret ranch-api-env \
+            -o jsonpath='{.data.DATABASE_URL}' 2>/dev/null \
+            | base64 -d | sed -E 's#^.*/([^/?]+)(\?.*)?$#\1#' || true)
+          DBNAME=${DBNAME:-ranch}
+          echo "primary pod: $PRIMARY"
+          echo "database:    $DBNAME"
+          echo "PRIMARY=$PRIMARY" >> "$GITHUB_ENV"
+          echo "DBNAME=$DBNAME" >> "$GITHUB_ENV"
+
+      - name: Set role (guarded)
+        run: |
+          kubectl -n platform exec -i "$PRIMARY" -- \
+            psql -U postgres -d "$DBNAME" \
+            -v ON_ERROR_STOP=1 -v uid="$TARGET_ID" -v newrole="$NEW_ROLE" \
+            -f - <<'SQL'
+          SELECT set_config('ops.uid', :'uid', false);
+          SELECT set_config('ops.newrole', :'newrole', false);
+
+          \echo '--- owners before ---'
+          SELECT id, email, role FROM "User" WHERE role = 'Owner' ORDER BY "createdAt";
+
+          \echo '--- target before ---'
+          SELECT id, email, role, "updatedAt" FROM "User" WHERE id = current_setting('ops.uid');
+
+          DO $$
+          DECLARE
+            cur text;
+            owners int;
+          BEGIN
+            SELECT role INTO cur FROM "User" WHERE id = current_setting('ops.uid');
+            IF cur IS NULL THEN
+              RAISE EXCEPTION 'user % not found', current_setting('ops.uid');
+            END IF;
+            IF cur = 'Owner' AND current_setting('ops.newrole') <> 'Owner' THEN
+              SELECT count(*) INTO owners FROM "User" WHERE role = 'Owner';
+              IF owners <= 1 THEN
+                RAISE EXCEPTION 'refusing to demote the only Owner (%)', current_setting('ops.uid');
+              END IF;
+            END IF;
+            UPDATE "User"
+            SET role = current_setting('ops.newrole'), "updatedAt" = now()
+            WHERE id = current_setting('ops.uid');
+          END $$;
+
+          \echo '--- target after ---'
+          SELECT id, email, role, "updatedAt" FROM "User" WHERE id = current_setting('ops.uid');
+
+          \echo '--- owners after ---'
+          SELECT id, email, role FROM "User" WHERE role = 'Owner' ORDER BY "createdAt";
+          SQL

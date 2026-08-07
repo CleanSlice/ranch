@@ -41,6 +41,11 @@ export class AgentChannelMapper {
         botName: typeof config.botName === 'string' ? config.botName : undefined,
         adminIds: typeof config.adminIds === 'string' ? config.adminIds : undefined,
       },
+      // Status is read-only wire data — toDtoList deliberately drops it.
+      connected: typeof o.connected === 'boolean' ? o.connected : null,
+      statusReason: typeof o.statusReason === 'string' ? o.statusReason : null,
+      statusUpdatedAt:
+        typeof o.statusUpdatedAt === 'number' ? o.statusUpdatedAt : null,
     };
   }
 }

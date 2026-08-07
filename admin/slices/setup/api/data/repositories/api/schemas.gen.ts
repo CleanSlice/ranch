@@ -1727,6 +1727,23 @@ export const AgentChannelDtoSchema = {
     config: {
       $ref: "#/components/schemas/TelegramChannelConfigDto",
     },
+    connected: {
+      type: "boolean",
+      nullable: true,
+      description:
+        "Live state reported by the runtime (data/channels/status.json). true = polling/connected, false = last start attempt failed (see statusReason), null = unknown (no status reported yet). Read-only — ignored on PUT.",
+    },
+    statusReason: {
+      type: "string",
+      nullable: true,
+      description:
+        "Failure reason when connected=false (e.g. an invalid token). Read-only.",
+    },
+    statusUpdatedAt: {
+      type: "number",
+      nullable: true,
+      description: "Unix ms of the last status change. Read-only.",
+    },
   },
   required: ["type", "config"],
 } as const;

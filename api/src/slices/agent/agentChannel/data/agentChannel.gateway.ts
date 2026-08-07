@@ -1,13 +1,24 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { IAgentChannelGateway } from '../domain/agentChannel.gateway';
-import { IAgentChannel, IChannelsFile } from '../domain/agentChannel.types';
+import {
+  IAgentChannel,
+  IChannelsFile,
+  IChannelStatusFile,
+  ITelegramFileEntry,
+} from '../domain/agentChannel.types';
 import { AgentChannelMapper } from './agentChannel.mapper';
 import { IFileGateway } from '#/agent/file/domain';
 
-// Single source of truth — the runtime reads/writes the same path on
-// boot and via channel_* tools (runtime/src/slices/setup/channel/data
-// /channelsFile.ts). Keep this string in sync.
-const CHANNELS_PATH = 'data/channels.json';
+// Source of truth — the runtime's per-channel layout, mutated by its
+// channel_* tools and by PUT /agents/:id/channels (read-modify-write so
+// neither writer clobbers the other's fields). Keep the paths in sync with
+// runtime/src/slices/setup/channel/data/channelFiles.ts.
+const TELEGRAM_PATH = 'data/channels/telegram.json';
+// Runtime-written live state (connected/error per type). Read-only here.
+const STATUS_PATH = 'data/channels/status.json';
+// Pre-split flat layout — frozen: read-only fallback for agents configured
+// before the per-channel convergence. Never written, never deleted.
+const LEGACY_CHANNELS_PATH = 'data/channels.json';
 
 @Injectable()
 export class AgentChannelGateway extends IAgentChannelGateway {
@@ -19,33 +30,86 @@ export class AgentChannelGateway extends IAgentChannelGateway {
   }
 
   async getForAgent(agentId: string): Promise<IAgentChannel[]> {
-    let raw: string;
-    try {
-      const file = await this.files.read(agentId, CHANNELS_PATH);
-      raw = file.content;
-    } catch (err) {
-      // No file → no channels. A NotFound here is the empty-state path,
-      // not an error condition; anything else (parse, S3, …) bubbles up.
-      if (err instanceof NotFoundException) return [];
-      throw err;
-    }
-    if (!raw.trim()) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return [];
-    }
-    return this.mapper.fileToArray(parsed as IChannelsFile);
+    const [aggregate, status] = await Promise.all([
+      this.readAggregate(agentId),
+      // Status is advisory — a broken/missing file must not take GET down.
+      this.readJson<IChannelStatusFile>(agentId, STATUS_PATH).catch(() => null),
+    ]);
+    return this.mapper.fileToArray(aggregate, status ?? undefined);
   }
 
   async setForAgent(
     agentId: string,
     channels: IAgentChannel[],
   ): Promise<IAgentChannel[]> {
-    const file = this.mapper.arrayToFile(channels);
-    const body = JSON.stringify(file, null, 2);
-    await this.files.save(agentId, CHANNELS_PATH, body);
-    // Re-derive from the file body so the response mirrors what the next
-    // GET will return (e.g. unknown channel types in the input were dropped).
-    return this.mapper.fileToArray(file);
+    const desired = this.mapper.arrayToFile(channels);
+
+    if (desired.telegram) {
+      // RMW: keep runtime-owned fields (groups) intact, credentials clear a
+      // prior tombstone.
+      const current =
+        (await this.readJson<ITelegramFileEntry>(agentId, TELEGRAM_PATH)) ?? {};
+      const next: ITelegramFileEntry = { ...current, ...desired.telegram };
+      delete next.removed;
+      await this.files.save(agentId, TELEGRAM_PATH, toJson(next));
+    } else {
+      // Channel omitted from the exhaustive PUT list — tombstone it (a
+      // deleted file would let the runtime's env fallback resurrect it on
+      // restart), but only when something is actually configured.
+      const aggregate = await this.readAggregate(agentId);
+      if (aggregate.telegram?.botToken && !aggregate.telegram.removed) {
+        await this.files.save(agentId, TELEGRAM_PATH, toJson({ removed: true }));
+      }
+    }
+
+    // Re-derive so the response mirrors what the next GET will return.
+    return this.getForAgent(agentId);
   }
+
+  /**
+   * Effective config per type: the per-channel file is authoritative when it
+   * carries credentials or a tombstone; a groups-only file (bot configured
+   * via env/panel while the runtime tracked groups into the new layout)
+   * still defers to the frozen legacy file.
+   */
+  private async readAggregate(agentId: string): Promise<IChannelsFile> {
+    const telegram = await this.readJson<ITelegramFileEntry>(
+      agentId,
+      TELEGRAM_PATH,
+    );
+    if (telegram && (telegram.botToken || telegram.removed)) {
+      return { telegram };
+    }
+    const legacy = await this.readJson<IChannelsFile>(
+      agentId,
+      LEGACY_CHANNELS_PATH,
+    );
+    return legacy ?? {};
+  }
+
+  // NotFound is the empty-state path, not an error condition; parse errors
+  // and other S3 failures bubble up.
+  private async readJson<T extends object>(
+    agentId: string,
+    path: string,
+  ): Promise<T | null> {
+    let raw: string;
+    try {
+      const file = await this.files.read(agentId, path);
+      raw = file.content;
+    } catch (err) {
+      if (err instanceof NotFoundException) return null;
+      throw err;
+    }
+    if (!raw.trim()) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as T;
+  }
+}
+
+function toJson(data: object): string {
+  return JSON.stringify(data, null, 2);
 }

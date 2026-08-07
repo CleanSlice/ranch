@@ -799,6 +799,18 @@ export type AgentChannelDto = {
    */
   type: "telegram";
   config: TelegramChannelConfigDto;
+  /**
+   * Live state reported by the runtime (data/channels/status.json). true = polling/connected, false = last start attempt failed (see statusReason), null = unknown (no status reported yet). Read-only — ignored on PUT.
+   */
+  connected?: boolean | null;
+  /**
+   * Failure reason when connected=false (e.g. an invalid token). Read-only.
+   */
+  statusReason?: string | null;
+  /**
+   * Unix ms of the last status change. Read-only.
+   */
+  statusUpdatedAt?: number | null;
 };
 
 export type SetAgentChannelsDto = {

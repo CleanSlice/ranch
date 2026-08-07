@@ -8,4 +8,10 @@ export type IAgentChannel = {
     botName?: string;
     adminIds?: string;
   };
+  // Live state reported by the runtime via the channels endpoint. null (or
+  // absent) = unknown — the agent hasn't reported status yet; distinct from
+  // false, which means the last start attempt failed (see statusReason).
+  connected?: boolean | null;
+  statusReason?: string | null;
+  statusUpdatedAt?: number | null;
 };

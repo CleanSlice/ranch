@@ -3,7 +3,9 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -48,6 +50,38 @@ export class AgentChannelDto {
   @ValidateNested()
   @Type(() => TelegramChannelConfigDto)
   config: TelegramChannelConfigDto;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    nullable: true,
+    description:
+      'Live state reported by the runtime (data/channels/status.json). ' +
+      'true = polling/connected, false = last start attempt failed (see ' +
+      'statusReason), null = unknown (no status reported yet). Read-only — ' +
+      'ignored on PUT.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  connected?: boolean | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'Failure reason when connected=false (e.g. an invalid token). Read-only.',
+  })
+  @IsOptional()
+  @IsString()
+  statusReason?: string | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description: 'Unix ms of the last status change. Read-only.',
+  })
+  @IsOptional()
+  @IsNumber()
+  statusUpdatedAt?: number | null;
 }
 
 export class SetAgentChannelsDto {

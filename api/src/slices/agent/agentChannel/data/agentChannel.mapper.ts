@@ -1,20 +1,31 @@
 import { Injectable } from '@nestjs/common';
-import { IAgentChannel, IChannelsFile } from '../domain/agentChannel.types';
+import {
+  IAgentChannel,
+  IChannelsFile,
+  IChannelStatusFile,
+} from '../domain/agentChannel.types';
 
 @Injectable()
 export class AgentChannelMapper {
   // Object → array. Iterates known types so unknown keys in the file
   // (added by future runtime versions ahead of the API) don't blow up.
-  fileToArray(file: IChannelsFile): IAgentChannel[] {
+  // Tombstoned entries are omitted; live status (when supplied) is merged
+  // per type — no entry means unknown, not disconnected.
+  fileToArray(file: IChannelsFile, status?: IChannelStatusFile): IAgentChannel[] {
     const out: IAgentChannel[] = [];
-    if (file.telegram?.botToken) {
+    const telegram = file.telegram;
+    if (telegram?.botToken && !telegram.removed) {
+      const live = status?.telegram;
       out.push({
         type: 'telegram',
         config: {
-          botToken: file.telegram.botToken,
-          botName: file.telegram.botName,
-          adminIds: file.telegram.adminIds,
+          botToken: telegram.botToken,
+          botName: telegram.botName,
+          adminIds: telegram.adminIds,
         },
+        connected: live ? live.connected : null,
+        statusReason: live?.error ?? null,
+        statusUpdatedAt: live?.updatedAt ?? null,
       });
     }
     return out;

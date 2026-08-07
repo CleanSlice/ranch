@@ -231,6 +231,25 @@ export type CreateSourceDto = {
   content?: string;
 };
 
+export type AddFilesResultDto = {
+  /**
+   * Files uploaded and registered.
+   */
+  added: number;
+  /**
+   * Files skipped because a file source with the same name already exists on this knowledge.
+   */
+  skipped: number;
+  /**
+   * Files that failed to upload.
+   */
+  failed: number;
+  /**
+   * One line per failed file.
+   */
+  errors: Array<string>;
+};
+
 export type AddFromSitemapDto = {
   sitemapUrl: string;
   urlPrefix?: string;
@@ -799,6 +818,18 @@ export type AgentChannelDto = {
    */
   type: "telegram";
   config: TelegramChannelConfigDto;
+  /**
+   * Live state reported by the runtime (data/channels/status.json). true = polling/connected, false = last start attempt failed (see statusReason), null = unknown (no status reported yet). Read-only — ignored on PUT.
+   */
+  connected?: boolean | null;
+  /**
+   * Failure reason when connected=false (e.g. an invalid token). Read-only.
+   */
+  statusReason?: string | null;
+  /**
+   * Unix ms of the last status change. Read-only.
+   */
+  statusUpdatedAt?: number | null;
 };
 
 export type SetAgentChannelsDto = {
@@ -1961,6 +1992,22 @@ export type AddKnowledgeSourceData = {
 export type AddKnowledgeSourceResponses = {
   201: unknown;
 };
+
+export type AddKnowledgeFileSourcesData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/files";
+};
+
+export type AddKnowledgeFileSourcesResponses = {
+  201: AddFilesResultDto;
+};
+
+export type AddKnowledgeFileSourcesResponse =
+  AddKnowledgeFileSourcesResponses[keyof AddKnowledgeFileSourcesResponses];
 
 export type AddKnowledgeSourcesFromSitemapData = {
   body: AddFromSitemapDto;

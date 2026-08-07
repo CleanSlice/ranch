@@ -36,9 +36,9 @@ const props = defineProps<{
 const agentStore = useAgentStore();
 const agentChannelStore = useAgentChannelStore();
 
-// Always fresh on tab open — channels.json is also mutated by the runtime
-// (channel_telegram_set tool), so a stale client view would be misleading.
-// No polling: re-open the tab to see runtime-side changes.
+// Always fresh on tab open — data/channels/<type>.json is also mutated by
+// the runtime (channel_telegram_set tool), so a stale client view would be
+// misleading. No polling: re-open the tab to see runtime-side changes.
 const channels = ref<IAgentChannel[]>([]);
 const loading = ref(true);
 const loadError = ref<string | null>(null);
@@ -195,10 +195,12 @@ watch(channels, () => {
       <div>
         <CardTitle>Channels</CardTitle>
         <CardDescription>
-          Messaging platforms this agent talks on. Stored as
-          <code>data/channels.json</code> in S3 — also mutable by the runtime
-          via its channel_* tools. Restart the agent to apply changes (token
-          env vars are injected at pod submit time).
+          Messaging platforms this agent talks on. Stored per channel as
+          <code>data/channels/&lt;type&gt;.json</code> in S3 — the same files
+          the runtime edits via its channel_* tools, so bots configured from
+          agent chat show up here too. Changes made here take effect on the
+          next agent restart; chat-side changes apply immediately. The badge
+          shows the runtime's live status.
         </CardDescription>
       </div>
       <Button
@@ -251,6 +253,26 @@ watch(channels, () => {
               >
                 @{{ channel.config.botName }}
               </span>
+              <span
+                v-if="channel.connected === true"
+                class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400"
+              >
+                <span class="size-1.5 rounded-full bg-emerald-500" />
+                Connected
+              </span>
+              <span
+                v-else-if="channel.connected === false"
+                class="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive"
+              >
+                <span class="size-1.5 rounded-full bg-destructive" />
+                Disconnected
+              </span>
+              <span
+                v-else
+                class="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+              >
+                Status unknown
+              </span>
             </div>
             <div class="flex gap-1">
               <Button
@@ -297,6 +319,11 @@ watch(channels, () => {
             <template v-if="channel.config.adminIds">
               <dt class="text-muted-foreground">Admin IDs</dt>
               <dd class="font-mono break-all">{{ channel.config.adminIds }}</dd>
+              <dd />
+            </template>
+            <template v-if="channel.connected === false && channel.statusReason">
+              <dt class="text-destructive">Last error</dt>
+              <dd class="break-all text-destructive">{{ channel.statusReason }}</dd>
               <dd />
             </template>
           </dl>

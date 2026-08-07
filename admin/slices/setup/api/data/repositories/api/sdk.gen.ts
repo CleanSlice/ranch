@@ -57,6 +57,8 @@ import type {
   QueryKnowledgeResponse,
   GetKnowledgeSourcesData,
   AddKnowledgeSourceData,
+  AddKnowledgeFileSourcesData,
+  AddKnowledgeFileSourcesResponse,
   AddKnowledgeSourcesFromSitemapData,
   AddKnowledgeSourcesFromSitemapResponse,
   AddKnowledgeSourcesFromArchiveData,
@@ -1192,6 +1194,23 @@ export class KnowledgeSourcesService {
   }
 
   /**
+   * Add several file sources at once
+   * Accepts a multi-file selection (field "files") and creates one file-type source per upload. Runs inline and returns per-batch counts. Files whose name already exists on this knowledge are skipped; a single failed file does not abort the rest. Indexing into LightRAG happens through the normal reindex flow.
+   */
+  public static addKnowledgeFileSources<ThrowOnError extends boolean = false>(
+    options: Options<AddKnowledgeFileSourcesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      AddKnowledgeFileSourcesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/files",
+      ...options,
+    });
+  }
+
+  /**
    * Add url sources from a sitemap
    * Fetches a sitemap.xml (or sitemap-index), filters by optional URL prefix, then creates one url-type source per discovered page. Indexing into LightRAG happens through the normal reindex flow.
    */
@@ -1560,7 +1579,7 @@ export class AgentsService {
   }
 
   /**
-   * List the agent's configured channels. Reads agents/{id}/data/channels.json from S3 — the single source of truth (the runtime mutates the same file via its channel_* tools). Returns [] when the file is absent. Always fresh, no caching.
+   * List the agent's configured channels with live status. Config comes from agents/{id}/data/channels/<type>.json in S3 — the runtime's per-channel layout, mutated by its channel_* tools (falls back read-only to the pre-split data/channels.json for agents configured before the convergence). Status (connected/statusReason) comes from data/channels/status.json, written by the runtime; null = unknown. Returns [] when nothing is configured. Always fresh, no caching.
    */
   public static getAgentChannels<ThrowOnError extends boolean = false>(
     options: Options<GetAgentChannelsData, ThrowOnError>,
@@ -1576,7 +1595,7 @@ export class AgentsService {
   }
 
   /**
-   * Replace the agent's channels. Writes agents/{id}/data/channels.json — restart the agent to pick up new env vars (TELEGRAM_BOT_TOKEN etc.) injected at pod submit time. Body is the exhaustive list — anything omitted is removed. Pass [] to clear.
+   * Replace the agent's channels. Writes agents/{id}/data/channels/<type>.json (read-modify-write — the runtime-owned group registry in the same file is preserved). Body is the exhaustive list — anything omitted is tombstoned (removed: true), never deleted, so a restart can't resurrect it from stale pod env vars. Pass [] to clear. Panel-side changes reach a running agent on its next restart (env re-injection at pod submit); agent-side (chat tool) changes apply immediately.
    */
   public static setAgentChannels<ThrowOnError extends boolean = false>(
     options: Options<SetAgentChannelsData, ThrowOnError>,

@@ -1,0 +1,353 @@
+<script setup lang="ts">
+import {
+  IconActivity,
+  IconChartBar,
+  IconChevronLeft,
+  IconChevronRight,
+} from '@tabler/icons-vue';
+import type { IUsageDailyEntry } from '#usage/domain';
+
+// Host classes (flex sizing in side stacks) must land on the Card only —
+// the collapsed compact button keeps its own fixed footprint.
+defineOptions({ inheritAttrs: false });
+
+const props = withDefaults(
+  defineProps<{
+    /** Scope of the Agent view. null = no subject agent (tab disabled). */
+    agentId: string | null;
+    title?: string;
+    /** When true the panel can collapse into a compact button (side stacks). */
+    collapsible?: boolean;
+  }>(),
+  { title: 'Usage · 30d', collapsible: false },
+);
+
+type UsageView = 'total' | 'calls' | 'agent';
+
+const usageStore = useUsageStore();
+
+// Both sources are fetched lazily on mount: the default Total view needs the
+// overview, and the Agent view (plus its today snapshot) is one cheap call —
+// prefetching it makes view switches instant.
+const {
+  data: overview,
+  pending: overviewPending,
+  error: overviewError,
+  refresh: refreshOverview,
+} = useAsyncData('usage-panel-overview', () => usageStore.fetchOverview(), {
+  lazy: true,
+});
+
+const {
+  data: agentUsage,
+  pending: agentPending,
+  error: agentError,
+  refresh: refreshAgent,
+} = useAsyncData(
+  `usage-panel-agent-${props.agentId ?? 'none'}`,
+  async () => (props.agentId ? usageStore.fetchForAgent(props.agentId) : null),
+  { lazy: true },
+);
+
+const view = ref<UsageView>('total');
+const collapsed = ref(false);
+
+const PAGE_SIZE = 7;
+const page = ref(1);
+watch(view, () => {
+  page.value = 1;
+});
+
+const activeDaily = computed<IUsageDailyEntry[]>(() => {
+  if (view.value === 'agent') return agentUsage.value?.last30days ?? [];
+  return overview.value?.last30days ?? [];
+});
+const totalRows = computed(() => activeDaily.value.length);
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(totalRows.value / PAGE_SIZE)),
+);
+const pagedDaily = computed(() =>
+  activeDaily.value.slice(
+    (page.value - 1) * PAGE_SIZE,
+    page.value * PAGE_SIZE,
+  ),
+);
+const rangeLabel = computed(() => {
+  const start = (page.value - 1) * PAGE_SIZE + 1;
+  const end = Math.min(page.value * PAGE_SIZE, totalRows.value);
+  return `${start}–${end} of ${totalRows.value}`;
+});
+
+const activePending = computed(() =>
+  view.value === 'agent'
+    ? agentPending.value && !agentUsage.value
+    : overviewPending.value && !overview.value,
+);
+const activeError = computed(() =>
+  view.value === 'agent' ? agentError.value : overviewError.value,
+);
+const activeEmpty = computed(() => {
+  if (view.value === 'agent') {
+    return !agentUsage.value || agentUsage.value.totals.callCount === 0;
+  }
+  return !overview.value || overview.value.totals.callCount === 0;
+});
+
+// The header names the scope of the active view so a panel titled
+// "Rancher usage · 30d" can't be misread while the Total view shows
+// workspace-wide numbers.
+const viewHint = computed(() =>
+  view.value === 'agent' ? 'this agent only' : 'all agents',
+);
+
+const cost = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 4,
+});
+const count = new Intl.NumberFormat('en-US');
+
+function shortDate(iso: string): string {
+  return iso.slice(5); // YYYY-MM-DD → MM-DD
+}
+
+async function refresh() {
+  if (view.value === 'agent') {
+    await refreshAgent();
+  } else {
+    await refreshOverview();
+  }
+}
+
+defineExpose({ refresh });
+</script>
+
+<template>
+  <Button
+    v-if="collapsible && collapsed"
+    variant="outline"
+    size="sm"
+    class="self-start"
+    title="Show usage"
+    @click="collapsed = false"
+  >
+    <IconChartBar class="size-4" />
+    Usage
+  </Button>
+
+  <Card v-else v-bind="$attrs" class="flex min-h-0 flex-col gap-0 py-4">
+    <CardHeader class="flex-row items-center justify-between space-y-0 px-4 pb-3">
+      <CardTitle class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {{ title }}
+        <span class="ml-1 normal-case tracking-normal text-muted-foreground/70">
+          · {{ viewHint }}
+        </span>
+      </CardTitle>
+      <div class="flex items-center gap-1">
+        <IconActivity class="size-4 text-muted-foreground" />
+        <Button
+          v-if="collapsible"
+          variant="ghost"
+          size="sm"
+          class="h-7 px-2 text-xs"
+          @click="collapsed = true"
+        >
+          Hide
+        </Button>
+      </div>
+    </CardHeader>
+
+    <CardContent class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
+      <Tabs
+        :model-value="view"
+        @update:model-value="view = $event as UsageView"
+      >
+        <TabsList class="grid w-full grid-cols-3">
+          <TabsTrigger value="total" class="text-xs">Total</TabsTrigger>
+          <TabsTrigger value="calls" class="text-xs">Calls</TabsTrigger>
+          <TabsTrigger
+            value="agent"
+            class="text-xs"
+            :disabled="!agentId"
+            :title="agentId ? undefined : 'No agent deployed yet'"
+          >
+            Agent
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      <div v-if="activePending" class="grid grid-cols-2 gap-4">
+        <div v-for="i in 6" :key="i" class="space-y-2">
+          <Skeleton class="h-3 w-20" />
+          <Skeleton class="h-4 w-24" />
+        </div>
+      </div>
+
+      <p v-else-if="activeError" class="text-sm text-destructive">
+        Failed to load usage. Use the page refresh to retry.
+      </p>
+
+      <p v-else-if="activeEmpty" class="text-sm text-muted-foreground">
+        No usage reported yet.
+      </p>
+
+      <template v-else>
+        <!-- TOTAL — workspace-wide cost -->
+        <template v-if="view === 'total' && overview">
+          <div class="flex flex-col">
+            <span class="text-xs text-muted-foreground">30d · cost, all agents</span>
+            <span class="text-2xl font-semibold tabular-nums">
+              {{ cost.format(overview.totals.costUsd) }}
+            </span>
+          </div>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
+            <div>
+              <dt class="text-xs text-muted-foreground">30d · in / out</dt>
+              <dd class="mt-0.5 font-mono text-sm">
+                {{ formatCount(overview.totals.inputTokens) }} /
+                {{ formatCount(overview.totals.outputTokens) }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted-foreground">30d · calls</dt>
+              <dd class="mt-0.5 font-mono text-sm">{{ count.format(overview.totals.callCount) }}</dd>
+            </div>
+            <div class="col-span-2">
+              <dt class="text-xs text-muted-foreground">30d · top model</dt>
+              <dd class="mt-0.5 font-mono text-xs">{{ overview.topModel ?? '—' }}</dd>
+            </div>
+          </dl>
+
+          <div v-if="overview.byAgent.length" class="flex flex-col gap-1">
+            <span class="text-xs text-muted-foreground">By agent</span>
+            <div
+              v-for="a in overview.byAgent"
+              :key="a.agentId"
+              class="flex items-center justify-between gap-2 text-sm"
+            >
+              <span class="truncate">{{ a.agentName }}</span>
+              <span class="shrink-0 font-mono tabular-nums text-xs">
+                {{ cost.format(a.costUsd) }}
+              </span>
+            </div>
+          </div>
+        </template>
+
+        <!-- CALLS — workspace-wide call volume -->
+        <template v-else-if="view === 'calls' && overview">
+          <div class="flex flex-col">
+            <span class="text-xs text-muted-foreground">30d · calls, all agents</span>
+            <span class="text-2xl font-semibold tabular-nums">
+              {{ count.format(overview.totals.callCount) }}
+            </span>
+          </div>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
+            <div>
+              <dt class="text-xs text-muted-foreground">30d · in / out</dt>
+              <dd class="mt-0.5 font-mono text-sm">
+                {{ formatCount(overview.totals.inputTokens) }} /
+                {{ formatCount(overview.totals.outputTokens) }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted-foreground">30d · top model</dt>
+              <dd class="mt-0.5 font-mono text-xs">{{ overview.topModel ?? '—' }}</dd>
+            </div>
+          </dl>
+        </template>
+
+        <!-- AGENT — this agent only, full parity with the legacy usage card -->
+        <template v-else-if="view === 'agent' && agentUsage">
+          <div class="flex flex-col">
+            <span class="text-xs text-muted-foreground">30d · cost, this agent</span>
+            <span class="text-2xl font-semibold tabular-nums">
+              {{ cost.format(agentUsage.totals.costUsd) }}
+            </span>
+          </div>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
+            <div>
+              <dt class="text-xs text-muted-foreground">30d · top model</dt>
+              <dd class="mt-0.5 font-mono text-xs">{{ agentUsage.topModel ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted-foreground">30d · calls</dt>
+              <dd class="mt-0.5 font-mono text-sm">{{ count.format(agentUsage.totals.callCount) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted-foreground">30d · input</dt>
+              <dd class="mt-0.5 font-mono text-sm">{{ count.format(agentUsage.totals.inputTokens) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted-foreground">30d · output</dt>
+              <dd class="mt-0.5 font-mono text-sm">{{ count.format(agentUsage.totals.outputTokens) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted-foreground">Today · model</dt>
+              <dd class="mt-0.5 font-mono text-xs">{{ agentUsage.today.model ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted-foreground">Today · calls</dt>
+              <dd class="mt-0.5 font-mono text-sm">{{ count.format(agentUsage.today.callCount) }}</dd>
+            </div>
+            <div class="col-span-2">
+              <dt class="text-xs text-muted-foreground">Today · in / out</dt>
+              <dd class="mt-0.5 font-mono text-sm">
+                {{ count.format(agentUsage.today.inputTokens) }} /
+                {{ count.format(agentUsage.today.outputTokens) }}
+              </dd>
+            </div>
+          </dl>
+        </template>
+
+        <!-- Daily breakdown — paginated, newest first (server ordering) -->
+        <div v-if="totalRows > 0" class="flex flex-col gap-1">
+          <span class="text-xs text-muted-foreground">Daily</span>
+          <table class="w-full text-xs">
+            <tbody>
+              <tr
+                v-for="e in pagedDaily"
+                :key="`${e.date}|${e.model}`"
+                class="border-b border-border/40 last:border-0"
+              >
+                <td class="py-1 pr-2 font-mono text-muted-foreground">{{ shortDate(e.date) }}</td>
+                <td class="max-w-24 truncate py-1 pr-2 font-mono" :title="e.model">{{ e.model }}</td>
+                <td class="py-1 pr-2 text-right font-mono tabular-nums">
+                  {{ formatCount(e.inputTokens) }}/{{ formatCount(e.outputTokens) }}
+                </td>
+                <td class="py-1 text-right font-mono tabular-nums">
+                  <template v-if="view === 'calls'">{{ count.format(e.callCount) }}</template>
+                  <template v-else>{{ cost.format(e.costUsd) }}</template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div
+            v-if="totalRows > PAGE_SIZE"
+            class="flex items-center justify-between pt-1"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 px-2"
+              :disabled="page <= 1"
+              @click="page -= 1"
+            >
+              <IconChevronLeft class="size-4" />
+            </Button>
+            <span class="text-xs tabular-nums text-muted-foreground">{{ rangeLabel }}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 px-2"
+              :disabled="page >= pageCount"
+              @click="page += 1"
+            >
+              <IconChevronRight class="size-4" />
+            </Button>
+          </div>
+        </div>
+      </template>
+    </CardContent>
+  </Card>
+</template>

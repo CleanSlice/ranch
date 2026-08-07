@@ -29,3 +29,24 @@ export interface IAgentUsage {
   topModel: string | null;
   today: IUsageToday;
 }
+
+export interface IOverviewAgentUsage {
+  agentId: string;
+  agentName: string;
+  inputTokens: number;
+  outputTokens: number;
+  callCount: number;
+  costUsd: number;
+}
+
+/**
+ * Workspace-wide usage across all agents (30-day window). DB-backed only —
+ * today's not-yet-reported runtime usage is excluded until agents report,
+ * unlike the live-merged per-agent shape.
+ */
+export interface IOverviewUsage {
+  last30days: IUsageDailyEntry[];
+  totals: IUsageTotals;
+  topModel: string | null;
+  byAgent: IOverviewAgentUsage[];
+}

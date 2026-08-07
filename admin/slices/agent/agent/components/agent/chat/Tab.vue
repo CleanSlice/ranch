@@ -22,11 +22,12 @@ const emit = defineEmits<{ restart: []; toggleRunning: [] }>();
 
 const authStore = useAuthStore();
 
-// Side-by-side logs panel — the only logs surface on this page. Open by
-// default; closing collapses it into a page-level "Logs" button next to the
-// chat's top-right corner (the chat widget itself stays uniform across hosts
-// — no host-specific controls in its header). The panel is only mounted
-// while open, so its 5s polling stops the moment it's collapsed.
+// Side stack next to the chat: logs on top, usage panel below, each
+// independently collapsible into a compact button. Logs stay the primary
+// operational surface (open by default); collapsing one hands its height to
+// the other via flex. The logs panel is only mounted while open, so its 5s
+// polling stops the moment it's collapsed. The usage panel manages its own
+// collapsed state (`collapsible` prop).
 const showSideLogs = ref(true);
 
 // One "restart is underway" signal for every surface (bridle header status,
@@ -150,28 +151,35 @@ watch(
       </Transition>
     </div>
     <div
-      v-if="showSideLogs"
-      class="h-[calc(100vh-15.5rem)] min-h-120 w-full max-w-200 basis-1/2 overflow-hidden"
+      class="flex h-[calc(100vh-15.5rem)] min-h-120 w-full max-w-200 basis-1/2 flex-col gap-3"
     >
-      <AgentLogsPanel
+      <div v-if="showSideLogs" class="min-h-0 flex-1 overflow-hidden">
+        <AgentLogsPanel
+          :agent-id="agent.id"
+          closable
+          :restarting="restartUnderway"
+          :first-start="agent.launchContext === 'initial'"
+          class="h-full min-w-100"
+          @close="showSideLogs = false"
+        />
+      </div>
+      <Button
+        v-else
+        variant="outline"
+        size="sm"
+        class="self-start"
+        title="Show pod logs"
+        @click="showSideLogs = true"
+      >
+        <IconFileText class="size-4" />
+        Logs
+      </Button>
+
+      <UsagePanel
         :agent-id="agent.id"
-        closable
-        :restarting="restartUnderway"
-        :first-start="agent.launchContext === 'initial'"
-        class="h-full min-w-100"
-        @close="showSideLogs = false"
+        collapsible
+        class="min-h-0 flex-1"
       />
     </div>
-    <Button
-      v-else
-      variant="outline"
-      size="sm"
-      class="self-start"
-      title="Show pod logs"
-      @click="showSideLogs = true"
-    >
-      <IconFileText class="size-4" />
-      Logs
-    </Button>
   </div>
 </template>

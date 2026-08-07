@@ -1,10 +1,16 @@
 import { createServiceGetter } from '#common/composables/createServiceGetter';
-import type { IAgentUsage, UsageService } from '#usage/domain';
+import type {
+  IAgentUsage,
+  IOverviewUsage,
+  UsageService,
+} from '#usage/domain';
 
 // Re-export the domain types for consumers importing from
 // `#usage/stores/usage`.
 export type {
   IAgentUsage,
+  IOverviewAgentUsage,
+  IOverviewUsage,
   IUsageDailyEntry,
   IUsageToday,
   IUsageTotals,
@@ -14,6 +20,7 @@ const getService = createServiceGetter<UsageService>('$usageService');
 
 export const useUsageStore = defineStore('usage', () => {
   const byAgent = ref<Record<string, IAgentUsage>>({});
+  const overview = ref<IOverviewUsage | null>(null);
 
   async function fetchForAgent(agentId: string) {
     const data = await getService().findForAgent(agentId);
@@ -25,5 +32,15 @@ export const useUsageStore = defineStore('usage', () => {
     return byAgent.value[agentId] ?? null;
   }
 
-  return { byAgent, fetchForAgent, getForAgent };
+  async function fetchOverview() {
+    const data = await getService().findOverview();
+    if (data) overview.value = data;
+    return data;
+  }
+
+  function getOverview(): IOverviewUsage | null {
+    return overview.value;
+  }
+
+  return { byAgent, overview, fetchForAgent, getForAgent, fetchOverview, getOverview };
 });

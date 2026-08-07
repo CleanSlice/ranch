@@ -1,5 +1,7 @@
 import type {
   IAgentUsage,
+  IOverviewAgentUsage,
+  IOverviewUsage,
   IUsageDailyEntry,
   IUsageToday,
   IUsageTotals,
@@ -57,6 +59,33 @@ export class UsageMapper {
       inputTokens: num(o.inputTokens),
       outputTokens: num(o.outputTokens),
       callCount: num(o.callCount),
+    };
+  }
+
+  toOverviewUsage(raw: unknown): IOverviewUsage | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    return {
+      last30days: Array.isArray(o.last30days)
+        ? o.last30days.map((e) => this.toDaily(e))
+        : [],
+      totals: this.toTotals(o.totals),
+      topModel: typeof o.topModel === 'string' ? o.topModel : null,
+      byAgent: Array.isArray(o.byAgent)
+        ? o.byAgent.map((e) => this.toOverviewAgent(e))
+        : [],
+    };
+  }
+
+  private toOverviewAgent(raw: unknown): IOverviewAgentUsage {
+    const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    return {
+      agentId: str(o.agentId),
+      agentName: str(o.agentName),
+      inputTokens: num(o.inputTokens),
+      outputTokens: num(o.outputTokens),
+      callCount: num(o.callCount),
+      costUsd: num(o.costUsd),
     };
   }
 }

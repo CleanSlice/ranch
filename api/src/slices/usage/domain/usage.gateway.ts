@@ -14,4 +14,9 @@ export abstract class IUsageGateway {
     credentialId: string,
     days: number,
   ): Promise<IUsageData[]>;
+  /**
+   * Every agent's usage rows within the last N days. Used to roll up
+   * workspace-wide spend for the admin usage overview.
+   */
+  abstract findRecentAll(days: number): Promise<IUsageData[]>;
 }

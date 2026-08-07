@@ -5,5 +5,5 @@ defineProps<{ agentId: string }>();
 </script>
 
 <template>
-  <UsagePanel :agent-id="agentId" />
+  <UsagePanel :agent-id="agentId" agent-only />
 </template>

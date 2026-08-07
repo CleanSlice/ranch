@@ -177,6 +177,7 @@ watch(
 
       <UsagePanel
         :agent-id="agent.id"
+        agent-only
         collapsible
         class="min-h-0 flex-1"
       />

@@ -6,6 +6,12 @@
 # container. SIGTERM to bun takes the runtime's graceful path: usage flush +
 # report, then clean exit — the same mechanism the runtime uses to restart
 # itself after channel edits.
+#
+# Guard: pods are immutable, so agents deployed before the manifest gained
+# restartPolicy: Always (2026-07-31, f7eefe4) still carry the old policy — a
+# clean exit parks them in phase=Succeeded forever (2026-08-10 incident: a
+# fleet-wide sweep killed every pre-Always pod). Such pods are skipped with a
+# warning; redeploy those agents from the ranch admin instead.
 
 name: Ops - restart agents
 
@@ -46,14 +52,24 @@ jobs:
               -o jsonpath='{.items[*].metadata.name}')
           fi
           if [ -z "$pods" ]; then echo "no running agent pods found"; exit 0; fi
+          skipped=0
           for p in $pods; do
             echo "--- $p"
+            policy=$(kubectl -n agents get pod "$p" -o jsonpath='{.spec.restartPolicy}')
+            if [ "$policy" != "Always" ]; then
+              echo "::warning::skipping $p — restartPolicy=$policy; a clean exit would park it in Succeeded forever. Redeploy this agent from the ranch admin instead."
+              skipped=$((skipped + 1))
+              continue
+            fi
             if kubectl -n agents exec "$p" -- sh -c 'kill -TERM $(pidof bun) 2>/dev/null || kill 1'; then
               echo "TERM sent"
             else
               echo "::warning::exec failed for $p (container not running?)"
             fi
           done
+          if [ "$skipped" -gt 0 ]; then
+            echo "::notice::$skipped pod(s) skipped due to non-Always restartPolicy — redeploy those agents to refresh their pod spec"
+          fi
 
       - name: Report restart counts and resolved image digests
         run: |

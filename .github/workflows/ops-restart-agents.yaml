@@ -1,0 +1,67 @@
+# Restart agent containers in place so pods re-pull :latest (imagePullPolicy:
+# Always resolves the tag on every container start). Agents are BARE Pods with
+# restartPolicy: Always — `kubectl delete pod` would kill them permanently (no
+# controller recreates bare pods, the DB row would say 'running' forever), so
+# we terminate the runtime process instead and let the kubelet restart the
+# container. SIGTERM to bun takes the runtime's graceful path: usage flush +
+# report, then clean exit — the same mechanism the runtime uses to restart
+# itself after channel edits.
+
+name: Ops - restart agents
+
+on:
+  workflow_dispatch:
+    inputs:
+      pod:
+        description: "Restart only this pod (empty = all running agents)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  restart:
+    runs-on: ubuntu-latest
+    env:
+      POD: ${{ inputs.pod }}
+    steps:
+      - name: Validate pod name
+        run: |
+          if [ -n "$POD" ] && ! echo "$POD" | grep -qE '^[a-z0-9]([a-z0-9-]{0,251}[a-z0-9])?$'; then
+            echo "::error::invalid pod name"; exit 1
+          fi
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Send SIGTERM to each agent runtime
+        run: |
+          if [ -n "$POD" ]; then
+            pods="$POD"
+          else
+            pods=$(kubectl -n agents get pods -l app=ranch-agent \
+              --field-selector=status.phase=Running \
+              -o jsonpath='{.items[*].metadata.name}')
+          fi
+          if [ -z "$pods" ]; then echo "no running agent pods found"; exit 0; fi
+          for p in $pods; do
+            echo "--- $p"
+            if kubectl -n agents exec "$p" -- sh -c 'kill -TERM $(pidof bun) 2>/dev/null || kill 1'; then
+              echo "TERM sent"
+            else
+              echo "::warning::exec failed for $p (container not running?)"
+            fi
+          done
+
+      - name: Report restart counts and resolved image digests
+        run: |
+          sleep 45
+          # imageID shows the digest each container actually runs — after a
+          # restart every pod should report the registry's current digest.
+          kubectl -n agents get pods -l app=ranch-agent -o custom-columns=\
+          NAME:.metadata.name,\
+          RESTARTS:.status.containerStatuses[0].restartCount,\
+          STARTED:.status.containerStatuses[0].state.running.startedAt,\
+          IMAGE_DIGEST:.status.containerStatuses[0].imageID

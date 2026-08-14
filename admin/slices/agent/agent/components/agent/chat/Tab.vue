@@ -22,12 +22,10 @@ const emit = defineEmits<{ restart: []; toggleRunning: [] }>();
 
 const authStore = useAuthStore();
 
-// Side stack next to the chat: logs on top, usage panel below, each
-// independently collapsible into a compact button. Logs stay the primary
-// operational surface (open by default); collapsing one hands its height to
-// the other via flex. The logs panel is only mounted while open, so its 5s
-// polling stops the moment it's collapsed. The usage panel manages its own
-// collapsed state (`collapsible` prop).
+// Side column next to the chat: a one-line usage strip in the header, then
+// logs filling the rest of the height (as they did before UsagePanel split
+// the column 50/50). The logs panel is only mounted while open, so its 5s
+// polling stops the moment it's collapsed.
 const showSideLogs = ref(true);
 
 // One "restart is underway" signal for every surface (bridle header status,
@@ -151,8 +149,14 @@ watch(
       </Transition>
     </div>
     <div
-      class="flex h-[calc(100vh-15.5rem)] min-h-120 w-full max-w-200 basis-1/2 flex-col gap-3"
+      class="flex h-[calc(100vh-15.5rem)] min-h-120 w-full max-w-200 basis-1/2 flex-col gap-1"
     >
+      <UsagePanel
+        :agent-id="agent.id"
+        agent-only
+        variant="strip"
+        class="shrink-0"
+      />
       <div v-if="showSideLogs" class="min-h-0 flex-1 overflow-hidden">
         <AgentLogsPanel
           :agent-id="agent.id"
@@ -174,13 +178,6 @@ watch(
         <IconFileText class="size-4" />
         Logs
       </Button>
-
-      <UsagePanel
-        :agent-id="agent.id"
-        agent-only
-        collapsible
-        class="min-h-0 flex-1"
-      />
     </div>
   </div>
 </template>

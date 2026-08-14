@@ -6,9 +6,10 @@ import {
   IconChevronRight,
 } from '@tabler/icons-vue';
 import type { IUsageDailyEntry } from '#usage/domain';
+import { formatCount, formatUsd } from '#agent/utils/agentFormat';
 
-// Host classes (flex sizing in side stacks) must land on the Card only —
-// the collapsed compact button keeps its own fixed footprint.
+// Host classes (flex sizing in side stacks / the chat header strip) must
+// land on the visible root — Card, collapsed button, or strip — not a wrapper.
 defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(
@@ -24,8 +25,13 @@ const props = withDefaults(
      * fetched.
      */
     agentOnly?: boolean;
+    /**
+     * `strip` — one thin header line (agent chat). `panel` — the full card
+     * (Overview, Rancher). Collapsible is ignored in strip mode.
+     */
+    variant?: 'panel' | 'strip';
   }>(),
-  { title: 'Usage · 30d', collapsible: false, agentOnly: false },
+  { title: 'Usage · 30d', collapsible: false, agentOnly: false, variant: 'panel' },
 );
 
 type UsageView = 'total' | 'calls' | 'agent';
@@ -122,6 +128,23 @@ const viewHint = computed(() =>
   view.value === 'agent' ? 'this agent only' : 'all agents',
 );
 
+const stripTitle = computed(() => {
+  const usage = agentUsage.value;
+  if (!usage || usage.totals.callCount === 0) return 'Usage · this agent, 30d';
+  const parts = [
+    `30d ${formatUsd(usage.totals.costUsd)}`,
+    `${formatCount(usage.totals.inputTokens)} in / ${formatCount(usage.totals.outputTokens)} out`,
+    `${formatCount(usage.totals.callCount)} calls`,
+  ];
+  if (usage.topModel) parts.push(usage.topModel);
+  if (usage.today.callCount) {
+    parts.push(
+      `today ${formatCount(usage.today.inputTokens)}/${formatCount(usage.today.outputTokens)}`,
+    );
+  }
+  return parts.join(' · ');
+});
+
 const cost = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -145,8 +168,31 @@ defineExpose({ refresh });
 </script>
 
 <template>
+  <!-- Compact header line: keeps usage visible without stealing log height. -->
+  <div
+    v-if="variant === 'strip'"
+    v-bind="$attrs"
+    class="flex min-w-0 items-center gap-1.5 overflow-hidden px-1 py-0.5 text-[10px] leading-4 text-muted-foreground"
+    :title="stripTitle"
+  >
+    <span class="shrink-0 font-medium uppercase tracking-wide">Usage</span>
+    <span class="text-muted-foreground/40">·</span>
+    <span v-if="activePending" class="truncate">loading…</span>
+    <span v-else-if="activeError" class="truncate text-destructive">unavailable</span>
+    <span v-else-if="activeEmpty" class="truncate">no data</span>
+    <span v-else-if="agentUsage" class="min-w-0 truncate font-mono tabular-nums">
+      {{ formatUsd(agentUsage.totals.costUsd) }}
+      · {{ formatCount(agentUsage.totals.inputTokens) }}/{{ formatCount(agentUsage.totals.outputTokens) }}
+      · {{ formatCount(agentUsage.totals.callCount) }} calls
+      <template v-if="agentUsage.topModel"> · {{ agentUsage.topModel }}</template>
+      <template v-if="agentUsage.today.callCount">
+        · today {{ formatCount(agentUsage.today.inputTokens) }}/{{ formatCount(agentUsage.today.outputTokens) }}
+      </template>
+    </span>
+  </div>
+
   <Button
-    v-if="collapsible && collapsed"
+    v-else-if="collapsible && collapsed"
     variant="outline"
     size="sm"
     class="self-start"

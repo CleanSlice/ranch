@@ -116,6 +116,7 @@ const demoAgent: IAgentData = {
   workflowId: null,
   config: {},
   resources: { cpu: '500m', memory: '512Mi' },
+  isPublic: true,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };

@@ -25,6 +25,13 @@ jobs:
           DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
         run: bunx prisma-import --force && bunx prisma generate
 
+      - name: Generate API swagger
+        working-directory: api
+        run: bun run build && bun run generate:swagger
+
+      - name: Typecheck consoles
+        run: bunx turbo typecheck --filter=app --filter=admin
+
       - name: Lint
         run: bun run lint
 

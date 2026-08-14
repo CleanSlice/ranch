@@ -8,6 +8,7 @@
     "build": {
       "outputs": ["dist/**", ".nuxt/**", ".output/**"]
     },
+    "typecheck": {},
     "lint": {},
     "test": {}
   }

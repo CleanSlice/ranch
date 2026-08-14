@@ -39,7 +39,7 @@ async function onSync() {
         <Icon
           name="refresh-cw"
           :size="14"
-          :class="syncing && 'animate-spin'"
+          :class="syncing ? 'animate-spin' : undefined"
         />
         {{ syncing ? 'Syncing…' : 'Sync' }}
       </button>

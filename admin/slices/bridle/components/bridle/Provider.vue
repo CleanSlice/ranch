@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted, onUnmounted, type HTMLAttributes } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBridleStore } from '../../stores/bridle'
+import { useBridleStore, type IBridleMessageData, type IBridleThinkingStep, type IThinkingBlock } from '../../stores/bridle'
 import Message from './Message.vue'
 import Input from './Input.vue'
 import DebugPanel from './DebugPanel.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
 import { ScrollArea } from '#theme/components/ui/scroll-area'
 import { Button } from '#theme/components/ui/button'
-import { Bot, Circle, MessageSquarePlus, RotateCw } from 'lucide-vue-next'
+import { Bot, ChevronDown, Circle, MessageSquarePlus, RotateCw } from 'lucide-vue-next'
 import { cn } from '#theme/utils/cn'
+import { renderMarkdown } from '../../utils/markdown'
 
 const props = withDefaults(defineProps<{
   apiUrl: string
@@ -51,7 +52,40 @@ const {
   markdownEnabled,
   hasMoreOlder,
   loadingOlder,
+  thinkingBlocks,
 } = storeToRefs(store)
+
+// ── Thinking timeline (CLEAN-10) ─────────────────────────────────────
+// Messages and thinking blocks interleaved by timestamp — a frozen block
+// stays anchored above the answer it produced, Rovo-style.
+const thinkingLabel = computed(() => `${props.title} is thinking…`)
+const hasOpenThinking = computed(() => thinkingBlocks.value.some(b => b.status === 'thinking'))
+
+interface IChatFlowItem {
+  message?: IBridleMessageData
+  block?: IThinkingBlock
+  ts: number
+}
+const chatFlow = computed<IChatFlowItem[]>(() => {
+  const items: IChatFlowItem[] = messages.value.map(m => ({ message: m, ts: m.ts }))
+  for (const b of thinkingBlocks.value) items.push({ block: b, ts: b.ts })
+  return items.sort((a, b) => a.ts - b.ts)
+})
+
+// turnId → collapsed override; unset = open while thinking, collapsed when done.
+const collapsedBlocks = ref<Record<string, boolean>>({})
+// stepId → detail expanded; steps arrive collapsed.
+const expandedSteps = ref<Record<string, boolean>>({})
+
+function isBlockCollapsed(b: IThinkingBlock): boolean {
+  return collapsedBlocks.value[b.turnId] ?? b.status === 'done'
+}
+function toggleBlock(b: IThinkingBlock): void {
+  collapsedBlocks.value[b.turnId] = !isBlockCollapsed(b)
+}
+function toggleStep(s: IBridleThinkingStep): void {
+  expandedSteps.value[s.id] = !expandedSteps.value[s.id]
+}
 
 function onMarkdownChange(v: boolean | 'indeterminate') {
   store.setMarkdownEnabled(v === true)
@@ -217,7 +251,7 @@ async function onScroll() {
 }
 
 watch(
-  () => [messages.value.length, isTyping.value],
+  () => [messages.value.length, isTyping.value, thinkingBlocks.value.reduce((n, b) => n + b.steps.length, 0)],
   async () => {
     await nextTick()
     scrollToBottom()
@@ -370,26 +404,82 @@ async function onConfirmReset() {
             Start a conversation with the agent
           </div>
 
-          <Message
-            v-for="msg in messages"
-            :key="msg.id"
-            :message="msg"
-            :has-debug="msg.role === 'assistant' && !!store.getDebugForMessage(msg.id)"
-            :markdown-enabled="markdownEnabled"
-            @inspect="inspectedMessageId = $event"
-          />
+          <template
+            v-for="item in chatFlow"
+            :key="item.message ? item.message.id : (item.block?.turnId ?? '')"
+          >
+            <Message
+              v-if="item.message"
+              :message="item.message"
+              :has-debug="item.message.role === 'assistant' && !!store.getDebugForMessage(item.message.id)"
+              :markdown-enabled="markdownEnabled"
+              @inspect="inspectedMessageId = $event"
+            />
+            <div
+              v-else-if="item.block"
+              class="mr-auto flex max-w-full flex-col gap-1.5 px-1"
+              :role="item.block.status === 'thinking' ? 'status' : undefined"
+              :aria-label="item.block.status === 'thinking' ? thinkingLabel : undefined"
+            >
+              <div class="flex items-center gap-1.5">
+                <span
+                  :class="['text-sm font-medium', item.block.status === 'thinking' ? 'bridle-shimmer' : 'text-muted-foreground']"
+                >{{ item.block.status === 'thinking' ? thinkingLabel : 'Thought for a moment' }}</span>
+                <button
+                  v-if="item.block.steps.length"
+                  type="button"
+                  class="p-0.5 text-muted-foreground"
+                  :aria-expanded="!isBlockCollapsed(item.block)"
+                  aria-label="Toggle thinking details"
+                  @click="toggleBlock(item.block)"
+                >
+                  <ChevronDown :class="cn('h-3.5 w-3.5 transition-transform', isBlockCollapsed(item.block) && '-rotate-90')" />
+                </button>
+              </div>
+              <div
+                v-if="item.block.steps.length && !isBlockCollapsed(item.block)"
+                class="ml-1 flex flex-col gap-0.5 border-l border-border pl-3"
+              >
+                <div
+                  v-for="s in item.block.steps"
+                  :key="s.id"
+                  class="flex flex-col items-start"
+                >
+                  <button
+                    v-if="s.detail"
+                    type="button"
+                    class="flex items-center gap-1.5 py-0.5 text-[13px] text-muted-foreground"
+                    :aria-expanded="!!expandedSteps[s.id]"
+                    :aria-controls="`bridle-admin-step-${s.id}`"
+                    @click="toggleStep(s)"
+                  >
+                    <span :class="s.state === 'active' ? 'bridle-shimmer-strong' : ''">{{ s.label }}</span>
+                    <ChevronDown :class="cn('h-3 w-3 shrink-0 transition-transform', !expandedSteps[s.id] && '-rotate-90')" />
+                  </button>
+                  <div v-else class="py-0.5 text-[13px] text-muted-foreground">
+                    <span :class="s.state === 'active' ? 'bridle-shimmer-strong' : ''">{{ s.label }}</span>
+                  </div>
+                  <div
+                    v-if="s.detail && expandedSteps[s.id]"
+                    :id="`bridle-admin-step-${s.id}`"
+                    class="mb-1.5 max-w-full border-l-2 border-border pl-2 text-[13px] leading-relaxed text-muted-foreground wrap-anywhere"
+                    v-html="renderMarkdown(s.detail)"
+                  />
+                </div>
+              </div>
+            </div>
+          </template>
 
-          <div v-if="isTyping" class="flex gap-3 mr-auto">
+          <div
+            v-if="isTyping && !hasOpenThinking"
+            class="mr-auto flex items-center gap-3"
+            role="status"
+            :aria-label="thinkingLabel"
+          >
             <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
               <Bot class="h-4 w-4" />
             </div>
-            <div class="rounded-lg px-3 py-2 bg-muted">
-              <div class="flex gap-1">
-                <span class="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:0ms]" />
-                <span class="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:150ms]" />
-                <span class="h-2 w-2 rounded-full bg-foreground/40 animate-bounce [animation-delay:300ms]" />
-              </div>
-            </div>
+            <span class="bridle-shimmer text-sm font-medium">{{ thinkingLabel }}</span>
           </div>
         </div>
       </ScrollArea>
@@ -585,5 +675,54 @@ async function onConfirmReset() {
 .chat-md th {
   font-weight: 600;
   background-color: color-mix(in srgb, currentColor 6%, transparent);
+}
+/* ── Thinking shimmer (CLEAN-10) ────────────────────────────────────────
+   Traveling light sweep clipped to the status/step text, Rovo-style.
+   background-color first: browsers that reject color-mix still render
+   readable solid text through the clip. */
+.bridle-shimmer,
+.bridle-shimmer-strong {
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: bridle-shimmer-sweep 1.6s linear infinite;
+}
+.bridle-shimmer {
+  color: var(--color-muted-foreground);
+  background-color: var(--color-muted-foreground);
+  background-image: linear-gradient(
+    90deg,
+    var(--color-muted-foreground) 0%,
+    var(--color-muted-foreground) 35%,
+    color-mix(in srgb, var(--color-muted-foreground) 30%, var(--color-background)) 50%,
+    var(--color-muted-foreground) 65%,
+    var(--color-muted-foreground) 100%
+  );
+}
+.bridle-shimmer-strong {
+  color: var(--color-foreground);
+  background-color: var(--color-foreground);
+  background-image: linear-gradient(
+    90deg,
+    var(--color-foreground) 0%,
+    var(--color-foreground) 35%,
+    color-mix(in srgb, var(--color-foreground) 30%, var(--color-background)) 50%,
+    var(--color-foreground) 65%,
+    var(--color-foreground) 100%
+  );
+}
+@keyframes bridle-shimmer-sweep {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bridle-shimmer,
+  .bridle-shimmer-strong {
+    animation: none;
+    background-image: none;
+    background-color: transparent;
+    -webkit-text-fill-color: currentColor;
+  }
 }
 </style>

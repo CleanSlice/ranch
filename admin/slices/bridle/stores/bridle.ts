@@ -36,6 +36,33 @@ export interface IBridleMessageData {
   streaming?: boolean
 }
 
+// ── Thinking (live reasoning steps) ──────────────────────────
+// Mirrors the wire contract in api/src/slices/bridle/domain/bridle.types.ts.
+
+export interface IBridleThinkingStep {
+  id: string
+  label: string
+  detail?: string
+  state: 'active' | 'done'
+}
+
+export interface IBridleThinkingEvent {
+  type: 'thinking'
+  clientId: string
+  turnId: string
+  step?: IBridleThinkingStep
+  done?: boolean
+  ts: number
+}
+
+/** One turn's aggregated thinking timeline. Session-only — not persisted. */
+export interface IThinkingBlock {
+  turnId: string
+  steps: IBridleThinkingStep[]
+  status: 'thinking' | 'done'
+  ts: number
+}
+
 /**
  * Snapshot of an LLM round-trip, sent by the runtime over the "debug" WS
  * event. Hub fans this out only to admin clients.
@@ -233,6 +260,13 @@ export const useBridleStore = defineStore('bridle', {
     isOpen: false,
     clientId: null as string | null,
     /**
+     * Live thinking timelines, one per agent turn — opened by the first
+     * `thinking` event, frozen by its terminal `done` event (or when the
+     * socket drops / the stale watchdog fires). Session-only.
+     */
+    thinkingBlocks: [] as IThinkingBlock[],
+    _thinkingStaleTimer: null as ReturnType<typeof setTimeout> | null,
+    /**
      * Debug snapshots keyed by messageId when the runtime supplies one;
      * otherwise stored in `_lastDebug` and attached to the most recent
      * assistant message via `getDebugForMessage`.
@@ -279,7 +313,10 @@ export const useBridleStore = defineStore('bridle', {
         transports: ['websocket'],
         reconnection: true,
         reconnectionDelay: 2000,
-        auth: { token, agentId },
+        // What this client renders — the hub forwards the list to the agent
+        // on every message; the runtime gates thinking-step emission on it.
+        // No 'ui': the admin preview doesn't render interactive ui parts.
+        auth: { token, agentId, capabilities: ['streaming', 'images', 'files', 'thinking'] },
       })
 
       socket.on('connect', () => {
@@ -292,6 +329,9 @@ export const useBridleStore = defineStore('bridle', {
         // down; reset to false so the indicator doesn't lie about a stale
         // value while we're trying to reconnect.
         this.isAgentConnected = false
+        // Nothing can finish an in-flight turn on a dead socket.
+        this.isTyping = false
+        this._freezeOpenThinking()
       })
 
       socket.on('connect_error', (err) => {
@@ -324,10 +364,45 @@ export const useBridleStore = defineStore('bridle', {
 
       socket.on('typing', () => {
         this.isTyping = true
+        this._armThinkingWatchdog()
+      })
+
+      socket.on('thinking', (e: IBridleThinkingEvent) => {
+        if (!e?.turnId) return
+        let block = this.thinkingBlocks.find(b => b.turnId === e.turnId)
+        if (e.done || !e.step) {
+          // Terminal event — auto-collapse handled by the renderer.
+          if (block) this._freezeThinkingBlock(block)
+          return
+        }
+        if (block?.status === 'done') return // straggler after freeze
+        if (!block) {
+          // Linear conversation: a new turn's first step closes any open block.
+          this._freezeOpenThinking()
+          // Anchor after every message on screen — wire ts is agent-clock.
+          const lastTs = this.messages.length ? this.messages[this.messages.length - 1].ts : 0
+          block = {
+            turnId: e.turnId,
+            steps: [],
+            status: 'thinking',
+            ts: Math.max(e.ts ?? Date.now(), lastTs + 1),
+          }
+          this.thinkingBlocks.push(block)
+        }
+        const idx = block.steps.findIndex(s => s.id === e.step!.id)
+        if (idx >= 0) block.steps[idx] = e.step
+        else block.steps.push(e.step)
+        // Steps mean the agent is working — keep the shimmer alive through
+        // tool execution and re-arm the watchdog.
+        this.isTyping = true
+        this._armThinkingWatchdog()
       })
 
       socket.on('stream', (data: { text?: string; parts?: BridlePart[]; messageId?: string; ts?: number }) => {
         this.isTyping = false
+        // Streaming is activity too — keep the stale watchdog fed so an
+        // open block only freezes when the turn truly went silent.
+        if (this.thinkingBlocks.some(b => b.status === 'thinking')) this._armThinkingWatchdog()
         const text = data.text ?? ''
         const parts = data.parts ?? (text ? [{ type: BridlePartTypes.Text as const, text }] : [])
         const idx = this.messages.findIndex(m => m.id === data.messageId)
@@ -418,6 +493,39 @@ export const useBridleStore = defineStore('bridle', {
       this.hasMoreOlder = false
       this.debugByMessageId = {}
       this._lastDebug = null
+      this.thinkingBlocks = []
+      this.isTyping = false
+      if (this._thinkingStaleTimer) {
+        clearTimeout(this._thinkingStaleTimer)
+        this._thinkingStaleTimer = null
+      }
+    },
+
+    // ── Thinking helpers ─────────────────────────────────────────────
+
+    _freezeThinkingBlock(block: IThinkingBlock) {
+      block.status = 'done'
+      block.steps = block.steps.map(s => ({ ...s, state: 'done' as const }))
+    },
+
+    _freezeOpenThinking() {
+      for (const b of this.thinkingBlocks) {
+        if (b.status === 'thinking') this._freezeThinkingBlock(b)
+      }
+    },
+
+    /**
+     * A cancelled runtime turn never emits stream_end/message or the
+     * terminal thinking event — without this watchdog the shimmer would
+     * animate forever. Re-armed by every typing/thinking/stream event.
+     */
+    _armThinkingWatchdog() {
+      if (this._thinkingStaleTimer) clearTimeout(this._thinkingStaleTimer)
+      this._thinkingStaleTimer = setTimeout(() => {
+        this._thinkingStaleTimer = null
+        this.isTyping = false
+        this._freezeOpenThinking()
+      }, 75_000)
     },
 
     async loadAgentMeta(apiUrl: string, agentId: string, token: string): Promise<void> {

@@ -41,6 +41,9 @@ export abstract class IBridleGateway {
     /** Integrator context from the embed's `data-prompt`; forwarded to the
      * agent on every message in this session. */
     prompt?: string,
+    /** Handshake-advertised render capabilities; forwarded to the agent on
+     * every message so runtimes can gate `thinking`/`ui` emission. */
+    capabilities?: string[],
   ): void;
   /** Unregister a browser client (scoped to clientId + agentId) */
   abstract unregisterClient(clientId: string, agentId: string): void;

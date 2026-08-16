@@ -39,6 +39,14 @@ export interface IBridleIncomingMessage {
   /** Integrator context from the embed's `data-prompt`, carried on every
    * message so the agent runtime can fold it into the system prompt. */
   prompt?: string;
+  /**
+   * Client capabilities advertised at handshake (`auth.capabilities` on
+   * Socket.IO connect). Forwarded on every message so the agent can pick
+   * which part/event types this peer renders — e.g. `thinking` events only
+   * when the client can display them. Bridle SDK ≥ v0.15.0 sends
+   * `['streaming', 'images', 'files', 'ui', 'thinking']`.
+   */
+  capabilities?: string[];
 }
 
 /** Agent → Hub: events routed to browser clients */
@@ -161,6 +169,9 @@ export interface IBridleClientData {
   /** Integrator context from the embed's `data-prompt` (handshake-supplied);
    * forwarded to the agent on every message in this session. */
   prompt?: string;
+  /** Handshake-advertised render capabilities; attached to every message
+   * forwarded to the agent (capability gate for `thinking`, `ui`, …). */
+  capabilities?: string[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────

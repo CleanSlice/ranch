@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* shadcn-vue utility classes (shimmer, …) — Tailwind 4 @utility definitions. */
+@import "shadcn-vue/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 

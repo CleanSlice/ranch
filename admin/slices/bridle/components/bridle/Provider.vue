@@ -423,7 +423,7 @@ async function onConfirmReset() {
             >
               <div class="flex items-center gap-1.5">
                 <span
-                  :class="['text-sm font-medium', item.block.status === 'thinking' ? 'bridle-shimmer' : 'text-muted-foreground']"
+                  :class="['text-sm font-medium text-muted-foreground', item.block.status === 'thinking' && 'shimmer shimmer-duration-1600']"
                 >{{ item.block.status === 'thinking' ? thinkingLabel : 'Thought for a moment' }}</span>
                 <button
                   v-if="item.block.steps.length"
@@ -453,11 +453,11 @@ async function onConfirmReset() {
                     :aria-controls="`bridle-admin-step-${s.id}`"
                     @click="toggleStep(s)"
                   >
-                    <span :class="s.state === 'active' ? 'bridle-shimmer-strong' : ''">{{ s.label }}</span>
+                    <span :class="s.state === 'active' ? 'shimmer shimmer-duration-1600 text-foreground' : ''">{{ s.label }}</span>
                     <ChevronDown :class="cn('h-3 w-3 shrink-0 transition-transform', !expandedSteps[s.id] && '-rotate-90')" />
                   </button>
                   <div v-else class="py-0.5 text-[13px] text-muted-foreground">
-                    <span :class="s.state === 'active' ? 'bridle-shimmer-strong' : ''">{{ s.label }}</span>
+                    <span :class="s.state === 'active' ? 'shimmer shimmer-duration-1600 text-foreground' : ''">{{ s.label }}</span>
                   </div>
                   <div
                     v-if="s.detail && expandedSteps[s.id]"
@@ -479,7 +479,7 @@ async function onConfirmReset() {
             <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
               <Bot class="h-4 w-4" />
             </div>
-            <span class="bridle-shimmer text-sm font-medium">{{ thinkingLabel }}</span>
+            <span class="shimmer shimmer-duration-1600 text-sm font-medium text-muted-foreground">{{ thinkingLabel }}</span>
           </div>
         </div>
       </ScrollArea>
@@ -675,54 +675,5 @@ async function onConfirmReset() {
 .chat-md th {
   font-weight: 600;
   background-color: color-mix(in srgb, currentColor 6%, transparent);
-}
-/* ── Thinking shimmer (CLEAN-10) ────────────────────────────────────────
-   Traveling light sweep clipped to the status/step text, Rovo-style.
-   background-color first: browsers that reject color-mix still render
-   readable solid text through the clip. */
-.bridle-shimmer,
-.bridle-shimmer-strong {
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: bridle-shimmer-sweep 1.6s linear infinite;
-}
-.bridle-shimmer {
-  color: var(--color-muted-foreground);
-  background-color: var(--color-muted-foreground);
-  background-image: linear-gradient(
-    90deg,
-    var(--color-muted-foreground) 0%,
-    var(--color-muted-foreground) 35%,
-    color-mix(in srgb, var(--color-muted-foreground) 30%, var(--color-background)) 50%,
-    var(--color-muted-foreground) 65%,
-    var(--color-muted-foreground) 100%
-  );
-}
-.bridle-shimmer-strong {
-  color: var(--color-foreground);
-  background-color: var(--color-foreground);
-  background-image: linear-gradient(
-    90deg,
-    var(--color-foreground) 0%,
-    var(--color-foreground) 35%,
-    color-mix(in srgb, var(--color-foreground) 30%, var(--color-background)) 50%,
-    var(--color-foreground) 65%,
-    var(--color-foreground) 100%
-  );
-}
-@keyframes bridle-shimmer-sweep {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .bridle-shimmer,
-  .bridle-shimmer-strong {
-    animation: none;
-    background-image: none;
-    background-color: transparent;
-    -webkit-text-fill-color: currentColor;
-  }
 }
 </style>

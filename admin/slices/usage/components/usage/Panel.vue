@@ -6,9 +6,10 @@ import {
   IconChevronRight,
 } from '@tabler/icons-vue';
 import type { IUsageDailyEntry } from '#usage/domain';
+import { formatCount, formatUsd } from '#agent/utils/agentFormat';
 
-// Host classes (flex sizing in side stacks) must land on the Card only —
-// the collapsed compact button keeps its own fixed footprint.
+// Host classes (flex sizing in side stacks / the chat header strip) must
+// land on the visible root — Card, collapsed button, or strip — not a wrapper.
 defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(
@@ -24,8 +25,13 @@ const props = withDefaults(
      * fetched.
      */
     agentOnly?: boolean;
+    /**
+     * `strip` — one thin header line (agent chat). `panel` — the full card
+     * (Overview, Rancher). Collapsible is ignored in strip mode.
+     */
+    variant?: 'panel' | 'strip';
   }>(),
-  { title: 'Usage · 30d', collapsible: false, agentOnly: false },
+  { title: 'Usage · 30d', collapsible: false, agentOnly: false, variant: 'panel' },
 );
 
 type UsageView = 'total' | 'calls' | 'agent';
@@ -122,6 +128,17 @@ const viewHint = computed(() =>
   view.value === 'agent' ? 'this agent only' : 'all agents',
 );
 
+// Strip mode: the host page decides where "Details" leads (agent page →
+// the Overview tab with the full usage card).
+const emit = defineEmits<{ details: [] }>();
+
+const todayTitle = computed(() => {
+  const today = agentUsage.value?.today;
+  if (!today) return undefined;
+  const model = today.model ? ` · ${today.model}` : '';
+  return `Today · in ${count.format(today.inputTokens)} / out ${count.format(today.outputTokens)}${model}`;
+});
+
 const cost = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -145,8 +162,67 @@ defineExpose({ refresh });
 </script>
 
 <template>
+  <!-- Full-width usage strip: one hairline-bounded row under the page
+       header. Label–value pairs read left to right; Details jumps to the
+       full usage card on the host page. -->
+  <div
+    v-if="variant === 'strip'"
+    v-bind="$attrs"
+    class="flex w-full min-w-0 flex-wrap items-center gap-x-5 gap-y-1.5 border-y border-border/70 py-2.5 text-sm"
+  >
+    <span class="flex shrink-0 items-center gap-3">
+      <span class="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        Usage · 30d
+      </span>
+      <span class="h-4 w-px bg-border" aria-hidden="true" />
+    </span>
+
+    <span v-if="activePending" class="text-muted-foreground">Loading usage…</span>
+    <span v-else-if="activeError" class="text-destructive">Usage unavailable</span>
+    <span v-else-if="activeEmpty" class="text-muted-foreground">No usage reported yet</span>
+
+    <template v-else-if="agentUsage">
+      <span class="flex items-baseline gap-1.5">
+        <span class="text-muted-foreground">Cost</span>
+        <span class="font-semibold">{{ formatUsd(agentUsage.totals.costUsd) }}</span>
+      </span>
+      <span class="flex items-baseline gap-1.5">
+        <span class="text-muted-foreground">Calls</span>
+        <span class="font-semibold">{{ count.format(agentUsage.totals.callCount) }}</span>
+      </span>
+      <span class="flex items-baseline gap-1.5">
+        <span class="text-muted-foreground">Input</span>
+        <span class="font-semibold">{{ formatCount(agentUsage.totals.inputTokens) }}</span>
+      </span>
+      <span class="flex items-baseline gap-1.5">
+        <span class="text-muted-foreground">Output</span>
+        <span class="font-semibold">{{ formatCount(agentUsage.totals.outputTokens) }}</span>
+      </span>
+      <span class="flex items-baseline gap-1.5" :title="todayTitle">
+        <span class="text-muted-foreground">Today</span>
+        <span class="font-semibold">{{ count.format(agentUsage.today.callCount) }} calls</span>
+      </span>
+      <span
+        v-if="agentUsage.topModel"
+        class="flex min-w-0 items-baseline gap-1.5"
+        :title="agentUsage.topModel"
+      >
+        <span class="text-muted-foreground">Model</span>
+        <span class="truncate font-semibold">{{ agentUsage.topModel }}</span>
+      </span>
+    </template>
+
+    <button
+      type="button"
+      class="ml-auto shrink-0 text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground"
+      @click="emit('details')"
+    >
+      Details
+    </button>
+  </div>
+
   <Button
-    v-if="collapsible && collapsed"
+    v-else-if="collapsible && collapsed"
     variant="outline"
     size="sm"
     class="self-start"

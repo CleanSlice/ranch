@@ -220,7 +220,7 @@ const initials = computed(() => {
           <Icon
             :name="isTransitioning ? 'loader-2' : 'refresh-cw'"
             :size="13"
-            :class="isTransitioning && 'animate-spin'"
+            :class="isTransitioning ? 'animate-spin' : undefined"
           />
           {{ isTransitioning ? 'Restarting…' : 'Restart' }}
         </button>

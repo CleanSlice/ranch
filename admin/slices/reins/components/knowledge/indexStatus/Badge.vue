@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { IndexStatus } from '#reins/stores/knowledge';
+import { Badge as UiBadge } from '#theme/components/ui/badge';
 
 const props = defineProps<{ status: IndexStatus }>();
 
@@ -35,5 +36,5 @@ const variant = computed<'default' | 'secondary' | 'destructive' | 'outline'>(
 </script>
 
 <template>
-  <Badge :variant="variant">{{ label }}</Badge>
+  <UiBadge :variant="variant">{{ label }}</UiBadge>
 </template>

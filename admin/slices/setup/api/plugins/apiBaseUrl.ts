@@ -25,8 +25,8 @@ export default defineNuxtPlugin({
         requestConfig.baseURL = apiUrl;
       }
       if (typeof document === 'undefined') return requestConfig;
-      const match = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/);
-      const token = match ? decodeURIComponent(match[1]) : null;
+      const raw = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)?.[1];
+      const token = raw ? decodeURIComponent(raw) : null;
       if (token) {
         requestConfig.headers.set('Authorization', `Bearer ${token}`);
       }

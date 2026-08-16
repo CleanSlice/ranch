@@ -98,10 +98,12 @@ export function parseAgentLogs(raw: string): IAgentLogGroup[] {
     let dayLabel: string | null = null;
 
     const m = line.match(TS_LINE_RE);
-    if (m) {
-      const d = parseLogTimestamp(m[1]);
+    const rawTs = m?.[1];
+    const rawText = m?.[2];
+    if (rawTs !== undefined && rawText !== undefined) {
+      const d = parseLogTimestamp(rawTs);
       if (d) {
-        text = m[2].replace(RUNTIME_TIME_PREFIX_RE, '');
+        text = rawText.replace(RUNTIME_TIME_PREFIX_RE, '');
         time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
         dayKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
         dayLabel = d.toLocaleDateString('en-US', {

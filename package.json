@@ -13,6 +13,7 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
+    "typecheck": "turbo typecheck --filter=app --filter=admin",
     "dev:api": "turbo dev --filter=api",
     "dev:app": "turbo dev --filter=app",
     "dev:admin": "turbo dev --filter=admin",

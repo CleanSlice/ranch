@@ -45,8 +45,8 @@ function unwrapOrThrow(res: HeyApiResult, action: string): unknown {
 
 function readAccessToken(): string | null {
   if (typeof document === 'undefined') return null;
-  const m = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
+  const token = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)?.[1];
+  return token ? decodeURIComponent(token) : null;
 }
 
 export class AgentGateway extends BaseGateway implements IAgentGateway {

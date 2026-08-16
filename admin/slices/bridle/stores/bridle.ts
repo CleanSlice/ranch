@@ -412,7 +412,7 @@ export const useBridleStore = defineStore('bridle', {
             }
           }
           // Anchor after every message on screen — wire ts is agent-clock.
-          const lastTs = this.messages.length ? this.messages[this.messages.length - 1].ts : 0
+          const lastTs = this.messages[this.messages.length - 1]?.ts ?? 0
           block = {
             turnId: e.turnId,
             seg: turnBlocks.length,
@@ -437,8 +437,9 @@ export const useBridleStore = defineStore('bridle', {
         const text = data.text ?? ''
         const parts = data.parts ?? (text ? [{ type: BridlePartTypes.Text as const, text }] : [])
         const idx = this.messages.findIndex(m => m.id === data.messageId)
-        if (idx >= 0) {
-          this.messages[idx] = { ...this.messages[idx], text, parts, streaming: true }
+        const current = this.messages[idx]
+        if (current) {
+          this.messages[idx] = { ...current, text, parts, streaming: true }
         } else {
           // Don't create a fresh bubble for an empty initial chunk — wait
           // until the runtime actually has visible content.
@@ -479,8 +480,9 @@ export const useBridleStore = defineStore('bridle', {
         const text = data.text ?? ''
         const parts = data.parts ?? (text ? [{ type: BridlePartTypes.Text as const, text }] : [])
         const idx = this.messages.findIndex(m => m.id === data.messageId)
-        if (idx >= 0) {
-          this.messages[idx] = { ...this.messages[idx], text, parts, streaming: false }
+        const current = this.messages[idx]
+        if (current) {
+          this.messages[idx] = { ...current, text, parts, streaming: false }
         } else {
           if (!hasVisibleContent(text, parts)) return
           this.messages.push({

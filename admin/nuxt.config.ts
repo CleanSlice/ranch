@@ -21,6 +21,9 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   extends: [...registerSlices()],
   ssr: false,
+  future: {
+    compatibilityVersion: 4,
+  },
   runtimeConfig: {
     public: {
       ranchVersion: rootRanchVersion(),
@@ -51,5 +54,5 @@ export default defineNuxtConfig({
     },
   },
   modules: ['@nuxt/image'],
-  compatibilityDate: '2024-10-04',
+  compatibilityDate: '2026-08-14',
 });

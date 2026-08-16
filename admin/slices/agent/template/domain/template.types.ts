@@ -15,6 +15,7 @@ export interface ITemplateData {
   defaultKnowledgeIds: string[];
   skillIds: string[];
   mcpServerIds: string[];
+  version?: string;
   createdAt: string;
   updatedAt: string;
 }

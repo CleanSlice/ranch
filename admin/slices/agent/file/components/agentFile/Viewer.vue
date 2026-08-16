@@ -3,19 +3,27 @@ import { Button } from '#theme/components/ui/button';
 import { IconChevronDown } from '@tabler/icons-vue';
 import AgentFileEditor from './Editor.vue';
 
-const props = defineProps<{
-  path: string | null;
-  content: string;
-  loading: boolean;
-  saving: boolean;
-  loadError: string | null;
-  saveError: string | null;
-  dirty: boolean;
-  totalSize: number;
-  loadedSize: number;
-  hasMore: boolean;
-  loadingMore: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    path: string | null;
+    content: string;
+    loading: boolean;
+    saving: boolean;
+    loadError: string | null;
+    saveError: string | null;
+    dirty: boolean;
+    totalSize?: number;
+    loadedSize?: number;
+    hasMore?: boolean;
+    loadingMore?: boolean;
+  }>(),
+  {
+    totalSize: 0,
+    loadedSize: 0,
+    hasMore: false,
+    loadingMore: false,
+  },
+);
 
 const emit = defineEmits<{
   (e: 'update:content', v: string): void;

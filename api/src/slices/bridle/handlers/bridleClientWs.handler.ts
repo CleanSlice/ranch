@@ -62,6 +62,7 @@ export class BridleClientWsHandler
       token?: string;
       anonId?: string;
       prompt?: string;
+      capabilities?: unknown;
     };
     // Accept legacy `botId` from browsers running cached pre-0.3.0 SDK
     // bundles. Drop after CDN/embedders have rolled forward.
@@ -168,13 +169,29 @@ export class BridleClientWsHandler
         ? auth.prompt
         : undefined;
 
+    // Render capabilities the client advertised at handshake (SDK ≥ 0.12
+    // sends streaming/images/files/ui; ≥ 0.15 adds thinking). Forwarded on
+    // every message so the runtime can gate what it emits to this peer.
+    const capabilities = Array.isArray(auth.capabilities)
+      ? (auth.capabilities as unknown[]).filter(
+          (c): c is string => typeof c === 'string',
+        )
+      : undefined;
+
     const send = (data: unknown) => {
       const event =
         ((data as Record<string, unknown>)?.type as string) ?? 'data';
       client.emit(event, data);
     };
 
-    this.hub.registerClient(clientId, agentId, send, isAdmin, prompt);
+    this.hub.registerClient(
+      clientId,
+      agentId,
+      send,
+      isAdmin,
+      prompt,
+      capabilities,
+    );
     client.emit('welcome', { clientId });
     // Tell the new client whether the agent runtime is currently online so the
     // chat header can render the right indicator color before any subsequent

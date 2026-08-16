@@ -12,8 +12,8 @@ import { AgentFileMapper } from './agentFile.mapper';
 
 function readAccessToken(): string | null {
   if (typeof document === 'undefined') return null;
-  const m = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
+  const token = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)?.[1];
+  return token ? decodeURIComponent(token) : null;
 }
 
 export class AgentFileGateway extends BaseGateway implements IAgentFileGateway {

@@ -73,8 +73,8 @@ async function fetchLiveCurrent(): Promise<string | null> {
   try {
     const config = useRuntimeConfig();
     const apiUrl = config.public.apiUrl as string;
-    const match = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/);
-    const token = match ? decodeURIComponent(match[1]) : null;
+    const raw = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)?.[1];
+    const token = raw ? decodeURIComponent(raw) : null;
     const res = await fetch(`${apiUrl}/upgrade/status`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });

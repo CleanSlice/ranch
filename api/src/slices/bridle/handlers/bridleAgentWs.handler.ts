@@ -14,6 +14,7 @@ import {
   type IBridleOutgoingEvent,
   type IBridleSyncResponse,
   type IBridleDebugEvent,
+  type IBridleThinkingEvent,
 } from '../domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { IChatGateway, type IChatActivity } from '#/chat/domain';
@@ -33,6 +34,7 @@ import { IChatGateway, type IChatActivity } from '#/chat/domain';
  *   "stream"      { clientId, text, messageId, ts }
  *   "stream_end"  { clientId, text, messageId, ts }
  *   "typing"      { clientId, ts }
+ *   "thinking"    { clientId, turnId, step?, done?, ts }
  *   "sync_done"   { requestId, pushed, error? }
  *   "ping"        {}
  *
@@ -176,6 +178,18 @@ export class BridleAgentWsHandler
     const agentId = client.data?.agentId as string;
     if (data?.clientId && agentId) {
       this.hub.handleAgentEvent(agentId, { ...data, type: 'typing' });
+    }
+  }
+
+  @SubscribeMessage('thinking')
+  handleThinking(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: IBridleThinkingEvent,
+  ) {
+    this.ensureRegistered(client);
+    const agentId = client.data?.agentId as string;
+    if (data?.clientId && data?.turnId && agentId) {
+      this.hub.handleAgentEvent(agentId, { ...data, type: 'thinking' });
     }
   }
 

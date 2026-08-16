@@ -170,6 +170,16 @@ watch(activeTab, (tab) => {
         </div>
       </div>
 
+      <!-- Full-width usage strip under the header: visible on every tab,
+           Details jumps to the Overview tab's full usage card. -->
+      <UsagePanel
+        :agent-id="agent.id"
+        agent-only
+        variant="strip"
+        class="-my-1"
+        @details="activeTab = 'overview'"
+      />
+
       <Tabs
         orientation="vertical"
         :model-value="activeTab"

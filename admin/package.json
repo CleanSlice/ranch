@@ -37,6 +37,7 @@
     "pinia": "^3",
     "reka-ui": "^2.9.6",
     "shadcn-nuxt": "^2.4.3",
+    "shadcn-vue": "^2.8.2",
     "sigma": "^3.0.2",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^2.6.1",

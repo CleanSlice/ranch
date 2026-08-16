@@ -49,9 +49,11 @@ Collapse/expand toggles (`collapsedBlocks` per `turnId`, `expandedSteps` per ste
 
 ### Relationships
 
-- Blocks are **their own in-flow chat items**, interleaved with messages by `ts` (a frozen block stays anchored above the answer it produced). They are not attached to a message object — tool-call iterations can stream interim bubbles mid-turn, which makes "the" answer message ambiguous.
-- At most **one** open (`status:'thinking'`) block exists per widget instance (linear conversation, D2); a new turn's first step force-freezes any previous open block.
-- **Freeze triggers**: the terminal `done: true` event (primary), the ~75 s inactivity watchdog (re-armed by every typing/thinking/stream event), and the socket `close` event. Mid-turn `stream_end`s do **not** freeze the block.
+- Blocks are **their own in-flow chat items**, interleaved with messages by `ts`. They are not attached to a message object — tool-call iterations can stream interim bubbles mid-turn, which makes "the" answer message ambiguous.
+- **A turn spans one or more segments** (`IThinkingBlock.seg` ordinal): a segment *seals* (collapses) the moment a new visible assistant bubble lands below it, and the turn's next step opens a fresh segment under that message — the current activity always renders at the bottom of the flow, Rovo-style. A `done` step update lands in whichever segment holds its step id, even after that segment sealed.
+- At most **one** open (`status:'thinking'`) segment exists per client (linear conversation, D2); a new turn's first step force-closes other turns' segments.
+- **Seal vs close**: sealing collapses a segment but leaves the *turn* open; terminal paths — the `done: true` event, the ~75 s inactivity watchdog, socket `close` — additionally mark the turn closed (client-side straggler set) so late steps can't resurrect a segment. Mid-turn `stream_end`s never close the turn.
+- **Auto-follow**: the chat scrolls to new content only when the reader is already near the bottom (~80 px) — a reader who scrolled up is never yanked back down.
 - The shimmer status line is **derived state**, not stored: shown while `isTyping` or an open block exists; the open block's own header carries the shimmer once steps appear.
 
 ## State transitions

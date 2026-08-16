@@ -55,9 +55,17 @@ export interface IBridleThinkingEvent {
   ts: number
 }
 
-/** One turn's aggregated thinking timeline. Session-only — not persisted. */
+/**
+ * One SEGMENT of a turn's thinking timeline. A turn may produce several
+ * segments: a segment seals (collapses) as soon as assistant content lands
+ * below it, and the next step opens a fresh segment under that message —
+ * so the current activity always renders at the bottom of the flow.
+ * Session-only — not persisted.
+ */
 export interface IThinkingBlock {
   turnId: string
+  /** Segment ordinal within the turn — with turnId forms the render key. */
+  seg: number
   steps: IBridleThinkingStep[]
   status: 'thinking' | 'done'
   ts: number
@@ -266,6 +274,9 @@ export const useBridleStore = defineStore('bridle', {
      */
     thinkingBlocks: [] as IThinkingBlock[],
     _thinkingStaleTimer: null as ReturnType<typeof setTimeout> | null,
+    /** Turns terminally closed (done event / watchdog / disconnect) —
+     * straggler steps for these must not resurrect a segment. */
+    _closedTurns: {} as Record<string, true>,
     /**
      * Debug snapshots keyed by messageId when the runtime supplies one;
      * otherwise stored in `_lastDebug` and attached to the most recent
@@ -331,7 +342,7 @@ export const useBridleStore = defineStore('bridle', {
         this.isAgentConnected = false
         // Nothing can finish an in-flight turn on a dead socket.
         this.isTyping = false
-        this._freezeOpenThinking()
+        this._closeAllTurns()
       })
 
       socket.on('connect_error', (err) => {
@@ -353,6 +364,9 @@ export const useBridleStore = defineStore('bridle', {
         const text = data.text ?? ''
         const parts = data.parts ?? (text ? [{ type: BridlePartTypes.Text as const, text }] : [])
         if (!hasVisibleContent(text, parts)) return
+        // Content lands below the open segment — seal it so the next step
+        // opens a fresh segment under this message (turn stays open).
+        this._freezeOpenThinking()
         this.messages.push({
           id: data.messageId ?? crypto.randomUUID(),
           role: 'assistant',
@@ -369,29 +383,46 @@ export const useBridleStore = defineStore('bridle', {
 
       socket.on('thinking', (e: IBridleThinkingEvent) => {
         if (!e?.turnId) return
-        let block = this.thinkingBlocks.find(b => b.turnId === e.turnId)
+        const turnBlocks = this.thinkingBlocks.filter(b => b.turnId === e.turnId)
         if (e.done || !e.step) {
-          // Terminal event — auto-collapse handled by the renderer.
-          if (block) this._freezeThinkingBlock(block)
+          // Terminal event — freeze every segment and refuse stragglers.
+          for (const b of turnBlocks) this._freezeThinkingBlock(b)
+          this._closedTurns[e.turnId] = true
           return
         }
-        if (block?.status === 'done') return // straggler after freeze
-        if (!block) {
-          // Linear conversation: a new turn's first step closes any open block.
-          this._freezeOpenThinking()
+        if (this._closedTurns[e.turnId]) return // straggler after terminal
+        // `done` updates land in whichever segment holds the step id — the
+        // segment may have sealed while the tool was still running.
+        const owner = turnBlocks.find(b => b.steps.some(s => s.id === e.step!.id))
+        if (owner) {
+          owner.steps = owner.steps.map(s => (s.id === e.step!.id ? e.step! : s))
+          this.isTyping = true
+          this._armThinkingWatchdog()
+          return
+        }
+        // New step: continue the trailing open segment, or open a fresh one
+        // below the newest message (segments seal when content lands).
+        let block = turnBlocks[turnBlocks.length - 1]
+        if (!block || block.status === 'done') {
+          // Linear conversation: a new turn's first step closes other turns.
+          for (const b of this.thinkingBlocks) {
+            if (b.turnId !== e.turnId && b.status === 'thinking') {
+              this._freezeThinkingBlock(b)
+              this._closedTurns[b.turnId] = true
+            }
+          }
           // Anchor after every message on screen — wire ts is agent-clock.
           const lastTs = this.messages.length ? this.messages[this.messages.length - 1].ts : 0
           block = {
             turnId: e.turnId,
+            seg: turnBlocks.length,
             steps: [],
             status: 'thinking',
             ts: Math.max(e.ts ?? Date.now(), lastTs + 1),
           }
           this.thinkingBlocks.push(block)
         }
-        const idx = block.steps.findIndex(s => s.id === e.step!.id)
-        if (idx >= 0) block.steps[idx] = e.step
-        else block.steps.push(e.step)
+        block.steps.push(e.step)
         // Steps mean the agent is working — keep the shimmer alive through
         // tool execution and re-arm the watchdog.
         this.isTyping = true
@@ -412,6 +443,9 @@ export const useBridleStore = defineStore('bridle', {
           // Don't create a fresh bubble for an empty initial chunk — wait
           // until the runtime actually has visible content.
           if (!hasVisibleContent(text, parts)) return
+          // First visible chunk of a new bubble — seal the open segment so
+          // subsequent steps continue below this message.
+          this._freezeOpenThinking()
           this.messages.push({
             id: data.messageId ?? crypto.randomUUID(),
             role: 'assistant',
@@ -494,6 +528,7 @@ export const useBridleStore = defineStore('bridle', {
       this.debugByMessageId = {}
       this._lastDebug = null
       this.thinkingBlocks = []
+      this._closedTurns = {}
       this.isTyping = false
       if (this._thinkingStaleTimer) {
         clearTimeout(this._thinkingStaleTimer)
@@ -508,10 +543,21 @@ export const useBridleStore = defineStore('bridle', {
       block.steps = block.steps.map(s => ({ ...s, state: 'done' as const }))
     },
 
+    /**
+     * Seal (collapse) every open segment. The turns stay open — later steps
+     * of the same turn open a fresh segment below the newest message.
+     */
     _freezeOpenThinking() {
       for (const b of this.thinkingBlocks) {
         if (b.status === 'thinking') this._freezeThinkingBlock(b)
       }
+    },
+
+    /** Terminal paths (watchdog, disconnect): seal segments AND close their
+     * turns so straggler steps can't resurrect a zombie segment. */
+    _closeAllTurns() {
+      for (const b of this.thinkingBlocks) this._closedTurns[b.turnId] = true
+      this._freezeOpenThinking()
     },
 
     /**
@@ -524,7 +570,7 @@ export const useBridleStore = defineStore('bridle', {
       this._thinkingStaleTimer = setTimeout(() => {
         this._thinkingStaleTimer = null
         this.isTyping = false
-        this._freezeOpenThinking()
+        this._closeAllTurns()
       }, 75_000)
     },
 

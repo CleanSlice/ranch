@@ -72,16 +72,21 @@ const chatFlow = computed<IChatFlowItem[]>(() => {
   return items.sort((a, b) => a.ts - b.ts)
 })
 
-// turnId → collapsed override; unset = open while thinking, collapsed when done.
+// A turn may span several segments (blocks) — turnId + seg identifies one.
+function blockKey(b: IThinkingBlock): string {
+  return `${b.turnId}#${b.seg}`
+}
+
+// segment key → collapsed override; unset = open while thinking, collapsed when done.
 const collapsedBlocks = ref<Record<string, boolean>>({})
 // stepId → detail expanded; steps arrive collapsed.
 const expandedSteps = ref<Record<string, boolean>>({})
 
 function isBlockCollapsed(b: IThinkingBlock): boolean {
-  return collapsedBlocks.value[b.turnId] ?? b.status === 'done'
+  return collapsedBlocks.value[blockKey(b)] ?? b.status === 'done'
 }
 function toggleBlock(b: IThinkingBlock): void {
-  collapsedBlocks.value[b.turnId] = !isBlockCollapsed(b)
+  collapsedBlocks.value[blockKey(b)] = !isBlockCollapsed(b)
 }
 function toggleStep(s: IBridleThinkingStep): void {
   expandedSteps.value[s.id] = !expandedSteps.value[s.id]
@@ -253,8 +258,14 @@ async function onScroll() {
 watch(
   () => [messages.value.length, isTyping.value, thinkingBlocks.value.reduce((n, b) => n + b.steps.length, 0)],
   async () => {
+    // Capture BEFORE the DOM grows: follow only a reader who was already at
+    // the bottom — never yank back someone who scrolled up to re-read.
+    const viewport = getViewport()
+    const nearBottom =
+      !viewport ||
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80
     await nextTick()
-    scrollToBottom()
+    if (nearBottom) scrollToBottom()
   },
 )
 
@@ -406,7 +417,7 @@ async function onConfirmReset() {
 
           <template
             v-for="item in chatFlow"
-            :key="item.message ? item.message.id : (item.block?.turnId ?? '')"
+            :key="item.message ? item.message.id : (item.block ? blockKey(item.block) : '')"
           >
             <Message
               v-if="item.message"

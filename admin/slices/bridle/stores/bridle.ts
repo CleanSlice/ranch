@@ -412,7 +412,7 @@ export const useBridleStore = defineStore('bridle', {
             }
           }
           // Anchor after every message on screen — wire ts is agent-clock.
-          const lastTs = this.messages.length ? this.messages[this.messages.length - 1].ts : 0
+          const lastTs = this.messages[this.messages.length - 1]?.ts ?? 0
           block = {
             turnId: e.turnId,
             seg: turnBlocks.length,

@@ -84,6 +84,18 @@ function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex').slice(0, 12);
 }
 
+/**
+ * vue-i18n compiles every message: a bare `@` starts a linked-message reference
+ * and a bare `|` starts a plural branch, so `jane@example.com` fails the build
+ * with a compiler error. Both must be written as literals — `jane{'@'}mail.com`.
+ * Worth checking here because CI runs typecheck/lint/test and this script, not
+ * `nuxt build` — without this guard a broken message reaches production.
+ */
+function unsafeMessage(value: string): boolean {
+  const withoutLiterals = value.replace(/\{'[^']*'\}/g, '').replace(/\{\s*\w+\s*\}/g, '');
+  return /[@|]/.test(withoutLiterals);
+}
+
 // ------------------------------------------------------------------ discovery
 
 /** Every `<slice>/i18n/locales` directory under app/slices, at any nesting. */
@@ -116,6 +128,8 @@ type Work = {
   unrecorded: string[];
   /** Keys the target has but English no longer does. */
   orphaned: string[];
+  /** Keys whose text would fail the vue-i18n message compiler. */
+  invalid: string[];
 };
 
 function plan(manifest: Manifest): Work[] {
@@ -148,6 +162,12 @@ function plan(manifest: Manifest): Work[] {
         stale: present.filter((k) => known[k] !== undefined && known[k] !== hash(source[k]!)),
         unrecorded: present.filter((k) => known[k] === undefined),
         orphaned: Object.keys(target).filter((k) => !(k in source)),
+        // Both sides: an unescaped @ in en.json breaks the build just as surely
+        // as one the model wrote into ru.json.
+        invalid: [
+          ...Object.keys(source).filter((k) => unsafeMessage(source[k]!)),
+          ...Object.keys(target).filter((k) => unsafeMessage(target[k]!)),
+        ].filter((k, i, all) => all.indexOf(k) === i),
       });
     }
   }
@@ -181,6 +201,7 @@ const SYSTEM_PROMPT = [
   '- Return ONLY a JSON object mapping each key you were given to its translation.',
   '- Translate the value, never the key.',
   '- Keep placeholders exactly as they appear: {name}, {count}, @:some.key, and any HTML.',
+  "- Never write a bare @ or | — vue-i18n reads them as control characters. An escaped literal such as {'@'} must come back verbatim.",
   '- Do not translate product or component names: Ranch, Bridle, Paddock, Kubernetes, Argo Workflows, Docker.',
   '- Match the register of a modern product UI: short, direct, no marketing filler.',
   '- Keep the ending punctuation and letter case style of the source string.',
@@ -222,6 +243,9 @@ async function translate(
       const parsed = JSON.parse(text) as Record<string, unknown>;
       const missing = Object.keys(entries).filter((k) => typeof parsed[k] !== 'string');
       if (missing.length) throw new Error(`missing keys in reply: ${missing.join(', ')}`);
+      const broken = Object.keys(entries).filter((k) => unsafeMessage(parsed[k] as string));
+      if (broken.length)
+        throw new Error(`unescaped @ or | in reply: ${broken.join(', ')}`);
       return parsed as FlatMessages;
     } catch (error) {
       if (attempt === 2) throw new Error(`${slice} → ${locale}: ${(error as Error).message}`);
@@ -243,10 +267,18 @@ function report(work: Work[]): number {
     if (item.unrecorded.length)
       lines.push(`  unrecorded (${item.unrecorded.length}): ${item.unrecorded.join(', ')}`);
     if (item.orphaned.length) lines.push(`  orphaned (${item.orphaned.length}): ${item.orphaned.join(', ')}`);
+    if (item.invalid.length)
+      lines.push(
+        `  unescaped @ or | (${item.invalid.length}): ${item.invalid.join(', ')} — write them as {'@'} / {'|'}`,
+      );
     if (!lines.length) continue;
 
     problems +=
-      item.missing.length + item.stale.length + item.unrecorded.length + item.orphaned.length;
+      item.missing.length +
+      item.stale.length +
+      item.unrecorded.length +
+      item.orphaned.length +
+      item.invalid.length;
     console.error(`${item.slice.name} → ${item.locale}`);
     for (const line of lines) console.error(line);
   }

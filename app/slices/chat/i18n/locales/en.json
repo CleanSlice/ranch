@@ -1,0 +1,33 @@
+{
+  "history": {
+    "title": "History",
+    "lede": "Your past conversations. Open one to pick up where you left off.",
+    "sync": "Sync",
+    "syncing": "Syncing…",
+    "empty_title": "No conversations yet",
+    "empty_hint": "Chat with an agent and it'll show up here so you can revisit it later.",
+    "empty_cta": "Browse agents"
+  },
+  "session": {
+    "fallback_title": "Conversation",
+    "message_count": "no messages | {count} message | {count} messages",
+    "not_found_title": "Conversation not found",
+    "not_found_hint": "It may have been removed, or it isn't one of yours.",
+    "last_activity": "Last activity {when}",
+    "insights_title": "Summary & insights",
+    "no_summary": "No summary yet",
+    "resolved": "resolved",
+    "unresolved": "unresolved",
+    "export": "Export",
+    "load_older": "Load older",
+    "loading": "Loading…",
+    "no_messages": "No messages in this conversation."
+  },
+  "message": {
+    "summarized": "Earlier in this conversation — summarized",
+    "show": "Show",
+    "hide": "Hide",
+    "helpful": "Helpful",
+    "not_helpful": "Not helpful"
+  }
+}

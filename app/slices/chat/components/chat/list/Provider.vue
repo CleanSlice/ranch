@@ -25,9 +25,9 @@ async function onSync() {
   <div class="flex flex-col gap-6">
     <header class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight">History</h1>
+        <h1 class="text-2xl font-bold tracking-tight">{{ $t('history.title') }}</h1>
         <p class="mt-1 text-sm text-muted-foreground">
-          Your past conversations. Open one to pick up where you left off.
+          {{ $t('history.lede') }}
         </p>
       </div>
       <button
@@ -41,7 +41,7 @@ async function onSync() {
           :size="14"
           :class="syncing ? 'animate-spin' : undefined"
         />
-        {{ syncing ? 'Syncing…' : 'Sync' }}
+        {{ $t(syncing ? 'history.syncing' : 'history.sync') }}
       </button>
     </header>
 
@@ -86,16 +86,16 @@ async function onSync() {
       >
         <Icon name="message-square" :size="22" />
       </div>
-      <h2 class="mt-4 text-base font-semibold">No conversations yet</h2>
+      <h2 class="mt-4 text-base font-semibold">{{ $t('history.empty_title') }}</h2>
       <p class="mt-1 text-sm text-muted-foreground max-w-sm mx-auto">
-        Chat with an agent and it'll show up here so you can revisit it later.
+        {{ $t('history.empty_hint') }}
       </p>
       <NuxtLink
         to="/agents"
         class="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-95 transition"
       >
         <Icon name="bot" :size="14" />
-        Browse agents
+        {{ $t('history.empty_cta') }}
       </NuxtLink>
     </div>
   </div>

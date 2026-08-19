@@ -82,9 +82,11 @@ onMounted(() => {
   }
 });
 
-const heading = computed(() => session.value?.title?.trim() || 'Conversation');
+const { locale } = useI18n();
+
+const heading = computed(() => session.value?.title?.trim() || null);
 function fmt(iso?: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : '—';
+  return iso ? new Date(iso).toLocaleString(locale.value) : '—';
 }
 
 const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
@@ -101,7 +103,7 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
       to="/chats"
       class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
     >
-      <Icon name="arrow-left" :size="16" /> History
+      <Icon name="arrow-left" :size="16" /> {{ $t('history.title') }}
     </NuxtLink>
 
     <!-- Not found / not owned -->
@@ -109,28 +111,42 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
       v-if="!session && !sessionPending"
       class="rounded-xl border border-dashed bg-card/40 p-12 text-center"
     >
-      <h2 class="text-base font-semibold">Conversation not found</h2>
+      <h2 class="text-base font-semibold">{{ $t('session.not_found_title') }}</h2>
       <p class="mt-1 text-sm text-muted-foreground">
-        It may have been removed, or it isn't one of yours.
+        {{ $t('session.not_found_hint') }}
       </p>
     </div>
 
     <template v-else-if="session">
       <!-- Meta header -->
       <div class="rounded-md border bg-card p-4">
-        <span class="text-lg font-semibold">{{ heading }}</span>
+        <span class="text-lg font-semibold">
+          {{ heading ?? $t('session.fallback_title') }}
+        </span>
         <div
           class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"
         >
-          <span>{{ session.messageCount }} messages</span>
-          <span>Last activity {{ fmt(session.lastMessageAt) }}</span>
+          <span>
+            {{
+              $t(
+                'session.message_count',
+                { count: session.messageCount },
+                session.messageCount,
+              )
+            }}
+          </span>
+          <span>
+            {{ $t('session.last_activity', { when: fmt(session.lastMessageAt) }) }}
+          </span>
         </div>
 
         <!-- LLM gist: summary + insights -->
         <div class="mt-3 rounded bg-muted/40 p-3">
         <div class="flex items-center justify-between gap-2">
           <div class="flex flex-wrap items-center gap-1.5">
-            <span class="text-xs font-medium text-muted-foreground">Summary &amp; insights</span>
+            <span class="text-xs font-medium text-muted-foreground">
+              {{ $t('session.insights_title') }}
+            </span>
             <!-- sentiment / resolved / language sit by the header, apart from topics -->
             <template v-if="session.insights">
               <Badge
@@ -140,7 +156,7 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
                 {{ session.insights.sentiment }}
               </Badge>
               <Badge variant="outline" class="capitalize">
-                {{ session.insights.resolved ? 'resolved' : 'unresolved' }}
+                {{ $t(session.insights.resolved ? 'session.resolved' : 'session.unresolved') }}
               </Badge>
               <Badge variant="outline" class="capitalize">
                 {{ session.insights.language }}
@@ -152,7 +168,7 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
           {{ session.summary }}
         </p>
         <p v-else class="mt-2 text-sm text-muted-foreground">
-          No summary yet
+          {{ $t('session.no_summary') }}
         </p>
         <!-- Topic tags only -->
         <div
@@ -173,7 +189,7 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
 
       <!-- Export controls -->
       <div class="flex items-center justify-end gap-1.5">
-        <span class="text-xs text-muted-foreground">Export</span>
+        <span class="text-xs text-muted-foreground">{{ $t('session.export') }}</span>
         <button
           v-for="f in (['json', 'markdown', 'csv'] as ChatExportFormat[])"
           :key="f"
@@ -197,7 +213,7 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
             :disabled="loading"
             @click="loadOlder"
           >
-            {{ loading ? 'Loading…' : 'Load older' }}
+            {{ $t(loading ? 'session.loading' : 'session.load_older') }}
           </button>
         </div>
 
@@ -205,7 +221,7 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
           v-if="!messages.length && !loading"
           class="py-10 text-center text-sm text-muted-foreground"
         >
-          No messages in this conversation.
+          {{ $t('session.no_messages') }}
         </div>
 
         <ChatMessageBubble

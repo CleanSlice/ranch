@@ -10,20 +10,20 @@ const heading = computed(() => {
   if (t) return t;
   const s = props.session.summary?.trim();
   if (s) return s.length > 80 ? `${s.slice(0, 80)}…` : s;
-  return 'Conversation';
+  return null;
 });
 
-const relative = computed(() => {
+const relative = computed<{ key: string; count: number } | null>(() => {
   const ts = Date.parse(props.session.lastMessageAt);
   if (Number.isNaN(ts)) return null;
   const diff = Date.now() - ts;
   const minute = 60_000;
   const hour = 60 * minute;
   const day = 24 * hour;
-  if (diff < minute) return 'just now';
-  if (diff < hour) return `${Math.floor(diff / minute)}m ago`;
-  if (diff < day) return `${Math.floor(diff / hour)}h ago`;
-  return `${Math.floor(diff / day)}d ago`;
+  if (diff < minute) return { key: 'relative_time.just_now', count: 0 };
+  if (diff < hour) return { key: 'relative_time.minutes', count: Math.floor(diff / minute) };
+  if (diff < day) return { key: 'relative_time.hours', count: Math.floor(diff / hour) };
+  return { key: 'relative_time.days', count: Math.floor(diff / day) };
 });
 </script>
 
@@ -39,7 +39,9 @@ const relative = computed(() => {
         <Icon name="message-square" :size="18" />
       </div>
       <div class="min-w-0 flex-1">
-        <h3 class="truncate text-base font-semibold">{{ heading }}</h3>
+        <h3 class="truncate text-base font-semibold">
+          {{ heading ?? $t('session.fallback_title') }}
+        </h3>
         <p
           v-if="session.preview"
           class="mt-0.5 truncate text-xs text-muted-foreground"
@@ -54,10 +56,17 @@ const relative = computed(() => {
     >
       <span class="inline-flex items-center gap-1">
         <Icon name="messages-square" :size="12" class="-mt-0.5" />
-        {{ session.messageCount }}
-        {{ session.messageCount === 1 ? 'message' : 'messages' }}
+        {{
+          $t(
+            'session.message_count',
+            { count: session.messageCount },
+            session.messageCount,
+          )
+        }}
       </span>
-      <span v-if="relative" class="shrink-0">{{ relative }}</span>
+      <span v-if="relative" class="shrink-0">
+        {{ $t(relative.key, { count: relative.count }) }}
+      </span>
     </div>
   </NuxtLink>
 </template>

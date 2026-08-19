@@ -113,6 +113,33 @@ under a feature object (`chat.empty_title`), `snake_case`, at most two levels
 deep. Interpolation uses named placeholders (`{name}`), never positional ones,
 because a translator — human or model — reorders words.
 
+Templates call the injected `$t` (`globalInjection` is on by default), so
+components do not bind `const { t } = useI18n()`. `useI18n()` stays only where a
+component genuinely needs the locale itself — the switcher needs `locale`,
+`locales` and `setLocale`.
+
+### 6. Copy computed in script is held as a key, not as text.
+
+Validation messages, state-dependent headings, button labels that change with a
+pending flag — script decides *which* string, never *what* it says:
+
+```ts
+// script: pick the key
+const error = computed(() => (invalidEmail.value ? 'auth.email_invalid' : null));
+const heading = computed(() => (isRegister.value ? 'auth.create_title' : 'auth.welcome_title'));
+```
+
+```vue
+<!-- template: render it -->
+<p v-if="error">{{ $t(error) }}</p>
+<h1>{{ $t(heading) }}</h1>
+```
+
+The alternative — calling `t()` inside the script — drags the composable back
+into every component and, worse, leaves user-visible copy inside branching
+logic, where the extraction sweep does not find it. This rule is what makes
+"all translatable text lives in the locale files" true rather than aspirational.
+
 ## Out of scope (deliberately)
 
 - **`admin/`** — see decision 1.

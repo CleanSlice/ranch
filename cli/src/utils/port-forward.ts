@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { consola } from "consola";
+import { hasBinary } from "./bin";
 
 const KUBECONFIG_LOCAL = join(homedir(), ".kube", "ranch-local.yaml");
 const RESTART_DELAY_MS = 3_000;
@@ -11,15 +12,6 @@ const MAX_RESTARTS = 20;
 function portInUse(port: number): boolean {
   try {
     execSync(`lsof -ti :${port}`, { stdio: ["ignore", "pipe", "ignore"] });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function hasBinary(name: string): boolean {
-  try {
-    execSync(`command -v ${name}`, { stdio: "ignore" });
     return true;
   } catch {
     return false;

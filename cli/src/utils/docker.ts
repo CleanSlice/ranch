@@ -1,14 +1,6 @@
 import { execSync } from "node:child_process";
 import { consola } from "consola";
-
-function hasBinary(name: string): boolean {
-  try {
-    execSync(`command -v ${name}`, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { hasBinary } from "./bin";
 
 export function ensureDockerRunning(): void {
   if (!hasBinary("docker")) {

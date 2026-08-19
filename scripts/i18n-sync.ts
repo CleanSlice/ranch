@@ -85,15 +85,20 @@ function hash(value: string): string {
 }
 
 /**
- * vue-i18n compiles every message: a bare `@` starts a linked-message reference
- * and a bare `|` starts a plural branch, so `jane@example.com` fails the build
- * with a compiler error. Both must be written as literals — `jane{'@'}mail.com`.
- * Worth checking here because CI runs typecheck/lint/test and this script, not
- * `nuxt build` — without this guard a broken message reaches production.
+ * vue-i18n compiles every message, and a bare `@` starts a linked-message
+ * reference — so `jane@example.com` fails the build with a compiler error and
+ * has to be written as the literal `jane{'@'}mail.com`. Worth checking here
+ * because CI runs typecheck/lint/test and this script, not `nuxt build`, so a
+ * broken message would otherwise surface in production.
+ *
+ * `|` is deliberately NOT checked: it separates plural branches
+ * ("no slots free | {count} slot free | {count} slots free"), which is a
+ * feature we use, not a mistake.
  */
 function unsafeMessage(value: string): boolean {
   const withoutLiterals = value.replace(/\{'[^']*'\}/g, '').replace(/\{\s*\w+\s*\}/g, '');
-  return /[@|]/.test(withoutLiterals);
+  // `@:key` and `@.lower:key` are the intentional linked-message forms.
+  return /@(?![:.])/.test(withoutLiterals);
 }
 
 // ------------------------------------------------------------------ discovery
@@ -201,7 +206,8 @@ const SYSTEM_PROMPT = [
   '- Return ONLY a JSON object mapping each key you were given to its translation.',
   '- Translate the value, never the key.',
   '- Keep placeholders exactly as they appear: {name}, {count}, @:some.key, and any HTML.',
-  "- Never write a bare @ or | — vue-i18n reads them as control characters. An escaped literal such as {'@'} must come back verbatim.",
+  "- Never write a bare @ — vue-i18n reads it as a linked-message reference. An escaped literal such as {'@'} must come back verbatim.",
+  '- A source message split by | is a plural set. Return the branch count the target language needs, in the order zero | one | few | many: English has 3 branches (zero | one | other), Russian needs 4 — "нет свободных слотов | {count} слот свободен | {count} слота свободно | {count} слотов свободно".',
   '- Do not translate product or component names: Ranch, Bridle, Paddock, Kubernetes, Argo Workflows, Docker.',
   '- Match the register of a modern product UI: short, direct, no marketing filler.',
   '- Keep the ending punctuation and letter case style of the source string.',
@@ -269,7 +275,7 @@ function report(work: Work[]): number {
     if (item.orphaned.length) lines.push(`  orphaned (${item.orphaned.length}): ${item.orphaned.join(', ')}`);
     if (item.invalid.length)
       lines.push(
-        `  unescaped @ or | (${item.invalid.length}): ${item.invalid.join(', ')} — write them as {'@'} / {'|'}`,
+        `  unescaped @ (${item.invalid.length}): ${item.invalid.join(', ')} — write it as {'@'}`,
       );
     if (!lines.length) continue;
 

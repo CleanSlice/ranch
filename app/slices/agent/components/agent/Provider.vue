@@ -1,6 +1,6 @@
 <template>
-  <div v-if="pending">Loading agent...</div>
-  <div v-else-if="error">Error loading agent</div>
+  <div v-if="pending">{{ $t('item.loading') }}</div>
+  <div v-else-if="error">{{ $t('item.load_error') }}</div>
   <div v-else-if="agent">
     <AgentItem :agent="agent" />
   </div>

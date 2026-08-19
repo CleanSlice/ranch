@@ -33,9 +33,10 @@ API keys live in **`.env.project`** (gitignored). Typical keys: `JIRA_API_TOKEN`
 If the user describes work and does **not** give a `CLEAN-<n>` id, that description *is* the ticket. Do not start code, SpecKit, Brainstorm, or a git branch first.
 
 1. Create a Jira issue in CLEAN from their description (title + short summary). Use `.env.project`.
-2. Reply with the issue key and URL.
-3. Move it to In Progress.
-4. Then the usual flow: branch → work → comments → PR.
+2. Mark surface: title prefix `[ADMIN]` / `[APP]` / `[ADMIN][APP]`, plus Jira labels `admin` / `app`. Infer from `admin/` vs `app/`; if unclear, ask. API-only → `[API]`.
+3. Reply with the issue key and URL.
+4. Move it to In Progress.
+5. Then the usual flow: branch → work → comments → PR.
 
 ## OpenAPI
 

@@ -11,12 +11,19 @@
     </div>
     <div class="grid grid-cols-2 gap-4">
       <div>
-        <p class="text-sm text-muted-foreground">Template</p>
+        <p class="text-sm text-muted-foreground">{{ $t('item.template') }}</p>
         <p>{{ agent.templateId }}</p>
       </div>
       <div>
-        <p class="text-sm text-muted-foreground">Resources</p>
-        <p>CPU: {{ agent.resources.cpu }} / Memory: {{ agent.resources.memory }}</p>
+        <p class="text-sm text-muted-foreground">{{ $t('item.resources') }}</p>
+        <p>
+          {{
+            $t('item.resources_value', {
+              cpu: agent.resources.cpu,
+              memory: agent.resources.memory,
+            })
+          }}
+        </p>
       </div>
     </div>
   </div>

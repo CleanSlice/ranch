@@ -10,7 +10,7 @@
           >
             <Icon name="tractor" :size="18" />
           </span>
-          Ranch
+          {{ $t('app_name') }}
         </NuxtLink>
 
         <nav class="hidden md:flex items-center gap-5 text-sm">
@@ -19,7 +19,7 @@
             class="text-muted-foreground hover:text-foreground transition-colors"
             active-class="text-foreground font-medium"
           >
-            Agents
+            {{ $t('nav.agents') }}
           </NuxtLink>
           <NuxtLink
             v-if="authStore.isAuthenticated"
@@ -27,11 +27,29 @@
             class="text-muted-foreground hover:text-foreground transition-colors"
             active-class="text-foreground font-medium"
           >
-            History
+            {{ $t('nav.history') }}
           </NuxtLink>
         </nav>
 
         <div class="flex-1" />
+
+        <!-- Browser language decides the first render (detectBrowserLanguage);
+             this lets the user override it. setLocale writes the same cookie,
+             so the choice survives a reload. -->
+        <select
+          :value="locale"
+          :aria-label="$t('locale.label')"
+          class="rounded-md border bg-transparent px-1.5 py-1 text-xs uppercase text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          @change="onLocaleChange"
+        >
+          <option
+            v-for="option in locales"
+            :key="option.code"
+            :value="option.code"
+          >
+            {{ option.code.toUpperCase() }}
+          </option>
+        </select>
 
         <div v-if="authStore.isAuthenticated" class="flex items-center gap-3 text-sm">
           <span class="hidden sm:inline text-muted-foreground" :title="authStore.user?.email ?? ''">
@@ -48,19 +66,19 @@
             class="text-muted-foreground hover:text-foreground transition-colors"
             @click="onLogout"
           >
-            Sign out
+            {{ $t('auth.sign_out') }}
           </button>
         </div>
         <div v-else class="flex items-center gap-3 text-sm">
           <NuxtLink to="/login" class="text-muted-foreground hover:text-foreground transition-colors">
-            Sign in
+            {{ $t('auth.sign_in') }}
           </NuxtLink>
           <NuxtLink
             v-if="registrationEnabled"
             to="/register"
             class="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:opacity-90 transition"
           >
-            Sign up
+            {{ $t('auth.sign_up') }}
           </NuxtLink>
         </div>
       </div>
@@ -87,13 +105,13 @@
       <div
         class="container mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground"
       >
-        <div>© {{ year }} Ranch — built on CleanSlice.</div>
+        <div>{{ $t('footer.note', { year }) }}</div>
         <div class="flex items-center gap-4">
           <NuxtLink to="/agents" class="hover:text-foreground">
-            Agents
+            {{ $t('nav.agents') }}
           </NuxtLink>
           <NuxtLink to="/templates" class="hover:text-foreground">
-            Templates
+            {{ $t('nav.templates') }}
           </NuxtLink>
         </div>
       </div>
@@ -104,7 +122,12 @@
 <script setup lang="ts">
 const route = useRoute();
 const authStore = useAuthStore();
+const { locale, locales, setLocale } = useI18n();
 const year = new Date().getFullYear();
+
+async function onLocaleChange(event: Event) {
+  await setLocale((event.target as HTMLSelectElement).value as typeof locale.value);
+}
 
 // Pages that own the full content area (no container padding, no footer).
 // Matches /agents/:id (chat-first agent detail) but NOT /agents or /agents/create.

@@ -35,14 +35,14 @@
         <div
           class="rounded-lg rounded-tl-none bg-muted px-3 py-2 text-sm max-w-[85%]"
         >
-          Hi! I'm ready to help you ship.
+          {{ $t('demo.agent_greeting') }}
         </div>
       </div>
       <div class="flex items-start gap-2 justify-end">
         <div
           class="rounded-lg rounded-tr-none bg-primary text-primary-foreground px-3 py-2 text-sm max-w-[85%]"
         >
-          Deploy a new worker to staging.
+          {{ $t('demo.user_request') }}
         </div>
         <div
           class="shrink-0 w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs"
@@ -59,18 +59,18 @@
         <div
           class="rounded-lg rounded-tl-none bg-muted px-3 py-2 text-sm max-w-[85%] animate-pulse"
         >
-          Submitting workflow…
+          {{ $t('demo.agent_working') }}
         </div>
       </div>
     </div>
 
     <div class="grid grid-cols-2 gap-2 text-xs">
       <div class="rounded-md border px-3 py-2">
-        <div class="text-muted-foreground">CPU</div>
+        <div class="text-muted-foreground">{{ $t('demo.cpu') }}</div>
         <div class="font-medium">{{ agent.resources?.cpu ?? '—' }}</div>
       </div>
       <div class="rounded-md border px-3 py-2">
-        <div class="text-muted-foreground">Memory</div>
+        <div class="text-muted-foreground">{{ $t('demo.memory') }}</div>
         <div class="font-medium">{{ agent.resources?.memory ?? '—' }}</div>
       </div>
     </div>

@@ -32,6 +32,11 @@ jobs:
       - name: Typecheck consoles
         run: bunx turbo typecheck --filter=app --filter=admin
 
+      # Compares key sets and source hashes only — no network, no API key, so
+      # it runs on forks too. Fix a failure with `bun run i18n:sync`.
+      - name: Check i18n locale parity
+        run: bun run i18n:check
+
       - name: Lint
         run: bun run lint
 

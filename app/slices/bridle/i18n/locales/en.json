@@ -2,7 +2,9 @@
   "chat": {
     "empty_title": "Pick an agent",
     "empty_hint": "Select one of your agents on the left to start chatting.",
+    "starter_hint": "Say hello — your message will go straight to the agent runtime.",
     "placeholder": "Message your agent…",
+    "input_hint": "{enter} to send, {shiftEnter} for newline",
     "send": "Send",
     "sending": "Thinking…",
     "error": "Failed to reach agent",

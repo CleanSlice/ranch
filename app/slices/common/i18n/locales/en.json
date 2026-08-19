@@ -1,7 +1,71 @@
 {
   "app_name": "Ranch",
-  "nav_chat": "Chat",
-  "nav_agents": "Agents",
-  "nav_templates": "Templates",
-  "nav_open_dashboard": "Open dashboard"
+  "nav": {
+    "agents": "Agents",
+    "history": "History",
+    "templates": "Templates"
+  },
+  "auth": {
+    "sign_in": "Sign in",
+    "sign_out": "Sign out",
+    "sign_up": "Sign up"
+  },
+  "locale": {
+    "label": "Language"
+  },
+  "footer": {
+    "note": "© {year} Ranch — built on CleanSlice."
+  },
+  "hero": {
+    "badge": "Live on Kubernetes · Powered by Argo Workflows",
+    "title": "Deploy AI agents.",
+    "title_accent": "Talk to them.",
+    "lede": "Ranch is your agent deployment platform. Spin up containerized AI workers on a managed k3s cluster and chat with them in real time — no DevOps required.",
+    "cta_dashboard": "Open full dashboard →",
+    "cta_deploy": "Deploy an agent",
+    "cta_sign_in": "Sign in to deploy",
+    "stat_agents": "Agents",
+    "stat_running": "Running",
+    "stat_uptime": "Uptime"
+  },
+  "demo": {
+    "agent_greeting": "Hi! I'm ready to help you ship.",
+    "user_request": "Deploy a new worker to staging.",
+    "agent_working": "Submitting workflow…",
+    "cpu": "CPU",
+    "memory": "Memory"
+  },
+  "landing": {
+    "what_eyebrow": "What Ranch does",
+    "what_title": "Infrastructure for AI agents, built on Kubernetes",
+    "what_lede": "From image to running pod to live chat — Ranch handles the plumbing so you can focus on what your agents should actually do.",
+    "how_eyebrow": "How it works",
+    "how_title": "From template to conversation in three steps",
+    "step": "Step {number}",
+    "cta_title": "Your herd is waiting.",
+    "cta_lede": "Jump into the dashboard, pick an agent, and start a conversation.",
+    "cta_button": "Open the dashboard →"
+  },
+  "features": {
+    "templates_title": "One-click agent templates",
+    "templates_body": "Pick a Docker image, pin CPU/memory, and Ranch submits an Argo Workflow that rolls out your agent pod.",
+    "chat_title": "Live chat over WebSocket",
+    "chat_body": "Every running agent is reachable through a JWT-auth Socket.IO gateway with streaming responses.",
+    "status_title": "Status & lifecycle",
+    "status_body": "Deploying, running, failed, stopped — Ranch tracks the workflow phase and surfaces it in the UI.",
+    "restart_title": "Restart without redeploy",
+    "restart_body": "Cancel the workflow, flip the image tag, and restart — Ranch keeps the agent record intact.",
+    "logs_title": "Log streaming",
+    "logs_body": "Tail agent logs straight from the pod without jumping into kubectl.",
+    "admin_title": "Multi-tenant admin",
+    "admin_body": "An admin surface to manage templates, users, quotas, and the whole fleet across the cluster."
+  },
+  "steps": {
+    "template_title": "Pick a template",
+    "template_body": "Browse ready-made agent images or register your own. Templates carry default resources and config.",
+    "deploy_title": "Deploy the agent",
+    "deploy_body": "Ranch submits an Argo Workflow to your k3s cluster. You get a status stream back in the dashboard.",
+    "chat_title": "Start the conversation",
+    "chat_body": "The agent connects to the bridle hub. Open the chat, send a message, watch it stream back."
+  }
 }

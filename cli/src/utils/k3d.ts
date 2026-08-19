@@ -1,4 +1,4 @@
-import { execSync, spawn } from "node:child_process";
+import { execSync, spawn, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -10,7 +10,53 @@ const READY_TIMEOUT_MS = 90_000;
 const READY_POLL_MS = 2_000;
 
 const CLUSTER = "ranch";
+export const K3D_NETWORK = "k3d-ranch";
 const KUBECONFIG_LOCAL = join(homedir(), ".kube", "ranch-local.yaml");
+
+export function k3dInstallHint(platform = process.platform): string {
+  if (platform === "win32") {
+    return "winget install -e --id k3d.k3d\n   or: choco install k3d\n   or: scoop install k3d";
+  }
+  if (platform === "darwin") {
+    return "brew install k3d";
+  }
+  return "curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash";
+}
+
+export function ensureK3dInstalled(): void {
+  if (hasBinary("k3d")) return;
+  consola.error(
+    `k3d is not installed. compose needs the ${K3D_NETWORK} docker network that k3d creates — install it before ranch pulls any images.\n\nInstall:\n  ${k3dInstallHint()}\n\nThen re-run \`ranch dev\` (it creates the cluster).`,
+  );
+  process.exit(1);
+}
+
+export function k3dNetworkExists(): boolean {
+  const result = spawnSync("docker", ["network", "inspect", K3D_NETWORK], {
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  return result.status === 0;
+}
+
+export function ensureK3dNetwork(opts: { createIfMissing?: boolean } = {}): void {
+  if (k3dNetworkExists()) return;
+  if (opts.createIfMissing) {
+    consola.start(`Creating docker network ${K3D_NETWORK}...`);
+    const created = spawnSync("docker", ["network", "create", K3D_NETWORK], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    if (created.status === 0 && k3dNetworkExists()) {
+      consola.success(`Created ${K3D_NETWORK} (no k3d cluster)`);
+      return;
+    }
+  }
+  consola.error(
+    `Docker network ${K3D_NETWORK} is missing. Install k3d and re-run \`ranch dev\`, or pass --no-k3d to create a dummy network.\n\nInstall:\n  ${k3dInstallHint()}`,
+  );
+  process.exit(1);
+}
 
 type ClusterState = "running" | "stopped" | "missing";
 
@@ -125,10 +171,7 @@ async function bootstrap(root: string): Promise<void> {
 }
 
 export async function ensureK3dRunning(root: string): Promise<void> {
-  if (!hasBinary("k3d")) {
-    consola.warn("k3d not installed — skipping cluster start. Install: brew install k3d");
-    return;
-  }
+  ensureK3dInstalled();
 
   const state = clusterState();
   if (state === "running") {

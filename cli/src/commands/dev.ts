@@ -3,7 +3,7 @@ import { consola } from "consola";
 import { ensureRanchRoot } from "../utils/setup";
 import { run } from "../utils/exec";
 import { freePorts } from "../utils/ports";
-import { ensureK3dRunning } from "../utils/k3d";
+import { ensureK3dInstalled, ensureK3dNetwork, ensureK3dRunning } from "../utils/k3d";
 import { ensurePortForwards } from "../utils/port-forward";
 import { ensureDepsInstalled } from "../utils/deps";
 import { ensureDockerRunning } from "../utils/docker";
@@ -46,8 +46,15 @@ export const devCommand = defineCommand({
     }
 
     const needsDocker = !target || target === "api";
+    const needsK3d = !args["no-k3d"] && needsDocker;
     if (needsDocker) {
       ensureDockerRunning();
+      if (needsK3d) {
+        // Fail before any image pull — compose needs k3d-ranch, which k3d creates.
+        ensureK3dInstalled();
+      } else {
+        ensureK3dNetwork({ createIfMissing: true });
+      }
       await ensureBrowserPoolImage(root);
     }
 
@@ -80,9 +87,9 @@ export const devCommand = defineCommand({
       turboArgs.push(`--filter=${target}`);
     }
 
-    const needsK3d = !args["no-k3d"] && (!target || target === "api");
     if (needsK3d) {
       await ensureK3dRunning(root);
+      ensureK3dNetwork();
       ensurePortForwards([
         { label: "Argo Workflows", namespace: "argo", service: "argo-workflows-server", port: 2746 },
       ]);

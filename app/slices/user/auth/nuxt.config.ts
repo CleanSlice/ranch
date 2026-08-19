@@ -1,10 +1,17 @@
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
+import { LOCALES } from '../../setup/i18n/locales';
+
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
 export default defineNuxtConfig({
   alias: { '#auth': currentDir },
+  modules: ['@nuxtjs/i18n'],
+  i18n: {
+    langDir: 'locales',
+    locales: LOCALES,
+  },
   imports: {
     dirs: [`${currentDir}/stores`, `${currentDir}/composables`],
   },

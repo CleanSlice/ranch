@@ -4,7 +4,10 @@ type Mode = 'login' | 'register';
 const props = defineProps<{
   mode: Mode;
   submitting?: boolean;
+  /** Human text from the API — already English, not a key. Null when the call
+   *  failed without a usable message, in which case `failed` drives our copy. */
   errorMessage?: string | null;
+  failed?: boolean;
   registrationEnabled?: boolean;
 }>();
 
@@ -13,6 +16,9 @@ const emit = defineEmits<{
 }>();
 
 const form = reactive({ name: '', email: '', password: '' });
+// Validation state holds i18n KEYS, not sentences: the template renders them
+// with $t. Keeping the text here would hide user-visible copy inside branching
+// logic, where the next extraction pass would never find it.
 const errors = reactive<
   Partial<Record<'name' | 'email' | 'password', string>>
 >({});
@@ -24,21 +30,23 @@ const showPassword = ref(false);
 function validateField(field: 'name' | 'email' | 'password') {
   if (field === 'name') {
     errors.name =
-      props.mode === 'register' && !form.name.trim() ? 'Name is required' : undefined;
+      props.mode === 'register' && !form.name.trim()
+        ? 'account.name_required'
+        : undefined;
     return;
   }
   if (field === 'email') {
     const email = form.email.trim();
-    if (!email) errors.email = 'Email is required';
+    if (!email) errors.email = 'account.email_required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      errors.email = 'Enter a valid email';
+      errors.email = 'account.email_invalid';
     else errors.email = undefined;
     return;
   }
   if (field === 'password') {
-    if (!form.password) errors.password = 'Password is required';
+    if (!form.password) errors.password = 'account.password_required';
     else if (props.mode === 'register' && form.password.length < 8)
-      errors.password = 'At least 8 characters';
+      errors.password = 'account.password_too_short';
     else errors.password = undefined;
   }
 }
@@ -65,24 +73,29 @@ function onSubmit() {
   });
 }
 
-const title = computed(() =>
-  props.mode === 'login' ? 'Welcome back' : 'Create your account',
+const titleKey = computed(() =>
+  props.mode === 'login' ? 'account.welcome_title' : 'account.create_title',
 );
 
-const subtitle = computed(() =>
+const subtitleKey = computed(() =>
   props.mode === 'login'
-    ? 'Sign in to manage your agents.'
-    : 'Get started with your AI workers.',
+    ? 'account.welcome_subtitle'
+    : 'account.create_subtitle',
 );
 
-const submitLabel = computed(() =>
-  props.submitting
-    ? props.mode === 'login'
-      ? 'Signing in…'
-      : 'Creating account…'
-    : props.mode === 'login'
-      ? 'Sign in'
-      : 'Create account',
+const submitLabelKey = computed(() => {
+  if (props.submitting) {
+    return props.mode === 'login'
+      ? 'account.submit_login_pending'
+      : 'account.submit_register_pending';
+  }
+  return props.mode === 'login'
+    ? 'account.submit_login'
+    : 'account.submit_register';
+});
+
+const failureKey = computed(() =>
+  props.mode === 'login' ? 'account.login_failed' : 'account.register_failed',
 );
 
 const inputClass = (field: 'name' | 'email' | 'password') =>
@@ -103,8 +116,8 @@ function showError(field: 'name' | 'email' | 'password') {
 <template>
   <div>
     <div class="mb-8">
-      <h1 class="text-2xl font-bold tracking-tight">{{ title }}</h1>
-      <p class="mt-1.5 text-sm text-muted-foreground">{{ subtitle }}</p>
+      <h1 class="text-2xl font-bold tracking-tight">{{ $t(titleKey) }}</h1>
+      <p class="mt-1.5 text-sm text-muted-foreground">{{ $t(subtitleKey) }}</p>
     </div>
 
     <form class="space-y-4" novalidate @submit.prevent="onSubmit">
@@ -113,7 +126,7 @@ function showError(field: 'name' | 'email' | 'password') {
           for="auth-name"
           class="mb-1.5 block text-xs font-medium text-foreground/80"
         >
-          Name
+          {{ $t('account.name_label') }}
         </label>
         <div class="relative">
           <Icon
@@ -126,7 +139,7 @@ function showError(field: 'name' | 'email' | 'password') {
             v-model="form.name"
             type="text"
             autocomplete="name"
-            placeholder="Jane Doe"
+            :placeholder="$t('account.name_placeholder')"
             :aria-invalid="showError('name')"
             :class="inputClass('name')"
             @blur="onBlur('name')"
@@ -137,7 +150,7 @@ function showError(field: 'name' | 'email' | 'password') {
           class="mt-1.5 text-xs text-destructive flex items-center gap-1"
         >
           <Icon name="alert-circle" :size="12" />
-          {{ errors.name }}
+          {{ $t(errors.name!) }}
         </p>
       </div>
 
@@ -146,7 +159,7 @@ function showError(field: 'name' | 'email' | 'password') {
           for="auth-email"
           class="mb-1.5 block text-xs font-medium text-foreground/80"
         >
-          Email
+          {{ $t('account.email_label') }}
         </label>
         <div class="relative">
           <Icon
@@ -159,7 +172,7 @@ function showError(field: 'name' | 'email' | 'password') {
             v-model="form.email"
             type="email"
             autocomplete="email"
-            placeholder="jane@example.com"
+            :placeholder="$t('account.email_placeholder')"
             :aria-invalid="showError('email')"
             :class="inputClass('email')"
             @blur="onBlur('email')"
@@ -170,7 +183,7 @@ function showError(field: 'name' | 'email' | 'password') {
           class="mt-1.5 text-xs text-destructive flex items-center gap-1"
         >
           <Icon name="alert-circle" :size="12" />
-          {{ errors.email }}
+          {{ $t(errors.email!) }}
         </p>
       </div>
 
@@ -180,13 +193,13 @@ function showError(field: 'name' | 'email' | 'password') {
             for="auth-password"
             class="block text-xs font-medium text-foreground/80"
           >
-            Password
+            {{ $t('account.password_label') }}
           </label>
           <span
             v-if="mode === 'register'"
             class="text-xs text-muted-foreground"
           >
-            Min 8 characters
+            {{ $t('account.password_hint') }}
           </span>
         </div>
         <div class="relative">
@@ -208,7 +221,9 @@ function showError(field: 'name' | 'email' | 'password') {
           <button
             type="button"
             class="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition"
-            :aria-label="showPassword ? 'Hide password' : 'Show password'"
+            :aria-label="
+              $t(showPassword ? 'account.password_hide' : 'account.password_show')
+            "
             @click="showPassword = !showPassword"
           >
             <Icon :name="showPassword ? 'eye-off' : 'eye'" :size="16" />
@@ -219,7 +234,7 @@ function showError(field: 'name' | 'email' | 'password') {
           class="mt-1.5 text-xs text-destructive flex items-center gap-1"
         >
           <Icon name="alert-circle" :size="12" />
-          {{ errors.password }}
+          {{ $t(errors.password!) }}
         </p>
       </div>
 
@@ -232,11 +247,11 @@ function showError(field: 'name' | 'email' | 'password') {
         leave-to-class="opacity-0"
       >
         <div
-          v-if="errorMessage"
+          v-if="failed || errorMessage"
           class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive"
         >
           <Icon name="alert-triangle" :size="14" class="mt-px shrink-0" />
-          <span>{{ errorMessage }}</span>
+          <span>{{ errorMessage ?? $t(failureKey) }}</span>
         </div>
       </Transition>
 
@@ -251,7 +266,7 @@ function showError(field: 'name' | 'email' | 'password') {
           :size="16"
           class="animate-spin"
         />
-        {{ submitLabel }}
+        {{ $t(submitLabelKey) }}
         <Icon
           v-if="!submitting"
           name="arrow-right"
@@ -264,19 +279,19 @@ function showError(field: 'name' | 'email' | 'password') {
     <div class="mt-6 text-center text-sm text-muted-foreground">
       <template v-if="mode === 'login'">
         <span v-if="registrationEnabled">
-          New here?
+          {{ $t('account.new_here') }}
           <NuxtLink to="/register" class="font-medium text-foreground hover:text-primary transition">
-            Create an account
+            {{ $t('account.create_account') }}
           </NuxtLink>
         </span>
         <span v-else>
-          Need access? Ask an admin to invite you.
+          {{ $t('account.need_access') }}
         </span>
       </template>
       <template v-else>
-        Already have an account?
+        {{ $t('account.have_account') }}
         <NuxtLink to="/login" class="font-medium text-foreground hover:text-primary transition">
-          Sign in
+          {{ $t('account.sign_in') }}
         </NuxtLink>
       </template>
     </div>

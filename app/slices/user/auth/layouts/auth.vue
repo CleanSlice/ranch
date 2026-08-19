@@ -21,7 +21,7 @@
           >
             <Icon name="tractor" :size="20" />
           </span>
-          Ranch
+          {{ $t('app_name') }}
         </NuxtLink>
 
         <div class="relative space-y-6">
@@ -29,17 +29,16 @@
             class="inline-flex items-center gap-2 rounded-full border bg-background/60 backdrop-blur px-3 py-1 text-xs text-muted-foreground"
           >
             <span class="w-2 h-2 rounded-full bg-green-500" />
-            Live on Kubernetes
+            {{ $t('promo.badge') }}
           </div>
 
           <h2 class="text-3xl font-bold tracking-tight leading-tight">
-            Deploy AI agents.<br />
-            <span class="text-primary">Talk to them in real time.</span>
+            {{ $t('promo.title') }}<br />
+            <span class="text-primary">{{ $t('promo.title_accent') }}</span>
           </h2>
 
           <p class="text-sm text-muted-foreground max-w-md leading-relaxed">
-            Ranch spins up containerized AI workers on a managed cluster
-            and gives you a streaming chat to drive them. No DevOps required.
+            {{ $t('promo.lede') }}
           </p>
 
           <ul class="space-y-3 text-sm text-muted-foreground">
@@ -49,7 +48,7 @@
                 :size="16"
                 class="mt-0.5 text-primary shrink-0"
               />
-              <span>One-click agent deploy on Argo Workflows</span>
+              <span>{{ $t('promo.feature_deploy') }}</span>
             </li>
             <li class="flex items-start gap-3">
               <Icon
@@ -57,7 +56,7 @@
                 :size="16"
                 class="mt-0.5 text-primary shrink-0"
               />
-              <span>Token-by-token streaming chat over WebSocket</span>
+              <span>{{ $t('promo.feature_streaming') }}</span>
             </li>
             <li class="flex items-start gap-3">
               <Icon
@@ -65,13 +64,13 @@
                 :size="16"
                 class="mt-0.5 text-primary shrink-0"
               />
-              <span>Persistent agent state synced to S3</span>
+              <span>{{ $t('promo.feature_state') }}</span>
             </li>
           </ul>
         </div>
 
         <p class="relative text-xs text-muted-foreground/70">
-          Built on CleanSlice · {{ year }}
+          {{ $t('promo.footer', { year }) }}
         </p>
       </aside>
 
@@ -89,13 +88,13 @@
             >
               <Icon name="tractor" :size="16" />
             </span>
-            Ranch
+            {{ $t('app_name') }}
           </NuxtLink>
           <NuxtLink
             to="/"
             class="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition"
           >
-            <Icon name="arrow-left" :size="14" /> Back to landing
+            <Icon name="arrow-left" :size="14" /> {{ $t('promo.back_to_landing') }}
           </NuxtLink>
         </header>
 

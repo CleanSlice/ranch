@@ -10,10 +10,12 @@ await useAsyncData('app-auth-login-registration-enabled', () =>
 
 const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
+const failed = ref(false);
 
 async function onSubmit(values: { email: string; password: string }) {
   submitting.value = true;
   errorMessage.value = null;
+  failed.value = false;
   try {
     await authStore.login(values.email, values.password);
     const target =
@@ -26,8 +28,8 @@ async function onSubmit(values: { email: string; password: string }) {
       response?: { data?: { message?: string } };
       message?: string;
     };
-    errorMessage.value =
-      e?.response?.data?.message ?? e?.message ?? 'Login failed';
+    failed.value = true;
+    errorMessage.value = e?.response?.data?.message ?? e?.message ?? null;
   } finally {
     submitting.value = false;
   }
@@ -39,6 +41,7 @@ async function onSubmit(values: { email: string; password: string }) {
     mode="login"
     :submitting="submitting"
     :error-message="errorMessage"
+    :failed="failed"
     :registration-enabled="registrationEnabled"
     @submit="onSubmit"
   />

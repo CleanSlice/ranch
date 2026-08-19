@@ -1,0 +1,69 @@
+---
+description: ranch identity, Jira CLEAN, and GitHub PR conventions
+alwaysApply: true
+---
+
+# ranch project card
+
+Global cycle: Cursor User Rules + `~/.claude/CLAUDE.md` (Claude Code).
+This file is the project-specific map. Claude Code is told to read it from the top of `CLAUDE.md`. Overview lives in `README.md`.
+
+## Identity
+
+- Profile folder: `dream` (`E:/code/dream/cleanslice/ranch`)
+- Git: `Maksym Hryzodub [DREAM]` `<maksym.hryzodub@dreamvention.com>`
+- Host: GitHub `CleanSlice/ranch` via `github-dream`
+- Default branch: `main`. Target every PR at `main`.
+
+## Tracker
+
+- System: Jira (dream / CleanSlice). Do not use Linear.
+- Project: `CLEAN`
+- Main board: [CLEAN board 498](https://dreamvention.atlassian.net/jira/software/c/projects/CLEAN/boards/498)
+- Issue URL: `https://dreamvention.atlassian.net/browse/CLEAN-123`
+- Branch: `{type}/CLEAN-<n>-short-slug` — Conventional Commits type (`feat`, `fix`, `docs`, `refactor`, `chore`, `test`, `ci`, …). Example: `feat/CLEAN-10-shimmer-thinking`, `fix/CLEAN-34-agent-usage-header`
+- Commit subject: Conventional Commits + ticket: `feat(bridle): thinking event relay (CLEAN-10)`
+
+## Secrets
+
+API keys live in **`.env.project`** (gitignored). Typical keys: `JIRA_API_TOKEN`, `JIRA_DOMAIN`, `JIRA_EMAIL`, `GITHUB_TOKEN`, plus others this repo needs. Read the file when calling Jira/GitHub. Never print values, never commit the file, never paste keys into rules or chat.
+
+## If there is no ticket
+
+If the user describes work and does **not** give a `CLEAN-<n>` id, that description *is* the ticket. Do not start code, SpecKit, Brainstorm, or a git branch first.
+
+1. Create a Jira issue in CLEAN from their description (title + short summary). Use `.env.project`.
+2. Reply with the issue key and URL.
+3. Move it to In Progress.
+4. Then the usual flow: branch → work → comments → PR.
+
+## OpenAPI
+
+If generated SDK/types are missing or the backend spec looks absent: regenerate first. Do not ask where the schema is until regen fails.
+
+1. Spec file: `api/swagger-spec.json`. If missing, generate it (`cd api && bun run build` or `bun run generate:swagger`).
+2. Types: `cd admin && bun run build:api` and `cd app && bun run build:api` (`openapi-ts`).
+3. Only then ask for the schema path/URL. Do not hand-write DTOs that OpenAPI should emit.
+
+## Status flow
+
+1. Create a Jira issue in CLEAN if none exists. Do not use Linear.
+2. Move it to In Progress when starting.
+3. Branch from up-to-date `origin/main`. Never commit on `main`.
+4. Ticket comments in a few sentences (teammate tone). Small task: start + end of implementation. Large task (several steps / slices): a checkpoint after each chunk — what landed, what's next.
+5. Open a GitHub PR into `main`, link `CLEAN-<n>` in the title/description, put the PR URL on the issue.
+6. Move the issue to In Review / Done per the Jira board.
+
+## Plugins
+
+Optional. Never a substitute for the Jira cycle.
+
+- SpecKit: yes (already in this repo)
+- Brainstorm: yes
+
+## Do not
+
+- Commit or open a PR without a `CLEAN-` id
+- Push work on `main`
+- Use a GitLab / gamble / personal Git identity or SSH key
+- Skip Jira because the change looks small

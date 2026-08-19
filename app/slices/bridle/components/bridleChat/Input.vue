@@ -1,7 +1,6 @@
 <script setup lang="ts">
 const props = defineProps<{ disabled?: boolean }>();
 const emit = defineEmits<{ send: [text: string] }>();
-const { t } = useI18n();
 
 const draft = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
@@ -41,7 +40,7 @@ watch(draft, () => nextTick(autoResize));
         <textarea
           ref="textareaRef"
           v-model="draft"
-          :placeholder="t('chat.placeholder')"
+          :placeholder="$t('chat.placeholder')"
           rows="1"
           class="flex-1 resize-none bg-transparent py-2 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none disabled:cursor-not-allowed"
           :disabled="disabled"
@@ -51,7 +50,7 @@ watch(draft, () => nextTick(autoResize));
           type="submit"
           :disabled="!canSend"
           class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition hover:opacity-90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
-          :aria-label="t('chat.send')"
+          :aria-label="$t('chat.send')"
         >
           <Icon
             v-if="disabled"

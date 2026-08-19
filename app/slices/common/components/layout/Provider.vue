@@ -10,7 +10,7 @@
           >
             <Icon name="tractor" :size="18" />
           </span>
-          {{ t('app_name') }}
+          {{ $t('app_name') }}
         </NuxtLink>
 
         <nav class="hidden md:flex items-center gap-5 text-sm">
@@ -19,7 +19,7 @@
             class="text-muted-foreground hover:text-foreground transition-colors"
             active-class="text-foreground font-medium"
           >
-            {{ t('nav.agents') }}
+            {{ $t('nav.agents') }}
           </NuxtLink>
           <NuxtLink
             v-if="authStore.isAuthenticated"
@@ -27,7 +27,7 @@
             class="text-muted-foreground hover:text-foreground transition-colors"
             active-class="text-foreground font-medium"
           >
-            {{ t('nav.history') }}
+            {{ $t('nav.history') }}
           </NuxtLink>
         </nav>
 
@@ -38,7 +38,7 @@
              so the choice survives a reload. -->
         <select
           :value="locale"
-          :aria-label="t('locale.label')"
+          :aria-label="$t('locale.label')"
           class="rounded-md border bg-transparent px-1.5 py-1 text-xs uppercase text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           @change="onLocaleChange"
         >
@@ -66,19 +66,19 @@
             class="text-muted-foreground hover:text-foreground transition-colors"
             @click="onLogout"
           >
-            {{ t('auth.sign_out') }}
+            {{ $t('auth.sign_out') }}
           </button>
         </div>
         <div v-else class="flex items-center gap-3 text-sm">
           <NuxtLink to="/login" class="text-muted-foreground hover:text-foreground transition-colors">
-            {{ t('auth.sign_in') }}
+            {{ $t('auth.sign_in') }}
           </NuxtLink>
           <NuxtLink
             v-if="registrationEnabled"
             to="/register"
             class="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:opacity-90 transition"
           >
-            {{ t('auth.sign_up') }}
+            {{ $t('auth.sign_up') }}
           </NuxtLink>
         </div>
       </div>
@@ -105,13 +105,13 @@
       <div
         class="container mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground"
       >
-        <div>{{ t('footer.note', { year }) }}</div>
+        <div>{{ $t('footer.note', { year }) }}</div>
         <div class="flex items-center gap-4">
           <NuxtLink to="/agents" class="hover:text-foreground">
-            {{ t('nav.agents') }}
+            {{ $t('nav.agents') }}
           </NuxtLink>
           <NuxtLink to="/templates" class="hover:text-foreground">
-            {{ t('nav.templates') }}
+            {{ $t('nav.templates') }}
           </NuxtLink>
         </div>
       </div>
@@ -122,7 +122,7 @@
 <script setup lang="ts">
 const route = useRoute();
 const authStore = useAuthStore();
-const { t, locale, locales, setLocale } = useI18n();
+const { locale, locales, setLocale } = useI18n();
 const year = new Date().getFullYear();
 
 async function onLocaleChange(event: Event) {

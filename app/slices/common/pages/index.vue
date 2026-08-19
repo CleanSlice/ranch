@@ -5,13 +5,13 @@
     <section class="container mx-auto px-4 py-20 border-t">
       <div class="max-w-2xl mb-12">
         <div class="text-sm font-medium text-primary mb-3">
-          {{ t('landing.what_eyebrow') }}
+          {{ $t('landing.what_eyebrow') }}
         </div>
         <h2 class="text-3xl sm:text-4xl font-bold tracking-tight">
-          {{ t('landing.what_title') }}
+          {{ $t('landing.what_title') }}
         </h2>
         <p class="mt-4 text-muted-foreground">
-          {{ t('landing.what_lede') }}
+          {{ $t('landing.what_lede') }}
         </p>
       </div>
 
@@ -27,10 +27,10 @@
             <Icon :name="feature.icon" :size="20" />
           </div>
           <h3 class="font-semibold mb-2">
-            {{ t(`features.${feature.key}_title`) }}
+            {{ $t(`features.${feature.key}_title`) }}
           </h3>
           <p class="text-sm text-muted-foreground">
-            {{ t(`features.${feature.key}_body`) }}
+            {{ $t(`features.${feature.key}_body`) }}
           </p>
         </div>
       </div>
@@ -40,10 +40,10 @@
       <div class="container mx-auto px-4 py-20">
         <div class="max-w-2xl mb-12">
           <div class="text-sm font-medium text-primary mb-3">
-            {{ t('landing.how_eyebrow') }}
+            {{ $t('landing.how_eyebrow') }}
           </div>
           <h2 class="text-3xl sm:text-4xl font-bold tracking-tight">
-            {{ t('landing.how_title') }}
+            {{ $t('landing.how_title') }}
           </h2>
         </div>
 
@@ -54,11 +54,11 @@
             class="rounded-xl border bg-background p-6"
           >
             <div class="text-xs text-muted-foreground mb-2">
-              {{ t('landing.step', { number: idx + 1 }) }}
+              {{ $t('landing.step', { number: idx + 1 }) }}
             </div>
-            <h3 class="font-semibold mb-2">{{ t(`steps.${step}_title`) }}</h3>
+            <h3 class="font-semibold mb-2">{{ $t(`steps.${step}_title`) }}</h3>
             <p class="text-sm text-muted-foreground">
-              {{ t(`steps.${step}_body`) }}
+              {{ $t(`steps.${step}_body`) }}
             </p>
           </li>
         </ol>
@@ -70,16 +70,16 @@
         class="rounded-2xl border bg-gradient-to-br from-primary/10 to-transparent p-10 text-center"
       >
         <h2 class="text-3xl sm:text-4xl font-bold tracking-tight">
-          {{ t('landing.cta_title') }}
+          {{ $t('landing.cta_title') }}
         </h2>
         <p class="mt-3 text-muted-foreground max-w-lg mx-auto">
-          {{ t('landing.cta_lede') }}
+          {{ $t('landing.cta_lede') }}
         </p>
         <NuxtLink
           to="/agents"
           class="mt-8 inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground px-6 py-3 text-sm font-medium hover:opacity-90 transition"
         >
-          {{ t('landing.cta_button') }}
+          {{ $t('landing.cta_button') }}
         </NuxtLink>
       </div>
     </section>
@@ -87,8 +87,6 @@
 </template>
 
 <script setup lang="ts">
-const { t } = useI18n();
-
 // Copy lives in the locale files (features.<key>_title / _body); only the icon
 // and the ordering are structural, so that's all that stays here.
 const features = [

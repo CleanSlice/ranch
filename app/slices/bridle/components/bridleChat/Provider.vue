@@ -107,7 +107,7 @@ const agentInitial = computed(() => {
               {{ title ?? t('chat.agent') }}
             </h3>
             <p class="mt-1 max-w-xs text-xs text-muted-foreground">
-              Say hello — your message will go straight to the agent runtime.
+              {{ t('chat.starter_hint') }}
             </p>
           </div>
 

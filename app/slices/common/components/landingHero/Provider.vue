@@ -10,19 +10,17 @@
             class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-muted-foreground mb-6"
           >
             <span class="w-2 h-2 rounded-full bg-green-500" />
-            Live on Kubernetes · Powered by Argo Workflows
+            {{ t('hero.badge') }}
           </div>
           <h1
             class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]"
           >
-            Deploy AI agents.
+            {{ t('hero.title') }}
             <br />
-            <span class="text-primary">Talk to them.</span>
+            <span class="text-primary">{{ t('hero.title_accent') }}</span>
           </h1>
           <p class="mt-6 text-lg text-muted-foreground max-w-xl">
-            Ranch is your agent deployment platform. Spin up containerized
-            AI workers on a managed k3s cluster and chat with them in real
-            time — no DevOps required.
+            {{ t('hero.lede') }}
           </p>
 
           <div class="mt-8 flex flex-wrap gap-3">
@@ -30,37 +28,43 @@
               to="/agents"
               class="inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground px-5 py-3 text-sm font-medium hover:opacity-90 transition"
             >
-              Open full dashboard →
+              {{ t('hero.cta_dashboard') }}
             </NuxtLink>
             <NuxtLink
               v-if="canDeployAgent"
               to="/agents/create"
               class="inline-flex items-center justify-center rounded-md border px-5 py-3 text-sm font-medium hover:bg-accent transition"
             >
-              Deploy an agent
+              {{ t('hero.cta_deploy') }}
             </NuxtLink>
             <NuxtLink
               v-else-if="!authStore.isAuthenticated"
               to="/login"
               class="inline-flex items-center justify-center rounded-md border px-5 py-3 text-sm font-medium hover:bg-accent transition"
             >
-              Sign in to deploy
+              {{ t('hero.cta_sign_in') }}
             </NuxtLink>
           </div>
 
           <dl class="mt-10 grid grid-cols-3 gap-6 max-w-md">
             <div>
-              <dt class="text-xs text-muted-foreground">Agents</dt>
+              <dt class="text-xs text-muted-foreground">
+                {{ t('hero.stat_agents') }}
+              </dt>
               <dd class="text-2xl font-semibold">
                 {{ agentStore.publicAgents.length }}
               </dd>
             </div>
             <div>
-              <dt class="text-xs text-muted-foreground">Running</dt>
+              <dt class="text-xs text-muted-foreground">
+                {{ t('hero.stat_running') }}
+              </dt>
               <dd class="text-2xl font-semibold">{{ runningCount }}</dd>
             </div>
             <div>
-              <dt class="text-xs text-muted-foreground">Uptime</dt>
+              <dt class="text-xs text-muted-foreground">
+                {{ t('hero.stat_uptime') }}
+              </dt>
               <dd class="text-2xl font-semibold">99.9%</dd>
             </div>
           </dl>
@@ -92,6 +96,7 @@ import type { IAgentData } from '#agent/stores/agent';
 
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
+const { t } = useI18n();
 
 await useAsyncData('landing-agents', () => agentStore.fetchPublic());
 

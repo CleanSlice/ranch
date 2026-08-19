@@ -66,12 +66,21 @@ watch(draft, () => nextTick(autoResize));
           />
         </button>
       </div>
-      <p class="mt-1.5 px-1 text-[11px] text-muted-foreground/60">
-        <kbd class="rounded border bg-muted px-1 font-mono text-[10px]">Enter</kbd>
-        to send,
-        <kbd class="rounded border bg-muted px-1 font-mono text-[10px]">Shift+Enter</kbd>
-        for newline
-      </p>
+      <!-- i18n-t keeps the sentence one translatable string with the two key
+           caps as slots — translators reorder words, and splitting this into
+           fragments around the <kbd> tags would make that impossible. -->
+      <i18n-t
+        keypath="chat.input_hint"
+        tag="p"
+        class="mt-1.5 px-1 text-[11px] text-muted-foreground/60"
+      >
+        <template #enter>
+          <kbd class="rounded border bg-muted px-1 font-mono text-[10px]">Enter</kbd>
+        </template>
+        <template #shiftEnter>
+          <kbd class="rounded border bg-muted px-1 font-mono text-[10px]">Shift+Enter</kbd>
+        </template>
+      </i18n-t>
     </div>
   </form>
 </template>

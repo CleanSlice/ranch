@@ -7,6 +7,36 @@ set -o pipefail
 
 cd "$(dirname "$0")/../api" || exit 1
 
+k3d_install_hint() {
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) echo "winget install -e --id k3d.k3d   (or: choco install k3d / scoop install k3d)" ;;
+    Darwin*) echo "brew install k3d" ;;
+    *) echo "curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash" ;;
+  esac
+}
+
+# Fail before compose starts pulling images. The k3d-ranch network is
+# `external: true` — compose otherwise downloads postgres/minio and then dies.
+K3D_NET=k3d-ranch
+if ! docker network inspect "$K3D_NET" >/dev/null 2>&1; then
+  cat >&2 <<EOF
+
+✖ Docker network \`$K3D_NET\` does not exist (created by k3d).
+
+  Install k3d, then re-run \`ranch dev\` — it creates the cluster and network
+  before any image pull:
+
+    $(k3d_install_hint)
+
+  Or skip the cluster: \`ranch dev --no-k3d\` (CLI creates a dummy network).
+
+  Until this succeeds, api can't finish starting, so it never writes
+  api/swagger-spec.json — admin/app will sit waiting on it until they time out.
+EOF
+  exit 1
+fi
+
+
 output="$(docker compose up -d 2>&1)"
 code=$?
 echo "$output" >&2
@@ -54,7 +84,10 @@ EOF
   reach them. It's created by k3d when the local cluster exists.
 
   Fix:
-    1. brew install k3d   (if not installed)
+    1. Install k3d:
+         Windows: winget install -e --id k3d.k3d
+         macOS:   brew install k3d
+         Linux:   curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
     2. k3d cluster create ranch --api-port 6550 --wait
     3. Re-run `ranch dev` (it also does this automatically when k3d is
        installed — see cli/src/utils/k3d.ts).

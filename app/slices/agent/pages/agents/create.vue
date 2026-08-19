@@ -10,7 +10,7 @@ if (!authStore.hasRole(UserRoleTypes.Owner, UserRoleTypes.Admin)) {
 
 <template>
   <div>
-    <h1 class="text-2xl font-bold mb-6">Create Agent</h1>
+    <h1 class="text-2xl font-bold mb-6">{{ $t('list.create') }}</h1>
     <!-- AgentForm will be implemented here -->
   </div>
 </template>

@@ -20,11 +20,14 @@ const initials = computed(() => {
     .join('') || '?';
 });
 
+// labelKey is an i18n key; `label` carries the raw status for the default
+// branch, where the runtime reported something we have no wording for.
 const statusMeta = computed(() => {
   switch (props.agent.status) {
     case 'running':
       return {
-        label: 'Running',
+        labelKey: 'status.running',
+        label: props.agent.status,
         dot: 'bg-emerald-500',
         pulse: true,
         text: 'text-emerald-700 dark:text-emerald-400',
@@ -32,27 +35,32 @@ const statusMeta = computed(() => {
     case 'deploying':
     case 'pending':
       return {
-        label: props.agent.status === 'pending' ? 'Pending' : 'Deploying',
+        labelKey:
+          props.agent.status === 'pending' ? 'status.pending' : 'status.deploying',
+        label: props.agent.status,
         dot: 'bg-amber-500',
         pulse: true,
         text: 'text-amber-700 dark:text-amber-400',
       };
     case 'failed':
       return {
-        label: 'Failed',
+        labelKey: 'status.failed',
+        label: props.agent.status,
         dot: 'bg-rose-500',
         pulse: false,
         text: 'text-rose-700 dark:text-rose-400',
       };
     case 'stopped':
       return {
-        label: 'Stopped',
+        labelKey: 'status.stopped',
+        label: props.agent.status,
         dot: 'bg-muted-foreground',
         pulse: false,
         text: 'text-muted-foreground',
       };
     default:
       return {
+        labelKey: null,
         label: props.agent.status,
         dot: 'bg-muted-foreground',
         pulse: false,
@@ -61,7 +69,10 @@ const statusMeta = computed(() => {
   }
 });
 
-const updatedRelative = computed(() => {
+// Returns the bucket and its number; the template turns that into words. The
+// unit suffix is part of the message ("{count}m ago"), so a language that
+// writes it differently — or reorders it — only edits the locale file.
+const updatedRelative = computed<{ key: string; count: number } | null>(() => {
   if (!props.agent.updatedAt) return null;
   const ts = Date.parse(props.agent.updatedAt);
   if (Number.isNaN(ts)) return null;
@@ -69,10 +80,12 @@ const updatedRelative = computed(() => {
   const minute = 60_000;
   const hour = 60 * minute;
   const day = 24 * hour;
-  if (diff < minute) return 'just now';
-  if (diff < hour) return `${Math.floor(diff / minute)}m ago`;
-  if (diff < day) return `${Math.floor(diff / hour)}h ago`;
-  return `${Math.floor(diff / day)}d ago`;
+  if (diff < minute) return { key: 'relative_time.just_now', count: 0 };
+  if (diff < hour)
+    return { key: 'relative_time.minutes', count: Math.floor(diff / minute) };
+  if (diff < day)
+    return { key: 'relative_time.hours', count: Math.floor(diff / hour) };
+  return { key: 'relative_time.days', count: Math.floor(diff / day) };
 });
 </script>
 
@@ -115,7 +128,7 @@ const updatedRelative = computed(() => {
             :class="statusMeta.dot"
           />
         </span>
-        {{ statusMeta.label }}
+        {{ statusMeta.labelKey ? $t(statusMeta.labelKey) : statusMeta.label }}
       </div>
     </div>
 
@@ -124,7 +137,7 @@ const updatedRelative = computed(() => {
     >
       <span class="inline-flex items-center gap-1 truncate">
         <Icon name="message-square" :size="12" class="-mt-0.5" />
-        Open chat
+        {{ $t('card.open_chat') }}
         <Icon
           name="arrow-up-right"
           :size="12"
@@ -132,7 +145,11 @@ const updatedRelative = computed(() => {
         />
       </span>
       <span v-if="updatedRelative" class="shrink-0">
-        Updated {{ updatedRelative }}
+        {{
+          $t('card.updated', {
+            when: $t(updatedRelative.key, { count: updatedRelative.count }),
+          })
+        }}
       </span>
     </div>
   </NuxtLink>

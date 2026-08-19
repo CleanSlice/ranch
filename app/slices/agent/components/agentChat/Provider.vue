@@ -15,6 +15,7 @@ const canManage = computed(() =>
 
 const restarting = ref(false);
 const restartError = ref<string | null>(null);
+const restartFailed = ref(false);
 /** Wallclock the user clicked Restart — used to compute progress / time. */
 const restartStartedAt = ref<number | null>(null);
 
@@ -29,6 +30,7 @@ async function onRestart() {
   if (!agent.value || restarting.value) return;
   restarting.value = true;
   restartError.value = null;
+  restartFailed.value = false;
   restartStartedAt.value = Date.now();
   const previous = agent.value.status;
   // Optimistic flip — overlay appears immediately, status pill animates.
@@ -38,7 +40,8 @@ async function onRestart() {
     await refresh();
   } catch (err) {
     if (agent.value) agent.value = { ...agent.value, status: previous };
-    restartError.value = (err as Error).message || 'Restart failed';
+    restartFailed.value = true;
+    restartError.value = (err as Error).message || null;
     restartStartedAt.value = null;
   } finally {
     restarting.value = false;
@@ -76,17 +79,18 @@ const statusMeta = computed(() => {
   const status = agent.value?.status;
   switch (status) {
     case 'running':
-      return { label: 'Running', dot: 'bg-emerald-500', pulse: true };
+      return { labelKey: 'status.running', label: status, dot: 'bg-emerald-500', pulse: true };
     case 'deploying':
-      return { label: 'Deploying', dot: 'bg-amber-500', pulse: true };
+      return { labelKey: 'status.deploying', label: status, dot: 'bg-amber-500', pulse: true };
     case 'pending':
-      return { label: 'Pending', dot: 'bg-amber-500', pulse: true };
+      return { labelKey: 'status.pending', label: status, dot: 'bg-amber-500', pulse: true };
     case 'failed':
-      return { label: 'Failed', dot: 'bg-rose-500', pulse: false };
+      return { labelKey: 'status.failed', label: status, dot: 'bg-rose-500', pulse: false };
     case 'stopped':
-      return { label: 'Stopped', dot: 'bg-muted-foreground', pulse: false };
+      return { labelKey: 'status.stopped', label: status, dot: 'bg-muted-foreground', pulse: false };
     default:
-      return { label: status ?? 'Unknown', dot: 'bg-muted-foreground', pulse: false };
+      // No wording for a status the runtime invented — show it verbatim.
+      return { labelKey: null, label: status ?? '', dot: 'bg-muted-foreground', pulse: false };
   }
 });
 
@@ -116,30 +120,30 @@ onBeforeUnmount(() => {
   if (elapsedTimer) clearInterval(elapsedTimer);
 });
 
-const overlayStage = computed<{ title: string; subtitle: string }>(() => {
+const overlayStage = computed<{ titleKey: string; bodyKey: string }>(() => {
   const sec = elapsedSec.value;
   // Stages chosen by feel — a typical k8s pod restart is 10–25s.
   if (sec < 3) {
     return {
-      title: 'Stopping current pod…',
-      subtitle: 'Cancelling the running workflow.',
+      titleKey: 'restart_stage.stopping_title',
+      bodyKey: 'restart_stage.stopping_body',
     };
   }
   if (sec < 10) {
     return {
-      title: 'Deploying new pod…',
-      subtitle: 'Scheduling on the cluster.',
+      titleKey: 'restart_stage.deploying_title',
+      bodyKey: 'restart_stage.deploying_body',
     };
   }
   if (sec < 20) {
     return {
-      title: 'Starting up…',
-      subtitle: 'The container is pulling and initialising.',
+      titleKey: 'restart_stage.starting_title',
+      bodyKey: 'restart_stage.starting_body',
     };
   }
   return {
-    title: 'Almost ready…',
-    subtitle: 'Waiting for the agent to come online.',
+    titleKey: 'restart_stage.almost_title',
+    bodyKey: 'restart_stage.almost_body',
   };
 });
 
@@ -164,7 +168,7 @@ const initials = computed(() => {
         <NuxtLink
           to="/agents"
           class="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition"
-          aria-label="Back to agents"
+          :aria-label="$t('chat.back_to_agents')"
         >
           <Icon name="arrow-left" :size="16" />
         </NuxtLink>
@@ -180,8 +184,8 @@ const initials = computed(() => {
           <div class="flex items-center gap-2">
             <h1 class="truncate text-sm font-semibold">
               <template v-if="agent">{{ agent.name }}</template>
-              <template v-else-if="pending">Loading…</template>
-              <template v-else>Agent not found</template>
+              <template v-else-if="pending">{{ $t('chat.loading') }}</template>
+              <template v-else>{{ $t('chat.not_found') }}</template>
             </h1>
             <span
               v-if="agent"
@@ -198,7 +202,7 @@ const initials = computed(() => {
                   :class="statusMeta.dot"
                 />
               </span>
-              {{ statusMeta.label }}
+              {{ statusMeta.labelKey ? $t(statusMeta.labelKey) : statusMeta.label }}
             </span>
           </div>
           <p
@@ -222,19 +226,19 @@ const initials = computed(() => {
             :size="13"
             :class="isTransitioning ? 'animate-spin' : undefined"
           />
-          {{ isTransitioning ? 'Restarting…' : 'Restart' }}
+          {{ $t(isTransitioning ? 'chat.restarting' : 'chat.restart') }}
         </button>
       </div>
     </header>
 
     <div
-      v-if="restartError"
+      v-if="restartFailed"
       class="shrink-0 border-b bg-rose-500/10"
     >
       <p
         class="mx-auto w-full max-w-3xl px-4 py-2 text-xs text-rose-700 dark:text-rose-400"
       >
-        {{ restartError }}
+        {{ restartError ?? $t('chat.restart_failed') }}
       </p>
     </div>
 
@@ -251,16 +255,16 @@ const initials = computed(() => {
           <Icon name="bot-off" :size="22" />
         </div>
         <div>
-          <p class="text-sm font-medium">Agent unavailable</p>
+          <p class="text-sm font-medium">{{ $t('chat.unavailable_title') }}</p>
           <p class="mt-1 text-xs text-muted-foreground">
-            This agent may have been removed or the runtime is offline.
+            {{ $t('chat.unavailable_hint') }}
           </p>
         </div>
         <NuxtLink
           to="/agents"
           class="text-xs font-medium text-primary hover:underline"
         >
-          ← Back to agents
+          ← {{ $t('chat.back_to_agents') }}
         </NuxtLink>
       </div>
       <BridleChatProvider
@@ -305,9 +309,9 @@ const initials = computed(() => {
               </span>
             </div>
 
-            <h3 class="text-sm font-semibold">{{ overlayStage.title }}</h3>
+            <h3 class="text-sm font-semibold">{{ $t(overlayStage.titleKey) }}</h3>
             <p class="mt-1.5 text-xs text-muted-foreground">
-              {{ overlayStage.subtitle }}
+              {{ $t(overlayStage.bodyKey) }}
             </p>
 
             <!-- Indeterminate progress bar — visual only, since k8s doesn't
@@ -317,7 +321,7 @@ const initials = computed(() => {
             </div>
 
             <p class="mt-3 text-[11px] text-muted-foreground/70">
-              Elapsed {{ elapsedSec }}s · agent will reload memory from S3
+              {{ $t('chat.elapsed', { seconds: elapsedSec }) }}
             </p>
           </div>
         </div>

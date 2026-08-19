@@ -1,8 +1,11 @@
 name: CI
 
 on:
+  # Every pull request, not just the ones targeting main: stacked PRs (a chain
+  # of branches merged bottom-up at the end) target their parent branch, and
+  # with a `branches: [main]` filter they would ride all the way to the final
+  # merge without a single CI run.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 

@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { consola } from "consola";
+import { hasBinary } from "./bin";
 import { tryRun } from "./exec";
 
 const READY_TIMEOUT_MS = 90_000;
@@ -10,15 +11,6 @@ const READY_POLL_MS = 2_000;
 
 const CLUSTER = "ranch";
 const KUBECONFIG_LOCAL = join(homedir(), ".kube", "ranch-local.yaml");
-
-function hasBinary(name: string): boolean {
-  try {
-    execSync(`command -v ${name}`, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 type ClusterState = "running" | "stopped" | "missing";
 

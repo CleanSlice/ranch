@@ -13,24 +13,27 @@ echo "$output" >&2
 
 if [ "$code" -ne 0 ]; then
   if echo "$output" | grep -qiE "unauthorized|denied|403 Forbidden"; then
+    echo >&2 ""
+    echo >&2 "✖ GHCR refused ghcr.io/cleanslice/browser-pool — building it locally."
+    echo >&2 "  (private package, or Docker isn't logged into ghcr.io)"
+    echo >&2 ""
+    if docker compose build browserless && docker compose up -d; then
+      exit 0
+    fi
     cat >&2 <<'EOF'
 
-✖ `docker compose up -d` failed — registry auth error above.
+✖ Local build also failed. To pull the private image instead:
 
-  Most likely cause: ghcr.io/cleanslice/browser-pool is a private image and
-  Docker isn't logged into ghcr.io (or the account lacks package access).
-
-  Fix:
-    1. Create a GitHub PAT with the `read:packages` scope:
-       https://github.com/settings/tokens
-    2. docker login ghcr.io -u <your-github-username>
-       (paste the PAT as the password)
-    3. If you still get 403 after logging in, the token is valid but your
-       account lacks read access to the package itself — ask whoever
-       administers ghcr.io/cleanslice/browser-pool to grant you access
-       (package Settings → Manage Actions access / Collaborators). Repo
-       access does not automatically grant package access on GHCR.
-    4. Re-run `ranch dev`.
+  1. Create a GitHub PAT with the `read:packages` scope:
+     https://github.com/settings/tokens
+  2. docker login ghcr.io -u <your-github-username>
+     (paste the PAT as the password)
+  3. If you still get 403 after logging in, the token is valid but your
+     account lacks read access to the package itself — ask whoever
+     administers ghcr.io/cleanslice/browser-pool to grant you access
+     (package Settings → Manage Actions access / Collaborators). Repo
+     access does not automatically grant package access on GHCR.
+  4. Re-run `ranch dev`.
 EOF
   elif echo "$output" | grep -qi "no matching manifest"; then
     cat >&2 <<'EOF'

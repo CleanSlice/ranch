@@ -7,6 +7,7 @@ import { ensureK3dRunning } from "../utils/k3d";
 import { ensurePortForwards } from "../utils/port-forward";
 import { ensureDepsInstalled } from "../utils/deps";
 import { ensureDockerRunning } from "../utils/docker";
+import { ensureBrowserPoolImage } from "../utils/ghcr";
 import { maybeUpdatePlatform } from "../utils/platform-update";
 
 export const devCommand = defineCommand({
@@ -47,6 +48,7 @@ export const devCommand = defineCommand({
     const needsDocker = !target || target === "api";
     if (needsDocker) {
       ensureDockerRunning();
+      await ensureBrowserPoolImage(root);
     }
 
     if (!args["no-install"]) {

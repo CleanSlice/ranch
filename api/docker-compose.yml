@@ -58,6 +58,12 @@ services:
   #   17900 → 7900  auth-proxy /live + /websockify + /vnc/*  (open this in a browser)
   browserless:
     image: ghcr.io/cleanslice/browser-pool:latest
+    build:
+      context: ../k8s/browser-pool-image
+      dockerfile: Dockerfile
+    # Pull only when the image is absent — ranch logs into GHCR first, and
+    # docker-up.sh builds locally if the private package is unreachable.
+    pull_policy: missing
     # Only published for linux/amd64 (see k8s/browser-pool-image/README.md) —
     # without this, `docker compose up` on Apple Silicon fails with
     # "no matching manifest for linux/arm64/v8". Runs fine under Docker

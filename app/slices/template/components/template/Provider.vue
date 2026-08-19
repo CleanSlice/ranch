@@ -1,5 +1,5 @@
 <template>
-  <div v-if="pending">Loading template...</div>
+  <div v-if="pending">{{ $t('item.loading') }}</div>
   <div v-else-if="template">
     <h2 class="text-xl font-bold">{{ template.name }}</h2>
     <p class="text-muted-foreground">{{ template.description }}</p>

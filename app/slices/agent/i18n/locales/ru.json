@@ -50,11 +50,5 @@
     "starting_body": "Контейнер загружается и инициализируется.",
     "almost_title": "Почти готово…",
     "almost_body": "Ожидание выхода агента в сеть."
-  },
-  "relative_time": {
-    "just_now": "только что",
-    "minutes": "{count} мин назад",
-    "hours": "{count} ч назад",
-    "days": "{count} дн назад"
   }
 }

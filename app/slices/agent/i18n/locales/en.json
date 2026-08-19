@@ -50,11 +50,5 @@
     "starting_body": "The container is pulling and initialising.",
     "almost_title": "Almost ready…",
     "almost_body": "Waiting for the agent to come online."
-  },
-  "relative_time": {
-    "just_now": "just now",
-    "minutes": "{count}m ago",
-    "hours": "{count}h ago",
-    "days": "{count}d ago"
   }
 }

@@ -67,5 +67,11 @@
     "deploy_body": "Ranch submits an Argo Workflow to your k3s cluster. You get a status stream back in the dashboard.",
     "chat_title": "Start the conversation",
     "chat_body": "The agent connects to the bridle hub. Open the chat, send a message, watch it stream back."
+  },
+  "relative_time": {
+    "just_now": "just now",
+    "minutes": "{count}m ago",
+    "hours": "{count}h ago",
+    "days": "{count}d ago"
   }
 }

@@ -40,8 +40,10 @@ const summaryText = computed(() =>
         @click="summaryOpen = !summaryOpen"
       >
         <Icon name="file-text" :size="14" class="shrink-0" />
-        <span class="font-medium">Earlier in this conversation — summarized</span>
-        <span class="ml-auto text-xs">{{ summaryOpen ? 'Hide' : 'Show' }}</span>
+        <span class="font-medium">{{ $t('message.summarized') }}</span>
+        <span class="ml-auto text-xs">
+          {{ $t(summaryOpen ? 'message.hide' : 'message.show') }}
+        </span>
       </button>
       <p
         v-if="summaryOpen"
@@ -83,7 +85,7 @@ const summaryText = computed(() =>
         <div class="mt-1.5 flex items-center gap-0.5">
           <button
             type="button"
-            aria-label="Helpful"
+            :aria-label="$t('message.helpful')"
             class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
             :class="rating === 1 && 'text-emerald-600'"
             @click="emit('rate', 1)"
@@ -92,7 +94,7 @@ const summaryText = computed(() =>
           </button>
           <button
             type="button"
-            aria-label="Not helpful"
+            :aria-label="$t('message.not_helpful')"
             class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
             :class="rating === -1 && 'text-rose-600'"
             @click="emit('rate', -1)"

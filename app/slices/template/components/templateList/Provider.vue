@@ -1,7 +1,7 @@
 <template>
   <div>
-    <h1 class="text-2xl font-bold mb-6">Templates</h1>
-    <div v-if="pending">Loading templates...</div>
+    <h1 class="text-2xl font-bold mb-6">{{ $t('list.title') }}</h1>
+    <div v-if="pending">{{ $t('list.loading') }}</div>
     <div v-else-if="templates?.length" class="grid gap-4 md:grid-cols-2">
       <div
         v-for="tmpl in templates"
@@ -13,7 +13,7 @@
         <p class="text-xs mt-2">{{ tmpl.image }}</p>
       </div>
     </div>
-    <div v-else class="text-muted-foreground">No templates available.</div>
+    <div v-else class="text-muted-foreground">{{ $t('list.empty') }}</div>
   </div>
 </template>
 

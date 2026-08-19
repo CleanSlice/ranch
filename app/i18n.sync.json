@@ -140,10 +140,13 @@
       "steps.template_title": "21a2714bf862"
     },
     "template:ru": {
-      "template_description": "526e0087cc3f",
-      "template_image": "140d5d5895d7",
-      "template_name": "f95e97c2f767",
-      "templates": "56b564b75c7f"
+      "field.description": "526e0087cc3f",
+      "field.image": "140d5d5895d7",
+      "field.name": "f95e97c2f767",
+      "item.loading": "f687834dd2b9",
+      "list.empty": "805cbc51a3bd",
+      "list.loading": "8b31692427de",
+      "list.title": "56b564b75c7f"
     },
     "user/auth:ru": {
       "account.closed_body": "0be53513ddac",

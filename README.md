@@ -206,6 +206,15 @@ make lightrag-reset   # Wipe data + models
 make lightrag-logs    # Tail container logs
 ```
 
+## Translations (`app` console)
+
+The user console ships in English and Russian. `en.json` in each slice is the
+source; `bun run i18n:sync` generates the translation, and `bun run i18n:check`
+(a CI step) fails on a missing, stale or undefined key. The admin panel is
+English-only by design.
+
+See [`docs/i18n.md`](docs/i18n.md) before adding a user-visible string.
+
 ## Prisma Schema (per-slice)
 
 Each slice defines its own `.prisma` file at the slice root. They are merged into `prisma/schema.prisma` by `prisma-import` at build time.

@@ -22,4 +22,9 @@ Flow: Jira issue → In Progress → branch from `origin/main` → work + commen
 
 Do not commit, push, or open a PR without a `CLEAN-` id. Do not use Linear in this repo.
 
+**i18n (`app` console):** read `docs/i18n.md` before adding any user-visible
+string. `en.json` per slice is the source, `bun run i18n:sync` generates `ru`,
+templates use the injected `$t`, and copy decided in script travels as a key.
+Never hand-write `ru.json` as the first step. `admin/` stays English-only.
+
 Project overview: `README.md`.

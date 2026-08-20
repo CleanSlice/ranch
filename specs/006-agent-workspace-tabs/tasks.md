@@ -152,7 +152,7 @@ Two Nuxt consoles in a Bun workspace, each a set of auto-registered slice layers
 - [ ] T041 Walk [quickstart.md](./quickstart.md) steps 1–18 end to end and record the result of each. Steps 6 (chat survives a section round trip) and 10 (nothing lost with the table) are the two that most need a careful pass
 - [X] T042 [P] Confirm no leftover references to the deleted components or to the old tab column: grep for `AgentListProvider`, `AGENT_TABS`, `TabsContent` under `admin/slices/agent` and `app/slices/agent`
 - [X] T043 [P] Re-read the eight section components and confirm **none of them needed a layout change** — if one did, the navigator model was not implemented as designed and R2's premise is broken (SC-004)
-- [ ] T044 Post the implementation checkpoint on CLEAN-36 and open the PR into `main` with `CLEAN-36` in the title, then put the PR URL on the issue and move it to In Review (`CLAUDE.md` delivery cycle)
+- [X] T044 Post the implementation checkpoint on CLEAN-36 and open the PR into `main` with `CLEAN-36` in the title, then put the PR URL on the issue and move it to In Review (`CLAUDE.md` delivery cycle)
 
 ---
 

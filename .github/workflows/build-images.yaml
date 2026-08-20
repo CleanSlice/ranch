@@ -154,8 +154,30 @@ jobs:
           cache-from: type=gha,scope=ranch-admin
           cache-to: type=gha,mode=max,scope=ranch-admin
 
-  build-app:
+  # Locale gate for the app image. ci.yaml runs the same check, but that is a
+  # separate workflow and this one does not wait for it — a push to main starts
+  # both in parallel. A message that breaks the vue-i18n compiler would fail the
+  # Nuxt build inside Docker anyway, but a stale translation or a key no locale
+  # defines builds fine and ships to users as raw key text, so it needs its own
+  # gate here.
+  #
+  # No `bun install`: in --check mode the script uses node built-ins only (the
+  # Anthropic SDK is a dynamic import on the translate path), so checkout + bun
+  # is the whole job.
+  i18n:
     needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Check i18n locale parity
+        run: bun run i18n:check
+
+  build-app:
+    needs: [changes, i18n]
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     steps:

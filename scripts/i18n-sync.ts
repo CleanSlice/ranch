@@ -118,6 +118,45 @@ function findSlices(dir: string, out: Slice[] = []): Slice[] {
   return out;
 }
 
+// ------------------------------------------------------------- usage scanning
+
+/** Every `.vue` under app/slices, whatever the nesting. */
+function findComponents(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules') continue;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) findComponents(path, out);
+    else if (entry.name.endsWith('.vue')) out.push(path);
+  }
+  return out;
+}
+
+/**
+ * Keys a component asks for that no locale file defines. vue-i18n renders the
+ * key path itself in that case — the user sees `hi_name` — and nothing else in
+ * the pipeline notices, because en/ru stay perfectly in sync with each other.
+ *
+ * Only literal keys are checked. `$t(titleKey)` and `$t(`features.${k}_title`)`
+ * are decided at runtime, so a static scan cannot resolve them and does not try.
+ */
+function unknownUsages(known: Set<string>): { file: string; key: string }[] {
+  const found: { file: string; key: string }[] = [];
+
+  for (const file of findComponents(SLICES_DIR)) {
+    const src = readFileSync(file, 'utf8');
+    const keys = [
+      ...[...src.matchAll(/(?:\$t|\bt)\(\s*(['"])([^'"]+)\1/g)].map((m) => m[2]!),
+      ...[...src.matchAll(/keypath="([^"]+)"/g)].map((m) => m[1]!),
+    ];
+    for (const key of keys) {
+      if (!known.has(key)) {
+        found.push({ file: relative(ROOT, file).replace(/\\/g, '/'), key });
+      }
+    }
+  }
+  return found;
+}
+
 // ------------------------------------------------------------------- planning
 
 type Work = {
@@ -289,11 +328,25 @@ function report(work: Work[]): number {
     for (const line of lines) console.error(line);
   }
 
-  if (problems) {
-    console.error(`\n${problems} problem(s). Run: bun run i18n:sync`);
+  // Keys are merged into one global scope at runtime, so a component may use a
+  // key any slice defines — the known set is the union, not the slice's own.
+  const known = new Set(work.flatMap((item) => Object.keys(item.source)));
+  const unknown = unknownUsages(known);
+  for (const { file, key } of unknown) {
+    console.error(`${file}\n  uses a key no locale defines: ${key}`);
+  }
+
+  if (problems || unknown.length) {
+    if (problems) console.error(`\n${problems} locale problem(s). Run: bun run i18n:sync`);
+    if (unknown.length)
+      console.error(
+        `${unknown.length} undefined key(s) in components. Add them to the slice's en.json, then run: bun run i18n:sync`,
+      );
     return 1;
   }
-  console.log(`i18n: ${work.length} slice/locale pair(s) in sync.`);
+  console.log(
+    `i18n: ${work.length} slice/locale pair(s) in sync, ${known.size} keys, no undefined usages.`,
+  );
   return 0;
 }
 

@@ -1,8 +1,5 @@
 {
   "list": {
-    "title": "Agents",
-    "lede": "Click a card to chat. Live runtime status updates as agents come online.",
-    "running_of": "{running} / {total} running",
     "slots_free": "no slots free | {count} slot free | {count} slots free",
     "cluster_no_nodes": "No agent nodes available in this cluster — new agents will stay Pending.",
     "cluster_full": "Cluster is full — stop an agent to free a slot before starting a new one.",
@@ -12,10 +9,6 @@
     "empty_cta": "Create your first agent",
     "empty_no_permission": "Ask an Admin or Owner to deploy one."
   },
-  "card": {
-    "open_chat": "Open chat",
-    "updated": "Updated {when}"
-  },
   "item": {
     "template": "Template",
     "resources": "Resources",
@@ -24,7 +17,6 @@
     "load_error": "Error loading agent"
   },
   "chat": {
-    "back_to_agents": "Back to agents",
     "loading": "Loading…",
     "not_found": "Agent not found",
     "unavailable_title": "Agent unavailable",
@@ -50,5 +42,12 @@
     "starting_body": "The container is pulling and initialising.",
     "almost_title": "Almost ready…",
     "almost_body": "Waiting for the agent to come online."
+  },
+  "rail": {
+    "search": "Search agents",
+    "no_match": "No agent matches “{term}”.",
+    "empty": "No agents yet.",
+    "switch": "Switch agent",
+    "close": "Close agent list"
   }
 }

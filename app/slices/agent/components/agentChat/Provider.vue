@@ -159,20 +159,16 @@ const initials = computed(() => {
 </script>
 
 <template>
-  <div class="flex h-[calc(100vh-3.5rem-1px)] flex-col">
-    <!-- Compact header strip: back, agent identity, status, actions -->
+  <!-- Height comes from the workspace shell now: this component is one
+       column of it, not the page. -->
+  <div class="flex h-full min-h-0 flex-col">
+    <!-- Compact header strip: agent identity, status, actions. The "back to
+         agents" link is gone with the card grid it pointed at — the rail on
+         the left is where you switch agents now. -->
     <header class="shrink-0 border-b bg-card">
       <div
         class="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3"
       >
-        <NuxtLink
-          to="/agents"
-          class="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition"
-          :aria-label="$t('chat.back_to_agents')"
-        >
-          <Icon name="arrow-left" :size="16" />
-        </NuxtLink>
-
         <div
           v-if="agent"
           class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-linear-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary"
@@ -260,12 +256,6 @@ const initials = computed(() => {
             {{ $t('chat.unavailable_hint') }}
           </p>
         </div>
-        <NuxtLink
-          to="/agents"
-          class="text-xs font-medium text-primary hover:underline"
-        >
-          ← {{ $t('chat.back_to_agents') }}
-        </NuxtLink>
       </div>
       <BridleChatProvider
         v-else

@@ -1,30 +1,20 @@
 import type { Ref } from 'vue';
 import type { IAgentData } from '#agent/domain';
-import type { SectionCounts } from '#agent/components/agent/settings/sections';
-
-const EMPTY: SectionCounts = {
-  knowledge: null,
-  files: null,
-  secrets: null,
-  channels: null,
-};
+import type { SectionCounts } from '#agent/components/agent/workspace/sections';
 
 /**
- * How much each countable section holds, shown beside its name in the
- * settings navigator — the number is the reason to click, so it has to be
- * there before the click.
+ * How much each countable tab holds, shown beside its name in the tab bar —
+ * the number is the reason to click, so it has to be there before the click.
  *
  * Three rules this owes the UI:
  *
- * 1. **Nothing fetches until `enabled`** — an operator who keeps the panel
- *    collapsed should not pay for counts they never see. That is also why the
- *    knowledge count is assembled by hand here instead of riding
- *    `useAgentKnowledges`: that composable fires its `useAsyncData` calls the
- *    moment it is called, which would defeat the gate.
- * 2. **Each source fails independently.** One unreachable bucket must not
+ * 1. **Each source fails independently.** One unreachable bucket must not
  *    blank the other three.
- * 3. **`null` is not `0`.** Unknown renders as nothing at all; zero renders
+ * 2. **`null` is not `0`.** Unknown renders as nothing at all; zero renders
  *    as zero, because "no secrets attached" is real information.
+ * 3. **The knowledge count is assembled by hand** rather than riding
+ *    `useAgentKnowledges`, so that an agent whose knowledge is a per-agent
+ *    override costs no template fetch at all.
  *
  * There is no aggregate endpoint and this deliberately does not add one — the
  * requests are the same ones the sections themselves make, and `useAsyncData`
@@ -34,7 +24,6 @@ const EMPTY: SectionCounts = {
 export function useAgentSectionCounts(
   agentId: string,
   agent: Ref<IAgentData | null | undefined>,
-  enabled: Ref<boolean>,
 ) {
   const templateStore = useTemplateStore();
   const fileStore = useAgentFileStore();
@@ -51,7 +40,7 @@ export function useAgentSectionCounts(
   let started = false;
 
   async function load() {
-    if (started || !enabled.value) return;
+    if (started) return;
     started = true;
 
     await Promise.allSettled([
@@ -98,25 +87,18 @@ export function useAgentSectionCounts(
     }
   }
 
-  watch(
-    enabled,
-    (on) => {
-      if (on) void load();
-    },
-    { immediate: true },
-  );
+  onMounted(() => void load());
 
-  // The agent record arrives after the panel may already have opened, so the
-  // template lookup can only run once we know which template to look up.
+  // The agent record arrives after the first paint, so the template lookup can
+  // only run once we know which template to look up.
   watch(
     () => agent.value?.templateId,
     () => {
-      if (enabled.value && started) void loadTemplateKnowledge();
+      if (started) void loadTemplateKnowledge();
     },
   );
 
   const counts = computed<SectionCounts>(() => {
-    if (!enabled.value) return EMPTY;
     const overrides = agent.value?.knowledgeIds.length ?? 0;
     return {
       // An override on the agent wins; otherwise the count is whatever the

@@ -1,15 +1,24 @@
 <script setup lang="ts">
 import {
   IconAlertTriangle,
+  IconDotsVertical,
+  IconLoader2,
+  IconPlayerPlay,
+  IconPlayerStop,
   IconRefresh,
-  IconSettings,
+  IconShield,
+  IconTrash,
   IconX,
 } from '@tabler/icons-vue';
-import { useMediaQuery } from '@vueuse/core';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '#theme/components/ui/dropdown-menu';
 import { agentInitials } from '#agent/composables/useAgentRailEntries';
 import { useAgentSectionCounts } from '#agent/composables/useAgentSectionCounts';
-import { useSettingsPanel } from '#agent/composables/useSettingsPanel';
-import type { AgentSettingsSection } from '#agent/components/agent/settings/sections';
+import { useAgentTab } from '#agent/composables/useAgentTab';
 
 const props = defineProps<{ id: string }>();
 
@@ -46,48 +55,17 @@ const {
   chatOverlay,
 } = useAgentLifecycle(props.id, agent, refresh);
 
-const { section, open: panelOpen, setSection, setOpen, close } =
-  useSettingsPanel();
+const { tab, setTab } = useAgentTab();
 
-// ── Where the panel renders ──────────────────────────────────────────
-// One instance, three appearances — docking is pure CSS (see the classes on
-// the <aside> below), so crossing a breakpoint never remounts the panel or
-// duplicates its state.
-//
-// The one thing CSS cannot decide is whether it starts open: on a phone there
-// is no room to have it open beside anything, so it is on-demand there
-// regardless of the stored preference.
-const isNarrow = useMediaQuery('(max-width: 1023px)');
-const narrowPanelOpen = ref(false);
+// The tab bar shows counts before you click, so unlike the old settings panel
+// there is nothing to gate them behind — they are on screen from first paint.
+const { counts } = useAgentSectionCounts(props.id, agent);
 
-const panelVisible = computed(() =>
-  isNarrow.value ? narrowPanelOpen.value : panelOpen.value,
-);
-
-// Counts stay cold until the navigator is actually visible.
-const { counts } = useAgentSectionCounts(props.id, agent, panelVisible);
-
-function onManage() {
-  if (isNarrow.value) narrowPanelOpen.value = true;
-  else setOpen(true);
-}
-
-function onSelectSection(next: AgentSettingsSection | null) {
-  setSection(next);
-  // On a phone the panel covers the canvas it just navigated to.
-  if (isNarrow.value) narrowPanelOpen.value = false;
-}
-
-function onClosePanel() {
-  if (isNarrow.value) narrowPanelOpen.value = false;
-  else close();
-}
-
-// The status badge in the panel renders from the DB row (not the SSE pod
-// stream). Re-fetch when the operator opens Overview so a stale 'failed' or
-// 'deploying' from initial load doesn't outlive the reconciled state.
-watch(section, (s) => {
-  if (s === 'overview') void refresh();
+// The status badge renders from the DB row (not the SSE pod stream). Re-fetch
+// when the operator opens Overview so a stale 'failed' or 'deploying' from
+// initial load doesn't outlive the reconciled state.
+watch(tab, (t) => {
+  if (t === 'overview') void refresh();
 });
 
 const initials = computed(() =>
@@ -95,133 +73,191 @@ const initials = computed(() =>
 );
 
 const lifecycleError = computed(() => restartError.value || toggleError.value);
+
+// Delete lives in the overflow menu rather than beside Edit: it is the one
+// action in this row you cannot undo, and it should not sit one mis-click
+// away from the one you reach for most.
+const confirmRemoveOpen = ref(false);
+const removing = ref(false);
+const removeError = ref<string | null>(null);
+
+async function onRemove() {
+  if (!agent.value || removing.value) return;
+  removing.value = true;
+  removeError.value = null;
+  try {
+    await agentStore.remove(agent.value.id);
+    emit('deleted');
+  } catch (err) {
+    removeError.value = (err as Error).message || 'Delete failed';
+  } finally {
+    removing.value = false;
+  }
+}
 </script>
 
 <template>
-  <div class="flex min-h-0 min-w-0 flex-1 gap-4">
-    <!-- Middle column: banner, compact identity, usage strip, canvas. -->
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-      <div
-        v-if="pendingRestart"
-        class="flex shrink-0 flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
-      >
-        <IconAlertTriangle class="size-4 shrink-0" />
-        <p class="min-w-56 flex-1">
-          Agent settings were updated. Restart the agent to apply the changes.
-        </p>
-        <div class="flex items-center gap-2">
-          <Button size="sm" :disabled="isRestarting" @click="restart">
-            <IconRefresh class="size-4" :class="isRestarting && 'animate-spin'" />
-            {{ isRestarting ? 'Restarting…' : 'Restart agent' }}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            :disabled="isRestarting"
-            @click="dismissRestartBanner"
-          >
-            <IconX class="size-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div v-if="pending && !agent" class="flex min-h-0 flex-1 flex-col gap-3">
-        <Skeleton class="h-8 w-full shrink-0" />
-        <Skeleton class="h-9 w-full shrink-0" />
-        <Skeleton class="min-h-0 w-full flex-1" />
-      </div>
-
-      <template v-else-if="agent">
-        <!-- Compact header. The lifecycle buttons that used to live here are
-             in the settings panel now (FR-009); what stays is identity and
-             the way back to it. -->
-        <div class="flex shrink-0 items-center gap-2.5">
-          <span
-            class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"
-          >
-            {{ initials }}
-          </span>
-          <h1 class="truncate text-base font-semibold">{{ agent.name }}</h1>
-          <Badge
-            :variant="AGENT_STATUS_VARIANT[agent.status]"
-            class="shrink-0 capitalize"
-          >
-            {{ agent.status }}
-          </Badge>
-          <div class="flex-1" />
-          <Button
-            v-if="!panelVisible"
-            variant="outline"
-            size="sm"
-            @click="onManage"
-          >
-            <IconSettings class="size-4" />
-            Manage agent
-          </Button>
-        </div>
-
-        <!-- Full-width usage strip under the header: visible in both canvas
-             modes; Details opens the Overview section. -->
-        <UsagePanel
-          :agent-id="agent.id"
-          agent-only
-          variant="strip"
-          class="shrink-0"
-          @details="onSelectSection('overview')"
-        />
-
-        <div class="min-h-0 flex-1">
-          <AgentWorkspaceCanvas
-            :agent="agent"
-            :api-url="apiUrl"
-            :section="section"
-            :overlay="chatOverlay"
-            :restarting="isRestarting"
-            :toggling="toggling"
-            @restart="restart"
-            @toggle-running="toggleRunning"
-            @back="onSelectSection(null)"
-            @agent-updated="(updated) => (agent = updated)"
-          />
-        </div>
-      </template>
-
-      <div
-        v-else
-        class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground"
-      >
-        Agent not found.
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+    <div
+      v-if="pendingRestart"
+      class="flex shrink-0 flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
+    >
+      <IconAlertTriangle class="size-4 shrink-0" />
+      <p class="min-w-56 flex-1">
+        Agent settings were updated. Restart the agent to apply the changes.
+      </p>
+      <div class="flex items-center gap-2">
+        <Button size="sm" :disabled="isRestarting" @click="restart">
+          <IconRefresh class="size-4" :class="isRestarting && 'animate-spin'" />
+          {{ isRestarting ? 'Restarting…' : 'Restart agent' }}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          :disabled="isRestarting"
+          @click="dismissRestartBanner"
+        >
+          <IconX class="size-4" />
+        </Button>
       </div>
     </div>
 
-    <!-- The navigator. One element, two appearances, decided by CSS:
-         · ≥1024px — a real column in the flex row. It takes space rather than
-           floating over the canvas: floating looked tidy in the abstract, but
-           in practice it covered the pod logs and left the chat card clipped
-           at the right edge. The chat/logs pair shrinks to make room instead
-           (see chat/Tab.vue), which is the behaviour that keeps every border
-           where the eye expects it.
-         · <1024px — the whole screen, because there is no room beside it.
-         Width and placement are the host's business; the panel itself does
-         not know where it lives. -->
-    <aside
-      v-if="agent && panelVisible"
-      class="w-80 shrink-0 overflow-hidden rounded-lg border bg-card max-lg:fixed max-lg:inset-0 max-lg:z-40 max-lg:w-full max-lg:rounded-none"
-    >
-      <AgentSettingsPanel
-        :agent="agent"
-        :section="section"
-        :counts="counts"
-        :can-stop="canStop"
-        :toggling="toggling"
-        :is-restarting="isRestarting"
-        :lifecycle-error="lifecycleError"
-        @update:section="onSelectSection"
-        @restart="restart"
-        @toggle-running="toggleRunning"
-        @close="onClosePanel"
-        @deleted="emit('deleted')"
+    <div v-if="pending && !agent" class="flex min-h-0 flex-1 flex-col gap-3">
+      <Skeleton class="h-9 w-full shrink-0" />
+      <Skeleton class="h-9 w-full shrink-0" />
+      <Skeleton class="min-h-0 w-full flex-1" />
+    </div>
+
+    <template v-else-if="agent">
+      <!-- Identity on the left, the agent's lifecycle on the right. -->
+      <div class="flex shrink-0 items-center gap-2.5">
+        <span
+          class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"
+        >
+          {{ initials }}
+        </span>
+        <h1 class="truncate text-base font-semibold">{{ agent.name }}</h1>
+        <IconShield
+          v-if="agent.isAdmin"
+          class="size-4 shrink-0 text-primary"
+          title="This agent has the ranch_* admin tools and a service token"
+        />
+        <Badge
+          :variant="AGENT_STATUS_VARIANT[agent.status]"
+          class="shrink-0 capitalize"
+        >
+          {{ agent.status }}
+        </Badge>
+
+        <div class="flex-1" />
+
+        <div class="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            :disabled="toggling || isRestarting"
+            :title="
+              canStop
+                ? 'Cancel the workflow and delete the pod to free cluster resources'
+                : 'Deploy a fresh pod'
+            "
+            @click="toggleRunning"
+          >
+            <IconLoader2 v-if="toggling" class="size-4 animate-spin" />
+            <IconPlayerStop v-else-if="canStop" class="size-4" />
+            <IconPlayerPlay v-else class="size-4" />
+            {{
+              toggling
+                ? canStop
+                  ? 'Stopping…'
+                  : 'Starting…'
+                : canStop
+                  ? 'Stop'
+                  : 'Start'
+            }}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            :disabled="isRestarting || toggling"
+            @click="restart"
+          >
+            <IconLoader2 v-if="isRestarting" class="size-4 animate-spin" />
+            <IconRefresh v-else class="size-4" />
+            {{ isRestarting ? 'Restarting…' : 'Restart' }}
+          </Button>
+          <Button variant="outline" size="sm" as-child>
+            <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <Button variant="ghost" size="sm" class="size-8 p-0">
+                <span class="sr-only">More agent actions</span>
+                <IconDotsVertical class="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                class="cursor-pointer text-destructive focus:text-destructive"
+                :disabled="removing"
+                @select="confirmRemoveOpen = true"
+              >
+                <IconTrash class="size-4" />
+                Delete agent
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <p
+        v-if="lifecycleError || removeError"
+        class="shrink-0 text-xs text-destructive"
+      >
+        {{ lifecycleError || removeError }}
+      </p>
+
+      <!-- Usage strip sits with the identity above it and the tabs below, so
+           the tab bar stays directly attached to the content it switches. -->
+      <UsagePanel
+        :agent-id="agent.id"
+        agent-only
+        variant="strip"
+        class="shrink-0"
+        @details="setTab('overview')"
       />
-    </aside>
+
+      <AgentWorkspaceTabs :active="tab" :counts="counts" @select="setTab" />
+
+      <div class="min-h-0 flex-1">
+        <AgentWorkspaceCanvas
+          :agent="agent"
+          :api-url="apiUrl"
+          :tab="tab"
+          :overlay="chatOverlay"
+          :restarting="isRestarting"
+          :toggling="toggling"
+          @restart="restart"
+          @toggle-running="toggleRunning"
+          @agent-updated="(updated) => (agent = updated)"
+        />
+      </div>
+
+      <ConfirmDialog
+        v-model:open="confirmRemoveOpen"
+        title="Delete agent"
+        :description="`Permanently delete agent “${agent.name}”? This cannot be undone.`"
+        confirm-label="Delete agent"
+        :busy="removing"
+        @confirm="onRemove"
+      />
+    </template>
+
+    <div
+      v-else
+      class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground"
+    >
+      Agent not found.
+    </div>
   </div>
 </template>

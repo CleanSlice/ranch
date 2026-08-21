@@ -10,13 +10,20 @@ import {
   IconRefresh,
 } from '@tabler/icons-vue';
 
-const props = defineProps<{
-  agent: IAgentData;
-  apiUrl: string;
-  overlay: ChatOverlay;
-  restarting: boolean;
-  toggling: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    agent: IAgentData;
+    apiUrl: string;
+    overlay: ChatOverlay;
+    restarting: boolean;
+    toggling: boolean;
+    /** False while another tab is on screen. The chat itself stays mounted
+     *  (v-show) so its socket and transcript survive, but the side logs must
+     *  not keep polling behind a full-width Logs tab showing the same thing. */
+    active?: boolean;
+  }>(),
+  { active: true },
+);
 
 const emit = defineEmits<{ restart: []; toggleRunning: [] }>();
 
@@ -87,11 +94,11 @@ watch(
        Widths: `max-w-200` and the even 50/50 split are unchanged, so on a wide
        screen this pair looks exactly as it always did. What changed is the
        floor. `min-w-100` on both halves meant a hard 812px minimum, and the
-       workspace's rail and settings panel can take the container below that —
-       at which point the row simply overflowed and `overflow-x-clip` ate the
-       chat's right border. The floor is now gated on there being room for it;
-       below that both halves shrink, and the logs can still be collapsed with
-       their own button to give the chat everything back. -->
+       workspace's agent rail can take the container below that — at which
+       point the row simply overflowed and `overflow-x-clip` ate the chat's
+       right border. The floor is now gated on there being room for it; below
+       that both halves shrink, the logs can be collapsed with their own
+       button, and the Logs tab gives them the full width when needed. -->
   <div class="flex h-full min-h-0 min-w-0 items-stretch justify-center gap-3">
     <div
       v-if="authStore.accessToken"
@@ -163,7 +170,7 @@ watch(
     <div
       class="flex h-full min-h-0 w-full min-w-0 max-w-200 basis-1/2 flex-col gap-1"
     >
-      <div v-if="showSideLogs" class="min-h-0 flex-1 overflow-hidden">
+      <div v-if="showSideLogs && props.active" class="min-h-0 flex-1 overflow-hidden">
         <AgentLogsPanel
           :agent-id="agent.id"
           closable

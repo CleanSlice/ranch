@@ -46,13 +46,14 @@ Open `http://localhost:3002/agents`.
 - Press Back: you leave the agents area entirely; you do **not** bounce through `/agents`
   (that is `replace: true` doing its job).
 
-### 2. The panel is open, and the agent's controls are in it — FR-013, FR-017
+### 2. Tabs on top, controls in the header — FR-013, FR-017
 
-- The settings panel is **already open** on this first visit.
-- `Stop`/`Start`, `Restart`, `Edit` and `Delete` are all in it. Confirm each does what it did
-  from the old page header / table row.
-- Collapse it, reload the page: still collapsed. Reopen, reload: open. (FR-013 persistence,
-  US3 scenario 3.)
+- The workspace opens on **Chat**. The tab bar under the agent header reads
+  `Chat · Overview · Knowledge N · Files N · Channels N · Logs · More ▾`.
+- `Stop`/`Start`, `Restart` and `Edit` are buttons in the header; `Delete` is under the `⋯`
+  menu behind a confirm. Confirm each does what it did from the old page header / table row.
+- Open `More` and pick `Environment`: the control relabels itself `Environment` and marks
+  itself active, so you can still tell where you are.
 
 ### 3. The rail carries status and date, and nothing else — FR-002
 
@@ -88,29 +89,27 @@ Then collapse the admin sidebar to icons: the workspace should re-fit its height
 a gap or overflow. It measures the space rather than assuming a fixed chrome height, so a
 change to the layout's padding does not break it either.
 
-### 6. Sections open in the middle, chat survives — FR-012, FR-014, SC-004a
+### 6. Tabs switch the middle, chat survives — FR-012, FR-014, FR-018, SC-004a
 
-Click **Files** in the panel.
+Click **Files** in the tab bar.
 
-- The file tree and the editor render **in the middle of the screen**, at roughly the width
-  they have on `main` today — not squeezed into the panel.
-- The panel is still there, with Files marked as current. Click **Environment**: one click,
-  no detour through the conversation.
-- Click **‹ Chat**: the conversation returns with **the same transcript, the same scroll
-  position, and no reconnect**. Check the Network panel — no new websocket, no transcript
-  refetch. If any of that happens, the chat is being `v-if`'d instead of `v-show`'d
-  (plan Risk 1a).
-- Switch to another agent while a section is open: the same section opens for that agent.
+- The file tree and the editor render at the full width of the middle column, as on `main`.
+- Click **Logs**: the pod logs fill the width. Now open DevTools → Network and confirm the
+  Chat tab's **side** log panel has stopped polling — only one log stream should be live.
+- Click **Chat**: the conversation returns with **the same transcript, the same scroll
+  position, and no reconnect**. No new websocket, no transcript refetch. If any of that
+  happens, the chat is being `v-if`'d instead of `v-show`'d (plan Risk 1a).
+- On the Chat tab the logs are still beside the conversation with their collapse button.
+- Switch to another agent while a tab is open: the same tab opens for that agent.
 
-### 7. Section counts — FR-015, US3
+### 7. Tab counts — FR-015, US3
 
-Open the panel on an agent with attachments:
+On an agent with attachments:
 
-- Knowledge, Files, Secrets and Channels show numbers that match what each section lists when
-  you open it.
+- Knowledge, Files and Channels carry numbers in the tab bar that match what each tab lists
+  when opened; Secrets carries its number inside the `More` menu.
 - An agent with **zero** of something shows `0` — not a blank. A count that has not loaded or
-  failed shows **nothing at all**, and the section still opens normally.
-- Counts do not fetch while the panel is collapsed (watch the Network panel).
+  failed shows **nothing at all**, and the tab still opens normally.
 
 ### 8. All eight sections still work — FR-012, SC-004
 
@@ -123,17 +122,16 @@ a section needed restyling to fit, the navigator model was not implemented as de
 
 | Try | Expect |
 |-----|--------|
-| `/agents/<id>?tab=env` | Canvas shows Environment, panel marks it current |
-| `/agents/<id>?tab=paddock` | Canvas shows Paddock |
-| `/agents/<id>?tab=chat` | Canvas shows the conversation, `tab` stripped from the URL |
+| `/agents/<id>?tab=env` | Environment tab open, `More` marks itself current |
+| `/agents/<id>?tab=paddock` | Paddock tab open |
+| `/agents/<id>?tab=logs` | Full-width logs |
+| `/agents/<id>?tab=chat` | Conversation, and `tab` stripped from the URL — it is the default |
 | `/agents/<id>?tab=nonsense` | Same as `chat` |
-| `‹ Chat` from any of these | `tab` disappears from the URL |
-| Closing the *panel* while a section is open | Returns to the conversation and clears `tab` — the navigator cannot hide while a section is on the canvas (FR-018) |
-| Usage strip → `Details` | Canvas shows Overview |
+| Clicking `Chat` from any of these | `tab` disappears from the URL |
+| Usage strip → `Details` | Overview tab |
 
-Follow `?tab=env` with the panel preference set to *collapsed*: it opens anyway, and after you
-navigate away the preference is still *collapsed* (it was not overwritten —
-[contracts/preferences.md](./contracts/preferences.md)).
+Tab switching uses `replace`, so Back should leave the agent rather than walking the tabs you
+opened.
 
 ### 10. Nothing was lost with the table — FR-009, plan Risk 2
 

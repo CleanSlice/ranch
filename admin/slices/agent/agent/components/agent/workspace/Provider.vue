@@ -15,10 +15,10 @@ const { data: agents, pending, refresh: refreshAgents } = useAsyncData(
   { lazy: true },
 );
 
-// Cluster headroom for the top action row. Store actions refetch on their
-// own; the interval catches pods actually scheduling and other operators'
-// changes. The API caches ~15s, so polling is cheap, and null (K8s
-// unreachable) simply hides the badge.
+// Cluster headroom, rendered in the rail's footer next to the create action.
+// Store actions refetch on their own; the interval catches pods actually
+// scheduling and other operators' changes. The API caches ~15s, so polling is
+// cheap, and null (K8s unreachable) simply hides the line.
 const capacity = computed(() => agentStore.capacity ?? null);
 
 let capacityTimer: ReturnType<typeof setInterval> | null = null;
@@ -31,9 +31,8 @@ onUnmounted(() => {
 });
 
 // Selecting an agent is real navigation — `push`, so Back undoes it (FR-004).
-// The section in `?tab=` rides along: an operator comparing Environment
-// across two agents should not be dropped back into a conversation on every
-// switch.
+// The tab in `?tab=` rides along: an operator comparing Environment across two
+// agents should not be dropped back into a conversation on every switch.
 function onSelect(id: string) {
   railOverlayOpen.value = false;
   if (id === props.id) return;
@@ -100,7 +99,7 @@ onUnmounted(() => {
 });
 
 /**
- * The open agent was deleted from its own settings panel. Move to whatever is
+ * The open agent was deleted from its own header menu. Move to whatever is
  * next in the rail rather than leaving the operator on a dead id; an empty
  * rail falls through to the resolver, which renders the empty state.
  */
@@ -117,18 +116,18 @@ async function onDeleted() {
     class="flex min-h-0 flex-col gap-3"
     :style="availableHeight ? { height: availableHeight } : undefined"
   >
-    <div class="flex shrink-0 items-center gap-3">
-      <Button
-        variant="outline"
-        size="sm"
-        class="lg:hidden"
-        @click="railOverlayOpen = true"
-      >
-        <IconUsersGroup class="size-4" />
-        Agents
-      </Button>
-      <AgentWorkspaceTopBar :capacity="capacity" class="flex-1" />
-    </div>
+    <!-- Desktop has no workspace-level row at all: the rail carries its own
+         create action in its footer, so this exists only to reach the rail on
+         screens too narrow to dock it. -->
+    <Button
+      variant="outline"
+      size="sm"
+      class="shrink-0 self-start lg:hidden"
+      @click="railOverlayOpen = true"
+    >
+      <IconUsersGroup class="size-4" />
+      Agents
+    </Button>
 
     <div class="flex min-h-0 flex-1 gap-4">
       <aside
@@ -138,6 +137,7 @@ async function onDeleted() {
           :agents="agents"
           :active-id="id"
           :pending="pending"
+          :capacity="capacity"
           @select="onSelect"
         />
       </aside>
@@ -167,6 +167,7 @@ async function onDeleted() {
           :agents="agents"
           :active-id="id"
           :pending="pending"
+          :capacity="capacity"
           @select="onSelect"
         />
       </div>

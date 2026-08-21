@@ -60,45 +60,15 @@ function onSelect(id: string) {
        this route as flush (no container, no footer), so the workspace owns
        the remaining height. -->
   <div class="flex h-[calc(100vh-3.5rem-1px)] min-h-0">
-    <aside
-      class="hidden w-68 shrink-0 flex-col gap-3 border-r p-3 md:flex"
-    >
-      <div v-if="canCreate" class="flex shrink-0 items-center gap-2">
-        <NuxtLink
-          to="/agents/create"
-          class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-95"
-        >
-          <Icon name="plus" :size="13" />
-          {{ $t('list.create') }}
-        </NuxtLink>
-      </div>
-
-      <p
-        v-if="canCreate && capacity"
-        class="shrink-0 text-xs"
-        :class="
-          capacity.freeAgentSlots === 0
-            ? 'font-medium text-amber-600'
-            : 'text-muted-foreground'
-        "
-      >
-        {{
-          $t(
-            'list.slots_free',
-            { count: capacity.freeAgentSlots },
-            capacity.freeAgentSlots,
-          )
-        }}
-      </p>
-
-      <div class="min-h-0 flex-1">
-        <AgentWorkspaceRail
-          :agents="agents"
-          :active-id="id"
-          :pending="pending"
-          @select="onSelect"
-        />
-      </div>
+    <aside class="hidden w-68 shrink-0 border-r p-3 md:block">
+      <AgentWorkspaceRail
+        :agents="agents"
+        :active-id="id"
+        :pending="pending"
+        :can-create="canCreate"
+        :capacity="capacity"
+        @select="onSelect"
+      />
     </aside>
 
     <div class="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -135,20 +105,13 @@ function onSelect(id: string) {
         </button>
       </div>
 
-      <NuxtLink
-        v-if="canCreate"
-        to="/agents/create"
-        class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
-      >
-        <Icon name="plus" :size="13" />
-        {{ $t('list.create') }}
-      </NuxtLink>
-
       <div class="min-h-0 flex-1">
         <AgentWorkspaceRail
           :agents="agents"
           :active-id="id"
           :pending="pending"
+          :can-create="canCreate"
+          :capacity="capacity"
           @select="onSelect"
         />
       </div>

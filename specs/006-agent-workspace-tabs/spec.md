@@ -247,10 +247,11 @@ confirm the conversation stays usable with the rail collapsed.
   only agents screen.
 - **FR-009**: Every capability the table provided MUST survive the change, in one of two
   homes. **Workspace-level** actions — creating an agent, and free cluster capacity with
-  its "cluster full" warning — MUST sit in the top action row of the page, at the level
-  where the "Back to agents" link sits today. **Per-agent** actions — edit, start/stop,
-  restart, delete — MUST live in the agent header alongside its identity, with delete one
-  level down behind an overflow menu (FR-017).
+  its "cluster full" warning — MUST sit pinned to the **foot of the agent rail**: creating
+  an agent belongs with the list of agents, and the capacity number is what answers "can I,
+  right now?", so it belongs with the action it qualifies. **Per-agent** actions — edit,
+  start/stop, restart, delete — MUST live in the agent header alongside its identity, with
+  delete one level down behind an overflow menu (FR-017).
 - **FR-010**: The nine-item vertical settings column on the agent page MUST be removed.
   The conversation MUST NOT be stretched to fill the freed space: the chat widget keeps its
   maximum width and its even split with the pod logs panel beside it, so at the widths this
@@ -393,9 +394,10 @@ confirm the conversation stays usable with the rail collapsed.
   agents area resolves to a specific agent's address rather than keeping a bare `/agents`
   URL — this is what keeps deep links, sharing and browser history working.
 - **Creating an agent** and **cluster capacity** ("N slots free" and the cluster-full
-  warning) both live in the top action row of the workspace — the level currently occupied
-  by the "Back to agents" link, which has nothing left to link back to once the table is
-  gone. They belong together: the capacity number is what qualifies the create action.
+  warning) sit together at the foot of the agent rail, pinned there. They belong together:
+  the capacity number is what qualifies the create action, and both belong with the list of
+  agents rather than in a row of their own. This removed the workspace's top action row
+  entirely on desktop — one row of height back to the canvas.
 - **Per-agent lifecycle actions** (edit, start/stop, restart) stay as buttons in the agent
   header, where they already were. **Delete** moves one level down into an overflow menu:
   it is the only irreversible action in that row.

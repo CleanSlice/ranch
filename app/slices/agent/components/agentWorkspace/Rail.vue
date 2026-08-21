@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import type { IAgentData } from '#agent/domain';
+import type { IAgentData, IClusterCapacityData } from '#agent/domain';
 
 const props = defineProps<{
   agents: IAgentData[] | null | undefined;
   activeId: string;
   /** Initial load only — a refresh keeps the existing rows visible. */
   pending: boolean;
+  /** Owner/Admin only — everyone else gets no create action and no capacity,
+   *  which is the rule the cards screen already applied. */
+  canCreate: boolean;
+  capacity: IClusterCapacityData | null;
 }>();
 
 defineEmits<{ select: [id: string] }>();
@@ -65,13 +69,46 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
 
     <p
       v-else-if="hasAgents"
-      class="px-2.5 py-6 text-center text-xs text-muted-foreground"
+      class="min-h-0 flex-1 px-2.5 py-6 text-center text-xs text-muted-foreground"
     >
       {{ $t('rail.no_match', { term: search }) }}
     </p>
 
-    <p v-else class="px-2.5 py-6 text-center text-xs text-muted-foreground">
+    <p
+      v-else
+      class="min-h-0 flex-1 px-2.5 py-6 text-center text-xs text-muted-foreground"
+    >
       {{ $t('rail.empty') }}
     </p>
+
+    <!-- Pinned to the floor: creating an agent belongs with the list of
+         agents, and the capacity line belongs with the create action. -->
+    <div v-if="canCreate" class="shrink-0 border-t pt-2">
+      <p
+        v-if="capacity"
+        class="px-1 pb-2 text-xs"
+        :class="
+          capacity.freeAgentSlots === 0
+            ? 'font-medium text-amber-600'
+            : 'text-muted-foreground'
+        "
+      >
+        {{
+          $t(
+            'list.slots_free',
+            { count: capacity.freeAgentSlots },
+            capacity.freeAgentSlots,
+          )
+        }}
+      </p>
+
+      <NuxtLink
+        to="/agents/create"
+        class="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-95"
+      >
+        <Icon name="plus" :size="13" />
+        {{ $t('list.create') }}
+      </NuxtLink>
+    </div>
   </div>
 </template>

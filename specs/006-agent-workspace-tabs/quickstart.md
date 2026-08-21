@@ -138,18 +138,18 @@ opened.
 Check off each capability the deleted `list/Provider.vue` had. The list below is the result
 of the T002 inventory — every line was read out of that file, not guessed:
 
-- [ ] Create an agent → top action row
-- [ ] `N slots free` badge, with its "how many more agents fit" tooltip → top action row
-- [ ] Cluster-full warning, both variants (no agent nodes / cluster full) → top action row
-- [ ] Capacity refreshed every 30s → top action row
-- [ ] Edit → settings panel
-- [ ] Start / Stop, with the `RESOURCE_HOLDING` rule deciding which → settings panel
-- [ ] Restart → settings panel
-- [ ] Delete, with its `ConfirmDialog` naming the agent → settings panel
+- [ ] Create an agent → foot of the agent rail
+- [ ] `N slots free` → foot of the agent rail, above the create button
+- [ ] Cluster-full warning, both variants (no agent nodes / cluster full) → same line, amber
+- [ ] Capacity refreshed every 30s → foot of the agent rail
+- [ ] Edit → agent header
+- [ ] Start / Stop, with the `RESOURCE_HOLDING` rule deciding which → agent header
+- [ ] Restart → agent header
+- [ ] Delete, with its `ConfirmDialog` naming the agent → agent header `⋯` menu
 - [ ] Ranch-admin marker, with its "ranch_* admin tools" tooltip → rail row
 - [ ] Status badge using `AGENT_STATUS_VARIANT` → rail row
 - [ ] Created date via `formatDateTime` → rail row
-- [ ] Resources (cpu / memory) → settings panel identity block
+- [ ] Resources (cpu / memory) → **dropped** with the settings panel; the Overview tab still shows them
 - [ ] Clicking a row opens that agent → rail row
 - [ ] "Agents" heading and "Manage running agents." lede → dropped deliberately; the sidebar
       already says where you are, and the workspace opens on a named agent

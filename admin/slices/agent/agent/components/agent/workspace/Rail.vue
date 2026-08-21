@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { IconSearch } from '@tabler/icons-vue';
-import type { IAgentData } from '#agent/domain';
+import { IconPlus, IconSearch } from '@tabler/icons-vue';
+import type { IAgentData, IClusterCapacityData } from '#agent/domain';
 import { useAgentRailEntries } from '#agent/composables/useAgentRailEntries';
 
 const props = defineProps<{
@@ -8,6 +8,9 @@ const props = defineProps<{
   activeId: string;
   /** Initial load only — a refresh keeps the existing rows visible. */
   pending: boolean;
+  /** Null when Kubernetes is unreachable — the line simply does not render
+   *  rather than showing a number nobody can trust. */
+  capacity: IClusterCapacityData | null;
 }>();
 
 defineEmits<{ select: [id: string] }>();
@@ -21,6 +24,8 @@ const activeIdRef = computed(() => props.activeId);
 const entries = useAgentRailEntries(agentsRef, activeIdRef, search);
 
 const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
+
+const clusterFull = computed(() => props.capacity?.freeAgentSlots === 0);
 </script>
 
 <template>
@@ -67,13 +72,47 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
 
     <p
       v-else-if="hasAgents"
-      class="px-2.5 py-6 text-center text-xs text-muted-foreground"
+      class="min-h-0 flex-1 px-2.5 py-6 text-center text-xs text-muted-foreground"
     >
       No agent matches “{{ search }}”.
     </p>
 
-    <p v-else class="px-2.5 py-6 text-center text-xs text-muted-foreground">
+    <p
+      v-else
+      class="min-h-0 flex-1 px-2.5 py-6 text-center text-xs text-muted-foreground"
+    >
       No agents yet.
     </p>
+
+    <!-- Pinned to the floor of the rail. Creating an agent belongs with the
+         list of agents, and the capacity line belongs with the create action —
+         it is the number that answers "can I, right now?". -->
+    <div class="shrink-0 border-t pt-2">
+      <p
+        v-if="capacity"
+        class="px-1 pb-2 text-xs"
+        :class="clusterFull ? 'text-amber-600' : 'text-muted-foreground'"
+      >
+        <span class="font-medium">{{ capacity.freeAgentSlots }}</span>
+        {{ capacity.freeAgentSlots === 1 ? 'slot' : 'slots' }} free
+        <!-- Capacity is a ~15s-stale estimate, so this warns rather than
+             blocks: creating is still legal, the pod just waits Pending. -->
+        <template v-if="clusterFull">
+          —
+          {{
+            capacity.totalAgentSlots === 0
+              ? 'no schedulable agent nodes in this cluster, so new agents will stay Pending.'
+              : 'stop an agent to free a slot before starting a new one.'
+          }}
+        </template>
+      </p>
+
+      <Button size="sm" class="w-full" as-child>
+        <NuxtLink to="/agents/create">
+          <IconPlus class="size-4" />
+          New agent
+        </NuxtLink>
+      </Button>
+    </div>
   </div>
 </template>

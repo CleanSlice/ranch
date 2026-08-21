@@ -223,6 +223,20 @@ export class BridleGateway extends IBridleGateway {
     this.logger.log(`Pushed debug_set=${enabled} to agent agentId=${agentId}`);
   }
 
+  clearAgentSession(agentId: string, channel: string): void {
+    const agentSend = this.agents.get(agentId)?.send;
+    if (!agentSend) {
+      this.logger.debug(
+        `clearAgentSession skipped: agent not connected for agentId=${agentId}, channel=${channel}`,
+      );
+      return;
+    }
+    agentSend({ type: 'session_clear', channel });
+    this.logger.log(
+      `Pushed session_clear for channel=${channel} to agent agentId=${agentId}`,
+    );
+  }
+
   handleDebugEvent(agentId: string, data: IBridleDebugEvent): void {
     // Admin-only fan-out. We ignore data.clientId on purpose: the runtime
     // only knows the immediate sender, but multiple admins may be observing

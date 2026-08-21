@@ -39,9 +39,10 @@ import { IChatGateway, type IChatActivity } from '#/chat/domain';
  *   "ping"        {}
  *
  * Events (Hub → Agent):
- *   "message"     { clientId, text, messageId, images? }
- *   "sync"        { requestId }
- *   "pong"        {}
+ *   "message"        { clientId, text, messageId, images? }
+ *   "sync"           { requestId }
+ *   "session_clear"  { channel }
+ *   "pong"           {}
  */
 @WebSocketGateway({ namespace: '/ws/agent', cors: { origin: '*' } })
 export class BridleAgentWsHandler

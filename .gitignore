@@ -28,3 +28,7 @@ api/prisma/schema.prisma
 .terraform.lock.hcl
 k3s_kubeconfig.yaml
 k3s_kustomization_backup.yaml
+
+# Python bytecode from .specify scripts
+__pycache__/
+export-1a/

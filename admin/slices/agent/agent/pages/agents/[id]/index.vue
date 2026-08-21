@@ -1,15 +1,15 @@
 <script setup lang="ts">
-// Force a fresh component tree per agent. Without this Nuxt reuses the same
-// page instance across `/agents/:id` switches — useAsyncData keys never
-// re-fire, and local refs (logs, selected file, editor content) leak from
-// the previously viewed agent. The dynamic key remounts the whole subtree
-// (provider + file tree + bridle + logs) when the id changes.
-definePageMeta({
-  key: (route) => `agent-${route.params.id as string}`,
-});
-
+// No `definePageMeta({ key })` here on purpose. The per-agent remount
+// boundary moved one level down, onto `<AgentWorkspaceMain :key="id">`: it
+// still guarantees that logs, the file tree, the open section and the chat
+// transcript are torn down when the agent changes, but it leaves the agent
+// rail alone. Keyed at the page level, the rail would remount on every
+// switch — refetching the agent list and flashing the whole column.
+// Computed, not read once: without a page key this component instance is
+// reused across `/agents/:id` changes, so a snapshot taken at setup would
+// pin the workspace to whichever agent happened to be open first.
 const route = useRoute();
-const id = route.params.id as string;
+const id = computed(() => route.params.id as string);
 </script>
 
 <template>

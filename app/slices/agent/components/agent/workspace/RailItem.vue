@@ -7,17 +7,20 @@ const props = defineProps<{
     templateId: string;
     updatedAt?: string;
   };
+  active: boolean;
 }>();
 
-// Initials from name — fallback to first 2 chars of id when name missing.
+// Initials from name — fallback to the id when the name is missing.
 const initials = computed(() => {
   const source = props.agent.name?.trim() || props.agent.id;
-  return source
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((p) => p[0]?.toUpperCase() ?? '')
-    .slice(0, 2)
-    .join('') || '?';
+  return (
+    source
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((p) => p[0]?.toUpperCase() ?? '')
+      .slice(0, 2)
+      .join('') || '?'
+  );
 });
 
 // labelKey is an i18n key; `label` carries the raw status for the default
@@ -36,7 +39,9 @@ const statusMeta = computed(() => {
     case 'pending':
       return {
         labelKey:
-          props.agent.status === 'pending' ? 'status.pending' : 'status.deploying',
+          props.agent.status === 'pending'
+            ? 'status.pending'
+            : 'status.deploying',
         label: props.agent.status,
         dot: 'bg-amber-500',
         pulse: true,
@@ -90,67 +95,44 @@ const updatedRelative = computed<{ key: string; count: number } | null>(() => {
 </script>
 
 <template>
-  <NuxtLink
-    :to="`/agents/${agent.id}`"
-    class="group relative flex flex-col rounded-xl border bg-card p-5 transition hover:border-primary/40 hover:shadow-md hover:-translate-y-0.5"
+  <button
+    type="button"
+    class="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition hover:bg-muted"
+    :class="active && 'bg-muted'"
+    :aria-current="active ? 'true' : undefined"
   >
-    <div class="flex items-start gap-4">
-      <div
-        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 font-semibold text-primary"
-      >
-        {{ initials }}
-      </div>
+    <span
+      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"
+    >
+      {{ initials }}
+    </span>
 
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2">
-          <h3 class="truncate text-base font-semibold">{{ agent.name }}</h3>
-        </div>
-        <p
-          class="mt-0.5 truncate text-xs text-muted-foreground"
-          :title="agent.templateId"
-        >
-          {{ agent.templateId }}
-        </p>
-      </div>
-
-      <div
-        class="flex shrink-0 items-center gap-2 text-xs font-medium"
-        :class="statusMeta.text"
-      >
-        <span class="relative flex h-2 w-2">
+    <span class="min-w-0 flex-1">
+      <span class="block truncate text-sm font-medium" :title="agent.name">
+        {{ agent.name }}
+      </span>
+      <span class="mt-0.5 flex items-center gap-1.5 text-xs">
+        <span class="relative flex h-1.5 w-1.5">
           <span
             v-if="statusMeta.pulse"
-            class="absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping"
+            class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
             :class="statusMeta.dot"
           />
           <span
-            class="relative inline-flex h-2 w-2 rounded-full"
+            class="relative inline-flex h-1.5 w-1.5 rounded-full"
             :class="statusMeta.dot"
           />
         </span>
-        {{ statusMeta.labelKey ? $t(statusMeta.labelKey) : statusMeta.label }}
-      </div>
-    </div>
-
-    <div
-      class="mt-5 flex items-center justify-between border-t pt-3 text-xs text-muted-foreground"
-    >
-      <span class="inline-flex items-center gap-1 truncate">
-        <Icon name="message-square" :size="12" class="-mt-0.5" />
-        {{ $t('card.open_chat') }}
-        <Icon
-          name="arrow-up-right"
-          :size="12"
-          class="-mt-0.5 -translate-x-0.5 opacity-0 transition group-hover:translate-x-0 group-hover:opacity-80"
-        />
+        <span :class="statusMeta.text">
+          {{ statusMeta.labelKey ? $t(statusMeta.labelKey) : statusMeta.label }}
+        </span>
+        <template v-if="updatedRelative">
+          <span class="text-muted-foreground/60">·</span>
+          <span class="truncate text-muted-foreground">
+            {{ $t(updatedRelative.key, { count: updatedRelative.count }) }}
+          </span>
+        </template>
       </span>
-      <span v-if="updatedRelative" class="shrink-0">
-        {{
-          $t('card.updated', {
-            when: $t(updatedRelative.key, { count: updatedRelative.count }),
-          })
-        }}
-      </span>
-    </div>
-  </NuxtLink>
+    </span>
+  </button>
 </template>

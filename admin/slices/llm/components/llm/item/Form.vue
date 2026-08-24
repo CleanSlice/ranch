@@ -90,7 +90,7 @@ function onSubmit(): void {
 </script>
 
 <template>
-  <form class="flex flex-col gap-6" @submit.prevent="onSubmit">
+  <form class="flex flex-col gap-6" autocomplete="off" @submit.prevent="onSubmit">
     <Card>
       <CardHeader>
         <CardTitle>Credential</CardTitle>
@@ -165,7 +165,13 @@ function onSubmit(): void {
           </div>
           <div class="grid gap-2">
             <Label for="label">Label (optional)</Label>
-            <Input id="label" v-model="form.label" placeholder="primary" />
+            <Input
+              id="label"
+              v-model="form.label"
+              name="credential-label"
+              autocomplete="off"
+              placeholder="primary"
+            />
           </div>
         </div>
 
@@ -219,7 +225,8 @@ function onSubmit(): void {
             id="apiKey"
             v-model="form.apiKey"
             type="password"
-            autocomplete="off"
+            name="credential-api-key"
+            autocomplete="new-password"
             placeholder="sk-ant-… / sk-…"
             :aria-invalid="!!errors.apiKey"
           />

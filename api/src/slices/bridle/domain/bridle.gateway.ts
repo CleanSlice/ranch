@@ -99,4 +99,14 @@ export abstract class IBridleGateway {
    * value will be re-sent on the next agent register handshake.
    */
   abstract setDebug(agentId: string, enabled: boolean): void;
+  /**
+   * Tell the running agent to drop its local copy of a session (file +
+   * in-memory cache) for the given bridle channel. Sent after the transcript
+   * for that channel has been archived/deleted server-side — without this,
+   * the agent's own S3 watcher would re-upload its still-intact local
+   * session file on the next local change, resurrecting the "deleted"
+   * history. Silently skipped if the agent isn't currently connected (there
+   * is then no live local file to worry about).
+   */
+  abstract clearAgentSession(agentId: string, channel: string): void;
 }

@@ -255,7 +255,12 @@ export class BridleController {
       this.logger.warn(
         `Transcript reset failed for ${agentId}/${channel}: ${(err as Error).message}`,
       );
+      return;
     }
+    // Tell the live agent to drop its own local/in-memory copy too — S3FileGateway
+    // only touched the S3 mirror, and the running pod would otherwise re-upload
+    // its still-intact local session file on the next local change.
+    this.hub.clearAgentSession(agentId, channel);
   }
 
   @ApiOperation({
@@ -340,6 +345,11 @@ export class BridleController {
     this.logger.log(
       `Transcript archived for ${agentId}/${channel} → ${archivedPath} (${content.length} bytes)`,
     );
+    // Tell the live agent to drop its own local/in-memory copy too — the
+    // fileGateway calls above only touched the S3 mirror, and the running
+    // pod would otherwise re-upload its still-intact local session file on
+    // the next local change, resurrecting the history we just archived.
+    this.hub.clearAgentSession(agentId, channel);
     return { archivedPath };
   }
 }

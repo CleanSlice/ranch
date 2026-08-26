@@ -21,13 +21,19 @@
     "export": "Export",
     "load_older": "Load older",
     "loading": "Loading…",
-    "no_messages": "No messages in this conversation."
+    "no_messages": "No messages in this conversation.",
+    "navigation": "Navigation",
+    "refresh": "Refresh",
+    "meta_messages": "Messages",
+    "meta_activity": "Last activity"
   },
   "message": {
     "summarized": "Earlier in this conversation — summarized",
     "show": "Show",
     "hide": "Hide",
     "helpful": "Helpful",
-    "not_helpful": "Not helpful"
+    "not_helpful": "Not helpful",
+    "copy": "Copy",
+    "copied": "Copied"
   }
 }

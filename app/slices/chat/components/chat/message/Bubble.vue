@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { renderMarkdown } from '#bridle/utils/markdown';
 import type { IChatMessage } from '#chat/stores/chat';
+import { formatMessageTime } from '#chat/utils/transcript';
 
 // Read-only transcript message. Renders one persisted event by role: user /
 // assistant bubbles, plus a collapsible marker for `summary` events (where
@@ -9,6 +10,8 @@ import type { IChatMessage } from '#chat/stores/chat';
 const props = defineProps<{ message: IChatMessage; rating?: number | null }>();
 const emit = defineEmits<{ rate: [rating: 1 | -1] }>();
 
+const { locale, t } = useI18n();
+
 const isUser = computed(() => props.message.role === 'user');
 
 // Assistant text may contain markdown; user text stays plain (typed by a human,
@@ -16,6 +19,7 @@ const isUser = computed(() => props.message.role === 'user');
 const html = computed(() =>
   isUser.value ? null : renderMarkdown(props.message.text),
 );
+const time = computed(() => formatMessageTime(props.message.ts, locale.value));
 
 const summaryOpen = ref(false);
 // Compaction wraps the archive in [ARCHIVED CONTEXT …] markers — strip them so
@@ -26,13 +30,24 @@ const summaryText = computed(() =>
     .replace(/\s*\[END ARCHIVED CONTEXT\]\s*$/i, '')
     .trim(),
 );
+
+const copied = ref(false);
+function onCopy() {
+  navigator.clipboard
+    .writeText(props.message.text)
+    .then(() => {
+      copied.value = true;
+      setTimeout(() => (copied.value = false), 1500);
+    })
+    .catch(() => {});
+}
 </script>
 
 <template>
   <!-- Summary marker: compaction folded older turns into a gist -->
   <div v-if="message.role === 'summary'" class="my-1 flex justify-center">
     <div
-      class="w-full max-w-2xl rounded-md border border-dashed bg-muted/40 px-3 py-2 text-sm"
+      class="w-full rounded-xl border border-dashed bg-muted/30 px-3 py-2 text-sm"
     >
       <button
         type="button"
@@ -54,65 +69,68 @@ const summaryText = computed(() =>
     </div>
   </div>
 
-  <!-- User / assistant bubble -->
-  <div
-    v-else
-    class="flex items-start gap-2"
-    :class="isUser ? 'flex-row-reverse' : 'flex-row'"
-  >
+  <!-- User message: dark bubble on the right, time below -->
+  <div v-else-if="isUser" class="flex flex-col items-end">
     <div
-      class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-      :class="
-        isUser
-          ? 'bg-primary text-primary-foreground'
-          : 'bg-linear-to-br from-primary/25 to-primary/5 text-primary'
-      "
+      class="max-w-[85%] whitespace-pre-wrap wrap-break-word rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground sm:max-w-[72%]"
     >
-      <Icon :name="isUser ? 'user' : 'bot'" :size="15" />
+      {{ message.text }}
     </div>
+    <span class="mt-1 text-[11px] text-muted-foreground/60">{{ time }}</span>
+  </div>
+
+  <!-- Assistant: avatar chip, bordered bubble, actions row below -->
+  <div v-else class="flex items-start gap-2.5">
     <div
-      class="max-w-[85%] sm:max-w-[75%] wrap-break-word rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm"
-      :class="
-        isUser
-          ? 'whitespace-pre-wrap rounded-br-md bg-primary text-primary-foreground'
-          : 'chat-md rounded-tl-md bg-muted text-foreground'
-      "
+      class="mt-0.5 flex size-6.5 shrink-0 items-center justify-center rounded-lg border bg-card text-muted-foreground"
     >
-      <template v-if="isUser">{{ message.text }}</template>
-      <template v-else>
+      <Icon name="bot" :size="14" />
+    </div>
+    <div class="flex min-w-0 max-w-[85%] flex-col gap-1.5 sm:max-w-[82%]">
+      <div
+        class="chat-md rounded-2xl rounded-tl-sm border border-border/70 bg-card px-4 py-3 text-sm leading-relaxed"
+      >
         <div v-html="html" />
-        <!-- Was this reply helpful? -->
-        <div class="mt-1.5 flex items-center gap-0.5">
-          <button
-            type="button"
-            :aria-label="$t('message.helpful')"
-            class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
-            :class="rating === 1 && 'text-emerald-600'"
-            @click="emit('rate', 1)"
-          >
-            <Icon name="thumbs-up" :size="14" />
-          </button>
-          <button
-            type="button"
-            :aria-label="$t('message.not_helpful')"
-            class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
-            :class="rating === -1 && 'text-rose-600'"
-            @click="emit('rate', -1)"
-          >
-            <Icon name="thumbs-down" :size="14" />
-          </button>
-        </div>
-      </template>
+      </div>
+
+      <div class="flex items-center gap-2 pl-1">
+        <span class="text-[11px] text-muted-foreground/60">{{ time }}</span>
+        <button
+          type="button"
+          :aria-label="$t('message.helpful')"
+          class="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground"
+          :class="rating === 1 && 'text-emerald-600'"
+          @click="emit('rate', 1)"
+        >
+          <Icon name="thumbs-up" :size="14" />
+        </button>
+        <button
+          type="button"
+          :aria-label="$t('message.not_helpful')"
+          class="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground"
+          :class="rating === -1 && 'text-rose-600'"
+          @click="emit('rate', -1)"
+        >
+          <Icon name="thumbs-down" :size="14" />
+        </button>
+        <button
+          type="button"
+          class="text-[11px] text-muted-foreground/60 transition-colors hover:text-foreground"
+          @click="onCopy"
+        >
+          {{ t(copied ? 'message.copied' : 'message.copy') }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <style>
 /* Markdown inside an assistant bubble (global so v-html children pick it up). */
-.chat-md > *:first-child {
+.chat-md > div > *:first-child {
   margin-top: 0;
 }
-.chat-md > *:last-child {
+.chat-md > div > *:last-child {
   margin-bottom: 0;
 }
 .chat-md p {

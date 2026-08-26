@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ChatExportFormat, IChatMessage } from '#chat/stores/chat';
+import { snippet, type INavMapItem } from '#chat/utils/transcript';
 
 const props = defineProps<{ id: string }>();
 const chatStore = useChatStore();
@@ -89,6 +90,19 @@ function fmt(iso?: string | null): string {
   return iso ? new Date(iso).toLocaleString(locale.value) : '—';
 }
 
+const navItems = computed<INavMapItem[]>(() =>
+  messages.value
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => ({ id: m.id, isUser: m.role === 'user', snippet: snippet(m.text) }))
+    .filter((mi) => mi.snippet.length > 0),
+);
+
+function onJump(id: string) {
+  scroller.value
+    ?.querySelector(`[data-msg-id="${id}"]`)
+    ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
 const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   positive: 'secondary',
   neutral: 'default',
@@ -98,14 +112,7 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
 </script>
 
 <template>
-  <div class="mx-auto flex max-w-3xl flex-col gap-4">
-    <NuxtLink
-      to="/chats"
-      class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <Icon name="arrow-left" :size="16" /> {{ $t('history.title') }}
-    </NuxtLink>
-
+  <div class="mx-auto flex w-full max-w-6xl flex-col gap-4">
     <!-- Not found / not owned -->
     <div
       v-if="!session && !sessionPending"
@@ -118,37 +125,98 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
     </div>
 
     <template v-else-if="session">
-      <!-- Meta header -->
-      <div class="rounded-md border bg-card p-4">
-        <span class="text-lg font-semibold">
+      <!-- Slim header -->
+      <div class="flex items-center gap-3 border-b pb-3">
+        <NuxtLink
+          to="/chats"
+          class="inline-flex shrink-0 items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Icon name="arrow-left" :size="16" /> {{ $t('history.title') }}
+        </NuxtLink>
+        <div class="h-[18px] w-px bg-border" />
+        <span class="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
           {{ heading ?? $t('session.fallback_title') }}
         </span>
-        <div
-          class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"
+        <button
+          type="button"
+          class="rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+          :disabled="loading"
+          @click="loadLatest"
         >
-          <span>
-            {{
-              $t(
-                'session.message_count',
-                { count: session.messageCount },
-                session.messageCount,
-              )
-            }}
-          </span>
-          <span>
-            {{ $t('session.last_activity', { when: fmt(session.lastMessageAt) }) }}
-          </span>
+          {{ $t('session.refresh') }}
+        </button>
+      </div>
+
+      <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <!-- Feed -->
+        <div
+          ref="scroller"
+          class="flex h-[calc(100vh-14rem)] min-h-0 flex-col gap-4 overflow-y-auto pr-1"
+        >
+          <div v-if="hasMore" class="flex justify-center">
+            <button
+              type="button"
+              class="rounded-md border px-3 py-1.5 text-sm text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+              :disabled="loading"
+              @click="loadOlder"
+            >
+              {{ $t(loading ? 'session.loading' : 'session.load_older') }}
+            </button>
+          </div>
+
+          <div
+            v-if="!messages.length && !loading"
+            class="py-16 text-center text-sm text-muted-foreground"
+          >
+            {{ $t('session.no_messages') }}
+          </div>
+
+          <div
+            v-for="m in messages"
+            :key="m.id"
+            :data-msg-id="m.id"
+            class="scroll-mt-2"
+          >
+            <ChatMessageBubble
+              :message="m"
+              :rating="feedbackByMsg[m.id] ?? null"
+              @rate="(r: 1 | -1) => onRate(m.id, r)"
+            />
+          </div>
         </div>
 
-        <!-- LLM gist: summary + insights -->
-        <div class="mt-3 rounded bg-muted/40 p-3">
-        <div class="flex items-center justify-between gap-2">
-          <div class="flex flex-wrap items-center gap-1.5">
-            <span class="text-xs font-medium text-muted-foreground">
+        <!-- Right rail -->
+        <div
+          class="flex flex-col gap-3.5 lg:max-h-[calc(100vh-14rem)] lg:overflow-y-auto"
+        >
+          <!-- Meta card -->
+          <div
+            class="flex flex-col gap-2.5 rounded-xl border border-border/70 bg-card px-4 py-3.5"
+          >
+            <div class="flex items-center justify-between gap-3 text-[12.5px]">
+              <span class="text-muted-foreground/70">
+                {{ $t('session.meta_messages') }}
+              </span>
+              <span class="font-medium">{{ session.messageCount }}</span>
+            </div>
+            <div class="flex items-center justify-between gap-3 text-[12.5px]">
+              <span class="text-muted-foreground/70">
+                {{ $t('session.meta_activity') }}
+              </span>
+              <span class="font-medium">{{ fmt(session.lastMessageAt) }}</span>
+            </div>
+          </div>
+
+          <!-- Summary & insights (read-only) -->
+          <div
+            class="flex flex-col gap-2 rounded-xl border border-border/70 bg-card px-4 py-3.5"
+          >
+            <span
+              class="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70"
+            >
               {{ $t('session.insights_title') }}
             </span>
-            <!-- sentiment / resolved / language sit by the header, apart from topics -->
-            <template v-if="session.insights">
+            <div v-if="session.insights" class="flex flex-wrap items-center gap-1.5">
               <Badge
                 :variant="sentimentVariant[session.insights.sentiment] ?? 'secondary'"
                 class="capitalize"
@@ -161,76 +229,49 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
               <Badge variant="outline" class="capitalize">
                 {{ session.insights.language }}
               </Badge>
-            </template>
+            </div>
+            <p
+              v-if="session.summary"
+              class="text-[12.5px] leading-relaxed text-muted-foreground"
+            >
+              {{ session.summary }}
+            </p>
+            <p v-else class="text-[12.5px] leading-relaxed text-muted-foreground/70">
+              {{ $t('session.no_summary') }}
+            </p>
+            <div
+              v-if="session.insights?.topics?.length"
+              class="flex flex-wrap items-center gap-1.5"
+            >
+              <Badge
+                v-for="topic in session.insights.topics"
+                :key="topic"
+                variant="outline"
+                class="capitalize"
+              >
+                {{ topic }}
+              </Badge>
+            </div>
+          </div>
+
+          <ChatDetailNavMap :items="navItems" @jump="onJump" />
+
+          <!-- Export -->
+          <div class="flex items-center gap-1.5 px-1">
+            <span class="mr-1 text-xs text-muted-foreground">
+              {{ $t('session.export') }}
+            </span>
+            <button
+              v-for="f in (['json', 'markdown', 'csv'] as ChatExportFormat[])"
+              :key="f"
+              type="button"
+              class="rounded-md border px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:text-foreground"
+              @click="onExport(f)"
+            >
+              {{ f === 'markdown' ? 'MD' : f.toUpperCase() }}
+            </button>
           </div>
         </div>
-        <p v-if="session.summary" class="mt-2 text-sm text-muted-foreground">
-          {{ session.summary }}
-        </p>
-        <p v-else class="mt-2 text-sm text-muted-foreground">
-          {{ $t('session.no_summary') }}
-        </p>
-        <!-- Topic tags only -->
-        <div
-          v-if="session.insights?.topics?.length"
-          class="mt-2 flex flex-wrap items-center gap-1.5"
-        >
-          <Badge
-            v-for="topic in session.insights.topics"
-            :key="topic"
-            variant="outline"
-            class="capitalize"
-          >
-            {{ topic }}
-          </Badge>
-        </div>
-      </div>
-      </div>
-
-      <!-- Export controls -->
-      <div class="flex items-center justify-end gap-1.5">
-        <span class="text-xs text-muted-foreground">{{ $t('session.export') }}</span>
-        <button
-          v-for="f in (['json', 'markdown', 'csv'] as ChatExportFormat[])"
-          :key="f"
-          type="button"
-          class="rounded-md border px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:text-foreground"
-          @click="onExport(f)"
-        >
-          {{ f === 'markdown' ? 'MD' : f.toUpperCase() }}
-        </button>
-      </div>
-
-      <!-- Transcript -->
-      <div
-        ref="scroller"
-        class="flex max-h-[70vh] flex-col gap-3 overflow-y-auto rounded-md border bg-card p-4"
-      >
-        <div v-if="hasMore" class="flex justify-center">
-          <button
-            type="button"
-            class="rounded-md border px-3 py-1.5 text-sm text-muted-foreground transition hover:text-foreground disabled:opacity-50"
-            :disabled="loading"
-            @click="loadOlder"
-          >
-            {{ $t(loading ? 'session.loading' : 'session.load_older') }}
-          </button>
-        </div>
-
-        <div
-          v-if="!messages.length && !loading"
-          class="py-10 text-center text-sm text-muted-foreground"
-        >
-          {{ $t('session.no_messages') }}
-        </div>
-
-        <ChatMessageBubble
-          v-for="m in messages"
-          :key="m.id"
-          :message="m"
-          :rating="feedbackByMsg[m.id] ?? null"
-          @rate="(r: 1 | -1) => onRate(m.id, r)"
-        />
       </div>
     </template>
   </div>

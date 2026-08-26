@@ -112,7 +112,7 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
 </script>
 
 <template>
-  <div class="mx-auto flex w-full max-w-6xl flex-col gap-4">
+  <div class="flex w-full flex-col gap-4">
     <!-- Not found / not owned -->
     <div
       v-if="!session && !sessionPending"

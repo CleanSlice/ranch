@@ -42,7 +42,7 @@ function onExport(format: 'json' | 'markdown' | 'csv') {
 </script>
 
 <template>
-  <div class="mx-auto flex w-full max-w-6xl flex-col gap-4">
+  <div class="flex w-full flex-col gap-4">
     <!-- Slim header -->
     <div class="flex items-center gap-3 border-b pb-3">
       <NuxtLink

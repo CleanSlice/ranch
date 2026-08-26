@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { toast } from 'vue-sonner';
 import {
@@ -396,7 +397,7 @@ onUnmounted(() => {
 });
 const renderedReportHtml = computed(() => {
   if (!report.value?.md || !markdownRendered.value) return '';
-  return marked.parse(report.value.md, { async: false }) as string;
+  return DOMPurify.sanitize(marked.parse(report.value.md, { async: false }) as string);
 });
 
 // Tick every second to refresh elapsed-time display while running

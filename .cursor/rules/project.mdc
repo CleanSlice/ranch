@@ -10,10 +10,9 @@ This file is the project-specific map. Claude Code is told to read it from the t
 
 ## Identity
 
-- Profile folder: `dream` (`E:/code/dream/cleanslice/ranch`)
-- Git: `Maksym Hryzodub [DREAM]` `<maksym.hryzodub@dreamvention.com>`
-- Host: GitHub `CleanSlice/ranch` via `github-dream`
+- Remote: GitHub `CleanSlice/ranch`
 - Default branch: `main`. Target every PR at `main`.
+- Git author: use this clone's `user.name` / `user.email`. Do not overwrite them for another person.
 
 ## Tracker
 
@@ -34,9 +33,10 @@ If the user describes work and does **not** give a `CLEAN-<n>` id, that descript
 
 1. Create a Jira issue in CLEAN from their description (title + short summary). Use `.env.project`.
 2. Mark surface: title prefix `[ADMIN]` / `[APP]` / `[ADMIN][APP]`, plus Jira labels `admin` / `app`. Infer from `admin/` vs `app/`; if unclear, ask. API-only → `[API]`.
-3. Reply with the issue key and URL.
-4. Move it to In Progress.
-5. Then the usual flow: branch → work → comments → PR.
+3. Assign to the Jira user matching `JIRA_EMAIL`: search `/rest/api/3/user/search?query=…`, set `assignee.accountId`. If no match, say so in the reply.
+4. Reply with the issue key and URL.
+5. Move it to In Progress.
+6. Then the usual flow: branch → work → comments → PR.
 
 ## OpenAPI
 
@@ -66,5 +66,5 @@ Optional. Never a substitute for the Jira cycle.
 
 - Commit or open a PR without a `CLEAN-` id
 - Push work on `main`
-- Use a GitLab / gamble / personal Git identity or SSH key
+- Rewrite `user.name` / `user.email` in this clone
 - Skip Jira because the change looks small

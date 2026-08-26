@@ -11,10 +11,10 @@ At the start of every task, read `.cursor/rules/project.mdc` (project card) and 
 - Tracker: Jira project `CLEAN`, board [498](https://dreamvention.atlassian.net/jira/software/c/projects/CLEAN/boards/498)
 - Issue: `https://dreamvention.atlassian.net/browse/CLEAN-123`
 - Team: `CLEAN` — branch `{type}/CLEAN-<n>-short-slug` (`feat`, `fix`, `chore`, …), PR into `main`
-- Git identity: folder `E:/code/dream/` → Maksym Hryzodub [DREAM] / `github-dream`
+- Git author: keep this clone's existing `user.name` / `user.email`. Do not overwrite them.
 - Keys: `JIRA_API_TOKEN`, `JIRA_DOMAIN`, `JIRA_EMAIL`, `GITHUB_TOKEN`, and any other tokens in `.env.project` only
 
-**No `CLEAN-<n>` in the request:** the user's description *is* the ticket. Create the Jira issue first (keys in `.env.project`), mark `[ADMIN]` / `[APP]` in the title and labels, send back the key/URL, move to In Progress — then branch/code. Do not start SpecKit or implementation without that id.
+**No `CLEAN-<n>` in the request:** the user's description *is* the ticket. Create the Jira issue first (keys in `.env.project`), mark `[ADMIN]` / `[APP]` in the title and labels, **assign it to the Jira user for `JIRA_EMAIL`** (lookup `accountId` via user search, then set assignee). If lookup fails, say so — do not leave the issue unassigned silently. Send back the key/URL, move to In Progress — then branch/code. Do not start SpecKit or implementation without that id.
 
 **OpenAPI:** if SDK/types or `api/swagger-spec.json` are missing, regenerate first (`cd api && bun run generate:swagger` or `bun run build`, then `cd admin && bun run build:api` / `cd app && bun run build:api`). Ask where the schema is only after that fails.
 

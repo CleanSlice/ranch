@@ -181,6 +181,27 @@ the form and from the generated clients in both consoles.
 
 ---
 
+## Verification log — 2026-08-27 (local, mock instance provider)
+
+Run against the local stack (docker LightRAG + Ollama, `WORKFLOW_PROVIDER=mock`)
+over HTTP with a real JWT. What the mock cannot reproduce is marked.
+
+| Scenario | Outcome |
+|---|---|
+| 1 — isolation | **Partially local**: base K1 ("Smoke Relays") answered its own fact with the reference resolving to the Source row (`sourceId` + `sourceName`); empty base K2 returned `answer: null, reason: no_relevant_content` without the retrieval service being asked. Cross-instance separation itself is covered by the Jest integration suite (`knowledge.isolation.spec.ts`, endpoint-level assertion that only the asked base's instance is contacted) plus the live T001 finding that separate LightRAG instances share nothing outside Postgres-by-workspace. **Full two-instance run needs a cluster.** |
+| 2 — agent cannot see | Jest adversarial suite (`knowledge.tool.spec.ts`, 10 elicitation attempts + explicit unbound id refused, zero retrievals against K2). Cluster run pending. |
+| 3 — transition | Machinery in place (`MigrationService`, resumable per-source state, requeue-before-inProgress crash ordering); fresh installs have nothing to migrate. **Needs a copy of an installation with shared-pool content.** |
+| 4 — attribution | Tool result blocks tagged `knowledge_id`/`knowledge_name`; unreachable base named (Jest). |
+| 5 — picker | Virtualized combobox with server-side search verified compiling and the labels endpoint verified live (`?search=ashgill` → 1 match, total/truncated correct). Browser latency check pending. |
+| 6 — tabs | Custom-slot single-class-set fix + `/knowledges/:id` → sources redirect; SSR renders. Visual click-through pending. |
+| 7 — status | Verified live: source `queued` → `processing` → `indexed` via track_status polling (~30 s with Ollama); derived rollup live (`ready` for K1, `empty` for K2); reindex endpoint 202. Failing-source case covered by unit tests. |
+| 8 — ceiling | `ensureCapacityForNew` refuses with 409 naming slots (argo path); mock never refuses. Cluster run pending. |
+| 9 — nothing heavier | Default journey exercised over HTTP with zero optional settings touched (create → add text → index → ask). `entityTypes`/`relationshipTypes` gone from the spec (`grep -c entityTypes swagger-spec.json` → 0) and both generated clients. Click-count comparison pending manual pass. |
+
+**Still owed to a cluster**: scenarios 1–3 and 8 end-to-end with the Argo
+instance provider, plus the decommission step (T045) after the last base
+reports `migrationState: done`.
+
 ## Automated coverage
 
 ```bash

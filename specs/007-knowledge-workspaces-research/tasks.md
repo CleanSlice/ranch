@@ -200,9 +200,9 @@ the base does not claim readiness it lacks (quickstart scenario 7, SC-011).
 
 ## Phase 9: Polish & cross-cutting
 
-- [ ] T045 Decommission the shared pool — gated on every base reaching `migrationState: done`: delete the old default-namespace content, remove `k8s/platform/lightrag/`, flip the `reins/config` decommission flag (research R3 step 4; until this task, the shared deployment is the rollback — do not run it early)
-- [ ] T046 [P] Full Jest run green: `cd api && bun run test` — manifest builder, state mapping, readiness rollup, isolation integration, adversarial set all passing
-- [ ] T047 [P] Walk all nine scenarios in `specs/007-knowledge-workspaces-research/quickstart.md` including the ceiling (scenario 8, FR-008) and the nothing-got-heavier check (scenario 9, SC-004/SC-006/SC-007); record outcomes in the file
+- [ ] T045 (DEFERRED — operational, gated on every base reaching migrationState: done on the live installation; the shared deployment stays as the rollback until then) Decommission the shared pool — gated on every base reaching `migrationState: done`: delete the old default-namespace content, remove `k8s/platform/lightrag/`, flip the `reins/config` decommission flag (research R3 step 4; until this task, the shared deployment is the rollback — do not run it early)
+- [X] T046 [P] Full Jest run green: `cd api && bun run test` — manifest builder, state mapping, readiness rollup, isolation integration, adversarial set all passing
+- [X] T047 [P] Walk all nine scenarios in `specs/007-knowledge-workspaces-research/quickstart.md` including the ceiling (scenario 8, FR-008) and the nothing-got-heavier check (scenario 9, SC-004/SC-006/SC-007); record outcomes in the file
 
 ---
 

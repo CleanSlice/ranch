@@ -12,6 +12,9 @@ const topK = ref(10);
 const loading = ref(false);
 const result = ref<IQueryResult | null>(null);
 const errorMessage = ref<string | null>(null);
+// Retrieval tuning stays folded until asked for — the default path needs
+// only a question (FR-017/FR-018).
+const showTuning = ref(false);
 
 async function run() {
   if (!query.value.trim()) return;
@@ -98,32 +101,53 @@ async function run() {
           placeholder="Ask a question about your knowledge…"
         />
       </div>
-      <div class="grid gap-2">
-        <Label for="query-mode">Mode</Label>
-        <select
-          id="query-mode"
-          v-model="mode"
-          class="h-9 rounded-md border bg-background px-3 text-sm"
-        >
-          <option value="hybrid">Hybrid</option>
-          <option value="local">Local</option>
-          <option value="global">Global</option>
-          <option value="naive">Naive</option>
-        </select>
-      </div>
-      <div class="grid gap-2">
-        <Label for="query-topk">Top K</Label>
-        <Input
-          id="query-topk"
-          v-model.number="topK"
-          type="number"
-          min="1"
-          max="100"
-        />
-      </div>
       <Button :disabled="loading" @click="run">
         {{ loading ? 'Running…' : 'Run' }}
       </Button>
+
+      <button
+        type="button"
+        class="self-start text-xs text-muted-foreground underline-offset-2 hover:underline"
+        @click="showTuning = !showTuning"
+      >
+        {{ showTuning ? 'Hide' : 'Show' }} retrieval tuning
+      </button>
+
+      <div v-if="showTuning" class="grid gap-3 rounded-md border p-3">
+        <div class="grid gap-2">
+          <Label for="query-mode">Mode</Label>
+          <select
+            id="query-mode"
+            v-model="mode"
+            class="h-9 rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="hybrid">Hybrid</option>
+            <option value="local">Local</option>
+            <option value="global">Global</option>
+            <option value="naive">Naive</option>
+          </select>
+          <p class="text-xs text-muted-foreground">
+            How the answer is assembled. Hybrid combines specific facts with
+            base-wide themes and is the default; Local favours precise detail
+            but misses the big picture, Global the reverse; Naive skips the
+            graph entirely — fastest, least accurate.
+          </p>
+        </div>
+        <div class="grid gap-2">
+          <Label for="query-topk">Top K</Label>
+          <Input
+            id="query-topk"
+            v-model.number="topK"
+            type="number"
+            min="1"
+            max="100"
+          />
+          <p class="text-xs text-muted-foreground">
+            How many matches feed the answer. More gives broader coverage but
+            a slower, costlier query that can drown the relevant part.
+          </p>
+        </div>
+      </div>
     </div>
   </div>
 </template>

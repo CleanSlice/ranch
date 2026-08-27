@@ -17,8 +17,6 @@ export interface IKnowledgeData {
   description: string | null;
   /** The recorded name of this base's retrieval area. */
   workspace: string;
-  entityTypes: string[];
-  relationshipTypes: string[];
   indexStatus: IndexStatusTypes;
   indexError: string | null;
   indexedAt: Date | null;
@@ -34,15 +32,11 @@ export interface IKnowledgeData {
 export interface ICreateKnowledgeData {
   name: string;
   description?: string;
-  entityTypes?: string[];
-  relationshipTypes?: string[];
 }
 
 export interface IUpdateKnowledgeData {
   name?: string;
   description?: string | null;
-  entityTypes?: string[];
-  relationshipTypes?: string[];
 }
 
 /** List entry with enough context to choose a base (FR-011). */

@@ -15,8 +15,6 @@ export class KnowledgeDto
   @ApiProperty() id: string;
   @ApiProperty() name: string;
   @ApiProperty({ type: String, nullable: true }) description: string | null;
-  @ApiProperty({ type: [String] }) entityTypes: string[];
-  @ApiProperty({ type: [String] }) relationshipTypes: string[];
   @ApiProperty({ enum: ['idle', 'indexing', 'ready', 'failed'] })
   indexStatus: IndexStatusTypes;
   @ApiProperty({ type: String, nullable: true }) indexError: string | null;

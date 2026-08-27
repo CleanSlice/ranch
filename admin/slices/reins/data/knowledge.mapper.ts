@@ -74,8 +74,6 @@ export class KnowledgeMapper {
       id: o.id,
       name: str(o.name),
       description: nullableStr(o.description),
-      entityTypes: strList(o.entityTypes),
-      relationshipTypes: strList(o.relationshipTypes),
       indexStatus:
         typeof o.indexStatus === 'string' &&
         INDEX_STATUSES.has(o.indexStatus as IndexStatus)

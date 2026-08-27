@@ -34,8 +34,6 @@ function base(p: Partial<IKnowledgeData> & { id: string }): IKnowledgeData {
     name: p.id,
     description: null,
     workspace: `knowledge_${p.id}`,
-    entityTypes: [],
-    relationshipTypes: [],
     indexStatus: 'ready',
     indexError: null,
     indexedAt: null,

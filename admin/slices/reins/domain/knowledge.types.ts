@@ -31,8 +31,6 @@ export interface IKnowledge {
   id: string;
   name: string;
   description: string | null;
-  entityTypes: string[];
-  relationshipTypes: string[];
   indexStatus: IndexStatus;
   indexError: string | null;
   indexedAt: string | null;
@@ -72,15 +70,11 @@ export interface ISource {
 export interface ICreateKnowledgeInput {
   name: string;
   description?: string;
-  entityTypes?: string[];
-  relationshipTypes?: string[];
 }
 
 export interface IUpdateKnowledgeInput {
   name?: string;
   description?: string | null;
-  entityTypes?: string[];
-  relationshipTypes?: string[];
 }
 
 export interface IKnowledgeSetupStatus {

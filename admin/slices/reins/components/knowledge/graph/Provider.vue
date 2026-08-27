@@ -293,7 +293,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <p v-else class="text-xs text-muted-foreground">
-            No data
+            Nothing indexed yet — add sources and run Index to build the graph.
           </p>
         </div>
 

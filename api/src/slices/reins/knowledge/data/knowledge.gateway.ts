@@ -129,10 +129,6 @@ export class KnowledgeGateway extends IKnowledgeGateway {
         ...(data.description !== undefined && {
           description: data.description,
         }),
-        ...(data.entityTypes && { entityTypes: data.entityTypes }),
-        ...(data.relationshipTypes && {
-          relationshipTypes: data.relationshipTypes,
-        }),
       },
     });
     return this.mapper.toEntity(record);

@@ -5,8 +5,6 @@ model Knowledge {
   name              String
   description       String?
   workspace         String        @unique
-  entityTypes       String[]      @default([])
-  relationshipTypes String[]      @default([])
   indexStatus       String        @default("idle")
   indexError        String?
   indexedAt         DateTime?

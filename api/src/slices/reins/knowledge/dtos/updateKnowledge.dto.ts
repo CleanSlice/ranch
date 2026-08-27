@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray } from 'class-validator';
+import { IsString, IsOptional } from 'class-validator';
 
 export class UpdateKnowledgeDto {
   @ApiPropertyOptional()
@@ -11,16 +11,4 @@ export class UpdateKnowledgeDto {
   @IsOptional()
   @IsString()
   description?: string | null;
-
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  entityTypes?: string[];
-
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  relationshipTypes?: string[];
 }

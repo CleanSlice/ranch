@@ -176,8 +176,6 @@ export type KnowledgeListItemDto = {
   id: string;
   name: string;
   description: string | null;
-  entityTypes: Array<string>;
-  relationshipTypes: Array<string>;
   indexStatus: "idle" | "indexing" | "ready" | "failed";
   indexError: string | null;
   indexedAt: string | null;
@@ -229,15 +227,11 @@ export type GraphDto = {
 export type CreateKnowledgeDto = {
   name: string;
   description?: string;
-  entityTypes?: Array<string>;
-  relationshipTypes?: Array<string>;
 };
 
 export type UpdateKnowledgeDto = {
   name?: string;
   description?: string | null;
-  entityTypes?: Array<string>;
-  relationshipTypes?: Array<string>;
 };
 
 export type QueryKnowledgeDto = {

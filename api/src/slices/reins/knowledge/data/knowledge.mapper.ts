@@ -56,8 +56,6 @@ export class KnowledgeMapper {
       name: record.name,
       description: record.description ?? null,
       workspace: record.workspace,
-      entityTypes: record.entityTypes,
-      relationshipTypes: record.relationshipTypes,
       indexStatus: parseIndexStatus(record.indexStatus),
       indexError: record.indexError ?? null,
       indexedAt: record.indexedAt ?? null,
@@ -76,8 +74,6 @@ export class KnowledgeMapper {
       id: `knowledge-${crypto.randomUUID()}`,
       name: data.name,
       description: data.description ?? null,
-      entityTypes: data.entityTypes ?? [],
-      relationshipTypes: data.relationshipTypes ?? [],
       workspace: 'pending',
       // A base born after the transition has nothing to migrate — its
       // content only ever lands in its own area.

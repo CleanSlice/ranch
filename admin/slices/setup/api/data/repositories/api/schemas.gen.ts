@@ -401,18 +401,6 @@ export const KnowledgeListItemDtoSchema = {
       type: "string",
       nullable: true,
     },
-    entityTypes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    relationshipTypes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
     indexStatus: {
       type: "string",
       enum: ["idle", "indexing", "ready", "failed"],
@@ -460,8 +448,6 @@ export const KnowledgeListItemDtoSchema = {
     "id",
     "name",
     "description",
-    "entityTypes",
-    "relationshipTypes",
     "indexStatus",
     "indexError",
     "indexedAt",
@@ -592,18 +578,6 @@ export const CreateKnowledgeDtoSchema = {
     description: {
       type: "string",
     },
-    entityTypes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    relationshipTypes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
   },
   required: ["name"],
 } as const;
@@ -617,18 +591,6 @@ export const UpdateKnowledgeDtoSchema = {
     description: {
       type: "string",
       nullable: true,
-    },
-    entityTypes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    relationshipTypes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
     },
   },
 } as const;

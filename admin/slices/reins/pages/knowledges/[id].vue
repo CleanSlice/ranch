@@ -1,21 +1,37 @@
 <script setup lang="ts">
 import { useIntervalFn } from '@vueuse/core';
 import { Button } from '#theme/components/ui/button';
-import type { IKnowledge } from '#reins/stores/knowledge';
+import type { IKnowledge, ISource } from '#reins/stores/knowledge';
 
 const route = useRoute();
 const store = useKnowledgeStore();
 
 const knowledgeId = computed(() => route.params.id as string);
 const current = ref<IKnowledge | null>(null);
+const sources = ref<ISource[]>([]);
 const indexing = ref(false);
 const indexError = ref<string | null>(null);
 
 async function refresh() {
-  current.value = await store.fetchById(knowledgeId.value);
+  [current.value, sources.value] = await Promise.all([
+    store.fetchById(knowledgeId.value),
+    store.listSources(knowledgeId.value).catch(() => []),
+  ]);
 }
 
 await refresh();
+
+// What the base holds and whether it can answer — visible without leaving
+// the header (FR-023).
+const searchableCount = computed(
+  () => sources.value.filter((s) => s.indexed).length,
+);
+const canAnswer = computed(
+  () =>
+    searchableCount.value > 0 &&
+    (current.value?.instanceState === 'ready' ||
+      current.value?.migrationState !== 'done'),
+);
 
 const { pause, resume } = useIntervalFn(
   async () => {
@@ -57,11 +73,13 @@ async function handleIndex() {
   }
 }
 
+// Everyday path first (add content, ask); the graph is an inspection
+// surface and sits last rather than mid-flow (FR-024).
 const tabs = computed(() => [
-  { to: `/knowledges/${knowledgeId.value}/edit`, label: 'General' },
   { to: `/knowledges/${knowledgeId.value}/sources`, label: 'Sources' },
-  { to: `/knowledges/${knowledgeId.value}/graph`, label: 'Graph' },
   { to: `/knowledges/${knowledgeId.value}/query`, label: 'Query' },
+  { to: `/knowledges/${knowledgeId.value}/edit`, label: 'General' },
+  { to: `/knowledges/${knowledgeId.value}/graph`, label: 'Graph' },
 ]);
 
 const indexDisabled = computed(
@@ -84,12 +102,37 @@ provide('knowledge-refresh', refresh);
     <div v-if="current" class="flex items-start justify-between gap-4">
       <div class="min-w-0">
         <h1 class="text-2xl font-semibold truncate">{{ current.name }}</h1>
-        <div class="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+        <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <IndexStatusBadge :status="current.indexStatus" />
+          <span>
+            {{ sources.length }} {{ sources.length === 1 ? 'source' : 'sources' }}
+            <template v-if="sources.length">
+              · {{ searchableCount }} searchable
+            </template>
+          </span>
+          <span v-if="canAnswer" class="text-emerald-600">
+            · ready to answer
+          </span>
+          <span
+            v-else-if="current.instanceState === 'failed'"
+            class="text-destructive"
+          >
+            · retrieval unavailable{{ current.instanceError ? `: ${current.instanceError}` : '' }}
+          </span>
+          <span v-else-if="current.instanceState === 'starting'">
+            · retrieval starting…
+          </span>
           <span v-if="current.indexError" class="text-destructive">
             {{ current.indexError }}
           </span>
         </div>
+        <p
+          v-if="current.migrationState === 'inProgress' || current.migrationState === 'notStarted'"
+          class="mt-1 text-xs text-amber-600"
+        >
+          This base is being re-processed into its own retrieval area —
+          answers may be incomplete until it finishes.
+        </p>
       </div>
       <Button :disabled="indexDisabled" @click="handleIndex">
         {{ indexDisabled ? 'Indexing…' : 'Index' }}

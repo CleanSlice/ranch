@@ -125,12 +125,12 @@ reach an answer unaided and can state what each visible control does
 
 ### Implementation for User Story 3
 
-- [ ] T030 [US3] Remove `entityTypes` and `relationshipTypes` from `api/src/slices/reins/knowledge/knowledge.prisma` and generate the Prisma migration (FR-020 — never sent anywhere in the product's history; existing bases unaffected)
-- [ ] T031 [US3] Remove both fields from the DTOs, mapper and domain types in `api/src/slices/reins/knowledge/`, then regenerate the contract into both consoles (`generate:swagger` + `build:api` ×2) — this is the planned contract change from the spec's assumptions, not incidental cleanup
-- [ ] T032 [US3] Rework the base form in `admin/slices/reins/components/knowledge/item/Form.vue`: retrieval-tuning controls behind an explicit disclosure with usable defaults (FR-018), each visible control describes what it changes and what it trades (FR-021), exactly one primary action (FR-019)
-- [ ] T033 [P] [US3] Every empty state in the module names the next action — no bases, no sources, nothing indexed — across `admin/slices/reins/components/knowledge/` (FR-022, FR-029's "no entities yet" copy included)
-- [ ] T034 [US3] Opening a base shows what it holds, whether it can answer yet, and which sources are behind it without further navigation, in `admin/slices/reins/pages/knowledges/[id].vue` header area (FR-023)
-- [ ] T035 [P] [US3] Demote diagnosis surfaces below the everyday path (FR-024) and make setup steps that need outside action say why and what is unavailable (FR-025) in `admin/slices/reins/`
+- [X] T030 [US3] Remove `entityTypes` and `relationshipTypes` from `api/src/slices/reins/knowledge/knowledge.prisma` and generate the Prisma migration (FR-020 — never sent anywhere in the product's history; existing bases unaffected)
+- [X] T031 [US3] Remove both fields from the DTOs, mapper and domain types in `api/src/slices/reins/knowledge/`, then regenerate the contract into both consoles (`generate:swagger` + `build:api` ×2) — this is the planned contract change from the spec's assumptions, not incidental cleanup
+- [X] T032 [US3] Rework the base form in `admin/slices/reins/components/knowledge/item/Form.vue`: retrieval-tuning controls behind an explicit disclosure with usable defaults (FR-018), each visible control describes what it changes and what it trades (FR-021), exactly one primary action (FR-019)
+- [X] T033 [P] [US3] Every empty state in the module names the next action — no bases, no sources, nothing indexed — across `admin/slices/reins/components/knowledge/` (FR-022, FR-029's "no entities yet" copy included)
+- [X] T034 [US3] Opening a base shows what it holds, whether it can answer yet, and which sources are behind it without further navigation, in `admin/slices/reins/pages/knowledges/[id].vue` header area (FR-023)
+- [X] T035 [P] [US3] Demote diagnosis surfaces below the everyday path (FR-024) and make setup steps that need outside action say why and what is unavailable (FR-025) in `admin/slices/reins/`
 
 **Checkpoint**: default journey — create, add source, index, ask — touches zero
 optional settings (SC-006); zero settings that change nothing remain (SC-007).

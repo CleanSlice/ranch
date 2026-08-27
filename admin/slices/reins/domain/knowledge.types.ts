@@ -9,6 +9,12 @@ import type { GraphDto, KnowledgeQueryResultDto } from '#api/data';
 export type IQueryResult = KnowledgeQueryResultDto;
 export type IGraph = GraphDto;
 
+export interface IGraphLabels {
+  labels: string[];
+  total: number;
+  truncated: boolean;
+}
+
 export type IndexStatus = 'idle' | 'indexing' | 'ready' | 'failed';
 export type SourceType = 'file' | 'url' | 'text';
 export type KnowledgeQueryMode = 'hybrid' | 'local' | 'global' | 'naive';

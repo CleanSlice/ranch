@@ -60,12 +60,41 @@ export interface IInstanceStatePatch {
 
 export interface IKnowledgeQueryReference {
   referenceId: string;
+  /** As upstream returns it. */
   filePath: string;
+  /** Resolves to a Source row; null means an unresolvable reference — a
+   * defect to see, not to hide. */
+  sourceId: string | null;
+  sourceName: string | null;
 }
 
 export interface IKnowledgeQueryResult {
-  answer: string;
+  /** null when the base holds nothing relevant — never a generated answer
+   * assembled from no context (FR-003). */
+  answer: string | null;
+  reason?: 'no_relevant_content';
+  knowledgeId: string;
+  /** false while the base's content is still being re-processed into its
+   * own area (FR-036). */
+  complete: boolean;
   references: IKnowledgeQueryReference[];
+}
+
+/** What the retrieval client returns before attribution is resolved. */
+export interface IRawKnowledgeSearchResult {
+  answer: string;
+  references: { referenceId: string; filePath: string }[];
+}
+
+export interface IGetGraphLabelsParams {
+  search?: string;
+  limit?: number;
+}
+
+export interface IGraphLabelsResult {
+  labels: string[];
+  total: number;
+  truncated: boolean;
 }
 
 export interface IGraphNodeData {

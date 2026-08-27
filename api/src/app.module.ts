@@ -26,6 +26,7 @@ import { UsageModule } from './slices/usage/usage.module';
 import { ChatModule } from './slices/chat/chat.module';
 import { KnowledgeModule } from './slices/reins/knowledge/knowledge.module';
 import { SourceModule } from './slices/reins/source/source.module';
+import { MigrationModule } from './slices/reins/migration/migration.module';
 import { SkillModule } from './slices/skill/skill.module';
 import { RancherModule } from './slices/rancher/rancher.module';
 import { UpgradeModule } from './slices/upgrade/upgrade.module';
@@ -70,6 +71,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     ChatModule,
     KnowledgeModule,
     SourceModule,
+    MigrationModule,
     SkillModule,
     RancherModule,
     UpgradeModule,

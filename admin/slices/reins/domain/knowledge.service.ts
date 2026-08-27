@@ -2,6 +2,7 @@ import type { IKnowledgeGateway } from './knowledge.gateway';
 import type {
   ICreateKnowledgeInput,
   IGraph,
+  IGraphLabels,
   IKnowledge,
   IKnowledgeStatus,
   IQueryResult,
@@ -100,11 +101,20 @@ export class KnowledgeService {
     return this.gateway.removeSource(id, sourceId);
   }
 
-  graphLabels(): Promise<string[]> {
-    return this.gateway.graphLabels();
+  graphLabels(
+    id: string,
+    search?: string,
+    limit?: number,
+  ): Promise<IGraphLabels> {
+    return this.gateway.graphLabels(id, search, limit);
   }
 
-  graph(label: string, maxDepth: number, maxNodes: number): Promise<IGraph> {
-    return this.gateway.graph(label, maxDepth, maxNodes);
+  graph(
+    id: string,
+    label: string,
+    maxDepth: number,
+    maxNodes: number,
+  ): Promise<IGraph> {
+    return this.gateway.graph(id, label, maxDepth, maxNodes);
   }
 }

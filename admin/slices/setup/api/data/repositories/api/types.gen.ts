@@ -172,6 +172,12 @@ export type CreateApiKeyDto = {
   expiresAt?: string;
 };
 
+export type GraphLabelsDto = {
+  labels: Array<string>;
+  total: number;
+  truncated: boolean;
+};
+
 export type GraphNodeDto = {
   id: string;
   label: string;
@@ -217,10 +223,21 @@ export type QueryKnowledgeDto = {
 export type KnowledgeQueryReferenceDto = {
   referenceId: string;
   filePath: string;
+  sourceId: string | null;
+  sourceName: string | null;
 };
 
 export type KnowledgeQueryResultDto = {
-  answer: string;
+  /**
+   * null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.
+   */
+  answer: string | null;
+  reason?: "no_relevant_content";
+  knowledgeId: string;
+  /**
+   * false while this base is still being re-processed into its own area — answers may be incomplete.
+   */
+  complete: boolean;
   references: Array<KnowledgeQueryReferenceDto>;
 };
 
@@ -1870,24 +1887,37 @@ export type GetKnowledgeStatusResponses = {
 
 export type GetGraphLabelsData = {
   body?: never;
-  path?: never;
-  query?: never;
-  url: "/knowledges/graph/labels";
+  path: {
+    id: string;
+  };
+  query?: {
+    /**
+     * Case-insensitive substring filter
+     */
+    search?: string;
+    limit?: number;
+  };
+  url: "/knowledges/{id}/graph/labels";
 };
 
 export type GetGraphLabelsResponses = {
-  200: unknown;
+  200: GraphLabelsDto;
 };
+
+export type GetGraphLabelsResponse =
+  GetGraphLabelsResponses[keyof GetGraphLabelsResponses];
 
 export type GetGraphData = {
   body?: never;
-  path?: never;
+  path: {
+    id: string;
+  };
   query: {
     label: string;
     maxDepth?: number;
     maxNodes?: number;
   };
-  url: "/knowledges/graph";
+  url: "/knowledges/{id}/graph";
 };
 
 export type GetGraphResponses = {

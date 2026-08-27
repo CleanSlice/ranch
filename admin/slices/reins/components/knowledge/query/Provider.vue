@@ -53,7 +53,21 @@ async function run() {
       </div>
 
       <template v-else>
-        <div class="rounded-md border bg-card p-4">
+        <div
+          v-if="!result.complete"
+          class="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700"
+        >
+          This base is still being re-processed — answers may be incomplete
+          until it finishes.
+        </div>
+
+        <div
+          v-if="result.answer === null"
+          class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground"
+        >
+          This base has no content relevant to that question.
+        </div>
+        <div v-else class="rounded-md border bg-card p-4">
           <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Answer
           </div>
@@ -67,7 +81,7 @@ async function run() {
           <ol class="flex flex-col gap-1 pl-5 text-sm list-decimal">
             <li v-for="ref in result.references" :key="ref.referenceId">
               <span class="font-mono text-xs text-muted-foreground">[{{ ref.referenceId }}]</span>
-              {{ ref.filePath }}
+              {{ ref.sourceName ?? ref.filePath }}
             </li>
           </ol>
         </div>

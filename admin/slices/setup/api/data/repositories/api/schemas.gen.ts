@@ -388,6 +388,25 @@ export const CreateApiKeyDtoSchema = {
   required: ["name", "scopes"],
 } as const;
 
+export const GraphLabelsDtoSchema = {
+  type: "object",
+  properties: {
+    labels: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    total: {
+      type: "number",
+    },
+    truncated: {
+      type: "boolean",
+    },
+  },
+  required: ["labels", "total", "truncated"],
+} as const;
+
 export const GraphNodeDtoSchema = {
   type: "object",
   properties: {
@@ -532,8 +551,16 @@ export const KnowledgeQueryReferenceDtoSchema = {
     filePath: {
       type: "string",
     },
+    sourceId: {
+      type: "string",
+      nullable: true,
+    },
+    sourceName: {
+      type: "string",
+      nullable: true,
+    },
   },
-  required: ["referenceId", "filePath"],
+  required: ["referenceId", "filePath", "sourceId", "sourceName"],
 } as const;
 
 export const KnowledgeQueryResultDtoSchema = {
@@ -541,6 +568,21 @@ export const KnowledgeQueryResultDtoSchema = {
   properties: {
     answer: {
       type: "string",
+      nullable: true,
+      description:
+        "null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.",
+    },
+    reason: {
+      type: "string",
+      enum: ["no_relevant_content"],
+    },
+    knowledgeId: {
+      type: "string",
+    },
+    complete: {
+      type: "boolean",
+      description:
+        "false while this base is still being re-processed into its own area — answers may be incomplete.",
     },
     references: {
       type: "array",
@@ -549,7 +591,7 @@ export const KnowledgeQueryResultDtoSchema = {
       },
     },
   },
-  required: ["answer", "references"],
+  required: ["answer", "knowledgeId", "complete", "references"],
 } as const;
 
 export const CreateSourceDtoSchema = {

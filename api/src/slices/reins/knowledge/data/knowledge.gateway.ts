@@ -8,7 +8,7 @@ import {
   IUpdateKnowledgeData,
   IIndexStatePatch,
   IInstanceStatePatch,
-  IKnowledgeQueryResult,
+  IRawKnowledgeSearchResult,
   MigrationStateTypes,
   QueryModeTypes,
   IGetGraphParams,
@@ -137,7 +137,7 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     query: string,
     mode?: QueryModeTypes,
     topK?: number,
-  ): Promise<IKnowledgeQueryResult> {
+  ): Promise<IRawKnowledgeSearchResult> {
     return this.lightrag.query({
       knowledgeId,
       query,
@@ -146,12 +146,13 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     });
   }
 
-  getGraphLabels(): Promise<string[]> {
-    return this.lightrag.getGraphLabels();
+  getGraphLabels(knowledgeId: string): Promise<string[]> {
+    return this.lightrag.getGraphLabels(knowledgeId);
   }
 
-  getGraph(params: IGetGraphParams): Promise<IGraphData> {
+  getGraph(knowledgeId: string, params: IGetGraphParams): Promise<IGraphData> {
     return this.lightrag.getGraph({
+      knowledgeId,
       label: params.label,
       maxDepth: params.maxDepth,
       maxNodes: params.maxNodes,

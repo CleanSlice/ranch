@@ -13,11 +13,22 @@ import { ISourceGateway } from '../domain/source.gateway';
 import {
   ISourceData,
   ICreateSourceData,
+  ISourceIndexStatePatch,
   IUploadSourceFileInput,
   IUploadSourceStreamInput,
   IUploadedSourceFile,
 } from '../domain/source.types';
 import { SourceMapper } from './source.mapper';
+
+const TRACK_POLL_INTERVAL_MS = 3_000;
+// Generous: a large PDF through entity extraction takes minutes, and an
+// expired deadline marks the source failed (retryable), never silently
+// indexed.
+const TRACK_POLL_TIMEOUT_MS = 15 * 60 * 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 @Injectable()
 export class SourceGateway extends ISourceGateway {
@@ -170,11 +181,83 @@ export class SourceGateway extends ISourceGateway {
   }
 
   async indexSource(source: ISourceData): Promise<void> {
-    const docId = await this.ingestByType(source);
+    await this.updateIndexState(source.id, {
+      indexState: 'processing',
+      indexError: null,
+    });
+    let docId: string;
+    try {
+      docId = await this.ingestByType(source);
+    } catch (err) {
+      await this.updateIndexState(source.id, {
+        indexState: 'failed',
+        indexError: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
     await this.prisma.source.update({
       where: { id: source.id },
       data: { lightragDocId: docId },
     });
+  }
+
+  async waitForSourceIndexed(sourceId: string): Promise<ISourceData> {
+    const record = await this.prisma.source.findUnique({
+      where: { id: sourceId },
+    });
+    if (!record) throw new NotFoundException(`Source ${sourceId} not found`);
+    if (!record.lightragDocId) {
+      return this.mapper.toEntity(record);
+    }
+
+    const deadline = Date.now() + TRACK_POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const track = await this.lightrag.getTrackStatus(
+        record.knowledgeId,
+        record.lightragDocId,
+      );
+      if (track.status === 'processed') {
+        await this.updateIndexState(sourceId, {
+          indexState: 'indexed',
+          indexError: null,
+          indexedAt: new Date(),
+        });
+        return this.requireEntity(sourceId);
+      }
+      if (track.status === 'failed') {
+        await this.updateIndexState(sourceId, {
+          indexState: 'failed',
+          indexError: track.error ?? 'processing failed',
+        });
+        return this.requireEntity(sourceId);
+      }
+      await sleep(TRACK_POLL_INTERVAL_MS);
+    }
+    await this.updateIndexState(sourceId, {
+      indexState: 'failed',
+      indexError: `processing did not finish within ${TRACK_POLL_TIMEOUT_MS / 60000} minutes`,
+    });
+    return this.requireEntity(sourceId);
+  }
+
+  async updateIndexState(
+    id: string,
+    patch: ISourceIndexStatePatch,
+  ): Promise<void> {
+    await this.prisma.source.update({
+      where: { id },
+      data: {
+        indexState: patch.indexState,
+        ...(patch.indexError !== undefined && { indexError: patch.indexError }),
+        ...(patch.indexedAt !== undefined && { indexedAt: patch.indexedAt }),
+      },
+    });
+  }
+
+  private async requireEntity(id: string): Promise<ISourceData> {
+    const record = await this.prisma.source.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException(`Source ${id} not found`);
+    return this.mapper.toEntity(record);
   }
 
   async removeFromIndex(source: ISourceData): Promise<void> {
@@ -202,6 +285,10 @@ export class SourceGateway extends ISourceGateway {
 
   private async ingestByType(source: ISourceData): Promise<string> {
     const knowledgeId = source.knowledgeId;
+    // file_source carries the source id so a returned reference resolves to
+    // a Source row deterministically — names and URLs are not unique
+    // (research R4). File uploads keep the filename: upstream's upload
+    // endpoint has no file_source, and file names are deduped per base.
     if (source.type === 'text') {
       if (!source.content) {
         throw new Error(`Source ${source.id} has no content`);
@@ -209,7 +296,7 @@ export class SourceGateway extends ISourceGateway {
       const res = await this.lightrag.ingestText({
         knowledgeId,
         text: source.content,
-        fileSource: source.name,
+        fileSource: source.id,
       });
       return res.docId;
     }
@@ -220,6 +307,7 @@ export class SourceGateway extends ISourceGateway {
       const res = await this.lightrag.ingestUrl({
         knowledgeId,
         url: source.url,
+        fileSource: source.id,
       });
       return res.docId;
     }

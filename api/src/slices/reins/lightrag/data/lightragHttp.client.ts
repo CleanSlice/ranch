@@ -13,6 +13,7 @@ import {
   ILightragGraph,
   ILightragGraphNode,
   ILightragGraphEdge,
+  ITrackStatus,
   LightragClientError,
 } from '../domain/lightrag.types';
 
@@ -121,7 +122,7 @@ export class LightragHttpClient extends ILightragClient {
       }),
       body: JSON.stringify({
         text,
-        file_source: input.url,
+        file_source: input.fileSource ?? input.url,
       }),
     });
     await this.ensureOk(res, '/documents/text');
@@ -222,6 +223,24 @@ export class LightragHttpClient extends ILightragClient {
       },
     );
     await this.ensureOk(res, '/documents/delete_document');
+  }
+
+  async getTrackStatus(
+    knowledgeId: string,
+    trackId: string,
+  ): Promise<ITrackStatus> {
+    const cfg = await this.requireEnabled({ knowledgeId, intent: 'write' });
+    const res = await this.fetchImpl(
+      `${cfg.baseUrl}/documents/track_status/${encodeURIComponent(trackId)}`,
+      {
+        method: 'GET',
+        headers: this.headers(cfg.apiKey),
+      },
+    );
+    if (res.status === 404) return { status: 'pending', error: null };
+    await this.ensureOk(res, `/documents/track_status/${trackId}`);
+    const body: unknown = await res.json();
+    return extractTrackStatus(body);
   }
 
   private async resolveDocIdsByTrackId(
@@ -366,6 +385,33 @@ function extractQueryResult(body: unknown): IQueryResult {
 function extractLabels(body: unknown): string[] {
   if (!Array.isArray(body)) return [];
   return body.filter((x): x is string => typeof x === 'string');
+}
+
+// One track id can cover several documents (an archive upload); the source
+// is 'processed' only when every one of them is, 'failed' as soon as any is.
+export function extractTrackStatus(body: unknown): ITrackStatus {
+  if (!isRecord(body)) return { status: 'pending', error: null };
+  const docs = Array.isArray(body.documents) ? body.documents : [];
+  if (docs.length === 0) return { status: 'pending', error: null };
+
+  let sawProcessing = false;
+  let sawPending = false;
+  for (const doc of docs) {
+    if (!isRecord(doc)) continue;
+    const status = typeof doc.status === 'string' ? doc.status : '';
+    if (status === 'failed') {
+      const error =
+        typeof doc.error_msg === 'string' && doc.error_msg.length > 0
+          ? doc.error_msg
+          : 'processing failed';
+      return { status: 'failed', error };
+    }
+    if (status === 'processing') sawProcessing = true;
+    if (status === 'pending' || status === 'enqueued') sawPending = true;
+  }
+  if (sawProcessing) return { status: 'processing', error: null };
+  if (sawPending) return { status: 'pending', error: null };
+  return { status: 'processed', error: null };
 }
 
 function extractTrackStatusDocIds(body: unknown): string[] {

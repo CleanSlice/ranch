@@ -46,6 +46,7 @@ import type {
   CreateKnowledgeData,
   GetKnowledgeStatusData,
   GetGraphLabelsData,
+  GetGraphLabelsResponse,
   GetGraphData,
   GetGraphResponse,
   DeleteKnowledgeData,
@@ -1035,23 +1036,23 @@ export class KnowledgesService {
   }
 
   /**
-   * List graph entity labels
+   * List entity labels of one knowledge base
    */
   public static getGraphLabels<ThrowOnError extends boolean = false>(
-    options?: Options<GetGraphLabelsData, ThrowOnError>,
+    options: Options<GetGraphLabelsData, ThrowOnError>,
   ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
+    return (options.client ?? _heyApiClient).get<
+      GetGraphLabelsResponse,
       unknown,
       ThrowOnError
     >({
-      url: "/knowledges/graph/labels",
+      url: "/knowledges/{id}/graph/labels",
       ...options,
     });
   }
 
   /**
-   * Get knowledge graph
+   * Get the graph of one knowledge base
    */
   public static getGraph<ThrowOnError extends boolean = false>(
     options: Options<GetGraphData, ThrowOnError>,
@@ -1061,7 +1062,7 @@ export class KnowledgesService {
       unknown,
       ThrowOnError
     >({
-      url: "/knowledges/graph",
+      url: "/knowledges/{id}/graph",
       ...options,
     });
   }

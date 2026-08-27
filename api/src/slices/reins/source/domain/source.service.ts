@@ -265,6 +265,23 @@ export class SourceService {
   }
 
   /**
+   * Hand the source over AND wait until the retrieval service reports it
+   * processed — "indexed" means searchable, not merely submitted. Returns
+   * the source with its terminal state recorded.
+   */
+  async indexSourceAndWait(source: ISourceData): Promise<ISourceData> {
+    await this.gateway.indexSource(source);
+    return this.gateway.waitForSourceIndexed(source.id);
+  }
+
+  requeueSource(sourceId: string): Promise<void> {
+    return this.gateway.updateIndexState(sourceId, {
+      indexState: 'queued',
+      indexError: null,
+    });
+  }
+
+  /**
    * Walk a sitemap, optionally filter by URL prefix, then create one
    * url-type Source per discovered page. Indexing into LightRAG happens
    * later through the normal reindex flow - this method only enqueues the

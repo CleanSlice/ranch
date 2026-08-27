@@ -1,6 +1,7 @@
 import type {
   ICreateKnowledgeInput,
   IGraph,
+  IGraphLabels,
   IKnowledge,
   IKnowledgeStatus,
   IQueryResult,
@@ -56,8 +57,14 @@ export abstract class IKnowledgeGateway {
     urlPrefix?: string,
   ): Promise<ISourceSitemapResult>;
   abstract removeSource(id: string, sourceId: string): Promise<void>;
-  abstract graphLabels(): Promise<string[]>;
+  // Base-scoped: the graph and its labels describe one knowledge base only.
+  abstract graphLabels(
+    id: string,
+    search?: string,
+    limit?: number,
+  ): Promise<IGraphLabels>;
   abstract graph(
+    id: string,
     label: string,
     maxDepth: number,
     maxNodes: number,

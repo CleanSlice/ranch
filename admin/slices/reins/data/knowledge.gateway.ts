@@ -6,6 +6,7 @@ import { IKnowledgeGateway } from '../domain/knowledge.gateway';
 import type {
   ICreateKnowledgeInput,
   IGraph,
+  IGraphLabels,
   IKnowledge,
   IKnowledgeStatus,
   IQueryResult,
@@ -192,16 +193,29 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
     });
   }
 
-  graphLabels(): Promise<string[]> {
+  graphLabels(
+    id: string,
+    search?: string,
+    limit?: number,
+  ): Promise<IGraphLabels> {
     return this.execute(async () => {
-      const res = await KnowledgesService.getGraphLabels();
-      return this.mapper.toLabels(unwrapEnvelope(res.data));
+      const res = await KnowledgesService.getGraphLabels({
+        path: { id },
+        query: { search, limit },
+      });
+      return this.mapper.toLabelsResult(unwrapEnvelope(res.data));
     });
   }
 
-  graph(label: string, maxDepth: number, maxNodes: number): Promise<IGraph> {
+  graph(
+    id: string,
+    label: string,
+    maxDepth: number,
+    maxNodes: number,
+  ): Promise<IGraph> {
     return this.execute(async () => {
       const res = await KnowledgesService.getGraph({
+        path: { id },
         query: { label, maxDepth, maxNodes },
       });
       return this.mapper.toGraph(unwrapEnvelope(res.data));

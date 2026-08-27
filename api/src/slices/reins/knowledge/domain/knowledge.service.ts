@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   OnApplicationBootstrap,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { IKnowledgeGateway } from './knowledge.gateway';
 import {
@@ -10,19 +11,60 @@ import {
   ICreateKnowledgeData,
   IndexStatusTypes,
   IUpdateKnowledgeData,
+  IKnowledgeQueryReference,
   IKnowledgeQueryResult,
+  IGetGraphLabelsParams,
+  IGraphLabelsResult,
   QueryModeTypes,
   IGetGraphParams,
   IGraphData,
 } from './knowledge.types';
 import { SourceService } from '../../source/domain/source.service';
+import { ISourceData } from '../../source/domain/source.types';
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
 
 const STALE_INDEX_AFTER_MS = 10 * 60 * 1000;
 
+const LABELS_DEFAULT_LIMIT = 50;
+const LABELS_MAX_LIMIT = 200;
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * The retrieval service's canned response when retrieval found no context at
+ * all — the one case it does not generate. Detecting it lets the product say
+ * "no relevant content" instead of surfacing an apology-shaped answer.
+ */
+export function isNoRelevantContentAnswer(answer: string): boolean {
+  const trimmed = answer.trim();
+  return (
+    trimmed.includes('[no-context]') ||
+    trimmed.startsWith("Sorry, I'm not able to provide an answer")
+  );
+}
+
+/**
+ * References resolve to Source rows through file_source: new ingests carry
+ * the source id, older content carries the name (text) or the URL. An
+ * unresolvable reference keeps sourceId null — visible, not dropped.
+ */
+export function resolveReference(
+  ref: { referenceId: string; filePath: string },
+  sources: ISourceData[],
+): IKnowledgeQueryReference {
+  const match =
+    sources.find((s) => s.id === ref.filePath) ??
+    sources.find((s) => s.name === ref.filePath) ??
+    sources.find((s) => s.url !== null && s.url === ref.filePath);
+  return {
+    referenceId: ref.referenceId,
+    filePath: ref.filePath,
+    sourceId: match?.id ?? null,
+    sourceName: match?.name ?? null,
+  };
 }
 
 @Injectable()
@@ -192,34 +234,118 @@ export class KnowledgeService implements OnApplicationBootstrap {
     mode?: QueryModeTypes,
     topK?: number,
   ): Promise<IKnowledgeQueryResult> {
-    await this.get(knowledgeId);
-    return this.gateway.searchKnowledge(knowledgeId, query, mode, topK);
+    const k = await this.get(knowledgeId);
+    this.requireReadable(k);
+    const complete = k.migrationState === 'done';
+
+    // An empty base does not get to generate an answer from no context —
+    // and the retrieval service is not even asked (FR-003).
+    const sources = await this.sources.findByKnowledge(knowledgeId);
+    const hasIndexed = sources.some((s) => s.indexState === 'indexed');
+    if (!hasIndexed) {
+      return {
+        answer: null,
+        reason: 'no_relevant_content',
+        knowledgeId,
+        complete,
+        references: [],
+      };
+    }
+
+    const raw = await this.gateway.searchKnowledge(
+      knowledgeId,
+      query,
+      mode,
+      topK,
+    );
+    if (isNoRelevantContentAnswer(raw.answer)) {
+      return {
+        answer: null,
+        reason: 'no_relevant_content',
+        knowledgeId,
+        complete,
+        references: [],
+      };
+    }
+    return {
+      answer: raw.answer,
+      knowledgeId,
+      complete,
+      references: raw.references.map((r) => resolveReference(r, sources)),
+    };
   }
 
-  getGraphLabels(): Promise<string[]> {
-    return this.gateway.getGraphLabels();
+  async getGraphLabels(
+    knowledgeId: string,
+    params: IGetGraphLabelsParams = {},
+  ): Promise<IGraphLabelsResult> {
+    const k = await this.get(knowledgeId);
+    this.requireReadable(k);
+    const all = await this.gateway.getGraphLabels(knowledgeId);
+    const search = params.search?.trim().toLowerCase();
+    const matched = search
+      ? all.filter((label) => label.toLowerCase().includes(search))
+      : all;
+    const limit = Math.min(
+      Math.max(params.limit ?? LABELS_DEFAULT_LIMIT, 1),
+      LABELS_MAX_LIMIT,
+    );
+    return {
+      labels: matched.slice(0, limit),
+      total: matched.length,
+      truncated: matched.length > limit,
+    };
   }
 
-  getGraph(params: IGetGraphParams): Promise<IGraphData> {
-    return this.gateway.getGraph(params);
+  async getGraph(
+    knowledgeId: string,
+    params: IGetGraphParams,
+  ): Promise<IGraphData> {
+    const k = await this.get(knowledgeId);
+    this.requireReadable(k);
+    return this.gateway.getGraph(knowledgeId, params);
+  }
+
+  /**
+   * A migrated base answers only from its own instance; if that instance is
+   * not ready, the failure is stated — never an empty result and never a
+   * fallback to the shared pool (FR-003, spec edge case).
+   */
+  private requireReadable(k: IKnowledgeData): void {
+    if (k.migrationState === 'done' && k.instanceState !== 'ready') {
+      const detail = k.instanceError ? `: ${k.instanceError}` : '';
+      throw new ServiceUnavailableException(
+        `Knowledge base "${k.name}" cannot answer right now — its retrieval instance is ${k.instanceState}${detail}`,
+      );
+    }
   }
 
   private async runIndex(knowledgeId: string): Promise<void> {
     try {
       const sources = await this.sources.findByKnowledge(knowledgeId);
       const failures: { sourceId: string; name: string; error: string }[] = [];
-      const previouslyIndexed = sources.filter((s) => s.indexed).length;
+      const previouslyIndexed = sources.filter(
+        (s) => s.indexState === 'indexed',
+      ).length;
       let newlyIndexed = 0;
       for (const source of sources) {
-        if (source.indexed) continue;
+        if (source.indexState === 'indexed') continue;
         try {
-          await this.sources.indexSource(source);
-          newlyIndexed += 1;
+          const final = await this.sources.indexSourceAndWait(source);
+          if (final.indexState === 'indexed') {
+            newlyIndexed += 1;
+          } else {
+            failures.push({
+              sourceId: source.id,
+              name: source.name,
+              error: final.indexError ?? 'processing failed',
+            });
+          }
         } catch (err) {
           // Per-source failures are isolated so one bad URL (404, empty
-          // body, etc.) does not strand the rest of the batch. The
-          // aggregate result is reported via indexError once the loop
-          // finishes.
+          // body, etc.) does not strand the rest of the batch. Each source
+          // carries its own reason (FR-030/FR-032); the aggregate summary
+          // stays for the base-level view.
           const message = errorMessage(err);
           failures.push({
             sourceId: source.id,

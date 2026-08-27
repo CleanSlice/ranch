@@ -12,6 +12,8 @@ export interface IIngestTextInput {
 export interface IIngestUrlInput {
   knowledgeId: string;
   url: string;
+  /** Recorded as the document's file_source; defaults to the url. */
+  fileSource?: string;
 }
 
 export interface IIngestFileInput {
@@ -44,6 +46,18 @@ export interface IQueryResult {
 
 export interface ILightragHealth {
   ok: boolean;
+}
+
+/** Where one submitted document is in its background processing. */
+export type TrackProcessingTypes =
+  | 'pending'
+  | 'processing'
+  | 'processed'
+  | 'failed';
+
+export interface ITrackStatus {
+  status: TrackProcessingTypes;
+  error: string | null;
 }
 
 export interface IGetGraphInput {

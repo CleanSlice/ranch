@@ -5,8 +5,10 @@ import Graph from 'graphology';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
 import type { GraphDto, GraphNodeDto, GraphEdgeDto } from '#api/data';
 
+const route = useRoute();
 const store = useKnowledgeStore();
 
+const knowledgeId = computed(() => route.params.id as string);
 const container = ref<HTMLElement | null>(null);
 const labels = ref<string[]>([]);
 const selectedLabel = ref<string>('*');
@@ -161,7 +163,8 @@ function normalizeAndFit(): void {
 }
 
 async function loadLabels(): Promise<void> {
-  labels.value = await store.getGraphLabels();
+  const result = await store.getGraphLabels(knowledgeId.value);
+  labels.value = result.labels;
 }
 
 async function loadGraph(): Promise<void> {
@@ -171,6 +174,7 @@ async function loadGraph(): Promise<void> {
   selectedEdge.value = null;
   try {
     const data = await store.getGraph(
+      knowledgeId.value,
       selectedLabel.value,
       maxDepth.value,
       maxNodes.value,

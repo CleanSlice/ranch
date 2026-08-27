@@ -145,16 +145,17 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     return getService().removeSource(id, sourceId);
   }
 
-  function getGraphLabels() {
-    return getService().graphLabels();
+  function getGraphLabels(id: string, search?: string, limit?: number) {
+    return getService().graphLabels(id, search, limit);
   }
 
   function getGraph(
+    id: string,
     label: string,
     maxDepth: number,
     maxNodes: number,
   ): Promise<IGraph> {
-    return getService().graph(label, maxDepth, maxNodes);
+    return getService().graph(id, label, maxDepth, maxNodes);
   }
 
   return {

@@ -4,7 +4,7 @@ import {
   IUpdateKnowledgeData,
   IIndexStatePatch,
   IInstanceStatePatch,
-  IKnowledgeQueryResult,
+  IRawKnowledgeSearchResult,
   MigrationStateTypes,
   QueryModeTypes,
   IGetGraphParams,
@@ -39,8 +39,11 @@ export abstract class IKnowledgeGateway {
     query: string,
     mode?: QueryModeTypes,
     topK?: number,
-  ): Promise<IKnowledgeQueryResult>;
+  ): Promise<IRawKnowledgeSearchResult>;
 
-  abstract getGraphLabels(): Promise<string[]>;
-  abstract getGraph(params: IGetGraphParams): Promise<IGraphData>;
+  abstract getGraphLabels(knowledgeId: string): Promise<string[]>;
+  abstract getGraph(
+    knowledgeId: string,
+    params: IGetGraphParams,
+  ): Promise<IGraphData>;
 }

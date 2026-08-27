@@ -1,5 +1,6 @@
 import type {
   IGraph,
+  IGraphLabels,
   IKnowledge,
   IKnowledgeSetupStatus,
   IKnowledgeStatus,
@@ -119,7 +120,12 @@ export class KnowledgeMapper {
 
   toQueryResult(raw: unknown): IQueryResult {
     if (raw && typeof raw === 'object') return raw as IQueryResult;
-    return { answer: '', references: [] };
+    return {
+      answer: null,
+      knowledgeId: '',
+      complete: true,
+      references: [],
+    };
   }
 
   toGraph(raw: unknown): IGraph {
@@ -166,8 +172,16 @@ export class KnowledgeMapper {
     return { added: 0, discovered: 0 };
   }
 
-  toLabels(raw: unknown): string[] {
-    return strList(raw);
+  toLabelsResult(raw: unknown): IGraphLabels {
+    if (raw && typeof raw === 'object') {
+      const o = raw as Record<string, unknown>;
+      return {
+        labels: strList(o.labels),
+        total: typeof o.total === 'number' ? o.total : 0,
+        truncated: bool(o.truncated),
+      };
+    }
+    return { labels: [], total: 0, truncated: false };
   }
 
   private toSetup(raw: unknown): IKnowledgeSetupStatus {

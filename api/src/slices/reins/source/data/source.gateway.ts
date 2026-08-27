@@ -9,7 +9,6 @@ import { PrismaService } from '#/setup/prisma/prisma.service';
 import { S3Repository } from '#/aws/s3';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
-import { workspaceOf } from '../../lightrag/data/workspace';
 import { ISourceGateway } from '../domain/source.gateway';
 import {
   ISourceData,
@@ -171,8 +170,7 @@ export class SourceGateway extends ISourceGateway {
   }
 
   async indexSource(source: ISourceData): Promise<void> {
-    const workspace = workspaceOf(source.knowledgeId);
-    const docId = await this.ingestByType(source, workspace);
+    const docId = await this.ingestByType(source);
     await this.prisma.source.update({
       where: { id: source.id },
       data: { lightragDocId: docId },
@@ -185,7 +183,9 @@ export class SourceGateway extends ISourceGateway {
       select: { lightragDocId: true },
     });
     if (!record?.lightragDocId) return;
-    await this.lightrag.deleteDocumentsByTrackIds([record.lightragDocId]);
+    await this.lightrag.deleteDocumentsByTrackIds(source.knowledgeId, [
+      record.lightragDocId,
+    ]);
   }
 
   async removeAllByKnowledge(knowledgeId: string): Promise<void> {
@@ -197,19 +197,17 @@ export class SourceGateway extends ISourceGateway {
       .map((r) => r.lightragDocId)
       .filter((v): v is string => v !== null);
     if (trackIds.length === 0) return;
-    await this.lightrag.deleteDocumentsByTrackIds(trackIds);
+    await this.lightrag.deleteDocumentsByTrackIds(knowledgeId, trackIds);
   }
 
-  private async ingestByType(
-    source: ISourceData,
-    workspace: string,
-  ): Promise<string> {
+  private async ingestByType(source: ISourceData): Promise<string> {
+    const knowledgeId = source.knowledgeId;
     if (source.type === 'text') {
       if (!source.content) {
         throw new Error(`Source ${source.id} has no content`);
       }
       const res = await this.lightrag.ingestText({
-        workspace,
+        knowledgeId,
         text: source.content,
         fileSource: source.name,
       });
@@ -220,7 +218,7 @@ export class SourceGateway extends ISourceGateway {
         throw new Error(`Source ${source.id} has no url`);
       }
       const res = await this.lightrag.ingestUrl({
-        workspace,
+        knowledgeId,
         url: source.url,
       });
       return res.docId;
@@ -232,7 +230,7 @@ export class SourceGateway extends ISourceGateway {
       const location = S3Repository.parseUri(source.url);
       const buffer = await this.s3.download(location);
       const res = await this.lightrag.ingestFile({
-        workspace,
+        knowledgeId,
         filename: source.name,
         mimeType: source.mimeType ?? 'application/octet-stream',
         content: buffer,

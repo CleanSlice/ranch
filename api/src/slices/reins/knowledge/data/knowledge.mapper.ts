@@ -4,6 +4,8 @@ import {
   IKnowledgeData,
   ICreateKnowledgeData,
   IndexStatusTypes,
+  InstanceStateTypes,
+  MigrationStateTypes,
 } from '../domain/knowledge.types';
 
 const INDEX_STATUSES: readonly IndexStatusTypes[] = [
@@ -13,12 +15,37 @@ const INDEX_STATUSES: readonly IndexStatusTypes[] = [
   'failed',
 ];
 
-function isIndexStatus(value: string): value is IndexStatusTypes {
-  return (INDEX_STATUSES as readonly string[]).includes(value);
-}
+const INSTANCE_STATES: readonly InstanceStateTypes[] = [
+  'absent',
+  'starting',
+  'ready',
+  'failed',
+  'stopping',
+];
+
+const MIGRATION_STATES: readonly MigrationStateTypes[] = [
+  'notStarted',
+  'inProgress',
+  'done',
+  'failed',
+];
 
 function parseIndexStatus(value: string): IndexStatusTypes {
-  return isIndexStatus(value) ? value : 'idle';
+  return (INDEX_STATUSES as readonly string[]).includes(value)
+    ? (value as IndexStatusTypes)
+    : 'idle';
+}
+
+function parseInstanceState(value: string): InstanceStateTypes {
+  return (INSTANCE_STATES as readonly string[]).includes(value)
+    ? (value as InstanceStateTypes)
+    : 'absent';
+}
+
+function parseMigrationState(value: string): MigrationStateTypes {
+  return (MIGRATION_STATES as readonly string[]).includes(value)
+    ? (value as MigrationStateTypes)
+    : 'notStarted';
 }
 
 @Injectable()
@@ -28,12 +55,17 @@ export class KnowledgeMapper {
       id: record.id,
       name: record.name,
       description: record.description ?? null,
+      workspace: record.workspace,
       entityTypes: record.entityTypes,
       relationshipTypes: record.relationshipTypes,
       indexStatus: parseIndexStatus(record.indexStatus),
       indexError: record.indexError ?? null,
       indexedAt: record.indexedAt ?? null,
       indexStartedAt: record.indexStartedAt ?? null,
+      instanceState: parseInstanceState(record.instanceState),
+      instanceError: record.instanceError ?? null,
+      instanceEndpoint: record.instanceEndpoint ?? null,
+      migrationState: parseMigrationState(record.migrationState),
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -47,6 +79,9 @@ export class KnowledgeMapper {
       entityTypes: data.entityTypes ?? [],
       relationshipTypes: data.relationshipTypes ?? [],
       workspace: 'pending',
+      // A base born after the transition has nothing to migrate — its
+      // content only ever lands in its own area.
+      migrationState: 'done',
     };
   }
 }

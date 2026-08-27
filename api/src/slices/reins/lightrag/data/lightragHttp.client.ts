@@ -24,7 +24,22 @@ export interface LightragRequestConfig {
   enabled: boolean;
 }
 
-export type LightragConfigResolver = () => Promise<LightragRequestConfig>;
+/**
+ * Which base a call belongs to and whether it reads or writes. The resolver
+ * (wired in lightrag.module.ts) owns the routing policy: a migrated base's
+ * calls go to its own instance, an unmigrated base reads the shared pool
+ * while migration writes already target the new instance. No context means
+ * the shared/legacy endpoint (health checks, installation-wide graph until
+ * it is removed).
+ */
+export interface ILightragCallContext {
+  knowledgeId: string;
+  intent: 'read' | 'write';
+}
+
+export type LightragConfigResolver = (
+  ctx?: ILightragCallContext,
+) => Promise<LightragRequestConfig>;
 
 export interface LightragHttpClientOptions {
   resolveConfig: LightragConfigResolver;
@@ -65,14 +80,16 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async ingestText(input: IIngestTextInput): Promise<IIngestResult> {
-    const cfg = await this.requireEnabled();
+    const cfg = await this.requireEnabled({
+      knowledgeId: input.knowledgeId,
+      intent: 'write',
+    });
     const res = await this.fetchImpl(`${cfg.baseUrl}/documents/text`, {
       method: 'POST',
       headers: this.headers(cfg.apiKey, {
         'content-type': 'application/json',
       }),
       body: JSON.stringify({
-        workspace: input.workspace,
         text: input.text,
         file_source: input.fileSource,
       }),
@@ -82,7 +99,10 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async ingestUrl(input: IIngestUrlInput): Promise<IIngestResult> {
-    const cfg = await this.requireEnabled();
+    const cfg = await this.requireEnabled({
+      knowledgeId: input.knowledgeId,
+      intent: 'write',
+    });
     // LightRAG dropped /documents/url; fetch + extract text in ranch-api
     // and forward to /documents/text. file_source carries the URL so the
     // resulting document remains traceable in the LightRAG dashboard.
@@ -100,7 +120,6 @@ export class LightragHttpClient extends ILightragClient {
         'content-type': 'application/json',
       }),
       body: JSON.stringify({
-        workspace: input.workspace,
         text,
         file_source: input.url,
       }),
@@ -131,9 +150,11 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async ingestFile(input: IIngestFileInput): Promise<IIngestResult> {
-    const cfg = await this.requireEnabled();
+    const cfg = await this.requireEnabled({
+      knowledgeId: input.knowledgeId,
+      intent: 'write',
+    });
     const form = new FormData();
-    form.append('workspace', input.workspace);
     form.append(
       'file',
       new Blob([new Uint8Array(input.content)], { type: input.mimeType }),
@@ -153,7 +174,10 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async query(input: IQueryInput): Promise<IQueryResult> {
-    const cfg = await this.requireEnabled();
+    const cfg = await this.requireEnabled({
+      knowledgeId: input.knowledgeId,
+      intent: 'read',
+    });
     const res = await this.fetchImpl(`${cfg.baseUrl}/query`, {
       method: 'POST',
       headers: this.headers(cfg.apiKey, {
@@ -171,9 +195,12 @@ export class LightragHttpClient extends ILightragClient {
     return extractQueryResult(body);
   }
 
-  async deleteDocumentsByTrackIds(trackIds: string[]): Promise<void> {
+  async deleteDocumentsByTrackIds(
+    knowledgeId: string,
+    trackIds: string[],
+  ): Promise<void> {
     if (trackIds.length === 0) return;
-    const cfg = await this.requireEnabled();
+    const cfg = await this.requireEnabled({ knowledgeId, intent: 'write' });
     const docIds: string[] = [];
     for (const trackId of trackIds) {
       const ids = await this.resolveDocIdsByTrackId(cfg, trackId);
@@ -214,8 +241,10 @@ export class LightragHttpClient extends ILightragClient {
     return extractTrackStatusDocIds(body);
   }
 
-  async getGraphLabels(): Promise<string[]> {
-    const cfg = await this.requireEnabled();
+  async getGraphLabels(knowledgeId?: string): Promise<string[]> {
+    const cfg = await this.requireEnabled(
+      knowledgeId ? { knowledgeId, intent: 'read' } : undefined,
+    );
     const res = await this.fetchImpl(`${cfg.baseUrl}/graph/label/list`, {
       method: 'GET',
       headers: this.headers(cfg.apiKey),
@@ -226,7 +255,11 @@ export class LightragHttpClient extends ILightragClient {
   }
 
   async getGraph(input: IGetGraphInput): Promise<ILightragGraph> {
-    const cfg = await this.requireEnabled();
+    const cfg = await this.requireEnabled(
+      input.knowledgeId
+        ? { knowledgeId: input.knowledgeId, intent: 'read' }
+        : undefined,
+    );
     const params = new URLSearchParams({ label: input.label });
     if (input.maxDepth !== undefined) {
       params.set('max_depth', String(input.maxDepth));
@@ -246,11 +279,15 @@ export class LightragHttpClient extends ILightragClient {
     return extractGraph(body);
   }
 
-  private async requireEnabled(): Promise<ResolvedRequestConfig> {
-    const cfg = await this.resolveConfig();
+  private async requireEnabled(
+    ctx?: ILightragCallContext,
+  ): Promise<ResolvedRequestConfig> {
+    const cfg = await this.resolveConfig(ctx);
     if (!cfg.enabled || !cfg.url) {
       throw new ServiceUnavailableException(
-        'Knowledge service is not configured',
+        ctx
+          ? `Retrieval is not available for knowledge ${ctx.knowledgeId}`
+          : 'Knowledge service is not configured',
       );
     }
     return {

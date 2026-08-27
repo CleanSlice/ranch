@@ -11,9 +11,15 @@ model Source {
   content       String?
   sizeBytes     Int?
   lightragDocId String?
+  // Honest per-source ingestion state (queued | processing | indexed |
+  // failed). lightragDocId only means "handed over"; this means what it says.
+  indexState    String    @default("queued")
+  indexError    String?
+  indexedAt     DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   @@index([knowledgeId])
   @@index([lightragDocId])
+  @@index([indexState])
 }

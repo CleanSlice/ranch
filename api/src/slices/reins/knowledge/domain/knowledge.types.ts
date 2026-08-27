@@ -1,17 +1,32 @@
+import type { InstanceStateTypes } from '../../instance/domain/instance.types';
+
 export type { QueryModeTypes } from '../../lightrag/domain/lightrag.types';
+export type { InstanceStateTypes };
 
 export type IndexStatusTypes = 'idle' | 'indexing' | 'ready' | 'failed';
+
+export type MigrationStateTypes =
+  | 'notStarted'
+  | 'inProgress'
+  | 'done'
+  | 'failed';
 
 export interface IKnowledgeData {
   id: string;
   name: string;
   description: string | null;
+  /** The recorded name of this base's retrieval area. */
+  workspace: string;
   entityTypes: string[];
   relationshipTypes: string[];
   indexStatus: IndexStatusTypes;
   indexError: string | null;
   indexedAt: Date | null;
   indexStartedAt: Date | null;
+  instanceState: InstanceStateTypes;
+  instanceError: string | null;
+  instanceEndpoint: string | null;
+  migrationState: MigrationStateTypes;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +50,12 @@ export interface IIndexStatePatch {
   indexError?: string | null;
   indexedAt?: Date | null;
   indexStartedAt?: Date | null;
+}
+
+export interface IInstanceStatePatch {
+  instanceState: InstanceStateTypes;
+  instanceError?: string | null;
+  instanceEndpoint?: string | null;
 }
 
 export interface IKnowledgeQueryReference {

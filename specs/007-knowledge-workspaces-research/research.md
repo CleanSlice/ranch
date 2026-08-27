@@ -306,3 +306,23 @@ not change the design):
    bound bases (fallback: build it from `effectiveKnowledgeIds`).
 3. Cross-namespace access from `agents` to `lightrag-postgres.platform` is open —
    no `NetworkPolicy` exists in `k8s/`, so this is expected to pass.
+
+**Verification results (2026-08-27, T001–T003):**
+
+1. **Verified live** against the local docker LightRAG (`ghcr.io/hkuds/lightrag`,
+   all four storages on Postgres): after a successful text ingest and background
+   processing, both `/app/data/rag_storage` and `/app/data/inputs` measured **0
+   bytes**; after a container restart with those directories empty, `/query`
+   still answered the ingested fact from Postgres. `emptyDir` is sufficient.
+   *Caveat*: `/documents/upload` stages files into `inputs/` during processing —
+   a pod rescheduled mid-ingest loses that staging copy, which per-source state
+   already covers (the source never reaches `indexed` and is re-ingested).
+2. **Verified in code**: `describeForRequest` in `knowledge.tool.ts` builds the
+   listing from `resolveAllowedIds()` (agent's own ids, template fallback) and
+   `findExistingByIds` — never from a full base list. No change needed.
+3. **Verified statically**: no `NetworkPolicy` manifest anywhere in `k8s/`, none
+   applied on the dev cluster. Final confirmation on the live cluster is an ops
+   formality; nothing in the design depends on it.
+
+**Pinned image (T003)**: `ghcr.io/hkuds/lightrag@sha256:ab23a9c83a735901b18c8960b6b482b602d5b6291abb7e07c5776f7bb2da504e`
+(digest of `:latest` resolved 2026-08-27).

@@ -3,7 +3,9 @@ import {
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
   IIndexStatePatch,
+  IInstanceStatePatch,
   IKnowledgeQueryResult,
+  MigrationStateTypes,
   QueryModeTypes,
   IGetGraphParams,
   IGraphData,
@@ -21,6 +23,14 @@ export abstract class IKnowledgeGateway {
   abstract updateIndexState(
     id: string,
     patch: IIndexStatePatch,
+  ): Promise<IKnowledgeData>;
+  abstract updateInstanceState(
+    id: string,
+    patch: IInstanceStatePatch,
+  ): Promise<IKnowledgeData>;
+  abstract updateMigrationState(
+    id: string,
+    state: MigrationStateTypes,
   ): Promise<IKnowledgeData>;
   abstract delete(id: string): Promise<void>;
 

@@ -1,18 +1,21 @@
 export type QueryModeTypes = 'hybrid' | 'local' | 'global' | 'naive';
 
+// The instance IS the workspace: each call names the base it belongs to and
+// the client resolves that base's endpoint. The old `workspace` body field
+// was silently ignored by the server — that is the defect this replaces.
 export interface IIngestTextInput {
-  workspace: string;
+  knowledgeId: string;
   text: string;
   fileSource?: string;
 }
 
 export interface IIngestUrlInput {
-  workspace: string;
+  knowledgeId: string;
   url: string;
 }
 
 export interface IIngestFileInput {
-  workspace: string;
+  knowledgeId: string;
   filename: string;
   mimeType: string;
   content: Buffer;
@@ -23,7 +26,7 @@ export interface IIngestResult {
 }
 
 export interface IQueryInput {
-  workspace: string;
+  knowledgeId: string;
   query: string;
   mode?: QueryModeTypes;
   topK?: number;
@@ -44,6 +47,9 @@ export interface ILightragHealth {
 }
 
 export interface IGetGraphInput {
+  // Optional until the graph endpoints become base-scoped; undefined reads
+  // the shared instance exactly as before.
+  knowledgeId?: string;
   label: string;
   maxDepth?: number;
   maxNodes?: number;

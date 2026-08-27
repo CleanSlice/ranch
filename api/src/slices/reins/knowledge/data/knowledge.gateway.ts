@@ -7,7 +7,9 @@ import {
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
   IIndexStatePatch,
+  IInstanceStatePatch,
   IKnowledgeQueryResult,
+  MigrationStateTypes,
   QueryModeTypes,
   IGetGraphParams,
   IGraphData,
@@ -96,6 +98,36 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     return this.mapper.toEntity(record);
   }
 
+  async updateInstanceState(
+    id: string,
+    patch: IInstanceStatePatch,
+  ): Promise<IKnowledgeData> {
+    const record = await this.prisma.knowledge.update({
+      where: { id },
+      data: {
+        instanceState: patch.instanceState,
+        ...(patch.instanceError !== undefined && {
+          instanceError: patch.instanceError,
+        }),
+        ...(patch.instanceEndpoint !== undefined && {
+          instanceEndpoint: patch.instanceEndpoint,
+        }),
+      },
+    });
+    return this.mapper.toEntity(record);
+  }
+
+  async updateMigrationState(
+    id: string,
+    state: MigrationStateTypes,
+  ): Promise<IKnowledgeData> {
+    const record = await this.prisma.knowledge.update({
+      where: { id },
+      data: { migrationState: state },
+    });
+    return this.mapper.toEntity(record);
+  }
+
   async delete(id: string): Promise<void> {
     await this.prisma.knowledge.delete({ where: { id } });
   }
@@ -107,7 +139,7 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     topK?: number,
   ): Promise<IKnowledgeQueryResult> {
     return this.lightrag.query({
-      workspace: workspaceOf(knowledgeId),
+      knowledgeId,
       query,
       mode,
       topK,

@@ -67,7 +67,7 @@ agent manifest uses, so no new RBAC is required.
 |---|---|
 | `metadata.name` | `lightrag-kb-<knowledgeId>` |
 | `metadata.labels` | `ranch/knowledge-id: <knowledgeId>`, `ranch/component: retrieval` |
-| `image` | `ghcr.io/hkuds/lightrag` — pinned to a digest, not `latest` |
+| `image` | `ghcr.io/hkuds/lightrag@sha256:ab23a9c83a735901b18c8960b6b482b602d5b6291abb7e07c5776f7bb2da504e` — pinned digest (resolved 2026-08-27), never `latest` |
 | `containerPort` | `9621` |
 | `resources.requests` | `cpu: 100m`, `memory: 512Mi` — one agent slot |
 | `resources.limits` | `cpu: 2`, `memory: 4Gi` — headroom for ingest bursts |

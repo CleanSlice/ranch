@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import { IKnowledgeGateway } from './knowledge.gateway';
 import {
   IKnowledgeData,
@@ -11,6 +16,8 @@ import {
   IGraphData,
 } from './knowledge.types';
 import { SourceService } from '../../source/domain/source.service';
+import { IInstanceGateway } from '../../instance/domain/instance.gateway';
+import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
 
 const STALE_INDEX_AFTER_MS = 10 * 60 * 1000;
 
@@ -19,14 +26,20 @@ function errorMessage(err: unknown): string {
 }
 
 @Injectable()
-export class KnowledgeService {
+export class KnowledgeService implements OnApplicationBootstrap {
   private readonly logger = new Logger(KnowledgeService.name);
   private readonly inflightIndexing = new Map<string, Promise<void>>();
 
   constructor(
     private readonly gateway: IKnowledgeGateway,
     private readonly sources: SourceService,
+    private readonly instances: IInstanceGateway,
+    private readonly knowledgeConfig: IKnowledgeConfigGateway,
   ) {}
+
+  onApplicationBootstrap(): void {
+    void this.reconcileInstances();
+  }
 
   list(): Promise<IKnowledgeData[]> {
     return this.gateway.findAll();
@@ -38,8 +51,11 @@ export class KnowledgeService {
     return k;
   }
 
-  create(data: ICreateKnowledgeData): Promise<IKnowledgeData> {
-    return this.gateway.create(data);
+  async create(data: ICreateKnowledgeData): Promise<IKnowledgeData> {
+    await this.instances.ensureCapacityForNew();
+    const created = await this.gateway.create(data);
+    await this.provisionInstance(created);
+    return this.get(created.id);
   }
 
   async update(
@@ -52,6 +68,8 @@ export class KnowledgeService {
 
   async delete(id: string): Promise<void> {
     await this.get(id);
+    // Order matters: the area's content is removed while the instance can
+    // still serve the delete calls, then the instance goes.
     try {
       await this.sources.removeAllByKnowledge(id);
     } catch (err) {
@@ -59,7 +77,78 @@ export class KnowledgeService {
         `removeAllByKnowledge(${id}) failed: ${errorMessage(err)}`,
       );
     }
+    try {
+      await this.instances.terminate(id);
+    } catch (err) {
+      this.logger.warn(`terminate(${id}) failed: ${errorMessage(err)}`);
+    }
     await this.gateway.delete(id);
+  }
+
+  /**
+   * Bring a base's instance up and record what happened. Reused by create,
+   * start-up reconciliation and the migration — provision itself is
+   * idempotent, so none of them can double-provision.
+   */
+  async provisionInstance(k: IKnowledgeData): Promise<void> {
+    try {
+      const status = await this.instances.provision({
+        knowledgeId: k.id,
+        knowledgeName: k.name,
+        workspace: k.workspace,
+      });
+      await this.gateway.updateInstanceState(k.id, {
+        instanceState: status.state,
+        instanceError: status.error,
+        instanceEndpoint: status.endpoint,
+      });
+    } catch (err) {
+      const message = errorMessage(err);
+      this.logger.error(`provision failed for ${k.id}: ${message}`);
+      await this.gateway.updateInstanceState(k.id, {
+        instanceState: 'failed',
+        instanceError: message,
+        instanceEndpoint: null,
+      });
+    }
+  }
+
+  /**
+   * API restart: provision what is missing, refresh what is running, and
+   * REPORT orphans — an instance with no matching base is evidence of a
+   * failed deletion, and deleting it would destroy the evidence along with
+   * the content.
+   */
+  async reconcileInstances(): Promise<void> {
+    try {
+      if (!(await this.knowledgeConfig.isEnabled())) return;
+      const [bases, running] = await Promise.all([
+        this.gateway.findAll(),
+        this.instances.list(),
+      ]);
+      const byId = new Map(running.map((s) => [s.knowledgeId, s]));
+      for (const k of bases) {
+        const status = byId.get(k.id);
+        byId.delete(k.id);
+        if (!status || status.state === 'absent' || status.state === 'failed') {
+          await this.provisionInstance(k);
+        } else {
+          await this.gateway.updateInstanceState(k.id, {
+            instanceState: status.state,
+            instanceError: status.error,
+            instanceEndpoint: status.endpoint,
+          });
+        }
+      }
+      for (const orphan of byId.values()) {
+        this.logger.warn(
+          `Orphaned retrieval instance for missing base ${orphan.knowledgeId} ` +
+            `(state=${orphan.state}) — left running for inspection, remove manually`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(`instance reconciliation failed: ${errorMessage(err)}`);
+    }
   }
 
   async startIndex(knowledgeId: string): Promise<void> {

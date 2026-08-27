@@ -141,15 +141,31 @@ provide('knowledge-refresh', refresh);
 
     <p v-if="indexError" class="text-xs text-destructive">{{ indexError }}</p>
 
+    <!-- `custom` slot: exactly one class set is ever applied per state. The
+         old active-class approach set the same properties from two classes
+         at equal specificity, so stylesheet order decided the winner and
+         nothing ever highlighted. -->
     <nav class="flex gap-1 border-b">
       <NuxtLink
         v-for="tab in tabs"
         :key="tab.to"
+        v-slot="{ href, navigate, isActive }"
         :to="tab.to"
-        active-class="border-primary text-foreground"
-        class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        custom
       >
-        {{ tab.label }}
+        <a
+          :href="href"
+          class="border-b-2 px-3 py-2 text-sm transition-colors"
+          :class="
+            isActive
+              ? 'border-primary font-medium text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          "
+          :aria-current="isActive ? 'page' : undefined"
+          @click="navigate"
+        >
+          {{ tab.label }}
+        </a>
       </NuxtLink>
     </nav>
 

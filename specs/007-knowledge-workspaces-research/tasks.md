@@ -147,8 +147,8 @@ body (quickstart scenario 6, SC-010).
 
 ### Implementation for User Story 4
 
-- [ ] T036 [P] [US4] Fix the active tab in `admin/slices/reins/pages/knowledges/[id].vue` via `NuxtLink`'s `custom` slot binding classes from `isActive`, so exactly one class set is ever applied (research R8 — the current two-utility conflict is decided by stylesheet order; do not copy `setting/components/setting/nav/Menu.vue`, it survives by accident)
-- [ ] T037 [P] [US4] Add the missing default section `admin/slices/reins/pages/knowledges/[id]/index.vue` rendering the sources section (FR-027)
+- [X] T036 [P] [US4] Fix the active tab in `admin/slices/reins/pages/knowledges/[id].vue` via `NuxtLink`'s `custom` slot binding classes from `isActive`, so exactly one class set is ever applied (research R8 — the current two-utility conflict is decided by stylesheet order; do not copy `setting/components/setting/nav/Menu.vue`, it survives by accident)
+- [X] T037 [P] [US4] Add the missing default section `admin/slices/reins/pages/knowledges/[id]/index.vue` rendering the sources section (FR-027)
 
 **Checkpoint**: SC-010 — every route under a base shows a distinguishable current
 state by click and by direct navigation.
@@ -166,8 +166,8 @@ SC-009).
 
 ### Implementation for User Story 5
 
-- [ ] T038 [US5] Replace the `SelectItem`-per-label render in `admin/slices/reins/components/knowledge/graph/Provider.vue` with `reka-ui`'s combobox + virtualizer (already a dependency), fed by `GET /knowledges/:id/graph/labels?search=&limit=` from T019 — filtering server-side, nothing installation-wide (research R7)
-- [ ] T039 [US5] Distinguish the picker's empty states in `admin/slices/reins/components/knowledge/graph/Provider.vue`: "nothing has been indexed yet" versus "no entity matches what you typed" (FR-029)
+- [X] T038 [US5] Replace the `SelectItem`-per-label render in `admin/slices/reins/components/knowledge/graph/Provider.vue` with `reka-ui`'s combobox + virtualizer (already a dependency), fed by `GET /knowledges/:id/graph/labels?search=&limit=` from T019 — filtering server-side, nothing installation-wide (research R7)
+- [X] T039 [US5] Distinguish the picker's empty states in `admin/slices/reins/components/knowledge/graph/Provider.vue`: "nothing has been indexed yet" versus "no entity matches what you typed" (FR-029)
 
 **Checkpoint**: SC-009 — usable within 1 second at any base size; no entity from
 another base ever offered.

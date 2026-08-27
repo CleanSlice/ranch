@@ -107,7 +107,7 @@ async function onRemove(item: IKnowledge) {
             v-for="item in items"
             :key="item.id"
             class="cursor-pointer"
-            @click="navigateTo(`/knowledges/${item.id}/edit`)"
+            @click="navigateTo(`/knowledges/${item.id}`)"
           >
             <TableCell class="font-medium">{{ item.name }}</TableCell>
             <TableCell>{{ item.sourcesCount ?? 0 }}</TableCell>

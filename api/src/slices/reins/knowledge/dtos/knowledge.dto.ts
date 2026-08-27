@@ -15,7 +15,11 @@ export class KnowledgeDto
   @ApiProperty() id: string;
   @ApiProperty() name: string;
   @ApiProperty({ type: String, nullable: true }) description: string | null;
-  @ApiProperty({ enum: ['idle', 'indexing', 'ready', 'failed'] })
+  @ApiProperty({
+    enum: ['idle', 'indexing', 'ready', 'failed', 'empty', 'partial'],
+    description:
+      'Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).',
+  })
   indexStatus: IndexStatusTypes;
   @ApiProperty({ type: String, nullable: true }) indexError: string | null;
   @ApiProperty({ type: String, nullable: true }) indexedAt: Date | null;

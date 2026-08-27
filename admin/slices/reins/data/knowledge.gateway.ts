@@ -211,6 +211,14 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
     });
   }
 
+  reindexSource(id: string, sourceId: string): Promise<void> {
+    return this.execute(async () => {
+      await apiClient.instance.post(
+        `/knowledges/${id}/sources/${sourceId}/reindex`,
+      );
+    });
+  }
+
   graphLabels(
     id: string,
     search?: string,

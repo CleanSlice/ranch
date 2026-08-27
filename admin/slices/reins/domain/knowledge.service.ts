@@ -110,6 +110,10 @@ export class KnowledgeService {
     return this.gateway.removeSource(id, sourceId);
   }
 
+  reindexSource(id: string, sourceId: string): Promise<void> {
+    return this.gateway.reindexSource(id, sourceId);
+  }
+
   graphLabels(
     id: string,
     search?: string,

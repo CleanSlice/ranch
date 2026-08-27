@@ -176,7 +176,10 @@ export type KnowledgeListItemDto = {
   id: string;
   name: string;
   description: string | null;
-  indexStatus: "idle" | "indexing" | "ready" | "failed";
+  /**
+   * Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).
+   */
+  indexStatus: "idle" | "indexing" | "ready" | "failed" | "empty" | "partial";
   indexError: string | null;
   indexedAt: string | null;
   indexStartedAt: string | null;
@@ -2048,6 +2051,20 @@ export type AddKnowledgeSourceData = {
 
 export type AddKnowledgeSourceResponses = {
   201: unknown;
+};
+
+export type ReindexKnowledgeSourceData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex";
+};
+
+export type ReindexKnowledgeSourceResponses = {
+  202: unknown;
 };
 
 export type AddKnowledgeFileSourcesData = {

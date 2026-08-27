@@ -42,7 +42,6 @@ export class SourceMapper {
       mimeType: record.mimeType ?? null,
       content: record.content ?? null,
       sizeBytes: record.sizeBytes ?? null,
-      indexed: record.lightragDocId !== null,
       indexState: parseIndexState(record.indexState),
       indexError: record.indexError ?? null,
       indexedAt: record.indexedAt ?? null,

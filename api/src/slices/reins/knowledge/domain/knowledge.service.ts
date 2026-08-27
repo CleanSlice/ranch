@@ -23,6 +23,7 @@ import {
 } from './knowledge.types';
 import { SourceService } from '../../source/domain/source.service';
 import { ISourceData } from '../../source/domain/source.types';
+import { deriveIndexStatus } from './knowledge.status';
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
 
@@ -97,6 +98,16 @@ export class KnowledgeService implements OnApplicationBootstrap {
     const k = await this.gateway.findById(id);
     if (!k) throw new NotFoundException(`Knowledge ${id} not found`);
     return k;
+  }
+
+  /** The read the console sees: indexStatus derived from the sources. */
+  async getWithDerivedStatus(id: string): Promise<IKnowledgeData> {
+    const k = await this.get(id);
+    const sources = await this.sources.findByKnowledge(id);
+    return {
+      ...k,
+      indexStatus: deriveIndexStatus(sources.map((s) => s.indexState)),
+    };
   }
 
   async create(data: ICreateKnowledgeData): Promise<IKnowledgeData> {

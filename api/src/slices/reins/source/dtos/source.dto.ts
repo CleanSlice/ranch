@@ -14,7 +14,9 @@ export class SourceDto implements ISourceData {
   @ApiProperty({ type: String, nullable: true }) mimeType: string | null;
   @ApiProperty({ type: String, nullable: true }) content: string | null;
   @ApiProperty({ type: Number, nullable: true }) sizeBytes: number | null;
-  @ApiProperty() indexed: boolean;
+  // The old `indexed` boolean meant "handed over", not "searchable" —
+  // keeping a truthful state next to a misleading boolean is how the
+  // misleading one survives, so it is gone rather than deprecated.
   @ApiProperty({ enum: ['queued', 'processing', 'indexed', 'failed'] })
   indexState: SourceIndexStateTypes;
   @ApiProperty({ type: String, nullable: true }) indexError: string | null;

@@ -14,6 +14,10 @@ const label = computed(() => {
       return 'Ready';
     case 'failed':
       return 'Failed';
+    case 'empty':
+      return 'Empty';
+    case 'partial':
+      return 'Partially indexed';
     default:
       return props.status;
   }
@@ -25,6 +29,7 @@ const variant = computed<'default' | 'secondary' | 'destructive' | 'outline'>(
       case 'ready':
         return 'default';
       case 'indexing':
+      case 'partial':
         return 'secondary';
       case 'failed':
         return 'destructive';

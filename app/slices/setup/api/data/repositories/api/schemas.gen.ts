@@ -403,7 +403,9 @@ export const KnowledgeListItemDtoSchema = {
     },
     indexStatus: {
       type: "string",
-      enum: ["idle", "indexing", "ready", "failed"],
+      enum: ["idle", "indexing", "ready", "failed", "empty", "partial"],
+      description:
+        "Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).",
     },
     indexError: {
       type: "string",

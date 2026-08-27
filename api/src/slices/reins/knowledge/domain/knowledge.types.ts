@@ -3,7 +3,16 @@ import type { InstanceStateTypes } from '../../instance/domain/instance.types';
 export type { QueryModeTypes } from '../../lightrag/domain/lightrag.types';
 export type { InstanceStateTypes };
 
-export type IndexStatusTypes = 'idle' | 'indexing' | 'ready' | 'failed';
+// 'empty' | 'indexing' | 'partial' | 'ready' are the derived rollup values;
+// 'idle' and 'failed' survive only as stored legacy values until every base
+// has been read through the derivation at least once.
+export type IndexStatusTypes =
+  | 'idle'
+  | 'indexing'
+  | 'ready'
+  | 'failed'
+  | 'empty'
+  | 'partial';
 
 export type MigrationStateTypes =
   | 'notStarted'

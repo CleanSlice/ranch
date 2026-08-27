@@ -67,6 +67,22 @@ export class SourceController {
     return this.service.findByKnowledge(knowledgeId);
   }
 
+  @Post(':sourceId/reindex')
+  @ApiOperation({
+    summary: 'Retry indexing a single source',
+    operationId: 'reindexKnowledgeSource',
+    description:
+      'Requeues one source and re-ingests it without touching the rest of the batch. Progress is reported through the source own indexState.',
+  })
+  @HttpCode(202)
+  async reindex(
+    @Param('knowledgeId') knowledgeId: string,
+    @Param('sourceId') sourceId: string,
+  ) {
+    await this.service.reindexSource(knowledgeId, sourceId);
+    return { ok: true };
+  }
+
   @Post()
   @ApiOperation({
     summary: 'Add source (file|url|text)',

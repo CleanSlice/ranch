@@ -24,7 +24,7 @@ await refresh();
 // What the base holds and whether it can answer — visible without leaving
 // the header (FR-023).
 const searchableCount = computed(
-  () => sources.value.filter((s) => s.indexed).length,
+  () => sources.value.filter((s) => s.indexState === 'indexed').length,
 );
 const canAnswer = computed(
   () =>

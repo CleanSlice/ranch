@@ -185,14 +185,14 @@ the base does not claim readiness it lacks (quickstart scenario 7, SC-011).
 
 ### Tests for User Story 6 (write first, must fail before implementation)
 
-- [ ] T040 [P] [US6] Unit spec for the base-readiness rollup in `api/src/slices/reins/knowledge/knowledge.status.spec.ts`: `ready` only when ≥1 source and all `indexed`; any `processing` → `indexing`; any `failed` with none processing → `partial`; no sources → `empty` (data-model.md state rules)
+- [X] T040 [P] [US6] Unit spec for the base-readiness rollup in `api/src/slices/reins/knowledge/knowledge.status.spec.ts`: `ready` only when ≥1 source and all `indexed`; any `processing` → `indexing`; any `failed` with none processing → `partial`; no sources → `empty` (data-model.md state rules)
 
 ### Implementation for User Story 6
 
-- [ ] T041 [US6] Derive `indexStatus` from source states in the knowledge service/mapper in `api/src/slices/reins/knowledge/` instead of setting it independently (FR-031); T040 passes
-- [ ] T042 [US6] Remove the misleading `indexed` boolean (`lightragDocId !== null` in `api/src/slices/reins/source/data/source.mapper.ts:29`) and expose `indexState`/`indexError`/`indexedAt` in the source DTOs (contracts §4 — keeping both a truthful state and a misleading boolean is how the misleading one survives)
-- [ ] T043 [US6] Add `POST /knowledges/:knowledgeId/sources/:sourceId/reindex` in `api/src/slices/reins/source/` — retries a single failed source without touching the rest of the batch (FR-032)
-- [ ] T044 [US6] Regenerate the contract and update the `admin` sources table in `admin/slices/reins/components/` to show per-source state, its own failure reason, and a retry action (SC-011 — identifiable from the interface alone, no logs)
+- [X] T041 [US6] Derive `indexStatus` from source states in the knowledge service/mapper in `api/src/slices/reins/knowledge/` instead of setting it independently (FR-031); T040 passes
+- [X] T042 [US6] Remove the misleading `indexed` boolean (`lightragDocId !== null` in `api/src/slices/reins/source/data/source.mapper.ts:29`) and expose `indexState`/`indexError`/`indexedAt` in the source DTOs (contracts §4 — keeping both a truthful state and a misleading boolean is how the misleading one survives)
+- [X] T043 [US6] Add `POST /knowledges/:knowledgeId/sources/:sourceId/reindex` in `api/src/slices/reins/source/` — retries a single failed source without touching the rest of the batch (FR-032)
+- [X] T044 [US6] Regenerate the contract and update the `admin` sources table in `admin/slices/reins/components/` to show per-source state, its own failure reason, and a retry action (SC-011 — identifiable from the interface alone, no logs)
 
 **Checkpoint**: quickstart scenario 7 passes end to end.
 

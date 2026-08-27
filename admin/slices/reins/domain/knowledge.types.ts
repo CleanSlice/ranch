@@ -15,7 +15,13 @@ export interface IGraphLabels {
   truncated: boolean;
 }
 
-export type IndexStatus = 'idle' | 'indexing' | 'ready' | 'failed';
+export type IndexStatus =
+  | 'idle'
+  | 'indexing'
+  | 'ready'
+  | 'failed'
+  | 'empty'
+  | 'partial';
 export type SourceType = 'file' | 'url' | 'text';
 export type KnowledgeQueryMode = 'hybrid' | 'local' | 'global' | 'naive';
 
@@ -53,6 +59,8 @@ export interface IKnowledgePage {
   perPage: number;
 }
 
+export type SourceIndexState = 'queued' | 'processing' | 'indexed' | 'failed';
+
 export interface ISource {
   id: string;
   knowledgeId: string;
@@ -62,7 +70,10 @@ export interface ISource {
   mimeType: string | null;
   content: string | null;
   sizeBytes: number | null;
-  indexed: boolean;
+  /** "indexed" means searchable — not merely handed over. */
+  indexState: SourceIndexState;
+  indexError: string | null;
+  indexedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

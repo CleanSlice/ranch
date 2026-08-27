@@ -59,6 +59,7 @@ import type {
   QueryKnowledgeResponse,
   GetKnowledgeSourcesData,
   AddKnowledgeSourceData,
+  ReindexKnowledgeSourceData,
   AddKnowledgeFileSourcesData,
   AddKnowledgeFileSourcesResponse,
   AddKnowledgeSourcesFromSitemapData,
@@ -1192,6 +1193,23 @@ export class KnowledgeSourcesService {
         "Content-Type": null,
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Retry indexing a single source
+   * Requeues one source and re-ingests it without touching the rest of the batch. Progress is reported through the source own indexState.
+   */
+  public static reindexKnowledgeSource<ThrowOnError extends boolean = false>(
+    options: Options<ReindexKnowledgeSourceData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex",
+      ...options,
     });
   }
 

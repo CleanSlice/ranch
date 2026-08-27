@@ -150,6 +150,10 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     return getService().removeSource(id, sourceId);
   }
 
+  function reindexSource(id: string, sourceId: string) {
+    return getService().reindexSource(id, sourceId);
+  }
+
   function getGraphLabels(id: string, search?: string, limit?: number) {
     return getService().graphLabels(id, search, limit);
   }
@@ -187,6 +191,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     addSourcesFromSitemap,
     addSourcesFromArchive,
     removeSource,
+    reindexSource,
     getGraphLabels,
     getGraph,
   };

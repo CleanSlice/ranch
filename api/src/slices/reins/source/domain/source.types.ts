@@ -22,7 +22,6 @@ export interface ISourceData {
   mimeType: string | null;
   content: string | null;
   sizeBytes: number | null;
-  indexed: boolean;
   indexState: SourceIndexStateTypes;
   indexError: string | null;
   indexedAt: Date | null;

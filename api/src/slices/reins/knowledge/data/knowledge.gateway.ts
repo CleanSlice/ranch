@@ -18,6 +18,8 @@ import {
   IGraphData,
 } from '../domain/knowledge.types';
 import { workspaceOf } from '../../lightrag/data/workspace';
+import { deriveIndexStatus } from '../domain/knowledge.status';
+import type { SourceIndexStateTypes } from '../../source/domain/source.types';
 import { KnowledgeMapper } from './knowledge.mapper';
 
 @Injectable()
@@ -80,9 +82,25 @@ export class KnowledgeGateway extends IKnowledgeGateway {
       sums.map((s) => [s.knowledgeId, s._sum.sizeBytes ?? 0]),
     );
 
+    const stateRows = ids.length
+      ? await this.prisma.source.groupBy({
+          by: ['knowledgeId', 'indexState'],
+          where: { knowledgeId: { in: ids } },
+          _count: { _all: true },
+        })
+      : [];
+    const statesOf = new Map<string, SourceIndexStateTypes[]>();
+    for (const row of stateRows) {
+      const list = statesOf.get(row.knowledgeId) ?? [];
+      const state = row.indexState as SourceIndexStateTypes;
+      for (let i = 0; i < row._count._all; i += 1) list.push(state);
+      statesOf.set(row.knowledgeId, list);
+    }
+
     return {
       items: records.map((r) => ({
         ...this.mapper.toEntity(r),
+        indexStatus: deriveIndexStatus(statesOf.get(r.id) ?? []),
         sourcesCount: r._count.sources,
         totalSizeBytes: sizeOf.get(r.id) ?? 0,
       })),

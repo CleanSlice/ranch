@@ -56,7 +56,6 @@ function source(p: Partial<ISourceData> & { id: string; knowledgeId: string }): 
     mimeType: null,
     content: 'text',
     sizeBytes: null,
-    indexed: true,
     indexState: 'indexed',
     indexError: null,
     indexedAt: new Date(0),

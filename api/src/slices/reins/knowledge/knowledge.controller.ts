@@ -150,7 +150,7 @@ export class KnowledgeController {
   @ApiOperation({ summary: 'Get one knowledge', operationId: 'getKnowledge' })
   async getOne(@Param('id') id: string) {
     await this.requireEnabled();
-    return this.service.get(id);
+    return this.service.getWithDerivedStatus(id);
   }
 
   @Post()

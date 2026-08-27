@@ -13,6 +13,7 @@ import type {
   ISourceFilesResult,
   ISourceSitemapResult,
   MigrationState,
+  SourceIndexState,
   SourceType,
 } from '../domain/knowledge.types';
 
@@ -21,8 +22,16 @@ const INDEX_STATUSES = new Set<IndexStatus>([
   'indexing',
   'ready',
   'failed',
+  'empty',
+  'partial',
 ]);
 const SOURCE_TYPES = new Set<SourceType>(['file', 'url', 'text']);
+const SOURCE_INDEX_STATES = new Set<SourceIndexState>([
+  'queued',
+  'processing',
+  'indexed',
+  'failed',
+]);
 const INSTANCE_STATES = new Set<InstanceState>([
   'absent',
   'starting',
@@ -139,7 +148,13 @@ export class KnowledgeMapper {
       mimeType: nullableStr(o.mimeType),
       content: nullableStr(o.content),
       sizeBytes: typeof o.sizeBytes === 'number' ? o.sizeBytes : null,
-      indexed: bool(o.indexed),
+      indexState:
+        typeof o.indexState === 'string' &&
+        SOURCE_INDEX_STATES.has(o.indexState as SourceIndexState)
+          ? (o.indexState as SourceIndexState)
+          : 'queued',
+      indexError: nullableStr(o.indexError),
+      indexedAt: nullableStr(o.indexedAt),
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
     };

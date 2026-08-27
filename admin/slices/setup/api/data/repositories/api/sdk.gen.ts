@@ -43,6 +43,7 @@ import type {
   ApiKeyControllerRemoveData,
   ApiKeyControllerRemoveResponse,
   GetKnowledgesData,
+  GetKnowledgesResponse,
   CreateKnowledgeData,
   GetKnowledgeStatusData,
   GetGraphLabelsData,
@@ -984,13 +985,13 @@ export class ApiKeysService {
 
 export class KnowledgesService {
   /**
-   * List knowledges
+   * List knowledges (searchable, paged)
    */
   public static getKnowledges<ThrowOnError extends boolean = false>(
     options?: Options<GetKnowledgesData, ThrowOnError>,
   ) {
     return (options?.client ?? _heyApiClient).get<
-      unknown,
+      GetKnowledgesResponse,
       unknown,
       ThrowOnError
     >({

@@ -3,6 +3,7 @@ import type {
   IGraph,
   IGraphLabels,
   IKnowledge,
+  IKnowledgePage,
   IKnowledgeStatus,
   IQueryResult,
   ISource,
@@ -17,6 +18,11 @@ import type {
 export abstract class IKnowledgeGateway {
   abstract status(): Promise<IKnowledgeStatus>;
   abstract findAll(): Promise<IKnowledge[]>;
+  abstract findPage(
+    search: string | undefined,
+    page: number,
+    perPage: number,
+  ): Promise<IKnowledgePage>;
   abstract findById(id: string): Promise<IKnowledge | null>;
   abstract create(input: ICreateKnowledgeInput): Promise<IKnowledge | null>;
   abstract update(

@@ -103,11 +103,11 @@ agent's bindings — neither task requires scrolling an unfiltered list
 
 ### Implementation for User Story 2
 
-- [ ] T025 [US2] Extend `GET /knowledges` with search + paging parameters and picker context per item — source count, total size, `indexStatus`, `instanceState` — in `api/src/slices/reins/knowledge/knowledge.controller.ts` + `dtos/` (FR-009, FR-011)
-- [ ] T026 [US2] Regenerate the contract after T025 (`cd api && bun run generate:swagger`, then `bun run build:api` in `admin` and `app`)
-- [ ] T027 [US2] Admin list with search and paging in `admin/slices/reins/components/knowledge/list/` — no screen requires scanning every base; with only a few bases, zero extra steps versus today (FR-016)
-- [ ] T028 [P] [US2] Agent-side knowledge view in `admin/slices/agent/agent/components/agent/item/Form.vue`: shows which bases the agent reads and edits them in place (FR-010); template-inherited bases are marked as inherited and from where (FR-012); a binding to a deleted base is visible, not silently dropped (FR-013)
-- [ ] T029 [US2] Binding picker with context in `admin/slices/agent/agent/components/`: each entry shows what the base holds, its size and state, and the picker stays usable as base count grows (FR-011); duplicate names disambiguated (spec edge case)
+- [X] T025 [US2] Extend `GET /knowledges` with search + paging parameters and picker context per item — source count, total size, `indexStatus`, `instanceState` — in `api/src/slices/reins/knowledge/knowledge.controller.ts` + `dtos/` (FR-009, FR-011)
+- [X] T026 [US2] Regenerate the contract after T025 (`cd api && bun run generate:swagger`, then `bun run build:api` in `admin` and `app`)
+- [X] T027 [US2] Admin list with search and paging in `admin/slices/reins/components/knowledge/list/` — no screen requires scanning every base; with only a few bases, zero extra steps versus today (FR-016)
+- [X] T028 [P] [US2] Agent-side knowledge view in `admin/slices/agent/agent/components/agent/item/Form.vue`: shows which bases the agent reads and edits them in place (FR-010); template-inherited bases are marked as inherited and from where (FR-012); a binding to a deleted base is visible, not silently dropped (FR-013)
+- [X] T029 [US2] Binding picker with context in `admin/slices/agent/agent/components/`: each entry shows what the base holds, its size and state, and the picker stays usable as base count grows (FR-011); duplicate names disambiguated (spec edge case)
 
 **Checkpoint**: SC-003 (find in <15s at 40 bases) and SC-004 (no extra steps at
 few bases) verifiable.

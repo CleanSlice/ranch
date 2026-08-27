@@ -19,6 +19,14 @@ export type IndexStatus = 'idle' | 'indexing' | 'ready' | 'failed';
 export type SourceType = 'file' | 'url' | 'text';
 export type KnowledgeQueryMode = 'hybrid' | 'local' | 'global' | 'naive';
 
+export type InstanceState =
+  | 'absent'
+  | 'starting'
+  | 'ready'
+  | 'failed'
+  | 'stopping';
+export type MigrationState = 'notStarted' | 'inProgress' | 'done' | 'failed';
+
 export interface IKnowledge {
   id: string;
   name: string;
@@ -29,9 +37,22 @@ export interface IKnowledge {
   indexError: string | null;
   indexedAt: string | null;
   indexStartedAt: string | null;
+  instanceState: InstanceState;
+  instanceError: string | null;
+  migrationState: MigrationState;
+  /** Present on list entries — context for choosing a base. */
+  sourcesCount?: number;
+  totalSizeBytes?: number;
   createdAt: string;
   updatedAt: string;
   sources?: ISource[];
+}
+
+export interface IKnowledgePage {
+  items: IKnowledge[];
+  total: number;
+  page: number;
+  perPage: number;
 }
 
 export interface ISource {

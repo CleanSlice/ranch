@@ -30,3 +30,17 @@ export class KnowledgeDto
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
 }
+
+export class KnowledgeListItemDto extends KnowledgeDto {
+  @ApiProperty() sourcesCount: number;
+  @ApiProperty() totalSizeBytes: number;
+}
+
+export class KnowledgePageDto {
+  @ApiProperty({ type: [KnowledgeListItemDto] })
+  items: KnowledgeListItemDto[];
+
+  @ApiProperty() total: number;
+  @ApiProperty() page: number;
+  @ApiProperty() perPage: number;
+}

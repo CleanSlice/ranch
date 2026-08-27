@@ -4,6 +4,7 @@ import type {
   IGraph,
   IGraphLabels,
   IKnowledge,
+  IKnowledgePage,
   IKnowledgeStatus,
   IQueryResult,
   ISource,
@@ -27,6 +28,14 @@ export class KnowledgeService {
 
   findAll(): Promise<IKnowledge[]> {
     return this.gateway.findAll();
+  }
+
+  findPage(
+    search: string | undefined,
+    page: number,
+    perPage: number,
+  ): Promise<IKnowledgePage> {
+    return this.gateway.findPage(search, page, perPage);
   }
 
   findById(id: string): Promise<IKnowledge | null> {

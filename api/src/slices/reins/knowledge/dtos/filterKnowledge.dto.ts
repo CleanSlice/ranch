@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, Min } from 'class-validator';
+import { IsOptional, IsString, IsInt, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class FilterKnowledgeDto {
@@ -15,10 +15,11 @@ export class FilterKnowledgeDto {
   @Min(1)
   page?: number;
 
-  @ApiPropertyOptional({ default: 10 })
+  @ApiPropertyOptional({ default: 50, maximum: 100 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(100)
   perPage?: number;
 }

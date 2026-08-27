@@ -172,6 +172,32 @@ export type CreateApiKeyDto = {
   expiresAt?: string;
 };
 
+export type KnowledgeListItemDto = {
+  id: string;
+  name: string;
+  description: string | null;
+  entityTypes: Array<string>;
+  relationshipTypes: Array<string>;
+  indexStatus: "idle" | "indexing" | "ready" | "failed";
+  indexError: string | null;
+  indexedAt: string | null;
+  indexStartedAt: string | null;
+  instanceState: "absent" | "starting" | "ready" | "failed" | "stopping";
+  instanceError: string | null;
+  migrationState: "notStarted" | "inProgress" | "done" | "failed";
+  createdAt: string;
+  updatedAt: string;
+  sourcesCount: number;
+  totalSizeBytes: number;
+};
+
+export type KnowledgePageDto = {
+  items: Array<KnowledgeListItemDto>;
+  total: number;
+  page: number;
+  perPage: number;
+};
+
 export type GraphLabelsDto = {
   labels: Array<string>;
   total: number;
@@ -1855,13 +1881,20 @@ export type ApiKeyControllerRemoveResponse =
 export type GetKnowledgesData = {
   body?: never;
   path?: never;
-  query?: never;
+  query?: {
+    search?: string;
+    page?: number;
+    perPage?: number;
+  };
   url: "/knowledges";
 };
 
 export type GetKnowledgesResponses = {
-  200: unknown;
+  200: KnowledgePageDto;
 };
+
+export type GetKnowledgesResponse =
+  GetKnowledgesResponses[keyof GetKnowledgesResponses];
 
 export type CreateKnowledgeData = {
   body: CreateKnowledgeDto;

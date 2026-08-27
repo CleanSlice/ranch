@@ -18,6 +18,7 @@ export type {
   ICreateKnowledgeInput,
   IGraph,
   IKnowledge,
+  IKnowledgePage,
   IKnowledgeSetupStatus,
   IndexStatus,
   IQueryResult,
@@ -68,6 +69,10 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
 
   function fetchById(id: string) {
     return getService().findById(id);
+  }
+
+  function fetchPage(search: string | undefined, page: number, perPage = 50) {
+    return getService().findPage(search, page, perPage);
   }
 
   async function create(body: ICreateKnowledgeInput) {
@@ -168,6 +173,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     fetchStatus,
     fetchAll,
     fetchById,
+    fetchPage,
     create,
     update,
     remove,

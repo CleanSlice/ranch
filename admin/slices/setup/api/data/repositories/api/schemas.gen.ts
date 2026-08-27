@@ -388,6 +388,116 @@ export const CreateApiKeyDtoSchema = {
   required: ["name", "scopes"],
 } as const;
 
+export const KnowledgeListItemDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+      nullable: true,
+    },
+    entityTypes: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    relationshipTypes: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    indexStatus: {
+      type: "string",
+      enum: ["idle", "indexing", "ready", "failed"],
+    },
+    indexError: {
+      type: "string",
+      nullable: true,
+    },
+    indexedAt: {
+      type: "string",
+      nullable: true,
+    },
+    indexStartedAt: {
+      type: "string",
+      nullable: true,
+    },
+    instanceState: {
+      type: "string",
+      enum: ["absent", "starting", "ready", "failed", "stopping"],
+    },
+    instanceError: {
+      type: "string",
+      nullable: true,
+    },
+    migrationState: {
+      type: "string",
+      enum: ["notStarted", "inProgress", "done", "failed"],
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+    sourcesCount: {
+      type: "number",
+    },
+    totalSizeBytes: {
+      type: "number",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "description",
+    "entityTypes",
+    "relationshipTypes",
+    "indexStatus",
+    "indexError",
+    "indexedAt",
+    "indexStartedAt",
+    "instanceState",
+    "instanceError",
+    "migrationState",
+    "createdAt",
+    "updatedAt",
+    "sourcesCount",
+    "totalSizeBytes",
+  ],
+} as const;
+
+export const KnowledgePageDtoSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/KnowledgeListItemDto",
+      },
+    },
+    total: {
+      type: "number",
+    },
+    page: {
+      type: "number",
+    },
+    perPage: {
+      type: "number",
+    },
+  },
+  required: ["items", "total", "page", "perPage"],
+} as const;
+
 export const GraphLabelsDtoSchema = {
   type: "object",
   properties: {

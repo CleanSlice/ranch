@@ -19,6 +19,8 @@ import { ILlmGateway } from '#/llm/domain';
 import {
   CreateKnowledgeDto,
   UpdateKnowledgeDto,
+  FilterKnowledgeDto,
+  KnowledgePageDto,
   QueryKnowledgeDto,
   GetGraphDto,
   GetGraphLabelsDto,
@@ -46,10 +48,20 @@ export class KnowledgeController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List knowledges', operationId: 'getKnowledges' })
-  async list() {
-    if (!(await this.knowledgeConfig.isEnabled())) return [];
-    return this.service.list();
+  @ApiOperation({
+    summary: 'List knowledges (searchable, paged)',
+    operationId: 'getKnowledges',
+  })
+  @ApiOkResponse({ type: KnowledgePageDto })
+  async list(@Query() dto: FilterKnowledgeDto): Promise<KnowledgePageDto> {
+    if (!(await this.knowledgeConfig.isEnabled())) {
+      return { items: [], total: 0, page: 1, perPage: dto.perPage ?? 50 };
+    }
+    return this.service.listPage({
+      search: dto.search,
+      page: dto.page,
+      perPage: dto.perPage,
+    });
   }
 
   @Get('status')

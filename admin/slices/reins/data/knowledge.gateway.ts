@@ -8,6 +8,7 @@ import type {
   IGraph,
   IGraphLabels,
   IKnowledge,
+  IKnowledgePage,
   IKnowledgeStatus,
   IQueryResult,
   ISource,
@@ -35,10 +36,27 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
     });
   }
 
+  // Callers that need "everything" (binding resolution) read the first
+  // page at the maximum size — a personal installation holds low tens.
   findAll(): Promise<IKnowledge[]> {
     return this.execute(async () => {
-      const res = await KnowledgesService.getKnowledges();
-      return this.mapper.toKnowledgeList(unwrapEnvelope(res.data));
+      const res = await KnowledgesService.getKnowledges({
+        query: { perPage: 100 },
+      });
+      return this.mapper.toKnowledgePage(unwrapEnvelope(res.data)).items;
+    });
+  }
+
+  findPage(
+    search: string | undefined,
+    page: number,
+    perPage: number,
+  ): Promise<IKnowledgePage> {
+    return this.execute(async () => {
+      const res = await KnowledgesService.getKnowledges({
+        query: { search: search || undefined, page, perPage },
+      });
+      return this.mapper.toKnowledgePage(unwrapEnvelope(res.data));
     });
   }
 

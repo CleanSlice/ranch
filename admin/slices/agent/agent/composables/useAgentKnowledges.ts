@@ -44,9 +44,18 @@ export function useAgentKnowledges(
     return (knowledges.value ?? []).filter((k) => idSet.has(k.id));
   });
 
+  // Bindings pointing at bases that no longer exist. Visible, never
+  // silently dropped (FR-013) — a dangling id quietly narrowing what the
+  // agent reads is exactly the kind of surprise this screen exists to show.
+  const missing = computed(() => {
+    if (!knowledges.value) return [] as string[];
+    const known = new Set(knowledges.value.map((k) => k.id));
+    return effective.value.ids.filter((id) => !known.has(id));
+  });
+
   const pending = computed(
     () => (knowledgesPending.value || templatePending.value) && !knowledges.value,
   );
 
-  return { template, effective, resolved, pending };
+  return { template, effective, resolved, missing, knowledges, pending };
 }

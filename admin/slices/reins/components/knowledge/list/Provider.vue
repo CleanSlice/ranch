@@ -4,26 +4,44 @@ import type { IKnowledge } from '#reins/stores/knowledge';
 const store = useKnowledgeStore();
 const confirmStore = useConfirmStore();
 
-const [{ data: items, pending, refresh }] = await Promise.all([
-  useAsyncData('admin-reins-knowledges', () => store.fetchAll()),
+const search = ref('');
+const page = ref(1);
+
+// Server-side search and paging: the list never renders every base in the
+// installation at once, and finding one never requires scanning (FR-009).
+const [{ data: result, pending, refresh }] = await Promise.all([
+  useAsyncData(
+    'admin-reins-knowledges',
+    () => store.fetchPage(search.value.trim() || undefined, page.value),
+    { watch: [page] },
+  ),
   useAsyncData('admin-reins-status', () => store.fetchStatus()),
 ]);
 
-const search = ref('');
-
-const filtered = computed<IKnowledge[]>(() => {
-  const list = items.value ?? [];
-  const q = search.value.trim().toLowerCase();
-  if (!q) return list;
-  return list.filter(
-    (k) =>
-      k.name.toLowerCase().includes(q) ||
-      (k.description ?? '').toLowerCase().includes(q),
-  );
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(search, () => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    page.value = 1;
+    void refresh();
+  }, 250);
 });
+
+const items = computed<IKnowledge[]>(() => result.value?.items ?? []);
+const total = computed(() => result.value?.total ?? 0);
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(total.value / (result.value?.perPage ?? 50))),
+);
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
+}
+
+function formatSize(bytes?: number): string {
+  if (!bytes) return '—';
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
 }
 
 async function onRemove(item: IKnowledge) {
@@ -64,16 +82,21 @@ async function onRemove(item: IKnowledge) {
       to enable knowledges.
     </div>
 
-    <Input v-model="search" placeholder="Search" class="max-w-sm" />
+    <Input
+      v-model="search"
+      placeholder="Search by name, description or source"
+      class="max-w-sm"
+    />
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 
-    <div v-else-if="filtered.length" class="rounded-md border bg-card">
+    <div v-else-if="items.length" class="rounded-md border bg-card">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Sources</TableHead>
+            <TableHead>Size</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Updated</TableHead>
             <TableHead class="text-right">Actions</TableHead>
@@ -81,13 +104,16 @@ async function onRemove(item: IKnowledge) {
         </TableHeader>
         <TableBody>
           <TableRow
-            v-for="item in filtered"
+            v-for="item in items"
             :key="item.id"
             class="cursor-pointer"
             @click="navigateTo(`/knowledges/${item.id}/edit`)"
           >
             <TableCell class="font-medium">{{ item.name }}</TableCell>
-            <TableCell>{{ item.sources?.length ?? 0 }}</TableCell>
+            <TableCell>{{ item.sourcesCount ?? 0 }}</TableCell>
+            <TableCell class="text-muted-foreground">
+              {{ formatSize(item.totalSizeBytes) }}
+            </TableCell>
             <TableCell>
               <IndexStatusBadge :status="item.indexStatus" />
             </TableCell>
@@ -115,10 +141,43 @@ async function onRemove(item: IKnowledge) {
     </div>
 
     <div
+      v-else-if="search.trim()"
+      class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground"
+    >
+      No base matches “{{ search.trim() }}”. Clear the search to see all
+      {{ total }} bases.
+    </div>
+    <div
       v-else
       class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground"
     >
-      No knowledge bases yet.
+      No knowledge bases yet. Create one to start answering questions from
+      your own content.
+    </div>
+
+    <div
+      v-if="pageCount > 1"
+      class="flex items-center justify-between text-sm text-muted-foreground"
+    >
+      <span>{{ total }} bases · page {{ page }} of {{ pageCount }}</span>
+      <div class="flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          :disabled="page <= 1"
+          @click="page -= 1"
+        >
+          Previous
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          :disabled="page >= pageCount"
+          @click="page += 1"
+        >
+          Next
+        </Button>
+      </div>
     </div>
   </div>
 </template>

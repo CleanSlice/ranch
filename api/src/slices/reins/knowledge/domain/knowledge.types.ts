@@ -45,6 +45,25 @@ export interface IUpdateKnowledgeData {
   relationshipTypes?: string[];
 }
 
+/** List entry with enough context to choose a base (FR-011). */
+export interface IKnowledgeListItem extends IKnowledgeData {
+  sourcesCount: number;
+  totalSizeBytes: number;
+}
+
+export interface IFilterKnowledgeParams {
+  search?: string;
+  page?: number;
+  perPage?: number;
+}
+
+export interface IKnowledgePage {
+  items: IKnowledgeListItem[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
 export interface IIndexStatePatch {
   indexStatus: IndexStatusTypes;
   indexError?: string | null;

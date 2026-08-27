@@ -11,6 +11,8 @@ import {
   ICreateKnowledgeData,
   IndexStatusTypes,
   IUpdateKnowledgeData,
+  IFilterKnowledgeParams,
+  IKnowledgePage,
   IKnowledgeQueryReference,
   IKnowledgeQueryResult,
   IGetGraphLabelsParams,
@@ -85,6 +87,10 @@ export class KnowledgeService implements OnApplicationBootstrap {
 
   list(): Promise<IKnowledgeData[]> {
     return this.gateway.findAll();
+  }
+
+  listPage(params: IFilterKnowledgeParams): Promise<IKnowledgePage> {
+    return this.gateway.findPage(params);
   }
 
   async get(id: string): Promise<IKnowledgeData> {

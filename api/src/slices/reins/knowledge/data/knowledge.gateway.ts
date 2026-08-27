@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
 import { IKnowledgeGateway } from '../domain/knowledge.gateway';
@@ -6,6 +7,8 @@ import {
   IKnowledgeData,
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
+  IFilterKnowledgeParams,
+  IKnowledgePage,
   IIndexStatePatch,
   IInstanceStatePatch,
   IRawKnowledgeSearchResult,
@@ -32,6 +35,61 @@ export class KnowledgeGateway extends IKnowledgeGateway {
       orderBy: { createdAt: 'desc' },
     });
     return records.map((r) => this.mapper.toEntity(r));
+  }
+
+  async findPage(params: IFilterKnowledgeParams): Promise<IKnowledgePage> {
+    const page = Math.max(params.page ?? 1, 1);
+    const perPage = Math.min(Math.max(params.perPage ?? 50, 1), 100);
+    const search = params.search?.trim();
+    // "By content" means a base is findable through what it holds — source
+    // names count as content for search purposes (FR-009, US2 scenario 1).
+    const where: Prisma.KnowledgeWhereInput = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+            {
+              sources: {
+                some: { name: { contains: search, mode: 'insensitive' } },
+              },
+            },
+          ],
+        }
+      : {};
+
+    const [records, total] = await this.prisma.$transaction([
+      this.prisma.knowledge.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * perPage,
+        take: perPage,
+        include: { _count: { select: { sources: true } } },
+      }),
+      this.prisma.knowledge.count({ where }),
+    ]);
+
+    const ids = records.map((r) => r.id);
+    const sums = ids.length
+      ? await this.prisma.source.groupBy({
+          by: ['knowledgeId'],
+          where: { knowledgeId: { in: ids } },
+          _sum: { sizeBytes: true },
+        })
+      : [];
+    const sizeOf = new Map(
+      sums.map((s) => [s.knowledgeId, s._sum.sizeBytes ?? 0]),
+    );
+
+    return {
+      items: records.map((r) => ({
+        ...this.mapper.toEntity(r),
+        sourcesCount: r._count.sources,
+        totalSizeBytes: sizeOf.get(r.id) ?? 0,
+      })),
+      total,
+      page,
+      perPage,
+    };
   }
 
   async findById(id: string): Promise<IKnowledgeData | null> {

@@ -2,6 +2,8 @@ import {
   IKnowledgeData,
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
+  IFilterKnowledgeParams,
+  IKnowledgePage,
   IIndexStatePatch,
   IInstanceStatePatch,
   IRawKnowledgeSearchResult,
@@ -13,6 +15,7 @@ import {
 
 export abstract class IKnowledgeGateway {
   abstract findAll(): Promise<IKnowledgeData[]>;
+  abstract findPage(params: IFilterKnowledgeParams): Promise<IKnowledgePage>;
   abstract findById(id: string): Promise<IKnowledgeData | null>;
   abstract findExistingByIds(ids: string[]): Promise<IKnowledgeData[]>;
   abstract create(data: ICreateKnowledgeData): Promise<IKnowledgeData>;

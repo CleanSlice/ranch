@@ -64,7 +64,9 @@ async function onRemove(item: IKnowledge) {
       <div>
         <h1 class="text-2xl font-semibold">Knowledges</h1>
         <p class="text-sm text-muted-foreground">
-          Knowledge bases backed by LightRAG. Create one, add sources, then index.
+          Give your agents material of your own to answer from. Each base is a
+          separate, isolated collection — an agent reads only the bases you
+          bind to it.
         </p>
       </div>
       <Button v-if="store.enabled" as-child>
@@ -151,8 +153,12 @@ async function onRemove(item: IKnowledge) {
       v-else
       class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground"
     >
-      No knowledge bases yet. Create one to start answering questions from
-      your own content.
+      <p class="font-medium text-foreground">No knowledge bases yet</p>
+      <p class="mx-auto mt-2 max-w-md">
+        A base is a set of documents your agents can answer from. The path:
+        create a base → add sources (files, links, text) → press Index to make
+        them searchable → bind the base to an agent.
+      </p>
     </div>
 
     <div

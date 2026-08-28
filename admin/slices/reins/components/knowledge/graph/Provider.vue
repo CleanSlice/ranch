@@ -261,6 +261,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex flex-col gap-4">
+    <p class="text-sm text-muted-foreground">
+      An inspection view: the entities and relations indexing extracted from
+      your sources — the map retrieval walks when it answers. Useful for
+      diagnosing odd answers; not needed for everyday work.
+    </p>
+
     <div class="flex flex-wrap items-end gap-3">
       <div class="grid gap-1">
         <Label class="text-xs text-muted-foreground">Entity</Label>

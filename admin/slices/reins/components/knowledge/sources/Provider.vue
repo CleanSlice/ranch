@@ -80,6 +80,13 @@ async function onAdded() {
 
 <template>
   <div class="flex flex-col gap-4">
+    <p class="text-sm text-muted-foreground">
+      The content this base answers from — files, web pages, pasted text.
+      Adding a source does not make it searchable yet: press
+      <span class="font-medium text-foreground">Index</span> above once
+      you're done adding.
+    </p>
+
     <KnowledgeSourcesAddForm
       :knowledge-id="(route.params.id as string)"
       @added="onAdded"

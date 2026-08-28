@@ -26,6 +26,9 @@ await refresh();
 const searchableCount = computed(
   () => sources.value.filter((s) => s.indexState === 'indexed').length,
 );
+const queuedCount = computed(
+  () => sources.value.filter((s) => s.indexState === 'queued').length,
+);
 const canAnswer = computed(
   () =>
     searchableCount.value > 0 &&
@@ -140,6 +143,18 @@ provide('knowledge-refresh', refresh);
     </div>
 
     <p v-if="indexError" class="text-xs text-destructive">{{ indexError }}</p>
+
+    <!-- The decisive moment to explain Index: content exists but is not
+         searchable yet. -->
+    <div
+      v-if="queuedCount > 0 && current?.indexStatus !== 'indexing'"
+      class="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700"
+    >
+      {{ queuedCount }} {{ queuedCount === 1 ? 'source is' : 'sources are' }}
+      not searchable yet — press <span class="font-medium">Index</span> to
+      process {{ queuedCount === 1 ? 'it' : 'them' }}. Agents only see what
+      has been indexed.
+    </div>
 
     <!-- `custom` slot: exactly one class set is ever applied per state. The
          old active-class approach set the same properties from two classes

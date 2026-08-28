@@ -40,8 +40,15 @@ async function run() {
 </script>
 
 <template>
-  <div class="grid gap-6 md:grid-cols-[1fr_280px]">
-    <div class="flex flex-col gap-3">
+  <div class="flex flex-col gap-4">
+    <p class="text-sm text-muted-foreground">
+      A test bench: ask this base exactly what your agents will ask it through
+      the <code class="text-xs">query_knowledge</code> tool, and check the
+      answer and its sources before trusting the base to an agent.
+    </p>
+
+    <div class="grid gap-6 md:grid-cols-[1fr_280px]">
+      <div class="flex flex-col gap-3">
       <div v-if="loading" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
         Asking the model…
       </div>
@@ -89,9 +96,9 @@ async function run() {
           </ol>
         </div>
       </template>
-    </div>
+      </div>
 
-    <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-3">
       <div class="grid gap-2">
         <Label for="query-text">Question</Label>
         <Textarea
@@ -146,6 +153,7 @@ async function run() {
             How many matches feed the answer. More gives broader coverage but
             a slower, costlier query that can drown the relevant part.
           </p>
+        </div>
         </div>
       </div>
     </div>

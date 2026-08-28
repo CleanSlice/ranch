@@ -169,7 +169,7 @@ provide('knowledge-refresh', refresh);
         custom
       >
         <a
-          :href="href"
+          :href="href ?? undefined"
           class="border-b-2 px-3 py-2 text-sm transition-colors"
           :class="
             isActive

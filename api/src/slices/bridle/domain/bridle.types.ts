@@ -164,6 +164,8 @@ export interface IBridleAgentHealthData {
 export interface IBridleClientData {
   clientId: string;
   agentId: string;
+  /** Owning socket/connection id — see IBridleGateway.unregisterClient. */
+  socketId: string;
   send: (data: unknown) => void;
   isAdmin: boolean;
   /** Integrator context from the embed's `data-prompt` (handshake-supplied);

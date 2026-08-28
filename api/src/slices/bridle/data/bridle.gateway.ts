@@ -129,6 +129,7 @@ export class BridleGateway extends IBridleGateway {
   registerClient(
     clientId: string,
     agentId: string,
+    socketId: string,
     send: (data: unknown) => void,
     isAdmin: boolean,
     prompt?: string,
@@ -137,18 +138,32 @@ export class BridleGateway extends IBridleGateway {
     this.clients.set(this.clientKey(clientId, agentId), {
       clientId,
       agentId,
+      socketId,
       send,
       isAdmin,
       ...(prompt ? { prompt } : {}),
       ...(capabilities && capabilities.length ? { capabilities } : {}),
     });
     this.logger.log(
-      `Browser client registered: ${clientId} agentId=${agentId} admin=${isAdmin}${capabilities?.length ? ` caps=[${capabilities.join(',')}]` : ''} (total: ${this.clients.size})`,
+      `Browser client registered: ${clientId} agentId=${agentId} socket=${socketId} admin=${isAdmin}${capabilities?.length ? ` caps=[${capabilities.join(',')}]` : ''} (total: ${this.clients.size})`,
     );
   }
 
-  unregisterClient(clientId: string, agentId: string): void {
-    this.clients.delete(this.clientKey(clientId, agentId));
+  unregisterClient(clientId: string, agentId: string, socketId: string): void {
+    const key = this.clientKey(clientId, agentId);
+    const current = this.clients.get(key);
+    if (!current) return;
+    if (current.socketId !== socketId) {
+      // A stale/blackholed connection (detected late via ping timeout) is
+      // disconnecting after a reconnect already took over this clientId —
+      // the live registration must survive, or the browser silently stops
+      // receiving stream/message events until the page is reloaded.
+      this.logger.log(
+        `Ignoring stale disconnect for client=${clientId} agentId=${agentId}: socket=${socketId} is not the current owner (${current.socketId})`,
+      );
+      return;
+    }
+    this.clients.delete(key);
     this.logger.log(
       `Browser client unregistered: ${clientId} agentId=${agentId} (total: ${this.clients.size})`,
     );

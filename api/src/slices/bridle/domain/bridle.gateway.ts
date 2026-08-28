@@ -32,10 +32,13 @@ export abstract class IBridleGateway {
   ): void;
   /** Send an event to a specific browser client (scoped to clientId + agentId) */
   abstract sendToClient(clientId: string, agentId: string, data: unknown): void;
-  /** Register a browser client for a specific agent */
+  /** Register a browser client for a specific agent. `socketId` marks the
+   * owning socket so a stale connection's late disconnect can't wipe a newer
+   * registration for the same clientId+agentId (mirrors registerAgent). */
   abstract registerClient(
     clientId: string,
     agentId: string,
+    socketId: string,
     send: (data: unknown) => void,
     isAdmin: boolean,
     /** Integrator context from the embed's `data-prompt`; forwarded to the
@@ -45,8 +48,13 @@ export abstract class IBridleGateway {
      * every message so runtimes can gate `thinking`/`ui` emission. */
     capabilities?: string[],
   ): void;
-  /** Unregister a browser client (scoped to clientId + agentId) */
-  abstract unregisterClient(clientId: string, agentId: string): void;
+  /** Unregister a browser client — no-op unless `socketId` still owns the
+   * current registration for clientId+agentId. */
+  abstract unregisterClient(
+    clientId: string,
+    agentId: string,
+    socketId: string,
+  ): void;
   /** Register an agent connection for a specific agent. `socketId` marks the
    * owning socket so a stale connection's late disconnect can't wipe a newer
    * registration for the same agentId. */

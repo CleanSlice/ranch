@@ -187,6 +187,7 @@ export class BridleClientWsHandler
     this.hub.registerClient(
       clientId,
       agentId,
+      client.id,
       send,
       isAdmin,
       prompt,
@@ -211,7 +212,7 @@ export class BridleClientWsHandler
     const clientId = client.data?.clientId as string | undefined;
     const agentId = client.data?.agentId as string | undefined;
     if (clientId && agentId) {
-      this.hub.unregisterClient(clientId, agentId);
+      this.hub.unregisterClient(clientId, agentId, client.id);
       this.logger.log(
         `Browser disconnected: clientId=${clientId} agentId=${agentId}`,
       );

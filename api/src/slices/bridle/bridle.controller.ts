@@ -108,11 +108,17 @@ export class BridleController {
     @Body() body: SendMessageDto,
   ) {
     const clientId = this.resolveClientId(req) ?? 'sync-' + crypto.randomUUID();
+    // Distinct from clientId: this HTTP call shares the clientId+agentId map
+    // key with any concurrently-open WS session for the same visitor (e.g.
+    // the chat widget open in another tab), so registerClient/unregisterClient
+    // need their own socket-equivalent identity to avoid one call's cleanup
+    // wiping the other's live registration.
+    const socketId = 'sync-' + crypto.randomUUID();
     const chunks: string[] = [];
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.hub.unregisterClient(clientId, agentId);
+        this.hub.unregisterClient(clientId, agentId, socketId);
         resolve({
           text: chunks.join('') || 'Timeout: no response from agent',
           messageId: '',
@@ -123,11 +129,12 @@ export class BridleController {
       this.hub.registerClient(
         clientId,
         agentId,
+        socketId,
         (data: unknown) => {
           const event = data as Record<string, unknown>;
           if (event.type === 'message' || event.type === 'stream_end') {
             clearTimeout(timeout);
-            this.hub.unregisterClient(clientId, agentId);
+            this.hub.unregisterClient(clientId, agentId, socketId);
             resolve({
               text: event.text ?? chunks.join(''),
               messageId: event.messageId,

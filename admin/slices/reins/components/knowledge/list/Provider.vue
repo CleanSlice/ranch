@@ -115,7 +115,7 @@ async function onRemove(item: IKnowledge) {
               {{ formatSize(item.totalSizeBytes) }}
             </TableCell>
             <TableCell>
-              <IndexStatusBadge :status="item.indexStatus" />
+              <KnowledgeIndexStatusBadge :status="item.indexStatus" />
             </TableCell>
             <TableCell class="text-muted-foreground">
               {{ formatDate(item.updatedAt) }}

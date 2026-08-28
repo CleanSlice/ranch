@@ -103,7 +103,7 @@ provide('knowledge-refresh', refresh);
       <div class="min-w-0">
         <h1 class="text-2xl font-semibold truncate">{{ current.name }}</h1>
         <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <IndexStatusBadge :status="current.indexStatus" />
+          <KnowledgeIndexStatusBadge :status="current.indexStatus" />
           <span>
             {{ sources.length }} {{ sources.length === 1 ? 'source' : 'sources' }}
             <template v-if="sources.length">

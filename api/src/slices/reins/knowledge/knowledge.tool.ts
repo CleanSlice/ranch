@@ -115,25 +115,31 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
     const targetIds = knowledge_id ? [knowledge_id] : allowedIds;
 
     try {
-      if (targetIds.length === 1) {
-        const result = await this.knowledgeService.query(targetIds[0], query);
-        return ok(result);
-      }
-      // Multi-base search: per-base errors are surfaced inline so one broken
-      // base doesn't sink the others. LLM sees a `results` array and picks
-      // the relevant entry.
+      // Names resolve from the caller's bound set only — the tool never
+      // reads a full base list (FR-004).
+      const bases = await this.knowledgeGateway.findExistingByIds(targetIds);
+      const nameOf = new Map(bases.map((b) => [b.id, b.name]));
+
+      // One retrieval per bound base against that base's own instance; each
+      // block names the base it came from (FR-006). A base that cannot be
+      // reached is named rather than silently narrowing the answer.
       const results = await Promise.all(
         targetIds.map(async (id) => {
+          const knowledge_name = nameOf.get(id) ?? null;
           try {
             const r = await this.knowledgeService.query(id, query);
-            return { ...r, knowledge_id: id };
+            return { knowledge_id: id, knowledge_name, ...r };
           } catch (e) {
             const message = e instanceof Error ? e.message : 'query failed';
-            return { knowledge_id: id, error: message };
+            return {
+              knowledge_id: id,
+              knowledge_name,
+              error: `Knowledge base ${knowledge_name ?? id} could not be reached: ${message}`,
+            };
           }
         }),
       );
-      return ok({ results });
+      return ok(targetIds.length === 1 ? results[0] : { results });
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Knowledge query failed';
       this.logger.warn(

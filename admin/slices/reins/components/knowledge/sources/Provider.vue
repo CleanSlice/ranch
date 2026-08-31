@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useIntervalFn } from '@vueuse/core';
 import type { IKnowledge, ISource } from '#reins/stores/knowledge';
 
 const route = useRoute();
@@ -20,6 +21,42 @@ async function reload() {
 }
 
 await reload();
+
+// While anything is processing, keep the per-source states live so the
+// operator watches the batch move instead of re-clicking (US6).
+const { pause, resume } = useIntervalFn(
+  async () => {
+    sources.value = await store.listSources(route.params.id as string);
+    if (!sources.value.some((s) => s.indexState === 'processing')) pause();
+  },
+  4000,
+  { immediate: false },
+);
+watch(
+  () => sources.value.some((s) => s.indexState === 'processing'),
+  (busy) => {
+    if (busy) resume();
+    else pause();
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => pause());
+
+const stateBadge: Record<
+  ISource['indexState'],
+  { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
+> = {
+  queued: { label: 'Queued', variant: 'outline' },
+  processing: { label: 'Processing…', variant: 'secondary' },
+  indexed: { label: 'Indexed', variant: 'default' },
+  failed: { label: 'Failed', variant: 'destructive' },
+};
+
+async function handleReindex(source: ISource) {
+  await store.reindexSource(route.params.id as string, source.id);
+  await reload();
+  resume();
+}
 
 async function handleDelete(source: ISource) {
   const ok = await confirmStore.ask({
@@ -43,6 +80,13 @@ async function onAdded() {
 
 <template>
   <div class="flex flex-col gap-4">
+    <p class="text-sm text-muted-foreground">
+      The content this base answers from — files, web pages, pasted text.
+      Adding a source does not make it searchable yet: press
+      <span class="font-medium text-foreground">Index</span> above once
+      you're done adding.
+    </p>
+
     <KnowledgeSourcesAddForm
       :knowledge-id="(route.params.id as string)"
       @added="onAdded"
@@ -66,7 +110,7 @@ async function onAdded() {
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Type</TableHead>
-            <TableHead>Indexed</TableHead>
+            <TableHead>Status</TableHead>
             <TableHead class="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -75,19 +119,40 @@ async function onAdded() {
             <TableCell class="font-medium">{{ s.name }}</TableCell>
             <TableCell class="text-muted-foreground">{{ s.type }}</TableCell>
             <TableCell>
-              <Badge :variant="s.indexed ? 'default' : 'outline'">
-                {{ s.indexed ? 'Indexed' : 'Pending' }}
-              </Badge>
+              <div class="flex flex-col gap-0.5">
+                <Badge
+                  :variant="stateBadge[s.indexState].variant"
+                  class="w-fit"
+                >
+                  {{ stateBadge[s.indexState].label }}
+                </Badge>
+                <span
+                  v-if="s.indexState === 'failed' && s.indexError"
+                  class="max-w-md text-xs text-destructive"
+                >
+                  {{ s.indexError }}
+                </span>
+              </div>
             </TableCell>
             <TableCell class="text-right">
-              <Button
-                size="sm"
-                variant="ghost"
-                class="text-destructive"
-                @click="handleDelete(s)"
-              >
-                Delete
-              </Button>
+              <div class="flex justify-end gap-2">
+                <Button
+                  v-if="s.indexState === 'failed'"
+                  size="sm"
+                  variant="outline"
+                  @click="handleReindex(s)"
+                >
+                  Retry
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  class="text-destructive"
+                  @click="handleDelete(s)"
+                >
+                  Delete
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         </TableBody>

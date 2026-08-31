@@ -74,6 +74,11 @@ function onSubmit() {
             rows="3"
             placeholder="Optional"
           />
+          <p class="text-xs text-muted-foreground">
+            Agents read this when deciding whether to search the base — a
+            sentence about what's inside makes them use it at the right
+            moments.
+          </p>
         </div>
       </CardContent>
     </Card>

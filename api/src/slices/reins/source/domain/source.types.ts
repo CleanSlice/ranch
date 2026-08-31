@@ -2,6 +2,17 @@ import { Readable } from 'stream';
 
 export type SourceTypes = 'file' | 'url' | 'text';
 
+/**
+ * queued -> processing -> indexed | failed; failed -> queued on retry.
+ * "indexed" means the retrieval service reports the document processed and
+ * searchable — not merely handed over.
+ */
+export type SourceIndexStateTypes =
+  | 'queued'
+  | 'processing'
+  | 'indexed'
+  | 'failed';
+
 export interface ISourceData {
   id: string;
   knowledgeId: string;
@@ -11,9 +22,17 @@ export interface ISourceData {
   mimeType: string | null;
   content: string | null;
   sizeBytes: number | null;
-  indexed: boolean;
+  indexState: SourceIndexStateTypes;
+  indexError: string | null;
+  indexedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ISourceIndexStatePatch {
+  indexState: SourceIndexStateTypes;
+  indexError?: string | null;
+  indexedAt?: Date | null;
 }
 
 export interface ICreateSourceData {

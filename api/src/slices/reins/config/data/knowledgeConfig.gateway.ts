@@ -58,6 +58,21 @@ export class KnowledgeConfigGateway extends IKnowledgeConfigGateway {
       embedding: readString(embeddingSetting?.value),
     };
   }
+
+  async isSharedPoolDecommissioned(): Promise<boolean> {
+    const setting = await this.settings.findByKey(
+      SETTING_GROUP,
+      'shared_pool_decommissioned',
+    );
+    return readBoolean(setting?.value) === true;
+  }
+
+  async markSharedPoolDecommissioned(): Promise<void> {
+    await this.settings.upsert(SETTING_GROUP, 'shared_pool_decommissioned', {
+      valueType: 'json',
+      value: true,
+    });
+  }
 }
 
 function readString(value: unknown): string | null {

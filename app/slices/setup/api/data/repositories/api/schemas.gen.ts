@@ -388,6 +388,123 @@ export const CreateApiKeyDtoSchema = {
   required: ["name", "scopes"],
 } as const;
 
+export const KnowledgeListItemDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+      nullable: true,
+    },
+    indexStatus: {
+      type: "string",
+      enum: ["idle", "indexing", "ready", "failed", "empty", "partial"],
+      description:
+        "Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).",
+    },
+    indexError: {
+      type: "string",
+      nullable: true,
+    },
+    indexedAt: {
+      type: "string",
+      nullable: true,
+    },
+    indexStartedAt: {
+      type: "string",
+      nullable: true,
+    },
+    instanceState: {
+      type: "string",
+      enum: ["absent", "starting", "ready", "failed", "stopping"],
+    },
+    instanceError: {
+      type: "string",
+      nullable: true,
+    },
+    migrationState: {
+      type: "string",
+      enum: ["notStarted", "inProgress", "done", "failed"],
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+    sourcesCount: {
+      type: "number",
+    },
+    totalSizeBytes: {
+      type: "number",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "description",
+    "indexStatus",
+    "indexError",
+    "indexedAt",
+    "indexStartedAt",
+    "instanceState",
+    "instanceError",
+    "migrationState",
+    "createdAt",
+    "updatedAt",
+    "sourcesCount",
+    "totalSizeBytes",
+  ],
+} as const;
+
+export const KnowledgePageDtoSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/KnowledgeListItemDto",
+      },
+    },
+    total: {
+      type: "number",
+    },
+    page: {
+      type: "number",
+    },
+    perPage: {
+      type: "number",
+    },
+  },
+  required: ["items", "total", "page", "perPage"],
+} as const;
+
+export const GraphLabelsDtoSchema = {
+  type: "object",
+  properties: {
+    labels: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    total: {
+      type: "number",
+    },
+    truncated: {
+      type: "boolean",
+    },
+  },
+  required: ["labels", "total", "truncated"],
+} as const;
+
 export const GraphNodeDtoSchema = {
   type: "object",
   properties: {
@@ -463,18 +580,6 @@ export const CreateKnowledgeDtoSchema = {
     description: {
       type: "string",
     },
-    entityTypes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    relationshipTypes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
   },
   required: ["name"],
 } as const;
@@ -488,18 +593,6 @@ export const UpdateKnowledgeDtoSchema = {
     description: {
       type: "string",
       nullable: true,
-    },
-    entityTypes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    relationshipTypes: {
-      type: "array",
-      items: {
-        type: "string",
-      },
     },
   },
 } as const;
@@ -532,8 +625,16 @@ export const KnowledgeQueryReferenceDtoSchema = {
     filePath: {
       type: "string",
     },
+    sourceId: {
+      type: "string",
+      nullable: true,
+    },
+    sourceName: {
+      type: "string",
+      nullable: true,
+    },
   },
-  required: ["referenceId", "filePath"],
+  required: ["referenceId", "filePath", "sourceId", "sourceName"],
 } as const;
 
 export const KnowledgeQueryResultDtoSchema = {
@@ -541,6 +642,21 @@ export const KnowledgeQueryResultDtoSchema = {
   properties: {
     answer: {
       type: "string",
+      nullable: true,
+      description:
+        "null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.",
+    },
+    reason: {
+      type: "string",
+      enum: ["no_relevant_content"],
+    },
+    knowledgeId: {
+      type: "string",
+    },
+    complete: {
+      type: "boolean",
+      description:
+        "false while this base is still being re-processed into its own area — answers may be incomplete.",
     },
     references: {
       type: "array",
@@ -549,7 +665,7 @@ export const KnowledgeQueryResultDtoSchema = {
       },
     },
   },
-  required: ["answer", "references"],
+  required: ["answer", "knowledgeId", "complete", "references"],
 } as const;
 
 export const CreateSourceDtoSchema = {

@@ -84,10 +84,7 @@ export async function fetchSitemapUrls(
   return collected;
 }
 
-async function fetchXml(
-  fetcher: typeof fetch,
-  url: string,
-): Promise<string> {
+async function fetchXml(fetcher: typeof fetch, url: string): Promise<string> {
   let res: Response;
   try {
     res = await fetcher(url, {

@@ -2,8 +2,12 @@ import {
   IKnowledgeData,
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
+  IFilterKnowledgeParams,
+  IKnowledgePage,
   IIndexStatePatch,
-  IKnowledgeQueryResult,
+  IInstanceStatePatch,
+  IRawKnowledgeSearchResult,
+  MigrationStateTypes,
   QueryModeTypes,
   IGetGraphParams,
   IGraphData,
@@ -11,6 +15,7 @@ import {
 
 export abstract class IKnowledgeGateway {
   abstract findAll(): Promise<IKnowledgeData[]>;
+  abstract findPage(params: IFilterKnowledgeParams): Promise<IKnowledgePage>;
   abstract findById(id: string): Promise<IKnowledgeData | null>;
   abstract findExistingByIds(ids: string[]): Promise<IKnowledgeData[]>;
   abstract create(data: ICreateKnowledgeData): Promise<IKnowledgeData>;
@@ -22,6 +27,14 @@ export abstract class IKnowledgeGateway {
     id: string,
     patch: IIndexStatePatch,
   ): Promise<IKnowledgeData>;
+  abstract updateInstanceState(
+    id: string,
+    patch: IInstanceStatePatch,
+  ): Promise<IKnowledgeData>;
+  abstract updateMigrationState(
+    id: string,
+    state: MigrationStateTypes,
+  ): Promise<IKnowledgeData>;
   abstract delete(id: string): Promise<void>;
 
   abstract searchKnowledge(
@@ -29,8 +42,11 @@ export abstract class IKnowledgeGateway {
     query: string,
     mode?: QueryModeTypes,
     topK?: number,
-  ): Promise<IKnowledgeQueryResult>;
+  ): Promise<IRawKnowledgeSearchResult>;
 
-  abstract getGraphLabels(): Promise<string[]>;
-  abstract getGraph(params: IGetGraphParams): Promise<IGraphData>;
+  abstract getGraphLabels(knowledgeId: string): Promise<string[]>;
+  abstract getGraph(
+    knowledgeId: string,
+    params: IGetGraphParams,
+  ): Promise<IGraphData>;
 }

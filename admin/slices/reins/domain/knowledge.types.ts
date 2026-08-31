@@ -9,24 +9,57 @@ import type { GraphDto, KnowledgeQueryResultDto } from '#api/data';
 export type IQueryResult = KnowledgeQueryResultDto;
 export type IGraph = GraphDto;
 
-export type IndexStatus = 'idle' | 'indexing' | 'ready' | 'failed';
+export interface IGraphLabels {
+  labels: string[];
+  total: number;
+  truncated: boolean;
+}
+
+export type IndexStatus =
+  | 'idle'
+  | 'indexing'
+  | 'ready'
+  | 'failed'
+  | 'empty'
+  | 'partial';
 export type SourceType = 'file' | 'url' | 'text';
 export type KnowledgeQueryMode = 'hybrid' | 'local' | 'global' | 'naive';
+
+export type InstanceState =
+  | 'absent'
+  | 'starting'
+  | 'ready'
+  | 'failed'
+  | 'stopping';
+export type MigrationState = 'notStarted' | 'inProgress' | 'done' | 'failed';
 
 export interface IKnowledge {
   id: string;
   name: string;
   description: string | null;
-  entityTypes: string[];
-  relationshipTypes: string[];
   indexStatus: IndexStatus;
   indexError: string | null;
   indexedAt: string | null;
   indexStartedAt: string | null;
+  instanceState: InstanceState;
+  instanceError: string | null;
+  migrationState: MigrationState;
+  /** Present on list entries — context for choosing a base. */
+  sourcesCount?: number;
+  totalSizeBytes?: number;
   createdAt: string;
   updatedAt: string;
   sources?: ISource[];
 }
+
+export interface IKnowledgePage {
+  items: IKnowledge[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
+export type SourceIndexState = 'queued' | 'processing' | 'indexed' | 'failed';
 
 export interface ISource {
   id: string;
@@ -37,7 +70,10 @@ export interface ISource {
   mimeType: string | null;
   content: string | null;
   sizeBytes: number | null;
-  indexed: boolean;
+  /** "indexed" means searchable — not merely handed over. */
+  indexState: SourceIndexState;
+  indexError: string | null;
+  indexedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -45,15 +81,11 @@ export interface ISource {
 export interface ICreateKnowledgeInput {
   name: string;
   description?: string;
-  entityTypes?: string[];
-  relationshipTypes?: string[];
 }
 
 export interface IUpdateKnowledgeInput {
   name?: string;
   description?: string | null;
-  entityTypes?: string[];
-  relationshipTypes?: string[];
 }
 
 export interface IKnowledgeSetupStatus {

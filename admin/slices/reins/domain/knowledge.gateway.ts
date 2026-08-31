@@ -1,7 +1,9 @@
 import type {
   ICreateKnowledgeInput,
   IGraph,
+  IGraphLabels,
   IKnowledge,
+  IKnowledgePage,
   IKnowledgeStatus,
   IQueryResult,
   ISource,
@@ -16,6 +18,11 @@ import type {
 export abstract class IKnowledgeGateway {
   abstract status(): Promise<IKnowledgeStatus>;
   abstract findAll(): Promise<IKnowledge[]>;
+  abstract findPage(
+    search: string | undefined,
+    page: number,
+    perPage: number,
+  ): Promise<IKnowledgePage>;
   abstract findById(id: string): Promise<IKnowledge | null>;
   abstract create(input: ICreateKnowledgeInput): Promise<IKnowledge | null>;
   abstract update(
@@ -56,8 +63,15 @@ export abstract class IKnowledgeGateway {
     urlPrefix?: string,
   ): Promise<ISourceSitemapResult>;
   abstract removeSource(id: string, sourceId: string): Promise<void>;
-  abstract graphLabels(): Promise<string[]>;
+  abstract reindexSource(id: string, sourceId: string): Promise<void>;
+  // Base-scoped: the graph and its labels describe one knowledge base only.
+  abstract graphLabels(
+    id: string,
+    search?: string,
+    limit?: number,
+  ): Promise<IGraphLabels>;
   abstract graph(
+    id: string,
     label: string,
     maxDepth: number,
     maxNodes: number,

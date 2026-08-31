@@ -1,14 +1,19 @@
 import type {
   IGraph,
+  IGraphLabels,
   IKnowledge,
+  IKnowledgePage,
   IKnowledgeSetupStatus,
   IKnowledgeStatus,
   IndexStatus,
+  InstanceState,
   IQueryResult,
   ISource,
   ISourceArchiveResult,
   ISourceFilesResult,
   ISourceSitemapResult,
+  MigrationState,
+  SourceIndexState,
   SourceType,
 } from '../domain/knowledge.types';
 
@@ -17,8 +22,29 @@ const INDEX_STATUSES = new Set<IndexStatus>([
   'indexing',
   'ready',
   'failed',
+  'empty',
+  'partial',
 ]);
 const SOURCE_TYPES = new Set<SourceType>(['file', 'url', 'text']);
+const SOURCE_INDEX_STATES = new Set<SourceIndexState>([
+  'queued',
+  'processing',
+  'indexed',
+  'failed',
+]);
+const INSTANCE_STATES = new Set<InstanceState>([
+  'absent',
+  'starting',
+  'ready',
+  'failed',
+  'stopping',
+]);
+const MIGRATION_STATES = new Set<MigrationState>([
+  'notStarted',
+  'inProgress',
+  'done',
+  'failed',
+]);
 
 const EMPTY_SETUP: IKnowledgeSetupStatus = {
   hasChatCredential: false,
@@ -57,8 +83,6 @@ export class KnowledgeMapper {
       id: o.id,
       name: str(o.name),
       description: nullableStr(o.description),
-      entityTypes: strList(o.entityTypes),
-      relationshipTypes: strList(o.relationshipTypes),
       indexStatus:
         typeof o.indexStatus === 'string' &&
         INDEX_STATUSES.has(o.indexStatus as IndexStatus)
@@ -67,6 +91,21 @@ export class KnowledgeMapper {
       indexError: nullableStr(o.indexError),
       indexedAt: nullableStr(o.indexedAt),
       indexStartedAt: nullableStr(o.indexStartedAt),
+      instanceState:
+        typeof o.instanceState === 'string' &&
+        INSTANCE_STATES.has(o.instanceState as InstanceState)
+          ? (o.instanceState as InstanceState)
+          : 'absent',
+      instanceError: nullableStr(o.instanceError),
+      migrationState:
+        typeof o.migrationState === 'string' &&
+        MIGRATION_STATES.has(o.migrationState as MigrationState)
+          ? (o.migrationState as MigrationState)
+          : 'done',
+      sourcesCount:
+        typeof o.sourcesCount === 'number' ? o.sourcesCount : undefined,
+      totalSizeBytes:
+        typeof o.totalSizeBytes === 'number' ? o.totalSizeBytes : undefined,
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
       sources: Array.isArray(o.sources) ? this.toSourceList(o.sources) : undefined,
@@ -78,6 +117,19 @@ export class KnowledgeMapper {
     return raw
       .map((k) => this.toKnowledge(k))
       .filter((k): k is IKnowledge => k !== null);
+  }
+
+  toKnowledgePage(raw: unknown): IKnowledgePage {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const o = raw as Record<string, unknown>;
+      return {
+        items: this.toKnowledgeList(o.items),
+        total: typeof o.total === 'number' ? o.total : 0,
+        page: typeof o.page === 'number' ? o.page : 1,
+        perPage: typeof o.perPage === 'number' ? o.perPage : 50,
+      };
+    }
+    return { items: [], total: 0, page: 1, perPage: 50 };
   }
 
   toSource(raw: unknown): ISource | null {
@@ -96,7 +148,13 @@ export class KnowledgeMapper {
       mimeType: nullableStr(o.mimeType),
       content: nullableStr(o.content),
       sizeBytes: typeof o.sizeBytes === 'number' ? o.sizeBytes : null,
-      indexed: bool(o.indexed),
+      indexState:
+        typeof o.indexState === 'string' &&
+        SOURCE_INDEX_STATES.has(o.indexState as SourceIndexState)
+          ? (o.indexState as SourceIndexState)
+          : 'queued',
+      indexError: nullableStr(o.indexError),
+      indexedAt: nullableStr(o.indexedAt),
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
     };
@@ -119,7 +177,12 @@ export class KnowledgeMapper {
 
   toQueryResult(raw: unknown): IQueryResult {
     if (raw && typeof raw === 'object') return raw as IQueryResult;
-    return { answer: '', references: [] };
+    return {
+      answer: null,
+      knowledgeId: '',
+      complete: true,
+      references: [],
+    };
   }
 
   toGraph(raw: unknown): IGraph {
@@ -166,8 +229,16 @@ export class KnowledgeMapper {
     return { added: 0, discovered: 0 };
   }
 
-  toLabels(raw: unknown): string[] {
-    return strList(raw);
+  toLabelsResult(raw: unknown): IGraphLabels {
+    if (raw && typeof raw === 'object') {
+      const o = raw as Record<string, unknown>;
+      return {
+        labels: strList(o.labels),
+        total: typeof o.total === 'number' ? o.total : 0,
+        truncated: bool(o.truncated),
+      };
+    }
+    return { labels: [], total: 0, truncated: false };
   }
 
   private toSetup(raw: unknown): IKnowledgeSetupStatus {

@@ -5,12 +5,18 @@ model Knowledge {
   name              String
   description       String?
   workspace         String        @unique
-  entityTypes       String[]      @default([])
-  relationshipTypes String[]      @default([])
   indexStatus       String        @default("idle")
   indexError        String?
   indexedAt         DateTime?
   indexStartedAt    DateTime?
+  // Lifecycle of this base's own retrieval instance (absent | starting |
+  // ready | failed | stopping). An answer is only possible when it is ready.
+  instanceState     String        @default("absent")
+  instanceError     String?
+  instanceEndpoint  String?
+  // One-time transition off the shared pool (notStarted | inProgress |
+  // done | failed). Bases created after the transition are 'done' at birth.
+  migrationState    String        @default("notStarted")
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   sources           Source[]

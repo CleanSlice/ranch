@@ -11,10 +11,7 @@ import {
   IFilesImportResult,
   ISourceData,
 } from './source.types';
-import {
-  fetchSitemapUrls,
-  SitemapError,
-} from '../data/sitemap.fetcher';
+import { fetchSitemapUrls, SitemapError } from '../data/sitemap.fetcher';
 import {
   ArchiveEntry,
   contentTypeForEntry,
@@ -143,12 +140,11 @@ export class SourceService {
   async delete(id: string): Promise<void> {
     const source = await this.gateway.findById(id);
     if (!source) throw new NotFoundException(`Source ${id} not found`);
-    if (source.indexed) {
-      try {
-        await this.gateway.removeFromIndex(source);
-      } catch (err) {
-        this.logger.warn(`removeFromIndex(${id}) failed: ${errorMessage(err)}`);
-      }
+    try {
+      // No-ops when the source was never handed to the retrieval service.
+      await this.gateway.removeFromIndex(source);
+    } catch (err) {
+      this.logger.warn(`removeFromIndex(${id}) failed: ${errorMessage(err)}`);
     }
     if (source.type === 'file' && source.url) {
       try {
@@ -256,12 +252,48 @@ export class SourceService {
     try {
       await fs.unlink(filePath);
     } catch (err) {
-      this.logger.warn(`failed to remove temp archive ${filePath}: ${errorMessage(err)}`);
+      this.logger.warn(
+        `failed to remove temp archive ${filePath}: ${errorMessage(err)}`,
+      );
     }
   }
 
   indexSource(source: ISourceData): Promise<void> {
     return this.gateway.indexSource(source);
+  }
+
+  /**
+   * Hand the source over AND wait until the retrieval service reports it
+   * processed — "indexed" means searchable, not merely submitted. Returns
+   * the source with its terminal state recorded.
+   */
+  async indexSourceAndWait(source: ISourceData): Promise<ISourceData> {
+    await this.gateway.indexSource(source);
+    return this.gateway.waitForSourceIndexed(source.id);
+  }
+
+  requeueSource(sourceId: string): Promise<void> {
+    return this.gateway.updateIndexState(sourceId, {
+      indexState: 'queued',
+      indexError: null,
+    });
+  }
+
+  /**
+   * Retry a single failed source without touching the rest of the batch
+   * (FR-032). Runs in the background; per-source state reports the outcome.
+   */
+  async reindexSource(knowledgeId: string, sourceId: string): Promise<void> {
+    const source = await this.gateway.findById(sourceId);
+    if (!source || source.knowledgeId !== knowledgeId) {
+      throw new NotFoundException(`Source ${sourceId} not found`);
+    }
+    await this.requeueSource(sourceId);
+    void this.indexSourceAndWait({ ...source, indexState: 'queued' }).catch(
+      (err) => {
+        this.logger.warn(`reindex of ${sourceId} failed: ${errorMessage(err)}`);
+      },
+    );
   }
 
   /**

@@ -19,9 +19,13 @@ import { ILlmGateway } from '#/llm/domain';
 import {
   CreateKnowledgeDto,
   UpdateKnowledgeDto,
+  FilterKnowledgeDto,
+  KnowledgePageDto,
   QueryKnowledgeDto,
   GetGraphDto,
+  GetGraphLabelsDto,
   GraphDto,
+  GraphLabelsDto,
   KnowledgeQueryResultDto,
 } from './dtos';
 
@@ -44,10 +48,20 @@ export class KnowledgeController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List knowledges', operationId: 'getKnowledges' })
-  async list() {
-    if (!(await this.knowledgeConfig.isEnabled())) return [];
-    return this.service.list();
+  @ApiOperation({
+    summary: 'List knowledges (searchable, paged)',
+    operationId: 'getKnowledges',
+  })
+  @ApiOkResponse({ type: KnowledgePageDto })
+  async list(@Query() dto: FilterKnowledgeDto): Promise<KnowledgePageDto> {
+    if (!(await this.knowledgeConfig.isEnabled())) {
+      return { items: [], total: 0, page: 1, perPage: dto.perPage ?? 50 };
+    }
+    return this.service.listPage({
+      search: dto.search,
+      page: dto.page,
+      perPage: dto.perPage,
+    });
   }
 
   @Get('status')
@@ -97,22 +111,35 @@ export class KnowledgeController {
     };
   }
 
-  @Get('graph/labels')
+  @Get(':id/graph/labels')
   @ApiOperation({
-    summary: 'List graph entity labels',
+    summary: 'List entity labels of one knowledge base',
     operationId: 'getGraphLabels',
   })
-  async graphLabels(): Promise<string[]> {
+  @ApiOkResponse({ type: GraphLabelsDto })
+  async graphLabels(
+    @Param('id') id: string,
+    @Query() dto: GetGraphLabelsDto,
+  ): Promise<GraphLabelsDto> {
     await this.requireEnabled();
-    return this.service.getGraphLabels();
+    return this.service.getGraphLabels(id, {
+      search: dto.search,
+      limit: dto.limit,
+    });
   }
 
-  @Get('graph')
-  @ApiOperation({ summary: 'Get knowledge graph', operationId: 'getGraph' })
+  @Get(':id/graph')
+  @ApiOperation({
+    summary: 'Get the graph of one knowledge base',
+    operationId: 'getGraph',
+  })
   @ApiOkResponse({ type: GraphDto })
-  async graph(@Query() dto: GetGraphDto): Promise<IGraphData> {
+  async graph(
+    @Param('id') id: string,
+    @Query() dto: GetGraphDto,
+  ): Promise<IGraphData> {
     await this.requireEnabled();
-    return this.service.getGraph({
+    return this.service.getGraph(id, {
       label: dto.label,
       maxDepth: dto.maxDepth,
       maxNodes: dto.maxNodes,
@@ -123,7 +150,7 @@ export class KnowledgeController {
   @ApiOperation({ summary: 'Get one knowledge', operationId: 'getKnowledge' })
   async getOne(@Param('id') id: string) {
     await this.requireEnabled();
-    return this.service.get(id);
+    return this.service.getWithDerivedStatus(id);
   }
 
   @Post()

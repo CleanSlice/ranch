@@ -112,7 +112,8 @@
     },
     "moduleNameMapper": {
       "^#$": "<rootDir>/slices",
-      "^#/(.*)$": "<rootDir>/slices/$1"
+      "^#/(.*)$": "<rootDir>/slices/$1",
+      "^#mcp$": "<rootDir>/slices/mcp"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

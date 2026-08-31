@@ -172,6 +172,39 @@ export type CreateApiKeyDto = {
   expiresAt?: string;
 };
 
+export type KnowledgeListItemDto = {
+  id: string;
+  name: string;
+  description: string | null;
+  /**
+   * Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).
+   */
+  indexStatus: "idle" | "indexing" | "ready" | "failed" | "empty" | "partial";
+  indexError: string | null;
+  indexedAt: string | null;
+  indexStartedAt: string | null;
+  instanceState: "absent" | "starting" | "ready" | "failed" | "stopping";
+  instanceError: string | null;
+  migrationState: "notStarted" | "inProgress" | "done" | "failed";
+  createdAt: string;
+  updatedAt: string;
+  sourcesCount: number;
+  totalSizeBytes: number;
+};
+
+export type KnowledgePageDto = {
+  items: Array<KnowledgeListItemDto>;
+  total: number;
+  page: number;
+  perPage: number;
+};
+
+export type GraphLabelsDto = {
+  labels: Array<string>;
+  total: number;
+  truncated: boolean;
+};
+
 export type GraphNodeDto = {
   id: string;
   label: string;
@@ -197,15 +230,11 @@ export type GraphDto = {
 export type CreateKnowledgeDto = {
   name: string;
   description?: string;
-  entityTypes?: Array<string>;
-  relationshipTypes?: Array<string>;
 };
 
 export type UpdateKnowledgeDto = {
   name?: string;
   description?: string | null;
-  entityTypes?: Array<string>;
-  relationshipTypes?: Array<string>;
 };
 
 export type QueryKnowledgeDto = {
@@ -217,10 +246,21 @@ export type QueryKnowledgeDto = {
 export type KnowledgeQueryReferenceDto = {
   referenceId: string;
   filePath: string;
+  sourceId: string | null;
+  sourceName: string | null;
 };
 
 export type KnowledgeQueryResultDto = {
-  answer: string;
+  /**
+   * null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.
+   */
+  answer: string | null;
+  reason?: "no_relevant_content";
+  knowledgeId: string;
+  /**
+   * false while this base is still being re-processed into its own area — answers may be incomplete.
+   */
+  complete: boolean;
   references: Array<KnowledgeQueryReferenceDto>;
 };
 
@@ -1838,13 +1878,20 @@ export type ApiKeyControllerRemoveResponse =
 export type GetKnowledgesData = {
   body?: never;
   path?: never;
-  query?: never;
+  query?: {
+    search?: string;
+    page?: number;
+    perPage?: number;
+  };
   url: "/knowledges";
 };
 
 export type GetKnowledgesResponses = {
-  200: unknown;
+  200: KnowledgePageDto;
 };
+
+export type GetKnowledgesResponse =
+  GetKnowledgesResponses[keyof GetKnowledgesResponses];
 
 export type CreateKnowledgeData = {
   body: CreateKnowledgeDto;
@@ -1870,24 +1917,37 @@ export type GetKnowledgeStatusResponses = {
 
 export type GetGraphLabelsData = {
   body?: never;
-  path?: never;
-  query?: never;
-  url: "/knowledges/graph/labels";
+  path: {
+    id: string;
+  };
+  query?: {
+    /**
+     * Case-insensitive substring filter
+     */
+    search?: string;
+    limit?: number;
+  };
+  url: "/knowledges/{id}/graph/labels";
 };
 
 export type GetGraphLabelsResponses = {
-  200: unknown;
+  200: GraphLabelsDto;
 };
+
+export type GetGraphLabelsResponse =
+  GetGraphLabelsResponses[keyof GetGraphLabelsResponses];
 
 export type GetGraphData = {
   body?: never;
-  path?: never;
+  path: {
+    id: string;
+  };
   query: {
     label: string;
     maxDepth?: number;
     maxNodes?: number;
   };
-  url: "/knowledges/graph";
+  url: "/knowledges/{id}/graph";
 };
 
 export type GetGraphResponses = {
@@ -1991,6 +2051,20 @@ export type AddKnowledgeSourceData = {
 
 export type AddKnowledgeSourceResponses = {
   201: unknown;
+};
+
+export type ReindexKnowledgeSourceData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex";
+};
+
+export type ReindexKnowledgeSourceResponses = {
+  202: unknown;
 };
 
 export type AddKnowledgeFileSourcesData = {

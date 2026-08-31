@@ -6,6 +6,7 @@ import { TemplateModule } from '#/agent/template/template.module';
 import { ConfigModule } from '../config/config.module';
 import { LightragModule } from '../lightrag/lightrag.module';
 import { SourceModule } from '../source/source.module';
+import { InstanceModule } from '../instance/instance.module';
 import { KnowledgeController } from './knowledge.controller';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { KnowledgeService } from './domain/knowledge.service';
@@ -19,6 +20,7 @@ import { KnowledgeTool } from './knowledge.tool';
     ConfigModule,
     LightragModule,
     SourceModule,
+    InstanceModule,
     LlmModule,
     forwardRef(() => AgentModule),
     TemplateModule,

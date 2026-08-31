@@ -6,3 +6,4 @@ export * from './queryKnowledge.dto';
 export * from './knowledgeRecord.dto';
 export * from './getGraph.dto';
 export * from './graph.dto';
+export * from './graphLabels.dto';

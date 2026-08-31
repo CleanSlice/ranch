@@ -2,7 +2,9 @@ import type { IKnowledgeGateway } from './knowledge.gateway';
 import type {
   ICreateKnowledgeInput,
   IGraph,
+  IGraphLabels,
   IKnowledge,
+  IKnowledgePage,
   IKnowledgeStatus,
   IQueryResult,
   ISource,
@@ -26,6 +28,14 @@ export class KnowledgeService {
 
   findAll(): Promise<IKnowledge[]> {
     return this.gateway.findAll();
+  }
+
+  findPage(
+    search: string | undefined,
+    page: number,
+    perPage: number,
+  ): Promise<IKnowledgePage> {
+    return this.gateway.findPage(search, page, perPage);
   }
 
   findById(id: string): Promise<IKnowledge | null> {
@@ -100,11 +110,24 @@ export class KnowledgeService {
     return this.gateway.removeSource(id, sourceId);
   }
 
-  graphLabels(): Promise<string[]> {
-    return this.gateway.graphLabels();
+  reindexSource(id: string, sourceId: string): Promise<void> {
+    return this.gateway.reindexSource(id, sourceId);
   }
 
-  graph(label: string, maxDepth: number, maxNodes: number): Promise<IGraph> {
-    return this.gateway.graph(label, maxDepth, maxNodes);
+  graphLabels(
+    id: string,
+    search?: string,
+    limit?: number,
+  ): Promise<IGraphLabels> {
+    return this.gateway.graphLabels(id, search, limit);
+  }
+
+  graph(
+    id: string,
+    label: string,
+    maxDepth: number,
+    maxNodes: number,
+  ): Promise<IGraph> {
+    return this.gateway.graph(id, label, maxDepth, maxNodes);
   }
 }

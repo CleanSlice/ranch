@@ -1,20 +1,39 @@
 import { Module } from '@nestjs/common';
+import { PrismaModule } from '#/setup/prisma/prisma.module';
+import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ConfigModule } from '../config/config.module';
 import { IKnowledgeConfigGateway } from '../config/domain/knowledgeConfig.gateway';
 import { ILightragClient } from './domain/lightrag.client';
-import { LightragHttpClient } from './data/lightragHttp.client';
+import {
+  LightragHttpClient,
+  ILightragCallContext,
+  LightragRequestConfig,
+} from './data/lightragHttp.client';
+import { routeLightragConfig } from './data/lightragRouting';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, PrismaModule],
   providers: [
     {
       provide: ILightragClient,
-      inject: [IKnowledgeConfigGateway],
-      useFactory: (cfg: IKnowledgeConfigGateway) =>
+      inject: [IKnowledgeConfigGateway, PrismaService],
+      useFactory: (cfg: IKnowledgeConfigGateway, prisma: PrismaService) =>
         new LightragHttpClient({
-          resolveConfig: async () => {
+          resolveConfig: async (
+            ctx?: ILightragCallContext,
+          ): Promise<LightragRequestConfig> => {
             const c = await cfg.resolve();
-            return { url: c.url, apiKey: c.apiKey, enabled: c.enabled };
+            const shared = { url: c.url, apiKey: c.apiKey, enabled: c.enabled };
+            if (!ctx) return shared;
+            const k = await prisma.knowledge.findUnique({
+              where: { id: ctx.knowledgeId },
+              select: {
+                migrationState: true,
+                instanceState: true,
+                instanceEndpoint: true,
+              },
+            });
+            return routeLightragConfig(shared, k, ctx);
           },
         }),
     },

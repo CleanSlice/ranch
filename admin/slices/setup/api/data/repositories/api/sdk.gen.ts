@@ -43,9 +43,11 @@ import type {
   ApiKeyControllerRemoveData,
   ApiKeyControllerRemoveResponse,
   GetKnowledgesData,
+  GetKnowledgesResponse,
   CreateKnowledgeData,
   GetKnowledgeStatusData,
   GetGraphLabelsData,
+  GetGraphLabelsResponse,
   GetGraphData,
   GetGraphResponse,
   DeleteKnowledgeData,
@@ -57,6 +59,7 @@ import type {
   QueryKnowledgeResponse,
   GetKnowledgeSourcesData,
   AddKnowledgeSourceData,
+  ReindexKnowledgeSourceData,
   AddKnowledgeFileSourcesData,
   AddKnowledgeFileSourcesResponse,
   AddKnowledgeSourcesFromSitemapData,
@@ -983,13 +986,13 @@ export class ApiKeysService {
 
 export class KnowledgesService {
   /**
-   * List knowledges
+   * List knowledges (searchable, paged)
    */
   public static getKnowledges<ThrowOnError extends boolean = false>(
     options?: Options<GetKnowledgesData, ThrowOnError>,
   ) {
     return (options?.client ?? _heyApiClient).get<
-      unknown,
+      GetKnowledgesResponse,
       unknown,
       ThrowOnError
     >({
@@ -1035,23 +1038,23 @@ export class KnowledgesService {
   }
 
   /**
-   * List graph entity labels
+   * List entity labels of one knowledge base
    */
   public static getGraphLabels<ThrowOnError extends boolean = false>(
-    options?: Options<GetGraphLabelsData, ThrowOnError>,
+    options: Options<GetGraphLabelsData, ThrowOnError>,
   ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
+    return (options.client ?? _heyApiClient).get<
+      GetGraphLabelsResponse,
       unknown,
       ThrowOnError
     >({
-      url: "/knowledges/graph/labels",
+      url: "/knowledges/{id}/graph/labels",
       ...options,
     });
   }
 
   /**
-   * Get knowledge graph
+   * Get the graph of one knowledge base
    */
   public static getGraph<ThrowOnError extends boolean = false>(
     options: Options<GetGraphData, ThrowOnError>,
@@ -1061,7 +1064,7 @@ export class KnowledgesService {
       unknown,
       ThrowOnError
     >({
-      url: "/knowledges/graph",
+      url: "/knowledges/{id}/graph",
       ...options,
     });
   }
@@ -1190,6 +1193,23 @@ export class KnowledgeSourcesService {
         "Content-Type": null,
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Retry indexing a single source
+   * Requeues one source and re-ingests it without touching the rest of the batch. Progress is reported through the source own indexState.
+   */
+  public static reindexKnowledgeSource<ThrowOnError extends boolean = false>(
+    options: Options<ReindexKnowledgeSourceData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex",
+      ...options,
     });
   }
 

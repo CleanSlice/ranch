@@ -6,7 +6,9 @@ import { IKnowledgeGateway } from '../domain/knowledge.gateway';
 import type {
   ICreateKnowledgeInput,
   IGraph,
+  IGraphLabels,
   IKnowledge,
+  IKnowledgePage,
   IKnowledgeStatus,
   IQueryResult,
   ISource,
@@ -34,10 +36,27 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
     });
   }
 
+  // Callers that need "everything" (binding resolution) read the first
+  // page at the maximum size — a personal installation holds low tens.
   findAll(): Promise<IKnowledge[]> {
     return this.execute(async () => {
-      const res = await KnowledgesService.getKnowledges();
-      return this.mapper.toKnowledgeList(unwrapEnvelope(res.data));
+      const res = await KnowledgesService.getKnowledges({
+        query: { perPage: 100 },
+      });
+      return this.mapper.toKnowledgePage(unwrapEnvelope(res.data)).items;
+    });
+  }
+
+  findPage(
+    search: string | undefined,
+    page: number,
+    perPage: number,
+  ): Promise<IKnowledgePage> {
+    return this.execute(async () => {
+      const res = await KnowledgesService.getKnowledges({
+        query: { search: search || undefined, page, perPage },
+      });
+      return this.mapper.toKnowledgePage(unwrapEnvelope(res.data));
     });
   }
 
@@ -192,16 +211,37 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
     });
   }
 
-  graphLabels(): Promise<string[]> {
+  reindexSource(id: string, sourceId: string): Promise<void> {
     return this.execute(async () => {
-      const res = await KnowledgesService.getGraphLabels();
-      return this.mapper.toLabels(unwrapEnvelope(res.data));
+      await apiClient.instance.post(
+        `/knowledges/${id}/sources/${sourceId}/reindex`,
+      );
     });
   }
 
-  graph(label: string, maxDepth: number, maxNodes: number): Promise<IGraph> {
+  graphLabels(
+    id: string,
+    search?: string,
+    limit?: number,
+  ): Promise<IGraphLabels> {
+    return this.execute(async () => {
+      const res = await KnowledgesService.getGraphLabels({
+        path: { id },
+        query: { search, limit },
+      });
+      return this.mapper.toLabelsResult(unwrapEnvelope(res.data));
+    });
+  }
+
+  graph(
+    id: string,
+    label: string,
+    maxDepth: number,
+    maxNodes: number,
+  ): Promise<IGraph> {
     return this.execute(async () => {
       const res = await KnowledgesService.getGraph({
+        path: { id },
         query: { label, maxDepth, maxNodes },
       });
       return this.mapper.toGraph(unwrapEnvelope(res.data));

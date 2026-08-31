@@ -18,6 +18,7 @@ export type {
   ICreateKnowledgeInput,
   IGraph,
   IKnowledge,
+  IKnowledgePage,
   IKnowledgeSetupStatus,
   IndexStatus,
   IQueryResult,
@@ -68,6 +69,10 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
 
   function fetchById(id: string) {
     return getService().findById(id);
+  }
+
+  function fetchPage(search: string | undefined, page: number, perPage = 50) {
+    return getService().findPage(search, page, perPage);
   }
 
   async function create(body: ICreateKnowledgeInput) {
@@ -145,16 +150,21 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     return getService().removeSource(id, sourceId);
   }
 
-  function getGraphLabels() {
-    return getService().graphLabels();
+  function reindexSource(id: string, sourceId: string) {
+    return getService().reindexSource(id, sourceId);
+  }
+
+  function getGraphLabels(id: string, search?: string, limit?: number) {
+    return getService().graphLabels(id, search, limit);
   }
 
   function getGraph(
+    id: string,
     label: string,
     maxDepth: number,
     maxNodes: number,
   ): Promise<IGraph> {
-    return getService().graph(label, maxDepth, maxNodes);
+    return getService().graph(id, label, maxDepth, maxNodes);
   }
 
   return {
@@ -167,6 +177,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     fetchStatus,
     fetchAll,
     fetchById,
+    fetchPage,
     create,
     update,
     remove,
@@ -180,6 +191,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     addSourcesFromSitemap,
     addSourcesFromArchive,
     removeSource,
+    reindexSource,
     getGraphLabels,
     getGraph,
   };

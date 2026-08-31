@@ -3,12 +3,29 @@ import Sigma from 'sigma';
 import type { SigmaNodeEventPayload, SigmaEdgeEventPayload } from 'sigma/types';
 import Graph from 'graphology';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
+import {
+  ComboboxAnchor,
+  ComboboxContent,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxPortal,
+  ComboboxRoot,
+  ComboboxTrigger,
+  ComboboxViewport,
+  ComboboxVirtualizer,
+} from 'reka-ui';
 import type { GraphDto, GraphNodeDto, GraphEdgeDto } from '#api/data';
 
+const route = useRoute();
 const store = useKnowledgeStore();
 
+const knowledgeId = computed(() => route.params.id as string);
 const container = ref<HTMLElement | null>(null);
 const labels = ref<string[]>([]);
+const labelsTotal = ref(0);
+const labelsTruncated = ref(false);
+const labelSearch = ref('');
+const labelsLoading = ref(false);
 const selectedLabel = ref<string>('*');
 const maxDepth = ref<number>(3);
 const maxNodes = ref<number>(100);
@@ -160,9 +177,31 @@ function normalizeAndFit(): void {
   renderer.getCamera().setState({ x: 0.5, y: 0.5, ratio: 1.15, angle: 0 });
 }
 
+// Server-side search with a hard cap: the page never renders more entities
+// than a screen can use, no matter how much the base holds (SC-009).
 async function loadLabels(): Promise<void> {
-  labels.value = await store.getGraphLabels();
+  labelsLoading.value = true;
+  try {
+    const result = await store.getGraphLabels(
+      knowledgeId.value,
+      labelSearch.value.trim() || undefined,
+      200,
+    );
+    labels.value = result.labels;
+    labelsTotal.value = result.total;
+    labelsTruncated.value = result.truncated;
+  } finally {
+    labelsLoading.value = false;
+  }
 }
+
+let labelTimer: ReturnType<typeof setTimeout> | null = null;
+watch(labelSearch, () => {
+  if (labelTimer) clearTimeout(labelTimer);
+  labelTimer = setTimeout(() => {
+    void loadLabels();
+  }, 200);
+});
 
 async function loadGraph(): Promise<void> {
   loading.value = true;
@@ -171,6 +210,7 @@ async function loadGraph(): Promise<void> {
   selectedEdge.value = null;
   try {
     const data = await store.getGraph(
+      knowledgeId.value,
       selectedLabel.value,
       maxDepth.value,
       maxNodes.value,
@@ -221,20 +261,80 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex flex-col gap-4">
+    <p class="text-sm text-muted-foreground">
+      An inspection view: the entities and relations indexing extracted from
+      your sources — the map retrieval walks when it answers. Useful for
+      diagnosing odd answers; not needed for everyday work.
+    </p>
+
     <div class="flex flex-wrap items-end gap-3">
       <div class="grid gap-1">
         <Label class="text-xs text-muted-foreground">Entity</Label>
-        <Select v-model="selectedLabel">
-          <SelectTrigger class="w-64">
-            <SelectValue placeholder="Pick an entity" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="*">* (all)</SelectItem>
-            <SelectItem v-for="l in labels" :key="l" :value="l">
-              {{ l }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        <ComboboxRoot v-model="selectedLabel" :ignore-filter="true">
+          <ComboboxAnchor
+            class="flex h-9 w-64 items-center gap-1 rounded-md border bg-background px-2"
+          >
+            <ComboboxInput
+              v-model="labelSearch"
+              class="h-full w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              :placeholder="selectedLabel === '*' ? '* (all entities)' : selectedLabel"
+            />
+            <ComboboxTrigger class="text-muted-foreground">
+              <span aria-hidden="true">▾</span>
+            </ComboboxTrigger>
+          </ComboboxAnchor>
+          <ComboboxPortal>
+            <ComboboxContent
+              position="popper"
+              class="z-50 mt-1 w-[var(--reka-combobox-trigger-width)] min-w-64 rounded-md border bg-popover text-popover-foreground shadow-md"
+            >
+              <ComboboxViewport class="max-h-72 overflow-y-auto p-1">
+                <ComboboxItem
+                  value="*"
+                  class="cursor-default rounded px-2 py-1.5 text-sm data-[highlighted]:bg-muted"
+                >
+                  * (all)
+                </ComboboxItem>
+                <ComboboxVirtualizer
+                  v-if="labels.length"
+                  v-slot="{ option }"
+                  :options="labels"
+                  :estimate-size="32"
+                  :text-content="(l: string) => l"
+                >
+                  <ComboboxItem
+                    :value="option"
+                    class="cursor-default truncate rounded px-2 py-1.5 text-sm data-[highlighted]:bg-muted"
+                  >
+                    {{ option }}
+                  </ComboboxItem>
+                </ComboboxVirtualizer>
+                <p
+                  v-else-if="labelsLoading"
+                  class="px-2 py-3 text-xs text-muted-foreground"
+                >
+                  Loading…
+                </p>
+                <p
+                  v-else-if="labelSearch.trim()"
+                  class="px-2 py-3 text-xs text-muted-foreground"
+                >
+                  No entity matches “{{ labelSearch.trim() }}”.
+                </p>
+                <p v-else class="px-2 py-3 text-xs text-muted-foreground">
+                  No entities yet — add sources and run Index first.
+                </p>
+                <p
+                  v-if="labelsTruncated"
+                  class="border-t px-2 py-1.5 text-xs text-muted-foreground"
+                >
+                  Showing {{ labels.length }} of {{ labelsTotal }} — type to
+                  narrow.
+                </p>
+              </ComboboxViewport>
+            </ComboboxContent>
+          </ComboboxPortal>
+        </ComboboxRoot>
       </div>
       <div class="grid gap-1">
         <Label class="text-xs text-muted-foreground">Max depth</Label>
@@ -289,7 +389,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <p v-else class="text-xs text-muted-foreground">
-            No data
+            Nothing indexed yet — add sources and run Index to build the graph.
           </p>
         </div>
 

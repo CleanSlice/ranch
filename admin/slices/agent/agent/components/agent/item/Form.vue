@@ -93,16 +93,6 @@ function parseOrigins(text: string): string[] {
     .filter(Boolean);
 }
 
-function toggleKnowledge(id: string, checked: boolean | 'indeterminate'): void {
-  if (checked === true) {
-    if (!form.knowledgeIds.includes(id)) {
-      form.knowledgeIds.push(id);
-    }
-  } else {
-    form.knowledgeIds = form.knowledgeIds.filter((x) => x !== id);
-  }
-}
-
 function onSubmit() {
   if (!validate()) return;
   emit('submit', {
@@ -208,31 +198,10 @@ function onSubmit() {
           <p class="text-xs text-muted-foreground">
             Leave empty to inherit from template.
           </p>
-          <div
-            class="flex max-h-64 flex-col gap-2 overflow-auto rounded-md border p-3"
-          >
-            <label
-              v-for="k in knowledges"
-              :key="k.id"
-              class="flex cursor-pointer items-start gap-3"
-            >
-              <Checkbox
-                :model-value="form.knowledgeIds.includes(k.id)"
-                @update:model-value="(v) => toggleKnowledge(k.id, v)"
-              />
-              <div class="grid gap-0.5">
-                <span class="text-sm font-medium">{{ k.name }}</span>
-                <span
-                  v-if="k.description"
-                  class="text-xs text-muted-foreground"
-                >{{ k.description }}</span>
-                <span
-                  v-if="k.indexStatus !== 'ready'"
-                  class="text-xs text-muted-foreground"
-                >Index: {{ k.indexStatus }}</span>
-              </div>
-            </label>
-          </div>
+          <AgentKnowledgeBindingPicker
+            v-model="form.knowledgeIds"
+            :knowledges="knowledges"
+          />
         </template>
       </CardContent>
     </Card>

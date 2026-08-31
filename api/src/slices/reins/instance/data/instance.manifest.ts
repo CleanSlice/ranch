@@ -3,10 +3,7 @@
 // Service for stable in-cluster addressing. Deliberately mirrors
 // agent-workflow.manifest.ts: fully-baked JSON, no workflow parameters.
 
-import {
-  AGENT_SLOT_CPU_MILLI,
-  AGENT_SLOT_MEM_BYTES,
-} from '#/agent/pod/domain';
+import { AGENT_SLOT_CPU_MILLI, AGENT_SLOT_MEM_BYTES } from '#/agent/pod/domain';
 
 export interface IInstanceManifestInput {
   knowledgeId: string;
@@ -186,7 +183,10 @@ export function buildInstancePod(input: IInstanceManifestInput): object {
             { name: 'POSTGRES_PASSWORD', value: 'rag' },
             { name: 'POSTGRES_DATABASE', value: 'rag' },
             { name: 'LIGHTRAG_KV_STORAGE', value: 'PGKVStorage' },
-            { name: 'LIGHTRAG_DOC_STATUS_STORAGE', value: 'PGDocStatusStorage' },
+            {
+              name: 'LIGHTRAG_DOC_STATUS_STORAGE',
+              value: 'PGDocStatusStorage',
+            },
             { name: 'LIGHTRAG_VECTOR_STORAGE', value: 'PGVectorStorage' },
             { name: 'LIGHTRAG_GRAPH_STORAGE', value: 'PGGraphStorage' },
           ],

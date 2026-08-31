@@ -9,9 +9,10 @@ import {
 // `workspace` and `instanceEndpoint` stay off the wire on purpose: the first
 // is the retrieval service's internal namespace name (the product surface
 // avoids the word), the second is an in-cluster address no console needs.
-export class KnowledgeDto
-  implements Omit<IKnowledgeData, 'workspace' | 'instanceEndpoint'>
-{
+export class KnowledgeDto implements Omit<
+  IKnowledgeData,
+  'workspace' | 'instanceEndpoint'
+> {
   @ApiProperty() id: string;
   @ApiProperty() name: string;
   @ApiProperty({ type: String, nullable: true }) description: string | null;

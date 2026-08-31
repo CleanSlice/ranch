@@ -11,10 +11,7 @@ import {
   IFilesImportResult,
   ISourceData,
 } from './source.types';
-import {
-  fetchSitemapUrls,
-  SitemapError,
-} from '../data/sitemap.fetcher';
+import { fetchSitemapUrls, SitemapError } from '../data/sitemap.fetcher';
 import {
   ArchiveEntry,
   contentTypeForEntry,
@@ -255,7 +252,9 @@ export class SourceService {
     try {
       await fs.unlink(filePath);
     } catch (err) {
-      this.logger.warn(`failed to remove temp archive ${filePath}: ${errorMessage(err)}`);
+      this.logger.warn(
+        `failed to remove temp archive ${filePath}: ${errorMessage(err)}`,
+      );
     }
   }
 
@@ -292,9 +291,7 @@ export class SourceService {
     await this.requeueSource(sourceId);
     void this.indexSourceAndWait({ ...source, indexState: 'queued' }).catch(
       (err) => {
-        this.logger.warn(
-          `reindex of ${sourceId} failed: ${errorMessage(err)}`,
-        );
+        this.logger.warn(`reindex of ${sourceId} failed: ${errorMessage(err)}`);
       },
     );
   }

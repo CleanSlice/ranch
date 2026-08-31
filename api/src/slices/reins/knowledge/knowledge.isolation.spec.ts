@@ -48,7 +48,9 @@ function base(p: Partial<IKnowledgeData> & { id: string }): IKnowledgeData {
   };
 }
 
-function source(p: Partial<ISourceData> & { id: string; knowledgeId: string }): ISourceData {
+function source(
+  p: Partial<ISourceData> & { id: string; knowledgeId: string },
+): ISourceData {
   return {
     type: 'text',
     name: p.id,
@@ -77,7 +79,12 @@ function makeHarness(bases: IKnowledgeData[], sources: ISourceData[]): Harness {
   // nothing relevant. The shared endpoint must never be hit by a migrated
   // base, so it answers with a poisoned marker that would fail the test.
   const fakeFetch = (async (input: RequestInfo | URL) => {
-    const url = String(input);
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
     fetchedUrls.push(url);
     if (url.startsWith(K1_ENDPOINT) && url.endsWith('/query')) {
       return jsonResponse({
@@ -113,9 +120,8 @@ function makeHarness(bases: IKnowledgeData[], sources: ISourceData[]): Harness {
 
   const gateway = {
     findById: jest.fn(async (id: string) => byId.get(id) ?? null),
-    searchKnowledge: jest.fn(
-      async (knowledgeId: string, query: string) =>
-        client.query({ knowledgeId, query }),
+    searchKnowledge: jest.fn(async (knowledgeId: string, query: string) =>
+      client.query({ knowledgeId, query }),
     ),
   } as unknown as IKnowledgeGateway;
 
@@ -159,7 +165,10 @@ describe('SC-001 — an answer comes only from the base that was asked', () => {
 
   test('the base that holds the fact answers it, with references inside itself', async () => {
     const { service } = makeHarness([k1, k2], [srcK1, srcK2]);
-    const result = await service.query('k1', 'What port does the Falkirk relay use?');
+    const result = await service.query(
+      'k1',
+      'What port does the Falkirk relay use?',
+    );
     expect(result.answer).toContain('7731');
     expect(result.knowledgeId).toBe('k1');
     expect(result.references).toHaveLength(1);
@@ -169,7 +178,10 @@ describe('SC-001 — an answer comes only from the base that was asked', () => {
 
   test('the base without the fact says no_relevant_content — no generated answer, no borrowing', async () => {
     const { service, fetchedUrls } = makeHarness([k1, k2], [srcK1, srcK2]);
-    const result = await service.query('k2', 'What port does the Falkirk relay use?');
+    const result = await service.query(
+      'k2',
+      'What port does the Falkirk relay use?',
+    );
     expect(result.answer).toBeNull();
     expect(result.reason).toBe('no_relevant_content');
     expect(result.references).toEqual([]);
@@ -224,7 +236,10 @@ describe('routing policy — the transition never leaks', () => {
       instanceEndpoint: K1_ENDPOINT,
     };
     for (const intent of ['read', 'write'] as const) {
-      const cfg = routeLightragConfig(shared, row, { knowledgeId: 'k1', intent });
+      const cfg = routeLightragConfig(shared, row, {
+        knowledgeId: 'k1',
+        intent,
+      });
       expect(cfg.url).toBe(K1_ENDPOINT);
       expect(cfg.enabled).toBe(true);
     }

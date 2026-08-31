@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnApplicationBootstrap,
-} from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { IKnowledgeGateway } from '../../knowledge/domain/knowledge.gateway';
 import { KnowledgeService } from '../../knowledge/domain/knowledge.service';
 import { IKnowledgeData } from '../../knowledge/domain/knowledge.types';

@@ -32,10 +32,10 @@ An operator edits an agent file in the shared copy (via the UI editor or through
 
 **Acceptance Scenarios**:
 
-1. **Given** a running agent whose working copy of a file changed AND whose shared copy was edited after the agent last took/sent files, **When** the operator triggers Sync, **Then** a warning lists that file as "will be overwritten, shared copy is newer" and Sync proceeds only after explicit confirmation.
-2. **Given** a file deleted in the agent's working copy whose shared copy was edited after the agent last took/sent files, **When** the operator triggers Sync, **Then** the warning lists that file as "will be removed" and requires the same confirmation.
-3. **Given** no conflicts (no shared-copy object newer than the agent's last take/send), **When** the operator triggers Sync, **Then** Sync runs immediately without an extra confirmation step.
-4. **Given** a file edited only in the shared copy (agent's working copy untouched), **When** Sync runs, **Then** the file is not listed as a conflict and is not overwritten (existing delta behavior, must be preserved).
+1. **Given** a running agent whose working copy of a file changed AND whose shared copy was edited after the agent last took/sent files, **When** the operator triggers Sync, **Then** a warning lists that file as at risk ("shared copy is newer — may be overwritten") and Sync proceeds only after explicit confirmation.
+2. **Given** a file deleted in the agent's working copy whose shared copy was edited after the agent last took/sent files, **When** the operator triggers Sync, **Then** the warning covers it the same way (at risk of removal) and requires the same confirmation.
+3. **Given** no shared-copy object newer than the agent's last take/send, **When** the operator triggers Sync, **Then** Sync runs immediately without an extra confirmation step.
+4. **Given** a file edited only in the shared copy (agent's working copy untouched), **When** Sync runs after confirmation, **Then** the file is NOT overwritten (delta behavior preserved); it MAY appear in the at-risk warning, because the platform cannot see which files the agent changed — a false positive is acceptable, silent loss is not.
 
 ---
 
@@ -84,7 +84,7 @@ An operator asks the admin agent to "create an agent and bind a knowledge base".
 ### Functional Requirements
 
 - **FR-001**: The platform MUST record, per agent and using its own clock domain, when the running agent last took files from the shared copy (agent start) and when the last Sync completed; the running agent's clock is not part of the comparison.
-- **FR-002**: Before executing Sync, the system MUST identify shared-copy files that changed after the moment from FR-001 and that Sync would overwrite or remove.
+- **FR-002**: Before executing Sync, the system MUST identify shared-copy files that changed after the moment from FR-001 (files *at risk* of being overwritten or removed; false positives are acceptable, missed files are not).
 - **FR-003**: When FR-002 finds at least one file at risk, the system MUST present the list to the operator and proceed only after explicit confirmation; cancelling MUST leave the shared copy untouched.
 - **FR-004**: When FR-002 finds nothing at risk, Sync MUST proceed without additional friction.
 - **FR-005**: Sync MUST continue to send only files actually changed in the agent's working copy and MUST NOT touch shared-copy files the agent never modified (preserve verified delta semantics).

@@ -44,6 +44,12 @@ const renderedHtml = computed(() =>
           : 'chat-md rounded-2xl rounded-tl-md bg-muted text-foreground'
       "
     >
+      <!-- Media above the text, the way every chat client orders it -->
+      <BridleChatAttachmentList
+        v-if="message.attachments?.length"
+        :attachments="message.attachments"
+        :on-primary="isUser"
+      />
       <template v-if="isUser">{{ message.text }}</template>
       <div v-else v-html="renderedHtml" />
     </div>

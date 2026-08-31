@@ -1,0 +1,78 @@
+/**
+ * Client-side mirror of the API's attachment limits
+ * (`api/src/slices/bridle/domain/attachment.constants.ts`).
+ *
+ * These exist so a file can be rejected the instant it is picked, before its
+ * bytes travel anywhere. The server enforces the same rules and is the only
+ * thing that actually governs — if the two ever disagree, the server wins and
+ * this file is the one that is wrong.
+ */
+
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_MESSAGE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+export const MAX_ATTACHMENTS_PER_MESSAGE = 5;
+
+export const IMAGE_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+] as const;
+
+export const TEXT_MIME_TYPES = [
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'application/json',
+] as const;
+
+export const BINARY_MIME_TYPES = ['application/pdf'] as const;
+
+export const ALLOWED_MIME_TYPES: readonly string[] = [
+  ...IMAGE_MIME_TYPES,
+  ...TEXT_MIME_TYPES,
+  ...BINARY_MIME_TYPES,
+];
+
+/** `accept` attribute for the file picker. Extensions are included because
+ *  some platforms report an empty `type` for .md and .csv. */
+export const FILE_PICKER_ACCEPT = [
+  ...ALLOWED_MIME_TYPES,
+  '.md',
+  '.markdown',
+  '.csv',
+  '.txt',
+  '.json',
+].join(',');
+
+/** Same extension fallback the server uses when `file.type` is blank. */
+export const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+  '.markdown': 'text/markdown',
+  '.csv': 'text/csv',
+  '.json': 'application/json',
+};
+
+/** Human-readable byte size for chips and error copy. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Resolve a file's MIME type, falling back to its extension when blank. */
+export function resolveMimeType(file: File): string {
+  const reported = (file.type || '').trim().toLowerCase();
+  if (ALLOWED_MIME_TYPES.includes(reported)) return reported;
+
+  const dot = file.name.lastIndexOf('.');
+  const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : '';
+  return MIME_BY_EXTENSION[ext] ?? reported;
+}

@@ -1,3 +1,11 @@
+import {
+  ALLOWED_MIME_TYPES,
+  BINARY_MIME_TYPES,
+  IMAGE_MIME_TYPES,
+  MIME_BY_EXTENSION,
+  TEXT_MIME_TYPES,
+} from './attachment.constants';
+
 // ── Part types (wire protocol) ───────────────────────────────
 
 export enum BridlePartTypes {
@@ -25,6 +33,43 @@ export interface IBridleFilePart {
 }
 
 export type BridlePart = IBridleTextPart | IBridleImagePart | IBridleFilePart;
+
+// ── Attachments ──────────────────────────────────────────────
+
+/**
+ * How an attachment is treated on its way to the agent. The distinction is
+ * not cosmetic: the agent runtime folds `image` parts into the model call and
+ * drops `file` parts before it, so only images and inlined text ever reach the
+ * model. `binary` is delivered as a named reference and is labelled in the UI
+ * as something the agent cannot read.
+ */
+export enum BridleAttachmentKinds {
+  Image = 'image',
+  Text = 'text',
+  Binary = 'binary',
+}
+
+/** What the upload endpoint returns and what a message carries. */
+export interface IBridleAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: BridleAttachmentKinds;
+  /** Path of the authenticated download route — never an S3 URL. */
+  url: string;
+  /** False for `binary`: the agent sees the name, not the contents. */
+  readableByAgent: boolean;
+}
+
+/** An attachment plus its bytes, as returned by the storage gateway. */
+export interface IBridleStoredAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  body: Buffer;
+}
 
 // ── Wire protocol messages ───────────────────────────────────
 
@@ -205,4 +250,49 @@ export function buildParts(
     }
   }
   return parts;
+}
+
+// ── Attachment helpers ───────────────────────────────────────
+
+/**
+ * Decide how an attachment will be treated, from its MIME type with an
+ * extension fallback. Browsers report an empty `type` for .md and .csv often
+ * enough that trusting the type alone would reject perfectly ordinary files.
+ * Returns null for anything off the allow-list.
+ */
+export function resolveAttachmentKind(
+  mimeType: string,
+): BridleAttachmentKinds | null {
+  if ((IMAGE_MIME_TYPES as readonly string[]).includes(mimeType)) {
+    return BridleAttachmentKinds.Image;
+  }
+  if ((TEXT_MIME_TYPES as readonly string[]).includes(mimeType)) {
+    return BridleAttachmentKinds.Text;
+  }
+  if ((BINARY_MIME_TYPES as readonly string[]).includes(mimeType)) {
+    return BridleAttachmentKinds.Binary;
+  }
+  return null;
+}
+
+/**
+ * Best-effort MIME type for an upload: the reported type when it is one we
+ * accept, otherwise the extension's type. Deliberately conservative — we
+ * never widen an unknown type into an accepted one.
+ */
+export function resolveAttachmentMimeType(
+  reported: string | undefined,
+  filename: string,
+): string {
+  const claimed = (reported ?? '').trim().toLowerCase();
+  if (ALLOWED_MIME_TYPES.includes(claimed)) return claimed;
+
+  const dot = filename.lastIndexOf('.');
+  const ext = dot >= 0 ? filename.slice(dot).toLowerCase() : '';
+  return MIME_BY_EXTENSION[ext] ?? claimed;
+}
+
+/** True when the agent can actually read the contents, not just the name. */
+export function isReadableByAgent(kind: BridleAttachmentKinds): boolean {
+  return kind !== BridleAttachmentKinds.Binary;
 }

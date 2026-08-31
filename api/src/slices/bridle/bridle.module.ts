@@ -3,12 +3,18 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { BridleController } from './bridle.controller';
 import { BridleClientWsHandler, BridleAgentWsHandler } from './handlers';
-import { IBridleGateway } from './domain';
-import { BridleGateway } from './data';
+import {
+  IBridleGateway,
+  IBridleAttachmentGateway,
+  BridleAttachmentService,
+} from './domain';
+import { BridleGateway, BridleAttachmentGateway } from './data';
 import { BridleApiKeyGuard } from './guards/bridleApiKey.guard';
 import { FileModule } from '#/agent/file/file.module';
 import { AgentModule } from '#/agent/agent/agent.module';
 import { ChatModule } from '#/chat/chat.module';
+import { S3Module } from '#/aws/s3';
+import { SettingModule } from '#/setting/setting.module';
 
 /**
  * Bridle Module — authenticated hub between browsers and agents.
@@ -41,10 +47,15 @@ import { ChatModule } from '#/chat/chat.module';
  *   POST /api/agent/:agentId/message/sync  — synchronous (120s timeout)
  *   GET  /api/agent/health               — overall hub status
  *   GET  /api/agent/:agentId/health        — per-agent status
+ *   POST /api/agent/:agentId/attachment    — upload an attachment (auth required)
+ *   GET  /api/agent/:agentId/attachment/:id — download it back (auth required)
  */
 @Module({
   imports: [
     ConfigModule,
+    // Attachment storage: S3Repository for the bytes, settings for the bucket.
+    S3Module,
+    SettingModule,
     forwardRef(() => FileModule),
     forwardRef(() => AgentModule),
     forwardRef(() => ChatModule),
@@ -59,11 +70,13 @@ import { ChatModule } from '#/chat/chat.module';
   ],
   providers: [
     { provide: IBridleGateway, useClass: BridleGateway },
+    { provide: IBridleAttachmentGateway, useClass: BridleAttachmentGateway },
+    BridleAttachmentService,
     BridleClientWsHandler,
     BridleAgentWsHandler,
     BridleApiKeyGuard,
   ],
   controllers: [BridleController],
-  exports: [IBridleGateway, BridleApiKeyGuard],
+  exports: [IBridleGateway, IBridleAttachmentGateway, BridleApiKeyGuard],
 })
 export class BridleModule {}

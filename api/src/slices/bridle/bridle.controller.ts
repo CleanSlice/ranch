@@ -4,37 +4,71 @@ import {
   Get,
   Delete,
   Body,
+  BadRequestException,
   HttpCode,
   Inject,
+  NotFoundException,
   Param,
   Query,
   Req,
+  Res,
   Logger,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
   forwardRef,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
   ApiBody,
+  ApiConsumes,
   ApiOkResponse,
   ApiQuery,
 } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
-import { IBridleGateway, buildParts } from './domain';
+import {
+  IBridleGateway,
+  IBridleAttachmentGateway,
+  BridleAttachmentService,
+  MAX_ATTACHMENT_BYTES,
+  buildParts,
+} from './domain';
 import {
   SendMessageDto,
   BridleHealthDto,
   BridleAgentHealthDto,
+  BridleAttachmentDto,
   TranscriptQueryDto,
   TranscriptResponseDto,
   TranscriptMessageDto,
 } from './dtos';
 import { FlatResponse } from './core';
+import { JwtAuthGuard } from '#/user/auth/guards';
 import {
   IFileGateway,
   TranscriptReaderService,
   TranscriptMessage,
 } from '#/agent/file/domain';
+
+/** Shape multer gives us. Mirrors the local interface in reins/source. */
+interface IUploadedFile {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
+
+/**
+ * Strip anything that could break out of the quoted `filename=` parameter or
+ * smuggle a header. Display-only — the stored object's key never contains any
+ * part of the user-supplied name.
+ */
+function sanitizeFilename(name: string): string {
+  return name.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'attachment';
+}
 
 @ApiTags('bridle')
 @Controller('api/agent')
@@ -48,6 +82,8 @@ export class BridleController {
     private readonly fileGateway: IFileGateway,
     @Inject(forwardRef(() => TranscriptReaderService))
     private readonly transcriptReader: TranscriptReaderService,
+    private readonly attachments: BridleAttachmentService,
+    private readonly attachmentGateway: IBridleAttachmentGateway,
   ) {}
 
   /**
@@ -89,8 +125,16 @@ export class BridleController {
     @Body() body: SendMessageDto,
   ) {
     const clientId = this.resolveClientId(req) ?? 'http-' + crypto.randomUUID();
-    const parts = body.parts ?? buildParts(body.text, body.images);
-    this.hub.sendToAgent(clientId, agentId, body.text, parts);
+    const base = body.parts ?? buildParts(body.text, body.images);
+    const expanded = await this.attachments.expand(
+      agentId,
+      body.text,
+      body.attachmentIds,
+    );
+    this.hub.sendToAgent(clientId, agentId, expanded.text, [
+      ...base,
+      ...expanded.parts,
+    ]);
     return { ok: true };
   }
 
@@ -116,7 +160,7 @@ export class BridleController {
     const socketId = 'sync-' + crypto.randomUUID();
     const chunks: string[] = [];
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.hub.unregisterClient(clientId, agentId, socketId);
         resolve({
@@ -147,9 +191,112 @@ export class BridleController {
         false,
       );
 
-      const parts = body.parts ?? buildParts(body.text, body.images);
-      this.hub.sendToAgent(clientId, agentId, body.text, parts);
+      const base = body.parts ?? buildParts(body.text, body.images);
+      // Expanding before the send keeps the failure ordering sane: a bad or
+      // missing attachment rejects the request instead of leaving the caller
+      // waiting out the 120s timeout for a message the agent never got.
+      this.attachments
+        .expand(agentId, body.text, body.attachmentIds)
+        .then((expanded) => {
+          this.hub.sendToAgent(clientId, agentId, expanded.text, [
+            ...base,
+            ...expanded.parts,
+          ]);
+        })
+        .catch((err: Error) => {
+          clearTimeout(timeout);
+          this.hub.unregisterClient(clientId, agentId);
+          reject(err);
+        });
     });
+  }
+
+  /**
+   * Upload one attachment for a later message.
+   *
+   * `JwtAuthGuard` is declared explicitly here, and it matters: it is NOT a
+   * global guard in this API, and the rest of this controller is deliberately
+   * unguarded so the embeddable widget's anonymous visitors can reach the hub.
+   * A route added here without the guard would publish every uploaded file to
+   * anyone who asks.
+   *
+   * One file per request rather than a batch, so each attachment reports its
+   * own progress and its own failure in the compose area.
+   */
+  @ApiOperation({
+    description:
+      'Upload a chat attachment. Returns the id the send call references ' +
+      'via `attachmentIds`. Requires a bearer token.',
+    operationId: 'uploadBridleAttachment',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiOkResponse({ type: BridleAttachmentDto })
+  @FlatResponse()
+  @UseGuards(JwtAuthGuard)
+  @Post(':agentId/attachment')
+  @HttpCode(200)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_ATTACHMENT_BYTES } }),
+  )
+  async uploadAttachment(
+    @Param('agentId') agentId: string,
+    @UploadedFile() file?: IUploadedFile,
+  ): Promise<BridleAttachmentDto> {
+    if (!file) {
+      throw new BadRequestException('A file is required (field "file")');
+    }
+    return this.attachments.upload({
+      agentId,
+      name: file.originalname,
+      mimeType: file.mimetype,
+      body: file.buffer,
+    });
+  }
+
+  /**
+   * Serve an attachment back to the browser.
+   *
+   * `@Res()` bypasses the global `{ success, data }` envelope so the raw bytes
+   * go out with their own headers — the same pattern as the chat, template and
+   * agent-file exports. Guarded for the same reason as the upload above.
+   */
+  @ApiOperation({
+    description:
+      'Download a chat attachment. Streams the stored bytes with their ' +
+      'original content type. Requires a bearer token.',
+    operationId: 'getBridleAttachment',
+  })
+  @UseGuards(JwtAuthGuard)
+  @Get(':agentId/attachment/:attachmentId')
+  async downloadAttachment(
+    @Param('agentId') agentId: string,
+    @Param('attachmentId') attachmentId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const stored = await this.attachmentGateway.fetch(agentId, attachmentId);
+    if (!stored) {
+      // The UI renders this as an explicit "no longer available" state rather
+      // than a broken image.
+      throw new NotFoundException(`Attachment ${attachmentId} not found`);
+    }
+
+    res.setHeader('Content-Type', stored.mimeType);
+    res.setHeader('Content-Length', stored.size);
+    // `inline` so images render in a bubble and PDFs open in the viewer; the
+    // browser still offers "save as". `private` keeps it out of shared caches.
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${sanitizeFilename(stored.name)}"`,
+    );
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.end(stored.body);
   }
 
   @ApiOperation({

@@ -611,6 +611,41 @@ export type SendMessageDto = {
    * Attached images (legacy — prefer parts)
    */
   images?: Array<BridleImagePartDto>;
+  /**
+   * Ids from POST /api/agent/{agentId}/attachment. The API expands them server-side into parts — images as image content, text files with their contents inlined into the message, everything else as a named reference — and appends them to whatever `parts` resolved to. Omit the field and the request behaves exactly as before.
+   */
+  attachmentIds?: Array<string>;
+};
+
+export type BridleAttachmentDto = {
+  /**
+   * Attachment id, also the storage key stem
+   */
+  id: string;
+  /**
+   * Original filename, for display
+   */
+  name: string;
+  /**
+   * Resolved MIME type
+   */
+  mimeType: string;
+  /**
+   * Size in bytes
+   */
+  size: number;
+  /**
+   * How the attachment reaches the agent: image content, inlined text, or a named reference
+   */
+  kind: "image" | "text" | "binary";
+  /**
+   * Path of the authenticated download route. Never a direct storage URL.
+   */
+  url: string;
+  /**
+   * False when the agent will see only the file name, not its contents
+   */
+  readableByAgent: boolean;
 };
 
 export type BridleHealthDto = {
@@ -2516,6 +2551,38 @@ export type SendBridleMessageSyncData = {
 };
 
 export type SendBridleMessageSyncResponses = {
+  200: unknown;
+};
+
+export type UploadBridleAttachmentData = {
+  body: {
+    file: Blob | File;
+  };
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/api/agent/{agentId}/attachment";
+};
+
+export type UploadBridleAttachmentResponses = {
+  200: BridleAttachmentDto;
+};
+
+export type UploadBridleAttachmentResponse =
+  UploadBridleAttachmentResponses[keyof UploadBridleAttachmentResponses];
+
+export type GetBridleAttachmentData = {
+  body?: never;
+  path: {
+    agentId: string;
+    attachmentId: string;
+  };
+  query?: never;
+  url: "/api/agent/{agentId}/attachment/{attachmentId}";
+};
+
+export type GetBridleAttachmentResponses = {
   200: unknown;
 };
 

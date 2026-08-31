@@ -65,10 +65,90 @@ const agentInitial = computed(() => {
   const source = props.title?.trim() || props.agentId || 'Agent';
   return source.split(/\s+/).filter(Boolean)[0]?.[0]?.toUpperCase() ?? 'A';
 });
+
+// ── Drag and drop ──────────────────────────────────────────────
+// The drop target is the whole conversation, not the input, so the drag state
+// lives here and the compose area is swapped out while a file is overhead.
+
+const isDraggingFile = ref(false);
+/**
+ * `dragleave` fires every time the pointer crosses into a child element, so a
+ * naive boolean flickers as you move over bubbles and avatars. Counting enters
+ * against leaves and treating zero as "gone" is the standard fix.
+ */
+const dragDepth = ref(0);
+
+/** Only file drags matter — dragging selected text must not arm the zone. */
+function dragHasFiles(event: DragEvent): boolean {
+  const types = event.dataTransfer?.types;
+  return types ? Array.from(types).includes('Files') : false;
+}
+
+function onDragEnter(event: DragEvent) {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  dragDepth.value++;
+  isDraggingFile.value = true;
+}
+
+function onDragOver(event: DragEvent) {
+  if (!dragHasFiles(event)) return;
+  // Without this the browser treats the drop as a navigation.
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = sending.value ? 'none' : 'copy';
+  }
+}
+
+function onDragLeave(event: DragEvent) {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  dragDepth.value = Math.max(0, dragDepth.value - 1);
+  if (dragDepth.value === 0) isDraggingFile.value = false;
+}
+
+function onDrop(event: DragEvent) {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  // Reset unconditionally: a drop ends the drag however the counter got here.
+  dragDepth.value = 0;
+  isDraggingFile.value = false;
+  if (sending.value || !props.agentId) return;
+
+  const files = event.dataTransfer?.files;
+  if (files?.length) bridleStore.stageFiles(props.agentId, files);
+}
+
+/**
+ * A file released anywhere else on the page would otherwise make the browser
+ * navigate to it, throwing away the conversation. Swallow the default while
+ * this chat is mounted.
+ */
+function preventWindowDrop(event: DragEvent) {
+  event.preventDefault();
+}
+
+onMounted(() => {
+  window.addEventListener('dragover', preventWindowDrop);
+  window.addEventListener('drop', preventWindowDrop);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('dragover', preventWindowDrop);
+  window.removeEventListener('drop', preventWindowDrop);
+  // Object URLs for anything still staged would otherwise leak.
+  if (props.agentId) bridleStore.clearStaged(props.agentId);
+});
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
+  <div
+    class="flex h-full flex-col"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <BridleChatEmpty v-if="!agentId" />
 
     <template v-else>
@@ -147,7 +227,19 @@ const agentInitial = computed(() => {
         </div>
       </div>
 
-      <BridleChatInput :disabled="sending" @send="onSend" />
+      <!-- The compose area is replaced, not covered: the dashed block takes
+           its place while a file is overhead. Draft text and staged files live
+           in the store, so the swap cannot lose them. -->
+      <BridleChatDropZone
+        v-if="isDraggingFile"
+        :disabled="sending"
+      />
+      <BridleChatInput
+        v-else
+        :agent-id="agentId"
+        :disabled="sending"
+        @send="onSend"
+      />
     </template>
   </div>
 </template>

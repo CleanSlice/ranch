@@ -1400,8 +1400,64 @@ export const SendMessageDtoSchema = {
         $ref: "#/components/schemas/BridleImagePartDto",
       },
     },
+    attachmentIds: {
+      description:
+        "Ids from POST /api/agent/{agentId}/attachment. The API expands them server-side into parts — images as image content, text files with their contents inlined into the message, everything else as a named reference — and appends them to whatever `parts` resolved to. Omit the field and the request behaves exactly as before.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
   },
   required: ["text"],
+} as const;
+
+export const BridleAttachmentDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description: "Attachment id, also the storage key stem",
+    },
+    name: {
+      type: "string",
+      description: "Original filename, for display",
+    },
+    mimeType: {
+      type: "string",
+      description: "Resolved MIME type",
+      example: "image/png",
+    },
+    size: {
+      type: "number",
+      description: "Size in bytes",
+    },
+    kind: {
+      type: "string",
+      enum: ["image", "text", "binary"],
+      description:
+        "How the attachment reaches the agent: image content, inlined text, or a named reference",
+    },
+    url: {
+      type: "string",
+      description:
+        "Path of the authenticated download route. Never a direct storage URL.",
+    },
+    readableByAgent: {
+      type: "boolean",
+      description:
+        "False when the agent will see only the file name, not its contents",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "mimeType",
+    "size",
+    "kind",
+    "url",
+    "readableByAgent",
+  ],
 } as const;
 
 export const BridleHealthDtoSchema = {

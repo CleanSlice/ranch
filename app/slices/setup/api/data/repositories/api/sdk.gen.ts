@@ -105,6 +105,9 @@ import type {
   ExportAgentFilesData,
   SendBridleMessageData,
   SendBridleMessageSyncData,
+  UploadBridleAttachmentData,
+  UploadBridleAttachmentResponse,
+  GetBridleAttachmentData,
   BridleHealthData,
   BridleHealthResponse,
   BridleAgentHealthData,
@@ -1775,6 +1778,43 @@ export class BridleService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Upload a chat attachment. Returns the id the send call references via `attachmentIds`. Requires a bearer token.
+   */
+  public static uploadBridleAttachment<ThrowOnError extends boolean = false>(
+    options: Options<UploadBridleAttachmentData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      UploadBridleAttachmentResponse,
+      unknown,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/api/agent/{agentId}/attachment",
+      ...options,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Download a chat attachment. Streams the stored bytes with their original content type. Requires a bearer token.
+   */
+  public static getBridleAttachment<ThrowOnError extends boolean = false>(
+    options: Options<GetBridleAttachmentData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/attachment/{attachmentId}",
+      ...options,
     });
   }
 

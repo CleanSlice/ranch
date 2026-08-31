@@ -6,9 +6,12 @@ import {
   IsOptional,
   ValidateNested,
   IsEnum,
+  IsUUID,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { BridlePartTypes } from '../domain';
+import { MAX_ATTACHMENTS_PER_MESSAGE } from '../domain/attachment.constants';
 
 export class BridleTextPartDto {
   @ApiProperty({ enum: BridlePartTypes, example: BridlePartTypes.Text })
@@ -93,4 +96,19 @@ export class SendMessageDto {
   @ValidateNested({ each: true })
   @Type(() => BridleImagePartDto)
   images?: BridleImagePartDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Ids from POST /api/agent/{agentId}/attachment. The API expands them ' +
+      'server-side into parts — images as image content, text files with ' +
+      'their contents inlined into the message, everything else as a named ' +
+      'reference — and appends them to whatever `parts` resolved to. Omit ' +
+      'the field and the request behaves exactly as before.',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ATTACHMENTS_PER_MESSAGE)
+  @IsUUID('4', { each: true })
+  attachmentIds?: string[];
 }

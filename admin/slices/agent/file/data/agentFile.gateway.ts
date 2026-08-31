@@ -83,8 +83,11 @@ export class AgentFileGateway extends BaseGateway implements IAgentFileGateway {
       // 409 = guard refused: S3 holds edits newer than the pod's last
       // pull/push and confirm was not set. Not an error for the domain —
       // it's the "ask the operator" branch of the sync flow.
-      if (res.response?.status === 409) {
-        const conflict = (res.error ?? {}) as {
+      // The generated client is the heyapi AXIOS variant: its result union is
+      // (AxiosResponse & {error: undefined}) | (AxiosError & {error: <409 body>}),
+      // so `.response` only exists after narrowing to the error member.
+      if (res.error !== undefined && res.response?.status === 409) {
+        const conflict = res.error as {
           atRisk?: IAtRiskFile[];
           baseline?: string;
         };

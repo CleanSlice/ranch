@@ -22,7 +22,7 @@ export class AgentDto {
     nullable: true,
     type: String,
     description:
-      "Human-readable reason accompanying status='failed' (e.g. \"startup did not produce a running agent within 5 minutes\", \"ImagePullBackOff\"). Null for all other statuses and for failures recorded before this field existed.",
+      'Human-readable reason accompanying status=\'failed\' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff"). Null for all other statuses and for failures recorded before this field existed.',
   })
   statusReason: string | null;
 

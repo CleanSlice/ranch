@@ -4,7 +4,10 @@ export class AgentPodMetricsDto {
   @ApiProperty({ example: 234, description: 'Current CPU usage in millicores' })
   cpuMilli: number;
 
-  @ApiProperty({ example: 471859200, description: 'Current memory usage in bytes' })
+  @ApiProperty({
+    example: 471859200,
+    description: 'Current memory usage in bytes',
+  })
   memBytes: number;
 
   @ApiProperty({ example: 2000, description: 'CPU limit in millicores' })

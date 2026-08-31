@@ -68,6 +68,11 @@ export interface IAgentData {
   /** Null ⇒ the agent has never been deployed. */
   firstDeployedAt: string | null;
   launchContext: LaunchContextTypes | null;
+  /** When the running pod last pulled its file working copy from S3 (at
+   *  boot). Null ⇒ not restarted since the field shipped. */
+  lastPullAt: string | null;
+  /** When the last successful Sync push completed. */
+  lastSyncAt: string | null;
   config: Record<string, unknown>;
   resources: IAgentResources;
   isPublic: boolean;

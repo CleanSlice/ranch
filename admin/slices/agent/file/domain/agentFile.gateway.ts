@@ -2,7 +2,7 @@ import type {
   IFileChunk,
   IFileContent,
   IFileNode,
-  ISyncResult,
+  ISyncOutcome,
 } from './agentFile.types';
 
 /**
@@ -27,7 +27,12 @@ export abstract class IAgentFileGateway {
     path: string,
     recursive: boolean,
   ): Promise<number>;
-  abstract sync(agentId: string): Promise<ISyncResult>;
+  /**
+   * Asks the runtime to push its working copy to S3. Without `confirm` the
+   * server refuses (outcome 'conflict') when S3 holds edits newer than the
+   * pod's last pull/push; `confirm: true` runs the sync regardless.
+   */
+  abstract sync(agentId: string, confirm?: boolean): Promise<ISyncOutcome>;
   /** Streams the agent's S3 prefix as a ZIP; the store triggers the download. */
   abstract exportZip(agentId: string): Promise<Blob>;
 }

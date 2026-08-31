@@ -27,6 +27,14 @@ model Agent {
   // Server-derived launch context so the UI can tell a first start from a
   // restart even after a page reload.
   lastLaunchContext String?
+  // Sync-conflict markers (CLEAN-50). The pod pulls its working copy from S3
+  // at boot and pushes a delta back only on Sync; S3 objects modified after
+  // max(lastSyncAt, lastPullAt - margin) are "at risk" of being overwritten.
+  // lastPullAt = bridle socket connect (upper bound of the boot pull);
+  // lastSyncAt = sync_done received. Null on agents not restarted since this
+  // feature shipped — the guard then skips the check (pre-feature behavior).
+  lastPullAt      DateTime?
+  lastSyncAt      DateTime?
   config          Json           @default("{}")
   resources       Json           @default("{\"cpu\": \"500m\", \"memory\": \"512Mi\"}")
   debugEnabled    Boolean        @default(false)

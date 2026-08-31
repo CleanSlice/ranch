@@ -17,7 +17,7 @@
 
 **Purpose**: schema groundwork every story reads from
 
-- [ ] T001 Add `lastPullAt DateTime?` and `lastSyncAt DateTime?` to the Agent model in api/src/slices/agent/agent/agent.prisma and create migration `agent-sync-markers` (`cd api && bun run prisma migrate dev --name agent-sync-markers` or repo's migrate script)
+- [X] T001 Add `lastPullAt DateTime?` and `lastSyncAt DateTime?` to the Agent model in api/src/slices/agent/agent/agent.prisma and create migration `agent-sync-markers` (`cd api && bun run prisma migrate dev --name agent-sync-markers` or repo's migrate script)
 
 ---
 
@@ -27,11 +27,13 @@
 
 **⚠️ CRITICAL**: blocks US1 and US2 (US3 is independent but sequenced last by priority)
 
-- [ ] T002 Add marker update methods (`setLastPullAt`, `setLastSyncAt`) to api/src/slices/agent/agent/data/agent.gateway.ts (near `updateStatus`, agent.gateway.ts:91-111)
-- [ ] T003 [P] Persist `lastPullAt` on agent socket connect: hook the `connected` event path in api/src/slices/agent/agent/domain/agentStatus.service.ts (consumer of `agentEvents$` from bridle.gateway.ts:75)
-- [ ] T004 [P] Persist `lastSyncAt` on `sync_done`: call the marker method from `handleSyncResponse` in api/src/slices/bridle/data/bridle.gateway.ts:317-332 (after `pendingSyncs.delete`, before resolve)
+- [X] T002 Add marker update methods (`setLastPullAt`, `setLastSyncAt`) to api/src/slices/agent/agent/data/agent.gateway.ts (near `updateStatus`, agent.gateway.ts:91-111)
+- [X] T003 [P] Persist `lastPullAt` on agent socket connect: hook the `connected` event path in api/src/slices/agent/agent/domain/agentStatus.service.ts (consumer of `agentEvents$` from bridle.gateway.ts:75)
+- [X] T004 [P] Persist `lastSyncAt` on `sync_done`: call the marker method from `handleSyncResponse` in api/src/slices/bridle/data/bridle.gateway.ts:317-332 (after `pendingSyncs.delete`, before resolve)
 
 **Checkpoint**: restart a dev agent → `lastPullAt` set; trigger sync → `lastSyncAt` set (verify in DB)
+
+> Implementation deviations: (T003) `lastPullAt` is set only on a genuine boot (status transition to running in `markRunningFromBridle` / drift resurrect with pod `startedAt`), NOT on every socket connect — a WS reconnect involves no pull, and advancing the baseline without a pull could hide conflicts. (T004) `lastSyncAt` is persisted in `file.controller.sync` after a successful (agentOnline) sync rather than inside `bridle.gateway.handleSyncResponse` — same moment semantically, avoids a new AgentGateway dependency/forwardRef inside the bridle slice.
 
 ---
 
@@ -43,15 +45,15 @@
 
 ### Tests for User Story 1 (required by quickstart)
 
-- [ ] T005 [US1] Write failing jest specs for the guard in api/src/slices/agent/file/domain/syncGuard.service.spec.ts: baseline = max(lastSyncAt, lastPullAt − PULL_MARGIN); null-marker cases (skip check); at-risk filtering by S3 `updatedAt > baseline`; empty-list pass-through
+- [X] T005 [US1] Write failing jest specs for the guard in api/src/slices/agent/file/domain/syncGuard.service.spec.ts: baseline = max(lastSyncAt, lastPullAt − PULL_MARGIN); null-marker cases (skip check); at-risk filtering by S3 `updatedAt > baseline`; empty-list pass-through
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Implement guard domain service in api/src/slices/agent/file/domain/syncGuard.service.ts (PULL_MARGIN=60s const; inputs: agent markers + file list from existing file.gateway `list()`; output: `{baseline, atRisk[]}`); make T005 pass
-- [ ] T007 [US1] Extend sync endpoint in api/src/slices/agent/file/file.controller.ts:102-112: optional body DTO `{confirm?: boolean}`; when baseline exists, atRisk non-empty and !confirm → HTTP 409 `{requiresConfirmation, atRisk[{path,updatedAt}], baseline}` with NO sync side effects; else current flow (contracts/sync-api.md)
-- [ ] T008 [US1] Regenerate OpenAPI after DTO changes: `cd api && bun run generate:swagger` (build first if needed), then `cd admin && bun run build:api`
-- [ ] T009 [US1] Pass `confirm` through admin gateway in admin/slices/agent/file/data/agentFile.gateway.ts:76-80 and type the 409 payload
-- [ ] T010 [US1] Wire confirm flow in admin/slices/agent/file/components/agentFile/Provider.vue:63-90: catch 409 → `useConfirmStore().ask()` (admin/slices/common/stores/confirm.ts) listing atRisk paths + timestamps → confirm resends `{confirm:true}`, cancel does nothing; English copy
+- [X] T006 [US1] Implement guard domain service in api/src/slices/agent/file/domain/syncGuard.service.ts (PULL_MARGIN=60s const; inputs: agent markers + file list from existing file.gateway `list()`; output: `{baseline, atRisk[]}`); make T005 pass
+- [X] T007 [US1] Extend sync endpoint in api/src/slices/agent/file/file.controller.ts:102-112: optional body DTO `{confirm?: boolean}`; when baseline exists, atRisk non-empty and !confirm → HTTP 409 `{requiresConfirmation, atRisk[{path,updatedAt}], baseline}` with NO sync side effects; else current flow (contracts/sync-api.md)
+- [X] T008 [US1] Regenerate OpenAPI after DTO changes: `cd api && bun run generate:swagger` (build first if needed), then `cd admin && bun run build:api`
+- [X] T009 [US1] Pass `confirm` through admin gateway in admin/slices/agent/file/data/agentFile.gateway.ts:76-80 and type the 409 payload
+- [X] T010 [US1] Wire confirm flow in admin/slices/agent/file/components/agentFile/Provider.vue:63-90: catch 409 → `useConfirmStore().ask()` (admin/slices/common/stores/confirm.ts) listing atRisk paths + timestamps → confirm resends `{confirm:true}`, cancel does nothing; English copy
 - [ ] T011 [US1] Validate quickstart E2E scenarios 1-2 + legacy agent check on dev installation; comment results on CLEAN-52
 
 **Checkpoint**: US1 fully functional — MVP shippable
@@ -66,9 +68,9 @@
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] Expose `lastPullAt`/`lastSyncAt` in the agent response DTO (api/src/slices/agent/agent — controller/DTO layer next to agent.gateway.ts), then regenerate OpenAPI (same commands as T008)
-- [ ] T013 [US2] Add Running-state banner to admin/slices/agent/file/components/agentFile/Provider.vue: shared-copy explanation, `lastPullAt`/`lastSyncAt` when present, Sync CTA; hidden for non-running agents; English copy (contracts/sync-api.md "UI contract")
-- [ ] T014 [US2] Display per-file `updatedAt` (already returned by list endpoint) in the file list/details UI in admin/slices/agent/file/components/agentFile/Provider.vue
+- [X] T012 [US2] Expose `lastPullAt`/`lastSyncAt` in the agent response DTO (api/src/slices/agent/agent — controller/DTO layer next to agent.gateway.ts), then regenerate OpenAPI (same commands as T008)
+- [X] T013 [US2] Add Running-state banner to admin/slices/agent/file/components/agentFile/Provider.vue: shared-copy explanation, `lastPullAt`/`lastSyncAt` when present, Sync CTA; hidden for non-running agents; English copy (contracts/sync-api.md "UI contract")
+- [X] T014 [US2] Display per-file `updatedAt` (already returned by list endpoint) in the file list/details UI in admin/slices/agent/file/components/agentFile/Provider.vue
 - [ ] T015 [US2] Validate quickstart E2E scenario 3; comment results on CLEAN-53
 
 **Checkpoint**: US1 + US2 independently functional
@@ -83,9 +85,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T016 [P] [US3] Add honesty constraints to rancher/.agent/SOUL.md: no claiming create-agent / knowledge-binding ability (real tools arrive with CLEAN-51); state limitation + manual path; always surface restart after file writes
-- [ ] T017 [P] [US3] Append explicit "Restart required — offer restart_agent" to the `write_agent_file` tool RESULT text in api/src/slices/rancher/rancher.tool.ts:476-502
-- [ ] T018 [US3] Implement SOUL.md propagation for deployed rancher agents: inspect seed flow in api/src/slices/rancher/rancher.service.ts (`seedTemplateFiles`), deliver update via reseed/write + rancher restart; document the chosen path in specs/008-agent-files-sync-safety/research.md (R6 follow-up)
+- [X] T016 [P] [US3] Add honesty constraints to rancher/.agent/SOUL.md: no claiming create-agent / knowledge-binding ability (real tools arrive with CLEAN-51); state limitation + manual path; always surface restart after file writes
+- [X] T017 [P] [US3] Append explicit "Restart required — offer restart_agent" to the `write_agent_file` tool RESULT text in api/src/slices/rancher/rancher.tool.ts:476-502
+- [X] T018 [US3] Implement SOUL.md propagation for deployed rancher agents: inspect seed flow in api/src/slices/rancher/rancher.service.ts (`seedTemplateFiles`), deliver update via reseed/write + rancher restart; document the chosen path in specs/008-agent-files-sync-safety/research.md (R6 follow-up)
 - [ ] T019 [US3] Validate quickstart E2E scenario 4; comment results on CLEAN-54
 
 **Checkpoint**: all three stories independently functional
@@ -94,7 +96,7 @@
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T020 Run full verification: `cd api && bun run test` green; `tsc --noEmit` on touched api TS (repo has no typecheck script — see quickstart); admin build passes (`cd admin && bun run build`)
+- [X] T020 Run full verification: `cd api && bun run test` green; `tsc --noEmit` on touched api TS (repo has no typecheck script — see quickstart); admin build passes (`cd admin && bun run build`)
 - [ ] T021 Full quickstart.md pass end-to-end; open PR into `main` titled with CLEAN-50, link PR on CLEAN-50, move subtasks per board flow
 
 ---

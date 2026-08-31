@@ -22,6 +22,8 @@ export interface IAgentData {
   firstDeployedAt: Date | null;
   lastDeployStartedAt: Date | null;
   launchContext: LaunchContextTypes | null;
+  lastPullAt: Date | null;
+  lastSyncAt: Date | null;
   config: Record<string, unknown>;
   resources: IAgentResources;
   debugEnabled: boolean;

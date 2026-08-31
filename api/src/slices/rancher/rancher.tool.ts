@@ -498,7 +498,18 @@ export class RancherTool {
   ) {
     this.requireOwner(httpRequest);
     await this.files.save(agentId, path, content);
-    return ok({ ok: true, agentId, path });
+    // The reminder rides in the RESULT (not just the tool description) so the
+    // model reliably relays it: the write landed in S3 only — the running
+    // agent keeps using its boot-time copy until restarted (CLEAN-50).
+    return ok({
+      ok: true,
+      agentId,
+      path,
+      notice:
+        'Saved to S3 only. The running agent still uses its boot-time copy — ' +
+        'a restart is required for this change to take effect. Tell the user ' +
+        'and offer to run restart_agent.',
+    });
   }
 
   // ─── Usage ───────────────────────────────────────────────────────────

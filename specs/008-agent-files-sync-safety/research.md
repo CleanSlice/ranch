@@ -43,11 +43,11 @@
 
 **Finding**: the admin agent's system prompt is `rancher/.agent/SOUL.md` (seeded by `rancher.service.ts` seed flow); toolset registered via `@Tool` decorators in `api/src/slices/rancher/rancher.tool.ts` (22 tools, no `create_agent`, no knowledge binding). `write_agent_file` tool description already says restart is required (`rancher.tool.ts:479`), but the *result* text does not remind the model to surface it.
 
-**Decision**:
-1. SOUL.md: add an honesty section — never claim to create agents or bind knowledge bases; state the limitation + manual path (tools arrive with CLEAN-51).
-2. `write_agent_file` tool *result*: append an explicit "Restart required — offer restart_agent" reminder so the model reliably surfaces it (FR-009).
+**Decision** (refined during implementation, 2026-08-31):
+1. Discovery: rancher's `http` tool + the documented endpoint table mean it CAN create agents (`POST /agents`) and bind knowledge (`PUT /agents/{id}` body `{knowledgeIds}` — UpdateAgentDto inherits it via PartialType). The gap was missing *recipes* and missing MCP shortcuts, which produced narration without calls. SOUL.md therefore got: exact http recipes ("Creating Agents & Binding Knowledge"), a hard "never narrate without the call" rule, and an "Agent Files: Two Copies" section. Declining would have contradicted SOUL.md hard rule #2 ("http is always available"). MCP shortcuts still arrive with CLEAN-51.
+2. `write_agent_file` tool *result*: explicit "Restart required — offer restart_agent" notice (FR-009).
 
-**Open concern for tasks phase**: SOUL.md is seeded — existing installations hold an older copy in S3/pod; the plan must include a propagation step (reseed/update path) or the change won't reach deployed rancher agents.
+**Propagation (resolved)**: `syncTemplateIfChanged()` runs at API boot and reseeds template files when the local source hash changes (rancher.service.ts:157-200); `restartAgent` resyncs template files into the agent's S3 prefix (agentDeploy.service.ts:39). Chain: deploy API → restart rancher agent → new SOUL.md live. No extra mechanism needed.
 
 ## R7. Persistence & tooling
 

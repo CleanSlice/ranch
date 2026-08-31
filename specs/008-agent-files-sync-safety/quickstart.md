@@ -39,9 +39,9 @@ Must cover (new specs): baseline computation (`max(lastSyncAt, lastPullAt - marg
 
 ## E2E scenario 4 — admin agent honesty (US3, P3)
 
-1. In rancher chat ask: "создай агента и привяжи базу знаний". **Expect**: honest limitation notice + manual path; no narrated fake success.
+1. In rancher chat ask: "создай агента и привяжи базу знаний". **Expect**: real `http` calls (`POST /agents`, `PUT /agents/{id}` with `knowledgeIds`) with the result reported — or an honest failure report + manual path. No narrated success without calls.
 2. Ask it to update an agent file. **Expect**: reply mentions restart requirement and offers restart.
-3. Verify deployed rancher got the new SOUL.md (propagation step from research R6).
+3. Propagation: deploy the API (template reseeds via source-hash check), restart the rancher agent (template files resync), then verify its SOUL.md contains the "Creating Agents & Binding Knowledge" section.
 
 ## Legacy agent check
 

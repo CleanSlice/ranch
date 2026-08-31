@@ -5,6 +5,7 @@ import { BridleModule } from '#/bridle/bridle.module';
 import { FileController } from './file.controller';
 import { IFileGateway } from './domain/file.gateway';
 import { S3FileGateway } from './data/file.gateway';
+import { SyncGuardService } from './domain/syncGuard.service';
 import { TranscriptReaderService } from './domain/transcriptReader.service';
 
 // AgentModule must be a forwardRef here because BridleModule (which imports
@@ -22,6 +23,7 @@ import { TranscriptReaderService } from './domain/transcriptReader.service';
       provide: IFileGateway,
       useClass: S3FileGateway,
     },
+    SyncGuardService,
     TranscriptReaderService,
   ],
   exports: [IFileGateway, TranscriptReaderService],

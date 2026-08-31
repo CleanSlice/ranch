@@ -90,7 +90,7 @@ An operator asks the admin agent to "create an agent and bind a knowledge base".
 - **FR-005**: Sync MUST continue to send only files actually changed in the agent's working copy and MUST NOT touch shared-copy files the agent never modified (preserve verified delta semantics).
 - **FR-006**: The Files tab MUST tell the operator, for a running agent, that the displayed content is the shared copy and that the running agent may hold newer content, offering Sync as the remedy.
 - **FR-007**: The Files tab MUST show each file's shared-copy last-modified time.
-- **FR-008**: The admin agent MUST NOT claim to perform actions its toolset cannot perform: its instructions are constrained so that agent creation and knowledge-base binding requests get an honest limitation notice plus the manual path. Extending the toolset with those abilities is explicitly out of scope, tracked as a follow-up ticket.
+- **FR-008**: The admin agent MUST NOT narrate agent creation or knowledge binding without actually performing it. Its instructions carry the exact platform-API recipes for both operations (they were always possible via the generic HTTP path — the gap was missing recipes, found during implementation), plus the manual-UI path as the honest fallback. Dedicated toolset shortcuts remain out of scope, tracked as a follow-up ticket.
 - **FR-009**: After the admin agent writes an agent file, the operator-facing reply MUST state that a restart is required and offer the restart action.
 
 ### Key Entities

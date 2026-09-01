@@ -80,7 +80,11 @@ describe('BridleAttachmentGateway — key derivation', () => {
       string
     >;
     expect(metadata.name).toBe(encodeURIComponent('отчёт.pdf'));
-    expect(metadata.name).toMatch(/^[\x00-\x7F]*$/);
+    // Printable ASCII only: S3 metadata headers cannot carry anything else,
+    // which is the whole reason the name is percent-encoded going in.
+    // Written as a printable range rather than starting at \x00 — a control
+    // character in a regex trips eslint's no-control-regex, and CI runs it.
+    expect(metadata.name).toMatch(/^[\x20-\x7E]*$/);
   });
 });
 

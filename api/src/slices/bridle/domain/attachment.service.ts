@@ -116,7 +116,9 @@ export class BridleAttachmentService {
     for (const id of attachmentIds) {
       const stored = await this.gateway.fetch(agentId, id);
       if (!stored) {
-        throw new BadRequestException(`Attachment ${id} is no longer available`);
+        throw new BadRequestException(
+          `Attachment ${id} is no longer available`,
+        );
       }
 
       totalBytes += stored.size;
@@ -175,7 +177,9 @@ export class BridleAttachmentService {
    * downgraded to `binary`: the agent gets a named reference instead of
    * garbage in its prompt.
    */
-  private effectiveKind(stored: IBridleStoredAttachment): BridleAttachmentKinds {
+  private effectiveKind(
+    stored: IBridleStoredAttachment,
+  ): BridleAttachmentKinds {
     const declared = resolveAttachmentKind(stored.mimeType);
     if (declared !== BridleAttachmentKinds.Text) {
       return declared ?? BridleAttachmentKinds.Binary;
@@ -189,7 +193,9 @@ export class BridleAttachmentService {
   private inlineTextBlock(stored: IBridleStoredAttachment): string {
     const decoded = decodeUtf8Strict(stored.body) ?? '';
     const truncated = decoded.length > MAX_EXTRACTED_TEXT_CHARS;
-    const body = truncated ? decoded.slice(0, MAX_EXTRACTED_TEXT_CHARS) : decoded;
+    const body = truncated
+      ? decoded.slice(0, MAX_EXTRACTED_TEXT_CHARS)
+      : decoded;
 
     // Mirrors the runtime's own wording for truncated over-long user messages,
     // so the model meets one convention rather than two.

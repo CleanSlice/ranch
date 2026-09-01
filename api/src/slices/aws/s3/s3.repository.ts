@@ -86,9 +86,7 @@ export class S3Repository {
     location: IS3FileLocation,
   ): Promise<IS3DownloadedFile> {
     const client = await this.getClient();
-    this.logger.log(
-      `download+meta → s3://${location.bucket}/${location.key}`,
-    );
+    this.logger.log(`download+meta → s3://${location.bucket}/${location.key}`);
     let res: GetObjectCommandOutput;
     try {
       res = await client.send(

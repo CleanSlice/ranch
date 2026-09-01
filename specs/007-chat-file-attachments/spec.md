@@ -197,7 +197,8 @@ Uploads fail — the network drops, the file is corrupt, storage is unreachable.
 
 ## Out of Scope
 
-- The admin debug chat and the embeddable chat widget — both keep their current behavior.
+- The embeddable chat widget — keeps its current behavior.
+- ~~The admin debug chat~~ — brought in scope on 2026-09-01 at the reviewer's request. Same flow, built on the same API: the socket handler expands `attachmentIds` through the same service the HTTP routes use.
 - Anti-virus or malware scanning of uploaded files.
 - Extracting text from binary document formats (PDF, DOCX, XLSX) — these travel as named references.
 - Editing, replacing, or removing an attachment after the message has been sent.

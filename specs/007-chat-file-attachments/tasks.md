@@ -185,10 +185,11 @@ Phase order runs **US1 → US3 → US2 → US4**. US2 and US3 are both P2, so th
 - [X] T058 [P] Add `role="progressbar"` with `aria-valuenow` to the upload indicator in `app/slices/bridle/components/bridle/chat/AttachmentChip.vue`
 - [ ] T059 Keyboard pass per quickstart 3.2 — tab to the paperclip and open it with Enter, tab to each chip's remove and retry controls and activate them by keyboard
 - [X] T060 Verify every lucide icon name used resolves: `paperclip`, `x`, `file-text`, `image`, `upload`, `alert-circle`, `rotate-cw`. The slice `Icon` component renders **nothing** for an unknown name, so a typo fails silently
-- [ ] T061 Confirm nothing else moved, per quickstart 3.3: the admin debug chat is unchanged, and a plain text send with no `attachmentIds` takes byte-identically the old path
+- [ ] T061 Confirm a plain text send with no `attachmentIds` takes byte-identically the old path, over both HTTP and the socket. The admin debug chat is no longer a "should be unchanged" check — see T065
 - [X] T062 Run `bun run typecheck` and `cd api && bun run build`; fix any fallout
 - [ ] T063 Run the full quickstart.md definition-of-done checklist end to end
 - [ ] T064 Update `README.md` or `docs/` only if the attachment limits need documenting for operators; skip if the settings are self-explanatory
+- [ ] T065 Admin chat: upload through the paperclip, drop a file on the card, send a text file and confirm the agent answers about its contents, and confirm a dead attachment surfaces as an inline error without dropping the socket
 
 ---
 
@@ -312,3 +313,25 @@ identity-linked key, and the API answers those with a 400 naming
 sends it as a header.
 
 **First thing to do next**: bring the stack up and walk `quickstart.md` end to end.
+
+## Amendment — 2026-09-01: the admin chat
+
+The spec put the admin debug chat out of scope; the reviewer asked for it
+after seeing the feature, under this same ticket. Two things came of it.
+
+The admin chat sends over the bridle client socket, not the HTTP routes, so
+`handleMessage` now takes `attachmentIds` and runs the same
+`BridleAttachmentService.expand` — one implementation, two transports. A bad
+attachment answers on a new `message_error` event rather than throwing, so one
+dead file cannot take the conversation down with it.
+
+It also exposed a real defect in the app half. A sent attachment was rendered
+straight from `IBridleAttachment.url`, which is both relative to the wrong
+origin and behind `JwtAuthGuard` — and a browser sends no Authorization header
+for `<img src>` or a plain link, so every thumbnail would have 401'd into the
+"no longer available" state. The bytes now come through the API client and
+reach the DOM as object URLs.
+
+Known limit in the admin: a refresh rebuilds its transcript from the runtime's
+jsonl, which is text-only, so attachments show for the session that sent them.
+The app persists its own conversation and does not have this gap.

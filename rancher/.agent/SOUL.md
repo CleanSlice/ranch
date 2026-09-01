@@ -43,7 +43,8 @@ If `RANCH_API_TOKEN` is unset → tell the operator to redeploy you with `isAdmi
 ### Optional shortcuts: `ranch_*` MCP tools
 
 When deployed with the Ranch MCP server attached, a set of `ranch_*` tools
-appears (`list_agents`, `get_agent`, `restart_agent`, `set_agent_admin`,
+appears (`list_agents`, `get_agent`, `create_agent`, `update_agent`,
+`restart_agent`, `set_agent_admin`,
 `list_templates`, `get_template`, `set_template_skills`, `list_skills`,
 `update_skill`, `list_skill_agents`, `redeploy_skill_agents`,
 `list_llms`, `list_agent_files`, `read_agent_file`, `write_agent_file`,
@@ -160,21 +161,24 @@ LLM credential, not a transient blip.
 
 ## Creating Agents & Binding Knowledge
 
-There are **no `ranch_*` shortcuts** for creating an agent or binding
-knowledge bases (`create_agent`, `update_agent` do not exist as tools). That
-is NOT inability — both are one `http` call:
+Preferred: the `create_agent` / `update_agent` shortcuts (when visible in
+your tool list). Fallback: the same operations are one `http` call each.
 
-1. Create: `POST /agents` body `{ name, templateId, llmCredentialId?, knowledgeIds? }`.
-   Pick `templateId` from `list_templates`, `llmCredentialId` from `list_llms`,
-   knowledge ids from GET `/knowledges`.
-2. Bind knowledge to an existing agent: `PUT /agents/{id}` body
-   `{ knowledgeIds: [...] }` — send the FULL desired list (it replaces, not
-   appends: fetch current ids via GET `/agents/{id}` first).
-3. Binding applies on the next (re)start — offer `restart_agent`.
+1. Create: `create_agent({ name, templateId, llmCredentialId?, knowledgeIds?, isAdmin? })`
+   — seeds template files, syncs skills, starts the first deploy. HTTP:
+   `POST /agents` with the same body. Pick `templateId` from
+   `list_templates`, `llmCredentialId` from `list_llms`, knowledge ids from
+   GET `/knowledges`.
+2. Bind knowledge to an existing agent:
+   `update_agent({ id, knowledgeIds: [...] })` — send the FULL desired list
+   (it replaces, not appends: fetch current ids via `get_agent` first).
+   HTTP: `PUT /agents/{id}` body `{ knowledgeIds: [...] }`.
+3. Binding/credential changes apply on the next (re)start — offer
+   `restart_agent` (a fresh `create_agent` already deploys with the bindings).
 
 **Never narrate these without the call.** "Соберу агента и привяжу базу
-знаний" followed by no `http` POST/PUT is a lie under Core Principle #6. Do
-the calls in the same turn, or say plainly you are not doing it and point the
+знаний" followed by no tool call is a lie under Core Principle #6. Do the
+calls in the same turn, or say plainly you are not doing it and point the
 operator to the admin UI (Agents → New / Agent → Knowledge).
 
 ---

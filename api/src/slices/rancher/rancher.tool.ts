@@ -117,6 +117,130 @@ export class RancherTool {
   }
 
   @Tool({
+    name: 'create_agent',
+    description:
+      'Create and deploy a new agent from a template. Seeds template files, ' +
+      'syncs skills and starts the first deploy — the agent will appear as ' +
+      '"deploying" and boot shortly. Optionally bind knowledge bases right ' +
+      'away via knowledgeIds.',
+    parameters: z.object({
+      name: z.string().describe('Human-readable agent name'),
+      templateId: z.string().describe('Template id — pick from list_templates'),
+      llmCredentialId: z
+        .string()
+        .optional()
+        .describe('LLM credential id — pick from list_llms'),
+      knowledgeIds: z
+        .array(z.string())
+        .optional()
+        .describe('Knowledge base ids to bind (GET /knowledges for the list)'),
+      isAdmin: z
+        .boolean()
+        .optional()
+        .describe(
+          'Promote to Ranch admin (single-admin invariant: demotes the current one)',
+        ),
+    }),
+  })
+  async createAgent(
+    {
+      name,
+      templateId,
+      llmCredentialId,
+      knowledgeIds,
+      isAdmin,
+    }: {
+      name: string;
+      templateId: string;
+      llmCredentialId?: string;
+      knowledgeIds?: string[];
+      isAdmin?: boolean;
+    },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
+    // Friendly precheck — a bad templateId would otherwise surface as an
+    // opaque foreign-key error from the DB layer.
+    const template = await this.templates.findById(templateId);
+    if (!template) {
+      return ok({
+        error: `Template ${templateId} not found — pick one from list_templates`,
+      });
+    }
+    const created = await this.agentDeploy.createAgent(
+      { name, templateId, llmCredentialId, knowledgeIds },
+      { isAdmin },
+    );
+    return ok({
+      ok: true,
+      agent: created,
+      message:
+        'Agent created — first deploy started, it will boot shortly. ' +
+        'Knowledge bindings (if any) are baked into this deploy.',
+    });
+  }
+
+  @Tool({
+    name: 'update_agent',
+    description:
+      'Update an agent: rename, switch LLM credential, or bind knowledge ' +
+      'bases. knowledgeIds REPLACES the full list (fetch current via ' +
+      'get_agent first). Binding/credential changes apply on the next ' +
+      'restart — offer restart_agent.',
+    parameters: z.object({
+      id: z.string(),
+      name: z.string().optional(),
+      llmCredentialId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('LLM credential id; null detaches the credential'),
+      knowledgeIds: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'FULL desired list of knowledge base ids (replaces, not appends)',
+        ),
+    }),
+  })
+  async updateAgent(
+    {
+      id,
+      name,
+      llmCredentialId,
+      knowledgeIds,
+    }: {
+      id: string;
+      name?: string;
+      llmCredentialId?: string | null;
+      knowledgeIds?: string[];
+    },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
+    const existing = await this.agents.findById(id);
+    if (!existing) return ok({ error: `Agent ${id} not found` });
+    const updated = await this.agents.update(id, {
+      name,
+      llmCredentialId,
+      knowledgeIds,
+    });
+    const needsRestart =
+      knowledgeIds !== undefined || llmCredentialId !== undefined;
+    return ok({
+      ok: true,
+      agent: updated,
+      ...(needsRestart && {
+        notice:
+          'Saved. Knowledge/credential changes apply on the next start — ' +
+          'a restart is required. Tell the user and offer restart_agent.',
+      }),
+    });
+  }
+
+  @Tool({
     name: 'set_agent_admin',
     description:
       'Promote or demote an agent to/from Ranch admin. Single-admin invariant: enabling clears the flag from any other agent.',

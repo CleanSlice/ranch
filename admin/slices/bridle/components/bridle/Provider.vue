@@ -451,7 +451,7 @@ async function onConfirmReset() {
 
 <template>
   <Card
-    :class="cn('flex flex-col h-[600px] w-full max-w-2xl', props.class)"
+    :class="cn('flex flex-col gap-0 h-[600px] w-full max-w-2xl', props.class)"
     @dragenter="onDragEnter"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
@@ -504,7 +504,7 @@ async function onConfirmReset() {
       @confirm="onConfirmReset"
     />
 
-    <CardContent class="flex-1 overflow-hidden p-0">
+    <CardContent class="min-h-0 flex-1 overflow-hidden p-0">
       <ScrollArea ref="scrollRef" class="h-full">
         <div class="flex flex-col gap-4 p-4">
           <div
@@ -608,7 +608,7 @@ async function onConfirmReset() {
       </ScrollArea>
     </CardContent>
 
-    <CardFooter class="flex flex-col items-stretch gap-2 border-t">
+    <CardFooter class="flex shrink-0 flex-col items-stretch gap-2 border-t pt-4">
       <div
         v-if="showOfflineHint"
         class="rounded-md border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-xs text-orange-700 dark:text-orange-300"

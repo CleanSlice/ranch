@@ -77,7 +77,7 @@ watch(draft, () => nextTick(autoResize));
 
 <template>
   <form
-    class="border-t bg-background"
+    class="shrink-0 border-t bg-background"
     @submit.prevent="submit"
   >
     <div class="mx-auto w-full max-w-3xl px-4 py-3">

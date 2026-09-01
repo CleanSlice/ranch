@@ -103,18 +103,16 @@ const onPaste = (event: ClipboardEvent) => {
     </div>
 
     <div class="flex w-full items-end gap-2">
-      <Button
+      <button
         type="button"
-        variant="ghost"
-        size="icon"
-        class="shrink-0"
         :disabled="!canAttach"
         :aria-label="attachTitle"
         :title="attachTitle"
+        class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-input bg-transparent text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         @click="openPicker"
       >
         <Paperclip class="h-4 w-4" />
-      </Button>
+      </button>
 
       <input
         ref="fileInputRef"
@@ -139,7 +137,7 @@ const onPaste = (event: ClipboardEvent) => {
       <Button
         size="icon"
         :disabled="!canSend"
-        class="shrink-0"
+        class="shrink-0 rounded-lg"
         @click="handleSend"
       >
         <Send class="h-4 w-4" />

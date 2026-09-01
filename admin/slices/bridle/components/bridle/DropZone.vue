@@ -14,32 +14,24 @@ defineProps<{ disabled?: boolean }>()
 </script>
 
 <template>
-  <div class="w-full">
-    <!-- Height roughly matches the composer it replaces, so the swap doesn't
-         make the message list jump. -->
-    <div
-      :class="cn(
-        'flex min-h-[40px] flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-4 text-center',
+  <!-- One row, the same 40px the composer occupies: the card has a fixed
+       height, so a taller block here would push the footer and come out
+       clipped. -->
+  <div
+    :class="cn(
+      'flex h-10 w-full items-center justify-center gap-2 rounded-md border border-dashed px-3 text-xs',
+      disabled
+        ? 'border-muted-foreground/30 bg-muted/30 text-muted-foreground'
+        : 'border-primary/50 bg-primary/5 text-primary',
+    )"
+  >
+    <component :is="disabled ? Ban : Upload" class="h-4 w-4 shrink-0" />
+    <span class="truncate font-medium">
+      {{
         disabled
-          ? 'border-muted-foreground/25 bg-muted/30'
-          : 'border-primary/50 bg-primary/5',
-      )"
-    >
-      <component
-        :is="disabled ? Ban : Upload"
-        :class="cn('h-4 w-4', disabled ? 'text-muted-foreground/60' : 'text-primary')"
-      />
-      <p
-        :class="cn(
-          'text-xs font-medium',
-          disabled ? 'text-muted-foreground' : 'text-primary',
-        )"
-      >
-        {{ disabled ? 'Wait for the agent to finish replying' : 'Drop files here to attach them' }}
-      </p>
-    </div>
-    <p class="mt-1.5 text-[11px] text-muted-foreground/60">
-      You can attach up to {{ MAX_ATTACHMENTS_PER_MESSAGE }} files
-    </p>
+          ? 'Wait for the agent to finish replying'
+          : `Drop files here to attach them — up to ${MAX_ATTACHMENTS_PER_MESSAGE}`
+      }}
+    </span>
   </div>
 </template>

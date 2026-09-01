@@ -6,18 +6,16 @@
  * If this component listened for them itself, moving the pointer between it
  * and a sibling would read as leaving.
  */
-import { MAX_ATTACHMENTS_PER_MESSAGE } from '#bridle/domain';
-
 defineProps<{ disabled?: boolean }>();
 </script>
 
 <template>
-  <div class="border-t bg-background">
+  <div class="shrink-0 border-t bg-background">
     <div class="mx-auto w-full max-w-3xl px-4 py-3">
-      <!-- Height roughly matches the compose area it replaces, so swapping
-           the two doesn't make the message list jump. -->
+      <!-- One row, sized to the compose box it replaces: a taller block would
+           make the message list jump every time a file crosses the window. -->
       <div
-        class="flex min-h-[3.25rem] flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed px-4 py-4 text-center transition"
+        class="flex h-[3.25rem] items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 text-center transition"
         :class="
           disabled
             ? 'border-muted-foreground/25 bg-muted/30'
@@ -26,19 +24,16 @@ defineProps<{ disabled?: boolean }>();
       >
         <Icon
           :name="disabled ? 'ban' : 'upload'"
-          :size="18"
+          :size="16"
           :class="disabled ? 'text-muted-foreground/60' : 'text-primary'"
         />
         <p
-          class="text-xs font-medium"
+          class="truncate text-xs font-medium"
           :class="disabled ? 'text-muted-foreground' : 'text-primary'"
         >
           {{ disabled ? $t('chat.drop_disabled') : $t('chat.drop_hint') }}
         </p>
       </div>
-      <p class="mt-1.5 px-1 text-[11px] text-muted-foreground/60">
-        {{ $t('chat.attach_limit', { count: MAX_ATTACHMENTS_PER_MESSAGE }) }}
-      </p>
     </div>
   </div>
 </template>

@@ -94,7 +94,7 @@
 ## Phase 5: Polish & Cross-Cutting
 
 - [ ] T023 Full quickstart pass: §3 E2E including recovery (steps 7–8: fix settings → restart → `running`, reason cleared, chat live), §4 false-positive guards, §5 public-endpoint secret check
-- [ ] T024 Final gates before PR: `cd api && bunx jest && bunx tsc --noEmit`; `cd admin && bun run typecheck`; then commit(s) with `CLEAN-55`, PR into `main`, link PR on the Jira issue
+- [X] T024 Final gates before PR: `cd api && bunx jest && bunx tsc --noEmit`; `cd admin && bun run typecheck`; then commit(s) with `CLEAN-55`, PR into `main`, link PR on the Jira issue
 
 ---
 

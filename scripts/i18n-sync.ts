@@ -220,22 +220,42 @@ function plan(manifest: Manifest): Work[] {
 
 // ---------------------------------------------------------------- translation
 
-function readApiKey(): string {
-  const fromEnv = process.env.CLAUDE_API_KEY ?? process.env.ANTHROPIC_API_KEY;
-  if (fromEnv) return fromEnv;
+/** Reads a setting from the environment, falling back to .env.project. */
+function readSetting(...names: string[]): string | null {
+  for (const name of names) {
+    const fromEnv = process.env[name];
+    if (fromEnv) return fromEnv.trim();
+  }
 
   if (existsSync(ENV_FILE)) {
-    // .env.project is CRLF on Windows checkouts — trim or the key carries a \r
-    // and every request comes back 401.
+    // .env.project is CRLF on Windows checkouts — trim or the value carries a
+    // \r and every request comes back 401.
     for (const line of readFileSync(ENV_FILE, 'utf8').split(/\r?\n/)) {
-      const match = /^CLAUDE_API_KEY=(.*)$/.exec(line.trim());
-      if (match?.[1]) return match[1].trim();
+      const match = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+      if (match && names.includes(match[1]!) && match[2]) return match[2].trim();
     }
   }
+
+  return null;
+}
+
+function readApiKey(): string {
+  const key = readSetting('CLAUDE_API_KEY', 'ANTHROPIC_API_KEY');
+  if (key) return key;
 
   throw new Error(
     'No CLAUDE_API_KEY. Add it to .env.project (gitignored) or export it, then re-run.',
   );
+}
+
+/**
+ * An identity-linked key — one issued against a personal account rather than an
+ * organisation — is rejected with a 400 unless every request names the workspace
+ * it acts in. Organisation keys don't need it, so the header is sent only when
+ * an id is configured.
+ */
+function readWorkspaceId(): string | null {
+  return readSetting('CLAUDE_WORKSPACE_ID', 'ANTHROPIC_WORKSPACE_ID');
 }
 
 const SYSTEM_PROMPT = [
@@ -259,7 +279,13 @@ async function translate(
   entries: FlatMessages,
 ): Promise<FlatMessages> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const client = new Anthropic({ apiKey: readApiKey() });
+  const workspaceId = readWorkspaceId();
+  const client = new Anthropic({
+    apiKey: readApiKey(),
+    ...(workspaceId
+      ? { defaultHeaders: { 'anthropic-workspace-id': workspaceId } }
+      : {}),
+  });
 
   const request = [
     `Target language: ${locale}`,
@@ -412,5 +438,23 @@ const work = plan(manifest);
 if (checkOnly) {
   process.exit(report(work));
 } else {
-  await sync(work, manifest);
+  try {
+    await sync(work, manifest);
+  } catch (error) {
+    const message = (error as Error).message ?? String(error);
+    // The API rejects an identity-linked key with a 400 rather than a 401, so
+    // the failure reads like a malformed request instead of a missing setting.
+    // Say what to add, or the next person re-checks a key that is already fine.
+    if (message.includes('anthropic-workspace-id')) {
+      console.error(
+        [
+          'The API key is valid but identity-linked: it must name a workspace.',
+          'Add CLAUDE_WORKSPACE_ID=<id> to .env.project — the id is in the',
+          'Anthropic Console under Settings → Workspaces — then re-run.',
+        ].join('\n'),
+      );
+      process.exit(1);
+    }
+    throw error;
+  }
 }

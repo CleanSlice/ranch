@@ -31,6 +31,12 @@ export abstract class IAgentGateway {
   ): Promise<IAgentData>;
   // Sets firstDeployedAt=now only if it is still null (set-once semantics).
   abstract setFirstDeployedAt(id: string): Promise<void>;
+  // Sync-conflict markers: pod's boot pull (recorded at bridle connect) and
+  // last completed Sync push. Non-throwing on missing agents — both fire from
+  // async event paths that must not fail the surrounding flow.
+  // `at` overrides "now" when the actual boot moment is known (pod startedAt).
+  abstract setLastPullAt(id: string, at?: Date): Promise<void>;
+  abstract setLastSyncAt(id: string): Promise<void>;
   // null detaches the current workflow (used by restart before cancelling
   // the old one, so status pollers can't resolve its terminal phase).
   abstract setWorkflowId(

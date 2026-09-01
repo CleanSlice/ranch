@@ -13,17 +13,25 @@ import {
   Res,
   forwardRef,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Response } from 'express';
+import { HttpException, HttpStatus } from '@nestjs/common';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IBridleGateway } from '#/bridle/domain';
-import { IFileGateway } from './domain';
+import { IFileGateway, SyncGuardService } from './domain';
 import {
   DeleteFileQueryDto,
   DeleteFilesDto,
   FileChunkDto,
   ReadFileQueryDto,
   SaveFileDto,
+  SyncConflictDto,
+  SyncFilesBodyDto,
   SyncFilesDto,
 } from './dtos';
 
@@ -36,6 +44,7 @@ export class FileController {
     private fileGateway: IFileGateway,
     @Inject(forwardRef(() => IBridleGateway))
     private bridleGateway: IBridleGateway,
+    private syncGuard: SyncGuardService,
   ) {}
 
   @Get()
@@ -103,11 +112,57 @@ export class FileController {
   @HttpCode(200)
   @ApiOperation({
     summary:
-      'Ask the agent runtime to push its local files to S3, then return the latest S3 state to the admin UI',
+      'Ask the agent runtime to push its local files to S3. Answers 409 with ' +
+      'the at-risk file list (and does NOT sync) when S3 holds edits newer ' +
+      'than the pod’s last pull/push, unless `confirm` is set.',
   })
-  async sync(@Param('agentId') agentId: string): Promise<SyncFilesDto> {
-    await this.assertAgent(agentId);
+  @ApiResponse({
+    status: 409,
+    type: SyncConflictDto,
+    description:
+      'S3 files newer than the pod’s working copy were found and confirm was ' +
+      'not set. No sync was performed.',
+  })
+  async sync(
+    @Param('agentId') agentId: string,
+    @Body() body?: SyncFilesBodyDto,
+  ): Promise<SyncFilesDto> {
+    const agent = await this.agentGateway.findById(agentId);
+    if (!agent) throw new NotFoundException('Agent not found');
+
+    // Guard (CLEAN-50): the pod pushes its delta over S3 and never checks S3
+    // freshness, so anything edited in S3 since the pod's last pull/push can
+    // be silently overwritten or deleted. Surface the risk and require an
+    // explicit confirm instead. `confirm` skips the check — the operator
+    // already saw and accepted the list.
+    if (!body?.confirm) {
+      const { baseline, atRisk } = await this.syncGuard.assess(
+        agentId,
+        agent.lastPullAt,
+        agent.lastSyncAt,
+      );
+      if (baseline && atRisk.length > 0) {
+        throw new HttpException(
+          {
+            requiresConfirmation: true,
+            atRisk: atRisk.map((n) => ({
+              path: n.path,
+              updatedAt: n.updatedAt.toISOString(),
+            })),
+            baseline: baseline.toISOString(),
+          },
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
+
     const result = await this.bridleGateway.syncAgent(agentId);
+    // Marker for the next conflict check: the pod's S3 writes are complete
+    // once sync_done resolved the gateway promise. Offline sync did nothing,
+    // so it must not advance the baseline.
+    if (result.agentOnline) {
+      await this.agentGateway.setLastSyncAt(agentId);
+    }
     return { agentOnline: result.agentOnline, pushed: result.pushed };
   }
 

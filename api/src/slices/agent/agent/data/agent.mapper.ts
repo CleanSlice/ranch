@@ -15,8 +15,9 @@ export class AgentMapper {
       workflowId: record.workflowId,
       firstDeployedAt: record.firstDeployedAt,
       lastDeployStartedAt: record.lastDeployStartedAt,
-      launchContext:
-        record.lastLaunchContext as IAgentData['launchContext'],
+      launchContext: record.lastLaunchContext as IAgentData['launchContext'],
+      lastPullAt: record.lastPullAt,
+      lastSyncAt: record.lastSyncAt,
       config: record.config as unknown as Record<string, unknown>,
       resources: record.resources as unknown as IAgentData['resources'],
       debugEnabled: record.debugEnabled,

@@ -17,6 +17,8 @@ function makeAgent(overrides: Partial<IAgentData> = {}): IAgentData {
     firstDeployedAt: new Date(BASE_NOW - 60 * 60_000),
     // Old enough to be far outside the 5-minute deploy grace window.
     lastDeployStartedAt: new Date(BASE_NOW - 60 * 60_000),
+    lastPullAt: null,
+    lastSyncAt: null,
     launchContext: 'restart',
     config: {},
     resources: { cpu: '1', memory: '1Gi' },
@@ -77,6 +79,7 @@ function createTestBed(agents: IAgentData[], pods: IAgentPodStatus[]): ITestBed 
       ),
     updateStatus: jest.fn().mockResolvedValue(undefined),
     setStatusReason: jest.fn().mockResolvedValue(undefined),
+    setLastPullAt: jest.fn().mockResolvedValue(undefined),
   };
   const podGateway = {
     list: jest.fn().mockResolvedValue(pods),

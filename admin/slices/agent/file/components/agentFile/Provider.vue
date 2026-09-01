@@ -11,10 +11,12 @@ import {
   IconAlertTriangle,
   IconDownload,
   IconFiles,
+  IconInfoCircle,
   IconRefresh,
   IconX,
 } from '@tabler/icons-vue';
 import { until } from '@vueuse/core';
+import type { IAgentData } from '#agent/domain';
 import AgentFileTree from './Tree.vue';
 import AgentFileViewer from './Viewer.vue';
 
@@ -23,6 +25,27 @@ const props = defineProps<{ id: string }>();
 const store = useAgentFileStore();
 const agentStore = useAgentStore();
 const confirmStore = useConfirmStore();
+
+// The two-copy model hint (CLEAN-50): while the agent is Running, this tab
+// shows the S3 copy but the pod works on its own — surface that instead of
+// letting the operator wonder why a chat-driven change is not visible.
+const agent = ref<IAgentData | null>(null);
+const showCopyHint = computed(() => agent.value?.status === 'running');
+
+function formatMoment(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleString();
+}
+
+const copyHintDetail = computed(() => {
+  const pulled = formatMoment(agent.value?.lastPullAt ?? null);
+  const synced = formatMoment(agent.value?.lastSyncAt ?? null);
+  const parts: string[] = [];
+  if (pulled) parts.push(`agent took its copy ${pulled}`);
+  if (synced) parts.push(`last sync ${synced}`);
+  return parts.length ? ` (${parts.join(', ')})` : '';
+});
 
 const syncing = ref(false);
 const syncError = ref<string | null>(null);
@@ -60,17 +83,51 @@ const sheetOpen = ref(false);
 const dirty = computed(() => content.value !== original.value);
 const pendingRestart = computed(() => store.isPendingRestart(props.id));
 
+// Compact one-line summary for the confirm dialog (renders as plain text).
+function describeAtRisk(files: { path: string }[]): string {
+  const MAX_LISTED = 8;
+  const listed = files
+    .slice(0, MAX_LISTED)
+    .map((f) => f.path)
+    .join(', ');
+  const rest = files.length - MAX_LISTED;
+  return rest > 0 ? `${listed} and ${rest} more` : listed;
+}
+
 async function onSync() {
   syncing.value = true;
   syncError.value = null;
   syncMessage.value = null;
   let agentOnline = false;
   try {
-    const result = await store.sync(props.id);
-    agentOnline = result.agentOnline;
-    syncMessage.value = result.agentOnline
-      ? `Agent pushed ${result.pushed} file${result.pushed === 1 ? '' : 's'}`
-      : 'Agent is offline — files are still up to date in S3';
+    let outcome = await store.sync(props.id);
+    if (outcome.status === 'conflict') {
+      const { atRisk } = outcome.conflict;
+      const ok = await confirmStore.ask({
+        title: 'Overwrite newer files in S3?',
+        description:
+          `${atRisk.length} file${atRisk.length === 1 ? ' was' : 's were'} ` +
+          'edited in S3 after the running agent last took its copy: ' +
+          `${describeAtRisk(atRisk)}. ` +
+          'If the agent also changed them, Sync will overwrite the S3 ' +
+          'version with the agent’s copy. Files changed only in S3 are safe.',
+        confirmLabel: 'Sync anyway',
+        cancelLabel: 'Cancel',
+        variant: 'destructive',
+      });
+      if (!ok) {
+        syncing.value = false;
+        return;
+      }
+      outcome = await store.sync(props.id, true);
+    }
+    if (outcome.status === 'done') {
+      const result = outcome.result;
+      agentOnline = result.agentOnline;
+      syncMessage.value = result.agentOnline
+        ? `Agent pushed ${result.pushed} file${result.pushed === 1 ? '' : 's'}`
+        : 'Agent is offline — files are still up to date in S3';
+    }
   } catch (err) {
     syncError.value = (err as Error).message || 'Sync failed';
   }
@@ -240,7 +297,12 @@ async function onDownload() {
 useAsyncData(
   `admin-agent-files-${props.id}`,
   async () => {
-    await store.fetchList(props.id);
+    const [agentData] = await Promise.all([
+      // Hint-only: a failed agent fetch must not break the file browser.
+      agentStore.fetchById(props.id).catch(() => null),
+      store.fetchList(props.id),
+    ]);
+    agent.value = agentData;
     return true;
   },
   { lazy: true },
@@ -249,6 +311,18 @@ useAsyncData(
 
 <template>
   <div class="flex flex-col gap-3">
+    <div
+      v-if="showCopyHint"
+      class="flex flex-wrap items-center gap-3 rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-900 dark:text-sky-200"
+    >
+      <IconInfoCircle class="size-4 shrink-0" />
+      <p class="flex-1 min-w-[14rem]">
+        This tab shows the stored (S3) copy of the files. The running agent
+        works on its own copy{{ copyHintDetail }} and may hold newer content —
+        press Sync to bring it in.
+      </p>
+    </div>
+
     <div
       v-if="pendingRestart"
       class="flex flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"

@@ -3,7 +3,7 @@ import type {
   IFileChunk,
   IFileContent,
   IFileNode,
-  ISyncResult,
+  ISyncOutcome,
 } from './agentFile.types';
 
 /**
@@ -34,8 +34,8 @@ export class AgentFileService {
     return this.gateway.remove(agentId, path, recursive);
   }
 
-  sync(agentId: string): Promise<ISyncResult> {
-    return this.gateway.sync(agentId);
+  sync(agentId: string, confirm?: boolean): Promise<ISyncOutcome> {
+    return this.gateway.sync(agentId, confirm);
   }
 
   exportZip(agentId: string): Promise<Blob> {

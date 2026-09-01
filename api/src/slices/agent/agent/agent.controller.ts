@@ -313,44 +313,9 @@ export class AgentController {
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({ summary: 'Create and deploy a new agent. Admin or Owner.' })
   async create(@Body() dto: CreateAgentDto) {
-    const agent = await this.agentGateway.create(dto);
-    try {
-      const copied = await this.fileGateway.seedFromTemplate(
-        agent.id,
-        agent.templateId,
-      );
-      if (copied > 0) {
-        this.logger.log(
-          `Seeded ${copied} files into agent ${agent.id} from template ${agent.templateId}`,
-        );
-      }
-    } catch (err) {
-      this.logger.warn(
-        `Template seed skipped for agent ${agent.id}: ${(err as Error).message}`,
-      );
-    }
-    await this.agentDeployService.syncSkillsFromTemplate(
-      agent.id,
-      agent.templateId,
-    );
-    // Promote BEFORE the first deploy so the workflow boots the pod with
-    // RANCH_ADMIN=true on the first try — avoids the race of "create deploys
-    // non-admin → promote cancels + redeploys" where the cancel sometimes
-    // doesn't replace the running pod fast enough.
-    if (dto.isAdmin === true) {
-      const previous = await this.agentGateway.findAdmin();
-      if (previous && previous.id !== agent.id) {
-        await this.agentGateway.setAdmin(previous.id, false);
-        await this.agentDeployService.detachAndCancelWorkflow(
-          previous.id,
-          previous.workflowId,
-        );
-        await this.deploy(previous.id);
-      }
-      await this.agentGateway.setAdmin(agent.id, true);
-    }
-    await this.deploy(agent.id);
-    return this.agentGateway.findById(agent.id);
+    // Full sequence (seed → skills → promote-before-deploy → deploy) lives in
+    // AgentDeployService.createAgent, shared with the rancher create_agent tool.
+    return this.agentDeployService.createAgent(dto, { isAdmin: dto.isAdmin });
   }
 
   @Put(':id')

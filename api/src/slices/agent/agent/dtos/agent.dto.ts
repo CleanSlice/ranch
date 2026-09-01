@@ -60,6 +60,25 @@ export class AgentDto {
   })
   launchContext: 'initial' | 'restart' | null;
 
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'When the running pod last pulled its working copy of the agent files ' +
+      'from S3 (recorded at runtime boot). Null ⇒ agent not restarted since ' +
+      'this field shipped. Files-tab freshness hint + sync-conflict baseline.',
+  })
+  lastPullAt: Date | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'When the last successful Sync push completed. Null ⇒ never synced ' +
+      'since this field shipped.',
+  })
+  lastSyncAt: Date | null;
+
   @ApiProperty()
   config: Record<string, unknown>;
 

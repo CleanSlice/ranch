@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IAgentGateway } from './agent.gateway';
+import { IAgentData, ICreateAgentData } from './agent.types';
 import { IFileGateway } from '#/agent/file/domain';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
@@ -56,6 +57,47 @@ export class AgentDeployService {
     await this.detachAndCancelWorkflow(agentId, agent.workflowId);
 
     await this.deploy(agentId);
+  }
+
+  // Full creation sequence, shared by the REST controller and the rancher
+  // create_agent tool: DB row → template file seed (best-effort) → skills
+  // sync → optional admin promotion → first deploy. Promotion happens BEFORE
+  // the first deploy so the workflow boots the pod with RANCH_ADMIN=true on
+  // the first try — avoids the "create deploys non-admin → promote cancels +
+  // redeploys" race where the cancel sometimes doesn't replace the running
+  // pod fast enough.
+  async createAgent(
+    input: ICreateAgentData,
+    opts: { isAdmin?: boolean } = {},
+  ): Promise<IAgentData | null> {
+    const agent = await this.agentGateway.create(input);
+    try {
+      const copied = await this.fileGateway.seedFromTemplate(
+        agent.id,
+        agent.templateId,
+      );
+      if (copied > 0) {
+        this.logger.log(
+          `Seeded ${copied} files into agent ${agent.id} from template ${agent.templateId}`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Template seed skipped for agent ${agent.id}: ${(err as Error).message}`,
+      );
+    }
+    await this.syncSkillsFromTemplate(agent.id, agent.templateId);
+    if (opts.isAdmin === true) {
+      const previous = await this.agentGateway.findAdmin();
+      if (previous && previous.id !== agent.id) {
+        await this.agentGateway.setAdmin(previous.id, false);
+        await this.detachAndCancelWorkflow(previous.id, previous.workflowId);
+        await this.deploy(previous.id);
+      }
+      await this.agentGateway.setAdmin(agent.id, true);
+    }
+    await this.deploy(agent.id);
+    return this.agentGateway.findById(agent.id);
   }
 
   // Detach the workflow id from the agent row BEFORE cancelling it. A
@@ -136,7 +178,8 @@ export class AgentDeployService {
     this.deployTracker.mark(agentId);
     // 'initial' iff this agent has never been deployed — persisted so the UI
     // can tell a first start from a restart even after a page reload.
-    const launchContext = agent.firstDeployedAt === null ? 'initial' : 'restart';
+    const launchContext =
+      agent.firstDeployedAt === null ? 'initial' : 'restart';
     // Mark deploying BEFORE submitting the workflow. Submit + getStatus take
     // seconds — long enough for the pod to come up and AgentStatusService to
     // flip status to 'running'. If we wrote status here after submit we'd

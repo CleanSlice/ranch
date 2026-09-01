@@ -3,10 +3,11 @@ import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IAgentFileGateway } from '../domain/agentFile.gateway';
 import type {
+  IAtRiskFile,
   IFileChunk,
   IFileContent,
   IFileNode,
-  ISyncResult,
+  ISyncOutcome,
 } from '../domain/agentFile.types';
 import { AgentFileMapper } from './agentFile.mapper';
 
@@ -73,10 +74,35 @@ export class AgentFileGateway extends BaseGateway implements IAgentFileGateway {
     });
   }
 
-  sync(agentId: string): Promise<ISyncResult> {
+  sync(agentId: string, confirm = false): Promise<ISyncOutcome> {
     return this.execute(async () => {
-      const res = await FilesService.fileControllerSync({ path: { agentId } });
-      return this.mapper.toSyncResult(unwrapEnvelope(res.data));
+      const res = await FilesService.fileControllerSync({
+        path: { agentId },
+        body: { confirm },
+      });
+      // 409 = guard refused: S3 holds edits newer than the pod's last
+      // pull/push and confirm was not set. Not an error for the domain —
+      // it's the "ask the operator" branch of the sync flow.
+      // The generated client is the heyapi AXIOS variant: its result union is
+      // (AxiosResponse & {error: undefined}) | (AxiosError & {error: <409 body>}),
+      // so `.response` only exists after narrowing to the error member.
+      if (res.error !== undefined && res.response?.status === 409) {
+        const conflict = res.error as {
+          atRisk?: IAtRiskFile[];
+          baseline?: string;
+        };
+        return {
+          status: 'conflict' as const,
+          conflict: {
+            atRisk: conflict.atRisk ?? [],
+            baseline: conflict.baseline ?? '',
+          },
+        };
+      }
+      return {
+        status: 'done' as const,
+        result: this.mapper.toSyncResult(unwrapEnvelope(res.data)),
+      };
     });
   }
 

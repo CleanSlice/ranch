@@ -9,6 +9,21 @@
     "sending": "Думает…",
     "error": "Не удалось связаться с агентом",
     "you": "Вы",
-    "agent": "Агент"
+    "agent": "Агент",
+    "dismiss": "Закрыть",
+    "attach": "Прикрепить файл",
+    "attach_limit": "Можно прикрепить не более {count} файлов",
+    "drop_hint": "Перетащите файлы сюда, чтобы прикрепить",
+    "drop_disabled": "Дождитесь, пока агент закончит ответ",
+    "attachment_remove": "Удалить {name}",
+    "attachment_retry": "Повторить {name}",
+    "attachment_uploading": "Загрузка {name}",
+    "attachment_failed": "Не удалось загрузить {name}",
+    "attachment_unavailable": "Этот файл больше недоступен",
+    "attachment_not_readable": "Агент видит имя файла, но не содержимое",
+    "error_type": "{name} — неподдерживаемый тип файла. Попробуйте изображение, PDF или текстовый файл.",
+    "error_size": "{name} больше, чем {limit}",
+    "error_total": "Суммарный размер файлов в одном сообщении превышает {limit}",
+    "error_empty": "{name} пуст"
   }
 }

@@ -179,14 +179,14 @@ Phase order runs **US1 → US3 → US2 → US4**. US2 and US3 are both P2, so th
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T055 Generate the Russian translations: `bun run i18n:sync`, then `bun run i18n:check`. Commit both locale files. Never hand-write `ru.json`
+- [X] T055 Generate the Russian translations: `bun run i18n:sync`, then `bun run i18n:check`. Commit both locale files. Never hand-write `ru.json`
 - [ ] T056 Walk the console in Russian through quickstart 3.1 and confirm no raw key text (e.g. `chat.attach_limit`) reaches the screen
 - [X] T057 [P] Add the `aria-live="polite"` announcement region for rejections and upload failures in `app/slices/bridle/components/bridle/chat/Input.vue`, so no failure is signalled by color alone
 - [X] T058 [P] Add `role="progressbar"` with `aria-valuenow` to the upload indicator in `app/slices/bridle/components/bridle/chat/AttachmentChip.vue`
 - [ ] T059 Keyboard pass per quickstart 3.2 — tab to the paperclip and open it with Enter, tab to each chip's remove and retry controls and activate them by keyboard
-- [ ] T060 Verify every lucide icon name used resolves: `paperclip`, `x`, `file-text`, `image`, `upload`, `alert-circle`, `rotate-cw`. The slice `Icon` component renders **nothing** for an unknown name, so a typo fails silently
+- [X] T060 Verify every lucide icon name used resolves: `paperclip`, `x`, `file-text`, `image`, `upload`, `alert-circle`, `rotate-cw`. The slice `Icon` component renders **nothing** for an unknown name, so a typo fails silently
 - [ ] T061 Confirm nothing else moved, per quickstart 3.3: the admin debug chat is unchanged, and a plain text send with no `attachmentIds` takes byte-identically the old path
-- [ ] T062 Run `bun run typecheck` and `cd api && bun run build`; fix any fallout
+- [X] T062 Run `bun run typecheck` and `cd api && bun run build`; fix any fallout
 - [ ] T063 Run the full quickstart.md definition-of-done checklist end to end
 - [ ] T064 Update `README.md` or `docs/` only if the attachment limits need documenting for operators; skip if the settings are self-explanatory
 
@@ -282,30 +282,33 @@ Phases 3–6 all touch `stores/bridle.ts` and `Input.vue`, so parallelising them
 
 ---
 
-## Implementation status — 2026-08-31
+## Implementation status — 2026-09-01
 
-**55 of 64 tasks complete.** Every code task landed; the API half is verified by
-tooling, the front-end half is not, for the reasons below.
+**58 of 64 tasks complete.** Every code task landed. Both halves now verify by
+tooling; what is left needs a running stack.
 
 **Verified here**
 
-- `cd api && npx jest --testPathPattern bridle` — 27 tests, all passing
-- API typecheck (`tsc --noEmit -p api/tsconfig.json`) — clean
-- Swagger regenerated: both attachment routes present, `attachmentIds` on `SendMessageDto`
-- App SDK regenerated: `uploadBridleAttachment` / `getBridleAttachment` on the generated client, diff is additions only (163 lines, 3 files)
-- Static check: every `#bridle/domain` and `#bridle/stores/bridle` import resolves, and every store member the components call is exposed
+- `cd api && npx jest src/slices/bridle` — 27 tests, all passing
+- `cd api && bun run build` — clean (run `bun run generate` first: `bun install` wipes the generated Prisma client, and without it 51 unrelated files fail to resolve `@prisma/client`)
+- `bun run typecheck` — app and admin both clean. Confirmed the check is real, not a no-op: a deliberate type error planted in `AttachmentChip.vue` was caught (`TS2322`) and then removed
+- `bun run i18n:sync` — all 15 Russian keys generated; `bun run i18n:check` reports 6 slice/locale pairs in sync, 190 keys, **no component using a key no locale defines**
+- Every lucide name used by the slice resolves through the `Icon` component's PascalCase mapping — checked against the installed `lucide-vue-next` for all 13: `paperclip`, `x`, `file-text`, `image`, `file`, `upload`, `alert-circle`, `alert-triangle`, `rotate-cw`, `image-off`, `ban`, `loader-2`, `send`
+- Swagger regenerated: both attachment routes present, `attachmentIds` on `SendMessageDto`. App and admin SDKs regenerated, additions only (163 lines, 3 files each)
 
 **Still open, and why**
 
 | Task | Blocked on |
 |---|---|
 | T003 | The local stack is not running (`make dev`), so S3 settings and agent health can't be checked |
-| T055, T056 | `bun run i18n:sync` fails with `authentication_error` — the `CLAUDE_API_KEY` in `.env.project` is rejected. `ru.json` is therefore missing all 15 new keys, and the Russian console will render raw key names until this is run. **Do not hand-write `ru.json`** |
+| T056 | The static half is closed — every key the components use exists in `ru.json`, so no raw key name can reach the screen. What remains is the visual pass: Russian is longer than English and the chips are narrow |
 | T059, T061, T063 | Manual passes that need the app running |
-| T060 | `lucide-vue-next` is not installed in this worktree, so the icon names could not be resolved. `send` and `loader-2` are already used by the existing input; the rest (`paperclip`, `x`, `file-text`, `image`, `file`, `upload`, `alert-circle`, `rotate-cw`, `image-off`, `ban`) need one look in the browser — the `Icon` component renders nothing for an unknown name, so a typo fails silently |
-| T062 | `nuxt typecheck` needs a complete install; `node_modules/nuxt` in this worktree is an empty shell. The API half of T062 passes |
 | T064 | Judgement call, deferred until the limits are confirmed in a real environment |
 
-**First thing to do next**: `bun install` at the repo root, then `bun run typecheck` and
-`bun run i18n:sync` with a working key. Those two close T055, T056 and T062, and
-everything else on the list is a quickstart walk-through.
+**Note on the i18n key**: `CLAUDE_API_KEY` was never the problem. It is an
+identity-linked key, and the API answers those with a 400 naming
+`anthropic-workspace-id` rather than a 401 — so the failure read like a bad key.
+`scripts/i18n-sync.ts` now takes `CLAUDE_WORKSPACE_ID` from `.env.project` and
+sends it as a header.
+
+**First thing to do next**: bring the stack up and walk `quickstart.md` end to end.

@@ -48,7 +48,11 @@ defineProps<{ entry: IRailEntry }>();
             :class="entry.tone.dot"
           />
         </span>
-        <span class="capitalize" :class="entry.tone.text">
+        <span
+          class="capitalize"
+          :class="entry.tone.text"
+          :title="entry.statusReason ?? undefined"
+        >
           {{ entry.status }}
         </span>
         <span class="text-muted-foreground/60">·</span>

@@ -14,7 +14,14 @@ export class AgentDto {
   llmCredentialId: string | null;
 
   @ApiProperty({
-    enum: ['pending', 'deploying', 'running', 'failed', 'stopped'],
+    enum: [
+      'pending',
+      'deploying',
+      'running',
+      'failed',
+      'stopped',
+      'unreachable',
+    ],
   })
   status: string;
 
@@ -22,7 +29,7 @@ export class AgentDto {
     nullable: true,
     type: String,
     description:
-      "Human-readable reason accompanying status='failed' (e.g. \"startup did not produce a running agent within 5 minutes\", \"ImagePullBackOff\"). Null for all other statuses and for failures recorded before this field existed.",
+      "Human-readable reason accompanying status='failed' or 'unreachable' (e.g. \"startup did not produce a running agent within 5 minutes\", \"ImagePullBackOff\", \"pod is running but the runtime never connected to the bridle hub…\"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.",
   })
   statusReason: string | null;
 

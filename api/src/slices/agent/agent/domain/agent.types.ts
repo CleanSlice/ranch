@@ -3,7 +3,10 @@ export type AgentStatusTypes =
   | 'deploying'
   | 'running'
   | 'failed'
-  | 'stopped';
+  | 'stopped'
+  // Pod is Running+Ready but the runtime never registered on the bridle hub
+  // past the grace window — the agent looks alive to K8s yet can't serve chat.
+  | 'unreachable';
 
 // Why the current/last deploy ran: 'initial' = first-ever deploy of this
 // agent, 'restart' = any subsequent deploy (manual restart, start after stop,

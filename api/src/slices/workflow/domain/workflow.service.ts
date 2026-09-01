@@ -1,11 +1,35 @@
 import { Injectable } from '@nestjs/common';
 import { IAgentData } from '#/agent/agent/domain';
+import { ISettingGateway } from '#/setting/domain';
 import { IWorkflowGateway } from './IWorkflowGateway';
 import { IAgentEnvVar } from './workflow.types';
 
+const REQUIRED_BRIDLE_SETTINGS = ['bridle_url', 'bridle_api_key'] as const;
+
 @Injectable()
 export class WorkflowService {
-  constructor(private workflowGateway: IWorkflowGateway) {}
+  constructor(
+    private workflowGateway: IWorkflowGateway,
+    private settingGateway: ISettingGateway,
+  ) {}
+
+  /**
+   * Deploy-time misconfiguration probe: returns a human-readable warning when
+   * a bridle integration setting is empty in the DB, else null. Checks the DB
+   * value, NOT the resolved env — the workflow gateway silently falls back to
+   * dev defaults, which point at a k3d host that is unreachable in production
+   * (the exact failure mode of the 19-hour "running but offline" incident).
+   */
+  async checkBridleSettings(): Promise<string | null> {
+    for (const name of REQUIRED_BRIDLE_SETTINGS) {
+      const setting = await this.settingGateway.findByKey('integrations', name);
+      const value = typeof setting?.value === 'string' ? setting.value : '';
+      if (!value) {
+        return `integrations/${name} is not set — the agent pod will start without hub credentials and can never come online; set it at /settings/bridle and restart the agent`;
+      }
+    }
+    return null;
+  }
 
   async submitAgentWorkflow(
     agent: IAgentData,

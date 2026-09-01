@@ -9,6 +9,22 @@ const props = defineProps<{
 const agentStatusStore = useAgentStatusStore();
 const podStatus = computed(() => agentStatusStore.statuses[props.agent.id] ?? null);
 const podLabel = computed(() => podPhaseLabel(podStatus.value));
+
+// The SSE record is fresher than the fetched row (the drift sweep writes
+// 'unreachable' between refetches) — prefer it when present.
+const liveAgent = computed(() => agentStatusStore.agents[props.agent.id]);
+const displayStatus = computed(
+  () => (liveAgent.value?.status as IAgentData['status']) || props.agent.status,
+);
+const statusReason = computed(
+  () => liveAgent.value?.statusReason ?? props.agent.statusReason,
+);
+// Explicit `=== false`: undefined just means the stream hasn't reported yet.
+const runtimeOffline = computed(
+  () =>
+    displayStatus.value === 'running' &&
+    agentStatusStore.bridleConnected[props.agent.id] === false,
+);
 </script>
 
 <template>
@@ -22,8 +38,8 @@ const podLabel = computed(() => podPhaseLabel(podStatus.value));
         <div>
           <dt class="text-xs text-muted-foreground">Status</dt>
           <dd class="mt-1 flex items-center gap-2">
-            <Badge :variant="AGENT_STATUS_VARIANT[agent.status]" class="capitalize">
-              {{ agent.status }}
+            <Badge :variant="AGENT_STATUS_VARIANT[displayStatus]" class="capitalize">
+              {{ displayStatus }}
             </Badge>
             <span
               v-if="podLabel"
@@ -35,10 +51,19 @@ const podLabel = computed(() => podPhaseLabel(podStatus.value));
             </span>
           </dd>
           <p
-            v-if="agent.status === 'failed' && agent.statusReason"
+            v-if="
+              (displayStatus === 'failed' || displayStatus === 'unreachable') &&
+              statusReason
+            "
             class="mt-1 text-xs text-destructive"
           >
-            {{ agent.statusReason }}
+            {{ statusReason }}
+          </p>
+          <p
+            v-else-if="runtimeOffline"
+            class="mt-1 text-xs text-orange-600 dark:text-orange-400"
+          >
+            Pod is up but the runtime hasn't connected to the bridle hub yet.
           </p>
         </div>
         <div>

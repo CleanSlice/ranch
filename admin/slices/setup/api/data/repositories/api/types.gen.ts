@@ -315,9 +315,15 @@ export type AgentDto = {
   llmCredentialId?: {
     [key: string]: unknown;
   } | null;
-  status: "pending" | "deploying" | "running" | "failed" | "stopped";
+  status:
+    | "pending"
+    | "deploying"
+    | "running"
+    | "failed"
+    | "stopped"
+    | "unreachable";
   /**
-   * Human-readable reason accompanying status='failed' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff"). Null for all other statuses and for failures recorded before this field existed.
+   * Human-readable reason accompanying status='failed' or 'unreachable' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.
    */
   statusReason: string | null;
   workflowId: {
@@ -381,6 +387,10 @@ export type AgentStatusDto = {
    * Live pod status; null if no pod is currently running for this agent.
    */
   pod: AgentPodStatusDto | null;
+  /**
+   * Whether the agent runtime currently holds a live connection to the bridle hub. In-memory truth of the API process — false for a few seconds after an API restart until runtimes reconnect.
+   */
+  bridleConnected: boolean;
 };
 
 export type NodeCapacityDto = {

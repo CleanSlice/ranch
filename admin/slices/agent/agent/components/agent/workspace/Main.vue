@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '#theme/components/ui/dropdown-menu';
+import type { IAgentData } from '#agent/domain';
 import { agentInitials } from '#agent/composables/useAgentRailEntries';
 import { useAgentSectionCounts } from '#agent/composables/useAgentSectionCounts';
 import { useAgentTab } from '#agent/composables/useAgentTab';
@@ -70,6 +71,27 @@ watch(tab, (t) => {
 
 const initials = computed(() =>
   agent.value ? agentInitials(agent.value.name, agent.value.id) : '?',
+);
+
+// The SSE record is fresher than the fetched row — the drift sweep flips
+// 'running' → 'unreachable' between refetches, and the header badge is the
+// first place an operator looks.
+const agentStatusStore = useAgentStatusStore();
+const liveAgent = computed(() => agentStatusStore.agents[props.id]);
+const displayStatus = computed(
+  () =>
+    (liveAgent.value?.status as IAgentData['status']) ??
+    agent.value?.status ??
+    'pending',
+);
+const statusReason = computed(
+  () => liveAgent.value?.statusReason ?? agent.value?.statusReason ?? null,
+);
+// `=== false` on purpose: undefined means the stream hasn't reported yet.
+const runtimeOffline = computed(
+  () =>
+    displayStatus.value === 'running' &&
+    agentStatusStore.bridleConnected[props.id] === false,
 );
 
 const lifecycleError = computed(() => restartError.value || toggleError.value);
@@ -143,11 +165,19 @@ async function onRemove() {
           title="This agent has the ranch_* admin tools and a service token"
         />
         <Badge
-          :variant="AGENT_STATUS_VARIANT[agent.status]"
+          :variant="AGENT_STATUS_VARIANT[displayStatus]"
           class="shrink-0 capitalize"
+          :title="statusReason ?? undefined"
         >
-          {{ agent.status }}
+          {{ displayStatus }}
         </Badge>
+        <span
+          v-if="runtimeOffline"
+          class="shrink-0 text-xs text-orange-600 dark:text-orange-400"
+          title="Pod is up but the runtime hasn't connected to the bridle hub yet"
+        >
+          runtime offline
+        </span>
 
         <div class="flex-1" />
 

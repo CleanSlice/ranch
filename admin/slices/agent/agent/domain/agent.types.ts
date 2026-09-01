@@ -7,7 +7,10 @@ export type AgentStatusTypes =
   | 'deploying'
   | 'running'
   | 'failed'
-  | 'stopped';
+  | 'stopped'
+  // Pod is healthy but the runtime never registered on the bridle hub —
+  // the agent cannot serve chat until settings are fixed and it restarts.
+  | 'unreachable';
 
 /** Why the current/last deploy ran — server-derived, so the UI can tell a
  *  first start from a restart even after a page reload. */
@@ -61,8 +64,8 @@ export interface IAgentData {
   templateId: string;
   llmCredentialId: string | null;
   status: AgentStatusTypes;
-  /** Human-readable failure cause; non-null only while status is 'failed'
-   *  (may still be null for failures recorded before the field existed). */
+  /** Human-readable cause; non-null while status is 'failed' or
+   *  'unreachable', and during 'deploying' when bridle settings are empty. */
   statusReason: string | null;
   workflowId: string | null;
   /** Null ⇒ the agent has never been deployed. */

@@ -4,16 +4,20 @@ const store = useAgentStatusStore();
 onMounted(() => store.connect());
 onBeforeUnmount(() => store.disconnect());
 
+// Failing pods and unreachable runtimes are equally alarming: both mean an
+// agent that cannot serve chat right now.
+const alertCount = computed(() => store.failingCount + store.unreachableCount);
+
 const dotClass = computed(() => {
   if (store.connectionState === 'connected') {
-    return store.failingCount > 0 ? 'bg-red-500' : 'bg-emerald-500';
+    return alertCount.value > 0 ? 'bg-red-500' : 'bg-emerald-500';
   }
   if (store.connectionState === 'connecting') return 'bg-amber-400';
   return 'bg-muted-foreground/50';
 });
 
 const pulseClass = computed(() =>
-  store.connectionState === 'connected' && store.failingCount === 0
+  store.connectionState === 'connected' && alertCount.value === 0
     ? 'animate-ping bg-emerald-500/60'
     : '',
 );
@@ -60,10 +64,10 @@ const label = computed(() => {
           </span>
           <span class="font-medium">{{ label }}</span>
           <span
-            v-if="store.failingCount > 0"
+            v-if="alertCount > 0"
             class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-semibold"
           >
-            {{ store.failingCount }}
+            {{ alertCount }}
           </span>
         </div>
       </TooltipTrigger>
@@ -75,6 +79,10 @@ const label = computed(() => {
           <div>Running &amp; ready: {{ runningCount }}</div>
           <div v-if="store.failingCount > 0" class="text-red-400">
             Failing: {{ store.failingCount }}
+          </div>
+          <div v-if="store.unreachableCount > 0" class="text-orange-400">
+            Unreachable (runtime not on the bridle hub):
+            {{ store.unreachableCount }}
           </div>
         </div>
       </TooltipContent>

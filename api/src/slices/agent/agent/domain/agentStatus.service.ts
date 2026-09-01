@@ -173,6 +173,13 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
       'running',
       agent.workflowId ?? undefined,
     );
+    // Sync-conflict marker (CLEAN-50): a not-yet-running agent that just
+    // registered on bridle is a fresh boot, and the runtime pulls its S3
+    // working copy at boot, right before this connect. Deliberately NOT set
+    // on reconnects of an already-running agent (early return above): a WS
+    // flap involves no pull, and advancing the baseline without a pull would
+    // hide real conflicts. A stale baseline only over-warns — safe direction.
+    await this.agentGateway.setLastPullAt(agentId);
     this.deployTracker.clear(agentId);
   }
 
@@ -289,6 +296,18 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
               'running',
               agent.workflowId ?? undefined,
             );
+            // Fresh-boot marker, but unlike markRunningFromBridle the boot
+            // may be MINUTES old here (event lost while the API was down).
+            // Use the pod's actual start time; with no pod info, leave the
+            // marker alone — "now" could postdate S3 edits made since the
+            // real pull and hide conflicts. Stale baseline only over-warns.
+            const driftPod = podByAgent.get(agent.id);
+            if (driftPod?.startedAt) {
+              await this.agentGateway.setLastPullAt(
+                agent.id,
+                new Date(driftPod.startedAt),
+              );
+            }
             this.deployTracker.clear(agent.id);
           }
           continue;

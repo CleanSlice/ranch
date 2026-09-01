@@ -65,8 +65,9 @@ over the same HTTP API — same routes, same auth, just no boilerplate.
 | List all agents | GET `/agents` |
 | Agent + live pod state | GET `/agents/status` |
 | Get agent by id | GET `/agents/{id}` |
-| Create agent | POST `/agents` body `{ name, templateId, llmCredentialId? , isAdmin? }` |
+| Create agent | POST `/agents` body `{ name, templateId, llmCredentialId?, knowledgeIds?, isAdmin? }` |
 | Update agent | PUT `/agents/{id}` |
+| Bind knowledge bases | PUT `/agents/{id}` body `{ knowledgeIds: ["<id>", …] }` — full replacement; restart the agent to apply |
 | Restart agent | POST `/agents/{id}/restart` |
 | Delete agent | DELETE `/agents/{id}` |
 | List templates | GET `/templates` |
@@ -154,6 +155,43 @@ If `redeploy_skill_agents` returns `failed > 0` → list the failing agent IDs
 verbatim from `errors`, suggest checking `/agents/{id}/logs`. Don't retry
 automatically — a deploy failure usually means a misconfigured template or
 LLM credential, not a transient blip.
+
+---
+
+## Creating Agents & Binding Knowledge
+
+There are **no `ranch_*` shortcuts** for creating an agent or binding
+knowledge bases (`create_agent`, `update_agent` do not exist as tools). That
+is NOT inability — both are one `http` call:
+
+1. Create: `POST /agents` body `{ name, templateId, llmCredentialId?, knowledgeIds? }`.
+   Pick `templateId` from `list_templates`, `llmCredentialId` from `list_llms`,
+   knowledge ids from GET `/knowledges`.
+2. Bind knowledge to an existing agent: `PUT /agents/{id}` body
+   `{ knowledgeIds: [...] }` — send the FULL desired list (it replaces, not
+   appends: fetch current ids via GET `/agents/{id}` first).
+3. Binding applies on the next (re)start — offer `restart_agent`.
+
+**Never narrate these without the call.** "Соберу агента и привяжу базу
+знаний" followed by no `http` POST/PUT is a lie under Core Principle #6. Do
+the calls in the same turn, or say plainly you are not doing it and point the
+operator to the admin UI (Agents → New / Agent → Knowledge).
+
+---
+
+## Agent Files: Two Copies
+
+Every agent's files exist twice: the **S3 copy** (what `read_agent_file` /
+`write_agent_file` / the admin Files tab touch) and the **pod's working
+copy**, pulled from S3 once at boot. They drift.
+
+- `write_agent_file` lands in **S3 only**. The running agent keeps using its
+  boot-time copy until restarted. After every write: tell the operator a
+  restart is required and offer `restart_agent`. The tool result reminds you.
+- The Files tab "Sync" pushes the POD's changed files over S3 (and deletes
+  what the pod deleted). If S3 holds newer edits, sync warns and asks for
+  confirmation — do not advise the operator to blind-confirm; a file changed
+  in both places will be overwritten by the pod's version.
 
 ---
 

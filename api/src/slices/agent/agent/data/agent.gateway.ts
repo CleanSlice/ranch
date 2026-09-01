@@ -135,6 +135,21 @@ export class AgentGateway extends IAgentGateway {
     });
   }
 
+  async setLastPullAt(id: string, at?: Date): Promise<void> {
+    // updateMany: no-throw when the agent row vanished mid-event.
+    await this.prisma.agent.updateMany({
+      where: { id },
+      data: { lastPullAt: at ?? new Date() },
+    });
+  }
+
+  async setLastSyncAt(id: string): Promise<void> {
+    await this.prisma.agent.updateMany({
+      where: { id },
+      data: { lastSyncAt: new Date() },
+    });
+  }
+
   async setWorkflowId(
     id: string,
     workflowId: string | null,

@@ -119,8 +119,8 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     return deleted;
   }
 
-  function sync(agentId: string) {
-    return getService().sync(agentId);
+  function sync(agentId: string, confirm?: boolean) {
+    return getService().sync(agentId, confirm);
   }
 
   // Streams the agent's S3 prefix as a ZIP into a browser download.

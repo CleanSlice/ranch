@@ -14,6 +14,7 @@ interface FileNode {
   name: string;
   path: string;
   size: number;
+  updatedAt: string;
 }
 
 type TreeNode = FolderNode | FileNode;
@@ -52,6 +53,7 @@ function buildTree(files: IFileNode[]): TreeNode[] {
       name: segments[segments.length - 1],
       path: file.path,
       size: file.size,
+      updatedAt: file.updatedAt,
     });
   }
   sortTree(root);

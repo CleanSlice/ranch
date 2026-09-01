@@ -15,6 +15,7 @@ interface FileNodeT {
   name: string;
   path: string;
   size: number;
+  updatedAt: string;
 }
 
 type NodeT = FolderNodeT | FileNodeT;
@@ -42,6 +43,15 @@ function formatSize(n: number) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// S3-copy freshness (CLEAN-50): shown in the row tooltip so an operator can
+// tell how old the stored copy is without opening the file.
+function fileTitle(node: FileNodeT): string {
+  const d = new Date(node.updatedAt);
+  return Number.isNaN(d.getTime())
+    ? node.path
+    : `${node.path} — last modified ${d.toLocaleString()}`;
 }
 </script>
 
@@ -90,6 +100,7 @@ function formatSize(n: number) {
       type="button"
       class="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
       :style="{ paddingLeft: `calc(0.5rem + ${indent})` }"
+      :title="fileTitle(node)"
       @click="emit('select', node.path)"
     >
       <IconFile class="size-4 shrink-0 text-muted-foreground" />

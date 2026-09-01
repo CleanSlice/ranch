@@ -1,5 +1,19 @@
 import { defineStore } from 'pinia'
 import { io, type Socket } from 'socket.io-client'
+import {
+  BridleAttachmentKinds,
+  BridleAttachmentStates,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_ATTACHMENT_BYTES,
+  MAX_MESSAGE_ATTACHMENT_BYTES,
+  formatBytes,
+  isAllowedMimeType,
+  readAsBase64,
+  resolveKind,
+  resolveMimeType,
+  type IStagedAttachment,
+  type IUploadedAttachment,
+} from '../utils/attachment'
 
 export enum BridlePartTypes {
   Text = 'text',
@@ -213,6 +227,60 @@ async function fetchTranscriptPage(
   }
 }
 
+/**
+ * Upload one attachment and report progress.
+ *
+ * XMLHttpRequest rather than fetch: fetch still has no upload-progress event,
+ * and a 10 MB file with no progress bar reads as a hang. Same apiUrl + bearer
+ * shape as every other request in this store.
+ */
+function uploadAttachment(
+  apiUrl: string,
+  agentId: string,
+  token: string,
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<IUploadedAttachment> {
+  const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/attachment`
+
+  return new Promise((resolve, reject) => {
+    const form = new FormData()
+    form.append('file', file)
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+    xhr.upload.onprogress = (e) => {
+      // `lengthComputable` is false behind some proxies — leave the bar where
+      // it is rather than dividing by zero.
+      if (e.lengthComputable && e.total > 0) {
+        onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Upload failed'))
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error(`Upload failed (${xhr.status})`))
+        return
+      }
+      try {
+        const body = JSON.parse(xhr.responseText) as {
+          data?: IUploadedAttachment
+        }
+        // Every 2xx is wrapped in { success, data }; peel it here so callers
+        // see the DTO.
+        const dto = body?.data ?? (body as unknown as IUploadedAttachment)
+        if (!dto?.id) throw new Error('missing id')
+        resolve(dto)
+      } catch {
+        reject(new Error('Upload returned an unreadable response'))
+      }
+    }
+    xhr.send(form)
+  })
+}
+
 function toBridleMessage(m: ITranscriptPageMessage): IBridleMessageData {
   return {
     id: m.id,
@@ -295,12 +363,36 @@ export const useBridleStore = defineStore('bridle', {
      * text. Persisted in localStorage so the user's choice survives refresh.
      */
     markdownEnabled: loadMarkdownPref(),
+    /** Files picked but not yet sent. Emptied when the message goes out. */
+    staged: [] as IStagedAttachment[],
+    /** Last rejection, shown under the composer until the next action. */
+    attachmentError: null as string | null,
+    /**
+     * Object URLs minted for the local echo of a sent non-image attachment.
+     * The download route needs a bearer token and a plain link cannot carry
+     * one, so the bubble links the bytes we already hold. Revoked when the
+     * transcript is cleared.
+     */
+    _echoUrls: [] as string[],
     _socket: null as Socket | null,
     /** Active agentId — captured on connect, used to scope persisted debug. */
     _agentId: null as string | null,
   }),
 
   getters: {
+    isUploadingAttachment: (state) =>
+      state.staged.some(a => a.state === BridleAttachmentStates.Uploading),
+    /**
+     * A failed upload blocks sending on purpose: the message is usually
+     * *about* the file, and delivering it without the attachment is worse
+     * than making the person retry or drop it.
+     */
+    hasFailedAttachment: (state) =>
+      state.staged.some(a => a.state === BridleAttachmentStates.Failed),
+    readyAttachments: (state) =>
+      state.staged.filter(
+        a => a.state === BridleAttachmentStates.Ready && a.remoteId,
+      ),
     getMessages: (state) => state.messages,
     getIsOpen: (state) => state.isOpen,
     getDebugForMessage: (state) => (id: string): IBridleDebugData | null => {
@@ -353,6 +445,14 @@ export const useBridleStore = defineStore('bridle', {
 
       socket.on('welcome', (data: { clientId: string }) => {
         this.clientId = data.clientId
+      })
+
+      // The hub could not deliver a message — a dead attachment, usually.
+      // Reported on its own event rather than by dropping the socket, so the
+      // conversation survives one bad file.
+      socket.on('message_error', (data: { message?: string }) => {
+        this.isTyping = false
+        this.attachmentError = data?.message ?? 'Message could not be delivered'
       })
 
       socket.on('agent_status', (data: { connected?: boolean }) => {
@@ -505,25 +605,228 @@ export const useBridleStore = defineStore('bridle', {
       this.isAgentConnected = false
     },
 
-    sendMessage(text: string, images?: Array<{ base64: string; mediaType: string }>) {
-      if (!text.trim()) return
+    /**
+     * Send the draft plus whatever is staged.
+     *
+     * Only the attachment *ids* go over the wire — the hub reads the stored
+     * bytes and expands them into the parts the agent receives, exactly as the
+     * HTTP routes do. The parts built here are the local echo: what the person
+     * sees in their own bubble, not what the agent is sent.
+     */
+    async sendMessage(
+      text: string,
+      images?: Array<{ base64: string; mediaType: string }>,
+    ) {
+      const trimmed = text.trim()
+      const ready = this.staged.filter(
+        a => a.state === BridleAttachmentStates.Ready && a.remoteId,
+      )
+      if (!trimmed && !ready.length) return
+      // Refuse rather than silently dropping the file the message is about.
+      if (this.isUploadingAttachment || this.hasFailedAttachment) return
 
-      const parts = buildParts(text.trim(), images)
+      const wireParts = buildParts(trimmed, images)
+      const echoParts = buildParts(trimmed, images)
+
+      for (const entry of ready) {
+        if (entry.kind === BridleAttachmentKinds.Image) {
+          try {
+            echoParts.push({
+              type: BridlePartTypes.Image,
+              base64: await readAsBase64(entry.file),
+              mediaType: entry.mimeType,
+            })
+            continue
+          } catch {
+            // Unreadable locally for some reason — fall through to a link
+            // rather than dropping it from the person's own view.
+          }
+        }
+        const url = URL.createObjectURL(entry.file)
+        this._echoUrls.push(url)
+        echoParts.push({
+          type: BridlePartTypes.File,
+          url,
+          name: entry.name,
+          mimeType: entry.mimeType,
+        })
+      }
+
+      const attachmentIds = ready.map(a => a.remoteId as string)
 
       this.messages.push({
         id: crypto.randomUUID(),
         role: 'user',
-        text: text.trim(),
-        parts,
+        text: trimmed,
+        parts: echoParts,
         ts: Date.now(),
       })
 
+      // Empty the composer before the round trip so the next message can be
+      // typed while the agent thinks.
+      this.clearStaged()
       this.isTyping = true
 
-      this._socket?.emit('message', { text: text.trim(), parts })
+      this._socket?.emit('message', {
+        text: trimmed,
+        parts: wireParts,
+        ...(attachmentIds.length ? { attachmentIds } : {}),
+      })
+    },
+
+    // ── Attachments ──────────────────────────
+
+    /**
+     * Validate against the client mirror of the API's limits. Returns the
+     * sentence to show, or null when the file is fine.
+     */
+    _rejectReason(file: File, pendingBytes: number): string | null {
+      if (this.staged.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
+        return `You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} files`
+      }
+      if (file.size === 0) return `${file.name} is empty`
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        return `${file.name} is larger than ${formatBytes(MAX_ATTACHMENT_BYTES)}`
+      }
+      if (pendingBytes + file.size > MAX_MESSAGE_ATTACHMENT_BYTES) {
+        return `Those files add up to more than ${formatBytes(MAX_MESSAGE_ATTACHMENT_BYTES)} in one message`
+      }
+      return null
+    },
+
+    /**
+     * Stage a selection and start uploading each accepted file. A rejected
+     * file never blocks the acceptable ones beside it — picking five where one
+     * is a .zip stages four.
+     */
+    stageFiles(
+      apiUrl: string,
+      agentId: string,
+      token: string,
+      files: File[] | FileList,
+    ) {
+      const list = Array.from(files)
+      if (!list.length) return
+      this.attachmentError = null
+
+      let pendingBytes = this.staged.reduce((sum, a) => sum + a.size, 0)
+
+      for (const file of list) {
+        const mimeType = resolveMimeType(file)
+        const problem = !isAllowedMimeType(mimeType)
+          ? `${file.name} is not a supported file type. Try an image, a PDF, or a text file.`
+          : this._rejectReason(file, pendingBytes)
+
+        if (problem) {
+          this.attachmentError = problem
+          continue
+        }
+
+        const kind = resolveKind(mimeType)
+        const staging: IStagedAttachment = {
+          localId: `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          file,
+          name: file.name,
+          size: file.size,
+          mimeType,
+          kind,
+          previewUrl:
+            kind === BridleAttachmentKinds.Image
+              ? URL.createObjectURL(file)
+              : null,
+          state: BridleAttachmentStates.Uploading,
+          progress: 0,
+          remoteId: null,
+          error: null,
+        }
+
+        this.staged.push(staging)
+        pendingBytes += file.size
+        void this.uploadStaged(apiUrl, agentId, token, staging.localId)
+      }
+    },
+
+    async uploadStaged(
+      apiUrl: string,
+      agentId: string,
+      token: string,
+      localId: string,
+    ) {
+      const find = () => this.staged.find(a => a.localId === localId)
+      const entry = find()
+      if (!entry) return
+
+      entry.state = BridleAttachmentStates.Uploading
+      entry.progress = 0
+      entry.error = null
+
+      try {
+        const stored = await uploadAttachment(
+          apiUrl,
+          agentId,
+          token,
+          entry.file,
+          (percent) => {
+            // The chip may have been removed mid-flight.
+            const live = find()
+            if (live) live.progress = percent
+          },
+        )
+        const live = find()
+        if (!live) return
+        live.remoteId = stored.id
+        // The server holds the bytes and decides the real kind — a .txt full
+        // of undecodable bytes comes back as `binary`.
+        live.kind = stored.kind
+        live.mimeType = stored.mimeType
+        live.progress = 100
+        live.state = BridleAttachmentStates.Ready
+      } catch (err) {
+        const live = find()
+        if (!live) return
+        // Recorded against this file only: the draft and every other staged
+        // file are untouched. Losing a written message because one upload
+        // broke is the worst outcome here.
+        live.state = BridleAttachmentStates.Failed
+        live.error = (err as Error).message || 'Upload failed'
+        console.warn('[bridle] attachment upload failed', err)
+      }
+    },
+
+    retryStaged(
+      apiUrl: string,
+      agentId: string,
+      token: string,
+      localId: string,
+    ) {
+      const entry = this.staged.find(a => a.localId === localId)
+      if (!entry || entry.state === BridleAttachmentStates.Uploading) return
+      void this.uploadStaged(apiUrl, agentId, token, localId)
+    },
+
+    removeStaged(localId: string) {
+      const index = this.staged.findIndex(a => a.localId === localId)
+      if (index < 0) return
+      const [entry] = this.staged.splice(index, 1)
+      if (entry?.previewUrl) URL.revokeObjectURL(entry.previewUrl)
+      this.attachmentError = null
+    },
+
+    clearStaged() {
+      for (const entry of this.staged) {
+        if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl)
+      }
+      this.staged = []
+      this.attachmentError = null
+    },
+
+    dismissAttachmentError() {
+      this.attachmentError = null
     },
 
     clearMessages() {
+      for (const url of this._echoUrls) URL.revokeObjectURL(url)
+      this._echoUrls = []
       this.messages = []
       this.transcriptCursor = null
       this.hasMoreOlder = false
@@ -635,6 +938,8 @@ export const useBridleStore = defineStore('bridle', {
           console.warn('[bridle] transcript reset returned', res.status)
           return false
         }
+        for (const url of this._echoUrls) URL.revokeObjectURL(url)
+        this._echoUrls = []
         this.messages = []
         this.transcriptCursor = null
         this.hasMoreOlder = false

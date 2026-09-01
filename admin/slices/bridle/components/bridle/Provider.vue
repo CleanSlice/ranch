@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useBridleStore, type IBridleMessageData, type IBridleThinkingStep, type IThinkingBlock } from '../../stores/bridle'
 import Message from './Message.vue'
 import Input from './Input.vue'
+import DropZone from './DropZone.vue'
 import DebugPanel from './DebugPanel.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
 import { ScrollArea } from '#theme/components/ui/scroll-area'
@@ -345,9 +346,93 @@ onUnmounted(() => {
   store.disconnect()
 })
 
+/**
+ * One answer for both the composer and the drop target: a chat that cannot
+ * send a message must not accept a file either.
+ */
+const inputDisabled = computed(
+  () => !isConnected.value || !isAgentConnected.value || props.agentState !== null,
+)
+
 const handleSend = (text: string) => {
-  store.sendMessage(text)
+  void store.sendMessage(text)
 }
+
+// ── Drag and drop ────────────────────────────
+// The drop target is the whole chat card, not the composer, so the drag state
+// lives here and the composer is swapped out while a file is overhead.
+
+const isDraggingFile = ref(false)
+/**
+ * `dragleave` fires every time the pointer crosses into a child element, so a
+ * naive boolean flickers as you move over bubbles and avatars. Counting enters
+ * against leaves and treating zero as "gone" is the standard fix.
+ */
+const dragDepth = ref(0)
+
+/** Only file drags matter — dragging selected text must not arm the zone. */
+function dragHasFiles(event: DragEvent): boolean {
+  const types = event.dataTransfer?.types
+  return types ? Array.from(types).includes('Files') : false
+}
+
+function onDragEnter(event: DragEvent) {
+  if (!dragHasFiles(event)) return
+  event.preventDefault()
+  dragDepth.value++
+  isDraggingFile.value = true
+}
+
+function onDragOver(event: DragEvent) {
+  if (!dragHasFiles(event)) return
+  // Without this the browser treats the drop as a navigation.
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = inputDisabled.value ? 'none' : 'copy'
+  }
+}
+
+function onDragLeave(event: DragEvent) {
+  if (!dragHasFiles(event)) return
+  event.preventDefault()
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+  if (dragDepth.value === 0) isDraggingFile.value = false
+}
+
+function onDrop(event: DragEvent) {
+  if (!dragHasFiles(event)) return
+  event.preventDefault()
+  // Reset unconditionally: a drop ends the drag however the counter got here.
+  dragDepth.value = 0
+  isDraggingFile.value = false
+  if (inputDisabled.value) return
+
+  const files = event.dataTransfer?.files
+  if (files?.length) {
+    store.stageFiles(props.apiUrl, props.agentId, props.token, files)
+  }
+}
+
+/**
+ * A file released anywhere else on the page would otherwise make the browser
+ * navigate to it, throwing away the conversation. Swallow the default while
+ * this chat is mounted.
+ */
+function preventWindowDrop(event: DragEvent) {
+  event.preventDefault()
+}
+
+onMounted(() => {
+  window.addEventListener('dragover', preventWindowDrop)
+  window.addEventListener('drop', preventWindowDrop)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('dragover', preventWindowDrop)
+  window.removeEventListener('drop', preventWindowDrop)
+  // Object URLs for anything still staged would otherwise leak.
+  store.clearStaged()
+})
 
 const confirmResetOpen = ref(false)
 const resetting = ref(false)
@@ -365,7 +450,13 @@ async function onConfirmReset() {
 </script>
 
 <template>
-  <Card :class="cn('flex flex-col h-[600px] w-full max-w-2xl', props.class)">
+  <Card
+    :class="cn('flex flex-col h-[600px] w-full max-w-2xl', props.class)"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-3 border-b">
       <div class="flex items-center gap-2">
         <Bot class="h-5 w-5" />
@@ -537,11 +628,19 @@ async function onConfirmReset() {
           pick them up.
         </p>
       </div>
+      <!-- The composer is replaced, not covered: the dashed block takes its
+           place while a file is overhead. The draft and staged files live in
+           the component and the store, so the swap cannot lose them. -->
+      <DropZone v-if="isDraggingFile" :disabled="inputDisabled" />
       <!-- Stays visible when the agent is down — a hidden input reads as a
            broken layout; disabled communicates "chat exists, agent doesn't". -->
       <Input
+        v-else
+        :api-url="apiUrl"
+        :agent-id="agentId"
+        :token="token"
         :placeholder="placeholder"
-        :disabled="!isConnected || !isAgentConnected || agentState !== null"
+        :disabled="inputDisabled"
         @send="handleSend"
       />
       <div class="flex items-center justify-end gap-2">

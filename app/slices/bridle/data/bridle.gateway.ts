@@ -69,4 +69,20 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
       return this.mapper.toAttachment(unwrapEnvelope(res.data));
     });
   }
+
+  /**
+   * Also on the axios instance rather than the SDK: the generated
+   * `getBridleAttachment` types the body as a string, which would mangle
+   * every non-text file. `responseType: 'blob'` keeps the bytes intact, the
+   * same way the chat export download does it.
+   */
+  fetchAttachment(agentId: string, attachmentId: string): Promise<Blob> {
+    return this.execute(async () => {
+      const res = await apiClient.instance.get(
+        `/api/agent/${encodeURIComponent(agentId)}/attachment/${encodeURIComponent(attachmentId)}`,
+        { responseType: 'blob' },
+      );
+      return res.data as Blob;
+    });
+  }
 }

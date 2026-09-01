@@ -25,4 +25,15 @@ export abstract class IBridleGateway {
     file: File,
     onProgress?: (percent: number) => void,
   ): Promise<IBridleAttachment>;
+
+  /**
+   * Read a stored attachment back as bytes.
+   *
+   * The download route is behind the JWT guard, and a browser sends no
+   * Authorization header for `<img src>` or a plain link — so the URL on
+   * `IBridleAttachment` cannot be rendered directly. Fetching through the
+   * API client (which carries the base URL and the Bearer interceptor) and
+   * handing the UI an object URL is what makes an attachment visible.
+   */
+  abstract fetchAttachment(agentId: string, attachmentId: string): Promise<Blob>;
 }

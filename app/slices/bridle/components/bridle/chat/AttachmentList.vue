@@ -7,9 +7,24 @@ import { formatBytes } from '#bridle/domain';
 
 const props = defineProps<{
   attachments: IBridleAttachment[];
+  agentId: string;
   /** Sent bubbles are the user's; colours invert against the primary fill. */
   onPrimary?: boolean;
 }>();
+
+const bridleStore = useBridleStore();
+
+/**
+ * The download route is behind the JWT guard, and a browser sends no
+ * Authorization header for `<img src>` or a plain `<a href>` — pointing either
+ * at the API URL renders a broken image and a 401 on click. So the bytes are
+ * fetched through the API client and handed to the DOM as object URLs.
+ *
+ * Keyed by attachment id, and revoked on unmount: a conversation with a dozen
+ * screenshots would otherwise pin every one of them in memory for the life of
+ * the tab.
+ */
+const objectUrls = ref<Record<string, string>>({});
 
 /**
  * Attachments whose stored object has gone. Tracked per id so one dead file
@@ -21,6 +36,36 @@ const missing = ref<Set<string>>(new Set());
 function markMissing(id: string) {
   missing.value = new Set(missing.value).add(id);
 }
+
+async function resolve(attachment: IBridleAttachment) {
+  if (objectUrls.value[attachment.id] || missing.value.has(attachment.id)) {
+    return;
+  }
+  try {
+    const blob = await bridleStore.fetchAttachment(props.agentId, attachment.id);
+    objectUrls.value = {
+      ...objectUrls.value,
+      [attachment.id]: URL.createObjectURL(blob),
+    };
+  } catch {
+    markMissing(attachment.id);
+  }
+}
+
+function revokeAll() {
+  for (const url of Object.values(objectUrls.value)) URL.revokeObjectURL(url);
+  objectUrls.value = {};
+}
+
+watch(
+  () => props.attachments,
+  (attachments) => {
+    for (const attachment of attachments) void resolve(attachment);
+  },
+  { immediate: true, deep: true },
+);
+
+onBeforeUnmount(revokeAll);
 
 const images = computed(() =>
   props.attachments.filter((a) => a.kind === BridleAttachmentKinds.Image),
@@ -51,21 +96,20 @@ function displayName(name: string): string {
         :key="image.id"
       >
         <a
-          v-if="!missing.has(image.id)"
-          :href="image.url"
+          v-if="objectUrls[image.id]"
+          :href="objectUrls[image.id]"
           target="_blank"
           rel="noopener"
           class="block overflow-hidden rounded-lg border border-black/10"
         >
           <img
-            :src="image.url"
+            :src="objectUrls[image.id]"
             :alt="image.name"
             class="max-h-48 max-w-full object-cover"
-            @error="markMissing(image.id)"
           >
         </a>
         <div
-          v-else
+          v-else-if="missing.has(image.id)"
           class="flex items-center gap-1.5 rounded-lg border border-dashed px-2 py-1.5 text-[11px]"
           :class="onPrimary ? 'border-primary-foreground/40' : 'text-muted-foreground'"
         >
@@ -75,25 +119,32 @@ function displayName(name: string): string {
           />
           <span>{{ $t('chat.attachment_unavailable') }}</span>
         </div>
+        <!-- Placeholder sized like a small thumbnail, so the bubble doesn't
+             resize under the reader once the bytes land. -->
+        <div
+          v-else
+          class="h-24 w-32 animate-pulse rounded-lg bg-muted"
+        />
       </template>
     </div>
 
-    <a
+    <component
+      :is="objectUrls[file.id] ? 'a' : 'div'"
       v-for="file in files"
       :key="file.id"
-      :href="file.url"
-      target="_blank"
-      rel="noopener"
-      class="flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs transition hover:opacity-80"
-      :class="
+      :href="objectUrls[file.id]"
+      :download="objectUrls[file.id] ? file.name : undefined"
+      class="flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs transition"
+      :class="[
         onPrimary
           ? 'border-primary-foreground/25 bg-primary-foreground/10'
-          : 'bg-background/60'
-      "
-      :title="file.name"
+          : 'bg-background/60',
+        objectUrls[file.id] ? 'hover:opacity-80' : 'opacity-60',
+      ]"
+      :title="missing.has(file.id) ? $t('chat.attachment_unavailable') : file.name"
     >
       <Icon
-        :name="iconFor(file)"
+        :name="missing.has(file.id) ? 'ban' : iconFor(file)"
         :size="14"
         class="shrink-0 opacity-70"
       />
@@ -101,6 +152,6 @@ function displayName(name: string): string {
       <span class="shrink-0 text-[11px] opacity-60">
         {{ formatBytes(file.size) }}
       </span>
-    </a>
+    </component>
   </div>
 </template>

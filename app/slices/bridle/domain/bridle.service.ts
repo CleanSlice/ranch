@@ -26,4 +26,8 @@ export class BridleService {
   ): Promise<IBridleAttachment> {
     return this.gateway.uploadAttachment(agentId, file, onProgress);
   }
+
+  fetchAttachment(agentId: string, attachmentId: string): Promise<Blob> {
+    return this.gateway.fetchAttachment(agentId, attachmentId);
+  }
 }

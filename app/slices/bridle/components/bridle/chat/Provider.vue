@@ -193,6 +193,7 @@ onBeforeUnmount(() => {
             v-for="message in messages"
             :key="message.id"
             :message="message"
+            :agent-id="agentId"
             :agent-name="title"
           />
 

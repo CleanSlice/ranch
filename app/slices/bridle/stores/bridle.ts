@@ -320,6 +320,16 @@ export const useBridleStore = defineStore('bridle', () => {
     attachmentErrors.value[agentId] = null;
   }
 
+  /**
+   * Read a sent attachment back so the transcript can show it. Not cached
+   * here: the caller turns the blob into an object URL and owns revoking it,
+   * and a cache in the store would keep every image of every conversation
+   * alive for the life of the tab.
+   */
+  function fetchAttachment(agentId: string, attachmentId: string) {
+    return getService().fetchAttachment(agentId, attachmentId);
+  }
+
   // ── Sending ────────────────────────────────────────────────
 
   async function sendMessage(agentId: string, text: string) {
@@ -405,6 +415,7 @@ export const useBridleStore = defineStore('bridle', () => {
     retryStaged,
     clearStaged,
     dismissAttachmentError,
+    fetchAttachment,
   };
 });
 

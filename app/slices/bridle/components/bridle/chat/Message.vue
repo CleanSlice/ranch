@@ -4,6 +4,7 @@ import { renderMarkdown } from '#bridle/utils/markdown';
 
 const props = defineProps<{
   message: IBridleMessage;
+  agentId: string;
   agentName?: string;
 }>();
 
@@ -48,6 +49,7 @@ const renderedHtml = computed(() =>
       <BridleChatAttachmentList
         v-if="message.attachments?.length"
         :attachments="message.attachments"
+        :agent-id="agentId"
         :on-primary="isUser"
       />
       <template v-if="isUser">{{ message.text }}</template>

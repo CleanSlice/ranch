@@ -9,6 +9,21 @@
     "sending": "Thinking…",
     "error": "Failed to reach agent",
     "you": "You",
-    "agent": "Agent"
+    "agent": "Agent",
+    "dismiss": "Dismiss",
+    "attach": "Attach a file",
+    "attach_limit": "You can attach up to {count} files",
+    "drop_hint": "Drop files here to attach them",
+    "drop_disabled": "Wait for the agent to finish replying",
+    "attachment_remove": "Remove {name}",
+    "attachment_retry": "Retry {name}",
+    "attachment_uploading": "Uploading {name}",
+    "attachment_failed": "Couldn't upload {name}",
+    "attachment_unavailable": "This file is no longer available",
+    "attachment_not_readable": "The agent sees the name, not the contents",
+    "error_type": "{name} isn't a supported file type. Try an image, a PDF, or a text file.",
+    "error_size": "{name} is larger than {limit}",
+    "error_total": "Those files add up to more than {limit} in one message",
+    "error_empty": "{name} is empty"
   }
 }

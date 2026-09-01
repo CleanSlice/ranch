@@ -315,9 +315,15 @@ export type AgentDto = {
   llmCredentialId?: {
     [key: string]: unknown;
   } | null;
-  status: "pending" | "deploying" | "running" | "failed" | "stopped";
+  status:
+    | "pending"
+    | "deploying"
+    | "running"
+    | "failed"
+    | "stopped"
+    | "unreachable";
   /**
-   * Human-readable reason accompanying status='failed' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff"). Null for all other statuses and for failures recorded before this field existed.
+   * Human-readable reason accompanying status='failed' or 'unreachable' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.
    */
   statusReason: string | null;
   workflowId: {
@@ -335,6 +341,14 @@ export type AgentDto = {
    * Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.
    */
   launchContext: "initial" | "restart";
+  /**
+   * When the running pod last pulled its working copy of the agent files from S3 (recorded at runtime boot). Null ⇒ agent not restarted since this field shipped. Files-tab freshness hint + sync-conflict baseline.
+   */
+  lastPullAt: string | null;
+  /**
+   * When the last successful Sync push completed. Null ⇒ never synced since this field shipped.
+   */
+  lastSyncAt: string | null;
   config: {
     [key: string]: unknown;
   };
@@ -381,6 +395,10 @@ export type AgentStatusDto = {
    * Live pod status; null if no pod is currently running for this agent.
    */
   pod: AgentPodStatusDto | null;
+  /**
+   * Whether the agent runtime currently holds a live connection to the bridle hub. In-memory truth of the API process — false for a few seconds after an API restart until runtimes reconnect.
+   */
+  bridleConnected: boolean;
 };
 
 export type NodeCapacityDto = {
@@ -581,6 +599,36 @@ export type DeleteFilesDto = {
   deleted: number;
 };
 
+export type SyncFilesBodyDto = {
+  /**
+   * Set to true to run the sync even when at-risk files were reported (the operator explicitly accepted the overwrite risk). Without it a non-empty at-risk list makes the endpoint answer 409 and skip the sync.
+   */
+  confirm?: boolean;
+};
+
+export type AtRiskFileDto = {
+  path: string;
+  /**
+   * When the S3 (shared) copy of this file was last modified
+   */
+  updatedAt: string;
+};
+
+export type SyncConflictDto = {
+  /**
+   * Always true: the sync was NOT executed — resend with confirm=true to proceed
+   */
+  requiresConfirmation: boolean;
+  /**
+   * S3 files modified after the pod last pulled/pushed. A sync MAY overwrite or delete them if the pod also changed them locally.
+   */
+  atRisk: Array<AtRiskFileDto>;
+  /**
+   * Reference moment the S3 copies were compared against (max of last boot pull minus margin and last completed sync)
+   */
+  baseline: string;
+};
+
 export type BridleTextPartDto = {
   type: "text" | "image" | "file";
   text: string;
@@ -611,6 +659,41 @@ export type SendMessageDto = {
    * Attached images (legacy — prefer parts)
    */
   images?: Array<BridleImagePartDto>;
+  /**
+   * Ids from POST /api/agent/{agentId}/attachment. The API expands them server-side into parts — images as image content, text files with their contents inlined into the message, everything else as a named reference — and appends them to whatever `parts` resolved to. Omit the field and the request behaves exactly as before.
+   */
+  attachmentIds?: Array<string>;
+};
+
+export type BridleAttachmentDto = {
+  /**
+   * Attachment id, also the storage key stem
+   */
+  id: string;
+  /**
+   * Original filename, for display
+   */
+  name: string;
+  /**
+   * Resolved MIME type
+   */
+  mimeType: string;
+  /**
+   * Size in bytes
+   */
+  size: number;
+  /**
+   * How the attachment reaches the agent: image content, inlined text, or a named reference
+   */
+  kind: "image" | "text" | "binary";
+  /**
+   * Path of the authenticated download route. Never a direct storage URL.
+   */
+  url: string;
+  /**
+   * False when the agent will see only the file name, not its contents
+   */
+  readableByAgent: boolean;
 };
 
 export type BridleHealthDto = {
@@ -2468,7 +2551,7 @@ export type FileControllerSaveResponses = {
 };
 
 export type FileControllerSyncData = {
-  body?: never;
+  body: SyncFilesBodyDto;
   path: {
     agentId: string;
   };
@@ -2476,9 +2559,15 @@ export type FileControllerSyncData = {
   url: "/agents/{agentId}/files/sync";
 };
 
-export type FileControllerSyncResponses = {
-  200: unknown;
+export type FileControllerSyncErrors = {
+  /**
+   * S3 files newer than the pod’s working copy were found and confirm was not set. No sync was performed.
+   */
+  409: SyncConflictDto;
 };
+
+export type FileControllerSyncError =
+  FileControllerSyncErrors[keyof FileControllerSyncErrors];
 
 export type ExportAgentFilesData = {
   body?: never;
@@ -2516,6 +2605,38 @@ export type SendBridleMessageSyncData = {
 };
 
 export type SendBridleMessageSyncResponses = {
+  200: unknown;
+};
+
+export type UploadBridleAttachmentData = {
+  body: {
+    file: Blob | File;
+  };
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/api/agent/{agentId}/attachment";
+};
+
+export type UploadBridleAttachmentResponses = {
+  200: BridleAttachmentDto;
+};
+
+export type UploadBridleAttachmentResponse =
+  UploadBridleAttachmentResponses[keyof UploadBridleAttachmentResponses];
+
+export type GetBridleAttachmentData = {
+  body?: never;
+  path: {
+    agentId: string;
+    attachmentId: string;
+  };
+  query?: never;
+  url: "/api/agent/{agentId}/attachment/{attachmentId}";
+};
+
+export type GetBridleAttachmentResponses = {
   200: unknown;
 };
 

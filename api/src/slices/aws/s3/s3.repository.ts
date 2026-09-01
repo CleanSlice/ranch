@@ -8,6 +8,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { ISettingGateway } from '#/setting/domain';
 import {
+  IS3DownloadedFile,
   IS3FileLocation,
   IS3StoredFile,
   IS3UploadInput,
@@ -36,6 +37,7 @@ export class S3Repository {
           Key: input.key,
           Body: input.body,
           ContentType: input.contentType,
+          ...(input.metadata ? { Metadata: input.metadata } : {}),
         }),
       );
     } catch (err) {
@@ -73,6 +75,41 @@ export class S3Repository {
       );
     }
     return streamToBuffer(res.Body, location);
+  }
+
+  /**
+   * Like `download()`, but also returns the stored content type and user
+   * metadata. Used when the object is served straight back to a browser and
+   * the response headers have to match what was uploaded.
+   */
+  async downloadWithMetadata(
+    location: IS3FileLocation,
+  ): Promise<IS3DownloadedFile> {
+    const client = await this.getClient();
+    this.logger.log(`download+meta → s3://${location.bucket}/${location.key}`);
+    let res: GetObjectCommandOutput;
+    try {
+      res = await client.send(
+        new GetObjectCommand({
+          Bucket: location.bucket,
+          Key: location.key,
+        }),
+      );
+    } catch (err) {
+      this.fail('download', location, err);
+    }
+    if (!res.Body) {
+      throw new S3RepositoryError(
+        'S3 download returned empty body',
+        location.bucket,
+        location.key,
+      );
+    }
+    return {
+      body: await streamToBuffer(res.Body, location),
+      contentType: res.ContentType,
+      metadata: res.Metadata ?? {},
+    };
   }
 
   async delete(location: IS3FileLocation): Promise<void> {

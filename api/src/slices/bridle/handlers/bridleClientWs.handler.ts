@@ -10,7 +10,12 @@ import {
 import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
-import { IBridleGateway, type BridlePart, buildParts } from '../domain';
+import {
+  IBridleGateway,
+  BridleAttachmentService,
+  type BridlePart,
+  buildParts,
+} from '../domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 
 /**
@@ -27,7 +32,7 @@ import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
  *      clientId is `anon-<id>`, reusing a client-supplied stable id when given.
  *
  * Events (browser → hub):
- *   "message"  { text, images? }
+ *   "message"  { text, images?, attachmentIds? }
  *   "ping"     {}
  *
  * Events (hub → browser):
@@ -38,6 +43,7 @@ import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
  *   "typing"        { ts }
  *   "pong"          { ts }
  *   "bridle_error"  { code, agentId?, origin? }  // emitted just before a rejected handshake disconnects, so the SDK can show a reason
+ *   "message_error" { message }                  // a message that could not be delivered; the socket stays up
  */
 @WebSocketGateway({ namespace: '/ws/client', cors: { origin: '*' } })
 export class BridleClientWsHandler
@@ -50,6 +56,7 @@ export class BridleClientWsHandler
 
   constructor(
     private readonly hub: IBridleGateway,
+    private readonly attachments: BridleAttachmentService,
     private readonly jwt: JwtService,
     @Inject(forwardRef(() => IAgentGateway))
     private readonly agentGateway: IAgentGateway,
@@ -220,13 +227,14 @@ export class BridleClientWsHandler
   }
 
   @SubscribeMessage('message')
-  handleMessage(
+  async handleMessage(
     @ConnectedSocket() client: Socket,
     @MessageBody()
     data: {
       text?: string;
       parts?: BridlePart[];
       images?: Array<{ base64: string; mediaType: string }>;
+      attachmentIds?: string[];
     },
   ) {
     const clientId = client.data?.clientId as string;
@@ -234,10 +242,35 @@ export class BridleClientWsHandler
     if (!clientId || !agentId) return;
 
     const text = data.text ?? '';
-    const parts = data.parts ?? buildParts(text, data.images);
-    if (!text && parts.length === 0) return;
+    const base = data.parts ?? buildParts(text, data.images);
 
-    this.hub.sendToAgent(clientId, agentId, text, parts);
+    // Same expansion the HTTP routes perform, so a file behaves identically
+    // whether the chat talks over the socket or posts a message. Held to the
+    // same trust boundary as those routes: an id is an unguessable per-agent
+    // UUID and uploading one requires a token, so possession is the check.
+    let expanded;
+    try {
+      expanded = await this.attachments.expand(
+        agentId,
+        text,
+        data.attachmentIds,
+      );
+    } catch (err) {
+      // A dead or oversized attachment must not take the socket down with it —
+      // the person still has their draft and every other file in the composer.
+      const message =
+        err instanceof Error ? err.message : 'Attachment could not be read';
+      this.logger.warn(
+        `Attachment expansion failed: clientId=${clientId} agentId=${agentId}: ${message}`,
+      );
+      client.emit('message_error', { message });
+      return;
+    }
+
+    const parts = [...base, ...expanded.parts];
+    if (!expanded.text && parts.length === 0) return;
+
+    this.hub.sendToAgent(clientId, agentId, expanded.text, parts);
   }
 
   @SubscribeMessage('ping')

@@ -44,12 +44,27 @@ const restartUnderway = computed(
 // Reconciled agent state for the bridle header — without it a failed agent
 // reads as "Agent reconnecting…" for 30s on a freshly opened page, because
 // bridle only sees its own WS.
+const agentStatusStore = useAgentStatusStore();
+const liveAgent = computed(() => agentStatusStore.agents[props.agent.id]);
+
 const bridleAgentState = computed(() => {
   if (restartUnderway.value) return 'restarting';
   if (props.overlay?.kind === 'failed') return 'failed';
   if (props.overlay?.kind === 'stopped') return 'stopped';
+  if ((liveAgent.value?.status ?? props.agent.status) === 'unreachable') {
+    return 'unreachable';
+  }
   return null;
 });
+
+// Troubleshooting links for the socket-down-but-agent-should-be-up state:
+// the sweep's statusReason plus where to look (env preview shows the missing
+// BRIDLE_* vars) and where to fix it (/settings/bridle).
+const offlineHint = computed(() => ({
+  reason: liveAgent.value?.statusReason ?? props.agent.statusReason,
+  envHref: `/agents/${props.agent.id}?tab=env`,
+  settingsHref: '/settings/bridle',
+}));
 
 // The failure overlay blurs only the MESSAGE AREA (the card-content box).
 // Header (title, status, Logs toggle), footer (input, disabled by bridle
@@ -112,6 +127,7 @@ watch(
         :title="`Chat with ${agent.name}`"
         :restart-prompt="false"
         :agent-state="bridleAgentState"
+        :offline-hint="offlineHint"
         :initial-debug-enabled="agent.debugEnabled"
         class="h-full w-full gap-0"
       />

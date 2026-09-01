@@ -25,11 +25,15 @@ export interface IAgentRecord {
   id: string;
   name: string;
   status: string;
+  statusReason: string | null;
 }
 
 export interface IAgentStatus {
   agent: IAgentRecord;
   pod: IAgentPodStatus | null;
+  /** Live hub connectivity from the API process; false for a few seconds
+   *  after an API restart until runtimes reconnect. */
+  bridleConnected: boolean;
 }
 
 export type AgentStatusEventType = 'added' | 'modified' | 'deleted';

@@ -98,16 +98,26 @@ export class AgentGateway extends IAgentGateway {
       where: { id },
       data: {
         status,
-        // statusReason lives and dies with 'failed': every transition to any
-        // other status clears it, so a reason can never outlive the failure
-        // it describes.
-        statusReason: status === 'failed' ? (statusReason ?? null) : null,
+        // statusReason lives and dies with 'failed'/'unreachable': every
+        // transition to any other status clears it, so a reason can never
+        // outlive the condition it describes.
+        statusReason:
+          status === 'failed' || status === 'unreachable'
+            ? (statusReason ?? null)
+            : null,
         // `undefined` leaves the column untouched; `null` clears it (used when
         // stopping an agent so the now-cancelled workflow id isn't kept around).
         ...(workflowId !== undefined && { workflowId }),
       },
     });
     return this.mapper.toEntity(record);
+  }
+
+  async setStatusReason(id: string, reason: string): Promise<void> {
+    await this.prisma.agent.update({
+      where: { id },
+      data: { statusReason: reason },
+    });
   }
 
   async markDeployStarted(

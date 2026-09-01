@@ -187,6 +187,22 @@ export class AgentDeployService {
     // markDeployStarted also stamps lastDeployStartedAt — the anchor of the
     // drift-detection grace window — and clears any stale statusReason.
     await this.agentGateway.markDeployStarted(agentId, launchContext);
+    // Deploy-time misconfiguration signal (non-blocking, best-effort): empty
+    // bridle settings produce a pod that can never register on the hub, so
+    // flag it NOW instead of waiting for the unreachable sweep. The reason
+    // survives the whole 'deploying' phase (markDeployStarted just cleared
+    // the previous one) and is cleared by the reconciler's promotion.
+    try {
+      const bridleWarning = await this.workflowService.checkBridleSettings();
+      if (bridleWarning) {
+        this.logger.warn(`Agent ${agentId}: ${bridleWarning}`);
+        await this.agentGateway.setStatusReason(agentId, bridleWarning);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Bridle settings check failed for agent ${agentId}: ${(err as Error).message}`,
+      );
+    }
     try {
       // Every agent gets a JWT scoped to its own id. Admin agents get Owner
       // (full Ranch control), non-admins get the Agent role (self-only

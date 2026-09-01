@@ -13,8 +13,9 @@ model Agent {
   llmCredentialId String?
   llmCredential   LlmCredential? @relation(fields: [llmCredentialId], references: [id], onDelete: SetNull)
   status          String         @default("pending")
-  // Human-readable reason accompanying status='failed'; null for all other
-  // statuses (cleared on every transition out of 'failed').
+  // Human-readable reason accompanying status='failed' or 'unreachable';
+  // cleared on every transition to any other status. Also written stand-alone
+  // during 'deploying' when bridle settings are empty (deploy-time warning).
   statusReason    String?
   workflowId      String?
   // Set once, on the first successful workflow submit. Null ⇒ never deployed.

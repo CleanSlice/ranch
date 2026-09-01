@@ -23,6 +23,8 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
   const lastEventAt = ref<number | null>(null);
   const statuses = ref<Record<string, IAgentPodStatus>>({});
   const agents = ref<Record<string, IAgentRecord>>({});
+  // Live hub connectivity per agent — pushed with every snapshot/event.
+  const bridleConnected = ref<Record<string, boolean>>({});
 
   // Consumer ref-count: multiple components mount/unmount the stream, but only
   // one EventSource should be open. `active` guards the single subscribe.
@@ -42,22 +44,37 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
       ).length,
   );
 
+  // Agents whose pod is healthy but whose runtime never registered on the
+  // bridle hub — as alarming as a failing pod, surfaced the same way.
+  const unreachableCount = computed(
+    () =>
+      Object.values(agents.value).filter((a) => a.status === 'unreachable')
+        .length,
+  );
+
   function applyMessage(msg: AgentStatusStreamMessage) {
     lastEventAt.value = Date.now();
     if (msg.type === 'snapshot') {
       const nextAgents: Record<string, IAgentRecord> = {};
       const nextStatuses: Record<string, IAgentPodStatus> = {};
+      const nextBridle: Record<string, boolean> = {};
       for (const item of msg.payload) {
         nextAgents[item.agent.id] = item.agent;
         if (item.pod) nextStatuses[item.agent.id] = item.pod;
+        nextBridle[item.agent.id] = item.bridleConnected;
       }
       agents.value = nextAgents;
       statuses.value = nextStatuses;
+      bridleConnected.value = nextBridle;
       return;
     }
 
     const { eventType, status } = msg.payload;
     agents.value = { ...agents.value, [status.agent.id]: status.agent };
+    bridleConnected.value = {
+      ...bridleConnected.value,
+      [status.agent.id]: status.bridleConnected,
+    };
 
     if (eventType === 'deleted' || !status.pod) {
       const next = { ...statuses.value };
@@ -94,7 +111,9 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
     lastEventAt,
     statuses,
     agents,
+    bridleConnected,
     failingCount,
+    unreachableCount,
     connect,
     disconnect,
   };

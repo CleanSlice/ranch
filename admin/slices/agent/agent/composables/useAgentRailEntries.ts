@@ -12,6 +12,7 @@ export interface IRailEntry {
   name: string;
   initials: string;
   status: AgentStatusTypes;
+  statusReason: string | null;
   tone: IRailStatusTone;
   createdAt: string;
   isAdmin: boolean;
@@ -44,6 +45,13 @@ const TONE: Record<AgentStatusTypes, IRailStatusTone> = {
     text: 'text-muted-foreground',
     pulse: false,
   },
+  // Deliberately NOT the running green and NOT the failed rose: the pod is
+  // healthy but the runtime never reached the bridle hub — its own state.
+  unreachable: {
+    dot: 'bg-orange-500',
+    text: 'text-orange-700 dark:text-orange-400',
+    pulse: false,
+  },
 };
 
 /** 1–2 uppercase letters; falls back to the id when the name is empty. */
@@ -72,6 +80,10 @@ function reconcileStatus(
   agent: IAgentData,
   pod: { phase: string; ready: boolean } | undefined,
 ): AgentStatusTypes {
+  // 'unreachable' is precisely "pod healthy, runtime absent" — a Running+Ready
+  // pod is part of the diagnosis, not evidence against it. Letting the pod
+  // override to green here would re-create the incident this status exposes.
+  if (agent.status === 'unreachable') return 'unreachable';
   if (!pod) return agent.status;
   if (pod.phase === 'Running') return pod.ready ? 'running' : 'deploying';
   if (pod.phase === 'Pending') return 'pending';
@@ -98,12 +110,20 @@ export function useAgentRailEntries(
     return (agents.value ?? [])
       .filter((a) => !term || a.name.toLowerCase().includes(term))
       .map((a) => {
-        const status = reconcileStatus(a, agentStatusStore.statuses[a.id]);
+        const live = agentStatusStore.agents[a.id];
+        // The SSE record is fresher than the fetched list (the sweep writes
+        // 'unreachable' between refetches) — prefer it when present.
+        const dbStatus = (live?.status as AgentStatusTypes) || a.status;
+        const status = reconcileStatus(
+          { ...a, status: dbStatus },
+          agentStatusStore.statuses[a.id],
+        );
         return {
           id: a.id,
           name: a.name,
           initials: agentInitials(a.name, a.id),
           status,
+          statusReason: live?.statusReason ?? a.statusReason,
           tone: TONE[status],
           createdAt: a.createdAt,
           isAdmin: a.isAdmin,

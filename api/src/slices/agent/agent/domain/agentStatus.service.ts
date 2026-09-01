@@ -32,6 +32,9 @@ import { IBridleGateway } from '#/bridle/domain';
 export interface IAgentStatus {
   agent: IAgentData;
   pod: IAgentPodStatus | null;
+  // Live truth from the in-process bridle hub — never persisted (an API
+  // restart empties the hub map for a few seconds until runtimes reconnect).
+  bridleConnected: boolean;
 }
 
 export type AgentStatusStreamMessage =
@@ -49,7 +52,14 @@ const FAIL_WAITING_REASONS = new Set([
   'CreateContainerError',
 ]);
 
-const LIVE_DB_STATUSES = new Set<string>(['pending', 'deploying', 'running']);
+// 'unreachable' counts as live: the pod is Running+Ready and occupies a
+// cluster slot — only the bridle registration is missing.
+const LIVE_DB_STATUSES = new Set<string>([
+  'pending',
+  'deploying',
+  'running',
+  'unreachable',
+]);
 
 // Agents that claimed a slot but whose pod K8s hasn't materialised yet —
 // right after POST /agents the DB row is 'deploying' while Argo is still
@@ -60,6 +70,15 @@ const RESERVED_DB_STATUSES = new Set<string>(['pending', 'deploying']);
 const DRIFT_INTERVAL_MS = 30_000;
 const AUTO_RESTART_CONCURRENCY = 5;
 
+// How long a Running+Ready pod may stay unregistered on the bridle hub before
+// the sweep demotes it to 'unreachable'. Must comfortably cover an API restart
+// (hub map starts empty; runtimes reconnect within seconds) and runtime
+// reconnect flaps, while keeping worst-case detection at grace + one sweep.
+const BRIDLE_GRACE_MS = 60_000;
+
+const BRIDLE_UNREACHABLE_REASON =
+  'pod is running but the runtime never connected to the bridle hub — check integrations/bridle_url and bridle_api_key (/settings/bridle), then restart the agent';
+
 @Injectable()
 export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentStatusService.name);
@@ -67,6 +86,9 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
   private bridleSub: Subscription | null = null;
   private driftTimer: NodeJS.Timeout | null = null;
   private driftRunning = false;
+  // First-observed timestamps of "running pod, no hub connection" per agent.
+  // In-memory on purpose: resets on API restart, which IS the restart grace.
+  private readonly bridleDownSince = new Map<string, number>();
 
   constructor(
     private readonly agentGateway: IAgentGateway,
@@ -154,6 +176,9 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
   // Bridle-driven path: the runtime announced itself, so it's definitely up.
   // Forward-only — never demotes; pod events handle the failure side.
   private async markRunningFromBridle(agentId: string): Promise<void> {
+    // The runtime is on the hub — whatever unreachable-observation window was
+    // open is void now.
+    this.bridleDownSince.delete(agentId);
     const agent = await this.agentGateway.findById(agentId);
     if (!agent) return;
     if (agent.status === 'running') {
@@ -192,6 +217,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     return agents.map((agent) => ({
       agent,
       pod: podByAgent.get(agent.id) ?? null,
+      bridleConnected: this.bridleGateway.isAgentConnected(agent.id),
     }));
   }
 
@@ -239,6 +265,9 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
                     status: {
                       agent,
                       pod: evt.type === 'deleted' ? null : evt.status,
+                      bridleConnected: this.bridleGateway.isAgentConnected(
+                        agent.id,
+                      ),
                     },
                   },
                 }
@@ -249,7 +278,38 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
       filter((msg): msg is AgentStatusStreamMessage => msg !== null),
     );
 
-    return merge(initial$, updates$);
+    // Hub connect/disconnect must reach SSE consumers immediately — waiting
+    // for the next pod event would leave the UI stale for minutes on an
+    // otherwise-quiet cluster.
+    const bridleUpdates$ = this.bridleGateway.agentEvents$().pipe(
+      mergeMap((evt) =>
+        from(
+          Promise.all([
+            this.agentGateway.findById(evt.agentId),
+            this.podGateway.list(),
+          ]),
+        ).pipe(
+          map(([agent, pods]): AgentStatusStreamMessage | null =>
+            agent
+              ? {
+                  type: 'event',
+                  payload: {
+                    eventType: 'modified',
+                    status: {
+                      agent,
+                      pod: pods.find((p) => p.agentId === evt.agentId) ?? null,
+                      bridleConnected: evt.type === 'connected',
+                    },
+                  },
+                }
+              : null,
+          ),
+        ),
+      ),
+      filter((msg): msg is AgentStatusStreamMessage => msg !== null),
+    );
+
+    return merge(initial$, updates$, bridleUpdates$);
   }
 
   private async detectDrift(reason: 'startup' | 'periodic'): Promise<string[]> {
@@ -279,6 +339,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
         // pod-missing/Failed state during a restart shouldn't override a
         // healthy runtime that's actively talking to us.
         if (this.bridleGateway.isAgentConnected(agent.id)) {
+          this.bridleDownSince.delete(agent.id);
           // 'stopped' is exempt from the resurrect: the operator explicitly
           // stopped the agent, and the old runtime's WS can linger for a few
           // seconds after the pod delete (forever on local dev, where there
@@ -315,6 +376,9 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
 
         const pod = podByAgent.get(agent.id);
         if (!pod) {
+          // No pod ⇒ the unreachable observation is moot; whatever happens
+          // next (failed / redeploy) restarts the window from scratch.
+          this.bridleDownSince.delete(agent.id);
           if (LIVE_DB_STATUSES.has(agent.status) && agent.status !== 'failed') {
             // A just-submitted deploy legitimately has no pod for ~10-30s
             // (Argo runs cleanup-old before run-agent). Inside the grace
@@ -323,7 +387,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
             // expires with no pod, THAT is the definitive startup timeout.
             if (isWithinDeployGrace(agent)) continue;
             const reason =
-              agent.status === 'running'
+              agent.status === 'running' || agent.status === 'unreachable'
                 ? 'agent pod disappeared'
                 : `startup did not produce a running agent within ${Math.round(DEPLOY_GRACE_MS / 60_000)} minutes`;
             this.logger.warn(
@@ -350,6 +414,39 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
           await this.reconcileDbStatus(pod);
         }
         if (pod.phase === 'Failed') podReconcileCount += 1;
+
+        // K8s says healthy, hub says absent: start (or check) the observation
+        // window and demote once it expires. Deploy grace still applies — a
+        // freshly deployed runtime gets its usual startup window, and the
+        // deploy-time settings warning covers that period instead.
+        if (
+          agent.status === 'running' &&
+          pod.phase === 'Running' &&
+          pod.ready
+        ) {
+          const downSince = this.bridleDownSince.get(agent.id);
+          if (downSince === undefined) {
+            this.bridleDownSince.set(agent.id, Date.now());
+          } else if (
+            Date.now() - downSince > BRIDLE_GRACE_MS &&
+            !isWithinDeployGrace(agent)
+          ) {
+            this.logger.warn(
+              `Drift: agent ${agent.id} (${agent.name}) pod is Running+Ready but the runtime never registered on the bridle hub — marking unreachable`,
+            );
+            await this.agentGateway.updateStatus(
+              agent.id,
+              'unreachable',
+              agent.workflowId ?? undefined,
+              BRIDLE_UNREACHABLE_REASON,
+            );
+            this.bridleDownSince.delete(agent.id);
+          }
+        } else if (agent.status !== 'running') {
+          // Not in the eligible state (stopped/failed/deploying/unreachable):
+          // any open observation window is stale.
+          this.bridleDownSince.delete(agent.id);
+        }
       }
 
       if (reason === 'startup' || driftFailedIds.length > 0) {
@@ -464,6 +561,11 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
       podStatus.phase === 'Running' &&
       podStatus.ready &&
       agent.status !== 'running' &&
+      // 'unreachable' is exactly "pod healthy, runtime absent" — a pod event
+      // proves nothing new. Only a bridle registration promotes out of it;
+      // letting the pod path do so would re-mask the incident this status
+      // exists to expose.
+      agent.status !== 'unreachable' &&
       // Ignore a Running+Ready event from a pod that predates the current
       // deploy/stop. Without this, the OLD pod's last Running event (still in
       // flight while Argo tears it down) could revert a freshly 'stopped' agent

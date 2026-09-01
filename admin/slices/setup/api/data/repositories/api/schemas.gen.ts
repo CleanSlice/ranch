@@ -784,12 +784,19 @@ export const AgentDtoSchema = {
     },
     status: {
       type: "string",
-      enum: ["pending", "deploying", "running", "failed", "stopped"],
+      enum: [
+        "pending",
+        "deploying",
+        "running",
+        "failed",
+        "stopped",
+        "unreachable",
+      ],
     },
     statusReason: {
       type: "string",
       nullable: true,
-      description: `Human-readable reason accompanying status='failed' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff"). Null for all other statuses and for failures recorded before this field existed.`,
+      description: `Human-readable reason accompanying status='failed' or 'unreachable' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.`,
     },
     workflowId: {
       type: "object",
@@ -976,8 +983,14 @@ export const AgentStatusDtoSchema = {
         },
       ],
     },
+    bridleConnected: {
+      type: "boolean",
+      description:
+        "Whether the agent runtime currently holds a live connection to the bridle hub. In-memory truth of the API process — false for a few seconds after an API restart until runtimes reconnect.",
+      example: true,
+    },
   },
-  required: ["agent", "pod"],
+  required: ["agent", "pod", "bridleConnected"],
 } as const;
 
 export const NodeCapacityDtoSchema = {

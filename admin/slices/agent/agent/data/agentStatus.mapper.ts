@@ -58,7 +58,11 @@ export class AgentStatusMapper {
     const o = raw as Record<string, unknown>;
     const agent = this.toAgent(o.agent);
     if (!agent) return null;
-    return { agent, pod: this.toPod(o.pod) };
+    return {
+      agent,
+      pod: this.toPod(o.pod),
+      bridleConnected: o.bridleConnected === true,
+    };
   }
 
   private toAgent(raw: unknown): IAgentRecord | null {
@@ -69,6 +73,7 @@ export class AgentStatusMapper {
       id: o.id,
       name: typeof o.name === 'string' ? o.name : '',
       status: typeof o.status === 'string' ? o.status : '',
+      statusReason: typeof o.statusReason === 'string' ? o.statusReason : null,
     };
   }
 

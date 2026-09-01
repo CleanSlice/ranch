@@ -54,4 +54,11 @@ export class AgentStatusDto {
       'Live pod status; null if no pod is currently running for this agent.',
   })
   pod: AgentPodStatusDto | null;
+
+  @ApiProperty({
+    description:
+      'Whether the agent runtime currently holds a live connection to the bridle hub. In-memory truth of the API process — false for a few seconds after an API restart until runtimes reconnect.',
+    example: true,
+  })
+  bridleConnected: boolean;
 }

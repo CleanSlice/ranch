@@ -8,6 +8,7 @@ export const AGENT_STATUS_VARIANT: Record<AgentStatusTypes, BadgeVariant> = {
   pending: 'secondary',
   stopped: 'outline',
   failed: 'destructive',
+  unreachable: 'destructive',
 };
 
 // Date formatting comes from the shared `formatDateTime` in

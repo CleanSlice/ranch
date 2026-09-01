@@ -28,7 +28,13 @@ const props = withDefaults(defineProps<{
   // seconds ("Connected" while the pod is dying), and on a freshly opened
   // page a failed agent reads as "reconnecting" for 30s. Hosts that know the
   // real state (the admin agent page) pass it here; null = derive from WS.
-  agentState?: 'restarting' | 'failed' | 'stopped' | null
+  agentState?: 'restarting' | 'failed' | 'stopped' | 'unreachable' | null
+  // Troubleshooting links for the "pod is up but the runtime never reached
+  // the bridle hub" state. When set, a socket-down chat on a running or
+  // unreachable agent shows an actionable hint instead of a bare offline
+  // line: the status reason, the pod env preview (missing BRIDLE_* vars are
+  // visible there), the bridle settings page, and the restart note.
+  offlineHint?: { reason: string | null; envHref: string; settingsHref: string } | null
   // Host-supplied debugEnabled from an agent record the host already fetched.
   // When set (non-null), the widget skips its own GET /agents/:id — the admin
   // agent page otherwise loads the same agent twice on every open.
@@ -39,6 +45,7 @@ const props = withDefaults(defineProps<{
   showStatus: true,
   restartPrompt: true,
   agentState: null,
+  offlineHint: null,
   initialDebugEnabled: null,
 })
 
@@ -127,6 +134,9 @@ const connectionStatus = computed(() => {
   if (props.agentState === 'stopped') {
     return { label: 'Agent stopped', color: 'text-muted-foreground' }
   }
+  if (props.agentState === 'unreachable') {
+    return { label: 'Agent unreachable', color: 'text-orange-500' }
+  }
   const chat = isConnected.value
   const agent = isAgentConnected.value
   if (chat && agent) return { label: 'Connected', color: 'text-green-500' }
@@ -172,6 +182,17 @@ watch(
 const agentDownTooLong = computed(() => {
   const since = agentDownSinceMs.value
   return since !== null && nowMs.value - since >= RESTART_PROMPT_AFTER_MS
+})
+
+// Actionable variant of "Agent is not connected": only when the host says the
+// agent should be up (running within grace, or already marked unreachable) and
+// our own chat WS is fine — if both sockets are down it's likely the user's
+// network, and restarting/stopped/failed states have their own messaging.
+const showOfflineHint = computed(() => {
+  if (!props.offlineHint) return false
+  if (isAgentConnected.value) return false
+  if (!isConnected.value) return false
+  return props.agentState === null || props.agentState === 'unreachable'
 })
 
 const showRestartPrompt = computed(() => {
@@ -497,6 +518,25 @@ async function onConfirmReset() {
     </CardContent>
 
     <CardFooter class="flex flex-col items-stretch gap-2 border-t">
+      <div
+        v-if="showOfflineHint"
+        class="rounded-md border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-xs text-orange-700 dark:text-orange-300"
+      >
+        <p class="font-medium">Agent is not connected to the bridle hub.</p>
+        <p v-if="offlineHint?.reason" class="mt-1">{{ offlineHint.reason }}</p>
+        <p class="mt-1">
+          Check the
+          <NuxtLink :to="offlineHint!.envHref" class="underline hover:no-underline">
+            pod environment preview
+          </NuxtLink>
+          (missing BRIDLE_* variables show up there) and the
+          <NuxtLink :to="offlineHint!.settingsHref" class="underline hover:no-underline">
+            bridle integration settings
+          </NuxtLink>.
+          After fixing the settings, restart the agent — a live pod does not
+          pick them up.
+        </p>
+      </div>
       <!-- Stays visible when the agent is down — a hidden input reads as a
            broken layout; disabled communicates "chat exists, agent doesn't". -->
       <Input

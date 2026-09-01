@@ -20,6 +20,9 @@ export abstract class IAgentGateway {
     workflowId?: string | null,
     statusReason?: string,
   ): Promise<IAgentData>;
+  // Reason-only write: status untouched. Used by the deploy path to flag
+  // empty bridle settings while the row is still 'deploying'.
+  abstract setStatusReason(id: string, reason: string): Promise<void>;
   // Atomic deploy-start write: status='deploying', statusReason cleared,
   // lastDeployStartedAt=now, lastLaunchContext=<given>.
   abstract markDeployStarted(

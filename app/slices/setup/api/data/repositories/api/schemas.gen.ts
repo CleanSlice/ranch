@@ -784,12 +784,19 @@ export const AgentDtoSchema = {
     },
     status: {
       type: "string",
-      enum: ["pending", "deploying", "running", "failed", "stopped"],
+      enum: [
+        "pending",
+        "deploying",
+        "running",
+        "failed",
+        "stopped",
+        "unreachable",
+      ],
     },
     statusReason: {
       type: "string",
       nullable: true,
-      description: `Human-readable reason accompanying status='failed' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff"). Null for all other statuses and for failures recorded before this field existed.`,
+      description: `Human-readable reason accompanying status='failed' or 'unreachable' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.`,
     },
     workflowId: {
       type: "object",
@@ -813,6 +820,18 @@ export const AgentDtoSchema = {
       enum: ["initial", "restart"],
       description:
         "Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.",
+    },
+    lastPullAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the running pod last pulled its working copy of the agent files from S3 (recorded at runtime boot). Null ⇒ agent not restarted since this field shipped. Files-tab freshness hint + sync-conflict baseline.",
+    },
+    lastSyncAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the last successful Sync push completed. Null ⇒ never synced since this field shipped.",
     },
     config: {
       type: "object",
@@ -867,6 +886,8 @@ export const AgentDtoSchema = {
     "firstDeployedAt",
     "lastDeployStartedAt",
     "launchContext",
+    "lastPullAt",
+    "lastSyncAt",
     "config",
     "resources",
     "debugEnabled",
@@ -962,8 +983,14 @@ export const AgentStatusDtoSchema = {
         },
       ],
     },
+    bridleConnected: {
+      type: "boolean",
+      description:
+        "Whether the agent runtime currently holds a live connection to the bridle hub. In-memory truth of the API process — false for a few seconds after an API restart until runtimes reconnect.",
+      example: true,
+    },
   },
-  required: ["agent", "pod"],
+  required: ["agent", "pod", "bridleConnected"],
 } as const;
 
 export const NodeCapacityDtoSchema = {
@@ -1341,6 +1368,59 @@ export const DeleteFilesDtoSchema = {
     },
   },
   required: ["deleted"],
+} as const;
+
+export const SyncFilesBodyDtoSchema = {
+  type: "object",
+  properties: {
+    confirm: {
+      type: "boolean",
+      description:
+        "Set to true to run the sync even when at-risk files were reported (the operator explicitly accepted the overwrite risk). Without it a non-empty at-risk list makes the endpoint answer 409 and skip the sync.",
+    },
+  },
+} as const;
+
+export const AtRiskFileDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "SOUL.md",
+    },
+    updatedAt: {
+      type: "string",
+      format: "date-time",
+      description: "When the S3 (shared) copy of this file was last modified",
+    },
+  },
+  required: ["path", "updatedAt"],
+} as const;
+
+export const SyncConflictDtoSchema = {
+  type: "object",
+  properties: {
+    requiresConfirmation: {
+      type: "boolean",
+      description:
+        "Always true: the sync was NOT executed — resend with confirm=true to proceed",
+    },
+    atRisk: {
+      description:
+        "S3 files modified after the pod last pulled/pushed. A sync MAY overwrite or delete them if the pod also changed them locally.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AtRiskFileDto",
+      },
+    },
+    baseline: {
+      type: "string",
+      format: "date-time",
+      description:
+        "Reference moment the S3 copies were compared against (max of last boot pull minus margin and last completed sync)",
+    },
+  },
+  required: ["requiresConfirmation", "atRisk", "baseline"],
 } as const;
 
 export const BridleTextPartDtoSchema = {

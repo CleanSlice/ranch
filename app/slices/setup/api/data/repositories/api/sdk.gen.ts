@@ -102,6 +102,7 @@ import type {
   FileControllerReadResponse,
   FileControllerSaveData,
   FileControllerSyncData,
+  FileControllerSyncError,
   ExportAgentFilesData,
   SendBridleMessageData,
   SendBridleMessageSyncData,
@@ -1708,18 +1709,22 @@ export class FilesService {
   }
 
   /**
-   * Ask the agent runtime to push its local files to S3, then return the latest S3 state to the admin UI
+   * Ask the agent runtime to push its local files to S3. Answers 409 with the at-risk file list (and does NOT sync) when S3 holds edits newer than the pod’s last pull/push, unless `confirm` is set.
    */
   public static fileControllerSync<ThrowOnError extends boolean = false>(
     options: Options<FileControllerSyncData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).post<
       unknown,
-      unknown,
+      FileControllerSyncError,
       ThrowOnError
     >({
       url: "/agents/{agentId}/files/sync",
       ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
     });
   }
 

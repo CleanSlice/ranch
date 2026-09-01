@@ -205,7 +205,7 @@ export class BridleController {
         })
         .catch((err: Error) => {
           clearTimeout(timeout);
-          this.hub.unregisterClient(clientId, agentId);
+          this.hub.unregisterClient(clientId, agentId, socketId);
           reject(err);
         });
     });

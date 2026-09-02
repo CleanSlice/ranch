@@ -60,6 +60,10 @@ export class AgentMapper {
       workflowId: typeof o.workflowId === 'string' ? o.workflowId : null,
       firstDeployedAt:
         typeof o.firstDeployedAt === 'string' ? o.firstDeployedAt : null,
+      lastDeployStartedAt:
+        typeof o.lastDeployStartedAt === 'string'
+          ? o.lastDeployStartedAt
+          : null,
       launchContext: this.toLaunchContext(o.launchContext),
       lastPullAt: typeof o.lastPullAt === 'string' ? o.lastPullAt : null,
       lastSyncAt: typeof o.lastSyncAt === 'string' ? o.lastSyncAt : null,

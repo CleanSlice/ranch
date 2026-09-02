@@ -131,10 +131,13 @@ export class BridleController {
       body.text,
       body.attachmentIds,
     );
-    this.hub.sendToAgent(clientId, agentId, expanded.text, [
-      ...base,
-      ...expanded.parts,
-    ]);
+    this.hub.sendToAgent(
+      clientId,
+      agentId,
+      expanded.text,
+      [...base, ...expanded.parts],
+      expanded.attachments,
+    );
     return { ok: true };
   }
 
@@ -198,10 +201,13 @@ export class BridleController {
       this.attachments
         .expand(agentId, body.text, body.attachmentIds)
         .then((expanded) => {
-          this.hub.sendToAgent(clientId, agentId, expanded.text, [
-            ...base,
-            ...expanded.parts,
-          ]);
+          this.hub.sendToAgent(
+            clientId,
+            agentId,
+            expanded.text,
+            [...base, ...expanded.parts],
+            expanded.attachments,
+          );
         })
         .catch((err: Error) => {
           clearTimeout(timeout);

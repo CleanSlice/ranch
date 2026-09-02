@@ -13,6 +13,7 @@ import type {
   IBridleDebugEvent,
   IBridleClientData,
   BridlePart,
+  IBridleAttachment,
 } from '../domain/bridle.types';
 import { randomUUID } from 'crypto';
 
@@ -174,6 +175,7 @@ export class BridleGateway extends IBridleGateway {
     agentId: string,
     text: string,
     parts: BridlePart[],
+    attachments?: IBridleAttachment[],
   ): void {
     const agentSend = this.agents.get(agentId)?.send;
     if (!agentSend) {
@@ -204,6 +206,21 @@ export class BridleGateway extends IBridleGateway {
       ...(client?.prompt ? { prompt: client.prompt } : {}),
       ...(client?.capabilities?.length
         ? { capabilities: client.capabilities }
+        : {}),
+      // Metadata only: the runtime persists this array verbatim into its
+      // session transcript. The url is this API's own route (useless to the
+      // runtime) and readableByAgent is a UI concern — neither belongs in
+      // every future replay.
+      ...(attachments?.length
+        ? {
+            attachments: attachments.map((a) => ({
+              id: a.id,
+              name: a.name,
+              mimeType: a.mimeType,
+              size: a.size,
+              kind: a.kind,
+            })),
+          }
         : {}),
       messageId: randomUUID(),
     });

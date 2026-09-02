@@ -125,6 +125,62 @@ describe('TranscriptReaderService', () => {
     expect(out).toHaveLength(4); // nothing filtered
   });
 
+  it('surfaces attachment metadata on user events', async () => {
+    const att = {
+      id: 'att-1',
+      name: 'photo.png',
+      mimeType: 'image/png',
+      size: 1234,
+      kind: 'image',
+    };
+    const content = jsonl(
+      { id: 'u', type: 'user', ts: 1, data: { text: 'look', attachments: [att] } },
+      { id: 'a', type: 'assistant', ts: 2, data: { text: 'nice' } },
+    );
+    const out = await reader(content).read('agent', 'p');
+    expect(out[0].attachments).toEqual([att]);
+    expect(out[1].attachments).toBeUndefined();
+  });
+
+  it('keeps an attachment-only user event (empty text) instead of dropping it', async () => {
+    const att = {
+      id: 'att-1',
+      name: 'photo.png',
+      mimeType: 'image/png',
+      size: 1,
+      kind: 'image',
+    };
+    const content = jsonl(
+      { id: 'u1', type: 'user', ts: 1, data: { text: '', attachments: [att] } },
+      { id: 'u2', type: 'user', ts: 2, data: { text: '' } }, // still dropped
+      { id: 'a', type: 'assistant', ts: 3, data: { text: 'reply' } },
+    );
+    const out = await reader(content).read('agent', 'p');
+    expect(out.map((m) => m.id)).toEqual(['u1', 'a']);
+    expect(out[0].text).toBe('');
+    expect(out[0].attachments).toEqual([att]);
+  });
+
+  it('drops malformed attachment entries and the field when nothing survives', async () => {
+    const content = jsonl(
+      {
+        id: 'u1',
+        type: 'user',
+        ts: 1,
+        data: {
+          text: 'hi',
+          attachments: [{ junk: true }, { id: 'ok', name: 'a.txt', mimeType: 'text/plain', size: 2, kind: 'text' }],
+        },
+      },
+      { id: 'u2', type: 'user', ts: 2, data: { text: 'yo', attachments: 'nope' } },
+    );
+    const out = await reader(content).read('agent', 'p');
+    expect(out[0].attachments).toEqual([
+      { id: 'ok', name: 'a.txt', mimeType: 'text/plain', size: 2, kind: 'text' },
+    ]);
+    expect(out[1].attachments).toBeUndefined();
+  });
+
   it('paginates tail-first via page()', () => {
     const msgs: TranscriptMessage[] = Array.from({ length: 5 }, (_, i) => ({
       id: `m${i}`,

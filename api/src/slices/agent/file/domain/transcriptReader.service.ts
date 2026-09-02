@@ -1,6 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { IFileGateway } from './file.gateway';
 
+/**
+ * Reference to a stored chat attachment, persisted by the agent runtime in
+ * the user event's data (metadata only — the bytes live behind the API's
+ * authenticated download route, addressed by id).
+ */
+export interface ITranscriptAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: 'image' | 'text' | 'binary';
+}
+
 /** One replayable line of a chat transcript. `role` is the source Event type. */
 export interface TranscriptMessage {
   id: string;
@@ -13,6 +26,7 @@ export interface TranscriptMessage {
     | 'system';
   text: string;
   ts: number;
+  attachments?: ITranscriptAttachment[];
 }
 
 export interface ReadTranscriptOptions {
@@ -47,7 +61,40 @@ interface RawEvent {
     name?: string;
     params?: unknown;
     result?: unknown;
+    attachments?: unknown;
   };
+}
+
+const ATTACHMENT_KINDS = new Set(['image', 'text', 'binary']);
+
+/**
+ * The JSONL is runtime-authored but still external input to this API —
+ * filter each entry down to the exact replayable shape and drop anything
+ * malformed rather than propagating it into the transcript DTO.
+ */
+function sanitizeAttachments(raw: unknown): ITranscriptAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ITranscriptAttachment[] = [];
+  for (const entry of raw) {
+    const a = entry as Record<string, unknown>;
+    if (
+      typeof a?.id !== 'string' ||
+      typeof a?.name !== 'string' ||
+      typeof a?.mimeType !== 'string' ||
+      typeof a?.kind !== 'string' ||
+      !ATTACHMENT_KINDS.has(a.kind)
+    ) {
+      continue;
+    }
+    out.push({
+      id: a.id,
+      name: a.name,
+      mimeType: a.mimeType,
+      size: typeof a.size === 'number' && Number.isFinite(a.size) ? a.size : 0,
+      kind: a.kind as ITranscriptAttachment['kind'],
+    });
+  }
+  return out;
 }
 
 /**
@@ -84,13 +131,18 @@ export class TranscriptReaderService {
       if (transient.has(i)) return;
       if (!evt.type || !evt.id || typeof evt.ts !== 'number') return;
       if (!types.has(evt.type)) return;
+      const attachments =
+        evt.type === 'user' ? sanitizeAttachments(evt.data?.attachments) : [];
       const text = this.render(evt);
-      if (text === null) return;
+      // An attachment-only message has no text at all — dropping it (the
+      // empty-text rule) would erase the turn the file arrived on.
+      if (text === null && !attachments.length) return;
       messages.push({
         id: evt.id,
         role: evt.type as TranscriptMessage['role'],
-        text,
+        text: text ?? '',
         ts: evt.ts,
+        ...(attachments.length ? { attachments } : {}),
       });
     });
     messages.sort((a, b) => a.ts - b.ts);

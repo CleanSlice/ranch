@@ -122,11 +122,9 @@ const deployAgo = useTimeAgoIntl(
   () => new Date(lastDeployStartedAt.value ?? Date.now()),
   { locale: locale.value },
 );
-const deployHint = computed(() => {
-  if (!lastDeployStartedAt.value) return null;
-  const verb = launchContext.value === 'restart' ? 'restarted' : 'started';
-  return `${verb} ${deployAgo.value}`;
-});
+const deployVerb = computed(() =>
+  launchContext.value === 'restart' ? 'restarted' : 'started',
+);
 const deployHintTitle = computed(() => {
   if (!lastDeployStartedAt.value) return undefined;
   const parts = [
@@ -222,11 +220,17 @@ async function onRemove() {
           runtime offline
         </span>
         <span
-          v-if="deployHint"
+          v-if="lastDeployStartedAt"
           class="shrink-0 text-xs text-muted-foreground"
           :title="deployHintTitle"
         >
-          {{ deployHint }}
+          {{ deployVerb }}
+          <!-- Keyed by the label so every relative-time tick ("just now" →
+               "1 minute ago") re-enters with a tiny slide — enough for
+               peripheral vision to register the timer is alive. -->
+          <Transition name="time-tick" mode="out-in">
+            <span :key="deployAgo" class="inline-block">{{ deployAgo }}</span>
+          </Transition>
         </span>
 
         <div class="flex-1" />
@@ -341,3 +345,26 @@ async function onRemove() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.time-tick-enter-active,
+.time-tick-leave-active {
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+.time-tick-enter-from {
+  opacity: 0;
+  transform: translateY(3px);
+}
+.time-tick-leave-to {
+  opacity: 0;
+  transform: translateY(-3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .time-tick-enter-active,
+  .time-tick-leave-active {
+    transition: none;
+  }
+}
+</style>

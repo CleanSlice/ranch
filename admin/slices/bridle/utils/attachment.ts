@@ -142,13 +142,13 @@ export function isReadableByAgent(kind: BridleAttachmentKinds): boolean {
 }
 
 /**
- * Read a picked image as a data URL for the local echo.
+ * Read an image blob as base64 (a picked File for the local echo, or a blob
+ * fetched back through the guarded attachment route on transcript replay).
  *
- * The bubble is rendered from an `image` part, which carries base64 — the same
- * shape the runtime sends back. Reading the file we already hold is cheaper
- * than downloading it again through the guarded attachment route.
+ * The bubble is rendered from an `image` part, which carries base64 — the
+ * same shape the runtime sends back.
  */
-export function readAsBase64(file: File): Promise<string> {
+export function readAsBase64(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = () => reject(reader.error ?? new Error('read failed'))

@@ -6,6 +6,7 @@ import type {
   IBridleSyncResponse,
   IBridleDebugEvent,
   BridlePart,
+  IBridleAttachment,
 } from './bridle.types';
 
 export interface ISyncAgentResult {
@@ -23,12 +24,16 @@ export interface IBridleAgentEvent {
  * Routes messages between them, scoped by agentId.
  */
 export abstract class IBridleGateway {
-  /** Send a message from a browser client to the agent for a specific agent */
+  /** Send a message from a browser client to the agent for a specific agent.
+   * `attachments` are the stored-file references behind any image/file parts —
+   * the runtime persists them into its session transcript so replays can
+   * re-link the files (only metadata crosses the wire, never bytes). */
   abstract sendToAgent(
     clientId: string,
     agentId: string,
     text: string,
     parts: BridlePart[],
+    attachments?: IBridleAttachment[],
   ): void;
   /** Send an event to a specific browser client (scoped to clientId + agentId) */
   abstract sendToClient(clientId: string, agentId: string, data: unknown): void;

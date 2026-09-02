@@ -118,16 +118,21 @@ onBeforeUnmount(() => {
           @click="openLightbox(`data:${part.mediaType};base64,${part.base64}`)"
         />
 
-        <a
+        <!-- An url-less chip is a replayed attachment whose stored object is
+             gone — still named, no longer clickable. -->
+        <component
+          :is="part.url ? 'a' : 'div'"
           v-else-if="part.type === BridlePartTypes.File"
-          :href="part.url"
-          target="_blank"
-          rel="noopener"
-          class="flex items-center gap-2 px-2 py-1 rounded border text-xs hover:bg-background/50"
+          :href="part.url || undefined"
+          :target="part.url ? '_blank' : undefined"
+          :rel="part.url ? 'noopener' : undefined"
+          :title="part.url ? part.name : 'Attachment is no longer available'"
+          class="flex items-center gap-2 px-2 py-1 rounded border text-xs"
+          :class="part.url ? 'hover:bg-background/50' : 'opacity-60'"
         >
           <FileText class="h-3.5 w-3.5 shrink-0" />
           <span class="truncate">{{ part.name }}</span>
-        </a>
+        </component>
       </template>
 
       <!-- Fallback: if no parts, show plain text (or markdown for assistant) -->

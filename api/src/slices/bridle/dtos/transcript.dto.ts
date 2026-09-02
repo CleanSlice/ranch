@@ -2,6 +2,23 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
+export class TranscriptAttachmentDto {
+  @ApiProperty({ example: '0b53c9a4-7f4e-4bb1-a6b1-6a1f2f9c8f21' })
+  id: string;
+
+  @ApiProperty({ example: 'screenshot.png' })
+  name: string;
+
+  @ApiProperty({ example: 'image/png' })
+  mimeType: string;
+
+  @ApiProperty({ example: 48213 })
+  size: number;
+
+  @ApiProperty({ enum: ['image', 'text', 'binary'], example: 'image' })
+  kind: 'image' | 'text' | 'binary';
+}
+
 export class TranscriptMessageDto {
   @ApiProperty({ example: 'c94dbcf2-64f1-4e84-9723-c94e2d815f61' })
   id: string;
@@ -17,6 +34,14 @@ export class TranscriptMessageDto {
     description: 'Unix epoch milliseconds.',
   })
   ts: number;
+
+  @ApiPropertyOptional({
+    type: [TranscriptAttachmentDto],
+    description:
+      'Stored-attachment references for files sent with this message. ' +
+      'Fetch the bytes via GET /api/agent/{agentId}/attachment/{id}.',
+  })
+  attachments?: TranscriptAttachmentDto[];
 }
 
 export class TranscriptQueryDto {

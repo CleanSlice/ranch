@@ -181,11 +181,25 @@ function clearDebugFromStorage(agentId: string): void {
 // covers the typical visible window without needing an immediate second page.
 const TRANSCRIPT_PAGE_SIZE = 50
 
+/**
+ * Stored-attachment reference riding a transcript message. Metadata only —
+ * the bytes stay behind `GET /api/agent/:id/attachment/:id`, which needs the
+ * bearer, so the store downloads them and hands the DOM base64/object URLs.
+ */
+interface ITranscriptAttachment {
+  id: string
+  name: string
+  mimeType: string
+  size: number
+  kind: 'image' | 'text' | 'binary'
+}
+
 interface ITranscriptPageMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
   ts: number
+  attachments?: ITranscriptAttachment[]
 }
 
 interface ITranscriptPage {
@@ -286,7 +300,9 @@ function toBridleMessage(m: ITranscriptPageMessage): IBridleMessageData {
     id: m.id,
     role: m.role,
     text: m.text,
-    parts: [{ type: BridlePartTypes.Text as const, text: m.text }],
+    // No empty text part: an attachment-only message (text '') would render
+    // a blank line above its image once hydration fills the parts in.
+    parts: m.text ? [{ type: BridlePartTypes.Text as const, text: m.text }] : [],
     ts: m.ts,
   }
 }
@@ -971,8 +987,76 @@ export const useBridleStore = defineStore('bridle', {
         this.messages = page.messages.map(toBridleMessage)
         this.transcriptCursor = page.nextCursor
         this.hasMoreOlder = page.hasMore
+        this._hydrateAttachments(apiUrl, agentId, token, page.messages)
       } catch (err) {
         console.warn('[bridle] failed to load transcript', err)
+      }
+    },
+
+    /**
+     * Turn a replayed message's attachment references back into renderable
+     * parts. Bytes are fetched through the guarded download route (an <img>
+     * or plain <a> cannot carry the bearer): images become base64 image
+     * parts — the exact shape the live echo uses, lightbox included — and
+     * everything else becomes an object-URL file chip. Fire-and-forget per
+     * message; a missing file degrades to a dead chip, its siblings and the
+     * rest of the transcript are untouched.
+     */
+    _hydrateAttachments(
+      apiUrl: string,
+      agentId: string,
+      token: string,
+      source: ITranscriptPageMessage[],
+    ) {
+      const base = apiUrl.replace(/\/$/, '')
+      for (const m of source) {
+        const attachments = m.attachments
+        if (!attachments?.length) continue
+        void (async () => {
+          const parts: BridlePart[] = []
+          for (const att of attachments) {
+            try {
+              const res = await fetch(
+                `${base}/api/agent/${encodeURIComponent(agentId)}/attachment/${encodeURIComponent(att.id)}`,
+                { headers: { Authorization: `Bearer ${token}` } },
+              )
+              if (!res.ok) throw new Error(`attachment fetch ${res.status}`)
+              const blob = await res.blob()
+              if (att.kind === BridleAttachmentKinds.Image) {
+                parts.push({
+                  type: BridlePartTypes.Image,
+                  base64: await readAsBase64(blob),
+                  mediaType: att.mimeType,
+                })
+              } else {
+                const url = URL.createObjectURL(blob)
+                this._echoUrls.push(url)
+                parts.push({
+                  type: BridlePartTypes.File,
+                  url,
+                  name: att.name,
+                  mimeType: att.mimeType,
+                })
+              }
+            } catch {
+              // The stored object is gone (agent wiped) or unreachable —
+              // an url-less chip renders as "no longer available".
+              parts.push({
+                type: BridlePartTypes.File,
+                url: '',
+                name: att.name,
+                mimeType: att.mimeType,
+              })
+            }
+          }
+          // Looked up at completion on purpose: if the transcript was
+          // cleared or reloaded while bytes were in flight, the id is gone
+          // and the late result is dropped instead of resurrecting a bubble.
+          const target = this.messages.find((x) => x.id === m.id)
+          if (!target) return
+          // Media above the text, the way every chat client orders it.
+          target.parts = [...parts, ...target.parts]
+        })()
       }
     },
 
@@ -1005,6 +1089,7 @@ export const useBridleStore = defineStore('bridle', {
         this.messages = [...olderMessages, ...this.messages]
         this.transcriptCursor = page.nextCursor
         this.hasMoreOlder = page.hasMore
+        this._hydrateAttachments(apiUrl, agentId, token, page.messages)
         return olderMessages.length
       } catch (err) {
         console.warn('[bridle] failed to load older transcript', err)

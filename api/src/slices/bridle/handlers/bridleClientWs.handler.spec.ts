@@ -2,9 +2,11 @@ import { BadRequestException } from '@nestjs/common';
 import { Socket } from 'socket.io';
 import { BridleClientWsHandler } from './bridleClientWs.handler';
 import {
+  BridleAttachmentKinds,
   BridleAttachmentService,
   BridlePartTypes,
   type BridlePart,
+  type IBridleAttachment,
 } from '../domain';
 
 /**
@@ -19,6 +21,7 @@ interface ISentToAgent {
   agentId: string;
   text: string;
   parts: BridlePart[];
+  attachments?: IBridleAttachment[];
 }
 
 function makeHandler(expand: BridleAttachmentService['expand']) {
@@ -29,8 +32,9 @@ function makeHandler(expand: BridleAttachmentService['expand']) {
       agentId: string,
       text: string,
       parts: BridlePart[],
+      attachments?: IBridleAttachment[],
     ) => {
-      sent.push({ clientId, agentId, text, parts });
+      sent.push({ clientId, agentId, text, parts, attachments });
     },
   };
   const attachments = { expand } as BridleAttachmentService;
@@ -82,6 +86,33 @@ describe('BridleClientWsHandler — attachments over the socket', () => {
       text: 'look at this',
     });
     expect(sent[0].parts[1]).toMatchObject({ name: 'a1.txt' });
+  });
+
+  it('forwards the stored-attachment references to the agent', async () => {
+    const attachment: IBridleAttachment = {
+      id: 'a1',
+      name: 'photo.png',
+      mimeType: 'image/png',
+      size: 9,
+      kind: BridleAttachmentKinds.Image,
+      url: '/api/agent/agent-1/attachment/a1',
+      readableByAgent: true,
+    };
+    const { handler, client, sent } = makeHandler(async (_a, text) => ({
+      text,
+      parts: [
+        { type: BridlePartTypes.Image, base64: 'AAAA', mediaType: 'image/png' },
+      ],
+      attachments: [attachment],
+    }));
+
+    await handler.handleMessage(client, {
+      text: 'look',
+      attachmentIds: ['a1'],
+    });
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0].attachments).toEqual([attachment]);
   });
 
   it('leaves a plain message untouched', async () => {

@@ -1582,6 +1582,34 @@ export const BridleAgentHealthDtoSchema = {
   required: ["ok", "agentConnected", "browserClients", "agentId"],
 } as const;
 
+export const TranscriptAttachmentDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      example: "0b53c9a4-7f4e-4bb1-a6b1-6a1f2f9c8f21",
+    },
+    name: {
+      type: "string",
+      example: "screenshot.png",
+    },
+    mimeType: {
+      type: "string",
+      example: "image/png",
+    },
+    size: {
+      type: "number",
+      example: 48213,
+    },
+    kind: {
+      type: "string",
+      enum: ["image", "text", "binary"],
+      example: "image",
+    },
+  },
+  required: ["id", "name", "mimeType", "size", "kind"],
+} as const;
+
 export const TranscriptMessageDtoSchema = {
   type: "object",
   properties: {
@@ -1602,6 +1630,14 @@ export const TranscriptMessageDtoSchema = {
       type: "number",
       example: 1777562539964,
       description: "Unix epoch milliseconds.",
+    },
+    attachments: {
+      description:
+        "Stored-attachment references for files sent with this message. Fetch the bytes via GET /api/agent/{agentId}/attachment/{id}.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/TranscriptAttachmentDto",
+      },
     },
   },
   required: ["id", "role", "text", "ts"],

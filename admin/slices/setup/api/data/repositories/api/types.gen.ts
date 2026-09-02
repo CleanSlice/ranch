@@ -724,6 +724,14 @@ export type BridleAgentHealthDto = {
   agentId: string;
 };
 
+export type TranscriptAttachmentDto = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: "image" | "text" | "binary";
+};
+
 export type TranscriptMessageDto = {
   id: string;
   role: "user" | "assistant";
@@ -732,6 +740,10 @@ export type TranscriptMessageDto = {
    * Unix epoch milliseconds.
    */
   ts: number;
+  /**
+   * Stored-attachment references for files sent with this message. Fetch the bytes via GET /api/agent/{agentId}/attachment/{id}.
+   */
+  attachments?: Array<TranscriptAttachmentDto>;
 };
 
 export type TranscriptResponseDto = {

@@ -270,7 +270,13 @@ export class BridleClientWsHandler
     const parts = [...base, ...expanded.parts];
     if (!expanded.text && parts.length === 0) return;
 
-    this.hub.sendToAgent(clientId, agentId, expanded.text, parts);
+    this.hub.sendToAgent(
+      clientId,
+      agentId,
+      expanded.text,
+      parts,
+      expanded.attachments,
+    );
   }
 
   @SubscribeMessage('ping')

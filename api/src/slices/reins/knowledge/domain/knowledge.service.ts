@@ -111,9 +111,12 @@ export class KnowledgeService implements OnApplicationBootstrap {
   }
 
   async create(data: ICreateKnowledgeData): Promise<IKnowledgeData> {
-    await this.instances.ensureCapacityForNew();
+    const isolation = await this.knowledgeConfig.isInstanceIsolationEnabled();
+    if (isolation) await this.instances.ensureCapacityForNew();
     const created = await this.gateway.create(data);
-    await this.provisionInstance(created);
+    // Without isolation the base lives on the shared pool; provisioning an
+    // instance for it would start paying for a transition nobody asked for.
+    if (isolation) await this.provisionInstance(created);
     return this.get(created.id);
   }
 
@@ -126,7 +129,7 @@ export class KnowledgeService implements OnApplicationBootstrap {
   }
 
   async delete(id: string): Promise<void> {
-    await this.get(id);
+    const record = await this.get(id);
     // Order matters: the area's content is removed while the instance can
     // still serve the delete calls, then the instance goes.
     try {
@@ -136,10 +139,17 @@ export class KnowledgeService implements OnApplicationBootstrap {
         `removeAllByKnowledge(${id}) failed: ${errorMessage(err)}`,
       );
     }
-    try {
-      await this.instances.terminate(id);
-    } catch (err) {
-      this.logger.warn(`terminate(${id}) failed: ${errorMessage(err)}`);
+    // Even with isolation switched back off, an instance provisioned while it
+    // was on must not be leaked — the record remembers one existed.
+    if (
+      record.instanceState !== 'absent' ||
+      (await this.knowledgeConfig.isInstanceIsolationEnabled())
+    ) {
+      try {
+        await this.instances.terminate(id);
+      } catch (err) {
+        this.logger.warn(`terminate(${id}) failed: ${errorMessage(err)}`);
+      }
     }
     await this.gateway.delete(id);
   }
@@ -181,6 +191,7 @@ export class KnowledgeService implements OnApplicationBootstrap {
   async reconcileInstances(): Promise<void> {
     try {
       if (!(await this.knowledgeConfig.isEnabled())) return;
+      if (!(await this.knowledgeConfig.isInstanceIsolationEnabled())) return;
       const [bases, running] = await Promise.all([
         this.gateway.findAll(),
         this.instances.list(),

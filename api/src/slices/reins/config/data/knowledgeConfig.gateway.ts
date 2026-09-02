@@ -48,6 +48,16 @@ export class KnowledgeConfigGateway extends IKnowledgeConfigGateway {
     return config.enabled;
   }
 
+  async isInstanceIsolationEnabled(): Promise<boolean> {
+    const setting = await this.settings.findByKey(
+      SETTING_GROUP,
+      'instance_isolation',
+    );
+    const explicit = readBoolean(setting?.value);
+    if (explicit !== null) return explicit;
+    return this.env.get<string>('REINS_INSTANCE_ISOLATION', '') === 'true';
+  }
+
   async getSelectedCredentialIds(): Promise<ISelectedCredentialIds> {
     const [chatSetting, embeddingSetting] = await Promise.all([
       this.settings.findByKey(SETTING_GROUP, 'chat_credential_id'),

@@ -56,6 +56,9 @@ export class MigrationService implements OnApplicationBootstrap {
   private async run(): Promise<void> {
     try {
       if (!(await this.config.isEnabled())) return;
+      // The transition re-ingests every source through the LLM. That cost is
+      // opted into per installation, never incurred by a deploy.
+      if (!(await this.config.isInstanceIsolationEnabled())) return;
       const bases = await this.knowledgeGateway.findAll();
       const pending = bases.filter((b) => b.migrationState !== 'done');
       if (pending.length === 0) return;

@@ -129,8 +129,11 @@ provide('knowledge-refresh', refresh);
             {{ current.indexError }}
           </span>
         </div>
+        <!-- Only while a migration run is actually executing: with instance
+             isolation switched off, notStarted is the permanent, healthy
+             state of every base and not worth a warning. -->
         <p
-          v-if="current.migrationState === 'inProgress' || current.migrationState === 'notStarted'"
+          v-if="current.migrationState === 'inProgress'"
           class="mt-1 text-xs text-amber-600"
         >
           This base is being re-processed into its own retrieval area —

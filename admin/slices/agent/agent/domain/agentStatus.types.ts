@@ -26,6 +26,14 @@ export interface IAgentRecord {
   name: string;
   status: string;
   statusReason: string | null;
+  // Deploy/pull markers ride the stream because the API sends the full agent
+  // row in every frame; without them the header's "restarted N ago" (and the
+  // Files-tab copy banner) would freeze on the one-shot fetched row when a
+  // restart is triggered from anywhere else (CLEAN-59).
+  lastDeployStartedAt: string | null;
+  launchContext: 'initial' | 'restart' | null;
+  lastPullAt: string | null;
+  lastSyncAt: string | null;
 }
 
 export interface IAgentStatus {

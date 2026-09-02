@@ -74,6 +74,16 @@ export class AgentStatusMapper {
       name: typeof o.name === 'string' ? o.name : '',
       status: typeof o.status === 'string' ? o.status : '',
       statusReason: typeof o.statusReason === 'string' ? o.statusReason : null,
+      lastDeployStartedAt:
+        typeof o.lastDeployStartedAt === 'string'
+          ? o.lastDeployStartedAt
+          : null,
+      launchContext:
+        o.launchContext === 'initial' || o.launchContext === 'restart'
+          ? o.launchContext
+          : null,
+      lastPullAt: typeof o.lastPullAt === 'string' ? o.lastPullAt : null,
+      lastSyncAt: typeof o.lastSyncAt === 'string' ? o.lastSyncAt : null,
     };
   }
 

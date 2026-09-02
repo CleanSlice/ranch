@@ -1,6 +1,6 @@
 {
   "name": "ranch",
-  "version": "0.3.39",
+  "version": "0.3.40",
   "private": true,
   "packageManager": "bun@1.2.12",
   "workspaces": [

@@ -93,7 +93,9 @@ function reconcileStatus(
 
 /**
  * The rail's view model: the agent list, reconciled against the live status
- * stream, filtered by the search term, in the list's own order.
+ * stream, filtered by the search term. The Ranch admin agent (Rancher) is
+ * pinned first — it is the agent an operator reaches for most — and the rest
+ * keep the list's own order.
  *
  * Deliberately carries no action handlers — a rail entry identifies an agent
  * and nothing more (FR-002). Restart/stop/delete live in the settings panel.
@@ -109,6 +111,9 @@ export function useAgentRailEntries(
     const term = search.value.trim().toLowerCase();
     return (agents.value ?? [])
       .filter((a) => !term || a.name.toLowerCase().includes(term))
+      // Stable sort: admin agents float to the top, everything else keeps
+      // its relative order.
+      .sort((a, b) => Number(b.isAdmin) - Number(a.isAdmin))
       .map((a) => {
         const live = agentStatusStore.agents[a.id];
         // The SSE record is fresher than the fetched list (the sweep writes

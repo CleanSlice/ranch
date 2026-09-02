@@ -24,7 +24,9 @@ import {
   ISkillBundle,
 } from '../domain/file.types';
 
-const MAX_BYTES = 256 * 1024;
+// 1 MiB (CLEAN-56): 256KB was too small for large SOUL.md instructions.
+// main.ts raises the express json body limit above this — keep them in sync.
+const MAX_BYTES = 1024 * 1024;
 // Range reads bypass the editor cap — used by the chunked viewer and the
 // transcript replay. Per-request cap so a malicious / buggy caller can't
 // ask for a 100 MB slice in one go.
@@ -36,6 +38,19 @@ const ALLOWED_WRITE_EXT = new Set(['.md', '.json']);
 // resyncFromTemplate refuses to overwrite anything under these — only template-
 // owned files (skills, instructions, etc.) get pushed on every restart.
 const AGENT_OWNED_PREFIXES = ['data/', 'memory/', 'sessions/', 'workspace/'];
+
+// Root-level identity files operators customize per agent (CLEAN-56: a
+// template resync on restart used to clobber an edited SOUL.md — the exact
+// "save + restart and my edit is gone" report). The template only PROVIDES
+// these to agents that don't have them yet; once present, the agent copy is
+// authoritative. Other root files (e.g. agent.config.json) keep template-wins
+// semantics so template updates still propagate on restart.
+const AGENT_OWNED_ROOT_FILES = new Set([
+  'SOUL.md',
+  'USER.md',
+  'HEARTBEAT.md',
+  'MEMORY.md',
+]);
 
 @Injectable()
 export class S3FileGateway extends IFileGateway {
@@ -356,6 +371,21 @@ export class S3FileGateway extends IFileGateway {
     // storage clutter pulled in as `.agent/.agent/*` on the pod.
     await this.wipeLegacyAgentPrefix(client, bucket, destPrefix);
 
+    // Root-level objects the agent already has — the guard set for
+    // AGENT_OWNED_ROOT_FILES. Delimiter='/' keeps the listing to the prefix
+    // root, so a large sessions/ tree doesn't inflate the call.
+    const existingRoot = new Set<string>();
+    const rootList = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: destPrefix,
+        Delimiter: '/',
+      }),
+    );
+    for (const obj of rootList.Contents ?? []) {
+      if (obj.Key) existingRoot.add(obj.Key.slice(destPrefix.length));
+    }
+
     let copied = 0;
     let continuationToken: string | undefined;
     do {
@@ -371,6 +401,8 @@ export class S3FileGateway extends IFileGateway {
         const rel = obj.Key.slice(srcPrefix.length);
         if (!rel) continue;
         if (AGENT_OWNED_PREFIXES.some((p) => rel.startsWith(p))) continue;
+        // Identity files are copy-if-missing: never clobber a customized one.
+        if (AGENT_OWNED_ROOT_FILES.has(rel) && existingRoot.has(rel)) continue;
         // Skip legacy `.agent/*` keys from old template installs — they
         // map to `.agent/.agent/*` on the pod and runtime ignores them.
         if (rel.startsWith('.agent/')) continue;

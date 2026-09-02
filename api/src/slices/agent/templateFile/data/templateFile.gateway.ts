@@ -20,7 +20,9 @@ import {
   ITemplateFileUpload,
 } from '../domain/templateFile.types';
 
-const MAX_BYTES = 256 * 1024;
+// 1 MiB — matches the agent file gateway cap (CLEAN-56); a template SOUL.md
+// must fit whatever an agent-level SOUL.md is allowed to hold.
+const MAX_BYTES = 1024 * 1024;
 const ALLOWED_WRITE_EXT = new Set(['.md', '.json']);
 
 @Injectable()

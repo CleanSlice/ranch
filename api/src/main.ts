@@ -3,7 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as fs from 'fs';
 
-import type { Request } from 'express';
+import { json, urlencoded, type Request } from 'express';
 
 import { AppModule } from './app.module';
 import { ErrorHandlingInterceptor } from './slices/setup/error/error-handling.interceptor';
@@ -28,6 +28,13 @@ process.on('uncaughtException', (err) => {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Express defaults to a ~100KB json body — smaller than the 1 MiB file
+  // cap in the file gateways, so large SOUL.md saves died with 413 before
+  // ever reaching the size check (CLEAN-56). 2mb leaves headroom over the
+  // gateway cap, which stays the real limit.
+  app.use(json({ limit: '2mb' }));
+  app.use(urlencoded({ extended: true, limit: '2mb' }));
 
   app.useGlobalInterceptors(new ErrorHandlingInterceptor());
 

@@ -70,6 +70,9 @@ export interface IAgentData {
   workflowId: string | null;
   /** Null ⇒ the agent has never been deployed. */
   firstDeployedAt: string | null;
+  /** When the current/last deploy was started — every start/restart stamps
+   *  it. Pair with launchContext to render "restarted N ago". */
+  lastDeployStartedAt: string | null;
   launchContext: LaunchContextTypes | null;
   /** When the running pod last pulled its file working copy from S3 (at
    *  boot). Null ⇒ not restarted since the field shipped. */

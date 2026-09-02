@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useTimeAgoIntl } from '@vueuse/core';
 import {
   IconAlertTriangle,
   IconDotsVertical,
@@ -96,6 +97,34 @@ const runtimeOffline = computed(
 
 const lifecycleError = computed(() => restartError.value || toggleError.value);
 
+// "restarted 2m ago" (CLEAN-59): the badge alone can't tell the operator a
+// restart actually happened — launchContext is historical ("why the LAST
+// deploy ran", stays 'restart' forever after the first restart) and the
+// deploying phase lasts seconds, so a snapshot look always lands on
+// status=running. The moment of the last deploy is the missing piece.
+const { locale } = useI18n();
+const deployAgo = useTimeAgoIntl(
+  () => new Date(agent.value?.lastDeployStartedAt ?? Date.now()),
+  { locale: locale.value },
+);
+const deployHint = computed(() => {
+  if (!agent.value?.lastDeployStartedAt) return null;
+  const verb =
+    agent.value.launchContext === 'restart' ? 'restarted' : 'started';
+  return `${verb} ${deployAgo.value}`;
+});
+const deployHintTitle = computed(() => {
+  const a = agent.value;
+  if (!a?.lastDeployStartedAt) return undefined;
+  const parts = [
+    `Last deploy started ${formatDateTime(a.lastDeployStartedAt)}`,
+  ];
+  // lastPullAt = the NEW pod registered and took its S3 file copy — the
+  // definitive "restart completed and files picked up" proof.
+  if (a.lastPullAt) parts.push(`files picked up ${formatDateTime(a.lastPullAt)}`);
+  return parts.join(' · ');
+});
+
 // Delete lives in the overflow menu rather than beside Edit: it is the one
 // action in this row you cannot undo, and it should not sit one mis-click
 // away from the one you reach for most.
@@ -177,6 +206,13 @@ async function onRemove() {
           title="Pod is up but the runtime hasn't connected to the bridle hub yet"
         >
           runtime offline
+        </span>
+        <span
+          v-if="deployHint"
+          class="shrink-0 text-xs text-muted-foreground"
+          :title="deployHintTitle"
+        >
+          {{ deployHint }}
         </span>
 
         <div class="flex-1" />

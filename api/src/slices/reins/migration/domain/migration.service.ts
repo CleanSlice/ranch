@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { IKnowledgeGateway } from '../../knowledge/domain/knowledge.gateway';
 import { KnowledgeService } from '../../knowledge/domain/knowledge.service';
-import { IKnowledgeData } from '../../knowledge/domain/knowledge.types';
+import { IKnowledgeRecord } from '../../knowledge/domain/knowledge.types';
 import { SourceService } from '../../source/domain/source.service';
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
@@ -92,7 +92,7 @@ export class MigrationService implements OnApplicationBootstrap {
     }
   }
 
-  private async migrateBase(base: IKnowledgeData): Promise<void> {
+  private async migrateBase(base: IKnowledgeRecord): Promise<void> {
     if (base.migrationState !== 'inProgress') {
       // Requeue BEFORE marking inProgress: a crash between the two leaves
       // the base notStarted with some sources queued, which a restart

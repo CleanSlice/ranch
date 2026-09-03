@@ -58,7 +58,12 @@ import type {
   QueryKnowledgeData,
   QueryKnowledgeResponse,
   GetKnowledgeSourcesData,
+  GetKnowledgeSourcesResponse,
   AddKnowledgeSourceData,
+  GetKnowledgeSourceImportsData,
+  GetKnowledgeSourceImportsResponse,
+  ExportKnowledgeSourcesData,
+  GetKnowledgeSourceContentData,
   ReindexKnowledgeSourceData,
   AddKnowledgeFileSourcesData,
   AddKnowledgeFileSourcesResponse,
@@ -1164,13 +1169,13 @@ export class KnowledgesService {
 
 export class KnowledgeSourcesService {
   /**
-   * List sources
+   * List sources (paginated)
    */
   public static getKnowledgeSources<ThrowOnError extends boolean = false>(
     options: Options<GetKnowledgeSourcesData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).get<
-      unknown,
+      GetKnowledgeSourcesResponse,
       unknown,
       ThrowOnError
     >({
@@ -1197,6 +1202,57 @@ export class KnowledgeSourcesService {
         "Content-Type": null,
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Background imports for this knowledge (running and recent)
+   * Progress of archive imports started through from-archive. Jobs are kept in memory for an hour after they finish.
+   */
+  public static getKnowledgeSourceImports<ThrowOnError extends boolean = false>(
+    options: Options<GetKnowledgeSourceImportsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetKnowledgeSourceImportsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/imports",
+      ...options,
+    });
+  }
+
+  /**
+   * Download selected sources as one zip
+   * Selection is either an explicit `ids` list or the same filter the list takes, so "select all" travels as a filter rather than every id. File and text sources become entries; url sources are recorded in the `_ranch-export.yaml` manifest, whose extension the archive importer skips so the zip round-trips through from-archive.
+   */
+  public static exportKnowledgeSources<ThrowOnError extends boolean = false>(
+    options: Options<ExportKnowledgeSourcesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/export",
+      ...options,
+    });
+  }
+
+  /**
+   * Stream the stored bytes of a file or text source
+   * Streams the file straight from S3 (or the text body from the row). Not available for url sources - open the url itself.
+   */
+  public static getKnowledgeSourceContent<ThrowOnError extends boolean = false>(
+    options: Options<GetKnowledgeSourceContentData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/{sourceId}/content",
+      ...options,
     });
   }
 
@@ -1257,7 +1313,7 @@ export class KnowledgeSourcesService {
 
   /**
    * Bulk-import sources from a zip archive
-   * Accepts a .zip, extracts every ingestable file (pdf, docx, xlsx, txt, html, ...), and creates one file-type source per entry. Upload runs in the background and streams each entry to S3; the response returns immediately with the detected file count. Indexing into LightRAG happens through the normal reindex flow.
+   * Accepts a .zip, extracts every ingestable file (pdf, docx, xlsx, txt, html, ...), and creates one file-type source per entry. Upload runs in the background and streams each entry to S3; the response returns immediately with the detected file count and a job id to poll via GET .../sources/imports. Indexing into LightRAG happens through the normal reindex flow. Max size: KNOWLEDGE_ARCHIVE_MAX_BYTES (default 4 GiB).
    */
   public static addKnowledgeSourcesFromArchive<
     ThrowOnError extends boolean = false,

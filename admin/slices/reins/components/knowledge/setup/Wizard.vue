@@ -28,7 +28,7 @@ const steps = computed<IStep[]>(() => [
     id: 'embedding-credential',
     title: 'Create an embedding LLM credential',
     description:
-      'Knowledge needs a model that turns source chunks into vectors (e.g. OpenAI text-embedding-3-small).',
+      'Knowledge needs a model that turns source chunks into vectors (e.g. OpenAI text-embedding-3-small). Anthropic has no embeddings API, so a Claude credential cannot fill this role.',
     done: props.setup.hasEmbeddingCredential,
     cta: { label: 'Create embedding credential', to: '/llms/create?capability=embedding' },
   },
@@ -44,7 +44,7 @@ const steps = computed<IStep[]>(() => [
     id: 'service-config',
     title: 'Configure the Knowledge service',
     description:
-      'Set the LightRAG URL, S3 bucket, pick chat and embedding credentials, then turn the service on.',
+      'Set the LightRAG URL, S3 bucket and chat credential, then turn the service on. The embedding model comes from the LightRAG container env, not from here.',
     done: configStepDone.value,
     cta: { label: 'Open settings', to: '/settings/knowledge' },
   },

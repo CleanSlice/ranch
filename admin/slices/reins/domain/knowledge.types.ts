@@ -23,6 +23,7 @@ export type IndexStatus =
   | 'empty'
   | 'partial';
 export type SourceType = 'file' | 'url' | 'text';
+export type SourceIndexStatus = 'indexed' | 'pending' | 'failed';
 export type KnowledgeQueryMode = 'hybrid' | 'local' | 'global' | 'naive';
 
 export type InstanceState =
@@ -41,6 +42,12 @@ export interface IKnowledge {
   indexError: string | null;
   indexedAt: string | null;
   indexStartedAt: string | null;
+  /** Index progress over the attached sources, as counted by the API. */
+  sourceCount: number;
+  indexedCount: number;
+  failedCount: number;
+  /** Handed to LightRAG, not finished yet. Not an error, just not done. */
+  processingCount: number;
   instanceState: InstanceState;
   instanceError: string | null;
   migrationState: MigrationState;
@@ -70,12 +77,67 @@ export interface ISource {
   mimeType: string | null;
   content: string | null;
   sizeBytes: number | null;
+  indexed: boolean;
+  indexStatus: SourceIndexStatus;
   /** "indexed" means searchable — not merely handed over. */
   indexState: SourceIndexState;
   indexError: string | null;
   indexedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ISourceFilter {
+  page: number;
+  perPage: number;
+  search?: string;
+  status?: SourceIndexStatus;
+  type?: SourceType;
+}
+
+export interface ISourcePage {
+  items: ISource[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
+export type ImportJobStatus = 'running' | 'done' | 'failed';
+
+/** Progress of one background bulk import (archive). */
+export interface IImportJob {
+  id: string;
+  knowledgeId: string;
+  kind: 'archive';
+  status: ImportJobStatus;
+  detected: number;
+  added: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+/**
+ * What the Export button sends. Either the ticked ids, or the same filter the
+ * table is showing - "select all" must not mean "the 50 rows on this page",
+ * and 356 ids in a query string is not a URL.
+ */
+export interface ISourceExportSelection {
+  ids?: string[];
+  search?: string;
+  status?: SourceIndexStatus;
+  type?: SourceType;
+}
+
+export type SourceContentDisposition = 'inline' | 'attachment';
+
+/** Bytes of a source as fetched for preview or download. */
+export interface ISourceContent {
+  blob: Blob;
+  filename: string;
+  contentType: string;
 }
 
 export interface ICreateKnowledgeInput {
@@ -97,14 +159,30 @@ export interface IKnowledgeSetupStatus {
   isHealthy: boolean;
 }
 
+/**
+ * What LightRAG is actually running, read from its own /health. Its bindings
+ * are resolved from container env at startup, so this is the effective config
+ * regardless of what is selected in the admin.
+ */
+export interface IKnowledgeRuntimeConfig {
+  llmBinding: string | null;
+  llmModel: string | null;
+  embeddingBinding: string | null;
+  embeddingModel: string | null;
+  embeddingBindingHost: string | null;
+}
+
 export interface IKnowledgeStatus {
   enabled: boolean;
   setup: IKnowledgeSetupStatus;
+  runtime: IKnowledgeRuntimeConfig | null;
 }
 
 export interface ISourceArchiveResult {
   detected: number;
   started: boolean;
+  /** Id of the background job to follow via listImports. */
+  jobId: string;
 }
 
 export interface ISourceSitemapResult {

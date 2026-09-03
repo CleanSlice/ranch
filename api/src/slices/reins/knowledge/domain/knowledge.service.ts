@@ -3,11 +3,13 @@ import {
   Logger,
   NotFoundException,
   OnApplicationBootstrap,
+  OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { IKnowledgeGateway } from './knowledge.gateway';
 import {
   IKnowledgeData,
+  IKnowledgeRecord,
   ICreateKnowledgeData,
   IndexStatusTypes,
   IUpdateKnowledgeData,
@@ -22,12 +24,11 @@ import {
   IGraphData,
 } from './knowledge.types';
 import { SourceService } from '../../source/domain/source.service';
-import { ISourceData } from '../../source/domain/source.types';
+import { ISourceCounts, ISourceData } from '../../source/domain/source.types';
+import { staleIndexAfterMs } from '../../source/domain/indexBudget';
 import { deriveIndexStatus } from './knowledge.status';
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
-
-const STALE_INDEX_AFTER_MS = 10 * 60 * 1000;
 
 const LABELS_DEFAULT_LIMIT = 50;
 const LABELS_MAX_LIMIT = 200;
@@ -35,6 +36,13 @@ const LABELS_MAX_LIMIT = 200;
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+const NO_SOURCES: ISourceCounts = {
+  total: 0,
+  indexed: 0,
+  failed: 0,
+  processing: 0,
+};
 
 /**
  * The retrieval service's canned response when retrieval found no context at
@@ -71,7 +79,7 @@ export function resolveReference(
 }
 
 @Injectable()
-export class KnowledgeService implements OnApplicationBootstrap {
+export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
   private readonly logger = new Logger(KnowledgeService.name);
   private readonly inflightIndexing = new Map<string, Promise<void>>();
 
@@ -86,8 +94,46 @@ export class KnowledgeService implements OnApplicationBootstrap {
     void this.reconcileInstances();
   }
 
-  list(): Promise<IKnowledgeData[]> {
-    return this.gateway.findAll();
+  /**
+   * An index run lives in this process and nowhere else, so a deploy or a
+   * crash takes it with it while the row keeps saying `indexing`. Nothing ever
+   * cleared that, and since the admin disables the Index button on `indexing`,
+   * the base became unindexable until someone called the API by hand.
+   *
+   * Whatever this process finds in `indexing` at startup therefore belongs to
+   * a run that no longer exists: release it. LightRAG keeps working on
+   * whatever was already handed to it, and the sources keep their resume
+   * handles, so the next run continues rather than starting over.
+   */
+  async onModuleInit(): Promise<void> {
+    let released = 0;
+    try {
+      const records = await this.gateway.findAll();
+      for (const record of records) {
+        if (record.indexStatus !== 'indexing') continue;
+        await this.gateway.updateIndexState(record.id, {
+          indexStatus: record.indexedAt ? 'ready' : 'idle',
+        });
+        released += 1;
+      }
+    } catch (err) {
+      // Never block API startup over this: a stuck badge is survivable, a
+      // boot loop is not.
+      this.logger.warn(
+        `could not release abandoned index runs: ${errorMessage(err)}`,
+      );
+      return;
+    }
+    if (released > 0) {
+      this.logger.warn(
+        `released ${released} knowledge base(s) left in 'indexing' by a previous process`,
+      );
+    }
+  }
+
+  async list(): Promise<IKnowledgeData[]> {
+    const records = await this.gateway.findAll();
+    return this.withCounts(records);
   }
 
   listPage(params: IFilterKnowledgeParams): Promise<IKnowledgePage> {
@@ -97,7 +143,8 @@ export class KnowledgeService implements OnApplicationBootstrap {
   async get(id: string): Promise<IKnowledgeData> {
     const k = await this.gateway.findById(id);
     if (!k) throw new NotFoundException(`Knowledge ${id} not found`);
-    return k;
+    const [withCounts] = await this.withCounts([k]);
+    return withCounts;
   }
 
   /** The read the console sees: indexStatus derived from the sources. */
@@ -124,12 +171,50 @@ export class KnowledgeService implements OnApplicationBootstrap {
     id: string,
     data: IUpdateKnowledgeData,
   ): Promise<IKnowledgeData> {
-    await this.get(id);
-    return this.gateway.update(id, data);
+    await this.requireRecord(id);
+    const updated = await this.gateway.update(id, data);
+    const [withCounts] = await this.withCounts([updated]);
+    return withCounts;
+  }
+
+  /** Existence check without the counts round trip that get() adds. */
+  private async requireRecord(id: string): Promise<IKnowledgeRecord> {
+    const k = await this.gateway.findById(id);
+    if (!k) throw new NotFoundException(`Knowledge ${id} not found`);
+    return k;
+  }
+
+  /**
+   * Source progress is owned by the source slice; ask it once for the whole
+   * batch so listing N knowledges costs one round of counts, not N.
+   */
+  private async withCounts(
+    records: IKnowledgeRecord[],
+  ): Promise<IKnowledgeData[]> {
+    if (records.length === 0) return [];
+    const counts = await this.sources.countByKnowledgeIds(
+      records.map((r) => r.id),
+    );
+    return records.map((r) =>
+      this.attachCounts(r, counts.get(r.id) ?? NO_SOURCES),
+    );
+  }
+
+  private attachCounts(
+    record: IKnowledgeRecord,
+    counts: ISourceCounts,
+  ): IKnowledgeData {
+    return {
+      ...record,
+      sourceCount: counts.total,
+      indexedCount: counts.indexed,
+      failedCount: counts.failed,
+      processingCount: counts.processing,
+    };
   }
 
   async delete(id: string): Promise<void> {
-    const record = await this.get(id);
+    const record = await this.requireRecord(id);
     // Order matters: the area's content is removed while the instance can
     // still serve the delete calls, then the instance goes.
     try {
@@ -159,7 +244,7 @@ export class KnowledgeService implements OnApplicationBootstrap {
    * start-up reconciliation and the migration — provision itself is
    * idempotent, so none of them can double-provision.
    */
-  async provisionInstance(k: IKnowledgeData): Promise<void> {
+  async provisionInstance(k: IKnowledgeRecord): Promise<void> {
     try {
       const status = await this.instances.provision({
         knowledgeId: k.id,
@@ -222,11 +307,16 @@ export class KnowledgeService implements OnApplicationBootstrap {
   }
 
   async startIndex(knowledgeId: string): Promise<void> {
-    const k = await this.get(knowledgeId);
+    const k = await this.requireRecord(knowledgeId);
 
     if (k.indexStatus === 'indexing' && k.indexStartedAt) {
       const ageMs = Date.now() - k.indexStartedAt.getTime();
-      if (ageMs < STALE_INDEX_AFTER_MS) {
+      // Scaled to how much text the base holds, not how many rows: a single
+      // 1 MB manual outlasts a hundred order forms, and offering a restart
+      // while the first run is still waiting would set two runs fighting over
+      // the same sources.
+      const sources = await this.sources.findByKnowledge(knowledgeId);
+      if (ageMs < staleIndexAfterMs(sources)) {
         throw new Error(
           `Knowledge ${knowledgeId} already indexing (started ${Math.round(ageMs / 1000)}s ago)`,
         );
@@ -267,10 +357,15 @@ export class KnowledgeService implements OnApplicationBootstrap {
     const complete = k.migrationState === 'done';
 
     // An empty base does not get to generate an answer from no context —
-    // and the retrieval service is not even asked (FR-003).
+    // and the retrieval service is not even asked (FR-003). Only once the
+    // base is isolated, though: pre-migration bases share one index, and
+    // their rows can lag behind what that index actually holds (a stamp
+    // lost to an interrupted run). Vetoing on the rows there would silence
+    // content LightRAG still answers with, so until 'done' the query goes
+    // through exactly as it did before isolation shipped.
     const sources = await this.sources.findByKnowledge(knowledgeId);
     const hasIndexed = sources.some((s) => s.indexState === 'indexed');
-    if (!hasIndexed) {
+    if (complete && !hasIndexed) {
       return {
         answer: null,
         reason: 'no_relevant_content',
@@ -351,60 +446,52 @@ export class KnowledgeService implements OnApplicationBootstrap {
   private async runIndex(knowledgeId: string): Promise<void> {
     try {
       const sources = await this.sources.findByKnowledge(knowledgeId);
-      const failures: { sourceId: string; name: string; error: string }[] = [];
-      const previouslyIndexed = sources.filter(
-        (s) => s.indexState === 'indexed',
-      ).length;
-      let newlyIndexed = 0;
-      for (const source of sources) {
-        if (source.indexState === 'indexed') continue;
-        try {
-          const final = await this.sources.indexSourceAndWait(source);
-          if (final.indexState === 'indexed') {
-            newlyIndexed += 1;
-          } else {
-            failures.push({
-              sourceId: source.id,
-              name: source.name,
-              error: final.indexError ?? 'processing failed',
-            });
-          }
-        } catch (err) {
-          // Per-source failures are isolated so one bad URL (404, empty
-          // body, etc.) does not strand the rest of the batch. Each source
-          // carries its own reason (FR-030/FR-032); the aggregate summary
-          // stays for the base-level view.
-          const message = errorMessage(err);
-          failures.push({
-            sourceId: source.id,
-            name: source.name,
-            error: message,
-          });
-          this.logger.warn(
-            `indexSource failed for ${source.id} (${source.name}): ${message}`,
-          );
-        }
+      // Every source goes through the gateway on every run, including ones
+      // already marked indexed: the gateway re-checks them against LightRAG
+      // and re-ingests anything the pipeline never actually processed. That is
+      // what makes the Index button a real retry instead of a no-op.
+      const outcomes = await this.sources.indexSources(sources);
+
+      const failures = outcomes.filter((o) => o.status === 'failed');
+      const stillProcessing = outcomes.filter((o) => o.status === 'pending');
+      for (const failure of failures) {
+        this.logger.warn(
+          `indexing failed for ${failure.sourceId} (${failure.name}): ${failure.error ?? 'unknown error'}`,
+        );
       }
+      if (stillProcessing.length > 0) {
+        this.logger.log(
+          `${stillProcessing.length} source(s) still in LightRAG's pipeline; the next run will confirm them`,
+        );
+      }
+
+      // Only genuine failures go into indexError. Documents the run stopped
+      // waiting for are not errors: LightRAG is still working on them, they
+      // show as `pending` on their own rows, and painting the whole base red
+      // over them is what made every large re-index look like an outage.
       const summary =
         failures.length === 0
           ? null
           : `${failures.length} source(s) failed: ${failures
               .slice(0, 5)
-              .map((f) => `${f.name} (${f.error})`)
+              .map((f) => `${f.name} (${f.error ?? 'unknown error'})`)
               .join('; ')}${failures.length > 5 ? '; ...' : ''}`;
-      const totalIndexed = previouslyIndexed + newlyIndexed;
-      // 'ready' when at least one document is indexed OR the KB is empty
-      // (nothing to do is a trivially "ready" state). 'failed' only when
-      // there are sources but none ever indexed - so the UI doesn't claim
-      // a KB is queryable when it physically has zero documents.
+      const indexedCount = outcomes.filter((o) => o.indexed).length;
+      // 'ready' means LightRAG confirmed at least one document as processed,
+      // or the base is empty (nothing to do is trivially ready). Accepting an
+      // upload is not enough: that is what used to show `ready` on a base with
+      // an empty graph that answered every query with no context. A run that
+      // only has documents left in the pipeline is not a failed run either -
+      // it failed nothing, so it does not get the failed badge.
+      const nothingWorked = indexedCount === 0 && stillProcessing.length === 0;
       const status: IndexStatusTypes =
-        totalIndexed > 0 || sources.length === 0 ? 'ready' : 'failed';
+        nothingWorked && sources.length > 0 ? 'failed' : 'ready';
       await this.gateway.updateIndexState(knowledgeId, {
         indexStatus: status,
-        // Bump indexedAt only when this run actually added something.
+        // Bump indexedAt only when something is actually searchable now.
         // Preserves the timestamp of the last successful run when the
         // current run failed everything but earlier runs had succeeded.
-        indexedAt: newlyIndexed > 0 ? new Date() : undefined,
+        indexedAt: indexedCount > 0 ? new Date() : undefined,
         indexError: summary,
       });
     } catch (err) {

@@ -125,7 +125,7 @@ async function onRemove(item: IKnowledge) {
             <TableCell @click.stop>
               <div class="flex justify-end gap-2">
                 <Button size="sm" variant="outline" as-child>
-                  <NuxtLink :to="`/knowledges/${item.id}/edit`">Edit</NuxtLink>
+                  <NuxtLink :to="`/knowledges/${item.id}`">Open</NuxtLink>
                 </Button>
                 <Button
                   size="sm"

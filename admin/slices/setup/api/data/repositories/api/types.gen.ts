@@ -183,6 +183,22 @@ export type KnowledgeListItemDto = {
   indexError: string | null;
   indexedAt: string | null;
   indexStartedAt: string | null;
+  /**
+   * Sources attached to this knowledge
+   */
+  sourceCount: number;
+  /**
+   * Sources LightRAG confirmed as processed
+   */
+  indexedCount: number;
+  /**
+   * Sources whose last index run recorded an error
+   */
+  failedCount: number;
+  /**
+   * Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.
+   */
+  processingCount: number;
   instanceState: "absent" | "starting" | "ready" | "failed" | "stopping";
   instanceError: string | null;
   migrationState: "notStarted" | "inProgress" | "done" | "failed";
@@ -264,6 +280,63 @@ export type KnowledgeQueryResultDto = {
   references: Array<KnowledgeQueryReferenceDto>;
 };
 
+export type SourceDto = {
+  id: string;
+  knowledgeId: string;
+  type: "file" | "url" | "text";
+  name: string;
+  url: string | null;
+  mimeType: string | null;
+  content: string | null;
+  sizeBytes: number | null;
+  /**
+   * True when indexStatus is "indexed". Kept for older callers.
+   */
+  indexed: boolean;
+  indexStatus: "indexed" | "pending" | "failed";
+  indexState: "queued" | "processing" | "indexed" | "failed";
+  /**
+   * Error from the last index run, null once the source indexes.
+   */
+  indexError: string | null;
+  indexedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SourcePageDto = {
+  items: Array<SourceDto>;
+  /**
+   * Rows matching the filter across all pages
+   */
+  total: number;
+  page: number;
+  perPage: number;
+};
+
+export type ImportJobDto = {
+  id: string;
+  knowledgeId: string;
+  kind: "archive";
+  status: "running" | "done" | "failed";
+  /**
+   * Ingestable entries found up front
+   */
+  detected: number;
+  added: number;
+  /**
+   * Entries skipped because a source with that name exists
+   */
+  skipped: number;
+  failed: number;
+  /**
+   * First failures as "<name>: <reason>", capped
+   */
+  errors: Array<string>;
+  startedAt: string;
+  finishedAt: string | null;
+};
+
 export type CreateSourceDto = {
   type: "file" | "url" | "text";
   name: string;
@@ -302,10 +375,14 @@ export type AddFromSitemapResultDto = {
 
 export type AddFromArchiveResultDto = {
   /**
-   * Number of ingestable files detected in the archive. Import runs in the background; refresh the sources list to watch them appear.
+   * Number of ingestable files detected in the archive. Import runs in the background; poll GET .../sources/imports for progress.
    */
   detected: number;
   started: boolean;
+  /**
+   * Id of the background import job (see GET .../sources/imports)
+   */
+  jobId: string;
 };
 
 export type AgentDto = {
@@ -2127,13 +2204,25 @@ export type GetKnowledgeSourcesData = {
   path: {
     knowledgeId: string;
   };
-  query?: never;
+  query?: {
+    /**
+     * Case-insensitive substring match on the source name
+     */
+    search?: string;
+    status?: "indexed" | "pending" | "failed";
+    type?: "file" | "url" | "text";
+    page?: number;
+    perPage?: number;
+  };
   url: "/knowledges/{knowledgeId}/sources";
 };
 
 export type GetKnowledgeSourcesResponses = {
-  200: unknown;
+  200: SourcePageDto;
 };
+
+export type GetKnowledgeSourcesResponse =
+  GetKnowledgeSourcesResponses[keyof GetKnowledgeSourcesResponses];
 
 export type AddKnowledgeSourceData = {
   body: CreateSourceDto;
@@ -2146,6 +2235,65 @@ export type AddKnowledgeSourceData = {
 
 export type AddKnowledgeSourceResponses = {
   201: unknown;
+};
+
+export type GetKnowledgeSourceImportsData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/imports";
+};
+
+export type GetKnowledgeSourceImportsResponses = {
+  200: Array<ImportJobDto>;
+};
+
+export type GetKnowledgeSourceImportsResponse =
+  GetKnowledgeSourceImportsResponses[keyof GetKnowledgeSourceImportsResponses];
+
+export type ExportKnowledgeSourcesData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: {
+    /**
+     * Comma-separated source ids. When present the filter fields are ignored.
+     */
+    ids?: string;
+    /**
+     * Case-insensitive substring match on the source name
+     */
+    search?: string;
+    status?: "indexed" | "pending" | "failed";
+    type?: "file" | "url" | "text";
+  };
+  url: "/knowledges/{knowledgeId}/sources/export";
+};
+
+export type ExportKnowledgeSourcesResponses = {
+  200: unknown;
+};
+
+export type GetKnowledgeSourceContentData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: {
+    /**
+     * "inline" lets the browser render what it can (pdf, images, text); "attachment" forces a download.
+     */
+    disposition?: "inline" | "attachment";
+  };
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/content";
+};
+
+export type GetKnowledgeSourceContentResponses = {
+  200: unknown;
 };
 
 export type ReindexKnowledgeSourceData = {

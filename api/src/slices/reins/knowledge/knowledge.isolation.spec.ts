@@ -42,6 +42,10 @@ function base(p: Partial<IKnowledgeData> & { id: string }): IKnowledgeData {
     instanceError: null,
     instanceEndpoint: null,
     migrationState: 'done',
+    sourceCount: 0,
+    indexedCount: 0,
+    failedCount: 0,
+    processingCount: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...p,
@@ -58,6 +62,8 @@ function source(
     mimeType: null,
     content: 'text',
     sizeBytes: null,
+    indexed: true,
+    indexStatus: 'indexed',
     indexState: 'indexed',
     indexError: null,
     indexedAt: new Date(0),
@@ -129,6 +135,19 @@ function makeHarness(bases: IKnowledgeData[], sources: ISourceData[]): Harness {
     findByKnowledge: jest.fn(async (knowledgeId: string) =>
       sources.filter((s) => s.knowledgeId === knowledgeId),
     ),
+    countByKnowledgeIds: jest.fn(async (knowledgeIds: string[]) => {
+      const counts = new Map();
+      for (const id of knowledgeIds) {
+        const own = sources.filter((s) => s.knowledgeId === id);
+        counts.set(id, {
+          total: own.length,
+          indexed: own.filter((s) => s.indexStatus === 'indexed').length,
+          failed: own.filter((s) => s.indexStatus === 'failed').length,
+          processing: 0,
+        });
+      }
+      return counts;
+    }),
   } as unknown as SourceService;
 
   const instances = {} as IInstanceGateway;

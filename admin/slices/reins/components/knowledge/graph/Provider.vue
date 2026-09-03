@@ -3,6 +3,7 @@ import Sigma from 'sigma';
 import type { SigmaNodeEventPayload, SigmaEdgeEventPayload } from 'sigma/types';
 import Graph from 'graphology';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
+import FA2Layout from 'graphology-layout-forceatlas2/worker';
 import {
   ComboboxAnchor,
   ComboboxContent,
@@ -36,8 +37,17 @@ const selectedNode = ref<GraphNodeDto | null>(null);
 const selectedEdge = ref<GraphEdgeDto | null>(null);
 const nodes = ref<GraphNodeDto[]>([]);
 
+// How long the layout is allowed to keep running after a graph is drawn.
+// It runs in a worker, so this only bounds how long positions keep moving.
+const LAYOUT_RUN_MS = 4000;
+// Above this many nodes the O(n^2) repulsion pass gets a Barnes-Hut
+// approximation; below it the exact pass is cheaper than the quadtree.
+const BARNES_HUT_FROM_NODES = 50;
+
 let renderer: Sigma | null = null;
 let graph: Graph | null = null;
+let layout: FA2Layout | null = null;
+let layoutTimer: ReturnType<typeof setTimeout> | null = null;
 const nodeIndex = new Map<string, GraphNodeDto>();
 const edgeIndex = new Map<string, GraphEdgeDto>();
 
@@ -105,6 +115,8 @@ function renderGraph(data: GraphDto): void {
   ensureRenderer();
   if (!graph) return;
 
+  // The worker mutates this graph; it has to go before the contents do.
+  stopLayout();
   graph.clear();
   nodeIndex.clear();
   edgeIndex.clear();
@@ -114,15 +126,20 @@ function renderGraph(data: GraphDto): void {
 
   const nodeSize = data.nodes.length > 50 ? 6 : data.nodes.length > 20 ? 8 : 10;
 
-  for (const node of data.nodes) {
-    graph.addNode(node.id, {
-      x: Math.random(),
-      y: Math.random(),
+  // Seeded on a circle rather than at random: the layout starts from an
+  // untangled state, so it converges in far fewer passes and the first frame
+  // is already readable instead of a knot.
+  const g = graph;
+  data.nodes.forEach((node, i) => {
+    const angle = (2 * Math.PI * i) / data.nodes.length;
+    g.addNode(node.id, {
+      x: Math.cos(angle),
+      y: Math.sin(angle),
       size: nodeSize,
       label: node.label,
       color: colorForType(node.entityType),
     });
-  }
+  });
 
   for (const edge of data.edges) {
     if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) continue;
@@ -134,19 +151,51 @@ function renderGraph(data: GraphDto): void {
   }
 
   if (graph.order > 0) {
-    const settings = forceAtlas2.inferSettings(graph);
-    forceAtlas2.assign(graph, {
-      iterations: 200,
-      settings: {
-        ...settings,
-        gravity: 1,
-        scalingRatio: 10,
-      },
-    });
     normalizeAndFit();
+    startLayout();
   }
 
   renderer?.refresh();
+}
+
+/**
+ * ForceAtlas2 in a web worker. The synchronous `forceAtlas2.assign` this
+ * replaces ran 200 passes on the main thread, which froze the whole tab for
+ * ~15s on a dense graph (repulsion is quadratic in nodes, attraction linear in
+ * edges). The worker keeps the UI interactive while positions settle, and the
+ * run is cut off after LAYOUT_RUN_MS so it cannot spin forever.
+ */
+function startLayout(): void {
+  stopLayout();
+  if (!graph || graph.order === 0) return;
+
+  const settings = forceAtlas2.inferSettings(graph);
+  layout = new FA2Layout(graph, {
+    settings: {
+      ...settings,
+      gravity: 1,
+      scalingRatio: 10,
+      barnesHutOptimize: graph.order > BARNES_HUT_FROM_NODES,
+    },
+  });
+  layout.start();
+
+  layoutTimer = setTimeout(() => {
+    stopLayout();
+    normalizeAndFit();
+    renderer?.refresh();
+  }, LAYOUT_RUN_MS);
+}
+
+function stopLayout(): void {
+  if (layoutTimer !== null) {
+    clearTimeout(layoutTimer);
+    layoutTimer = null;
+  }
+  if (layout) {
+    layout.kill();
+    layout = null;
+  }
 }
 
 function normalizeAndFit(): void {
@@ -253,6 +302,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  stopLayout();
   renderer?.kill();
   renderer = null;
   graph = null;

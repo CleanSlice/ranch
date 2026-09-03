@@ -68,7 +68,12 @@ function makeHarness(boundIds: string[]): Harness {
   const findExistingByIds = jest.fn(async (ids: string[]) =>
     ids
       .filter((id) => id === 'k1')
-      .map((id) => ({ id, name: 'Relays', description: 'relay facts' })),
+      .map((id) => ({
+        id,
+        name: 'Relays',
+        description: 'relay facts',
+        migrationState: 'done',
+      })),
   );
   const knowledgeGateway = {
     findExistingByIds,
@@ -196,7 +201,12 @@ describe('FR-006 — a multi-base answer attributes each part', () => {
     } as unknown as ITemplateGateway;
     const knowledgeGateway = {
       findExistingByIds: jest.fn(async (ids: string[]) =>
-        ids.map((id) => ({ id, name: `Base ${id}`, description: null })),
+        ids.map((id) => ({
+          id,
+          name: `Base ${id}`,
+          description: null,
+          migrationState: 'done',
+        })),
       ),
     } as unknown as IKnowledgeGateway;
 
@@ -246,7 +256,12 @@ describe('FR-006 — a multi-base answer attributes each part', () => {
     } as unknown as ITemplateGateway;
     const knowledgeGateway = {
       findExistingByIds: jest.fn(async (ids: string[]) =>
-        ids.map((id) => ({ id, name: `Base ${id}`, description: null })),
+        ids.map((id) => ({
+          id,
+          name: `Base ${id}`,
+          description: null,
+          migrationState: 'done',
+        })),
       ),
     } as unknown as IKnowledgeGateway;
 
@@ -264,5 +279,62 @@ describe('FR-006 — a multi-base answer attributes each part', () => {
     const text = textOf(result);
     expect(text).toContain('Base kb-two');
     expect(text).toContain('could not be reached');
+  });
+
+  test('bases still on the shared pool are asked once, not once each', async () => {
+    // Pre-migration every base answers from the same index: N queries would
+    // return N copies of one answer and pay for N retrievals.
+    const queriedIds: string[] = [];
+    const knowledgeService = {
+      query: jest.fn((knowledgeId: string) => {
+        queriedIds.push(knowledgeId);
+        return Promise.resolve({
+          answer: 'shared answer',
+          knowledgeId,
+          complete: false,
+          references: [],
+        });
+      }),
+    } as unknown as KnowledgeService;
+    const agentGateway = {
+      findById: jest.fn(() =>
+        Promise.resolve({
+          id: 'agent-1',
+          knowledgeIds: ['k1', 'kb-two'],
+          templateId: 'tpl-1',
+        }),
+      ),
+    } as unknown as IAgentGateway;
+    const templateGateway = {
+      findById: jest.fn(() => Promise.resolve(null)),
+    } as unknown as ITemplateGateway;
+    const knowledgeGateway = {
+      findExistingByIds: jest.fn((ids: string[]) =>
+        Promise.resolve(
+          ids.map((id) => ({
+            id,
+            name: `Base ${id}`,
+            description: null,
+            migrationState: 'notStarted',
+          })),
+        ),
+      ),
+    } as unknown as IKnowledgeGateway;
+
+    const tool = new KnowledgeTool(
+      knowledgeService,
+      agentGateway,
+      templateGateway,
+      knowledgeGateway,
+    );
+    const result = await tool.query(
+      { query: 'q' },
+      null,
+      agentRequest('agent-1'),
+    );
+
+    expect(queriedIds).toEqual(['k1']);
+    const parsed = JSON.parse(textOf(result)) as { answer: string };
+    expect(parsed.answer).toBe('shared answer');
   });
 });

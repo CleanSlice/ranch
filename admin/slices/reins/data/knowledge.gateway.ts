@@ -7,18 +7,42 @@ import type {
   ICreateKnowledgeInput,
   IGraph,
   IGraphLabels,
+  IImportJob,
   IKnowledge,
   IKnowledgePage,
   IKnowledgeStatus,
   IQueryResult,
   ISource,
   ISourceArchiveResult,
+  ISourceContent,
+  ISourceExportSelection,
   ISourceFilesResult,
+  ISourceFilter,
+  ISourcePage,
   ISourceSitemapResult,
   IUpdateKnowledgeInput,
   KnowledgeQueryMode,
+  SourceContentDisposition,
 } from '../domain/knowledge.types';
 import { KnowledgeMapper } from './knowledge.mapper';
+
+/**
+ * Pulls the human filename out of a Content-Disposition header, preferring
+ * the RFC 5987 `filename*` (UTF-8, survives Cyrillic) over the ASCII
+ * fallback `filename`.
+ */
+function filenameFromDisposition(header: unknown, fallback: string): string {
+  if (typeof header !== 'string') return fallback;
+  const utf8 = header.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (utf8) {
+    try {
+      return decodeURIComponent(utf8);
+    } catch {
+      // Malformed encoding: fall through to the plain filename.
+    }
+  }
+  return header.match(/filename="?([^";]+)"?/)?.[1] ?? fallback;
+}
 
 export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
   private mapper = new KnowledgeMapper();
@@ -114,12 +138,91 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
     });
   }
 
-  listSources(id: string): Promise<ISource[]> {
+  listSources(id: string, filter: ISourceFilter): Promise<ISourcePage> {
     return this.execute(async () => {
       const res = await KnowledgeSourcesService.getKnowledgeSources({
         path: { knowledgeId: id },
+        query: {
+          page: filter.page,
+          perPage: filter.perPage,
+          search: filter.search || undefined,
+          status: filter.status,
+          type: filter.type,
+        },
       });
-      return this.mapper.toSourceList(unwrapEnvelope(res.data));
+      return this.mapper.toSourcePage(unwrapEnvelope(res.data), filter);
+    });
+  }
+
+  listImports(id: string): Promise<IImportJob[]> {
+    return this.execute(async () => {
+      const res = await KnowledgeSourcesService.getKnowledgeSourceImports({
+        path: { knowledgeId: id },
+      });
+      return this.mapper.toImportJobs(unwrapEnvelope(res.data));
+    });
+  }
+
+  // Raw bytes, so the generated SDK (which expects the JSON envelope) is
+  // bypassed: axios blob response on the shared instance keeps the Bearer
+  // header, and the filename comes back in Content-Disposition.
+  fetchSourceContent(
+    id: string,
+    sourceId: string,
+    disposition: SourceContentDisposition,
+  ): Promise<ISourceContent> {
+    return this.execute(async () => {
+      const res = await apiClient.instance.get<unknown>(
+        `/knowledges/${id}/sources/${sourceId}/content`,
+        { params: { disposition }, responseType: 'blob' },
+      );
+      const blob = res.data instanceof Blob ? res.data : new Blob([]);
+      return {
+        blob,
+        filename: filenameFromDisposition(
+          res.headers['content-disposition'],
+          sourceId,
+        ),
+        contentType:
+          typeof res.headers['content-type'] === 'string'
+            ? res.headers['content-type']
+            : blob.type,
+      };
+    });
+  }
+
+  exportSources(
+    id: string,
+    selection: ISourceExportSelection,
+  ): Promise<ISourceContent> {
+    return this.execute(async () => {
+      // Ids win when present, matching the API: a tick-list and a filter can
+      // disagree by the time the request lands, and the ticks are what the
+      // user actually saw.
+      const params: Record<string, string> = {};
+      if (selection.ids && selection.ids.length > 0) {
+        params.ids = selection.ids.join(',');
+      } else {
+        if (selection.search) params.search = selection.search;
+        if (selection.status) params.status = selection.status;
+        if (selection.type) params.type = selection.type;
+      }
+      const res = await apiClient.instance.get<unknown>(
+        `/knowledges/${id}/sources/export`,
+        { params, responseType: 'blob' },
+      );
+      const blob = res.data instanceof Blob ? res.data : new Blob([]);
+      return {
+        blob,
+        filename: filenameFromDisposition(
+          res.headers['content-disposition'],
+          `${id}-sources.zip`,
+        ),
+        contentType:
+          typeof res.headers['content-type'] === 'string'
+            ? res.headers['content-type']
+            : blob.type,
+      };
     });
   }
 

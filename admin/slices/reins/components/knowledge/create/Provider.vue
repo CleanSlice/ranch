@@ -14,7 +14,7 @@ async function onSubmit(values: IKnowledgeFormValues) {
       description: values.description,
     });
     if (created) {
-      await navigateTo(`/knowledges/${created.id}/edit`);
+      await navigateTo(`/knowledges/${created.id}`);
     } else {
       await navigateTo('/knowledges');
     }

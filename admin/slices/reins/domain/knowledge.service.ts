@@ -3,16 +3,22 @@ import type {
   ICreateKnowledgeInput,
   IGraph,
   IGraphLabels,
+  IImportJob,
   IKnowledge,
   IKnowledgePage,
   IKnowledgeStatus,
   IQueryResult,
   ISource,
   ISourceArchiveResult,
+  ISourceContent,
+  ISourceExportSelection,
   ISourceFilesResult,
+  ISourceFilter,
+  ISourcePage,
   ISourceSitemapResult,
   IUpdateKnowledgeInput,
   KnowledgeQueryMode,
+  SourceContentDisposition,
 } from './knowledge.types';
 
 /**
@@ -70,8 +76,27 @@ export class KnowledgeService {
     return this.gateway.query(id, q, mode, topK);
   }
 
-  listSources(id: string): Promise<ISource[]> {
-    return this.gateway.listSources(id);
+  listSources(id: string, filter: ISourceFilter): Promise<ISourcePage> {
+    return this.gateway.listSources(id, filter);
+  }
+
+  listImports(id: string): Promise<IImportJob[]> {
+    return this.gateway.listImports(id);
+  }
+
+  fetchSourceContent(
+    id: string,
+    sourceId: string,
+    disposition: SourceContentDisposition,
+  ): Promise<ISourceContent> {
+    return this.gateway.fetchSourceContent(id, sourceId, disposition);
+  }
+
+  exportSources(
+    id: string,
+    selection: ISourceExportSelection,
+  ): Promise<ISourceContent> {
+    return this.gateway.exportSources(id, selection);
   }
 
   addTextSource(

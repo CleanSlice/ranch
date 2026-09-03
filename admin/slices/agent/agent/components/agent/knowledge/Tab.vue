@@ -152,7 +152,7 @@ function unbindMissing(id: string): void {
                 v-for="k in resolved"
                 :key="k.id"
                 class="cursor-pointer"
-                @click="navigateTo(`/knowledges/${k.id}/edit`)"
+                @click="navigateTo(`/knowledges/${k.id}`)"
               >
                 <TableCell class="font-medium">{{ k.name }}</TableCell>
                 <TableCell class="max-w-md truncate text-muted-foreground">
@@ -167,7 +167,7 @@ function unbindMissing(id: string): void {
                 <TableCell @click.stop>
                   <div class="flex justify-end gap-2">
                     <Button size="sm" variant="outline" as-child>
-                      <NuxtLink :to="`/knowledges/${k.id}/edit`">Open</NuxtLink>
+                      <NuxtLink :to="`/knowledges/${k.id}`">Open</NuxtLink>
                     </Button>
                   </div>
                 </TableCell>

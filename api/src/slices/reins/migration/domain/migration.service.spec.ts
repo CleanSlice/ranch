@@ -1,12 +1,13 @@
 import { MigrationService } from './migration.service';
 import { KnowledgeService } from '../../knowledge/domain/knowledge.service';
 import { IKnowledgeGateway } from '../../knowledge/domain/knowledge.gateway';
-import { IKnowledgeData } from '../../knowledge/domain/knowledge.types';
+import { IKnowledgeRecord } from '../../knowledge/domain/knowledge.types';
 import { SourceService } from '../../source/domain/source.service';
+import { ISourceData } from '../../source/domain/source.types';
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
 
-function record(id: string): IKnowledgeData {
+function record(id: string): IKnowledgeRecord {
   return {
     id,
     name: id,
@@ -54,7 +55,7 @@ describe('instance isolation opt-in gate', () => {
   });
 
   test('migration proceeds once the flag is on', async () => {
-    const findAll = jest.fn(() => Promise.resolve<IKnowledgeData[]>([]));
+    const findAll = jest.fn(() => Promise.resolve<IKnowledgeRecord[]>([]));
     const knowledgeGateway = { findAll } as unknown as IKnowledgeGateway;
     const service = new MigrationService(
       knowledgeGateway,
@@ -75,7 +76,9 @@ describe('instance isolation opt-in gate', () => {
       create: jest.fn(() => Promise.resolve(created)),
       findById: jest.fn(() => Promise.resolve(created)),
     } as unknown as IKnowledgeGateway;
-    const sources = {} as SourceService;
+    const sources = {
+      countByKnowledgeIds: jest.fn(() => Promise.resolve(new Map())),
+    } as unknown as SourceService;
     const ensureCapacityForNew = jest.fn();
     const provision = jest.fn();
     const instances = {
@@ -114,5 +117,51 @@ describe('instance isolation opt-in gate', () => {
 
     expect(list).not.toHaveBeenCalled();
     expect(provision).not.toHaveBeenCalled();
+  });
+
+  test('an unmigrated base is queried even when its rows show nothing indexed', async () => {
+    // Pre-migration rows can lag behind the shared index (a stamp lost to an
+    // interrupted run). The emptiness veto must not silence a base LightRAG
+    // still answers for — that veto starts only once the base is isolated.
+    const base = record('k1');
+    const source: ISourceData = {
+      id: 'src-1',
+      knowledgeId: 'k1',
+      type: 'text',
+      name: 'notes.txt',
+      url: null,
+      mimeType: null,
+      content: 'text',
+      sizeBytes: null,
+      indexed: false,
+      indexStatus: 'pending',
+      indexState: 'queued',
+      indexError: null,
+      indexedAt: null,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    };
+    const searchKnowledge = jest.fn(() =>
+      Promise.resolve({ answer: 'from the shared pool', references: [] }),
+    );
+    const gateway = {
+      findById: jest.fn(() => Promise.resolve(base)),
+      searchKnowledge,
+    } as unknown as IKnowledgeGateway;
+    const sources = {
+      findByKnowledge: jest.fn(() => Promise.resolve([source])),
+      countByKnowledgeIds: jest.fn(() => Promise.resolve(new Map())),
+    } as unknown as SourceService;
+    const service = new KnowledgeService(
+      gateway,
+      sources,
+      {} as IInstanceGateway,
+      makeConfig(false),
+    );
+
+    const result = await service.query('k1', 'anything');
+
+    expect(searchKnowledge).toHaveBeenCalled();
+    expect(result.answer).toBe('from the shared pool');
   });
 });

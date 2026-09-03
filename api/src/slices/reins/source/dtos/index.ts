@@ -3,3 +3,8 @@ export * from './createSource.dto';
 export * from './addFromSitemap.dto';
 export * from './addFromArchive.dto';
 export * from './addFiles.dto';
+export * from './filterSources.dto';
+export * from './sourcePage.dto';
+export * from './importJob.dto';
+export * from './sourceContent.query.dto';
+export * from './exportSources.dto';

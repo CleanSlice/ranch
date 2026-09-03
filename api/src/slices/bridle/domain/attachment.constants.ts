@@ -44,8 +44,19 @@ export const TEXT_MIME_TYPES = [
   'application/json',
 ] as const;
 
-/** Accepted but not readable by the agent: delivered as a named reference. */
-export const BINARY_MIME_TYPES = ['application/pdf'] as const;
+/** Accepted but not readable by the agent: delivered as a named reference.
+ *  Office formats are zip/OLE containers — extracting their text is a
+ *  separate feature; until then they travel like PDFs, name and bytes only. */
+export const BINARY_MIME_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel.sheet.macroEnabled.12',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+] as const;
 
 export const ALLOWED_MIME_TYPES: readonly string[] = [
   ...IMAGE_MIME_TYPES,
@@ -68,6 +79,15 @@ export const EXTENSION_BY_MIME: Readonly<Record<string, string>> = {
   'text/markdown': '.md',
   'text/csv': '.csv',
   'application/json': '.json',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+    '.docx',
+  'application/vnd.ms-excel': '.xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/vnd.ms-excel.sheet.macroEnabled.12': '.xlsm',
+  'application/vnd.ms-powerpoint': '.ppt',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+    '.pptx',
 };
 
 /** Fallback when a file arrives with no usable MIME type but a known extension. */
@@ -83,4 +103,13 @@ export const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.markdown': 'text/markdown',
   '.csv': 'text/csv',
   '.json': 'application/json',
+  '.doc': 'application/msword',
+  '.docx':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xlsm': 'application/vnd.ms-excel.sheet.macroEnabled.12',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx':
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };

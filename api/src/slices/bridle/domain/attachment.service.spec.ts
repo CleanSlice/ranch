@@ -237,8 +237,11 @@ describe('BridleAttachmentService — text extraction', () => {
 
     expect(out.attachments[0].kind).toBe(BridleAttachmentKinds.Binary);
     expect(out.attachments[0].readableByAgent).toBe(false);
-    expect(out.text).toBe('read this');
-    expect(out.text).not.toContain('Attached file');
+    // Downgraded to binary: the model gets the unreadable-file notice, and
+    // none of the undecodable bytes reach the prompt as mojibake.
+    expect(out.text).toContain('read this');
+    expect(out.text).toContain('not readable');
+    expect(out.text).not.toContain('�');
   });
 
   it('downgrades a text-typed file containing NUL bytes', async () => {
@@ -253,7 +256,9 @@ describe('BridleAttachmentService — text extraction', () => {
     const out = await service.expand(AGENT, 'read this', ['t1']);
 
     expect(out.attachments[0].kind).toBe(BridleAttachmentKinds.Binary);
-    expect(out.text).toBe('read this');
+    expect(out.text).toContain('read this');
+    expect(out.text).toContain('not readable');
+    expect(out.text).not.toContain('a b');
   });
 
   it('preserves non-ASCII text intact', async () => {
@@ -302,7 +307,7 @@ describe('BridleAttachmentService — expansion to parts', () => {
     expect(out.text).toBe('what is this?');
   });
 
-  it('turns a binary into a file part and inlines nothing', async () => {
+  it('turns a binary into a file part and inlines an unreadable-file notice', async () => {
     const { service, gw } = makeService();
     gw.seed('b1', {
       name: 'report.pdf',
@@ -318,7 +323,28 @@ describe('BridleAttachmentService — expansion to parts', () => {
       name: 'report.pdf',
       mimeType: 'application/pdf',
     });
-    expect(out.text).toBe('read it');
+    // The runtime drops file parts before the model call, so without this
+    // notice the model would never learn the file exists at all.
+    expect(out.text).toContain('read it');
+    expect(out.text).toContain('report.pdf');
+    expect(out.text).toContain('not readable');
+    // Never the contents — only the reference.
+    expect(out.text).not.toContain('%PDF-1.7');
+  });
+
+  it('gives an attachment-only binary message a visible text body', async () => {
+    const { service, gw } = makeService();
+    gw.seed('b1', {
+      name: 'haha.xlsx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      size: 2,
+      body: Buffer.from('PK'),
+    });
+
+    const out = await service.expand(AGENT, '', ['b1']);
+
+    expect(out.text).toContain('haha.xlsx');
   });
 
   it('emits a file part AND inlined text for a text attachment', async () => {

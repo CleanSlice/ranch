@@ -150,6 +150,12 @@ export class BridleAttachmentService {
         });
         if (kind === BridleAttachmentKinds.Text) {
           textBlocks.push(this.inlineTextBlock(stored));
+        } else {
+          // The runtime drops file parts before the model call, so without
+          // this line the model never learns the file exists — it would deny
+          // seeing an attachment the person is looking right at. The notice
+          // names the file and its limits; the contents stay unread.
+          textBlocks.push(BridleAttachmentService.binaryNoticeBlock(stored));
         }
       }
 
@@ -208,6 +214,20 @@ export class BridleAttachmentService {
 
     const fence = '```';
     return `[Attached file: ${stored.name}]\n${fence}\n${body}${notice}\n${fence}`;
+  }
+
+  /**
+   * What the model is told about a binary attachment: name, type, size —
+   * and that the contents are out of reach, so it answers honestly instead
+   * of denying the file exists.
+   */
+  static binaryNoticeBlock(stored: IBridleStoredAttachment): string {
+    return (
+      `[Attached file: ${stored.name} ` +
+      `(${stored.mimeType}, ${stored.size.toLocaleString('en-US')} bytes). ` +
+      `Its contents are not readable in this chat — it is delivered as a ` +
+      `named reference only.]`
+    );
   }
 
   /** Path of the authenticated download route — never an S3 URL. */

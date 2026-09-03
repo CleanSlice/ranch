@@ -20,6 +20,7 @@ model Source {
   updatedAt     DateTime  @updatedAt
 
   @@index([knowledgeId])
+  @@index([knowledgeId, createdAt])
   @@index([lightragDocId])
   @@index([indexState])
 }

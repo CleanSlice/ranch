@@ -6,10 +6,12 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { Readable } from 'stream';
 import { ISettingGateway } from '#/setting/domain';
 import {
   IS3DownloadedFile,
   IS3FileLocation,
+  IS3ObjectStream,
   IS3StoredFile,
   IS3UploadInput,
   S3RepositoryError,
@@ -75,6 +77,39 @@ export class S3Repository {
       );
     }
     return streamToBuffer(res.Body, location);
+  }
+
+  /**
+   * Like download() but hands back the body as a Node stream. For serving a
+   * source to a browser: a 300 MB PDF goes straight from S3 to the response
+   * instead of parking in the API pod's 512Mi.
+   */
+  async getObjectStream(location: IS3FileLocation): Promise<IS3ObjectStream> {
+    const client = await this.getClient();
+    this.logger.log(`stream → s3://${location.bucket}/${location.key}`);
+    let res: GetObjectCommandOutput;
+    try {
+      res = await client.send(
+        new GetObjectCommand({
+          Bucket: location.bucket,
+          Key: location.key,
+        }),
+      );
+    } catch (err) {
+      this.fail('stream', location, err);
+    }
+    if (!isAsyncIterableOfBytes(res.Body)) {
+      throw new S3RepositoryError(
+        'S3 stream body is not an async iterable',
+        location.bucket,
+        location.key,
+      );
+    }
+    return {
+      body: res.Body instanceof Readable ? res.Body : Readable.from(res.Body),
+      contentType: res.ContentType ?? null,
+      contentLength: res.ContentLength ?? null,
+    };
   }
 
   /**

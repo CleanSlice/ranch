@@ -15,6 +15,7 @@ import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeConfigGateway } from '../config/domain/knowledgeConfig.gateway';
 import { IGraphData } from './domain/knowledge.types';
 import { ILightragClient } from '../lightrag/domain/lightrag.client';
+import { ILightragRuntimeConfig } from '../lightrag/domain/lightrag.types';
 import { ILlmGateway } from '#/llm/domain';
 import {
   CreateKnowledgeDto,
@@ -79,6 +80,7 @@ export class KnowledgeController {
       hasCredentialsSelected: boolean;
       isHealthy: boolean;
     };
+    runtime: ILightragRuntimeConfig | null;
   }> {
     const [config, selected, hasChat, hasEmbedding] = await Promise.all([
       this.knowledgeConfig.resolve(),
@@ -88,10 +90,12 @@ export class KnowledgeController {
     ]);
 
     let isHealthy = false;
+    let runtime: ILightragRuntimeConfig | null = null;
     if (config.url.length > 0) {
       try {
-        await this.lightrag.health();
-        isHealthy = true;
+        const health = await this.lightrag.health();
+        isHealthy = health.ok;
+        runtime = health.configuration;
       } catch {
         isHealthy = false;
       }
@@ -104,10 +108,13 @@ export class KnowledgeController {
         hasEmbeddingCredential: hasEmbedding,
         hasUrl: config.url.length > 0,
         hasBucket: config.bucket.length > 0,
-        hasCredentialsSelected:
-          selected.chat !== null && selected.embedding !== null,
+        // Only the chat credential is an admin-side choice. The embedding
+        // model is whatever the LightRAG container was started with, so it is
+        // reported through `runtime` instead of being picked here.
+        hasCredentialsSelected: selected.chat !== null,
         isHealthy,
       },
+      runtime,
     };
   }
 

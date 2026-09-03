@@ -25,6 +25,19 @@ export class KnowledgeDto implements Omit<
   @ApiProperty({ type: String, nullable: true }) indexError: string | null;
   @ApiProperty({ type: String, nullable: true }) indexedAt: Date | null;
   @ApiProperty({ type: String, nullable: true }) indexStartedAt: Date | null;
+  @ApiProperty({ description: 'Sources attached to this knowledge' })
+  sourceCount: number;
+  @ApiProperty({ description: 'Sources LightRAG confirmed as processed' })
+  indexedCount: number;
+  @ApiProperty({
+    description: 'Sources whose last index run recorded an error',
+  })
+  failedCount: number;
+  @ApiProperty({
+    description:
+      'Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.',
+  })
+  processingCount: number;
   @ApiProperty({ enum: ['absent', 'starting', 'ready', 'failed', 'stopping'] })
   instanceState: InstanceStateTypes;
   @ApiProperty({ type: String, nullable: true }) instanceError: string | null;

@@ -4,7 +4,7 @@ import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
 import { IKnowledgeGateway } from '../domain/knowledge.gateway';
 import {
-  IKnowledgeData,
+  IKnowledgeRecord,
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
   IFilterKnowledgeParams,
@@ -32,7 +32,7 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     super();
   }
 
-  async findAll(): Promise<IKnowledgeData[]> {
+  async findAll(): Promise<IKnowledgeRecord[]> {
     const records = await this.prisma.knowledge.findMany({
       orderBy: { createdAt: 'desc' },
     });
@@ -98,24 +98,31 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     }
 
     return {
-      items: records.map((r) => ({
-        ...this.mapper.toEntity(r),
-        indexStatus: deriveIndexStatus(statesOf.get(r.id) ?? []),
-        sourcesCount: r._count.sources,
-        totalSizeBytes: sizeOf.get(r.id) ?? 0,
-      })),
+      items: records.map((r) => {
+        const states = statesOf.get(r.id) ?? [];
+        return {
+          ...this.mapper.toEntity(r),
+          indexStatus: deriveIndexStatus(states),
+          sourceCount: r._count.sources,
+          indexedCount: states.filter((s) => s === 'indexed').length,
+          failedCount: states.filter((s) => s === 'failed').length,
+          processingCount: states.filter((s) => s === 'processing').length,
+          sourcesCount: r._count.sources,
+          totalSizeBytes: sizeOf.get(r.id) ?? 0,
+        };
+      }),
       total,
       page,
       perPage,
     };
   }
 
-  async findById(id: string): Promise<IKnowledgeData | null> {
+  async findById(id: string): Promise<IKnowledgeRecord | null> {
     const record = await this.prisma.knowledge.findUnique({ where: { id } });
     return record ? this.mapper.toEntity(record) : null;
   }
 
-  async findExistingByIds(ids: string[]): Promise<IKnowledgeData[]> {
+  async findExistingByIds(ids: string[]): Promise<IKnowledgeRecord[]> {
     if (ids.length === 0) return [];
     const records = await this.prisma.knowledge.findMany({
       where: { id: { in: ids } },
@@ -123,7 +130,7 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     return records.map((r) => this.mapper.toEntity(r));
   }
 
-  async create(data: ICreateKnowledgeData): Promise<IKnowledgeData> {
+  async create(data: ICreateKnowledgeData): Promise<IKnowledgeRecord> {
     const created = await this.prisma.$transaction(async (tx) => {
       const initial = await tx.knowledge.create({
         data: this.mapper.toCreate(data),
@@ -139,7 +146,7 @@ export class KnowledgeGateway extends IKnowledgeGateway {
   async update(
     id: string,
     data: IUpdateKnowledgeData,
-  ): Promise<IKnowledgeData> {
+  ): Promise<IKnowledgeRecord> {
     const record = await this.prisma.knowledge.update({
       where: { id },
       data: {
@@ -155,7 +162,7 @@ export class KnowledgeGateway extends IKnowledgeGateway {
   async updateIndexState(
     id: string,
     patch: IIndexStatePatch,
-  ): Promise<IKnowledgeData> {
+  ): Promise<IKnowledgeRecord> {
     const record = await this.prisma.knowledge.update({
       where: { id },
       data: {
@@ -173,7 +180,7 @@ export class KnowledgeGateway extends IKnowledgeGateway {
   async updateInstanceState(
     id: string,
     patch: IInstanceStatePatch,
-  ): Promise<IKnowledgeData> {
+  ): Promise<IKnowledgeRecord> {
     const record = await this.prisma.knowledge.update({
       where: { id },
       data: {
@@ -192,7 +199,7 @@ export class KnowledgeGateway extends IKnowledgeGateway {
   async updateMigrationState(
     id: string,
     state: MigrationStateTypes,
-  ): Promise<IKnowledgeData> {
+  ): Promise<IKnowledgeRecord> {
     const record = await this.prisma.knowledge.update({
       where: { id },
       data: { migrationState: state },

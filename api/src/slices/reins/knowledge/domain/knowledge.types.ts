@@ -20,7 +20,8 @@ export type MigrationStateTypes =
   | 'done'
   | 'failed';
 
-export interface IKnowledgeData {
+/** One Knowledge row as stored; what the gateway reads and writes. */
+export interface IKnowledgeRecord {
   id: string;
   name: string;
   description: string | null;
@@ -36,6 +37,23 @@ export interface IKnowledgeData {
   migrationState: MigrationStateTypes;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * The row plus index progress over its sources, which lives in the source
+ * slice and is stitched on by the service. `indexedCount / sourceCount` is
+ * what the UI shows while a run is in flight.
+ */
+export interface IKnowledgeData extends IKnowledgeRecord {
+  sourceCount: number;
+  indexedCount: number;
+  failedCount: number;
+  /**
+   * Sources LightRAG is still chunking. `ready` with a non-zero value here
+   * means "searchable, but not all of it yet" - without it a base that stopped
+   * waiting on a long document is indistinguishable from a finished one.
+   */
+  processingCount: number;
 }
 
 export interface ICreateKnowledgeData {

@@ -1,5 +1,5 @@
 import {
-  IKnowledgeData,
+  IKnowledgeRecord,
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
   IFilterKnowledgeParams,
@@ -14,27 +14,27 @@ import {
 } from './knowledge.types';
 
 export abstract class IKnowledgeGateway {
-  abstract findAll(): Promise<IKnowledgeData[]>;
+  abstract findAll(): Promise<IKnowledgeRecord[]>;
   abstract findPage(params: IFilterKnowledgeParams): Promise<IKnowledgePage>;
-  abstract findById(id: string): Promise<IKnowledgeData | null>;
-  abstract findExistingByIds(ids: string[]): Promise<IKnowledgeData[]>;
-  abstract create(data: ICreateKnowledgeData): Promise<IKnowledgeData>;
+  abstract findById(id: string): Promise<IKnowledgeRecord | null>;
+  abstract findExistingByIds(ids: string[]): Promise<IKnowledgeRecord[]>;
+  abstract create(data: ICreateKnowledgeData): Promise<IKnowledgeRecord>;
   abstract update(
     id: string,
     data: IUpdateKnowledgeData,
-  ): Promise<IKnowledgeData>;
+  ): Promise<IKnowledgeRecord>;
   abstract updateIndexState(
     id: string,
     patch: IIndexStatePatch,
-  ): Promise<IKnowledgeData>;
+  ): Promise<IKnowledgeRecord>;
   abstract updateInstanceState(
     id: string,
     patch: IInstanceStatePatch,
-  ): Promise<IKnowledgeData>;
+  ): Promise<IKnowledgeRecord>;
   abstract updateMigrationState(
     id: string,
     state: MigrationStateTypes,
-  ): Promise<IKnowledgeData>;
+  ): Promise<IKnowledgeRecord>;
   abstract delete(id: string): Promise<void>;
 
   abstract searchKnowledge(

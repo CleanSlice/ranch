@@ -6,6 +6,7 @@ import { LightragModule } from '../lightrag/lightrag.module';
 import { SourceController } from './source.controller';
 import { SourceService } from './domain/source.service';
 import { ISourceGateway } from './domain/source.gateway';
+import { ImportJobRegistry } from './domain/importJob.registry';
 import { SourceGateway } from './data/source.gateway';
 import { SourceMapper } from './data/source.mapper';
 
@@ -15,6 +16,7 @@ import { SourceMapper } from './data/source.mapper';
   providers: [
     SourceMapper,
     SourceService,
+    ImportJobRegistry,
     { provide: ISourceGateway, useClass: SourceGateway },
   ],
   exports: [SourceService, ISourceGateway],

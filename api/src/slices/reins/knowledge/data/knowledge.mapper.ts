@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Knowledge as PrismaKnowledge, Prisma } from '@prisma/client';
 import {
-  IKnowledgeData,
+  IKnowledgeRecord,
   ICreateKnowledgeData,
   IndexStatusTypes,
   InstanceStateTypes,
@@ -50,7 +50,7 @@ function parseMigrationState(value: string): MigrationStateTypes {
 
 @Injectable()
 export class KnowledgeMapper {
-  toEntity(record: PrismaKnowledge): IKnowledgeData {
+  toEntity(record: PrismaKnowledge): IKnowledgeRecord {
     return {
       id: record.id,
       name: record.name,

@@ -14,6 +14,11 @@ import {
   ILightragGraphNode,
   ILightragGraphEdge,
   ITrackStatus,
+  IDocumentProcessingStatus,
+  DocumentProcessingStatusTypes,
+  ILightragRuntimeConfig,
+  IDocumentRecord,
+  IPipelineStatus,
   LightragClientError,
 } from '../domain/lightrag.types';
 
@@ -74,7 +79,8 @@ export class LightragHttpClient extends ILightragClient {
         signal: controller.signal,
       });
       await this.ensureOk(res, '/health');
-      return { ok: true };
+      const body: unknown = await res.json();
+      return { ok: true, configuration: extractRuntimeConfig(body) };
     } finally {
       clearTimeout(timer);
     }
@@ -225,11 +231,42 @@ export class LightragHttpClient extends ILightragClient {
     await this.ensureOk(res, '/documents/delete_document');
   }
 
+  /**
+   * Ingest only enqueues, so the track id it returns says nothing about
+   * whether the document is searchable yet. This reports where the pipeline
+   * actually got to. An unknown track id (404) yields no documents, which
+   * callers read as "LightRAG has nothing under this id". Routed with intent
+   * 'write': tracking follows the instance the ingest went to, which during
+   * migration is the base's own instance rather than the shared pool.
+   */
   async getTrackStatus(
     knowledgeId: string,
     trackId: string,
   ): Promise<ITrackStatus> {
     const cfg = await this.requireEnabled({ knowledgeId, intent: 'write' });
+    return this.fetchTrackStatus(cfg, trackId);
+  }
+
+  /**
+   * One snapshot of every document the base's instance holds. Callers index
+   * it by doc id or by filename: both are needed to reconcile a source whose
+   * upload was refused because the content or the filename is already stored.
+   */
+  async listDocuments(knowledgeId: string): Promise<IDocumentRecord[]> {
+    const cfg = await this.requireEnabled({ knowledgeId, intent: 'write' });
+    const res = await this.fetchImpl(`${cfg.baseUrl}/documents`, {
+      method: 'GET',
+      headers: this.headers(cfg.apiKey),
+    });
+    await this.ensureOk(res, '/documents');
+    const body: unknown = await res.json();
+    return extractDocuments(body);
+  }
+
+  private async fetchTrackStatus(
+    cfg: ResolvedRequestConfig,
+    trackId: string,
+  ): Promise<ITrackStatus> {
     const res = await this.fetchImpl(
       `${cfg.baseUrl}/documents/track_status/${encodeURIComponent(trackId)}`,
       {
@@ -237,7 +274,7 @@ export class LightragHttpClient extends ILightragClient {
         headers: this.headers(cfg.apiKey),
       },
     );
-    if (res.status === 404) return { status: 'pending', error: null };
+    if (res.status === 404) return { documents: [] };
     await this.ensureOk(res, `/documents/track_status/${trackId}`);
     const body: unknown = await res.json();
     return extractTrackStatus(body);
@@ -247,17 +284,8 @@ export class LightragHttpClient extends ILightragClient {
     cfg: ResolvedRequestConfig,
     trackId: string,
   ): Promise<string[]> {
-    const res = await this.fetchImpl(
-      `${cfg.baseUrl}/documents/track_status/${encodeURIComponent(trackId)}`,
-      {
-        method: 'GET',
-        headers: this.headers(cfg.apiKey),
-      },
-    );
-    if (res.status === 404) return [];
-    await this.ensureOk(res, `/documents/track_status/${trackId}`);
-    const body: unknown = await res.json();
-    return extractTrackStatusDocIds(body);
+    const status = await this.fetchTrackStatus(cfg, trackId);
+    return status.documents.map((d) => d.id);
   }
 
   async getGraphLabels(knowledgeId?: string): Promise<string[]> {
@@ -296,6 +324,44 @@ export class LightragHttpClient extends ILightragClient {
     await this.ensureOk(res, '/graphs');
     const body: unknown = await res.json();
     return extractGraph(body);
+  }
+
+  /**
+   * The pipeline belongs to one LightRAG instance. Without a knowledge id this
+   * asks the shared instance, which is every base while instance isolation is
+   * off; a base on its own instance is addressed by id, like getGraphLabels.
+   */
+  async getPipelineStatus(knowledgeId?: string): Promise<IPipelineStatus> {
+    const cfg = await this.requireEnabled(
+      knowledgeId ? { knowledgeId, intent: 'write' } : undefined,
+    );
+    const res = await this.fetchImpl(
+      `${cfg.baseUrl}/documents/pipeline_status`,
+      { method: 'GET', headers: this.headers(cfg.apiKey) },
+    );
+    await this.ensureOk(res, '/documents/pipeline_status');
+    const body: unknown = await res.json();
+    return extractPipelineStatus(body);
+  }
+
+  /**
+   * `reprocess_failed` is a misleading name: the handler hands
+   * `apipeline_process_enqueue_documents` no arguments, and that takes every
+   * document sitting in PENDING, PROCESSING or FAILED. So this is LightRAG's
+   * "pick the queue back up" button, and the only one it has - `/documents/scan`
+   * looks like the obvious candidate but only globs the top level of the input
+   * directory, and an enqueued file has already been moved into `__enqueued__`
+   * by then, so a scan finds nothing to do.
+   */
+  async restartPipeline(knowledgeId?: string): Promise<void> {
+    const cfg = await this.requireEnabled(
+      knowledgeId ? { knowledgeId, intent: 'write' } : undefined,
+    );
+    const res = await this.fetchImpl(
+      `${cfg.baseUrl}/documents/reprocess_failed`,
+      { method: 'POST', headers: this.headers(cfg.apiKey) },
+    );
+    await this.ensureOk(res, '/documents/reprocess_failed');
   }
 
   private async requireEnabled(
@@ -387,44 +453,87 @@ function extractLabels(body: unknown): string[] {
   return body.filter((x): x is string => typeof x === 'string');
 }
 
-// One track id can cover several documents (an archive upload); the source
-// is 'processed' only when every one of them is, 'failed' as soon as any is.
-export function extractTrackStatus(body: unknown): ITrackStatus {
-  if (!isRecord(body)) return { status: 'pending', error: null };
-  const docs = Array.isArray(body.documents) ? body.documents : [];
-  if (docs.length === 0) return { status: 'pending', error: null };
+function extractRuntimeConfig(body: unknown): ILightragRuntimeConfig | null {
+  if (!isRecord(body)) return null;
+  const config = body.configuration;
+  if (!isRecord(config)) return null;
 
-  let sawProcessing = false;
-  let sawPending = false;
-  for (const doc of docs) {
-    if (!isRecord(doc)) continue;
-    const status = typeof doc.status === 'string' ? doc.status : '';
-    if (status === 'failed') {
-      const error =
-        typeof doc.error_msg === 'string' && doc.error_msg.length > 0
-          ? doc.error_msg
-          : 'processing failed';
-      return { status: 'failed', error };
-    }
-    if (status === 'processing') sawProcessing = true;
-    if (status === 'pending' || status === 'enqueued') sawPending = true;
-  }
-  if (sawProcessing) return { status: 'processing', error: null };
-  if (sawPending) return { status: 'pending', error: null };
-  return { status: 'processed', error: null };
+  const read = (key: string): string | null => {
+    const value = config[key];
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  };
+
+  return {
+    llmBinding: read('llm_binding'),
+    llmModel: read('llm_model'),
+    embeddingBinding: read('embedding_binding'),
+    embeddingModel: read('embedding_model'),
+    embeddingBindingHost: read('embedding_binding_host'),
+  };
 }
 
-function extractTrackStatusDocIds(body: unknown): string[] {
-  if (!isRecord(body)) return [];
+function extractPipelineStatus(body: unknown): IPipelineStatus {
+  if (!isRecord(body)) {
+    // A body we cannot read is reported as idle on purpose. The one caller uses
+    // this to decide whether to nudge a stalled pipeline, and a nudge is
+    // cheap - it ingests nothing - while a wrongly-assumed "busy" would leave
+    // a base stuck forever, which is the bug this exists to prevent.
+    return { busy: false, docs: 0, currentBatch: 0, latestMessage: '' };
+  }
+  return {
+    busy: body.busy === true,
+    docs: isNumber(body.docs) ? body.docs : 0,
+    currentBatch: isNumber(body.cur_batch) ? body.cur_batch : 0,
+    latestMessage: isString(body.latest_message) ? body.latest_message : '',
+  };
+}
+
+function extractTrackStatus(body: unknown): ITrackStatus {
+  if (!isRecord(body)) return { documents: [] };
   const docs = body.documents;
-  if (!Array.isArray(docs)) return [];
-  const ids: string[] = [];
+  if (!Array.isArray(docs)) return { documents: [] };
+  const documents: IDocumentProcessingStatus[] = [];
   for (const doc of docs) {
-    if (isRecord(doc) && typeof doc.id === 'string') {
-      ids.push(doc.id);
+    if (!isRecord(doc) || typeof doc.id !== 'string') continue;
+    documents.push({
+      id: doc.id,
+      status: toProcessingStatus(doc.status),
+      errorMessage: typeof doc.error_msg === 'string' ? doc.error_msg : null,
+    });
+  }
+  return { documents };
+}
+
+function extractDocuments(body: unknown): IDocumentRecord[] {
+  const out: IDocumentRecord[] = [];
+  if (!isRecord(body)) return out;
+  const statuses = body.statuses;
+  if (!isRecord(statuses)) return out;
+
+  for (const [statusName, docs] of Object.entries(statuses)) {
+    if (!Array.isArray(docs)) continue;
+    for (const doc of docs) {
+      if (!isRecord(doc) || typeof doc.id !== 'string') continue;
+      out.push({
+        id: doc.id,
+        // The per-document `status` field is authoritative when present; the
+        // bucket name is the fallback (they agree in practice).
+        status: toProcessingStatus(doc.status ?? statusName),
+        filePath: typeof doc.file_path === 'string' ? doc.file_path : null,
+      });
     }
   }
-  return ids;
+  return out;
+}
+
+function toProcessingStatus(value: unknown): DocumentProcessingStatusTypes {
+  if (value === 'processed' || value === 'failed' || value === 'pending') {
+    return value;
+  }
+  // Anything else - 'processing', or a state a newer LightRAG adds - counts as
+  // still in flight. Erring that way makes a poller wait rather than call a
+  // document searchable when it is not.
+  return 'processing';
 }
 
 function isString(value: unknown): value is string {

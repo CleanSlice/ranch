@@ -10,6 +10,7 @@ import { InstanceModule } from '../instance/instance.module';
 import { KnowledgeController } from './knowledge.controller';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { KnowledgeService } from './domain/knowledge.service';
+import { IndexReconcileService } from './domain/indexReconcile.service';
 import { KnowledgeGateway } from './data/knowledge.gateway';
 import { KnowledgeMapper } from './data/knowledge.mapper';
 import { KnowledgeTool } from './knowledge.tool';
@@ -29,6 +30,7 @@ import { KnowledgeTool } from './knowledge.tool';
   providers: [
     KnowledgeMapper,
     KnowledgeService,
+    IndexReconcileService,
     { provide: IKnowledgeGateway, useClass: KnowledgeGateway },
     KnowledgeTool,
   ],

@@ -2,16 +2,22 @@ import type {
   ICreateKnowledgeInput,
   IGraph,
   IGraphLabels,
+  IImportJob,
   IKnowledge,
   IKnowledgePage,
   IKnowledgeStatus,
   IQueryResult,
   ISource,
   ISourceArchiveResult,
+  ISourceContent,
+  ISourceExportSelection,
   ISourceFilesResult,
+  ISourceFilter,
+  ISourcePage,
   ISourceSitemapResult,
   IUpdateKnowledgeInput,
   KnowledgeQueryMode,
+  SourceContentDisposition,
 } from './knowledge.types';
 
 /** Contract for the knowledge-bases API. Implemented by `KnowledgeGateway`. */
@@ -37,7 +43,17 @@ export abstract class IKnowledgeGateway {
     mode: KnowledgeQueryMode,
     topK: number,
   ): Promise<IQueryResult>;
-  abstract listSources(id: string): Promise<ISource[]>;
+  abstract listSources(id: string, filter: ISourceFilter): Promise<ISourcePage>;
+  abstract listImports(id: string): Promise<IImportJob[]>;
+  abstract fetchSourceContent(
+    id: string,
+    sourceId: string,
+    disposition: SourceContentDisposition,
+  ): Promise<ISourceContent>;
+  abstract exportSources(
+    id: string,
+    selection: ISourceExportSelection,
+  ): Promise<ISourceContent>;
   abstract addTextSource(
     id: string,
     name: string,

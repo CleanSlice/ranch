@@ -29,8 +29,15 @@ const confirmStore = useConfirmStore();
 // The two-copy model hint (CLEAN-50): while the agent is Running, this tab
 // shows the S3 copy but the pod works on its own — surface that instead of
 // letting the operator wonder why a chat-driven change is not visible.
+// Live-first (CLEAN-59): the SSE frame carries the fresh status and markers;
+// the one-shot fetched row would freeze the banner after a restart/stop done
+// from anywhere until the page is reloaded.
 const agent = ref<IAgentData | null>(null);
-const showCopyHint = computed(() => agent.value?.status === 'running');
+const agentStatusStore = useAgentStatusStore();
+const liveAgent = computed(() => agentStatusStore.agents[props.id]);
+const showCopyHint = computed(
+  () => (liveAgent.value?.status ?? agent.value?.status) === 'running',
+);
 
 function formatMoment(iso: string | null): string | null {
   if (!iso) return null;
@@ -39,8 +46,12 @@ function formatMoment(iso: string | null): string | null {
 }
 
 const copyHintDetail = computed(() => {
-  const pulled = formatMoment(agent.value?.lastPullAt ?? null);
-  const synced = formatMoment(agent.value?.lastSyncAt ?? null);
+  const pulled = formatMoment(
+    liveAgent.value?.lastPullAt ?? agent.value?.lastPullAt ?? null,
+  );
+  const synced = formatMoment(
+    liveAgent.value?.lastSyncAt ?? agent.value?.lastSyncAt ?? null,
+  );
   const parts: string[] = [];
   if (pulled) parts.push(`agent took its copy ${pulled}`);
   if (synced) parts.push(`last sync ${synced}`);

@@ -102,26 +102,38 @@ const lifecycleError = computed(() => restartError.value || toggleError.value);
 // deploy ran", stays 'restart' forever after the first restart) and the
 // deploying phase lasts seconds, so a snapshot look always lands on
 // status=running. The moment of the last deploy is the missing piece.
+// Live-first like displayStatus: the SSE frame carries the full agent row,
+// so a restart triggered anywhere (Files-tab banner, rancher, another tab)
+// updates the hint without a page reload — the fetched row alone goes stale.
+const lastDeployStartedAt = computed(
+  () =>
+    liveAgent.value?.lastDeployStartedAt ??
+    agent.value?.lastDeployStartedAt ??
+    null,
+);
+const launchContext = computed(
+  () => liveAgent.value?.launchContext ?? agent.value?.launchContext ?? null,
+);
+const lastPullAt = computed(
+  () => liveAgent.value?.lastPullAt ?? agent.value?.lastPullAt ?? null,
+);
 const { locale } = useI18n();
 const deployAgo = useTimeAgoIntl(
-  () => new Date(agent.value?.lastDeployStartedAt ?? Date.now()),
+  () => new Date(lastDeployStartedAt.value ?? Date.now()),
   { locale: locale.value },
 );
-const deployHint = computed(() => {
-  if (!agent.value?.lastDeployStartedAt) return null;
-  const verb =
-    agent.value.launchContext === 'restart' ? 'restarted' : 'started';
-  return `${verb} ${deployAgo.value}`;
-});
+const deployVerb = computed(() =>
+  launchContext.value === 'restart' ? 'restarted' : 'started',
+);
 const deployHintTitle = computed(() => {
-  const a = agent.value;
-  if (!a?.lastDeployStartedAt) return undefined;
+  if (!lastDeployStartedAt.value) return undefined;
   const parts = [
-    `Last deploy started ${formatDateTime(a.lastDeployStartedAt)}`,
+    `Last deploy started ${formatDateTime(lastDeployStartedAt.value)}`,
   ];
   // lastPullAt = the NEW pod registered and took its S3 file copy — the
   // definitive "restart completed and files picked up" proof.
-  if (a.lastPullAt) parts.push(`files picked up ${formatDateTime(a.lastPullAt)}`);
+  if (lastPullAt.value)
+    parts.push(`files picked up ${formatDateTime(lastPullAt.value)}`);
   return parts.join(' · ');
 });
 
@@ -208,11 +220,17 @@ async function onRemove() {
           runtime offline
         </span>
         <span
-          v-if="deployHint"
+          v-if="lastDeployStartedAt"
           class="shrink-0 text-xs text-muted-foreground"
           :title="deployHintTitle"
         >
-          {{ deployHint }}
+          {{ deployVerb }}
+          <!-- Keyed by the label so every relative-time tick ("just now" →
+               "1 minute ago") re-enters with a tiny slide — enough for
+               peripheral vision to register the timer is alive. -->
+          <Transition name="time-tick" mode="out-in">
+            <span :key="deployAgo" class="inline-block">{{ deployAgo }}</span>
+          </Transition>
         </span>
 
         <div class="flex-1" />
@@ -327,3 +345,26 @@ async function onRemove() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.time-tick-enter-active,
+.time-tick-leave-active {
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+.time-tick-enter-from {
+  opacity: 0;
+  transform: translateY(3px);
+}
+.time-tick-leave-to {
+  opacity: 0;
+  transform: translateY(-3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .time-tick-enter-active,
+  .time-tick-leave-active {
+    transition: none;
+  }
+}
+</style>

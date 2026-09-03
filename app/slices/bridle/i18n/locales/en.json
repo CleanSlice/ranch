@@ -21,7 +21,7 @@
     "attachment_failed": "Couldn't upload {name}",
     "attachment_unavailable": "This file is no longer available",
     "attachment_not_readable": "The agent sees the name, not the contents",
-    "error_type": "{name} isn't a supported file type. Try an image, a PDF, or a text file.",
+    "error_type": "{name} isn't a supported file type. Try an image, a PDF, an Office document, or a text file.",
     "error_size": "{name} is larger than {limit}",
     "error_total": "Those files add up to more than {limit} in one message",
     "error_empty": "{name} is empty"

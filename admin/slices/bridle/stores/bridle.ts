@@ -730,7 +730,7 @@ export const useBridleStore = defineStore('bridle', {
       for (const file of list) {
         const mimeType = resolveMimeType(file)
         const problem = !isAllowedMimeType(mimeType)
-          ? `${file.name} is not a supported file type. Try an image, a PDF, or a text file.`
+          ? `${file.name} is not a supported file type. Try an image, a PDF, an Office document, or a text file.`
           : this._rejectReason(file, pendingBytes)
 
         if (problem) {

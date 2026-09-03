@@ -83,6 +83,47 @@ describe('BridleAttachmentService — upload validation', () => {
     expect(result.readableByAgent).toBe(false);
   });
 
+  it('accepts Office documents as binary references', async () => {
+    const { service } = makeService();
+    const cases = [
+      ['macros.xlsm', 'application/vnd.ms-excel.sheet.macroEnabled.12'],
+      [
+        'sheet.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+      [
+        'letter.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ],
+      ['deck.ppt', 'application/vnd.ms-powerpoint'],
+    ] as const;
+
+    for (const [name, mimeType] of cases) {
+      const result = await service.upload({
+        agentId: AGENT,
+        name,
+        mimeType,
+        body: Buffer.from('PK'),
+      });
+      expect(result.kind).toBe(BridleAttachmentKinds.Binary);
+      expect(result.readableByAgent).toBe(false);
+      expect(result.mimeType).toBe(mimeType);
+    }
+  });
+
+  it('resolves an Office file by extension when the browser reports a blank type', async () => {
+    const { service } = makeService();
+    const result = await service.upload({
+      agentId: AGENT,
+      name: 'quarterly.xlsm',
+      mimeType: '',
+      body: Buffer.from('PK'),
+    });
+
+    expect(result.mimeType).toBe('application/vnd.ms-excel.sheet.macroEnabled.12');
+    expect(result.kind).toBe(BridleAttachmentKinds.Binary);
+  });
+
   it('rejects a zero-byte file', async () => {
     const { service } = makeService();
     await expect(

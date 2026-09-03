@@ -26,7 +26,16 @@ export const TEXT_MIME_TYPES = [
   'application/json',
 ] as const;
 
-export const BINARY_MIME_TYPES = ['application/pdf'] as const;
+export const BINARY_MIME_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel.sheet.macroEnabled.12',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+] as const;
 
 export const ALLOWED_MIME_TYPES: readonly string[] = [
   ...IMAGE_MIME_TYPES,
@@ -43,6 +52,13 @@ export const FILE_PICKER_ACCEPT = [
   '.csv',
   '.txt',
   '.json',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+  '.xlsm',
+  '.ppt',
+  '.pptx',
 ].join(',');
 
 /** Same extension fallback the server uses when `file.type` is blank. */
@@ -58,6 +74,15 @@ export const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.markdown': 'text/markdown',
   '.csv': 'text/csv',
   '.json': 'application/json',
+  '.doc': 'application/msword',
+  '.docx':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xlsm': 'application/vnd.ms-excel.sheet.macroEnabled.12',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx':
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
 
 /** Human-readable byte size for chips and error copy. */

@@ -45,12 +45,24 @@ function formatMoment(iso: string | null): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toLocaleString();
 }
 
+// Freshest-wins for marker timestamps (CLEAN-61): the SSE stream only emits
+// on pod events, so after a Sync (no pod event) the live row keeps a STALE
+// lastSyncAt — a plain live-first `??` would let it shadow the refetched row
+// forever. Statuses stay live-first (no timestamp to compare).
+function newestIso(a: string | null | undefined, b: string | null | undefined): string | null {
+  const ta = a ? Date.parse(a) : NaN;
+  const tb = b ? Date.parse(b) : NaN;
+  if (Number.isNaN(ta)) return Number.isNaN(tb) ? null : (b as string);
+  if (Number.isNaN(tb)) return a as string;
+  return ta >= tb ? (a as string) : (b as string);
+}
+
 const copyHintDetail = computed(() => {
   const pulled = formatMoment(
-    liveAgent.value?.lastPullAt ?? agent.value?.lastPullAt ?? null,
+    newestIso(liveAgent.value?.lastPullAt, agent.value?.lastPullAt),
   );
   const synced = formatMoment(
-    liveAgent.value?.lastSyncAt ?? agent.value?.lastSyncAt ?? null,
+    newestIso(liveAgent.value?.lastSyncAt, agent.value?.lastSyncAt),
   );
   const parts: string[] = [];
   if (pulled) parts.push(`agent took its copy ${pulled}`);
@@ -143,7 +155,14 @@ async function onSync() {
     syncError.value = (err as Error).message || 'Sync failed';
   }
   try {
-    await store.fetchList(props.id);
+    // Refetch the agent row alongside the files: lastSyncAt just changed and
+    // no SSE frame will carry it (the stream is pod-event driven) — without
+    // this the banner shows the old "last sync" until a page reload.
+    const [freshAgent] = await Promise.all([
+      agentStore.fetchById(props.id).catch(() => null),
+      store.fetchList(props.id),
+    ]);
+    if (freshAgent) agent.value = freshAgent;
   } catch (err) {
     syncError.value = (err as Error).message || 'Failed to load files';
   } finally {

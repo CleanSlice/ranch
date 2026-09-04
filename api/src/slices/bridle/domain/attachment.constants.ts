@@ -65,6 +65,24 @@ export const ALLOWED_MIME_TYPES: readonly string[] = [
 ];
 
 /**
+ * Binary MIME types whose text the API extracts server-side and inlines into
+ * the message (documentText.extractor). Everything binary that is NOT here —
+ * legacy .doc/.xls, PowerPoint — stays a named reference the agent can't read.
+ */
+export const EXTRACTABLE_DOCUMENT_MIME_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel.sheet.macroEnabled.12',
+] as const;
+
+export function isExtractableDocument(mimeType: string): boolean {
+  return (EXTRACTABLE_DOCUMENT_MIME_TYPES as readonly string[]).includes(
+    mimeType,
+  );
+}
+
+/**
  * Extension per accepted MIME type. The stored object's extension is derived
  * from the *resolved* type, never from the uploaded filename — a hostile name
  * must not be able to reach an S3 key.

@@ -5,6 +5,7 @@ import {
   BridleAttachmentKinds,
   BridleAttachmentStates,
   formatBytes,
+  isReadableByAgent,
   type IStagedAttachment,
 } from '../../utils/attachment'
 import { cn } from '#theme/utils/cn'
@@ -24,12 +25,12 @@ const isFailed = computed(
   () => props.attachment.state === BridleAttachmentStates.Failed,
 )
 
-// The agent reads images and text; a binary arrives as a name and a link.
-// Saying so on the chip is the whole point — otherwise the only clue is a
-// reply that talks around the file.
+// The agent reads images, text, and server-extracted documents; anything
+// else arrives as a name and a link. Saying so on the chip is the whole
+// point — otherwise the only clue is a reply that talks around the file.
 const notReadable = computed(
   () =>
-    props.attachment.kind === BridleAttachmentKinds.Binary &&
+    !isReadableByAgent(props.attachment.kind, props.attachment.mimeType) &&
     !isFailed.value &&
     !isUploading.value,
 )

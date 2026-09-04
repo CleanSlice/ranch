@@ -43,6 +43,18 @@ export const ALLOWED_MIME_TYPES: readonly string[] = [
   ...BINARY_MIME_TYPES,
 ];
 
+/**
+ * Mirror of the API's extractable-document list: binary types whose text the
+ * server inlines into the message. Legacy .doc/.xls and PowerPoint stay
+ * unreadable references.
+ */
+export const EXTRACTABLE_DOCUMENT_MIME_TYPES: readonly string[] = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel.sheet.macroEnabled.12',
+];
+
 /** `accept` attribute for the file picker. Extensions are included because
  *  some platforms report an empty `type` for .md and .csv. */
 export const FILE_PICKER_ACCEPT = [
@@ -84,6 +96,17 @@ export const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.pptx':
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
+
+/**
+ * The agent reads images, text, and server-extracted documents; anything else
+ * reaches it as a name and a link. Kind alone is not enough since extractable
+ * documents keep the `binary` wire kind. Takes the kind as a plain string to
+ * stay import-cycle-free with bridle.types.
+ */
+export function isReadableByAgent(kind: string, mimeType?: string): boolean {
+  if (kind !== 'binary') return true;
+  return !!mimeType && EXTRACTABLE_DOCUMENT_MIME_TYPES.includes(mimeType);
+}
 
 /** Human-readable byte size for chips and error copy. */
 export function formatBytes(bytes: number): string {

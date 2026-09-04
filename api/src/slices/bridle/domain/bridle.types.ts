@@ -4,6 +4,7 @@ import {
   IMAGE_MIME_TYPES,
   MIME_BY_EXTENSION,
   TEXT_MIME_TYPES,
+  isExtractableDocument,
 } from './attachment.constants';
 
 // ── Part types (wire protocol) ───────────────────────────────
@@ -292,7 +293,16 @@ export function resolveAttachmentMimeType(
   return MIME_BY_EXTENSION[ext] ?? claimed;
 }
 
-/** True when the agent can actually read the contents, not just the name. */
-export function isReadableByAgent(kind: BridleAttachmentKinds): boolean {
-  return kind !== BridleAttachmentKinds.Binary;
+/**
+ * True when the agent can actually read the contents, not just the name.
+ * Binary kind is readable when its text can be extracted server-side
+ * (xlsx/xlsm, docx, pdf) — the wire kind stays `binary` because the runtime's
+ * transcript sanitizer only accepts image/text/binary.
+ */
+export function isReadableByAgent(
+  kind: BridleAttachmentKinds,
+  mimeType?: string,
+): boolean {
+  if (kind !== BridleAttachmentKinds.Binary) return true;
+  return !!mimeType && isExtractableDocument(mimeType);
 }

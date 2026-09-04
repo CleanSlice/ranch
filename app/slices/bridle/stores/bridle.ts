@@ -8,6 +8,7 @@ import {
   MAX_MESSAGE_ATTACHMENT_BYTES,
   TEXT_MIME_TYPES,
   formatBytes,
+  isReadableByAgent,
   resolveMimeType,
 } from '#bridle/domain';
 import { BridleAttachmentKinds } from '#bridle/domain';
@@ -350,7 +351,7 @@ export const useBridleStore = defineStore('bridle', () => {
       size: a.size,
       kind: a.kind,
       url: `/api/agent/${encodeURIComponent(agentId)}/attachment/${a.remoteId}`,
-      readableByAgent: a.kind !== BridleAttachmentKinds.Binary,
+      readableByAgent: isReadableByAgent(a.kind, a.mimeType),
     }));
 
     appendMessage(agentId, {

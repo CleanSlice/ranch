@@ -158,12 +158,29 @@ export function resolveKind(mimeType: string): BridleAttachmentKinds {
 }
 
 /**
- * The agent reads images and text; a PDF reaches it as a name and a link.
- * Saying so on the chip before the message is sent is the difference between
- * a useful reply and one that talks around the file.
+ * Mirror of the API's extractable-document list: binary types whose text the
+ * server inlines into the message (documentText.extractor). Legacy .doc/.xls
+ * and PowerPoint stay unreadable references.
  */
-export function isReadableByAgent(kind: BridleAttachmentKinds): boolean {
-  return kind !== BridleAttachmentKinds.Binary
+export const EXTRACTABLE_DOCUMENT_MIME_TYPES: readonly string[] = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel.sheet.macroEnabled.12',
+]
+
+/**
+ * The agent reads images, text, and server-extracted documents; anything else
+ * reaches it as a name and a link. Saying so on the chip before the message
+ * is sent is the difference between a useful reply and one that talks around
+ * the file.
+ */
+export function isReadableByAgent(
+  kind: BridleAttachmentKinds,
+  mimeType?: string,
+): boolean {
+  if (kind !== BridleAttachmentKinds.Binary) return true
+  return !!mimeType && EXTRACTABLE_DOCUMENT_MIME_TYPES.includes(mimeType)
 }
 
 /**

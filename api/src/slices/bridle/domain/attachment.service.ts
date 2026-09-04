@@ -8,6 +8,10 @@ import {
 } from './attachment.constants';
 import { IBridleAttachmentGateway } from './attachment.gateway';
 import {
+  extractDocumentText,
+  isExtractableDocument,
+} from './documentText.extractor';
+import {
   BridleAttachmentKinds,
   BridlePartTypes,
   isReadableByAgent,
@@ -83,7 +87,7 @@ export class BridleAttachmentService {
       size: input.body.length,
       kind,
       url: BridleAttachmentService.urlFor(input.agentId, id),
-      readableByAgent: isReadableByAgent(kind),
+      readableByAgent: isReadableByAgent(kind, mimeType),
     };
   }
 
@@ -150,6 +154,19 @@ export class BridleAttachmentService {
         });
         if (kind === BridleAttachmentKinds.Text) {
           textBlocks.push(this.inlineTextBlock(stored));
+        } else if (isExtractableDocument(stored.mimeType)) {
+          // Office documents and PDFs get their text extracted and inlined
+          // like any text attachment. A broken or text-less file (a scanned
+          // PDF) degrades to the named-reference notice, never a failure.
+          const extracted = await extractDocumentText(
+            stored.mimeType,
+            stored.body,
+          );
+          textBlocks.push(
+            extracted !== null
+              ? BridleAttachmentService.fencedBlock(stored.name, extracted)
+              : BridleAttachmentService.binaryNoticeBlock(stored),
+          );
         } else {
           // The runtime drops file parts before the model call, so without
           // this line the model never learns the file exists — it would deny
@@ -166,7 +183,7 @@ export class BridleAttachmentService {
         size: stored.size,
         kind,
         url,
-        readableByAgent: isReadableByAgent(kind),
+        readableByAgent: isReadableByAgent(kind, stored.mimeType),
       });
     }
 
@@ -197,15 +214,22 @@ export class BridleAttachmentService {
 
   /** The fenced block appended to the message for a text attachment. */
   private inlineTextBlock(stored: IBridleStoredAttachment): string {
-    const decoded = decodeUtf8Strict(stored.body) ?? '';
-    const truncated = decoded.length > MAX_EXTRACTED_TEXT_CHARS;
+    return BridleAttachmentService.fencedBlock(
+      stored.name,
+      decodeUtf8Strict(stored.body) ?? '',
+    );
+  }
+
+  /** Fenced, truncation-capped block for any inlined attachment content. */
+  static fencedBlock(name: string, content: string): string {
+    const truncated = content.length > MAX_EXTRACTED_TEXT_CHARS;
     const body = truncated
-      ? decoded.slice(0, MAX_EXTRACTED_TEXT_CHARS)
-      : decoded;
+      ? content.slice(0, MAX_EXTRACTED_TEXT_CHARS)
+      : content;
 
     // Mirrors the runtime's own wording for truncated over-long user messages,
     // so the model meets one convention rather than two.
-    const removed = decoded.length - MAX_EXTRACTED_TEXT_CHARS;
+    const removed = content.length - MAX_EXTRACTED_TEXT_CHARS;
     const notice = truncated
       ? `\n\n[… ${removed.toLocaleString('en-US')} characters truncated — ` +
         `attached file was longer than the ` +
@@ -213,7 +237,7 @@ export class BridleAttachmentService {
       : '';
 
     const fence = '```';
-    return `[Attached file: ${stored.name}]\n${fence}\n${body}${notice}\n${fence}`;
+    return `[Attached file: ${name}]\n${fence}\n${body}${notice}\n${fence}`;
   }
 
   /**

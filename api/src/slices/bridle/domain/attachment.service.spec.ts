@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { Workbook } from 'exceljs';
 import { BridleAttachmentService } from './attachment.service';
 import { IBridleAttachmentGateway } from './attachment.gateway';
 import type { IStoreAttachmentInput } from './attachment.gateway';
@@ -70,7 +71,21 @@ describe('BridleAttachmentService — upload validation', () => {
     expect(result.url).toContain(`/api/agent/${AGENT}/attachment/`);
   });
 
-  it('flags a binary file as unreadable by the agent', async () => {
+  it('flags a non-extractable binary as unreadable by the agent', async () => {
+    const { service } = makeService();
+    const result = await service.upload({
+      agentId: AGENT,
+      name: 'deck.pptx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      body: Buffer.from('PK'),
+    });
+
+    expect(result.kind).toBe(BridleAttachmentKinds.Binary);
+    expect(result.readableByAgent).toBe(false);
+  });
+
+  it('marks extractable documents as readable even though their kind is binary', async () => {
     const { service } = makeService();
     const result = await service.upload({
       agentId: AGENT,
@@ -80,7 +95,7 @@ describe('BridleAttachmentService — upload validation', () => {
     });
 
     expect(result.kind).toBe(BridleAttachmentKinds.Binary);
-    expect(result.readableByAgent).toBe(false);
+    expect(result.readableByAgent).toBe(true);
   });
 
   it('accepts Office documents as binary references', async () => {
@@ -106,7 +121,6 @@ describe('BridleAttachmentService — upload validation', () => {
         body: Buffer.from('PK'),
       });
       expect(result.kind).toBe(BridleAttachmentKinds.Binary);
-      expect(result.readableByAgent).toBe(false);
       expect(result.mimeType).toBe(mimeType);
     }
   });
@@ -307,29 +321,69 @@ describe('BridleAttachmentService — expansion to parts', () => {
     expect(out.text).toBe('what is this?');
   });
 
-  it('turns a binary into a file part and inlines an unreadable-file notice', async () => {
+  it('turns a non-extractable binary into a file part with an unreadable-file notice', async () => {
     const { service, gw } = makeService();
     gw.seed('b1', {
-      name: 'report.pdf',
-      mimeType: 'application/pdf',
-      size: 8,
-      body: Buffer.from('%PDF-1.7'),
+      name: 'deck.pptx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      size: 2,
+      body: Buffer.from('PK'),
     });
 
     const out = await service.expand(AGENT, 'read it', ['b1']);
 
     expect(out.parts[0]).toMatchObject({
       type: BridlePartTypes.File,
-      name: 'report.pdf',
-      mimeType: 'application/pdf',
+      name: 'deck.pptx',
     });
     // The runtime drops file parts before the model call, so without this
     // notice the model would never learn the file exists at all.
     expect(out.text).toContain('read it');
-    expect(out.text).toContain('report.pdf');
+    expect(out.text).toContain('deck.pptx');
     expect(out.text).toContain('not readable');
-    // Never the contents — only the reference.
-    expect(out.text).not.toContain('%PDF-1.7');
+  });
+
+  it('inlines extracted spreadsheet text for an xlsx attachment', async () => {
+    const { service, gw } = makeService();
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet('Totals');
+    sheet.addRow(['crop', 'tons']);
+    sheet.addRow(['alfalfa', 120]);
+    const body = Buffer.from(await workbook.xlsx.writeBuffer());
+    gw.seed('x1', {
+      name: 'totals.xlsx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      size: body.length,
+      body,
+    });
+
+    const out = await service.expand(AGENT, 'что в файле?', ['x1']);
+
+    expect(out.text).toContain('что в файле?');
+    expect(out.text).toContain('[Attached file: totals.xlsx]');
+    expect(out.text).toContain('alfalfa,120');
+    expect(out.text).not.toContain('not readable');
+    expect(out.attachments[0].readableByAgent).toBe(true);
+    // Still a file part on the wire — never raw bytes.
+    expect(out.parts[0].type).toBe(BridlePartTypes.File);
+  });
+
+  it('falls back to the notice when a document cannot be parsed', async () => {
+    const { service, gw } = makeService();
+    gw.seed('x1', {
+      name: 'broken.xlsx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      size: 7,
+      body: Buffer.from('not zip'),
+    });
+
+    const out = await service.expand(AGENT, 'open it', ['x1']);
+
+    expect(out.text).toContain('broken.xlsx');
+    expect(out.text).toContain('not readable');
   });
 
   it('gives an attachment-only binary message a visible text body', async () => {

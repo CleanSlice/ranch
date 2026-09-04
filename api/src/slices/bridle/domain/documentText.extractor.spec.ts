@@ -3,6 +3,7 @@ import { join } from 'path';
 import { Workbook } from 'exceljs';
 // jszip exports the constructor as module.exports (no default marker), so the
 // CJS-interop require form is the one that works under jest.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 import JSZip = require('jszip');
 import {
   extractDocumentText,

@@ -1,6 +1,21 @@
 import type { IShareLinkState, IShareResolved } from './share.types';
 
 /**
+ * A 200 whose body could not be read as a resolved agent.
+ *
+ * Deliberately not the same outcome as a 404: an unreadable answer proves
+ * nothing about the link, so it has to reach the store as a *failure*
+ * (`unavailable` — keep the conversation, retry) rather than as `null`, which
+ * the page treats as the terminal "this link is invalid or no longer active".
+ */
+export class ShareResolveUnreadableError extends Error {
+  constructor() {
+    super('The share-link response could not be read');
+    this.name = 'ShareResolveUnreadableError';
+  }
+}
+
+/**
  * Contract for the share-link API. Implemented by `ShareGateway` in the data
  * layer; the service and store depend only on this abstraction.
  *
@@ -16,9 +31,13 @@ export abstract class IShareGateway {
   abstract regenerate(agentId: string): Promise<IShareLinkState>;
   abstract revoke(agentId: string): Promise<IShareLinkState>;
   /**
-   * Look up the agent behind a token. Rejects (404) for unknown *and* revoked
-   * tokens with an identical body, so a visitor cannot tell them apart
-   * (FR-013); `null` means the API answered with something unusable.
+   * Look up the agent behind a token. `null` means — and only means — that the
+   * API answered 404: unknown, revoked and regenerated tokens all get that
+   * same answer so a visitor cannot tell them apart (FR-013).
+   *
+   * Everything else rejects: a transport failure with the axios error, an
+   * unreadable 200 body with `ShareResolveUnreadableError`. Neither says the
+   * link is dead, and the store must not render them as if it were.
    */
   abstract resolve(token: string): Promise<IShareResolved | null>;
 }

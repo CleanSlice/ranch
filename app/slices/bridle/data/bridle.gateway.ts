@@ -13,6 +13,27 @@ import type {
 import { BridleMapper } from './bridle.mapper';
 
 /**
+ * What one share-link request carries instead of the console session.
+ *
+ * `Authorization: null` is not decoration: `handleApiAuthentication` sets a
+ * `Bearer …` header on the shared axios client for the whole tab, and on the
+ * API a valid JWT WINS over the share headers. Without this, an owner opening
+ * their own link would chat as themselves — their visitor messages landing in
+ * the console channel, their uploads owned by `admin`, and a revoke never
+ * producing the 403 the page watches for. `null` is the same idiom
+ * `handleApiAuthentication` uses to log out: the SDK's header merge drops the
+ * key, and axios drops a null-valued header before it reaches the wire.
+ */
+interface IShareRequestHeaders {
+  // The index signature is what lets this object stand in for axios's own
+  // `RawAxiosRequestHeaders` on the two calls that skip the generated SDK.
+  [header: string]: string | null;
+  'X-Share-Token': string;
+  'X-Share-Visitor': string;
+  Authorization: null;
+}
+
+/**
  * The pair the API reads to identify a public share-link visitor. Attached per
  * request — never through `client.setConfig`, which is shared with every other
  * call in the tab and would leak a visitor's token into console traffic (and
@@ -20,11 +41,12 @@ import { BridleMapper } from './bridle.mapper';
  */
 function shareHeaders(
   share?: IBridleShareContext,
-): Record<string, string> | undefined {
+): IShareRequestHeaders | undefined {
   if (!share) return undefined;
   return {
     'X-Share-Token': share.token,
     'X-Share-Visitor': share.visitorId,
+    Authorization: null,
   };
 }
 

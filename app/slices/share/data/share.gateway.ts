@@ -4,7 +4,10 @@
 import { ShareLinksService, ShareService as ShareApi } from '#api';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
-import { IShareGateway } from '../domain/share.gateway';
+import {
+  IShareGateway,
+  ShareResolveUnreadableError,
+} from '../domain/share.gateway';
 import type {
   IShareLinkState,
   IShareResolved,
@@ -73,7 +76,7 @@ export class ShareGateway extends BaseGateway implements IShareGateway {
    * learned nothing and the page must keep whatever it already had.
    *
    * `null` is therefore reserved for "the API says this token is not a link";
-   * every other failure is rethrown.
+   * every other failure — including a 200 the mapper cannot read — is thrown.
    */
   resolve(token: string): Promise<IShareResolved | null> {
     return this.execute(async () => {
@@ -84,9 +87,16 @@ export class ShareGateway extends BaseGateway implements IShareGateway {
           body: { token },
           throwOnError: true,
         });
-        return this.mapper.toResolved(unwrapEnvelope(res.data));
+        const resolved = this.mapper.toResolved(unwrapEnvelope(res.data));
+        // A 200 we cannot read is a broken answer, not a dead link. Returning
+        // the mapper's `null` here would tell the page the token is invalid —
+        // terminal, polling stopped — over what may be one malformed response.
+        if (!resolved) throw new ShareResolveUnreadableError();
+        return resolved;
       } catch (error) {
-        // Unknown and revoked tokens answer with the same 404 (FR-013).
+        // Unknown and revoked tokens answer with the same 404 (FR-013). The
+        // throw above carries no response, so it falls through to the rethrow
+        // and reaches the store as `unavailable`.
         if (statusOf(error) === 404) return null;
         throw error;
       }

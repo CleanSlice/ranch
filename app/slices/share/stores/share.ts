@@ -92,7 +92,9 @@ export const useShareStore = defineStore('share', () => {
    * `invalid` covers unknown, revoked and regenerated tokens alike — the API
    * answers all three with the same 404 on purpose (FR-013), so the page has
    * exactly one "this link is invalid or no longer active" state to render.
-   * `unavailable` keeps the last good `resolved` untouched.
+   * `unavailable` keeps the last good `resolved` untouched, and covers the
+   * unreadable-200 case too: the gateway throws rather than answering `null`,
+   * precisely so a broken body cannot be mistaken for a dead link.
    */
   async function resolve(token: string): Promise<ShareResolveOutcome> {
     pending.value = true;

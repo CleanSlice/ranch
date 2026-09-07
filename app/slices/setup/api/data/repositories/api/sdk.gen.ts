@@ -1813,7 +1813,7 @@ export class FilesService {
 
 export class BridleService {
   /**
-   * Send a message to a agent (HTTP fallback — fire & forget)
+   * Send a message to a agent (HTTP fallback — fire & forget). Accepts a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); with neither, the caller is the anonymous embed visitor and gets a throwaway channel.
    */
   public static sendBridleMessage<ThrowOnError extends boolean = false>(
     options: Options<SendBridleMessageData, ThrowOnError>,
@@ -1833,7 +1833,7 @@ export class BridleService {
   }
 
   /**
-   * Send a message and wait for the agent response (synchronous)
+   * Send a message and wait for the agent response (synchronous). Accepts a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); with neither, the caller is the anonymous embed visitor and gets a throwaway channel.
    */
   public static sendBridleMessageSync<ThrowOnError extends boolean = false>(
     options: Options<SendBridleMessageSyncData, ThrowOnError>,

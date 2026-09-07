@@ -18,6 +18,7 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  applyDecorators,
   forwardRef,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -25,10 +26,16 @@ import type { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
+  ApiBadRequestResponse,
   ApiBody,
   ApiConsumes,
+  ApiForbiddenResponse,
+  ApiHeader,
+  ApiNoContentResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiQuery,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -81,6 +88,42 @@ interface IUploadedFile {
 function sanitizeFilename(name: string): string {
   return name.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'attachment';
 }
+
+/**
+ * The share-link header pair (CLEAN-66), documented on every chat route that
+ * accepts it. Both are `required: false` on purpose: the same routes serve
+ * console users on a Bearer token and — for the message routes — anonymous
+ * embed visitors on no credential at all, so making either header mandatory
+ * in the spec would be a lie AND would force it onto every generated client
+ * call. They are only meaningful together.
+ */
+const ApiShareHeaders = () =>
+  applyDecorators(
+    ApiHeader({
+      name: 'X-Share-Token',
+      required: false,
+      description:
+        'Share-link token (`sl_…`) identifying a public share visitor. Send ' +
+        'together with `X-Share-Visitor` instead of an `Authorization` ' +
+        'bearer. Re-validated against the agent in the path on every ' +
+        'request, so a revoked link stops working immediately.',
+    }),
+    ApiHeader({
+      name: 'X-Share-Visitor',
+      required: false,
+      description:
+        'Opaque per-browser visitor id minted by the share page. Required ' +
+        'whenever `X-Share-Token` is sent; it selects the visitor\'s own ' +
+        '`share-<visitorId>` chat channel and owns their attachments.',
+    }),
+  );
+
+/** 403 body shared by every share-link rejection. */
+const SHARE_FORBIDDEN_DESCRIPTION =
+  'Share headers were offered but rejected — revoked, unknown or ' +
+  "foreign-agent token, or a malformed visitor id. Body is `{ code: " +
+  "'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never " +
+  '401: a share visitor has no account to log in to.';
 
 @ApiTags('bridle')
 @Controller('api/agent')
@@ -180,10 +223,25 @@ export class BridleController {
   }
 
   @ApiOperation({
-    description: 'Send a message to a agent (HTTP fallback — fire & forget)',
+    description:
+      'Send a message to a agent (HTTP fallback — fire & forget). Accepts a ' +
+      'bearer token or the share-link headers (`X-Share-Token` + ' +
+      '`X-Share-Visitor`); with neither, the caller is the anonymous embed ' +
+      'visitor and gets a throwaway channel.',
     operationId: 'sendBridleMessage',
   })
   @ApiBody({ type: SendMessageDto })
+  @ApiShareHeaders()
+  // Restated explicitly: the moment a route declares ANY @Api*Response, Nest
+  // stops synthesising the default success entry, and the generated client
+  // would lose its 2xx type.
+  @ApiOkResponse({ description: 'Accepted and forwarded to the agent.' })
+  @ApiForbiddenResponse({ description: SHARE_FORBIDDEN_DESCRIPTION })
+  @ApiBadRequestResponse({
+    description:
+      'An `attachmentIds` entry is unknown, unreadable or not owned by the ' +
+      'caller.',
+  })
   @FlatResponse()
   @Post(':agentId/message')
   @HttpCode(200)
@@ -212,10 +270,29 @@ export class BridleController {
   }
 
   @ApiOperation({
-    description: 'Send a message and wait for the agent response (synchronous)',
+    description:
+      'Send a message and wait for the agent response (synchronous). ' +
+      'Accepts a bearer token or the share-link headers (`X-Share-Token` + ' +
+      '`X-Share-Visitor`); with neither, the caller is the anonymous embed ' +
+      'visitor and gets a throwaway channel.',
     operationId: 'sendBridleMessageSync',
   })
   @ApiBody({ type: SendMessageDto })
+  @ApiShareHeaders()
+  // Restated explicitly: the moment a route declares ANY @Api*Response, Nest
+  // stops synthesising the default success entry, and the generated client
+  // would lose its 2xx type.
+  @ApiOkResponse({
+    description:
+      "The agent's reply (`{ text, messageId, ts }`), or a timeout notice " +
+      'after 120s.',
+  })
+  @ApiForbiddenResponse({ description: SHARE_FORBIDDEN_DESCRIPTION })
+  @ApiBadRequestResponse({
+    description:
+      'An `attachmentIds` entry is unknown, unreadable or not owned by the ' +
+      'caller.',
+  })
   @FlatResponse()
   @Post(':agentId/message/sync')
   @HttpCode(200)
@@ -322,6 +399,18 @@ export class BridleController {
     },
   })
   @ApiOkResponse({ type: BridleAttachmentDto })
+  @ApiShareHeaders()
+  @ApiUnauthorizedResponse({
+    description:
+      'No usable credential: no bearer token and no share headers, or a ' +
+      'bearer that fails verification with no share headers to fall back on.',
+  })
+  @ApiForbiddenResponse({ description: SHARE_FORBIDDEN_DESCRIPTION })
+  @ApiBadRequestResponse({
+    description:
+      'No `file` field, an empty file, an unsupported type, or a file over ' +
+      'the size limit.',
+  })
   @FlatResponse()
   @UseGuards(BridleChatAuthGuard)
   @Post(':agentId/attachment')
@@ -380,6 +469,23 @@ export class BridleController {
       'headers (`X-Share-Token` + `X-Share-Visitor`); a share visitor may ' +
       'only read attachments they uploaded themselves.',
     operationId: 'getBridleAttachment',
+  })
+  @ApiShareHeaders()
+  @ApiOkResponse({
+    description:
+      'The stored bytes, with the original content type and an `inline` ' +
+      'Content-Disposition.',
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'No usable credential: no bearer token and no share headers, or a ' +
+      'bearer that fails verification with no share headers to fall back on.',
+  })
+  @ApiForbiddenResponse({ description: SHARE_FORBIDDEN_DESCRIPTION })
+  @ApiNotFoundResponse({
+    description:
+      'No such attachment — or one belonging to another share visitor, which ' +
+      'answers with the same 404 so a leaked id reveals nothing.',
   })
   @UseGuards(BridleChatAuthGuard)
   @Get(':agentId/attachment/:attachmentId')
@@ -449,6 +555,8 @@ export class BridleController {
       "Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).",
     operationId: 'getBridleTranscript',
   })
+  @ApiShareHeaders()
+  @ApiForbiddenResponse({ description: SHARE_FORBIDDEN_DESCRIPTION })
   @FlatResponse()
   @ApiOkResponse({ type: TranscriptResponseDto })
   @Get(':agentId/transcript')
@@ -509,6 +617,11 @@ export class BridleController {
     required: false,
     description: 'Session channel — defaults to "admin".',
   })
+  @ApiShareHeaders()
+  @ApiNoContentResponse({
+    description: 'Transcript deleted, or there was nothing to delete.',
+  })
+  @ApiForbiddenResponse({ description: SHARE_FORBIDDEN_DESCRIPTION })
   @FlatResponse()
   @Delete(':agentId/transcript')
   @HttpCode(204)
@@ -544,6 +657,13 @@ export class BridleController {
     required: false,
     description: 'Session channel — defaults to "admin".',
   })
+  @ApiShareHeaders()
+  @ApiOkResponse({
+    description:
+      '`{ archivedPath }` for the timestamped copy, or `{}` when there was ' +
+      'nothing to archive.',
+  })
+  @ApiForbiddenResponse({ description: SHARE_FORBIDDEN_DESCRIPTION })
   @FlatResponse()
   @Post(':agentId/transcript/archive')
   @HttpCode(200)

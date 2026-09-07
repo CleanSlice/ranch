@@ -11,9 +11,12 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Request } from 'express';
 import { JwtAuthGuard } from '#/user/auth/guards';
@@ -22,6 +25,12 @@ import { IShareLinkState, ShareLinkService } from './domain';
 import { ShareLinkDto } from './dtos';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
+
+/** Belt-and-braces 403 from `requireSub` — documented so the generated client
+ *  does not treat it as an undocumented failure mode. */
+const NO_SUBJECT_DESCRIPTION =
+  'The bearer token carried no subject, so there is no user to record as the ' +
+  'actor for this write.';
 
 /** `IShareLinkState` and `ShareLinkDto` have the same shape, but the copy is
  *  explicit so nothing the domain grows later leaks onto the wire by accident. */
@@ -46,6 +55,10 @@ function toShareLinkDto(state: IShareLinkState): ShareLinkDto {
  */
 @ApiTags('share-links')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({
+  description: 'Missing, malformed or expired console bearer token.',
+})
+@ApiNotFoundResponse({ description: 'No agent with this id.' })
 @Controller('agents/:agentId/share-link')
 @UseGuards(JwtAuthGuard)
 export class ShareLinkController {
@@ -78,6 +91,7 @@ export class ShareLinkController {
       'existing link handed back, and the operation is idempotent.',
   })
   @ApiOkResponse({ type: ShareLinkDto })
+  @ApiForbiddenResponse({ description: NO_SUBJECT_DESCRIPTION })
   async create(
     @Param('agentId') agentId: string,
     @Req() req: AuthedRequest,
@@ -98,6 +112,7 @@ export class ShareLinkController {
       'the agent does not exist.',
   })
   @ApiOkResponse({ type: ShareLinkDto })
+  @ApiForbiddenResponse({ description: NO_SUBJECT_DESCRIPTION })
   async regenerate(
     @Param('agentId') agentId: string,
     @Req() req: AuthedRequest,
@@ -118,6 +133,7 @@ export class ShareLinkController {
       'that was never shared, is still 200. 404 when the agent does not exist.',
   })
   @ApiOkResponse({ type: ShareLinkDto })
+  @ApiForbiddenResponse({ description: NO_SUBJECT_DESCRIPTION })
   async revoke(
     @Param('agentId') agentId: string,
     @Req() req: AuthedRequest,

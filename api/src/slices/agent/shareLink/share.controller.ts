@@ -1,5 +1,11 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ShareLinkService } from './domain';
 import { ShareResolveRequestDto, ShareResolvedDto } from './dtos';
 
@@ -27,6 +33,18 @@ export class ShareController {
       'malformed token is rejected as 400 before any lookup happens.',
   })
   @ApiOkResponse({ type: ShareResolvedDto })
+  @ApiNotFoundResponse({
+    description:
+      'No usable link behind this token — unknown, revoked, or pointing at ' +
+      "an agent that no longer exists. One identical body (`{ code: " +
+      "'SHARE_LINK_NOT_FOUND' }`) for all three, so a visitor cannot tell " +
+      'a link that was turned off from one that never existed (FR-013).',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'The token is missing or does not look like a share token; rejected by ' +
+      'validation before any lookup happens.',
+  })
   async resolve(
     @Body() dto: ShareResolveRequestDto,
   ): Promise<ShareResolvedDto> {

@@ -231,7 +231,7 @@ onBeforeUnmount(() => {
         </div>
         <button
           type="button"
-          class="-mr-1 -mt-1 shrink-0 rounded-md p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          class="-mr-1 -mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center self-start rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground"
           :aria-label="$t('share.panel.close')"
           @click="close"
         >

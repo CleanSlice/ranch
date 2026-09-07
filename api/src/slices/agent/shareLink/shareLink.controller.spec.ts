@@ -1,5 +1,10 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { GUARDS_METADATA, HTTP_CODE_METADATA } from '@nestjs/common/constants';
+import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -13,6 +18,12 @@ import {
 } from './domain';
 import { ShareResolveRequestDto } from './dtos';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
+import {
+  JwtAuthGuard,
+  ROLES_METADATA_KEY,
+  RolesGuard,
+} from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 
 const AGENT = 'agent-1';
 const AGENT_NAME = 'Support bot';
@@ -434,5 +445,61 @@ describe('route status codes', () => {
   it('leaves GET on its default (no explicit @HttpCode)', () => {
     // Proves the assertions above are reading real metadata, not a constant.
     expect(httpCode(ShareLinkController, 'get')).toBeUndefined();
+  });
+});
+
+describe('owner routes are console users only', () => {
+  // Agent runtimes carry a perfectly valid JWT (`sub=agent:<id>`,
+  // `roles: ['Agent']`), so JwtAuthGuard on its own would let an agent mint or
+  // revoke its own public link. The class pairs RolesGuard with @Roles(User):
+  // `hasAtLeastRole` admits Owner/Admin/User and matches Agent exactly, so the
+  // User threshold means "any human console user, no runtime".
+
+  /** Read off the prototype by name so no unbound method is passed around. */
+  const handlerOf = (method: string): object =>
+    Object.getOwnPropertyDescriptor(ShareLinkController.prototype, method)
+      ?.value as object;
+
+  /** Exactly what RolesGuard reads: the controller's own metadata, plus a
+   *  request carrying these roles. */
+  const contextFor = (roles: UserRoleTypes[]): ExecutionContext =>
+    ({
+      getHandler: () => handlerOf('create'),
+      getClass: () => ShareLinkController,
+      switchToHttp: () => ({
+        getRequest: () => ({ user: { sub: SUB, email: '', roles } }),
+      }),
+    }) as unknown as ExecutionContext;
+
+  const guard = new RolesGuard(new Reflector());
+
+  it('runs RolesGuard after JwtAuthGuard on the whole controller', () => {
+    expect(Reflect.getMetadata(GUARDS_METADATA, ShareLinkController)).toEqual([
+      JwtAuthGuard,
+      RolesGuard,
+    ]);
+  });
+
+  it('declares the User role threshold at class level', () => {
+    expect(
+      Reflect.getMetadata(ROLES_METADATA_KEY, ShareLinkController),
+    ).toEqual([UserRoleTypes.User]);
+  });
+
+  it('refuses an agent-runtime token', () => {
+    expect(() => guard.canActivate(contextFor([UserRoleTypes.Agent]))).toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it.each([[UserRoleTypes.Owner], [UserRoleTypes.Admin], [UserRoleTypes.User]])(
+    'lets a %s through',
+    (role) => {
+      expect(guard.canActivate(contextFor([role]))).toBe(true);
+    },
+  );
+
+  it('refuses a token that carries no roles at all', () => {
+    expect(() => guard.canActivate(contextFor([]))).toThrow(ForbiddenException);
   });
 });

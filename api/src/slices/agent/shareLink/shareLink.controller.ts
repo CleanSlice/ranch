@@ -19,7 +19,8 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Request } from 'express';
-import { JwtAuthGuard } from '#/user/auth/guards';
+import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { IShareLinkState, ShareLinkService } from './domain';
 import { ShareLinkDto } from './dtos';
@@ -49,9 +50,15 @@ function toShareLinkDto(state: IShareLinkState): ShareLinkDto {
  * Owner side of agent sharing (CLEAN-66): read, create, rotate and revoke the
  * public link for one agent.
  *
- * JWT only, no role restriction — any authenticated console user who can open
- * an agent can share it. The visitor side lives in `ShareController` and is
- * deliberately unguarded.
+ * JWT only, with no restriction *between* console users — Owner, Admin and
+ * User all pass, because anyone who can open an agent can share it. The one
+ * role kept out is `Agent`: those tokens (`sub=agent:<id>`) are minted for
+ * agent runtimes, not people, and a runtime must never be able to mint or
+ * revoke its own public link. `hasAtLeastRole` treats `User` as the bottom of
+ * the human hierarchy and `Agent` as outside it, so `@Roles(User)` is exactly
+ * "any console user, no runtime".
+ *
+ * The visitor side lives in `ShareController` and is deliberately unguarded.
  */
 @ApiTags('share-links')
 @ApiBearerAuth()
@@ -60,7 +67,8 @@ function toShareLinkDto(state: IShareLinkState): ShareLinkDto {
 })
 @ApiNotFoundResponse({ description: 'No agent with this id.' })
 @Controller('agents/:agentId/share-link')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRoleTypes.User)
 export class ShareLinkController {
   constructor(private readonly shareLinks: ShareLinkService) {}
 

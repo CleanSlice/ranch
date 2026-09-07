@@ -50,8 +50,16 @@ const wasReady = ref(false);
 /** The last resolve never reached the API — shown only while the first load is open. */
 const reconnecting = ref(false);
 
-/** Keeps a background poll from stacking on top of an in-flight resolve. */
-let inFlight = false;
+/**
+ * The token a resolve is currently in flight for, or `null` when idle.
+ *
+ * A plain boolean would keep a background poll from stacking on itself but
+ * would also swallow the *new* token's first resolve while the old one is
+ * still open — the page would sit on `loading` until the next 30s tick.
+ * Latching on the token instead lets a new link overtake an old request while
+ * still collapsing repeat polls for the same one.
+ */
+let inFlightToken: string | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 /** Id of the response interceptor watching chat calls for a 403. */
 let forbiddenInterceptor: number | null = null;
@@ -125,19 +133,30 @@ function markInvalid() {
 }
 
 async function runResolve() {
-  if (inFlight || isInvalid()) return;
+  if (isInvalid()) return;
+
+  // Pinned before the await. `props.token` can change mid-flight (the query
+  // updates and the watcher below resets the page), and an answer about the
+  // *old* link must not decide anything about the new one — least of all mark
+  // it `ready` with the previous agent's name still in the store.
+  const token = props.token;
+  if (inFlightToken === token) return;
+
   // Empty or malformed: invalid without a request.
-  if (!TOKEN_PATTERN.test(props.token)) {
+  if (!TOKEN_PATTERN.test(token)) {
     markInvalid();
     return;
   }
 
-  inFlight = true;
+  inFlightToken = token;
   try {
-    const outcome = await shareStore.resolve(props.token);
+    const outcome = await shareStore.resolve(token);
     // A chat call may have seen a 403 while this was in flight — that verdict
     // is final and must not be undone by an answer that started earlier.
     if (isInvalid()) return;
+    // Stale answer: the token moved on while this was open. Whatever it says
+    // is about a link the visitor is no longer looking at.
+    if (token !== props.token) return;
 
     if (outcome === 'resolved') {
       reconnecting.value = false;
@@ -151,7 +170,9 @@ async function runResolve() {
       reconnecting.value = true;
     }
   } finally {
-    inFlight = false;
+    // Only release the latch if it is still ours: a newer token has already
+    // claimed it, and clearing it here would let a poll double up.
+    if (inFlightToken === token) inFlightToken = null;
   }
 }
 

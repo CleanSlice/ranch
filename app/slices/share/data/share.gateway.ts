@@ -16,6 +16,13 @@ import { ShareMapper } from './share.mapper';
  *
  * `execute` → SDK call → `unwrapEnvelope` → mapper, the same shape every
  * other gateway in the app follows.
+ *
+ * Every call passes `throwOnError: true`. Without it the axios client hands a
+ * non-2xx back as an ordinary result with `data: undefined`, which the mapper
+ * would happily turn into the "never shared" state — so a 500 on Revoke would
+ * read to the owner as "the link is off" while it is still live. With it, the
+ * failure travels through `BaseGateway.execute` into `shareStore.error`, and
+ * the panel says something went wrong instead of lying about the link.
  */
 export class ShareGateway extends BaseGateway implements IShareGateway {
   private mapper = new ShareMapper();
@@ -24,6 +31,7 @@ export class ShareGateway extends BaseGateway implements IShareGateway {
     return this.execute(async () => {
       const res = await ShareLinksService.getAgentShareLink({
         path: { agentId },
+        throwOnError: true,
       });
       return this.mapper.toState(unwrapEnvelope(res.data));
     });
@@ -33,6 +41,7 @@ export class ShareGateway extends BaseGateway implements IShareGateway {
     return this.execute(async () => {
       const res = await ShareLinksService.createAgentShareLink({
         path: { agentId },
+        throwOnError: true,
       });
       return this.mapper.toState(unwrapEnvelope(res.data));
     });
@@ -42,6 +51,7 @@ export class ShareGateway extends BaseGateway implements IShareGateway {
     return this.execute(async () => {
       const res = await ShareLinksService.regenerateAgentShareLink({
         path: { agentId },
+        throwOnError: true,
       });
       return this.mapper.toState(unwrapEnvelope(res.data));
     });
@@ -51,6 +61,7 @@ export class ShareGateway extends BaseGateway implements IShareGateway {
     return this.execute(async () => {
       const res = await ShareLinksService.revokeAgentShareLink({
         path: { agentId },
+        throwOnError: true,
       });
       return this.mapper.toState(unwrapEnvelope(res.data));
     });
@@ -67,9 +78,8 @@ export class ShareGateway extends BaseGateway implements IShareGateway {
   resolve(token: string): Promise<IShareResolved | null> {
     return this.execute(async () => {
       try {
-        // `throwOnError` — without it the axios client hands the error object
-        // back as a normal result, `res.data` is undefined, and a dropped
-        // connection would map to the same `null` as a revoked link.
+        // `throwOnError` matters most here: without it a dropped connection
+        // would map to the same `null` as a revoked link.
         const res = await ShareApi.resolveShareLink({
           body: { token },
           throwOnError: true,

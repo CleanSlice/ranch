@@ -23,9 +23,14 @@ export default defineNuxtPlugin({
         // answer 403/404, and a stale console token in the same browser must
         // not bounce a visitor to the login form (CLEAN-66). Read lazily, so
         // the router is only touched on the 401s that were already going to
-        // consult it two lines below.
-        const onSharePage = () =>
-          nuxtApp.$router.currentRoute.value.path === '/share';
+        // consult it two lines below. Both spellings are matched: Nuxt's
+        // `trailingSlash` config (and a link pasted as `/share/?token=…`)
+        // decides which one the router reports, and a visitor must not be
+        // redirected to /login because of a slash.
+        const onSharePage = () => {
+          const path = nuxtApp.$router.currentRoute.value.path;
+          return path === '/share' || path === '/share/';
+        };
         if (
           import.meta.client &&
           status === 401 &&

@@ -3,7 +3,7 @@ import {
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
   IFilterKnowledgeParams,
-  IKnowledgePage,
+  IKnowledgePageRows,
   IIndexStatePatch,
   IInstanceStatePatch,
   IRawKnowledgeSearchResult,
@@ -15,7 +15,9 @@ import {
 
 export abstract class IKnowledgeGateway {
   abstract findAll(): Promise<IKnowledgeRecord[]>;
-  abstract findPage(params: IFilterKnowledgeParams): Promise<IKnowledgePage>;
+  abstract findPage(
+    params: IFilterKnowledgeParams,
+  ): Promise<IKnowledgePageRows>;
   abstract findById(id: string): Promise<IKnowledgeRecord | null>;
   abstract findExistingByIds(ids: string[]): Promise<IKnowledgeRecord[]>;
   abstract create(data: ICreateKnowledgeData): Promise<IKnowledgeRecord>;

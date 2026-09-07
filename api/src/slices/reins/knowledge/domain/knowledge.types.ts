@@ -54,6 +54,15 @@ export interface IKnowledgeData extends IKnowledgeRecord {
    * waiting on a long document is indistinguishable from a finished one.
    */
   processingCount: number;
+  /**
+   * Whether an index run for this base exists in this process right now. The
+   * row cannot say: a run lives in memory, and the `indexStatus` the API
+   * reports is derived from the sources, so a base reads `indexing` whenever
+   * one source is still `processing` - whether or not anything is running.
+   * `indexing` with this false is a leftover, and the base can be indexed
+   * again at once.
+   */
+  indexRunAlive: boolean;
 }
 
 export interface ICreateKnowledgeData {
@@ -72,10 +81,24 @@ export interface IKnowledgeListItem extends IKnowledgeData {
   totalSizeBytes: number;
 }
 
+/**
+ * What the gateway can produce for a list: everything except
+ * `indexRunAlive`, which only the service knows because the run it describes
+ * lives in the service's memory, not in any row.
+ */
+export type IKnowledgeListRow = Omit<IKnowledgeListItem, 'indexRunAlive'>;
+
 export interface IFilterKnowledgeParams {
   search?: string;
   page?: number;
   perPage?: number;
+}
+
+export interface IKnowledgePageRows {
+  items: IKnowledgeListRow[];
+  total: number;
+  page: number;
+  perPage: number;
 }
 
 export interface IKnowledgePage {

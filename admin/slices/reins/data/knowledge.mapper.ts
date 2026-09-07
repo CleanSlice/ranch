@@ -129,6 +129,7 @@ export class KnowledgeMapper {
       indexedCount: num(o.indexedCount),
       failedCount: num(o.failedCount),
       processingCount: num(o.processingCount),
+      indexRunAlive: o.indexRunAlive === true,
       instanceState:
         typeof o.instanceState === 'string' &&
         INSTANCE_STATES.has(o.instanceState as InstanceState)

@@ -771,16 +771,21 @@ export class SourceGateway extends ISourceGateway {
     if (storedId === null) return { kind: 'stale' };
 
     try {
-      const status = await this.lightrag.getTrackStatus(
-        source.knowledgeId,
-        storedId,
-      );
+      // The snapshot already answers for any handle that is a doc id, which
+      // is every source a previous run confirmed. Asking LightRAG about each
+      // of those again was one HTTP round-trip per source before the run
+      // waited on anything: on a 651-source base that is 651 calls to a
+      // service busy indexing, minutes of "Indexing…" with nothing to show
+      // for it, and a real share of the load that made it slow. Only a
+      // handle the snapshot does not know - a track id from an ingest - is
+      // worth a call.
+      const fromSnapshot = this.statusesFromSnapshot(storedId, known);
       const statuses =
-        status.documents.length > 0
-          ? status.documents.map((d) => d.status)
-          : // Not a track id LightRAG knows. It may be a doc id adopted from a
-            // duplicate rejection, so fall back to the snapshot.
-            this.statusesFromSnapshot(storedId, known);
+        fromSnapshot.length > 0
+          ? fromSnapshot
+          : (
+              await this.lightrag.getTrackStatus(source.knowledgeId, storedId)
+            ).documents.map((d) => d.status);
 
       if (statuses.length === 0) {
         await this.forgetDocId(source.id);

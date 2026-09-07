@@ -46,6 +46,7 @@ function base(p: Partial<IKnowledgeData> & { id: string }): IKnowledgeData {
     indexedCount: 0,
     failedCount: 0,
     processingCount: 0,
+    indexRunAlive: false,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...p,

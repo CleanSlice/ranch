@@ -145,9 +145,38 @@ const errorIsLong = computed(
   () => (current.value?.indexError?.length ?? 0) > ERROR_PREVIEW_CHARS,
 );
 
-const indexDisabled = computed(
-  () => current.value?.indexStatus === 'indexing' || indexing.value,
+// `indexing` on the row is a claim; whether a run actually exists is the
+// API's `indexRunAlive`. A row left at `indexing` by a run that was rejected,
+// timed out or lost to a deploy used to grey this button out for the whole
+// four-hour budget cap, with nothing to wait for. Now that state is a
+// Restart, and only a genuinely running task disables the button.
+const runGone = computed(
+  () =>
+    current.value?.indexStatus === 'indexing' &&
+    current.value.indexRunAlive === false,
 );
+
+const indexDisabled = computed(
+  () =>
+    indexing.value ||
+    (current.value?.indexStatus === 'indexing' && !runGone.value),
+);
+
+const indexLabel = computed(() => {
+  if (indexing.value) return 'Starting…';
+  if (runGone.value) return 'Restart';
+  if (current.value?.indexStatus === 'indexing') return 'Indexing…';
+  return 'Index';
+});
+
+// Refreshed by the poll: `current` is replaced every few seconds while a run
+// is in flight, so this recomputes without its own timer.
+const runAgeMinutes = computed(() => {
+  const started = current.value?.indexStartedAt;
+  if (!started || current.value?.indexStatus !== 'indexing') return null;
+  const ms = Date.now() - new Date(started).getTime();
+  return Number.isNaN(ms) ? null : Math.max(0, Math.round(ms / 60_000));
+});
 
 // Whether the base can answer, and the isolation-era retrieval health —
 // visible without leaving the header (FR-023). Derived from the row's
@@ -256,9 +285,21 @@ provide('knowledge-refresh', refresh);
           answers may be incomplete until it finishes.
         </p>
       </div>
-      <Button :disabled="indexDisabled" @click="handleIndex">
-        {{ indexDisabled ? 'Indexing…' : 'Index' }}
-      </Button>
+      <div class="flex flex-col items-end gap-1">
+        <Button :disabled="indexDisabled" @click="handleIndex">
+          {{ indexLabel }}
+        </Button>
+        <span
+          v-if="runAgeMinutes !== null && !runGone"
+          class="text-xs text-muted-foreground"
+        >
+          started {{ runAgeMinutes }} min ago
+        </span>
+        <span v-if="runGone" class="max-w-56 text-right text-xs text-muted-foreground">
+          The run that started this is gone. Restart picks up where it left
+          off; nothing already indexed is re-sent.
+        </span>
+      </div>
     </div>
 
     <p v-if="indexError" class="text-xs text-destructive">{{ indexError }}</p>

@@ -1,6 +1,7 @@
 import {
   Injectable,
   Logger,
+  ConflictException,
   NotFoundException,
   OnApplicationBootstrap,
   OnModuleInit,
@@ -136,8 +137,16 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
     return this.withCounts(records);
   }
 
-  listPage(params: IFilterKnowledgeParams): Promise<IKnowledgePage> {
-    return this.gateway.findPage(params);
+  async listPage(params: IFilterKnowledgeParams): Promise<IKnowledgePage> {
+    const page = await this.gateway.findPage(params);
+    // The gateway cannot know this: a run is a task in this process.
+    return {
+      ...page,
+      items: page.items.map((item) => ({
+        ...item,
+        indexRunAlive: this.inflightIndexing.has(item.id),
+      })),
+    };
   }
 
   async get(id: string): Promise<IKnowledgeData> {
@@ -210,6 +219,11 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
       indexedCount: counts.indexed,
       failedCount: counts.failed,
       processingCount: counts.processing,
+      // Purely "does a task exist here". Not gated on the row's status: the
+      // status the API reports is derived from the sources, and one source
+      // stuck in `processing` makes a base read `indexing` with no run behind
+      // it - the exact case this field exists to expose.
+      indexRunAlive: this.inflightIndexing.has(record.id),
     };
   }
 
@@ -309,21 +323,38 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
   async startIndex(knowledgeId: string): Promise<void> {
     const k = await this.requireRecord(knowledgeId);
 
-    if (k.indexStatus === 'indexing' && k.indexStartedAt) {
-      const ageMs = Date.now() - k.indexStartedAt.getTime();
-      // Scaled to how much text the base holds, not how many rows: a single
-      // 1 MB manual outlasts a hundred order forms, and offering a restart
-      // while the first run is still waiting would set two runs fighting over
-      // the same sources.
-      const sources = await this.sources.findByKnowledge(knowledgeId);
-      if (ageMs < staleIndexAfterMs(sources)) {
-        throw new Error(
-          `Knowledge ${knowledgeId} already indexing (started ${Math.round(ageMs / 1000)}s ago)`,
+    if (k.indexStatus === 'indexing') {
+      // The process is the authority on whether a run exists: it holds the
+      // task. A row that says `indexing` with no task behind it is a run that
+      // was rejected, threw before it could write, or is being asked about by
+      // a process that never started it. Judging that by age alone kept a
+      // 651-source base locked for the four-hour budget cap over a run that
+      // had been dead for all of it, with the admin's button greyed out the
+      // whole time.
+      if (!this.inflightIndexing.has(knowledgeId)) {
+        this.logger.warn(
+          `Knowledge ${knowledgeId} is marked indexing but no run exists in this process - restarting`,
+        );
+      } else if (k.indexStartedAt) {
+        const ageMs = Date.now() - k.indexStartedAt.getTime();
+        // A live run can still be stuck. The cut-off is scaled to how much
+        // text the base holds, not how many rows: a single 1 MB manual
+        // outlasts a hundred order forms, and offering a restart while the
+        // first run is still legitimately waiting would set two runs fighting
+        // over the same sources.
+        const sources = await this.sources.findByKnowledge(knowledgeId);
+        const staleAfterMs = staleIndexAfterMs(sources);
+        if (ageMs < staleAfterMs) {
+          const ageMin = Math.round(ageMs / 60_000);
+          const leftMin = Math.max(1, Math.ceil((staleAfterMs - ageMs) / 60_000));
+          throw new ConflictException(
+            `Knowledge ${knowledgeId} is already being indexed (started ${ageMin} min ago). It can be restarted in ${leftMin} min if it has not finished by then.`,
+          );
+        }
+        this.logger.warn(
+          `Knowledge ${knowledgeId} has a run older than its budget (${Math.round(ageMs / 60_000)} min) - restarting over it`,
         );
       }
-      this.logger.warn(
-        `Knowledge ${knowledgeId} has stale indexing state — restarting`,
-      );
     }
 
     await this.gateway.updateIndexState(knowledgeId, {

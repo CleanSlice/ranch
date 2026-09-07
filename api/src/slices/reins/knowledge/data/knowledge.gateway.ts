@@ -8,7 +8,7 @@ import {
   ICreateKnowledgeData,
   IUpdateKnowledgeData,
   IFilterKnowledgeParams,
-  IKnowledgePage,
+  IKnowledgePageRows,
   IIndexStatePatch,
   IInstanceStatePatch,
   IRawKnowledgeSearchResult,
@@ -39,7 +39,7 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     return records.map((r) => this.mapper.toEntity(r));
   }
 
-  async findPage(params: IFilterKnowledgeParams): Promise<IKnowledgePage> {
+  async findPage(params: IFilterKnowledgeParams): Promise<IKnowledgePageRows> {
     const page = Math.max(params.page ?? 1, 1);
     const perPage = Math.min(Math.max(params.perPage ?? 50, 1), 100);
     const search = params.search?.trim();

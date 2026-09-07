@@ -38,6 +38,11 @@ export class KnowledgeDto implements Omit<
       'Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.',
   })
   processingCount: number;
+  @ApiProperty({
+    description:
+      'True while the index run that set `indexing` is still executing in the API. False with `indexing` means the run is gone (rejected, timed out, or lost to a restart) and a new one may be started at once.',
+  })
+  indexRunAlive: boolean;
   @ApiProperty({ enum: ['absent', 'starting', 'ready', 'failed', 'stopping'] })
   instanceState: InstanceStateTypes;
   @ApiProperty({ type: String, nullable: true }) instanceError: string | null;

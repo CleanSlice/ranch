@@ -307,6 +307,45 @@ describe('SourceGateway.indexSources', () => {
     expect(prisma.docIds['src-1']).toBe('track-existing');
   });
 
+  it('answers from the document snapshot instead of asking LightRAG per source', async () => {
+    // One listDocuments call per run already says which doc ids are
+    // processed. Before this, every confirmed source still cost a
+    // getTrackStatus round-trip: 651 of them on the Mazda base, against a
+    // service busy indexing, before the run had anything to wait on.
+    const prisma = makePrismaStub({ 'src-1': 'doc-existing' });
+    const lightrag = makeLightragStub(
+      [processed()],
+      [{ id: 'doc-existing', status: 'processed', filePath: 'notes.txt' }],
+    );
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.indexSources([
+      makeSource({ indexed: true }),
+    ]);
+
+    expect(lightrag.getTrackStatus).not.toHaveBeenCalled();
+    expect(lightrag.ingestText).not.toHaveBeenCalled();
+    expect(outcomes[0].status).toBe('indexed');
+  });
+
+  it('still asks LightRAG about a handle the snapshot does not know', async () => {
+    // A track id from a recent ingest is not a doc id, so the snapshot cannot
+    // vouch for it; that is the one case the per-source call is for.
+    const prisma = makePrismaStub({ 'src-1': 'track-existing' });
+    const lightrag = makeLightragStub(
+      [processed()],
+      [{ id: 'doc-other', status: 'processed', filePath: 'other.txt' }],
+    );
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.indexSources([
+      makeSource({ indexed: true }),
+    ]);
+
+    expect(lightrag.getTrackStatus).toHaveBeenCalledTimes(1);
+    expect(outcomes[0].status).toBe('indexed');
+  });
+
   it('waits for a document still in the pipeline instead of re-uploading it', async () => {
     const prisma = makePrismaStub({ 'src-1': 'track-existing' });
     const lightrag = makeLightragStub([inFlight(), processed()]);

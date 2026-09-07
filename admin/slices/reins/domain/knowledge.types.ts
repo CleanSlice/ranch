@@ -48,6 +48,11 @@ export interface IKnowledge {
   failedCount: number;
   /** Handed to LightRAG, not finished yet. Not an error, just not done. */
   processingCount: number;
+  /**
+   * The run behind an `indexing` status still exists in the API. When this is
+   * false the status is a leftover and the API will accept a new run at once.
+   */
+  indexRunAlive: boolean;
   instanceState: InstanceState;
   instanceError: string | null;
   migrationState: MigrationState;

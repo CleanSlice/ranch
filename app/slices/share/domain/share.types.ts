@@ -35,6 +35,21 @@ export interface IShareResolved {
 }
 
 /**
+ * What one `resolve()` established about a token. Three outcomes, not two,
+ * because the visitor page must not treat a dropped connection the way it
+ * treats a dead link:
+ *
+ * - `resolved`    — the API answered; the agent is in the store's `resolved`.
+ * - `invalid`     — the API answered 404: unknown, revoked or regenerated
+ *                   token (all identical on purpose, FR-013). Terminal — that
+ *                   token never comes back to life.
+ * - `unavailable` — nothing was learned (offline, 5xx, timeout). The last good
+ *                   `resolved` is kept, so a visitor mid-conversation does not
+ *                   lose the chat over one failed background poll.
+ */
+export type ShareResolveOutcome = 'resolved' | 'invalid' | 'unavailable';
+
+/**
  * The credentials a visitor's chat request carries: the link secret plus the
  * per-browser visitor id (`useShareVisitorId`). Travels on the bridle
  * conversation descriptor and becomes the `X-Share-Token` / `X-Share-Visitor`

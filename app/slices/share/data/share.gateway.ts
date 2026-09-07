@@ -56,10 +56,36 @@ export class ShareGateway extends BaseGateway implements IShareGateway {
     });
   }
 
+  /**
+   * Visitor side. The one method that has to tell *why* it failed: a 404 means
+   * there is no such link (the page says so and stops), anything else means we
+   * learned nothing and the page must keep whatever it already had.
+   *
+   * `null` is therefore reserved for "the API says this token is not a link";
+   * every other failure is rethrown.
+   */
   resolve(token: string): Promise<IShareResolved | null> {
     return this.execute(async () => {
-      const res = await ShareApi.resolveShareLink({ body: { token } });
-      return this.mapper.toResolved(unwrapEnvelope(res.data));
+      try {
+        // `throwOnError` — without it the axios client hands the error object
+        // back as a normal result, `res.data` is undefined, and a dropped
+        // connection would map to the same `null` as a revoked link.
+        const res = await ShareApi.resolveShareLink({
+          body: { token },
+          throwOnError: true,
+        });
+        return this.mapper.toResolved(unwrapEnvelope(res.data));
+      } catch (error) {
+        // Unknown and revoked tokens answer with the same 404 (FR-013).
+        if (statusOf(error) === 404) return null;
+        throw error;
+      }
     });
   }
+}
+
+/** HTTP status of a failed request; `0` when it never got an answer at all. */
+function statusOf(error: unknown): number {
+  const e = error as { response?: { status?: number } } | null | undefined;
+  return e?.response?.status ?? 0;
 }

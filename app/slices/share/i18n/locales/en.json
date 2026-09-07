@@ -19,6 +19,15 @@
       "regenerate_yes": "Replace link",
       "cancel": "Cancel",
       "revoked": "Link revoked"
+    },
+    "page": {
+      "loading": "Opening chat…",
+      "reconnecting": "Trouble connecting. Retrying…",
+      "invalid_title": "This link is invalid or no longer active",
+      "revoked_title": "This link is no longer active",
+      "invalid_hint": "Ask the person who shared it for a new link.",
+      "unavailable": "The agent is unavailable right now. Messages will go through once it is back.",
+      "powered_by": "Shared agent"
     }
   }
 }

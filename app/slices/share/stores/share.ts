@@ -2,6 +2,7 @@ import { createServiceGetter } from '#common/composables/createServiceGetter';
 import type {
   IShareLinkState,
   IShareResolved,
+  ShareResolveOutcome,
   ShareService,
 } from '#share/domain';
 
@@ -11,6 +12,7 @@ export type {
   IShareContext,
   IShareLinkState,
   IShareResolved,
+  ShareResolveOutcome,
 } from '#share/domain';
 
 const getService = createServiceGetter<ShareService>('$shareService');
@@ -82,22 +84,30 @@ export const useShareStore = defineStore('share', () => {
   }
 
   /**
-   * Visitor side. `null` covers unknown, revoked and malformed tokens alike —
-   * the API answers all three identically on purpose (FR-013), so the page has
+   * Visitor side. The page re-resolves every 30 s, so this has to separate
+   * "the API says this link is dead" from "we could not ask": clearing
+   * `resolved` on any failure would throw a visitor out of a working
+   * conversation the moment their wifi blinked.
+   *
+   * `invalid` covers unknown, revoked and regenerated tokens alike — the API
+   * answers all three with the same 404 on purpose (FR-013), so the page has
    * exactly one "this link is invalid or no longer active" state to render.
+   * `unavailable` keeps the last good `resolved` untouched.
    */
-  async function resolve(token: string): Promise<IShareResolved | null> {
+  async function resolve(token: string): Promise<ShareResolveOutcome> {
     pending.value = true;
     error.value = null;
     try {
-      resolved.value = await getService().resolve(token);
+      // `null` here is the gateway's word for "the API answered 404".
+      const next = await getService().resolve(token);
+      resolved.value = next;
+      return next ? 'resolved' : 'invalid';
     } catch (err) {
       error.value = (err as Error).message;
-      resolved.value = null;
+      return 'unavailable';
     } finally {
       pending.value = false;
     }
-    return resolved.value;
   }
 
   return {

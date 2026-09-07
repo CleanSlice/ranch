@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { Request } from 'express';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -228,6 +229,36 @@ describe('ShareLinkController (owner side)', () => {
     expect(read.createdAt).toBe(CREATED_AT);
   });
 
+  it('returns exactly the documented ShareLinkDto fields', async () => {
+    // The service state is poisoned with fields that must never reach the
+    // wire — createdBy is an internal audit column, secret is nonsense.
+    const poisoned = {
+      getState: jest.fn(() =>
+        Promise.resolve({
+          active: true,
+          token: `sl_${'q'.repeat(43)}`,
+          createdAt: CREATED_AT,
+          revokedAt: null,
+          rotatedAt: null,
+          rotationCount: 0,
+          createdBy: SUB,
+          secret: 'do-not-leak',
+        } as unknown as IShareLinkState),
+      ),
+    } as unknown as ShareLinkService;
+
+    const res = await new ShareLinkController(poisoned).get(AGENT);
+
+    expect(Object.keys(res).sort()).toEqual([
+      'active',
+      'createdAt',
+      'revokedAt',
+      'rotatedAt',
+      'rotationCount',
+      'token',
+    ]);
+  });
+
   it('passes req.user.sub as the userId on every mutating route', async () => {
     const { owner, share, regenerate, revoke } = makeControllers();
     await owner.create(AGENT, req());
@@ -371,5 +402,37 @@ describe('ShareResolveRequestDto', () => {
 
   it('rejects a non-string token', async () => {
     await expect(errorsFor(42)).resolves.not.toHaveLength(0);
+  });
+});
+
+describe('route status codes', () => {
+  // Every share-link route answers 200, which is what @ApiOkResponse (and
+  // therefore the generated SDK) promises — including the two POSTs, whose
+  // Nest default would be 201. Both are idempotent: create usually hands back
+  // a link that already existed, regenerate replaces one in place.
+  // The handler is read off the prototype by name rather than referenced
+  // directly, so no unbound method is ever passed around.
+  const httpCode = (ctor: { prototype: object }, method: string): unknown => {
+    const handler: unknown = Object.getOwnPropertyDescriptor(
+      ctor.prototype,
+      method,
+    )?.value;
+    return Reflect.getMetadata(HTTP_CODE_METADATA, handler as object);
+  };
+
+  const ROUTES: [string, { prototype: object }, string][] = [
+    ['createAgentShareLink', ShareLinkController, 'create'],
+    ['regenerateAgentShareLink', ShareLinkController, 'regenerate'],
+    ['revokeAgentShareLink', ShareLinkController, 'revoke'],
+    ['resolveShareLink', ShareController, 'resolve'],
+  ];
+
+  it.each(ROUTES)('%s answers 200', (_operationId, ctor, method) => {
+    expect(httpCode(ctor, method)).toBe(200);
+  });
+
+  it('leaves GET on its default (no explicit @HttpCode)', () => {
+    // Proves the assertions above are reading real metadata, not a constant.
+    expect(httpCode(ShareLinkController, 'get')).toBeUndefined();
   });
 });

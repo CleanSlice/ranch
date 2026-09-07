@@ -7,6 +7,7 @@ export class ShareResolveRequestDto {
   @ApiProperty({
     description:
       'The share token from the link (`sl_` + 43 url-safe characters).',
+    pattern: '^sl_[A-Za-z0-9_-]{43}$',
     example: 'sl_mCV1jC5G3nre2dz7hEx7Y8PnbwfyZTVaTKJ8L2SAaDU',
   })
   @IsString()

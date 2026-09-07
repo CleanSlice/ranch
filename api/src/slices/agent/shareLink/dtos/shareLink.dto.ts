@@ -29,6 +29,7 @@ export class ShareLinkDto {
 
   @ApiProperty({
     type: String,
+    format: 'date-time',
     nullable: true,
     description: 'When the link row was first created; null if never shared.',
     example: '2026-09-07T10:00:00.000Z',
@@ -37,6 +38,7 @@ export class ShareLinkDto {
 
   @ApiProperty({
     type: String,
+    format: 'date-time',
     nullable: true,
     description: 'When the link was revoked; null while it is active.',
     example: null,
@@ -45,6 +47,7 @@ export class ShareLinkDto {
 
   @ApiProperty({
     type: String,
+    format: 'date-time',
     nullable: true,
     description:
       'When the token was last replaced; null until the first regenerate.',

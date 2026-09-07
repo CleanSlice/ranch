@@ -66,6 +66,7 @@ export class ShareLinkController {
   }
 
   @Post()
+  @HttpCode(200)
   @ApiOperation({
     operationId: 'createAgentShareLink',
     summary:
@@ -73,7 +74,8 @@ export class ShareLinkController {
       'unchanged (same token), so pressing Share twice never invalidates a ' +
       'link that is already in circulation. A fresh token is minted when the ' +
       'agent has never been shared or the previous link was revoked. 404 ' +
-      'when the agent does not exist.',
+      'when the agent does not exist. 200, not 201: the usual outcome is an ' +
+      'existing link handed back, and the operation is idempotent.',
   })
   @ApiOkResponse({ type: ShareLinkDto })
   async create(
@@ -86,6 +88,7 @@ export class ShareLinkController {
   }
 
   @Post('regenerate')
+  @HttpCode(200)
   @ApiOperation({
     operationId: 'regenerateAgentShareLink',
     summary:

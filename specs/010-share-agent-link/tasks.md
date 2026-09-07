@@ -143,7 +143,7 @@
 - [X] T057 [P] Swagger hygiene: `ShareController` routes carry `@ApiOperation` descriptions and `@ApiNotFoundResponse`; `BridleController` attachment docblocks and `@ApiOperation` descriptions mention "bearer token or share link headers"; `X-Share-Token` / `X-Share-Visitor` documented with `@ApiHeader` on `message`, `message/sync`, attachment routes
 - [X] T058 [P] Mobile pass on `/share` (375 px): header wraps, composer sticks to the bottom, attachments list scrolls inside the chat container (`overflow-x` never on the body)
 - [X] T059 Full verification: `cd api && bunx tsc --noEmit && bun run test`, `cd app && bun run build:api && bun run typecheck`, `bun run i18n:check`, then walk quickstart §1–§4 and record results in the Jira checkpoint comment
-- [ ] T060 Jira + PR: comment on CLEAN-66 with what landed, open the GitHub PR `feat(app): share agent by public link (CLEAN-66)` into `main` with the PR body linking the ticket and the spec folder, put the PR URL on the issue and move it to In Review
+- [X] T060 Jira + PR: comment on CLEAN-66 with what landed, open the GitHub PR `feat(app): share agent by public link (CLEAN-66)` into `main` with the PR body linking the ticket and the spec folder, put the PR URL on the issue and move it to In Review
 
 ---
 

@@ -17,6 +17,9 @@
 const props = defineProps<{ agentId: string }>();
 
 const shareStore = useShareStore();
+// The one sanctioned use of `useI18n()` in a component: the locale itself, for
+// date formatting (docs/i18n.md). Copy still goes through the injected `$t`.
+const { locale } = useI18n();
 
 const root = ref<HTMLElement | null>(null);
 
@@ -48,11 +51,22 @@ const shareUrl = computed(() => link.value?.url ?? '');
  */
 const loadingLink = computed(() => shareStore.pending && !link.value);
 
+/**
+ * The read failed and there is nothing to render: claiming "this agent is not
+ * shared" here would be a guess, and the Share button under it would mint a
+ * link on an agent that may already have one. Offer the retry instead.
+ */
+const linkUnknown = computed(
+  () => !loadingLink.value && !link.value && Boolean(shareStore.error),
+);
+
 const sharedSince = computed(() => {
   const iso = link.value?.createdAt;
   if (!iso) return '';
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString();
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleDateString(locale.value);
 });
 
 // Copy computed in script travels as a key, never as text (docs/i18n.md).
@@ -149,22 +163,28 @@ async function onShare() {
   await shareStore.share(props.agentId);
 }
 
+/** Same read the open does — offered when that read failed. */
+async function onRetry() {
+  await shareStore.loadLink(props.agentId);
+}
+
 function ask(action: 'revoke' | 'regenerate') {
   confirming.value = action;
 }
 
 async function onConfirm() {
   const action = confirming.value;
-  if (!action) return;
-  confirming.value = null;
+  if (!action || shareStore.pending) return;
   // Whatever happens next, the URL on the clipboard is about to be stale.
   resetCopied();
-  if (action === 'revoke') {
-    const state = await shareStore.revoke(props.agentId);
-    revoked.value = Boolean(state);
-    return;
-  }
-  await shareStore.regenerate(props.agentId);
+  // `confirming` is cleared only after the call, so the confirm row is what
+  // carries the spinner — the row it would fall back to is not on screen yet.
+  const state =
+    action === 'revoke'
+      ? await shareStore.revoke(props.agentId)
+      : await shareStore.regenerate(props.agentId);
+  confirming.value = null;
+  if (action === 'revoke') revoked.value = Boolean(state);
 }
 
 // The header keeps this component mounted while the user switches agents, so
@@ -178,7 +198,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="root" class="relative">
+  <!-- Deliberately NOT `relative`: the popover anchors to the header strip
+       (which carries `relative`), not to this button. Anchored to the button it
+       would start ~115px in from the right on a phone — Restart, the flex gap
+       and the header padding — and a 20rem card would run off the left edge. -->
+  <div ref="root">
     <!-- Same shape as the Restart button next to it — this is a header action,
          not a call to action. -->
     <button
@@ -194,7 +218,7 @@ onBeforeUnmount(() => {
 
     <div
       v-if="open"
-      class="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-md border bg-card p-3 shadow-md z-30"
+      class="absolute right-4 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-md border bg-card p-3 shadow-md z-30"
       role="dialog"
       :aria-label="$t('share.panel.title')"
     >
@@ -223,6 +247,24 @@ onBeforeUnmount(() => {
         />
       </div>
 
+      <!-- The read failed: say so and offer it again, rather than guessing. -->
+      <div v-else-if="linkUnknown" class="mt-3">
+        <p
+          class="rounded-md bg-rose-500/10 px-2 py-1.5 text-[11px] leading-snug text-rose-700 dark:text-rose-400"
+        >
+          {{ $t('share.panel.error') }}
+        </p>
+        <button
+          type="button"
+          class="mt-2 inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-[11px] font-medium transition hover:bg-muted disabled:opacity-60"
+          :disabled="shareStore.pending"
+          @click="onRetry"
+        >
+          <Icon name="refresh-cw" :size="12" />
+          {{ $t('share.panel.retry') }}
+        </button>
+      </div>
+
       <!-- Shared: the link, when it started, and what can be done to it. -->
       <template v-else-if="isShared">
         <div
@@ -233,6 +275,7 @@ onBeforeUnmount(() => {
             :value="shareUrl"
             readonly
             dir="ltr"
+            :aria-label="$t('share.panel.title')"
             class="min-w-0 flex-1 bg-transparent text-[11px] text-foreground outline-none"
             @focus="selectAll"
           >
@@ -260,11 +303,7 @@ onBeforeUnmount(() => {
             :disabled="shareStore.pending"
             @click="ask('regenerate')"
           >
-            <Icon
-              :name="shareStore.pending ? 'loader-2' : 'refresh-cw'"
-              :size="12"
-              :class="shareStore.pending ? 'animate-spin' : undefined"
-            />
+            <Icon name="refresh-cw" :size="12" />
             {{ $t('share.panel.regenerate') }}
           </button>
 
@@ -331,15 +370,13 @@ onBeforeUnmount(() => {
         </button>
       </template>
 
-      <div
-        v-if="shareStore.error"
+      <!-- `linkUnknown` renders its own copy of this line above, with a retry. -->
+      <p
+        v-if="shareStore.error && !linkUnknown"
         class="mt-3 rounded-md bg-rose-500/10 px-2 py-1.5 text-[11px] leading-snug text-rose-700 dark:text-rose-400"
       >
         {{ $t('share.panel.error') }}
-        <span class="mt-0.5 block break-words opacity-70">
-          {{ shareStore.error }}
-        </span>
-      </div>
+      </p>
     </div>
   </div>
 </template>

@@ -4,6 +4,7 @@ import { LlmCredential } from "../../llm/llm"
 import { PaddockScenario } from "../../paddock/scenario/scenario"
 import { PaddockEvaluation } from "../../paddock/evaluation/evaluation"
 import { ChatSession } from "../../chat/chat"
+import { AgentShareLink } from "../shareLink/shareLink"
 
 model Agent {
   id              String         @id @default(uuid())
@@ -50,4 +51,6 @@ model Agent {
   paddockScenarios   PaddockScenario[]
   paddockEvaluations PaddockEvaluation[]
   chatSessions       ChatSession[]
+  // At most one public share link per agent (CLEAN-66).
+  shareLink          AgentShareLink?
 }

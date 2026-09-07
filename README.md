@@ -227,8 +227,8 @@ with that agent and nothing else — no login, no navigation, no console pages.
   `share-<visitorId>`, so share traffic shows up in the agent's chat history for
   console users and is recognisable by that prefix. Attachments are own-only: a
   visitor can read back the files they uploaded to their own chat, nothing else.
-- A token grants exactly that one chat — no agent details, no other agents, no
-  console routes.
+- A token grants exactly that one chat — only the agent name and status, no other agents,
+  no console routes.
 
 The `AgentShareLink` table ships in the hand-written migration
 `api/prisma/migrations/20260907120000_agent_share_link` (additive: a new table

@@ -53,8 +53,8 @@ function toShareLinkDto(state: IShareLinkState): ShareLinkDto {
  * JWT only, with no restriction *between* console users — Owner, Admin and
  * User all pass, because anyone who can open an agent can share it. The one
  * role kept out is `Agent`: those tokens (`sub=agent:<id>`) are minted for
- * agent runtimes, not people, and a runtime must never be able to mint or
- * revoke its own public link. `hasAtLeastRole` treats `User` as the bottom of
+ * agent runtimes, not people, and an ordinary runtime must not mint or revoke
+ * public links (admin agents carry Owner and act as Ranch operators by design). `hasAtLeastRole` treats `User` as the bottom of
  * the human hierarchy and `Agent` as outside it, so `@Roles(User)` is exactly
  * "any console user, no runtime".
  *

@@ -31,6 +31,7 @@ class StubGateway extends IBridleAttachmentGateway {
       mimeType: input.mimeType,
       size: input.body.length,
       body: input.body,
+      owner: input.owner,
     });
     return { id };
   }
@@ -466,5 +467,134 @@ describe('BridleAttachmentService — expansion to parts', () => {
     await expect(service.expand(AGENT, 'x', ['a', 'b'])).rejects.toThrow(
       /total less than/i,
     );
+  });
+});
+
+describe('BridleAttachmentService — ownership', () => {
+  const VISITOR = 'share-visitor-7';
+  const OTHER_VISITOR = 'share-visitor-8';
+
+  it('stamps the uploader onto the stored object', async () => {
+    const { service, gw } = makeService();
+
+    const { id } = await service.upload({
+      agentId: AGENT,
+      name: 'notes.md',
+      mimeType: 'text/markdown',
+      body: Buffer.from('# hello'),
+      owner: VISITOR,
+    });
+
+    expect(gw.stored.get(id)!.owner).toBe(VISITOR);
+  });
+
+  it('gives a share visitor back their own file', async () => {
+    const { service } = makeService();
+    const { id } = await service.upload({
+      agentId: AGENT,
+      name: 'notes.md',
+      mimeType: 'text/markdown',
+      body: Buffer.from('# hello'),
+      owner: VISITOR,
+    });
+
+    const stored = await service.fetchFor(AGENT, id, {
+      clientId: VISITOR,
+      isShareVisitor: true,
+    });
+
+    expect(stored?.name).toBe('notes.md');
+  });
+
+  it("hides another visitor's file behind the same null as a deleted one", async () => {
+    // One leaked attachment id plus any live share link for the agent would
+    // otherwise serve a stranger's upload.
+    const { service } = makeService();
+    const { id } = await service.upload({
+      agentId: AGENT,
+      name: 'private.md',
+      mimeType: 'text/markdown',
+      body: Buffer.from('secret'),
+      owner: VISITOR,
+    });
+
+    await expect(
+      service.fetchFor(AGENT, id, {
+        clientId: OTHER_VISITOR,
+        isShareVisitor: true,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('never owner-checks a JWT caller', async () => {
+    // The console's history views read attachments uploaded by anyone.
+    const { service } = makeService();
+    const { id } = await service.upload({
+      agentId: AGENT,
+      name: 'private.md',
+      mimeType: 'text/markdown',
+      body: Buffer.from('secret'),
+      owner: VISITOR,
+    });
+
+    const stored = await service.fetchFor(AGENT, id, {
+      clientId: 'admin',
+      isShareVisitor: false,
+    });
+
+    expect(stored?.name).toBe('private.md');
+  });
+
+  it('still serves legacy objects that carry no owner to a JWT caller', async () => {
+    const { service, gw } = makeService();
+    gw.seed('legacy-1', {
+      name: 'old.txt',
+      mimeType: 'text/plain',
+      size: 3,
+      body: Buffer.from('old'),
+    });
+
+    const stored = await service.fetchFor(AGENT, 'legacy-1', {
+      clientId: 'user-1',
+      isShareVisitor: false,
+    });
+
+    expect(stored?.name).toBe('old.txt');
+  });
+
+  it('withholds legacy objects from a share visitor', async () => {
+    // An absent owner can never equal `share-<visitor>`, so pre-share uploads
+    // stay console-only rather than becoming public by omission.
+    const { service, gw } = makeService();
+    gw.seed('legacy-1', {
+      name: 'old.txt',
+      mimeType: 'text/plain',
+      size: 3,
+      body: Buffer.from('old'),
+    });
+
+    await expect(
+      service.fetchFor(AGENT, 'legacy-1', {
+        clientId: VISITOR,
+        isShareVisitor: true,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('reports a missing object as null for either kind of caller', async () => {
+    const { service } = makeService();
+
+    await expect(
+      service.fetchFor(AGENT, 'nope', {
+        clientId: 'admin',
+        isShareVisitor: false,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      service.fetchFor(AGENT, 'nope', {
+        clientId: VISITOR,
+        isShareVisitor: true,
+      }),
+    ).resolves.toBeNull();
   });
 });

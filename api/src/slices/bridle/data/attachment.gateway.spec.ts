@@ -138,3 +138,71 @@ describe('BridleAttachmentGateway — round trip', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('BridleAttachmentGateway — ownership metadata', () => {
+  it('stores the uploader as percent-encoded ASCII metadata', async () => {
+    const { gateway, s3 } = makeGateway();
+
+    await gateway.store({
+      agentId: 'agent-1',
+      name: 'a.txt',
+      mimeType: 'text/plain',
+      body: Buffer.from('x'),
+      owner: 'share-visitor-7',
+    });
+
+    const metadata = s3.upload.mock.calls[0][0].metadata as Record<
+      string,
+      string
+    >;
+    expect(metadata.owner).toBe('share-visitor-7');
+    // Same US-ASCII constraint the name encoding exists for.
+    expect(metadata.owner).toMatch(/^[\x20-\x7E]*$/);
+  });
+
+  it('reads the owner back off the object', async () => {
+    const { gateway } = makeGateway();
+    const { id } = await gateway.store({
+      agentId: 'agent-1',
+      name: 'a.txt',
+      mimeType: 'text/plain',
+      body: Buffer.from('x'),
+      owner: 'admin',
+    });
+
+    const fetched = await gateway.fetch('agent-1', id);
+    expect(fetched!.owner).toBe('admin');
+  });
+
+  it('writes no owner key when the caller does not know who is uploading', async () => {
+    // Keeps a pre-share object and an unattributed one indistinguishable,
+    // which is exactly how the download check treats them.
+    const { gateway, s3 } = makeGateway();
+
+    await gateway.store({
+      agentId: 'agent-1',
+      name: 'a.txt',
+      mimeType: 'text/plain',
+      body: Buffer.from('x'),
+    });
+
+    const metadata = s3.upload.mock.calls[0][0].metadata as Record<
+      string,
+      string
+    >;
+    expect(metadata).not.toHaveProperty('owner');
+  });
+
+  it('reports a legacy object without owner metadata as unowned', async () => {
+    const { gateway, s3 } = makeGateway();
+    const key = BridleAttachmentGateway.keyFor('agent-1', 'legacy-1');
+    s3.objects.set(key, {
+      body: Buffer.from('old'),
+      contentType: 'text/plain',
+      metadata: { name: 'old.txt', mime: 'text/plain' },
+    });
+
+    const fetched = await gateway.fetch('agent-1', 'legacy-1');
+    expect(fetched!.owner).toBeUndefined();
+  });
+});

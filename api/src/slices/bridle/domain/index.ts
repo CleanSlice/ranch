@@ -11,6 +11,7 @@ export {
 } from './attachment.gateway';
 export {
   BridleAttachmentService,
+  type IAttachmentRequester,
   type IUploadAttachmentInput,
   type IExpandedAttachments,
 } from './attachment.service';

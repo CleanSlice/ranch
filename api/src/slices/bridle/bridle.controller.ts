@@ -31,7 +31,6 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import {
   IBridleGateway,
-  IBridleAttachmentGateway,
   BridleAttachmentService,
   MAX_ATTACHMENT_BYTES,
   buildParts,
@@ -46,12 +45,17 @@ import {
   TranscriptMessageDto,
 } from './dtos';
 import { FlatResponse } from './core';
-import { JwtAuthGuard } from '#/user/auth/guards';
+import { BridleChatAuthGuard } from './guards/bridleChatAuth.guard';
+import type { IChatAuthRequest } from './guards/bridleChatAuth.guard';
 import {
   IFileGateway,
   TranscriptReaderService,
   TranscriptMessage,
 } from '#/agent/file/domain';
+import {
+  SHARE_CLIENT_PREFIX,
+  ShareLinkService,
+} from '#/agent/shareLink/domain';
 
 /** Shape multer gives us. Mirrors the local interface in reins/source. */
 interface IUploadedFile {
@@ -83,7 +87,7 @@ export class BridleController {
     @Inject(forwardRef(() => TranscriptReaderService))
     private readonly transcriptReader: TranscriptReaderService,
     private readonly attachments: BridleAttachmentService,
-    private readonly attachmentGateway: IBridleAttachmentGateway,
+    private readonly shareLinks: ShareLinkService,
   ) {}
 
   /**
@@ -94,9 +98,40 @@ export class BridleController {
    * per request re-triggers the "send the owner your code" flow on every message
    * and scatters history across throwaway channels. Returns null for anonymous
    * callers (no/invalid token) → the caller mints a per-request throwaway id.
+   *
+   * A share-link visitor is identified instead by the `X-Share-Token` +
+   * `X-Share-Visitor` pair, re-validated against this `agentId` on every single
+   * request so a revoked link stops the very next message (research.md R4).
+   * That branch never degrades to the anonymous fallback: once a share token is
+   * on the request, a bad one is a 403 `{ code }` from `authorizeChat` rather
+   * than a silent demotion to a throwaway id — the visitor must be told their
+   * link died, not quietly handed a fresh conversation.
    */
-  private resolveClientId(req: Record<string, unknown>): string | null {
+  private async resolveClientId(
+    req: Record<string, unknown>,
+    agentId: string,
+  ): Promise<string | null> {
     const headers = req.headers as Record<string, string | undefined>;
+    const fromJwt = this.clientIdFromJwt(headers);
+    if (fromJwt) return fromJwt;
+
+    const shareToken = headers?.['x-share-token'];
+    if (shareToken) {
+      // Throws 403 SHARE_LINK_INVALID / SHARE_VISITOR_INVALID. The token is a
+      // bearer secret and is never logged.
+      return this.shareLinks.authorizeChat(
+        shareToken,
+        agentId,
+        headers['x-share-visitor'] ?? '',
+      );
+    }
+    return null;
+  }
+
+  /** The JWT half of `resolveClientId`: unchanged behaviour, and it wins. */
+  private clientIdFromJwt(
+    headers: Record<string, string | undefined>,
+  ): string | null {
     const [scheme, token] = (headers?.authorization ?? '').split(' ');
     if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
     try {
@@ -124,7 +159,9 @@ export class BridleController {
     @Req() req: Record<string, unknown>,
     @Body() body: SendMessageDto,
   ) {
-    const clientId = this.resolveClientId(req) ?? 'http-' + crypto.randomUUID();
+    const clientId =
+      (await this.resolveClientId(req, agentId)) ??
+      'http-' + crypto.randomUUID();
     const base = body.parts ?? buildParts(body.text, body.images);
     const expanded = await this.attachments.expand(
       agentId,
@@ -154,7 +191,9 @@ export class BridleController {
     @Req() req: Record<string, unknown>,
     @Body() body: SendMessageDto,
   ) {
-    const clientId = this.resolveClientId(req) ?? 'sync-' + crypto.randomUUID();
+    const clientId =
+      (await this.resolveClientId(req, agentId)) ??
+      'sync-' + crypto.randomUUID();
     // Distinct from clientId: this HTTP call shares the clientId+agentId map
     // key with any concurrently-open WS session for the same visitor (e.g.
     // the chat widget open in another tab), so registerClient/unregisterClient
@@ -220,11 +259,16 @@ export class BridleController {
   /**
    * Upload one attachment for a later message.
    *
-   * `JwtAuthGuard` is declared explicitly here, and it matters: it is NOT a
-   * global guard in this API, and the rest of this controller is deliberately
-   * unguarded so the embeddable widget's anonymous visitors can reach the hub.
-   * A route added here without the guard would publish every uploaded file to
-   * anyone who asks.
+   * `BridleChatAuthGuard` is declared explicitly here, and it matters: it is
+   * NOT a global guard in this API, and the rest of this controller is
+   * deliberately unguarded so the embeddable widget's anonymous visitors can
+   * reach the hub. A route added here without the guard would publish every
+   * uploaded file to anyone who asks. The guard admits the two identities chat
+   * has — a console bearer token, or a share link's header pair — and leaves
+   * whichever one it found on `req.chatClientId`.
+   *
+   * That id is stamped onto the object as its `owner`, which is what stops one
+   * share visitor from reading another's files back out (see `fetchFor`).
    *
    * One file per request rather than a batch, so each attachment reports its
    * own progress and its own failure in the compose area.
@@ -232,7 +276,8 @@ export class BridleController {
   @ApiOperation({
     description:
       'Upload a chat attachment. Returns the id the send call references ' +
-      'via `attachmentIds`. Requires a bearer token.',
+      'via `attachmentIds`. Requires a bearer token or the share-link ' +
+      'headers (`X-Share-Token` + `X-Share-Visitor`).',
     operationId: 'uploadBridleAttachment',
   })
   @ApiConsumes('multipart/form-data')
@@ -245,7 +290,7 @@ export class BridleController {
   })
   @ApiOkResponse({ type: BridleAttachmentDto })
   @FlatResponse()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BridleChatAuthGuard)
   @Post(':agentId/attachment')
   @HttpCode(200)
   @UseInterceptors(
@@ -253,6 +298,7 @@ export class BridleController {
   )
   async uploadAttachment(
     @Param('agentId') agentId: string,
+    @Req() req: IChatAuthRequest,
     @UploadedFile() file?: IUploadedFile,
   ): Promise<BridleAttachmentDto> {
     if (!file) {
@@ -263,6 +309,7 @@ export class BridleController {
       name: file.originalname,
       mimeType: file.mimetype,
       body: file.buffer,
+      owner: req.chatClientId,
     });
   }
 
@@ -272,21 +319,33 @@ export class BridleController {
    * `@Res()` bypasses the global `{ success, data }` envelope so the raw bytes
    * go out with their own headers — the same pattern as the chat, template and
    * agent-file exports. Guarded for the same reason as the upload above.
+   *
+   * Share visitors are additionally owner-checked: `fetchFor` hands back null
+   * for someone else's file, which lands on the same 404 as a deleted one, so
+   * a leaked id tells a visitor nothing. Console (JWT) callers keep today's
+   * unrestricted read — including objects stored before `owner` existed.
    */
   @ApiOperation({
     description:
       'Download a chat attachment. Streams the stored bytes with their ' +
-      'original content type. Requires a bearer token.',
+      'original content type. Requires a bearer token or the share-link ' +
+      'headers (`X-Share-Token` + `X-Share-Visitor`); a share visitor may ' +
+      'only read attachments they uploaded themselves.',
     operationId: 'getBridleAttachment',
   })
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BridleChatAuthGuard)
   @Get(':agentId/attachment/:attachmentId')
   async downloadAttachment(
     @Param('agentId') agentId: string,
     @Param('attachmentId') attachmentId: string,
+    @Req() req: IChatAuthRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const stored = await this.attachmentGateway.fetch(agentId, attachmentId);
+    const clientId = req.chatClientId ?? '';
+    const stored = await this.attachments.fetchFor(agentId, attachmentId, {
+      clientId,
+      isShareVisitor: clientId.startsWith(SHARE_CLIENT_PREFIX),
+    });
     if (!stored) {
       // The UI renders this as an explicit "no longer available" state rather
       // than a broken image.

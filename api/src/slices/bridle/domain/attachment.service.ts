@@ -29,6 +29,17 @@ export interface IUploadAttachmentInput {
   name: string;
   mimeType: string | undefined;
   body: Buffer;
+  /** Uploader's chat identity (`admin`, a JWT `sub`, `share-<visitorId>`),
+   *  stamped onto the stored object and checked back on download. */
+  owner?: string;
+}
+
+/** Who is asking for a stored attachment, from the chat auth guard's view. */
+export interface IAttachmentRequester {
+  /** `req.chatClientId`: `admin`, a JWT `sub`, or `share-<visitorId>`. */
+  clientId: string;
+  /** True for share-link visitors, the only callers we owner-check. */
+  isShareVisitor: boolean;
 }
 
 /** Text plus the parts to append, produced by expanding attachment ids. */
@@ -78,6 +89,7 @@ export class BridleAttachmentService {
       name: input.name,
       mimeType,
       body: input.body,
+      owner: input.owner,
     });
 
     return {
@@ -89,6 +101,32 @@ export class BridleAttachmentService {
       url: BridleAttachmentService.urlFor(input.agentId, id),
       readableByAgent: isReadableByAgent(kind, mimeType),
     };
+  }
+
+  /**
+   * Read one stored attachment back on behalf of a chat caller.
+   *
+   * Share visitors get only what they uploaded themselves: an attachment id is
+   * unguessable, but it travels in a transcript, and one leaked id plus any
+   * live share link for the same agent would otherwise hand a stranger another
+   * visitor's file. Console (JWT) callers are deliberately not owner-checked —
+   * the admin history views read everyone's attachments, including objects
+   * stored before ownership existed, which carry no `owner` at all.
+   *
+   * A refusal is indistinguishable from a missing object (both `null` → 404),
+   * so nothing here confirms that an id exists.
+   */
+  async fetchFor(
+    agentId: string,
+    attachmentId: string,
+    requester: IAttachmentRequester,
+  ): Promise<IBridleStoredAttachment | null> {
+    const stored = await this.gateway.fetch(agentId, attachmentId);
+    if (!stored) return null;
+    if (requester.isShareVisitor && stored.owner !== requester.clientId) {
+      return null;
+    }
+    return stored;
   }
 
   /**

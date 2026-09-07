@@ -19,7 +19,9 @@ import type { IBridleStoredAttachment } from '../domain/bridle.types';
  * The key carries no extension and no part of the uploaded filename: the id
  * alone locates the object, which keeps a hostile name from ever reaching a
  * key. The original name and MIME type ride along as S3 user metadata so the
- * download route can reproduce the right headers.
+ * download route can reproduce the right headers, joined by the uploader's
+ * chat identity (`owner`) so a share visitor can only read back their own
+ * files.
  */
 @Injectable()
 export class BridleAttachmentGateway extends IBridleAttachmentGateway {
@@ -46,6 +48,10 @@ export class BridleAttachmentGateway extends IBridleAttachmentGateway {
         // S3 user metadata must be US-ASCII; filenames are anything but.
         name: encodeURIComponent(input.name),
         mime: input.mimeType,
+        // Only written when the caller knows who is uploading — an absent
+        // key keeps older objects and this one indistinguishable on read,
+        // which is exactly how the download check treats them.
+        ...(input.owner ? { owner: encodeURIComponent(input.owner) } : {}),
       },
     });
 
@@ -67,13 +73,16 @@ export class BridleAttachmentGateway extends IBridleAttachmentGateway {
       const stored = await this.s3.downloadWithMetadata({ bucket, key });
       return {
         id: attachmentId,
-        name: decodeName(stored.metadata.name) || attachmentId,
+        name: decodeMeta(stored.metadata.name) || attachmentId,
         mimeType:
           stored.metadata.mime ||
           stored.contentType ||
           'application/octet-stream',
         size: stored.body.length,
         body: stored.body,
+        // Undefined for objects uploaded before ownership was recorded; the
+        // service turns that into "JWT callers only".
+        owner: decodeMeta(stored.metadata.owner) || undefined,
       };
     } catch (err) {
       // A missing object is an ordinary outcome — the UI renders it as "no
@@ -108,7 +117,8 @@ export class BridleAttachmentGateway extends IBridleAttachmentGateway {
   }
 }
 
-function decodeName(raw: string | undefined): string {
+/** Reverse of the percent-encoding every user-metadata value goes in with. */
+function decodeMeta(raw: string | undefined): string {
   if (!raw) return '';
   try {
     return decodeURIComponent(raw);

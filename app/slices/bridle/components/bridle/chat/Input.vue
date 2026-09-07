@@ -3,8 +3,12 @@ import {
   FILE_PICKER_ACCEPT,
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from '#bridle/domain';
+import type { IBridleConversation } from '#bridle/stores/bridle';
 
-const props = defineProps<{ disabled?: boolean; agentId: string }>();
+const props = defineProps<{
+  disabled?: boolean;
+  conversation: IBridleConversation;
+}>();
 const emit = defineEmits<{ send: [text: string] }>();
 
 const bridleStore = useBridleStore();
@@ -13,16 +17,18 @@ const draft = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
-const staged = computed(() => bridleStore.stagedFor(props.agentId));
+const staged = computed(() => bridleStore.stagedFor(props.conversation.key));
 const attachmentError = computed(() =>
-  bridleStore.attachmentErrorFor(props.agentId),
+  bridleStore.attachmentErrorFor(props.conversation.key),
 );
 
 const atLimit = computed(
   () => staged.value.length >= MAX_ATTACHMENTS_PER_MESSAGE,
 );
 const canAttach = computed(() => !props.disabled && !atLimit.value);
-const canSend = computed(() => bridleStore.canSend(props.agentId, draft.value));
+const canSend = computed(() =>
+  bridleStore.canSend(props.conversation.key, draft.value),
+);
 
 /** Why the attach control is off, so the tooltip says something useful. */
 const attachTitle = computed(() => {
@@ -55,7 +61,9 @@ function openPicker() {
 
 function onFilesPicked(event: Event) {
   const input = event.target as HTMLInputElement;
-  if (input.files?.length) bridleStore.stageFiles(props.agentId, input.files);
+  if (input.files?.length) {
+    bridleStore.stageFiles(props.conversation, input.files);
+  }
   // Reset so picking the same file twice in a row still fires `change`.
   input.value = '';
 }
@@ -69,7 +77,7 @@ function onPaste(event: ClipboardEvent) {
   const files = Array.from(event.clipboardData?.files ?? []);
   if (!files.length) return;
   event.preventDefault();
-  bridleStore.stageFiles(props.agentId, files);
+  bridleStore.stageFiles(props.conversation, files);
 }
 
 watch(draft, () => nextTick(autoResize));
@@ -94,8 +102,8 @@ watch(draft, () => nextTick(autoResize));
             v-for="attachment in staged"
             :key="attachment.localId"
             :attachment="attachment"
-            @remove="bridleStore.removeStaged(agentId, $event)"
-            @retry="bridleStore.retryStaged(agentId, $event)"
+            @remove="bridleStore.removeStaged(conversation, $event)"
+            @retry="bridleStore.retryStaged(conversation, $event)"
           />
         </div>
 
@@ -172,7 +180,7 @@ watch(draft, () => nextTick(autoResize));
         <button
           type="button"
           class="ml-1 underline underline-offset-2 hover:opacity-80"
-          @click="bridleStore.dismissAttachmentError(agentId)"
+          @click="bridleStore.dismissAttachmentError(conversation)"
         >
           {{ $t('chat.dismiss') }}
         </button>

@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { BridleRoleTypes, type IBridleMessage } from '#bridle/stores/bridle';
+import {
+  BridleRoleTypes,
+  type IBridleConversation,
+  type IBridleMessage,
+} from '#bridle/stores/bridle';
 import { renderMarkdown } from '#bridle/utils/markdown';
 
 const props = defineProps<{
   message: IBridleMessage;
-  agentId: string;
+  /** Carried through to the attachment list, which reads bytes back. */
+  conversation: IBridleConversation;
   agentName?: string;
 }>();
 
@@ -49,7 +54,7 @@ const renderedHtml = computed(() =>
       <BridleChatAttachmentList
         v-if="message.attachments?.length"
         :attachments="message.attachments"
-        :agent-id="agentId"
+        :conversation="conversation"
         :on-primary="isUser"
       />
       <template v-if="isUser">{{ message.text }}</template>

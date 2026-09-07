@@ -24,7 +24,7 @@ Let a console user share one agent through `/share?token=sl_…`, a link that ne
 
 **Performance Goals**: Share → copied link ≤ 2 clicks; visitor first reply bound by the agent, not this feature; revocation visible on the next message and within ≤ 30 s on an open page
 
-**Constraints**: token 256-bit, never logged, never in `Authorization`; 403 (not 401) for share failures because the console's axios interceptor redirects 401 → `/login`; share page must not call `handleApiAuthentication` (global client mutation) nor `LayoutProvider`; `admin/` is English-only, `app/` copy goes through `en.json` + `i18n:sync`; no new `forwardRef` (module graph `Bridle → ShareLink → Agent`)
+**Constraints**: token 256-bit, never logged, never in `Authorization`; 403 (not 401) for share failures because the console's axios interceptor redirects 401 → `/login`; share page must not call `handleApiAuthentication` (global client mutation) nor `LayoutProvider`; `admin/` is English-only, `app/` copy goes through `en.json` + `i18n:sync`; `ShareLinkModule` imports `AgentModule` via `forwardRef` (module cycle `Agent → Bridle → ShareLink → Agent`, precedent `FileModule`)
 
 **Scale/Scope**: one link per agent, tens of agents per install; 2 DB lookups per visitor message (link by token, agent by id) — negligible
 

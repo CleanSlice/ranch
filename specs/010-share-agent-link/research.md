@@ -38,7 +38,7 @@ All Technical Context unknowns resolved. Code references verified against the cu
 
 - **Decision**: a slim public endpoint `POST /share/resolve { token }` returns `{ agentId, agentName, agentStatus }` or 404 for unknown/revoked tokens (same body for both, FR-013). `agentStatus` comes from the agent row; CLEAN-55 already demotes `running` → `unreachable` when the runtime is off the hub, so the page can show the "agent unavailable" banner from status alone (FR-015) without the share module depending on the bridle hub.
 - **Rationale**: `GET /agents/:id` is already `@Public()` (`agent.controller.ts:195-206`) but returns the full `AgentDto` (config, resources, workflowId, allowedOrigins, …) and calls the workflow service on every hit; the share page must not widen that surface (FR-014). Token in a POST body keeps it out of access logs.
-- **Module graph**: `BridleModule → ShareLinkModule` (token validation in `resolveClientId`); `ShareLinkModule` depends only on Prisma + `IAgentGateway` (agent name/status, existence). No `forwardRef`.
+- **Module graph**: `BridleModule → ShareLinkModule` (token validation in `resolveClientId`); `ShareLinkModule` depends only on Prisma + `IAgentGateway` (agent name/status, existence). `ShareLinkModule` imports `AgentModule` via `forwardRef` because `BridleModule → ShareLinkModule` closes the existing `AgentModule ⇄ BridleModule` cycle (found at implementation).
 
 ## R6. Owner-side API and authorization
 

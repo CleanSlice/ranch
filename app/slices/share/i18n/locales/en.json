@@ -1,3 +1,23 @@
 {
-  "share": {}
+  "share": {
+    "panel": {
+      "share": "Share",
+      "title": "Share this agent",
+      "hint": "Anyone with the link can chat with this agent without signing in.",
+      "copy": "Copy link",
+      "copied": "Copied",
+      "not_shared": "This agent is not shared.",
+      "shared_since": "Shared {date}",
+      "close": "Close",
+      "error": "Could not update the share link",
+      "revoke": "Revoke",
+      "revoke_confirm": "Revoke this link? Anyone using it will lose access immediately.",
+      "revoke_yes": "Revoke link",
+      "regenerate": "Regenerate",
+      "regenerate_confirm": "Replace the link? The current one stops working immediately.",
+      "regenerate_yes": "Replace link",
+      "cancel": "Cancel",
+      "revoked": "Link revoked"
+    }
+  }
 }

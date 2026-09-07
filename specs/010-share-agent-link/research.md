@@ -42,7 +42,7 @@ All Technical Context unknowns resolved. Code references verified against the cu
 
 ## R6. Owner-side API and authorization
 
-- **Decision**: separate controller `ShareLinkController` at `agents/:agentId/share-link` with `@UseGuards(JwtAuthGuard)` and **no `@Roles`** — any authenticated console user (Clarification Q2). Not added to `AgentController`: its class-level `RolesGuard` + `@Roles(Owner, Admin)` habit would over-restrict (`agent.controller.ts:66-69`).
+- **Decision**: separate controller `ShareLinkController` at `agents/:agentId/share-link` with `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(User)` — any console user (Owner/Admin/User, Clarification Q2); agent-runtime `Agent` JWTs are refused (final review). Not added to `AgentController`: its class-level `RolesGuard` + `@Roles(Owner, Admin)` habit would over-restrict (`agent.controller.ts:66-69`).
 - Endpoints: `GET` (state), `POST` (create-or-return active; creates a fresh token if the row is revoked), `POST regenerate`, `DELETE` (revoke). Idempotent `POST` means the Share button can always call it.
 - `createdBy`/`updatedBy` store the JWT `sub` for the owner-side "shared by" line (FR-017).
 

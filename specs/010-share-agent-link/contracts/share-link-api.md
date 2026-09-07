@@ -2,7 +2,7 @@
 
 All 2xx bodies are wrapped by the API's standard envelope `{ success, data }`; shapes below are the `data` payload. DTOs carry `@ApiProperty` so `bun run generate:swagger` → `cd app && bun run build:api` produces `ShareLinksService.*` / `ShareService.*` in the generated SDK. Set explicit `operationId`s as listed.
 
-## Owner side — `ShareLinkController` (`@Controller('agents/:agentId/share-link')`, `@UseGuards(JwtAuthGuard)`, no role restriction)
+## Owner side — `ShareLinkController` (`@Controller('agents/:agentId/share-link')`, `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(User)`: any console user — Owner, Admin or User; agent-runtime `Agent` tokens are refused)
 
 | Method | Path | operationId | Response `data` | Errors |
 |---|---|---|---|---|

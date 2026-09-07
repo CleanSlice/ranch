@@ -5,9 +5,11 @@ import {
   Delete,
   Body,
   BadRequestException,
+  ForbiddenException,
   HttpCode,
   Inject,
   NotFoundException,
+  UnauthorizedException,
   Param,
   Query,
   Req,
@@ -34,7 +36,12 @@ import {
   BridleAttachmentService,
   MAX_ATTACHMENT_BYTES,
   buildParts,
+  clientIdFromJwtPayload,
+  hasShareToken,
+  parseBearer,
+  resolveShareIdentity,
 } from './domain';
+import type { ChatHeaders, IAttachmentRequester, IChatAuth } from './domain';
 import {
   SendMessageDto,
   BridleHealthDto,
@@ -54,6 +61,7 @@ import {
 } from '#/agent/file/domain';
 import {
   SHARE_CLIENT_PREFIX,
+  ShareLinkErrorCodes,
   ShareLinkService,
 } from '#/agent/shareLink/domain';
 
@@ -96,54 +104,79 @@ export class BridleController {
    * `sub` (or `admin` for owners/admins). A stable id is essential — the agent
    * runtime keys access-approval AND session history on this id, so a fresh id
    * per request re-triggers the "send the owner your code" flow on every message
-   * and scatters history across throwaway channels. Returns null for anonymous
-   * callers (no/invalid token) → the caller mints a per-request throwaway id.
+   * and scatters history across throwaway channels. Anonymous callers (no or
+   * unusable token) come back as `{ clientId: null, kind: 'anonymous' }` and the
+   * caller mints a per-request throwaway id.
    *
    * A share-link visitor is identified instead by the `X-Share-Token` +
    * `X-Share-Visitor` pair, re-validated against this `agentId` on every single
    * request so a revoked link stops the very next message (research.md R4).
    * That branch never degrades to the anonymous fallback: once a share token is
-   * on the request, a bad one is a 403 `{ code }` from `authorizeChat` rather
-   * than a silent demotion to a throwaway id — the visitor must be told their
-   * link died, not quietly handed a fresh conversation.
+   * offered at all — an empty header counts — a bad one is a 403 `{ code }`
+   * from `authorizeChat` rather than a silent demotion to a throwaway id; the
+   * visitor must be told their link died, not quietly handed a fresh
+   * conversation.
+   *
+   * The KIND travels with the id, because callers downstream need it and must
+   * never re-derive it from the shape of the string.
    */
-  private async resolveClientId(
+  private async resolveRequester(
     req: Record<string, unknown>,
     agentId: string,
-  ): Promise<string | null> {
-    const headers = req.headers as Record<string, string | undefined>;
-    const fromJwt = this.clientIdFromJwt(headers);
-    if (fromJwt) return fromJwt;
+  ): Promise<IAttachmentRequester> {
+    const headers = req.headers as ChatHeaders;
 
-    const shareToken = headers?.['x-share-token'];
-    if (shareToken) {
-      // Throws 403 SHARE_LINK_INVALID / SHARE_VISITOR_INVALID. The token is a
-      // bearer secret and is never logged.
-      return this.shareLinks.authorizeChat(
-        shareToken,
-        agentId,
-        headers['x-share-visitor'] ?? '',
-      );
+    const token = parseBearer(headers);
+    if (token) {
+      const identity = clientIdFromJwtPayload(this.verifyJwt(token));
+      if (identity) return { clientId: identity.clientId, kind: 'jwt' };
     }
-    return null;
+
+    if (hasShareToken(headers)) {
+      const clientId = await resolveShareIdentity(
+        headers,
+        agentId,
+        this.shareLinks,
+      );
+      return { clientId, kind: 'share' };
+    }
+
+    return { clientId: null, kind: 'anonymous' };
   }
 
-  /** The JWT half of `resolveClientId`: unchanged behaviour, and it wins. */
-  private clientIdFromJwt(
-    headers: Record<string, string | undefined>,
-  ): string | null {
-    const [scheme, token] = (headers?.authorization ?? '').split(' ');
-    if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
+  private verifyJwt(token: string): Record<string, unknown> | null {
     try {
-      const payload = this.jwt.verify<Record<string, unknown>>(token);
-      const roles = payload.roles as string[] | undefined;
-      const isAdmin =
-        Array.isArray(roles) &&
-        (roles.includes('Owner') || roles.includes('Admin'));
-      return isAdmin ? 'admin' : ((payload.sub as string) ?? null);
+      return this.jwt.verify<Record<string, unknown>>(token);
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Gate the transcript routes on a share channel.
+   *
+   * `channel` is caller-chosen and these three routes are unauthenticated, so
+   * once share conversations started living in `bridle:share-<visitorId>.jsonl`
+   * anyone could read — or delete — a visitor's chat, attachment ids included,
+   * just by naming the channel. A `share-` channel is therefore readable only
+   * by a console user or by that very visitor; everyone else gets the same 403
+   * whether or not the channel exists.
+   *
+   * Non-share channels keep today's (unauthenticated) behaviour — the broader
+   * hardening of this endpoint is tracked separately (research.md R8).
+   */
+  private async requireChannelAccess(
+    req: Record<string, unknown>,
+    agentId: string,
+    channel: string,
+  ): Promise<void> {
+    if (!channel.startsWith(SHARE_CLIENT_PREFIX)) return;
+
+    const requester = await this.resolveRequester(req, agentId);
+    if (requester.kind === 'jwt') return;
+    if (requester.kind === 'share' && requester.clientId === channel) return;
+
+    throw new ForbiddenException({ code: ShareLinkErrorCodes.LinkInvalid });
   }
 
   @ApiOperation({
@@ -159,14 +192,14 @@ export class BridleController {
     @Req() req: Record<string, unknown>,
     @Body() body: SendMessageDto,
   ) {
-    const clientId =
-      (await this.resolveClientId(req, agentId)) ??
-      'http-' + crypto.randomUUID();
+    const requester = await this.resolveRequester(req, agentId);
+    const clientId = requester.clientId ?? 'http-' + crypto.randomUUID();
     const base = body.parts ?? buildParts(body.text, body.images);
     const expanded = await this.attachments.expand(
       agentId,
       body.text,
       body.attachmentIds,
+      requester,
     );
     this.hub.sendToAgent(
       clientId,
@@ -191,9 +224,8 @@ export class BridleController {
     @Req() req: Record<string, unknown>,
     @Body() body: SendMessageDto,
   ) {
-    const clientId =
-      (await this.resolveClientId(req, agentId)) ??
-      'sync-' + crypto.randomUUID();
+    const requester = await this.resolveRequester(req, agentId);
+    const clientId = requester.clientId ?? 'sync-' + crypto.randomUUID();
     // Distinct from clientId: this HTTP call shares the clientId+agentId map
     // key with any concurrently-open WS session for the same visitor (e.g.
     // the chat widget open in another tab), so registerClient/unregisterClient
@@ -238,7 +270,7 @@ export class BridleController {
       // missing attachment rejects the request instead of leaving the caller
       // waiting out the 120s timeout for a message the agent never got.
       this.attachments
-        .expand(agentId, body.text, body.attachmentIds)
+        .expand(agentId, body.text, body.attachmentIds, requester)
         .then((expanded) => {
           this.hub.sendToAgent(
             clientId,
@@ -265,7 +297,8 @@ export class BridleController {
    * reach the hub. A route added here without the guard would publish every
    * uploaded file to anyone who asks. The guard admits the two identities chat
    * has — a console bearer token, or a share link's header pair — and leaves
-   * whichever one it found on `req.chatClientId`.
+   * whichever one it found on `req.chatAuth` — id AND kind together, so this
+   * handler never has to guess either.
    *
    * That id is stamped onto the object as its `owner`, which is what stops one
    * share visitor from reading another's files back out (see `fetchFor`).
@@ -301,6 +334,7 @@ export class BridleController {
     @Req() req: IChatAuthRequest,
     @UploadedFile() file?: IUploadedFile,
   ): Promise<BridleAttachmentDto> {
+    const auth = this.requireChatAuth(req);
     if (!file) {
       throw new BadRequestException('A file is required (field "file")');
     }
@@ -309,8 +343,22 @@ export class BridleController {
       name: file.originalname,
       mimeType: file.mimetype,
       body: file.buffer,
-      owner: req.chatClientId,
+      owner: auth.clientId,
     });
+  }
+
+  /**
+   * The identity `BridleChatAuthGuard` proved, or a hard 401.
+   *
+   * A guarded handler must never run with an absent identity: silently
+   * treating that as "not a share visitor" is how an ownership check gets
+   * skipped for the one caller nobody could identify.
+   */
+  private requireChatAuth(req: IChatAuthRequest): IChatAuth {
+    if (!req.chatAuth?.clientId) {
+      throw new UnauthorizedException('Missing access token');
+    }
+    return req.chatAuth;
   }
 
   /**
@@ -341,11 +389,11 @@ export class BridleController {
     @Req() req: IChatAuthRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const clientId = req.chatClientId ?? '';
-    const stored = await this.attachments.fetchFor(agentId, attachmentId, {
-      clientId,
-      isShareVisitor: clientId.startsWith(SHARE_CLIENT_PREFIX),
-    });
+    const stored = await this.attachments.fetchFor(
+      agentId,
+      attachmentId,
+      this.requireChatAuth(req),
+    );
     if (!stored) {
       // The UI renders this as an explicit "no longer available" state rather
       // than a broken image.
@@ -398,7 +446,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      "Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client.",
+      "Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).",
     operationId: 'getBridleTranscript',
   })
   @FlatResponse()
@@ -406,9 +454,11 @@ export class BridleController {
   @Get(':agentId/transcript')
   async transcript(
     @Param('agentId') agentId: string,
+    @Req() req: Record<string, unknown>,
     @Query() query: TranscriptQueryDto,
   ): Promise<TranscriptResponseDto> {
     const channel = (query.channel ?? 'admin').trim() || 'admin';
+    await this.requireChannelAccess(req, agentId, channel);
     const limit = query.limit ?? 50;
     const path = `data/sessions/bridle:${channel}.jsonl`;
 
@@ -451,7 +501,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      "Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart.",
+      "Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).",
     operationId: 'resetBridleTranscript',
   })
   @ApiQuery({
@@ -464,9 +514,11 @@ export class BridleController {
   @HttpCode(204)
   async resetTranscript(
     @Param('agentId') agentId: string,
+    @Req() req: Record<string, unknown>,
     @Query('channel') channelRaw?: string,
   ): Promise<void> {
     const channel = (channelRaw ?? 'admin').trim() || 'admin';
+    await this.requireChannelAccess(req, agentId, channel);
     const path = `data/sessions/bridle:${channel}.jsonl`;
     try {
       await this.fileGateway.delete(agentId, path);
@@ -484,7 +536,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      'Archive the persisted chat transcript for an agent/channel — the live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`) and the live slot starts empty. Used by the embed\'s "New chat" action when the visitor wants a clean slate but we still want the prior conversation for admin/audit. No-op (returns `{}`) when there\'s nothing to archive.',
+      "Archive the persisted chat transcript for an agent/channel — the live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`) and the live slot starts empty. Used by the embed's \"New chat\" action when the visitor wants a clean slate but we still want the prior conversation for admin/audit. No-op (returns `{}`) when there's nothing to archive. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).",
     operationId: 'archiveBridleTranscript',
   })
   @ApiQuery({
@@ -497,9 +549,11 @@ export class BridleController {
   @HttpCode(200)
   async archiveTranscript(
     @Param('agentId') agentId: string,
+    @Req() req: Record<string, unknown>,
     @Query('channel') channelRaw?: string,
   ): Promise<{ archivedPath?: string }> {
     const channel = (channelRaw ?? 'admin').trim() || 'admin';
+    await this.requireChannelAccess(req, agentId, channel);
     const livePath = `data/sessions/bridle:${channel}.jsonl`;
 
     // Read current — NotFound is expected (nothing to archive yet);

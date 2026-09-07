@@ -11,6 +11,7 @@ import {
   extractDocumentText,
   isExtractableDocument,
 } from './documentText.extractor';
+import type { IAttachmentRequester } from './chatIdentity';
 import {
   BridleAttachmentKinds,
   BridlePartTypes,
@@ -30,16 +31,8 @@ export interface IUploadAttachmentInput {
   mimeType: string | undefined;
   body: Buffer;
   /** Uploader's chat identity (`admin`, a JWT `sub`, `share-<visitorId>`),
-   *  stamped onto the stored object and checked back on download. */
+   *  stamped onto the stored object and checked back on every read. */
   owner?: string;
-}
-
-/** Who is asking for a stored attachment, from the chat auth guard's view. */
-export interface IAttachmentRequester {
-  /** `req.chatClientId`: `admin`, a JWT `sub`, or `share-<visitorId>`. */
-  clientId: string;
-  /** True for share-link visitors, the only callers we owner-check. */
-  isShareVisitor: boolean;
 }
 
 /** Text plus the parts to append, produced by expanding attachment ids. */
@@ -104,17 +97,25 @@ export class BridleAttachmentService {
   }
 
   /**
-   * Read one stored attachment back on behalf of a chat caller.
+   * Read one stored attachment back on behalf of a chat caller. THE single
+   * gate on attachment reads — download and message expansion both come
+   * through here, because an id put into `attachmentIds` on the unguarded
+   * message routes reads the object just as surely as a GET does.
    *
-   * Share visitors get only what they uploaded themselves: an attachment id is
-   * unguessable, but it travels in a transcript, and one leaked id plus any
-   * live share link for the same agent would otherwise hand a stranger another
-   * visitor's file. Console (JWT) callers are deliberately not owner-checked —
-   * the admin history views read everyone's attachments, including objects
-   * stored before ownership existed, which carry no `owner` at all.
+   * The rule, by requester kind:
    *
-   * A refusal is indistinguishable from a missing object (both `null` → 404),
-   * so nothing here confirms that an id exists.
+   *   - `jwt`       — any object. The console's history views read everyone's
+   *                   attachments, including pre-ownership objects.
+   *   - `share`     — only objects they uploaded (`owner === clientId`). An id
+   *                   is unguessable but it travels in a transcript, and one
+   *                   leaked id plus any live link for the agent would
+   *                   otherwise hand a stranger another visitor's file.
+   *   - `anonymous` — only objects with NO owner. Exactly what a token-less
+   *                   embed visitor could reach before ownership existed, and
+   *                   nothing more; they cannot upload, so they own nothing.
+   *
+   * A refusal is indistinguishable from a missing object (both `null`), so
+   * nothing here confirms that an id exists.
    */
   async fetchFor(
     agentId: string,
@@ -123,10 +124,21 @@ export class BridleAttachmentService {
   ): Promise<IBridleStoredAttachment | null> {
     const stored = await this.gateway.fetch(agentId, attachmentId);
     if (!stored) return null;
-    if (requester.isShareVisitor && stored.owner !== requester.clientId) {
-      return null;
+    return BridleAttachmentService.mayRead(stored, requester) ? stored : null;
+  }
+
+  /** The ownership rule itself — see `fetchFor`. Fails closed: an unknown
+   *  kind reads nothing. */
+  private static mayRead(
+    stored: IBridleStoredAttachment,
+    requester: IAttachmentRequester,
+  ): boolean {
+    if (requester.kind === 'jwt') return true;
+    if (requester.kind === 'share') {
+      return !!requester.clientId && stored.owner === requester.clientId;
     }
-    return stored;
+    if (requester.kind === 'anonymous') return stored.owner === undefined;
+    return false;
   }
 
   /**
@@ -135,11 +147,18 @@ export class BridleAttachmentService {
    *
    * `baseText` comes back unchanged when nothing was inlined, so a message
    * with only images or only binaries reads exactly as the person typed it.
+   *
+   * `requester` is not optional and not decorative: putting a known id into
+   * `attachmentIds` is a read, and the message routes are unguarded, so this
+   * path has to answer to the same ownership rule the download route does. An
+   * id the requester may not read is rejected exactly like a deleted one —
+   * same message, same status — so the refusal leaks nothing.
    */
   async expand(
     agentId: string,
     baseText: string,
     attachmentIds: string[] | undefined,
+    requester: IAttachmentRequester,
   ): Promise<IExpandedAttachments> {
     if (!attachmentIds?.length) {
       return { text: baseText, parts: [], attachments: [] };
@@ -156,7 +175,7 @@ export class BridleAttachmentService {
     let totalBytes = 0;
 
     for (const id of attachmentIds) {
-      const stored = await this.gateway.fetch(agentId, id);
+      const stored = await this.fetchFor(agentId, id, requester);
       if (!stored) {
         throw new BadRequestException(
           `Attachment ${id} is no longer available`,

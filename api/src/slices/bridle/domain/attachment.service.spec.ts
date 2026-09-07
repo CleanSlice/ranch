@@ -8,6 +8,7 @@ import {
   BridlePartTypes,
   type IBridleStoredAttachment,
 } from './bridle.types';
+import type { IAttachmentRequester } from './chatIdentity';
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_EXTRACTED_TEXT_CHARS,
@@ -50,6 +51,10 @@ class StubGateway extends IBridleAttachmentGateway {
 }
 
 const AGENT = 'agent-1';
+
+/** A console caller: reads any object, which is what the expansion tests
+ *  below are about. Ownership itself is covered in its own describe. */
+const JWT: IAttachmentRequester = { clientId: 'admin', kind: 'jwt' };
 
 function makeService(): { service: BridleAttachmentService; gw: StubGateway } {
   const gw = new StubGateway();
@@ -135,7 +140,9 @@ describe('BridleAttachmentService — upload validation', () => {
       body: Buffer.from('PK'),
     });
 
-    expect(result.mimeType).toBe('application/vnd.ms-excel.sheet.macroEnabled.12');
+    expect(result.mimeType).toBe(
+      'application/vnd.ms-excel.sheet.macroEnabled.12',
+    );
     expect(result.kind).toBe(BridleAttachmentKinds.Binary);
   });
 
@@ -213,7 +220,7 @@ describe('BridleAttachmentService — text extraction', () => {
       body: Buffer.from('# Heading\nx'),
     });
 
-    const out = await service.expand(AGENT, 'What does it say?', ['t1']);
+    const out = await service.expand(AGENT, 'What does it say?', ['t1'], JWT);
 
     expect(out.text).toContain('What does it say?');
     expect(out.text).toContain('[Attached file: notes.md]');
@@ -230,7 +237,7 @@ describe('BridleAttachmentService — text extraction', () => {
       body: Buffer.from(long),
     });
 
-    const out = await service.expand(AGENT, 'summarise', ['t1']);
+    const out = await service.expand(AGENT, 'summarise', ['t1'], JWT);
 
     expect(out.text).toContain('characters truncated');
     expect(out.text).toContain('500');
@@ -248,7 +255,7 @@ describe('BridleAttachmentService — text extraction', () => {
       body: Buffer.from([0xff, 0xfe, 0xfd, 0xfc]),
     });
 
-    const out = await service.expand(AGENT, 'read this', ['t1']);
+    const out = await service.expand(AGENT, 'read this', ['t1'], JWT);
 
     expect(out.attachments[0].kind).toBe(BridleAttachmentKinds.Binary);
     expect(out.attachments[0].readableByAgent).toBe(false);
@@ -268,7 +275,7 @@ describe('BridleAttachmentService — text extraction', () => {
       body: Buffer.from([0x61, 0x00, 0x62, 0x00, 0x63]),
     });
 
-    const out = await service.expand(AGENT, 'read this', ['t1']);
+    const out = await service.expand(AGENT, 'read this', ['t1'], JWT);
 
     expect(out.attachments[0].kind).toBe(BridleAttachmentKinds.Binary);
     expect(out.text).toContain('read this');
@@ -286,7 +293,7 @@ describe('BridleAttachmentService — text extraction', () => {
       body,
     });
 
-    const out = await service.expand(AGENT, 'translate', ['t1']);
+    const out = await service.expand(AGENT, 'translate', ['t1'], JWT);
 
     expect(out.text).toContain('Привет, мир — ok');
   });
@@ -295,7 +302,7 @@ describe('BridleAttachmentService — text extraction', () => {
 describe('BridleAttachmentService — expansion to parts', () => {
   it('returns the text untouched when there are no attachments', async () => {
     const { service } = makeService();
-    const out = await service.expand(AGENT, 'plain message', undefined);
+    const out = await service.expand(AGENT, 'plain message', undefined, JWT);
 
     expect(out).toEqual({ text: 'plain message', parts: [], attachments: [] });
   });
@@ -310,7 +317,7 @@ describe('BridleAttachmentService — expansion to parts', () => {
       body: bytes,
     });
 
-    const out = await service.expand(AGENT, 'what is this?', ['i1']);
+    const out = await service.expand(AGENT, 'what is this?', ['i1'], JWT);
 
     expect(out.parts).toHaveLength(1);
     expect(out.parts[0]).toEqual({
@@ -332,7 +339,7 @@ describe('BridleAttachmentService — expansion to parts', () => {
       body: Buffer.from('PK'),
     });
 
-    const out = await service.expand(AGENT, 'read it', ['b1']);
+    const out = await service.expand(AGENT, 'read it', ['b1'], JWT);
 
     expect(out.parts[0]).toMatchObject({
       type: BridlePartTypes.File,
@@ -360,7 +367,7 @@ describe('BridleAttachmentService — expansion to parts', () => {
       body,
     });
 
-    const out = await service.expand(AGENT, 'что в файле?', ['x1']);
+    const out = await service.expand(AGENT, 'что в файле?', ['x1'], JWT);
 
     expect(out.text).toContain('что в файле?');
     expect(out.text).toContain('[Attached file: totals.xlsx]');
@@ -381,7 +388,7 @@ describe('BridleAttachmentService — expansion to parts', () => {
       body: Buffer.from('not zip'),
     });
 
-    const out = await service.expand(AGENT, 'open it', ['x1']);
+    const out = await service.expand(AGENT, 'open it', ['x1'], JWT);
 
     expect(out.text).toContain('broken.xlsx');
     expect(out.text).toContain('not readable');
@@ -397,7 +404,7 @@ describe('BridleAttachmentService — expansion to parts', () => {
       body: Buffer.from('PK'),
     });
 
-    const out = await service.expand(AGENT, '', ['b1']);
+    const out = await service.expand(AGENT, '', ['b1'], JWT);
 
     expect(out.text).toContain('haha.xlsx');
   });
@@ -411,7 +418,7 @@ describe('BridleAttachmentService — expansion to parts', () => {
       body: Buffer.from('hello'),
     });
 
-    const out = await service.expand(AGENT, 'hi', ['t1']);
+    const out = await service.expand(AGENT, 'hi', ['t1'], JWT);
 
     expect(out.parts).toHaveLength(1);
     expect(out.parts[0].type).toBe(BridlePartTypes.File);
@@ -433,14 +440,14 @@ describe('BridleAttachmentService — expansion to parts', () => {
       body: Buffer.from([2]),
     });
 
-    const out = await service.expand(AGENT, 'x', ['b', 'a']);
+    const out = await service.expand(AGENT, 'x', ['b', 'a'], JWT);
 
     expect(out.attachments.map((a) => a.name)).toEqual(['b.pdf', 'a.png']);
   });
 
   it('rejects an id that no longer resolves to an object', async () => {
     const { service } = makeService();
-    await expect(service.expand(AGENT, 'x', ['gone'])).rejects.toThrow(
+    await expect(service.expand(AGENT, 'x', ['gone'], JWT)).rejects.toThrow(
       /no longer available/i,
     );
   });
@@ -448,7 +455,7 @@ describe('BridleAttachmentService — expansion to parts', () => {
   it('rejects more attachments than one message may carry', async () => {
     const { service } = makeService();
     await expect(
-      service.expand(AGENT, 'x', ['a', 'b', 'c', 'd', 'e', 'f']),
+      service.expand(AGENT, 'x', ['a', 'b', 'c', 'd', 'e', 'f'], JWT),
     ).rejects.toThrow(/At most/i);
   });
 
@@ -464,44 +471,50 @@ describe('BridleAttachmentService — expansion to parts', () => {
       });
     }
 
-    await expect(service.expand(AGENT, 'x', ['a', 'b'])).rejects.toThrow(
+    await expect(service.expand(AGENT, 'x', ['a', 'b'], JWT)).rejects.toThrow(
       /total less than/i,
     );
   });
 });
 
 describe('BridleAttachmentService — ownership', () => {
-  const VISITOR = 'share-visitor-7';
-  const OTHER_VISITOR = 'share-visitor-8';
+  const VISITOR: IAttachmentRequester = {
+    clientId: 'share-visitor-7',
+    kind: 'share',
+  };
+  const OTHER_VISITOR: IAttachmentRequester = {
+    clientId: 'share-visitor-8',
+    kind: 'share',
+  };
+  const ANON: IAttachmentRequester = { clientId: null, kind: 'anonymous' };
 
-  it('stamps the uploader onto the stored object', async () => {
-    const { service, gw } = makeService();
-
+  /** Store one text file owned by `owner`, returning its id. */
+  async function seedOwned(
+    service: BridleAttachmentService,
+    owner?: string,
+  ): Promise<string> {
     const { id } = await service.upload({
       agentId: AGENT,
       name: 'notes.md',
       mimeType: 'text/markdown',
       body: Buffer.from('# hello'),
-      owner: VISITOR,
+      owner,
     });
+    return id;
+  }
 
-    expect(gw.stored.get(id)!.owner).toBe(VISITOR);
+  it('stamps the uploader onto the stored object', async () => {
+    const { service, gw } = makeService();
+    const id = await seedOwned(service, VISITOR.clientId!);
+
+    expect(gw.stored.get(id)!.owner).toBe('share-visitor-7');
   });
 
   it('gives a share visitor back their own file', async () => {
     const { service } = makeService();
-    const { id } = await service.upload({
-      agentId: AGENT,
-      name: 'notes.md',
-      mimeType: 'text/markdown',
-      body: Buffer.from('# hello'),
-      owner: VISITOR,
-    });
+    const id = await seedOwned(service, VISITOR.clientId!);
 
-    const stored = await service.fetchFor(AGENT, id, {
-      clientId: VISITOR,
-      isShareVisitor: true,
-    });
+    const stored = await service.fetchFor(AGENT, id, VISITOR);
 
     expect(stored?.name).toBe('notes.md');
   });
@@ -510,39 +523,21 @@ describe('BridleAttachmentService — ownership', () => {
     // One leaked attachment id plus any live share link for the agent would
     // otherwise serve a stranger's upload.
     const { service } = makeService();
-    const { id } = await service.upload({
-      agentId: AGENT,
-      name: 'private.md',
-      mimeType: 'text/markdown',
-      body: Buffer.from('secret'),
-      owner: VISITOR,
-    });
+    const id = await seedOwned(service, VISITOR.clientId!);
 
     await expect(
-      service.fetchFor(AGENT, id, {
-        clientId: OTHER_VISITOR,
-        isShareVisitor: true,
-      }),
+      service.fetchFor(AGENT, id, OTHER_VISITOR),
     ).resolves.toBeNull();
   });
 
   it('never owner-checks a JWT caller', async () => {
     // The console's history views read attachments uploaded by anyone.
     const { service } = makeService();
-    const { id } = await service.upload({
-      agentId: AGENT,
-      name: 'private.md',
-      mimeType: 'text/markdown',
-      body: Buffer.from('secret'),
-      owner: VISITOR,
-    });
+    const id = await seedOwned(service, VISITOR.clientId!);
 
-    const stored = await service.fetchFor(AGENT, id, {
-      clientId: 'admin',
-      isShareVisitor: false,
-    });
+    const stored = await service.fetchFor(AGENT, id, JWT);
 
-    expect(stored?.name).toBe('private.md');
+    expect(stored?.name).toBe('notes.md');
   });
 
   it('still serves legacy objects that carry no owner to a JWT caller', async () => {
@@ -556,7 +551,7 @@ describe('BridleAttachmentService — ownership', () => {
 
     const stored = await service.fetchFor(AGENT, 'legacy-1', {
       clientId: 'user-1',
-      isShareVisitor: false,
+      kind: 'jwt',
     });
 
     expect(stored?.name).toBe('old.txt');
@@ -574,27 +569,120 @@ describe('BridleAttachmentService — ownership', () => {
     });
 
     await expect(
-      service.fetchFor(AGENT, 'legacy-1', {
-        clientId: VISITOR,
-        isShareVisitor: true,
-      }),
+      service.fetchFor(AGENT, 'legacy-1', VISITOR),
     ).resolves.toBeNull();
   });
 
-  it('reports a missing object as null for either kind of caller', async () => {
-    const { service } = makeService();
+  it('lets an anonymous caller read only unowned objects', async () => {
+    // Exactly the reach a token-less embed visitor had before ownership
+    // existed — no more, and not one owned file less.
+    const { service, gw } = makeService();
+    gw.seed('legacy-1', {
+      name: 'old.txt',
+      mimeType: 'text/plain',
+      size: 3,
+      body: Buffer.from('old'),
+    });
+    const owned = await seedOwned(service, VISITOR.clientId!);
 
     await expect(
-      service.fetchFor(AGENT, 'nope', {
-        clientId: 'admin',
-        isShareVisitor: false,
-      }),
-    ).resolves.toBeNull();
+      service.fetchFor(AGENT, 'legacy-1', ANON),
+    ).resolves.not.toBeNull();
+    await expect(service.fetchFor(AGENT, owned, ANON)).resolves.toBeNull();
+  });
+
+  it('refuses an owned object to an anonymous caller even by admin id', async () => {
+    // The kind decides, not the string: an anonymous caller carrying the
+    // literal id "admin" still reads nothing it does not own.
+    const { service } = makeService();
+    const id = await seedOwned(service, 'admin');
+
     await expect(
-      service.fetchFor(AGENT, 'nope', {
-        clientId: VISITOR,
-        isShareVisitor: true,
-      }),
+      service.fetchFor(AGENT, id, { clientId: 'admin', kind: 'anonymous' }),
     ).resolves.toBeNull();
+  });
+
+  it('reports a missing object as null for every kind of caller', async () => {
+    const { service } = makeService();
+
+    await expect(service.fetchFor(AGENT, 'nope', JWT)).resolves.toBeNull();
+    await expect(service.fetchFor(AGENT, 'nope', VISITOR)).resolves.toBeNull();
+    await expect(service.fetchFor(AGENT, 'nope', ANON)).resolves.toBeNull();
+  });
+});
+
+describe('BridleAttachmentService — ownership on message expansion', () => {
+  const VISITOR: IAttachmentRequester = {
+    clientId: 'share-visitor-7',
+    kind: 'share',
+  };
+  const OTHER_VISITOR: IAttachmentRequester = {
+    clientId: 'share-visitor-8',
+    kind: 'share',
+  };
+  const ANON: IAttachmentRequester = { clientId: null, kind: 'anonymous' };
+
+  /**
+   * `attachmentIds` on the message routes is a READ, and those routes are
+   * unguarded — so pasting a known id into a message must be governed by the
+   * same rule the download route enforces, and refused the same way a deleted
+   * attachment is.
+   */
+
+  function seedOwned(gw: StubGateway, id: string, owner?: string): void {
+    gw.seed(id, {
+      name: `${id}.md`,
+      mimeType: 'text/markdown',
+      size: 5,
+      body: Buffer.from('hello'),
+      owner,
+    });
+  }
+
+  it('inlines an attachment the share visitor owns', async () => {
+    const { service, gw } = makeService();
+    seedOwned(gw, 'a1', 'share-visitor-7');
+
+    const out = await service.expand(AGENT, 'read it', ['a1'], VISITOR);
+
+    expect(out.text).toContain('[Attached file: a1.md]');
+    expect(out.attachments).toHaveLength(1);
+  });
+
+  it("refuses another visitor's id exactly like a deleted one", async () => {
+    const { service, gw } = makeService();
+    seedOwned(gw, 'a1', 'share-visitor-7');
+
+    await expect(
+      service.expand(AGENT, 'read it', ['a1'], OTHER_VISITOR),
+    ).rejects.toThrow(/no longer available/i);
+  });
+
+  it('refuses an owned id to an anonymous sender', async () => {
+    const { service, gw } = makeService();
+    seedOwned(gw, 'a1', 'admin');
+
+    await expect(
+      service.expand(AGENT, 'read it', ['a1'], ANON),
+    ).rejects.toThrow(/no longer available/i);
+  });
+
+  it('still inlines an unowned legacy attachment for an anonymous sender', async () => {
+    const { service, gw } = makeService();
+    seedOwned(gw, 'a1');
+
+    const out = await service.expand(AGENT, 'read it', ['a1'], ANON);
+
+    expect(out.attachments).toHaveLength(1);
+  });
+
+  it('inlines anything for a JWT sender', async () => {
+    const { service, gw } = makeService();
+    seedOwned(gw, 'a1', 'share-visitor-7');
+    seedOwned(gw, 'a2');
+
+    const out = await service.expand(AGENT, 'read them', ['a1', 'a2'], JWT);
+
+    expect(out.attachments).toHaveLength(2);
   });
 });

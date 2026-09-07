@@ -60,7 +60,7 @@ describe('BridleChatAuthGuard — JWT callers', () => {
     const { context, req } = makeContext({ authorization: 'Bearer jwt-token' });
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(req.chatClientId).toBe('user-1');
+    expect(req.chatAuth).toEqual({ clientId: 'user-1', kind: 'jwt' });
     expect(req.user?.sub).toBe('user-1');
   });
 
@@ -73,7 +73,7 @@ describe('BridleChatAuthGuard — JWT callers', () => {
     const { context, req } = makeContext({ authorization: 'Bearer jwt-token' });
 
     await guard.canActivate(context);
-    expect(req.chatClientId).toBe('admin');
+    expect(req.chatAuth).toEqual({ clientId: 'admin', kind: 'jwt' });
   });
 
   it('never consults the share link service for a JWT caller', async () => {
@@ -101,6 +101,35 @@ describe('BridleChatAuthGuard — JWT callers', () => {
     );
   });
 
+  it('rejects a signed token that carries no usable subject', async () => {
+    // A payload with neither an admin role nor a `sub` proves nothing. Letting
+    // it through would put an undefined identity on the request, and an
+    // undefined identity is precisely the one an ownership check must not be
+    // skipped for.
+    const { guard } = makeGuard({
+      verify: () => ({ email: 'nobody@example.com' }),
+    });
+    const { context, req } = makeContext({ authorization: 'Bearer jwt-token' });
+
+    await expect(guard.canActivate(context)).rejects.toMatchObject({
+      status: 401,
+      message: 'Invalid or expired token',
+    });
+    expect(req.chatAuth).toBeUndefined();
+  });
+
+  it('lets a subject-less token fall through to a valid share pair', async () => {
+    const { guard } = makeGuard({ verify: () => ({ roles: ['User'] }) });
+    const { context, req } = makeContext({
+      authorization: 'Bearer jwt-token',
+      'x-share-token': 'sl_token',
+      'x-share-visitor': 'v1',
+    });
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(req.chatAuth).toEqual({ clientId: 'share-v1', kind: 'share' });
+  });
+
   it('falls through to the share pair when a stale token rides along', async () => {
     // A console user whose session expired opening a share link would
     // otherwise be 401'd on upload while message/sync happily accepted them.
@@ -116,7 +145,7 @@ describe('BridleChatAuthGuard — JWT callers', () => {
     });
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(req.chatClientId).toBe('share-v1');
+    expect(req.chatAuth).toEqual({ clientId: 'share-v1', kind: 'share' });
   });
 });
 
@@ -129,7 +158,10 @@ describe('BridleChatAuthGuard — share visitors', () => {
     });
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(req.chatClientId).toBe('share-visitor-7');
+    expect(req.chatAuth).toEqual({
+      clientId: 'share-visitor-7',
+      kind: 'share',
+    });
     expect(calls).toEqual([['sl_token', 'agent-1', 'visitor-7']]);
     expect(req.user).toBeUndefined();
   });
@@ -198,5 +230,36 @@ describe('BridleChatAuthGuard — no credentials', () => {
       UnauthorizedException,
     );
     expect(calls).toHaveLength(0);
+  });
+
+  it('treats an EMPTY share token as offered, not absent', async () => {
+    // Otherwise `X-Share-Token:` with nothing after it would slip past the
+    // share branch and land on the 401 (or worse, an unchecked path).
+    const { guard, calls } = makeGuard({
+      authorizeChat: () =>
+        Promise.reject(new ForbiddenException({ code: 'SHARE_LINK_INVALID' })),
+    });
+    const { context } = makeContext({
+      'x-share-token': '',
+      'x-share-visitor': 'v1',
+    });
+
+    await expect(guard.canActivate(context)).rejects.toMatchObject({
+      status: 403,
+      response: { code: 'SHARE_LINK_INVALID' },
+    });
+    expect(calls).toEqual([['', 'agent-1', 'v1']]);
+  });
+
+  it('reads the first value of a repeated share header', async () => {
+    const { guard, calls } = makeGuard();
+    const req = makeContext({});
+    (req.req as unknown as { headers: Record<string, unknown> }).headers = {
+      'x-share-token': ['sl_token', 'sl_other'],
+      'x-share-visitor': ['v1'],
+    };
+
+    await expect(guard.canActivate(req.context)).resolves.toBe(true);
+    expect(calls).toEqual([['sl_token', 'agent-1', 'v1']]);
   });
 });

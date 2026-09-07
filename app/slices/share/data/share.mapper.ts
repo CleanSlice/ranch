@@ -6,9 +6,12 @@ import type {
 /**
  * Maps the share-link API onto domain shapes.
  *
- * `ShareLinkDto` / `ShareResolvedDto` are not in the generated SDK yet (the API
- * side lands in a later task), so both inputs are read defensively from
- * `unknown` — the same treatment `AgentMapper` gives the agents endpoints.
+ * Both inputs are read defensively from `unknown` — the same treatment
+ * `AgentMapper` gives the agents endpoints — rather than typed against the
+ * generated `ShareLinkDto` / `ShareResolvedDto` directly, so a field rename on
+ * the wire degrades instead of failing typecheck. `ShareLinkDto` also carries
+ * `rotationCount`, deliberately left unmapped: the owner panel has no use for
+ * a raw rotation count.
  *
  * `url` is intentionally left `null` here: it is `${window.location.origin}/…`,
  * and the data layer has no business touching `window`. The store fills it in.

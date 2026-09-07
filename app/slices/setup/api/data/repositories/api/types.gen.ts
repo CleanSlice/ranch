@@ -199,6 +199,10 @@ export type KnowledgeListItemDto = {
    * Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.
    */
   processingCount: number;
+  /**
+   * True while the index run that set `indexing` is still executing in the API. False with `indexing` means the run is gone (rejected, timed out, or lost to a restart) and a new one may be started at once.
+   */
+  indexRunAlive: boolean;
   instanceState: "absent" | "starting" | "ready" | "failed" | "stopping";
   instanceError: string | null;
   migrationState: "notStarted" | "inProgress" | "done" | "failed";
@@ -834,6 +838,55 @@ export type TranscriptResponseDto = {
    */
   nextCursor: string | null;
   hasMore: boolean;
+};
+
+export type ShareLinkDto = {
+  /**
+   * True while the link accepts visitors. False when the agent was never shared or the link has been revoked.
+   */
+  active: boolean;
+  /**
+   * The share secret. Exposed only while the link is active — a revoked token is dead and is never handed back, so this is null whenever active is false.
+   */
+  token: string | null;
+  /**
+   * When the link row was first created; null if never shared.
+   */
+  createdAt: string | null;
+  /**
+   * When the link was revoked; null while it is active.
+   */
+  revokedAt: string | null;
+  /**
+   * When the token was last replaced; null until the first regenerate.
+   */
+  rotatedAt: string | null;
+  /**
+   * How many times the token has been replaced.
+   */
+  rotationCount: number;
+};
+
+export type ShareResolveRequestDto = {
+  /**
+   * The share token from the link (`sl_` + 43 url-safe characters).
+   */
+  token: string;
+};
+
+export type ShareResolvedDto = {
+  /**
+   * Id of the shared agent — used for the chat requests.
+   */
+  agentId: string;
+  /**
+   * Display name of the shared agent.
+   */
+  agentName: string;
+  /**
+   * The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.
+   */
+  agentStatus: string;
 };
 
 export type ImportSkillUrlDto = {
@@ -2908,6 +2961,84 @@ export type ArchiveBridleTranscriptData = {
 export type ArchiveBridleTranscriptResponses = {
   200: unknown;
 };
+
+export type RevokeAgentShareLinkData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/share-link";
+};
+
+export type RevokeAgentShareLinkResponses = {
+  200: ShareLinkDto;
+};
+
+export type RevokeAgentShareLinkResponse =
+  RevokeAgentShareLinkResponses[keyof RevokeAgentShareLinkResponses];
+
+export type GetAgentShareLinkData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/share-link";
+};
+
+export type GetAgentShareLinkResponses = {
+  200: ShareLinkDto;
+};
+
+export type GetAgentShareLinkResponse =
+  GetAgentShareLinkResponses[keyof GetAgentShareLinkResponses];
+
+export type CreateAgentShareLinkData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/share-link";
+};
+
+export type CreateAgentShareLinkResponses = {
+  200: ShareLinkDto;
+};
+
+export type CreateAgentShareLinkResponse =
+  CreateAgentShareLinkResponses[keyof CreateAgentShareLinkResponses];
+
+export type RegenerateAgentShareLinkData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/share-link/regenerate";
+};
+
+export type RegenerateAgentShareLinkResponses = {
+  200: ShareLinkDto;
+};
+
+export type RegenerateAgentShareLinkResponse =
+  RegenerateAgentShareLinkResponses[keyof RegenerateAgentShareLinkResponses];
+
+export type ResolveShareLinkData = {
+  body: ShareResolveRequestDto;
+  path?: never;
+  query?: never;
+  url: "/share/resolve";
+};
+
+export type ResolveShareLinkResponses = {
+  200: ShareResolvedDto;
+};
+
+export type ResolveShareLinkResponse =
+  ResolveShareLinkResponses[keyof ResolveShareLinkResponses];
 
 export type SkillControllerFindAllData = {
   body?: never;

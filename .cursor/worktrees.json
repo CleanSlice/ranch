@@ -1,0 +1,14 @@
+{
+  "setup-worktree-windows": [
+    "Copy-Item \"$env:ROOT_WORKTREE_PATH/.env.project\" .env.project",
+    "Copy-Item \"$env:ROOT_WORKTREE_PATH/api/.env\" api/.env",
+    "Copy-Item \"$env:ROOT_WORKTREE_PATH/admin/.env\" admin/.env",
+    "Copy-Item \"$env:ROOT_WORKTREE_PATH/app/.env\" app/.env"
+  ],
+  "setup-worktree-unix": [
+    "cp \"$ROOT_WORKTREE_PATH/.env.project\" .env.project",
+    "cp \"$ROOT_WORKTREE_PATH/api/.env\" api/.env",
+    "cp \"$ROOT_WORKTREE_PATH/admin/.env\" admin/.env",
+    "cp \"$ROOT_WORKTREE_PATH/app/.env\" app/.env"
+  ]
+}

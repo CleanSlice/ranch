@@ -1,0 +1,6 @@
+# Gitignored files copied into every new worktree (Orca, Claude Code).
+# Cursor uses .cursor/worktrees.json with the same list.
+.env.project
+api/.env
+admin/.env
+app/.env

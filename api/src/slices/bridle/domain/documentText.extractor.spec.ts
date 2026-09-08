@@ -7,8 +7,10 @@ import { Workbook } from 'exceljs';
 import JSZip = require('jszip');
 import {
   extractDocumentText,
+  formatWorkbookPreview,
   isExtractableDocument,
 } from './documentText.extractor';
+import { loadWorkbook } from './workbook.reader';
 import {
   EXPECTED,
   buildLongSheet,
@@ -206,17 +208,95 @@ describe('extractDocumentText', () => {
       const headers = text.split('\n').filter((l) => l.startsWith('== Sheet'));
       expect(headers).toHaveLength(3);
       expect(headers[0]).toMatch(/rows 1–13 included · 0 rows omitted$/);
-      expect(headers[1]).toMatch(/rows 1–7 included · 0 rows omitted$/);
+      expect(headers[1]).toMatch(/rows 1–14 included · 0 rows omitted$/);
     });
   });
 
   it('is at least 70% smaller than the legacy CSV dump for the reference invoice', async () => {
     const body = await buildSupplierInvoice();
     const legacy = await legacyCsvDump(body);
-    const current = (await extractDocumentText(XLSX_MIME, body)) ?? '';
+    const rowsOnly =
+      (await extractDocumentText(XLSX_MIME, body, { structure: false })) ?? '';
+    const full = (await extractDocumentText(XLSX_MIME, body)) ?? '';
 
     expect(legacy.length).toBeGreaterThan(0);
-    expect(current.length).toBeLessThan(legacy.length * 0.3);
+    // The row representation itself (CLEAN-67 claim) …
+    expect(rowsOnly.length).toBeLessThan(legacy.length * 0.3);
+    // … and the shipped preview with the CLEAN-69 structure lines on top.
+    expect(full.length).toBeLessThan(legacy.length * 0.45);
+  });
+
+  describe('sheet structure lines (CLEAN-69)', () => {
+    let text: string;
+    beforeAll(async () => {
+      text =
+        (await extractDocumentText(XLSX_MIME, await buildSupplierInvoice())) ??
+        '';
+    });
+
+    it('names the table with its header and data rows on sheet 1', () => {
+      expect(text).toContain(
+        'tables: B4:H6 (header R4: B=Товар | C=Кількість | D=Ціна | F=Сума; data R5–R6)',
+      );
+    });
+
+    it('lists every closing line of sheet 2 with its cell, transport and payable included', () => {
+      const f = EXPECTED.sheet2.footer;
+      const after = text.split('\n').find((l) => l.startsWith('after B4:F7:'));
+      expect(after).toBeDefined();
+      for (const key of [
+        'subtotal',
+        'vat',
+        'withVat',
+        'transport',
+        'payable',
+      ] as const) {
+        expect(after).toContain(`"${f[key].label}" → ${f[key].cell}=`);
+      }
+      expect(after).toContain(
+        `${f.payable.cell}=[=]${EXPECTED.sheet2.payable}`,
+      );
+      expect(after).toContain(
+        `${f.transport.cell}=${EXPECTED.sheet2.transport}`,
+      );
+      expect(after).toContain(`B14 "${f.words.text}"`);
+    });
+
+    it('places the structure lines before the rows of the sheet', () => {
+      const lines = text.split('\n');
+      const header = lines.findIndex((l) => l.startsWith('== Sheet 2:'));
+      expect(lines[header + 1]).toMatch(/^title: /);
+      expect(lines[header + 2]).toMatch(/^tables: /);
+      expect(lines[header + 3]).toMatch(/^after B4:F7: /);
+      expect(lines[header + 4]).toMatch(/^R1: /);
+    });
+
+    it('keeps the structure lines when the budget cuts the rows', async () => {
+      const out =
+        (await extractDocumentText(XLSX_MIME, await buildLongSheet(300), {
+          budgetChars: 900,
+        })) ?? '';
+      expect(out).toContain(
+        'tables: A1:B301 (header R1: A=n | B=label; data R2–R301)',
+      );
+      expect(out).toMatch(/rows 1–\d+ included · [1-9]\d* rows omitted/);
+    });
+
+    it('adds little on a plain header+rows sheet and no "after" line', async () => {
+      const body = await buildLongSheet(300);
+      const wb = await loadWorkbook(body);
+      const withStructure = formatWorkbookPreview(wb) ?? '';
+      const without = formatWorkbookPreview(wb, { structure: false }) ?? '';
+      expect(withStructure).not.toContain('\nafter ');
+      expect(withStructure.length).toBeLessThan(without.length * 1.05);
+    });
+
+    it('adds under 800 characters on the reference invoice', async () => {
+      const wb = await loadWorkbook(await buildSupplierInvoice());
+      const withStructure = formatWorkbookPreview(wb) ?? '';
+      const without = formatWorkbookPreview(wb, { structure: false }) ?? '';
+      expect(withStructure.length - without.length).toBeLessThan(800);
+    });
   });
 
   it('caps rows per sheet and reports the omission', async () => {
@@ -244,9 +324,12 @@ describe('extractDocumentText', () => {
     const [, included, omitted] =
       /rows 1–(\d+) included · (\d+) rows omitted$/.exec(header ?? '') ?? [];
     expect(Number(included) + Number(omitted)).toBe(301);
-    // Every body line is a whole row or a gap marker — nothing sliced mid-row.
+    // Every body line is a structure line, a whole row or a gap marker —
+    // nothing sliced mid-row.
     for (const l of lines.slice(lines.indexOf(header ?? '') + 1)) {
-      expect(l).toMatch(/^(R\d+: .+|\(rows \d+–\d+ empty\))$/);
+      expect(l).toMatch(
+        /^(title: .+|tables: .+|after [A-Z]+\d+:[A-Z]+\d+: .+|R\d+: .+|\(rows \d+–\d+ empty\))$/,
+      );
     }
     expect(lines[lines.length - 1]).toMatch(/^R\d+: A=\d+ \| B=row \d+$/);
   });

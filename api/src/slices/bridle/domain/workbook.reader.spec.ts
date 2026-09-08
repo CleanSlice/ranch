@@ -175,7 +175,7 @@ describe('workbook.reader — readSheet', () => {
     const wb = await loadWorkbook(await buildSupplierInvoice());
 
     const col = readSheet(wb, 2, { range: 'F:F' });
-    expect(col.rows.map((r) => r.row)).toEqual([4, 5, 6, 7]);
+    expect(col.rows.map((r) => r.row)).toEqual([4, 5, 6, 7, 9, 10, 11, 12, 13]);
     const one = readSheet(wb, 2, { range: EXPECTED.sheet2.maxAddress });
     expect(one.rows).toHaveLength(1);
     expect(one.rows[0].cells[0].value).toBe(EXPECTED.sheet2.max);

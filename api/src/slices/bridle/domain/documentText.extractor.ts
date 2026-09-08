@@ -9,6 +9,7 @@ import {
   type CellRow,
   type SheetInfo,
 } from './workbook.reader';
+import { detectSheetStructure, formatStructureLines } from './sheetStructure';
 
 export { isExtractableDocument } from './attachment.constants';
 
@@ -30,6 +31,11 @@ export interface ISpreadsheetPreviewOptions {
   previewRowsPerSheet?: number;
   /** Characters for the whole body, cut at row boundaries. Default: unlimited. */
   budgetChars?: number;
+  /**
+   * Per-sheet `title:` / `tables:` / `after <range>:` lines (CLEAN-69).
+   * Default: true. Off only for size comparisons in tests.
+   */
+  structure?: boolean;
 }
 
 /**
@@ -192,18 +198,30 @@ export function formatWorkbookPreview(
       continue;
     }
 
-    const section = readSheet(workbook, info.index, {
-      includeHidden: true,
-      maxRows: opts.previewRowsPerSheet,
-    });
+    // Structure is derived from every row, not just the preview slice: the
+    // closing lines sit at the bottom, exactly where a row cap cuts.
+    const full = readSheet(workbook, info.index, { includeHidden: true });
+    const cap = opts.previewRowsPerSheet ?? full.rows.length;
+    const rows = full.rows.slice(0, cap);
     const lines: string[] = [];
-    let omitted = section.omittedRows;
+    let omitted = full.rows.length - rows.length;
     let prev: number | null = null;
     let first: number | null = null;
     let last: number | null = null;
 
-    for (let i = 0; i < section.rows.length; i++) {
-      const row = section.rows[i];
+    // Structure lines are charged to the budget but never dropped: when
+    // the budget is tight, rows go first — the shape of the sheet and its
+    // closing lines are what the model must not lose.
+    if (opts.structure ?? true) {
+      const structureLines = formatStructureLines(
+        detectSheetStructure(full.rows),
+      );
+      remaining -= structureLines.reduce((n, l) => n + l.length + 1, 0);
+      lines.push(...structureLines);
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
       const extra: string[] = [];
       if (prev !== null && row.row - prev >= 3) {
         extra.push(`(rows ${prev + 1}–${row.row - 1} empty)`);
@@ -212,7 +230,7 @@ export function formatWorkbookPreview(
       const cost =
         extra.reduce((n, e) => n + e.length + 1, 0) + line.length + 1;
       if (cost > remaining) {
-        omitted += section.rows.length - i;
+        omitted += rows.length - i;
         break;
       }
       remaining -= cost;

@@ -46,6 +46,16 @@ const SHEET1_TOTAL = round2(SHEET1_SUBTOTAL + SHEET1_VAT);
 const sheet2Sums = SHEET2_ITEMS.map(([, q, p]) => round2(q * p));
 const sheet2Max = Math.max(...sheet2Sums);
 const sheet2MaxRow = 5 + sheet2Sums.indexOf(sheet2Max);
+// Sheet 2 closes the way the reported export did: subtotal, VAT, total with
+// VAT, then a transport line and the amount to pay — the lines the agent
+// skipped. Labels are deliberately ordinary Ukrainian; nothing keys on them.
+const SHEET2_SUBTOTAL = round2(sheet2Sums.reduce((a, b) => a + b, 0));
+const SHEET2_VAT = round2(SHEET2_SUBTOTAL * VAT_RATE);
+const SHEET2_WITH_VAT = round2(SHEET2_SUBTOTAL + SHEET2_VAT);
+const SHEET2_TRANSPORT = 2500;
+const SHEET2_PAYABLE = round2(SHEET2_WITH_VAT + SHEET2_TRANSPORT);
+const SHEET2_WORDS =
+  "Сума до сплати: п'ять тисяч шістсот шістдесят чотири Грн 40 Коп";
 
 /** Known answers the specs assert against. */
 export const EXPECTED = {
@@ -75,10 +85,31 @@ export const EXPECTED = {
   },
   sheet2: {
     mergedRegions: 1,
-    max: sheet2Max, // 1476
+    max: sheet2Max, // 1476 — largest item, F5:F7
     maxAddress: `F${sheet2MaxRow}`,
     sums: sheet2Sums,
-    sum: round2(sheet2Sums.reduce((a, b) => a + b, 0)),
+    sum: SHEET2_SUBTOTAL,
+    itemRange: 'F5:F7',
+    subtotal: SHEET2_SUBTOTAL, // F9  = SUM(F5:F7)
+    vat: SHEET2_VAT, // F10 = F9*20%
+    withVat: SHEET2_WITH_VAT, // F11 = F9+F10
+    transport: SHEET2_TRANSPORT, // F12 (entered)
+    payable: SHEET2_PAYABLE, // F13 = F11+F12
+    footer: {
+      subtotal: { label: 'Всього без ПДВ', cell: 'F9' },
+      vat: { label: 'ПДВ (20%)', cell: 'F10' },
+      withVat: { label: 'Загальна сума з ПДВ', cell: 'F11' },
+      transport: { label: 'Транспортні витрати', cell: 'F12' },
+      payable: { label: 'Сума до сплати', cell: 'F13' },
+      words: { row: 14, cell: 'B14', text: SHEET2_WORDS },
+    },
+    titlePair: {
+      label: 'ІД Код',
+      labelCell: 'A3',
+      valueCell: 'B3',
+      value: 3563416774,
+    },
+    lastRow: 14,
   },
   sheet3: {
     rows: 120,
@@ -127,6 +158,9 @@ export async function buildSupplierInvoice(): Promise<Buffer> {
   const s2 = wb.addWorksheet(EXPECTED.sheetNames[1]);
   s2.getCell('A1').value = EXPECTED.sheet1.supplier;
   s2.mergeCells('A1:L1');
+  s2.getCell('A2').value = 'Одержувач:';
+  s2.getCell('A3').value = EXPECTED.sheet2.titlePair.label;
+  s2.getCell('B3').value = EXPECTED.sheet2.titlePair.value;
   s2.getCell('B4').value = 'Товар';
   s2.getCell('C4').value = 'Кількість';
   s2.getCell('D4').value = 'Ціна';
@@ -141,6 +175,18 @@ export async function buildSupplierInvoice(): Promise<Buffer> {
       result: round2(qty * price),
     };
   });
+  const f2 = EXPECTED.sheet2.footer;
+  s2.getCell('B9').value = f2.subtotal.label;
+  s2.getCell('F9').value = { formula: 'SUM(F5:F7)', result: SHEET2_SUBTOTAL };
+  s2.getCell('B10').value = f2.vat.label;
+  s2.getCell('F10').value = { formula: 'F9*0.2', result: SHEET2_VAT };
+  s2.getCell('B11').value = f2.withVat.label;
+  s2.getCell('F11').value = { formula: 'F9+F10', result: SHEET2_WITH_VAT };
+  s2.getCell('B12').value = f2.transport.label;
+  s2.getCell('F12').value = SHEET2_TRANSPORT;
+  s2.getCell('B13').value = f2.payable.label;
+  s2.getCell('F13').value = { formula: 'F11+F12', result: SHEET2_PAYABLE };
+  s2.getCell('B14').value = f2.words.text;
 
   const s3 = wb.addWorksheet(EXPECTED.sheetNames[2]);
   s3.state = 'hidden';

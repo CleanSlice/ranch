@@ -30,7 +30,7 @@ import {
 // Contract: specs/009-attachment-parse-quality/contracts/query-attachment-tool.md
 
 const DESCRIPTION =
-  'Query a spreadsheet attached to this conversation by its attachment id (shown in the "[Attached file: … — id: …]" line). Use it whenever an answer depends on the data in the file rather than on a glance at the preview: aggregating, comparing, filtering, counting or looking up values of any kind — quantities, prices, dates, grades, ratings, codes, text — whatever the sheet holds. Values returned here come from the file; never estimate or recompute them yourself when this tool can answer. The tool does not know what the cells mean: decide from the question and from the sheet\'s own labels which table, columns, rows and measure matter, then pick the operation and function that fit — not a default one. Always report the sheet, the range and the row labels you used next to the result. If what the person asks for is not in the file, say so — do not approximate. Start with op "describe" (sheets, headers, structure) when you are unsure which sheet, table or range to use. When you report a value taken from a sheet, name the label and the cell of the row it came from, and mention the other label → value lines around it that qualify or change it. If sheets are laid out differently, say so instead of forcing one layout on all of them. Use op "structure" to see a sheet\'s tables and the lines after them.';
+  'Query a spreadsheet attached to this conversation by its attachment id (shown in the "[Attached file: … — id: …]" line). Use it whenever an answer depends on the data in the file rather than on a glance at the preview: aggregating, comparing, filtering, counting or looking up values of any kind — quantities, prices, dates, grades, ratings, codes, text — whatever the sheet holds. Values returned here come from the file; never estimate or recompute them yourself when this tool can answer. The tool does not know what the cells mean: decide from the question and from the sheet\'s own labels which table, columns, rows and measure matter, then pick the operation and function that fit — not a default one. Always report the sheet, the range and the row labels you used next to the result. If what the person asks for is not in the file, say so — do not approximate. Start with op "describe" (sheets, headers, structure) when you are unsure which sheet, table or range to use. When you report a value taken from a sheet, name the label and the cell of the row it came from, and mention the other label → value lines around it that qualify or change it. If sheets are laid out differently, say so instead of forcing one layout on all of them. Use op "structure" to see a sheet\'s tables and the lines after them. When a figure you report is combined from several values — across rows, ranges or sheets — compute it with one aggregate call over all of them (the ranges parameter) and list the addends with their cells next to the result. Keep values of different meaning in separate columns of your answer, or say what a column holds for each row.';
 
 /** Rows one `read` may return; beyond that the model is told to narrow. */
 const READ_MAX_ROWS = 500;
@@ -46,7 +46,7 @@ const parameters = z.object({
   op: z
     .enum(['describe', 'read', 'aggregate', 'find', 'structure'])
     .describe(
-      "describe: sheets, sizes, header guess and per-sheet structure. read: cells in a range (any kind of value). aggregate: sum, min, max, count or avg over numeric cells in a range — choose the function the question calls for. find: cells whose text contains a query. structure: one sheet's tables (range, header, data rows), title area and the label → value lines after each table, with cells.",
+      "describe: sheets, sizes, header guess and per-sheet structure. read: cells in a range (any kind of value). aggregate: sum, min, max, count or avg over numeric cells in a range, or over several ranges/sheets at once via `ranges` — choose the function the question calls for. find: cells whose text contains a query. structure: one sheet's tables (range, header, data rows), title area and the label → value lines after each table, with cells.",
     ),
   sheet: z
     .union([z.string(), z.number().int().positive()])
@@ -58,7 +58,23 @@ const parameters = z.object({
     .string()
     .optional()
     .describe(
-      'A1 range such as "F5:F47", a single cell "F12", or a column span "F:F". Required for aggregate; optional for read (defaults to the used area).',
+      'A1 range such as "F5:F47", a single cell "F12", or a column span "F:F". Required for aggregate unless `ranges` is given; optional for read (defaults to the used area).',
+    ),
+  ranges: z
+    .array(
+      z.object({
+        sheet: z
+          .union([z.string(), z.number().int().positive()])
+          .optional()
+          .describe('Sheet for this entry; defaults to the top-level sheet.'),
+        range: z.string().describe('A1 range, cell or column span.'),
+      }),
+    )
+    .min(1)
+    .max(20)
+    .optional()
+    .describe(
+      'aggregate only: several ranges, each on its own sheet, combined in one computation — use this for any figure that spans rows, ranges or sheets. Returns the combined value and a per-range breakdown with cells.',
     ),
   fn: z
     .enum(['sum', 'min', 'max', 'count', 'avg'])
@@ -250,17 +266,125 @@ export class BridleAttachmentTool {
     workbook: Awaited<ReturnType<typeof loadWorkbook>>,
     args: Args,
   ) {
-    const sheetRef = requireSheet(args);
-    if (!args.range) {
-      throw new WorkbookReadError(
-        'aggregate needs a range, e.g. "F5:F47" or "F:F".',
-      );
-    }
     if (!args.fn) {
       throw new WorkbookReadError(
         'aggregate needs fn: sum, min, max, count or avg.',
       );
     }
+    // One entry per range. A plain call is the one-entry case, so a figure
+    // combined across sheets and a figure from one range go through the
+    // same computation and come back with the same audit.
+    const entries: Array<{ sheet?: string | number; range: string }> = args
+      .ranges?.length
+      ? args.ranges
+      : args.range
+        ? [{ sheet: args.sheet, range: args.range }]
+        : [];
+    if (!entries.length) {
+      throw new WorkbookReadError(
+        'aggregate needs a range, e.g. "F5:F47" or "F:F", or a ranges list.',
+      );
+    }
+    const multi = !!args.ranges?.length;
+
+    const parts: AggregatePart[] = [];
+    let totalArea = 0;
+    entries.forEach((entry, i) => {
+      const sheetRef = entry.sheet ?? args.sheet;
+      if (sheetRef === undefined || sheetRef === '') {
+        throw new WorkbookReadError(
+          `aggregate: entry ${i + 1} needs a sheet, or set sheet at the top level.`,
+        );
+      }
+      let part: AggregatePart;
+      try {
+        part = this.aggregatePart(workbook, {
+          ...args,
+          sheet: sheetRef,
+          range: entry.range,
+        });
+      } catch (e) {
+        if (e instanceof WorkbookReadError && multi) {
+          throw new WorkbookReadError(`entry ${i + 1}: ${e.message}`);
+        }
+        throw e;
+      }
+      totalArea += part.area;
+      if (multi && totalArea > MAX_QUERY_CELLS) {
+        throw new WorkbookReadError(
+          `Ranges cover ${totalArea.toLocaleString('en-US')} cells across all entries; narrow them below ${MAX_QUERY_CELLS.toLocaleString('en-US')}.`,
+        );
+      }
+      parts.push(part);
+    });
+
+    const fn = args.fn;
+    const all = parts.flatMap((p) => p.counted);
+    const value = applyFn(
+      fn,
+      all.map((c) => c.value as number),
+    );
+    const covered = {
+      cellsCounted: all.length,
+      cellsSkipped: {
+        empty: parts.reduce((n, p) => n + p.empty, 0),
+        nonNumeric: parts.reduce((n, p) => n + p.nonNumeric, 0),
+        computedExcluded: parts.reduce((n, p) => n + p.computedExcluded, 0),
+        mergedDuplicates: parts.reduce((n, p) => n + p.mergedDuplicates, 0),
+      },
+    };
+    const warnings = parts.flatMap((p) => p.warnings);
+    const listed = (counted: CellRef[]) =>
+      counted.length <= AGGREGATE_LIST_CELLS
+        ? {
+            cells: counted.map((c) => ({
+              address: c.address,
+              value: c.value,
+              computed: c.computed,
+            })),
+          }
+        : {};
+    const partsOut = parts.map((p) => ({
+      sheet: { index: p.info.index, name: p.info.name },
+      range: p.range,
+      value: applyFn(
+        fn,
+        p.counted.map((c) => c.value as number),
+      ),
+      cellsCounted: p.counted.length,
+      ...listed(p.counted),
+    }));
+
+    if (!multi) {
+      const p = parts[0];
+      return {
+        sheet: publicInfo(p.info),
+        fn,
+        range: p.range,
+        where: args.where ?? null,
+        value,
+        covered,
+        ...listed(p.counted),
+        parts: partsOut,
+        warnings,
+      };
+    }
+    return {
+      fn,
+      where: args.where ?? null,
+      value,
+      parts: partsOut,
+      covered,
+      warnings,
+    };
+  }
+
+  /** The counted cells and skip audit of one range on one sheet. */
+  private aggregatePart(
+    workbook: Awaited<ReturnType<typeof loadWorkbook>>,
+    args: Args,
+  ): AggregatePart {
+    const sheetRef = requireSheet(args);
     const includeComputed = args.include_computed ?? true;
     const { section, bounds, restrict } = this.readForQuery(
       workbook,
@@ -294,53 +418,15 @@ export class BridleAttachmentTool {
         counted.push(cell);
       }
     }
-
-    const numbers = counted.map((c) => c.value as number);
-    let value: number | null = null;
-    if (numbers.length) {
-      switch (args.fn) {
-        case 'sum':
-          value = trim(numbers.reduce((a, b) => a + b, 0));
-          break;
-        case 'min':
-          value = Math.min(...numbers);
-          break;
-        case 'max':
-          value = Math.max(...numbers);
-          break;
-        case 'count':
-          value = numbers.length;
-          break;
-        case 'avg':
-          value = trim(numbers.reduce((a, b) => a + b, 0) / numbers.length);
-          break;
-      }
-    }
-
     return {
-      sheet: publicInfo(section.info),
-      fn: args.fn,
+      info: section.info,
       range: formatRange(bounds),
-      where: args.where ?? null,
-      value,
-      covered: {
-        cellsCounted: counted.length,
-        cellsSkipped: {
-          empty: Math.max(0, area - seen - mergedDuplicates),
-          nonNumeric,
-          computedExcluded,
-          mergedDuplicates,
-        },
-      },
-      ...(counted.length <= AGGREGATE_LIST_CELLS
-        ? {
-            cells: counted.map((c) => ({
-              address: c.address,
-              value: c.value,
-              computed: c.computed,
-            })),
-          }
-        : {}),
+      area,
+      counted,
+      empty: Math.max(0, area - seen - mergedDuplicates),
+      nonNumeric,
+      computedExcluded,
+      mergedDuplicates,
       warnings: section.warnings,
     };
   }
@@ -452,6 +538,38 @@ export class BridleAttachmentTool {
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────
+
+interface AggregatePart {
+  info: SheetInfo;
+  range: string;
+  area: number;
+  counted: CellRef[];
+  empty: number;
+  nonNumeric: number;
+  computedExcluded: number;
+  mergedDuplicates: number;
+  warnings: string[];
+}
+
+/** sum / min / max / count / avg over the counted numbers; null when none. */
+function applyFn(
+  fn: NonNullable<Args['fn']>,
+  numbers: number[],
+): number | null {
+  if (!numbers.length) return null;
+  switch (fn) {
+    case 'sum':
+      return trim(numbers.reduce((a, b) => a + b, 0));
+    case 'min':
+      return Math.min(...numbers);
+    case 'max':
+      return Math.max(...numbers);
+    case 'count':
+      return numbers.length;
+    case 'avg':
+      return trim(numbers.reduce((a, b) => a + b, 0) / numbers.length);
+  }
+}
 
 function requireSheet(args: Args): string | number {
   if (args.sheet === undefined || args.sheet === '') {

@@ -162,6 +162,120 @@ describe('query_attachment', () => {
     });
   });
 
+  describe('structure (CLEAN-69)', () => {
+    it("describe carries each visible sheet's tables and closing lines", async () => {
+      const out = parse<{
+        sheets: Array<{
+          structure?: {
+            title: { pairs: Array<{ valueCell: string; value: number }> };
+            tables: Array<{
+              range: string;
+              headerRow: number | null;
+              dataRows: [number, number] | null;
+              footer: {
+                pairs: Array<{
+                  label: string | null;
+                  valueCell: string;
+                  value: number;
+                  computed: boolean;
+                }>;
+              };
+            }>;
+          };
+        }>;
+      }>(
+        await tool.query(
+          { attachment_id: INVOICE_ID, op: 'describe' },
+          undefined,
+          agentA,
+        ),
+      );
+
+      const s2 = out.sheets[1].structure;
+      const f = EXPECTED.sheet2.footer;
+      expect(s2?.title.pairs).toEqual([
+        expect.objectContaining({
+          valueCell: 'B3',
+          value: EXPECTED.sheet2.titlePair.value,
+        }),
+      ]);
+      expect(s2?.tables[0]).toMatchObject({
+        range: 'B4:F7',
+        headerRow: 4,
+        dataRows: [5, 7],
+      });
+      expect(
+        s2?.tables[0].footer.pairs.map((p) => [
+          p.label,
+          p.valueCell,
+          p.value,
+          p.computed,
+        ]),
+      ).toEqual([
+        [f.subtotal.label, f.subtotal.cell, EXPECTED.sheet2.subtotal, true],
+        [f.vat.label, f.vat.cell, EXPECTED.sheet2.vat, true],
+        [f.withVat.label, f.withVat.cell, EXPECTED.sheet2.withVat, true],
+        [f.transport.label, f.transport.cell, EXPECTED.sheet2.transport, false],
+        [f.payable.label, f.payable.cell, EXPECTED.sheet2.payable, true],
+      ]);
+      expect(out.sheets[2]).not.toHaveProperty('structure');
+    });
+
+    it("returns one sheet's structure and gates hidden sheets", async () => {
+      const out = parse<{
+        sheet: { index: number };
+        structure: { tables: unknown[] };
+      }>(
+        await tool.query(
+          { attachment_id: INVOICE_ID, op: 'structure', sheet: 2 },
+          undefined,
+          agentA,
+        ),
+      );
+      expect(out.sheet.index).toBe(2);
+      expect(out.structure.tables).toHaveLength(1);
+
+      const refused = await tool.query(
+        {
+          attachment_id: INVOICE_ID,
+          op: 'structure',
+          sheet: EXPECTED.hiddenSheet,
+        },
+        undefined,
+        agentA,
+      );
+      expect(refused.isError).toBe(true);
+
+      const hidden = parse<{
+        structure: { tables: unknown[]; title: { pairs: unknown[] } };
+      }>(
+        await tool.query(
+          {
+            attachment_id: INVOICE_ID,
+            op: 'structure',
+            sheet: EXPECTED.hiddenSheet,
+            include_hidden: true,
+          },
+          undefined,
+          agentA,
+        ),
+      );
+      // Long two-column key | value list: a table, not 119 pairs.
+      expect(hidden.structure.tables).toHaveLength(1);
+      expect(hidden.structure.title.pairs).toEqual([]);
+    });
+
+    it('needs a sheet', async () => {
+      const out = await tool.query(
+        { attachment_id: INVOICE_ID, op: 'structure' },
+        undefined,
+        agentA,
+      );
+      expect(out.isError).toBe(true);
+      expect(out.content[0].text).toContain('structure needs a sheet');
+    });
+  });
+
   describe('read', () => {
     it('returns the rows of a range, merged regions once', async () => {
       const out = parse<{
@@ -316,7 +430,7 @@ describe('query_attachment', () => {
             op: 'aggregate',
             sheet: 2,
             fn: 'max',
-            range: 'F:F',
+            range: EXPECTED.sheet2.itemRange,
           },
           undefined,
           agentA,

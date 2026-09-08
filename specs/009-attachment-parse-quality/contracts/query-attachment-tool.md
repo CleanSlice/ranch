@@ -112,6 +112,10 @@ At most 100 matches; `rowCells` gives the other non-empty cells on the same row 
 | Over `MAX_QUERY_CELLS` | `Range covers <n> cells; narrow it below <limit>.` |
 | Workbook unreadable | `Attachment "<name>" could not be parsed as a workbook.` |
 
+### `structure` (added by CLEAN-69)
+
+Tables, title area and the label → value lines after each table for one sheet; `describe` carries the same per visible sheet. Contract: `specs/011-sheet-structure/contracts/sheet-structure.md`.
+
 ## Availability
 
 The tool is discovered by the MCP registry like every `@Tool` provider. The seeder adds a built-in `mcp-documents` server entry (same URL as `mcp-ranch`, bearer `${RANCH_API_TOKEN}`, `builtIn: true`), and `GET /api/agent/:id/mcps` injects it for every agent. Agents already running receive it after their next restart.

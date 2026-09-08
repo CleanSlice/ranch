@@ -22,11 +22,15 @@ import {
   type CellRow,
   type SheetInfo,
 } from './domain/workbook.reader';
+import {
+  detectSheetStructure,
+  type SheetStructure,
+} from './domain/sheetStructure';
 
 // Contract: specs/009-attachment-parse-quality/contracts/query-attachment-tool.md
 
 const DESCRIPTION =
-  'Query a spreadsheet attached to this conversation by its attachment id (shown in the "[Attached file: … — id: …]" line). Use it whenever an answer depends on more than a handful of numbers: sums, counts, min/max, filtered totals, or looking up a specific row or cell. Numbers returned here are computed from the file; never estimate them yourself when this tool can answer. Always report the sheet and range you queried next to the number. If the value the person asks for is not in the file, say so — do not approximate. Start with op "describe" when you are unsure which sheet or range to use.';
+  'Query a spreadsheet attached to this conversation by its attachment id (shown in the "[Attached file: … — id: …]" line). Use it whenever an answer depends on the data in the file rather than on a glance at the preview: aggregating, comparing, filtering, counting or looking up values of any kind — quantities, prices, dates, grades, ratings, codes, text — whatever the sheet holds. Values returned here come from the file; never estimate or recompute them yourself when this tool can answer. The tool does not know what the cells mean: decide from the question and from the sheet\'s own labels which table, columns, rows and measure matter, then pick the operation and function that fit — not a default one. Always report the sheet, the range and the row labels you used next to the result. If what the person asks for is not in the file, say so — do not approximate. Start with op "describe" (sheets, headers, structure) when you are unsure which sheet, table or range to use. When you report a value taken from a sheet, name the label and the cell of the row it came from, and mention the other label → value lines around it that qualify or change it. If sheets are laid out differently, say so instead of forcing one layout on all of them. Use op "structure" to see a sheet\'s tables and the lines after them.';
 
 /** Rows one `read` may return; beyond that the model is told to narrow. */
 const READ_MAX_ROWS = 500;
@@ -40,15 +44,15 @@ const parameters = z.object({
     .uuid()
     .describe('Attachment id from the "[Attached file: … — id: …]" line.'),
   op: z
-    .enum(['describe', 'read', 'aggregate', 'find'])
+    .enum(['describe', 'read', 'aggregate', 'find', 'structure'])
     .describe(
-      'describe: sheets, sizes, header guess. read: cells in a range. aggregate: sum/min/max/count/avg over a range. find: cells whose text contains a query.',
+      "describe: sheets, sizes, header guess and per-sheet structure. read: cells in a range (any kind of value). aggregate: sum, min, max, count or avg over numeric cells in a range — choose the function the question calls for. find: cells whose text contains a query. structure: one sheet's tables (range, header, data rows), title area and the label → value lines after each table, with cells.",
     ),
   sheet: z
     .union([z.string(), z.number().int().positive()])
     .optional()
     .describe(
-      'Sheet name or 1-based index. Required for read, aggregate and find.',
+      'Sheet name or 1-based index. Required for read, aggregate, find and structure.',
     ),
   range: z
     .string()
@@ -77,7 +81,7 @@ const parameters = z.object({
     .boolean()
     .optional()
     .describe(
-      'Include formula cells in aggregate. Default true. Set false to skip total rows.',
+      'Include formula cells in aggregate. Default true. Set false to skip cells computed from others (rows that summarise the ones above them, for example).',
     ),
 });
 
@@ -156,6 +160,8 @@ export class BridleAttachmentTool {
           return ok({ attachment, ...this.aggregate(workbook, args) });
         case 'find':
           return ok({ attachment, ...this.find(workbook, args) });
+        case 'structure':
+          return ok({ attachment, ...this.structure(workbook, args) });
       }
     } catch (e) {
       if (e instanceof WorkbookReadError) return err(e.message);
@@ -176,8 +182,40 @@ export class BridleAttachmentTool {
         if (info.state !== 'visible' || info.usedRows === 0) return info;
         const preview = readSheet(workbook, info.index, { maxRows: 30 });
         const headerGuess = guessHeader(preview.rows);
-        return headerGuess ? { ...info, headerGuess } : info;
+        // Structure needs every row (closing lines sit at the bottom); a
+        // sheet over the cell cap simply has no structure here — the model
+        // can still ask for it per sheet with a narrower op.
+        let structure: SheetStructure | undefined;
+        try {
+          structure = detectSheetStructure(
+            readSheet(workbook, info.index, { maxCells: MAX_QUERY_CELLS }).rows,
+          );
+        } catch (e) {
+          if (!(e instanceof WorkbookReadError)) throw e;
+        }
+        return {
+          ...info,
+          ...(headerGuess ? { headerGuess } : {}),
+          ...(structure ? { structure } : {}),
+        };
       }),
+    };
+  }
+
+  /** Tables, title area and closing lines of one sheet (CLEAN-69). */
+  private structure(
+    workbook: Awaited<ReturnType<typeof loadWorkbook>>,
+    args: Args,
+  ) {
+    const sheetRef = requireSheet(args);
+    const section = readSheet(workbook, sheetRef, {
+      includeHidden: args.include_hidden,
+      maxCells: MAX_QUERY_CELLS,
+    });
+    return {
+      sheet: publicInfo(section.info),
+      structure: detectSheetStructure(section.rows),
+      warnings: section.warnings,
     };
   }
 

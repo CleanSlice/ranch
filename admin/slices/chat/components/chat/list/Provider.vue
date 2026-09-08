@@ -2,21 +2,31 @@
 import type { ChatChannel, IChatSession } from '#chat/stores/chat';
 
 // When `agentId` is set, the list is scoped to that agent (used inside the
-// agent-detail "Chats" tab) and the agent column is hidden.
+// agent-detail "Chats" tab): the agent filter and the agent column are hidden.
+// Without it (global /chats page) both render, with names resolved from the
+// agent store.
 const props = defineProps<{ agentId?: string }>();
 
 const store = useChatStore();
+const agentStore = useAgentStore();
+
+const showAgent = computed(() => !props.agentId);
+
+// Reka UI disallows empty-string <SelectItem value="">, so "all agents" uses
+// a sentinel that maps to `undefined` at the query edge.
+const AGENT_ALL = '__all__';
 
 const CHANNELS: (ChatChannel | 'all')[] = ['all', 'bridle', 'telegram', 'slack'];
 const search = ref('');
 const channel = ref<ChatChannel | 'all'>('all');
+const agentFilter = ref(AGENT_ALL);
 const archived = ref(false);
 const includeInternal = ref(false);
 const page = ref(1);
 const perPage = 50;
 
 const query = computed(() => ({
-  agentId: props.agentId,
+  agentId: props.agentId ?? (agentFilter.value === AGENT_ALL ? undefined : agentFilter.value),
   channel: channel.value === 'all' ? undefined : channel.value,
   search: search.value.trim() || undefined,
   archived: archived.value || undefined,
@@ -31,10 +41,19 @@ const { data, pending, refresh } = await useAsyncData(
   { watch: [query] },
 );
 
+// Agents are only needed to render the filter options and the Agent column.
+await useAsyncData('chat-list-agents', () => agentStore.fetchAll(), {
+  immediate: showAgent.value,
+});
+
 // Any filter change resets to the first page.
-watch([search, channel, archived, includeInternal], () => {
+watch([search, channel, agentFilter, archived, includeInternal], () => {
   page.value = 1;
 });
+
+function agentName(id: string): string {
+  return agentStore.agents.find((a) => a.id === id)?.name ?? id;
+}
 
 const total = computed(() => data.value?.total ?? 0);
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / perPage)));
@@ -85,6 +104,17 @@ function who(s: IChatSession): string {
           {{ c }}
         </Button>
       </div>
+      <Select v-if="showAgent" v-model="agentFilter">
+        <SelectTrigger class="h-8 w-48" aria-label="Filter by agent">
+          <SelectValue placeholder="All agents" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem :value="AGENT_ALL">All agents</SelectItem>
+          <SelectItem v-for="a in agentStore.agents" :key="a.id" :value="a.id">
+            {{ a.name }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
       <label class="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Checkbox v-model="archived" /> Archived
       </label>
@@ -106,6 +136,7 @@ function who(s: IChatSession): string {
         <TableHeader>
           <TableRow>
             <TableHead>Channel</TableHead>
+            <TableHead v-if="showAgent">Agent</TableHead>
             <TableHead>User</TableHead>
             <TableHead>Last message</TableHead>
             <TableHead class="text-right">Msgs</TableHead>
@@ -124,6 +155,14 @@ function who(s: IChatSession): string {
                 {{ s.channel }}
               </Badge>
               <Badge v-if="s.archived" variant="outline" class="ml-1">archived</Badge>
+            </TableCell>
+            <TableCell v-if="showAgent" @click.stop>
+              <NuxtLink
+                :to="`/agents/${s.agentId}`"
+                class="text-sm font-medium hover:underline"
+              >
+                {{ agentName(s.agentId) }}
+              </NuxtLink>
             </TableCell>
             <TableCell class="font-medium">{{ who(s) }}</TableCell>
             <TableCell class="max-w-md truncate text-muted-foreground">

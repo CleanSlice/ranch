@@ -56,6 +56,8 @@ Errors: as for `read` (missing sheet, hidden sheet, cell cap).
 
 Tool description, appended (no domain words):
 
-> When you report a figure from a sheet, name the label and the cell of the row you took it from, and mention the other label → value lines after the same table that change the amount. If sheets close differently, say so instead of forcing one layout on all of them. Use op "structure" to see a sheet's tables and closing lines.
+> The tool does not know what the cells mean: decide from the question and from the sheet's own labels which table, columns, rows and measure matter, then pick the operation and function that fit — not a default one. When you report a value taken from a sheet, name the label and the cell of the row it came from, and mention the other label → value lines around it that qualify or change it. If sheets are laid out differently, say so instead of forcing one layout on all of them. Use op "structure" to see a sheet's tables and the lines after them.
 
-Preview hint, appended: `each sheet lists its tables and the label → value lines after them.`
+The wording is measure-agnostic on purpose: the data may be money, quantities, dates, grades, ratings or text, and the agent is the one to decide which kind of value and which computation the question needs.
+
+Preview hint: `call query_attachment with this id to read, filter, aggregate or look up the actual cells — for whatever measure the question needs. Each sheet lists its tables and the label → value lines after them.`

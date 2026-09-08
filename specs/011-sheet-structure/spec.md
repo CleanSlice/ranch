@@ -87,7 +87,7 @@ When the agent reports a figure taken from a sheet, it names the label and cell 
 - **FR-003**: Pair detection MUST NOT depend on the words in the labels; any text cell next to a number on a sparse row qualifies.
 - **FR-004**: The agent-facing preview MUST include, per visible sheet, the table blocks and the pairs after each table, placed before the item rows so they survive a budget cut.
 - **FR-005**: `query_attachment describe` MUST return the structure per visible sheet, and a dedicated operation MUST return it for one sheet (hidden sheets with `include_hidden`).
-- **FR-006**: The tool description and the preview hint MUST instruct the agent to name the label and cell of the line it used, to mention other summary lines that change the amount, and to state when sheets differ in structure. The instructions MUST NOT name domain words (VAT, transport, total).
+- **FR-006**: The tool description and the preview hint MUST instruct the agent to decide from the question and the sheet's own labels which table, columns, rows and measure matter; to name the label and cell of the line it used; to mention the other label → value lines around it that qualify or change it; and to state when sheets differ in structure. The instructions MUST NOT name domain words (VAT, transport, total) and MUST NOT privilege one kind of measure (money, quantity, dates, grades, text are all equally possible).
 - **FR-007**: A reference workbook sheet with discount, transport and payable lines MUST exist, and tests MUST assert the detected structure and its presence in the preview and in the tool output.
 - **FR-008**: Existing behaviour of the preview (row format, merged handling, budget, hidden sheets) and of the tool's other operations MUST be unchanged.
 

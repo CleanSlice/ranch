@@ -39,7 +39,7 @@ import type {
  * questions — so this is where it learns the preview is not the whole file.
  */
 export const SPREADSHEET_HINT =
-  'this is a preview; call query_attachment with this id for exact sums, counts and lookups. Each sheet lists its tables and the label → value lines after them.';
+  'this is a preview; call query_attachment with this id to read, filter, aggregate or look up the actual cells — for whatever measure the question needs. Each sheet lists its tables and the label → value lines after them.';
 
 export interface IUploadAttachmentInput {
   agentId: string;

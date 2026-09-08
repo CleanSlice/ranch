@@ -5,6 +5,8 @@ import {
   MAX_ATTACHMENT_BYTES,
   MAX_EXTRACTED_TEXT_CHARS,
   MAX_MESSAGE_ATTACHMENT_BYTES,
+  SPREADSHEET_INLINE_BUDGET_CHARS,
+  SPREADSHEET_PREVIEW_ROWS_PER_SHEET,
 } from './attachment.constants';
 import { IBridleAttachmentGateway } from './attachment.gateway';
 import {
@@ -15,6 +17,7 @@ import {
 import {
   extractDocumentText,
   isExtractableDocument,
+  isSpreadsheetMimeType,
 } from './documentText.extractor';
 import {
   BridleAttachmentKinds,
@@ -28,6 +31,14 @@ import type {
   IBridleAttachment,
   IBridleStoredAttachment,
 } from './bridle.types';
+
+/**
+ * Appended to a spreadsheet block's header. The model reads this when the
+ * file arrives, which is the moment it decides how to answer numeric
+ * questions — so this is where it learns the preview is not the whole file.
+ */
+export const SPREADSHEET_HINT =
+  'this is a preview; call query_attachment with this id for exact sums, counts and lookups.';
 
 export interface IUploadAttachmentInput {
   agentId: string;
@@ -163,14 +174,28 @@ export class BridleAttachmentService {
           // Office documents and PDFs get their text extracted and inlined
           // like any text attachment. A broken or text-less file (a scanned
           // PDF) degrades to the named-reference notice, never a failure.
+          //
+          // Spreadsheets are inlined as a bounded *preview*: the model gets
+          // the workbook's shape and first rows to orient itself, and reads
+          // exact numbers through query_attachment. That keeps a 5 000-row
+          // export from riding along in every later turn of the chat.
+          const spreadsheet = isSpreadsheetMimeType(stored.mimeType);
           const extracted = await extractDocumentText(
             stored.mimeType,
             stored.body,
+            spreadsheet
+              ? {
+                  previewRowsPerSheet: SPREADSHEET_PREVIEW_ROWS_PER_SHEET,
+                  budgetChars: SPREADSHEET_INLINE_BUDGET_CHARS,
+                }
+              : {},
           );
           textBlocks.push(
             extracted !== null
               ? BridleAttachmentService.fencedBlock(stored.name, extracted, {
                   id,
+                  hint: spreadsheet ? SPREADSHEET_HINT : undefined,
+                  truncate: !spreadsheet,
                 })
               : BridleAttachmentService.binaryNoticeBlock(stored),
           );

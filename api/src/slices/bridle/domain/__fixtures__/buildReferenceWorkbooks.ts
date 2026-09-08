@@ -51,7 +51,7 @@ export const EXPECTED = {
   sheetNames: ['Накл. на склад(1)', 'Накл. на склад(2)', 'Розрахунки'],
   hiddenSheet: 'Розрахунки',
   sheet1: {
-    mergedRegions: 2,
+    mergedRegions: 3,
     headerRow: 4,
     itemRows: [5, 6],
     emptyRows: [7, 8, 9],
@@ -92,6 +92,8 @@ export async function buildSupplierInvoice(): Promise<Buffer> {
   s1.mergeCells('A1:AN1');
   s1.getCell('A2').value = 'Постачальник:';
   s1.mergeCells('A2:AN2');
+  s1.getCell('A3').value = 'Адреса: м. Київ, вул. Хрещатик, 1; ЄДРПОУ 12345678';
+  s1.mergeCells('A3:AN3');
   s1.getCell('B4').value = 'Товар';
   s1.getCell('C4').value = 'Кількість';
   s1.getCell('D4').value = 'Ціна';

@@ -362,8 +362,11 @@ describe('BridleAttachmentService — expansion to parts', () => {
     const out = await service.expand(AGENT, 'что в файле?', ['x1']);
 
     expect(out.text).toContain('что в файле?');
-    expect(out.text).toContain('[Attached file: totals.xlsx — id: x1]');
-    expect(out.text).toContain('alfalfa,120');
+    expect(out.text).toContain(
+      '[Attached file: totals.xlsx — id: x1] — this is a preview; call query_attachment with this id',
+    );
+    expect(out.text).toContain('R2: A=alfalfa | B=120');
+    expect(out.text).not.toContain('characters truncated');
     expect(out.text).not.toContain('not readable');
     expect(out.attachments[0].readableByAgent).toBe(true);
     // Still a file part on the wire — never raw bytes.

@@ -31,7 +31,7 @@
 
 ## Notes
 
-- Validation run 2026-09-08, one iteration, all items pass.
-- Implementation-level facts (file paths, token lifetimes, guard behaviour) were deliberately kept in `research.md`; the spec refers to them only as "session", "renewal", "rejection reason".
-- The one product decision the spec takes on its own — sliding renewal of the single session instead of a separate refresh credential — is recorded under Assumptions with the reasoning in research §3. Reversing it changes the plan, not the user stories.
+- Validation run 2026-09-08, one iteration, all items pass. Re-validated the same day after the session model was revised (research §3.2: server-side session + short access token, per the skyhunter reference); FR-001–FR-014, edge cases, entities and assumptions updated; still passes.
+- Implementation-level facts (file paths, token lifetimes, guard behaviour, the skyhunter code) were deliberately kept in `research.md`; the spec refers to them only as "session", "access token", "renewal", "rejection reason".
+- The product decision — session credential + short access token, no rotation, revocation at next renewal — was confirmed by the user on 2026-09-08 and is recorded under Assumptions with the reasoning in research §3.
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`

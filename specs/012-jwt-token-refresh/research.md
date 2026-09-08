@@ -96,19 +96,66 @@ Three shapes were considered.
 
 | Option | What it is | What it fixes | Cost / risk |
 |---|---|---|---|
-| **A. Short access token + rotating refresh token** (textbook: 15-min access JWT, long-lived opaque refresh token in an httpOnly cookie, server-side store, rotation + reuse detection, revocation) | Full session model | Everything in §2, plus server-side logout/revocation and a shrunken blast radius for a leaked access token | New persisted model, new cookie strategy (the console currently *needs* the JS-readable token to hand it to the socket handshake and XHR uploads), request queueing while a refresh is in flight, socket re-auth every 15 min, embed/extension token families untouched. Largest change; solves revocation nobody has asked for |
+| **A. Short access token + rotating refresh token** (textbook: 15-min access JWT, long-lived opaque refresh token in an httpOnly cookie, server-side store, rotation + reuse detection, revocation) | Full session model | Everything in §2, plus server-side logout/revocation and a shrunken blast radius for a leaked access token | New persisted model, an httpOnly cookie next to the JS-readable access token, request retry while a refresh is in flight, socket reconnect with the current token. Largest change of the three — but the client half is the same machinery B needs, and the reference implementation in skyhunter (§3.1) has already paid the design cost |
 | **B. Sliding renewal of the single token** (`/auth/refresh` exchanges a *still-valid* token for a fresh one; clients renew proactively when the remaining lifetime drops below a threshold, on app boot, and when a hidden tab becomes visible) | Session stays alive as long as the person keeps using the product | The "idle for a while, come back, dead token" case for any idle shorter than the token lifetime; no new storage; no cookie-strategy change; socket handshakes can pick up the newest token on reconnect | Cannot renew a token that already expired → an idle longer than the full lifetime still ends in re-login (acceptable, and must be handled well by C). No revocation (same as today) |
 | **C. Honest expiry handling only** (no renewal: decode `exp`, one "session expired" state, login that returns to the same chat, socket listens to `INVALID_TOKEN`, server never silently downgrades an expired console token to anonymous, API distinguishes expired vs invalid) | Removes the raw alert and the silent anonymous chat | The *symptom*, in every console, regardless of why the token died | Does not make the session last longer; a weekly re-login stays |
 
-**Answer: yes, a renewal mechanism is needed — B, and C is mandatory alongside it.** C without B leaves a weekly forced re-login in a product people keep open in a tab; B without C keeps every branch of §2.3 for the cases B cannot cover (idle beyond the lifetime, secret rotation, deleted user). A is not justified now: the product has no revocation requirement, no server-side session today, and its token has to be readable by the browser for the socket handshake and XHR uploads — the parts of A that add security would have to be redesigned around those constraints, for a benefit nobody has asked for. A stays on the record as the natural next step if revocation or short-lived tokens become a requirement; B's endpoint and C's client states are exactly the pieces A would reuse.
+**First answer (2026-09-08, before the reference implementation was reviewed): B + C.** The objection to A was that the console token has to stay readable by the browser for the socket handshake and XHR uploads.
 
-Why B is safe without a refresh-token store: renewal requires presenting a token that is *currently valid*; a stolen expired token gains nothing, and a stolen live token already grants everything today. Renewal must not keep a session alive forever without the person being present — the client renews only while the tab is actually in use, so a browser left open but untouched still lets the session lapse at the normal lifetime.
+**Revised answer after reviewing the reference implementation: A, in the shape already proven in skyhunter, plus C.** The objection does not hold once the two credentials are separated: the *session* lives in an httpOnly cookie the browser never reads, and the *access token* stays a short JS-readable JWT exactly as today. That is what skyhunter does, and it is the model this feature adopts. See §3.1.
+
+### 3.1 Reference implementation: skyhunter (`E:/code/sh/skyhunter`)
+
+| Piece | Skyhunter | Where |
+|---|---|---|
+| Session credential | Opaque Stytch `session_token`, **httpOnly Secure** cookie `session_token`, 60 min, **sliding**: every refresh re-authenticates the session with `session-duration-minutes` and re-sets the cookie | `api/.../controller/auth/AuthControllerImpl.java` (`setSessionTokenCookie`, `refresh`), `service/stytch/impl/StytchServiceImpl.java` (`refreshSession`), `application.yml:4` |
+| Access token | `sessionJwt`, **5 min**, returned in the body; client keeps it in a JS cookie `API_TOKEN` for the `Authorization` header and STOMP connect headers | `AuthController.java` (login/refresh docs), `app/.../websocket/.../webSocket.repository.ts:360-373` |
+| `POST /auth/refresh` | Reads the session cookie, **works with an expired JWT**, returns a new JWT | `AuthControllerImpl.java` `refresh()` |
+| `POST /auth/logout` | Revokes the session server-side, clears the cookie | `AuthControllerImpl.java` `logout()` |
+| Proactive renewal | Timer at `exp − 30 s`, re-armed after every successful token acquisition | `app/slices/user/auth/stores/auth.ts` `scheduleProactiveRefresh` |
+| Tab return | `visibilitychange` → `refreshIfExpiringSoon()` | `app/slices/user/auth/plugins/auth.ts` |
+| Dedup | One in-flight refresh promise shared by timer, visibility handler and 401 path | `stores/auth.ts` `refreshInFlight` |
+| Reactive backstop | 401 → refresh → **retry once** (`retry: 1`, `retryStatusCodes: [401]`, `auth()` re-reads the cookie on every attempt) | `app/slices/setup/api/api.config.ts` |
+| Live connection | `beforeConnect` refreshes if the token is within 30 s of expiry; socket auth error → logout; own timer at `exp − 60 s` | `webSocket.repository.ts:34-76, 92-96`, `websocket/plugins/di.ts:32-36` |
+| Local JWT check | `sessions.authenticateJwtLocal(jwt, 300, 60)` — no network per request | `StytchServiceImpl.java:149-158` |
+
+Two things in it are *not* carried over: `init()` treats the presence of the JS cookie as "authenticated" before `/refresh` answers (Ranch keeps requiring `/auth/me`), and the cookie is `SameSite=None` with a TODO (Ranch's consoles and API share the site `cleanslice.org` — `api.ranch…`, `admin.ranch…` in `k8s/deploy/30-api.yaml:161`, `40-admin.yaml:66` — so `Lax` is enough). Stytch itself is replaced by a session table: Ranch has no identity provider and does not need one for this.
+
+### 3.2 The model this feature adopts
+
+**Two credentials with different jobs.**
+
+1. **Session** — opaque random secret, stored **hashed** in a new `Session` row (`userId`, `expiresAt` = sliding idle window, `absoluteExpiresAt`, `lastSeenAt`, `revokedAt`, optional user-agent), delivered as an **httpOnly, Secure, SameSite=Lax** cookie scoped to the API. Created on login / register / first-run bootstrap. Never readable by console code. Ends by idle window, absolute maximum, explicit logout, or server-side revocation.
+2. **Access token** — the existing console JWT, shortened to **~15 min**, carrying `sub`, `email`, `roles` and a session id claim. Kept where it is today (JS-readable, `Authorization: Bearer`, socket handshake `auth`, XHR uploads). Verified locally by the existing guard; no per-request DB lookup.
+
+**Renewal** — `POST /auth/refresh` (cookie in, no body): validate the session (exists, not revoked, inside idle and absolute windows), slide `expiresAt`, touch `lastSeenAt`, re-set the cookie, return a fresh JWT. Works regardless of whether the old JWT is expired. Failure is `401` with a code (`SESSION_MISSING` / `SESSION_EXPIRED` / `SESSION_INVALID`). No session-token rotation on refresh: two tabs share one cookie and would race each other; rotation adds nothing here because the cookie is httpOnly.
+
+**Logout** — `POST /auth/logout` marks the session revoked and clears the cookie; the client drops the JWT and stops its timers. Revocation takes effect at the latest at the next refresh (≤ access-token lifetime).
+
+**Guard** — `JwtAuthGuard` and `BridleChatAuthGuard` return a machine-readable reason: `TOKEN_MISSING`, `TOKEN_EXPIRED` (`TokenExpiredError`), `TOKEN_INVALID` (everything else), and log which. The bridle `/message` routes stop treating an unverifiable bearer as anonymous: **a bearer that fails verification is a 401; no bearer stays anonymous** (embed visitors send none). The WS handler keeps `bridle_error { code }` and adds `TOKEN_EXPIRED`.
+
+**Clients (app and admin, one shared auth composable each)** — skyhunter's client model verbatim, minus the two exclusions above:
+- boot: call `/auth/refresh` first (the console cannot see the httpOnly cookie, so it must ask); on success set the JWT and load `/auth/me`; on `SESSION_*` → logged-out, no error shown;
+- proactive timer at `exp − 60 s`, `visibilitychange` → refresh if within the buffer, one in-flight promise;
+- 401 `TOKEN_EXPIRED` → refresh → retry the request once; 401 `TOKEN_INVALID` or a failed refresh → **session-ended state** with return-to-place; every reader of the token (axios header, socket `auth`, XHR upload) reads the *current* value, never a captured one;
+- admin socket: refresh before (re)connect if expiring; on `bridle_error TOKEN_EXPIRED/INVALID_TOKEN` refresh and reconnect once, then session-ended;
+- explicit logout calls the endpoint, clears timers and discards any in-flight refresh result;
+- share page untouched: its interceptor exemption stays.
+
+**Other token families** (agent service 365d, embed 15m/7d, extension 30d, browserless 15m) already pass an explicit `expiresIn` and are not sessions; they are untouched. Only the console session's default lifetime changes.
+
+**Suggested values** (planning may adjust): access token 15 min; idle window 7 days (today's total lifetime becomes the *inactivity* limit, which is strictly better for the reported flow); absolute maximum 30 days; proactive buffer 60 s.
+
+**What this buys over B**: the reported flow — tab idle longer than the access token but shorter than the idle window — recovers silently instead of forcing a login; logout actually ends the session; a leaked access token is worth minutes, not a week; `JWT_SECRET` rotation invalidates access tokens but not sessions, so people are renewed rather than logged out.
+
+**What it costs**: one Prisma model and migration, `cookie-parser` in the API (absent today), `withCredentials` on both console clients (absent today; CORS already answers `credentials: true`, `api/src/main.ts:73, 98`), and the client renewal machinery — which B needed anyway.
 
 ---
 
 ## 4. What planning must settle (not the spec)
 
 - Reproduce the reporter's screen once against `main` with a token forced to expire (short `JWT_EXPIRES_IN`) and record which producer in §1.5 rendered the text. Expected: the restart banner or an attachment call for a logged-in owner; the `/message/sync` path for a message-only flow.
-- Whether the unguarded `/message` routes may start answering 401 for an *expired* bearer while still accepting *no* bearer (anonymous embed visitors send none). The share-link guard already has the shape for this (`bridleChatAuth.guard.ts:69-101`).
-- Renewal threshold and where the single "renew now" decision lives in each console (shared composable in `user/auth`), so the socket, XHR uploads and the axios client all read the *current* token instead of a captured one.
+- Final lifetimes (access token, idle window, absolute maximum) and the cookie's `path`/`domain` for local dev where consoles and API run on different ports of `localhost` (same site → `Lax` still works; `Secure` must be conditional on HTTPS).
+- Where the session id claim is read, if anywhere, outside `/auth/refresh` — the intent is *no* per-request DB check; if instant revocation is ever required, that is the one place to add it.
+- Migration for already-signed-in people: an old 7-day JWT with no session cookie must fall through to the session-ended state once, not loop.
 - Dev fallback secrets: align the four `JwtModule` fallbacks or make the API refuse to start without `JWT_SECRET` outside tests.

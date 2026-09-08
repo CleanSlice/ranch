@@ -536,6 +536,7 @@ async function onConfirmReset() {
               :message="item.message"
               :has-debug="item.message.role === 'assistant' && !!store.getDebugForMessage(item.message.id)"
               :markdown-enabled="markdownEnabled"
+              :debug-enabled="debugEnabled"
               @inspect="inspectedMessageId = $event"
             />
             <div

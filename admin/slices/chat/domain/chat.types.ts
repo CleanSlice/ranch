@@ -56,11 +56,22 @@ export type ChatMessageRole =
   | 'tool_result'
   | 'system';
 
+/** A file sent with a user message — metadata only, history has no download. */
+export interface IChatAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: 'image' | 'text' | 'binary';
+}
+
 export interface IChatMessage {
   id: string;
   role: ChatMessageRole;
+  /** For user turns: what the person typed, without inlined file contents. */
   text: string;
   ts: number;
+  attachments?: IChatAttachment[];
 }
 
 export interface IChatListResult {

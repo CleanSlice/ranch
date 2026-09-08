@@ -1825,6 +1825,8 @@ export const TranscriptMessageDtoSchema = {
     text: {
       type: "string",
       example: "Hello, how can I help?",
+      description:
+        "For user messages: what the person typed. Attachment contents the API inlined for the model are not included — see `agentText`.",
     },
     ts: {
       type: "number",
@@ -1838,6 +1840,11 @@ export const TranscriptMessageDtoSchema = {
       items: {
         $ref: "#/components/schemas/TranscriptAttachmentDto",
       },
+    },
+    agentText: {
+      type: "string",
+      description:
+        "User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.",
     },
   },
   required: ["id", "role", "text", "ts"],
@@ -2193,11 +2200,26 @@ export const ChatMessageDtoSchema = {
     text: {
       type: "string",
       example: "Hello, how can I help?",
+      description:
+        "For user messages: what the person typed, without the attachment contents the API inlined for the model.",
     },
     ts: {
       type: "number",
       example: 1777562539964,
       description: "Unix epoch ms",
+    },
+    attachments: {
+      description:
+        "Files sent with this message (metadata only; history has no download route).",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/TranscriptAttachmentDto",
+      },
+    },
+    agentText: {
+      type: "string",
+      description:
+        "Admin debug views only (present when `types` includes tool events): the full text the model received for a user message with attachments.",
     },
   },
   required: ["id", "role", "text", "ts"],

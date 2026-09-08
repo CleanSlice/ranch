@@ -5,11 +5,19 @@ import {
   MAX_ATTACHMENT_BYTES,
   MAX_EXTRACTED_TEXT_CHARS,
   MAX_MESSAGE_ATTACHMENT_BYTES,
+  SPREADSHEET_INLINE_BUDGET_CHARS,
+  SPREADSHEET_PREVIEW_ROWS_PER_SHEET,
 } from './attachment.constants';
 import { IBridleAttachmentGateway } from './attachment.gateway';
 import {
+  fencedBlock as buildFencedBlock,
+  noticeBlock as buildNoticeBlock,
+  truncationNotice,
+} from './attachmentBlocks';
+import {
   extractDocumentText,
   isExtractableDocument,
+  isSpreadsheetMimeType,
 } from './documentText.extractor';
 import type { IAttachmentRequester } from './chatIdentity';
 import {
@@ -24,6 +32,14 @@ import type {
   IBridleAttachment,
   IBridleStoredAttachment,
 } from './bridle.types';
+
+/**
+ * Appended to a spreadsheet block's header. The model reads this when the
+ * file arrives, which is the moment it decides how to answer numeric
+ * questions — so this is where it learns the preview is not the whole file.
+ */
+export const SPREADSHEET_HINT =
+  'this is a preview; call query_attachment with this id for exact sums, counts and lookups.';
 
 export interface IUploadAttachmentInput {
   agentId: string;
@@ -215,13 +231,29 @@ export class BridleAttachmentService {
           // Office documents and PDFs get their text extracted and inlined
           // like any text attachment. A broken or text-less file (a scanned
           // PDF) degrades to the named-reference notice, never a failure.
+          //
+          // Spreadsheets are inlined as a bounded *preview*: the model gets
+          // the workbook's shape and first rows to orient itself, and reads
+          // exact numbers through query_attachment. That keeps a 5 000-row
+          // export from riding along in every later turn of the chat.
+          const spreadsheet = isSpreadsheetMimeType(stored.mimeType);
           const extracted = await extractDocumentText(
             stored.mimeType,
             stored.body,
+            spreadsheet
+              ? {
+                  previewRowsPerSheet: SPREADSHEET_PREVIEW_ROWS_PER_SHEET,
+                  budgetChars: SPREADSHEET_INLINE_BUDGET_CHARS,
+                }
+              : {},
           );
           textBlocks.push(
             extracted !== null
-              ? BridleAttachmentService.fencedBlock(stored.name, extracted)
+              ? BridleAttachmentService.fencedBlock(stored.name, extracted, {
+                  id,
+                  hint: spreadsheet ? SPREADSHEET_HINT : undefined,
+                  truncate: !spreadsheet,
+                })
               : BridleAttachmentService.binaryNoticeBlock(stored),
           );
         } else {
@@ -274,27 +306,37 @@ export class BridleAttachmentService {
     return BridleAttachmentService.fencedBlock(
       stored.name,
       decodeUtf8Strict(stored.body) ?? '',
+      { id: stored.id },
     );
   }
 
-  /** Fenced, truncation-capped block for any inlined attachment content. */
-  static fencedBlock(name: string, content: string): string {
-    const truncated = content.length > MAX_EXTRACTED_TEXT_CHARS;
+  /**
+   * Fenced, truncation-capped block for any inlined attachment content.
+   * `truncate: false` hands the budget to the caller — spreadsheets cut at
+   * row boundaries and account per sheet instead of slicing characters.
+   */
+  static fencedBlock(
+    name: string,
+    content: string,
+    opts: { id?: string; hint?: string; truncate?: boolean } = {},
+  ): string {
+    const truncate = opts.truncate ?? true;
+    const truncated = truncate && content.length > MAX_EXTRACTED_TEXT_CHARS;
     const body = truncated
       ? content.slice(0, MAX_EXTRACTED_TEXT_CHARS)
       : content;
-
-    // Mirrors the runtime's own wording for truncated over-long user messages,
-    // so the model meets one convention rather than two.
-    const removed = content.length - MAX_EXTRACTED_TEXT_CHARS;
     const notice = truncated
-      ? `\n\n[… ${removed.toLocaleString('en-US')} characters truncated — ` +
-        `attached file was longer than the ` +
-        `${MAX_EXTRACTED_TEXT_CHARS.toLocaleString('en-US')}-character limit …]`
+      ? `\n\n${truncationNotice(
+          content.length - MAX_EXTRACTED_TEXT_CHARS,
+          MAX_EXTRACTED_TEXT_CHARS,
+        )}`
       : '';
-
-    const fence = '```';
-    return `[Attached file: ${name}]\n${fence}\n${body}${notice}\n${fence}`;
+    return buildFencedBlock({
+      name,
+      id: opts.id,
+      hint: opts.hint,
+      body: `${body}${notice}`,
+    });
   }
 
   /**
@@ -303,12 +345,12 @@ export class BridleAttachmentService {
    * of denying the file exists.
    */
   static binaryNoticeBlock(stored: IBridleStoredAttachment): string {
-    return (
-      `[Attached file: ${stored.name} ` +
-      `(${stored.mimeType}, ${stored.size.toLocaleString('en-US')} bytes). ` +
-      `Its contents are not readable in this chat — it is delivered as a ` +
-      `named reference only.]`
-    );
+    return buildNoticeBlock({
+      name: stored.name,
+      id: stored.id,
+      mimeType: stored.mimeType,
+      size: stored.size,
+    });
   }
 
   /** Path of the authenticated download route — never an S3 URL. */

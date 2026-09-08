@@ -3,6 +3,7 @@ import { Workbook } from 'exceljs';
 import { BridleAttachmentService } from './attachment.service';
 import { IBridleAttachmentGateway } from './attachment.gateway';
 import type { IStoreAttachmentInput } from './attachment.gateway';
+import { buildLongSheet } from './__fixtures__/buildReferenceWorkbooks';
 import {
   BridleAttachmentKinds,
   BridlePartTypes,
@@ -12,6 +13,8 @@ import type { IAttachmentRequester } from './chatIdentity';
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_EXTRACTED_TEXT_CHARS,
+  SPREADSHEET_INLINE_BUDGET_CHARS,
+  SPREADSHEET_PREVIEW_ROWS_PER_SHEET,
   MAX_MESSAGE_ATTACHMENT_BYTES,
 } from './attachment.constants';
 
@@ -223,7 +226,7 @@ describe('BridleAttachmentService — text extraction', () => {
     const out = await service.expand(AGENT, 'What does it say?', ['t1'], JWT);
 
     expect(out.text).toContain('What does it say?');
-    expect(out.text).toContain('[Attached file: notes.md]');
+    expect(out.text).toContain('[Attached file: notes.md — id: t1]');
     expect(out.text).toContain('# Heading');
   });
 
@@ -370,12 +373,37 @@ describe('BridleAttachmentService — expansion to parts', () => {
     const out = await service.expand(AGENT, 'что в файле?', ['x1'], JWT);
 
     expect(out.text).toContain('что в файле?');
-    expect(out.text).toContain('[Attached file: totals.xlsx]');
-    expect(out.text).toContain('alfalfa,120');
+    expect(out.text).toContain(
+      '[Attached file: totals.xlsx — id: x1] — this is a preview; call query_attachment with this id',
+    );
+    expect(out.text).toContain('R2: A=alfalfa | B=120');
+    expect(out.text).not.toContain('characters truncated');
     expect(out.text).not.toContain('not readable');
     expect(out.attachments[0].readableByAgent).toBe(true);
     // Still a file part on the wire — never raw bytes.
     expect(out.parts[0].type).toBe(BridlePartTypes.File);
+  });
+
+  it('inlines a large workbook as a bounded preview that points at the tool', async () => {
+    const { service, gw } = makeService();
+    const body = await buildLongSheet(5000);
+    gw.seed('big', {
+      name: 'big.xlsx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      size: body.length,
+      body,
+    });
+
+    const out = await service.expand(AGENT, 'сумма?', ['big'], JWT);
+
+    const block = out.text.slice(out.text.indexOf('[Attached file: big.xlsx'));
+    expect(block.length).toBeLessThan(SPREADSHEET_INLINE_BUDGET_CHARS);
+    expect(block).toContain(
+      `rows 1–${SPREADSHEET_PREVIEW_ROWS_PER_SHEET} included · ${5001 - SPREADSHEET_PREVIEW_ROWS_PER_SHEET} rows omitted`,
+    );
+    expect(block).toContain('call query_attachment with this id');
+    expect(block).not.toContain('characters truncated');
   });
 
   it('falls back to the notice when a document cannot be parsed', async () => {
@@ -645,7 +673,7 @@ describe('BridleAttachmentService — ownership on message expansion', () => {
 
     const out = await service.expand(AGENT, 'read it', ['a1'], VISITOR);
 
-    expect(out.text).toContain('[Attached file: a1.md]');
+    expect(out.text).toContain('[Attached file: a1.md — id: a1]');
     expect(out.attachments).toHaveLength(1);
   });
 

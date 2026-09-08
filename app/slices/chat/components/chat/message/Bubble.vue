@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { renderMarkdown } from '#bridle/utils/markdown';
+import { formatBytes } from '#bridle/domain/attachment.constants';
 import type { IChatMessage } from '#chat/stores/chat';
 import { formatMessageTime } from '#chat/utils/transcript';
 
@@ -69,12 +70,29 @@ function onCopy() {
     </div>
   </div>
 
-  <!-- User message: dark bubble on the right, time below -->
+  <!-- User message: dark bubble on the right, time below. Files the person
+       sent are named above the text; their contents never render here. -->
   <div v-else-if="isUser" class="flex flex-col items-end">
     <div
-      class="max-w-[85%] whitespace-pre-wrap wrap-break-word rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground sm:max-w-[72%]"
+      class="max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground sm:max-w-[72%]"
     >
-      {{ message.text }}
+      <div
+        v-if="message.attachments?.length"
+        class="mb-1.5 flex flex-wrap gap-1.5"
+      >
+        <span
+          v-for="file in message.attachments"
+          :key="file.id"
+          :title="`${$t('message.attached_file')}: ${file.name} · ${formatBytes(file.size)}`"
+          class="inline-flex max-w-full items-center gap-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-xs"
+        >
+          <Icon name="paperclip" :size="12" class="shrink-0" />
+          <span class="truncate">{{ file.name }}</span>
+        </span>
+      </div>
+      <div v-if="message.text" class="whitespace-pre-wrap wrap-break-word">
+        {{ message.text }}
+      </div>
     </div>
     <span class="mt-1 text-[11px] text-muted-foreground/60">{{ time }}</span>
   </div>

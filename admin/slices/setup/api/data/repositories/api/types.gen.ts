@@ -816,6 +816,9 @@ export type TranscriptAttachmentDto = {
 export type TranscriptMessageDto = {
   id: string;
   role: "user" | "assistant";
+  /**
+   * For user messages: what the person typed. Attachment contents the API inlined for the model are not included — see `agentText`.
+   */
   text: string;
   /**
    * Unix epoch milliseconds.
@@ -825,6 +828,10 @@ export type TranscriptMessageDto = {
    * Stored-attachment references for files sent with this message. Fetch the bytes via GET /api/agent/{agentId}/attachment/{id}.
    */
   attachments?: Array<TranscriptAttachmentDto>;
+  /**
+   * User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.
+   */
+  agentText?: string;
 };
 
 export type TranscriptResponseDto = {
@@ -838,6 +845,55 @@ export type TranscriptResponseDto = {
    */
   nextCursor: string | null;
   hasMore: boolean;
+};
+
+export type ShareLinkDto = {
+  /**
+   * True while the link accepts visitors. False when the agent was never shared or the link has been revoked.
+   */
+  active: boolean;
+  /**
+   * The share secret. Exposed only while the link is active — a revoked token is dead and is never handed back, so this is null whenever active is false.
+   */
+  token: string | null;
+  /**
+   * When the link row was first created; null if never shared.
+   */
+  createdAt: string | null;
+  /**
+   * When the link was revoked; null while it is active.
+   */
+  revokedAt: string | null;
+  /**
+   * When the token was last replaced; null until the first regenerate.
+   */
+  rotatedAt: string | null;
+  /**
+   * How many times the token has been replaced.
+   */
+  rotationCount: number;
+};
+
+export type ShareResolveRequestDto = {
+  /**
+   * The share token from the link (`sl_` + 43 url-safe characters).
+   */
+  token: string;
+};
+
+export type ShareResolvedDto = {
+  /**
+   * Id of the shared agent — used for the chat requests.
+   */
+  agentId: string;
+  /**
+   * Display name of the shared agent.
+   */
+  agentName: string;
+  /**
+   * The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.
+   */
+  agentStatus: string;
 };
 
 export type ImportSkillUrlDto = {
@@ -955,11 +1011,22 @@ export type ChatMessageDto = {
     | "tool_call"
     | "tool_result"
     | "system";
+  /**
+   * For user messages: what the person typed, without the attachment contents the API inlined for the model.
+   */
   text: string;
   /**
    * Unix epoch ms
    */
   ts: number;
+  /**
+   * Files sent with this message (metadata only; history has no download route).
+   */
+  attachments?: Array<TranscriptAttachmentDto>;
+  /**
+   * Admin debug views only (present when `types` includes tool events): the full text the model received for a user message with attachments.
+   */
+  agentText?: string;
 };
 
 export type ChatMessagesResponseDto = {
@@ -2748,6 +2815,16 @@ export type ExportAgentFilesResponses = {
 
 export type SendBridleMessageData = {
   body: SendMessageDto;
+  headers?: {
+    /**
+     * Share-link token (`sl_…`) identifying a public share visitor. Send together with `X-Share-Visitor` instead of an `Authorization` bearer. Re-validated against the agent in the path on every request, so a revoked link stops working immediately.
+     */
+    "X-Share-Token"?: string;
+    /**
+     * Opaque per-browser visitor id minted by the share page. Required whenever `X-Share-Token` is sent; it selects the visitor's own `share-<visitorId>` chat channel and owns their attachments.
+     */
+    "X-Share-Visitor"?: string;
+  };
   path: {
     agentId: string;
   };
@@ -2755,12 +2832,36 @@ export type SendBridleMessageData = {
   url: "/api/agent/{agentId}/message";
 };
 
+export type SendBridleMessageErrors = {
+  /**
+   * An `attachmentIds` entry is unknown, unreadable or not owned by the caller.
+   */
+  400: unknown;
+  /**
+   * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
+   */
+  403: unknown;
+};
+
 export type SendBridleMessageResponses = {
+  /**
+   * Accepted and forwarded to the agent.
+   */
   200: unknown;
 };
 
 export type SendBridleMessageSyncData = {
   body: SendMessageDto;
+  headers?: {
+    /**
+     * Share-link token (`sl_…`) identifying a public share visitor. Send together with `X-Share-Visitor` instead of an `Authorization` bearer. Re-validated against the agent in the path on every request, so a revoked link stops working immediately.
+     */
+    "X-Share-Token"?: string;
+    /**
+     * Opaque per-browser visitor id minted by the share page. Required whenever `X-Share-Token` is sent; it selects the visitor's own `share-<visitorId>` chat channel and owns their attachments.
+     */
+    "X-Share-Visitor"?: string;
+  };
   path: {
     agentId: string;
   };
@@ -2768,7 +2869,21 @@ export type SendBridleMessageSyncData = {
   url: "/api/agent/{agentId}/message/sync";
 };
 
+export type SendBridleMessageSyncErrors = {
+  /**
+   * An `attachmentIds` entry is unknown, unreadable or not owned by the caller.
+   */
+  400: unknown;
+  /**
+   * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
+   */
+  403: unknown;
+};
+
 export type SendBridleMessageSyncResponses = {
+  /**
+   * The agent's reply (`{ text, messageId, ts }`), or a timeout notice after 120s.
+   */
   200: unknown;
 };
 
@@ -2776,11 +2891,36 @@ export type UploadBridleAttachmentData = {
   body: {
     file: Blob | File;
   };
+  headers?: {
+    /**
+     * Share-link token (`sl_…`) identifying a public share visitor. Send together with `X-Share-Visitor` instead of an `Authorization` bearer. Re-validated against the agent in the path on every request, so a revoked link stops working immediately.
+     */
+    "X-Share-Token"?: string;
+    /**
+     * Opaque per-browser visitor id minted by the share page. Required whenever `X-Share-Token` is sent; it selects the visitor's own `share-<visitorId>` chat channel and owns their attachments.
+     */
+    "X-Share-Visitor"?: string;
+  };
   path: {
     agentId: string;
   };
   query?: never;
   url: "/api/agent/{agentId}/attachment";
+};
+
+export type UploadBridleAttachmentErrors = {
+  /**
+   * No `file` field, an empty file, an unsupported type, or a file over the size limit.
+   */
+  400: unknown;
+  /**
+   * No usable credential: no bearer token and no share headers, or a bearer that fails verification with no share headers to fall back on.
+   */
+  401: unknown;
+  /**
+   * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
+   */
+  403: unknown;
 };
 
 export type UploadBridleAttachmentResponses = {
@@ -2792,6 +2932,16 @@ export type UploadBridleAttachmentResponse =
 
 export type GetBridleAttachmentData = {
   body?: never;
+  headers?: {
+    /**
+     * Share-link token (`sl_…`) identifying a public share visitor. Send together with `X-Share-Visitor` instead of an `Authorization` bearer. Re-validated against the agent in the path on every request, so a revoked link stops working immediately.
+     */
+    "X-Share-Token"?: string;
+    /**
+     * Opaque per-browser visitor id minted by the share page. Required whenever `X-Share-Token` is sent; it selects the visitor's own `share-<visitorId>` chat channel and owns their attachments.
+     */
+    "X-Share-Visitor"?: string;
+  };
   path: {
     agentId: string;
     attachmentId: string;
@@ -2800,7 +2950,25 @@ export type GetBridleAttachmentData = {
   url: "/api/agent/{agentId}/attachment/{attachmentId}";
 };
 
+export type GetBridleAttachmentErrors = {
+  /**
+   * No usable credential: no bearer token and no share headers, or a bearer that fails verification with no share headers to fall back on.
+   */
+  401: unknown;
+  /**
+   * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
+   */
+  403: unknown;
+  /**
+   * No such attachment — or one belonging to another share visitor, which answers with the same 404 so a leaked id reveals nothing.
+   */
+  404: unknown;
+};
+
 export type GetBridleAttachmentResponses = {
+  /**
+   * The stored bytes, with the original content type and an `inline` Content-Disposition.
+   */
   200: unknown;
 };
 
@@ -2847,6 +3015,16 @@ export type ListAgentsResponses = {
 
 export type ResetBridleTranscriptData = {
   body?: never;
+  headers?: {
+    /**
+     * Share-link token (`sl_…`) identifying a public share visitor. Send together with `X-Share-Visitor` instead of an `Authorization` bearer. Re-validated against the agent in the path on every request, so a revoked link stops working immediately.
+     */
+    "X-Share-Token"?: string;
+    /**
+     * Opaque per-browser visitor id minted by the share page. Required whenever `X-Share-Token` is sent; it selects the visitor's own `share-<visitorId>` chat channel and owns their attachments.
+     */
+    "X-Share-Visitor"?: string;
+  };
   path: {
     agentId: string;
   };
@@ -2859,7 +3037,17 @@ export type ResetBridleTranscriptData = {
   url: "/api/agent/{agentId}/transcript";
 };
 
+export type ResetBridleTranscriptErrors = {
+  /**
+   * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
+   */
+  403: unknown;
+};
+
 export type ResetBridleTranscriptResponses = {
+  /**
+   * Transcript deleted, or there was nothing to delete.
+   */
   204: void;
 };
 
@@ -2868,6 +3056,16 @@ export type ResetBridleTranscriptResponse =
 
 export type GetBridleTranscriptData = {
   body?: never;
+  headers?: {
+    /**
+     * Share-link token (`sl_…`) identifying a public share visitor. Send together with `X-Share-Visitor` instead of an `Authorization` bearer. Re-validated against the agent in the path on every request, so a revoked link stops working immediately.
+     */
+    "X-Share-Token"?: string;
+    /**
+     * Opaque per-browser visitor id minted by the share page. Required whenever `X-Share-Token` is sent; it selects the visitor's own `share-<visitorId>` chat channel and owns their attachments.
+     */
+    "X-Share-Visitor"?: string;
+  };
   path: {
     agentId: string;
   };
@@ -2888,6 +3086,13 @@ export type GetBridleTranscriptData = {
   url: "/api/agent/{agentId}/transcript";
 };
 
+export type GetBridleTranscriptErrors = {
+  /**
+   * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
+   */
+  403: unknown;
+};
+
 export type GetBridleTranscriptResponses = {
   200: TranscriptResponseDto;
 };
@@ -2897,6 +3102,16 @@ export type GetBridleTranscriptResponse =
 
 export type ArchiveBridleTranscriptData = {
   body?: never;
+  headers?: {
+    /**
+     * Share-link token (`sl_…`) identifying a public share visitor. Send together with `X-Share-Visitor` instead of an `Authorization` bearer. Re-validated against the agent in the path on every request, so a revoked link stops working immediately.
+     */
+    "X-Share-Token"?: string;
+    /**
+     * Opaque per-browser visitor id minted by the share page. Required whenever `X-Share-Token` is sent; it selects the visitor's own `share-<visitorId>` chat channel and owns their attachments.
+     */
+    "X-Share-Visitor"?: string;
+  };
   path: {
     agentId: string;
   };
@@ -2909,9 +3124,164 @@ export type ArchiveBridleTranscriptData = {
   url: "/api/agent/{agentId}/transcript/archive";
 };
 
+export type ArchiveBridleTranscriptErrors = {
+  /**
+   * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
+   */
+  403: unknown;
+};
+
 export type ArchiveBridleTranscriptResponses = {
+  /**
+   * `{ archivedPath }` for the timestamped copy, or `{}` when there was nothing to archive.
+   */
   200: unknown;
 };
+
+export type RevokeAgentShareLinkData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/share-link";
+};
+
+export type RevokeAgentShareLinkErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * The bearer token carried no subject, so there is no user to record as the actor for this write.
+   */
+  403: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type RevokeAgentShareLinkResponses = {
+  200: ShareLinkDto;
+};
+
+export type RevokeAgentShareLinkResponse =
+  RevokeAgentShareLinkResponses[keyof RevokeAgentShareLinkResponses];
+
+export type GetAgentShareLinkData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/share-link";
+};
+
+export type GetAgentShareLinkErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type GetAgentShareLinkResponses = {
+  200: ShareLinkDto;
+};
+
+export type GetAgentShareLinkResponse =
+  GetAgentShareLinkResponses[keyof GetAgentShareLinkResponses];
+
+export type CreateAgentShareLinkData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/share-link";
+};
+
+export type CreateAgentShareLinkErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * The bearer token carried no subject, so there is no user to record as the actor for this write.
+   */
+  403: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type CreateAgentShareLinkResponses = {
+  200: ShareLinkDto;
+};
+
+export type CreateAgentShareLinkResponse =
+  CreateAgentShareLinkResponses[keyof CreateAgentShareLinkResponses];
+
+export type RegenerateAgentShareLinkData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/share-link/regenerate";
+};
+
+export type RegenerateAgentShareLinkErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * The bearer token carried no subject, so there is no user to record as the actor for this write.
+   */
+  403: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type RegenerateAgentShareLinkResponses = {
+  200: ShareLinkDto;
+};
+
+export type RegenerateAgentShareLinkResponse =
+  RegenerateAgentShareLinkResponses[keyof RegenerateAgentShareLinkResponses];
+
+export type ResolveShareLinkData = {
+  body: ShareResolveRequestDto;
+  path?: never;
+  query?: never;
+  url: "/share/resolve";
+};
+
+export type ResolveShareLinkErrors = {
+  /**
+   * The token is missing or does not look like a share token; rejected by validation before any lookup happens.
+   */
+  400: unknown;
+  /**
+   * No usable link behind this token — unknown, revoked, or pointing at an agent that no longer exists. One identical body (`{ code: 'SHARE_LINK_NOT_FOUND' }`) for all three, so a visitor cannot tell a link that was turned off from one that never existed (FR-013).
+   */
+  404: unknown;
+};
+
+export type ResolveShareLinkResponses = {
+  200: ShareResolvedDto;
+};
+
+export type ResolveShareLinkResponse =
+  ResolveShareLinkResponses[keyof ResolveShareLinkResponses];
 
 export type SkillControllerFindAllData = {
   body?: never;

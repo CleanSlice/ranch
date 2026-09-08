@@ -44,7 +44,10 @@ import { IPodGateway } from '#/agent/pod/domain';
 import { IFileGateway } from '#/agent/file/domain';
 import { IBridleGateway } from '#/bridle/domain';
 import { IMcpServerGateway, IMcpServerData } from '#/mcpServer/domain';
-import { KNOWLEDGE_MCP_ID } from '#/mcpServer/domain/mcpServer.seeder';
+import {
+  DOCUMENTS_MCP_ID,
+  KNOWLEDGE_MCP_ID,
+} from '#/mcpServer/domain/mcpServer.seeder';
 import { IKnowledgeGateway } from '#/reins/knowledge/domain';
 import { IKnowledgeConfigGateway } from '#/reins/config/domain';
 import { JwtAuthGuard, Public, Roles, RolesGuard } from '#/user/auth/guards';
@@ -282,6 +285,16 @@ export class AgentController {
         await this.mcpServerGateway.findById(KNOWLEDGE_MCP_ID);
       if (knowledgeMcp && knowledgeMcp.enabled) {
         enabledServers.push(knowledgeMcp);
+      }
+    }
+
+    // Every agent can receive chat attachments, so every agent gets the
+    // Documents entry (query_attachment) unless an operator disabled it.
+    if (!enabledServers.some((m) => m.id === DOCUMENTS_MCP_ID)) {
+      const documentsMcp =
+        await this.mcpServerGateway.findById(DOCUMENTS_MCP_ID);
+      if (documentsMcp && documentsMcp.enabled) {
+        enabledServers.push(documentsMcp);
       }
     }
 

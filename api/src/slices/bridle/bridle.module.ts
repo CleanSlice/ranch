@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { BridleController } from './bridle.controller';
+import { BridleAttachmentTool } from './attachment.tool';
 import { BridleClientWsHandler, BridleAgentWsHandler } from './handlers';
 import {
   IBridleGateway,
@@ -78,6 +79,10 @@ import { ShareLinkModule } from '#/agent/shareLink/shareLink.module';
     { provide: IBridleGateway, useClass: BridleGateway },
     { provide: IBridleAttachmentGateway, useClass: BridleAttachmentGateway },
     BridleAttachmentService,
+    // MCP tool: query_attachment. Discovered by the #mcp registry like every
+    // @Tool provider; served on the same endpoint as the Ranch/Knowledge
+    // built-ins and auto-attached through the Documents entry (seeder).
+    BridleAttachmentTool,
     BridleClientWsHandler,
     BridleAgentWsHandler,
     BridleApiKeyGuard,

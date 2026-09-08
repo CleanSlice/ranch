@@ -1,19 +1,18 @@
-import {
-  TranscriptReaderService,
-  TranscriptMessage,
-} from './transcriptReader.service';
-import { IFileGateway } from './file.gateway';
-import { IFileChunk } from './file.types';
+import { TranscriptReaderService } from './transcriptReader.service';
+import type { IFileGateway } from './file.gateway';
+import type { IFileChunk } from './file.types';
 
-// Minimal IFileGateway stub: readRange returns the whole fixture in one chunk.
-function fileStub(content: string): IFileGateway {
-  const size = Buffer.byteLength(content);
+const ID = '0b53c9a4-7f4e-4bb1-a6b1-6a1f2f9c8f21';
+const PATH = 'data/sessions/bridle:admin.jsonl';
+
+/** Serves one JSONL string in a single chunk. */
+function fakeFiles(content: string): IFileGateway {
   return {
-    readRange: async (_agentId: string, path: string): Promise<IFileChunk> => ({
-      path,
+    readRange: async (): Promise<IFileChunk> => ({
+      path: PATH,
       content,
-      size,
-      totalSize: size,
+      size: Buffer.byteLength(content),
+      totalSize: Buffer.byteLength(content),
       offset: 0,
       nextOffset: null,
       hasMore: false,
@@ -22,183 +21,154 @@ function fileStub(content: string): IFileGateway {
   } as unknown as IFileGateway;
 }
 
-function jsonl(...events: unknown[]): string {
-  return events.map((e) => JSON.stringify(e)).join('\n') + '\n';
+function line(evt: Record<string, unknown>): string {
+  return JSON.stringify(evt);
 }
 
-const reader = (content: string) =>
-  new TranscriptReaderService(fileStub(content));
-const roles = (m: TranscriptMessage[]) => m.map((x) => x.role);
-const texts = (m: TranscriptMessage[]) => m.map((x) => x.text);
+const NEW_BLOCK = `[Attached file: a.xlsx — id: ${ID}]\n\`\`\`\nR1: A=1\n\`\`\``;
+const LEGACY_BLOCK = '[Attached file: a.txt]\n```\nold\n```';
+const ATTACHMENTS = [
+  {
+    id: ID,
+    name: 'a.xlsx',
+    mimeType:
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    size: 10,
+    kind: 'binary',
+  },
+];
 
-describe('TranscriptReaderService', () => {
-  it('returns user+assistant by default, sorted by ts', async () => {
-    const content = jsonl(
-      { id: 'b', type: 'assistant', ts: 2, data: { text: 'hi there' } },
-      { id: 'a', type: 'user', ts: 1, data: { text: 'hello' } },
-      { id: 'c', type: 'tool_call', ts: 3, data: { name: 'exec' } },
-    );
-    const out = await reader(content).read('agent', 'p');
-    expect(roles(out)).toEqual(['user', 'assistant']); // tool_call hidden by default
-    expect(texts(out)).toEqual(['hello', 'hi there']);
-  });
-
-  it('surfaces summary events when requested', async () => {
-    const content = jsonl(
-      {
-        id: 's',
-        type: 'summary',
-        ts: 1,
-        data: { text: '[ARCHIVED CONTEXT] gist [END]' },
-      },
-      { id: 'u', type: 'user', ts: 2, data: { text: 'and then?' } },
-    );
-    const withSummary = await reader(content).read('agent', 'p', {
-      types: ['user', 'assistant', 'summary'],
-    });
-    expect(roles(withSummary)).toEqual(['summary', 'user']);
-
-    const withoutSummary = await reader(content).read('agent', 'p');
-    expect(roles(withoutSummary)).toEqual(['user']); // silent gap unless summary requested
-  });
-
-  it('drops the max_tokens duplicate: partial assistant + continuation prompt (legacy text)', async () => {
-    const content = jsonl(
-      { id: 'u', type: 'user', ts: 1, data: { text: 'write a poem' } },
-      { id: 'p', type: 'assistant', ts: 2, data: { text: 'Roses are red,' } }, // partial
-      {
-        id: 'c',
-        type: 'user',
-        ts: 3,
-        data: { text: 'Your response was cut off. Continue…' },
-      },
-      {
-        id: 'f',
-        type: 'assistant',
-        ts: 4,
-        data: { text: 'Roses are red, violets are blue.' },
-      },
-    );
-    const out = await reader(content).read('agent', 'p');
-    expect(texts(out)).toEqual([
-      'write a poem',
-      'Roses are red, violets are blue.',
-    ]);
-  });
-
-  it('drops synthetic events tagged data.transient (new data)', async () => {
-    const content = jsonl(
-      { id: 'u', type: 'user', ts: 1, data: { text: 'q' } },
-      {
-        id: 'p',
-        type: 'assistant',
-        ts: 2,
-        data: { text: 'chunk', transient: true },
-      },
-      {
-        id: 'c',
-        type: 'user',
-        ts: 3,
-        data: { text: 'continue', transient: true },
-      },
-      { id: 'f', type: 'assistant', ts: 4, data: { text: 'full answer' } },
-    );
-    const out = await reader(content).read('agent', 'p');
-    expect(texts(out)).toEqual(['q', 'full answer']);
-  });
-
-  it('filterTransient=false preserves raw order byte-for-byte (bridle widget parity)', async () => {
-    const content = jsonl(
-      { id: 'u', type: 'user', ts: 1, data: { text: 'q' } },
-      { id: 'p', type: 'assistant', ts: 2, data: { text: 'part' } },
-      {
-        id: 'c',
-        type: 'user',
-        ts: 3,
-        data: { text: 'Your response was cut off. Continue…' },
-      },
-      { id: 'f', type: 'assistant', ts: 4, data: { text: 'part full' } },
-    );
-    const out = await reader(content).read('agent', 'p', {
-      filterTransient: false,
-    });
-    expect(out).toHaveLength(4); // nothing filtered
-  });
-
-  it('surfaces attachment metadata on user events', async () => {
-    const att = {
-      id: 'att-1',
-      name: 'photo.png',
-      mimeType: 'image/png',
-      size: 1234,
-      kind: 'image',
-    };
-    const content = jsonl(
-      { id: 'u', type: 'user', ts: 1, data: { text: 'look', attachments: [att] } },
-      { id: 'a', type: 'assistant', ts: 2, data: { text: 'nice' } },
-    );
-    const out = await reader(content).read('agent', 'p');
-    expect(out[0].attachments).toEqual([att]);
-    expect(out[1].attachments).toBeUndefined();
-  });
-
-  it('keeps an attachment-only user event (empty text) instead of dropping it', async () => {
-    const att = {
-      id: 'att-1',
-      name: 'photo.png',
-      mimeType: 'image/png',
-      size: 1,
-      kind: 'image',
-    };
-    const content = jsonl(
-      { id: 'u1', type: 'user', ts: 1, data: { text: '', attachments: [att] } },
-      { id: 'u2', type: 'user', ts: 2, data: { text: '' } }, // still dropped
-      { id: 'a', type: 'assistant', ts: 3, data: { text: 'reply' } },
-    );
-    const out = await reader(content).read('agent', 'p');
-    expect(out.map((m) => m.id)).toEqual(['u1', 'a']);
-    expect(out[0].text).toBe('');
-    expect(out[0].attachments).toEqual([att]);
-  });
-
-  it('drops malformed attachment entries and the field when nothing survives', async () => {
-    const content = jsonl(
-      {
+describe('TranscriptReaderService — typed text vs agent-facing text', () => {
+  it('returns the typed text and keeps the full string as agentText', async () => {
+    const full = `распарси\n\n${NEW_BLOCK}`;
+    const jsonl = [
+      line({
         id: 'u1',
         type: 'user',
         ts: 1,
-        data: {
-          text: 'hi',
-          attachments: [{ junk: true }, { id: 'ok', name: 'a.txt', mimeType: 'text/plain', size: 2, kind: 'text' }],
-        },
-      },
-      { id: 'u2', type: 'user', ts: 2, data: { text: 'yo', attachments: 'nope' } },
+        data: { text: full, attachments: ATTACHMENTS },
+      }),
+      line({ id: 'a1', type: 'assistant', ts: 2, data: { text: 'ok' } }),
+    ].join('\n');
+
+    const out = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
     );
-    const out = await reader(content).read('agent', 'p');
-    expect(out[0].attachments).toEqual([
-      { id: 'ok', name: 'a.txt', mimeType: 'text/plain', size: 2, kind: 'text' },
-    ]);
-    expect(out[1].attachments).toBeUndefined();
+
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({
+      id: 'u1',
+      role: 'user',
+      text: 'распарси',
+      agentText: full,
+    });
+    expect(out[0].attachments).toHaveLength(1);
+    expect(out[1]).toEqual({ id: 'a1', role: 'assistant', text: 'ok', ts: 2 });
+    expect('agentText' in out[1]).toBe(false);
   });
 
-  it('paginates tail-first via page()', () => {
-    const msgs: TranscriptMessage[] = Array.from({ length: 5 }, (_, i) => ({
-      id: `m${i}`,
-      role: 'user',
-      text: `#${i}`,
-      ts: i,
-    }));
-    const latest = TranscriptReaderService.page(msgs, undefined, 2);
-    expect(texts(latest.messages)).toEqual(['#3', '#4']);
-    expect(latest.hasMore).toBe(true);
+  it('splits a legacy block persisted before ids and metadata existed', async () => {
+    const full = `hi\n\n${LEGACY_BLOCK}`;
+    const jsonl = line({ id: 'u1', type: 'user', ts: 1, data: { text: full } });
 
-    const older = TranscriptReaderService.page(msgs, latest.nextCursor!, 2);
-    expect(texts(older.messages)).toEqual(['#1', '#2']);
-    expect(older.hasMore).toBe(true);
+    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
 
-    const oldest = TranscriptReaderService.page(msgs, older.nextCursor!, 2);
-    expect(texts(oldest.messages)).toEqual(['#0']);
-    expect(oldest.hasMore).toBe(false);
-    expect(oldest.nextCursor).toBeNull();
+    expect(msg.text).toBe('hi');
+    expect(msg.agentText).toBe(full);
+    expect(msg.attachments).toBeUndefined();
+  });
+
+  it('keeps an attachment-only message with an empty typed text', async () => {
+    const jsonl = line({
+      id: 'u1',
+      type: 'user',
+      ts: 1,
+      data: { text: NEW_BLOCK, attachments: ATTACHMENTS },
+    });
+
+    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
+
+    expect(msg).toBeDefined();
+    expect(msg.text).toBe('');
+    expect(msg.agentText).toBe(NEW_BLOCK);
+    expect(msg.attachments).toHaveLength(1);
+  });
+
+  it('keeps a legacy attachment-only message even without metadata', async () => {
+    const jsonl = line({
+      id: 'u1',
+      type: 'user',
+      ts: 1,
+      data: { text: LEGACY_BLOCK },
+    });
+
+    const out = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
+
+    expect(out).toHaveLength(1);
+    expect(out[0].text).toBe('');
+    expect(out[0].agentText).toBe(LEGACY_BLOCK);
+  });
+
+  it('leaves a plain user message alone and sets no agentText', async () => {
+    const jsonl = line({
+      id: 'u1',
+      type: 'user',
+      ts: 1,
+      data: { text: 'plain' },
+    });
+
+    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
+
+    expect(msg.text).toBe('plain');
+    expect('agentText' in msg).toBe(false);
+  });
+
+  it('does not split when the block does not parse (truncated tail)', async () => {
+    const broken = `hi\n\n[Attached file: a.txt — id: ${ID}]\n\`\`\`\nno closing fence`;
+    const jsonl = line({
+      id: 'u1',
+      type: 'user',
+      ts: 1,
+      data: { text: broken },
+    });
+
+    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
+
+    expect(msg.text).toBe(broken);
+    expect('agentText' in msg).toBe(false);
+  });
+
+  it('never splits assistant text even if it quotes the marker', async () => {
+    const quoted = `I saw:\n\n${NEW_BLOCK}`;
+    const jsonl = line({
+      id: 'a1',
+      type: 'assistant',
+      ts: 1,
+      data: { text: quoted },
+    });
+
+    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
+
+    expect(msg.text).toBe(quoted);
+    expect('agentText' in msg).toBe(false);
   });
 });

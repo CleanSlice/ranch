@@ -1,5 +1,6 @@
 export * from './bridle.types';
 export * from './attachment.constants';
+export * from './attachmentBlocks';
 export {
   IBridleGateway,
   type ISyncAgentResult,

@@ -48,6 +48,12 @@ export interface IBridleMessageData {
   parts: BridlePart[]
   ts: number
   streaming?: boolean
+  /**
+   * Replayed user turns with attachments only: the full text the model
+   * received (typed text + inlined attachment blocks). Shown on demand under
+   * the DEBUG toggle, never as the bubble. Absent on the live echo.
+   */
+  agentText?: string
 }
 
 // ── Thinking (live reasoning steps) ──────────────────────────
@@ -200,6 +206,7 @@ interface ITranscriptPageMessage {
   text: string
   ts: number
   attachments?: ITranscriptAttachment[]
+  agentText?: string
 }
 
 interface ITranscriptPage {
@@ -299,11 +306,14 @@ function toBridleMessage(m: ITranscriptPageMessage): IBridleMessageData {
   return {
     id: m.id,
     role: m.role,
+    // `text` is what the person typed — the API already took the attachment
+    // blocks off; they come back separately as `agentText` for inspection.
     text: m.text,
     // No empty text part: an attachment-only message (text '') would render
     // a blank line above its image once hydration fills the parts in.
     parts: m.text ? [{ type: BridlePartTypes.Text as const, text: m.text }] : [],
     ts: m.ts,
+    ...(m.agentText ? { agentText: m.agentText } : {}),
   }
 }
 

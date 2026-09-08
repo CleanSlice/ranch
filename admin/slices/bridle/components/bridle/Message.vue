@@ -10,7 +10,17 @@ const props = defineProps<{
   message: IBridleMessageData
   hasDebug?: boolean
   markdownEnabled?: boolean
+  /** DEBUG toggle state: gates the "what the agent received" disclosure. */
+  debugEnabled?: boolean
 }>()
+
+// A replayed user turn with attachments carries the full model-facing text.
+// It is only worth showing to someone debugging the prompt, so the
+// disclosure follows the DEBUG toggle and starts collapsed.
+const agentTextOpen = ref(false)
+const showAgentText = computed(
+  () => isUser.value && !!props.debugEnabled && !!props.message.agentText,
+)
 
 defineEmits<{
   inspect: [id: string]
@@ -136,7 +146,7 @@ onBeforeUnmount(() => {
       </template>
 
       <!-- Fallback: if no parts, show plain text (or markdown for assistant) -->
-      <template v-if="message.parts.length === 0">
+      <template v-if="message.parts.length === 0 && !showAgentText">
         <div
           v-if="!isUser && markdownEnabled"
           class="min-w-0 wrap-break-word"
@@ -145,6 +155,23 @@ onBeforeUnmount(() => {
         />
         <p v-else class="whitespace-pre-wrap wrap-break-word">{{ message.text }}</p>
       </template>
+
+      <!-- What the agent received: typed text + inlined attachment blocks.
+           Debug-only, collapsed by default — the bubble above is the message. -->
+      <div v-if="showAgentText" class="border-t border-primary-foreground/20 pt-1.5">
+        <button
+          type="button"
+          class="flex items-center gap-1 text-[11px] opacity-80 hover:opacity-100"
+          @click="agentTextOpen = !agentTextOpen"
+        >
+          <Info class="h-3 w-3" />
+          <span>{{ agentTextOpen ? 'Hide what the agent received' : 'What the agent received' }}</span>
+        </button>
+        <pre
+          v-if="agentTextOpen"
+          class="mt-1.5 max-h-[40vh] overflow-auto rounded bg-background/20 p-2 text-[11px] leading-snug whitespace-pre-wrap wrap-break-word"
+        >{{ message.agentText }}</pre>
+      </div>
     </div>
 
     <Button

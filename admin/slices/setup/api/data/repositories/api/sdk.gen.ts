@@ -124,6 +124,16 @@ import type {
   GetBridleTranscriptData,
   GetBridleTranscriptResponse,
   ArchiveBridleTranscriptData,
+  RevokeAgentShareLinkData,
+  RevokeAgentShareLinkResponse,
+  GetAgentShareLinkData,
+  GetAgentShareLinkResponse,
+  CreateAgentShareLinkData,
+  CreateAgentShareLinkResponse,
+  RegenerateAgentShareLinkData,
+  RegenerateAgentShareLinkResponse,
+  ResolveShareLinkData,
+  ResolveShareLinkResponse,
   SkillControllerFindAllData,
   SkillControllerCreateData,
   SkillControllerListSourcesData,
@@ -1803,7 +1813,7 @@ export class FilesService {
 
 export class BridleService {
   /**
-   * Send a message to a agent (HTTP fallback — fire & forget)
+   * Send a message to a agent (HTTP fallback — fire & forget). Accepts a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); with neither, the caller is the anonymous embed visitor and gets a throwaway channel.
    */
   public static sendBridleMessage<ThrowOnError extends boolean = false>(
     options: Options<SendBridleMessageData, ThrowOnError>,
@@ -1823,7 +1833,7 @@ export class BridleService {
   }
 
   /**
-   * Send a message and wait for the agent response (synchronous)
+   * Send a message and wait for the agent response (synchronous). Accepts a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); with neither, the caller is the anonymous embed visitor and gets a throwaway channel.
    */
   public static sendBridleMessageSync<ThrowOnError extends boolean = false>(
     options: Options<SendBridleMessageSyncData, ThrowOnError>,
@@ -1843,7 +1853,7 @@ export class BridleService {
   }
 
   /**
-   * Upload a chat attachment. Returns the id the send call references via `attachmentIds`. Requires a bearer token.
+   * Upload a chat attachment. Returns the id the send call references via `attachmentIds`. Requires a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`).
    */
   public static uploadBridleAttachment<ThrowOnError extends boolean = false>(
     options: Options<UploadBridleAttachmentData, ThrowOnError>,
@@ -1864,7 +1874,7 @@ export class BridleService {
   }
 
   /**
-   * Download a chat attachment. Streams the stored bytes with their original content type. Requires a bearer token.
+   * Download a chat attachment. Streams the stored bytes with their original content type. Requires a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); a share visitor may only read attachments they uploaded themselves.
    */
   public static getBridleAttachment<ThrowOnError extends boolean = false>(
     options: Options<GetBridleAttachmentData, ThrowOnError>,
@@ -1928,7 +1938,7 @@ export class BridleService {
   }
 
   /**
-   * Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart.
+   * Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
    */
   public static resetBridleTranscript<ThrowOnError extends boolean = false>(
     options: Options<ResetBridleTranscriptData, ThrowOnError>,
@@ -1944,7 +1954,7 @@ export class BridleService {
   }
 
   /**
-   * Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client.
+   * Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
    */
   public static getBridleTranscript<ThrowOnError extends boolean = false>(
     options: Options<GetBridleTranscriptData, ThrowOnError>,
@@ -1960,7 +1970,7 @@ export class BridleService {
   }
 
   /**
-   * Archive the persisted chat transcript for an agent/channel — the live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`) and the live slot starts empty. Used by the embed's "New chat" action when the visitor wants a clean slate but we still want the prior conversation for admin/audit. No-op (returns `{}`) when there's nothing to archive.
+   * Archive the persisted chat transcript for an agent/channel — the live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`) and the live slot starts empty. Used by the embed's "New chat" action when the visitor wants a clean slate but we still want the prior conversation for admin/audit. No-op (returns `{}`) when there's nothing to archive. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
    */
   public static archiveBridleTranscript<ThrowOnError extends boolean = false>(
     options: Options<ArchiveBridleTranscriptData, ThrowOnError>,
@@ -1972,6 +1982,94 @@ export class BridleService {
     >({
       url: "/api/agent/{agentId}/transcript/archive",
       ...options,
+    });
+  }
+}
+
+export class ShareLinksService {
+  /**
+   * Stop sharing the agent. Returns the link with active: false and token: null; visitors are cut off on their very next request, with no cached decision anywhere. Idempotent — revoking twice, or an agent that was never shared, is still 200. 404 when the agent does not exist.
+   */
+  public static revokeAgentShareLink<ThrowOnError extends boolean = false>(
+    options: Options<RevokeAgentShareLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      RevokeAgentShareLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/share-link",
+      ...options,
+    });
+  }
+
+  /**
+   * Current state of the agent's share link. Returns active: false with every field null when the agent was never shared or the link has been revoked — the token is only ever exposed while the link is active. 404 when the agent does not exist.
+   */
+  public static getAgentShareLink<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentShareLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentShareLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/share-link",
+      ...options,
+    });
+  }
+
+  /**
+   * Share the agent. Idempotent: an already active link is returned unchanged (same token), so pressing Share twice never invalidates a link that is already in circulation. A fresh token is minted when the agent has never been shared or the previous link was revoked. 404 when the agent does not exist. 200, not 201: the usual outcome is an existing link handed back, and the operation is idempotent.
+   */
+  public static createAgentShareLink<ThrowOnError extends boolean = false>(
+    options: Options<CreateAgentShareLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      CreateAgentShareLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/share-link",
+      ...options,
+    });
+  }
+
+  /**
+   * Replace the token with one that has never been valid before. The previous token stops working in the same write, so anyone holding the old link loses access immediately. Revives a revoked link. 404 when the agent does not exist.
+   */
+  public static regenerateAgentShareLink<ThrowOnError extends boolean = false>(
+    options: Options<RegenerateAgentShareLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      RegenerateAgentShareLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/share-link/regenerate",
+      ...options,
+    });
+  }
+}
+
+export class ShareService {
+  /**
+   * Exchange a share token for the little the visitor may know about the agent behind it: id, name and status. Nothing else about the agent is exposed. An unknown token and a revoked token answer with the exact same 404 body ({ code: 'SHARE_LINK_NOT_FOUND' }), so a link that was turned off is indistinguishable from one that never existed. A malformed token is rejected as 400 before any lookup happens.
+   */
+  public static resolveShareLink<ThrowOnError extends boolean = false>(
+    options: Options<ResolveShareLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ResolveShareLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/share/resolve",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
     });
   }
 }

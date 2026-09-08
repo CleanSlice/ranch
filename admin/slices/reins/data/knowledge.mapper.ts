@@ -125,8 +125,6 @@ export class KnowledgeMapper {
           : 'idle',
       indexError: nullableStr(o.indexError),
       indexedAt: nullableStr(o.indexedAt),
-      textState: readTextState(o.textState),
-      textError: nullableStr(o.textError),
       indexStartedAt: nullableStr(o.indexStartedAt),
       sourceCount: num(o.sourceCount),
       indexedCount: num(o.indexedCount),
@@ -205,6 +203,8 @@ export class KnowledgeMapper {
           : 'queued',
       indexError: nullableStr(o.indexError),
       indexedAt: nullableStr(o.indexedAt),
+      textState: readTextState(o.textState),
+      textError: nullableStr(o.textError),
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
     };

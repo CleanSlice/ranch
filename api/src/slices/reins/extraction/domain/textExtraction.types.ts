@@ -4,6 +4,8 @@ export interface IPdfProbeResult {
   text: string;
   /** Page count; 0 when the document could not be opened as a PDF. */
   pages: number;
+  /** Why it could not be opened, when `pages` is 0. */
+  error?: string;
 }
 
 /** Where a stored object lives, in the terms the OCR service reads it by. */

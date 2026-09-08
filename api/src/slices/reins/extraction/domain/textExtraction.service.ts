@@ -31,7 +31,9 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export function isPdfSource(source: Pick<ISourceData, 'type' | 'mimeType'>): boolean {
+export function isPdfSource(
+  source: Pick<ISourceData, 'type' | 'mimeType'>,
+): boolean {
   return source.type === 'file' && source.mimeType === PDF_MIME;
 }
 
@@ -207,7 +209,11 @@ export class TextExtractionService implements OnModuleInit {
 
     const probed = await this.probe.probe(bytes);
     if (probed.pages === 0) {
-      throw new Error('file could not be read as a PDF');
+      throw new Error(
+        probed.error
+          ? `file could not be read as a PDF: ${probed.error}`
+          : 'file could not be read as a PDF',
+      );
     }
     if (hasUsableTextLayer(probed.text, probed.pages)) {
       // The common case, and free: the file goes to LightRAG as it is.

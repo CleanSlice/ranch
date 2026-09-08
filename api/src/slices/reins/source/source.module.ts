@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '#/setup/prisma/prisma.module';
 import { AwsModule } from '#/aws/aws.module';
 import { ConfigModule } from '../config/config.module';
 import { LightragModule } from '../lightrag/lightrag.module';
+import { ExtractionModule } from '../extraction/extraction.module';
 import { SourceController } from './source.controller';
 import { SourceService } from './domain/source.service';
 import { ISourceGateway } from './domain/source.gateway';
@@ -11,7 +12,13 @@ import { SourceGateway } from './data/source.gateway';
 import { SourceMapper } from './data/source.mapper';
 
 @Module({
-  imports: [PrismaModule, AwsModule, ConfigModule, LightragModule],
+  imports: [
+    PrismaModule,
+    AwsModule,
+    ConfigModule,
+    LightragModule,
+    forwardRef(() => ExtractionModule),
+  ],
   controllers: [SourceController],
   providers: [
     SourceMapper,
@@ -19,6 +26,6 @@ import { SourceMapper } from './data/source.mapper';
     ImportJobRegistry,
     { provide: ISourceGateway, useClass: SourceGateway },
   ],
-  exports: [SourceService, ISourceGateway],
+  exports: [SourceService, ISourceGateway, ImportJobRegistry],
 })
 export class SourceModule {}

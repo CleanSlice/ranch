@@ -30,4 +30,13 @@ export abstract class IKnowledgeConfigGateway {
    */
   abstract isSharedPoolDecommissioned(): Promise<boolean>;
   abstract markSharedPoolDecommissioned(): Promise<void>;
+  /**
+   * Whether a PDF without a text layer is sent to OCR. On by default: the
+   * cost is bounded by getOcrMaxPages and only scans ever reach it. When off,
+   * such a PDF is recorded as failed with a reason that names this switch,
+   * instead of failing later with LightRAG's "only whitespace".
+   */
+  abstract isOcrEnabled(): Promise<boolean>;
+  /** Largest PDF, in pages, that OCR will accept. */
+  abstract getOcrMaxPages(): Promise<number>;
 }

@@ -24,6 +24,13 @@ export type IndexStatus =
   | 'partial';
 export type SourceType = 'file' | 'url' | 'text';
 export type SourceIndexStatus = 'indexed' | 'pending' | 'failed';
+/**
+ * Text extraction for a PDF without a text layer: `none` (not a PDF, or it
+ * has its own text), `pending` (probing or OCR running), `ready` (recognised
+ * text is what gets indexed), `failed` (see textError).
+ */
+export type SourceTextState = 'none' | 'pending' | 'ready' | 'failed';
+export type ImportJobKind = 'archive' | 'extraction';
 export type KnowledgeQueryMode = 'hybrid' | 'local' | 'global' | 'naive';
 
 export type InstanceState =
@@ -88,6 +95,8 @@ export interface ISource {
   indexState: SourceIndexState;
   indexError: string | null;
   indexedAt: string | null;
+  textState: SourceTextState;
+  textError: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -113,7 +122,7 @@ export type ImportJobStatus = 'running' | 'done' | 'failed';
 export interface IImportJob {
   id: string;
   knowledgeId: string;
-  kind: 'archive';
+  kind: ImportJobKind;
   status: ImportJobStatus;
   detected: number;
   added: number;

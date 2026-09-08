@@ -141,3 +141,30 @@ kubectl -n <ns> logs deploy/lightrag --since=10m | grep -c "LLM output format er
 Note that this counter reads the *parse* step, so it also fires when cached
 output from an older model is re-parsed. Clear the cache first or the number
 describes the previous model.
+
+## A PDF without a text layer is read by Textract before LightRAG sees it
+
+LightRAG reads PDFs with `pypdf`, which returns the text layer and nothing
+else. A scanned form or a photographed page has none, so the document fails
+inside LightRAG with "only whitespace" (17 of the first 651 files on dev did).
+The `extraction` sub-slice runs first: when a PDF lands, `pdf-parse` measures
+its text per page; under 40 characters a page it is treated as a scan and sent
+to AWS Textract, the recognised text is stored next to the file as
+`<key>.ocr.txt`, and the index run ingests that text under the source id
+instead of uploading the file. The row carries `textState`
+(`none | pending | ready | failed`) plus `textUrl` and `textError`; an index
+run waits on `pending`, reports `failed` with the reason, and never writes
+those columns itself. Boot re-queues `pending` rows, since the queue lives in
+the API process.
+
+Settings (`knowledge` group, env fallback in brackets): `ocr_enabled`
+(`REINS_OCR_ENABLED`, default on) and `ocr_max_pages` (`REINS_OCR_MAX_PAGES`,
+default 500; Textract bills per page). The Textract client is built from the
+same `integrations/aws_*` settings as S3 and reads multi-page files straight
+from the bucket (so never from a local MinIO), so the API's IAM identity needs `textract:DetectDocumentText`,
+`textract:StartDocumentTextDetection` and `textract:GetDocumentTextDetection`
+on top of `s3:GetObject`. Without them every scan lands in `failed` with an
+`AccessDenied` reason on the row, which is visible and harmless.
+`POST /knowledges/:id/sources/:sourceId/extract` (the "Re-extract text" row
+action in admin) re-runs extraction for a PDF added before OCR was on or
+allowed.

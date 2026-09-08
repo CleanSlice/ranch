@@ -139,6 +139,10 @@ export class KnowledgeService {
     return this.gateway.reindexSource(id, sourceId);
   }
 
+  extractSource(id: string, sourceId: string): Promise<void> {
+    return this.gateway.extractSource(id, sourceId);
+  }
+
   graphLabels(
     id: string,
     search?: string,

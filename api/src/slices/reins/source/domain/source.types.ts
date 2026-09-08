@@ -22,6 +22,13 @@ export type SourceIndexStateTypes =
   | 'indexed'
   | 'failed';
 
+/**
+ * Text extracted for a PDF without a text layer (reins/extraction). `none`
+ * is both "not a PDF" and "the PDF has its own text"; only `ready` carries a
+ * textUrl, and that text - not the file - is what goes to LightRAG.
+ */
+export type SourceTextStateTypes = 'none' | 'pending' | 'ready' | 'failed';
+
 export interface ISourceData {
   id: string;
   knowledgeId: string;
@@ -37,8 +44,17 @@ export interface ISourceData {
   indexState: SourceIndexStateTypes;
   indexError: string | null;
   indexedAt: Date | null;
+  textState: SourceTextStateTypes;
+  textUrl: string | null;
+  textError: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ISourceTextStatePatch {
+  textState: SourceTextStateTypes;
+  textUrl?: string | null;
+  textError?: string | null;
 }
 
 export interface ISourceIndexStatePatch {
@@ -156,10 +172,13 @@ export type ImportJobStatusTypes = 'running' | 'done' | 'failed';
  * only: an import cannot outlive the process anyway, so there is nothing to
  * persist that would still be true after a restart.
  */
+/** What a background job is doing: importing an archive, or extracting text from scanned PDFs. */
+export type ImportJobKindTypes = 'archive' | 'extraction';
+
 export interface IImportJob {
   id: string;
   knowledgeId: string;
-  kind: 'archive';
+  kind: ImportJobKindTypes;
   status: ImportJobStatusTypes;
   detected: number;
   added: number;

@@ -80,6 +80,8 @@ export abstract class IKnowledgeGateway {
   ): Promise<ISourceSitemapResult>;
   abstract removeSource(id: string, sourceId: string): Promise<void>;
   abstract reindexSource(id: string, sourceId: string): Promise<void>;
+  /** Re-run text extraction (OCR) for a PDF source. */
+  abstract extractSource(id: string, sourceId: string): Promise<void>;
   // Base-scoped: the graph and its labels describe one knowledge base only.
   abstract graphLabels(
     id: string,

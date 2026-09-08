@@ -750,6 +750,16 @@ export const SourceDtoSchema = {
       type: "string",
       nullable: true,
     },
+    textState: {
+      type: "string",
+      enum: ["none", "pending", "ready", "failed"],
+      description:
+        "Text extraction for a PDF without a text layer: none (not a PDF, or it has its own text), pending (probing or OCR running), ready (recognised text is what gets indexed), failed (see textError).",
+    },
+    textError: {
+      type: "string",
+      nullable: true,
+    },
     createdAt: {
       format: "date-time",
       type: "string",
@@ -773,6 +783,8 @@ export const SourceDtoSchema = {
     "indexState",
     "indexError",
     "indexedAt",
+    "textState",
+    "textError",
     "createdAt",
     "updatedAt",
   ],
@@ -812,7 +824,7 @@ export const ImportJobDtoSchema = {
     },
     kind: {
       type: "string",
-      enum: ["archive"],
+      enum: ["archive", "extraction"],
     },
     status: {
       type: "string",

@@ -28,6 +28,9 @@ function makeSource(overrides: Partial<ISourceData> = {}): ISourceData {
     indexState: 'queued',
     indexError: null,
     indexedAt: null,
+    textState: 'none',
+    textUrl: null,
+    textError: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...overrides,
@@ -123,9 +126,18 @@ type Lightrag = ConstructorParameters<typeof SourceGateway>[2];
 type S3 = ConstructorParameters<typeof SourceGateway>[3];
 type KnowledgeConfig = ConstructorParameters<typeof SourceGateway>[4];
 
+function makeS3Stub(objects: Record<string, string> = {}) {
+  return {
+    download: jest.fn((location: { key: string }) =>
+      Promise.resolve(Buffer.from(objects[location.key] ?? '', 'utf8')),
+    ),
+  };
+}
+
 function makeGateway(
   prisma: ReturnType<typeof makePrismaStub>,
   lightrag: ReturnType<typeof makeLightragStub>,
+  s3: ReturnType<typeof makeS3Stub> = makeS3Stub(),
 ): SourceGateway {
   // The gateway's constructor takes the full Prisma client and the S3/config
   // deps, but indexSources only touches `source` and the LightRAG client, so
@@ -134,7 +146,7 @@ function makeGateway(
     prisma as unknown as Prisma,
     new SourceMapper(),
     lightrag as unknown as Lightrag,
-    {} as unknown as S3,
+    s3 as unknown as S3,
     {} as unknown as KnowledgeConfig,
   );
 }
@@ -241,6 +253,9 @@ describe('SourceGateway.indexSources', () => {
         indexed: true,
         indexStatus: 'indexed',
         indexedAt: new Date(1000),
+        textState: 'none',
+        textUrl: null,
+        textError: null,
         indexError: null,
       }),
     ]);
@@ -305,6 +320,76 @@ describe('SourceGateway.indexSources', () => {
       },
     ]);
     expect(prisma.docIds['src-1']).toBe('track-existing');
+  });
+
+  it('sends the extracted text, not the file, for a scanned PDF that is ready', async () => {
+    const prisma = makePrismaStub({ 'src-1': null });
+    const lightrag = makeLightragStub([processed()]);
+    const s3 = makeS3Stub({ 'k/scan.pdf.ocr.txt': '--- page 1 ---\nOrder form' });
+    const gateway = makeGateway(prisma, lightrag, s3);
+
+    const run = gateway.indexSources([
+      makeSource({
+        type: 'file',
+        url: 's3://b/k/scan.pdf',
+        mimeType: 'application/pdf',
+        textState: 'ready',
+        textUrl: 's3://b/k/scan.pdf.ocr.txt',
+      }),
+    ]);
+    await jest.advanceTimersByTimeAsync(POLL_MS * 2);
+    const outcomes = await run;
+
+    expect(lightrag.ingestFile).not.toHaveBeenCalled();
+    expect(lightrag.ingestText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: '--- page 1 ---\nOrder form',
+        fileSource: 'src-1',
+      }),
+    );
+    expect(outcomes[0].status).toBe('indexed');
+  });
+
+  it('waits for a PDF whose text is still being extracted instead of uploading it', async () => {
+    const prisma = makePrismaStub({ 'src-1': null });
+    const lightrag = makeLightragStub([processed()]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.indexSources([
+      makeSource({
+        type: 'file',
+        url: 's3://b/k/scan.pdf',
+        mimeType: 'application/pdf',
+        textState: 'pending',
+      }),
+    ]);
+
+    expect(lightrag.ingestFile).not.toHaveBeenCalled();
+    expect(lightrag.ingestText).not.toHaveBeenCalled();
+    expect(outcomes[0]).toEqual(
+      expect.objectContaining({ status: 'pending', indexed: false }),
+    );
+    expect(outcomes[0].error).toContain('text extraction in progress');
+  });
+
+  it('reports the extraction reason for a PDF whose OCR failed and never uploads it', async () => {
+    const prisma = makePrismaStub({ 'src-1': null });
+    const lightrag = makeLightragStub([processed()]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.indexSources([
+      makeSource({
+        type: 'file',
+        url: 's3://b/k/scan.pdf',
+        mimeType: 'application/pdf',
+        textState: 'failed',
+        textError: 'OCR is disabled in Settings > Knowledge',
+      }),
+    ]);
+
+    expect(lightrag.ingestFile).not.toHaveBeenCalled();
+    expect(outcomes[0].status).toBe('failed');
+    expect(outcomes[0].error).toContain('OCR is disabled');
   });
 
   it('answers from the document snapshot instead of asking LightRAG per source', async () => {
@@ -519,3 +604,49 @@ describe('SourceGateway.indexSources', () => {
     expect(prisma.docIds['src-1']).toBe('doc-stored');
   });
 });
+
+describe('SourceGateway.indexSource (one row, the Reindex button)', () => {
+  it('does not upload a PDF whose text is still being extracted', async () => {
+    const prisma = makePrismaStub({ 'src-1': null });
+    const lightrag = makeLightragStub([processed()]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    await expect(
+      gateway.indexSource(
+        makeSource({
+          type: 'file',
+          url: 's3://b/k/scan.pdf',
+          mimeType: 'application/pdf',
+          textState: 'pending',
+        }),
+      ),
+    ).rejects.toThrow('text extraction in progress');
+
+    expect(lightrag.ingestFile).not.toHaveBeenCalled();
+    expect(lightrag.ingestText).not.toHaveBeenCalled();
+    // Waiting is not a failure of the row.
+    expect(prisma.errors['src-1'] ?? null).toBeNull();
+  });
+
+  it('records the extraction failure as the index error instead of uploading', async () => {
+    const prisma = makePrismaStub({ 'src-1': null });
+    const lightrag = makeLightragStub([processed()]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    await expect(
+      gateway.indexSource(
+        makeSource({
+          type: 'file',
+          url: 's3://b/k/scan.pdf',
+          mimeType: 'application/pdf',
+          textState: 'failed',
+          textError: 'OCR is disabled in Settings > Knowledge',
+        }),
+      ),
+    ).rejects.toThrow('text extraction failed: OCR is disabled');
+
+    expect(lightrag.ingestFile).not.toHaveBeenCalled();
+    expect(prisma.errors['src-1']).toContain('OCR is disabled');
+  });
+});
+

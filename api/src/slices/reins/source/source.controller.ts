@@ -214,6 +214,22 @@ export class SourceController {
     return { ok: true };
   }
 
+  @Post(':sourceId/extract')
+  @ApiOperation({
+    summary: 'Re-run text extraction for a scanned PDF',
+    operationId: 'extractKnowledgeSourceText',
+    description:
+      'Probes the PDF for a text layer and, if it has none, sends it to OCR in the background. Progress is reported through the source own textState; press Index once it reads ready.',
+  })
+  @HttpCode(202)
+  async extract(
+    @Param('knowledgeId') knowledgeId: string,
+    @Param('sourceId') sourceId: string,
+  ) {
+    await this.service.reextractSource(knowledgeId, sourceId);
+    return { ok: true };
+  }
+
   @Post()
   @ApiOperation({
     summary: 'Add source (file|url|text)',

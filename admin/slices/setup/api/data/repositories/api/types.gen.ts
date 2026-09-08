@@ -304,6 +304,11 @@ export type SourceDto = {
    */
   indexError: string | null;
   indexedAt: string | null;
+  /**
+   * Text extraction for a PDF without a text layer: none (not a PDF, or it has its own text), pending (probing or OCR running), ready (recognised text is what gets indexed), failed (see textError).
+   */
+  textState: "none" | "pending" | "ready" | "failed";
+  textError: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -321,7 +326,7 @@ export type SourcePageDto = {
 export type ImportJobDto = {
   id: string;
   knowledgeId: string;
-  kind: "archive";
+  kind: "archive" | "extraction";
   status: "running" | "done" | "failed";
   /**
    * Ingestable entries found up front
@@ -2378,6 +2383,20 @@ export type ReindexKnowledgeSourceData = {
 };
 
 export type ReindexKnowledgeSourceResponses = {
+  202: unknown;
+};
+
+export type ExtractKnowledgeSourceTextData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/extract";
+};
+
+export type ExtractKnowledgeSourceTextResponses = {
   202: unknown;
 };
 

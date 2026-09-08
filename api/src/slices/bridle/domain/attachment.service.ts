@@ -8,6 +8,11 @@ import {
 } from './attachment.constants';
 import { IBridleAttachmentGateway } from './attachment.gateway';
 import {
+  fencedBlock as buildFencedBlock,
+  noticeBlock as buildNoticeBlock,
+  truncationNotice,
+} from './attachmentBlocks';
+import {
   extractDocumentText,
   isExtractableDocument,
 } from './documentText.extractor';
@@ -164,7 +169,9 @@ export class BridleAttachmentService {
           );
           textBlocks.push(
             extracted !== null
-              ? BridleAttachmentService.fencedBlock(stored.name, extracted)
+              ? BridleAttachmentService.fencedBlock(stored.name, extracted, {
+                  id,
+                })
               : BridleAttachmentService.binaryNoticeBlock(stored),
           );
         } else {
@@ -217,27 +224,37 @@ export class BridleAttachmentService {
     return BridleAttachmentService.fencedBlock(
       stored.name,
       decodeUtf8Strict(stored.body) ?? '',
+      { id: stored.id },
     );
   }
 
-  /** Fenced, truncation-capped block for any inlined attachment content. */
-  static fencedBlock(name: string, content: string): string {
-    const truncated = content.length > MAX_EXTRACTED_TEXT_CHARS;
+  /**
+   * Fenced, truncation-capped block for any inlined attachment content.
+   * `truncate: false` hands the budget to the caller — spreadsheets cut at
+   * row boundaries and account per sheet instead of slicing characters.
+   */
+  static fencedBlock(
+    name: string,
+    content: string,
+    opts: { id?: string; hint?: string; truncate?: boolean } = {},
+  ): string {
+    const truncate = opts.truncate ?? true;
+    const truncated = truncate && content.length > MAX_EXTRACTED_TEXT_CHARS;
     const body = truncated
       ? content.slice(0, MAX_EXTRACTED_TEXT_CHARS)
       : content;
-
-    // Mirrors the runtime's own wording for truncated over-long user messages,
-    // so the model meets one convention rather than two.
-    const removed = content.length - MAX_EXTRACTED_TEXT_CHARS;
     const notice = truncated
-      ? `\n\n[… ${removed.toLocaleString('en-US')} characters truncated — ` +
-        `attached file was longer than the ` +
-        `${MAX_EXTRACTED_TEXT_CHARS.toLocaleString('en-US')}-character limit …]`
+      ? `\n\n${truncationNotice(
+          content.length - MAX_EXTRACTED_TEXT_CHARS,
+          MAX_EXTRACTED_TEXT_CHARS,
+        )}`
       : '';
-
-    const fence = '```';
-    return `[Attached file: ${name}]\n${fence}\n${body}${notice}\n${fence}`;
+    return buildFencedBlock({
+      name,
+      id: opts.id,
+      hint: opts.hint,
+      body: `${body}${notice}`,
+    });
   }
 
   /**
@@ -246,12 +263,12 @@ export class BridleAttachmentService {
    * of denying the file exists.
    */
   static binaryNoticeBlock(stored: IBridleStoredAttachment): string {
-    return (
-      `[Attached file: ${stored.name} ` +
-      `(${stored.mimeType}, ${stored.size.toLocaleString('en-US')} bytes). ` +
-      `Its contents are not readable in this chat — it is delivered as a ` +
-      `named reference only.]`
-    );
+    return buildNoticeBlock({
+      name: stored.name,
+      id: stored.id,
+      mimeType: stored.mimeType,
+      size: stored.size,
+    });
   }
 
   /** Path of the authenticated download route — never an S3 URL. */

@@ -26,7 +26,12 @@ export class TranscriptMessageDto {
   @ApiProperty({ enum: ['user', 'assistant'], example: 'assistant' })
   role: 'user' | 'assistant';
 
-  @ApiProperty({ example: 'Hello, how can I help?' })
+  @ApiProperty({
+    example: 'Hello, how can I help?',
+    description:
+      'For user messages: what the person typed. Attachment contents the API ' +
+      'inlined for the model are not included — see `agentText`.',
+  })
   text: string;
 
   @ApiProperty({
@@ -42,6 +47,14 @@ export class TranscriptMessageDto {
       'Fetch the bytes via GET /api/agent/{agentId}/attachment/{id}.',
   })
   attachments?: TranscriptAttachmentDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'User messages with attachments only: the full text the model received ' +
+      '(typed text plus the inlined attachment blocks). For inspection; not ' +
+      'meant to be rendered as the bubble.',
+  })
+  agentText?: string;
 }
 
 export class TranscriptQueryDto {

@@ -143,7 +143,12 @@ export class MyChatController {
       return { messages: [], nextCursor: null, hasMore: false };
     }
 
-    return TranscriptReaderService.page(all, q.cursor, q.limit ?? 50);
+    // End users never get the model-facing text, only what they typed.
+    const page = TranscriptReaderService.page(all, q.cursor, q.limit ?? 50);
+    return {
+      ...page,
+      messages: TranscriptReaderService.withoutAgentText(page.messages),
+    };
   }
 
   @ApiOperation({
@@ -247,7 +252,7 @@ export class MyChatController {
     const { body, contentType, ext } = formatChatExport(
       format,
       session,
-      messages,
+      TranscriptReaderService.withoutAgentText(messages),
     );
     const safeKey = session.sessionKey.replace(/[^\w.-]/g, '_');
     res.setHeader('Content-Type', contentType);

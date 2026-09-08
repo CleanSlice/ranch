@@ -58,8 +58,57 @@ describe('formatChatExport', () => {
     const out = formatChatExport('csv', SESSION, MESSAGES);
     expect(out.ext).toBe('csv');
     const lines = out.body.trim().split('\n');
-    expect(lines[0]).toBe('id,role,ts,datetime,text');
+    expect(lines[0]).toBe('id,role,ts,datetime,text,attachments');
     expect(lines[1]).toContain('"hello, ""quoted"""'); // embedded quote escaped
     expect(lines[1]).toContain('"user"');
+  });
+
+  describe('messages with attachments', () => {
+    const AGENT_TEXT =
+      'распарси\n\n[Attached file: invoice.xlsx — id: x1]\n```\nR1: A=1\n```';
+    const WITH_FILES: TranscriptMessage[] = [
+      {
+        id: 'm1',
+        role: 'user',
+        text: 'распарси',
+        ts: 1000,
+        attachments: [
+          {
+            id: 'x1',
+            name: 'invoice.xlsx',
+            mimeType:
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            size: 2048,
+            kind: 'binary',
+          },
+          { id: 'x2', name: 'photo.png', mimeType: 'image/png', size: 500, kind: 'image' },
+        ],
+        agentText: AGENT_TEXT,
+      },
+      { id: 'm2', role: 'assistant', text: 'done', ts: 2000 },
+    ];
+
+    it('markdown → typed text then one line per attachment, never the dump', () => {
+      const out = formatChatExport('markdown', SESSION, WITH_FILES);
+      expect(out.body).toContain('распарси\n📎 invoice.xlsx (2.0 KB)\n📎 photo.png (500 B)');
+      expect(out.body).not.toContain('[Attached file:');
+      expect(out.body).not.toContain('R1: A=1');
+    });
+
+    it('csv → attachments column with names joined by "; "', () => {
+      const out = formatChatExport('csv', SESSION, WITH_FILES);
+      const lines = out.body.trim().split('\n');
+      expect(lines[1]).toContain('"распарси","invoice.xlsx; photo.png"');
+      expect(lines[1]).not.toContain('[Attached file:');
+      expect(lines[2].endsWith(',""')).toBe(true);
+    });
+
+    it('json → keeps attachments and agentText as-is', () => {
+      const out = formatChatExport('json', SESSION, WITH_FILES);
+      const parsed = JSON.parse(out.body) as { messages: TranscriptMessage[] };
+      expect(parsed.messages[0].attachments).toHaveLength(2);
+      expect(parsed.messages[0].agentText).toBe(AGENT_TEXT);
+      expect(parsed.messages[0].text).toBe('распарси');
+    });
   });
 });

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { TranscriptAttachmentDto } from '#/bridle/dtos/transcript.dto';
 
 export class ChatMessageDto {
   @ApiProperty({ example: 'c94dbcf2-…' }) id: string;
@@ -18,10 +19,30 @@ export class ChatMessageDto {
   })
   role: string;
 
-  @ApiProperty({ example: 'Hello, how can I help?' }) text: string;
+  @ApiProperty({
+    example: 'Hello, how can I help?',
+    description:
+      'For user messages: what the person typed, without the attachment ' +
+      'contents the API inlined for the model.',
+  })
+  text: string;
 
   @ApiProperty({ example: 1777562539964, description: 'Unix epoch ms' })
   ts: number;
+
+  @ApiPropertyOptional({
+    type: [TranscriptAttachmentDto],
+    description:
+      'Files sent with this message (metadata only; history has no download route).',
+  })
+  attachments?: TranscriptAttachmentDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Admin debug views only (present when `types` includes tool events): ' +
+      'the full text the model received for a user message with attachments.',
+  })
+  agentText?: string;
 }
 
 export class ChatMessagesResponseDto {

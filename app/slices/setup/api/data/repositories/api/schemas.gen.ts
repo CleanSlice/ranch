@@ -436,6 +436,11 @@ export const KnowledgeListItemDtoSchema = {
       description:
         "Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.",
     },
+    indexRunAlive: {
+      type: "boolean",
+      description:
+        "True while the index run that set `indexing` is still executing in the API. False with `indexing` means the run is gone (rejected, timed out, or lost to a restart) and a new one may be started at once.",
+    },
     instanceState: {
       type: "string",
       enum: ["absent", "starting", "ready", "failed", "stopping"],
@@ -475,6 +480,7 @@ export const KnowledgeListItemDtoSchema = {
     "indexedCount",
     "failedCount",
     "processingCount",
+    "indexRunAlive",
     "instanceState",
     "instanceError",
     "migrationState",
@@ -1819,6 +1825,8 @@ export const TranscriptMessageDtoSchema = {
     text: {
       type: "string",
       example: "Hello, how can I help?",
+      description:
+        "For user messages: what the person typed. Attachment contents the API inlined for the model are not included — see `agentText`.",
     },
     ts: {
       type: "number",
@@ -1832,6 +1840,11 @@ export const TranscriptMessageDtoSchema = {
       items: {
         $ref: "#/components/schemas/TranscriptAttachmentDto",
       },
+    },
+    agentText: {
+      type: "string",
+      description:
+        "User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.",
     },
   },
   required: ["id", "role", "text", "ts"],
@@ -2096,11 +2109,26 @@ export const ChatMessageDtoSchema = {
     text: {
       type: "string",
       example: "Hello, how can I help?",
+      description:
+        "For user messages: what the person typed, without the attachment contents the API inlined for the model.",
     },
     ts: {
       type: "number",
       example: 1777562539964,
       description: "Unix epoch ms",
+    },
+    attachments: {
+      description:
+        "Files sent with this message (metadata only; history has no download route).",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/TranscriptAttachmentDto",
+      },
+    },
+    agentText: {
+      type: "string",
+      description:
+        "Admin debug views only (present when `types` includes tool events): the full text the model received for a user message with attachments.",
     },
   },
   required: ["id", "role", "text", "ts"],

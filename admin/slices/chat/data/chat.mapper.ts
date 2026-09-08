@@ -114,6 +114,17 @@ export class ChatMapper {
       role: dto.role,
       text: dto.text,
       ts: dto.ts,
+      ...(dto.attachments?.length
+        ? {
+            attachments: dto.attachments.map((a) => ({
+              id: a.id,
+              name: a.name,
+              mimeType: a.mimeType,
+              size: a.size,
+              kind: a.kind,
+            })),
+          }
+        : {}),
     };
   }
 

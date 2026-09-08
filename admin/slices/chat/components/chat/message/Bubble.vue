@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { renderMarkdown } from '#bridle/utils/markdown';
-import { Bot, FileText, ThumbsUp, ThumbsDown } from 'lucide-vue-next';
+import { formatBytes } from '#bridle/utils/attachment';
+import { Bot, FileText, Paperclip, ThumbsUp, ThumbsDown } from 'lucide-vue-next';
 import type { IChatMessage } from '#chat/stores/chat';
 import { formatMessageTime, type IToolEvent } from '#chat/utils/transcript';
 
@@ -82,12 +83,24 @@ function onMarkdownClick(event: MouseEvent) {
     {{ message.text }}
   </div>
 
-  <!-- User message: dark bubble on the right, time below -->
+  <!-- User message: dark bubble on the right, time below. Files the person
+       sent are named above the text; their contents never render here. -->
   <div v-else-if="isUser" class="flex flex-col items-end">
     <div
-      class="max-w-[72%] whitespace-pre-wrap wrap-break-word rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground"
+      class="max-w-[72%] rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground"
     >
-      {{ message.text }}
+      <div v-if="message.attachments?.length" class="mb-1.5 flex flex-wrap gap-1.5">
+        <span
+          v-for="file in message.attachments"
+          :key="file.id"
+          :title="`${file.name} · ${formatBytes(file.size)}`"
+          class="inline-flex max-w-full items-center gap-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-xs"
+        >
+          <Paperclip class="size-3 shrink-0" />
+          <span class="truncate">{{ file.name }}</span>
+        </span>
+      </div>
+      <div v-if="message.text" class="whitespace-pre-wrap wrap-break-word">{{ message.text }}</div>
     </div>
     <span class="mt-1 text-[11px] text-muted-foreground/60">{{ time }}</span>
   </div>

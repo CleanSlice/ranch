@@ -150,7 +150,14 @@ export class ChatController {
       return { messages: [], nextCursor: null, hasMore: false };
     }
 
-    return TranscriptReaderService.page(all, q.cursor, q.limit ?? 50);
+    const page = TranscriptReaderService.page(all, q.cursor, q.limit ?? 50);
+    // The full model-facing text of a user turn is a debug artefact: it
+    // rides along only when the caller asked for tool events (the existing
+    // debug signal), so ordinary browsing stays as small as before.
+    const debug = types.includes('tool_call') || types.includes('tool_result');
+    return debug
+      ? page
+      : { ...page, messages: TranscriptReaderService.withoutAgentText(page.messages) };
   }
 
   @ApiOperation({

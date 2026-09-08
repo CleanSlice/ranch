@@ -199,6 +199,10 @@ export type KnowledgeListItemDto = {
    * Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.
    */
   processingCount: number;
+  /**
+   * True while the index run that set `indexing` is still executing in the API. False with `indexing` means the run is gone (rejected, timed out, or lost to a restart) and a new one may be started at once.
+   */
+  indexRunAlive: boolean;
   instanceState: "absent" | "starting" | "ready" | "failed" | "stopping";
   instanceError: string | null;
   migrationState: "notStarted" | "inProgress" | "done" | "failed";
@@ -812,6 +816,9 @@ export type TranscriptAttachmentDto = {
 export type TranscriptMessageDto = {
   id: string;
   role: "user" | "assistant";
+  /**
+   * For user messages: what the person typed. Attachment contents the API inlined for the model are not included — see `agentText`.
+   */
   text: string;
   /**
    * Unix epoch milliseconds.
@@ -821,6 +828,10 @@ export type TranscriptMessageDto = {
    * Stored-attachment references for files sent with this message. Fetch the bytes via GET /api/agent/{agentId}/attachment/{id}.
    */
   attachments?: Array<TranscriptAttachmentDto>;
+  /**
+   * User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.
+   */
+  agentText?: string;
 };
 
 export type TranscriptResponseDto = {
@@ -951,11 +962,22 @@ export type ChatMessageDto = {
     | "tool_call"
     | "tool_result"
     | "system";
+  /**
+   * For user messages: what the person typed, without the attachment contents the API inlined for the model.
+   */
   text: string;
   /**
    * Unix epoch ms
    */
   ts: number;
+  /**
+   * Files sent with this message (metadata only; history has no download route).
+   */
+  attachments?: Array<TranscriptAttachmentDto>;
+  /**
+   * Admin debug views only (present when `types` includes tool events): the full text the model received for a user message with attachments.
+   */
+  agentText?: string;
 };
 
 export type ChatMessagesResponseDto = {

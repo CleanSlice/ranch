@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { splitAttachmentBlocks } from '#/bridle/domain/attachmentBlocks';
 import { IFileGateway } from './file.gateway';
 
 /**
@@ -24,9 +25,21 @@ export interface TranscriptMessage {
     | 'tool_call'
     | 'tool_result'
     | 'system';
+  /**
+   * For `user`: what the person typed. The attachment blocks the API folded
+   * into the message for the model are taken back out on read (see
+   * bridle/domain/attachmentBlocks.ts), so a replayed bubble never shows a
+   * spreadsheet dump. Other roles: the event text as persisted.
+   */
   text: string;
   ts: number;
   attachments?: ITranscriptAttachment[];
+  /**
+   * `user` only, and only when blocks were split off: the full string the
+   * model received. Surfaces that let an operator inspect the prompt show
+   * this on demand; ordinary rendering ignores it.
+   */
+  agentText?: string;
 }
 
 export interface ReadTranscriptOptions {
@@ -133,16 +146,26 @@ export class TranscriptReaderService {
       if (!types.has(evt.type)) return;
       const attachments =
         evt.type === 'user' ? sanitizeAttachments(evt.data?.attachments) : [];
-      const text = this.render(evt);
-      // An attachment-only message has no text at all — dropping it (the
-      // empty-text rule) would erase the turn the file arrived on.
-      if (text === null && !attachments.length) return;
+      const rendered = this.render(evt);
+      // The persisted user text is the prompt the model got: typed text plus
+      // the blocks expand() appended for each attachment. Split them so the
+      // bubble shows the typed part and the prompt stays inspectable.
+      const split =
+        evt.type === 'user' && rendered !== null
+          ? splitAttachmentBlocks(rendered)
+          : { text: rendered ?? '' };
+      // An attachment-only message has no typed text at all — dropping it
+      // (the empty-text rule) would erase the turn the file arrived on. The
+      // split result proves the turn happened even when the runtime stored
+      // no attachment metadata (legacy records).
+      if (rendered === null && !attachments.length) return;
       messages.push({
         id: evt.id,
         role: evt.type as TranscriptMessage['role'],
-        text: text ?? '',
+        text: split.text,
         ts: evt.ts,
         ...(attachments.length ? { attachments } : {}),
+        ...(split.agentText !== undefined ? { agentText: split.agentText } : {}),
       });
     });
     messages.sort((a, b) => a.ts - b.ts);
@@ -171,6 +194,16 @@ export class TranscriptReaderService {
       nextCursor: hasMore ? String(start) : null,
       hasMore,
     };
+  }
+
+  /** Copy of the list with the model-facing text removed from every turn. */
+  static withoutAgentText(messages: TranscriptMessage[]): TranscriptMessage[] {
+    return messages.map((m) => {
+      if (m.agentText === undefined) return m;
+      const { agentText: _dropped, ...rest } = m;
+      void _dropped;
+      return rest;
+    });
   }
 
   private static parseCursor(

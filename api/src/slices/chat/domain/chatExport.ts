@@ -83,9 +83,22 @@ function toMarkdown(
 
   const body = messages.map((m) => {
     const role = m.role.charAt(0).toUpperCase() + m.role.slice(1);
-    return `**${role}** · ${iso(m.ts)}\n\n${m.text}\n`;
+    // Attachments are listed by name: the export shows what the person sent,
+    // not the extracted contents the model was fed (those live in agentText
+    // and are deliberately left out of the human-readable formats).
+    const files = (m.attachments ?? []).map(
+      (a) => `📎 ${a.name} (${formatBytes(a.size)})`,
+    );
+    const text = [m.text, ...files].filter(Boolean).join('\n');
+    return `**${role}** · ${iso(m.ts)}\n\n${text}\n`;
   });
   return head.join('\n') + '\n' + body.join('\n---\n\n') + '\n';
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function csvCell(v: string): string {
@@ -93,7 +106,7 @@ function csvCell(v: string): string {
 }
 
 function toCsv(messages: TranscriptMessage[]): string {
-  const rows = ['id,role,ts,datetime,text'];
+  const rows = ['id,role,ts,datetime,text,attachments'];
   for (const m of messages) {
     rows.push(
       [
@@ -102,6 +115,7 @@ function toCsv(messages: TranscriptMessage[]): string {
         String(m.ts),
         csvCell(iso(m.ts)),
         csvCell(m.text),
+        csvCell((m.attachments ?? []).map((a) => a.name).join('; ')),
       ].join(','),
     );
   }

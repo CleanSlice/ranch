@@ -17,12 +17,37 @@ export const MAX_MESSAGE_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 5;
 
 /**
- * How much of a text-like attachment is inlined into the message the agent
- * reads. Comfortably covers ordinary documents and spreadsheets while staying
- * well inside a single model turn; past it the content is truncated and a
- * visible notice takes the place of what was cut.
+ * How much of a text-like attachment (txt/md/csv/json, PDF text layer, Word
+ * document) is inlined into the message the agent reads. Comfortably covers
+ * ordinary documents while staying well inside a single model turn; past it
+ * the content is truncated and a visible notice takes the place of what was
+ * cut. Spreadsheets do NOT use this cap — see the two constants below.
  */
 export const MAX_EXTRACTED_TEXT_CHARS = 100_000;
+
+/**
+ * Character budget for the spreadsheet block inlined into the message. The
+ * block is a *preview* (workbook summary + first rows of every sheet): with
+ * `query_attachment` available the model reads exact numbers from the stored
+ * file, so the inline text only has to orient it. Applied to the
+ * de-duplicated representation and cut only at row boundaries; every sheet
+ * header reports how many rows were omitted.
+ */
+export const SPREADSHEET_INLINE_BUDGET_CHARS = 40_000;
+
+/**
+ * Non-empty rows per sheet included in the inline preview. Keeps a 5 000-row
+ * export from spending the whole budget on sheet 1 and leaving sheet 2 with
+ * nothing but a header. The rest is reachable through `query_attachment`.
+ */
+export const SPREADSHEET_PREVIEW_ROWS_PER_SHEET = 200;
+
+/**
+ * Cells one `query_attachment` call may touch. A 10 MB workbook can hold
+ * millions of cells; the cap keeps a single tool call bounded and pushes the
+ * model to narrow its range instead of reading everything.
+ */
+export const MAX_QUERY_CELLS = 50_000;
 
 /** MIME types that render as a thumbnail and reach the model as image content. */
 export const IMAGE_MIME_TYPES = [

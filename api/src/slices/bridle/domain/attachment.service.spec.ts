@@ -215,7 +215,7 @@ describe('BridleAttachmentService — text extraction', () => {
     const out = await service.expand(AGENT, 'What does it say?', ['t1']);
 
     expect(out.text).toContain('What does it say?');
-    expect(out.text).toContain('[Attached file: notes.md]');
+    expect(out.text).toContain('[Attached file: notes.md — id: t1]');
     expect(out.text).toContain('# Heading');
   });
 
@@ -362,7 +362,7 @@ describe('BridleAttachmentService — expansion to parts', () => {
     const out = await service.expand(AGENT, 'что в файле?', ['x1']);
 
     expect(out.text).toContain('что в файле?');
-    expect(out.text).toContain('[Attached file: totals.xlsx]');
+    expect(out.text).toContain('[Attached file: totals.xlsx — id: x1]');
     expect(out.text).toContain('alfalfa,120');
     expect(out.text).not.toContain('not readable');
     expect(out.attachments[0].readableByAgent).toBe(true);

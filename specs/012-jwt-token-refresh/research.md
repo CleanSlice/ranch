@@ -159,3 +159,92 @@ Two things in it are *not* carried over: `init()` treats the presence of the JS 
 - Where the session id claim is read, if anywhere, outside `/auth/refresh` — the intent is *no* per-request DB check; if instant revocation is ever required, that is the one place to add it.
 - Migration for already-signed-in people: an old 7-day JWT with no session cookie must fall through to the session-ended state once, not loop.
 - Dev fallback secrets: align the four `JwtModule` fallbacks or make the API refuse to start without `JWT_SECRET` outside tests.
+
+---
+
+## 5. Phase 0 decisions (for `plan.md`)
+
+All Technical Context unknowns resolved. Code references verified against `origin/main` @ `35fcc0c`.
+
+### R0. Where the session lives in the API
+
+- **Decision**: a new slice `api/src/slices/user/session/` (prisma model, abstract gateway, Prisma gateway, mapper, `SessionService`), mirroring `user/apiKey`. `AuthService` gets the session service injected and grows `refresh()` and `logout()`; `issueToken()` becomes `issueSession()` and is the *only* console-token minter — `InitService` (`api/src/slices/setup/init/domain/init.service.ts:47-56`) stops duplicating it and calls `AuthService` instead (`InitModule` imports `AuthModule`, which is `@Global()` anyway).
+- **Rationale**: one place to mint, one place to verify; the init duplicate is exactly the kind of drift that produced four `JwtModule` fallbacks.
+- **Alternatives**: put the model inside `user/auth` (rejected: auth has no data layer today and the slice convention is one model per slice); a global `APP_GUARD` (rejected: out of scope, changes every route's default).
+
+### R1. Session secret and storage
+
+- **Decision**: `rs_` + 32 random bytes base64url, hashed with unsalted SHA-256 hex (`secretHash @unique`), exactly the `ApiKeyService` pattern (`api/src/slices/user/apiKey/domain/apiKey.service.ts:11-54`). The private `hash()` there is extracted to a shared `hashSecret()` in `user/common` (or duplicated if the extraction touches too much — planner's call, both are two lines).
+- **Rationale**: the server must not be able to read a session secret back; a DB leak must not hand out live sessions. 256 bits makes a lookup-by-hash safe without a salt.
+- **Alternatives**: plaintext like share links (rejected: share links are chat-only grants; a session is the account); bcrypt (rejected: no lookup by hash possible, and needless cost per refresh).
+
+### R2. Cookie transport
+
+- **Decision**: `ranch_session`, `HttpOnly`, `SameSite=Lax`, `Path=/auth`, `Secure` from `SESSION_COOKIE_SECURE` (default `true`; `.env.example` sets `false`), `Max-Age` = idle window, re-set on every refresh. Parsed with `cookie-parser` (new dependency, wired in `api/src/main.ts`). Consoles send `withCredentials: true` on the axios instance (currently absent in both, `app/slices/setup/api/plugins/api.ts`, `admin/slices/setup/api/plugins/apiBaseUrl.ts`).
+- **Rationale**: `Path=/auth` keeps the cookie off every non-auth request, including the bridle `/api/agent/*` routes and the per-agent CORS branch. `Lax` works because every deployed console shares the site `cleanslice.org` with `api.ranch.cleanslice.org` (`k8s/deploy/30-api.yaml:53-54, 161`) and dev is all `localhost` (ports differ, site is the same). `NODE_ENV` is `dev` in the cluster (`30-api.yaml:44-45`), so `Secure` cannot be derived from it — hence the explicit flag. CORS already answers `credentials: true` on both branches (`api/src/main.ts:73, 98`).
+- **Alternatives**: `SameSite=None` as in skyhunter (rejected: unnecessary here and weaker); `Path=/` (rejected: cookie would ride on every request for nothing); `trust proxy` + `req.secure` (rejected: adds proxy config for what one env var does).
+
+### R3. Access-token lifetime, claims, and who is affected
+
+- **Decision**: `JWT_EXPIRES_IN` default `7d` becomes `15m` in `auth.module.ts`, `init.module.ts`, `.env.example`, `k8s/deploy/30-api.yaml:66-67`. Payload gains `sid?: string` (`auth.types.ts`). `AuthDto` gains `expiresIn: number` (seconds) so consoles never parse the JWT.
+- **Rationale**: only `issueToken` and the init duplicate inherit the default (API audit §9); agent service (`365d`), embed (`15m`/`7d` cap), extension (`30d`) and browserless (`15m`) tokens all pass explicit `expiresIn` and keep working. `sid` is informational (logs, future revocation) and **not** required by any guard, so agent tokens without it keep passing.
+- **Alternatives**: client-side `exp` decoding (rejected: an extra helper in two consoles and clock-skew bugs; `expiresIn` from the server is authoritative).
+
+### R4. Machine-readable 401s
+
+- **Decision**: `AuthErrorCodes` in `auth.types.ts` (`TOKEN_MISSING`, `TOKEN_EXPIRED`, `TOKEN_INVALID`, `SESSION_MISSING`, `SESSION_EXPIRED`, `SESSION_INVALID`) and a helper `unauthorized(code)` returning `new UnauthorizedException({ code, message })`, following the `ShareLinkErrorCodes` object-body precedent (`shareLink.types.ts:57-65`). `TokenExpiredError` is detected by `err.name === 'TokenExpiredError'` (no direct `jsonwebtoken` import; it is only transitive via `@nestjs/jwt`). Applied in `JwtAuthGuard`, `BridleChatAuthGuard`, and the bridle `/message` requester resolution; the WS handler maps the same distinction onto `bridle_error.code` (`TOKEN_EXPIRED` new, `INVALID_TOKEN` kept). Swagger documents the codes in the `@ApiUnauthorizedResponse` description, as the share codes do.
+- **Rationale**: FR-007/SC-007; the existing guard specs assert on `message` (`bridleChatAuth.guard.spec.ts:96-99`) and must be updated to assert on `code`.
+- **Alternatives**: a custom exception filter (rejected: none exists; an object body already does the job).
+
+### R5. Bridle `/message` routes stop downgrading a bad bearer
+
+- **Decision**: in `BridleController.resolveRequester` (`bridle.controller.ts:166-188`) a bearer that fails verification is fatal **unless share headers were also offered** — the exact rule `BridleChatAuthGuard` already applies (`bridleChatAuth.guard.ts:80-82`). No bearer and no share headers stays anonymous. Same rule in `requireChannelAccess`.
+- **Rationale**: FR-008. Embed widgets on public agents send no console bearer for anonymous visitors, so they are unaffected; an embed widget with an *expired embed token* now gets a 401 it can act on (re-mint) instead of a silent identity change, which is the correct signal.
+- **WS handshake**: the public-agent silent downgrade in `bridleClientWs.handler.ts:148-154` is **kept** for tokens that fail (embed SDK compatibility — the widget has no refresh path yet), but the non-public branch rejects with `TOKEN_EXPIRED` / `INVALID_TOKEN` so the admin console can react. Recorded as a follow-up for the embed SDK.
+
+### R6. Refresh and logout endpoints
+
+- **Decision**: `POST /auth/refresh` (no body; cookie) returns `AuthDto { accessToken, expiresIn, user }`; `POST /auth/logout` (cookie) returns `LogoutResultDto { revoked: boolean }`, always 200, always clears the cookie. Refresh returns the same DTO as login so the consoles have one code path for "I now hold a token", and boot needs **one** request instead of refresh + `/auth/me`.
+- **Rationale**: FR-002, FR-004, SC-003. No session rotation on refresh (section 3.2).
+- **Alternatives**: `GET /auth/refresh` (rejected: state-changing, and `GET` with cookies invites CSRF-shaped caching); 204 logout (rejected: the envelope interceptor expects a body).
+
+### R7. Housekeeping without a scheduler
+
+- **Decision**: on every login, delete that user's rows with `absoluteExpiresAt < now` or `revokedAt < now - 30d`. No cron.
+- **Rationale**: bounded per user, zero infrastructure; the table cannot grow past (users x sessions in 30 days).
+
+### R8. Console token storage and request plumbing
+
+- **Decision**: the access token lives **in memory only** (Pinia); the `access_token` cookie is removed from both consoles (`app/slices/user/auth/stores/auth.ts:19-23`, `admin/slices/user/auth/stores/auth.ts:14-18`). A **request** interceptor on the shared axios instance attaches `Authorization` from the store on every attempt (replacing `handleApiAuthentication`'s global `setConfig` in app and the per-request `document.cookie` regex in admin, `apiBaseUrl.ts:23-34`), and skips requests that carry `X-Share-Token` so the share page's explicit `Authorization: null` stays untouched (`app/slices/bridle/data/bridle.gateway.ts:42-51`).
+- **Rationale**: FR-006 — a retried request, an XHR upload and the socket all read the current value, never a captured one; removing the JS-readable cookie removes the last long-lived credential from page-readable storage. Both consoles are `ssr: false`, so nothing needs the cookie for hydration; boot asks `/auth/refresh` instead.
+- **Alternatives**: keep the cookie with a 15-minute `maxAge` (rejected: still JS-readable, and boot must call refresh anyway).
+
+### R9. Boot, proactive renewal, dedup (ported from skyhunter)
+
+- **Decision**: `init()`/`hydrate()` call `/auth/refresh` first; success gives token + user from the same response; `SESSION_*` means logged out silently (no dialog: nobody was in the middle of anything). After every token acquisition arm `setTimeout(refresh, expiresIn*1000 - 60_000)`; `visibilitychange` to visible refreshes if inside the buffer, else re-arms; one module-scope in-flight promise shared by timer, visibility handler and the 401 path; a network failure during refresh keeps the current token and re-arms a short retry. Explicit logout clears the timer and discards a pending result.
+- **Rationale**: FR-005; the skyhunter store (`E:/code/sh/skyhunter/app/slices/user/auth/stores/auth.ts`) is the reference, minus its "cookie present means authenticated" shortcut.
+
+### R10. Reactive path: 401, refresh, retry once
+
+- **Decision**: the axios **response** interceptor (app `plugins/api.ts:17-49`, admin `apiBaseUrl.ts:41-58`) handles `401` outside `/auth/*` and outside the share page: on `TOKEN_EXPIRED` **or** `TOKEN_INVALID` with no `_retried` mark it awaits `auth.refresh()` and re-issues the original config once with the new header. If the refresh fails it calls `auth.endSession(code)`. `TOKEN_MISSING` keeps today's logged-out redirect. Admin's raw `fetch`/XHR calls in the bridle store and provider (`stores/bridle.ts:224-249, 258-305`, `Provider.vue:216-219`) go through a small `authedFetch()` helper in `user/auth` that applies the same once-retry rule.
+- **Refinement of FR-007**: `TOKEN_INVALID` also gets one refresh attempt, because a rotated `JWT_SECRET` invalidates the access token while the session is still live (spec Story 2 scenario 3). The session-ended state is reached only when *refresh* fails. Spec FR-007 is reworded accordingly.
+
+### R11. The session-ended state
+
+- **Decision**: an **in-place dialog**, not a redirect. Each console gets `SessionEndedProvider` in its `user/auth` slice, mounted once in the default layout, driven by `auth.sessionEnded`. It shows product copy and the existing login form (`app/slices/user/auth/components/auth/common/Form.vue`; admin's `authLogin` form); success applies the new token, clears the flag, and leaves the page exactly as it was (composer draft, conversation, scroll). The interceptor sets the flag at most once (idempotent), so concurrent failures produce one dialog (FR-009). App has no dialog primitive (`app/slices/setup/theme/components/ui/` has only `badge/`), so the overlay is hand-rolled like the restart overlay (`agent/chat/Provider.vue:284-323`); admin can use its `reka-ui` `AlertDialog` primitives (`admin/slices/common/components/confirm/Dialog.vue`).
+- **Rationale**: FR-009/FR-010 with no draft persistence and no `redirect` plumbing (admin has none, `authLogin/Provider.vue:11`). The cold-start `/login` page is unchanged.
+- **Alternatives**: redirect with `?redirect=` (rejected: loses the composer draft and needs admin redirect support); toast (rejected: `vue-sonner` is not even mounted in `app/`).
+- **Copy** (app, via `en.json` + `i18n:sync`): `account.session_ended_title` "Your session has ended", `account.session_ended_body` "Sign in to continue where you left off." Admin is English-only.
+
+### R12. Admin socket
+
+- **Decision**: `connect()` in `admin/slices/bridle/stores/bridle.ts:436-449` passes `auth` as a **function** (`auth: (cb) => cb({ token: useAuthStore().accessToken, agentId, capabilities })`) so every socket.io reconnect uses the current token; before `socket.connect()` and in `reset()` (`Provider.vue:440-449`) it awaits `auth.ensureFresh()` when inside the buffer; a `bridle_error` listener handles `TOKEN_EXPIRED` / `INVALID_TOKEN`: refresh once, `socket.connect()`, else `endSession`. The `token` prop is removed from `BridleProvider` (`Provider.vue:16-51`) and its two callers (`agent/chat/Tab.vue:119-133`, `rancher/Provider.vue:355-362`); store actions that took `token` read the auth store.
+- **Rationale**: FR-011, SC-005. `socket.io-client ^4.8` supports function-valued `auth`.
+
+### R13. Migration of already-signed-in people
+
+- **Decision**: nothing special. An old 7-day JWT in the removed cookie is simply not read any more; boot calls `/auth/refresh`, gets `SESSION_MISSING`, and the person signs in once. Agent runtimes hold 365-day service tokens without `sid` and are untouched.
+
+### R14. Tests
+
+- **Decision**: API uses Jest specs colocated with hand-rolled stubs (`bridleChatAuth.guard.spec.ts:26-55` pattern): `session.service.spec.ts` (create/refresh/revoke/prune/live rules), `auth.service.spec.ts` (new: refresh/logout, cookie value never returned in the body), `jwtAuth.guard.spec.ts` (new: the three codes), `bridleChatAuth.guard.spec.ts` + `bridle.controller.spec.ts` updated (bearer-fails-without-share is a 401 code), `bridleClientWs.handler.spec.ts` updated (`TOKEN_EXPIRED`). Consoles have no test runner (`app`/`admin` `test` scripts are echo stubs); verification = `typecheck` + `i18n:check` + the quickstart.

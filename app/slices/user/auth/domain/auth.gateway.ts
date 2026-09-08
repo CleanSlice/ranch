@@ -13,4 +13,8 @@ export abstract class IAuthGateway {
     email: string,
     password: string,
   ): Promise<IAuthSession>;
+  /** Renew the access token from the httpOnly session cookie alone. */
+  abstract refresh(): Promise<IAuthSession>;
+  /** Revoke the session behind the cookie and clear it. Never a 401. */
+  abstract logout(): Promise<void>;
 }

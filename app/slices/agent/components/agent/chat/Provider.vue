@@ -41,7 +41,13 @@ async function onRestart() {
   } catch (err) {
     if (agent.value) agent.value = { ...agent.value, status: previous };
     restartFailed.value = true;
-    restartError.value = (err as Error).message || null;
+    // A 401 the api plugin could not recover from is the session-ended
+    // dialog's story to tell; the banner falls back to `chat.restart_failed`
+    // rather than echoing a raw auth string (CLEAN-72).
+    const status = (err as { response?: { status?: number } } | null)
+      ?.response?.status;
+    restartError.value =
+      status === 401 ? null : (err as Error).message || null;
     restartStartedAt.value = null;
   } finally {
     restarting.value = false;

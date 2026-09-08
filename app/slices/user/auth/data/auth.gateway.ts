@@ -50,4 +50,20 @@ export class AuthGateway extends BaseGateway implements IAuthGateway {
       return this.mapper.toSession(unwrapEnvelope(res.data));
     });
   }
+
+  // No body: the session cookie travels with `withCredentials`, set once on
+  // the shared client in the api plugin. A 401 here carries a `SESSION_*`
+  // code, which the error mapper keeps on the thrown entity for the store.
+  refresh(): Promise<IAuthSession> {
+    return this.execute(async () => {
+      const res = await AuthApi.authControllerRefresh({ throwOnError: true });
+      return this.mapper.toSession(unwrapEnvelope(res.data));
+    });
+  }
+
+  logout(): Promise<void> {
+    return this.execute(async () => {
+      await AuthApi.authControllerLogout({ throwOnError: true });
+    });
+  }
 }

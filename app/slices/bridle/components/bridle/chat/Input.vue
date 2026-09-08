@@ -22,6 +22,22 @@ const attachmentError = computed(() =>
   bridleStore.attachmentErrorFor(props.conversation.key),
 );
 
+// A message the store could not send because the session ended comes back
+// here as a draft (CLEAN-72): put it in the box and consume it, so it is
+// offered exactly once and a later remount does not resurrect it.
+const restoredDraft = computed(() =>
+  bridleStore.draftFor(props.conversation.key),
+);
+watch(
+  restoredDraft,
+  (text) => {
+    if (!text) return;
+    draft.value = text;
+    bridleStore.clearDraft(props.conversation.key);
+  },
+  { immediate: true },
+);
+
 const atLimit = computed(
   () => staged.value.length >= MAX_ATTACHMENTS_PER_MESSAGE,
 );

@@ -1,10 +1,10 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { UserMapper } from '#/user/user/data/user.mapper';
 import { UserRoleTypes } from '#/user/user/domain';
-import { IAuthResult, IAuthTokenPayload } from '#/user/auth/domain';
+import { AuthService } from '#/user/auth/domain';
+import type { IAuthSessionResult } from '#/user/auth/domain/auth.service';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -13,7 +13,7 @@ export class InitService {
   constructor(
     private prisma: PrismaService,
     private userMapper: UserMapper,
-    private jwt: JwtService,
+    private auth: AuthService,
   ) {}
 
   async getStatus(): Promise<{ requiresInit: boolean }> {
@@ -27,7 +27,8 @@ export class InitService {
     name: string,
     email: string,
     password: string,
-  ): Promise<IAuthResult> {
+    userAgent?: string | null,
+  ): Promise<IAuthSessionResult> {
     const { requiresInit } = await this.getStatus();
     if (!requiresInit) {
       throw new ConflictException('System already initialized');
@@ -43,16 +44,7 @@ export class InitService {
       },
     });
 
-    const user = this.userMapper.toEntity(record);
-    const payload: IAuthTokenPayload = {
-      sub: user.id,
-      email: user.email,
-      roles: [user.role],
-    };
-
-    return {
-      accessToken: await this.jwt.signAsync(payload),
-      user,
-    };
+    // Same minter as login: session cookie + short access token (CLEAN-72).
+    return this.auth.issueSession(this.userMapper.toEntity(record), userAgent);
   }
 }

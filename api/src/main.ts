@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as fs from 'fs';
 
 import { json, urlencoded, type Request } from 'express';
+import cookieParser from 'cookie-parser';
 
 import { AppModule } from './app.module';
 import { ErrorHandlingInterceptor } from './slices/setup/error/error-handling.interceptor';
@@ -35,6 +36,9 @@ async function bootstrap() {
   // gateway cap, which stays the real limit.
   app.use(json({ limit: '2mb' }));
   app.use(urlencoded({ extended: true, limit: '2mb' }));
+  // The console session cookie (`ranch_session`, Path=/auth) is read only by
+  // /auth/refresh and /auth/logout (CLEAN-72).
+  app.use(cookieParser());
 
   app.useGlobalInterceptors(new ErrorHandlingInterceptor());
 

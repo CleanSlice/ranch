@@ -20,6 +20,7 @@ import { LogModule } from './slices/log/log.module';
 import { UserModule } from './slices/user/user/user.module';
 import { AuthModule } from './slices/user/auth/auth.module';
 import { ApiKeyModule } from './slices/user/apiKey/apiKey.module';
+import { SessionModule } from './slices/user/session/session.module';
 import { SettingModule } from './slices/setting/setting.module';
 import { BridleModule } from './slices/bridle/bridle.module';
 import { LlmModule } from './slices/llm/llm.module';
@@ -66,6 +67,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     UserModule,
     AuthModule,
     ApiKeyModule,
+    SessionModule,
     SettingModule,
     BridleModule,
     LlmModule,

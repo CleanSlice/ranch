@@ -6,19 +6,28 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ISettingGateway } from '#/setting/domain';
+import { SessionService } from '#/user/session/domain/session.service';
 import { UserMapper } from '../../user/data/user.mapper';
 import { IUserData, UserRoleTypes } from '../../user/domain';
-import { IAuthResult, IAuthTokenPayload } from './auth.types';
+import {
+  AuthErrorCodes,
+  IAuthResult,
+  IAuthTokenPayload,
+  unauthorized,
+} from './auth.types';
 
 const BCRYPT_ROUNDS = 10;
 
 type DurationString = `${number}${'s' | 'm' | 'h' | 'd'}`;
 
 const ADMIN_EMBED_MAX_TTL: DurationString = '7d';
+/** Must match the `JwtModule` default in auth.module.ts / init.module.ts. */
+const DEFAULT_JWT_EXPIRES_IN: DurationString = '15m';
 
 const DURATION_MS: Record<string, number> = {
   s: 1_000,
@@ -35,6 +44,15 @@ function durationToMs(value: string): number {
   return Number(match[1]) * DURATION_MS[match[2]];
 }
 
+/**
+ * A console sign-in: the access token for the body plus the session secret
+ * the controller turns into the httpOnly cookie. The secret is never part of
+ * the DTO.
+ */
+export interface IAuthSessionResult extends IAuthResult {
+  cookie: { value: string; maxAgeSeconds: number };
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -42,9 +60,15 @@ export class AuthService {
     private mapper: UserMapper,
     private jwt: JwtService,
     private settings: ISettingGateway,
+    private sessions: SessionService,
+    private config: ConfigService,
   ) {}
 
-  async login(email: string, password: string): Promise<IAuthResult> {
+  async login(
+    email: string,
+    password: string,
+    userAgent?: string | null,
+  ): Promise<IAuthSessionResult> {
     const record = await this.prisma.user.findUnique({
       where: { email: email.toLowerCase() },
     });
@@ -68,14 +92,18 @@ export class AuthService {
       });
     }
 
-    return this.issueToken(this.mapper.toEntity(current));
+    // Bounded housekeeping instead of a scheduler (research R7).
+    await this.sessions.pruneForUser(current.id).catch(() => 0);
+
+    return this.issueSession(this.mapper.toEntity(current), userAgent);
   }
 
   async register(
     name: string,
     email: string,
     password: string,
-  ): Promise<IAuthResult> {
+    userAgent?: string | null,
+  ): Promise<IAuthSessionResult> {
     const enabled = await this.isRegistrationEnabled();
     if (!enabled) {
       throw new ForbiddenException('Registration is disabled');
@@ -102,7 +130,7 @@ export class AuthService {
       },
     });
 
-    return this.issueToken(this.mapper.toEntity(created));
+    return this.issueSession(this.mapper.toEntity(created), userAgent);
   }
 
   async me(userId: string): Promise<IUserData> {
@@ -114,16 +142,73 @@ export class AuthService {
     return this.mapper.toEntity(record);
   }
 
-  private async issueToken(user: IUserData): Promise<IAuthResult> {
+  /**
+   * Renew the access token from the session cookie alone — works whether or
+   * not the previous access token has expired. Slides the session's
+   * inactivity window; keeps the same secret (no rotation, research §3.2).
+   */
+  async refresh(secret: string): Promise<IAuthSessionResult> {
+    const { session, cookieMaxAgeSeconds } =
+      await this.sessions.refresh(secret);
+
+    const record = await this.prisma.user.findUnique({
+      where: { id: session.userId },
+    });
+    if (!record || record.status === 'disabled') {
+      throw unauthorized(AuthErrorCodes.SessionInvalid);
+    }
+
+    const user = this.mapper.toEntity(record);
+    return {
+      accessToken: await this.sign(user, session.id),
+      expiresIn: this.jwtExpiresInSeconds(),
+      user,
+      cookie: { value: secret, maxAgeSeconds: cookieMaxAgeSeconds },
+    };
+  }
+
+  /** Revoke the session behind the cookie. False when nothing live matched. */
+  async logout(secret: string): Promise<boolean> {
+    return this.sessions.revoke(secret);
+  }
+
+  /**
+   * The single console-token minter: creates the server-side session and
+   * signs an access token bound to it. Used by login, register and the
+   * first-run owner bootstrap.
+   */
+  async issueSession(
+    user: IUserData,
+    userAgent?: string | null,
+  ): Promise<IAuthSessionResult> {
+    const issue = await this.sessions.create(user.id, userAgent);
+    return {
+      accessToken: await this.sign(user, issue.sessionId),
+      expiresIn: this.jwtExpiresInSeconds(),
+      user,
+      cookie: { value: issue.secret, maxAgeSeconds: issue.cookieMaxAgeSeconds },
+    };
+  }
+
+  /** Configured access-token lifetime in seconds (what `AuthDto.expiresIn` reports). */
+  jwtExpiresInSeconds(): number {
+    const raw =
+      this.config.get<string>('JWT_EXPIRES_IN') ?? DEFAULT_JWT_EXPIRES_IN;
+    try {
+      return Math.round(durationToMs(raw) / 1000);
+    } catch {
+      return Math.round(durationToMs(DEFAULT_JWT_EXPIRES_IN) / 1000);
+    }
+  }
+
+  private sign(user: IUserData, sessionId: string): Promise<string> {
     const payload: IAuthTokenPayload = {
       sub: user.id,
       email: user.email,
       roles: [user.role],
+      sid: sessionId,
     };
-    return {
-      accessToken: await this.jwt.signAsync(payload),
-      user,
-    };
+    return this.jwt.signAsync(payload);
   }
 
   async issueAgentServiceToken(
@@ -168,7 +253,10 @@ export class AuthService {
       (r) => r === UserRoleTypes.Owner || r === UserRoleTypes.Admin,
     );
     const expiresIn = (claims.expiresIn ?? '15m') as DurationString;
-    if (isAdminToken && durationToMs(expiresIn) > durationToMs(ADMIN_EMBED_MAX_TTL)) {
+    if (
+      isAdminToken &&
+      durationToMs(expiresIn) > durationToMs(ADMIN_EMBED_MAX_TTL)
+    ) {
       throw new BadRequestException(
         `expiresIn exceeds the ${ADMIN_EMBED_MAX_TTL} maximum for admin embed tokens`,
       );
@@ -183,7 +271,6 @@ export class AuthService {
     const expiresAt = new Date((decoded?.exp ?? 0) * 1000);
     return { token, expiresAt };
   }
-
 
   private async isRegistrationEnabled(): Promise<boolean> {
     const setting = await this.settings.findByKey(

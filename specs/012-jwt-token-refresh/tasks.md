@@ -150,8 +150,8 @@
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T057 [P] Align the four `JwtModule` dev fallbacks: `api/src/slices/bridle/bridle.module.ts:69-76`, `api/src/slices/browser/browser.module.ts:40`, `api/src/slices/integration/integration.module.ts:26` use the same `'dev-secret-change-me'` fallback as `auth.module.ts` (research §2, plan §4); add a startup `Logger.warn` in `api/src/main.ts` when `JWT_SECRET` is unset
-- [ ] T058 [P] Update `README.md` auth section: session cookie (`ranch_session`, `/auth`, HttpOnly), 15-minute access token, `/auth/refresh` / `/auth/logout`, the four env vars, and the 401 `code` table (link `specs/012-jwt-token-refresh/contracts/session-api.md`)
+- [X] T057 [P] Align the four `JwtModule` dev fallbacks: `api/src/slices/bridle/bridle.module.ts:69-76`, `api/src/slices/browser/browser.module.ts:40`, `api/src/slices/integration/integration.module.ts:26` use the same `'dev-secret-change-me'` fallback as `auth.module.ts` (research §2, plan §4); add a startup `Logger.warn` in `api/src/main.ts` when `JWT_SECRET` is unset
+- [X] T058 [P] Update `README.md` auth section: session cookie (`ranch_session`, `/auth`, HttpOnly), 15-minute access token, `/auth/refresh` / `/auth/logout`, the four env vars, and the 401 `code` table (link `specs/012-jwt-token-refresh/contracts/session-api.md`)
 - [ ] T059 [P] Update `docs/i18n.md`-governed copy check and run `bun run i18n:check` one last time; confirm `admin/` has no new locale files
 - [ ] T060 Run the full `specs/012-jwt-token-refresh/quickstart.md` (§1–§6) against the local stack with the short lifetimes in `api/.env.dev`; record results in the Jira checkpoint comment
 - [ ] T061 Final verification: `cd api && bun run test && bunx tsc --noEmit && bun run lint`; `cd app && bun run build:api && bun run typecheck`; `cd admin && bun run build:api && bun run typecheck`; `git diff --stat origin/main` reviewed for stray `access_token` / `handleApiAuthentication` / `document.cookie` references

@@ -44,8 +44,10 @@ All 2xx bodies are wrapped by the API's standard envelope `{ success, data }`; s
 ## 401 body (every guarded route)
 
 ```json
-{ "statusCode": 401, "code": "TOKEN_EXPIRED", "message": "Access token expired" }
+{ "code": "TOKEN_EXPIRED", "message": "Access token expired" }
 ```
+
+(Nest serialises the object passed to `UnauthorizedException` as-is; the HTTP status is 401 and there is no `statusCode` field in the body.)
 
 | `code` | Meaning | Console behaviour |
 |---|---|---|

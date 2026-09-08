@@ -88,7 +88,7 @@ Default lifetime `JWT_EXPIRES_IN` moves from `7d` to `15m` (`.env.example`, `k8s
 | `SESSION_EXPIRED` | `/auth/refresh` | session-ended |
 | `SESSION_INVALID` | `/auth/refresh` | session-ended |
 
-Wire shape (Nest `UnauthorizedException` with an object body): `{ "statusCode": 401, "code": "TOKEN_EXPIRED", "message": "Access token expired" }`. The WS handler's `bridle_error` uses the same codes (`TOKEN_EXPIRED` added; `INVALID_TOKEN` kept for compatibility with the embed SDK).
+Wire shape (Nest `UnauthorizedException` with an object body, serialised as-is): `{ "code": "TOKEN_EXPIRED", "message": "Access token expired" }` with HTTP status 401. The WS handler's `bridle_error` uses the same codes (`TOKEN_EXPIRED` added; `INVALID_TOKEN` kept for compatibility with the embed SDK).
 
 ## Console-side state (no persistence beyond memory)
 

@@ -5,8 +5,50 @@ import { client as apiClient } from '#api/data/repositories/api/client.gen';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IBridleGateway } from '../domain/bridle.gateway';
-import type { IBridleAttachment, IBridleReply } from '../domain/bridle.types';
+import type {
+  IBridleAttachment,
+  IBridleReply,
+  IBridleShareContext,
+} from '../domain/bridle.types';
 import { BridleMapper } from './bridle.mapper';
+
+/**
+ * What one share-link request carries instead of the console session.
+ *
+ * `Authorization: null` is not decoration: `handleApiAuthentication` sets a
+ * `Bearer …` header on the shared axios client for the whole tab, and on the
+ * API a valid JWT WINS over the share headers. Without this, an owner opening
+ * their own link would chat as themselves — their visitor messages landing in
+ * the console channel, their uploads owned by `admin`, and a revoke never
+ * producing the 403 the page watches for. `null` is the same idiom
+ * `handleApiAuthentication` uses to log out: the SDK's header merge drops the
+ * key, and axios drops a null-valued header before it reaches the wire.
+ */
+interface IShareRequestHeaders {
+  // The index signature is what lets this object stand in for axios's own
+  // `RawAxiosRequestHeaders` on the two calls that skip the generated SDK.
+  [header: string]: string | null;
+  'X-Share-Token': string;
+  'X-Share-Visitor': string;
+  Authorization: null;
+}
+
+/**
+ * The pair the API reads to identify a public share-link visitor. Attached per
+ * request — never through `client.setConfig`, which is shared with every other
+ * call in the tab and would leak a visitor's token into console traffic (and
+ * survive navigating away from the share page).
+ */
+function shareHeaders(
+  share?: IBridleShareContext,
+): IShareRequestHeaders | undefined {
+  if (!share) return undefined;
+  return {
+    'X-Share-Token': share.token,
+    'X-Share-Visitor': share.visitorId,
+    Authorization: null,
+  };
+}
 
 export class BridleGateway extends BaseGateway implements IBridleGateway {
   private mapper = new BridleMapper();
@@ -15,8 +57,10 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
     agentId: string,
     text: string,
     attachmentIds?: string[],
+    share?: IBridleShareContext,
   ): Promise<IBridleReply> {
     return this.execute(async () => {
+      const headers = shareHeaders(share);
       const res = await BridleApi.sendBridleMessageSync({
         path: { agentId },
         // `attachmentIds` is omitted entirely when empty so the request is
@@ -25,6 +69,10 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
           text,
           ...(attachmentIds?.length ? { attachmentIds } : {}),
         },
+        // Spread rather than passed as `undefined`: the generated SDK merges
+        // `options.headers` over its own `Content-Type`, and an absent key
+        // keeps the console request exactly as it was.
+        ...(headers ? { headers } : {}),
       });
       return this.mapper.toReply(unwrapEnvelope(res.data));
     });
@@ -42,15 +90,18 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
     agentId: string,
     file: File,
     onProgress?: (percent: number) => void,
+    share?: IBridleShareContext,
   ): Promise<IBridleAttachment> {
     return this.execute(async () => {
       const form = new FormData();
       form.append('file', file);
+      const headers = shareHeaders(share);
 
       const res = await apiClient.instance.post(
         `/api/agent/${encodeURIComponent(agentId)}/attachment`,
         form,
         {
+          ...(headers ? { headers } : {}),
           onUploadProgress: (event: {
             loaded: number;
             total?: number;
@@ -76,11 +127,16 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
    * every non-text file. `responseType: 'blob'` keeps the bytes intact, the
    * same way the chat export download does it.
    */
-  fetchAttachment(agentId: string, attachmentId: string): Promise<Blob> {
+  fetchAttachment(
+    agentId: string,
+    attachmentId: string,
+    share?: IBridleShareContext,
+  ): Promise<Blob> {
     return this.execute(async () => {
+      const headers = shareHeaders(share);
       const res = await apiClient.instance.get(
         `/api/agent/${encodeURIComponent(agentId)}/attachment/${encodeURIComponent(attachmentId)}`,
-        { responseType: 'blob' },
+        { responseType: 'blob', ...(headers ? { headers } : {}) },
       );
       return res.data as Blob;
     });

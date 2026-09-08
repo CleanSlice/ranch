@@ -166,3 +166,213 @@ describe('BridleClientWsHandler — attachments over the socket', () => {
     expect(expand).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The handshake decides `kind`, and `kind` is what the attachment ownership
+ * rule reads on every later message — so a socket that mislabels itself hands
+ * one visitor another's files. These two halves are pinned together: what
+ * `handleConnection` writes onto `client.data`, and what `handleMessage`
+ * forwards from it.
+ */
+
+interface IConnectOptions {
+  auth?: Record<string, unknown>;
+  origin?: string;
+  agent?: { isPublic: boolean; allowedOrigins: string[] } | null;
+  /** Stands in for `JwtService.verify`; the default rejects every token. */
+  verify?: () => Record<string, unknown>;
+}
+
+function makeConnection(options: IConnectOptions) {
+  const registered: Array<{ clientId: string; agentId: string }> = [];
+  const hub = {
+    registerClient: (clientId: string, agentId: string) => {
+      registered.push({ clientId, agentId });
+    },
+    isAgentConnected: () => true,
+  };
+  const jwt = {
+    verify:
+      options.verify ??
+      (() => {
+        throw new Error('invalid token');
+      }),
+  };
+  const agentGateway = {
+    findById: () => Promise.resolve(options.agent ?? null),
+  };
+
+  const handler = new BridleClientWsHandler(
+    hub as never,
+    {} as BridleAttachmentService,
+    jwt as never,
+    agentGateway as never,
+  );
+
+  const emitted: Array<{ event: string; payload: unknown }> = [];
+  const client = {
+    id: 'socket-1',
+    data: {},
+    handshake: {
+      auth: options.auth ?? {},
+      headers: options.origin ? { origin: options.origin } : {},
+    },
+    emit: (event: string, payload: unknown) => {
+      emitted.push({ event, payload });
+      return true;
+    },
+    disconnect: () => {},
+  } as unknown as Socket;
+
+  return { handler, client, emitted, registered };
+}
+
+const PUBLIC_AGENT = { isPublic: true, allowedOrigins: ['https://embed.test'] };
+
+describe('BridleClientWsHandler — handshake identity', () => {
+  it('stores the JWT sub and kind "jwt" on the socket', async () => {
+    const { handler, client, registered } = makeConnection({
+      auth: { agentId: 'agent-1', token: 'signed' },
+      verify: () => ({ sub: 'u1', email: 'u1@example.test', roles: ['User'] }),
+    });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toEqual({
+      clientId: 'u1',
+      agentId: 'agent-1',
+      email: 'u1@example.test',
+      isAdmin: false,
+      kind: 'jwt',
+    });
+    expect(registered).toEqual([{ clientId: 'u1', agentId: 'agent-1' }]);
+  });
+
+  it('folds an admin token onto the shared "admin" client id, still kind "jwt"', async () => {
+    const { handler, client } = makeConnection({
+      auth: { agentId: 'agent-1', token: 'signed' },
+      verify: () => ({
+        sub: 'u2',
+        email: 'boss@example.test',
+        roles: ['Owner'],
+      }),
+    });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toMatchObject({
+      clientId: 'admin',
+      isAdmin: true,
+      kind: 'jwt',
+    });
+  });
+
+  it('stores kind "anonymous" for a token-less public-agent visitor', async () => {
+    const { handler, client, registered } = makeConnection({
+      auth: { agentId: 'agent-1', anonId: 'visitor7' },
+      origin: 'https://embed.test',
+      agent: PUBLIC_AGENT,
+    });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toEqual({
+      clientId: 'anon-visitor7',
+      agentId: 'agent-1',
+      email: undefined,
+      isAdmin: false,
+      kind: 'anonymous',
+    });
+    expect(registered).toEqual([
+      { clientId: 'anon-visitor7', agentId: 'agent-1' },
+    ]);
+  });
+
+  it('keeps kind "anonymous" when a bad token degrades to the public path', async () => {
+    const { handler, client } = makeConnection({
+      auth: { agentId: 'agent-1', token: 'expired', anonId: 'visitor7' },
+      origin: 'https://embed.test',
+      agent: PUBLIC_AGENT,
+    });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toMatchObject({
+      clientId: 'anon-visitor7',
+      kind: 'anonymous',
+    });
+  });
+
+  it('rejects a token-less handshake on a private agent without touching data', async () => {
+    const { handler, client, emitted } = makeConnection({
+      auth: { agentId: 'agent-1' },
+      origin: 'https://embed.test',
+      agent: { isPublic: false, allowedOrigins: [] },
+    });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toEqual({});
+    expect(emitted[0].event).toBe('bridle_error');
+    expect(emitted[0].payload).toMatchObject({ code: 'MISSING_TOKEN' });
+  });
+});
+
+describe('BridleClientWsHandler — requester forwarded to expand', () => {
+  const socket = (data: Record<string, unknown>) =>
+    ({ data, emit: () => true }) as unknown as Socket;
+
+  const spyExpand = () =>
+    jest.fn(async () => ({ text: 'hi', parts: [], attachments: [] }));
+
+  it('passes the handshake clientId and kind through as the requester', async () => {
+    const expand = spyExpand();
+    const { handler } = makeHandler(
+      expand as unknown as BridleAttachmentService['expand'],
+    );
+
+    await handler.handleMessage(
+      socket({ clientId: 'u1', agentId: 'agent-1', kind: 'jwt' }),
+      { text: 'hi', attachmentIds: ['a1'] },
+    );
+
+    expect(expand).toHaveBeenCalledWith('agent-1', 'hi', ['a1'], {
+      clientId: 'u1',
+      kind: 'jwt',
+    });
+  });
+
+  it('forwards the share kind unchanged for a share-link visitor', async () => {
+    const expand = spyExpand();
+    const { handler } = makeHandler(
+      expand as unknown as BridleAttachmentService['expand'],
+    );
+
+    await handler.handleMessage(
+      socket({ clientId: 'share-v7', agentId: 'agent-1', kind: 'share' }),
+      { text: 'hi', attachmentIds: ['a1'] },
+    );
+
+    expect(expand).toHaveBeenCalledWith('agent-1', 'hi', ['a1'], {
+      clientId: 'share-v7',
+      kind: 'share',
+    });
+  });
+
+  it('falls back to anonymous when the socket carries no kind', async () => {
+    const expand = spyExpand();
+    const { handler } = makeHandler(
+      expand as unknown as BridleAttachmentService['expand'],
+    );
+
+    await handler.handleMessage(socket({ clientId: 'anon-9', agentId: 'a2' }), {
+      text: 'hi',
+      attachmentIds: ['a1'],
+    });
+
+    expect(expand).toHaveBeenCalledWith('a2', 'hi', ['a1'], {
+      clientId: 'anon-9',
+      kind: 'anonymous',
+    });
+  });
+});

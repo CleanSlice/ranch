@@ -88,3 +88,27 @@ export interface IBridleReply {
   text: string;
   ts: number | null;
 }
+
+/**
+ * Credentials a public share-link visitor sends with every chat request.
+ * Defined here rather than imported from the share slice so the bridle slice
+ * stays independent of it — the share page builds the object, bridle only
+ * carries it to the two headers the API reads.
+ */
+export interface IBridleShareContext {
+  token: string;
+  visitorId: string;
+}
+
+/**
+ * Identifies one conversation. `key` — not `agentId` — is what the store and
+ * localStorage are keyed by, so the owner's console chat and a visitor chat
+ * for the same agent in the same browser stay separate. The console uses
+ * `key === agentId`, which leaves already-persisted conversations in place.
+ */
+export interface IBridleConversation {
+  key: string;
+  agentId: string;
+  /** Present only on a share-link conversation; absent in the console. */
+  share?: IBridleShareContext;
+}

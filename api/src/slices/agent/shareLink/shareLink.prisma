@@ -1,0 +1,27 @@
+import { Agent } from "../agent/agent"
+
+// One share-link grant per agent (CLEAN-66). `agentId @unique` makes
+// "at most one link per agent" a database invariant, so Revoke/Regenerate
+// are single-row UPDATEs and can never race a second active token into
+// existence. The token is stored in plaintext on purpose: the owner must be
+// able to reopen the panel and see the same link (research.md R1), so it is
+// recoverable, never hashed — and never logged.
+model AgentShareLink {
+  id            String    @id @default(uuid())
+  agentId       String    @unique
+  agent         Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // `sl_` + 32 random bytes base64url (~256 bits). Never client-supplied.
+  token         String    @unique
+  // null ⇒ active. Set by Revoke, cleared by Regenerate / Share-after-revoke.
+  revokedAt     DateTime?
+  // Last time the token was replaced; null until the first rotation.
+  rotatedAt     DateTime?
+  // Audit counter — incremented on every new token after the first.
+  rotationCount Int       @default(0)
+  // JWT `sub` of the console user who first shared / last acted (FK by
+  // convention to User, like ApiKey.createdBy).
+  createdBy     String
+  updatedBy     String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}

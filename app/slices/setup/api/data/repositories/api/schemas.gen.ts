@@ -1878,6 +1878,97 @@ export const TranscriptResponseDtoSchema = {
   required: ["messages", "channel", "nextCursor", "hasMore"],
 } as const;
 
+export const ShareLinkDtoSchema = {
+  type: "object",
+  properties: {
+    active: {
+      type: "boolean",
+      description:
+        "True while the link accepts visitors. False when the agent was never shared or the link has been revoked.",
+      example: true,
+    },
+    token: {
+      type: "string",
+      nullable: true,
+      description:
+        "The share secret. Exposed only while the link is active — a revoked token is dead and is never handed back, so this is null whenever active is false.",
+      example: "sl_mCV1jC5G3nre2dz7hEx7Y8PnbwfyZTVaTKJ8L2SAaDU",
+    },
+    createdAt: {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+      description: "When the link row was first created; null if never shared.",
+      example: "2026-09-07T10:00:00.000Z",
+    },
+    revokedAt: {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+      description: "When the link was revoked; null while it is active.",
+      example: null,
+    },
+    rotatedAt: {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+      description:
+        "When the token was last replaced; null until the first regenerate.",
+      example: null,
+    },
+    rotationCount: {
+      type: "number",
+      description: "How many times the token has been replaced.",
+      example: 0,
+    },
+  },
+  required: [
+    "active",
+    "token",
+    "createdAt",
+    "revokedAt",
+    "rotatedAt",
+    "rotationCount",
+  ],
+} as const;
+
+export const ShareResolveRequestDtoSchema = {
+  type: "object",
+  properties: {
+    token: {
+      type: "string",
+      description:
+        "The share token from the link (`sl_` + 43 url-safe characters).",
+      pattern: "^sl_[A-Za-z0-9_-]{43}$",
+      example: "sl_mCV1jC5G3nre2dz7hEx7Y8PnbwfyZTVaTKJ8L2SAaDU",
+    },
+  },
+  required: ["token"],
+} as const;
+
+export const ShareResolvedDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+      description: "Id of the shared agent — used for the chat requests.",
+      example: "a1b2c3d4-0000-4000-8000-000000000001",
+    },
+    agentName: {
+      type: "string",
+      description: "Display name of the shared agent.",
+      example: "Support bot",
+    },
+    agentStatus: {
+      type: "string",
+      description:
+        "The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.",
+      example: "running",
+    },
+  },
+  required: ["agentId", "agentName", "agentStatus"],
+} as const;
+
 export const ImportSkillUrlDtoSchema = {
   type: "object",
   properties: {

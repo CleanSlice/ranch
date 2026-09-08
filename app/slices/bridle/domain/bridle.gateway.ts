@@ -1,8 +1,16 @@
-import type { IBridleAttachment, IBridleReply } from './bridle.types';
+import type {
+  IBridleAttachment,
+  IBridleReply,
+  IBridleShareContext,
+} from './bridle.types';
 
 /**
  * Contract for talking to the agent runtime. The data layer implements it
  * (`BridleGateway`); the service and store depend only on this abstraction.
+ *
+ * Every call takes an optional `share`: on a public share-link page there is
+ * no JWT, so the visitor's credentials travel per request. Omitted in the
+ * console, where the Bearer interceptor already authenticates the caller.
  */
 export abstract class IBridleGateway {
   /**
@@ -13,6 +21,7 @@ export abstract class IBridleGateway {
     agentId: string,
     text: string,
     attachmentIds?: string[],
+    share?: IBridleShareContext,
   ): Promise<IBridleReply>;
 
   /**
@@ -24,6 +33,7 @@ export abstract class IBridleGateway {
     agentId: string,
     file: File,
     onProgress?: (percent: number) => void,
+    share?: IBridleShareContext,
   ): Promise<IBridleAttachment>;
 
   /**
@@ -35,5 +45,9 @@ export abstract class IBridleGateway {
    * API client (which carries the base URL and the Bearer interceptor) and
    * handing the UI an object URL is what makes an attachment visible.
    */
-  abstract fetchAttachment(agentId: string, attachmentId: string): Promise<Blob>;
+  abstract fetchAttachment(
+    agentId: string,
+    attachmentId: string,
+    share?: IBridleShareContext,
+  ): Promise<Blob>;
 }

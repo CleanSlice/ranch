@@ -155,7 +155,7 @@
 - [X] T059 [P] Update `docs/i18n.md`-governed copy check and run `bun run i18n:check` one last time; confirm `admin/` has no new locale files
 - [X] T060 Run the full `specs/012-jwt-token-refresh/quickstart.md` (§1–§6) against the local stack with the short lifetimes in `api/.env.dev`; record results in the Jira checkpoint comment
 - [X] T061 Final verification: `cd api && bun run test && bunx tsc --noEmit && bun run lint`; `cd app && bun run build:api && bun run typecheck`; `cd admin && bun run build:api && bun run typecheck`; `git diff --stat origin/main` reviewed for stray `access_token` / `handleApiAuthentication` / `document.cookie` references
-- [ ] T062 Commit per phase with Conventional Commits + ticket (`feat(api): session table, refresh and logout endpoints (CLEAN-72)`, `feat(app): …`, `feat(admin): …`), open the GitHub PR into `main` titled `feat: session renewal and honest expiry in both consoles (CLEAN-72)` with the summary from plan.md, put the PR URL on CLEAN-72, move the issue to In Review
+- [X] T062 Commit per phase with Conventional Commits + ticket (`feat(api): session table, refresh and logout endpoints (CLEAN-72)`, `feat(app): …`, `feat(admin): …`), open the GitHub PR into `main` titled `feat: session renewal and honest expiry in both consoles (CLEAN-72)` with the summary from plan.md, put the PR URL on CLEAN-72, move the issue to In Review
 
 ---
 

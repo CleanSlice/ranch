@@ -5,6 +5,7 @@ import { IMcpServerGateway } from './mcpServer.gateway';
 export const RANCH_MCP_ID = 'mcp-ranch';
 export const KNOWLEDGE_MCP_ID = 'mcp-knowledge';
 export const CLEANSLICE_MCP_ID = 'mcp-cleanslice';
+export const DOCUMENTS_MCP_ID = 'mcp-documents';
 
 @Injectable()
 export class McpServerSeeder implements OnApplicationBootstrap {
@@ -54,6 +55,27 @@ export class McpServerSeeder implements OnApplicationBootstrap {
         builtIn: true,
       });
       this.logger.log(`Seeded built-in Knowledge MCP server at ${url}`);
+    }
+
+    // Same endpoint as the Ranch entry: the registry serves every @Tool the
+    // api registers, so this row exists to make query_attachment reachable
+    // for agents whose template attaches neither Ranch nor Knowledge. It is
+    // injected for every agent by getMcps (CLEAN-67).
+    const existingDocuments = await this.gateway.findById(DOCUMENTS_MCP_ID);
+    if (!existingDocuments) {
+      await this.gateway.create({
+        id: DOCUMENTS_MCP_ID,
+        name: 'Documents',
+        description:
+          "Built-in MCP server hosted by this Ranch's own API. Exposes query_attachment for spreadsheets attached in chat, so the agent computes sums, counts and lookups from the file instead of estimating. Auth uses the agent's RANCH_API_TOKEN.",
+        url,
+        transport: 'streamableHttp',
+        authType: 'bearer',
+        authValue: '${RANCH_API_TOKEN}',
+        enabled: true,
+        builtIn: true,
+      });
+      this.logger.log(`Seeded built-in Documents MCP server at ${url}`);
     }
 
     // The Streamable HTTP endpoint lives at /mcp — the bare origin 404s

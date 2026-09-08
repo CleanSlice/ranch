@@ -177,6 +177,19 @@ export async function buildLongSheet(rows = 300): Promise<Buffer> {
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
+/**
+ * Used area of `rows` × `cols` with only the two corners populated — big
+ * enough to trip the query cell cap without writing tens of thousands of
+ * cells.
+ */
+export async function buildCornerSheet(rows = 260, cols = 200): Promise<Buffer> {
+  const wb = new Workbook();
+  const s = wb.addWorksheet('Corner');
+  s.getCell(1, 1).value = 'top-left';
+  s.getCell(rows, cols).value = 'bottom-right';
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
 async function main(): Promise<void> {
   const { mkdirSync, writeFileSync } = await import('fs');
   const { join } = await import('path');

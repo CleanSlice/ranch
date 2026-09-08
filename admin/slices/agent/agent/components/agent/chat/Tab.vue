@@ -116,14 +116,13 @@ watch(
        button, and the Logs tab gives them the full width when needed. -->
   <div class="flex h-full min-h-0 min-w-0 items-stretch justify-center gap-3">
     <div
-      v-if="authStore.accessToken"
+      v-if="authStore.isAuthenticated"
       ref="chatWrapRef"
       class="relative h-full min-h-0 w-full min-w-0 max-w-200 basis-1/2 min-[1400px]:min-w-100"
     >
       <BridleProvider
         :api-url="apiUrl"
         :agent-id="agent.id"
-        :token="authStore.accessToken"
         :title="`Chat with ${agent.name}`"
         :restart-prompt="false"
         :agent-state="bridleAgentState"

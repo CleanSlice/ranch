@@ -29,4 +29,19 @@ export class AuthGateway extends BaseGateway implements IAuthGateway {
       return this.mapper.toSession(unwrapEnvelope(res.data));
     });
   }
+
+  // No body: the HttpOnly `ranch_session` cookie travels via `withCredentials`
+  // (set on the shared axios instance). A 401 here carries a `SESSION_*` code.
+  refresh(): Promise<IAuthSession> {
+    return this.execute(async () => {
+      const res = await AuthApi.authControllerRefresh({ throwOnError: true });
+      return this.mapper.toSession(unwrapEnvelope(res.data));
+    });
+  }
+
+  logout(): Promise<void> {
+    return this.execute(async () => {
+      await AuthApi.authControllerLogout({ throwOnError: true });
+    });
+  }
 }

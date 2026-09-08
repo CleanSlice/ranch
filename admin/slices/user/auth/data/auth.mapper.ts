@@ -8,6 +8,9 @@ const EMPTY_USER: IAuthUser = {
   status: '',
 };
 
+/** Access-token lifetime assumed when the API omits `expiresIn` (15 minutes). */
+const DEFAULT_EXPIRES_IN_SECONDS = 900;
+
 function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
@@ -30,8 +33,13 @@ export class AuthMapper {
   toSession(raw: unknown): IAuthSession {
     const o =
       raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const expiresIn =
+      typeof o.expiresIn === 'number' && Number.isFinite(o.expiresIn) && o.expiresIn > 0
+        ? o.expiresIn
+        : DEFAULT_EXPIRES_IN_SECONDS;
     return {
       accessToken: str(o.accessToken),
+      expiresIn,
       user: this.toUser(o.user) ?? { ...EMPTY_USER },
     };
   }

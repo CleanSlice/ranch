@@ -11,12 +11,14 @@ import { ScrollArea } from '#theme/components/ui/scroll-area'
 import { Button } from '#theme/components/ui/button'
 import { Bot, ChevronDown, Circle, MessageSquarePlus, RotateCw } from 'lucide-vue-next'
 import { cn } from '#theme/utils/cn'
+import { authedFetch } from '#auth/utils/authedFetch'
 import { renderMarkdown } from '../../utils/markdown'
 
+// No `token` prop: every request and the socket read the current bearer from
+// the auth store, so a renewal mid-session never leaves this widget behind.
 const props = withDefaults(defineProps<{
   apiUrl: string
   agentId: string
-  token: string
   title?: string
   placeholder?: string
   class?: HTMLAttributes['class']
@@ -51,6 +53,7 @@ const props = withDefaults(defineProps<{
 })
 
 const store = useBridleStore()
+const authStore = useAuthStore()
 const {
   messages,
   isConnected,
@@ -108,7 +111,7 @@ const togglingDebug = ref(false)
 async function onToggleDebug() {
   togglingDebug.value = true
   try {
-    await store.setDebugEnabled(props.apiUrl, props.agentId, props.token, !debugEnabled.value)
+    await store.setDebugEnabled(props.apiUrl, props.agentId, !debugEnabled.value)
   } finally {
     togglingDebug.value = false
   }
@@ -125,7 +128,10 @@ const isDebugOpen = computed({
   },
 })
 
-const connectionStatus = computed(() => {
+const connectionStatus = computed<{ label: string; color: string } | null>(() => {
+  // The session-ended dialog owns the screen: a "Disconnected" or
+  // "Chat reconnecting…" line under it would be noise about the wrong thing.
+  if (authStore.sessionEnded) return null
   if (props.agentState === 'restarting') {
     return { label: 'Agent restarting…', color: 'text-orange-500' }
   }
@@ -214,10 +220,7 @@ async function onRestartAgent() {
   restartError.value = null
   try {
     const url = `${props.apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(props.agentId)}/restart`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${props.token}` },
-    })
+    const res = await authedFetch(url, { method: 'POST' })
     if (!res.ok) {
       restartError.value = `Restart failed (${res.status})`
       return
@@ -263,11 +266,7 @@ async function onScroll() {
 
   const prevScrollHeight = viewport.scrollHeight
   const prevScrollTop = viewport.scrollTop
-  const added = await store.loadOlderTranscript(
-    props.apiUrl,
-    props.agentId,
-    props.token,
-  )
+  const added = await store.loadOlderTranscript(props.apiUrl, props.agentId)
   if (added <= 0) return
 
   // Preserve the visual position of whatever the user was looking at by
@@ -305,17 +304,17 @@ onMounted(async () => {
   // seeding from the prop avoids a duplicate GET /agents/:id on every open.
   if (props.initialDebugEnabled !== null) {
     store.debugEnabled = props.initialDebugEnabled
-    await store.loadTranscript(props.apiUrl, props.agentId, props.token)
+    await store.loadTranscript(props.apiUrl, props.agentId)
   } else {
     await Promise.all([
-      store.loadTranscript(props.apiUrl, props.agentId, props.token),
-      store.loadAgentMeta(props.apiUrl, props.agentId, props.token),
+      store.loadTranscript(props.apiUrl, props.agentId),
+      store.loadAgentMeta(props.apiUrl, props.agentId),
     ])
   }
   // Re-attach debug snapshots saved in localStorage from previous sessions —
   // makes the inspect icon survive a page refresh.
   store.loadPersistedDebug(props.agentId)
-  store.connect(props.apiUrl, props.agentId, props.token)
+  await store.connect(props.apiUrl, props.agentId)
   // 1s tick is fine — we only need it to re-evaluate `showRestartPrompt`
   // around the 30s threshold. Cheaper than a per-frame raf loop.
   nowTimer = setInterval(() => {
@@ -409,9 +408,21 @@ function onDrop(event: DragEvent) {
 
   const files = event.dataTransfer?.files
   if (files?.length) {
-    store.stageFiles(props.apiUrl, props.agentId, props.token, files)
+    store.stageFiles(props.apiUrl, props.agentId, files)
   }
 }
+
+// The hub drops the socket when the session dies and socket.io treats that
+// server-initiated disconnect as final. Once the person signs back in through
+// the session-ended dialog, bring the live chat back without a reload.
+watch(
+  () => authStore.isAuthenticated,
+  (signedIn) => {
+    if (signedIn && !isConnected.value) {
+      void store.connect(props.apiUrl, props.agentId)
+    }
+  },
+)
 
 /**
  * A file released anywhere else on the page would otherwise make the browser
@@ -441,8 +452,8 @@ async function onConfirmReset() {
   resetting.value = true
   try {
     store.disconnect()
-    await store.resetTranscript(props.apiUrl, props.agentId, props.token)
-    store.connect(props.apiUrl, props.agentId, props.token)
+    await store.resetTranscript(props.apiUrl, props.agentId)
+    await store.connect(props.apiUrl, props.agentId)
   } finally {
     resetting.value = false
   }
@@ -489,7 +500,7 @@ async function onConfirmReset() {
           <MessageSquarePlus class="h-3.5 w-3.5" />
           New chat
         </Button>
-        <div v-if="showStatus" class="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div v-if="showStatus && connectionStatus" class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Circle :class="cn('h-2 w-2 fill-current', connectionStatus.color)" />
           {{ connectionStatus.label }}
         </div>
@@ -639,7 +650,6 @@ async function onConfirmReset() {
         v-else
         :api-url="apiUrl"
         :agent-id="agentId"
-        :token="token"
         :placeholder="placeholder"
         :disabled="inputDisabled"
         @send="handleSend"

@@ -70,6 +70,12 @@ export interface IBridleStoredAttachment {
   mimeType: string;
   size: number;
   body: Buffer;
+  /**
+   * Chat identity of whoever uploaded it (`admin`, a JWT `sub`, or
+   * `share-<visitorId>`). Absent on objects stored before share links existed,
+   * which is why only share visitors are owner-checked on download.
+   */
+  owner?: string;
 }
 
 // ── Wire protocol messages ───────────────────────────────────

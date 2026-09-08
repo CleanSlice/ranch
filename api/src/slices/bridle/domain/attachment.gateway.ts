@@ -6,6 +6,9 @@ export interface IStoreAttachmentInput {
   name: string;
   mimeType: string;
   body: Buffer;
+  /** Uploader's chat identity, stored so a share visitor can only read back
+   *  their own files. Absent for callers that predate share links. */
+  owner?: string;
 }
 
 /**

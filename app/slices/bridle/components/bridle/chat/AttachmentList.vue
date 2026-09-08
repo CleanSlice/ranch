@@ -2,12 +2,14 @@
 import {
   BridleAttachmentKinds,
   type IBridleAttachment,
+  type IBridleConversation,
 } from '#bridle/stores/bridle';
 import { formatBytes } from '#bridle/domain';
 
 const props = defineProps<{
   attachments: IBridleAttachment[];
-  agentId: string;
+  /** Says which agent the bytes come from, and how the reader is authorized. */
+  conversation: IBridleConversation;
   /** Sent bubbles are the user's; colours invert against the primary fill. */
   onPrimary?: boolean;
 }>();
@@ -42,7 +44,10 @@ async function resolve(attachment: IBridleAttachment) {
     return;
   }
   try {
-    const blob = await bridleStore.fetchAttachment(props.agentId, attachment.id);
+    const blob = await bridleStore.fetchAttachment(
+      props.conversation,
+      attachment.id,
+    );
     objectUrls.value = {
       ...objectUrls.value,
       [attachment.id]: URL.createObjectURL(blob),

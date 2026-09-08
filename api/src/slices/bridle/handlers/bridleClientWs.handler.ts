@@ -14,7 +14,9 @@ import {
   IBridleGateway,
   BridleAttachmentService,
   type BridlePart,
+  type ChatRequesterKinds,
   buildParts,
+  clientIdFromJwtPayload,
 } from '../domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 
@@ -118,6 +120,10 @@ export class BridleClientWsHandler
     let clientId: string;
     let isAdmin = false;
     let email: string | undefined;
+    // Carried onto client.data so attachment reads on this socket answer to
+    // the same ownership rule as the HTTP routes, without anyone re-deriving
+    // "was this a real login?" from the shape of the client id.
+    let kind: ChatRequesterKinds = 'anonymous';
 
     if (auth.token) {
       // Authenticated path takes PRECEDENCE over the public/anon path: a
@@ -130,13 +136,15 @@ export class BridleClientWsHandler
         payload = null;
       }
 
-      if (payload) {
-        const roles = payload.roles as string[] | undefined;
-        isAdmin =
-          Array.isArray(roles) &&
-          (roles.includes('Owner') || roles.includes('Admin'));
-        clientId = isAdmin ? 'admin' : (payload.sub as string);
-        email = payload.email as string | undefined;
+      // A signed token with neither an admin role nor a `sub` proves nothing
+      // usable — treated exactly like a bad one rather than becoming an
+      // `undefined` client id.
+      const identity = clientIdFromJwtPayload(payload);
+      if (identity) {
+        isAdmin = identity.isAdmin;
+        clientId = identity.clientId;
+        email = payload?.email as string | undefined;
+        kind = 'jwt';
       } else if (publicAllowed) {
         // A bad/expired token on an otherwise-public embed shouldn't hard-fail
         // the visitor — degrade to the anonymous path instead of rejecting.
@@ -165,7 +173,7 @@ export class BridleClientWsHandler
       return reject(code);
     }
 
-    client.data = { clientId, agentId, email, isAdmin };
+    client.data = { clientId, agentId, email, isAdmin, kind };
 
     // Integrator context from the embed's `data-prompt` (set on the `<script>`
     // tag or `<bridle-chat>` element). Sent once at handshake; the hub stores
@@ -245,15 +253,22 @@ export class BridleClientWsHandler
     const base = data.parts ?? buildParts(text, data.images);
 
     // Same expansion the HTTP routes perform, so a file behaves identically
-    // whether the chat talks over the socket or posts a message. Held to the
-    // same trust boundary as those routes: an id is an unguessable per-agent
-    // UUID and uploading one requires a token, so possession is the check.
+    // whether the chat talks over the socket or posts a message — including
+    // the ownership rule: this socket reads only what its identity may read.
+    // Kind is read back from the handshake, never guessed from the client id;
+    // a socket that somehow carries none is treated as anonymous, which is
+    // exactly what a token-less embed visitor has always been.
+    const kind = (client.data?.kind as ChatRequesterKinds) ?? 'anonymous';
     let expanded;
     try {
       expanded = await this.attachments.expand(
         agentId,
         text,
         data.attachmentIds,
+        {
+          clientId,
+          kind,
+        },
       );
     } catch (err) {
       // A dead or oversized attachment must not take the socket down with it —

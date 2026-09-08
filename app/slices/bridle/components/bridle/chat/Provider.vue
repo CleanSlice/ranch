@@ -1,7 +1,15 @@
 <script setup lang="ts">
+import type { IBridleConversation } from '#bridle/stores/bridle';
+
 const props = withDefaults(
   defineProps<{
     agentId: string | null;
+    /**
+     * Which conversation this chat is. Defaults to `{ key: agentId, agentId }`,
+     * which is what the console wants — the share page passes a descriptor
+     * with its own key and the visitor's share credentials.
+     */
+    conversation?: IBridleConversation;
     title?: string;
     subtitle?: string;
     /** Hide the inner header — useful when the parent already shows agent identity. */
@@ -11,26 +19,40 @@ const props = withDefaults(
 );
 const bridleStore = useBridleStore();
 
+/**
+ * The descriptor every store call goes through. `withDefaults` can't derive a
+ * default from a sibling prop, so the fallback is computed here.
+ */
+const activeConversation = computed<IBridleConversation | null>(() => {
+  if (props.conversation) return props.conversation;
+  return props.agentId ? { key: props.agentId, agentId: props.agentId } : null;
+});
+
 // Replay persisted conversation so the chat isn't blank after a refresh.
 // Watcher (not just onMounted) covers the case where the parent swaps agentId
-// without remounting this component.
+// without remounting this component. Keyed on `key` so a parent re-rendering
+// with a fresh descriptor object doesn't re-run this.
 watch(
-  () => props.agentId,
-  (agentId) => {
-    if (agentId) bridleStore.hydrate(agentId);
+  () => activeConversation.value?.key,
+  (key) => {
+    const conversation = activeConversation.value;
+    if (key && conversation) bridleStore.hydrate(conversation);
   },
   { immediate: true },
 );
 
-const messages = computed(() =>
-  props.agentId ? bridleStore.messagesFor(props.agentId) : [],
-);
-const sending = computed(() =>
-  props.agentId ? bridleStore.isPending(props.agentId) : false,
-);
-const error = computed(() =>
-  props.agentId ? bridleStore.errorFor(props.agentId) : null,
-);
+const messages = computed(() => {
+  const key = activeConversation.value?.key;
+  return key ? bridleStore.messagesFor(key) : [];
+});
+const sending = computed(() => {
+  const key = activeConversation.value?.key;
+  return key ? bridleStore.isPending(key) : false;
+});
+const error = computed(() => {
+  const key = activeConversation.value?.key;
+  return key ? bridleStore.errorFor(key) : null;
+});
 
 const scrollEl = ref<HTMLElement | null>(null);
 
@@ -43,8 +65,9 @@ function scrollToBottom() {
 }
 
 async function onSend(text: string) {
-  if (!props.agentId) return;
-  await bridleStore.sendMessage(props.agentId, text);
+  const conversation = activeConversation.value;
+  if (!conversation) return;
+  await bridleStore.sendMessage(conversation, text);
 }
 
 watch(
@@ -113,10 +136,11 @@ function onDrop(event: DragEvent) {
   // Reset unconditionally: a drop ends the drag however the counter got here.
   dragDepth.value = 0;
   isDraggingFile.value = false;
-  if (sending.value || !props.agentId) return;
+  const conversation = activeConversation.value;
+  if (sending.value || !conversation) return;
 
   const files = event.dataTransfer?.files;
-  if (files?.length) bridleStore.stageFiles(props.agentId, files);
+  if (files?.length) bridleStore.stageFiles(conversation, files);
 }
 
 /**
@@ -137,7 +161,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('dragover', preventWindowDrop);
   window.removeEventListener('drop', preventWindowDrop);
   // Object URLs for anything still staged would otherwise leak.
-  if (props.agentId) bridleStore.clearStaged(props.agentId);
+  const conversation = activeConversation.value;
+  if (conversation) bridleStore.clearStaged(conversation);
 });
 </script>
 
@@ -149,7 +174,7 @@ onBeforeUnmount(() => {
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-    <BridleChatEmpty v-if="!agentId" />
+    <BridleChatEmpty v-if="!activeConversation" />
 
     <template v-else>
       <header
@@ -193,7 +218,7 @@ onBeforeUnmount(() => {
             v-for="message in messages"
             :key="message.id"
             :message="message"
-            :agent-id="agentId"
+            :conversation="activeConversation"
             :agent-name="title"
           />
 
@@ -237,7 +262,7 @@ onBeforeUnmount(() => {
       />
       <BridleChatInput
         v-else
-        :agent-id="agentId"
+        :conversation="activeConversation"
         :disabled="sending"
         @send="onSend"
       />

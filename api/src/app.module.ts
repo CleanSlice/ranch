@@ -9,6 +9,7 @@ import { InitModule } from './slices/setup/init/init.module';
 // Feature slices
 import { AgentModule } from './slices/agent/agent/agent.module';
 import { AgentChannelModule } from './slices/agent/agentChannel/agentChannel.module';
+import { ShareLinkModule } from './slices/agent/shareLink/shareLink.module';
 import { TemplateModule } from './slices/agent/template/template.module';
 import { TemplateFileModule } from './slices/agent/templateFile/templateFile.module';
 import { TemplateInstallModule } from './slices/agent/templateInstall/templateInstall.module';
@@ -58,6 +59,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     TemplateInstallModule,
     AgentModule,
     AgentChannelModule,
+    ShareLinkModule,
     FileModule,
     SecretModule,
     LogModule,

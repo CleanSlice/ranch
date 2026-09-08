@@ -10,11 +10,13 @@ import {
 } from './domain';
 import { BridleGateway, BridleAttachmentGateway } from './data';
 import { BridleApiKeyGuard } from './guards/bridleApiKey.guard';
+import { BridleChatAuthGuard } from './guards/bridleChatAuth.guard';
 import { FileModule } from '#/agent/file/file.module';
 import { AgentModule } from '#/agent/agent/agent.module';
 import { ChatModule } from '#/chat/chat.module';
 import { S3Module } from '#/aws/s3';
 import { SettingModule } from '#/setting/setting.module';
+import { ShareLinkModule } from '#/agent/shareLink/shareLink.module';
 
 /**
  * Bridle Module — authenticated hub between browsers and agents.
@@ -47,8 +49,8 @@ import { SettingModule } from '#/setting/setting.module';
  *   POST /api/agent/:agentId/message/sync  — synchronous (120s timeout)
  *   GET  /api/agent/health               — overall hub status
  *   GET  /api/agent/:agentId/health        — per-agent status
- *   POST /api/agent/:agentId/attachment    — upload an attachment (auth required)
- *   GET  /api/agent/:agentId/attachment/:id — download it back (auth required)
+ *   POST /api/agent/:agentId/attachment    — upload an attachment (JWT or share headers)
+ *   GET  /api/agent/:agentId/attachment/:id — download it back (JWT or share headers)
  */
 @Module({
   imports: [
@@ -56,6 +58,10 @@ import { SettingModule } from '#/setting/setting.module';
     // Attachment storage: S3Repository for the bytes, settings for the bucket.
     S3Module,
     SettingModule,
+    // Share-link validation for chat identity and the attachment guard. Plain
+    // import: ShareLinkModule reaches AgentModule, which already forwardRef's
+    // BridleModule, so the cycle closes on that lazy link (research.md R5).
+    ShareLinkModule,
     forwardRef(() => FileModule),
     forwardRef(() => AgentModule),
     forwardRef(() => ChatModule),
@@ -75,6 +81,7 @@ import { SettingModule } from '#/setting/setting.module';
     BridleClientWsHandler,
     BridleAgentWsHandler,
     BridleApiKeyGuard,
+    BridleChatAuthGuard,
   ],
   controllers: [BridleController],
   exports: [IBridleGateway, IBridleAttachmentGateway, BridleApiKeyGuard],

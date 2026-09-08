@@ -166,8 +166,9 @@ const initials = computed(() => {
          agents" link is gone with the card grid it pointed at — the rail on
          the left is where you switch agents now. -->
     <header class="shrink-0 border-b bg-card">
+      <!-- `relative` anchors the share popover to the header strip. -->
       <div
-        class="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3"
+        class="relative mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3"
       >
         <div
           v-if="agent"
@@ -209,6 +210,10 @@ const initials = computed(() => {
             {{ agent.templateId }}
           </p>
         </div>
+
+        <!-- No `canManage` gate: any logged-in user who can open the agent may
+             share it (spec clarification, 2026-09-07). -->
+        <SharePanelProvider v-if="agent" :agent-id="agent.id" />
 
         <button
           v-if="agent && canManage"

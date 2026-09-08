@@ -69,7 +69,9 @@ function build(opts: {
   return { controller, mcpServerGateway };
 }
 
-const asOwner = { user: { sub: 'user-1', roles: ['owner'] } } as unknown as Request;
+const asOwner = {
+  user: { sub: 'user-1', roles: ['owner'] },
+} as unknown as Request;
 
 describe('AgentController.getMcps — Documents injection', () => {
   it('adds the built-in Documents entry for an agent whose template has none', async () => {
@@ -92,7 +94,9 @@ describe('AgentController.getMcps — Documents injection', () => {
     const out = await controller.getMcps('ag-1', asOwner);
 
     expect(out.map((m) => m.name)).toEqual(['Documents']);
-    expect(mcpServerGateway.findById).not.toHaveBeenCalledWith(DOCUMENTS_MCP_ID);
+    expect(mcpServerGateway.findById).not.toHaveBeenCalledWith(
+      DOCUMENTS_MCP_ID,
+    );
   });
 
   it('skips it when an operator disabled the entry', async () => {

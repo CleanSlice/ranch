@@ -11,6 +11,8 @@
  *   bun run ts-node src/slices/bridle/domain/__fixtures__/buildReferenceWorkbooks.ts ./tmp
  */
 import { Workbook } from 'exceljs';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /** Sheet 1 rows: [name, qty, price]; F = qty * price. */
 const SHEET1_ITEMS: Array<[string, number, number]> = [
@@ -182,7 +184,10 @@ export async function buildLongSheet(rows = 300): Promise<Buffer> {
  * enough to trip the query cell cap without writing tens of thousands of
  * cells.
  */
-export async function buildCornerSheet(rows = 260, cols = 200): Promise<Buffer> {
+export async function buildCornerSheet(
+  rows = 260,
+  cols = 200,
+): Promise<Buffer> {
   const wb = new Workbook();
   const s = wb.addWorksheet('Corner');
   s.getCell(1, 1).value = 'top-left';
@@ -191,13 +196,14 @@ export async function buildCornerSheet(rows = 260, cols = 200): Promise<Buffer> 
 }
 
 async function main(): Promise<void> {
-  const { mkdirSync, writeFileSync } = await import('fs');
-  const { join } = await import('path');
   const out = process.argv[2] ?? '.';
-  mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, 'supplier-invoice.xlsx'), await buildSupplierInvoice());
-  writeFileSync(join(out, 'wide-sparse.xlsx'), await buildWideSparse());
-  writeFileSync(join(out, 'long-sheet.xlsx'), await buildLongSheet());
+  fs.mkdirSync(out, { recursive: true });
+  fs.writeFileSync(
+    path.join(out, 'supplier-invoice.xlsx'),
+    await buildSupplierInvoice(),
+  );
+  fs.writeFileSync(path.join(out, 'wide-sparse.xlsx'), await buildWideSparse());
+  fs.writeFileSync(path.join(out, 'long-sheet.xlsx'), await buildLongSheet());
   console.log(JSON.stringify(EXPECTED, null, 2));
 }
 

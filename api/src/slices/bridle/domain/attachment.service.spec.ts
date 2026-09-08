@@ -3,6 +3,7 @@ import { Workbook } from 'exceljs';
 import { BridleAttachmentService } from './attachment.service';
 import { IBridleAttachmentGateway } from './attachment.gateway';
 import type { IStoreAttachmentInput } from './attachment.gateway';
+import { buildLongSheet } from './__fixtures__/buildReferenceWorkbooks';
 import {
   BridleAttachmentKinds,
   BridlePartTypes,
@@ -11,6 +12,8 @@ import {
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_EXTRACTED_TEXT_CHARS,
+  SPREADSHEET_INLINE_BUDGET_CHARS,
+  SPREADSHEET_PREVIEW_ROWS_PER_SHEET,
   MAX_MESSAGE_ATTACHMENT_BYTES,
 } from './attachment.constants';
 
@@ -134,7 +137,9 @@ describe('BridleAttachmentService — upload validation', () => {
       body: Buffer.from('PK'),
     });
 
-    expect(result.mimeType).toBe('application/vnd.ms-excel.sheet.macroEnabled.12');
+    expect(result.mimeType).toBe(
+      'application/vnd.ms-excel.sheet.macroEnabled.12',
+    );
     expect(result.kind).toBe(BridleAttachmentKinds.Binary);
   });
 
@@ -371,6 +376,28 @@ describe('BridleAttachmentService — expansion to parts', () => {
     expect(out.attachments[0].readableByAgent).toBe(true);
     // Still a file part on the wire — never raw bytes.
     expect(out.parts[0].type).toBe(BridlePartTypes.File);
+  });
+
+  it('inlines a large workbook as a bounded preview that points at the tool', async () => {
+    const { service, gw } = makeService();
+    const body = await buildLongSheet(5000);
+    gw.seed('big', {
+      name: 'big.xlsx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      size: body.length,
+      body,
+    });
+
+    const out = await service.expand(AGENT, 'сумма?', ['big']);
+
+    const block = out.text.slice(out.text.indexOf('[Attached file: big.xlsx'));
+    expect(block.length).toBeLessThan(SPREADSHEET_INLINE_BUDGET_CHARS);
+    expect(block).toContain(
+      `rows 1–${SPREADSHEET_PREVIEW_ROWS_PER_SHEET} included · ${5001 - SPREADSHEET_PREVIEW_ROWS_PER_SHEET} rows omitted`,
+    );
+    expect(block).toContain('call query_attachment with this id');
+    expect(block).not.toContain('characters truncated');
   });
 
   it('falls back to the notice when a document cannot be parsed', async () => {

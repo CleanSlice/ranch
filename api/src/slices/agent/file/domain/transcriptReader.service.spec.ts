@@ -42,14 +42,27 @@ describe('TranscriptReaderService — typed text vs agent-facing text', () => {
   it('returns the typed text and keeps the full string as agentText', async () => {
     const full = `распарси\n\n${NEW_BLOCK}`;
     const jsonl = [
-      line({ id: 'u1', type: 'user', ts: 1, data: { text: full, attachments: ATTACHMENTS } }),
+      line({
+        id: 'u1',
+        type: 'user',
+        ts: 1,
+        data: { text: full, attachments: ATTACHMENTS },
+      }),
       line({ id: 'a1', type: 'assistant', ts: 2, data: { text: 'ok' } }),
     ].join('\n');
 
-    const out = await new TranscriptReaderService(fakeFiles(jsonl)).read('ag', PATH);
+    const out = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
 
     expect(out).toHaveLength(2);
-    expect(out[0]).toMatchObject({ id: 'u1', role: 'user', text: 'распарси', agentText: full });
+    expect(out[0]).toMatchObject({
+      id: 'u1',
+      role: 'user',
+      text: 'распарси',
+      agentText: full,
+    });
     expect(out[0].attachments).toHaveLength(1);
     expect(out[1]).toEqual({ id: 'a1', role: 'assistant', text: 'ok', ts: 2 });
     expect('agentText' in out[1]).toBe(false);
@@ -59,7 +72,10 @@ describe('TranscriptReaderService — typed text vs agent-facing text', () => {
     const full = `hi\n\n${LEGACY_BLOCK}`;
     const jsonl = line({ id: 'u1', type: 'user', ts: 1, data: { text: full } });
 
-    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read('ag', PATH);
+    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
 
     expect(msg.text).toBe('hi');
     expect(msg.agentText).toBe(full);
@@ -74,7 +90,10 @@ describe('TranscriptReaderService — typed text vs agent-facing text', () => {
       data: { text: NEW_BLOCK, attachments: ATTACHMENTS },
     });
 
-    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read('ag', PATH);
+    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
 
     expect(msg).toBeDefined();
     expect(msg.text).toBe('');
@@ -83,9 +102,17 @@ describe('TranscriptReaderService — typed text vs agent-facing text', () => {
   });
 
   it('keeps a legacy attachment-only message even without metadata', async () => {
-    const jsonl = line({ id: 'u1', type: 'user', ts: 1, data: { text: LEGACY_BLOCK } });
+    const jsonl = line({
+      id: 'u1',
+      type: 'user',
+      ts: 1,
+      data: { text: LEGACY_BLOCK },
+    });
 
-    const out = await new TranscriptReaderService(fakeFiles(jsonl)).read('ag', PATH);
+    const out = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
 
     expect(out).toHaveLength(1);
     expect(out[0].text).toBe('');
@@ -93,9 +120,17 @@ describe('TranscriptReaderService — typed text vs agent-facing text', () => {
   });
 
   it('leaves a plain user message alone and sets no agentText', async () => {
-    const jsonl = line({ id: 'u1', type: 'user', ts: 1, data: { text: 'plain' } });
+    const jsonl = line({
+      id: 'u1',
+      type: 'user',
+      ts: 1,
+      data: { text: 'plain' },
+    });
 
-    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read('ag', PATH);
+    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
 
     expect(msg.text).toBe('plain');
     expect('agentText' in msg).toBe(false);
@@ -103,9 +138,17 @@ describe('TranscriptReaderService — typed text vs agent-facing text', () => {
 
   it('does not split when the block does not parse (truncated tail)', async () => {
     const broken = `hi\n\n[Attached file: a.txt — id: ${ID}]\n\`\`\`\nno closing fence`;
-    const jsonl = line({ id: 'u1', type: 'user', ts: 1, data: { text: broken } });
+    const jsonl = line({
+      id: 'u1',
+      type: 'user',
+      ts: 1,
+      data: { text: broken },
+    });
 
-    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read('ag', PATH);
+    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
 
     expect(msg.text).toBe(broken);
     expect('agentText' in msg).toBe(false);
@@ -113,9 +156,17 @@ describe('TranscriptReaderService — typed text vs agent-facing text', () => {
 
   it('never splits assistant text even if it quotes the marker', async () => {
     const quoted = `I saw:\n\n${NEW_BLOCK}`;
-    const jsonl = line({ id: 'a1', type: 'assistant', ts: 1, data: { text: quoted } });
+    const jsonl = line({
+      id: 'a1',
+      type: 'assistant',
+      ts: 1,
+      data: { text: quoted },
+    });
 
-    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read('ag', PATH);
+    const [msg] = await new TranscriptReaderService(fakeFiles(jsonl)).read(
+      'ag',
+      PATH,
+    );
 
     expect(msg.text).toBe(quoted);
     expect('agentText' in msg).toBe(false);

@@ -165,7 +165,9 @@ export class TranscriptReaderService {
         text: split.text,
         ts: evt.ts,
         ...(attachments.length ? { attachments } : {}),
-        ...(split.agentText !== undefined ? { agentText: split.agentText } : {}),
+        ...(split.agentText !== undefined
+          ? { agentText: split.agentText }
+          : {}),
       });
     });
     messages.sort((a, b) => a.ts - b.ts);

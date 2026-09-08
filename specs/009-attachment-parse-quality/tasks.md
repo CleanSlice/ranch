@@ -129,7 +129,7 @@
 **Depends on**: Phase 5 (the tool must exist before the inline block is reduced to a preview).
 
 - [X] T031 [US4] Confirm the defaults in `api/src/slices/bridle/domain/attachment.constants.ts` (`SPREADSHEET_INLINE_BUDGET_CHARS = 40_000`, `SPREADSHEET_PREVIEW_ROWS_PER_SHEET = 200`) are the ones applied by `expand()` (T023) and document in the constants' comments that the query tool is the source of truth beyond the preview.
-- [ ] T032 [US4] Add a case to `api/src/slices/bridle/domain/attachment.service.spec.ts`: a 300-row fixture produces a block under `SPREADSHEET_INLINE_BUDGET_CHARS` whose sheet header reports the omitted rows and whose hint names `query_attachment`.
+- [X] T032 [US4] Add a case to `api/src/slices/bridle/domain/attachment.service.spec.ts`: a 300-row fixture produces a block under `SPREADSHEET_INLINE_BUDGET_CHARS` whose sheet header reports the omitted rows and whose hint names `query_attachment`.
 - [ ] T033 [US4] Manual: `specs/009-attachment-parse-quality/quickstart.md` §5; record `agentText.length` of turn 1 and confirm turns 2–6 have no `agentText`, note usage figures in the Jira checkpoint comment.
 
 **Checkpoint**: Post Jira comment: preview budget in place with numbers from §5.
@@ -138,9 +138,9 @@
 
 ## Phase 7: Polish & Cross-Cutting
 
-- [ ] T034 [P] Run `cd api && bun run lint && bun run format` and fix findings in the touched files.
+- [X] T034 [P] Run `cd api && bun run lint && bun run format` and fix findings in the touched files.
 - [ ] T035 [P] Run `specs/009-attachment-parse-quality/quickstart.md` §6 (txt + png + pdf regression) and §2 step 8 if CLEAN-66 has merged; note results in the PR description.
-- [ ] T036 [P] Update `specs/007-chat-file-attachments/spec.md` line about the 100k limit being configurable with a pointer to the four constants, and add a "Superseded by CLEAN-67 for spreadsheets" note under its FR-020.
+- [X] T036 [P] Update `specs/007-chat-file-attachments/spec.md` line about the 100k limit being configurable with a pointer to the four constants, and add a "Superseded by CLEAN-67 for spreadsheets" note under its FR-020.
 - [ ] T037 Full run: `bun run test` at repo root; `cd api && bun run build`; `cd admin && bun run build`; `cd app && bun run build`.
 - [ ] T038 Commit per phase (include `specs/009-attachment-parse-quality/` and `.specify/feature.json` in the first commit) with Conventional Commits + ticket, e.g. `fix(bridle): split typed text from attachment blocks on transcript read (CLEAN-67)`, `feat(bridle): coordinate-addressed spreadsheet extraction (CLEAN-67)`, `feat(bridle): query_attachment MCP tool (CLEAN-67)`, `feat(bridle): bounded spreadsheet preview (CLEAN-67)`; open a PR into `main` titled `CLEAN-67: attached documents — compact bubbles, faithful spreadsheet extraction, query_attachment tool`, link the ticket, put the PR URL on CLEAN-67 and move it to In Review.
 

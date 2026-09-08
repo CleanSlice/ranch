@@ -63,7 +63,9 @@ describe('workbook.reader — readSheet', () => {
       value: EXPECTED.sheet1.grandTotal,
       display: String(EXPECTED.sheet1.grandTotal),
     });
-    const f10 = section.rows.flatMap((r) => r.cells).find((c) => c.address === 'F10');
+    const f10 = section.rows
+      .flatMap((r) => r.cells)
+      .find((c) => c.address === 'F10');
     expect(f10?.computed).toBe(false);
   });
 
@@ -73,7 +75,9 @@ describe('workbook.reader — readSheet', () => {
     const numbers = section.rows.map((r) => r.row);
 
     for (const r of EXPECTED.sheet1.emptyRows) expect(numbers).not.toContain(r);
-    expect(numbers).toEqual(expect.arrayContaining([1, 2, 4, 5, 6, 10, 11, 12]));
+    expect(numbers).toEqual(
+      expect.arrayContaining([1, 2, 4, 5, 6, 10, 11, 12]),
+    );
     expect(section.includedRows?.[0]).toBe(1);
   });
 
@@ -82,13 +86,19 @@ describe('workbook.reader — readSheet', () => {
     const cells = readSheet(wb, 1).rows.flatMap((r) => r.cells);
     const by = (a: string) => cells.find((c) => c.address === a);
 
-    expect(by(EXPECTED.sheet1.dateCell)?.display).toBe(EXPECTED.sheet1.dateText);
-    expect(by(EXPECTED.sheet1.percentCell)?.display).toBe(EXPECTED.sheet1.percentText);
+    expect(by(EXPECTED.sheet1.dateCell)?.display).toBe(
+      EXPECTED.sheet1.dateText,
+    );
+    expect(by(EXPECTED.sheet1.percentCell)?.display).toBe(
+      EXPECTED.sheet1.percentText,
+    );
     expect(by(EXPECTED.sheet1.errorCell)).toMatchObject({
       display: EXPECTED.sheet1.errorText,
       error: EXPECTED.sheet1.errorText,
     });
-    expect(by(EXPECTED.sheet1.floatCell)?.display).toBe(EXPECTED.sheet1.floatText);
+    expect(by(EXPECTED.sheet1.floatCell)?.display).toBe(
+      EXPECTED.sheet1.floatText,
+    );
   });
 
   it('yields only populated cells on a wide sparse sheet', async () => {
@@ -97,16 +107,24 @@ describe('workbook.reader — readSheet', () => {
 
     expect(section.rows).toHaveLength(5);
     for (const r of section.rows) {
-      expect(r.cells.map((c) => c.address)).toEqual([`A${r.row}`, `AZ${r.row}`, `CV${r.row}`]);
+      expect(r.cells.map((c) => c.address)).toEqual([
+        `A${r.row}`,
+        `AZ${r.row}`,
+        `CV${r.row}`,
+      ]);
     }
   });
 
   it('refuses a hidden sheet unless includeHidden is set', async () => {
     const wb = await loadWorkbook(await buildSupplierInvoice());
 
-    expect(() => readSheet(wb, EXPECTED.hiddenSheet)).toThrow(WorkbookReadError);
+    expect(() => readSheet(wb, EXPECTED.hiddenSheet)).toThrow(
+      WorkbookReadError,
+    );
     expect(() => readSheet(wb, EXPECTED.hiddenSheet)).toThrow(/hidden/);
-    const section = readSheet(wb, EXPECTED.hiddenSheet, { includeHidden: true });
+    const section = readSheet(wb, EXPECTED.hiddenSheet, {
+      includeHidden: true,
+    });
     expect(section.rows).toHaveLength(EXPECTED.sheet3.rows);
   });
 
@@ -125,7 +143,12 @@ describe('workbook.reader — readSheet', () => {
     const section = readSheet(wb, 1, { range: 'B4:F999' });
 
     expect(section.rows.map((r) => r.row)).toEqual([4, 5, 6, 10, 11, 12]);
-    expect(section.rows[0].cells.map((c) => c.address)).toEqual(['B4', 'C4', 'D4', 'F4']);
+    expect(section.rows[0].cells.map((c) => c.address)).toEqual([
+      'B4',
+      'C4',
+      'D4',
+      'F4',
+    ]);
     expect(section.warnings[0]).toMatch(/clipped/);
   });
 
@@ -180,8 +203,18 @@ describe('workbook.reader — helpers', () => {
   });
 
   it('parses A1 ranges in any corner order', () => {
-    expect(parseA1Range('F12:B4')).toEqual({ top: 4, left: 2, bottom: 12, right: 6 });
-    expect(parseA1Range('F:F', 20)).toEqual({ top: 1, left: 6, bottom: 20, right: 6 });
+    expect(parseA1Range('F12:B4')).toEqual({
+      top: 4,
+      left: 2,
+      bottom: 12,
+      right: 6,
+    });
+    expect(parseA1Range('F:F', 20)).toEqual({
+      top: 1,
+      left: 6,
+      bottom: 20,
+      right: 6,
+    });
   });
 
   it('trims floating point noise', () => {

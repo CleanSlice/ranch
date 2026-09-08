@@ -157,7 +157,10 @@ export class ChatController {
     const debug = types.includes('tool_call') || types.includes('tool_result');
     return debug
       ? page
-      : { ...page, messages: TranscriptReaderService.withoutAgentText(page.messages) };
+      : {
+          ...page,
+          messages: TranscriptReaderService.withoutAgentText(page.messages),
+        };
   }
 
   @ApiOperation({

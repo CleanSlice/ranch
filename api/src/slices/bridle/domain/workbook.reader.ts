@@ -121,7 +121,10 @@ export function resolveSheet(
     if (i !== -1) return { sheet: all[i], index: i + 1 };
   }
   const available = all
-    .map((s, i) => `${i + 1} "${s.name}"${stateOf(s) === 'visible' ? '' : ` (${stateOf(s)})`}`)
+    .map(
+      (s, i) =>
+        `${i + 1} "${s.name}"${stateOf(s) === 'visible' ? '' : ` (${stateOf(s)})`}`,
+    )
     .join(', ');
   throw new WorkbookReadError(
     `Sheet ${typeof ref === 'number' ? ref : `"${ref}"`} not found; available: ${available}`,
@@ -230,16 +233,22 @@ export function readSheet(
     clipped.bottom !== bounds.bottom ||
     clipped.right !== bounds.right
   ) {
-    warnings.push(
-      `range clipped to the used area ${formatRange(clipped)}`,
-    );
+    warnings.push(`range clipped to the used area ${formatRange(clipped)}`);
     bounds = clipped;
   }
   if (bounds.bottom < bounds.top || bounds.right < bounds.left) {
-    return { info, rows: [], includedRows: null, omittedRows: 0, truncated: false, warnings };
+    return {
+      info,
+      rows: [],
+      includedRows: null,
+      omittedRows: 0,
+      truncated: false,
+      warnings,
+    };
   }
 
-  const area = (bounds.bottom - bounds.top + 1) * (bounds.right - bounds.left + 1);
+  const area =
+    (bounds.bottom - bounds.top + 1) * (bounds.right - bounds.left + 1);
   if (opts.maxCells !== undefined && area > opts.maxCells) {
     throw new WorkbookReadError(
       `Range covers ${area.toLocaleString('en-US')} cells; narrow it below ${opts.maxCells.toLocaleString('en-US')}.`,
@@ -272,9 +281,7 @@ export function readSheet(
   return {
     info,
     rows,
-    includedRows: rows.length
-      ? [rows[0].row, rows[rows.length - 1].row]
-      : null,
+    includedRows: rows.length ? [rows[0].row, rows[rows.length - 1].row] : null,
     omittedRows: omitted,
     truncated,
     warnings,
@@ -310,8 +317,9 @@ function mergedSpans(sheet: Worksheet): Map<string, string> {
   const out = new Map<string, string>();
   // `_merges` is exceljs's own index keyed by master address; reading it
   // avoids `sheet.model`, which serialises every row just to list merges.
-  const raw = (sheet as unknown as { _merges?: Record<string, { range?: string }> })
-    ._merges;
+  const raw = (
+    sheet as unknown as { _merges?: Record<string, { range?: string }> }
+  )._merges;
   if (raw) {
     for (const [master, dims] of Object.entries(raw)) {
       if (dims?.range) out.set(master, dims.range);
@@ -332,7 +340,8 @@ export function normalizeCell(
   cell: Cell,
   spans?: Map<string, string>,
 ): CellRef | null {
-  if (cell.type === ValueType.Null || cell.type === ValueType.Merge) return null;
+  if (cell.type === ValueType.Null || cell.type === ValueType.Merge)
+    return null;
 
   const computed = cell.type === ValueType.Formula;
   const raw: CellValue = computed ? (cell.result as CellValue) : cell.value;
@@ -370,7 +379,9 @@ interface NormalizedValue {
 }
 
 function textValue(text: string): NormalizedValue | null {
-  return text.trim().length ? { kind: 'text', value: text, display: text } : null;
+  return text.trim().length
+    ? { kind: 'text', value: text, display: text }
+    : null;
 }
 
 function normalizeValue(
@@ -435,7 +446,9 @@ export function formatDate(d: Date): string {
   const date = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   const hasTime =
     d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0;
-  return hasTime ? `${date} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` : date;
+  return hasTime
+    ? `${date} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+    : date;
 }
 
 // ─── sheets ─────────────────────────────────────────────────────────────
@@ -446,7 +459,8 @@ function stateOf(sheet: Worksheet): SheetState {
 }
 
 function sheetInfo(sheet: Worksheet, index: number): SheetInfo {
-  const raw = (sheet as unknown as { _merges?: Record<string, unknown> })._merges;
+  const raw = (sheet as unknown as { _merges?: Record<string, unknown> })
+    ._merges;
   const mergedRegions = raw
     ? Object.keys(raw).length
     : (sheet.model.merges?.length ?? 0);

@@ -81,7 +81,13 @@ describe('formatChatExport', () => {
             size: 2048,
             kind: 'binary',
           },
-          { id: 'x2', name: 'photo.png', mimeType: 'image/png', size: 500, kind: 'image' },
+          {
+            id: 'x2',
+            name: 'photo.png',
+            mimeType: 'image/png',
+            size: 500,
+            kind: 'image',
+          },
         ],
         agentText: AGENT_TEXT,
       },
@@ -90,7 +96,9 @@ describe('formatChatExport', () => {
 
     it('markdown → typed text then one line per attachment, never the dump', () => {
       const out = formatChatExport('markdown', SESSION, WITH_FILES);
-      expect(out.body).toContain('распарси\n📎 invoice.xlsx (2.0 KB)\n📎 photo.png (500 B)');
+      expect(out.body).toContain(
+        'распарси\n📎 invoice.xlsx (2.0 KB)\n📎 photo.png (500 B)',
+      );
       expect(out.body).not.toContain('[Attached file:');
       expect(out.body).not.toContain('R1: A=1');
     });

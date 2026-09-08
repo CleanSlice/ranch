@@ -180,7 +180,8 @@ export function formatWorkbookPreview(
       .join('; ');
 
   const budget = opts.budgetChars ?? Number.POSITIVE_INFINITY;
-  let remaining = budget - workbookLine.length - sheets.length * HEADER_RESERVE_CHARS;
+  let remaining =
+    budget - workbookLine.length - sheets.length * HEADER_RESERVE_CHARS;
   const sections: string[] = [];
 
   for (const info of sheets) {
@@ -208,7 +209,8 @@ export function formatWorkbookPreview(
         extra.push(`(rows ${prev + 1}–${row.row - 1} empty)`);
       }
       const line = renderRow(row);
-      const cost = extra.reduce((n, e) => n + e.length + 1, 0) + line.length + 1;
+      const cost =
+        extra.reduce((n, e) => n + e.length + 1, 0) + line.length + 1;
       if (cost > remaining) {
         omitted += section.rows.length - i;
         break;

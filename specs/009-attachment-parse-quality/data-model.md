@@ -87,6 +87,7 @@ Produced by the shared reader (`api/src/slices/bridle/domain/workbook.reader.ts`
 |---|---|---|
 | `address` | `string` | A1 notation of the master cell. |
 | `span` | `string?` | `A1:AN1` when the cell is the master of a merged region. |
+| `kind` | `'text' \| 'number' \| 'boolean' \| 'date' \| 'error'` | What the cell holds, so aggregates count only numbers and header guessing ignores dates. |
 | `value` | `string \| number \| boolean \| null` | Normalised (see below). |
 | `display` | `string` | What is printed (dates, percent, trimmed floats). |
 | `computed` | `boolean` | `true` for formula cells (value = cached result). |

@@ -44,7 +44,9 @@ describe('attachment block builders', () => {
       size: 1234,
     });
     expect(line.startsWith(ATTACHMENT_MARKER)).toBe(true);
-    expect(line).toContain(`deck.pptx — id: ${ID} (application/vnd.ms-powerpoint, 1,234 bytes)`);
+    expect(line).toContain(
+      `deck.pptx — id: ${ID} (application/vnd.ms-powerpoint, 1,234 bytes)`,
+    );
     expect(line.endsWith(']')).toBe(true);
     expect(line).not.toContain('\n');
   });
@@ -72,14 +74,20 @@ describe('splitAttachmentBlocks', () => {
 
   it('splits a legacy fenced block written before ids existed', () => {
     const full = 'hi\n\n[Attached file: a.txt]\n```\ncontents\n```';
-    expect(splitAttachmentBlocks(full)).toEqual({ text: 'hi', agentText: full });
+    expect(splitAttachmentBlocks(full)).toEqual({
+      text: 'hi',
+      agentText: full,
+    });
   });
 
   it('splits a legacy notice line', () => {
     const full =
       'hi\n\n[Attached file: deck.pptx (application/vnd.ms-powerpoint, 1,234 bytes). ' +
       'Its contents are not readable in this chat — it is delivered as a named reference only.]';
-    expect(splitAttachmentBlocks(full)).toEqual({ text: 'hi', agentText: full });
+    expect(splitAttachmentBlocks(full)).toEqual({
+      text: 'hi',
+      agentText: full,
+    });
   });
 
   it('splits a new notice line', () => {
@@ -90,7 +98,10 @@ describe('splitAttachmentBlocks', () => {
       size: 1234,
     });
     const full = `hi\n\n${line}`;
-    expect(splitAttachmentBlocks(full)).toEqual({ text: 'hi', agentText: full });
+    expect(splitAttachmentBlocks(full)).toEqual({
+      text: 'hi',
+      agentText: full,
+    });
   });
 
   it('returns an empty text for an attachment-only message', () => {
@@ -132,7 +143,8 @@ describe('splitAttachmentBlocks', () => {
   });
 
   it('does not split when the marker line is not followed by a valid block', () => {
-    const full = 'note to self:\n[Attached file: x] is what the API says\nmore text';
+    const full =
+      'note to self:\n[Attached file: x] is what the API says\nmore text';
     expect(splitAttachmentBlocks(full)).toEqual({ text: full });
   });
 
@@ -150,6 +162,9 @@ describe('splitAttachmentBlocks', () => {
   it('tolerates trailing blank lines after the last block', () => {
     const block = fencedBlock({ name: 'a.txt', id: ID, body: 'x' });
     const full = `hi\n\n${block}\n\n`;
-    expect(splitAttachmentBlocks(full)).toEqual({ text: 'hi', agentText: full });
+    expect(splitAttachmentBlocks(full)).toEqual({
+      text: 'hi',
+      agentText: full,
+    });
   });
 });

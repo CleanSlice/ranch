@@ -48,13 +48,15 @@ async function legacyCsvDump(body: Buffer): Promise<string> {
       const v = value as Record<string, unknown>;
       if (value instanceof Date) return value.toISOString();
       if ('richText' in v)
-        return (v.richText as Array<{ text: string }>).map((r) => r.text).join('');
+        return (v.richText as Array<{ text: string }>)
+          .map((r) => r.text)
+          .join('');
       if ('result' in v) return cellText(v.result);
       if ('text' in v) return String(v.text);
       if ('error' in v) return String(v.error);
       return '';
     }
-    return String(value);
+    return String(value as string | number | boolean);
   };
   const sections: string[] = [];
   workbook.eachSheet((sheet) => {
@@ -66,7 +68,8 @@ async function legacyCsvDump(body: Buffer): Promise<string> {
       });
       rows.push(values.join(','));
     });
-    if (rows.length) sections.push(`== Sheet: ${sheet.name} ==\n${rows.join('\n')}`);
+    if (rows.length)
+      sections.push(`== Sheet: ${sheet.name} ==\n${rows.join('\n')}`);
   });
   return sections.join('\n\n');
 }
@@ -139,23 +142,33 @@ describe('extractDocumentText', () => {
     expect(text).toContain('R2: A=alfalfa | B=120 | C=first, cut');
     expect(text).toContain('R3: A=oats | B=88');
     // A sheet with no rows keeps its header so the model knows it exists.
-    expect(text).toContain('== Sheet 2: Empty == visible · 0 rows × 0 cols used · no data rows');
+    expect(text).toContain(
+      '== Sheet 2: Empty == visible · 0 rows × 0 cols used · no data rows',
+    );
   });
 
   describe('reference supplier invoice', () => {
     let text: string;
     beforeAll(async () => {
-      text = (await extractDocumentText(XLSX_MIME, await buildSupplierInvoice())) ?? '';
+      text =
+        (await extractDocumentText(XLSX_MIME, await buildSupplierInvoice())) ??
+        '';
     });
 
     it('lists every sheet up front, hidden ones included', () => {
       const first = text.split('\n')[0];
-      expect(first).toMatch(/^Workbook: 3 sheets — 1 "Накл\. на склад\(1\)" \(visible/);
-      expect(first).toContain(`3 "${EXPECTED.hiddenSheet}" (hidden, ${EXPECTED.sheet3.rows} rows`);
+      expect(first).toMatch(
+        /^Workbook: 3 sheets — 1 "Накл\. на склад\(1\)" \(visible/,
+      );
+      expect(first).toContain(
+        `3 "${EXPECTED.hiddenSheet}" (hidden, ${EXPECTED.sheet3.rows} rows`,
+      );
     });
 
     it('emits a merged value once, at its master, with its span', () => {
-      expect(text).toContain(`R1: A1[${EXPECTED.sheet1.supplierSpan}]=${EXPECTED.sheet1.supplier}`);
+      expect(text).toContain(
+        `R1: A1[${EXPECTED.sheet1.supplierSpan}]=${EXPECTED.sheet1.supplier}`,
+      );
       // Two merged regions carry the supplier name (sheet 1 A1:AN1, sheet 2
       // A1:L1) — so exactly two occurrences, never forty per row.
       const occurrences = text.split(EXPECTED.sheet1.supplier).length - 1;
@@ -164,8 +177,12 @@ describe('extractDocumentText', () => {
 
     it('marks blank runs and formula cells', () => {
       expect(text).toContain('(rows 7–9 empty)');
-      expect(text).toContain(`R12: B=ВСЬОГО ДО СПЛАТИ | F=[=]${EXPECTED.sheet1.grandTotal}`);
-      expect(text).toContain(`R10: B=Сума без ПДВ | F=${EXPECTED.sheet1.subtotal}`);
+      expect(text).toContain(
+        `R12: B=ВСЬОГО ДО СПЛАТИ | F=[=]${EXPECTED.sheet1.grandTotal}`,
+      );
+      expect(text).toContain(
+        `R10: B=Сума без ПДВ | F=${EXPECTED.sheet1.subtotal}`,
+      );
     });
 
     it('renders dates, percentages and errors readably', () => {
@@ -224,7 +241,8 @@ describe('extractDocumentText', () => {
     expect(text.length).toBeLessThanOrEqual(budget);
     const header = lines.find((l) => l.startsWith('== Sheet 1: Long =='));
     expect(header).toMatch(/rows 1–(\d+) included · (\d+) rows omitted$/);
-    const [, included, omitted] = /rows 1–(\d+) included · (\d+) rows omitted$/.exec(header ?? '') ?? [];
+    const [, included, omitted] =
+      /rows 1–(\d+) included · (\d+) rows omitted$/.exec(header ?? '') ?? [];
     expect(Number(included) + Number(omitted)).toBe(301);
     // Every body line is a whole row or a gap marker — nothing sliced mid-row.
     for (const l of lines.slice(lines.indexOf(header ?? '') + 1)) {

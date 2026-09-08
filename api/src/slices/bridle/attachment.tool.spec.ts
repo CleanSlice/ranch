@@ -29,7 +29,10 @@ class MemoryGateway extends IBridleAttachmentGateway {
     throw new Error('not used');
   }
 
-  async fetch(agentId: string, id: string): Promise<IBridleStoredAttachment | null> {
+  async fetch(
+    agentId: string,
+    id: string,
+  ): Promise<IBridleStoredAttachment | null> {
     return this.items.get(`${agentId}/${id}`) ?? null;
   }
 }
@@ -95,10 +98,12 @@ describe('query_attachment', () => {
         { user: { sub: 'user-1' } } as unknown as Request,
       );
       expect(out.isError).toBe(true);
-      expect(out.content[0].text).toContain('only be called by an agent runtime');
+      expect(out.content[0].text).toContain(
+        'only be called by an agent runtime',
+      );
     });
 
-    it('does not reveal another agent\'s attachment', async () => {
+    it("does not reveal another agent's attachment", async () => {
       const out = await tool.query(
         { attachment_id: INVOICE_ID, op: 'describe' },
         undefined,
@@ -126,9 +131,18 @@ describe('query_attachment', () => {
       const out = parse<{
         attachment: { id: string; name: string };
         sheets: Array<Record<string, unknown>>;
-      }>(await tool.query({ attachment_id: INVOICE_ID, op: 'describe' }, undefined, agentA));
+      }>(
+        await tool.query(
+          { attachment_id: INVOICE_ID, op: 'describe' },
+          undefined,
+          agentA,
+        ),
+      );
 
-      expect(out.attachment).toEqual({ id: INVOICE_ID, name: 'supplier-invoice.xlsx' });
+      expect(out.attachment).toEqual({
+        id: INVOICE_ID,
+        name: 'supplier-invoice.xlsx',
+      });
       expect(out.sheets).toHaveLength(3);
       expect(out.sheets[0]).toMatchObject({
         index: 1,
@@ -140,21 +154,28 @@ describe('query_attachment', () => {
           cells: { B: 'Товар', C: 'Кількість', D: 'Ціна', F: 'Сума' },
         },
       });
-      expect(out.sheets[2]).toMatchObject({ state: 'hidden', name: EXPECTED.hiddenSheet });
+      expect(out.sheets[2]).toMatchObject({
+        state: 'hidden',
+        name: EXPECTED.hiddenSheet,
+      });
       expect(out.sheets[2]).not.toHaveProperty('headerGuess');
     });
   });
 
   describe('read', () => {
     it('returns the rows of a range, merged regions once', async () => {
-      const out = parse<{ rows: Array<{ row: number; cells: Array<{ address: string }> }> }>(
+      const out = parse<{
+        rows: Array<{ row: number; cells: Array<{ address: string }> }>;
+      }>(
         await tool.query(
           { attachment_id: INVOICE_ID, op: 'read', sheet: 1, range: 'A1:F12' },
           undefined,
           agentA,
         ),
       );
-      expect(out.rows.map((r) => r.row)).toEqual([1, 2, 3, 4, 5, 6, 10, 11, 12]);
+      expect(out.rows.map((r) => r.row)).toEqual([
+        1, 2, 3, 4, 5, 6, 10, 11, 12,
+      ]);
       expect(out.rows[0].cells).toHaveLength(1);
       expect(out.rows[0].cells[0]).toMatchObject({
         address: 'A1',
@@ -163,7 +184,11 @@ describe('query_attachment', () => {
     });
 
     it('needs a sheet', async () => {
-      const out = await tool.query({ attachment_id: INVOICE_ID, op: 'read' }, undefined, agentA);
+      const out = await tool.query(
+        { attachment_id: INVOICE_ID, op: 'read' },
+        undefined,
+        agentA,
+      );
       expect(out.isError).toBe(true);
       expect(out.content[0].text).toContain('needs a sheet');
     });
@@ -175,7 +200,9 @@ describe('query_attachment', () => {
         agentA,
       );
       expect(out.isError).toBe(true);
-      expect(out.content[0].text).toContain('Sheet "Итого" not found; available: 1 "');
+      expect(out.content[0].text).toContain(
+        'Sheet "Итого" not found; available: 1 "',
+      );
     });
 
     it('gates hidden sheets behind include_hidden', async () => {
@@ -219,7 +246,9 @@ describe('query_attachment', () => {
         agentA,
       );
       expect(big.isError).toBe(true);
-      expect(big.content[0].text).toBe('Range covers 52,000 cells; narrow it below 50,000.');
+      expect(big.content[0].text).toBe(
+        'Range covers 52,000 cells; narrow it below 50,000.',
+      );
 
       const clipped = await tool.query(
         { attachment_id: LONG_ID, op: 'read', sheet: 1, range: 'A1:ZZZ9999' },
@@ -227,14 +256,21 @@ describe('query_attachment', () => {
         agentA,
       );
       expect(clipped.isError).toBeUndefined();
-      expect(parse<{ warnings: string[] }>(clipped).warnings[0]).toMatch(/clipped/);
+      expect(parse<{ warnings: string[] }>(clipped).warnings[0]).toMatch(
+        /clipped/,
+      );
     });
   });
 
   describe('aggregate', () => {
     const run = (extra: Record<string, unknown>) =>
       tool.query(
-        { attachment_id: INVOICE_ID, op: 'aggregate', sheet: 1, ...extra } as never,
+        {
+          attachment_id: INVOICE_ID,
+          op: 'aggregate',
+          sheet: 1,
+          ...extra,
+        } as never,
         undefined,
         agentA,
       );
@@ -257,7 +293,10 @@ describe('query_attachment', () => {
     it('excludes formula totals when include_computed is false', async () => {
       const out = parse<{
         value: number;
-        covered: { cellsCounted: number; cellsSkipped: { computedExcluded: number } };
+        covered: {
+          cellsCounted: number;
+          cellsSkipped: { computedExcluded: number };
+        };
       }>(await run({ fn: 'sum', range: 'F5:F12', include_computed: false }));
 
       // Only F10 (entered subtotal) is a plain number in F5:F12.
@@ -267,17 +306,26 @@ describe('query_attachment', () => {
     });
 
     it('finds the largest item on sheet 2 with its address', async () => {
-      const out = parse<{ value: number; cells: Array<{ address: string; value: number }> }>(
+      const out = parse<{
+        value: number;
+        cells: Array<{ address: string; value: number }>;
+      }>(
         await tool.query(
-          { attachment_id: INVOICE_ID, op: 'aggregate', sheet: 2, fn: 'max', range: 'F:F' },
+          {
+            attachment_id: INVOICE_ID,
+            op: 'aggregate',
+            sheet: 2,
+            fn: 'max',
+            range: 'F:F',
+          },
           undefined,
           agentA,
         ),
       );
       expect(out.value).toBe(EXPECTED.sheet2.max);
-      expect(out.cells.find((c) => c.value === EXPECTED.sheet2.max)?.address).toBe(
-        EXPECTED.sheet2.maxAddress,
-      );
+      expect(
+        out.cells.find((c) => c.value === EXPECTED.sheet2.max)?.address,
+      ).toBe(EXPECTED.sheet2.maxAddress);
     });
 
     it('applies a where filter on another column', async () => {
@@ -295,7 +343,10 @@ describe('query_attachment', () => {
     it('counts a merged region once and reports the duplicates it skipped', async () => {
       const out = parse<{
         value: number | null;
-        covered: { cellsCounted: number; cellsSkipped: { nonNumeric: number; mergedDuplicates: number } };
+        covered: {
+          cellsCounted: number;
+          cellsSkipped: { nonNumeric: number; mergedDuplicates: number };
+        };
       }>(await run({ fn: 'count', range: 'A1:AN1' }));
 
       expect(out.value).toBeNull();
@@ -305,13 +356,19 @@ describe('query_attachment', () => {
     });
 
     it('returns null when nothing numeric is in range', async () => {
-      const out = parse<{ value: number | null }>(await run({ fn: 'sum', range: 'B4:B6' }));
+      const out = parse<{ value: number | null }>(
+        await run({ fn: 'sum', range: 'B4:B6' }),
+      );
       expect(out.value).toBeNull();
     });
 
     it('requires range and fn', async () => {
-      expect((await run({ fn: 'sum' })).content[0].text).toContain('needs a range');
-      expect((await run({ range: 'F5:F6' })).content[0].text).toContain('needs fn');
+      expect((await run({ fn: 'sum' })).content[0].text).toContain(
+        'needs a range',
+      );
+      expect((await run({ range: 'F5:F6' })).content[0].text).toContain(
+        'needs fn',
+      );
     });
   });
 
@@ -320,7 +377,11 @@ describe('query_attachment', () => {
       const out = parse<{
         matches: Array<{
           address: string;
-          rowCells: Array<{ address: string; value: unknown; computed: boolean }>;
+          rowCells: Array<{
+            address: string;
+            value: unknown;
+            computed: boolean;
+          }>;
         }>;
       }>(
         await tool.query(

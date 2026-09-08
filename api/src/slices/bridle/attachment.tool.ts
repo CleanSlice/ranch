@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
+import type { Workbook } from 'exceljs';
 import { z } from 'zod';
 import { Tool } from '#mcp';
 import { IAuthTokenPayload } from '#/user/auth/domain';
@@ -46,7 +47,9 @@ const parameters = z.object({
   sheet: z
     .union([z.string(), z.number().int().positive()])
     .optional()
-    .describe('Sheet name or 1-based index. Required for read, aggregate and find.'),
+    .describe(
+      'Sheet name or 1-based index. Required for read, aggregate and find.',
+    ),
   range: z
     .string()
     .optional()
@@ -123,7 +126,9 @@ export class BridleAttachmentTool {
     // nothing, and "not found" and "not yours" are deliberately the same.
     const stored = await this.attachments.fetch(agentId, args.attachment_id);
     if (!stored) {
-      return err(`Attachment ${args.attachment_id} is not available to this agent.`);
+      return err(
+        `Attachment ${args.attachment_id} is not available to this agent.`,
+      );
     }
     if (!isSpreadsheetMimeType(stored.mimeType)) {
       return err(
@@ -131,11 +136,13 @@ export class BridleAttachmentTool {
       );
     }
 
-    let workbook;
+    let workbook: Workbook;
     try {
       workbook = await loadWorkbook(stored.body);
     } catch {
-      return err(`Attachment "${stored.name}" could not be parsed as a workbook.`);
+      return err(
+        `Attachment "${stored.name}" could not be parsed as a workbook.`,
+      );
     }
 
     const attachment = { id: stored.id, name: stored.name };
@@ -180,7 +187,9 @@ export class BridleAttachmentTool {
       maxRows: READ_MAX_ROWS,
     });
     const rows = (
-      args.where ? section.rows.filter((r) => rowMatches(r, args.where!)) : section.rows
+      args.where
+        ? section.rows.filter((r) => rowMatches(r, args.where!))
+        : section.rows
     )
       .map(restrict)
       .filter((r) => r.cells.length);
@@ -199,17 +208,30 @@ export class BridleAttachmentTool {
     };
   }
 
-  private aggregate(workbook: Awaited<ReturnType<typeof loadWorkbook>>, args: Args) {
+  private aggregate(
+    workbook: Awaited<ReturnType<typeof loadWorkbook>>,
+    args: Args,
+  ) {
     const sheetRef = requireSheet(args);
     if (!args.range) {
-      throw new WorkbookReadError('aggregate needs a range, e.g. "F5:F47" or "F:F".');
+      throw new WorkbookReadError(
+        'aggregate needs a range, e.g. "F5:F47" or "F:F".',
+      );
     }
     if (!args.fn) {
-      throw new WorkbookReadError('aggregate needs fn: sum, min, max, count or avg.');
+      throw new WorkbookReadError(
+        'aggregate needs fn: sum, min, max, count or avg.',
+      );
     }
     const includeComputed = args.include_computed ?? true;
-    const { section, bounds, restrict } = this.readForQuery(workbook, sheetRef, args, {});
-    const area = (bounds.bottom - bounds.top + 1) * (bounds.right - bounds.left + 1);
+    const { section, bounds, restrict } = this.readForQuery(
+      workbook,
+      sheetRef,
+      args,
+      {},
+    );
+    const area =
+      (bounds.bottom - bounds.top + 1) * (bounds.right - bounds.left + 1);
 
     const counted: CellRef[] = [];
     let nonNumeric = 0;
@@ -221,7 +243,8 @@ export class BridleAttachmentTool {
       const row = restrict(fullRow);
       for (const cell of row.cells) {
         seen++;
-        if (cell.span) mergedDuplicates += spanCellsInside(cell.span, bounds) - 1;
+        if (cell.span)
+          mergedDuplicates += spanCellsInside(cell.span, bounds) - 1;
         if (cell.kind !== 'number' || typeof cell.value !== 'number') {
           nonNumeric++;
           continue;
@@ -295,7 +318,11 @@ export class BridleAttachmentTool {
     const matches: Array<{
       address: string;
       value: CellRef['value'];
-      rowCells: Array<{ address: string; value: CellRef['value']; computed: boolean }>;
+      rowCells: Array<{
+        address: string;
+        value: CellRef['value'];
+        computed: boolean;
+      }>;
     }> = [];
     let truncated = false;
     outer: for (const row of section.rows) {
@@ -310,11 +337,20 @@ export class BridleAttachmentTool {
           value: cell.value,
           rowCells: row.cells
             .filter((c) => c !== cell)
-            .map((c) => ({ address: c.address, value: c.value, computed: c.computed })),
+            .map((c) => ({
+              address: c.address,
+              value: c.value,
+              computed: c.computed,
+            })),
         });
       }
     }
-    return { sheet: publicInfo(section.info), query: args.query, matches, truncated };
+    return {
+      sheet: publicInfo(section.info),
+      query: args.query,
+      matches,
+      truncated,
+    };
   }
 
   /**
@@ -409,7 +445,9 @@ function rowMatches(row: CellRow, where: NonNullable<Args['where']>): boolean {
     case 'ne':
       return String(v).toLowerCase() !== String(where.value).toLowerCase();
     case 'contains':
-      return String(v).toLowerCase().includes(String(where.value).toLowerCase());
+      return String(v)
+        .toLowerCase()
+        .includes(String(where.value).toLowerCase());
     case 'gt':
       return typeof v === 'number' && v > Number(where.value);
     case 'lt':

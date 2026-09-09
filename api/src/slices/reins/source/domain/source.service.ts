@@ -3,11 +3,14 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import { Writable } from 'stream';
 import { ISourceGateway } from './source.gateway';
 import { ImportJobRegistry } from './importJob.registry';
+import { TextExtractionService } from '../../extraction/domain/textExtraction.service';
 import {
   IArchiveImportResult,
   IFilesImportResult,
@@ -57,6 +60,8 @@ export class SourceService {
   constructor(
     private readonly gateway: ISourceGateway,
     private readonly imports: ImportJobRegistry,
+    @Inject(forwardRef(() => TextExtractionService))
+    private readonly extraction: TextExtractionService,
   ) {}
 
   findByKnowledge(knowledgeId: string): Promise<ISourceData[]> {
@@ -92,20 +97,32 @@ export class SourceService {
     knowledgeId: string,
     file: IUploadedFile,
   ): Promise<ISourceData> {
-    const stored = await this.gateway.uploadFile({
-      knowledgeId,
-      filename: file.name,
-      body: file.buffer,
-      contentType: file.mimeType,
-    });
-    return this.gateway.create({
-      knowledgeId,
-      type: 'file',
-      name: file.name,
-      url: stored.url,
-      mimeType: file.mimeType,
-      sizeBytes: file.size,
-    });
+    const created = await this.addFileRow(knowledgeId, file);
+    // Ignored for anything but a PDF. A single upload gets no progress job;
+    // its own row says "extracting".
+    await this.scheduleExtraction(
+      () => this.extraction.schedule(created),
+      created.name,
+    );
+    return created;
+  }
+
+  /**
+   * Extraction is best-effort at this point: the upload has landed and must
+   * not fail because of it. A missed schedule is covered by the boot-time
+   * requeue and by "Re-extract text".
+   */
+  private async scheduleExtraction(
+    run: () => Promise<unknown>,
+    what: string,
+  ): Promise<void> {
+    try {
+      await run();
+    } catch (err) {
+      this.logger.warn(
+        `text extraction not scheduled for ${what}: ${errorMessage(err)}`,
+      );
+    }
   }
 
   /**
@@ -132,6 +149,7 @@ export class SourceService {
       errors: [],
     };
 
+    const created: ISourceData[] = [];
     for (const file of files) {
       if (takenNames.has(file.name)) {
         result.skipped += 1;
@@ -139,7 +157,7 @@ export class SourceService {
       }
       takenNames.add(file.name);
       try {
-        await this.addFile(knowledgeId, file);
+        created.push(await this.addFileRow(knowledgeId, file));
         result.added += 1;
       } catch (err) {
         result.failed += 1;
@@ -153,7 +171,45 @@ export class SourceService {
     this.logger.log(
       `file batch for ${knowledgeId}: added=${result.added} skipped=${result.skipped} failed=${result.failed}`,
     );
+    // One progress strip for the whole batch, opened only if it held a PDF.
+    await this.scheduleExtraction(
+      () => this.extraction.scheduleBatch(knowledgeId, created),
+      `${created.length} file(s) in ${knowledgeId}`,
+    );
     return result;
+  }
+
+  /** addFile without the single-source extraction schedule; batches schedule once. */
+  private async addFileRow(
+    knowledgeId: string,
+    file: IUploadedFile,
+  ): Promise<ISourceData> {
+    const stored = await this.gateway.uploadFile({
+      knowledgeId,
+      filename: file.name,
+      body: file.buffer,
+      contentType: file.mimeType,
+    });
+    return this.gateway.create({
+      knowledgeId,
+      type: 'file',
+      name: file.name,
+      url: stored.url,
+      mimeType: file.mimeType,
+      sizeBytes: file.size,
+    });
+  }
+
+  /** Re-run text extraction for a PDF row that already exists. */
+  async reextractSource(knowledgeId: string, sourceId: string): Promise<void> {
+    const source = await this.gateway.findById(sourceId);
+    if (!source || source.knowledgeId !== knowledgeId) {
+      throw new NotFoundException(`Source ${sourceId} not found`);
+    }
+    if (source.type !== 'file' || source.mimeType !== 'application/pdf') {
+      throw new BadRequestException('Only PDF file sources can be re-extracted');
+    }
+    await this.extraction.schedule(source);
   }
 
   addUrl(
@@ -190,15 +246,23 @@ export class SourceService {
       this.logger.warn(`removeFromIndex(${id}) failed: ${errorMessage(err)}`);
     }
     if (source.type === 'file' && source.url) {
-      try {
-        await this.gateway.deleteFile(source.url);
-      } catch (err) {
-        this.logger.warn(
-          `deleteFile(${source.url}) failed: ${errorMessage(err)}`,
-        );
-      }
+      await this.deleteStoredFiles(source);
     }
     await this.gateway.delete(id);
+  }
+
+  /** The file and, for a scanned PDF, the recognised text stored next to it. */
+  private async deleteStoredFiles(source: ISourceData): Promise<void> {
+    const urls = [source.url, source.textUrl].filter(
+      (u): u is string => typeof u === 'string' && u.length > 0,
+    );
+    for (const url of urls) {
+      try {
+        await this.gateway.deleteFile(url);
+      } catch (err) {
+        this.logger.warn(`deleteFile(${url}) failed: ${errorMessage(err)}`);
+      }
+    }
   }
 
   /**
@@ -244,6 +308,7 @@ export class SourceService {
     let skipped = 0;
     let failed = 0;
     let crashed: string | null = null;
+    const createdRows: ISourceData[] = [];
     try {
       const existing = await this.gateway.findByKnowledgeId(knowledgeId);
       const existingNames = new Set(
@@ -267,7 +332,7 @@ export class SourceService {
             body: entry.openStream(),
             contentType,
           });
-          await this.gateway.create({
+          const row = await this.gateway.create({
             knowledgeId,
             type: 'file',
             name,
@@ -275,6 +340,7 @@ export class SourceService {
             mimeType: contentType,
             sizeBytes: entry.size,
           });
+          createdRows.push(row);
           added += 1;
           this.imports.progress(jobId, { added: 1 });
         } catch (err) {
@@ -290,6 +356,11 @@ export class SourceService {
       }
       this.logger.log(
         `archive import for ${knowledgeId}: added=${added} skipped=${skipped} failed=${failed}`,
+      );
+      // After the upload strip, an OCR strip for whatever PDFs came in.
+      await this.scheduleExtraction(
+        () => this.extraction.scheduleBatch(knowledgeId, createdRows),
+        `archive into ${knowledgeId}`,
       );
     } catch (err) {
       crashed = errorMessage(err);
@@ -476,13 +547,7 @@ export class SourceService {
     }
     for (const source of sources) {
       if (source.type === 'file' && source.url) {
-        try {
-          await this.gateway.deleteFile(source.url);
-        } catch (err) {
-          this.logger.warn(
-            `deleteFile(${source.url}) failed: ${errorMessage(err)}`,
-          );
-        }
+        await this.deleteStoredFiles(source);
       }
     }
   }

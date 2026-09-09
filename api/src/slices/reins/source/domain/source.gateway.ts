@@ -11,6 +11,8 @@ import {
   IUploadSourceStreamInput,
   IUploadedSourceFile,
   ISourceIndexOutcome,
+  ISourceTextStatePatch,
+  SourceTextStateTypes,
 } from './source.types';
 
 export abstract class ISourceGateway {
@@ -71,6 +73,22 @@ export abstract class ISourceGateway {
     id: string,
     patch: ISourceIndexStatePatch,
   ): Promise<void>;
+  /** Owned by reins/extraction; nothing else writes text state. */
+  abstract updateTextState(
+    id: string,
+    patch: ISourceTextStatePatch,
+  ): Promise<void>;
+  /** Rows in one text state across every knowledge - the boot-time requeue. */
+  abstract findByTextState(
+    state: SourceTextStateTypes,
+  ): Promise<ISourceData[]>;
   abstract removeFromIndex(source: ISourceData): Promise<void>;
+  /**
+   * Forget what the retrieval service holds for this source and put the row
+   * back to queued, so the next index run sends it again. For when what
+   * should be indexed changed under an existing claim (OCR text landing on a
+   * row that was indexed from the file).
+   */
+  abstract resetIndexClaim(source: ISourceData): Promise<void>;
   abstract removeAllByKnowledge(knowledgeId: string): Promise<void>;
 }

@@ -83,6 +83,42 @@ export class KnowledgeConfigGateway extends IKnowledgeConfigGateway {
       value: true,
     });
   }
+
+  async isOcrEnabled(): Promise<boolean> {
+    const setting = await this.settings.findByKey(SETTING_GROUP, 'ocr_enabled');
+    const explicit = readBoolean(setting?.value);
+    if (explicit !== null) return explicit;
+    const env = readBoolean(this.env.get<string>('REINS_OCR_ENABLED', ''));
+    return env ?? DEFAULT_OCR_ENABLED;
+  }
+
+  async getOcrMaxPages(): Promise<number> {
+    const setting = await this.settings.findByKey(
+      SETTING_GROUP,
+      'ocr_max_pages',
+    );
+    const explicit = readPositiveInteger(setting?.value);
+    if (explicit !== null) return explicit;
+    const env = readPositiveInteger(
+      this.env.get<string>('REINS_OCR_MAX_PAGES', ''),
+    );
+    return env ?? DEFAULT_OCR_MAX_PAGES;
+  }
+}
+
+const DEFAULT_OCR_ENABLED = true;
+// Nothing in the corpus is near this, and a mis-uploaded 2000-page scan
+// should ask before it costs money. Textract's own ceiling is 3000.
+const DEFAULT_OCR_MAX_PAGES = 500;
+
+function readPositiveInteger(value: unknown): number | null {
+  const n =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim() !== ''
+        ? Number(value)
+        : NaN;
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 function readString(value: unknown): string | null {

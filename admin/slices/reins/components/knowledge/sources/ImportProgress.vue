@@ -18,6 +18,19 @@ function processed(job: IImportJob): number {
   return job.added + job.skipped + job.failed;
 }
 
+// Two kinds share one strip: an archive import counts files landing in S3,
+// an extraction counts scanned PDFs getting their text back.
+function title(job: IImportJob): string {
+  if (job.kind === 'extraction') {
+    if (job.status === 'running') return 'Extracting text from PDFs:';
+    if (job.status === 'done') return 'Text extracted:';
+    return 'Text extraction failed:';
+  }
+  if (job.status === 'running') return 'Importing archive:';
+  if (job.status === 'done') return 'Archive imported:';
+  return 'Archive import failed:';
+}
+
 function percent(job: IImportJob): number {
   if (job.detected === 0) return 100;
   return Math.min(100, Math.round((processed(job) / job.detected) * 100));
@@ -45,10 +58,12 @@ function toggle(id: string) {
     >
       <div class="flex items-center justify-between gap-3">
         <div class="min-w-0">
-          <span v-if="job.status === 'running'">Importing archive:</span>
-          <span v-else-if="job.status === 'done'">Archive imported:</span>
-          <span v-else class="text-destructive">Archive import failed:</span>
-          <span class="ml-1 font-medium">{{ job.added }} / {{ job.detected }} added</span>
+          <span :class="job.status === 'failed' ? 'text-destructive' : ''">
+            {{ title(job) }}
+          </span>
+          <span class="ml-1 font-medium">
+            {{ job.added }} / {{ job.detected }} {{ job.kind === 'extraction' ? 'done' : 'added' }}
+          </span>
           <span class="text-muted-foreground"> · {{ job.skipped }} skipped</span>
           <span :class="job.failed ? 'text-destructive' : 'text-muted-foreground'">
             · {{ job.failed }} failed

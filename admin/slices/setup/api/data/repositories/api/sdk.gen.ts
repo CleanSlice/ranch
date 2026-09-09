@@ -65,6 +65,7 @@ import type {
   ExportKnowledgeSourcesData,
   GetKnowledgeSourceContentData,
   ReindexKnowledgeSourceData,
+  ExtractKnowledgeSourceTextData,
   AddKnowledgeFileSourcesData,
   AddKnowledgeFileSourcesResponse,
   AddKnowledgeSourcesFromSitemapData,
@@ -1279,6 +1280,23 @@ export class KnowledgeSourcesService {
       ThrowOnError
     >({
       url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex",
+      ...options,
+    });
+  }
+
+  /**
+   * Re-run text extraction for a scanned PDF
+   * Probes the PDF for a text layer and, if it has none, sends it to OCR in the background. Progress is reported through the source own textState; press Index once it reads ready.
+   */
+  public static extractKnowledgeSourceText<
+    ThrowOnError extends boolean = false,
+  >(options: Options<ExtractKnowledgeSourceTextData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/{sourceId}/extract",
       ...options,
     });
   }

@@ -376,6 +376,128 @@ describe('query_attachment', () => {
     });
   });
 
+  describe('aggregate over several ranges (CLEAN-71)', () => {
+    type Part = {
+      sheet: { index: number; name: string };
+      range: string;
+      value: number | null;
+      cellsCounted: number;
+      cells?: Array<{ address: string; value: number; computed: boolean }>;
+    };
+    const multi = (extra: Record<string, unknown>) =>
+      tool.query(
+        { attachment_id: INVOICE_ID, op: 'aggregate', ...extra } as never,
+        undefined,
+        agentA,
+      );
+
+    it('sums ranges on two sheets in one call and returns each addend with its cell', async () => {
+      const out = parse<{
+        value: number;
+        parts: Part[];
+        covered: { cellsCounted: number };
+      }>(
+        await multi({
+          fn: 'sum',
+          ranges: [
+            { sheet: 1, range: 'F12' },
+            { sheet: 2, range: EXPECTED.sheet2.footer.payable.cell },
+          ],
+        }),
+      );
+
+      expect(out.value).toBe(
+        Math.round(
+          (EXPECTED.sheet1.grandTotal + EXPECTED.sheet2.payable) * 100,
+        ) / 100,
+      );
+      expect(out.covered.cellsCounted).toBe(2);
+      expect(out.parts.map((p) => [p.sheet.index, p.range, p.value])).toEqual([
+        [1, 'F12:F12', EXPECTED.sheet1.grandTotal],
+        [2, 'F13:F13', EXPECTED.sheet2.payable],
+      ]);
+      expect(out.parts[1].cells).toEqual([
+        { address: 'F13', value: EXPECTED.sheet2.payable, computed: true },
+      ]);
+    });
+
+    it('finds the maximum across sheets and names its cell', async () => {
+      const out = parse<{ value: number; parts: Part[] }>(
+        await multi({
+          fn: 'max',
+          ranges: [
+            { sheet: 1, range: 'F5:F6' },
+            { sheet: 2, range: EXPECTED.sheet2.itemRange },
+          ],
+        }),
+      );
+      // Sheet 1's items (5460, 4160) beat sheet 2's largest (1476).
+      expect(out.value).toBe(5460);
+      const part = out.parts.find((p) => p.value === out.value);
+      expect(part?.sheet.index).toBe(1);
+      expect(part?.cells?.find((c) => c.value === 5460)?.address).toBe('F5');
+    });
+
+    it('uses the top-level sheet for entries without one and applies where per entry', async () => {
+      const out = parse<{ value: number; parts: Part[] }>(
+        await multi({
+          fn: 'sum',
+          sheet: 1,
+          ranges: [
+            { range: 'F5:F6' },
+            { sheet: 2, range: EXPECTED.sheet2.itemRange },
+          ],
+          where: { column: 'B', op: 'contains', value: 'Троянда' },
+        }),
+      );
+      // Only sheet 1's items are roses; sheet 2's entry counts nothing.
+      expect(out.parts[0].cellsCounted).toBe(2);
+      expect(out.parts[1].cellsCounted).toBe(0);
+      expect(out.parts[1].value).toBeNull();
+      expect(out.value).toBe(EXPECTED.sheet1.itemSum);
+    });
+
+    it('names the failing entry when one sheet is wrong', async () => {
+      const out = await multi({
+        fn: 'sum',
+        ranges: [
+          { sheet: 1, range: 'F12' },
+          { sheet: 'Итого', range: 'F13' },
+        ],
+      });
+      expect(out.isError).toBe(true);
+      expect(out.content[0].text).toMatch(/^entry 2: Sheet "Итого" not found/);
+    });
+
+    it('applies the cell cap to all entries together', async () => {
+      const out = await tool.query(
+        {
+          attachment_id: CORNER_ID,
+          op: 'aggregate',
+          fn: 'count',
+          ranges: [
+            { sheet: 1, range: 'A1:GR130' },
+            { sheet: 1, range: 'A131:GR260' },
+          ],
+        },
+        undefined,
+        agentA,
+      );
+      expect(out.isError).toBe(true);
+      expect(out.content[0].text).toBe(
+        'Ranges cover 52,000 cells across all entries; narrow them below 50,000.',
+      );
+    });
+
+    it('needs a sheet somewhere for every entry', async () => {
+      const out = await multi({ fn: 'sum', ranges: [{ range: 'F12' }] });
+      expect(out.isError).toBe(true);
+      expect(out.content[0].text).toBe(
+        'aggregate: entry 1 needs a sheet, or set sheet at the top level.',
+      );
+    });
+  });
+
   describe('aggregate', () => {
     const run = (extra: Record<string, unknown>) =>
       tool.query(

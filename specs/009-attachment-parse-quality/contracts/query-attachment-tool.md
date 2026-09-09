@@ -112,6 +112,10 @@ At most 100 matches; `rowCells` gives the other non-empty cells on the same row 
 | Over `MAX_QUERY_CELLS` | `Range covers <n> cells; narrow it below <limit>.` |
 | Workbook unreadable | `Attachment "<name>" could not be parsed as a workbook.` |
 
+### `aggregate` over several ranges (added by CLEAN-71)
+
+`ranges: [{ sheet?, range }]` combines several ranges, on one or several sheets, in one computation and returns a per-range breakdown with cells. Contract: `specs/012-multi-range-aggregate/contracts/multi-range-aggregate.md`.
+
 ### `structure` (added by CLEAN-69)
 
 Tables, title area and the label → value lines after each table for one sheet; `describe` carries the same per visible sheet. Contract: `specs/011-sheet-structure/contracts/sheet-structure.md`.

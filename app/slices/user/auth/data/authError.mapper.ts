@@ -25,7 +25,9 @@ export class AuthErrorMapper implements IErrorMapper {
   toErrorEntity(error: unknown): ErrorEntity {
     const e = (error ?? {}) as AxiosLikeError;
     const status = e.response?.status ?? 0;
-    const serverMessage = pickMessage(e.response?.data ?? e.error);
+    const body = e.response?.data ?? e.error;
+    const serverMessage = pickMessage(body);
+    const code = pickCode(body);
 
     if (e.code === 'ERR_NETWORK' || status === 0) {
       return new UnknownAuthError(
@@ -34,7 +36,17 @@ export class AuthErrorMapper implements IErrorMapper {
       );
     }
     if (status === 401) {
-      return new BadCredentialsError('Incorrect email or password.');
+      // A 401 with a machine-readable code is the API talking about the
+      // session (`SESSION_*` from /auth/refresh) or the token (`TOKEN_*` from
+      // /auth/me), never about the credentials just typed. The store reads
+      // `code`; a login/register 401 stays "wrong email or password".
+      if (isSessionCode(code)) {
+        return new UnknownAuthError(serverMessage ?? 'Your session has ended.', {
+          statusCode: 401,
+          code,
+        });
+      }
+      return new BadCredentialsError('Incorrect email or password.', { code });
     }
     if (status === 429) {
       return new TooManyAttemptsError(
@@ -48,9 +60,20 @@ export class AuthErrorMapper implements IErrorMapper {
     }
     return new UnknownAuthError(
       serverMessage ?? 'Something went wrong. Please try again.',
-      { statusCode: status || 500 },
+      { statusCode: status || 500, code },
     );
   }
+}
+
+/** The 401 `code` the API sets on every guarded route and on `/auth/refresh` (CLEAN-72). */
+function pickCode(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const raw = (body as Record<string, unknown>).code;
+  return typeof raw === 'string' && raw ? raw : undefined;
+}
+
+function isSessionCode(code: string | undefined): code is string {
+  return !!code && (code.startsWith('SESSION_') || code.startsWith('TOKEN_'));
 }
 
 /** Pull a human message out of the API error body (`message` / `detail` / `error`). */

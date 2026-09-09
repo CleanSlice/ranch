@@ -15,8 +15,13 @@ export interface IAuthUser {
   status: string;
 }
 
-/** A successful login/register result: bearer token + the authenticated user. */
+/**
+ * A successful login/register/refresh result: bearer token, its lifetime in
+ * seconds at issue time (the store arms the proactive refresh from it), and
+ * the authenticated user.
+ */
 export interface IAuthSession {
   accessToken: string;
+  expiresIn: number;
   user: IAuthUser;
 }

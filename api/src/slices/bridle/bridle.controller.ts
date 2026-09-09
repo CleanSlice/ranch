@@ -50,6 +50,11 @@ import {
 } from './domain';
 import type { ChatHeaders, IAttachmentRequester, IChatAuth } from './domain';
 import {
+  AuthErrorCodes,
+  classifyJwtError,
+  unauthorized,
+} from '#/user/auth/domain/auth.types';
+import {
   SendMessageDto,
   BridleHealthDto,
   BridleAgentHealthDto,
@@ -113,15 +118,26 @@ const ApiShareHeaders = () =>
       required: false,
       description:
         'Opaque per-browser visitor id minted by the share page. Required ' +
-        'whenever `X-Share-Token` is sent; it selects the visitor\'s own ' +
+        "whenever `X-Share-Token` is sent; it selects the visitor's own " +
         '`share-<visitorId>` chat channel and owns their attachments.',
     }),
   );
 
+/**
+ * 401 body for a bearer that was offered but cannot be used (CLEAN-72). A
+ * request with no credentials at all is NOT rejected here — it stays the
+ * anonymous embed visitor.
+ */
+const BEARER_UNAUTHORIZED_DESCRIPTION =
+  'A bearer token was offered but is expired or invalid, and no share ' +
+  "headers were present. Body is `{ code: 'TOKEN_EXPIRED' | " +
+  "'TOKEN_INVALID', message }` — the console renews via POST /auth/refresh " +
+  'and retries once. Requests with no credentials stay anonymous.';
+
 /** 403 body shared by every share-link rejection. */
 const SHARE_FORBIDDEN_DESCRIPTION =
   'Share headers were offered but rejected — revoked, unknown or ' +
-  "foreign-agent token, or a malformed visitor id. Body is `{ code: " +
+  'foreign-agent token, or a malformed visitor id. Body is `{ code: ' +
   "'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never " +
   '401: a share visitor has no account to log in to.';
 
@@ -147,9 +163,15 @@ export class BridleController {
    * `sub` (or `admin` for owners/admins). A stable id is essential — the agent
    * runtime keys access-approval AND session history on this id, so a fresh id
    * per request re-triggers the "send the owner your code" flow on every message
-   * and scatters history across throwaway channels. Anonymous callers (no or
-   * unusable token) come back as `{ clientId: null, kind: 'anonymous' }` and the
+   * and scatters history across throwaway channels. Anonymous callers (no
+   * token at all) come back as `{ clientId: null, kind: 'anonymous' }` and the
    * caller mints a per-request throwaway id.
+   *
+   * A bearer that IS offered but cannot be used (expired, forged, no usable
+   * subject) is a 401 `{ code }` — never a silent demotion to anonymous: the
+   * person would keep chatting as a stranger with no history (CLEAN-72). The
+   * one exception mirrors `BridleChatAuthGuard`: when share headers ride along,
+   * the dead console token is ignored and the share branch decides.
    *
    * A share-link visitor is identified instead by the `X-Share-Token` +
    * `X-Share-Visitor` pair, re-validated against this `agentId` on every single
@@ -169,13 +191,22 @@ export class BridleController {
   ): Promise<IAttachmentRequester> {
     const headers = req.headers as ChatHeaders;
 
+    const shareOffered = hasShareToken(headers);
     const token = parseBearer(headers);
     if (token) {
-      const identity = clientIdFromJwtPayload(this.verifyJwt(token));
+      const verified = this.verifyJwt(token);
+      const identity = clientIdFromJwtPayload(verified.payload);
       if (identity) return { clientId: identity.clientId, kind: 'jwt' };
+      if (!shareOffered) {
+        throw unauthorized(
+          verified.error
+            ? classifyJwtError(verified.error)
+            : AuthErrorCodes.TokenInvalid,
+        );
+      }
     }
 
-    if (hasShareToken(headers)) {
+    if (shareOffered) {
       const clientId = await resolveShareIdentity(
         headers,
         agentId,
@@ -187,11 +218,14 @@ export class BridleController {
     return { clientId: null, kind: 'anonymous' };
   }
 
-  private verifyJwt(token: string): Record<string, unknown> | null {
+  private verifyJwt(token: string): {
+    payload: Record<string, unknown> | null;
+    error?: unknown;
+  } {
     try {
-      return this.jwt.verify<Record<string, unknown>>(token);
-    } catch {
-      return null;
+      return { payload: this.jwt.verify<Record<string, unknown>>(token) };
+    } catch (error) {
+      return { payload: null, error };
     }
   }
 
@@ -236,6 +270,7 @@ export class BridleController {
   // stops synthesising the default success entry, and the generated client
   // would lose its 2xx type.
   @ApiOkResponse({ description: 'Accepted and forwarded to the agent.' })
+  @ApiUnauthorizedResponse({ description: BEARER_UNAUTHORIZED_DESCRIPTION })
   @ApiForbiddenResponse({ description: SHARE_FORBIDDEN_DESCRIPTION })
   @ApiBadRequestResponse({
     description:
@@ -287,6 +322,7 @@ export class BridleController {
       "The agent's reply (`{ text, messageId, ts }`), or a timeout notice " +
       'after 120s.',
   })
+  @ApiUnauthorizedResponse({ description: BEARER_UNAUTHORIZED_DESCRIPTION })
   @ApiForbiddenResponse({ description: SHARE_FORBIDDEN_DESCRIPTION })
   @ApiBadRequestResponse({
     description:

@@ -14,6 +14,9 @@ const EMPTY_USER: IAuthUser = {
 
 const VALID_ROLES = new Set<string>(Object.values(UserRoleTypes));
 
+/** Access-token lifetime the API defaults to (`JWT_EXPIRES_IN=15m`), in seconds. */
+const DEFAULT_EXPIRES_IN = 900;
+
 /**
  * Maps the (untyped) auth responses onto domain shapes. Reads defensively and
  * falls back to the lowest role so an unexpected backend value can't crash
@@ -38,6 +41,10 @@ export class AuthMapper {
       raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
     return {
       accessToken: typeof o.accessToken === 'string' ? o.accessToken : '',
+      expiresIn:
+        typeof o.expiresIn === 'number' && o.expiresIn > 0
+          ? o.expiresIn
+          : DEFAULT_EXPIRES_IN,
       user: this.toUser(o.user) ?? { ...EMPTY_USER },
     };
   }

@@ -303,6 +303,37 @@ describe('BridleClientWsHandler — handshake identity', () => {
     });
   });
 
+  it('rejects an expired token on a private agent with TOKEN_EXPIRED so the console can renew', async () => {
+    const { handler, client, emitted } = makeConnection({
+      auth: { agentId: 'agent-1', token: 'stale' },
+      origin: 'https://embed.test',
+      agent: { isPublic: false, allowedOrigins: [] },
+      verify: () => {
+        throw Object.assign(new Error('jwt expired'), {
+          name: 'TokenExpiredError',
+        });
+      },
+    });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toEqual({});
+    expect(emitted[0].event).toBe('bridle_error');
+    expect(emitted[0].payload).toMatchObject({ code: 'TOKEN_EXPIRED' });
+  });
+
+  it('keeps INVALID_TOKEN for a forged token on a private agent', async () => {
+    const { handler, client, emitted } = makeConnection({
+      auth: { agentId: 'agent-1', token: 'forged' },
+      origin: 'https://embed.test',
+      agent: { isPublic: false, allowedOrigins: [] },
+    });
+
+    await handler.handleConnection(client);
+
+    expect(emitted[0].payload).toMatchObject({ code: 'INVALID_TOKEN' });
+  });
+
   it('rejects a token-less handshake on a private agent without touching data', async () => {
     const { handler, client, emitted } = makeConnection({
       auth: { agentId: 'agent-1' },

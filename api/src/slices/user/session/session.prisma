@@ -1,0 +1,20 @@
+// Console session: an opaque secret in an httpOnly cookie, hashed at rest.
+// No relation to User (repo convention — `userId` is a FK by convention like
+// ApiKey.createdBy); a refresh re-reads the user and refuses when it is gone.
+model Session {
+  id                String    @id @default(uuid())
+  userId            String
+  secretHash        String    @unique
+  /// Sliding inactivity deadline — moved forward on every refresh.
+  expiresAt         DateTime
+  /// Hard ceiling set at creation; never moved.
+  absoluteExpiresAt DateTime
+  lastSeenAt        DateTime  @default(now())
+  revokedAt         DateTime?
+  userAgent         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+}

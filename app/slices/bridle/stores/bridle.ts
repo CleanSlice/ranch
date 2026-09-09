@@ -115,6 +115,12 @@ export const useBridleStore = defineStore('bridle', () => {
   const staged = ref<Record<string, IBridleStagedAttachment[]>>({});
   /** Last rejection, surfaced once and then dismissed by the next action. */
   const attachmentErrors = ref<Record<string, IBridleAttachmentError | null>>({});
+  /**
+   * Text of a message the console could not send because the session ended
+   * mid-flight (CLEAN-72). The composer picks it up again so the person can
+   * resend after signing in; consumed once, never persisted.
+   */
+  const drafts = ref<Record<string, string>>({});
 
   // Read side takes the bare `key` — a template already holds the descriptor
   // and passing the whole object just to look up an array buys nothing.
@@ -123,6 +129,11 @@ export const useBridleStore = defineStore('bridle', () => {
   const errorFor = (key: string) => errors.value[key] ?? null;
   const stagedFor = (key: string) => staged.value[key] ?? [];
   const attachmentErrorFor = (key: string) => attachmentErrors.value[key] ?? null;
+  const draftFor = (key: string) => drafts.value[key] ?? '';
+
+  function clearDraft(key: string) {
+    delete drafts.value[key];
+  }
 
   const isUploading = (key: string) =>
     stagedFor(key).some((a) => a.state === BridleAttachmentStates.Uploading);
@@ -369,8 +380,9 @@ export const useBridleStore = defineStore('bridle', () => {
       readableByAgent: isReadableByAgent(a.kind, a.mimeType),
     }));
 
+    const optimisticId = `u-${Date.now()}`;
     appendMessage(conv, {
-      id: `u-${Date.now()}`,
+      id: optimisticId,
       role: BridleRoleTypes.User,
       text: trimmed,
       ts: Date.now(),
@@ -398,8 +410,24 @@ export const useBridleStore = defineStore('bridle', () => {
         ts: reply.ts ?? Date.now(),
       });
     } catch (err) {
-      errors.value[key] =
-        (err as Error).message || 'Failed to reach agent';
+      const status = (err as { response?: { status?: number } } | null)
+        ?.response?.status;
+      if (status === 401 || useAuthStore().sessionEnded) {
+        // The api plugin already tried to renew the token and, failing that,
+        // raised the session-ended dialog — a second banner would only shout
+        // over it. Take the optimistic bubble back and keep the text as a
+        // draft so nothing typed is lost across the sign-in.
+        const list = conversations.value[key];
+        const index = list?.findIndex((m) => m.id === optimisticId) ?? -1;
+        if (list && index !== -1) {
+          list.splice(index, 1);
+          persist(conv);
+        }
+        if (trimmed) drafts.value[key] = trimmed;
+      } else {
+        errors.value[key] =
+          (err as Error).message || 'Failed to reach agent';
+      }
     } finally {
       pending.value[key] = false;
     }
@@ -410,6 +438,7 @@ export const useBridleStore = defineStore('bridle', () => {
     delete conversations.value[conv.key];
     delete pending.value[conv.key];
     delete errors.value[conv.key];
+    delete drafts.value[conv.key];
     clearConversationFromStorage(conv.key);
   }
 
@@ -418,6 +447,8 @@ export const useBridleStore = defineStore('bridle', () => {
     messagesFor,
     isPending,
     errorFor,
+    draftFor,
+    clearDraft,
     hydrate,
     sendMessage,
     reset,

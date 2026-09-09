@@ -7,6 +7,10 @@ export default defineNuxtRouteMiddleware((to) => {
 
   if (!authStore.isAuthenticated) {
     if (isLoginPage) return;
+    // The session ended mid-use: the in-place dialog owns the screen and the
+    // page must stay where it is, so a stray programmatic navigation is
+    // dropped instead of bouncing to /login.
+    if (authStore.sessionEnded) return false;
     return navigateTo('/login');
   }
 

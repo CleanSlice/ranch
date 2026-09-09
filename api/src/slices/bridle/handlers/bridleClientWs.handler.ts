@@ -9,6 +9,10 @@ import {
 } from '@nestjs/websockets';
 import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import {
+  AuthErrorCodes,
+  classifyJwtError,
+} from '#/user/auth/domain/auth.types';
 import { Server, Socket } from 'socket.io';
 import {
   IBridleGateway,
@@ -130,10 +134,12 @@ export class BridleClientWsHandler
       // token-carrying embed must get its stable per-user channel (JWT `sub`)
       // even when the agent is also public on a whitelisted origin.
       let payload: Record<string, unknown> | null = null;
+      let verifyError: unknown;
       try {
         payload = this.jwt.verify<Record<string, unknown>>(auth.token);
-      } catch {
+      } catch (err) {
         payload = null;
+        verifyError = err;
       }
 
       // A signed token with neither an admin role nor a `sub` proves nothing
@@ -153,8 +159,17 @@ export class BridleClientWsHandler
           `Browser connected (public, invalid token ignored): clientId=${clientId} agentId=${agentId} origin=${origin}`,
         );
       } else {
-        this.logger.warn('Browser connection rejected: invalid JWT');
-        return reject('INVALID_TOKEN');
+        // `TOKEN_EXPIRED` lets the admin console renew and reconnect once;
+        // `INVALID_TOKEN` keeps its historical name for the embed SDK.
+        // follow-up: embed SDK refresh path (the public-agent branch above
+        // still degrades a dead token to anonymous for that reason).
+        const code =
+          verifyError &&
+          classifyJwtError(verifyError) === AuthErrorCodes.TokenExpired
+            ? 'TOKEN_EXPIRED'
+            : 'INVALID_TOKEN';
+        this.logger.warn(`Browser connection rejected: ${code}`);
+        return reject(code);
       }
     } else if (publicAllowed) {
       // Public-agent path: anonymous browser session, no token required.

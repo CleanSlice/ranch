@@ -88,17 +88,36 @@ describe('BridleChatAuthGuard — JWT callers', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('rejects a bad bearer token with 401 when no share headers are offered', async () => {
+  it('rejects an expired bearer with 401 TOKEN_EXPIRED when no share headers are offered', async () => {
+    // The console renews and retries on this code (CLEAN-72).
     const { guard } = makeGuard({
       verify: () => {
-        throw new Error('jwt expired');
+        throw Object.assign(new Error('jwt expired'), {
+          name: 'TokenExpiredError',
+        });
       },
     });
     const { context } = makeContext({ authorization: 'Bearer stale' });
 
-    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(guard.canActivate(context)).rejects.toMatchObject({
+      status: 401,
+      response: { code: 'TOKEN_EXPIRED' },
+    });
+  });
+
+  it('rejects a forged bearer with 401 TOKEN_INVALID when no share headers are offered', async () => {
+    const { guard } = makeGuard({
+      verify: () => {
+        throw Object.assign(new Error('invalid signature'), {
+          name: 'JsonWebTokenError',
+        });
+      },
+    });
+    const { context } = makeContext({ authorization: 'Bearer forged' });
+
+    const err = await guard.canActivate(context).catch((e) => e);
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect(err.getResponse()).toMatchObject({ code: 'TOKEN_INVALID' });
   });
 
   it('rejects a signed token that carries no usable subject', async () => {
@@ -113,7 +132,7 @@ describe('BridleChatAuthGuard — JWT callers', () => {
 
     await expect(guard.canActivate(context)).rejects.toMatchObject({
       status: 401,
-      message: 'Invalid or expired token',
+      response: { code: 'TOKEN_INVALID' },
     });
     expect(req.chatAuth).toBeUndefined();
   });
@@ -212,13 +231,13 @@ describe('BridleChatAuthGuard — share visitors', () => {
 });
 
 describe('BridleChatAuthGuard — no credentials', () => {
-  it('answers 401 with the unchanged message', async () => {
+  it('answers 401 TOKEN_MISSING', async () => {
     const { guard } = makeGuard();
     const { context } = makeContext({});
 
     await expect(guard.canActivate(context)).rejects.toMatchObject({
       status: 401,
-      message: 'Missing access token',
+      response: { code: 'TOKEN_MISSING' },
     });
   });
 

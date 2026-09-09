@@ -17,8 +17,9 @@
 # cluster ever migrates to the k8s/platform manifests.
 #
 # NOTE: the role claim lives in the JWT (RolesGuard reads the token, not the
-# DB), so a token issued before this run keeps its old role until it expires
-# (JWT_EXPIRES_IN, default 7d) or the user logs in again.
+# DB), so a token issued before this run keeps its old role until the console
+# renews it from the session (JWT_EXPIRES_IN, 15m — CLEAN-72) or the user logs
+# in again.
 
 name: Ops - set user role (prod DB)
 

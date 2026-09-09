@@ -1,3 +1,5 @@
+import { authedFetch } from '#auth/utils/authedFetch';
+
 const REPO = 'CleanSlice/Ranch';
 const STORAGE_KEY = 'ranch:updateCheck';
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -73,11 +75,7 @@ async function fetchLiveCurrent(): Promise<string | null> {
   try {
     const config = useRuntimeConfig();
     const apiUrl = config.public.apiUrl as string;
-    const raw = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)?.[1];
-    const token = raw ? decodeURIComponent(raw) : null;
-    const res = await fetch(`${apiUrl}/upgrade/status`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res = await authedFetch(`${apiUrl}/upgrade/status`);
     if (!res.ok) return null;
     const data = (await res.json()) as { currentVersion?: string };
     return data.currentVersion ?? null;

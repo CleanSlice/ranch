@@ -1,5 +1,6 @@
 import { AgentsService, LogsService } from '#api/data';
 import { client } from '#api/data/repositories/api/client.gen';
+import { authedFetch } from '#auth/utils/authedFetch';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IAgentGateway } from '../domain/agent.gateway';
@@ -41,12 +42,6 @@ function unwrapOrThrow(res: HeyApiResult, action: string): unknown {
   const payload = unwrapEnvelope(res.data);
   if (payload === null) throw new Error(`${action} failed: the API returned no data.`);
   return payload;
-}
-
-function readAccessToken(): string | null {
-  if (typeof document === 'undefined') return null;
-  const token = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)?.[1];
-  return token ? decodeURIComponent(token) : null;
 }
 
 export class AgentGateway extends BaseGateway implements IAgentGateway {
@@ -116,20 +111,16 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
   }
 
   // Raw fetch: the OpenAPI spec doesn't expose `wipeS3` as a typed query param.
-  // Re-attach the Bearer from the access_token cookie ourselves (the same job
-  // the SDK's axios interceptor does).
+  // `authedFetch` attaches the bearer and applies the same refresh-and-retry
+  // rule the SDK's axios interceptor does.
   remove(id: string, wipeS3: boolean): Promise<void> {
     return this.execute(async () => {
       const runtime = useRuntimeConfig();
       const url = new URL(`${runtime.public.apiUrl}/agents/${id}`);
       if (wipeS3) url.searchParams.set('wipeS3', 'true');
-      const headers: Record<string, string> = {};
-      const token = readAccessToken();
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch(url.toString(), {
+      const res = await authedFetch(url.toString(), {
         method: 'DELETE',
         credentials: 'include',
-        headers,
       });
       if (!res.ok) {
         throw new Error(`Delete failed: ${res.status} ${res.statusText}`);

@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { io, type Socket } from 'socket.io-client'
+import { useAuthStore } from '#auth/stores/auth'
+import { authedFetch, authedXhrHeaders, ensureFreshToken } from '#auth/utils/authedFetch'
 import {
   BridleAttachmentKinds,
   BridleAttachmentStates,
@@ -220,11 +222,14 @@ interface ITranscriptPage {
  * GET the transcript replay endpoint. The endpoint wraps the response in the
  * Ranch `{ success, data }` envelope; we accept either shape so the store
  * survives changes to the global response interceptor.
+ *
+ * `authedFetch` carries the current bearer and refreshes-and-retries once on
+ * an expired token; a 401 it could not recover has already moved the auth
+ * store to the session-ended state, so here it is just "no page".
  */
 async function fetchTranscriptPage(
   apiUrl: string,
   agentId: string,
-  token: string,
   channel: string,
   cursor?: string,
 ): Promise<ITranscriptPage | null> {
@@ -232,7 +237,7 @@ async function fetchTranscriptPage(
   params.set('limit', String(TRANSCRIPT_PAGE_SIZE))
   if (cursor) params.set('cursor', cursor)
   const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/transcript?${params.toString()}`
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await authedFetch(url)
   if (!res.ok) {
     console.warn('[bridle] transcript fetch returned', res.status)
     return null
@@ -252,17 +257,19 @@ async function fetchTranscriptPage(
  * Upload one attachment and report progress.
  *
  * XMLHttpRequest rather than fetch: fetch still has no upload-progress event,
- * and a 10 MB file with no progress bar reads as a hang. Same apiUrl + bearer
- * shape as every other request in this store.
+ * and a 10 MB file with no progress bar reads as a hang. XHR gets no
+ * refresh-and-retry, so the token is renewed *before* the bytes leave when it
+ * is close to expiry — a 10 MB upload must not die at the finish line.
  */
-function uploadAttachment(
+async function uploadAttachment(
   apiUrl: string,
   agentId: string,
-  token: string,
   file: File,
   onProgress: (percent: number) => void,
 ): Promise<IUploadedAttachment> {
   const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/attachment`
+  await ensureFreshToken()
+  const headers = authedXhrHeaders()
 
   return new Promise((resolve, reject) => {
     const form = new FormData()
@@ -270,7 +277,9 @@ function uploadAttachment(
 
     const xhr = new XMLHttpRequest()
     xhr.open('POST', url)
-    xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    for (const [name, value] of Object.entries(headers)) {
+      xhr.setRequestHeader(name, value)
+    }
 
     xhr.upload.onprogress = (e) => {
       // `lengthComputable` is false behind some proxies — leave the bar where
@@ -403,6 +412,12 @@ export const useBridleStore = defineStore('bridle', {
     _socket: null as Socket | null,
     /** Active agentId — captured on connect, used to scope persisted debug. */
     _agentId: null as string | null,
+    /**
+     * One reconnect per auth rejection: after the hub refuses the token we
+     * refresh and connect again once; a second refusal ends the session
+     * instead of looping. Reset on every successful connect.
+     */
+    _authRetried: false,
   }),
 
   getters: {
@@ -433,23 +448,68 @@ export const useBridleStore = defineStore('bridle', {
   },
 
   actions: {
-    connect(apiUrl: string, agentId: string, token: string) {
-      if (this._socket) return
+    async connect(apiUrl: string, agentId: string) {
+      const auth = useAuthStore()
+
+      if (this._socket) {
+        // A socket the hub dropped (auth rejection) does not reconnect on
+        // its own — socket.io treats a server-initiated disconnect as final.
+        // Give it the current token and try again.
+        if (!this._socket.connected) {
+          await auth.ensureFresh()
+          this._socket.connect()
+        }
+        return
+      }
 
       this._agentId = agentId
+
+      // Never open the handshake with a token about to expire — the hub
+      // would refuse it a moment later.
+      await auth.ensureFresh()
+      // Someone else connected while the refresh was in flight.
+      if (this._socket) return
 
       const socket = io(`${apiUrl}/ws/client`, {
         transports: ['websocket'],
         reconnection: true,
         reconnectionDelay: 2000,
+        // `auth` as a function: socket.io calls it on every (re)connect, so
+        // a reconnect after a renewal carries the current token, never the
+        // one captured when the widget mounted.
         // What this client renders — the hub forwards the list to the agent
         // on every message; the runtime gates thinking-step emission on it.
         // No 'ui': the admin preview doesn't render interactive ui parts.
-        auth: { token, agentId, capabilities: ['streaming', 'images', 'files', 'thinking'] },
+        auth: (cb) =>
+          cb({
+            token: useAuthStore().accessToken ?? '',
+            agentId,
+            capabilities: ['streaming', 'images', 'files', 'thinking'],
+          }),
       })
 
       socket.on('connect', () => {
         this.isConnected = true
+        this._authRetried = false
+      })
+
+      // The hub refused the handshake token and is about to drop the socket.
+      // One refresh + reconnect covers a token that expired while the tab
+      // was asleep; if the session itself is gone, say so — the dialog
+      // replaces the "Chat reconnecting…" limbo.
+      socket.on('bridle_error', async (e: { code?: string; agentId?: string; origin?: string }) => {
+        const code = e?.code
+        if (code !== 'TOKEN_EXPIRED' && code !== 'INVALID_TOKEN') return
+        if (!this._authRetried && (await useAuthStore().refresh())) {
+          this._authRetried = true
+          // The server's disconnect may land after the refresh round trip
+          // or before it; `connect()` is a no-op on a still-open socket.
+          const reconnect = () => socket.connect()
+          if (socket.connected) socket.once('disconnect', reconnect)
+          else reconnect()
+        } else {
+          useAuthStore().endSession(code)
+        }
       })
 
       socket.on('disconnect', () => {
@@ -728,7 +788,6 @@ export const useBridleStore = defineStore('bridle', {
     stageFiles(
       apiUrl: string,
       agentId: string,
-      token: string,
       files: File[] | FileList,
     ) {
       const list = Array.from(files)
@@ -768,14 +827,13 @@ export const useBridleStore = defineStore('bridle', {
 
         this.staged.push(staging)
         pendingBytes += file.size
-        void this.uploadStaged(apiUrl, agentId, token, staging.localId)
+        void this.uploadStaged(apiUrl, agentId, staging.localId)
       }
     },
 
     async uploadStaged(
       apiUrl: string,
       agentId: string,
-      token: string,
       localId: string,
     ) {
       const find = () => this.staged.find(a => a.localId === localId)
@@ -790,7 +848,6 @@ export const useBridleStore = defineStore('bridle', {
         const stored = await uploadAttachment(
           apiUrl,
           agentId,
-          token,
           entry.file,
           (percent) => {
             // The chip may have been removed mid-flight.
@@ -822,12 +879,11 @@ export const useBridleStore = defineStore('bridle', {
     retryStaged(
       apiUrl: string,
       agentId: string,
-      token: string,
       localId: string,
     ) {
       const entry = this.staged.find(a => a.localId === localId)
       if (!entry || entry.state === BridleAttachmentStates.Uploading) return
-      void this.uploadStaged(apiUrl, agentId, token, localId)
+      void this.uploadStaged(apiUrl, agentId, localId)
     },
 
     removeStaged(localId: string) {
@@ -905,12 +961,10 @@ export const useBridleStore = defineStore('bridle', {
       }, 75_000)
     },
 
-    async loadAgentMeta(apiUrl: string, agentId: string, token: string): Promise<void> {
+    async loadAgentMeta(apiUrl: string, agentId: string): Promise<void> {
       const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}`
       try {
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const res = await authedFetch(url)
         if (!res.ok) return
         type AgentMeta = { debugEnabled?: boolean }
         type Envelope = { data?: AgentMeta }
@@ -921,18 +975,15 @@ export const useBridleStore = defineStore('bridle', {
       }
     },
 
-    async setDebugEnabled(apiUrl: string, agentId: string, token: string, enabled: boolean): Promise<boolean> {
+    async setDebugEnabled(apiUrl: string, agentId: string, enabled: boolean): Promise<boolean> {
       // Debug is persisted through the regular agent-update endpoint
       // (PUT /agents/:id). The API still pushes the live prompt-debug control
       // event over the bridle WS when `debugEnabled` is in the payload.
       const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}`
       try {
-        const res = await fetch(url, {
+        const res = await authedFetch(url, {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ debugEnabled: enabled }),
         })
         if (!res.ok) {
@@ -953,13 +1004,10 @@ export const useBridleStore = defineStore('bridle', {
       }
     },
 
-    async resetTranscript(apiUrl: string, agentId: string, token: string, channel = 'admin') {
+    async resetTranscript(apiUrl: string, agentId: string, channel = 'admin') {
       const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/transcript?channel=${encodeURIComponent(channel)}`
       try {
-        const res = await fetch(url, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const res = await authedFetch(url, { method: 'DELETE' })
         if (!res.ok) {
           console.warn('[bridle] transcript reset returned', res.status)
           return false
@@ -990,14 +1038,14 @@ export const useBridleStore = defineStore('bridle', {
       this._lastDebug = stored.lastDebug ?? null
     },
 
-    async loadTranscript(apiUrl: string, agentId: string, token: string, channel = 'admin') {
+    async loadTranscript(apiUrl: string, agentId: string, channel = 'admin') {
       try {
-        const page = await fetchTranscriptPage(apiUrl, agentId, token, channel)
+        const page = await fetchTranscriptPage(apiUrl, agentId, channel)
         if (!page) return
         this.messages = page.messages.map(toBridleMessage)
         this.transcriptCursor = page.nextCursor
         this.hasMoreOlder = page.hasMore
-        this._hydrateAttachments(apiUrl, agentId, token, page.messages)
+        this._hydrateAttachments(apiUrl, agentId, page.messages)
       } catch (err) {
         console.warn('[bridle] failed to load transcript', err)
       }
@@ -1015,7 +1063,6 @@ export const useBridleStore = defineStore('bridle', {
     _hydrateAttachments(
       apiUrl: string,
       agentId: string,
-      token: string,
       source: ITranscriptPageMessage[],
     ) {
       const base = apiUrl.replace(/\/$/, '')
@@ -1026,9 +1073,8 @@ export const useBridleStore = defineStore('bridle', {
           const parts: BridlePart[] = []
           for (const att of attachments) {
             try {
-              const res = await fetch(
+              const res = await authedFetch(
                 `${base}/api/agent/${encodeURIComponent(agentId)}/attachment/${encodeURIComponent(att.id)}`,
-                { headers: { Authorization: `Bearer ${token}` } },
               )
               if (!res.ok) throw new Error(`attachment fetch ${res.status}`)
               const blob = await res.blob()
@@ -1079,7 +1125,6 @@ export const useBridleStore = defineStore('bridle', {
     async loadOlderTranscript(
       apiUrl: string,
       agentId: string,
-      token: string,
       channel = 'admin',
     ): Promise<number> {
       if (this.loadingOlder || !this.hasMoreOlder || !this.transcriptCursor) {
@@ -1090,7 +1135,6 @@ export const useBridleStore = defineStore('bridle', {
         const page = await fetchTranscriptPage(
           apiUrl,
           agentId,
-          token,
           channel,
           this.transcriptCursor,
         )
@@ -1099,7 +1143,7 @@ export const useBridleStore = defineStore('bridle', {
         this.messages = [...olderMessages, ...this.messages]
         this.transcriptCursor = page.nextCursor
         this.hasMoreOlder = page.hasMore
-        this._hydrateAttachments(apiUrl, agentId, token, page.messages)
+        this._hydrateAttachments(apiUrl, agentId, page.messages)
         return olderMessages.length
       } catch (err) {
         console.warn('[bridle] failed to load older transcript', err)

@@ -65,7 +65,13 @@ spec:
                   name: ranch-secrets
                   key: JWT_SECRET
             - name: JWT_EXPIRES_IN
-              value: "7d"
+              value: "15m"
+            - name: SESSION_IDLE_DAYS
+              value: "7"
+            - name: SESSION_ABSOLUTE_DAYS
+              value: "30"
+            - name: SESSION_COOKIE_SECURE
+              value: "true"
             - name: BRIDLE_API_KEY
               valueFrom:
                 secretKeyRef:

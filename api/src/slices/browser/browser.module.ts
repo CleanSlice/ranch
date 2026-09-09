@@ -37,7 +37,7 @@ import { FileModule } from '#/agent/file/file.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
-        secret: config.get('JWT_SECRET', 'ranch-dev-secret'),
+        secret: config.get('JWT_SECRET', 'dev-secret-change-me'),
       }),
       inject: [ConfigService],
     }),

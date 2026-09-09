@@ -234,6 +234,44 @@ The `AgentShareLink` table ships in the hand-written migration
 `api/prisma/migrations/20260907120000_agent_share_link` (additive: a new table
 plus a cascading FK, safe on an existing database).
 
+## Console sessions (`app` + `admin`)
+
+Signing in to either console establishes two credentials with different jobs:
+
+- a **session** — an opaque `rs_…` secret the API stores hashed in the
+  `Session` table and hands to the browser as an httpOnly cookie
+  `ranch_session` scoped to `Path=/auth` (so it never rides on ordinary
+  requests). It has a sliding inactivity window (`SESSION_IDLE_DAYS`, 7) and a
+  hard ceiling (`SESSION_ABSOLUTE_DAYS`, 30); `Secure` follows
+  `SESSION_COOKIE_SECURE` (true in the cluster, false for plain-http dev);
+- a short-lived **access token** — the JWT the console attaches as
+  `Authorization: Bearer` (`JWT_EXPIRES_IN`, 15 minutes), kept in memory only.
+
+`POST /auth/refresh` (no body, cookie in) renews the access token from the
+session alone — it works after the token has expired — and slides the
+inactivity window. `POST /auth/logout` revokes the session and clears the
+cookie. The consoles renew proactively a minute before expiry, when a hidden
+tab becomes visible, and once more reactively when a request comes back 401,
+then retry that request once; when the session itself cannot be renewed they
+show a single in-place "Your session has ended" dialog with the login form,
+leaving the page and any unsent message intact.
+
+Every 401 carries a machine-readable `code`:
+
+| `code` | Meaning | Console behaviour |
+|---|---|---|
+| `TOKEN_MISSING` | no bearer | logged out |
+| `TOKEN_EXPIRED` | bearer `exp` passed | refresh, retry once |
+| `TOKEN_INVALID` | bad signature / unusable subject | refresh once, then session ended |
+| `SESSION_MISSING` / `SESSION_EXPIRED` / `SESSION_INVALID` | from `/auth/refresh` | session ended (silently logged out on boot) |
+
+The bridle chat routes reject a failing bearer the same way instead of quietly
+treating the caller as an anonymous visitor; a request with **no** credentials
+still gets the anonymous throwaway channel, and share-link headers still win
+over a dead console token. Agent service, embed and browser-extension tokens
+set their own lifetimes and are unaffected. Contract and rationale:
+[`specs/012-jwt-token-refresh/contracts/session-api.md`](specs/012-jwt-token-refresh/contracts/session-api.md).
+
 ## Translations (`app` console)
 
 The user console ships in English and Russian. `en.json` in each slice is the

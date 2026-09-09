@@ -1,12 +1,12 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { ShareLinkService } from '#/agent/shareLink/domain';
+import {
+  AuthErrorCodes,
+  classifyJwtError,
+  unauthorized,
+} from '#/user/auth/domain/auth.types';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import {
   clientIdFromJwtPayload,
@@ -42,11 +42,12 @@ export interface IChatAuthRequest extends Request {
  *     empty token header counts as offered and comes back 403, never as an
  *     unauthenticated caller.
  *
- * Rejections keep their status codes apart on purpose: missing credentials are
- * 401 (the console's axios interceptor bounces those to /login, which is right
- * for a console user), while a rejected share link is the service's 403 with a
- * `{ code }` body — a 401 there would drop an anonymous visitor into the login
- * form (research.md R4).
+ * Rejections keep their status codes apart on purpose: missing or unusable
+ * console credentials are 401 with a `{ code }` body (`TOKEN_MISSING`,
+ * `TOKEN_EXPIRED`, `TOKEN_INVALID` — the consoles renew and retry on the
+ * latter two, CLEAN-72), while a rejected share link is the service's 403 with
+ * its own `{ code }` — a 401 there would drop an anonymous visitor into the
+ * login form (research.md R4).
  *
  * A bearer token that fails verification does NOT end the request when share
  * headers are also present: a console user whose session expired must still be
@@ -68,17 +69,22 @@ export class BridleChatAuthGuard implements CanActivate {
 
     const token = parseBearer(headers);
     if (token) {
-      const payload = this.verify(token);
-      const identity = clientIdFromJwtPayload(payload);
+      const verified = this.verify(token);
+      const identity = clientIdFromJwtPayload(verified.payload);
       if (identity) {
-        req.user = payload as unknown as IAuthTokenPayload;
+        req.user = verified.payload as unknown as IAuthTokenPayload;
         req.chatAuth = { clientId: identity.clientId, kind: 'jwt' };
         return true;
       }
-      // Bad signature, expired, or no usable subject — same outcome, and only
-      // fatal when there is nothing else to try (see the class note).
+      // Bad signature, expired, or no usable subject — only fatal when there
+      // is nothing else to try (see the class note). Expired is reported as
+      // such so the console can renew; everything else is TOKEN_INVALID.
       if (!shareOffered) {
-        throw new UnauthorizedException('Invalid or expired token');
+        throw unauthorized(
+          verified.error
+            ? classifyJwtError(verified.error)
+            : AuthErrorCodes.TokenInvalid,
+        );
       }
     }
 
@@ -98,14 +104,17 @@ export class BridleChatAuthGuard implements CanActivate {
       return true;
     }
 
-    throw new UnauthorizedException('Missing access token');
+    throw unauthorized(AuthErrorCodes.TokenMissing);
   }
 
-  private verify(token: string): Record<string, unknown> | null {
+  private verify(token: string): {
+    payload: Record<string, unknown> | null;
+    error?: unknown;
+  } {
     try {
-      return this.jwt.verify<Record<string, unknown>>(token);
-    } catch {
-      return null;
+      return { payload: this.jwt.verify<Record<string, unknown>>(token) };
+    } catch (error) {
+      return { payload: null, error };
     }
   }
 }

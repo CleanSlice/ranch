@@ -55,12 +55,30 @@ function readEnabled(): boolean {
   return true;
 }
 
+// Both OCR settings have server-side defaults (on, 500 pages), so an unset
+// row reads as the default rather than as empty.
+const DEFAULT_OCR_MAX_PAGES = 500;
+
+function readOcrEnabled(): boolean {
+  const v = settingStore.get(SETTING_GROUP, 'ocr_enabled')?.value;
+  if (typeof v === 'boolean') return v;
+  return true;
+}
+
+function readOcrMaxPages(): number {
+  const v = settingStore.get(SETTING_GROUP, 'ocr_max_pages')?.value;
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+  return Number.isInteger(n) && n > 0 ? n : DEFAULT_OCR_MAX_PAGES;
+}
+
 function readString(name: string): string {
   const v = settingStore.get(SETTING_GROUP, name)?.value;
   return typeof v === 'string' ? v : '';
 }
 
 const enabled = ref<boolean>(readEnabled());
+const ocrEnabled = ref<boolean>(readOcrEnabled());
+const ocrMaxPages = ref<number>(readOcrMaxPages());
 const values = reactive<Record<string, string>>({});
 for (const f of TEXT_FIELDS) {
   values[f.name] = readString(f.name);
@@ -95,6 +113,10 @@ async function onSave(): Promise<void> {
       'Pick both a chat and an embedding credential before enabling the service.';
     return;
   }
+  if (!Number.isInteger(ocrMaxPages.value) || ocrMaxPages.value < 1) {
+    errorMessage.value = 'OCR page limit must be a whole number of at least 1.';
+    return;
+  }
 
   saving.value = true;
   errorMessage.value = null;
@@ -107,6 +129,27 @@ async function onSave(): Promise<void> {
     if (enabled.value !== currentEnabledBool) {
       tasks.push(
         settingStore.upsert(SETTING_GROUP, 'enabled', enabled.value, 'json'),
+      );
+    }
+
+    if (ocrEnabled.value !== readOcrEnabled()) {
+      tasks.push(
+        settingStore.upsert(
+          SETTING_GROUP,
+          'ocr_enabled',
+          ocrEnabled.value,
+          'json',
+        ),
+      );
+    }
+    if (ocrMaxPages.value !== readOcrMaxPages()) {
+      tasks.push(
+        settingStore.upsert(
+          SETTING_GROUP,
+          'ocr_max_pages',
+          ocrMaxPages.value,
+          'json',
+        ),
       );
     }
 
@@ -259,6 +302,55 @@ async function onSave(): Promise<void> {
           LightRAG container or pod. Auto-sync of these values from the admin
           is planned for a follow-up phase.
         </p>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle>Scanned PDFs</CardTitle>
+        <CardDescription>
+          A PDF with no text layer (a scan, a photo of a form) is unreadable to
+          the knowledge service. With OCR on, its text is recognised with AWS
+          Textract when the file is added and that text is what gets indexed.
+          The API's AWS identity needs the Textract text-detection actions.
+        </CardDescription>
+      </CardHeader>
+      <CardContent class="grid max-w-xl gap-4">
+        <label class="flex items-start gap-3" for="knowledge-ocr-enabled">
+          <Checkbox
+            id="knowledge-ocr-enabled"
+            :model-value="ocrEnabled"
+            @update:model-value="(v: boolean | 'indeterminate') => (ocrEnabled = v === true)"
+          />
+          <div class="grid gap-1">
+            <Label for="knowledge-ocr-enabled" class="cursor-pointer">
+              Recognise text in scanned PDFs
+            </Label>
+            <p class="text-xs text-muted-foreground">
+              When off, a scanned PDF is recorded as failed with the reason,
+              and can be re-extracted from the sources table later.
+            </p>
+            <p class="text-xs text-muted-foreground/70">knowledge/ocr_enabled</p>
+          </div>
+        </label>
+        <div class="grid gap-2">
+          <Label for="knowledge-ocr-max-pages">Page limit per PDF</Label>
+          <Input
+            id="knowledge-ocr-max-pages"
+            v-model.number="ocrMaxPages"
+            type="number"
+            min="1"
+            step="1"
+            class="w-40"
+          />
+          <p class="text-xs text-muted-foreground">
+            Textract is billed per page; a scan longer than this is skipped
+            with a reason instead of being recognised.
+          </p>
+          <p class="text-xs text-muted-foreground/70">
+            knowledge/ocr_max_pages
+          </p>
+        </div>
       </CardContent>
     </Card>
 

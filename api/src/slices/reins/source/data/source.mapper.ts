@@ -6,6 +6,7 @@ import {
   SourceIndexStatusTypes,
   SourceIndexStateTypes,
   SourceTypes,
+  SourceTextStateTypes,
 } from '../domain/source.types';
 
 const SOURCE_TYPES: readonly SourceTypes[] = ['file', 'url', 'text'];
@@ -42,6 +43,14 @@ export function deriveIndexStatus(record: {
   return 'pending';
 }
 
+const TEXT_STATES: readonly SourceTextStateTypes[] = ['none', 'pending', 'ready', 'failed'];
+
+function parseTextState(value: string): SourceTextStateTypes {
+  return (TEXT_STATES as readonly string[]).includes(value)
+    ? (value as SourceTextStateTypes)
+    : 'none';
+}
+
 function parseIndexState(value: string): SourceIndexStateTypes {
   return (INDEX_STATES as readonly string[]).includes(value)
     ? (value as SourceIndexStateTypes)
@@ -66,6 +75,9 @@ export class SourceMapper {
       indexState: parseIndexState(record.indexState),
       indexError: record.indexError ?? null,
       indexedAt: record.indexedAt ?? null,
+      textState: parseTextState(record.textState),
+      textUrl: record.textUrl ?? null,
+      textError: record.textError ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

@@ -36,7 +36,9 @@ export type {
   ISourceFilter,
   ISourcePage,
   IUpdateKnowledgeInput,
+  ImportJobKind,
   SourceIndexStatus,
+  SourceTextState,
   SourceType,
 } from '#reins/domain';
 
@@ -248,6 +250,10 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     return getService().reindexSource(id, sourceId);
   }
 
+  function extractSource(id: string, sourceId: string) {
+    return getService().extractSource(id, sourceId);
+  }
+
   function getGraphLabels(id: string, search?: string, limit?: number) {
     return getService().graphLabels(id, search, limit);
   }
@@ -291,6 +297,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     addSourcesFromArchive,
     removeSource,
     reindexSource,
+    extractSource,
     getGraphLabels,
     getGraph,
   };

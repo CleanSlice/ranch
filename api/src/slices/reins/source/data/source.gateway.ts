@@ -29,6 +29,8 @@ import {
   IUploadSourceStreamInput,
   IUploadedSourceFile,
   ISourceIndexOutcome,
+  ISourceTextStatePatch,
+  SourceTextStateTypes,
 } from '../domain/source.types';
 import { indexBudgetMs, pollIntervalMs } from '../domain/indexBudget';
 import { SourceMapper } from './source.mapper';
@@ -50,6 +52,28 @@ function sleep(ms: number): Promise<void> {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+interface ITextExtractionBlock {
+  /** true: come back later; false: give up with the reason. */
+  wait: boolean;
+  reason: string;
+}
+
+/** Why a PDF cannot be sent to LightRAG yet, or null when it can. */
+function textExtractionBlock(
+  source: Pick<ISourceData, 'textState' | 'textError'>,
+): ITextExtractionBlock | null {
+  if (source.textState === 'pending') {
+    return { wait: true, reason: 'text extraction in progress' };
+  }
+  if (source.textState === 'failed') {
+    return {
+      wait: false,
+      reason: `text extraction failed: ${source.textError ?? 'unknown reason'}`,
+    };
+  }
+  return null;
 }
 
 type IExistingIndexCheck =
@@ -478,6 +502,20 @@ export class SourceGateway extends ISourceGateway {
         continue;
       }
 
+      // A scanned PDF is only worth sending once its text exists. Sending the
+      // file itself would fail inside LightRAG with "only whitespace", which
+      // is the message this whole slice exists to replace.
+      const block = textExtractionBlock(source);
+      if (block !== null) {
+        outcomes.set(
+          source.id,
+          block.wait
+            ? this.stillProcessing(source, block.reason)
+            : await this.fail(source, block.reason),
+        );
+        continue;
+      }
+
       try {
         const trackId = await this.ingestByType(source);
         // Persist the handle before waiting on it. If this run dies (deploy,
@@ -640,6 +678,15 @@ export class SourceGateway extends ISourceGateway {
    * wait.
    */
   async indexSource(source: ISourceData): Promise<void> {
+    const block = textExtractionBlock(source);
+    if (block?.wait) {
+      // Not a fault of the row: the run after the extraction picks it up.
+      await this.updateIndexState(source.id, {
+        indexState: 'queued',
+        indexError: null,
+      });
+      throw new Error(block.reason);
+    }
     await this.updateIndexState(source.id, {
       indexState: 'processing',
       indexError: null,
@@ -959,6 +1006,28 @@ export class SourceGateway extends ISourceGateway {
     });
   }
 
+  async updateTextState(
+    id: string,
+    patch: ISourceTextStatePatch,
+  ): Promise<void> {
+    await this.prisma.source.update({
+      where: { id },
+      data: {
+        textState: patch.textState,
+        ...(patch.textUrl !== undefined && { textUrl: patch.textUrl }),
+        ...(patch.textError !== undefined && { textError: patch.textError }),
+      },
+    });
+  }
+
+  async findByTextState(state: SourceTextStateTypes): Promise<ISourceData[]> {
+    const records = await this.prisma.source.findMany({
+      where: { textState: state },
+      orderBy: { createdAt: 'asc' },
+    });
+    return records.map((r) => this.mapper.toEntity(r));
+  }
+
   private async requireEntity(id: string): Promise<ISourceData> {
     const record = await this.prisma.source.findUnique({ where: { id } });
     if (!record) throw new NotFoundException(`Source ${id} not found`);
@@ -974,6 +1043,26 @@ export class SourceGateway extends ISourceGateway {
     await this.lightrag.deleteDocumentsByTrackIds(source.knowledgeId, [
       record.lightragDocId,
     ]);
+  }
+
+  async resetIndexClaim(source: ISourceData): Promise<void> {
+    const record = await this.prisma.source.findUnique({
+      where: { id: source.id },
+      select: { lightragDocId: true },
+    });
+    const docId = record?.lightragDocId ?? null;
+    // Row first, LightRAG second: if the delete fails the row is still sent
+    // again next run, which is the outcome that matters. The old document
+    // lingering is the lesser problem.
+    await this.forgetDocId(source.id);
+    await this.updateIndexState(source.id, {
+      indexState: 'queued',
+      indexError: null,
+      indexedAt: null,
+    });
+    if (docId !== null) {
+      await this.lightrag.deleteDocumentsByTrackIds(source.knowledgeId, [docId]);
+    }
   }
 
   async removeAllByKnowledge(knowledgeId: string): Promise<void> {
@@ -1019,6 +1108,22 @@ export class SourceGateway extends ISourceGateway {
     if (source.type === 'file') {
       if (!source.url) {
         throw new Error(`Source ${source.id} has no url`);
+      }
+      // The batch path checks this before it gets here; the single-row path
+      // (Reindex) relies on it.
+      const block = textExtractionBlock(source);
+      if (block !== null) throw new Error(block.reason);
+      // A PDF without a text layer goes in as the text OCR produced, under
+      // the source id: LightRAG then cites the row rather than a filename,
+      // and never sees a file it could only read as whitespace.
+      if (source.textState === 'ready' && source.textUrl) {
+        const text = await this.s3.download(S3Repository.parseUri(source.textUrl));
+        const res = await this.lightrag.ingestText({
+          knowledgeId,
+          text: text.toString('utf8'),
+          fileSource: source.id,
+        });
+        return res.docId;
       }
       const location = S3Repository.parseUri(source.url);
       const buffer = await this.s3.download(location);

@@ -13,7 +13,6 @@ import {
 const props = defineProps<{
   apiUrl: string
   agentId: string
-  token: string
   placeholder?: string
   disabled?: boolean
 }>()
@@ -70,7 +69,7 @@ const openPicker = () => {
 const onFilesPicked = (event: Event) => {
   const el = event.target as HTMLInputElement
   if (el.files?.length) {
-    store.stageFiles(props.apiUrl, props.agentId, props.token, el.files)
+    store.stageFiles(props.apiUrl, props.agentId, el.files)
   }
   // Reset so picking the same file twice in a row still fires `change`.
   el.value = ''
@@ -85,7 +84,7 @@ const onPaste = (event: ClipboardEvent) => {
   const files = Array.from(event.clipboardData?.files ?? [])
   if (!files.length) return
   event.preventDefault()
-  store.stageFiles(props.apiUrl, props.agentId, props.token, files)
+  store.stageFiles(props.apiUrl, props.agentId, files)
 }
 </script>
 
@@ -98,7 +97,7 @@ const onPaste = (event: ClipboardEvent) => {
         :key="attachment.localId"
         :attachment="attachment"
         @remove="store.removeStaged($event)"
-        @retry="store.retryStaged(apiUrl, agentId, token, $event)"
+        @retry="store.retryStaged(apiUrl, agentId, $event)"
       />
     </div>
 

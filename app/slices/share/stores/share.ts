@@ -18,6 +18,18 @@ export type {
 const getService = createServiceGetter<ShareService>('$shareService');
 
 /**
+ * A 401 the api plugin could not recover from has already raised the
+ * session-ended dialog; the panel must not echo a raw auth string beside it
+ * (CLEAN-72). Everything else keeps its message.
+ */
+function errorText(err: unknown): string | null {
+  const status = (err as { response?: { status?: number } } | null)?.response
+    ?.status;
+  if (status === 401) return null;
+  return (err as Error).message;
+}
+
+/**
  * The API never learns the console's origin (`runtimeConfig.public.apiUrl` is
  * the *API* host), so the shareable URL is assembled here — the one place that
  * knows both the token and the browser's address bar.
@@ -59,7 +71,7 @@ export const useShareStore = defineStore('share', () => {
       links.value[agentId] = state;
       return state;
     } catch (err) {
-      error.value = (err as Error).message;
+      error.value = errorText(err);
       return null;
     } finally {
       pending.value = false;
@@ -105,7 +117,7 @@ export const useShareStore = defineStore('share', () => {
       resolved.value = next;
       return next ? 'resolved' : 'invalid';
     } catch (err) {
-      error.value = (err as Error).message;
+      error.value = errorText(err);
       return 'unavailable';
     } finally {
       pending.value = false;

@@ -6,6 +6,43 @@ export type CreateOwnerDto = {
   password: string;
 };
 
+export type LoginDto = {
+  email: string;
+  password: string;
+};
+
+export type RegisterDto = {
+  name: string;
+  email: string;
+  password: string;
+};
+
+/**
+ * Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.
+ */
+export enum UserRoleTypes {
+  OWNER = "Owner",
+  ADMIN = "Admin",
+  USER = "User",
+  AGENT = "Agent",
+}
+
+export type EmbedTokenDto = {
+  /**
+   * Subject — used as clientId for routing inside the bridle hub.
+   */
+  sub: string;
+  email?: string;
+  /**
+   * Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.
+   */
+  roles?: Array<UserRoleTypes>;
+  /**
+   * Duration string (s/m/h/d). Defaults to 15m.
+   */
+  expiresIn?: string;
+};
+
 export type UpsertSettingDto = {
   valueType: "string" | "json";
   /**
@@ -14,6 +51,21 @@ export type UpsertSettingDto = {
   value: {
     [key: string]: unknown;
   };
+};
+
+export enum ApiKeyScopeTypes {
+  "EMBED:MINT" = "embed:mint",
+  "EMBED:MINT_ADMIN" = "embed:mint-admin",
+  ADMIN = "admin",
+}
+
+export type CreateApiKeyDto = {
+  name: string;
+  scopes: Array<ApiKeyScopeTypes>;
+  /**
+   * ISO date string. Omit for a non-expiring key.
+   */
+  expiresAt?: string;
 };
 
 export type CreateLlmCredentialDto = {
@@ -118,58 +170,6 @@ export type UpdateMcpServerDto = {
     [key: string]: unknown;
   };
   enabled?: boolean;
-};
-
-export type LoginDto = {
-  email: string;
-  password: string;
-};
-
-export type RegisterDto = {
-  name: string;
-  email: string;
-  password: string;
-};
-
-/**
- * Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.
- */
-export enum UserRoleTypes {
-  OWNER = "Owner",
-  ADMIN = "Admin",
-  USER = "User",
-  AGENT = "Agent",
-}
-
-export type EmbedTokenDto = {
-  /**
-   * Subject — used as clientId for routing inside the bridle hub.
-   */
-  sub: string;
-  email?: string;
-  /**
-   * Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.
-   */
-  roles?: Array<UserRoleTypes>;
-  /**
-   * Duration string (s/m/h/d). Defaults to 15m.
-   */
-  expiresIn?: string;
-};
-
-export enum ApiKeyScopeTypes {
-  "EMBED:MINT" = "embed:mint",
-  "EMBED:MINT_ADMIN" = "embed:mint-admin",
-  ADMIN = "admin",
-}
-
-export type CreateApiKeyDto = {
-  name: string;
-  scopes: Array<ApiKeyScopeTypes>;
-  /**
-   * ISO date string. Omit for a non-expiring key.
-   */
-  expiresAt?: string;
 };
 
 export type KnowledgeListItemDto = {
@@ -304,6 +304,11 @@ export type SourceDto = {
    */
   indexError: string | null;
   indexedAt: string | null;
+  /**
+   * Text extraction for a PDF without a text layer: none (not a PDF, or it has its own text), pending (probing or OCR running), ready (recognised text is what gets indexed), failed (see textError).
+   */
+  textState: "none" | "pending" | "ready" | "failed";
+  textError: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -321,7 +326,7 @@ export type SourcePageDto = {
 export type ImportJobDto = {
   id: string;
   knowledgeId: string;
-  kind: "archive";
+  kind: "archive" | "extraction";
   status: "running" | "done" | "failed";
   /**
    * Ingestable entries found up front
@@ -1745,6 +1750,78 @@ export type InitControllerInitResponses = {
   201: unknown;
 };
 
+export type AuthControllerLoginData = {
+  body: LoginDto;
+  path?: never;
+  query?: never;
+  url: "/auth/login";
+};
+
+export type AuthControllerLoginResponses = {
+  200: unknown;
+};
+
+export type AuthControllerRegisterData = {
+  body: RegisterDto;
+  path?: never;
+  query?: never;
+  url: "/auth/register";
+};
+
+export type AuthControllerRegisterResponses = {
+  200: unknown;
+};
+
+export type AuthControllerRefreshData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/auth/refresh";
+};
+
+export type AuthControllerRefreshErrors = {
+  /**
+   * The session cookie is missing, unknown, revoked or past its idle/absolute window. Body is `{ code: 'SESSION_MISSING' | 'SESSION_EXPIRED' | 'SESSION_INVALID', message }`. The console shows its session-ended state.
+   */
+  401: unknown;
+};
+
+export type AuthControllerLogoutData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/auth/logout";
+};
+
+export type AuthControllerLogoutResponses = {
+  200: unknown;
+};
+
+export type AuthControllerMeData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/auth/me";
+};
+
+export type AuthControllerMeErrors = {
+  /**
+   * Missing, expired or invalid bearer. Body is `{ code: 'TOKEN_MISSING' | 'TOKEN_EXPIRED' | 'TOKEN_INVALID', message }`. Consoles renew via POST /auth/refresh on TOKEN_EXPIRED / TOKEN_INVALID and retry once.
+   */
+  401: unknown;
+};
+
+export type AuthControllerEmbedTokenData = {
+  body: EmbedTokenDto;
+  path?: never;
+  query?: never;
+  url: "/auth/embed/token";
+};
+
+export type AuthControllerEmbedTokenResponses = {
+  200: unknown;
+};
+
 export type SettingControllerFindAllData = {
   body?: never;
   path?: never;
@@ -1810,6 +1887,44 @@ export type SettingControllerUpsertData = {
 export type SettingControllerUpsertResponses = {
   200: unknown;
 };
+
+export type ApiKeyControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/api-keys";
+};
+
+export type ApiKeyControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type ApiKeyControllerCreateData = {
+  body: CreateApiKeyDto;
+  path?: never;
+  query?: never;
+  url: "/api-keys";
+};
+
+export type ApiKeyControllerCreateResponses = {
+  201: unknown;
+};
+
+export type ApiKeyControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/api-keys/{id}";
+};
+
+export type ApiKeyControllerRemoveResponses = {
+  204: void;
+};
+
+export type ApiKeyControllerRemoveResponse =
+  ApiKeyControllerRemoveResponses[keyof ApiKeyControllerRemoveResponses];
 
 export type LlmControllerFindAllData = {
   body?: never;
@@ -2035,88 +2150,6 @@ export type McpServerControllerUpdateData = {
 export type McpServerControllerUpdateResponses = {
   200: unknown;
 };
-
-export type AuthControllerLoginData = {
-  body: LoginDto;
-  path?: never;
-  query?: never;
-  url: "/auth/login";
-};
-
-export type AuthControllerLoginResponses = {
-  200: unknown;
-};
-
-export type AuthControllerRegisterData = {
-  body: RegisterDto;
-  path?: never;
-  query?: never;
-  url: "/auth/register";
-};
-
-export type AuthControllerRegisterResponses = {
-  200: unknown;
-};
-
-export type AuthControllerMeData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/auth/me";
-};
-
-export type AuthControllerMeResponses = {
-  200: unknown;
-};
-
-export type AuthControllerEmbedTokenData = {
-  body: EmbedTokenDto;
-  path?: never;
-  query?: never;
-  url: "/auth/embed/token";
-};
-
-export type AuthControllerEmbedTokenResponses = {
-  200: unknown;
-};
-
-export type ApiKeyControllerFindAllData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/api-keys";
-};
-
-export type ApiKeyControllerFindAllResponses = {
-  200: unknown;
-};
-
-export type ApiKeyControllerCreateData = {
-  body: CreateApiKeyDto;
-  path?: never;
-  query?: never;
-  url: "/api-keys";
-};
-
-export type ApiKeyControllerCreateResponses = {
-  201: unknown;
-};
-
-export type ApiKeyControllerRemoveData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/api-keys/{id}";
-};
-
-export type ApiKeyControllerRemoveResponses = {
-  204: void;
-};
-
-export type ApiKeyControllerRemoveResponse =
-  ApiKeyControllerRemoveResponses[keyof ApiKeyControllerRemoveResponses];
 
 export type GetKnowledgesData = {
   body?: never;
@@ -2378,6 +2411,20 @@ export type ReindexKnowledgeSourceData = {
 };
 
 export type ReindexKnowledgeSourceResponses = {
+  202: unknown;
+};
+
+export type ExtractKnowledgeSourceTextData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/extract";
+};
+
+export type ExtractKnowledgeSourceTextResponses = {
   202: unknown;
 };
 
@@ -2838,6 +2885,10 @@ export type SendBridleMessageErrors = {
    */
   400: unknown;
   /**
+   * A bearer token was offered but is expired or invalid, and no share headers were present. Body is `{ code: 'TOKEN_EXPIRED' | 'TOKEN_INVALID', message }` — the console renews via POST /auth/refresh and retries once. Requests with no credentials stay anonymous.
+   */
+  401: unknown;
+  /**
    * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
    */
   403: unknown;
@@ -2874,6 +2925,10 @@ export type SendBridleMessageSyncErrors = {
    * An `attachmentIds` entry is unknown, unreadable or not owned by the caller.
    */
   400: unknown;
+  /**
+   * A bearer token was offered but is expired or invalid, and no share headers were present. Body is `{ code: 'TOKEN_EXPIRED' | 'TOKEN_INVALID', message }` — the console renews via POST /auth/refresh and retries once. Requests with no credentials stay anonymous.
+   */
+  401: unknown;
   /**
    * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
    */

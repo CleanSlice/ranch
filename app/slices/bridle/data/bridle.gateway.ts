@@ -15,14 +15,13 @@ import { BridleMapper } from './bridle.mapper';
 /**
  * What one share-link request carries instead of the console session.
  *
- * `Authorization: null` is not decoration: `handleApiAuthentication` sets a
- * `Bearer …` header on the shared axios client for the whole tab, and on the
- * API a valid JWT WINS over the share headers. Without this, an owner opening
- * their own link would chat as themselves — their visitor messages landing in
- * the console channel, their uploads owned by `admin`, and a revoke never
- * producing the 403 the page watches for. `null` is the same idiom
- * `handleApiAuthentication` uses to log out: the SDK's header merge drops the
- * key, and axios drops a null-valued header before it reaches the wire.
+ * `Authorization: null` is not decoration: on the API a valid JWT WINS over
+ * the share headers. Without this, an owner opening their own link would chat
+ * as themselves — their visitor messages landing in the console channel,
+ * their uploads owned by `admin`, and a revoke never producing the 403 the
+ * page watches for. The SDK's header merge drops a null-valued key, and the
+ * request interceptor in `#api/plugins/api.ts` skips any request that carries
+ * `X-Share-Token`, so the console bearer is never attached to these calls.
  */
 interface IShareRequestHeaders {
   // The index signature is what lets this object stand in for axios's own
@@ -73,6 +72,12 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
         // `options.headers` over its own `Content-Type`, and an absent key
         // keeps the console request exactly as it was.
         ...(headers ? { headers } : {}),
+        // Without this the axios client hands the error back as a normal
+        // result, and a failed send would read as an empty reply. The store
+        // needs the failure — a 401 the api plugin could not recover from is
+        // what takes the optimistic bubble back and keeps the text as a draft
+        // for after sign-in (CLEAN-72).
+        throwOnError: true,
       });
       return this.mapper.toReply(unwrapEnvelope(res.data));
     });

@@ -138,6 +138,9 @@ describe('instance isolation opt-in gate', () => {
       indexState: 'queued',
       indexError: null,
       indexedAt: null,
+      textState: 'none',
+      textUrl: null,
+      textError: null,
       createdAt: new Date(0),
       updatedAt: new Date(0),
     };

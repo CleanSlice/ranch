@@ -4,6 +4,8 @@ type ApiEnvelope<T> = { success: boolean; data: T };
 
 interface IOwnerResult {
   accessToken: string;
+  /** Access-token lifetime in seconds, as `/auth/login` returns it. */
+  expiresIn: number;
   user: {
     id: string;
     name: string;
@@ -33,7 +35,8 @@ export const useInitStore = defineStore('init', () => {
     const env = res.data as ApiEnvelope<IOwnerResult>;
     requiresInit.value = false;
     checked.value = true;
-    return env.data;
+    // Older APIs answered without `expiresIn`; assume the 15-minute default.
+    return { ...env.data, expiresIn: env.data.expiresIn ?? 900 };
   }
 
   return { requiresInit, checked, ensureChecked, createOwner };

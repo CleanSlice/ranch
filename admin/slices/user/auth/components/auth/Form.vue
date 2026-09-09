@@ -3,6 +3,13 @@ import { IconAlertTriangle, IconEye, IconEyeOff } from '@tabler/icons-vue';
 const props = defineProps<{
   submitting?: boolean;
   errorMessage?: string | null;
+  /** Prefill for the email field (the session-ended dialog knows who was signed in). */
+  initialEmail?: string | null;
+  /**
+   * Render without the card chrome and its own "Sign in" heading — for hosts
+   * that already provide a title, like the session-ended dialog.
+   */
+  embedded?: boolean;
 }>();
 
 const showPassword = ref(false);
@@ -11,7 +18,7 @@ const emit = defineEmits<{
   submit: [values: { email: string; password: string }];
 }>();
 
-const form = reactive({ email: '', password: '' });
+const form = reactive({ email: props.initialEmail ?? '', password: '' });
 const errors = reactive<Partial<Record<'email' | 'password', string>>>({});
 
 function validate() {
@@ -31,12 +38,12 @@ function onSubmit() {
 </script>
 
 <template>
-  <Card class="w-full max-w-sm">
-    <CardHeader>
+  <Card :class="embedded ? 'w-full max-w-none border-0 bg-transparent py-0 shadow-none' : 'w-full max-w-sm'">
+    <CardHeader v-if="!embedded">
       <CardTitle>Sign in</CardTitle>
       <CardDescription>Enter your credentials to access the admin.</CardDescription>
     </CardHeader>
-    <CardContent>
+    <CardContent :class="embedded ? 'px-0' : ''">
       <form class="grid gap-4" @submit.prevent="onSubmit">
         <div class="grid gap-2">
           <Label for="email">Email</Label>

@@ -69,7 +69,7 @@ import { ShareLinkModule } from '#/agent/shareLink/shareLink.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
-        secret: config.get('JWT_SECRET', 'bridle-dev-secret'),
+        secret: config.get('JWT_SECRET', 'dev-secret-change-me'),
         signOptions: { expiresIn: '24h' },
       }),
       inject: [ConfigService],

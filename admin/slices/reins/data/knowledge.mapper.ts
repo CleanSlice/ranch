@@ -21,6 +21,7 @@ import type {
   SourceIndexState,
   SourceIndexStatus,
   SourceType,
+  SourceTextState,
 } from '../domain/knowledge.types';
 
 const INDEX_STATUSES = new Set<IndexStatus>([
@@ -202,6 +203,8 @@ export class KnowledgeMapper {
           : 'queued',
       indexError: nullableStr(o.indexError),
       indexedAt: nullableStr(o.indexedAt),
+      textState: readTextState(o.textState),
+      textError: nullableStr(o.textError),
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
     };
@@ -234,7 +237,7 @@ export class KnowledgeMapper {
     return {
       id: o.id,
       knowledgeId: str(o.knowledgeId),
-      kind: 'archive',
+      kind: o.kind === 'extraction' ? 'extraction' : 'archive',
       status: isImportJobStatus(o.status) ? o.status : 'done',
       detected: num(o.detected),
       added: num(o.added),
@@ -357,4 +360,17 @@ export class KnowledgeMapper {
       isHealthy: bool(o.isHealthy),
     };
   }
+}
+
+const TEXT_STATES: ReadonlySet<SourceTextState> = new Set<SourceTextState>([
+  'none',
+  'pending',
+  'ready',
+  'failed',
+]);
+
+function readTextState(value: unknown): SourceTextState {
+  return typeof value === 'string' && TEXT_STATES.has(value as SourceTextState)
+    ? (value as SourceTextState)
+    : 'none';
 }

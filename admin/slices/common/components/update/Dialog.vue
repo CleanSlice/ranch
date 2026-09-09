@@ -9,6 +9,7 @@ import {
 } from 'reka-ui';
 import { Button } from '#theme/components/ui/button';
 import { IconExternalLink, IconLoader2, IconAlertTriangle } from '@tabler/icons-vue';
+import { authedFetch } from '#auth/utils/authedFetch';
 
 
 const props = defineProps<{
@@ -69,9 +70,7 @@ async function runUpgrade() {
   blockedReason.value = null;
 
   const config = useRuntimeConfig();
-  const auth = useAuthStore();
   const apiUrl = config.public.apiUrl as string;
-  const token = auth.accessToken;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5 * 60 * 1000);
@@ -82,12 +81,9 @@ async function runUpgrade() {
   // We surface 403 as a blocking message; everything else falls through
   // to the reload phase.
   try {
-    const res = await fetch(`${apiUrl}/upgrade`, {
+    const res = await authedFetch(`${apiUrl}/upgrade`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
     });
     if (!res.ok && res.status === 403) {

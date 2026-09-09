@@ -9,8 +9,9 @@ import type {
   SourceIndexStatus,
   SourceType,
 } from '#reins/stores/knowledge';
-import { Download, Eye, Trash2 } from 'lucide-vue-next';
+import { Download, Eye, ScanText, Trash2 } from 'lucide-vue-next';
 import { errorMessageOf, formatBytes, formatDate } from '#reins/domain';
+import { Badge } from '#theme/components/ui/badge';
 import { Button } from '#theme/components/ui/button';
 import { Checkbox } from '#theme/components/ui/checkbox';
 import { Input } from '#theme/components/ui/input';
@@ -263,6 +264,21 @@ async function handleDownload(source: ISource) {
   await store.downloadSource(knowledgeId.value, source.id);
 }
 
+// Only a PDF can lack a text layer; the button is for the case where OCR was
+// off, ran out of pages, or Textract was not yet allowed when the file landed.
+function isPdf(source: ISource): boolean {
+  return (
+    source.type === 'file' &&
+    (source.mimeType === 'application/pdf' || /\.pdf$/i.test(source.name))
+  );
+}
+
+async function handleReextract(source: ISource) {
+  await store.extractSource(knowledgeId.value, source.id);
+  // The row flips to pending at once; the poll below picks up the result.
+  await load();
+}
+
 async function onAdded() {
   // The new rows land at the end of the list (oldest first), so a user sitting
   // on a later page or a filter would not see them; go back to a clean view.
@@ -400,9 +416,31 @@ async function onAdded() {
                    ceiling its min-content width sets the width of the whole
                    table and pushes the page sideways. -->
               <div class="flex max-w-60 flex-col gap-1">
-                <KnowledgeSourceStatusBadge :status="s.indexStatus" class="w-fit" />
+                <div class="flex items-center gap-1">
+                  <KnowledgeSourceStatusBadge :status="s.indexStatus" class="w-fit" />
+                  <Badge
+                    v-if="s.textState === 'ready'"
+                    variant="outline"
+                    title="The PDF has no text layer; what is indexed is the text OCR recognised in it"
+                  >
+                    OCR
+                  </Badge>
+                </div>
                 <span
-                  v-if="s.indexStatus === 'failed' && s.indexError"
+                  v-if="s.textState === 'pending'"
+                  class="text-xs text-muted-foreground"
+                >
+                  Extracting text…
+                </span>
+                <span
+                  v-else-if="s.textState === 'failed' && s.textError"
+                  class="line-clamp-2 text-xs break-words text-destructive"
+                  :title="s.textError"
+                >
+                  {{ s.textError }}
+                </span>
+                <span
+                  v-else-if="s.indexStatus === 'failed' && s.indexError"
                   class="line-clamp-2 text-xs break-words text-destructive"
                   :title="s.indexError"
                 >
@@ -435,6 +473,17 @@ async function onAdded() {
                 >
                   <Download class="size-4" />
                   <span class="sr-only">Download {{ s.name }}</span>
+                </Button>
+                <Button
+                  v-if="isPdf(s)"
+                  size="icon-sm"
+                  variant="ghost"
+                  title="Re-extract text (OCR)"
+                  :disabled="s.textState === 'pending'"
+                  @click="handleReextract(s)"
+                >
+                  <ScanText class="size-4" />
+                  <span class="sr-only">Re-extract text from {{ s.name }}</span>
                 </Button>
                 <Button
                   size="icon-sm"

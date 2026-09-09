@@ -322,6 +322,14 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
     });
   }
 
+  extractSource(id: string, sourceId: string): Promise<void> {
+    return this.execute(async () => {
+      await apiClient.instance.post(
+        `/knowledges/${id}/sources/${sourceId}/extract`,
+      );
+    });
+  }
+
   graphLabels(
     id: string,
     search?: string,

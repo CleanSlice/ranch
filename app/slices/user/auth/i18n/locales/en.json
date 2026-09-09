@@ -30,7 +30,10 @@
     "sign_in": "Sign in",
     "closed_title": "Registration is closed",
     "closed_body": "The administrator has disabled self-service signup. Ask an admin to invite you, or sign in with an existing account.",
-    "closed_cta": "Go to sign in"
+    "closed_cta": "Go to sign in",
+    "session_ended_title": "Your session has ended",
+    "session_ended_body": "Sign in to continue where you left off.",
+    "session_ended_submit": "Sign in"
   },
   "promo": {
     "badge": "Live on Kubernetes",

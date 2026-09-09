@@ -16,6 +16,13 @@ model Source {
   indexState    String    @default("queued")
   indexError    String?
   indexedAt     DateTime?
+  // Text extracted for a PDF that has no text layer (reins/extraction):
+  // none | pending | ready | failed. `none` is both "not a PDF" and "the PDF
+  // has its own text"; only `ready` carries a textUrl, and that text - not
+  // the file - is what goes to LightRAG.
+  textState     String    @default("none")
+  textUrl       String?
+  textError     String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -23,4 +30,5 @@ model Source {
   @@index([knowledgeId, createdAt])
   @@index([lightragDocId])
   @@index([indexState])
+  @@index([textState])
 }

@@ -20,6 +20,79 @@ export const CreateOwnerDtoSchema = {
   required: ["name", "email", "password"],
 } as const;
 
+export const LoginDtoSchema = {
+  type: "object",
+  properties: {
+    email: {
+      type: "string",
+      example: "jane@example.com",
+    },
+    password: {
+      type: "string",
+      example: "strongPassword1",
+      minLength: 8,
+    },
+  },
+  required: ["email", "password"],
+} as const;
+
+export const RegisterDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "Jane Doe",
+    },
+    email: {
+      type: "string",
+      example: "jane@example.com",
+    },
+    password: {
+      type: "string",
+      example: "strongPassword1",
+      minLength: 8,
+    },
+  },
+  required: ["name", "email", "password"],
+} as const;
+
+export const UserRoleTypesSchema = {
+  type: "string",
+  enum: ["Owner", "Admin", "User", "Agent"],
+  description:
+    "Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.",
+} as const;
+
+export const EmbedTokenDtoSchema = {
+  type: "object",
+  properties: {
+    sub: {
+      type: "string",
+      description:
+        "Subject — used as clientId for routing inside the bridle hub.",
+      example: "user-123",
+    },
+    email: {
+      type: "string",
+      example: "alice@example.com",
+    },
+    roles: {
+      type: "array",
+      description:
+        "Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.",
+      items: {
+        $ref: "#/components/schemas/UserRoleTypes",
+      },
+    },
+    expiresIn: {
+      type: "string",
+      description: "Duration string (s/m/h/d). Defaults to 15m.",
+      example: "15m",
+    },
+  },
+  required: ["sub"],
+} as const;
+
 export const UpsertSettingDtoSchema = {
   type: "object",
   properties: {
@@ -34,6 +107,34 @@ export const UpsertSettingDtoSchema = {
     },
   },
   required: ["valueType", "value"],
+} as const;
+
+export const ApiKeyScopeTypesSchema = {
+  type: "string",
+  enum: ["embed:mint", "embed:mint-admin", "admin"],
+} as const;
+
+export const CreateApiKeyDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "Marketing site embed",
+    },
+    scopes: {
+      type: "array",
+      example: ["embed:mint"],
+      items: {
+        $ref: "#/components/schemas/ApiKeyScopeTypes",
+      },
+    },
+    expiresAt: {
+      type: "string",
+      description: "ISO date string. Omit for a non-expiring key.",
+      example: "2027-01-01T00:00:00.000Z",
+    },
+  },
+  required: ["name", "scopes"],
 } as const;
 
 export const CreateLlmCredentialDtoSchema = {
@@ -285,107 +386,6 @@ export const UpdateMcpServerDtoSchema = {
       type: "boolean",
     },
   },
-} as const;
-
-export const LoginDtoSchema = {
-  type: "object",
-  properties: {
-    email: {
-      type: "string",
-      example: "jane@example.com",
-    },
-    password: {
-      type: "string",
-      example: "strongPassword1",
-      minLength: 8,
-    },
-  },
-  required: ["email", "password"],
-} as const;
-
-export const RegisterDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "Jane Doe",
-    },
-    email: {
-      type: "string",
-      example: "jane@example.com",
-    },
-    password: {
-      type: "string",
-      example: "strongPassword1",
-      minLength: 8,
-    },
-  },
-  required: ["name", "email", "password"],
-} as const;
-
-export const UserRoleTypesSchema = {
-  type: "string",
-  enum: ["Owner", "Admin", "User", "Agent"],
-  description:
-    "Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.",
-} as const;
-
-export const EmbedTokenDtoSchema = {
-  type: "object",
-  properties: {
-    sub: {
-      type: "string",
-      description:
-        "Subject — used as clientId for routing inside the bridle hub.",
-      example: "user-123",
-    },
-    email: {
-      type: "string",
-      example: "alice@example.com",
-    },
-    roles: {
-      type: "array",
-      description:
-        "Server filters Owner/Admin out unless the presenting API key carries the embed:mint-admin scope; plain embed keys cannot grant platform-admin to a visitor.",
-      items: {
-        $ref: "#/components/schemas/UserRoleTypes",
-      },
-    },
-    expiresIn: {
-      type: "string",
-      description: "Duration string (s/m/h/d). Defaults to 15m.",
-      example: "15m",
-    },
-  },
-  required: ["sub"],
-} as const;
-
-export const ApiKeyScopeTypesSchema = {
-  type: "string",
-  enum: ["embed:mint", "embed:mint-admin", "admin"],
-} as const;
-
-export const CreateApiKeyDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "Marketing site embed",
-    },
-    scopes: {
-      type: "array",
-      example: ["embed:mint"],
-      items: {
-        $ref: "#/components/schemas/ApiKeyScopeTypes",
-      },
-    },
-    expiresAt: {
-      type: "string",
-      description: "ISO date string. Omit for a non-expiring key.",
-      example: "2027-01-01T00:00:00.000Z",
-    },
-  },
-  required: ["name", "scopes"],
 } as const;
 
 export const KnowledgeListItemDtoSchema = {

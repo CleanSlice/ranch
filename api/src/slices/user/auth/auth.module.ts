@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './domain';
 import { UserMapper } from '../user/data/user.mapper';
 import { SettingModule } from '#/setting/setting.module';
+import { SessionModule } from '../session/session.module';
 import { ApiKeyModule } from '../apiKey/apiKey.module';
 import { JwtAuthGuard } from './guards/jwtAuth.guard';
 import { RolesGuard } from './guards/roles.guard';
@@ -15,6 +16,7 @@ import { ScopesGuard } from './guards/scopes.guard';
 @Module({
   imports: [
     SettingModule,
+    SessionModule,
     forwardRef(() => ApiKeyModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -23,7 +25,7 @@ import { ScopesGuard } from './guards/scopes.guard';
         secret: config.get<string>('JWT_SECRET') ?? 'dev-secret-change-me',
         signOptions: {
           expiresIn: (config.get<string>('JWT_EXPIRES_IN') ??
-            '7d') as `${number}${'s' | 'm' | 'h' | 'd'}`,
+            '15m') as `${number}${'s' | 'm' | 'h' | 'd'}`,
         },
       }),
     }),
@@ -39,6 +41,9 @@ import { ScopesGuard } from './guards/scopes.guard';
   ],
   exports: [
     AuthService,
+    // Re-exported so any module that imports AuthModule (it is @Global) can
+    // inject SessionService — the init slice sets the same cookie as login.
+    SessionModule,
     JwtAuthGuard,
     RolesGuard,
     ApiKeyGuard,

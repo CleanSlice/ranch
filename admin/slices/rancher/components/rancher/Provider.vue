@@ -353,10 +353,9 @@ async function onDeploy() {
         class="flex min-h-0 w-full flex-1 flex-col lg:sticky lg:top-6 lg:h-[calc(100svh-13.5rem)] lg:max-w-200 lg:self-start"
       >
         <BridleProvider
-          v-if="authStore.accessToken"
+          v-if="authStore.isAuthenticated"
           :api-url="apiUrl"
           :agent-id="admin.id"
-          :token="authStore.accessToken"
           :title="`Chat with ${admin.name}`"
           class="h-full min-h-0 w-full max-w-none flex-1"
         />

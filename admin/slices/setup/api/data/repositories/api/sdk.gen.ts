@@ -10,11 +10,21 @@ import type {
   HealthControllerCheckData,
   InitControllerStatusData,
   InitControllerInitData,
+  AuthControllerLoginData,
+  AuthControllerRegisterData,
+  AuthControllerRefreshData,
+  AuthControllerLogoutData,
+  AuthControllerMeData,
+  AuthControllerEmbedTokenData,
   SettingControllerFindAllData,
   SettingControllerFindByGroupData,
   SettingControllerRemoveData,
   SettingControllerFindByKeyData,
   SettingControllerUpsertData,
+  ApiKeyControllerFindAllData,
+  ApiKeyControllerCreateData,
+  ApiKeyControllerRemoveData,
+  ApiKeyControllerRemoveResponse,
   LlmControllerFindAllData,
   LlmControllerCreateData,
   LlmControllerRemoveData,
@@ -34,14 +44,6 @@ import type {
   McpServerControllerRemoveData,
   McpServerControllerFindByIdData,
   McpServerControllerUpdateData,
-  AuthControllerLoginData,
-  AuthControllerRegisterData,
-  AuthControllerMeData,
-  AuthControllerEmbedTokenData,
-  ApiKeyControllerFindAllData,
-  ApiKeyControllerCreateData,
-  ApiKeyControllerRemoveData,
-  ApiKeyControllerRemoveResponse,
   GetKnowledgesData,
   GetKnowledgesResponse,
   CreateKnowledgeData,
@@ -65,6 +67,7 @@ import type {
   ExportKnowledgeSourcesData,
   GetKnowledgeSourceContentData,
   ReindexKnowledgeSourceData,
+  ExtractKnowledgeSourceTextData,
   AddKnowledgeFileSourcesData,
   AddKnowledgeFileSourcesResponse,
   AddKnowledgeSourcesFromSitemapData,
@@ -341,7 +344,7 @@ export class SetupService {
   }
 
   /**
-   * Create the first owner. Fails if one already exists.
+   * Create the first owner. Fails if one already exists. Sets the session cookie like login.
    */
   public static initControllerInit<ThrowOnError extends boolean = false>(
     options: Options<InitControllerInitData, ThrowOnError>,
@@ -352,6 +355,116 @@ export class SetupService {
       ThrowOnError
     >({
       url: "/setup/init",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
+export class AuthService {
+  /**
+   * Authenticate: returns a short-lived access token and sets the httpOnly session cookie used by POST /auth/refresh
+   */
+  public static authControllerLogin<ThrowOnError extends boolean = false>(
+    options: Options<AuthControllerLoginData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/auth/login",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Self-service signup. Requires the 'auth.registration_enabled' setting to be true; otherwise 403. Sets the session cookie like login.
+   */
+  public static authControllerRegister<ThrowOnError extends boolean = false>(
+    options: Options<AuthControllerRegisterData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/auth/register",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Renew the access token from the session cookie alone (works after the access token expired). Slides the session inactivity window and re-sets the cookie. No body; send credentials.
+   */
+  public static authControllerRefresh<ThrowOnError extends boolean = false>(
+    options?: Options<AuthControllerRefreshData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/auth/refresh",
+      ...options,
+    });
+  }
+
+  /**
+   * Revoke the session behind the cookie and clear it. Always 200; `revoked` is false when nothing live matched.
+   */
+  public static authControllerLogout<ThrowOnError extends boolean = false>(
+    options?: Options<AuthControllerLogoutData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/auth/logout",
+      ...options,
+    });
+  }
+
+  /**
+   * Get the current authenticated user
+   */
+  public static authControllerMe<ThrowOnError extends boolean = false>(
+    options?: Options<AuthControllerMeData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/auth/me",
+      ...options,
+    });
+  }
+
+  /**
+   * Mint a short-lived browser embed JWT for the bridle widget. Auth: API key with embed:mint scope. Owner/Admin roles are stripped from the result unless the key also carries embed:mint-admin — then they are kept and the TTL is capped at 7d.
+   */
+  public static authControllerEmbedToken<ThrowOnError extends boolean = false>(
+    options: Options<AuthControllerEmbedTokenData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/auth/embed/token",
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -443,6 +556,60 @@ export class SettingsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+}
+
+export class ApiKeysService {
+  /**
+   * List all API keys
+   */
+  public static apiKeyControllerFindAll<ThrowOnError extends boolean = false>(
+    options?: Options<ApiKeyControllerFindAllData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api-keys",
+      ...options,
+    });
+  }
+
+  /**
+   * Create a new API key. The plaintext key is returned exactly once — only its hash is persisted.
+   */
+  public static apiKeyControllerCreate<ThrowOnError extends boolean = false>(
+    options: Options<ApiKeyControllerCreateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api-keys",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Revoke (delete) an API key.
+   */
+  public static apiKeyControllerRemove<ThrowOnError extends boolean = false>(
+    options: Options<ApiKeyControllerRemoveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      ApiKeyControllerRemoveResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api-keys/{id}",
+      ...options,
     });
   }
 }
@@ -871,138 +1038,6 @@ export class McpServersService {
   }
 }
 
-export class AuthService {
-  /**
-   * Authenticate and receive an access token
-   */
-  public static authControllerLogin<ThrowOnError extends boolean = false>(
-    options: Options<AuthControllerLoginData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/auth/login",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Self-service signup. Requires the 'auth.registration_enabled' setting to be true; otherwise 403.
-   */
-  public static authControllerRegister<ThrowOnError extends boolean = false>(
-    options: Options<AuthControllerRegisterData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/auth/register",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Get the current authenticated user
-   */
-  public static authControllerMe<ThrowOnError extends boolean = false>(
-    options?: Options<AuthControllerMeData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/auth/me",
-      ...options,
-    });
-  }
-
-  /**
-   * Mint a short-lived browser embed JWT for the bridle widget. Auth: API key with embed:mint scope. Owner/Admin roles are stripped from the result unless the key also carries embed:mint-admin — then they are kept and the TTL is capped at 7d.
-   */
-  public static authControllerEmbedToken<ThrowOnError extends boolean = false>(
-    options: Options<AuthControllerEmbedTokenData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/auth/embed/token",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-}
-
-export class ApiKeysService {
-  /**
-   * List all API keys
-   */
-  public static apiKeyControllerFindAll<ThrowOnError extends boolean = false>(
-    options?: Options<ApiKeyControllerFindAllData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api-keys",
-      ...options,
-    });
-  }
-
-  /**
-   * Create a new API key. The plaintext key is returned exactly once — only its hash is persisted.
-   */
-  public static apiKeyControllerCreate<ThrowOnError extends boolean = false>(
-    options: Options<ApiKeyControllerCreateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api-keys",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Revoke (delete) an API key.
-   */
-  public static apiKeyControllerRemove<ThrowOnError extends boolean = false>(
-    options: Options<ApiKeyControllerRemoveData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      ApiKeyControllerRemoveResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api-keys/{id}",
-      ...options,
-    });
-  }
-}
-
 export class KnowledgesService {
   /**
    * List knowledges (searchable, paged)
@@ -1279,6 +1314,23 @@ export class KnowledgeSourcesService {
       ThrowOnError
     >({
       url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex",
+      ...options,
+    });
+  }
+
+  /**
+   * Re-run text extraction for a scanned PDF
+   * Probes the PDF for a text layer and, if it has none, sends it to OCR in the background. Progress is reported through the source own textState; press Index once it reads ready.
+   */
+  public static extractKnowledgeSourceText<
+    ThrowOnError extends boolean = false,
+  >(options: Options<ExtractKnowledgeSourceTextData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/{sourceId}/extract",
       ...options,
     });
   }

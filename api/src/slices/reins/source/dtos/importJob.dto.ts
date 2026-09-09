@@ -1,10 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IImportJob, ImportJobStatusTypes } from '../domain/source.types';
+import {
+  IImportJob,
+  ImportJobKindTypes,
+  ImportJobStatusTypes,
+} from '../domain/source.types';
 
 export class ImportJobDto implements IImportJob {
   @ApiProperty() id: string;
   @ApiProperty() knowledgeId: string;
-  @ApiProperty({ enum: ['archive'] }) kind: 'archive';
+  @ApiProperty({ enum: ['archive', 'extraction'] }) kind: ImportJobKindTypes;
   @ApiProperty({ enum: ['running', 'done', 'failed'] })
   status: ImportJobStatusTypes;
   @ApiProperty({ description: 'Ingestable entries found up front' })

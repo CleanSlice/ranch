@@ -9,13 +9,26 @@ const props = defineProps<{
   errorMessage?: string | null;
   failed?: boolean;
   registrationEnabled?: boolean;
+  /** Starting value for the email field — the session-ended dialog knows who was signed in. */
+  initialEmail?: string;
+  /** Drop the built-in heading / footer links when a host renders its own copy around the form. */
+  hideHeading?: boolean;
+  hideFooter?: boolean;
+  /** Replace the idle submit label with another i18n key; the pending label is unchanged. */
+  submitLabelKey?: string;
 }>();
 
 const emit = defineEmits<{
   submit: [values: { name?: string; email: string; password: string }];
 }>();
 
-const form = reactive({ name: '', email: '', password: '' });
+const form = reactive({ name: '', email: props.initialEmail ?? '', password: '' });
+watch(
+  () => props.initialEmail,
+  (email) => {
+    if (email && !form.email) form.email = email;
+  },
+);
 // Validation state holds i18n KEYS, not sentences: the template renders them
 // with $t. Keeping the text here would hide user-visible copy inside branching
 // logic, where the next extraction pass would never find it.
@@ -89,6 +102,7 @@ const submitLabelKey = computed(() => {
       ? 'account.submit_login_pending'
       : 'account.submit_register_pending';
   }
+  if (props.submitLabelKey) return props.submitLabelKey;
   return props.mode === 'login'
     ? 'account.submit_login'
     : 'account.submit_register';
@@ -115,7 +129,7 @@ function showError(field: 'name' | 'email' | 'password') {
 
 <template>
   <div>
-    <div class="mb-8">
+    <div v-if="!hideHeading" class="mb-8">
       <h1 class="text-2xl font-bold tracking-tight">{{ $t(titleKey) }}</h1>
       <p class="mt-1.5 text-sm text-muted-foreground">{{ $t(subtitleKey) }}</p>
     </div>
@@ -276,7 +290,7 @@ function showError(field: 'name' | 'email' | 'password') {
       </button>
     </form>
 
-    <div class="mt-6 text-center text-sm text-muted-foreground">
+    <div v-if="!hideFooter" class="mt-6 text-center text-sm text-muted-foreground">
       <template v-if="mode === 'login'">
         <span v-if="registrationEnabled">
           {{ $t('account.new_here') }}

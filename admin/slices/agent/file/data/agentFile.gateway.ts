@@ -1,4 +1,5 @@
 import { FilesService } from '#api/data';
+import { authedFetch } from '#auth/utils/authedFetch';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IAgentFileGateway } from '../domain/agentFile.gateway';
@@ -10,12 +11,6 @@ import type {
   ISyncOutcome,
 } from '../domain/agentFile.types';
 import { AgentFileMapper } from './agentFile.mapper';
-
-function readAccessToken(): string | null {
-  if (typeof document === 'undefined') return null;
-  const token = document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)?.[1];
-  return token ? decodeURIComponent(token) : null;
-}
 
 export class AgentFileGateway extends BaseGateway implements IAgentFileGateway {
   private mapper = new AgentFileMapper();
@@ -107,16 +102,14 @@ export class AgentFileGateway extends BaseGateway implements IAgentFileGateway {
   }
 
   // Raw fetch: the endpoint returns raw ZIP bytes (not the JSON envelope).
-  // Replicate the Bearer-token attachment the SDK's axios interceptor does.
+  // `authedFetch` attaches the bearer and applies the same refresh-and-retry
+  // rule the SDK's axios interceptor does.
   exportZip(agentId: string): Promise<Blob> {
     return this.execute(async () => {
       const runtime = useRuntimeConfig();
-      const headers: Record<string, string> = {};
-      const token = readAccessToken();
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch(
+      const res = await authedFetch(
         `${runtime.public.apiUrl}/agents/${agentId}/files/export`,
-        { credentials: 'include', headers },
+        { credentials: 'include' },
       );
       if (!res.ok) {
         throw new Error(`Download failed: ${res.status} ${res.statusText}`);

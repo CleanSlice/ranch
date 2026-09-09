@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ShareLinkService } from '#/agent/shareLink/domain';
 import { BridleController } from './bridle.controller';
@@ -305,20 +305,70 @@ describe('BridleController — identity precedence', () => {
     expect(sent[0].clientId).toMatch(/^http-[0-9a-f-]{36}$/);
   });
 
-  it('falls back to anonymous for a bad JWT with no share headers, as before', async () => {
+  it('answers 401 TOKEN_EXPIRED for an expired JWT with no share headers and never reaches the hub', async () => {
+    // A silent demotion to `sync-<uuid>` would look like a working chat that
+    // has quietly lost its history (CLEAN-72). The console renews and retries.
     const { controller, registered } = makeController({
       verify: () => {
-        throw new Error('jwt expired');
+        throw Object.assign(new Error('jwt expired'), {
+          name: 'TokenExpiredError',
+        });
+      },
+    });
+
+    const err = await controller
+      .sendMessageSync(AGENT, request({ authorization: 'Bearer stale' }), {
+        text: 'hello',
+      } as never)
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect((err as UnauthorizedException).getResponse()).toMatchObject({
+      code: 'TOKEN_EXPIRED',
+    });
+    expect(registered).toHaveLength(0);
+  });
+
+  it('answers 401 TOKEN_INVALID for a forged JWT on the fire-and-forget route', async () => {
+    const { controller, sent } = makeController({
+      verify: () => {
+        throw Object.assign(new Error('invalid signature'), {
+          name: 'JsonWebTokenError',
+        });
+      },
+    });
+
+    const err = await controller
+      .sendMessage(AGENT, request({ authorization: 'Bearer forged' }), {
+        text: 'hello',
+      } as never)
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect((err as UnauthorizedException).getResponse()).toMatchObject({
+      code: 'TOKEN_INVALID',
+    });
+    expect(sent).toHaveLength(0);
+  });
+
+  it('lets an expired JWT fall through to valid share headers', async () => {
+    // Same rule as BridleChatAuthGuard: a console user whose session died must
+    // still be able to use a share page opened in the same browser.
+    const { controller, registered } = makeController({
+      verify: () => {
+        throw Object.assign(new Error('jwt expired'), {
+          name: 'TokenExpiredError',
+        });
       },
     });
 
     await controller.sendMessageSync(
       AGENT,
-      request({ authorization: 'Bearer stale' }),
+      request({ authorization: 'Bearer stale', ...SHARE_HEADERS }),
       { text: 'hello' } as never,
     );
 
-    expect(registered[0].clientId).toMatch(/^sync-/);
+    expect(registered[0].clientId).toMatch(/^share-/);
   });
 });
 
@@ -363,19 +413,24 @@ describe('BridleController — requester travels into attachment expansion', () 
     expect(expandCalls).toEqual([{ clientId: 'user-1', kind: 'jwt' }]);
   });
 
-  it('treats a signed token with no subject as anonymous, not as an empty id', async () => {
+  it('refuses a signed token with no subject as TOKEN_INVALID, never as an empty id', async () => {
     const { controller, expandCalls, registered } = makeController({
       verify: () => ({ email: 'nobody@example.com' }),
     });
 
-    await controller.sendMessageSync(
-      AGENT,
-      request({ authorization: 'Bearer jwt-token' }),
-      { text: 'hello', attachmentIds: ['a1'] } as never,
-    );
+    const err = await controller
+      .sendMessageSync(AGENT, request({ authorization: 'Bearer jwt-token' }), {
+        text: 'hello',
+        attachmentIds: ['a1'],
+      } as never)
+      .catch((e: unknown) => e);
 
-    expect(expandCalls).toEqual([{ clientId: null, kind: 'anonymous' }]);
-    expect(registered[0].clientId).toMatch(/^sync-/);
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect((err as UnauthorizedException).getResponse()).toMatchObject({
+      code: 'TOKEN_INVALID',
+    });
+    expect(expandCalls).toHaveLength(0);
+    expect(registered).toHaveLength(0);
   });
 
   it('counts an empty share token as offered and refuses the message', async () => {

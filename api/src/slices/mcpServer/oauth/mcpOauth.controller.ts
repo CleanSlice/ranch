@@ -1,24 +1,22 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Param,
   Post,
   Query,
-  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import {
-  ApiBearerAuth,
+  ApiHeader,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import type { Request, Response } from 'express';
-import { JwtAuthGuard, Public } from '#/user/auth/guards';
-import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
+import type { Response } from 'express';
+import { Public } from '#/user/auth/guards';
+import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
 import { McpOauthService } from './domain/mcpOauth.service';
 import {
   McpOauthStatusDto,
@@ -28,9 +26,10 @@ import {
 
 /**
  * In-chat OAuth "Connect" flow for OAuth-based MCP servers (CLEAN-75). `start`
- * and `status` are called by the agent runtime / console (Bearer JWT);
- * `callback` is hit by the user's browser after they log in at the provider —
- * it carries no bearer, only the opaque `state` we minted, so it is @Public.
+ * and `status` are called by the agent runtime (x-bridle-api-key, the same auth
+ * it uses for every other ranch call); `callback` is hit by the user's browser
+ * after they log in at the provider — it carries no key, only the opaque
+ * `state` we minted, so it is @Public.
  */
 @ApiTags('mcp-oauth')
 @Controller('mcp-servers/:serverId/oauth')
@@ -38,25 +37,18 @@ export class McpOauthController {
   constructor(private readonly service: McpOauthService) {}
 
   @Post('start')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @UseGuards(BridleApiKeyGuard)
+  @ApiHeader({ name: 'x-bridle-api-key', required: true })
   @ApiOperation({
     operationId: 'startMcpOauth',
     summary:
-      'Begin an OAuth connect for an agent. Returns the authorization URL the agent sends the user in chat. Agent-issued tokens (sub=agent:<id>) may only start for themselves.',
+      'Begin an OAuth connect for an agent. Returns the authorization URL the agent sends the user in chat.',
   })
   @ApiOkResponse({ type: StartMcpOauthResultDto })
   async start(
     @Param('serverId') serverId: string,
     @Body() dto: StartMcpOauthDto,
-    @Req() req: Request & { user?: IAuthTokenPayload },
   ): Promise<StartMcpOauthResultDto> {
-    const sub = req.user?.sub ?? '';
-    if (sub.startsWith('agent:') && sub !== `agent:${dto.agentId}`) {
-      throw new ForbiddenException(
-        'Agent tokens can only start a connect for their own agent',
-      );
-    }
     return this.service.start(serverId, dto.agentId);
   }
 
@@ -85,7 +77,8 @@ export class McpOauthController {
       heading = `Connected to ${serverName} ✅`;
     } catch (err) {
       heading = 'Connection failed';
-      sub = (err as Error).message || 'Please try connecting again from the chat.';
+      sub =
+        (err as Error).message || 'Please try connecting again from the chat.';
       res.status(400);
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -100,8 +93,8 @@ export class McpOauthController {
   }
 
   @Get('status')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @UseGuards(BridleApiKeyGuard)
+  @ApiHeader({ name: 'x-bridle-api-key', required: true })
   @ApiOperation({
     operationId: 'mcpOauthStatus',
     summary: 'Whether the given agent already has a usable token for this server.',

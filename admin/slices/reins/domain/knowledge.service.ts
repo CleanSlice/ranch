@@ -19,6 +19,8 @@ import type {
   IUpdateKnowledgeInput,
   KnowledgeQueryMode,
   SourceContentDisposition,
+  IKnowledgeOverview,
+
 } from './knowledge.types';
 
 /**
@@ -46,6 +48,10 @@ export class KnowledgeService {
 
   findById(id: string): Promise<IKnowledge | null> {
     return this.gateway.findById(id);
+  }
+
+  fetchOverview(id: string): Promise<IKnowledgeOverview | null> {
+    return this.gateway.fetchOverview(id);
   }
 
   create(input: ICreateKnowledgeInput): Promise<IKnowledge | null> {

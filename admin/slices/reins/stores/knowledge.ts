@@ -15,6 +15,8 @@ import type {
   IUpdateKnowledgeInput,
   KnowledgeQueryMode,
   KnowledgeService,
+  IKnowledgeOverview,
+
 } from '#reins/domain';
 
 // Re-export the domain types so consumers importing them from
@@ -25,6 +27,7 @@ export type {
   IGraph,
   IImportJob,
   IKnowledge,
+  IKnowledgeOverview,
   IKnowledgePage,
   IKnowledgeRuntimeConfig,
   IKnowledgeSetupStatus,
@@ -96,6 +99,10 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
 
   function fetchById(id: string) {
     return getService().findById(id);
+  }
+
+  function fetchOverview(id: string): Promise<IKnowledgeOverview | null> {
+    return getService().fetchOverview(id);
   }
 
   function fetchPage(search: string | undefined, page: number, perPage = 50) {
@@ -278,6 +285,7 @@ export const useKnowledgeStore = defineStore('reins-knowledge', () => {
     fetchStatus,
     fetchAll,
     fetchById,
+    fetchOverview,
     fetchPage,
     create,
     update,

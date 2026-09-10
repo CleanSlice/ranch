@@ -23,6 +23,8 @@ import type {
   IUpdateKnowledgeInput,
   KnowledgeQueryMode,
   SourceContentDisposition,
+  IKnowledgeOverview,
+
 } from '../domain/knowledge.types';
 import { KnowledgeMapper } from './knowledge.mapper';
 
@@ -88,6 +90,13 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
     return this.execute(async () => {
       const res = await KnowledgesService.getKnowledge({ path: { id } });
       return this.mapper.toKnowledge(unwrapEnvelope(res.data));
+    });
+  }
+
+  fetchOverview(id: string): Promise<IKnowledgeOverview | null> {
+    return this.execute(async () => {
+      const res = await KnowledgesService.getKnowledgeOverview({ path: { id } });
+      return this.mapper.toOverview(unwrapEnvelope(res.data));
     });
   }
 

@@ -52,6 +52,8 @@ import type {
   GetGraphLabelsResponse,
   GetGraphData,
   GetGraphResponse,
+  GetKnowledgeOverviewData,
+  GetKnowledgeOverviewResponse,
   DeleteKnowledgeData,
   DeleteKnowledgeResponse,
   GetKnowledgeData,
@@ -1119,6 +1121,22 @@ export class KnowledgesService {
       ThrowOnError
     >({
       url: "/knowledges/{id}/graph",
+      ...options,
+    });
+  }
+
+  /**
+   * Source counts by status and type, and total size, in one read
+   */
+  public static getKnowledgeOverview<ThrowOnError extends boolean = false>(
+    options: Options<GetKnowledgeOverviewData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetKnowledgeOverviewResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{id}/overview",
       ...options,
     });
   }

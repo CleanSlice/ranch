@@ -22,6 +22,8 @@ import type {
   SourceIndexStatus,
   SourceType,
   SourceTextState,
+  IKnowledgeOverview,
+
 } from '../domain/knowledge.types';
 
 const INDEX_STATUSES = new Set<IndexStatus>([
@@ -149,6 +151,23 @@ export class KnowledgeMapper {
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
       sources: Array.isArray(o.sources) ? this.toSourceList(o.sources) : undefined,
+    };
+  }
+
+  toOverview(raw: unknown): IKnowledgeOverview | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    const t =
+      o.byType && typeof o.byType === 'object'
+        ? (o.byType as Record<string, unknown>)
+        : {};
+    return {
+      sourceCount: num(o.sourceCount),
+      indexedCount: num(o.indexedCount),
+      failedCount: num(o.failedCount),
+      processingCount: num(o.processingCount),
+      byType: { file: num(t.file), url: num(t.url), text: num(t.text) },
+      totalSizeBytes: num(o.totalSizeBytes),
     };
   }
 

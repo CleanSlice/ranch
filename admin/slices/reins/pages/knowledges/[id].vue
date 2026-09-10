@@ -264,15 +264,25 @@ provide('knowledge-refresh', refresh);
             {{ errorExpanded ? 'Show less' : 'Show full error' }}
           </button>
         </div>
-        <div
-          v-if="current.indexStatus === 'indexing'"
-          class="mt-2 h-1.5 w-full max-w-md overflow-hidden rounded bg-muted"
-          :title="`${progressPercent}%`"
-        >
+        <!-- Labelled at both ends: a bare line right under the error text
+             read as the error's scrollbar on first sight. -->
+        <div v-if="current.indexStatus === 'indexing'" class="mt-2 w-full max-w-md">
+          <div class="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{{ progressPercent }}% indexed</span>
+            <span>{{ current.indexedCount }} / {{ current.sourceCount }}</span>
+          </div>
           <div
-            class="h-full bg-primary transition-all"
-            :style="{ width: `${progressPercent}%` }"
-          />
+            class="mt-1 h-1.5 w-full overflow-hidden rounded bg-muted"
+            role="progressbar"
+            :aria-valuenow="progressPercent"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <div
+              class="h-full bg-primary transition-all"
+              :style="{ width: `${progressPercent}%` }"
+            />
+          </div>
         </div>
         <!-- Only while a migration run is actually executing: with instance
              isolation switched off, notStarted is the permanent, healthy

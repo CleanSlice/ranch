@@ -210,3 +210,13 @@ export interface ISourceFilesResult {
   failed: number;
   errors: string[];
 }
+
+/** What the Overview tab shows about a base's sources, from one request. */
+export interface IKnowledgeOverview {
+  sourceCount: number;
+  indexedCount: number;
+  failedCount: number;
+  processingCount: number;
+  byType: Record<SourceType, number>;
+  totalSizeBytes: number;
+}

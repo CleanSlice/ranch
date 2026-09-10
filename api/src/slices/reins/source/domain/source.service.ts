@@ -22,6 +22,7 @@ import {
   ISourceIndexOutcome,
   ISourcePage,
   ISourceSelection,
+  ISourceBreakdown,
 } from './source.types';
 import { fetchSitemapUrls, SitemapError } from '../data/sitemap.fetcher';
 import { writeSourceArchive } from '../data/sourceArchive.writer';
@@ -76,6 +77,10 @@ export class SourceService {
     knowledgeIds: string[],
   ): Promise<Map<string, ISourceCounts>> {
     return this.gateway.countByKnowledgeIds(knowledgeIds);
+  }
+
+  breakdown(knowledgeId: string): Promise<ISourceBreakdown> {
+    return this.gateway.breakdown(knowledgeId);
   }
 
   async readContent(

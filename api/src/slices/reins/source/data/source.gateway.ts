@@ -31,6 +31,8 @@ import {
   ISourceIndexOutcome,
   ISourceTextStatePatch,
   SourceTextStateTypes,
+  ISourceBreakdown,
+  SourceTypes,
 } from '../domain/source.types';
 import { indexBudgetMs, pollIntervalMs } from '../domain/indexBudget';
 import { SourceMapper } from './source.mapper';
@@ -120,6 +122,12 @@ function adoptableDocId(message: string | null): string | null {
  * everything else, including a document still moving through the pipeline.
  * Kept in sync with deriveIndexStatus in the mapper.
  */
+const SOURCE_TYPES: readonly SourceTypes[] = ['file', 'url', 'text'];
+
+function isSourceType(value: string): value is SourceTypes {
+  return (SOURCE_TYPES as readonly string[]).includes(value);
+}
+
 function whereForStatus(
   status: ISourceFilter['status'],
 ): Prisma.SourceWhereInput {
@@ -252,6 +260,22 @@ export class SourceGateway extends ISourceGateway {
       orderBy: { createdAt: 'asc' },
     });
     return records.map((r) => this.mapper.toEntity(r));
+  }
+
+  async breakdown(knowledgeId: string): Promise<ISourceBreakdown> {
+    const rows = await this.prisma.source.groupBy({
+      by: ['type'],
+      where: { knowledgeId },
+      _count: { _all: true },
+      _sum: { sizeBytes: true },
+    });
+    const byType: Record<SourceTypes, number> = { file: 0, url: 0, text: 0 };
+    let totalSizeBytes = 0;
+    for (const row of rows) {
+      if (isSourceType(row.type)) byType[row.type] = row._count._all;
+      totalSizeBytes += row._sum.sizeBytes ?? 0;
+    }
+    return { byType, totalSizeBytes };
   }
 
   async countByKnowledgeIds(

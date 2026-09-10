@@ -1,3 +1,4 @@
+import { SourceTypes } from '../../source/domain/source.types';
 import type { InstanceStateTypes } from '../../instance/domain/instance.types';
 
 export type { QueryModeTypes } from '../../lightrag/domain/lightrag.types';
@@ -186,4 +187,17 @@ export interface IGetGraphParams {
   label: string;
   maxDepth?: number;
   maxNodes?: number;
+}
+
+/**
+ * What the Overview tab shows about a base's sources, in one read. Before
+ * this the tab made a head request per source type to learn the counts.
+ */
+export interface IKnowledgeOverview {
+  sourceCount: number;
+  indexedCount: number;
+  failedCount: number;
+  processingCount: number;
+  byType: Record<SourceTypes, number>;
+  totalSizeBytes: number;
 }

@@ -23,11 +23,13 @@ import {
   QueryModeTypes,
   IGetGraphParams,
   IGraphData,
+  IKnowledgeOverview,
 } from './knowledge.types';
 import { SourceService } from '../../source/domain/source.service';
 import { ISourceCounts, ISourceData } from '../../source/domain/source.types';
 import { staleIndexAfterMs } from '../../source/domain/indexBudget';
 import { deriveIndexStatus } from './knowledge.status';
+import { summarizeFailures } from './failureSummary';
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
 
@@ -197,6 +199,24 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
    * Source progress is owned by the source slice; ask it once for the whole
    * batch so listing N knowledges costs one round of counts, not N.
    */
+  async getOverview(id: string): Promise<IKnowledgeOverview> {
+    const k = await this.gateway.findById(id);
+    if (!k) throw new NotFoundException(`Knowledge ${id} not found`);
+    const [counts, breakdown] = await Promise.all([
+      this.sources.countByKnowledgeIds([id]),
+      this.sources.breakdown(id),
+    ]);
+    const c = counts.get(id) ?? NO_SOURCES;
+    return {
+      sourceCount: c.total,
+      indexedCount: c.indexed,
+      failedCount: c.failed,
+      processingCount: c.processing,
+      byType: breakdown.byType,
+      totalSizeBytes: breakdown.totalSizeBytes,
+    };
+  }
+
   private async withCounts(
     records: IKnowledgeRecord[],
   ): Promise<IKnowledgeData[]> {
@@ -500,13 +520,7 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
       // waiting for are not errors: LightRAG is still working on them, they
       // show as `pending` on their own rows, and painting the whole base red
       // over them is what made every large re-index look like an outage.
-      const summary =
-        failures.length === 0
-          ? null
-          : `${failures.length} source(s) failed: ${failures
-              .slice(0, 5)
-              .map((f) => `${f.name} (${f.error ?? 'unknown error'})`)
-              .join('; ')}${failures.length > 5 ? '; ...' : ''}`;
+      const summary = summarizeFailures(failures);
       const indexedCount = outcomes.filter((o) => o.indexed).length;
       // 'ready' means LightRAG confirmed at least one document as processed,
       // or the base is empty (nothing to do is trivially ready). Accepting an

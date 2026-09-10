@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { IKnowledge, SourceType } from '#reins/stores/knowledge';
-import { errorMessageOf, formatDateTime } from '#reins/domain';
+import type { IKnowledge, IKnowledgeOverview, SourceType } from '#reins/stores/knowledge';
+import { errorMessageOf, formatBytes, formatDateTime } from '#reins/domain';
 
 const store = useKnowledgeStore();
 const current = inject<Ref<IKnowledge | null>>('knowledge-current');
@@ -43,30 +43,23 @@ const TYPE_LABELS: Record<SourceType, string> = {
   text: 'Text',
 };
 
-const typeCounts = ref<Record<SourceType, number> | null>(null);
+const overview = ref<IKnowledgeOverview | null>(null);
 
-// One head request per type: `total` comes back on a page of one row, so this
-// is three tiny queries rather than pulling 355 records to count them here.
-async function loadTypeCounts(): Promise<void> {
+// One request for the whole breakdown. It used to be a head request per
+// source type, so opening this tab cost four calls where one will do.
+async function loadOverview(): Promise<void> {
   const id = knowledgeId.value;
   if (!id) return;
   try {
-    const pages = await Promise.all(
-      TYPES.map((type) => store.listSources(id, { page: 1, perPage: 1, type })),
-    );
-    const next: Record<SourceType, number> = { file: 0, url: 0, text: 0 };
-    TYPES.forEach((type, i) => {
-      next[type] = pages[i].total;
-    });
-    typeCounts.value = next;
+    overview.value = await store.fetchOverview(id);
   } catch {
     // A breakdown is a nicety. Losing it must not blank the page.
-    typeCounts.value = null;
+    overview.value = null;
   }
 }
 
 const presentTypes = computed<Array<[SourceType, number]>>(() => {
-  const counted = typeCounts.value;
+  const counted = overview.value?.byType;
   if (!counted) return [];
   return TYPES.map((type): [SourceType, number] => [type, counted[type]]).filter(
     ([, n]) => n > 0,
@@ -89,11 +82,11 @@ onMounted(() => {
   // `statusChecked` survives navigation inside the console, so this is a first
   // visit only cost.
   if (!store.statusChecked) void store.fetchStatus();
-  void loadTypeCounts();
+  void loadOverview();
 });
 
 watch(knowledgeId, () => {
-  void loadTypeCounts();
+  void loadOverview();
 });
 
 // ---- details form ----------------------------------------------------------
@@ -249,6 +242,13 @@ async function save(): Promise<void> {
             >
               No sources yet.
             </p>
+            <div
+              v-if="overview && overview.totalSizeBytes > 0"
+              class="flex justify-between gap-4"
+            >
+              <dt class="text-muted-foreground">Stored size</dt>
+              <dd class="font-medium">{{ formatBytes(overview.totalSizeBytes) }}</dd>
+            </div>
             <div class="flex justify-between gap-4 border-t pt-2">
               <dt class="text-muted-foreground">Last indexed</dt>
               <dd class="font-medium">{{ formatDateTime(current.indexedAt) }}</dd>

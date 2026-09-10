@@ -203,3 +203,9 @@ export interface IFilesImportResult {
   /** One `"<filename>: <reason>"` line per failed upload. */
   errors: string[];
 }
+
+/** A knowledge's sources by what they are, plus what they weigh in the bucket. */
+export interface ISourceBreakdown {
+  byType: Record<SourceTypes, number>;
+  totalSizeBytes: number;
+}

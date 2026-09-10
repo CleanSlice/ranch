@@ -1,12 +1,14 @@
 import type { IBridleGateway } from './bridle.gateway';
 import type {
   IBridleAttachment,
-  IBridleReply,
+  IBridleChannel,
+  IBridleChannelAuth,
+  IBridleChannelEvents,
   IBridleShareContext,
 } from './bridle.types';
 
 /**
- * Domain service for the live agent chat. Exposes the send and upload
+ * Domain service for the live agent chat. Exposes the channel and upload
  * use-cases; the store layers conversation state, optimistic updates and
  * persistence on top. Named after the slice — the generated `#api` SDK class
  * of the same name is imported under an alias in the data gateway to avoid
@@ -18,13 +20,12 @@ import type {
 export class BridleService {
   constructor(private gateway: IBridleGateway) {}
 
-  sendMessage(
+  openChannel(
     agentId: string,
-    text: string,
-    attachmentIds?: string[],
-    share?: IBridleShareContext,
-  ): Promise<IBridleReply> {
-    return this.gateway.sendMessage(agentId, text, attachmentIds, share);
+    auth: IBridleChannelAuth,
+    events: IBridleChannelEvents,
+  ): IBridleChannel {
+    return this.gateway.openChannel(agentId, auth, events);
   }
 
   uploadAttachment(

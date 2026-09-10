@@ -11,14 +11,24 @@ import {
   isReadableByAgent,
   resolveMimeType,
 } from '#bridle/domain';
-import { BridleAttachmentKinds } from '#bridle/domain';
+import {
+  BridleAttachmentKinds,
+  BridleChannelStates,
+  BridleThinkingBlockStates,
+  BridleThinkingStepStates,
+} from '#bridle/domain';
 import type {
   BridleService,
   IBridleAttachment,
   IBridleAttachmentError,
+  IBridleChannel,
   IBridleConversation,
   IBridleMessage,
+  IBridleNotice,
+  IBridleReply,
   IBridleStagedAttachment,
+  IBridleThinkingBlock,
+  IBridleThinkingEvent,
 } from '#bridle/domain';
 
 // Re-export the domain enums/types so consumers importing them from
@@ -28,18 +38,36 @@ export {
   BridleRoleTypes,
   BridleAttachmentKinds,
   BridleAttachmentStates,
+  BridleChannelStates,
+  BridleThinkingBlockStates,
+  BridleThinkingStepStates,
 } from '#bridle/domain';
 export type {
   IBridleMessage,
   IBridleReply,
   IBridleAttachment,
   IBridleAttachmentError,
+  IBridleNotice,
   IBridleStagedAttachment,
   IBridleConversation,
   IBridleShareContext,
+  IBridleThinkingBlock,
+  IBridleThinkingStep,
 } from '#bridle/domain';
 
 const getService = createServiceGetter<BridleService>('$bridleService');
+
+/**
+ * A cancelled runtime turn never sends `stream_end`/`message` nor the
+ * terminal thinking event — without this the shimmer would animate forever.
+ * Re-armed by every typing/thinking/stream frame; same budget as the admin.
+ */
+const THINKING_STALE_MS = 75_000;
+
+/** Hub handshake rejections the console can recover from by renewing. */
+const RENEWABLE_CODES = new Set(['TOKEN_EXPIRED', 'INVALID_TOKEN']);
+/** Hub rejections that mean the share link itself is dead. */
+const SHARE_DEAD_CODES = new Set(['SHARE_LINK_INVALID', 'SHARE_VISITOR_INVALID']);
 
 // localStorage persistence for chat conversations — survives page refresh.
 // Scoped per conversation key so switching agents doesn't bleed history, and
@@ -107,10 +135,38 @@ function resolveKind(mimeType: string): BridleAttachmentKinds | null {
 
 export const useBridleStore = defineStore('bridle', () => {
   const conversations = ref<Record<string, IBridleMessage[]>>({});
+  /**
+   * True from the moment a message is sent until the agent's first visible
+   * content lands (or the turn dies). Gates the composer and drives the
+   * shimmer status line when no thinking block is open.
+   */
   const pending = ref<Record<string, boolean>>({});
-  const errors = ref<Record<string, string | null>>({});
+  const errors = ref<Record<string, IBridleNotice | null>>({});
   /** Conversations already pulled from localStorage. */
   const hydrated = ref<Record<string, boolean>>({});
+  /** Live channel state per conversation — what "Reconnecting…" reads. */
+  const connection = ref<Record<string, BridleChannelStates>>({});
+  /**
+   * Live thinking timelines, one per agent turn segment — opened by the
+   * first `thinking` step, frozen by the turn's terminal event (or when the
+   * socket drops / the stale watchdog fires). Session-only.
+   */
+  const thinking = ref<Record<string, IBridleThinkingBlock[]>>({});
+  /**
+   * Set when the hub rejected a share visitor's socket because the link is
+   * dead. The share page watches it the way it watches a 403 on the HTTP
+   * calls: the verdict is final and turns the page into its revoked state.
+   */
+  const shareRevoked = ref<Record<string, boolean>>({});
+
+  // Plain maps, not refs: sockets and timers are not view state, and a
+  // reactive proxy around a socket.io client would only get in the way.
+  const channels = new Map<string, IBridleChannel>();
+  const watchdogs = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Turns whose terminal event arrived; straggler steps are ignored. */
+  const closedTurns = new Map<string, Set<string>>();
+  /** One renew-and-reconnect per rejection, never a loop. */
+  const authRetried = new Set<string>();
   /** Files picked but not yet sent, keyed by conversation like everything here. */
   const staged = ref<Record<string, IBridleStagedAttachment[]>>({});
   /** Last rejection, surfaced once and then dismissed by the next action. */
@@ -127,6 +183,12 @@ export const useBridleStore = defineStore('bridle', () => {
   const messagesFor = (key: string) => conversations.value[key] ?? [];
   const isPending = (key: string) => pending.value[key] === true;
   const errorFor = (key: string) => errors.value[key] ?? null;
+  const connectionFor = (key: string) =>
+    connection.value[key] ?? BridleChannelStates.Offline;
+  const thinkingFor = (key: string) => thinking.value[key] ?? [];
+  const isShareRevoked = (key: string) => shareRevoked.value[key] === true;
+  const hasOpenThinking = (key: string) =>
+    thinkingFor(key).some((b) => b.state === BridleThinkingBlockStates.Thinking);
   const stagedFor = (key: string) => staged.value[key] ?? [];
   const attachmentErrorFor = (key: string) => attachmentErrors.value[key] ?? null;
   const draftFor = (key: string) => drafts.value[key] ?? '';
@@ -166,13 +228,20 @@ export const useBridleStore = defineStore('bridle', () => {
     hydrated.value[key] = true;
     if (conversations.value[key]?.length) return;
     const stored = loadConversationFromStorage(key);
-    if (stored && stored.length) conversations.value[key] = stored;
+    if (stored && stored.length) {
+      // Belt and braces: `persist` strips the flag, but a bubble that was
+      // stored mid-stream by an older build must not reload as "in progress".
+      conversations.value[key] = stored.map(({ streaming: _s, ...m }) => m);
+    }
   }
 
   function persist(conv: IBridleConversation) {
     const messages = conversations.value[conv.key];
     if (messages && messages.length) {
-      saveConversationToStorage(conv.key, messages);
+      saveConversationToStorage(
+        conv.key,
+        messages.map(({ streaming: _s, ...m }) => m),
+      );
     } else {
       clearConversationFromStorage(conv.key);
     }
@@ -356,9 +425,273 @@ export const useBridleStore = defineStore('bridle', () => {
     return getService().fetchAttachment(conv.agentId, attachmentId, conv.share);
   }
 
+  // ── Live channel ───────────────────────────────────────────
+
+  function armWatchdog(key: string) {
+    const current = watchdogs.get(key);
+    if (current) clearTimeout(current);
+    watchdogs.set(
+      key,
+      setTimeout(() => {
+        watchdogs.delete(key);
+        pending.value[key] = false;
+        closeAllTurns(key);
+      }, THINKING_STALE_MS),
+    );
+  }
+
+  function disarmWatchdog(key: string) {
+    const current = watchdogs.get(key);
+    if (current) clearTimeout(current);
+    watchdogs.delete(key);
+  }
+
+  function freezeBlock(block: IBridleThinkingBlock) {
+    block.state = BridleThinkingBlockStates.Done;
+    block.steps = block.steps.map((s) => ({
+      ...s,
+      state: BridleThinkingStepStates.Done,
+    }));
+  }
+
+  /**
+   * Seal (collapse) every open segment. The turns stay open — later steps of
+   * the same turn open a fresh segment below the newest message.
+   */
+  function freezeOpenThinking(key: string) {
+    for (const b of thinkingFor(key)) {
+      if (b.state === BridleThinkingBlockStates.Thinking) freezeBlock(b);
+    }
+  }
+
+  /** Terminal paths (watchdog, disconnect): seal segments AND close their
+   *  turns so a straggler step cannot resurrect a zombie segment. */
+  function closeAllTurns(key: string) {
+    const closed = closedTurns.get(key) ?? new Set<string>();
+    for (const b of thinkingFor(key)) closed.add(b.turnId);
+    closedTurns.set(key, closed);
+    freezeOpenThinking(key);
+    disarmWatchdog(key);
+  }
+
+  function onThinking(conv: IBridleConversation, e: IBridleThinkingEvent) {
+    const key = conv.key;
+    if (!thinking.value[key]) thinking.value[key] = [];
+    const blocks = thinking.value[key];
+    const closed = closedTurns.get(key) ?? new Set<string>();
+    closedTurns.set(key, closed);
+    const turnBlocks = blocks.filter((b) => b.turnId === e.turnId);
+
+    if (e.done || !e.step) {
+      // Terminal event — freeze every segment and refuse stragglers.
+      for (const b of turnBlocks) freezeBlock(b);
+      closed.add(e.turnId);
+      return;
+    }
+    if (closed.has(e.turnId)) return;
+
+    // `done` updates land in whichever segment holds the step id — the
+    // segment may have sealed while the tool was still running.
+    const step = e.step;
+    const owner = turnBlocks.find((b) => b.steps.some((s) => s.id === step.id));
+    if (owner) {
+      owner.steps = owner.steps.map((s) => (s.id === step.id ? step : s));
+      pending.value[key] = true;
+      armWatchdog(key);
+      return;
+    }
+
+    // New step: continue the trailing open segment, or open a fresh one
+    // below the newest message (segments seal when content lands).
+    let block = turnBlocks[turnBlocks.length - 1];
+    if (!block || block.state === BridleThinkingBlockStates.Done) {
+      // Linear conversation: a new turn's first step closes other turns.
+      for (const b of blocks) {
+        if (
+          b.turnId !== e.turnId &&
+          b.state === BridleThinkingBlockStates.Thinking
+        ) {
+          freezeBlock(b);
+          closed.add(b.turnId);
+        }
+      }
+      // Anchor after every message on screen — wire ts is agent-clock.
+      const list = messagesFor(key);
+      const lastTs = list[list.length - 1]?.ts ?? 0;
+      block = {
+        turnId: e.turnId,
+        seg: turnBlocks.length,
+        steps: [],
+        state: BridleThinkingBlockStates.Thinking,
+        ts: Math.max(e.ts, lastTs + 1),
+      };
+      blocks.push(block);
+    }
+    block.steps.push(step);
+    // Steps mean the agent is working — keep the shimmer alive through tool
+    // execution and re-arm the watchdog.
+    pending.value[key] = true;
+    armWatchdog(key);
+  }
+
+  function onStream(
+    conv: IBridleConversation,
+    reply: IBridleReply,
+    done: boolean,
+  ) {
+    const key = conv.key;
+    // Streaming is activity too — keep the stale watchdog fed so an open
+    // block only freezes when the turn truly went silent.
+    if (!done && hasOpenThinking(key)) armWatchdog(key);
+    const list = conversations.value[key] ?? (conversations.value[key] = []);
+    const index = reply.messageId
+      ? list.findIndex((m) => m.id === reply.messageId)
+      : -1;
+    if (index !== -1) {
+      const current = list[index];
+      list[index] = { ...current, text: reply.text, streaming: !done };
+    } else {
+      // No bubble for an empty first chunk — wait until the runtime actually
+      // has visible content.
+      if (!reply.text.trim()) {
+        if (done) pending.value[key] = false;
+        return;
+      }
+      // First visible chunk of a new bubble — seal the open segment so
+      // subsequent steps continue below this message.
+      freezeOpenThinking(key);
+      list.push({
+        id: reply.messageId || `a-${Date.now()}`,
+        role: BridleRoleTypes.Agent,
+        text: reply.text,
+        ts: reply.ts ?? Date.now(),
+        ...(done ? {} : { streaming: true }),
+      });
+    }
+    // Content is on screen: the composer opens up again.
+    pending.value[key] = false;
+    // Persisting per chunk would hammer localStorage for nothing — the final
+    // frame carries the whole text.
+    if (done) persist(conv);
+  }
+
+  function onMessage(conv: IBridleConversation, reply: IBridleReply) {
+    const key = conv.key;
+    pending.value[key] = false;
+    if (!reply.text.trim()) return;
+    // Content lands below the open segment — seal it so the next step opens
+    // a fresh segment under this message (turn stays open).
+    freezeOpenThinking(key);
+    appendMessage(conv, {
+      id: reply.messageId || `a-${Date.now()}`,
+      role: BridleRoleTypes.Agent,
+      text: reply.text,
+      ts: reply.ts ?? Date.now(),
+    });
+  }
+
+  async function onRejected(conv: IBridleConversation, code: string) {
+    const key = conv.key;
+    pending.value[key] = false;
+    closeAllTurns(key);
+
+    if (conv.share) {
+      if (SHARE_DEAD_CODES.has(code)) {
+        shareRevoked.value[key] = true;
+        return;
+      }
+      errors.value[key] = { key: 'chat.error_rejected', params: { code } };
+      return;
+    }
+
+    if (RENEWABLE_CODES.has(code)) {
+      // One refresh + reconnect covers a token that expired while the tab was
+      // asleep; if the session itself is gone, say so — the session-ended
+      // dialog replaces the "Reconnecting…" limbo (CLEAN-72).
+      const auth = useAuthStore();
+      if (!authRetried.has(key) && (await auth.refresh())) {
+        authRetried.add(key);
+        channels.get(key)?.reconnect();
+      } else {
+        auth.endSession(code);
+      }
+      return;
+    }
+    errors.value[key] = { key: 'chat.error_rejected', params: { code } };
+  }
+
+  /**
+   * Open the live channel for a conversation. Idempotent — the Provider calls
+   * it whenever its conversation key settles, and a channel that is already
+   * open is left alone. The console makes sure its bearer is not about to
+   * expire first: the hub would refuse it a moment later.
+   */
+  async function connect(conv: IBridleConversation) {
+    const key = conv.key;
+    if (channels.has(key)) return;
+    connection.value[key] = BridleChannelStates.Connecting;
+    if (!conv.share) await useAuthStore().ensureFresh();
+    // Someone else connected (or the chat unmounted) while that was in flight.
+    if (
+      channels.has(key) ||
+      connection.value[key] !== BridleChannelStates.Connecting
+    ) {
+      return;
+    }
+
+    const channel = getService().openChannel(
+      conv.agentId,
+      conv.share
+        ? { share: conv.share }
+        : { token: () => useAuthStore().accessToken },
+      {
+        onConnected() {
+          connection.value[key] = BridleChannelStates.Connected;
+          authRetried.delete(key);
+          // A stale "not connected" notice is answered by the reconnect itself.
+          if (errors.value[key]?.key === 'chat.error_offline') {
+            errors.value[key] = null;
+          }
+        },
+        onDisconnected() {
+          connection.value[key] = BridleChannelStates.Offline;
+          // Nothing can finish an in-flight turn on a dead socket.
+          pending.value[key] = false;
+          closeAllTurns(key);
+        },
+        onRejected: (code) => void onRejected(conv, code),
+        onMessageError(message) {
+          pending.value[key] = false;
+          errors.value[key] = {
+            key: 'chat.error_message',
+            params: { message },
+          };
+        },
+        onTyping() {
+          pending.value[key] = true;
+          armWatchdog(key);
+        },
+        onThinking: (e) => onThinking(conv, e),
+        onStream: (reply, done) => onStream(conv, reply, done),
+        onMessage: (reply) => onMessage(conv, reply),
+      },
+    );
+    channels.set(key, channel);
+  }
+
+  /** Close the channel. Messages stay: they are persisted, the socket is not. */
+  function disconnect(conv: IBridleConversation) {
+    const key = conv.key;
+    channels.get(key)?.close();
+    channels.delete(key);
+    connection.value[key] = BridleChannelStates.Offline;
+    pending.value[key] = false;
+    closeAllTurns(key);
+  }
+
   // ── Sending ────────────────────────────────────────────────
 
-  async function sendMessage(conv: IBridleConversation, text: string) {
+  function sendMessage(conv: IBridleConversation, text: string) {
     const key = conv.key;
     const trimmed = text.trim();
     const ready = stagedFor(key).filter(
@@ -370,6 +703,16 @@ export const useBridleStore = defineStore('bridle', () => {
     // Refuse rather than silently dropping the file the message is about.
     if (isUploading(key) || hasFailedAttachment(key)) return;
 
+    const channel = channels.get(key);
+    if (!channel || connectionFor(key) !== BridleChannelStates.Connected) {
+      // The composer already cleared itself; the draft mechanism (CLEAN-72)
+      // hands the text straight back so nothing typed is lost. Staged files
+      // are left where they are.
+      if (trimmed) drafts.value[key] = trimmed;
+      errors.value[key] = { key: 'chat.error_offline' };
+      return;
+    }
+
     const attachments: IBridleAttachment[] = ready.map((a) => ({
       id: a.remoteId as string,
       name: a.name,
@@ -380,57 +723,29 @@ export const useBridleStore = defineStore('bridle', () => {
       readableByAgent: isReadableByAgent(a.kind, a.mimeType),
     }));
 
-    const optimisticId = `u-${Date.now()}`;
     appendMessage(conv, {
-      id: optimisticId,
+      id: `u-${Date.now()}`,
       role: BridleRoleTypes.User,
       text: trimmed,
       ts: Date.now(),
       ...(attachments.length ? { attachments } : {}),
     });
 
-    // Clear the compose area before awaiting so the person can start typing
-    // the next message while the agent thinks.
+    // Clear the compose area before the round trip so the person can start
+    // typing the next message while the agent thinks.
     clearStaged(conv);
-
     pending.value[key] = true;
     errors.value[key] = null;
+    armWatchdog(key);
 
-    try {
-      const reply = await getService().sendMessage(
-        conv.agentId,
-        trimmed || EMPTY_TEXT_PLACEHOLDER,
-        attachments.length ? attachments.map((a) => a.id) : undefined,
-        conv.share,
-      );
-      appendMessage(conv, {
-        id: reply.messageId || `a-${Date.now()}`,
-        role: BridleRoleTypes.Agent,
-        text: reply.text,
-        ts: reply.ts ?? Date.now(),
-      });
-    } catch (err) {
-      const status = (err as { response?: { status?: number } } | null)
-        ?.response?.status;
-      if (status === 401 || useAuthStore().sessionEnded) {
-        // The api plugin already tried to renew the token and, failing that,
-        // raised the session-ended dialog — a second banner would only shout
-        // over it. Take the optimistic bubble back and keep the text as a
-        // draft so nothing typed is lost across the sign-in.
-        const list = conversations.value[key];
-        const index = list?.findIndex((m) => m.id === optimisticId) ?? -1;
-        if (list && index !== -1) {
-          list.splice(index, 1);
-          persist(conv);
-        }
-        if (trimmed) drafts.value[key] = trimmed;
-      } else {
-        errors.value[key] =
-          (err as Error).message || 'Failed to reach agent';
-      }
-    } finally {
-      pending.value[key] = false;
-    }
+    channel.send(
+      trimmed || EMPTY_TEXT_PLACEHOLDER,
+      attachments.length ? attachments.map((a) => a.id) : undefined,
+    );
+  }
+
+  function dismissError(conv: IBridleConversation) {
+    errors.value[conv.key] = null;
   }
 
   function reset(conv: IBridleConversation) {
@@ -439,6 +754,9 @@ export const useBridleStore = defineStore('bridle', () => {
     delete pending.value[conv.key];
     delete errors.value[conv.key];
     delete drafts.value[conv.key];
+    delete thinking.value[conv.key];
+    closedTurns.delete(conv.key);
+    disarmWatchdog(conv.key);
     clearConversationFromStorage(conv.key);
   }
 
@@ -447,11 +765,19 @@ export const useBridleStore = defineStore('bridle', () => {
     messagesFor,
     isPending,
     errorFor,
+    dismissError,
     draftFor,
     clearDraft,
     hydrate,
     sendMessage,
     reset,
+    // live channel
+    connect,
+    disconnect,
+    connectionFor,
+    thinkingFor,
+    hasOpenThinking,
+    isShareRevoked,
     // attachments
     stagedFor,
     attachmentErrorFor,

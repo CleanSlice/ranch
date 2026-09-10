@@ -1,16 +1,25 @@
-// The generated SDK class is also named `BridleService`; alias it to `BridleApi`
-// so it doesn't collide with the domain service of the same name.
-import { BridleService as BridleApi } from '#api';
+import { io } from 'socket.io-client';
 import { client as apiClient } from '#api/data/repositories/api/client.gen';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IBridleGateway } from '../domain/bridle.gateway';
 import type {
   IBridleAttachment,
-  IBridleReply,
+  IBridleChannel,
+  IBridleChannelAuth,
+  IBridleChannelEvents,
   IBridleShareContext,
 } from '../domain/bridle.types';
 import { BridleMapper } from './bridle.mapper';
+
+/**
+ * What this console renders, declared at handshake. The hub forwards the list
+ * to the agent on every message and the runtime emits `thinking` steps only
+ * to peers that list it — without `thinking` here the timeline stays empty
+ * no matter what the agent does. No `ui`: the console has no interactive
+ * ui parts.
+ */
+const CAPABILITIES = ['streaming', 'images', 'files', 'thinking'];
 
 /**
  * What one share-link request carries instead of the console session.
@@ -52,35 +61,100 @@ function shareHeaders(
 export class BridleGateway extends BaseGateway implements IBridleGateway {
   private mapper = new BridleMapper();
 
-  sendMessage(
+  /**
+   * @param apiUrl The API origin the socket connects to. Empty means the
+   * page's own origin — the same fallback the axios client runs on.
+   */
+  constructor(private readonly apiUrl: string) {
+    super();
+  }
+
+  /**
+   * The hub's browser namespace, websocket-only like the admin preview and
+   * the embed SDK. `auth` is a function on purpose: socket.io calls it on
+   * every (re)connect, so a reconnect after a token renewal carries the
+   * current bearer rather than the one captured when the chat mounted.
+   *
+   * A share visitor sends the pair and no bearer: on the hub a valid JWT
+   * wins over the pair, and an owner opening their own link must chat as a
+   * visitor (the HTTP calls send `Authorization: null` for the same reason).
+   */
+  openChannel(
     agentId: string,
-    text: string,
-    attachmentIds?: string[],
-    share?: IBridleShareContext,
-  ): Promise<IBridleReply> {
-    return this.execute(async () => {
-      const headers = shareHeaders(share);
-      const res = await BridleApi.sendBridleMessageSync({
-        path: { agentId },
-        // `attachmentIds` is omitted entirely when empty so the request is
-        // byte-identical to the pre-feature one for plain text messages.
-        body: {
+    auth: IBridleChannelAuth,
+    events: IBridleChannelEvents,
+  ): IBridleChannel {
+    const socket = io(`${this.apiUrl.replace(/\/$/, '')}/ws/client`, {
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionDelay: 2000,
+      auth: (cb) =>
+        cb({
+          agentId,
+          capabilities: CAPABILITIES,
+          ...(auth.share
+            ? {
+                shareToken: auth.share.token,
+                shareVisitor: auth.share.visitorId,
+              }
+            : { token: auth.token?.() ?? '' }),
+        }),
+    });
+
+    socket.on('connect', () => events.onConnected());
+    socket.on('disconnect', () => events.onDisconnected());
+    socket.on('connect_error', (err: Error) => {
+      // Network-level: socket.io keeps retrying on its own. Logged so a
+      // misconfigured API origin is not a silent "Reconnecting…" forever.
+      console.warn('[bridle] connection error:', err.message);
+    });
+    socket.on('bridle_error', (raw: unknown) => {
+      const code = (raw as { code?: unknown } | null)?.code;
+      events.onRejected(typeof code === 'string' ? code : 'UNKNOWN');
+    });
+    socket.on('message_error', (raw: unknown) => {
+      const message = (raw as { message?: unknown } | null)?.message;
+      events.onMessageError(
+        typeof message === 'string' ? message : 'Message could not be delivered',
+      );
+    });
+    socket.on('typing', () => events.onTyping());
+    socket.on('thinking', (raw: unknown) => {
+      const event = this.mapper.toThinkingEvent(raw);
+      if (event) events.onThinking(event);
+    });
+    socket.on('stream', (raw: unknown) =>
+      events.onStream(this.mapper.toReply(raw), false),
+    );
+    socket.on('stream_end', (raw: unknown) =>
+      events.onStream(this.mapper.toReply(raw), true),
+    );
+    socket.on('message', (raw: unknown) =>
+      events.onMessage(this.mapper.toReply(raw)),
+    );
+
+    return {
+      send(text, attachmentIds) {
+        // `attachmentIds` is omitted entirely when empty so a plain text
+        // message is byte-identical to what the embed SDK sends.
+        socket.emit('message', {
           text,
           ...(attachmentIds?.length ? { attachmentIds } : {}),
-        },
-        // Spread rather than passed as `undefined`: the generated SDK merges
-        // `options.headers` over its own `Content-Type`, and an absent key
-        // keeps the console request exactly as it was.
-        ...(headers ? { headers } : {}),
-        // Without this the axios client hands the error back as a normal
-        // result, and a failed send would read as an empty reply. The store
-        // needs the failure — a 401 the api plugin could not recover from is
-        // what takes the optimistic bubble back and keeps the text as a draft
-        // for after sign-in (CLEAN-72).
-        throwOnError: true,
-      });
-      return this.mapper.toReply(unwrapEnvelope(res.data));
-    });
+        });
+      },
+      reconnect() {
+        // A socket the hub dropped (auth rejection) does not reconnect on its
+        // own — socket.io treats a server-initiated disconnect as final.
+        // `connect()` is a no-op on a still-open socket, so it is safe to
+        // call whether the server's disconnect has landed yet or not.
+        if (socket.connected) socket.once('disconnect', () => socket.connect());
+        else socket.connect();
+      },
+      close() {
+        socket.removeAllListeners();
+        socket.disconnect();
+      },
+    };
   }
 
   /**

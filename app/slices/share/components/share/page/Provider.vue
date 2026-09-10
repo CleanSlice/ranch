@@ -252,6 +252,17 @@ function unwatchForbidden() {
   forbiddenInterceptor = null;
 }
 
+// The chat itself talks over the hub socket, which re-checks the link on every
+// message and drops the socket with a share code when it is dead. The bridle
+// store records that verdict per conversation; it is as final as a 403 here.
+const bridleStore = useBridleStore();
+watch(
+  () => bridleStore.isShareRevoked(conversation.value.key),
+  (revoked) => {
+    if (revoked) markInvalid();
+  },
+);
+
 // ------------------------------------------------------------------ lifecycle
 
 // Same page, new link: start over rather than showing the old agent.

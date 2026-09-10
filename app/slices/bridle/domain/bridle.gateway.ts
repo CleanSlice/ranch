@@ -1,6 +1,8 @@
 import type {
   IBridleAttachment,
-  IBridleReply,
+  IBridleChannel,
+  IBridleChannelAuth,
+  IBridleChannelEvents,
   IBridleShareContext,
 } from './bridle.types';
 
@@ -8,21 +10,26 @@ import type {
  * Contract for talking to the agent runtime. The data layer implements it
  * (`BridleGateway`); the service and store depend only on this abstraction.
  *
- * Every call takes an optional `share`: on a public share-link page there is
- * no JWT, so the visitor's credentials travel per request. Omitted in the
+ * Messages travel over a live channel (the hub's browser socket), which is
+ * what carries the agent's `typing` / `thinking` / `stream` events — the
+ * synchronous HTTP send never could. Attachments stay on HTTP: an upload
+ * wants progress, a download wants bytes, and neither needs to be live.
+ *
+ * The HTTP calls take an optional `share`: on a public share-link page there
+ * is no JWT, so the visitor's credentials travel per request. Omitted in the
  * console, where the Bearer interceptor already authenticates the caller.
  */
 export abstract class IBridleGateway {
   /**
-   * Send a message. `attachmentIds` are ids returned by `uploadAttachment`;
-   * the API expands them into the rich-content parts the agent receives.
+   * Open the live channel to one agent. Reconnects on its own after a network
+   * drop; a hub rejection arrives as `onRejected` and is the caller's to act
+   * on (renew and `reconnect()`, or give up and `close()`).
    */
-  abstract sendMessage(
+  abstract openChannel(
     agentId: string,
-    text: string,
-    attachmentIds?: string[],
-    share?: IBridleShareContext,
-  ): Promise<IBridleReply>;
+    auth: IBridleChannelAuth,
+    events: IBridleChannelEvents,
+  ): IBridleChannel;
 
   /**
    * Store one file and return the metadata a message will carry.

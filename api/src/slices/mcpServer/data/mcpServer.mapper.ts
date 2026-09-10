@@ -20,6 +20,7 @@ export class McpServerMapper {
       transport: record.transport as McpServerTransportTypes,
       authType: record.authType as McpServerAuthTypes,
       authValue: record.authValue,
+      oauthClientId: record.oauthClientId,
       enabled: record.enabled,
       builtIn: record.builtIn,
       templateIds: (record.templates ?? []).map((t) => t.id),

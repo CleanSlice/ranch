@@ -11,6 +11,7 @@ import {
   IUploadSourceStreamInput,
   IUploadedSourceFile,
   ISourceIndexOutcome,
+  ISourceBreakdown,
   ISourceTextStatePatch,
   SourceTextStateTypes,
 } from './source.types';
@@ -34,6 +35,8 @@ export abstract class ISourceGateway {
     selection: ISourceSelection,
   ): Promise<ISourceData[]>;
   abstract findById(id: string): Promise<ISourceData | null>;
+  /** Counts by type and total stored size, one query: what the Overview tab shows. */
+  abstract breakdown(knowledgeId: string): Promise<ISourceBreakdown>;
   abstract create(data: ICreateSourceData): Promise<ISourceData>;
   abstract createMany(data: ICreateSourceData[]): Promise<ISourceData[]>;
   abstract delete(id: string): Promise<void>;

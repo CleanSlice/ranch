@@ -28,6 +28,7 @@ import {
   GraphDto,
   GraphLabelsDto,
   KnowledgeQueryResultDto,
+  KnowledgeOverviewDto,
 } from './dtos';
 
 @ApiTags('knowledges')
@@ -151,6 +152,17 @@ export class KnowledgeController {
       maxDepth: dto.maxDepth,
       maxNodes: dto.maxNodes,
     });
+  }
+
+  @Get(':id/overview')
+  @ApiOperation({
+    summary: 'Source counts by status and type, and total size, in one read',
+    operationId: 'getKnowledgeOverview',
+  })
+  @ApiOkResponse({ type: KnowledgeOverviewDto })
+  async overview(@Param('id') id: string): Promise<KnowledgeOverviewDto> {
+    await this.requireEnabled();
+    return this.service.getOverview(id);
   }
 
   @Get(':id')

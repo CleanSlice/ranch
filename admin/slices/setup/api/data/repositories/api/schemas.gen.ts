@@ -598,6 +598,58 @@ export const GraphDtoSchema = {
   required: ["nodes", "edges", "isTruncated"],
 } as const;
 
+export const SourceTypeCountsDtoSchema = {
+  type: "object",
+  properties: {
+    file: {
+      type: "number",
+    },
+    url: {
+      type: "number",
+    },
+    text: {
+      type: "number",
+    },
+  },
+  required: ["file", "url", "text"],
+} as const;
+
+export const KnowledgeOverviewDtoSchema = {
+  type: "object",
+  properties: {
+    sourceCount: {
+      type: "number",
+      description: "Sources attached to this knowledge",
+    },
+    indexedCount: {
+      type: "number",
+      description: "Sources LightRAG confirmed as processed",
+    },
+    failedCount: {
+      type: "number",
+    },
+    processingCount: {
+      type: "number",
+      description: "Handed to LightRAG and still in its pipeline",
+    },
+    byType: {
+      $ref: "#/components/schemas/SourceTypeCountsDto",
+    },
+    totalSizeBytes: {
+      type: "number",
+      description: "Sum of the stored files, in bytes",
+    },
+  },
+  required: [
+    "sourceCount",
+    "indexedCount",
+    "failedCount",
+    "processingCount",
+    "byType",
+    "totalSizeBytes",
+  ],
+} as const;
+
 export const CreateKnowledgeDtoSchema = {
   type: "object",
   properties: {

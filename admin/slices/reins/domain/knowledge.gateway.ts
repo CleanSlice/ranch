@@ -18,6 +18,8 @@ import type {
   IUpdateKnowledgeInput,
   KnowledgeQueryMode,
   SourceContentDisposition,
+  IKnowledgeOverview,
+
 } from './knowledge.types';
 
 /** Contract for the knowledge-bases API. Implemented by `KnowledgeGateway`. */
@@ -30,6 +32,8 @@ export abstract class IKnowledgeGateway {
     perPage: number,
   ): Promise<IKnowledgePage>;
   abstract findById(id: string): Promise<IKnowledge | null>;
+  /** Counts by status and type plus total size, one request. */
+  abstract fetchOverview(id: string): Promise<IKnowledgeOverview | null>;
   abstract create(input: ICreateKnowledgeInput): Promise<IKnowledge | null>;
   abstract update(
     id: string,

@@ -247,6 +247,33 @@ export type GraphDto = {
   isTruncated: boolean;
 };
 
+export type SourceTypeCountsDto = {
+  file: number;
+  url: number;
+  text: number;
+};
+
+export type KnowledgeOverviewDto = {
+  /**
+   * Sources attached to this knowledge
+   */
+  sourceCount: number;
+  /**
+   * Sources LightRAG confirmed as processed
+   */
+  indexedCount: number;
+  failedCount: number;
+  /**
+   * Handed to LightRAG and still in its pipeline
+   */
+  processingCount: number;
+  byType: SourceTypeCountsDto;
+  /**
+   * Sum of the stored files, in bytes
+   */
+  totalSizeBytes: number;
+};
+
 export type CreateKnowledgeDto = {
   name: string;
   description?: string;
@@ -2231,6 +2258,22 @@ export type GetGraphResponses = {
 };
 
 export type GetGraphResponse = GetGraphResponses[keyof GetGraphResponses];
+
+export type GetKnowledgeOverviewData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}/overview";
+};
+
+export type GetKnowledgeOverviewResponses = {
+  200: KnowledgeOverviewDto;
+};
+
+export type GetKnowledgeOverviewResponse =
+  GetKnowledgeOverviewResponses[keyof GetKnowledgeOverviewResponses];
 
 export type DeleteKnowledgeData = {
   body?: never;

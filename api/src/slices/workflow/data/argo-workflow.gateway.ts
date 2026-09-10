@@ -144,6 +144,9 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       ? server.authValue.replace('${RANCH_API_TOKEN}', ranchApiToken)
       : null;
     return {
+      // The runtime keys the per-agent OAuth token secret by this id
+      // (`mcpOauth:<id>`), so `oauth` servers must carry it (CLEAN-75).
+      id: server.id,
       name: server.name,
       transport: server.transport,
       url: server.url,

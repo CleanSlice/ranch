@@ -1,0 +1,110 @@
+# Research: A2A in Ranch — what exists, what the protocol says, and the decisions
+
+**Ticket**: [CLEAN-74](https://dreamvention.atlassian.net/browse/CLEAN-74)
+**Date**: 2026-09-10
+**Scope**: current-state audit of the four things the feature touches (MCP runtime, bridle hub + thinking, auth/credentials, admin agent page), the A2A 1.0 protocol as published, and the Phase 0 decisions R1–R12 that the plan builds on. Facts carry file references; decisions carry rationale and rejected alternatives.
+
+---
+
+## 1. What exists today
+
+### 1.1 MCP runtime — how an agent gets a tool from the API
+
+| Fact | Where |
+|---|---|
+| Tools are methods decorated `@Tool({ name, description, parameters: z.object(...) })`; discovery is implicit — any provider in any module loaded by `AppModule` is scanned at bootstrap | `api/src/slices/mcp/decorators/tool.decorator.ts:25-30`, `api/src/slices/mcp/services/mcp-registry.service.ts:41-81` |
+| Call signature is positional `(args, context, httpRequest)`; `args` are **not** zod-validated at runtime; return `{ content: [{type:'text', text}], isError? }` | `mcp-tools.handler.ts:107-112`, `reins/knowledge/knowledge.tool.ts:25-37` |
+| Per-request description: `IDynamicallyDescribedTool.describeForRequest(httpRequest)` runs on every `tools/list`; a thrown error falls back to the static text | `mcp/interfaces/dynamic-description.interface.ts:15-25`, `mcp-tools.handler.ts:31-69` |
+| **No per-agent tool filtering** — `tools/list` returns `registry.getTools()` unfiltered; recorded as a deferred gap twice | `mcp-tools.handler.ts:36`, `specs/009-attachment-parse-quality/plan.md:67`, `docs/superpowers/specs/2026-05-13-knowledge-mcp-integration-design.md:148` |
+| Caller identity = `req.user.sub === 'agent:<id>'` from the 365-day service token; `extractAgentId` is copy-pasted per tool | `knowledge.tool.ts:169-175`, `bridle/attachment.tool.ts:531-537`, `user/auth/domain/auth.service.ts:214-228` |
+| **No turn context** reaches a tool call: only `Authorization` and `mcp-session-id` headers; `turnId` exists only on the bridle WebSocket | `mcp/transport/streamable-http.controller.factory.ts:206,343,380`, `bridle/domain/bridle.types.ts:143-153` |
+| The pod reads `tools/list` once at connect (runtime is a separate repo, `ghcr.io/cleanslice/runtime`); the server advertises `listChanged` but never emits it → a new tool or a changed dynamic description is seen **after a pod restart** | `specs/001-stabilize-agent-startup/research.md:28`, `mcp/utils/capabilities-builder.ts:25-29` |
+| The built-in Ranch MCP server row points every agent at the same URL (`RANCH_MCP_URL ?? http://api:3001/mcp/mcp`); the list is baked into pod env at deploy | `mcpServer/domain/mcpServer.seeder.ts:24-41`, `workflow/data/argo-workflow.gateway.ts:89-154` |
+| Tests: Jest, plain `new Tool(fakes…)`, request faked as `{ user: { sub: 'agent:x' } }` | `knowledge.tool.spec.ts:19-23, 31-92, 117` |
+
+### 1.2 Bridle hub — sending to an agent and waiting
+
+| Fact | Where |
+|---|---|
+| `sendToAgent` does **not** throw when the agent is offline — it fabricates an assistant "Agent is not connected" message back to the client | `bridle/data/bridle.gateway.ts:173-227` |
+| The synchronous wait (register client → resolve on `message`/`stream_end` → 120 s timeout) lives **inline in the controller**; there is no service to reuse | `bridle/bridle.controller.ts:335-402` |
+| `IBridleGateway` is exported by `BridleModule`, has `isAgentConnected(agentId)` for a fast pre-check, and `sendToClient(clientId, agentId, payload: unknown)` for API-side pushes | `bridle/domain/bridle.gateway.ts:26-125`, `bridle/bridle.module.ts:92`, `data/bridle.gateway.ts:126-128, 229-234` |
+| Clients are keyed `clientId + agentId`; a registered client record carries `prompt` and `capabilities` that are forwarded to the runtime (the runtime emits thinking only if the client declared `'thinking'`) | `data/bridle.gateway.ts:54-58, 200-209`, `bridle.types.ts:96-101, 216-229` |
+
+### 1.3 Thinking timeline — the wire and the admin rendering
+
+| Fact | Where |
+|---|---|
+| Step `{ id, label, detail?, state: 'active'\|'done' }`; event `{ type:'thinking', clientId, turnId, step?, done?, ts }`; **`turnId` is minted by the runtime per loop run**, the hub stores nothing per turn | `bridle.types.ts:124-153`, `specs/005-shimmer-thinking-ui/contracts/thinking-event.md:16,68`, `data/bridle.gateway.ts:43-64` |
+| The agent-WS handler forwards the payload verbatim (no DTO, no whitelist stripping) — extra structured fields survive to the browser | `bridle/handlers/bridleAgentWs.handler.ts:185-195`, `api/src/main.ts:45-51` |
+| Admin store: a step with an already-known `id` **updates in place**; a step with a new `turnId` **closes every other open turn** — an invented turnId would freeze the runtime's own block | `admin/slices/bridle/stores/bridle.ts:570-616` (esp. 580-598) |
+| Admin renders `label` as text and `detail` as markdown (`v-html="renderMarkdown(...)"`), shimmer while `state==='active'`, block collapses when `status==='done'` | `admin/slices/bridle/components/bridle/Provider.vue:553-605, 96-98` |
+| Thinking blocks are session-only (never persisted, never replayed); the user console (`app/`) has no WebSocket and renders no thinking; the embed SDK is external | `stores/bridle.ts:80-94`, `app/slices/bridle/data/bridle.gateway.ts:55-84` |
+| Transcript JSONL knows `tool_call`/`tool_result` but no thinking; end-user history deliberately excludes tool events | `agent/file/domain/transcriptReader.service.ts:19-43`, `chat/myChat.controller.ts:135-137` |
+
+### 1.4 Auth, credentials, slice conventions
+
+| Fact | Where |
+|---|---|
+| Console JWT payload `{ sub, email, roles, sid? }`; `JwtAuthGuard` is stateless; admin routes = `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(Owner, Admin)` | `user/auth/domain/auth.types.ts:4-16`, `guards/jwtAuth.guard.ts:32-56`, `agent/agent/agent.controller.ts:69-73` |
+| Non-user bearer precedents: share link `sl_` + 32 bytes base64url stored **plaintext, unique**, validated per request, revoked by row change; API key `rk_` stored as sha256 with scopes | `agent/shareLink/domain/shareLink.service.ts:90-105,152`, `user/apiKey/domain/apiKey.service.ts:11-54` |
+| Guard that accepts either a console JWT or a second credential kind, with `agentId` taken from the route | `bridle/guards/bridleChatAuth.guard.ts:58-108` |
+| `agent/secret` is the pod's env-secret store (plaintext on GET, no relations) — not a fit for a per-peer credential | `agent/secret/secret.controller.ts:22, 92-99` |
+| Slice layout reference (`agent/shareLink`): `*.prisma` fragment, `domain/{types,gateway(abstract class),service,index}`, `data/{gateway,mapper}`, `dtos/`, controller, module registered flat in `AppModule`; `prisma-import` merges fragments (`bun run generate`); migrations hand-named and additive | `api/src/slices/agent/shareLink/*`, `api/src/app.module.ts:12,63`, `api/package.json:24-26,34-39`, `api/prisma/migrations/20260907120000_agent_share_link/` |
+| OpenAPI: `@ApiOperation({ operationId })` lowerCamelCase unique; regen chain `cd api && bun run build && bun run generate:swagger` → `cd admin && bun run build:api` (client at `admin/slices/setup/api/data/repositories/api/`) | `shareLink.controller.ts:76-84`, `admin/openapi-ts.config.ts:5-9` |
+| Template → skills is an implicit m-n flattened to `skillIds`; skill records via `ISkillGateway.findByIds`; knowledge names via `IKnowledgeGateway.findExistingByIds`; effective knowledge = `agent.knowledgeIds` else `template.defaultKnowledgeIds` | `agent/template/domain/template.types.ts:14`, `agentDeploy.service.ts:248-253`, `knowledge.tool.ts:177-183` |
+| **No public base URL of the API exists.** Closest: integration setting `ranch_api_url` (pod-facing, default `http://host.k3d.internal:3333`); `IInfraConfigGateway` resolves settings → env → default | `workflow/data/argo-workflow.gateway.ts:40-44,195`, `setting/domain/infraConfig.gateway.ts:15-28` |
+| No table fits a "delegation" record: `Usage` is a daily rollup with `@@unique([agentId, model, date])`; `log` has no storage. Closest shape: `PaddockEvaluation` (status, startedAt, finishedAt, errorMessage, cascade FK) | `usage/usage.prisma:4-21`, `paddock/evaluation/evaluation.prisma:3-28` |
+
+### 1.5 Admin agent page
+
+| Fact | Where |
+|---|---|
+| Tabs are one `AGENT_TABS` array (`value` is a URL contract, `primary` flag, optional `countKey`); a new tab = entry + `v-else-if` branch in `Canvas.vue` + a component folder (Nuxt derives the global name from the path) | `admin/slices/agent/agent/components/agent/workspace/sections.ts:17-120`, `Canvas.vue:56-116` |
+| Closest patterns: Knowledge tab (inline edit, `agentStore.update`, inline error string, Skeleton/Table/dashed-empty), agentChannel provider (load/loadError, inline add form, `agentStore.markPendingRestart()` after a change that needs a restart) | `agent/knowledge/Tab.vue`, `agentChannel/components/agentChannel/Provider.vue:132-167` |
+| Chain store → service → gateway → generated SDK; errors inline, toasts rare; UI kit has Card/Badge/Button/Input/Checkbox/Skeleton/Table, **no** Dialog/Command/Popover (dialogs hand-built on reka-ui, `ConfirmDialog` exists) | `agent/agent/{stores,domain,data}/*`, `common/components/confirm/Dialog.vue` |
+| A slice = directory with `nuxt.config.ts` (alias, stores auto-import, i18n module); `plugins/di.ts` provides the service; components under `components/**` need no registration; admin copy is raw English | `admin/registerSlices.ts:11-42`, `admin/slices/agent/agent/nuxt.config.ts:6-16`, `CLAUDE.md` |
+| Admin has no test runner; verification is `bun run build:api && bun run typecheck` | `admin/package.json:13-15` |
+
+## 2. The protocol as published (A2A 1.0, read 2026-09-10)
+
+Sources: `https://a2a-protocol.org/latest/specification/`, normative proto `specification/a2a.proto` in `a2aproject/A2A` (spec §1.4), releases page. Latest released **1.0.1** (2026-05-28); 0.3.0 (2025-07-30) is the previous line and is what most tutorials still show.
+
+- **Card** at `/.well-known/agent-card.json` (renamed from `agent.json` in 0.3). v1.0 required: `name`, `description`, `supportedInterfaces[]` (`{ url, protocolBinding: 'JSONRPC'|'GRPC'|'HTTP+JSON', protocolVersion: '1.0' }`, first = preferred), `version`, `capabilities` (`streaming?`, `pushNotifications?`, `extensions[]`, `extendedAgentCard?`), `defaultInputModes`, `defaultOutputModes`, `skills[]` (`id`, `name`, `description`, `tags` required; `examples`, `inputModes`, `outputModes` optional). Optional: `provider`, `documentationUrl`, `securitySchemes` (map), `securityRequirements[]`, `iconUrl`, `signatures`. **Gone from the top level in 1.0**: `url`, `preferredTransport`, `protocolVersion`, `supportsAuthenticatedExtendedCard`, `capabilities.stateTransitionHistory`.
+- **JSON-RPC methods** (1.0, PascalCase): `SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`, push-config CRUD, `GetExtendedAgentCard`. Clients send header `A2A-Version: 1.0`; an absent header means 0.3. `SendMessage` params `{ message, configuration?: { acceptedOutputModes[], historyLength?, returnImmediately (default false = blocking) }, metadata?, tenant? }`; result is a wrapper `{ task }` **or** `{ message }`.
+- **Task** `{ id, contextId, status: { state, message?, timestamp }, artifacts[], history[], metadata }`. States are ProtoJSON enum names: `TASK_STATE_SUBMITTED`, `_WORKING`, `_COMPLETED`, `_FAILED`, `_CANCELED`, `_INPUT_REQUIRED`, `_REJECTED`, `_AUTH_REQUIRED`.
+- **Message** `{ messageId, role: 'ROLE_USER'|'ROLE_AGENT', parts[], contextId?, taskId?, metadata?, extensions[], referenceTaskIds[] }`. **Parts have no `kind`** in 1.0 — oneof by key: `{ text }`, `{ raw }`, `{ url }`, `{ data }` (+ `metadata`, `filename`, `mediaType`). Artifact `{ artifactId, parts (≥1), name?, description?, metadata? }`.
+- **Errors**: `-32001` TaskNotFound, `-32002` TaskNotCancelable, `-32003` PushNotificationNotSupported, `-32004` UnsupportedOperation, `-32005` ContentTypeNotSupported, `-32006` InvalidAgentResponse, `-32007` ExtendedAgentCardNotConfigured, `-32008` ExtensionSupportRequired, `-32009` VersionNotSupported; plus standard `-32700/-32600/-32601/-32602/-32603`.
+- **Transport**: JSON-RPC 2.0 over HTTP POST to the interface `url` (SSE for streaming); gRPC and HTTP+JSON bindings also exist. TypeScript SDK `@a2a-js/sdk` 1.1.0 (2026-08-26) has client + server helpers (`DefaultRequestHandler`, `AgentExecutor`, `InMemoryTaskStore`, express adapter) and a 0.3 compat layer.
+
+## 3. Decisions (Phase 0)
+
+**R1 — Speak A2A 1.0, hand-rolled, no SDK.** The surface Ranch needs is three things: a card, blocking `SendMessage`, `GetTask`. `@a2a-js/sdk`'s server half assumes its own executor/task-store/express wiring and would sit awkwardly inside a Nest controller with our guards and response interceptor; its client half is ~40 lines of fetch we would wrap anyway. Types are written once in `a2a.types.ts` from the proto names above. *Rejected*: 0.3 shapes (the version tutorials show) — the released spec is 1.0 and the SDK targets it; an SDK dependency — friction outweighs three methods. *Reconsider* if streaming or push notifications enter scope.
+
+**R2 — Card address is path-prefixed per agent: `GET /a2a/agents/:agentId/.well-known/agent-card.json`; tasks go to `POST /a2a/agents/:agentId` (JSON-RPC).** One API host serves many agents, so the domain-root well-known location cannot name one agent; the spec allows `supportedInterfaces[].url` anywhere, and the well-known path under a prefix keeps discovery recognisable. The card's `supportedInterfaces[0].url` is absolute, built from a new **`api_public_url`** infra setting (settings → env `API_PUBLIC_URL` → fallback to the existing `ranch_api_url` integration value, which is reachable in-cluster and in local dev). *Rejected*: a root `/.well-known/agent-card.json` listing all agents — not a card; storing a relative URL — breaks the "second installation later needs only auth" promise.
+
+**R3 — Card requires a credential; two kinds are accepted.** A console JWT with Owner/Admin (operators previewing a card in the picker) or a **peer credential** issued for that agent (a caller reading the card of its peer). No anonymous discovery (spec FR-002). The same guard protects the JSON-RPC endpoint, where only a peer credential is accepted.
+
+**R4 — Peer credential = `ap_` + 32 random bytes base64url, stored plaintext and unique on the `AgentPeer` row, scoped to exactly one (caller, peer) pair.** Same shape and storage as the share link (`sl_`), because the API is both issuer and presenter: the delegating tool runs inside the API and must read the credential back to present it, so a hash-only store would force a second secret. Deleting the row revokes it; re-connecting mints a new one. *Rejected*: sha256-only like `rk_` (the presenter is the API itself, cannot recover the secret); a JWT with `aud` (revocation would still need a row lookup, so no gain); reusing the pod service token (it authenticates the pod to the API, not agent A to agent B, and cannot be revoked per pair).
+
+**R5 — The client is one MCP tool, `ask_agent`, in a new slice `agent/peer`, with a per-request description that lists the caller's peers and their card-snapshot skills.** This is the knowledge-tool pattern and needs no runtime change (spec FR-018). Arguments: `peer` (peer id, or the peer's name — matched case-insensitively against the snapshot), `task` (text sent to the peer), `reason` (one line: why this peer — becomes part of the visible step), optional `context_id` (to continue a conversation with the same peer within a turn, spec FR-010). The tool calls the peer's `SendMessage` over HTTP at the URL in the snapshot, presenting the pair credential and `A2A-Version: 1.0`, with `metadata.ranch = { chain, depth }`. *Rejected*: a second `list_peers` tool (the description already lists them; a second call per turn costs latency for no information); a runtime-native A2A client (separate repo, every template image).
+
+**R6 — Per-request tool listing filter in the MCP slice.** Add an optional `isListedForRequest(httpRequest): Promise<boolean>` (interface `IConditionallyListedTool`, duck-typed like the dynamic description) and honour it in `tools/list`; `tools/call` on a tool that is not listed for the caller returns an `isError` result. `ask_agent` is listed only for agents that have at least one peer — this is what makes spec FR-017 ("no delegation tool for a peerless agent") true rather than merely "the description says don't". The filter closes the deferred gap named in two earlier specs but is applied only to the new tool here; other tools keep today's behaviour.
+
+**R7 — Restart to apply.** Because the pod lists tools once at connect, an agent sees a newly connected first peer, or a changed peer list, after a restart — exactly like a template's MCP list today. The Peers tab calls `agentStore.markPendingRestart()` after connect/remove/refresh so the existing restart banner appears. The demo walkthrough connects B before deploying A, or restarts A once. *Rejected*: emitting `notifications/tools/list_changed` (the runtime's handling is unknown and unverifiable from this repo); making the description static and the peer list a separate call (see R5).
+
+**R8 — The hub learns the active turn from the thinking stream it already relays.** `IBridleGateway` gains `findActiveTurn(agentId): { clientId, turnId } | null`; the implementation records `(agentId, clientId) → turnId` on every `thinking` event without `done`, clears it on `done`, and on client unregister; when several are active it returns the most recent. `ask_agent` uses it to emit its **delegation step** via `sendToClient(clientId, agentId, thinkingEvent)` with a stable step id (`delegation:<delegationId>`) so later updates replace the step in place (admin store semantics). If no active turn is known — the person is chatting from a surface without the `thinking` capability, or the runtime has emitted no step yet in this turn — no step is emitted and the delegation still runs (spec Story 4 scenario 6 degrades gracefully). *Known limitation*: two people chatting with the same agent at the same moment cannot be told apart from a tool call; the most recent turn wins. *Rejected*: an invented turnId (the admin store would close the runtime's own block); a `_meta.turnId` on tool calls (runtime change, out of scope — noted as the clean follow-up).
+
+**R9 — The delegation step is an ordinary thinking step plus structured fields.** `{ id, label, detail, state }` stays the contract every surface understands: `label` = `Asking «B»`, `detail` = a markdown summary (peer, matched skills, reason, task, status, time, excerpt/cause) so the generic renderer and the embed show something sensible. Two additive fields, `kind: 'delegation'` and `delegation: { … }` (data-model.md), let the admin chat render the dedicated layout. The runtime's own generic "tool call" step for `ask_agent`, if it emits one, is left alone — it carries no card or reason.
+
+**R10 — Extract the synchronous wait into `BridleSyncService.sendAndAwait()`.** Moved from the controller (register client with a private socket id, resolve on `message`/`stream_end`, timeout) into a domain service in the bridle slice, used by the existing route (unchanged behaviour: timeout still resolves to the "Timeout" text) and by the A2A server (which pre-checks `isAgentConnected` and turns "not connected" and timeout into `TASK_STATE_FAILED` with a stated cause instead of a fabricated reply). Peer conversations register with `clientId = peer:<callerAgentId>:<contextId>` and **no** `thinking` capability, so the peer's runtime does not stream steps to a client that cannot show them.
+
+**R11 — Loop and depth checks happen on the server side of every hop, from `metadata.ranch.chain`.** The caller puts `[…chain, callerAgentId]` in the message metadata; the receiving agent rejects with `TASK_STATE_REJECTED` and a stated rule (`would loop` if it is already in the chain; `too deep` if the chain length is ≥ 3) before touching the runtime. The check is server-side because the caller's own tool is also a server in the next hop — one place, one rule (spec FR-012).
+
+**R12 — Delegations are durable rows in a new `AgentDelegation` table; tasks for `GetTask` are an in-memory map with a short TTL.** The row is the audit record (spec FR-016) and the source for the "recent delegations" list on the Peers tab. `GetTask` exists for protocol completeness; a blocking `SendMessage` already returns the final task, so keeping completed tasks in memory for 10 minutes is enough. *Rejected*: writing tasks to the DB (no reader), reusing `Usage` (unique key collides), a `history` on the task (spec says no).
+
+## 4. Open risks carried into the plan
+
+- **Runtime step timing (R8).** The delegation step depends on the runtime having emitted at least one thinking step in the turn before the tool runs. Spec 005 says the runtime emits a step per tool call; quickstart §4 verifies this on a real pod. If it does not hold, the fallback is the generic degraded behaviour, and the follow-up is `_meta.turnId` on tool calls.
+- **HTTP to self.** The tool calls the peer's URL even inside one installation; in-cluster that is the `ranch_api_url`/`api_public_url` value. The API is single-replica and the MCP transport is stateful; a self-call is an ordinary async HTTP request and holds no lock, but quickstart §5 checks a delegation completes end to end in the cluster, not only locally.
+- **Restart to apply (R7)** is a demo-visible step; the walkthrough is written around it.

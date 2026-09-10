@@ -210,8 +210,9 @@ resource "kubectl_manifest" "ranch_api_deployment" {
     kubectl_manifest.ranch_external_db,
   ]
   yaml_body = templatefile("${path.module}/templates/ranch-api-deployment.yaml.tftpl", {
-    image       = var.api_image
-    cors_origin = local.cors_origin
+    image          = var.api_image
+    cors_origin    = local.cors_origin
+    public_api_url = "https://${local.api_host}"
   })
 }
 

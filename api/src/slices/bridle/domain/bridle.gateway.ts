@@ -113,6 +113,13 @@ export abstract class IBridleGateway {
    */
   abstract setDebug(agentId: string, enabled: boolean): void;
   /**
+   * Wake a running agent right after an MCP server's OAuth "Connect" flow
+   * completes (CLEAN-75), so it brings up that MCP immediately instead of only
+   * on the next boot. Silently skipped if the agent isn't currently connected —
+   * the token is already persisted as a secret, so a fresh boot picks it up.
+   */
+  abstract notifyMcpConnected(agentId: string, serverName: string): void;
+  /**
    * Tell the running agent to drop its local copy of a session (file +
    * in-memory cache) for the given bridle channel. Sent after the transcript
    * for that channel has been archived/deleted server-side — without this,

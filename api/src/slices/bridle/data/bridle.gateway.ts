@@ -255,6 +255,20 @@ export class BridleGateway extends IBridleGateway {
     this.logger.log(`Pushed debug_set=${enabled} to agent agentId=${agentId}`);
   }
 
+  notifyMcpConnected(agentId: string, serverName: string): void {
+    const agentSend = this.agents.get(agentId)?.send;
+    if (!agentSend) {
+      this.logger.debug(
+        `mcp_connected skipped: agent not connected for agentId=${agentId}`,
+      );
+      return;
+    }
+    agentSend({ type: 'mcp_connected', server: serverName });
+    this.logger.log(
+      `Pushed mcp_connected server=${serverName} to agent agentId=${agentId}`,
+    );
+  }
+
   clearAgentSession(agentId: string, channel: string): void {
     const agentSend = this.agents.get(agentId)?.send;
     if (!agentSend) {

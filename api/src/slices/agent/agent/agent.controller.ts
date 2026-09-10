@@ -299,6 +299,7 @@ export class AgentController {
     }
 
     return enabledServers.map((s) => ({
+      id: s.id,
       name: s.name,
       transport: s.transport,
       url: s.url,

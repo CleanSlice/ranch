@@ -12,6 +12,12 @@ import {
  */
 export class AgentMcpDto {
   @ApiProperty({
+    description:
+      'MCP server id. For `oauth` servers the runtime keys the per-agent token secret by this id (`mcpOauth:<id>`).',
+  })
+  id!: string;
+
+  @ApiProperty({
     description: 'Unique MCP server name (key in the runtime registry).',
   })
   name!: string;
@@ -26,8 +32,9 @@ export class AgentMcpDto {
   url!: string;
 
   @ApiProperty({
-    enum: ['none', 'bearer', 'header'],
-    description: 'Auth scheme for the connection.',
+    enum: ['none', 'bearer', 'header', 'oauth'],
+    description:
+      'Auth scheme. For `oauth` the runtime holds no static credential — it refreshes its own bearer from the per-agent token secret keyed by `id`.',
   })
   authType!: McpServerAuthTypes;
 

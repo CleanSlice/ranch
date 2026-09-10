@@ -53,6 +53,10 @@ spec:
               value: "3333"
             - name: CORS_ORIGIN
               value: "${cors_origin}"
+            # Public URL the user's browser reaches ranch-api on — the OAuth MCP
+            # "Connect" callback redirect_uri is built from this (CLEAN-75).
+            - name: PUBLIC_API_URL
+              value: "${public_api_url}"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

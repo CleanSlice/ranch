@@ -10,11 +10,19 @@ model McpServer {
   // streamableHttp | sse — Streamable HTTP is preferred; SSE kept for legacy
   // servers that haven't migrated yet.
   transport   String   @default("streamableHttp")
-  // none | bearer | header — how the runtime authenticates to the server.
+  // none | bearer | header | oauth — how the runtime authenticates to the
+  // server. For 'oauth' the runtime refreshes an OAuth 2.1 bearer itself from a
+  // per-agent refresh token (obtained via the in-chat Connect flow); authValue
+  // is unused and the shared registered client_id lives in oauthClientId.
   authType    String   @default("none")
   // For bearer: the token (or "${RANCH_API_TOKEN}" placeholder substituted at
-  // runtime). For header: stored as JSON {"X-Foo": "value"}.
+  // runtime). For header: stored as JSON {"X-Foo": "value"}. Unused for oauth.
   authValue   String?
+  // oauth only: the client_id from one-time dynamic client registration (RFC
+  // 7591) against this server's authorization server. Shared across all agents
+  // (each agent stores its own refresh token as a per-agent secret). Public
+  // client — no secret stored.
+  oauthClientId String?
   // Only enabled servers get loaded by agents. Disable to globally pause an
   // MCP without detaching it from templates.
   enabled     Boolean  @default(true)
@@ -25,4 +33,25 @@ model McpServer {
   updatedAt   DateTime @updatedAt
 
   @@index([name])
+}
+
+// Short-lived PKCE handshake state for the in-chat OAuth connect flow. Created
+// when an agent starts a connect (start endpoint), consumed by the OAuth
+// callback that matches on `state`, then deleted. Rows older than ~10 min are
+// abandoned attempts and can be swept.
+model McpOauthState {
+  // Opaque, unguessable value echoed back by the authorization server as
+  // ?state= — the CSRF/session binding for the callback.
+  state        String   @id
+  mcpServerId  String
+  agentId      String
+  // PKCE code_verifier; the callback sends it to the token endpoint.
+  codeVerifier String
+  // Where to bounce the user's browser after a successful/failed exchange
+  // (the agent chat, or a small "you can return to the chat" page).
+  redirectBack String?
+  createdAt    DateTime @default(now())
+
+  @@index([mcpServerId, agentId])
+  @@index([createdAt])
 }

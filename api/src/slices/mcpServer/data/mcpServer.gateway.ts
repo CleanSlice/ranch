@@ -65,6 +65,9 @@ export class McpServerGateway extends IMcpServerGateway {
         ...(data.transport !== undefined && { transport: data.transport }),
         ...(data.authType !== undefined && { authType: data.authType }),
         ...(data.authValue !== undefined && { authValue: data.authValue }),
+        ...(data.oauthClientId !== undefined && {
+          oauthClientId: data.oauthClientId,
+        }),
         ...(data.enabled !== undefined && { enabled: data.enabled }),
       },
       include: { templates: { select: { id: true } } },

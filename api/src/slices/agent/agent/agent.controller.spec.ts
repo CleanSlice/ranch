@@ -19,6 +19,7 @@ function mcp(id: string, name: string, enabled = true): IMcpServerData {
     transport: 'streamableHttp',
     authType: 'bearer',
     authValue: '${RANCH_API_TOKEN}',
+    oauthClientId: null,
     enabled,
     builtIn: true,
     templateIds: [],

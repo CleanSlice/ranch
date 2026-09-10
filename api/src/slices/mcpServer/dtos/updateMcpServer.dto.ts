@@ -22,10 +22,10 @@ export class UpdateMcpServerDto {
   @IsIn(['streamableHttp', 'sse'])
   transport?: 'streamableHttp' | 'sse';
 
-  @ApiProperty({ required: false, enum: ['none', 'bearer', 'header'] })
+  @ApiProperty({ required: false, enum: ['none', 'bearer', 'header', 'oauth'] })
   @IsOptional()
-  @IsIn(['none', 'bearer', 'header'])
-  authType?: 'none' | 'bearer' | 'header';
+  @IsIn(['none', 'bearer', 'header', 'oauth'])
+  authType?: 'none' | 'bearer' | 'header' | 'oauth';
 
   @ApiProperty({ required: false })
   @IsOptional()

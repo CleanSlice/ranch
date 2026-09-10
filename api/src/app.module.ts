@@ -33,6 +33,7 @@ import { SkillModule } from './slices/skill/skill.module';
 import { RancherModule } from './slices/rancher/rancher.module';
 import { UpgradeModule } from './slices/upgrade/upgrade.module';
 import { McpServerModule } from './slices/mcpServer/mcpServer.module';
+import { McpOauthModule } from './slices/mcpServer/oauth/mcpOauth.module';
 import { McpModule } from './slices/mcp';
 import { PaddockModule } from './slices/paddock/paddock.module';
 import { BrowserModule } from './slices/browser/browser.module';
@@ -80,6 +81,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     RancherModule,
     UpgradeModule,
     McpServerModule,
+    McpOauthModule,
     PaddockModule,
     BrowserModule,
     UserSecretModule,

@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { IBridleConversation } from '#bridle/stores/bridle';
+import {
+  BridleChannelStates,
+  type IBridleConversation,
+  type IBridleMessage,
+  type IBridleThinkingBlock,
+} from '#bridle/stores/bridle';
 
 const props = withDefaults(
   defineProps<{
@@ -41,6 +46,20 @@ watch(
   { immediate: true },
 );
 
+// The live channel follows the conversation: opened when the key settles,
+// closed when it changes or the chat unmounts. Messages are persisted, the
+// socket is not — so coming back re-opens a fresh one over the same history.
+watch(
+  () => activeConversation.value?.key,
+  (_key, _old, onCleanup) => {
+    const conversation = activeConversation.value;
+    if (!conversation) return;
+    void bridleStore.connect(conversation);
+    onCleanup(() => bridleStore.disconnect(conversation));
+  },
+  { immediate: true },
+);
+
 const messages = computed(() => {
   const key = activeConversation.value?.key;
   return key ? bridleStore.messagesFor(key) : [];
@@ -53,6 +72,58 @@ const error = computed(() => {
   const key = activeConversation.value?.key;
   return key ? bridleStore.errorFor(key) : null;
 });
+const thinkingBlocks = computed(() => {
+  const key = activeConversation.value?.key;
+  return key ? bridleStore.thinkingFor(key) : [];
+});
+const hasOpenThinking = computed(() => {
+  const key = activeConversation.value?.key;
+  return key ? bridleStore.hasOpenThinking(key) : false;
+});
+/**
+ * Shown only after a connection existed and went away: on first load the
+ * socket is still on its way, and shouting "reconnecting" at a page that just
+ * opened would be wrong.
+ */
+const reconnecting = computed(() => {
+  const key = activeConversation.value?.key;
+  return key
+    ? bridleStore.connectionFor(key) === BridleChannelStates.Offline &&
+        messages.value.length > 0
+    : false;
+});
+
+// ── Chat flow ─────────────────────────────────────────────────
+// Messages and thinking blocks interleaved by timestamp, so a frozen block
+// stays above the answer it produced and the live one always sits last.
+
+interface IFlowItem {
+  key: string;
+  ts: number;
+  message?: IBridleMessage;
+  block?: IBridleThinkingBlock;
+}
+
+const chatFlow = computed<IFlowItem[]>(() => {
+  const items: IFlowItem[] = messages.value.map((m) => ({
+    key: m.id,
+    ts: m.ts,
+    message: m,
+  }));
+  for (const b of thinkingBlocks.value) {
+    items.push({ key: `${b.turnId}:${b.seg}`, ts: b.ts, block: b });
+  }
+  return items.sort((a, b) => a.ts - b.ts);
+});
+
+const agentLabel = computed(
+  () => props.title?.trim() || props.agentId || 'Agent',
+);
+
+function dismissError() {
+  const conversation = activeConversation.value;
+  if (conversation) bridleStore.dismissError(conversation);
+}
 
 const scrollEl = ref<HTMLElement | null>(null);
 
@@ -71,7 +142,13 @@ async function onSend(text: string) {
 }
 
 watch(
-  () => [messages.value.length, sending.value],
+  () => [
+    messages.value.length,
+    sending.value,
+    // Every new step and every streamed chunk grows the flow.
+    thinkingBlocks.value.reduce((n, b) => n + b.steps.length, 0),
+    messages.value[messages.value.length - 1]?.text.length ?? 0,
+  ],
   async () => {
     await nextTick();
     scrollToBottom();
@@ -214,41 +291,71 @@ onBeforeUnmount(() => {
             </p>
           </div>
 
-          <BridleChatMessage
-            v-for="message in messages"
-            :key="message.id"
-            :message="message"
-            :conversation="activeConversation"
-            :agent-name="title"
-          />
+          <template v-for="item in chatFlow" :key="item.key">
+            <BridleChatMessage
+              v-if="item.message"
+              :message="item.message"
+              :conversation="activeConversation"
+              :agent-name="title"
+            />
+            <!-- A thinking segment sits where the agent's work happened:
+                 above the answer it led to, below the message it answers. -->
+            <div v-else-if="item.block" class="flex items-start gap-2">
+              <div
+                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary/25 to-primary/5 text-[11px] font-semibold text-primary"
+                :title="title"
+              >
+                {{ agentInitial }}
+              </div>
+              <BridleChatThinking
+                :block="item.block"
+                :agent-name="agentLabel"
+              />
+            </div>
+          </template>
 
-          <!-- Typing indicator: three bouncing dots styled like an agent bubble -->
+          <!-- Shimmer status while the agent works and has published no
+               steps yet (or none at all): replaces the old bouncing dots and
+               stays through silent tool phases until the first words land. -->
           <div
-            v-if="sending"
-            class="flex items-center gap-2 justify-start"
+            v-if="sending && !hasOpenThinking"
+            class="flex items-center gap-2"
+            role="status"
+            :aria-label="$t('chat.thinking', { name: agentLabel })"
           >
             <div
               class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary/25 to-primary/5 text-[11px] font-semibold text-primary"
             >
               {{ agentInitial }}
             </div>
-            <div
-              class="rounded-2xl rounded-tl-md bg-muted px-4 py-2.5 shadow-sm"
-            >
-              <div class="flex h-4 items-center gap-1">
-                <span class="bridle-typing-dot h-1.5 w-1.5 rounded-full bg-foreground/50 [animation-delay:0ms]" />
-                <span class="bridle-typing-dot h-1.5 w-1.5 rounded-full bg-foreground/50 [animation-delay:150ms]" />
-                <span class="bridle-typing-dot h-1.5 w-1.5 rounded-full bg-foreground/50 [animation-delay:300ms]" />
-              </div>
-            </div>
+            <span class="shimmer shimmer-duration-1600 px-1 text-sm font-medium text-muted-foreground">
+              {{ $t('chat.thinking', { name: agentLabel }) }}
+            </span>
           </div>
+
+          <p
+            v-if="reconnecting"
+            class="flex items-center gap-2 px-1 text-xs text-muted-foreground"
+            role="status"
+          >
+            <Icon name="loader-2" :size="12" class="animate-spin" />
+            {{ $t('chat.reconnecting') }}
+          </p>
 
           <div
             v-if="error"
             class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive"
           >
             <Icon name="alert-triangle" :size="14" class="mt-px shrink-0" />
-            <span>{{ $t('chat.error') }}: {{ error }}</span>
+            <span class="flex-1">{{ $t(error.key, error.params ?? {}) }}</span>
+            <button
+              type="button"
+              class="shrink-0 rounded p-0.5 hover:bg-destructive/10"
+              :aria-label="$t('chat.dismiss')"
+              @click="dismissError"
+            >
+              <Icon name="x" :size="12" />
+            </button>
           </div>
         </div>
       </div>
@@ -269,24 +376,3 @@ onBeforeUnmount(() => {
     </template>
   </div>
 </template>
-
-<style scoped>
-.bridle-typing-dot {
-  display: inline-block;
-  animation: bridle-typing 1.2s ease-in-out infinite;
-  transform-origin: center;
-}
-
-@keyframes bridle-typing {
-  0%,
-  80%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.35;
-  }
-  40% {
-    transform: translateY(-3px);
-    opacity: 1;
-  }
-}
-</style>

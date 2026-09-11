@@ -7,7 +7,7 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Inject, Logger, forwardRef } from '@nestjs/common';
+import { HttpException, Inject, Logger, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   AuthErrorCodes,
@@ -23,19 +23,40 @@ import {
   clientIdFromJwtPayload,
 } from '../domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
+import {
+  ShareLinkErrorCodes,
+  ShareLinkService,
+} from '#/agent/shareLink/domain';
+
+/**
+ * The share-link pair a visitor's socket was admitted with. Kept on
+ * `client.data` so every message re-checks the link the way the HTTP routes
+ * do — a revoked link must stop a live socket too, not only the next page load.
+ */
+interface IShareSocketAuth {
+  token: string;
+  visitorId: string;
+}
 
 /**
  * WebSocket gateway for BROWSER clients.
  * Browsers connect here: ws://hub-host/ws/client
  *
- * Auth (token-first):
+ * Auth (token-first, same order as `BridleController.resolveRequester`):
  *   1. Authenticated — if a JWT is present it is verified and WINS: clientId is
  *      the JWT `sub` (or "admin" for the admin role). Takes precedence over the
  *      public path so a token-carrying embed keeps its stable per-user channel
  *      even on a public agent + whitelisted origin.
- *   2. Public agent — no token (or an invalid one on a public agent): allowed
- *      when `isPublic: true` and the request `Origin` matches `allowedOrigins`.
- *      clientId is `anon-<id>`, reusing a client-supplied stable id when given.
+ *   2. Share link — `shareToken` + `shareVisitor` in the handshake (the socket
+ *      twin of the `X-Share-Token` / `X-Share-Visitor` headers). Checked
+ *      against the agent on connect AND on every message, so a revoked link
+ *      drops the socket with `SHARE_LINK_INVALID`. An unusable JWT next to a
+ *      share pair is ignored, not fatal: a console user whose session expired
+ *      must still be able to use a share page open in the same browser.
+ *   3. Public agent — no credentials (or an invalid JWT on a public agent):
+ *      allowed when `isPublic: true` and the request `Origin` matches
+ *      `allowedOrigins`. clientId is `anon-<id>`, reusing a client-supplied
+ *      stable id when given.
  *
  * Events (browser → hub):
  *   "message"  { text, images?, attachmentIds? }
@@ -66,6 +87,7 @@ export class BridleClientWsHandler
     private readonly jwt: JwtService,
     @Inject(forwardRef(() => IAgentGateway))
     private readonly agentGateway: IAgentGateway,
+    private readonly shareLinks: ShareLinkService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -76,7 +98,13 @@ export class BridleClientWsHandler
       anonId?: string;
       prompt?: string;
       capabilities?: unknown;
+      shareToken?: unknown;
+      shareVisitor?: unknown;
     };
+    // Offered AT ALL, like `hasShareToken` on the HTTP side: an empty token
+    // must reach `authorizeChat` and come back rejected, never slip past into
+    // the public/anonymous path.
+    const shareOffered = auth.shareToken !== undefined;
     // Accept legacy `botId` from browsers running cached pre-0.3.0 SDK
     // bundles. Drop after CDN/embedders have rolled forward.
     const agentId = auth.agentId ?? auth.botId;
@@ -121,13 +149,14 @@ export class BridleClientWsHandler
     const anonClientId = () =>
       `anon-${sanitizeAnonId(auth.anonId) ?? randomId()}`;
 
-    let clientId: string;
+    let clientId: string | undefined;
     let isAdmin = false;
     let email: string | undefined;
     // Carried onto client.data so attachment reads on this socket answer to
     // the same ownership rule as the HTTP routes, without anyone re-deriving
     // "was this a real login?" from the shape of the client id.
     let kind: ChatRequesterKinds = 'anonymous';
+    let share: IShareSocketAuth | undefined;
 
     if (auth.token) {
       // Authenticated path takes PRECEDENCE over the public/anon path: a
@@ -151,6 +180,9 @@ export class BridleClientWsHandler
         clientId = identity.clientId;
         email = payload?.email as string | undefined;
         kind = 'jwt';
+      } else if (shareOffered) {
+        // Unusable console token next to a share pair: the pair decides
+        // below, exactly like the HTTP guard. Nothing to reject yet.
       } else if (publicAllowed) {
         // A bad/expired token on an otherwise-public embed shouldn't hard-fail
         // the visitor — degrade to the anonymous path instead of rejecting.
@@ -171,24 +203,67 @@ export class BridleClientWsHandler
         this.logger.warn(`Browser connection rejected: ${code}`);
         return reject(code);
       }
-    } else if (publicAllowed) {
-      // Public-agent path: anonymous browser session, no token required.
-      clientId = anonClientId();
-      this.logger.log(
-        `Browser connected (public): clientId=${clientId} agentId=${agentId} origin=${origin}`,
-      );
-    } else {
-      // No token AND public flow either disabled or origin not whitelisted.
-      // When the agent IS configured public, surface ORIGIN_NOT_ALLOWED so
-      // the embed UI can prompt the integrator to whitelist their domain.
-      const code = agent?.isPublic ? 'ORIGIN_NOT_ALLOWED' : 'MISSING_TOKEN';
-      this.logger.warn(
-        `Browser connection rejected: ${code} (agentId=${agentId}, origin=${origin ?? 'none'})`,
-      );
-      return reject(code);
     }
 
-    client.data = { clientId, agentId, email, isAdmin, kind };
+    if (clientId === undefined && shareOffered) {
+      // Share-link visitor. The agent id ALWAYS comes from the handshake's
+      // own `agentId`, which is what this socket is bound to — a visitor can
+      // never authorize against one agent and then talk to another. The
+      // service's 403 code travels as-is so the page can tell a dead link
+      // from a malformed visitor id. The token is a secret: never logged.
+      const candidate: IShareSocketAuth = {
+        token: typeof auth.shareToken === 'string' ? auth.shareToken : '',
+        visitorId:
+          typeof auth.shareVisitor === 'string' ? auth.shareVisitor : '',
+      };
+      try {
+        clientId = await this.shareLinks.authorizeChat(
+          candidate.token,
+          agentId,
+          candidate.visitorId,
+        );
+      } catch (err) {
+        const code = shareRejectCode(err);
+        this.logger.warn(
+          `Browser connection rejected: ${code} (agentId=${agentId}, share visitor)`,
+        );
+        return reject(code);
+      }
+      kind = 'share';
+      share = candidate;
+      this.logger.log(
+        `Browser connected (share): clientId=${clientId} agentId=${agentId}`,
+      );
+    }
+
+    if (clientId === undefined) {
+      if (publicAllowed) {
+        // Public-agent path: anonymous browser session, no token required.
+        clientId = anonClientId();
+        this.logger.log(
+          `Browser connected (public): clientId=${clientId} agentId=${agentId} origin=${origin}`,
+        );
+      } else {
+        // No credentials AND public flow either disabled or origin not
+        // whitelisted. When the agent IS configured public, surface
+        // ORIGIN_NOT_ALLOWED so the embed UI can prompt the integrator to
+        // whitelist their domain.
+        const code = agent?.isPublic ? 'ORIGIN_NOT_ALLOWED' : 'MISSING_TOKEN';
+        this.logger.warn(
+          `Browser connection rejected: ${code} (agentId=${agentId}, origin=${origin ?? 'none'})`,
+        );
+        return reject(code);
+      }
+    }
+
+    client.data = {
+      clientId,
+      agentId,
+      email,
+      isAdmin,
+      kind,
+      ...(share ? { share } : {}),
+    };
 
     // Integrator context from the embed's `data-prompt` (set on the `<script>`
     // tag or `<bridle-chat>` element). Sent once at handshake; the hub stores
@@ -264,6 +339,29 @@ export class BridleClientWsHandler
     const agentId = client.data?.agentId as string;
     if (!clientId || !agentId) return;
 
+    // A share link is re-validated per message, as the HTTP routes do: a
+    // revoked link must stop a socket that is already open, not only the next
+    // page load. The rejection goes out as `bridle_error` so the share page
+    // can switch to its revoked state, then the socket is dropped.
+    const share = client.data?.share as IShareSocketAuth | undefined;
+    if (share) {
+      try {
+        await this.shareLinks.authorizeChat(
+          share.token,
+          agentId,
+          share.visitorId,
+        );
+      } catch (err) {
+        const code = shareRejectCode(err);
+        this.logger.warn(
+          `Share message rejected: ${code} (clientId=${clientId} agentId=${agentId})`,
+        );
+        client.emit('bridle_error', { code, agentId });
+        client.disconnect();
+        return;
+      }
+    }
+
     const text = data.text ?? '';
     const base = data.parts ?? buildParts(text, data.images);
 
@@ -313,6 +411,21 @@ export class BridleClientWsHandler
   handlePing(@ConnectedSocket() client: Socket) {
     client.emit('pong', { ts: Date.now() });
   }
+}
+
+/**
+ * The `{ code }` a share-link rejection carries (`SHARE_LINK_INVALID` /
+ * `SHARE_VISITOR_INVALID`). Anything that is not the service's own 403 —
+ * a database hiccup, say — is reported as an invalid link rather than leaking
+ * an internal message to an anonymous visitor.
+ */
+function shareRejectCode(err: unknown): string {
+  if (err instanceof HttpException) {
+    const body = err.getResponse();
+    const code = (body as { code?: unknown } | null)?.code;
+    if (typeof code === 'string' && code) return code;
+  }
+  return ShareLinkErrorCodes.LinkInvalid;
 }
 
 function randomId(): string {

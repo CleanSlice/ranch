@@ -1,5 +1,6 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Socket } from 'socket.io';
+import { ShareLinkErrorCodes } from '#/agent/shareLink/domain';
 import { BridleClientWsHandler } from './bridleClientWs.handler';
 import {
   BridleAttachmentKinds,
@@ -24,7 +25,22 @@ interface ISentToAgent {
   attachments?: IBridleAttachment[];
 }
 
-function makeHandler(expand: BridleAttachmentService['expand']) {
+/** Stands in for `ShareLinkService.authorizeChat`; the default admits nobody. */
+type AuthorizeChat = (
+  token: string,
+  agentId: string,
+  visitorId: string,
+) => Promise<string>;
+
+const rejectEveryShare: AuthorizeChat = () =>
+  Promise.reject(
+    new ForbiddenException({ code: ShareLinkErrorCodes.LinkInvalid }),
+  );
+
+function makeHandler(
+  expand: BridleAttachmentService['expand'],
+  authorizeChat: AuthorizeChat = rejectEveryShare,
+) {
   const sent: ISentToAgent[] = [];
   const hub = {
     sendToAgent: (
@@ -44,18 +60,23 @@ function makeHandler(expand: BridleAttachmentService['expand']) {
     attachments,
     {} as never,
     {} as never,
+    { authorizeChat } as never,
   );
 
   const emitted: Array<{ event: string; payload: unknown }> = [];
+  let disconnected = 0;
   const client = {
     data: { clientId: 'admin', agentId: 'agent-1' },
     emit: (event: string, payload: unknown) => {
       emitted.push({ event, payload });
       return true;
     },
+    disconnect: () => {
+      disconnected++;
+    },
   } as unknown as Socket;
 
-  return { handler, client, sent, emitted };
+  return { handler, client, sent, emitted, disconnected: () => disconnected };
 }
 
 describe('BridleClientWsHandler — attachments over the socket', () => {
@@ -181,6 +202,8 @@ interface IConnectOptions {
   agent?: { isPublic: boolean; allowedOrigins: string[] } | null;
   /** Stands in for `JwtService.verify`; the default rejects every token. */
   verify?: () => Record<string, unknown>;
+  /** Stands in for `ShareLinkService.authorizeChat`; the default admits nobody. */
+  authorizeChat?: AuthorizeChat;
 }
 
 function makeConnection(options: IConnectOptions) {
@@ -190,6 +213,9 @@ function makeConnection(options: IConnectOptions) {
       registered.push({ clientId, agentId });
     },
     isAgentConnected: () => true,
+  };
+  const shareLinks = {
+    authorizeChat: options.authorizeChat ?? rejectEveryShare,
   };
   const jwt = {
     verify:
@@ -207,9 +233,11 @@ function makeConnection(options: IConnectOptions) {
     {} as BridleAttachmentService,
     jwt as never,
     agentGateway as never,
+    shareLinks as never,
   );
 
   const emitted: Array<{ event: string; payload: unknown }> = [];
+  let disconnected = 0;
   const client = {
     id: 'socket-1',
     data: {},
@@ -221,10 +249,18 @@ function makeConnection(options: IConnectOptions) {
       emitted.push({ event, payload });
       return true;
     },
-    disconnect: () => {},
+    disconnect: () => {
+      disconnected++;
+    },
   } as unknown as Socket;
 
-  return { handler, client, emitted, registered };
+  return {
+    handler,
+    client,
+    emitted,
+    registered,
+    disconnected: () => disconnected,
+  };
 }
 
 const PUBLIC_AGENT = { isPublic: true, allowedOrigins: ['https://embed.test'] };
@@ -405,5 +441,146 @@ describe('BridleClientWsHandler — requester forwarded to expand', () => {
       clientId: 'anon-9',
       kind: 'anonymous',
     });
+  });
+});
+
+/**
+ * The share-link pair on the socket. The HTTP routes already accept it; the
+ * handshake must admit the same visitor the same way, and a revoked link has
+ * to stop a socket that is already open — a visitor who keeps the tab open
+ * across a revoke must not chat for as long as the connection lives.
+ */
+describe('BridleClientWsHandler — share-link handshake', () => {
+  const PRIVATE_AGENT = { isPublic: false, allowedOrigins: [] };
+  const admitVisitor: AuthorizeChat = (token, agentId, visitorId) =>
+    token === 'sl_good' && agentId === 'agent-1' && visitorId === 'v7'
+      ? Promise.resolve('share-v7')
+      : Promise.reject(
+          new ForbiddenException({ code: ShareLinkErrorCodes.LinkInvalid }),
+        );
+
+  it('admits a valid pair as kind "share" and keeps the pair on the socket', async () => {
+    const { handler, client, registered, emitted } = makeConnection({
+      auth: { agentId: 'agent-1', shareToken: 'sl_good', shareVisitor: 'v7' },
+      agent: PRIVATE_AGENT,
+      authorizeChat: admitVisitor,
+    });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toEqual({
+      clientId: 'share-v7',
+      agentId: 'agent-1',
+      email: undefined,
+      isAdmin: false,
+      kind: 'share',
+      share: { token: 'sl_good', visitorId: 'v7' },
+    });
+    expect(registered).toEqual([{ clientId: 'share-v7', agentId: 'agent-1' }]);
+    expect(emitted[0]).toEqual({ event: 'welcome', payload: { clientId: 'share-v7' } });
+  });
+
+  it('rejects a dead link with the service code and never registers the socket', async () => {
+    const { handler, client, registered, emitted, disconnected } =
+      makeConnection({
+        auth: { agentId: 'agent-1', shareToken: 'sl_dead', shareVisitor: 'v7' },
+        agent: PRIVATE_AGENT,
+        authorizeChat: admitVisitor,
+      });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toEqual({});
+    expect(registered).toEqual([]);
+    expect(emitted[0].event).toBe('bridle_error');
+    expect(emitted[0].payload).toMatchObject({ code: 'SHARE_LINK_INVALID' });
+    expect(disconnected()).toBe(1);
+  });
+
+  it('treats an empty token as offered, not as a token-less visitor', async () => {
+    const { handler, client, emitted } = makeConnection({
+      auth: { agentId: 'agent-1', shareToken: '', shareVisitor: 'v7' },
+      origin: 'https://embed.test',
+      agent: PUBLIC_AGENT,
+      authorizeChat: admitVisitor,
+    });
+
+    await handler.handleConnection(client);
+
+    // A public agent would have admitted an anonymous visitor — but a share
+    // pair was offered, so the pair's verdict stands.
+    expect(client.data).toEqual({});
+    expect(emitted[0].payload).toMatchObject({ code: 'SHARE_LINK_INVALID' });
+  });
+
+  it('lets the pair decide when the console token next to it is unusable', async () => {
+    const { handler, client } = makeConnection({
+      auth: {
+        agentId: 'agent-1',
+        token: 'stale',
+        shareToken: 'sl_good',
+        shareVisitor: 'v7',
+      },
+      agent: PRIVATE_AGENT,
+      authorizeChat: admitVisitor,
+    });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toMatchObject({ clientId: 'share-v7', kind: 'share' });
+  });
+
+  it('still lets a valid console token win over the pair', async () => {
+    const { handler, client } = makeConnection({
+      auth: {
+        agentId: 'agent-1',
+        token: 'signed',
+        shareToken: 'sl_good',
+        shareVisitor: 'v7',
+      },
+      agent: PRIVATE_AGENT,
+      verify: () => ({ sub: 'u1', roles: ['User'] }),
+      authorizeChat: admitVisitor,
+    });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toMatchObject({ clientId: 'u1', kind: 'jwt' });
+    expect(client.data).not.toHaveProperty('share');
+  });
+
+  it('drops an open share socket on the first message after the link is revoked', async () => {
+    let revoked = false;
+    const authorizeChat: AuthorizeChat = () =>
+      revoked
+        ? Promise.reject(
+            new ForbiddenException({ code: ShareLinkErrorCodes.LinkInvalid }),
+          )
+        : Promise.resolve('share-v7');
+    const { handler, client, sent, emitted, disconnected } = makeHandler(
+      async () => ({ text: 'hi', parts: [], attachments: [] }),
+      authorizeChat,
+    );
+    client.data = {
+      clientId: 'share-v7',
+      agentId: 'agent-1',
+      kind: 'share',
+      share: { token: 'sl_good', visitorId: 'v7' },
+    };
+
+    await handler.handleMessage(client, { text: 'hi' });
+    expect(sent).toHaveLength(1);
+
+    revoked = true;
+    await handler.handleMessage(client, { text: 'still there?' });
+
+    expect(sent).toHaveLength(1);
+    expect(emitted).toEqual([
+      {
+        event: 'bridle_error',
+        payload: { code: 'SHARE_LINK_INVALID', agentId: 'agent-1' },
+      },
+    ]);
+    expect(disconnected()).toBe(1);
   });
 });

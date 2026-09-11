@@ -46,25 +46,47 @@ const restartUnderway = computed(
 // bridle only sees its own WS.
 const agentStatusStore = useAgentStatusStore();
 const liveAgent = computed(() => agentStatusStore.agents[props.agent.id]);
+// The SSE record is fresher than the row this page fetched — the drift sweep
+// flips 'running' → 'unreachable' between refetches.
+const displayStatus = computed(
+  () => liveAgent.value?.status ?? props.agent.status,
+);
 
 const bridleAgentState = computed(() => {
   if (restartUnderway.value) return 'restarting';
   if (props.overlay?.kind === 'failed') return 'failed';
   if (props.overlay?.kind === 'stopped') return 'stopped';
-  if ((liveAgent.value?.status ?? props.agent.status) === 'unreachable') {
-    return 'unreachable';
-  }
+  if (displayStatus.value === 'unreachable') return 'unreachable';
   return null;
 });
 
-// Troubleshooting links for the socket-down-but-agent-should-be-up state:
-// the sweep's statusReason plus where to look (env preview shows the missing
-// BRIDLE_* vars) and where to fix it (/settings/bridle).
-const offlineHint = computed(() => ({
-  reason: liveAgent.value?.statusReason ?? props.agent.statusReason,
-  envHref: `/agents/${props.agent.id}?tab=env`,
-  settingsHref: '/settings/bridle',
-}));
+// Troubleshooting links for the "pod is up but the runtime never reached the
+// hub" state: the sweep's statusReason plus where to look (env preview shows
+// the missing BRIDLE_* vars) and where to fix it (/settings/bridle).
+//
+// The banner reads as an accusation that the bridle setup is broken, so it only
+// goes out on the server's verdict, confirmed twice: the drift sweep demoted
+// this agent to `unreachable` (a Running+Ready pod that stayed off the hub past
+// the grace window), and the live hub map still does not list its runtime. A
+// chat socket that simply hasn't heard `agent_status` yet — every page load,
+// every reconnect, every restart — no longer qualifies. `!== true` rather than
+// `=== false` so a stream that hasn't reported this agent yet cannot silently
+// swallow a real incident.
+const hubUnreachable = computed(
+  () =>
+    displayStatus.value === 'unreachable' &&
+    agentStatusStore.bridleConnected[props.agent.id] !== true,
+);
+
+const offlineHint = computed(() =>
+  hubUnreachable.value
+    ? {
+        reason: liveAgent.value?.statusReason ?? props.agent.statusReason,
+        envHref: `/agents/${props.agent.id}?tab=env`,
+        settingsHref: '/settings/bridle',
+      }
+    : null,
+);
 
 // The failure overlay blurs only the MESSAGE AREA (the card-content box).
 // Header (title, status, Logs toggle), footer (input, disabled by bridle

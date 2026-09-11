@@ -13,6 +13,7 @@ import { Bot, ChevronDown, Circle, MessageSquarePlus, RotateCw } from 'lucide-vu
 import { cn } from '#theme/utils/cn'
 import { authedFetch } from '#auth/utils/authedFetch'
 import { renderMarkdown } from '../../utils/markdown'
+import { shouldShowOfflineHint } from '../../utils/offlineHint'
 
 // No `token` prop: every request and the socket read the current bearer from
 // the auth store, so a renewal mid-session never leaves this widget behind.
@@ -33,10 +34,11 @@ const props = withDefaults(defineProps<{
   // real state (the admin agent page) pass it here; null = derive from WS.
   agentState?: 'restarting' | 'failed' | 'stopped' | 'unreachable' | null
   // Troubleshooting links for the "pod is up but the runtime never reached
-  // the bridle hub" state. When set, a socket-down chat on a running or
-  // unreachable agent shows an actionable hint instead of a bare offline
-  // line: the status reason, the pod env preview (missing BRIDLE_* vars are
-  // visible there), the bridle settings page, and the restart note.
+  // the bridle hub" state. Only rendered once `agentState` is 'unreachable' —
+  // the server's own verdict after watching a Running+Ready pod stay off the
+  // hub — so it never speaks over a plain reconnect. It then replaces the bare
+  // offline line with the status reason, the pod env preview (missing BRIDLE_*
+  // vars are visible there), the bridle settings page, and the restart note.
   offlineHint?: { reason: string | null; envHref: string; settingsHref: string } | null
   // Host-supplied debugEnabled from an agent record the host already fetched.
   // When set (non-null), the widget skips its own GET /agents/:id — the admin
@@ -165,8 +167,11 @@ const connectionStatus = computed<{ label: string; color: string } | null>(() =>
   return { label: 'Disconnected', color: 'text-red-500' }
 })
 
-// Track how long the agent has been disconnected so we can offer a manual
-// restart after the runtime has clearly failed to reconnect on its own.
+// Track how long the agent has been continuously absent. Two surfaces read
+// this clock: the manual restart nudge below, and the offline hint's settle
+// window. It measures the agent, not our socket — a chat WS drop leaves
+// `isAgentConnected` already false, so the watch doesn't refire and the window
+// survives our own reconnect.
 // 30s comfortably covers normal pod-restart turnaround (~10–15s); anything
 // longer almost always means the runtime is stuck and needs a kick.
 const RESTART_PROMPT_AFTER_MS = 30_000
@@ -191,16 +196,18 @@ const agentDownTooLong = computed(() => {
   return since !== null && nowMs.value - since >= RESTART_PROMPT_AFTER_MS
 })
 
-// Actionable variant of "Agent is not connected": only when the host says the
-// agent should be up (running within grace, or already marked unreachable) and
-// our own chat WS is fine — if both sockets are down it's likely the user's
-// network, and restarting/stopped/failed states have their own messaging.
-const showOfflineHint = computed(() => {
-  if (!props.offlineHint) return false
-  if (isAgentConnected.value) return false
-  if (!isConnected.value) return false
-  return props.agentState === null || props.agentState === 'unreachable'
-})
+// Actionable variant of "Agent is not connected" — the rule itself lives in
+// `utils/offlineHint`, where it is documented and can be exercised on its own.
+const showOfflineHint = computed(() =>
+  shouldShowOfflineHint({
+    hasHint: props.offlineHint !== null,
+    chatConnected: isConnected.value,
+    agentConnected: isAgentConnected.value,
+    agentState: props.agentState,
+    agentDownForMs:
+      agentDownSinceMs.value === null ? null : nowMs.value - agentDownSinceMs.value,
+  }),
+)
 
 const showRestartPrompt = computed(() => {
   if (!props.restartPrompt) return false
@@ -295,6 +302,13 @@ watch(
 let detachScrollListener: (() => void) | null = null
 
 onMounted(async () => {
+  // Start the clock before anything that awaits: both time-gated surfaces (the
+  // restart prompt and the offline hint) read `nowMs`, and a slow transcript
+  // load or token refresh must not freeze it. A 1s tick is enough resolution
+  // for 5s/30s thresholds and cheaper than a per-frame raf loop.
+  nowTimer = setInterval(() => {
+    nowMs.value = Date.now()
+  }, 1000)
   // Replay persisted history first so the chat isn't blank between
   // page refreshes / agent switches; then connect the WS for live updates.
   // Clear before load so the previous agent's messages don't briefly leak
@@ -315,11 +329,6 @@ onMounted(async () => {
   // makes the inspect icon survive a page refresh.
   store.loadPersistedDebug(props.agentId)
   await store.connect(props.apiUrl, props.agentId)
-  // 1s tick is fine — we only need it to re-evaluate `showRestartPrompt`
-  // around the 30s threshold. Cheaper than a per-frame raf loop.
-  nowTimer = setInterval(() => {
-    nowMs.value = Date.now()
-  }, 1000)
   await nextTick()
   scrollToBottom('auto')
 

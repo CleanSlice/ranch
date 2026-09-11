@@ -1,7 +1,11 @@
+import { randomBytes } from 'crypto';
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  HttpException,
+  Logger,
   Param,
   Post,
   Query,
@@ -17,6 +21,7 @@ import {
 import type { Response } from 'express';
 import { Public } from '#/user/auth/guards';
 import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
+import { callbackPageCsp, renderCallbackPage } from './callbackPage';
 import { McpOauthService } from './domain/mcpOauth.service';
 import {
   McpOauthStatusDto,
@@ -34,6 +39,8 @@ import {
 @ApiTags('mcp-oauth')
 @Controller('mcp-servers/:serverId/oauth')
 export class McpOauthController {
+  private readonly logger = new Logger(McpOauthController.name);
+
   constructor(private readonly service: McpOauthService) {}
 
   @Post('start')
@@ -68,7 +75,9 @@ export class McpOauthController {
     let heading = 'Connected ✅';
     let sub = 'You can return to the chat.';
     try {
-      if (!code || !state) throw new Error('missing code/state');
+      if (!code || !state) {
+        throw new BadRequestException('Missing code or state');
+      }
       const { serverName } = await this.service.handleCallback(
         serverId,
         state,
@@ -77,19 +86,31 @@ export class McpOauthController {
       heading = `Connected to ${serverName} ✅`;
     } catch (err) {
       heading = 'Connection failed';
+      // Only our own, deliberately worded rejections reach the person
+      // ("handshake expired — start again"). Anything else — a provider's
+      // token endpoint echoing its body, a network error — is logged here
+      // and shown as a generic hint: it is not ours to relay, and it may
+      // contain whatever the provider chose to put there.
       sub =
-        (err as Error).message || 'Please try connecting again from the chat.';
+        err instanceof HttpException
+          ? err.message
+          : 'Please try connecting again from the chat.';
+      this.logger.warn(
+        `OAuth callback failed (serverId=${serverId}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       res.status(400);
     }
+    // The server name and the error text are provider-chosen; the page
+    // escapes both, and the CSP admits only its own nonce-tagged script so
+    // nothing that slipped through could run anyway.
+    const nonce = randomBytes(16).toString('base64');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(
-      `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">` +
-        `<body style="font-family:system-ui;display:grid;place-items:center;height:90vh;margin:0;color:#111">` +
-        `<div style="text-align:center;max-width:32rem;padding:1.5rem">` +
-        `<h2 style="margin:.2rem 0">${heading}</h2>` +
-        `<p style="color:#555">${sub}</p>` +
-        `<script>setTimeout(()=>window.close(),1500)</script></div></body>`,
-    );
+    res.setHeader('Content-Security-Policy', callbackPageCsp(nonce));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.send(renderCallbackPage({ heading, sub, nonce }));
   }
 
   @Get('status')

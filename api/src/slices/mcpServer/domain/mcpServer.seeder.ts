@@ -8,21 +8,36 @@ export const CLEANSLICE_MCP_ID = 'mcp-cleanslice';
 export const DOCUMENTS_MCP_ID = 'mcp-documents';
 
 /**
+ * The address every deployment was seeded with before this fix. It names a
+ * host and a port that exist nowhere — not in the cluster, where the api
+ * Service is `ranch-api` in `platform`, and not in the k3d local setup, whose
+ * CoreDNS only aliases host.k3d.internal. Agents failed to connect and
+ * silently lost list_agents, restart_agent, query_knowledge and
+ * query_attachment (CLEAN-84).
+ *
+ * Kept as a constant because it is the *only* value healing will overwrite —
+ * see ensureBuiltIn.
+ */
+export const LEGACY_RANCH_MCP_URL = 'http://api:3001/mcp/mcp';
+
+/**
  * In-cluster address of this api's own MCP endpoint.
  *
- * It has to be the cross-namespace form: the Service is `ranch-api` in
- * `platform` on port 3000 (k8s/platform/api/service.yaml) while agent pods
- * run in `agents`. The previous default, `http://api:3001/mcp/mcp`, named a
- * host and a port that exist in no deployment — not in the cluster, and not
- * in the k3d local setup, whose CoreDNS only aliases host.k3d.internal. Every
- * agent therefore failed to connect and silently lost list_agents,
- * restart_agent, query_knowledge and query_attachment (CLEAN-84).
+ * The cross-namespace form is required: agent pods run in `agents`, the api
+ * in `platform`. The port is deliberately left off, matching the address that
+ * answers in the live cluster today — the Ranch and Knowledge rows were
+ * corrected to it by hand and their endpoint responds (401 without a token,
+ * 400 for a missing session), which is what a reachable MCP endpoint looks
+ * like.
  *
- * Local development runs the api on the host rather than in the cluster and
- * overrides this with RANCH_MCP_URL=http://host.k3d.internal:3000/mcp/mcp.
+ * Note `k8s/platform/api/service.yaml` in this repo declares port 3000. A
+ * deployment where that is the only port needs
+ * RANCH_MCP_URL=http://ranch-api.platform.svc.cluster.local:3000/mcp/mcp;
+ * local development, which runs the api on the host, needs
+ * RANCH_MCP_URL=http://host.k3d.internal:3000/mcp/mcp.
  */
 export const DEFAULT_RANCH_MCP_URL =
-  'http://ranch-api.platform.svc.cluster.local:3000/mcp/mcp';
+  'http://ranch-api.platform.svc.cluster.local/mcp/mcp';
 
 export const DEFAULT_CLEANSLICE_MCP_URL = 'https://mcp.cleanslice.org/mcp';
 
@@ -34,6 +49,11 @@ interface IBuiltInMcpSpec {
   url: string;
   authType: 'bearer' | 'none';
   authValue: string | null;
+  /**
+   * Overwrite an existing row's url only when it holds one of these. Absent
+   * means converge unconditionally.
+   */
+  healOnlyFrom?: readonly string[];
 }
 
 @Injectable()
@@ -62,14 +82,26 @@ export class McpServerSeeder implements OnApplicationBootstrap {
     // every @Tool the api registers. They stay separate rows so a template
     // can attach one without the others, and so Documents can be injected
     // for every agent by getMcps (CLEAN-67).
+    //
+    // healOnlyFrom is what keeps this fix safe to deploy. Operators have
+    // already corrected some of these rows by hand — the Ranch and Knowledge
+    // entries in production point at a working address that is NOT this
+    // default. Converging every row on one value would overwrite a working
+    // endpoint with an untested one. Only the known-dead legacy address is
+    // ever replaced; anything else an operator put there is left alone.
+    const apiHosted = {
+      url,
+      authType: 'bearer',
+      authValue: '${RANCH_API_TOKEN}',
+      healOnlyFrom: [LEGACY_RANCH_MCP_URL],
+    } as const;
+
     await this.ensureBuiltIn({
       id: RANCH_MCP_ID,
       name: 'Ranch',
       description:
         "Built-in MCP server hosted by this Ranch's own API. Exposes ranch-management tools (list_agents, restart_agent, write_agent_file, ...). Auth uses the agent's RANCH_API_TOKEN.",
-      url,
-      authType: 'bearer',
-      authValue: '${RANCH_API_TOKEN}',
+      ...apiHosted,
     });
 
     await this.ensureBuiltIn({
@@ -77,9 +109,7 @@ export class McpServerSeeder implements OnApplicationBootstrap {
       name: 'Knowledge',
       description:
         "Built-in MCP server hosted by this Ranch's own API. Exposes query_knowledge for knowledge bases bound to the calling agent. Auth uses the agent's RANCH_API_TOKEN.",
-      url,
-      authType: 'bearer',
-      authValue: '${RANCH_API_TOKEN}',
+      ...apiHosted,
     });
 
     await this.ensureBuiltIn({
@@ -87,9 +117,7 @@ export class McpServerSeeder implements OnApplicationBootstrap {
       name: 'Documents',
       description:
         "Built-in MCP server hosted by this Ranch's own API. Exposes query_attachment for spreadsheets attached in chat, so the agent computes sums, counts and lookups from the file instead of estimating. Auth uses the agent's RANCH_API_TOKEN.",
-      url,
-      authType: 'bearer',
-      authValue: '${RANCH_API_TOKEN}',
+      ...apiHosted,
     });
 
     await this.ensureBuiltIn({
@@ -104,20 +132,26 @@ export class McpServerSeeder implements OnApplicationBootstrap {
   }
 
   /**
-   * Create the row, or converge an existing one on the configured URL.
+   * Create the row, or repair an existing one.
    *
-   * Healing is not a convenience, it is the only repair path that exists.
-   * The api owns built-in rows: PATCH /mcp-servers/:id drops everything but
-   * `enabled` and `description` for a built-in, and DELETE refuses one
-   * outright, so a bad URL cannot be fixed by hand. Without this, a row
-   * written once by an older api points at a dead host forever.
+   * Repair is not a convenience, it is the only path there is. The api owns
+   * built-in rows: PATCH /mcp-servers/:id drops everything but `enabled` and
+   * `description` for a built-in, and DELETE refuses one outright, so a bad
+   * URL cannot be fixed through the product at all.
    *
-   * Only the URL is converged. `enabled` is deliberately left alone, so an
-   * operator who switched a built-in off does not find it back on after a
-   * deploy.
+   * `healOnlyFrom` narrows that power to the addresses we know are dead. An
+   * operator who has already put a working URL on a row — by hand, in the
+   * database, because the api left them no other way — must not have it
+   * replaced by a value this code merely believes in. Overwriting a working
+   * endpoint is a worse failure than leaving a stale one, because it breaks
+   * something that was serving traffic.
    *
-   * Idempotent: a no-op once the row matches. Agents pick a healed URL up on
-   * their next restart, since the MCP list is baked into pod env at creation.
+   * `enabled` is never touched either, so a built-in switched off on purpose
+   * does not come back after a deploy.
+   *
+   * Idempotent: a no-op once the row matches. Agents pick a repaired URL up
+   * on their next restart, since the MCP list is baked into pod env at
+   * creation.
    */
   private async ensureBuiltIn(spec: IBuiltInMcpSpec): Promise<void> {
     const existing = await this.gateway.findById(spec.id);
@@ -133,11 +167,19 @@ export class McpServerSeeder implements OnApplicationBootstrap {
       return;
     }
 
-    if (existing.url !== spec.url) {
-      await this.gateway.update(spec.id, { url: spec.url });
+    if (existing.url === spec.url) return;
+
+    if (spec.healOnlyFrom && !spec.healOnlyFrom.includes(existing.url)) {
       this.logger.log(
-        `Healed built-in ${spec.name} MCP server url: ${existing.url} → ${spec.url}`,
+        `Left built-in ${spec.name} MCP server on its configured url ${existing.url} ` +
+          `(not the known-dead address, so not ours to overwrite)`,
       );
+      return;
     }
+
+    await this.gateway.update(spec.id, { url: spec.url });
+    this.logger.log(
+      `Healed built-in ${spec.name} MCP server url: ${existing.url} → ${spec.url}`,
+    );
   }
 }

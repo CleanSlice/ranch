@@ -6,6 +6,17 @@ import { SkillModule } from '#/skill/skill.module';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { BridleModule } from '#/bridle/bridle.module';
 import { SettingModule } from '#/setting/setting.module';
+import { IPeerGateway } from './domain/peer.gateway';
+import { IDelegationGateway } from './domain/delegation.gateway';
+import { AgentCardService } from './domain/agentCard.service';
+import { A2aServerService } from './domain/a2a.server.service';
+import { A2aTaskStore } from './domain/a2aTask.store';
+import { PeerGateway } from './data/peer.gateway';
+import { DelegationGateway } from './data/delegation.gateway';
+import { PeerMapper } from './data/peer.mapper';
+import { DelegationMapper } from './data/delegation.mapper';
+import { A2aCardGuard, A2aPeerGuard } from './guards/a2a.guards';
+import { A2aController } from './a2a.controller';
 
 /**
  * Agents talking to agents (CLEAN-74): agent cards, peer connections, the A2A
@@ -25,8 +36,18 @@ import { SettingModule } from '#/setting/setting.module';
     forwardRef(() => BridleModule),
     SettingModule,
   ],
-  controllers: [],
-  providers: [],
-  exports: [],
+  controllers: [A2aController],
+  providers: [
+    PeerMapper,
+    DelegationMapper,
+    { provide: IPeerGateway, useClass: PeerGateway },
+    { provide: IDelegationGateway, useClass: DelegationGateway },
+    AgentCardService,
+    A2aTaskStore,
+    A2aServerService,
+    A2aCardGuard,
+    A2aPeerGuard,
+  ],
+  exports: [AgentCardService, IPeerGateway, IDelegationGateway],
 })
 export class PeerModule {}

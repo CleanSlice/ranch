@@ -1,2 +1,7 @@
 export * from './a2a.types';
 export * from './peer.types';
+export * from './peer.gateway';
+export * from './delegation.gateway';
+export * from './agentCard.service';
+export * from './a2aTask.store';
+export * from './a2a.server.service';

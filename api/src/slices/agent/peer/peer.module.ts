@@ -18,6 +18,8 @@ import { DelegationMapper } from './data/delegation.mapper';
 import { A2aCardGuard, A2aPeerGuard } from './guards/a2a.guards';
 import { A2aClient } from './domain/a2a.client';
 import { PeerService } from './domain/peer.service';
+import { DelegationService } from './domain/delegation.service';
+import { AskAgentTool } from './askAgent.tool';
 import { A2aController } from './a2a.controller';
 import { PeerController } from './peer.controller';
 
@@ -48,6 +50,10 @@ import { PeerController } from './peer.controller';
     AgentCardService,
     A2aClient,
     PeerService,
+    DelegationService,
+    // MCP tool: ask_agent. Discovered by the #mcp registry like every
+    // @Tool provider, and listed only for agents that have peers.
+    AskAgentTool,
     A2aTaskStore,
     A2aServerService,
     A2aCardGuard,

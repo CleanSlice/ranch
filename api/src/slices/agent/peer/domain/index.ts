@@ -7,3 +7,5 @@ export * from './a2aTask.store';
 export * from './a2a.server.service';
 export * from './a2a.client';
 export * from './peer.service';
+export * from './delegationStep';
+export * from './delegation.service';

@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@nanonets/graft",
+        "@nanonets/graft@0.18.0",
         "mcp"
       ]
     }

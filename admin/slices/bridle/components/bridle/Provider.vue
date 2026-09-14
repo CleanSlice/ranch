@@ -589,8 +589,16 @@ async function onConfirmReset() {
                   :key="s.id"
                   class="flex flex-col items-start"
                 >
+                  <!-- A delegation is a step like any other on the wire, so
+                       every surface still shows it. Here it gets the layout
+                       it earns: who was asked, what their card promised,
+                       why they were picked, and a clock while we wait. -->
+                  <BridleDelegationStep
+                    v-if="s.kind === 'delegation' && s.delegation"
+                    :step="s"
+                  />
                   <button
-                    v-if="s.detail"
+                    v-else-if="s.detail"
                     type="button"
                     class="flex items-center gap-1.5 py-0.5 text-[13px] text-muted-foreground"
                     :aria-expanded="!!expandedSteps[s.id]"
@@ -603,8 +611,11 @@ async function onConfirmReset() {
                   <div v-else class="py-0.5 text-[13px] text-muted-foreground">
                     <span :class="s.state === 'active' ? 'shimmer shimmer-duration-1600 text-foreground' : ''">{{ s.label }}</span>
                   </div>
+                  <!-- Not for a delegation: its own layout already shows
+                       everything the markdown detail repeats for surfaces
+                       that have no layout of their own. -->
                   <div
-                    v-if="s.detail && expandedSteps[s.id]"
+                    v-if="s.kind !== 'delegation' && s.detail && expandedSteps[s.id]"
                     :id="`bridle-admin-step-${s.id}`"
                     class="mb-1.5 max-w-full border-l-2 border-border pl-2 text-[13px] leading-relaxed text-muted-foreground wrap-anywhere"
                     v-html="renderMarkdown(s.detail)"

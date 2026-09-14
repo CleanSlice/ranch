@@ -61,11 +61,32 @@ export interface IBridleMessageData {
 // ── Thinking (live reasoning steps) ──────────────────────────
 // Mirrors the wire contract in api/src/slices/bridle/domain/bridle.types.ts.
 
+/**
+ * The structured half of a delegation step (CLEAN-74). Present only on steps
+ * the API publishes; a runtime step has neither field, which is what keeps
+ * this additive.
+ */
+export interface IBridleDelegationStep {
+  delegationId: string
+  peerAgentId: string
+  peerName: string
+  matchedSkills: { id: string; name: string }[]
+  reason: string
+  task: string
+  status: 'waiting' | 'answered' | 'failed' | 'rejected'
+  /** Epoch ms — the client ticks its own elapsed time while waiting. */
+  startedAt: number
+  durationMs?: number
+  excerpt?: string
+}
+
 export interface IBridleThinkingStep {
   id: string
   label: string
   detail?: string
   state: 'active' | 'done'
+  kind?: 'delegation'
+  delegation?: IBridleDelegationStep
 }
 
 export interface IBridleThinkingEvent {

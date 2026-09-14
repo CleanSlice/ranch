@@ -4,6 +4,7 @@ import {
   DEFAULT_RANCH_MCP_URL,
   DOCUMENTS_MCP_ID,
   KNOWLEDGE_MCP_ID,
+  LEGACY_RANCH_MCP_URL,
   McpServerSeeder,
   RANCH_MCP_ID,
 } from './mcpServer.seeder';
@@ -55,15 +56,17 @@ function build(env: Record<string, string | undefined> = {}) {
 const API_HOSTED = [RANCH_MCP_ID, KNOWLEDGE_MCP_ID, DOCUMENTS_MCP_ID];
 
 describe('DEFAULT_RANCH_MCP_URL', () => {
-  it('points at the api Service that k8s/platform/api actually deploys', () => {
-    // Service: name ranch-api, namespace platform, port 3000. Agents run in
-    // the `agents` namespace, so the cross-namespace form is required.
+  it('is the cross-namespace address that answers in the live cluster', () => {
+    // Agent pods run in `agents`, the api in `platform`. This is the address
+    // the Ranch and Knowledge rows were corrected to by hand and whose
+    // endpoint responds.
     expect(DEFAULT_RANCH_MCP_URL).toBe(
-      'http://ranch-api.platform.svc.cluster.local:3000/mcp/mcp',
+      'http://ranch-api.platform.svc.cluster.local/mcp/mcp',
     );
   });
 
-  it('is not the old host, which resolves nowhere in any deployment', () => {
+  it('is not the legacy host, which resolves nowhere in any deployment', () => {
+    expect(DEFAULT_RANCH_MCP_URL).not.toBe(LEGACY_RANCH_MCP_URL);
     expect(DEFAULT_RANCH_MCP_URL).not.toContain('http://api:3001');
   });
 });
@@ -117,7 +120,7 @@ describe('McpServerSeeder healing an existing deployment', () => {
     for (const id of API_HOSTED) {
       gateway.rows.set(id, {
         id,
-        url: 'http://api:3001/mcp/mcp',
+        url: LEGACY_RANCH_MCP_URL,
         builtIn: true,
         enabled: true,
       } as IMcpServerData);
@@ -163,5 +166,80 @@ describe('McpServerSeeder healing an existing deployment', () => {
 
     expect(gateway.rows.get(DOCUMENTS_MCP_ID)?.enabled).toBe(false);
     expect(gateway.rows.get(DOCUMENTS_MCP_ID)?.url).toBe(DEFAULT_RANCH_MCP_URL);
+  });
+});
+
+/**
+ * The reason healing is narrowed. Because the api refuses to let anyone edit
+ * a built-in's url, operators have fixed these rows straight in the database.
+ * Production currently has Ranch and Knowledge on an address that works and
+ * is NOT this default. Replacing it would break a live endpoint on the
+ * strength of a value this code merely believes in — a worse outcome than
+ * leaving a stale one alone.
+ */
+describe('McpServerSeeder meeting a hand-corrected row', () => {
+  const HAND_FIXED = 'http://ranch-api.platform.svc.cluster.local:8080/mcp/mcp';
+
+  function seededWith(url: string, ids: string[] = API_HOSTED) {
+    const { gateway, seeder } = build();
+    for (const id of ids) {
+      gateway.rows.set(id, {
+        id,
+        url,
+        builtIn: true,
+        enabled: true,
+      } as IMcpServerData);
+    }
+    return { gateway, seeder };
+  }
+
+  it('leaves a url an operator chose exactly as it is', async () => {
+    const { gateway, seeder } = seededWith(HAND_FIXED);
+    await seeder.onApplicationBootstrap();
+
+    for (const id of API_HOSTED) {
+      expect(gateway.rows.get(id)?.url).toBe(HAND_FIXED);
+    }
+    expect(gateway.updates).toEqual([]);
+  });
+
+  it('still repairs the dead legacy address on its neighbours', async () => {
+    // The production shape: Ranch and Knowledge corrected by hand, Documents
+    // missed and still on the address that answers nowhere.
+    const { gateway, seeder } = seededWith(HAND_FIXED, [
+      RANCH_MCP_ID,
+      KNOWLEDGE_MCP_ID,
+    ]);
+    gateway.rows.set(DOCUMENTS_MCP_ID, {
+      id: DOCUMENTS_MCP_ID,
+      url: LEGACY_RANCH_MCP_URL,
+      builtIn: true,
+      enabled: true,
+    } as IMcpServerData);
+
+    await seeder.onApplicationBootstrap();
+
+    expect(gateway.rows.get(RANCH_MCP_ID)?.url).toBe(HAND_FIXED);
+    expect(gateway.rows.get(KNOWLEDGE_MCP_ID)?.url).toBe(HAND_FIXED);
+    expect(gateway.rows.get(DOCUMENTS_MCP_ID)?.url).toBe(DEFAULT_RANCH_MCP_URL);
+    expect(gateway.updates.map((u) => u.id)).toEqual([DOCUMENTS_MCP_ID]);
+  });
+
+  it('keeps converging CleanSlice unconditionally, as it did before', async () => {
+    // That entry has no healOnlyFrom: its url is entirely the api's business
+    // and the existing behaviour is deliberate.
+    const { gateway, seeder } = build();
+    gateway.rows.set(CLEANSLICE_MCP_ID, {
+      id: CLEANSLICE_MCP_ID,
+      url: 'https://mcp.cleanslice.org',
+      builtIn: true,
+      enabled: true,
+    } as IMcpServerData);
+
+    await seeder.onApplicationBootstrap();
+
+    expect(gateway.rows.get(CLEANSLICE_MCP_ID)?.url).toBe(
+      'https://mcp.cleanslice.org/mcp',
+    );
   });
 });

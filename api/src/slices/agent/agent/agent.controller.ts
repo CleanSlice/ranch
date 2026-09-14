@@ -25,11 +25,14 @@ import { Request } from 'express';
 import { Observable, map } from 'rxjs';
 import { IAgentGateway } from './domain';
 import { AgentStatusTypes } from './domain/agent.types';
+import type { IAgentData } from './domain/agent.types';
 import { AgentStatusService } from './domain/agentStatus.service';
 import { AgentDeployService } from './domain/agentDeploy.service';
+import { detectMcpConfigDrift } from './domain/mcpConfigDrift';
 import {
   AgentDto,
   AgentMcpDto,
+  AgentMcpStatusDto,
   AgentEnvVarDto,
   AgentMetricsDto,
   AgentStatusDto,
@@ -265,6 +268,59 @@ export class AgentController {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
 
+    const enabledServers = await this.resolveMcpServers(agent);
+
+    return enabledServers.map((s) => ({
+      id: s.id,
+      name: s.name,
+      transport: s.transport,
+      url: s.url,
+      authType: s.authType,
+      authValue: s.authValue,
+      enabled: true,
+    }));
+  }
+
+  @Get(':id/mcp-status')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiOperation({
+    operationId: 'getAgentMcpStatus',
+    summary:
+      "Whether the running pod still carries the MCP configuration it booted with. An agent's servers are baked into pod env at creation, so a change made afterwards only reaches it on a restart — and until now nothing reported the gap: an unreachable server logs `connect failed`, but one the pod was never told about logs nothing at all.",
+  })
+  @ApiOkResponse({ type: AgentMcpStatusDto })
+  async getMcpStatus(@Param('id') id: string): Promise<AgentMcpStatusDto> {
+    const agent = await this.agentGateway.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+
+    const [servers, pods] = await Promise.all([
+      this.resolveMcpServers(agent),
+      this.podGateway.list(),
+    ]);
+    const pod = pods.find((p) => p.agentId === agent.id) ?? null;
+
+    return detectMcpConfigDrift({
+      servers: servers.map((s) => ({
+        id: s.id,
+        name: s.name,
+        updatedAt: s.updatedAt,
+      })),
+      podStartedAt: pod?.startedAt ? new Date(pod.startedAt) : null,
+    });
+  }
+
+  /**
+   * The MCP servers this agent should be connected to right now: its
+   * template's enabled attachments, plus the two entries the api injects —
+   * Knowledge when the agent actually has a knowledge base, Documents for
+   * everyone, since any agent can be handed a chat attachment.
+   *
+   * Shared by the runtime-facing list and the drift check so the two can
+   * never disagree about what "should" means.
+   */
+  private async resolveMcpServers(
+    agent: IAgentData,
+  ): Promise<IMcpServerData[]> {
     const template = await this.templateGateway.findById(agent.templateId);
     if (!template) return [];
 
@@ -298,15 +354,7 @@ export class AgentController {
       }
     }
 
-    return enabledServers.map((s) => ({
-      id: s.id,
-      name: s.name,
-      transport: s.transport,
-      url: s.url,
-      authType: s.authType,
-      authValue: s.authValue,
-      enabled: true,
-    }));
+    return enabledServers;
   }
 
   private async shouldInjectKnowledge(

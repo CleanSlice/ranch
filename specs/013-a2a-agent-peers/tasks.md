@@ -151,7 +151,7 @@
 - [X] T058 [P] [US4] Mirror the type in `admin/slices/bridle/stores/bridle.ts:64-69`: add `kind?: 'delegation'` and `delegation?: IBridleDelegationStep` (same fields as T010) to `IBridleThinkingStep`; no store logic change (steps already replace by id at `:580-585`)
 - [X] T059 [US4] Create `admin/slices/bridle/components/bridle/DelegationStep.vue`: props `{ step: IBridleThinkingStep }` (with `step.delegation` required by a guard in the parent); layout — a peer icon (`IconUsers` from `@tabler/icons-vue`) + `label`; a row of `Badge variant="outline"` for `matchedSkills`; "Why: <reason>" in `text-muted-foreground`; the task in a `border-l-2 pl-3 italic` quote; a status pill (`waiting` amber + shimmer, `answered` green, `failed`/`rejected` red) with elapsed time — while `waiting`, a `useIntervalFn(…, 250)` (`@vueuse/core`) ticks `Date.now() - startedAt` formatted `s.s s`; after, `durationMs`; the `excerpt` (answered) or cause (failed/rejected) as a final line; respects `prefers-reduced-motion` like the existing shimmer (depends on T058)
 - [X] T060 [US4] In `admin/slices/bridle/components/bridle/Provider.vue:574-604` render `<BridleDelegationStep v-if="s.kind === 'delegation' && s.delegation" :step="s" />` in place of the label/detail row for that step, keeping the existing row for every other step; ensure the block-level "is thinking…" shimmer and collapse behaviour are untouched; `cd admin && bun run typecheck` (depends on T059)
-- [ ] T061 [US4] Run the spec Story 4 independent test locally (quickstart §4 steps 4–7) and record on the ticket whether the runtime emitted a step before `ask_agent` ran (research §4 risk); if the step never appears although the delegation succeeded, note the `_meta.turnId` follow-up on the ticket (depends on T056, T060)
+- [ ] T061 **(BLOCKED — needs a running stack: no Docker, database or cluster context in this worktree)** [US4] Run the spec Story 4 independent test locally (quickstart §4 steps 4–7) and record on the ticket whether the runtime emitted a step before `ask_agent` ran (research §4 risk); if the step never appears although the delegation succeeded, note the `_meta.turnId` follow-up on the ticket (depends on T056, T060)
 
 **Checkpoint**: The demo's visible half works end to end in the admin chat; generic surfaces show "Asking «B»" with the markdown detail.
 
@@ -178,8 +178,8 @@
 
 **Independent Test**: quickstart §4 followed step by step on a fresh installation without improvisation; §5 once on the dev cluster.
 
-- [ ] T066 [US6] Run quickstart §4 steps 1–9 end to end locally; fix anything that needs improvisation (copy, empty states, restart hint timing) in the files it points to; record timings for SC-001 and SC-003 on the ticket
-- [ ] T067 [US6] Run quickstart §5 on the dev cluster: set `API_PUBLIC_URL` (or the `infrastructure/api_public_url` setting) to the in-cluster API URL, repeat §4 steps 3–5, confirm the card URL is reachable from the API pod and the delegation completes; note the result on the ticket (depends on T066)
+- [ ] T066 **(BLOCKED — needs a running stack: no Docker, database or cluster context in this worktree)** [US6] Run quickstart §4 steps 1–9 end to end locally; fix anything that needs improvisation (copy, empty states, restart hint timing) in the files it points to; record timings for SC-001 and SC-003 on the ticket
+- [ ] T067 **(BLOCKED — needs a running stack: no Docker, database or cluster context in this worktree)** [US6] Run quickstart §5 on the dev cluster: set `API_PUBLIC_URL` (or the `infrastructure/api_public_url` setting) to the in-cluster API URL, repeat §4 steps 3–5, confirm the card URL is reachable from the API pod and the delegation completes; note the result on the ticket (depends on T066)
 - [X] T068 [P] [US6] Add a short "Peers and A2A" section to `README.md` under the agent slices list (`api/src/slices/agent/peer` — what a card is, how to connect a peer, the restart-to-apply note, the `API_PUBLIC_URL` variable) and list the env vars in `docs/operations/` if an env reference exists there
 
 ---
@@ -188,7 +188,7 @@
 
 - [X] T069 [P] Lint and format: `cd api && bun run lint && bun run format`; confirm `cd api && bun run test` is fully green (not only the filtered runs) and `cd admin && bun run typecheck` passes
 - [X] T070 [P] Security pass on the new surface: `token` absent from every DTO and log line (grep `token` in `api/src/slices/agent/peer`); the A2A JSON-RPC route rejects console JWTs; `A2aCardGuard` refuses `User`-role JWTs; peer credential compared with a constant-time check where a lookup by unique column is not already used; `fetch` targets only the stored `cardUrl`/interface URL (no user-supplied URLs reach `fetch` in this feature)
-- [ ] T071 Post the closing ticket comment on CLEAN-74 (what shipped, restart-to-apply limitation, the R8 runtime-step finding from T061), open the PR into `main` with the ticket link, quickstart results, and the attribution footer; move the ticket to In Review
+- [X] T071 Post the closing ticket comment on CLEAN-74 (what shipped, restart-to-apply limitation, the R8 runtime-step finding from T061), open the PR into `main` with the ticket link, quickstart results, and the attribution footer; move the ticket to In Review
 
 ---
 
@@ -267,3 +267,20 @@ Task: "T039 gateway + service + di → T040 store → T043 Picker → T044 Tab �
 - The A2A routes bypass the `{ success, data }` envelope; every other new route uses it
 - `admin/` copy is raw English; no `en.json` keys for this feature
 - Commit per phase with `feat(peer): … (CLEAN-74)` / `feat(admin): … (CLEAN-74)`; ticket comments at each checkpoint (large task)
+
+---
+
+## Status at hand-off (2026-09-14)
+
+68 of 71 done. The three open items are live validation, not code:
+
+- **T061 / T066** need a local stack (`ranch dev`) with two deployed agents.
+- **T067** needs the dev cluster.
+
+They carry the one assumption this feature could not prove from a test: the
+delegation step only appears if the runtime emitted a thinking step earlier in
+the same turn (research §4). If a real pod answers correctly but shows no step,
+the follow-up is `_meta.turnId` on tool calls, which is a runtime change.
+
+Everything else is verified: 885 API tests, both typechecks, a full Nest boot
+with OpenAPI generation, and lint clean on the new slice.

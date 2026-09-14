@@ -7,14 +7,8 @@ import { IWorkflowStatus, IAgentEnvVar } from '../domain/workflow.types';
 import { IInfraConfigGateway, ISettingGateway } from '#/setting/domain';
 import { ILlmGateway } from '#/llm/domain';
 import { normalizeCredential } from '#/llm/domain/llm.utils';
-import { ITemplateGateway } from '#/agent/template/domain';
-import { IMcpServerGateway, IMcpServerData } from '#/mcpServer/domain';
-import { IKnowledgeGateway } from '#/reins/knowledge/domain';
-import { IKnowledgeConfigGateway } from '#/reins/config/domain';
-import {
-  CLEANSLICE_MCP_ID,
-  KNOWLEDGE_MCP_ID,
-} from '#/mcpServer/domain/mcpServer.seeder';
+import type { IMcpServerData } from '#/mcpServer/domain';
+import { AgentMcpResolver } from '#/mcpServer/domain/agentMcpResolver.service';
 import { IAgentChannelGateway } from '#/agent/agentChannel/domain';
 import { IUserGateway, UserRoleTypes } from '#/user/user/domain';
 import {
@@ -52,10 +46,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
     private infraConfig: IInfraConfigGateway,
     private settingGateway: ISettingGateway,
     private llmGateway: ILlmGateway,
-    private templateGateway: ITemplateGateway,
-    private mcpServerGateway: IMcpServerGateway,
-    private knowledgeGateway: IKnowledgeGateway,
-    private knowledgeConfig: IKnowledgeConfigGateway,
+    private mcpResolver: AgentMcpResolver,
     private channelGateway: IAgentChannelGateway,
     private userGateway: IUserGateway,
   ) {
@@ -86,57 +77,25 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
    * placeholders like `${RANCH_API_TOKEN}` are substituted with the actual
    * service token minted for this agent. Disabled servers are filtered out.
    */
+  /**
+   * What goes into MCP_SERVERS_B64 — the env var the pod boots with.
+   *
+   * The set itself comes from AgentMcpResolver, shared with the endpoint the
+   * admin reads. This used to be a second copy that injected CleanSlice and
+   * forgot Documents while the endpoint did the reverse, so `query_attachment`
+   * never reached a pod (CLEAN-87). All that is left here is the runtime wire
+   * shape, which is this gateway's own business.
+   */
   private async resolveMcpServers(
     templateId: string,
-    effectiveKnowledgeIds: string[],
+    knowledgeIds: string[],
     ranchApiToken: string,
   ): Promise<unknown[]> {
-    const template = await this.templateGateway.findById(templateId);
-    const baseServers =
-      template && template.mcpServerIds.length > 0
-        ? await this.mcpServerGateway.findByIds(template.mcpServerIds)
-        : [];
-
-    const enabledServers = baseServers.filter((m) => m.enabled);
-
-    // CleanSlice MCP is built-in and attached to every agent by default,
-    // regardless of the template. Operators can disable it by toggling the
-    // `enabled` flag on the DB record (or deleting the record entirely).
-    if (!enabledServers.some((m) => m.id === CLEANSLICE_MCP_ID)) {
-      const cleansliceMcp =
-        await this.mcpServerGateway.findById(CLEANSLICE_MCP_ID);
-      if (cleansliceMcp && cleansliceMcp.enabled) {
-        enabledServers.push(cleansliceMcp);
-      }
-    }
-
-    const shouldInjectKnowledge = await this.shouldInjectKnowledge(
-      effectiveKnowledgeIds,
-      enabledServers,
-    );
-    if (shouldInjectKnowledge) {
-      const knowledgeMcp =
-        await this.mcpServerGateway.findById(KNOWLEDGE_MCP_ID);
-      if (knowledgeMcp && knowledgeMcp.enabled) {
-        enabledServers.push(knowledgeMcp);
-      }
-    }
-
-    return enabledServers.map((m) => this.toRuntimeConfig(m, ranchApiToken));
-  }
-
-  private async shouldInjectKnowledge(
-    effectiveKnowledgeIds: string[],
-    alreadyAttached: IMcpServerData[],
-  ): Promise<boolean> {
-    if (effectiveKnowledgeIds.length === 0) return false;
-    if (alreadyAttached.some((m) => m.id === KNOWLEDGE_MCP_ID)) return false;
-    const isEnabled = await this.knowledgeConfig.isEnabled();
-    if (!isEnabled) return false;
-    const existing = await this.knowledgeGateway.findExistingByIds(
-      effectiveKnowledgeIds,
-    );
-    return existing.length > 0;
+    const servers = await this.mcpResolver.resolveForAgent({
+      templateId,
+      knowledgeIds,
+    });
+    return servers.map((m) => this.toRuntimeConfig(m, ranchApiToken));
   }
 
   private toRuntimeConfig(server: IMcpServerData, ranchApiToken: string) {
@@ -165,11 +124,6 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
   private async resolveManifestInput(
     data: ISubmitWorkflowData,
   ): Promise<IAgentWorkflowManifestInput> {
-    const template = await this.templateGateway.findById(data.templateId);
-    const effectiveKnowledgeIds =
-      data.knowledgeIds.length > 0
-        ? data.knowledgeIds
-        : (template?.defaultKnowledgeIds ?? []);
     const [
       bridleUrl,
       bridleApiKey,
@@ -198,7 +152,7 @@ export class ArgoWorkflowGateway extends IWorkflowGateway {
       this.getIntegration('ranch_api_url'),
       this.resolveMcpServers(
         data.templateId,
-        effectiveKnowledgeIds,
+        data.knowledgeIds,
         data.ranchApiToken,
       ),
       this.channelGateway.getForAgent(data.agentId),

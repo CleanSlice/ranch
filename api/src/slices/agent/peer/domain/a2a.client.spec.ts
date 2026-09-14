@@ -110,9 +110,9 @@ describe('A2aClient.fetchCard', () => {
       respond({ status: 401, text: 'A2A_UNAUTHORIZED' }),
     );
 
-    await expect(new A2aClient().fetchCard(CARD_URL, TOKEN)).rejects.toMatchObject(
-      { status: 401 },
-    );
+    await expect(
+      new A2aClient().fetchCard(CARD_URL, TOKEN),
+    ).rejects.toMatchObject({ status: 401 });
   });
 
   it('refuses a body that is not JSON', async () => {
@@ -218,7 +218,9 @@ describe('A2aClient.sendMessage', () => {
   it('passes a protocol error through with its own message', async () => {
     fetchMock.mockResolvedValue(
       respond({
-        json: { error: { code: -32004, message: 'This agent does not support X' } },
+        json: {
+          error: { code: -32004, message: 'This agent does not support X' },
+        },
       }),
     );
 

@@ -38,9 +38,7 @@ function makePrismaStub() {
           (r) => r.agentId === where.agentId,
         );
         if (orderBy?.createdAt === 'asc') {
-          matches.sort(
-            (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-          );
+          matches.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
         }
         return matches;
       },
@@ -110,7 +108,12 @@ const card = (name: string): IA2aAgentCard => ({
   defaultInputModes: ['text/plain'],
   defaultOutputModes: ['text/plain'],
   skills: [
-    { id: 'skill:1', name: 'Order lookup', description: 'Finds orders', tags: ['skill'] },
+    {
+      id: 'skill:1',
+      name: 'Order lookup',
+      description: 'Finds orders',
+      tags: ['skill'],
+    },
   ],
 });
 

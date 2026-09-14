@@ -9,10 +9,7 @@ import { IPeerGateway } from './domain/peer.gateway';
 import { DelegationService } from './domain/delegation.service';
 import { A2aServerService } from './domain/a2a.server.service';
 import { causeText } from './domain/delegationStep';
-import {
-  DelegationStatuses,
-  type IAgentPeerData,
-} from './domain/peer.types';
+import { DelegationStatuses, type IAgentPeerData } from './domain/peer.types';
 
 interface ToolResult {
   content: { type: 'text'; text: string }[];
@@ -38,7 +35,7 @@ const err = (text: string): ToolResult => ({
 const BASE_DESCRIPTION =
   'Ask one of your connected peer agents to do a task you cannot do yourself, ' +
   'then use their reply in your answer and say it came from them. Call this ' +
-  'when the user asks about something a peer\'s skills cover and your own ' +
+  "when the user asks about something a peer's skills cover and your own " +
   'tools do not. Do NOT call it for anything you can do yourself — a peer is ' +
   'a colleague, not a first resort. The peer does not see this conversation, ' +
   'so send it a self-contained task in plain text. If several independent ' +
@@ -56,7 +53,9 @@ const DO_NOT_GUESS =
 const schema = z.object({
   peer: z
     .string()
-    .describe('Peer id from the list in this tool description, or its exact name'),
+    .describe(
+      'Peer id from the list in this tool description, or its exact name',
+    ),
   task: z
     .string()
     .min(1)

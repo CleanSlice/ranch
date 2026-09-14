@@ -126,7 +126,7 @@ export class PeerController {
   @ApiOperation({
     operationId: 'connectAgentPeer',
     summary:
-      "Connect another agent as a peer: mints a credential for this pair, " +
+      'Connect another agent as a peer: mints a credential for this pair, ' +
       'reads the peer card with it, and stores the snapshot. Nothing is kept ' +
       'if the card cannot be read, so a saved connection always works. The ' +
       'agent picks the tool up on its next restart.',

@@ -20,16 +20,24 @@ function contextFor(request: Partial<IA2aRequest>): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
-function makeHarness(options: {
-  rows?: Array<{ id: string; token: string; agentId: string; peerAgentId: string }>;
-  verify?: () => unknown;
-} = {}) {
+function makeHarness(
+  options: {
+    rows?: Array<{
+      id: string;
+      token: string;
+      agentId: string;
+      peerAgentId: string;
+    }>;
+    verify?: () => unknown;
+  } = {},
+) {
   const rows = options.rows ?? [];
-  const peers = {
-    findByToken: jest.fn(async (token: string) =>
-      rows.find((r) => r.token === token) ?? null,
+  const peerMocks = {
+    findByToken: jest.fn(
+      async (token: string) => rows.find((r) => r.token === token) ?? null,
     ),
-  } as unknown as IPeerGateway;
+  };
+  const peers = peerMocks as unknown as IPeerGateway;
 
   const jwt = {
     verify: jest.fn(
@@ -41,7 +49,7 @@ function makeHarness(options: {
   return {
     cardGuard: new A2aCardGuard(jwt, peers),
     peerGuard: new A2aPeerGuard(peers),
-    peers,
+    peers: peerMocks,
     jwt,
   };
 }

@@ -21,25 +21,27 @@ interface HarnessOptions {
 }
 
 function makeHarness(options: HarnessOptions = {}) {
-  const agent = options.agent === undefined
-    ? {
-        id: 'agent-1',
-        name: 'Support Bot',
-        templateId: 'tpl-1',
-        knowledgeIds: [] as string[],
-        config: {} as Record<string, unknown>,
-      }
-    : options.agent;
+  const agent =
+    options.agent === undefined
+      ? {
+          id: 'agent-1',
+          name: 'Support Bot',
+          templateId: 'tpl-1',
+          knowledgeIds: [] as string[],
+          config: {} as Record<string, unknown>,
+        }
+      : options.agent;
 
-  const template = options.template === undefined
-    ? {
-        id: 'tpl-1',
-        description: 'A template for support agents.',
-        version: '2',
-        skillIds: [] as string[],
-        defaultKnowledgeIds: [] as string[],
-      }
-    : options.template;
+  const template =
+    options.template === undefined
+      ? {
+          id: 'tpl-1',
+          description: 'A template for support agents.',
+          version: '2',
+          skillIds: [] as string[],
+          defaultKnowledgeIds: [] as string[],
+        }
+      : options.template;
 
   const findByIds = jest.fn(async (ids: string[]) =>
     (options.skills ?? []).filter((s) => ids.includes(s.id)),
@@ -161,7 +163,8 @@ describe('AgentCardService.build', () => {
       {
         id: 'knowledge:k1',
         name: 'Returns policy',
-        description: 'Answers questions about «Returns policy»: 2026 policy PDF.',
+        description:
+          'Answers questions about «Returns policy»: 2026 policy PDF.',
         tags: ['knowledge'],
       },
       {
@@ -290,9 +293,11 @@ describe('AgentCardService.build', () => {
     expect(card).not.toHaveProperty('peers');
     expect(card).not.toHaveProperty('peerOf');
     expect(card.skills.every((s) => !s.id.startsWith('peer:'))).toBe(true);
-    expect(
-      card.skills.some((s) => /peer/i.test(s.name + s.description)),
-    ).toBe(false);
+    const skillWords = card.skills.flatMap((skill) =>
+      `${skill.name} ${skill.description}`.toLowerCase().split(/[^a-z]+/),
+    );
+    expect(skillWords).not.toContain('peer');
+    expect(skillWords).not.toContain('peers');
   });
 
   it('builds absolute URLs that survive a trailing slash in the setting', async () => {

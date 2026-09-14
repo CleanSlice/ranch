@@ -51,7 +51,11 @@ export class AgentCardService {
     const template = await this.templates.findById(agent.templateId);
 
     const [skills, url] = await Promise.all([
-      this.buildSkills(agent.knowledgeIds, template?.skillIds ?? [], template?.defaultKnowledgeIds ?? []),
+      this.buildSkills(
+        agent.knowledgeIds,
+        template?.skillIds ?? [],
+        template?.defaultKnowledgeIds ?? [],
+      ),
       this.interfaceUrlFor(agentId),
     ]);
 
@@ -59,7 +63,11 @@ export class AgentCardService {
 
     return {
       name: agent.name,
-      description: this.describe(agent.name, agent.config, template?.description),
+      description: this.describe(
+        agent.name,
+        agent.config,
+        template?.description,
+      ),
       version: template?.version ?? '1',
       supportedInterfaces: [
         { url, protocolBinding: 'JSONRPC', protocolVersion: A2A_VERSION },

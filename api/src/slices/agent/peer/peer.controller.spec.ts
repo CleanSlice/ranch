@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/unbound-method --
+ * Nest's Reflector reads metadata off the method reference itself, so
+ * `Controller.prototype.handler` is the argument it wants; nothing is ever
+ * called detached. Same pattern as shareLink.controller.spec.
+ */
 import { Reflector } from '@nestjs/core';
 import { GUARDS_METADATA, HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { plainToInstance } from 'class-transformer';
@@ -35,7 +40,10 @@ function makeController(options: { peers?: Partial<PeerService> } = {}) {
     token: 'ap_' + 'x'.repeat(43),
   };
 
-  const peers = {
+  // Raw mocks first, cast only where the constructor needs a type. Reading a
+  // method off a casted interface is what @typescript-eslint/unbound-method
+  // objects to, and the assertions below all read these.
+  const peerMocks = {
     list: jest.fn(async () => [poisoned]),
     candidates: jest.fn(async () => [
       { id: 'b', name: 'Support Bot', status: 'running', connected: true },
@@ -44,21 +52,25 @@ function makeController(options: { peers?: Partial<PeerService> } = {}) {
     refresh: jest.fn(async () => poisoned),
     remove: jest.fn(async () => undefined),
     ...options.peers,
-  } as unknown as PeerService;
+  };
 
-  const cards = {
+  const cardMocks = {
     build: jest.fn(async () => ({ name: 'Support Bot', skills: [] })),
-  } as unknown as AgentCardService;
+  };
 
-  const delegations = {
+  const delegationMocks = {
     listRecent: jest.fn(async () => []),
-  } as unknown as IDelegationGateway;
+  };
 
   return {
-    controller: new PeerController(peers, cards, delegations),
-    peers,
-    cards,
-    delegations,
+    controller: new PeerController(
+      peerMocks as unknown as PeerService,
+      cardMocks as unknown as AgentCardService,
+      delegationMocks as unknown as IDelegationGateway,
+    ),
+    peers: peerMocks,
+    cards: cardMocks,
+    delegations: delegationMocks,
   };
 }
 

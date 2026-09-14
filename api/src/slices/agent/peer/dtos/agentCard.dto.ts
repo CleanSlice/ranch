@@ -58,7 +58,8 @@ export class AgentCapabilitiesDto {
 
   @ApiProperty({
     required: false,
-    description: 'Whether the agent can call back when a task finishes. Ranch: false.',
+    description:
+      'Whether the agent can call back when a task finishes. Ranch: false.',
     example: false,
   })
   pushNotifications?: boolean;
@@ -69,8 +70,7 @@ export class AgentCardDto {
   name: string;
 
   @ApiProperty({
-    description:
-      "The agent's own description, falling back to its template's.",
+    description: "The agent's own description, falling back to its template's.",
     example: 'Answers customer questions about orders and returns.',
   })
   description: string;

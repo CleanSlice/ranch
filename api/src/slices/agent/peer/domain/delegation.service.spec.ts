@@ -1,9 +1,5 @@
 import { DelegationService } from './delegation.service';
-import {
-  A2aTaskStates,
-  type IA2aAgentCard,
-  type IA2aTask,
-} from './a2a.types';
+import { A2aTaskStates, type IA2aAgentCard, type IA2aTask } from './a2a.types';
 import {
   DelegationError,
   DelegationErrorCodes,
@@ -21,7 +17,10 @@ import type { IBridleGateway } from '#/bridle/domain/bridle.gateway';
  * idle), the row is finished exactly once, and a failure never comes back
  * looking like an answer.
  */
-const card = (name: string, skills: IA2aAgentCard['skills'] = []): IA2aAgentCard => ({
+const card = (
+  name: string,
+  skills: IA2aAgentCard['skills'] = [],
+): IA2aAgentCard => ({
   name,
   description: `${name} answers things`,
   version: '1',
@@ -75,7 +74,10 @@ const completed = (text = 'Within 30 days.'): IA2aTask => ({
   metadata: { ranch: { chain: ['a', 'b'] } },
 });
 
-const failedTask = (failure: 'not_running' | 'timeout', text: string): IA2aTask => ({
+const failedTask = (
+  failure: 'not_running' | 'timeout',
+  text: string,
+): IA2aTask => ({
   id: 't2',
   contextId: 'ctx-1',
   status: {
@@ -101,12 +103,14 @@ const rejectedTask = (rejection: 'loop' | 'depth', text: string): IA2aTask => ({
   metadata: { ranch: { chain: ['a', 'b'], rejection } },
 });
 
-function makeHarness(options: {
-  connections?: IAgentPeerData[];
-  task?: IA2aTask;
-  sendThrows?: unknown;
-  activeTurn?: { clientId: string; turnId: string; ts: number } | null;
-} = {}) {
+function makeHarness(
+  options: {
+    connections?: IAgentPeerData[];
+    task?: IA2aTask;
+    sendThrows?: Error;
+    activeTurn?: { clientId: string; turnId: string; ts: number } | null;
+  } = {},
+) {
   const order: string[] = [];
   const rows: Record<string, any> = {};
   let seq = 0;
@@ -115,7 +119,7 @@ function makeHarness(options: {
     listByAgent: jest.fn(async () => options.connections ?? [connection()]),
   } as unknown as IPeerGateway;
 
-  const delegations = {
+  const delegationMocks = {
     create: jest.fn(async (input: Record<string, any>) => {
       order.push('create');
       const id = `del-${(seq += 1)}`;
@@ -139,7 +143,7 @@ function makeHarness(options: {
       return rows[id];
     }),
     listRecent: jest.fn(async () => []),
-  } as unknown as IDelegationGateway;
+  };
 
   const sendMessage = jest.fn(async (..._args: unknown[]) => {
     order.push('send');
@@ -155,13 +159,20 @@ function makeHarness(options: {
         ? { clientId: 'admin', turnId: 'turn-1', ts: 1 }
         : options.activeTurn,
     ),
-    sendToClient: jest.fn((clientId: string, agentId: string, data: unknown) => {
-      order.push('push');
-      sent.push({ clientId, agentId, data });
-    }),
+    sendToClient: jest.fn(
+      (clientId: string, agentId: string, data: unknown) => {
+        order.push('push');
+        sent.push({ clientId, agentId, data });
+      },
+    ),
   } as unknown as IBridleGateway;
 
-  const service = new DelegationService(peers, delegations, client, hub);
+  const service = new DelegationService(
+    peers,
+    delegationMocks as unknown as IDelegationGateway,
+    client,
+    hub,
+  );
 
   const run = (overrides: Record<string, unknown> = {}) =>
     service.run(
@@ -176,7 +187,16 @@ function makeHarness(options: {
       120_000,
     );
 
-  return { service, run, delegations, sendMessage, hub, sent, order, rows };
+  return {
+    service,
+    run,
+    delegations: delegationMocks,
+    sendMessage,
+    hub,
+    sent,
+    order,
+    rows,
+  };
 }
 
 describe('DelegationService.run — choosing the peer', () => {
@@ -216,7 +236,7 @@ describe('DelegationService.run — choosing the peer', () => {
 
     await run({ reason: 'it holds the returns policy' });
 
-    const [row] = Object.values(rows) as any[];
+    const [row] = Object.values(rows);
     expect(row.matchedSkills).toEqual([
       { id: 'knowledge:9a', name: 'Returns policy' },
     ]);
@@ -227,7 +247,7 @@ describe('DelegationService.run — choosing the peer', () => {
 
     await run({ reason: 'xyz', task: 'zzz' });
 
-    const [row] = Object.values(rows) as any[];
+    const [row] = Object.values(rows);
     expect(row.matchedSkills).toEqual([
       { id: 'knowledge:9a', name: 'Returns policy' },
     ]);
@@ -240,7 +260,7 @@ describe('DelegationService.run — choosing the peer', () => {
 
     await run({ peer: 'Bare' });
 
-    const [row] = Object.values(rows) as any[];
+    const [row] = Object.values(rows);
     expect(row.matchedSkills).toEqual([]);
   });
 });
@@ -277,7 +297,7 @@ describe('DelegationService.run — the audit row', () => {
 
     await run();
 
-    const [row] = Object.values(rows) as any[];
+    const [row] = Object.values(rows);
     expect(row.excerpt).toHaveLength(300);
   });
 
@@ -460,7 +480,7 @@ describe('DelegationService.run — the visible step', () => {
 
     await run();
 
-    const [row] = Object.values(rows) as any[];
+    const [row] = Object.values(rows);
     expect(row).toMatchObject({ turnId: 'turn-1', clientId: 'admin' });
   });
 

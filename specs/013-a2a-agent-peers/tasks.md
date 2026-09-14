@@ -180,14 +180,14 @@
 
 - [ ] T066 [US6] Run quickstart §4 steps 1–9 end to end locally; fix anything that needs improvisation (copy, empty states, restart hint timing) in the files it points to; record timings for SC-001 and SC-003 on the ticket
 - [ ] T067 [US6] Run quickstart §5 on the dev cluster: set `API_PUBLIC_URL` (or the `infrastructure/api_public_url` setting) to the in-cluster API URL, repeat §4 steps 3–5, confirm the card URL is reachable from the API pod and the delegation completes; note the result on the ticket (depends on T066)
-- [ ] T068 [P] [US6] Add a short "Peers and A2A" section to `README.md` under the agent slices list (`api/src/slices/agent/peer` — what a card is, how to connect a peer, the restart-to-apply note, the `API_PUBLIC_URL` variable) and list the env vars in `docs/operations/` if an env reference exists there
+- [X] T068 [P] [US6] Add a short "Peers and A2A" section to `README.md` under the agent slices list (`api/src/slices/agent/peer` — what a card is, how to connect a peer, the restart-to-apply note, the `API_PUBLIC_URL` variable) and list the env vars in `docs/operations/` if an env reference exists there
 
 ---
 
 ## Phase 9: Polish & Cross-Cutting Concerns
 
-- [ ] T069 [P] Lint and format: `cd api && bun run lint && bun run format`; confirm `cd api && bun run test` is fully green (not only the filtered runs) and `cd admin && bun run typecheck` passes
-- [ ] T070 [P] Security pass on the new surface: `token` absent from every DTO and log line (grep `token` in `api/src/slices/agent/peer`); the A2A JSON-RPC route rejects console JWTs; `A2aCardGuard` refuses `User`-role JWTs; peer credential compared with a constant-time check where a lookup by unique column is not already used; `fetch` targets only the stored `cardUrl`/interface URL (no user-supplied URLs reach `fetch` in this feature)
+- [X] T069 [P] Lint and format: `cd api && bun run lint && bun run format`; confirm `cd api && bun run test` is fully green (not only the filtered runs) and `cd admin && bun run typecheck` passes
+- [X] T070 [P] Security pass on the new surface: `token` absent from every DTO and log line (grep `token` in `api/src/slices/agent/peer`); the A2A JSON-RPC route rejects console JWTs; `A2aCardGuard` refuses `User`-role JWTs; peer credential compared with a constant-time check where a lookup by unique column is not already used; `fetch` targets only the stored `cardUrl`/interface URL (no user-supplied URLs reach `fetch` in this feature)
 - [ ] T071 Post the closing ticket comment on CLEAN-74 (what shipped, restart-to-apply limitation, the R8 runtime-step finding from T061), open the PR into `main` with the ticket link, quickstart results, and the attribution footer; move the ticket to In Review
 
 ---

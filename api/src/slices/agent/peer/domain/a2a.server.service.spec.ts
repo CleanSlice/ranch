@@ -13,12 +13,14 @@ import type { IAgentGateway } from '#/agent/agent/domain';
  * would all be indistinguishable to it from a real reply, so each failure has
  * to come back as a task state with a cause written in words.
  */
-function makeHarness(options: {
-  connected?: boolean;
-  reply?: { text: string; timedOut?: boolean };
-  env?: Record<string, string>;
-  agentName?: string;
-} = {}) {
+function makeHarness(
+  options: {
+    connected?: boolean;
+    reply?: { text: string; timedOut?: boolean };
+    env?: Record<string, string>;
+    agentName?: string;
+  } = {},
+) {
   const connected = options.connected ?? true;
   const sendAndAwait = jest.fn(async (_input: { capabilities?: string[] }) => ({
     text: options.reply?.text ?? 'the answer',
@@ -270,9 +272,16 @@ describe('A2aServerService.sendMessage — what it will not accept', () => {
     const { service } = makeHarness();
 
     await expect(
-      service.sendMessage('agent-b', 'agent-a', params({}, {
-        returnImmediately: true,
-      })),
+      service.sendMessage(
+        'agent-b',
+        'agent-a',
+        params(
+          {},
+          {
+            returnImmediately: true,
+          },
+        ),
+      ),
     ).rejects.toMatchObject({ code: A2aErrorCodes.UnsupportedOperation });
   });
 

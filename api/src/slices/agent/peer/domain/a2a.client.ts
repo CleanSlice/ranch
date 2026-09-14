@@ -43,7 +43,10 @@ export class A2aClient {
     let response: Response;
     try {
       response = await fetch(cardUrl, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
         signal: AbortSignal.timeout(CARD_TIMEOUT_MS),
       });
     } catch (err) {
@@ -82,6 +85,15 @@ export class A2aClient {
 
   /**
    * Hands a task to a peer and waits for the finished task.
+   *
+   * SECURITY NOTE. `interfaceUrl` comes from a stored card snapshot, and a
+   * card is remote content. Today that is safe because the picker only ever
+   * offers agents of this installation, so every snapshot was read from this
+   * API's own route — the URL is ours. The moment foreign peers become
+   * connectable (a card URL typed by an operator, deliberately out of scope
+   * here), this value turns attacker-influenced and this call becomes an SSRF
+   * primitive: it would then need an allowlist, or at least a block on
+   * private address ranges, before the first request goes out.
    *
    * A peer that answers with a message instead of a task is treated as an
    * error: this client asked for blocking work and has nothing to poll with,

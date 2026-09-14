@@ -51,14 +51,16 @@ const connection = (name = 'Support Bot', id = 'peer-1'): IAgentPeerData => ({
 const agentRequest = (sub = 'agent:a') =>
   ({ user: { sub, email: '', roles: [] } }) as unknown as Request;
 
-function makeHarness(options: {
-  connections?: IAgentPeerData[];
-  outcome?: unknown;
-  chain?: string[];
-} = {}) {
-  const peers = {
+function makeHarness(
+  options: {
+    connections?: IAgentPeerData[];
+    outcome?: unknown;
+    chain?: string[];
+  } = {},
+) {
+  const peerMocks = {
     listByAgent: jest.fn(async () => options.connections ?? [connection()]),
-  } as unknown as IPeerGateway;
+  };
 
   const run = jest.fn(
     async () =>
@@ -78,7 +80,7 @@ function makeHarness(options: {
   } as unknown as A2aServerService;
 
   const tool = new AskAgentTool(
-    peers,
+    peerMocks as unknown as IPeerGateway,
     { run } as unknown as DelegationService,
     a2aServer,
   );
@@ -89,7 +91,7 @@ function makeHarness(options: {
     reason: 'Support Bot holds the returns policy base',
   };
 
-  return { tool, peers, run, args };
+  return { tool, peers: peerMocks, run, args };
 }
 
 const textOf = (result: { content: { text: string }[] }) =>
@@ -137,7 +139,9 @@ describe('AskAgentTool — the description the model reads', () => {
 
     const description = (await tool.describeForRequest(agentRequest())) ?? '';
 
-    expect(description).toMatch(/not call it for anything you can do yourself/i);
+    expect(description).toMatch(
+      /not call it for anything you can do yourself/i,
+    );
   });
 
   it('warns that the peer cannot see the conversation', async () => {
@@ -156,7 +160,10 @@ describe('AskAgentTool — the description the model reads', () => {
 
   it('lists several peers, each on its own line', async () => {
     const { tool } = makeHarness({
-      connections: [connection('Support Bot'), connection('Billing Bot', 'peer-2')],
+      connections: [
+        connection('Support Bot'),
+        connection('Billing Bot', 'peer-2'),
+      ],
     });
 
     const description = (await tool.describeForRequest(agentRequest())) ?? '';

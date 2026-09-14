@@ -68,7 +68,9 @@ describe('InfraConfigGateway.getApiPublicUrl', () => {
   it('falls back to the ranch_api_url integration agents already dial', async () => {
     const { gateway, findByKey } = makeHarness({
       settings: {
-        'integrations/ranch_api_url': { value: 'http://ranch-api.platform:3333' },
+        'integrations/ranch_api_url': {
+          value: 'http://ranch-api.platform:3333',
+        },
       },
     });
 

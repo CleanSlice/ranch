@@ -72,7 +72,10 @@ function makePrismaStub() {
 
 function makeGateway() {
   const prisma = makePrismaStub();
-  const gateway = new DelegationGateway(prisma as never, new DelegationMapper());
+  const gateway = new DelegationGateway(
+    prisma as never,
+    new DelegationMapper(),
+  );
   const start = (agentId = 'a', peerName = 'Support Bot') =>
     gateway.create({
       agentId,

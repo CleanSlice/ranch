@@ -29,7 +29,7 @@ export class AgentPeerDto {
   @ApiProperty({
     description:
       "The peer's live agent status. 'running' means a delegation can " +
-      "succeed right now; anything else means it would fail fast.",
+      'succeed right now; anything else means it would fail fast.',
     example: 'running',
   })
   peerStatus: string;

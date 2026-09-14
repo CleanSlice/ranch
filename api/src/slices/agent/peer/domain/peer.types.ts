@@ -54,7 +54,8 @@ export const PeerErrorCodes = {
   Unauthorized: 'A2A_UNAUTHORIZED',
 } as const;
 
-export type PeerErrorCode = (typeof PeerErrorCodes)[keyof typeof PeerErrorCodes];
+export type PeerErrorCode =
+  (typeof PeerErrorCodes)[keyof typeof PeerErrorCodes];
 
 /** One persisted peer connection. Dates are ISO strings — the domain never
  *  handles `Date` instances so the state can be serialised as-is. */

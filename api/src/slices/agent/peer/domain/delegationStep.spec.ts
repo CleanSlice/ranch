@@ -1,4 +1,8 @@
-import { buildDelegationStep, causeText, delegationStepId } from './delegationStep';
+import {
+  buildDelegationStep,
+  causeText,
+  delegationStepId,
+} from './delegationStep';
 import {
   DelegationErrorCodes,
   DelegationStatuses,
@@ -138,7 +142,9 @@ describe('buildDelegationStep', () => {
       }),
     );
 
-    expect(loop.detail).toContain('would loop back to an agent already involved');
+    expect(loop.detail).toContain(
+      'would loop back to an agent already involved',
+    );
     expect(depth.detail).toContain('as long as it may get');
   });
 

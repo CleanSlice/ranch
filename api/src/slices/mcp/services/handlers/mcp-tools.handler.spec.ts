@@ -41,7 +41,8 @@ function makeHarness(tools: FakeTool[]) {
 
   const registry = {
     getTools: () => discovered,
-    findTool: (name: string) => discovered.find((d) => d.metadata.name === name),
+    findTool: (name: string) =>
+      discovered.find((d) => d.metadata.name === name),
   } as unknown as McpRegistryService;
 
   const moduleRef = {
@@ -109,7 +110,9 @@ describe('McpToolsHandler — per-caller listing', () => {
 
     const result = await list();
 
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(['plain']);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual([
+      'plain',
+    ]);
   });
 
   it('lists a tool that answers true, and passes the request to the check', async () => {

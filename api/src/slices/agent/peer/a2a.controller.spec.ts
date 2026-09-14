@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/unbound-method --
+ * Nest's Reflector reads metadata off the method reference itself, so
+ * `Controller.prototype.handler` is the argument it wants; nothing is ever
+ * called detached. Same pattern as shareLink.controller.spec.
+ */
 import { Reflector } from '@nestjs/core';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { A2aController } from './a2a.controller';
@@ -29,16 +34,20 @@ const task = (id = 't1'): IA2aTask => ({
   metadata: { ranch: { chain: ['agent-a', 'agent-b'] } },
 });
 
-function makeController(options: {
-  sendMessage?: () => Promise<IA2aTask>;
-  getTask?: () => IA2aTask;
-  knowsTask?: boolean;
-} = {}) {
-  const cards = {
+function makeController(
+  options: {
+    sendMessage?: () => Promise<IA2aTask>;
+    getTask?: () => IA2aTask;
+    knowsTask?: boolean;
+  } = {},
+) {
+  // Raw mocks; cast only at the constructor. Reading a method off a casted
+  // interface is what @typescript-eslint/unbound-method objects to.
+  const cardMocks = {
     build: jest.fn(async () => ({ name: 'Support Bot' })),
-  } as unknown as AgentCardService;
+  };
 
-  const server = {
+  const serverMocks = {
     sendMessage: jest.fn(options.sendMessage ?? (async () => task())),
     getTask: jest.fn(
       options.getTask ??
@@ -47,10 +56,15 @@ function makeController(options: {
         }),
     ),
     knowsTask: jest.fn(() => options.knowsTask ?? false),
-  } as unknown as A2aServerService;
+  };
 
-  const controller = new A2aController(cards, server);
-  const request = { peer: { peerId: 'p1', callerAgentId: 'agent-a' } } as IA2aRequest;
+  const controller = new A2aController(
+    cardMocks as unknown as AgentCardService,
+    serverMocks as unknown as A2aServerService,
+  );
+  const request = {
+    peer: { peerId: 'p1', callerAgentId: 'agent-a' },
+  } as IA2aRequest;
 
   const rpc = (body: unknown) =>
     controller.rpc('agent-b', request, body, '1.0');
@@ -59,7 +73,13 @@ function makeController(options: {
   const rpcWithVersion = (body: unknown, version: string | undefined) =>
     controller.rpc('agent-b', request, body, version);
 
-  return { controller, cards, server, rpc, rpcWithVersion };
+  return {
+    controller,
+    cards: cardMocks,
+    server: serverMocks,
+    rpc,
+    rpcWithVersion,
+  };
 }
 
 const call = (method: string, params?: unknown, id: unknown = 1) => ({
@@ -76,9 +96,9 @@ describe('A2aController — wiring', () => {
     expect(
       reflector.get(GUARDS_METADATA, A2aController.prototype.card),
     ).toEqual([A2aCardGuard]);
-    expect(
-      reflector.get(GUARDS_METADATA, A2aController.prototype.rpc),
-    ).toEqual([A2aPeerGuard]);
+    expect(reflector.get(GUARDS_METADATA, A2aController.prototype.rpc)).toEqual(
+      [A2aPeerGuard],
+    );
   });
 
   it('answers both routes outside the Ranch response envelope', () => {
@@ -129,11 +149,9 @@ describe('A2aController — dispatch', () => {
     const response = await rpc(call('SendMessage', { message: { parts: [] } }));
 
     expect(response.result).toEqual({ task: task() });
-    expect(server.sendMessage).toHaveBeenCalledWith(
-      'agent-b',
-      'agent-a',
-      { message: { parts: [] } },
-    );
+    expect(server.sendMessage).toHaveBeenCalledWith('agent-b', 'agent-a', {
+      message: { parts: [] },
+    });
   });
 
   it('reports a failed task as a result, not as an error', async () => {
@@ -237,7 +255,9 @@ describe('A2aController — malformed input', () => {
   it('echoes the request id back, including a null one', async () => {
     const { rpc } = makeController();
 
-    await expect(rpc(call('DoSomethingElse', undefined, 'abc'))).resolves.toMatchObject({
+    await expect(
+      rpc(call('DoSomethingElse', undefined, 'abc')),
+    ).resolves.toMatchObject({
       jsonrpc: '2.0',
       id: 'abc',
     });

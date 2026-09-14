@@ -279,8 +279,7 @@ export class A2aServerService {
 
 /** `metadata.ranch.chain`, defensively — a caller controls this field. */
 function readChain(message: IA2aMessage): string[] {
-  const ranch = (message.metadata as Record<string, unknown> | undefined)
-    ?.ranch as IRanchTaskMetadata | undefined;
+  const ranch = message.metadata?.ranch as IRanchTaskMetadata | undefined;
   if (!ranch || !Array.isArray(ranch.chain)) return [];
   return ranch.chain.filter((id): id is string => typeof id === 'string');
 }

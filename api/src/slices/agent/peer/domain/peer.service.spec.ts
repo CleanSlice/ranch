@@ -26,13 +26,17 @@ const card = (name: string): IA2aAgentCard => ({
   capabilities: {},
   defaultInputModes: ['text/plain'],
   defaultOutputModes: ['text/plain'],
-  skills: [{ id: 'skill:1', name: 'Orders', description: 'Finds', tags: ['skill'] }],
+  skills: [
+    { id: 'skill:1', name: 'Orders', description: 'Finds', tags: ['skill'] },
+  ],
 });
 
-function makeHarness(options: {
-  agents?: Array<{ id: string; name: string; status: string }>;
-  fetchCardThrows?: unknown;
-} = {}) {
+function makeHarness(
+  options: {
+    agents?: Array<{ id: string; name: string; status: string }>;
+    fetchCardThrows?: Error;
+  } = {},
+) {
   const agents = options.agents ?? [
     { id: 'a', name: 'Caller', status: 'running' },
     { id: 'b', name: 'Support Bot', status: 'running' },
@@ -68,16 +72,14 @@ function makeHarness(options: {
       };
       return rows[id];
     }),
-    updateSnapshot: jest.fn(
-      async (id: string, input: Record<string, any>) => {
-        Object.assign(rows[id], {
-          cardSnapshot: input.cardSnapshot,
-          cardUrl: input.cardUrl,
-          cardReadAt: input.cardReadAt.toISOString(),
-        });
-        return rows[id];
-      },
-    ),
+    updateSnapshot: jest.fn(async (id: string, input: Record<string, any>) => {
+      Object.assign(rows[id], {
+        cardSnapshot: input.cardSnapshot,
+        cardUrl: input.cardUrl,
+        cardReadAt: input.cardReadAt.toISOString(),
+      });
+      return rows[id];
+    }),
     delete: jest.fn(async (id: string) => {
       delete rows[id];
     }),
@@ -85,7 +87,9 @@ function makeHarness(options: {
 
   const agentGateway = {
     findAll: jest.fn(async () => agents),
-    findById: jest.fn(async (id: string) => agents.find((a) => a.id === id) ?? null),
+    findById: jest.fn(
+      async (id: string) => agents.find((a) => a.id === id) ?? null,
+    ),
   } as unknown as IAgentGateway;
 
   const cards = {
@@ -209,7 +213,9 @@ describe('PeerService.refresh', () => {
   it('keeps the old snapshot when the read fails, and says what failed', async () => {
     const { service, fetchCard } = makeHarness();
     const connected = await service.connect('a', 'b');
-    fetchCard.mockRejectedValue(new PeerCardUnreachableError('502 Bad Gateway'));
+    fetchCard.mockRejectedValue(
+      new PeerCardUnreachableError('502 Bad Gateway'),
+    );
 
     await expect(service.refresh('a', connected.id)).rejects.toMatchObject({
       response: { code: 'PEER_CARD_UNREACHABLE' },

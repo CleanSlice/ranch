@@ -3,6 +3,12 @@ export * from './attachment.constants';
 export * from './attachmentBlocks';
 export * from './sheetStructure';
 export {
+  BridleSyncService,
+  DEFAULT_SYNC_TIMEOUT_MS,
+  type ISendAndAwaitInput,
+  type ISendAndAwaitResult,
+} from './bridleSync.service';
+export {
   IBridleGateway,
   type ISyncAgentResult,
   type IBridleAgentEvent,

@@ -9,6 +9,7 @@ import {
   IBridleAttachmentGateway,
   BridleAttachmentService,
 } from './domain';
+import { BridleSyncService } from './domain/bridleSync.service';
 import { BridleGateway, BridleAttachmentGateway } from './data';
 import { BridleApiKeyGuard } from './guards/bridleApiKey.guard';
 import { BridleChatAuthGuard } from './guards/bridleChatAuth.guard';
@@ -79,6 +80,9 @@ import { ShareLinkModule } from '#/agent/shareLink/shareLink.module';
     { provide: IBridleGateway, useClass: BridleGateway },
     { provide: IBridleAttachmentGateway, useClass: BridleAttachmentGateway },
     BridleAttachmentService,
+    // Extracted from the sync HTTP route so the A2A server (CLEAN-74) can
+    // wait for an agent reply without being a controller.
+    BridleSyncService,
     // MCP tool: query_attachment. Discovered by the #mcp registry like every
     // @Tool provider; served on the same endpoint as the Ranch/Knowledge
     // built-ins and auto-attached through the Documents entry (seeder).
@@ -89,6 +93,11 @@ import { ShareLinkModule } from '#/agent/shareLink/shareLink.module';
     BridleChatAuthGuard,
   ],
   controllers: [BridleController],
-  exports: [IBridleGateway, IBridleAttachmentGateway, BridleApiKeyGuard],
+  exports: [
+    IBridleGateway,
+    IBridleAttachmentGateway,
+    BridleApiKeyGuard,
+    BridleSyncService,
+  ],
 })
 export class BridleModule {}

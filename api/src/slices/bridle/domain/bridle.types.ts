@@ -116,9 +116,39 @@ export interface IBridleOutgoingEvent {
   parts?: BridlePart[];
   messageId?: string;
   ts?: number;
+  /** `thinking` only — see IBridleThinkingEvent. Typed here so the API can
+   * publish a step of its own (CLEAN-74) without casting. */
+  turnId?: string;
+  step?: IBridleThinkingStep;
+  done?: boolean;
 }
 
 // ── Thinking (live reasoning steps) ──────────────────────────
+
+/**
+ * The structured half of a delegation step (CLEAN-74): everything the admin
+ * chat needs to render "who was asked, what their card promised, why they
+ * were picked, and how it went" without parsing prose. Surfaces that know
+ * nothing about delegation still show the step, because `label` and `detail`
+ * carry the same story in words.
+ */
+export interface IBridleDelegationStep {
+  delegationId: string;
+  peerAgentId: string;
+  peerName: string;
+  /** The card skills that made this peer the choice. */
+  matchedSkills: { id: string; name: string }[];
+  /** The calling model's one-line reason, shown to the person verbatim. */
+  reason: string;
+  /** The self-contained task text the peer received. */
+  task: string;
+  status: 'waiting' | 'answered' | 'failed' | 'rejected';
+  /** Epoch ms — the client ticks its own elapsed time while waiting. */
+  startedAt: number;
+  durationMs?: number;
+  /** Reply excerpt when answered; the cause in product wording otherwise. */
+  excerpt?: string;
+}
 
 /** One published unit of agent work inside a thinking timeline. */
 export interface IBridleThinkingStep {
@@ -130,6 +160,25 @@ export interface IBridleThinkingStep {
    * params or prompts — this event is NOT admin-gated (unlike `debug`). */
   detail?: string;
   state: 'active' | 'done';
+  /**
+   * Set by steps the API itself publishes rather than the runtime. Absent on
+   * every step an agent emits, which is what keeps this additive.
+   */
+  kind?: 'delegation';
+  /** Present exactly when `kind === 'delegation'`. */
+  delegation?: IBridleDelegationStep;
+}
+
+/**
+ * What the hub remembers about a turn in flight, so API-side code can add a
+ * step to the timeline the person is already watching (CLEAN-74). The runtime
+ * mints `turnId`; the hub only observes it passing through.
+ */
+export interface IActiveTurn {
+  clientId: string;
+  turnId: string;
+  /** When the last step of this turn was seen — newest wins. */
+  ts: number;
 }
 
 /**

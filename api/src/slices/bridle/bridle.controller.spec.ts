@@ -128,6 +128,32 @@ function makeController(stubs: IStubs = {}) {
     },
   };
 
+  // The synchronous wait moved into BridleSyncService (CLEAN-74). The stub
+  // records into the same `registered` list the hub does and forwards to
+  // `sendToAgent`, because what these cases check is which chat identity the
+  // controller resolved — that question outlived the refactor.
+  const sync = {
+    sendAndAwait: jest.fn(
+      async (input: {
+        clientId: string;
+        agentId: string;
+        text: string;
+      }) => {
+        registered.push({
+          clientId: input.clientId,
+          agentId: input.agentId,
+          socketId: 'sync-stub',
+        });
+        sent.push({
+          clientId: input.clientId,
+          agentId: input.agentId,
+          text: input.text,
+        });
+        return { text: 'pong', messageId: 'm1', ts: 1, timedOut: false };
+      },
+    ),
+  };
+
   const controller = new BridleController(
     hub as never,
     jwt,
@@ -135,6 +161,7 @@ function makeController(stubs: IStubs = {}) {
     transcriptReader as never,
     attachments,
     shareLinks,
+    sync as never,
   );
 
   return {

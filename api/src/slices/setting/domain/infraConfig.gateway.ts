@@ -22,6 +22,15 @@ export abstract class IInfraConfigGateway {
   abstract getReinsBucket(): Promise<string>;
 
   /**
+   * Public origin other agents and browsers reach this API on. Feeds the A2A
+   * agent-card URLs (CLEAN-74) and, in spirit, the OAuth callback of CLEAN-75.
+   * Resolution adds one step to the usual chain: settings → env PUBLIC_API_URL
+   * → the `integrations.ranch_api_url` value agents already dial → localhost.
+   * Returned without a trailing slash.
+   */
+  abstract getApiPublicUrl(): Promise<string>;
+
+  /**
    * Drop the in-memory cache. Useful when settings are upserted via the
    * settings controller and we want subsequent reads to see fresh values.
    */

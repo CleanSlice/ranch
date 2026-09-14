@@ -8,6 +8,11 @@ import { ISettingGateway } from '../domain/setting.gateway';
 
 const GROUP = 'infrastructure';
 const CACHE_TTL_MS = 30_000;
+// Last resort when neither a setting, PUBLIC_API_URL nor the ranch_api_url
+// integration says where this API lives — matches the dev server port.
+const API_PUBLIC_URL_FALLBACK = 'http://localhost:3333';
+
+const TRAILING_SLASHES = /[/]+$/;
 
 interface KeySpec<T> {
   setting: string;
@@ -58,6 +63,15 @@ const KEYS = {
     setting: 'reins_bucket',
     env: 'REINS_S3_BUCKET',
     default: 'ranch-reins-sources',
+    parse: (s: string) => s,
+  } as KeySpec<string>,
+  // Public origin of this API. Empty default on purpose: an unset value
+  // falls through to the integrations.ranch_api_url the agents already
+  // dial, so a cluster that configured one gets working card URLs for free.
+  api_public_url: {
+    setting: 'api_public_url',
+    env: 'PUBLIC_API_URL',
+    default: '',
     parse: (s: string) => s,
   } as KeySpec<string>,
 };
@@ -113,6 +127,31 @@ export class InfraConfigGateway
   }
   getReinsBucket(): Promise<string> {
     return this.resolve('reins_bucket');
+  }
+  /**
+   * settings → env PUBLIC_API_URL → integrations.ranch_api_url → localhost,
+   * always without a trailing slash. The integration step exists because that
+   * value is already the API URL as agent pods see it, which is a far better
+   * guess on a configured cluster than any built-in default.
+   */
+  async getApiPublicUrl(): Promise<string> {
+    const configured = await this.resolve('api_public_url');
+    if (configured) return configured.replace(TRAILING_SLASHES, '');
+
+    try {
+      const fallback = await this.settings.findByKey(
+        'integrations',
+        'ranch_api_url',
+      );
+      if (typeof fallback?.value === 'string' && fallback.value.length > 0) {
+        return fallback.value.replace(TRAILING_SLASHES, '');
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Settings DB unavailable for "ranch_api_url", falling back to the default API URL: ${(err as Error).message}`,
+      );
+    }
+    return API_PUBLIC_URL_FALLBACK;
   }
 
   private async resolve<K extends KeyName>(

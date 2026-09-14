@@ -14,7 +14,7 @@ Give every Ranch agent an **A2A 1.0 agent card** (derived from name, description
 
 **Primary Dependencies**: NestJS + Prisma (`prisma-import` per-slice fragments), class-validator/Swagger DTOs, zod (tool schemas), the bridle hub (`IBridleGateway`), the MCP registry (`@Tool`, `IDynamicallyDescribedTool`). **No new package**: A2A 1.0 types are hand-written from the proto (R1); HTTP client is global `fetch`. Console: Pinia store → service → gateway → `@hey-api/client-axios` SDK (`build:api`), shadcn-vue kit (no Dialog/Command — hand-built on reka-ui like `ConfirmDialog`), `socket.io-client` for the thinking stream
 
-**Storage**: PostgreSQL via Prisma — two new tables `AgentPeer`, `AgentDelegation` (one additive migration `20260910120000_agent_peer_delegation`), two back-relations on `Agent`; A2A tasks in memory (10 min TTL); the card is derived on every read
+**Storage**: PostgreSQL via Prisma — two new tables `AgentPeer`, `AgentDelegation` (one additive migration `20260914120000_agent_peer_delegation`), two back-relations on `Agent`; A2A tasks in memory (10 min TTL); the card is derived on every read
 
 **Testing**: API — Jest, colocated `*.spec.ts`, hand-rolled stubs (`cd api && bun run test -- peer agentCard a2a askAgent bridleSync bridle.gateway mcp-tools`); admin has no runner — verification = `bun run build:api && bun run typecheck`, then [quickstart.md](./quickstart.md) §3–6 by hand (local, then once in-cluster)
 
@@ -55,7 +55,7 @@ specs/013-a2a-agent-peers/
 ```text
 api/
 ├── .env.example                                   # + API_PUBLIC_URL, A2A_SYNC_TIMEOUT_MS, A2A_MAX_CHAIN
-├── prisma/migrations/20260910120000_agent_peer_delegation/migration.sql   # additive: AgentPeer, AgentDelegation
+├── prisma/migrations/20260914120000_agent_peer_delegation/migration.sql   # additive: AgentPeer, AgentDelegation
 └── src/
     ├── app.module.ts                              # + PeerModule
     └── slices/

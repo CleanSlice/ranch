@@ -16,7 +16,10 @@ import { DelegationGateway } from './data/delegation.gateway';
 import { PeerMapper } from './data/peer.mapper';
 import { DelegationMapper } from './data/delegation.mapper';
 import { A2aCardGuard, A2aPeerGuard } from './guards/a2a.guards';
+import { A2aClient } from './domain/a2a.client';
+import { PeerService } from './domain/peer.service';
 import { A2aController } from './a2a.controller';
+import { PeerController } from './peer.controller';
 
 /**
  * Agents talking to agents (CLEAN-74): agent cards, peer connections, the A2A
@@ -36,13 +39,15 @@ import { A2aController } from './a2a.controller';
     forwardRef(() => BridleModule),
     SettingModule,
   ],
-  controllers: [A2aController],
+  controllers: [A2aController, PeerController],
   providers: [
     PeerMapper,
     DelegationMapper,
     { provide: IPeerGateway, useClass: PeerGateway },
     { provide: IDelegationGateway, useClass: DelegationGateway },
     AgentCardService,
+    A2aClient,
+    PeerService,
     A2aTaskStore,
     A2aServerService,
     A2aCardGuard,

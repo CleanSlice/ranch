@@ -161,13 +161,19 @@ describe('PeerController — routes', () => {
 });
 
 describe('PeerController — request validation', () => {
-  it('requires a peer id that could be an agent', async () => {
-    const bad = plainToInstance(ConnectPeerDto, { peerAgentId: 'not-a-uuid' });
-    const good = plainToInstance(ConnectPeerDto, {
+  it('requires a peer id in the agent-<uuid> shape', async () => {
+    const bareUuid = plainToInstance(ConnectPeerDto, {
       peerAgentId: '3f2504e0-4f89-11d3-9a0c-0305e82c3301',
     });
+    const garbage = plainToInstance(ConnectPeerDto, {
+      peerAgentId: 'not-a-uuid',
+    });
+    const good = plainToInstance(ConnectPeerDto, {
+      peerAgentId: 'agent-3f2504e0-4f89-11d3-9a0c-0305e82c3301',
+    });
 
-    expect(await validate(bad)).toHaveLength(1);
+    expect(await validate(bareUuid)).toHaveLength(1);
+    expect(await validate(garbage)).toHaveLength(1);
     expect(await validate(good)).toHaveLength(0);
   });
 

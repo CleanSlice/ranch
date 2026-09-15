@@ -1,8 +1,21 @@
 <script setup lang="ts">
+import {
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui';
 import { IconCheck, IconSearch } from '@tabler/icons-vue';
+import { toast } from 'vue-sonner';
 import { AGENT_STATUS_VARIANT } from '#agent/utils/agentFormat';
 import type { AgentStatusTypes } from '#agent/domain';
-import { usePeerStore, type IAgentCard, type IAgentPeerCandidate } from '#peer/stores/peer';
+import {
+  usePeerStore,
+  type IAgentCard,
+  type IAgentPeerCandidate,
+} from '#peer/stores/peer';
 
 /**
  * Pick an agent, read its card, then connect (CLEAN-74).
@@ -12,8 +25,8 @@ import { usePeerStore, type IAgentCard, type IAgentPeerCandidate } from '#peer/s
  * exact text first — a name alone would make "why did it pick the wrong one"
  * unanswerable later.
  */
-const props = defineProps<{ agentId: string }>();
-const emit = defineEmits<{ connected: []; cancel: [] }>();
+const props = defineProps<{ open: boolean; agentId: string }>();
+const emit = defineEmits<{ 'update:open': [value: boolean]; connected: [] }>();
 
 const store = usePeerStore();
 
@@ -34,9 +47,22 @@ const visible = computed(() => {
   return candidates.value.filter((c) => c.name.toLowerCase().includes(q));
 });
 
-onMounted(() => {
-  void store.loadCandidates(props.agentId);
+const isOpen = computed({
+  get: () => props.open,
+  set: (v: boolean) => emit('update:open', v),
 });
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return;
+    filter.value = '';
+    selected.value = null;
+    preview.value = null;
+    error.value = null;
+    void store.loadCandidates(props.agentId);
+  },
+);
 
 async function select(candidate: IAgentPeerCandidate) {
   if (candidate.connected) return;
@@ -60,6 +86,7 @@ async function connect() {
   error.value = null;
   try {
     await store.connect(props.agentId, selected.value.id);
+    toast.success(`«${selected.value.name}» connected — card read`);
     emit('connected');
   } catch (err) {
     error.value =
@@ -75,73 +102,106 @@ function statusVariant(status: string) {
 </script>
 
 <template>
-  <div class="space-y-4 rounded-md border p-4">
-    <div class="flex items-center justify-between gap-4">
-      <p class="text-sm font-medium">Add a peer</p>
-      <Button variant="ghost" size="sm" @click="emit('cancel')">Cancel</Button>
-    </div>
-
-    <div v-if="candidates.length >= FILTER_FROM" class="relative">
-      <IconSearch
-        class="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+  <DialogRoot v-model:open="isOpen">
+    <DialogPortal>
+      <DialogOverlay
+        class="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50"
       />
-      <Input v-model="filter" placeholder="Filter agents" class="pl-8" />
-    </div>
+      <DialogContent
+        class="bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border p-6 shadow-lg duration-200"
+      >
+        <DialogTitle class="text-lg font-bold tracking-tight">
+          Add peer
+        </DialogTitle>
+        <DialogDescription class="mt-1 text-sm text-muted-foreground">
+          Agents on this ranch this one isn't connected to yet. Connecting is
+          one-way.
+        </DialogDescription>
 
-    <ul v-if="visible.length" class="max-h-64 space-y-1 overflow-y-auto">
-      <li v-for="candidate in visible" :key="candidate.id">
-        <button
-          type="button"
-          class="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
-          :class="[
-            candidate.connected
-              ? 'cursor-default text-muted-foreground'
-              : 'hover:bg-muted',
-            selected?.id === candidate.id ? 'bg-muted' : '',
-          ]"
-          :disabled="candidate.connected"
-          @click="select(candidate)"
-        >
-          <span class="flex min-w-0 items-center gap-2">
-            <span class="truncate">{{ candidate.name }}</span>
-            <Badge :variant="statusVariant(candidate.status)">
-              {{ candidate.status }}
-            </Badge>
-          </span>
-          <span
-            v-if="candidate.connected"
-            class="flex shrink-0 items-center gap-1 text-xs"
+        <div class="mt-3.5 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto">
+          <div v-if="candidates.length >= FILTER_FROM" class="relative">
+            <IconSearch
+              class="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input v-model="filter" placeholder="Filter agents" class="pl-8" />
+          </div>
+
+          <ul v-if="visible.length" class="flex flex-col">
+            <li
+              v-for="candidate in visible"
+              :key="candidate.id"
+              class="border-t first:border-t-0"
+            >
+              <button
+                type="button"
+                class="flex w-full items-center justify-between gap-3 px-1 py-3 text-left text-sm transition-colors"
+                :class="[
+                  candidate.connected
+                    ? 'cursor-default text-muted-foreground'
+                    : 'hover:bg-muted/60',
+                  selected?.id === candidate.id ? 'bg-muted/60' : '',
+                ]"
+                :disabled="candidate.connected"
+                @click="select(candidate)"
+              >
+                <span class="flex min-w-0 items-center gap-2">
+                  <span class="truncate font-semibold">
+                    {{ candidate.name }}
+                  </span>
+                  <Badge :variant="statusVariant(candidate.status)">
+                    {{ candidate.status }}
+                  </Badge>
+                </span>
+                <span
+                  v-if="candidate.connected"
+                  class="flex shrink-0 items-center gap-1 text-xs"
+                >
+                  <IconCheck class="size-3.5" />
+                  connected
+                </span>
+              </button>
+            </li>
+          </ul>
+
+          <p v-else-if="filter" class="text-sm text-muted-foreground">
+            No agent matches "{{ filter }}".
+          </p>
+          <p v-else class="border-t pt-3.5 text-sm text-muted-foreground">
+            No unconnected agents left on this ranch.
+          </p>
+
+          <div v-if="selected" class="space-y-3 rounded-xl border bg-muted/40 p-3">
+            <div v-if="previewing" class="space-y-2">
+              <Skeleton class="h-4 w-40" />
+              <Skeleton class="h-4 w-64" />
+              <Skeleton class="h-6 w-52" />
+            </div>
+            <template v-else>
+              <PeerCardView :card="preview" compact />
+              <Button
+                size="sm"
+                class="rounded-full"
+                :disabled="connecting || !preview"
+                @click="connect"
+              >
+                {{ connecting ? 'Connecting…' : `Connect «${selected.name}»` }}
+              </Button>
+            </template>
+          </div>
+
+          <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+        </div>
+
+        <div class="mt-3.5 flex justify-end">
+          <Button
+            variant="outline"
+            class="rounded-full"
+            @click="emit('update:open', false)"
           >
-            <IconCheck class="size-3.5" />
-            connected
-          </span>
-        </button>
-      </li>
-    </ul>
-
-    <p v-else-if="filter" class="text-sm text-muted-foreground">
-      No agent matches "{{ filter }}".
-    </p>
-    <p v-else class="text-sm text-muted-foreground">
-      There is no other agent in this installation yet.
-    </p>
-
-    <div v-if="selected" class="space-y-3 rounded-md border bg-muted/40 p-3">
-      <div v-if="previewing" class="space-y-2">
-        <Skeleton class="h-4 w-40" />
-        <Skeleton class="h-4 w-64" />
-        <Skeleton class="h-6 w-52" />
-      </div>
-      <template v-else>
-        <PeerCardView :card="preview" compact />
-        <div class="flex items-center gap-2">
-          <Button size="sm" :disabled="connecting || !preview" @click="connect">
-            {{ connecting ? 'Connecting…' : `Connect «${selected.name}»` }}
+            Close
           </Button>
         </div>
-      </template>
-    </div>
-
-    <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
-  </div>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 </template>

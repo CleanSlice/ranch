@@ -49,6 +49,7 @@ const LLM_NONE = '__none__';
 
 const form = reactive<
   Required<Pick<ICreateAgentData, 'name' | 'templateId'>> & {
+    description: string;
     llmCredentialId: string;
     resources: { cpu: string; memory: string };
     isPublic: boolean;
@@ -57,6 +58,10 @@ const form = reactive<
   }
 >({
   name: props.initialValues?.name ?? '',
+  description:
+    typeof props.initialValues?.config?.description === 'string'
+      ? props.initialValues.config.description
+      : '',
   templateId: props.initialValues?.templateId ?? firstTemplate?.id ?? '',
   llmCredentialId: props.initialValues?.llmCredentialId ?? LLM_NONE,
   resources: {
@@ -95,6 +100,15 @@ function parseOrigins(text: string): string[] {
 
 function onSubmit() {
   if (!validate()) return;
+  const description = form.description.trim();
+  const prevConfig =
+    props.initialValues?.config && typeof props.initialValues.config === 'object'
+      ? { ...props.initialValues.config }
+      : {};
+  // A2A agent card reads config.description (CLEAN-74). Empty clears the
+  // override so the card falls back to the template description.
+  if (description) prevConfig.description = description;
+  else delete prevConfig.description;
   emit('submit', {
     name: form.name.trim(),
     templateId: form.templateId,
@@ -102,6 +116,7 @@ function onSubmit() {
       form.llmCredentialId && form.llmCredentialId !== LLM_NONE
         ? form.llmCredentialId
         : null,
+    config: prevConfig,
     resources: {
       cpu: form.resources.cpu.trim() || '500m',
       memory: form.resources.memory.trim() || '512Mi',
@@ -118,13 +133,29 @@ function onSubmit() {
     <Card>
       <CardHeader>
         <CardTitle>Agent details</CardTitle>
-        <CardDescription>Name and link to a template blueprint.</CardDescription>
+        <CardDescription>
+          Name, what this agent does (shown on its A2A card), and template.
+        </CardDescription>
       </CardHeader>
       <CardContent class="grid max-w-xl gap-4">
         <div class="grid gap-2">
           <Label for="name">Name</Label>
           <Input id="name" v-model="form.name" placeholder="Research bot #1" :aria-invalid="!!errors.name" />
           <p v-if="errors.name" class="text-xs text-destructive">{{ errors.name }}</p>
+        </div>
+
+        <div class="grid gap-2">
+          <Label for="description">Description</Label>
+          <Textarea
+            id="description"
+            v-model="form.description"
+            rows="3"
+            placeholder="Ranch Store policy expert — returns, refunds, delivery, promo codes."
+          />
+          <p class="text-xs text-muted-foreground">
+            Used on the agent card so peers know when to ask this one. Leave
+            empty to fall back to the template description.
+          </p>
         </div>
 
         <div class="grid gap-2">

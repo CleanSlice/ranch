@@ -79,6 +79,7 @@ async function onSubmit(values: ICreateAgentData) {
     const update: IUpdateAgentData = {
       name: values.name,
       llmCredentialId: values.llmCredentialId ?? null,
+      config: values.config,
       resources: values.resources,
       isPublic: values.isPublic,
       allowedOrigins: values.allowedOrigins,
@@ -335,6 +336,7 @@ async function onRemove() {
                 name: agent.name,
                 templateId: agent.templateId,
                 llmCredentialId: agent.llmCredentialId,
+                config: agent.config,
                 resources: agent.resources,
                 isPublic: agent.isPublic,
                 allowedOrigins: agent.allowedOrigins,

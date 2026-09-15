@@ -78,6 +78,39 @@ make dev    # Starts api:3000 + app:3001 + admin:3002
 | Runtime | Bun |
 | Monorepo | Turborepo |
 
+## Peers and A2A
+
+An agent can hand work to another agent. Nothing is copied between them: each
+keeps its own runtime, tools and knowledge. What travels is a **card** — the
+agent-to-agent equivalent of a business card, saying who an agent is and what
+it can do. Connect a card to an agent and it gains a colleague it can ask.
+
+The mental model: **MCP is the tools in an agent's hands; A2A is the
+colleagues at the next desk.** Copying an agent is a different feature —
+that is templates.
+
+- **The card** is derived, never written by hand: an agent's name and
+  description, its template's skills, and the knowledge bases bound to it.
+  Edit any of those and the card follows. It is served at the A2A standard
+  path, `/a2a/agents/<id>/.well-known/agent-card.json`, and needs a
+  credential — there is no anonymous discovery.
+- **Connecting a peer** happens in the admin console, on an agent's **Peers**
+  tab. Pick another agent, read its card, confirm. Connections are one-way:
+  connecting B to A says nothing about what B may ask of A.
+- **Delegating** is a tool the API serves to the runtime, so no agent image
+  changes. A pod reads its tool list once at boot, so **restart the agent
+  after connecting or removing a peer** — the console says so too.
+- **Watching it happen**: a delegation appears in the chat's thinking
+  timeline while it runs, naming the peer, what its card promised, why it was
+  chosen and how long the wait is. Past delegations are listed on the Peers
+  tab.
+- **Limits**: peers are agents of the same installation; a chain may be three
+  hops long; an agent already in a chain refuses to re-enter it.
+
+Set `PUBLIC_API_URL` to the origin other agents reach this API on — every
+card URL is built from it. See `specs/013-a2a-agent-peers/` for the full
+specification.
+
 ## Project Structure
 
 ```
@@ -86,7 +119,7 @@ ranch/
 │   └── src/slices/
 │       ├── setup/        #   prisma, init, health
 │       ├── user/         #   auth + user
-│       ├── agent/        #   agent, file, pod, secret, template, templateFile
+│       ├── agent/        #   agent, file, pod, secret, template, templateFile, peer
 │       ├── workflow/     #   Argo Workflows integration
 │       ├── bridle/       #   chat (sessions, messages, streaming)
 │       ├── mcp/          #   MCP runtime hosted at /mcp/*
@@ -102,7 +135,8 @@ ranch/
 ├── app/                  # Nuxt user dashboard
 │   └── slices/           #   setup, agent, bridle, share, template, user, common
 ├── admin/                # Nuxt admin panel
-│   └── slices/           #   setup, agent, bridle, llm, mcpServer, rancher,
+│   └── slices/           #   setup, agent (incl. peer), bridle, llm, mcpServer,
+│                         #   rancher,
 │                         #   reins, setting, skill, usage, user, common
 ├── cli/                  # @cleanslice/ranch — published to npm
 ├── rancher/              # Default agent template ("rancher" agent)

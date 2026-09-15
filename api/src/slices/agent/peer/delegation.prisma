@@ -1,0 +1,47 @@
+import { Agent } from "../agent/agent"
+import { AgentPeer } from "./peer"
+
+// One task handed to a peer during one chat turn (CLEAN-74) — the durable
+// audit record behind "who asked whom, when, and how long it took" (FR-016),
+// and the source of the Recent delegations list on the Peers tab.
+//
+// The row is created in `waiting` BEFORE the outbound call, so a crash
+// mid-call still leaves a trace, and finalised exactly once. peerAgentId and
+// peerName are denormalised so the record still names the peer after the
+// connection it went through has been removed (peerId then goes null).
+//
+// Shape follows PaddockEvaluation: status + startedAt/finishedAt + error.
+model AgentDelegation {
+  id            String    @id @default(uuid())
+  // The caller.
+  agentId       String
+  agent         Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // The connection used; null once that connection is gone.
+  peerId        String?
+  peer          AgentPeer? @relation(fields: [peerId], references: [id], onDelete: SetNull)
+  peerAgentId   String
+  peerName      String
+  // A2A contextId — the same value across follow-ups within one turn.
+  contextId     String
+  // The caller's thinking turn and chat client, when one was known. Null when
+  // the delegation ran with no visible timeline to push a step into.
+  turnId        String?
+  clientId      String?
+  task          String
+  // The calling model's one-line reason for choosing this peer; shown to the
+  // person in the delegation step.
+  reason        String
+  // [{ id, name }] — the card skills quoted in that step.
+  matchedSkills Json      @default("[]")
+  // waiting → answered | failed | rejected.
+  status        String    @default("waiting")
+  // DelegationErrorCodes value; null while waiting and on success.
+  errorCode     String?
+  // First 300 chars of the reply, or the cause in product wording.
+  excerpt       String?
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  durationMs    Int?
+
+  @@index([agentId, startedAt])
+}

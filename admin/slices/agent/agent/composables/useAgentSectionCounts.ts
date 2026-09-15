@@ -29,10 +29,12 @@ export function useAgentSectionCounts(
   const fileStore = useAgentFileStore();
   const secretStore = useAgentSecretStore();
   const channelStore = useAgentChannelStore();
+  const peerStore = usePeerStore();
 
   const files = ref<number | null>(null);
   const secrets = ref<number | null>(null);
   const channels = ref<number | null>(null);
+  const peers = ref<number | null>(null);
   /** Knowledge bases the agent's template binds by default. Only fetched when
    *  the agent has no per-agent override to count instead. */
   const templateKnowledge = ref<number | null>(null);
@@ -69,6 +71,14 @@ export function useAgentSectionCounts(
         })
         .catch(() => {
           channels.value = null;
+        }),
+      peerStore
+        .load(agentId)
+        .then(() => {
+          peers.value = peerStore.peers(agentId).length;
+        })
+        .catch(() => {
+          peers.value = null;
         }),
       loadTemplateKnowledge(),
     ]);
@@ -107,6 +117,7 @@ export function useAgentSectionCounts(
       files: files.value,
       secrets: secrets.value,
       channels: channels.value,
+      peers: peers.value,
     };
   });
 

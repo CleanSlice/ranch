@@ -39,6 +39,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
 import {
+  BridleSyncService,
   IBridleGateway,
   BridleAttachmentService,
   MAX_ATTACHMENT_BYTES,
@@ -155,6 +156,7 @@ export class BridleController {
     private readonly transcriptReader: TranscriptReaderService,
     private readonly attachments: BridleAttachmentService,
     private readonly shareLinks: ShareLinkService,
+    private readonly sync: BridleSyncService,
   ) {}
 
   /**
@@ -339,66 +341,36 @@ export class BridleController {
   ) {
     const requester = await this.resolveRequester(req, agentId);
     const clientId = requester.clientId ?? 'sync-' + crypto.randomUUID();
-    // Distinct from clientId: this HTTP call shares the clientId+agentId map
-    // key with any concurrently-open WS session for the same visitor (e.g.
-    // the chat widget open in another tab), so registerClient/unregisterClient
-    // need their own socket-equivalent identity to avoid one call's cleanup
-    // wiping the other's live registration.
-    const socketId = 'sync-' + crypto.randomUUID();
-    const chunks: string[] = [];
 
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.hub.unregisterClient(clientId, agentId, socketId);
-        resolve({
-          text: chunks.join('') || 'Timeout: no response from agent',
-          messageId: '',
-          ts: Date.now(),
-        });
-      }, 120_000);
+    const base = body.parts ?? buildParts(body.text, body.images);
+    // Expanding before the send keeps the failure ordering sane: a bad or
+    // missing attachment rejects the request instead of leaving the caller
+    // waiting out the 120s timeout for a message the agent never got.
+    const expanded = await this.attachments.expand(
+      agentId,
+      body.text,
+      body.attachmentIds,
+      requester,
+    );
 
-      this.hub.registerClient(
-        clientId,
-        agentId,
-        socketId,
-        (data: unknown) => {
-          const event = data as Record<string, unknown>;
-          if (event.type === 'message' || event.type === 'stream_end') {
-            clearTimeout(timeout);
-            this.hub.unregisterClient(clientId, agentId, socketId);
-            resolve({
-              text: event.text ?? chunks.join(''),
-              messageId: event.messageId,
-              ts: event.ts,
-            });
-          } else if (event.type === 'stream') {
-            chunks.push((event.text as string) ?? '');
-          }
-        },
-        false,
-      );
-
-      const base = body.parts ?? buildParts(body.text, body.images);
-      // Expanding before the send keeps the failure ordering sane: a bad or
-      // missing attachment rejects the request instead of leaving the caller
-      // waiting out the 120s timeout for a message the agent never got.
-      this.attachments
-        .expand(agentId, body.text, body.attachmentIds, requester)
-        .then((expanded) => {
-          this.hub.sendToAgent(
-            clientId,
-            agentId,
-            expanded.text,
-            [...base, ...expanded.parts],
-            expanded.attachments,
-          );
-        })
-        .catch((err: Error) => {
-          clearTimeout(timeout);
-          this.hub.unregisterClient(clientId, agentId, socketId);
-          reject(err);
-        });
+    const reply = await this.sync.sendAndAwait({
+      agentId,
+      clientId,
+      text: expanded.text,
+      parts: [...base, ...expanded.parts],
+      attachments: expanded.attachments,
     });
+
+    return {
+      // This route has always answered a timeout with a sentence in the
+      // reply body rather than an error status; kept verbatim so no caller
+      // has to learn a new shape.
+      text: reply.timedOut && !reply.text
+        ? 'Timeout: no response from agent'
+        : reply.text,
+      messageId: reply.messageId,
+      ts: reply.ts,
+    };
   }
 
   /**

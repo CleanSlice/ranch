@@ -63,6 +63,8 @@ const restartUnderway = computed(
 
       <AgentKnowledgeTab v-else-if="tab === 'knowledge'" :agent="agent" />
 
+      <PeerTab v-else-if="tab === 'peers'" :agent="agent" />
+
       <Card v-else-if="tab === 'files'">
         <CardHeader>
           <CardTitle>Files</CardTitle>

@@ -1,0 +1,41 @@
+import { Agent } from "../agent/agent"
+import { AgentDelegation } from "./delegation"
+
+// One directed peer connection (CLEAN-74): "agentId holds peerAgentId's card
+// and may delegate to it". The reverse direction is a separate row — connecting
+// B to A says nothing about A's own peers.
+//
+// The token is stored in plaintext, like the share link and unlike an API key,
+// because here the API is both issuer AND presenter: `ask_agent` runs inside
+// the API and must read the credential back to present it to the peer. A
+// hash-only store would force a second, recoverable secret alongside it.
+// Never returned by a DTO, never logged. See research.md R4.
+//
+// cardSnapshot is the peer's A2A card as read at connect or last Refresh. The
+// delegating agent reasons from the snapshot, never from a live read, so a peer
+// editing its description mid-turn cannot change behaviour until someone
+// presses Refresh.
+model AgentPeer {
+  id           String   @id @default(uuid())
+  // The caller.
+  agentId      String
+  agent        Agent    @relation("AgentPeerCaller", fields: [agentId], references: [id], onDelete: Cascade)
+  // The peer.
+  peerAgentId  String
+  peerAgent    Agent    @relation("AgentPeerTarget", fields: [peerAgentId], references: [id], onDelete: Cascade)
+  // `ap_` + 32 random bytes base64url (~256 bits). Scoped to this pair only;
+  // deleting the row revokes it.
+  token        String   @unique
+  cardSnapshot Json
+  cardUrl      String
+  cardReadAt   DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  delegations AgentDelegation[]
+
+  // One connection per direction.
+  @@unique([agentId, peerAgentId])
+  @@index([agentId])
+  @@index([peerAgentId])
+}

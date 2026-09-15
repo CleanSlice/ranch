@@ -66,6 +66,10 @@ spec:
                   key: JWT_SECRET
             - name: JWT_EXPIRES_IN
               value: "15m"
+            # Public origin browsers and peer agents reach ranch-api on: OAuth MCP
+            # callback redirect_uri (CLEAN-75) and agent card URLs (CLEAN-74).
+            - name: PUBLIC_API_URL
+              value: "https://api.ranch.cleanslice.org"
             - name: SESSION_IDLE_DAYS
               value: "7"
             - name: SESSION_ABSOLUTE_DAYS

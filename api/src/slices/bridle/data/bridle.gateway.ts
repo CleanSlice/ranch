@@ -14,6 +14,7 @@ import type {
   IBridleClientData,
   BridlePart,
   IBridleAttachment,
+  IActiveTurn,
 } from '../domain/bridle.types';
 import { randomUUID } from 'crypto';
 
@@ -56,6 +57,14 @@ export class BridleGateway extends IBridleGateway {
   private clientKey(clientId: string, agentId: string): string {
     return `${clientId}\u0000${agentId}`;
   }
+
+  /**
+   * Turns in flight, keyed like `clients`. Written from the thinking events
+   * the hub already relays, so the API can drop a step of its own into the
+   * timeline a person is watching (CLEAN-74) instead of minting a turnId that
+   * would close the runtime's own block in every console.
+   */
+  private activeTurns = new Map<string, IActiveTurn & { agentId: string }>();
 
   /** Pending sync requests awaiting agent ack: requestId → pending */
   private pendingSyncs = new Map<string, IPendingSync>();
@@ -165,6 +174,7 @@ export class BridleGateway extends IBridleGateway {
       return;
     }
     this.clients.delete(key);
+    this.activeTurns.delete(key);
     this.logger.log(
       `Browser client unregistered: ${clientId} agentId=${agentId} (total: ${this.clients.size})`,
     );
@@ -237,10 +247,43 @@ export class BridleGateway extends IBridleGateway {
     const clientId = data.clientId;
     if (!clientId) return;
 
+    if (data.type === 'thinking') {
+      this.trackTurn(agentId, clientId, data);
+    }
+
     const client = this.clients.get(this.clientKey(clientId, agentId));
     if (client) {
       client.send(data);
     }
+  }
+
+  /** A step opens or refreshes the turn; the terminal `done` closes it. */
+  private trackTurn(
+    agentId: string,
+    clientId: string,
+    data: IBridleOutgoingEvent,
+  ): void {
+    const key = this.clientKey(clientId, agentId);
+    if (data.done === true || typeof data.turnId !== 'string') {
+      this.activeTurns.delete(key);
+      return;
+    }
+    this.activeTurns.set(key, {
+      agentId,
+      clientId,
+      turnId: data.turnId,
+      ts: typeof data.ts === 'number' ? data.ts : Date.now(),
+    });
+  }
+
+  findActiveTurn(agentId: string): IActiveTurn | null {
+    let newest: (IActiveTurn & { agentId: string }) | null = null;
+    for (const turn of this.activeTurns.values()) {
+      if (turn.agentId !== agentId) continue;
+      if (!newest || turn.ts > newest.ts) newest = turn;
+    }
+    if (!newest) return null;
+    return { clientId: newest.clientId, turnId: newest.turnId, ts: newest.ts };
   }
 
   setDebug(agentId: string, enabled: boolean): void {

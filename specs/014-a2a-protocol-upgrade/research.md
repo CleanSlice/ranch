@@ -88,12 +88,18 @@ request; only membership needs the restart). Production's zero-delegation myster
 (deleted rows leave no timestamp; serve-hash handles membership exactly); runtime
 hot-reload — out of scope by Q3 decision.
 
-## R5 — Rename is one registry line; the tab key survives
+## R5 — Rename covers the key too; legacy deep links get an alias *(amended at /speckit-tasks per user)*
 
-**Decision**: `admin/slices/agent/agent/components/agent/workspace/sections.ts:46`
-`title: 'Peers'` → `title: 'A2A'`. The section key stays `peers`, so existing deep
-links keep resolving (SC-007). Copy inside the tab already says "peer" as a concept —
-kept; only the tab name changes (FR-001).
+**Decision**: in `admin/slices/agent/agent/components/agent/workspace/sections.ts`
+the tab becomes `value: 'a2a'`, `title: 'A2A'`, and the `SectionCountKey` member
+`'peers'` renames to `'a2a'` (counts wiring follows). The `value` strings are a URL
+contract (`?tab=<value>` — see the file's header comment), so the point where the
+workspace reads the query param normalizes the legacy `peers` value to `a2a`; SC-007
+(old links keep landing) holds through the alias, not through the old key. Copy inside
+the tab keeps "peer" as the concept name.
+
+**Rationale**: user chose key-consistency over key-stability at tasks time; the alias
+is one line at the single parse point and preserves the spec's link guarantee.
 
 ## R6 — External transport reuses the existing A2A client with an optional bearer
 

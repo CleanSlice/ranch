@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
+import * as dns from 'dns/promises';
+import * as net from 'net';
 import {
   A2A_VERSION,
   A2A_VERSION_HEADER,
@@ -49,6 +51,9 @@ export class A2aClient {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           Accept: 'application/json',
         },
+        // A redirect would let a vetted public URL bounce the request onto a
+        // private address AFTER the SSRF guard ran. No card needs one.
+        redirect: 'error',
         signal: AbortSignal.timeout(CARD_TIMEOUT_MS),
       });
     } catch (err) {
@@ -123,6 +128,8 @@ export class A2aClient {
           method: A2aMethods.SendMessage,
           params,
         }),
+        // Same reason as fetchCard: a redirect is an SSRF-guard bypass.
+        redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs + CLIENT_TIMEOUT_MARGIN_MS),
       });
     } catch (err) {
@@ -180,16 +187,73 @@ export class A2aClient {
  * SSRF guard for operator-supplied peer addresses (CLEAN-95). External card
  * URLs and the interface URLs inside fetched cards are remote content, so a
  * request to them must never be allowed to reach loopback, RFC1918 ranges or
- * the cloud metadata endpoint. Literal-address checks only — DNS rebinding is
- * out of scope for v1 and documented as such. `A2A_ALLOW_PRIVATE_PEERS=true`
- * lifts the guard for local development, where the mock peer IS loopback.
+ * the cloud metadata endpoint.
+ *
+ * Layers: (1) this literal check — private names, IP literals in any
+ * spelling (IPv6 accepts global unicast 2000::/3 only, which also refuses
+ * `::ffff:` mapped v4 and unabbreviated loopback; curl-style numeric
+ * shorthand like `2130706433` or `0x7f000001` is refused outright);
+ * (2) `assertResolvesPublic` below, a pre-flight DNS check for hostnames;
+ * (3) `redirect: 'error'` on every outbound fetch. Residual risk, accepted
+ * and documented: the connection itself may re-resolve (DNS rebinding
+ * TOCTOU). `A2A_ALLOW_PRIVATE_PEERS=true` lifts the guard for local
+ * development, where the mock peer IS loopback.
  */
 export function assertPublicPeerAddress(rawUrl: string): void {
   if (process.env.A2A_ALLOW_PRIVATE_PEERS === 'true') return;
 
-  let host: string;
+  const host = hostOf(rawUrl);
+
+  const privateName =
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal');
+
+  if (privateName || isPrivateIpLiteral(host) || isNumericShorthand(host)) {
+    throw new PeerCardUnreachableError(
+      `The address ${host} is a private or local host — external peers must be publicly reachable`,
+      undefined,
+      'invalid',
+    );
+  }
+}
+
+/**
+ * Second SSRF layer: a public-looking hostname may resolve to a private
+ * address. Resolution FAILURE passes — the fetch that follows will report it
+ * honestly — but a resolved private address refuses before any request.
+ */
+export async function assertResolvesPublic(rawUrl: string): Promise<void> {
+  if (process.env.A2A_ALLOW_PRIVATE_PEERS === 'true') return;
+
+  const host = hostOf(rawUrl);
+  if (net.isIP(host)) return; // literals were vetted synchronously
+
+  let addresses: Array<{ address: string }>;
   try {
-    host = new URL(rawUrl).hostname.toLowerCase();
+    addresses = await dns.lookup(host, { all: true });
+  } catch {
+    return;
+  }
+
+  for (const { address } of addresses) {
+    if (isPrivateIpLiteral(address)) {
+      throw new PeerCardUnreachableError(
+        `${host} resolves to a private address (${address}) — external peers must be publicly reachable`,
+        undefined,
+        'invalid',
+      );
+    }
+  }
+}
+
+function hostOf(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).hostname
+      .toLowerCase()
+      .replace(/^\[|\]$/g, '')
+      .replace(/\.$/, '');
   } catch {
     throw new PeerCardUnreachableError(
       `Not a valid URL: ${rawUrl}`,
@@ -197,31 +261,38 @@ export function assertPublicPeerAddress(rawUrl: string): void {
       'invalid',
     );
   }
+}
 
-  const bare = host.replace(/^\[|\]$/g, '');
-  const privateHost =
-    bare === 'localhost' ||
-    bare.endsWith('.localhost') ||
-    bare.endsWith('.local') ||
-    bare.endsWith('.internal') ||
-    bare === '::1' ||
-    bare.startsWith('fe80:') ||
-    bare.startsWith('fc') ||
-    bare.startsWith('fd') ||
-    /^127\./.test(bare) ||
-    /^10\./.test(bare) ||
-    /^192\.168\./.test(bare) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(bare) ||
-    /^169\.254\./.test(bare) ||
-    bare === '0.0.0.0';
-
-  if (privateHost) {
-    throw new PeerCardUnreachableError(
-      `The address ${host} is a private or local host — external peers must be publicly reachable`,
-      undefined,
-      'invalid',
+/** True for any IP literal that is not plainly public. */
+function isPrivateIpLiteral(host: string): boolean {
+  const kind = net.isIP(host);
+  if (kind === 6) {
+    // Allow global unicast (2000::/3) only. Everything else — loopback in
+    // any spelling, link-local, ULA, mapped v4, `::` — is refused.
+    const first = parseInt(host.split(':', 1)[0] || '0', 16);
+    return Number.isNaN(first) || first < 0x2000 || first > 0x3fff;
+  }
+  if (kind === 4) {
+    const [a, b] = host.split('.').map(Number);
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
     );
   }
+  return false;
+}
+
+/** `2130706433`, `0x7f000001`, `017700000001`, `127.1` — curl-style IPv4
+ *  shorthand that `net.isIP` does not recognise but `fetch` would connect
+ *  to. Never a legitimate agent address; refused rather than normalised. */
+function isNumericShorthand(host: string): boolean {
+  if (net.isIP(host) === 4) return false;
+  return /^[\d.]+$/.test(host) || /^0x[0-9a-f]+$/i.test(host);
 }
 
 function isCard(value: unknown): value is IA2aAgentCard {

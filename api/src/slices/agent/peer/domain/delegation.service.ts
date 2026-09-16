@@ -3,7 +3,11 @@ import * as crypto from 'crypto';
 import { IBridleGateway } from '#/bridle/domain/bridle.gateway';
 import { IPeerGateway } from './peer.gateway';
 import { IDelegationGateway } from './delegation.gateway';
-import { A2aClient, assertPublicPeerAddress } from './a2a.client';
+import {
+  A2aClient,
+  assertPublicPeerAddress,
+  assertResolvesPublic,
+} from './a2a.client';
 import { buildDelegationStep, causeText } from './delegationStep';
 import {
   A2aRoles,
@@ -122,6 +126,7 @@ export class DelegationService {
         // The interface URL inside a foreign card is remote content — never
         // let it point the platform at a private address (SSRF, CLEAN-95).
         assertPublicPeerAddress(interfaceUrl);
+        await assertResolvesPublic(interfaceUrl);
       }
       const task = await this.client.sendMessage(
         interfaceUrl,

@@ -1,5 +1,10 @@
 import { PeerService } from './peer.service';
-import { PeerCardUnreachableError, PEER_TOKEN_RE } from './peer.types';
+import {
+  PeerCardUnreachableError,
+  PEER_TOKEN_RE,
+  PeerOrigins,
+  hashPeerIds,
+} from './peer.types';
 import type { IPeerGateway } from './peer.gateway';
 import type { AgentCardService } from './agentCard.service';
 import type { A2aClient } from './a2a.client';
@@ -35,6 +40,9 @@ function makeHarness(
   options: {
     agents?: Array<{ id: string; name: string; status: string }>;
     fetchCardThrows?: Error;
+    /** Card returned for external imports; defaults to a valid 1.0 card. */
+    externalCard?: IA2aAgentCard;
+    served?: { servedAt: string; hash: string } | null;
   } = {},
 ) {
   const agents = options.agents ?? [
@@ -61,6 +69,17 @@ function makeHarness(
       async (token: string) =>
         Object.values(rows).find((r) => r.token === token) ?? null,
     ),
+    findByCardUrl: jest.fn(
+      async (agentId: string, cardUrl: string) =>
+        Object.values(rows).find(
+          (r) =>
+            r.agentId === agentId &&
+            r.cardUrl === cardUrl &&
+            r.origin === PeerOrigins.External,
+        ) ?? null,
+    ),
+    recordPeersServed: jest.fn(async () => undefined),
+    readPeersServed: jest.fn(async () => options.served ?? null),
     create: jest.fn(async (input: Record<string, any>) => {
       const id = `peer-${(seq += 1)}`;
       rows[id] = {
@@ -77,6 +96,9 @@ function makeHarness(
         cardSnapshot: input.cardSnapshot,
         cardUrl: input.cardUrl,
         cardReadAt: input.cardReadAt.toISOString(),
+        ...(input.outboundToken !== undefined
+          ? { outboundToken: input.outboundToken }
+          : {}),
       });
       return rows[id];
     }),
@@ -98,10 +120,14 @@ function makeHarness(
       async (id: string) =>
         `https://api.test/a2a/agents/${id}/.well-known/agent-card.json`,
     ),
+    ownA2aBase: jest.fn(async () => 'https://api.test/a2a/agents/'),
   } as unknown as AgentCardService;
 
-  const fetchCard = jest.fn(async (_url: string, _token: string) => {
+  const fetchCard = jest.fn(async (url: string, _token?: string) => {
     if (options.fetchCardThrows) throw options.fetchCardThrows;
+    if (!url.startsWith('https://api.test/')) {
+      return options.externalCard ?? card('Foreign Bot');
+    }
     return card('Support Bot');
   });
   const client = { fetchCard } as unknown as A2aClient;
@@ -291,5 +317,163 @@ describe('PeerService.list', () => {
     expect(view.peerExists).toBe(false);
     expect(view.peerStatus).toBe('unknown');
     expect(view.peerName).toBe('Support Bot');
+  });
+});
+
+describe('PeerService — importing an external agent by URL (CLEAN-95)', () => {
+  const EXT_BASE = 'https://other.example/a2a/agents/agent-x';
+  const EXT_CARD = `${EXT_BASE}/.well-known/agent-card.json`;
+
+  it('canonicalizes both address forms to the well-known card URL', async () => {
+    const { service, fetchCard, rows } = makeHarness();
+
+    await service.connectByUrl('a', EXT_BASE);
+    expect(fetchCard).toHaveBeenLastCalledWith(EXT_CARD, undefined);
+
+    const { service: s2, fetchCard: f2 } = makeHarness();
+    await s2.connectByUrl('a', EXT_CARD);
+    expect(f2).toHaveBeenLastCalledWith(EXT_CARD, undefined);
+
+    expect(Object.values(rows)[0].cardUrl).toBe(EXT_CARD);
+  });
+
+  it('stores an external row: no pair token, no peer agent id', async () => {
+    const { service, rows } = makeHarness();
+
+    const view = await service.connectByUrl('a', EXT_BASE, 'tk-1');
+
+    const row = Object.values(rows)[0];
+    expect(row.origin).toBe(PeerOrigins.External);
+    expect(row.peerAgentId).toBeNull();
+    expect(row.token).toBeNull();
+    expect(row.outboundToken).toBe('tk-1');
+    expect(view.origin).toBe(PeerOrigins.External);
+    expect(view.peerStatus).toBe('external');
+    expect(view.peerExists).toBe(true);
+  });
+
+  it('re-imports the same canonical URL in place — one row, updated', async () => {
+    const { service, rows } = makeHarness();
+
+    const first = await service.connectByUrl('a', EXT_BASE, 'tk-1');
+    const second = await service.connectByUrl('a', EXT_CARD, 'tk-2');
+
+    expect(second.id).toBe(first.id);
+    expect(Object.keys(rows)).toHaveLength(1);
+    expect(Object.values(rows)[0].outboundToken).toBe('tk-2');
+  });
+
+  it('keeps the credential when omitted, clears it on empty string', async () => {
+    const { service, rows } = makeHarness();
+
+    await service.connectByUrl('a', EXT_BASE, 'tk-1');
+    await service.connectByUrl('a', EXT_BASE);
+    expect(Object.values(rows)[0].outboundToken).toBe('tk-1');
+
+    await service.connectByUrl('a', EXT_BASE, '');
+    expect(Object.values(rows)[0].outboundToken).toBeNull();
+  });
+
+  it('refuses an address of this installation with PEER_SELF_URL', async () => {
+    const { service, fetchCard } = makeHarness();
+
+    await expect(
+      service.connectByUrl('a', 'https://api.test/a2a/agents/b'),
+    ).rejects.toMatchObject({ response: { code: 'PEER_SELF_URL' } });
+    expect(fetchCard).not.toHaveBeenCalled();
+  });
+
+  it('rejects garbage and private addresses as PEER_URL_INVALID', async () => {
+    const { service } = makeHarness();
+
+    await expect(service.connectByUrl('a', 'not a url')).rejects.toMatchObject(
+      { response: { code: 'PEER_URL_INVALID' } },
+    );
+    await expect(
+      service.connectByUrl('a', 'ftp://other.example/x'),
+    ).rejects.toMatchObject({ response: { code: 'PEER_URL_INVALID' } });
+    // SSRF guard: loopback and RFC1918 hosts never get a request.
+    await expect(
+      service.connectByUrl('a', 'https://192.168.1.10/a2a/agents/x'),
+    ).rejects.toMatchObject({ response: { code: 'PEER_URL_INVALID' } });
+  });
+
+  it('persists nothing when the card cannot be fetched', async () => {
+    const { service, rows } = makeHarness({
+      fetchCardThrows: new PeerCardUnreachableError('refused'),
+    });
+
+    await expect(service.connectByUrl('a', EXT_BASE)).rejects.toMatchObject({
+      response: { code: 'PEER_URL_UNREACHABLE' },
+    });
+    expect(Object.keys(rows)).toHaveLength(0);
+  });
+
+  it('tells "not a card" (400) apart from "unreachable" (502)', async () => {
+    const invalid = makeHarness({
+      fetchCardThrows: new PeerCardUnreachableError('not a card', 200, 'invalid'),
+    });
+
+    await expect(
+      invalid.service.connectByUrl('a', EXT_BASE),
+    ).rejects.toMatchObject({ response: { code: 'PEER_URL_INVALID' } });
+  });
+
+  it('refuses a card speaking another protocol version', async () => {
+    const externalCard = card('Foreign Bot');
+    externalCard.supportedInterfaces[0].protocolVersion = '2.0';
+    const { service, rows } = makeHarness({ externalCard });
+
+    await expect(service.connectByUrl('a', EXT_BASE)).rejects.toMatchObject({
+      response: { code: 'PEER_VERSION' },
+    });
+    expect(Object.keys(rows)).toHaveLength(0);
+  });
+});
+
+describe('PeerService — refreshing an external row (CLEAN-95)', () => {
+  const EXT_BASE = 'https://other.example/a2a/agents/agent-x';
+  const EXT_CARD = `${EXT_BASE}/.well-known/agent-card.json`;
+
+  it('re-reads the stored card URL with the outbound credential', async () => {
+    const { service, fetchCard } = makeHarness();
+    const imported = await service.connectByUrl('a', EXT_BASE, 'tk-1');
+
+    await service.refresh('a', imported.id);
+
+    expect(fetchCard).toHaveBeenLastCalledWith(EXT_CARD, 'tk-1');
+  });
+});
+
+describe('PeerService — armed state (CLEAN-95)', () => {
+  it('is armed when the served hash matches the current peer set', async () => {
+    const harness = makeHarness({ served: null });
+    const view = await harness.service.connect('a', 'b');
+    const hash = hashPeerIds([view.id]);
+
+    const cold = await harness.service.peersState('a');
+    expect(cold).toEqual({ armed: false, servedAt: null });
+
+    const warm = makeHarness({
+      served: { servedAt: '2026-09-16T10:00:00.000Z', hash },
+    });
+    // Recreate the same single row so the hashes line up.
+    const again = await warm.service.connect('a', 'b');
+    expect(hashPeerIds([again.id])).toBe(hash);
+
+    const state = await warm.service.peersState('a');
+    expect(state.armed).toBe(true);
+    expect(state.servedAt).toBe('2026-09-16T10:00:00.000Z');
+  });
+
+  it('falls out of armed when membership changes after the serve', async () => {
+    const harness = makeHarness({
+      served: { servedAt: '2026-09-16T10:00:00.000Z', hash: hashPeerIds([]) },
+    });
+
+    expect((await harness.service.peersState('a')).armed).toBe(true);
+
+    await harness.service.connect('a', 'b');
+    expect((await harness.service.peersState('a')).armed).toBe(false);
   });
 });

@@ -10,7 +10,11 @@ import * as crypto from 'crypto';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IPeerGateway } from './peer.gateway';
 import { AgentCardService } from './agentCard.service';
-import { A2aClient, assertPublicPeerAddress } from './a2a.client';
+import {
+  A2aClient,
+  assertPublicPeerAddress,
+  assertResolvesPublic,
+} from './a2a.client';
 import { A2A_CARD_PATH, A2A_VERSION } from './a2a.types';
 import {
   EXTERNAL_PEER_STATUS,
@@ -148,6 +152,7 @@ export class PeerService {
     const cardUrl = this.canonicalCardUrl(rawUrl);
     try {
       assertPublicPeerAddress(cardUrl);
+      await assertResolvesPublic(cardUrl);
     } catch (err) {
       throw this.invalidUrl(err instanceof Error ? err.message : String(err));
     }
@@ -221,6 +226,12 @@ export class PeerService {
       : (row.token ?? undefined);
 
     try {
+      if (external) {
+        // The stored address was vetted at import, but its DNS may have
+        // moved to a private range since (SSRF, CLEAN-95).
+        assertPublicPeerAddress(cardUrl);
+        await assertResolvesPublic(cardUrl);
+      }
       const card = await this.client.fetchCard(cardUrl, credential);
       const updated = await this.peers.updateSnapshot(row.id, {
         cardSnapshot: card,

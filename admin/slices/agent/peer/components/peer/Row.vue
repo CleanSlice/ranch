@@ -40,7 +40,35 @@ type StatusMeta = {
   border: string;
 };
 
+const stale = computed(
+  () =>
+    Date.now() - new Date(props.peer.cardReadAt).getTime() > STALE_AFTER_MS,
+);
+
+const STALE_META: StatusMeta = {
+  label: 'stale card',
+  dot: 'bg-amber-500',
+  pulse: false,
+  badge:
+    'border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-500',
+  border: '',
+};
+
 const meta = computed<StatusMeta>(() => {
+  // An imported foreign agent has no live pod status here; the origin is the
+  // status, and only card staleness can degrade it (CLEAN-95).
+  if (props.peer.origin === 'external') {
+    if (stale.value) return STALE_META;
+    return {
+      label: 'external',
+      dot: 'bg-sky-500',
+      pulse: false,
+      badge:
+        'border-transparent bg-sky-500/15 text-sky-700 dark:text-sky-400',
+      border: '',
+    };
+  }
+
   const bad = {
     dot: 'bg-destructive',
     badge:
@@ -55,16 +83,7 @@ const meta = computed<StatusMeta>(() => {
       label: props.peer.peerStatus,
       pulse: props.peer.peerStatus === 'failed',
     };
-  const age = Date.now() - new Date(props.peer.cardReadAt).getTime();
-  if (age > STALE_AFTER_MS)
-    return {
-      label: 'stale card',
-      dot: 'bg-amber-500',
-      pulse: false,
-      badge:
-        'border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-500',
-      border: '',
-    };
+  if (stale.value) return STALE_META;
   return {
     label: 'online',
     dot: 'bg-emerald-500',
@@ -76,6 +95,7 @@ const meta = computed<StatusMeta>(() => {
 });
 
 const failReason = computed<string | null>(() => {
+  if (props.peer.origin === 'external') return null;
   if (!props.peer.peerExists)
     return (
       'This agent no longer exists on this ranch. Delegations to it fail — ' +
@@ -107,11 +127,15 @@ const failReason = computed<string | null>(() => {
           :class="[meta.dot, meta.pulse && 'animate-pulse']"
         />
         <NuxtLink
+          v-if="peer.peerAgentId"
           :to="`/agents/${peer.peerAgentId}`"
           class="text-sm font-bold hover:underline"
         >
           {{ peer.peerName }}
         </NuxtLink>
+        <span v-else class="text-sm font-bold" :title="peer.cardUrl">
+          {{ peer.peerName }}
+        </span>
         <Badge variant="outline" :class="meta.badge">{{ meta.label }}</Badge>
         <span class="text-xs text-muted-foreground">
           {{ taskCount }} {{ taskCount === 1 ? 'task' : 'tasks' }}

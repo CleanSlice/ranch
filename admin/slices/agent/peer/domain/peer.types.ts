@@ -27,12 +27,16 @@ export interface IAgentCard {
   skills: IAgentSkill[];
 }
 
-/** One directed connection: this agent may delegate to `peerAgentId`. */
+/** One directed connection: this agent may delegate to the peer. */
 export interface IAgentPeer {
   id: string;
   agentId: string;
-  peerAgentId: string;
+  /** Null for external peers — they have no agent id here (CLEAN-95). */
+  peerAgentId: string | null;
+  /** 'internal' | 'external' — imported by URL vs an agent of this ranch. */
+  origin: 'internal' | 'external';
   peerName: string;
+  /** External rows carry 'external' — no live pod status is knowable. */
   peerStatus: string;
   peerExists: boolean;
   /** Read at connect time or last refresh — never live. */
@@ -40,6 +44,12 @@ export interface IAgentPeer {
   cardUrl: string;
   cardReadAt: string;
   createdAt: string;
+}
+
+/** Whether the running pod has loaded the current peer set (CLEAN-95). */
+export interface IPeersState {
+  armed: boolean;
+  servedAt: string | null;
 }
 
 export interface IAgentPeerCandidate {
@@ -51,7 +61,10 @@ export interface IAgentPeerCandidate {
 
 export interface IAgentDelegation {
   id: string;
-  peerAgentId: string;
+  /** The connection the task went through; null once it was removed. */
+  peerId: string | null;
+  /** Null for delegations to external peers (CLEAN-95). */
+  peerAgentId: string | null;
   peerName: string;
   task: string;
   reason: string;

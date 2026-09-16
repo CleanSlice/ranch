@@ -17,6 +17,9 @@ import {
   type IAgentPeerCandidate,
 } from '#peer/stores/peer';
 
+/* IAgentCard is also the shape previewByUrl returns — one preview, two
+ * sources (CLEAN-95). */
+
 /**
  * Pick an agent, read its card, then connect (CLEAN-74, CLEAN-94).
  *
@@ -64,6 +67,10 @@ watch(
     selected.value = null;
     preview.value = null;
     error.value = null;
+    url.value = '';
+    urlToken.value = '';
+    urlPreview.value = null;
+    urlError.value = null;
     void store.loadCandidates(props.agentId);
   },
 );
@@ -103,6 +110,59 @@ async function connect() {
       err instanceof Error ? err.message : 'Could not connect that peer';
   } finally {
     connecting.value = false;
+  }
+}
+
+// ── Import an external agent by address (CLEAN-95) ──────────────
+const url = ref('');
+const urlToken = ref('');
+const urlPreview = ref<IAgentCard | null>(null);
+const urlPreviewing = ref(false);
+const urlImporting = ref(false);
+const urlError = ref<string | null>(null);
+
+// A changed address invalidates the card already shown for the old one.
+watch(url, () => {
+  urlPreview.value = null;
+  urlError.value = null;
+});
+
+async function previewUrl() {
+  if (!url.value.trim()) return;
+  urlPreviewing.value = true;
+  urlError.value = null;
+  urlPreview.value = null;
+  try {
+    urlPreview.value = await store.previewByUrl(
+      props.agentId,
+      url.value.trim(),
+      urlToken.value.trim() || undefined,
+    );
+  } catch (err) {
+    urlError.value =
+      err instanceof Error ? err.message : 'Could not read that address';
+  } finally {
+    urlPreviewing.value = false;
+  }
+}
+
+async function importUrl() {
+  if (!urlPreview.value) return;
+  urlImporting.value = true;
+  urlError.value = null;
+  try {
+    const imported = await store.importByUrl(
+      props.agentId,
+      url.value.trim(),
+      urlToken.value.trim() || undefined,
+    );
+    toast.success(`«${imported.peerName}» connected — card read`);
+    emit('connected');
+  } catch (err) {
+    urlError.value =
+      err instanceof Error ? err.message : 'Could not import that agent';
+  } finally {
+    urlImporting.value = false;
   }
 }
 
@@ -218,6 +278,60 @@ function statusVariant(status: string) {
           <p v-else class="border-t pt-3.5 text-sm text-muted-foreground">
             No unconnected agents left on this ranch.
           </p>
+
+          <!-- ═══ Import by URL (CLEAN-95) ═══ -->
+          <div class="border-t pt-3.5">
+            <p class="text-sm font-semibold">Import an external agent</p>
+            <p class="mt-0.5 text-xs text-muted-foreground">
+              Any A2A 1.0 agent outside this ranch, by its address. Importing
+              the same address again updates the entry — no duplicates.
+            </p>
+            <div class="mt-2.5 space-y-2">
+              <Input
+                v-model="url"
+                placeholder="https://other.ranch/a2a/agents/agent-…"
+                class="font-mono text-xs"
+              />
+              <Input
+                v-model="urlToken"
+                type="password"
+                placeholder="Access credential (optional)"
+                class="text-xs"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                class="rounded-full"
+                :disabled="urlPreviewing || !url.trim()"
+                @click="previewUrl"
+              >
+                {{ urlPreviewing ? 'Reading…' : 'Read card' }}
+              </Button>
+            </div>
+
+            <div
+              v-if="urlPreview"
+              class="mt-2.5 space-y-3 rounded-xl border bg-muted/40 p-3"
+            >
+              <PeerCardView :card="urlPreview" compact />
+              <Button
+                size="sm"
+                class="rounded-full"
+                :disabled="urlImporting"
+                @click="importUrl"
+              >
+                {{
+                  urlImporting
+                    ? 'Connecting…'
+                    : `Connect «${urlPreview.name}»`
+                }}
+              </Button>
+            </div>
+
+            <p v-if="urlError" class="mt-2 text-sm text-destructive">
+              {{ urlError }}
+            </p>
+          </div>
         </div>
 
         <div class="mt-3.5 flex justify-end">

@@ -50,7 +50,9 @@ const rows = computed(() => store.delegations(props.agentId));
 const shown = computed(() =>
   rows.value.filter(
     (d) =>
-      (!props.peerFilter || d.peerAgentId === props.peerFilter.id) &&
+      // The connection id works for both origins — external peers have no
+      // agent id in this installation (CLEAN-95).
+      (!props.peerFilter || d.peerId === props.peerFilter.id) &&
       (outcomeFilter.value === 'all' ||
         (outcomeFilter.value === 'answered'
           ? d.status === 'answered'
@@ -192,8 +194,17 @@ function toggle(id: string) {
           @click="toggle(row.id)"
         >
           <div class="flex items-center gap-2.5">
-            <Badge variant="secondary" class="flex-none">
-              {{ row.peerName }}
+            <Badge
+              variant="secondary"
+              class="flex-none"
+              :title="row.peerAgentId === null ? 'External agent' : undefined"
+            >
+              {{ row.peerName
+              }}<span
+                v-if="row.peerAgentId === null"
+                class="ml-1 text-sky-700 dark:text-sky-400"
+                >· ext</span
+              >
             </Badge>
             <span
               class="min-w-0 flex-1 text-sm"

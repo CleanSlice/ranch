@@ -12,6 +12,7 @@ import type {
   IAgentDelegation,
   IAgentPeer,
   IAgentPeerCandidate,
+  IPeersState,
 } from '../domain/peer.types';
 
 interface HeyApiResult {
@@ -85,6 +86,50 @@ export class PeerGateway extends BaseGateway {
         body: { peerAgentId },
       });
       return unwrapOrThrow(res, 'Connecting the peer') as IAgentPeer;
+    });
+  }
+
+  /** Import an external A2A agent by address (CLEAN-95). Re-importing the
+   *  same address updates the stored entry instead of duplicating it. */
+  importByUrl(
+    agentId: string,
+    url: string,
+    token?: string,
+  ): Promise<IAgentPeer> {
+    return this.execute(async () => {
+      const res = await PeersService.connectAgentPeer({
+        path: { agentId },
+        body: { url, ...(token !== undefined ? { token } : {}) },
+      });
+      return unwrapOrThrow(res, 'Importing the agent') as IAgentPeer;
+    });
+  }
+
+  /** Read an external card without saving anything — the preview an
+   *  operator reviews before Connect (CLEAN-95). */
+  previewByUrl(
+    agentId: string,
+    url: string,
+    token?: string,
+  ): Promise<IAgentCard | null> {
+    return this.execute(async () => {
+      const res = await PeersService.previewAgentPeerUrl({
+        path: { agentId },
+        body: { url, ...(token !== undefined ? { token } : {}) },
+      });
+      return ((unwrapOrThrow(res, 'Reading the card') as AgentCardDto) ??
+        null) as IAgentCard | null;
+    });
+  }
+
+  /** Whether the running pod has loaded the current peer set (CLEAN-95). */
+  peersState(agentId: string): Promise<IPeersState> {
+    return this.execute(async () => {
+      const res = await PeersService.getAgentPeersState({ path: { agentId } });
+      return (unwrapOrThrow(res, 'Reading the peer state') ?? {
+        armed: false,
+        servedAt: null,
+      }) as IPeersState;
     });
   }
 

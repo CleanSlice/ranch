@@ -5,13 +5,15 @@
  *
  * The `value` strings are a URL contract: `?tab=<value>` deep links predate
  * this screen, so the original nine are byte-identical — including `chat`,
- * which is the default tab again. `logs` is the one new value.
+ * which is the default tab again. `logs` is the one new value, and `peers`
+ * became `a2a` (CLEAN-95) with a legacy alias in `toAgentTab`, so the old
+ * links keep landing.
  */
 
 /** Tabs that can say how much they hold before you open them. */
 export type SectionCountKey =
   | 'knowledge'
-  | 'peers'
+  | 'a2a'
   | 'files'
   | 'secrets'
   | 'channels';
@@ -42,10 +44,10 @@ export const AGENT_TABS = [
     primary: true,
   },
   {
-    value: 'peers',
-    title: 'Peers',
-    desc: 'Other agents this one can delegate to.',
-    countKey: 'peers',
+    value: 'a2a',
+    title: 'A2A',
+    desc: 'Agent-to-agent: card, peers & delegations.',
+    countKey: 'a2a',
     primary: true,
   },
   {
@@ -124,9 +126,12 @@ const TAB_VALUES: readonly string[] = AGENT_TABS.map((t) => t.value);
  * the default rather than erroring — a stale link should land somewhere
  * sensible, not on a broken screen.
  */
+// Renamed values old deep links may still carry (CLEAN-95).
+const LEGACY_TAB_ALIASES: Record<string, AgentTab> = { peers: 'a2a' };
+
 export function toAgentTab(value: unknown): AgentTab {
   const v = Array.isArray(value) ? value[0] : value;
-  return typeof v === 'string' && TAB_VALUES.includes(v)
-    ? (v as AgentTab)
-    : DEFAULT_TAB;
+  if (typeof v !== 'string') return DEFAULT_TAB;
+  if (v in LEGACY_TAB_ALIASES) return LEGACY_TAB_ALIASES[v];
+  return TAB_VALUES.includes(v) ? (v as AgentTab) : DEFAULT_TAB;
 }

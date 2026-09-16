@@ -220,6 +220,10 @@ import type {
   ConnectAgentPeerResponse,
   ListAgentPeerCandidatesData,
   ListAgentPeerCandidatesResponse,
+  PreviewAgentPeerUrlData,
+  PreviewAgentPeerUrlResponse,
+  GetAgentPeersStateData,
+  GetAgentPeersStateResponse,
   RefreshAgentPeerData,
   RefreshAgentPeerResponse,
   RemoveAgentPeerData,
@@ -2978,7 +2982,7 @@ export class PeersService {
   }
 
   /**
-   * Connect another agent as a peer: mints a credential for this pair, reads the peer card with it, and stores the snapshot. Nothing is kept if the card cannot be read, so a saved connection always works. The agent picks the tool up on its next restart.
+   * Connect a peer. Either `peerAgentId` (another agent of this installation — mints a pair credential and reads the card with it) or `url` (an external A2A agent imported by address, optionally with a credential; re-importing the same address updates the entry in place). Nothing is kept if the card cannot be read. The agent picks the tool up on its next restart.
    */
   public static connectAgentPeer<ThrowOnError extends boolean = false>(
     options: Options<ConnectAgentPeerData, ThrowOnError>,
@@ -3009,6 +3013,42 @@ export class PeersService {
       ThrowOnError
     >({
       url: "/agents/{agentId}/peers/candidates",
+      ...options,
+    });
+  }
+
+  /**
+   * Read an external agent's card without saving anything — the preview an operator reviews before Connect. The same validation the import runs: canonical address, protocol version, own-installation refusal.
+   */
+  public static previewAgentPeerUrl<ThrowOnError extends boolean = false>(
+    options: Options<PreviewAgentPeerUrlData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      PreviewAgentPeerUrlResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/peers/preview",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Whether the running pod has loaded the current peer set. A pod reads its tool list once at boot, so connecting or removing a peer leaves this false ("pending restart") until the agent comes back up.
+   */
+  public static getAgentPeersState<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentPeersStateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentPeersStateResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/peers/state",
       ...options,
     });
   }

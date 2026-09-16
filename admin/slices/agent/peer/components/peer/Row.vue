@@ -184,10 +184,10 @@ const failReason = computed<string | null>(() => {
           Advertises nothing — this agent has no way to tell when to ask it.
         </span>
         <span
-          class="ml-auto flex items-center gap-1 text-xs text-muted-foreground"
+          class="ml-auto whitespace-nowrap text-xs text-muted-foreground"
+          :title="formatDateTime(peer.cardReadAt)"
         >
-          card read
-          <DateTimeAgo :date="peer.cardReadAt" class="!items-start" />
+          card read {{ formatTimeAgo(peer.cardReadAt) }}
         </span>
       </div>
     </div>

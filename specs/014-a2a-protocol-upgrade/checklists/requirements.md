@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain — **3 markers open (Q1–Q3), answers pending**
+- [x] No [NEEDS CLARIFICATION] markers remain — Q1–Q3 answered 2026-09-16, decisions inlined
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,8 +31,9 @@
 
 ## Notes
 
-- Q1 (scope of "замещение"), Q2 (strength of the prefer-the-peer policy) and Q3
-  (restart-to-arm vs no-restart) are open with the user; resolve before
-  `/speckit-clarify` or `/speckit-plan`.
+- Q1–Q3 resolved 2026-09-16: замещение = replace-on-reimport only; the core
+  delegation policy is "never say I don't know while a plausible peer is untried"
+  (FR-011); arming keeps the restart with a one-click action + armed/pending
+  indicator (hot reload out of scope).
 - Production evidence section records the 2026-09-16 baseline (0 delegations,
   empty Skyhunter card) that SC-001/SC-002 measure against.

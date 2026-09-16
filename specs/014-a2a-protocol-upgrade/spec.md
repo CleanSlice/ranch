@@ -45,14 +45,17 @@ delegation row and an attributed answer.
 2. **Given** A has peer B, **When** the operator explicitly directs the question at B
    ("ask B…", a question about B's own data), **Then** A delegates to B — or states in
    one sentence why it could not (peer not running, refused) — and never silently
-   substitutes an answer from its own tools. [NEEDS CLARIFICATION: Q2 — how strong
-   should the prefer-the-peer policy be when A believes it can answer itself?]
-3. **Given** the operator has just connected B to A, **When** the connect completes,
-   **Then** the system makes the remaining step to "armed" explicit and one-click
-   (see FR-008), and the A2A tab shows whether the running agent has actually loaded
-   the peer. [NEEDS CLARIFICATION: Q3 — is one-click restart acceptable, or must a
-   new peer arm without any restart?]
-4. **Given** B's card advertises nothing, **When** the operator looks at the A2A tab,
+   substitutes an answer from its own tools.
+3. **Given** A cannot answer a question from its own knowledge or tools, **When** any
+   connected peer's card plausibly covers it, **Then** A tries that peer **before**
+   replying "I don't know" — an "I don't know" alongside an untried plausible peer is
+   a defect (decided 2026-09-16: this is the core delegation policy).
+4. **Given** the operator has just connected B to A, **When** the connect completes,
+   **Then** the remaining step to "armed" is one click — the restart banner carries a
+   Restart now action — and the A2A tab shows whether the running agent has actually
+   loaded the peer (armed / pending restart). No-restart hot reload is out of scope
+   (decided 2026-09-16).
+5. **Given** B's card advertises nothing, **When** the operator looks at the A2A tab,
    **Then** the existing "advertises nothing" warning explains that delegation will not
    trigger on topic matching — and the ask tool still lists B by name and description so
    explicit "ask B" requests can fire.
@@ -66,8 +69,9 @@ installation** (another Ranch, or any A2A-compliant framework) into the Add peer
 The platform fetches the external agent's card, shows the same preview an internal
 candidate gets, accepts an optional access credential for that agent, and connects it as
 a peer. Importing the same address again replaces the stored entry instead of creating a
-duplicate. [NEEDS CLARIFICATION: Q1 — does "замещение" mean anything beyond
-replace-on-reimport?]
+duplicate — and nothing more (decided 2026-09-16: "замещение" is exactly
+replace-on-reimport; substituting internal agents with external ones is out of
+scope).
 
 **Why this priority**: The A2A address exists precisely so agents outside the
 installation can be reached; today the picker only accepts internal agents, so the
@@ -167,6 +171,10 @@ existing content intact; no link or saved view breaks.
 - **FR-010**: Every failed delegation and failed import names its cause (unreachable,
   credential refused, protocol mismatch, peer not running, timeout); no silent failures
   and no full-timeout waits on connection-refused class errors.
+- **FR-011**: The caller never replies "I don't know" (or an equivalent refusal) while
+  a connected peer's card plausibly covers the question and that peer has not been
+  tried in the current turn. Delegation is the mandatory step between "cannot answer
+  myself" and giving up.
 
 ### Key Entities
 
@@ -185,9 +193,10 @@ existing content intact; no link or saved view breaks.
 - **SC-001**: On a stack reproducing the production pair (caller + one running peer
   whose card names its domain), a domain question asked in the caller's chat produces a
   delegated, attributed answer in at least 9 of 10 attempts; today's baseline is 0.
-- **SC-002**: A request that names the peer outright produces either a delegation or a
-  one-sentence explanation of why not, in 10 of 10 attempts; it is never answered by the
-  caller's own tooling without that explanation.
+- **SC-002**: A request that names the peer outright — or one the caller cannot answer
+  while a peer's card covers it — produces either a delegation or a one-sentence
+  explanation of why not, in 10 of 10 attempts; "I don't know" with an untried
+  plausible peer counts as a failure.
 - **SC-003**: An operator with an external agent's URL (and credential, when needed)
   connects it in at most 3 interactions from the A2A tab, and the preview they see
   before confirming matches what the delegating agent will read.

@@ -156,3 +156,22 @@ export const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.pptx':
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
+
+/**
+ * Appended to a spreadsheet block's header. The model reads this when the
+ * file arrives, which is the moment it decides how to answer numeric
+ * questions — so this is where it learns the preview is not the whole file.
+ *
+ * The prefixed form is named on purpose. The runtime registers every MCP tool
+ * as `${serverName}__${tool.name}` (mcp.gateway.ts), so the bare name is not
+ * callable, and the api cannot know which server a given agent got the tool
+ * from: Documents is injected for every agent, but a template may also attach
+ * Ranch or Knowledge, which serve the same registry. Naming a tool the model
+ * cannot find left it improvising totals out of the preview (CLEAN-85).
+ */
+export const SPREADSHEET_HINT =
+  'this is a preview; call query_attachment with this id to read, filter, ' +
+  'aggregate or look up the actual cells — for whatever measure the question ' +
+  'needs. Your tool list may show it prefixed with its MCP server, as ' +
+  'Documents__query_attachment; call whichever name is there. Each sheet ' +
+  'lists its tables and the label → value lines after them.';

@@ -27,9 +27,11 @@ import { IAgentGateway } from './domain';
 import { AgentStatusTypes } from './domain/agent.types';
 import { AgentStatusService } from './domain/agentStatus.service';
 import { AgentDeployService } from './domain/agentDeploy.service';
+import { detectMcpConfigDrift } from './domain/mcpConfigDrift';
 import {
   AgentDto,
   AgentMcpDto,
+  AgentMcpStatusDto,
   AgentEnvVarDto,
   AgentMetricsDto,
   AgentStatusDto,
@@ -39,17 +41,10 @@ import {
 } from './dtos';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
 import { IWorkflowStatus } from '#/workflow/domain/workflow.types';
-import { ITemplateGateway } from '#/agent/template/domain';
 import { IPodGateway } from '#/agent/pod/domain';
 import { IFileGateway } from '#/agent/file/domain';
 import { IBridleGateway } from '#/bridle/domain';
-import { IMcpServerGateway, IMcpServerData } from '#/mcpServer/domain';
-import {
-  DOCUMENTS_MCP_ID,
-  KNOWLEDGE_MCP_ID,
-} from '#/mcpServer/domain/mcpServer.seeder';
-import { IKnowledgeGateway } from '#/reins/knowledge/domain';
-import { IKnowledgeConfigGateway } from '#/reins/config/domain';
+import { AgentMcpResolver } from '#/mcpServer/domain/agentMcpResolver.service';
 import { JwtAuthGuard, Public, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
@@ -75,16 +70,13 @@ export class AgentController {
 
   constructor(
     private agentGateway: IAgentGateway,
-    private templateGateway: ITemplateGateway,
     private workflowService: WorkflowService,
     private podGateway: IPodGateway,
     private agentStatusService: AgentStatusService,
     private bridleHub: IBridleGateway,
     private fileGateway: IFileGateway,
-    private mcpServerGateway: IMcpServerGateway,
     private agentDeployService: AgentDeployService,
-    private knowledgeGateway: IKnowledgeGateway,
-    private knowledgeConfig: IKnowledgeConfigGateway,
+    private mcpResolver: AgentMcpResolver,
   ) {}
 
   private deploy(agentId: string): Promise<void> {
@@ -265,38 +257,7 @@ export class AgentController {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
 
-    const template = await this.templateGateway.findById(agent.templateId);
-    if (!template) return [];
-
-    const baseServers = await this.mcpServerGateway.findByIds(
-      template.mcpServerIds,
-    );
-    const enabledServers = baseServers.filter((s) => s.enabled);
-
-    const effectiveKnowledgeIds =
-      agent.knowledgeIds.length > 0
-        ? agent.knowledgeIds
-        : template.defaultKnowledgeIds;
-
-    if (
-      await this.shouldInjectKnowledge(effectiveKnowledgeIds, enabledServers)
-    ) {
-      const knowledgeMcp =
-        await this.mcpServerGateway.findById(KNOWLEDGE_MCP_ID);
-      if (knowledgeMcp && knowledgeMcp.enabled) {
-        enabledServers.push(knowledgeMcp);
-      }
-    }
-
-    // Every agent can receive chat attachments, so every agent gets the
-    // Documents entry (query_attachment) unless an operator disabled it.
-    if (!enabledServers.some((m) => m.id === DOCUMENTS_MCP_ID)) {
-      const documentsMcp =
-        await this.mcpServerGateway.findById(DOCUMENTS_MCP_ID);
-      if (documentsMcp && documentsMcp.enabled) {
-        enabledServers.push(documentsMcp);
-      }
-    }
+    const enabledServers = await this.mcpResolver.resolveForAgent(agent);
 
     return enabledServers.map((s) => ({
       id: s.id,
@@ -309,18 +270,32 @@ export class AgentController {
     }));
   }
 
-  private async shouldInjectKnowledge(
-    effectiveKnowledgeIds: string[],
-    alreadyAttached: IMcpServerData[],
-  ): Promise<boolean> {
-    if (effectiveKnowledgeIds.length === 0) return false;
-    if (alreadyAttached.some((m) => m.id === KNOWLEDGE_MCP_ID)) return false;
-    const isEnabled = await this.knowledgeConfig.isEnabled();
-    if (!isEnabled) return false;
-    const existing = await this.knowledgeGateway.findExistingByIds(
-      effectiveKnowledgeIds,
-    );
-    return existing.length > 0;
+  @Get(':id/mcp-status')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiOperation({
+    operationId: 'getAgentMcpStatus',
+    summary:
+      "Whether the running pod still carries the MCP configuration it booted with. An agent's servers are baked into pod env at creation, so a change made afterwards only reaches it on a restart — and until now nothing reported the gap: an unreachable server logs `connect failed`, but one the pod was never told about logs nothing at all.",
+  })
+  @ApiOkResponse({ type: AgentMcpStatusDto })
+  async getMcpStatus(@Param('id') id: string): Promise<AgentMcpStatusDto> {
+    const agent = await this.agentGateway.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+
+    const [servers, pods] = await Promise.all([
+      this.mcpResolver.resolveForAgent(agent),
+      this.podGateway.list(),
+    ]);
+    const pod = pods.find((p) => p.agentId === agent.id) ?? null;
+
+    return detectMcpConfigDrift({
+      servers: servers.map((s) => ({
+        id: s.id,
+        name: s.name,
+        updatedAt: s.updatedAt,
+      })),
+      podStartedAt: pod?.startedAt ? new Date(pod.startedAt) : null,
+    });
   }
 
   @Post()

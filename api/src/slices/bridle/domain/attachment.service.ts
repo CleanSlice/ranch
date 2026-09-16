@@ -5,6 +5,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   MAX_EXTRACTED_TEXT_CHARS,
   MAX_MESSAGE_ATTACHMENT_BYTES,
+  SPREADSHEET_HINT,
   SPREADSHEET_INLINE_BUDGET_CHARS,
   SPREADSHEET_PREVIEW_ROWS_PER_SHEET,
 } from './attachment.constants';
@@ -33,13 +34,10 @@ import type {
   IBridleStoredAttachment,
 } from './bridle.types';
 
-/**
- * Appended to a spreadsheet block's header. The model reads this when the
- * file arrives, which is the moment it decides how to answer numeric
- * questions — so this is where it learns the preview is not the whole file.
- */
-export const SPREADSHEET_HINT =
-  'this is a preview; call query_attachment with this id to read, filter, aggregate or look up the actual cells — for whatever measure the question needs. Each sheet lists its tables and the label → value lines after them.';
+/** Re-exported so existing importers keep their path; it lives with the
+ *  other attachment constants, where it can be read without pulling in the
+ *  document parsers. */
+export { SPREADSHEET_HINT };
 
 export interface IUploadAttachmentInput {
   agentId: string;

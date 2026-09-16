@@ -1445,9 +1445,13 @@ export type AgentPeerDto = {
    */
   agentId: string;
   /**
-   * The agent whose card is held (the peer).
+   * The agent whose card is held (the peer), or null when the peer was imported from outside this installation.
    */
-  peerAgentId: string;
+  peerAgentId: string | null;
+  /**
+   * Where this connection points: 'internal' (another agent of this installation) or 'external' (imported by card URL, CLEAN-95).
+   */
+  origin: "internal" | "external";
   /**
    * The peer's current name. Falls back to the name on the stored card when the agent itself is gone.
    */
@@ -1490,17 +1494,51 @@ export type AgentPeerCandidateDto = {
 
 export type ConnectPeerDto = {
   /**
-   * The agent to connect. Must be another agent of this installation: foreign card URLs are not accepted in this feature, and an agent cannot be its own peer. Format: `agent-<uuid>`.
+   * An agent of this installation to connect. Format: `agent-<uuid>`. Mutually exclusive with `url`.
    */
-  peerAgentId: string;
+  peerAgentId?: string;
+  /**
+   * A2A address of an agent outside this installation — the agent base URL or its `…/.well-known/agent-card.json` form. Importing an address that is already connected updates that entry in place. Mutually exclusive with `peerAgentId`.
+   */
+  url?: string;
+  /**
+   * Bearer credential the external agent expects, when it needs one. Stored write-only — no response ever returns it. On re-import: omitted keeps the stored credential, empty string clears it.
+   */
+  token?: string;
+};
+
+export type PreviewPeerUrlDto = {
+  /**
+   * A2A address of the agent to preview — base URL or its well-known card form.
+   */
+  url: string;
+  /**
+   * Bearer credential for the card read, when the agent needs one. Used for this read only; nothing is stored.
+   */
+  token?: string;
+};
+
+export type PeersStateDto = {
+  /**
+   * True when the running pod's last-served peer set matches the current one — delegation is armed.
+   */
+  armed: boolean;
+  /**
+   * When the pod last received the peer list over MCP; null if never (agent not restarted since its first peer was connected).
+   */
+  servedAt: string | null;
 };
 
 export type AgentDelegationDto = {
   id: string;
   /**
-   * The peer that was asked.
+   * The connection the task went through — the stable per-peer key for both origins; null once that connection was removed (CLEAN-95).
    */
-  peerAgentId: string;
+  peerId: string | null;
+  /**
+   * The peer agent that was asked, or null when the peer is external to this installation (CLEAN-95).
+   */
+  peerAgentId: string | null;
   peerName: string;
   /**
    * The self-contained task the peer received.
@@ -4470,6 +4508,64 @@ export type ListAgentPeerCandidatesResponses = {
 
 export type ListAgentPeerCandidatesResponse =
   ListAgentPeerCandidatesResponses[keyof ListAgentPeerCandidatesResponses];
+
+export type PreviewAgentPeerUrlData = {
+  body: PreviewPeerUrlDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/peers/preview";
+};
+
+export type PreviewAgentPeerUrlErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent or connection with this id.
+   */
+  404: unknown;
+  /**
+   * The address could not be reached; nothing was saved.
+   */
+  502: unknown;
+};
+
+export type PreviewAgentPeerUrlResponses = {
+  200: AgentCardDto;
+};
+
+export type PreviewAgentPeerUrlResponse =
+  PreviewAgentPeerUrlResponses[keyof PreviewAgentPeerUrlResponses];
+
+export type GetAgentPeersStateData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/peers/state";
+};
+
+export type GetAgentPeersStateErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent or connection with this id.
+   */
+  404: unknown;
+};
+
+export type GetAgentPeersStateResponses = {
+  200: PeersStateDto;
+};
+
+export type GetAgentPeersStateResponse =
+  GetAgentPeersStateResponses[keyof GetAgentPeersStateResponses];
 
 export type RefreshAgentPeerData = {
   body?: never;

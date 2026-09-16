@@ -212,9 +212,7 @@ function toggle(id: string) {
           <div
             class="mt-1.5 flex items-center gap-2.5 text-xs text-muted-foreground"
           >
-            <span :title="formatDateTime(row.startedAt)">
-              {{ formatTimeAgo(row.startedAt) }}
-            </span>
+            <DateTimeAgoInline :date="row.startedAt" />
             <span>·</span>
             <span class="tabular-nums">{{ duration(row.durationMs) }}</span>
             <span

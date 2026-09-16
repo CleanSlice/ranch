@@ -431,6 +431,28 @@ describe('PeerService — importing an external agent by URL (CLEAN-95)', () => 
   });
 });
 
+describe('PeerService — previewing an external URL (CLEAN-95)', () => {
+  const EXT_BASE = 'https://other.example/a2a/agents/agent-x';
+
+  it('returns the card and persists nothing', async () => {
+    const { service, rows, peers } = makeHarness();
+
+    const card = await service.previewByUrl('a', EXT_BASE, 'tk-1');
+
+    expect(card.name).toBe('Foreign Bot');
+    expect(Object.keys(rows)).toHaveLength(0);
+    expect((peers as unknown as { create: jest.Mock }).create).not.toHaveBeenCalled();
+  });
+
+  it('runs the same refusals as the import', async () => {
+    const { service } = makeHarness();
+
+    await expect(
+      service.previewByUrl('a', 'https://api.test/a2a/agents/b'),
+    ).rejects.toMatchObject({ response: { code: 'PEER_SELF_URL' } });
+  });
+});
+
 describe('PeerService — refreshing an external row (CLEAN-95)', () => {
   const EXT_BASE = 'https://other.example/a2a/agents/agent-x';
   const EXT_CARD = `${EXT_BASE}/.well-known/agent-card.json`;

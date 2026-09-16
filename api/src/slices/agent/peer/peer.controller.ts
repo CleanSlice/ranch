@@ -36,6 +36,7 @@ import {
   ConnectPeerDto,
   ListDelegationsQueryDto,
   PeersStateDto,
+  PreviewPeerUrlDto,
 } from './dtos';
 
 /**
@@ -158,6 +159,26 @@ export class PeerController {
       ? await this.peers.connectByUrl(agentId, body.url!, body.token)
       : await this.peers.connect(agentId, body.peerAgentId!);
     return toPeerDto(view);
+  }
+
+  @Post('peers/preview')
+  @HttpCode(200)
+  @ApiOperation({
+    operationId: 'previewAgentPeerUrl',
+    summary:
+      "Read an external agent's card without saving anything — the preview " +
+      'an operator reviews before Connect. The same validation the import ' +
+      'runs: canonical address, protocol version, own-installation refusal.',
+  })
+  @ApiOkResponse({ type: AgentCardDto })
+  @ApiBadGatewayResponse({
+    description: 'The address could not be reached; nothing was saved.',
+  })
+  async previewPeerUrl(
+    @Param('agentId') agentId: string,
+    @Body() body: PreviewPeerUrlDto,
+  ): Promise<AgentCardDto> {
+    return this.peers.previewByUrl(agentId, body.url, body.token);
   }
 
   @Get('peers/state')

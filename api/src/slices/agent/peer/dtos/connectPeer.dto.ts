@@ -1,5 +1,11 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 /**
  * One-of body (CLEAN-95): pick an agent of this installation by id, or import
@@ -36,6 +42,31 @@ export class ConnectPeerDto {
       'Bearer credential the external agent expects, when it needs one. ' +
       'Stored write-only — no response ever returns it. On re-import: ' +
       'omitted keeps the stored credential, empty string clears it.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  token?: string;
+}
+
+/** Read an external agent's card without saving anything — the preview an
+ *  operator reviews before Connect (CLEAN-95, FR-002). */
+export class PreviewPeerUrlDto {
+  @ApiProperty({
+    description:
+      'A2A address of the agent to preview — base URL or its well-known ' +
+      'card form.',
+    example: 'https://other.example/a2a/agents/agent-1a2b…',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  url: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Bearer credential for the card read, when the agent needs one. Used ' +
+      'for this read only; nothing is stored.',
   })
   @IsOptional()
   @IsString()

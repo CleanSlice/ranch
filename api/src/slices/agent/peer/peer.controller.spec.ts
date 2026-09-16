@@ -53,6 +53,7 @@ function makeController(options: { peers?: Partial<PeerService> } = {}) {
     ]),
     connect: jest.fn(async () => poisoned),
     connectByUrl: jest.fn(async () => ({ ...poisoned, origin: 'external' })),
+    previewByUrl: jest.fn(async () => ({ name: 'Foreign Bot', skills: [] })),
     peersState: jest.fn(async () => ({ armed: false, servedAt: null })),
     refresh: jest.fn(async () => poisoned),
     remove: jest.fn(async () => undefined),
@@ -153,6 +154,23 @@ describe('PeerController — routes', () => {
         url: 'https://other.example/a2a/agents/x',
       }),
     ).rejects.toMatchObject({ response: { code: 'PEER_BODY' } });
+    expect(peers.connect).not.toHaveBeenCalled();
+    expect(peers.connectByUrl).not.toHaveBeenCalled();
+  });
+
+  it('previews an external card without touching the connect paths', async () => {
+    const { controller, peers } = makeController();
+
+    await controller.previewPeerUrl('a', {
+      url: 'https://other.example/a2a/agents/x',
+      token: 'tk',
+    });
+
+    expect(peers.previewByUrl).toHaveBeenCalledWith(
+      'a',
+      'https://other.example/a2a/agents/x',
+      'tk',
+    );
     expect(peers.connect).not.toHaveBeenCalled();
     expect(peers.connectByUrl).not.toHaveBeenCalled();
   });

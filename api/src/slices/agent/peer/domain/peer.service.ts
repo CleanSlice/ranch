@@ -141,6 +141,66 @@ export class PeerService {
     rawUrl: string,
     outboundToken?: string,
   ): Promise<IAgentPeerView> {
+    // Empty string clears a stored credential on re-import; undefined keeps it.
+    const token =
+      outboundToken === undefined ? undefined : outboundToken.trim() || null;
+
+    const { cardUrl, card } = await this.readExternalCard(
+      agentId,
+      rawUrl,
+      token ?? undefined,
+    );
+
+    const existing = await this.peers.findByCardUrl(agentId, cardUrl);
+    const row = existing
+      ? await this.peers.updateSnapshot(existing.id, {
+          cardSnapshot: card,
+          cardUrl,
+          cardReadAt: new Date(),
+          ...(token !== undefined ? { outboundToken: token } : {}),
+        })
+      : await this.peers.create({
+          agentId,
+          peerAgentId: null,
+          origin: PeerOrigins.External,
+          token: null,
+          outboundToken: token ?? null,
+          cardSnapshot: card,
+          cardUrl,
+          cardReadAt: new Date(),
+        });
+
+    this.logger.log(
+      `External peer ${existing ? 're-imported' : 'imported'}: agent=${agentId} url=${cardUrl}`,
+    );
+    return this.toView(row);
+  }
+
+  /**
+   * Reads an external card WITHOUT saving anything — the preview an operator
+   * reviews before Connect (FR-002). The same read connectByUrl performs, so
+   * what they approve is literally what gets stored.
+   */
+  async previewByUrl(
+    agentId: string,
+    rawUrl: string,
+    outboundToken?: string,
+  ) {
+    const { card } = await this.readExternalCard(
+      agentId,
+      rawUrl,
+      outboundToken?.trim() || undefined,
+    );
+    return card;
+  }
+
+  /** Shared validate-and-fetch for preview and import: canonicalize, SSRF
+   *  guards, own-installation refusal, card read, protocol version check. */
+  private async readExternalCard(
+    agentId: string,
+    rawUrl: string,
+    token?: string,
+  ) {
     const caller = await this.agents.findById(agentId);
     if (!caller) {
       throw new NotFoundException({
@@ -167,13 +227,9 @@ export class PeerService {
       });
     }
 
-    // Empty string clears a stored credential on re-import; undefined keeps it.
-    const token =
-      outboundToken === undefined ? undefined : outboundToken.trim() || null;
-
     let card;
     try {
-      card = await this.client.fetchCard(cardUrl, token ?? undefined);
+      card = await this.client.fetchCard(cardUrl, token);
     } catch (err) {
       throw this.importUnreadable(err, cardUrl);
     }
@@ -186,29 +242,7 @@ export class PeerService {
       });
     }
 
-    const existing = await this.peers.findByCardUrl(agentId, cardUrl);
-    const row = existing
-      ? await this.peers.updateSnapshot(existing.id, {
-          cardSnapshot: card,
-          cardUrl,
-          cardReadAt: new Date(),
-          ...(token !== undefined ? { outboundToken: token } : {}),
-        })
-      : await this.peers.create({
-          agentId,
-          peerAgentId: null,
-          origin: PeerOrigins.External,
-          token: null,
-          outboundToken: token ?? null,
-          cardSnapshot: card,
-          cardUrl,
-          cardReadAt: new Date(),
-        });
-
-    this.logger.log(
-      `External peer ${existing ? 're-imported' : 'imported'}: agent=${agentId} url=${cardUrl}`,
-    );
-    return this.toView(row);
+    return { cardUrl, card };
   }
 
   /**

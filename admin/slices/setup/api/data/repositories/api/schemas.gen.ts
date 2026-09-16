@@ -3264,7 +3264,8 @@ export const ConnectPeerDtoSchema = {
     peerAgentId: {
       type: "string",
       description:
-        "The agent to connect. Must be another agent of this installation: foreign card URLs are not accepted in this feature, and an agent cannot be its own peer.",
+        "The agent to connect. Must be another agent of this installation: foreign card URLs are not accepted in this feature, and an agent cannot be its own peer. Format: `agent-<uuid>`.",
+      example: "agent-3f2504e0-4f89-11d3-9a0c-0305e82c3301",
     },
   },
   required: ["peerAgentId"],

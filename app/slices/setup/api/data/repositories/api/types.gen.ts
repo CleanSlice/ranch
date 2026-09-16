@@ -1490,7 +1490,7 @@ export type AgentPeerCandidateDto = {
 
 export type ConnectPeerDto = {
   /**
-   * The agent to connect. Must be another agent of this installation: foreign card URLs are not accepted in this feature, and an agent cannot be its own peer.
+   * The agent to connect. Must be another agent of this installation: foreign card URLs are not accepted in this feature, and an agent cannot be its own peer. Format: `agent-<uuid>`.
    */
   peerAgentId: string;
 };

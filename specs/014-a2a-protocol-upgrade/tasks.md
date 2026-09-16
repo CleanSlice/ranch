@@ -190,7 +190,7 @@ still land (SC-007).
 - [X] T035 Full gates: `cd api && bun run test` (all), `bunx tsc --noEmit`, both
       console typechecks, lint pass on touched slice files
 - [X] T036 Quickstart §1–§4 full local run (mock script stays in scratchpad)
-- [ ] T037 Live validation, quickstart §5–§6 on ranch.cleanslice.org: give Skyhunter a
+- [X] T037 Live validation, quickstart §5–§6 on ranch.cleanslice.org: give Skyhunter a
       described card, `peers/state` before/after Restart now, re-ask "сколько crews в
       skyhunter", record before/after on CLEAN-95
 - [X] T038 Update specs/014-a2a-protocol-upgrade/checklists/requirements.md status and
@@ -236,9 +236,20 @@ checkpoint comments (large task); PR stacked on `feat/CLEAN-94-add-peer-inline-i
 
 ## Status at hand-off (2026-09-16)
 
-37 of 38 done. **T037 (production validation, quickstart §5–§6) is the one
-open item** — it needs this branch deployed; the before/after against the
-zero-delegation baseline goes on CLEAN-95.
+38 of 38 done. **T037 ran on production 2026-09-16** after the v0.3.52
+release (deploy run green, migrations applied by the init container):
+
+- BEFORE (17:47Z): `peers/state` 404, Skyhunter card 0 skills, **0
+  delegations all-time**, chat answered «Не знаю».
+- Skyhunter got a card description (config merge via PUT), Rancher's
+  snapshot refreshed, Restart now → `armed` flipped true the moment the
+  booting pod fetched tools/list (17:55:31Z) — the serve-hook works live.
+- «спроси у Skyhunter, сколько у него crews» → **first delegation ever:
+  answered in 3.5 s**, attributed reply, audit row with task/reason.
+- Honest partial: the non-imperative «сколько crews в skyhunter» was
+  answered by Rancher's own admin tools without delegating — for the
+  platform-admin caller the "can do yourself" caveat wins over
+  named-peer preference; candidate wording tweak recorded on CLEAN-95.
 
 Verified beyond the unit suites: quickstart §3 ran live against the local dev
 API with a throwaway mock A2A agent — preview-without-save, import (both URL

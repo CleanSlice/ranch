@@ -7,7 +7,7 @@ import {
   DialogRoot,
   DialogTitle,
 } from 'reka-ui';
-import { IconCheck, IconSearch } from '@tabler/icons-vue';
+import { IconCheck, IconChevronDown, IconSearch } from '@tabler/icons-vue';
 import { toast } from 'vue-sonner';
 import { AGENT_STATUS_VARIANT } from '#agent/utils/agentFormat';
 import type { AgentStatusTypes } from '#agent/domain';
@@ -18,12 +18,16 @@ import {
 } from '#peer/stores/peer';
 
 /**
- * Pick an agent, read its card, then connect (CLEAN-74).
+ * Pick an agent, read its card, then connect (CLEAN-74, CLEAN-94).
  *
  * The preview step is the point of this component. Connecting a peer decides
  * what another agent will be told it can ask for, so the operator sees the
  * exact text first — a name alone would make "why did it pick the wrong one"
  * unanswerable later.
+ *
+ * The preview expands under the clicked row, accordion-style: at ten
+ * candidates a panel below the list sits under the fold, and a click that
+ * renders off-screen reads as a click that did nothing (CLEAN-94).
  */
 const props = defineProps<{ open: boolean; agentId: string }>();
 const emit = defineEmits<{ 'update:open': [value: boolean]; connected: [] }>();
@@ -64,8 +68,14 @@ watch(
   },
 );
 
-async function select(candidate: IAgentPeerCandidate) {
-  if (candidate.connected) return;
+async function toggle(candidate: IAgentPeerCandidate) {
+  if (candidate.connected || connecting.value) return;
+  if (selected.value?.id === candidate.id) {
+    selected.value = null;
+    preview.value = null;
+    error.value = null;
+    return;
+  }
   selected.value = candidate;
   preview.value = null;
   error.value = null;
@@ -114,8 +124,8 @@ function statusVariant(status: string) {
           Add peer
         </DialogTitle>
         <DialogDescription class="mt-1 text-sm text-muted-foreground">
-          Agents on this ranch this one isn't connected to yet. Connecting is
-          one-way.
+          Agents on this ranch this one isn't connected to yet. Click an agent
+          to read its card, then connect.
         </DialogDescription>
 
         <div class="mt-3.5 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto">
@@ -142,7 +152,7 @@ function statusVariant(status: string) {
                   selected?.id === candidate.id ? 'bg-muted/60' : '',
                 ]"
                 :disabled="candidate.connected"
-                @click="select(candidate)"
+                @click="toggle(candidate)"
               >
                 <span class="flex min-w-0 items-center gap-2">
                   <span class="truncate font-semibold">
@@ -159,7 +169,46 @@ function statusVariant(status: string) {
                   <IconCheck class="size-3.5" />
                   connected
                 </span>
+                <!-- The affordance the row was missing: says what a click
+                     does, and doubles as the open/closed indicator. -->
+                <span
+                  v-else
+                  class="flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                >
+                  Info
+                  <IconChevronDown
+                    class="size-3.5 transition-transform"
+                    :class="selected?.id === candidate.id && 'rotate-180'"
+                  />
+                </span>
               </button>
+
+              <!-- Accordion body: the card opens right where the click
+                   happened, not below the whole list. -->
+              <div
+                v-if="selected?.id === candidate.id"
+                class="mb-3 space-y-3 rounded-xl border bg-muted/40 p-3"
+              >
+                <div v-if="previewing" class="space-y-2">
+                  <Skeleton class="h-4 w-40" />
+                  <Skeleton class="h-4 w-64" />
+                  <Skeleton class="h-6 w-52" />
+                </div>
+                <template v-else>
+                  <PeerCardView :card="preview" compact />
+                  <Button
+                    size="sm"
+                    class="rounded-full"
+                    :disabled="connecting || !preview"
+                    @click="connect"
+                  >
+                    {{
+                      connecting ? 'Connecting…' : `Connect «${candidate.name}»`
+                    }}
+                  </Button>
+                </template>
+                <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+              </div>
             </li>
           </ul>
 
@@ -169,27 +218,6 @@ function statusVariant(status: string) {
           <p v-else class="border-t pt-3.5 text-sm text-muted-foreground">
             No unconnected agents left on this ranch.
           </p>
-
-          <div v-if="selected" class="space-y-3 rounded-xl border bg-muted/40 p-3">
-            <div v-if="previewing" class="space-y-2">
-              <Skeleton class="h-4 w-40" />
-              <Skeleton class="h-4 w-64" />
-              <Skeleton class="h-6 w-52" />
-            </div>
-            <template v-else>
-              <PeerCardView :card="preview" compact />
-              <Button
-                size="sm"
-                class="rounded-full"
-                :disabled="connecting || !preview"
-                @click="connect"
-              >
-                {{ connecting ? 'Connecting…' : `Connect «${selected.name}»` }}
-              </Button>
-            </template>
-          </div>
-
-          <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
         </div>
 
         <div class="mt-3.5 flex justify-end">

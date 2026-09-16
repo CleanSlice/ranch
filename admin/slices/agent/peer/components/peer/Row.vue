@@ -183,11 +183,8 @@ const failReason = computed<string | null>(() => {
         <span v-else class="text-xs text-muted-foreground">
           Advertises nothing — this agent has no way to tell when to ask it.
         </span>
-        <span
-          class="ml-auto flex items-center gap-1 text-xs text-muted-foreground"
-        >
-          card read
-          <DateTimeAgo :date="peer.cardReadAt" class="!items-start" />
+        <span class="ml-auto whitespace-nowrap text-xs text-muted-foreground">
+          card read <DateTimeAgoInline :date="peer.cardReadAt" />
         </span>
       </div>
     </div>

@@ -8,8 +8,14 @@ export class AgentDelegationDto {
   @ApiProperty()
   id: string;
 
-  @ApiProperty({ description: 'The peer that was asked.' })
-  peerAgentId: string;
+  @ApiProperty({
+    description:
+      'The peer agent that was asked, or null when the peer is external ' +
+      'to this installation (CLEAN-95).',
+    nullable: true,
+    type: String,
+  })
+  peerAgentId: string | null;
 
   @ApiProperty({ example: 'Support Bot' })
   peerName: string;

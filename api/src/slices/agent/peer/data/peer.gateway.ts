@@ -5,7 +5,9 @@ import {
   IAgentPeerData,
   ICreatePeerInput,
   IPeerGateway,
+  IPeersServedState,
   IUpdateSnapshotInput,
+  PeerOrigins,
 } from '../domain';
 import { PeerMapper } from './peer.mapper';
 
@@ -41,6 +43,16 @@ export class PeerGateway extends IPeerGateway {
     return record ? this.mapper.toEntity(record) : null;
   }
 
+  async findByCardUrl(
+    agentId: string,
+    cardUrl: string,
+  ): Promise<IAgentPeerData | null> {
+    const record = await this.prisma.agentPeer.findFirst({
+      where: { agentId, cardUrl, origin: PeerOrigins.External },
+    });
+    return record ? this.mapper.toEntity(record) : null;
+  }
+
   async findByToken(token: string): Promise<IAgentPeerData | null> {
     const record = await this.prisma.agentPeer.findUnique({ where: { token } });
     return record ? this.mapper.toEntity(record) : null;
@@ -54,7 +66,9 @@ export class PeerGateway extends IPeerGateway {
       data: {
         agentId: input.agentId,
         peerAgentId: input.peerAgentId,
+        origin: input.origin,
         token: input.token,
+        outboundToken: input.outboundToken ?? null,
         cardSnapshot: input.cardSnapshot as unknown as Prisma.InputJsonValue,
         cardUrl: input.cardUrl,
         cardReadAt: input.cardReadAt,
@@ -73,6 +87,10 @@ export class PeerGateway extends IPeerGateway {
         cardSnapshot: input.cardSnapshot as unknown as Prisma.InputJsonValue,
         cardUrl: input.cardUrl,
         cardReadAt: input.cardReadAt,
+        // undefined = keep the stored credential; null = clear it.
+        ...(input.outboundToken !== undefined
+          ? { outboundToken: input.outboundToken }
+          : {}),
       },
     });
     return this.mapper.toEntity(record);
@@ -80,5 +98,24 @@ export class PeerGateway extends IPeerGateway {
 
   async delete(id: string): Promise<void> {
     await this.prisma.agentPeer.delete({ where: { id } });
+  }
+
+  async recordPeersServed(agentId: string, hash: string): Promise<void> {
+    await this.prisma.agent.update({
+      where: { id: agentId },
+      data: { peersServedAt: new Date(), peersServedHash: hash },
+    });
+  }
+
+  async readPeersServed(agentId: string): Promise<IPeersServedState | null> {
+    const agent = await this.prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { peersServedAt: true, peersServedHash: true },
+    });
+    if (!agent?.peersServedAt || !agent.peersServedHash) return null;
+    return {
+      servedAt: agent.peersServedAt.toISOString(),
+      hash: agent.peersServedHash,
+    };
   }
 }

@@ -39,12 +39,14 @@ export class A2aClient {
    * a snapshot missing skills or an interface is useless later, and failing
    * now names the problem while an operator is still looking at the screen.
    */
-  async fetchCard(cardUrl: string, token: string): Promise<IA2aAgentCard> {
+  async fetchCard(cardUrl: string, token?: string): Promise<IA2aAgentCard> {
     let response: Response;
     try {
       response = await fetch(cardUrl, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          // External agents may serve their card openly (CLEAN-95): no
+          // credential means no Authorization header, not an empty one.
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
           Accept: 'application/json',
         },
         signal: AbortSignal.timeout(CARD_TIMEOUT_MS),
@@ -70,6 +72,7 @@ export class A2aClient {
       throw new PeerCardUnreachableError(
         `The card at ${cardUrl} is not valid JSON`,
         response.status,
+        'invalid',
       );
     }
 
@@ -77,6 +80,7 @@ export class A2aClient {
       throw new PeerCardUnreachableError(
         `The document at ${cardUrl} is not an agent card`,
         response.status,
+        'invalid',
       );
     }
 
@@ -87,13 +91,12 @@ export class A2aClient {
    * Hands a task to a peer and waits for the finished task.
    *
    * SECURITY NOTE. `interfaceUrl` comes from a stored card snapshot, and a
-   * card is remote content. Today that is safe because the picker only ever
-   * offers agents of this installation, so every snapshot was read from this
-   * API's own route — the URL is ours. The moment foreign peers become
-   * connectable (a card URL typed by an operator, deliberately out of scope
-   * here), this value turns attacker-influenced and this call becomes an SSRF
-   * primitive: it would then need an allowlist, or at least a block on
-   * private address ranges, before the first request goes out.
+   * card is remote content. For internal rows every snapshot was read from
+   * this API's own route — the URL is ours. External rows (CLEAN-95) are
+   * exactly the foreseen case: the callers guard both the imported card URL
+   * and the card's interface URL with `assertPublicPeerAddress` before any
+   * request goes out. Literal-address checks only; DNS rebinding is accepted
+   * as out of scope for v1.
    *
    * A peer that answers with a message instead of a task is treated as an
    * error: this client asked for blocking work and has nothing to poll with,
@@ -101,7 +104,7 @@ export class A2aClient {
    */
   async sendMessage(
     interfaceUrl: string,
-    token: string,
+    token: string | undefined,
     params: IA2aSendMessageParams,
     timeoutMs: number,
   ): Promise<IA2aTask> {
@@ -110,7 +113,7 @@ export class A2aClient {
       response = await fetch(interfaceUrl, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
           'Content-Type': 'application/json',
           [A2A_VERSION_HEADER]: A2A_VERSION,
         },
@@ -170,6 +173,54 @@ export class A2aClient {
     }
 
     return task;
+  }
+}
+
+/**
+ * SSRF guard for operator-supplied peer addresses (CLEAN-95). External card
+ * URLs and the interface URLs inside fetched cards are remote content, so a
+ * request to them must never be allowed to reach loopback, RFC1918 ranges or
+ * the cloud metadata endpoint. Literal-address checks only — DNS rebinding is
+ * out of scope for v1 and documented as such. `A2A_ALLOW_PRIVATE_PEERS=true`
+ * lifts the guard for local development, where the mock peer IS loopback.
+ */
+export function assertPublicPeerAddress(rawUrl: string): void {
+  if (process.env.A2A_ALLOW_PRIVATE_PEERS === 'true') return;
+
+  let host: string;
+  try {
+    host = new URL(rawUrl).hostname.toLowerCase();
+  } catch {
+    throw new PeerCardUnreachableError(
+      `Not a valid URL: ${rawUrl}`,
+      undefined,
+      'invalid',
+    );
+  }
+
+  const bare = host.replace(/^\[|\]$/g, '');
+  const privateHost =
+    bare === 'localhost' ||
+    bare.endsWith('.localhost') ||
+    bare.endsWith('.local') ||
+    bare.endsWith('.internal') ||
+    bare === '::1' ||
+    bare.startsWith('fe80:') ||
+    bare.startsWith('fc') ||
+    bare.startsWith('fd') ||
+    /^127\./.test(bare) ||
+    /^10\./.test(bare) ||
+    /^192\.168\./.test(bare) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(bare) ||
+    /^169\.254\./.test(bare) ||
+    bare === '0.0.0.0';
+
+  if (privateHost) {
+    throw new PeerCardUnreachableError(
+      `The address ${host} is a private or local host — external peers must be publicly reachable`,
+      undefined,
+      'invalid',
+    );
   }
 }
 

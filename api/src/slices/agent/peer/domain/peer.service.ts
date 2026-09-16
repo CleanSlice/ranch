@@ -10,15 +10,20 @@ import * as crypto from 'crypto';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IPeerGateway } from './peer.gateway';
 import { AgentCardService } from './agentCard.service';
-import { A2aClient } from './a2a.client';
+import { A2aClient, assertPublicPeerAddress } from './a2a.client';
+import { A2A_CARD_PATH, A2A_VERSION } from './a2a.types';
 import {
+  EXTERNAL_PEER_STATUS,
   PEER_TOKEN_BYTES,
   PEER_TOKEN_PREFIX,
   PeerCardUnreachableError,
   PeerErrorCodes,
+  PeerOrigins,
+  hashPeerIds,
   type IAgentPeerCandidate,
   type IAgentPeerData,
   type IAgentPeerView,
+  type IPeersState,
 } from './peer.types';
 
 /**
@@ -99,6 +104,7 @@ export class PeerService {
     let row = await this.peers.create({
       agentId,
       peerAgentId,
+      origin: PeerOrigins.Internal,
       token,
       cardSnapshot: await this.cards.build(peerAgentId),
       cardUrl,
@@ -121,15 +127,101 @@ export class PeerService {
   }
 
   /**
+   * Imports (or re-imports) an agent living outside this installation
+   * (CLEAN-95). The card is read before anything persists, and a canonical
+   * URL that is already connected is UPDATED in place — snapshot, address
+   * form, credential — never duplicated.
+   */
+  async connectByUrl(
+    agentId: string,
+    rawUrl: string,
+    outboundToken?: string,
+  ): Promise<IAgentPeerView> {
+    const caller = await this.agents.findById(agentId);
+    if (!caller) {
+      throw new NotFoundException({
+        code: PeerErrorCodes.NotFound,
+        message: 'Agent not found',
+      });
+    }
+
+    const cardUrl = this.canonicalCardUrl(rawUrl);
+    try {
+      assertPublicPeerAddress(cardUrl);
+    } catch (err) {
+      throw this.invalidUrl(err instanceof Error ? err.message : String(err));
+    }
+
+    const ownBase = await this.cards.ownA2aBase();
+    if (cardUrl.startsWith(ownBase)) {
+      throw new BadRequestException({
+        code: PeerErrorCodes.SelfUrl,
+        message:
+          'This address belongs to an agent of this installation — pick it ' +
+          'in the agent list instead of importing it by URL.',
+      });
+    }
+
+    // Empty string clears a stored credential on re-import; undefined keeps it.
+    const token =
+      outboundToken === undefined ? undefined : outboundToken.trim() || null;
+
+    let card;
+    try {
+      card = await this.client.fetchCard(cardUrl, token ?? undefined);
+    } catch (err) {
+      throw this.importUnreadable(err, cardUrl);
+    }
+
+    const version = card.supportedInterfaces?.[0]?.protocolVersion;
+    if (version !== A2A_VERSION) {
+      throw new BadRequestException({
+        code: PeerErrorCodes.Version,
+        message: `This agent speaks A2A ${version ?? 'unknown'}; only ${A2A_VERSION} is supported`,
+      });
+    }
+
+    const existing = await this.peers.findByCardUrl(agentId, cardUrl);
+    const row = existing
+      ? await this.peers.updateSnapshot(existing.id, {
+          cardSnapshot: card,
+          cardUrl,
+          cardReadAt: new Date(),
+          ...(token !== undefined ? { outboundToken: token } : {}),
+        })
+      : await this.peers.create({
+          agentId,
+          peerAgentId: null,
+          origin: PeerOrigins.External,
+          token: null,
+          outboundToken: token ?? null,
+          cardSnapshot: card,
+          cardUrl,
+          cardReadAt: new Date(),
+        });
+
+    this.logger.log(
+      `External peer ${existing ? 're-imported' : 'imported'}: agent=${agentId} url=${cardUrl}`,
+    );
+    return this.toView(row);
+  }
+
+  /**
    * Re-reads a peer's card. A failed read keeps the old snapshot: a stale
    * description is worth more than none, and the operator is told what failed.
    */
   async refresh(agentId: string, peerId: string): Promise<IAgentPeerView> {
     const row = await this.requireOwned(agentId, peerId);
-    const cardUrl = await this.cards.cardUrlFor(row.peerAgentId);
+    const external = row.origin === PeerOrigins.External;
+    const cardUrl = external
+      ? row.cardUrl
+      : await this.cards.cardUrlFor(row.peerAgentId!);
+    const credential = external
+      ? (row.outboundToken ?? undefined)
+      : (row.token ?? undefined);
 
     try {
-      const card = await this.client.fetchCard(cardUrl, row.token);
+      const card = await this.client.fetchCard(cardUrl, credential);
       const updated = await this.peers.updateSnapshot(row.id, {
         cardSnapshot: card,
         cardUrl,
@@ -139,6 +231,19 @@ export class PeerService {
     } catch (err) {
       throw this.cardUnreachable(err, row.cardSnapshot?.name ?? 'the peer');
     }
+  }
+
+  /** Whether the running pod has loaded the current peer set (CLEAN-95). */
+  async peersState(agentId: string): Promise<IPeersState> {
+    const [rows, served] = await Promise.all([
+      this.peers.listByAgent(agentId),
+      this.peers.readPeersServed(agentId),
+    ]);
+    return {
+      armed:
+        served !== null && served.hash === hashPeerIds(rows.map((r) => r.id)),
+      servedAt: served?.servedAt ?? null,
+    };
   }
 
   /** Deleting the row is what revokes the credential — there is no other copy. */
@@ -173,6 +278,55 @@ export class PeerService {
     );
   }
 
+  /**
+   * Accepts both address forms an operator may paste — the agent base URL or
+   * its `…/.well-known/agent-card.json` — and returns the card URL, which is
+   * the identity external dedup runs on (same shape internal rows store).
+   */
+  private canonicalCardUrl(rawUrl: string): string {
+    let url: URL;
+    try {
+      url = new URL(rawUrl.trim());
+    } catch {
+      throw this.invalidUrl('not an absolute URL');
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw this.invalidUrl('only http(s) addresses are supported');
+    }
+    url.hash = '';
+    url.search = '';
+    let path = url.pathname.replace(/\/+$/, '');
+    if (!path.endsWith(`/${A2A_CARD_PATH}`)) {
+      path = `${path}/${A2A_CARD_PATH}`;
+    }
+    url.pathname = path;
+    return url.toString();
+  }
+
+  private invalidUrl(detail: string): BadRequestException {
+    return new BadRequestException({
+      code: PeerErrorCodes.UrlInvalid,
+      message: `This does not look like an A2A agent address: ${detail}`,
+    });
+  }
+
+  /** Import-time read failures: 400 for "reached it, not a card", 502 for
+   *  "could not reach it" — the operator fixes different things for each. */
+  private importUnreadable(err: unknown, cardUrl: string): Error {
+    const detail = err instanceof Error ? err.message : String(err);
+    this.logger.warn(`External card read failed at ${cardUrl}: ${detail}`);
+    if (err instanceof PeerCardUnreachableError && err.kind === 'invalid') {
+      return new BadRequestException({
+        code: PeerErrorCodes.UrlInvalid,
+        message: detail,
+      });
+    }
+    return new BadGatewayException({
+      code: PeerErrorCodes.UrlUnreachable,
+      message: detail,
+    });
+  }
+
   private cardUnreachable(err: unknown, peerName: string): BadGatewayException {
     const detail =
       err instanceof PeerCardUnreachableError
@@ -193,11 +347,30 @@ export class PeerService {
    * credential that has left the building.
    */
   private async toView(row: IAgentPeerData): Promise<IAgentPeerView> {
-    const peerAgent = await this.agents.findById(row.peerAgentId);
+    if (row.origin === PeerOrigins.External) {
+      // No live status is knowable for a foreign agent; existence was proven
+      // by the card read, so the row never shows as "gone".
+      return {
+        id: row.id,
+        agentId: row.agentId,
+        peerAgentId: null,
+        origin: row.origin,
+        peerName: row.cardSnapshot?.name ?? 'External agent',
+        peerStatus: EXTERNAL_PEER_STATUS,
+        peerExists: true,
+        card: row.cardSnapshot,
+        cardUrl: row.cardUrl,
+        cardReadAt: row.cardReadAt,
+        createdAt: row.createdAt,
+      };
+    }
+
+    const peerAgent = await this.agents.findById(row.peerAgentId!);
     return {
       id: row.id,
       agentId: row.agentId,
       peerAgentId: row.peerAgentId,
+      origin: row.origin,
       peerName: peerAgent?.name ?? row.cardSnapshot?.name ?? 'Unknown agent',
       peerStatus: peerAgent?.status ?? 'unknown',
       peerExists: Boolean(peerAgent),

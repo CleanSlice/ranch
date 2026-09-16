@@ -9,7 +9,11 @@ import { IPeerGateway } from './domain/peer.gateway';
 import { DelegationService } from './domain/delegation.service';
 import { A2aServerService } from './domain/a2a.server.service';
 import { causeText } from './domain/delegationStep';
-import { DelegationStatuses, type IAgentPeerData } from './domain/peer.types';
+import {
+  DelegationStatuses,
+  hashPeerIds,
+  type IAgentPeerData,
+} from './domain/peer.types';
 
 interface ToolResult {
   content: { type: 'text'; text: string }[];
@@ -36,12 +40,17 @@ const BASE_DESCRIPTION =
   'Ask one of your connected peer agents to do a task you cannot do yourself, ' +
   'then use their reply in your answer and say it came from them. Call this ' +
   "when the user asks about something a peer's skills cover and your own " +
-  'tools do not. Do NOT call it for anything you can do yourself — a peer is ' +
-  'a colleague, not a first resort. The peer does not see this conversation, ' +
-  'so send it a self-contained task in plain text. If several independent ' +
-  'questions go to different peers, call this tool once for each in the same ' +
-  'turn. Give a one-line `reason` naming the skill that made you pick that ' +
-  'peer: it is shown to the person watching.';
+  'tools do not. Before you answer that you do not know, cannot help, or ' +
+  'lack a tool: check your peers below. If any peer’s description or ' +
+  'skills plausibly covers the question, call this tool first — «I ' +
+  'don’t know» without having asked a matching peer is a wrong ' +
+  'answer. When the user names a peer or asks about a peer’s own data, ' +
+  'always ask that peer. Do NOT call it for anything you can do yourself ' +
+  '— a peer is a colleague, not a first resort. The peer does not see ' +
+  'this conversation, so send it a self-contained task in plain text. If ' +
+  'several independent questions go to different peers, call this tool once ' +
+  'for each in the same turn. Give a one-line `reason` naming the skill that ' +
+  'made you pick that peer: it is shown to the person watching.';
 
 const NO_PEERS_DESCRIPTION =
   'Ask one of your connected peer agents to do a task you cannot do yourself. ' +
@@ -93,6 +102,25 @@ export class AskAgentTool
     private readonly a2aServer: A2aServerService,
   ) {}
 
+  /** Best-effort serve-state write; the tool list must survive its failure. */
+  private async recordServed(
+    agentId: string,
+    connections: { id: string }[],
+  ): Promise<void> {
+    try {
+      await this.peers.recordPeersServed(
+        agentId,
+        hashPeerIds(connections.map((c) => c.id)),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not record peers-served state for agent=${agentId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
   /**
    * An agent with no peers must not see this tool at all. A description saying
    * "you have none" would still be an advertisement for colleagues that do not
@@ -102,6 +130,10 @@ export class AskAgentTool
     const agentId = extractAgentId(httpRequest);
     if (!agentId) return false;
     const connections = await this.peers.listByAgent(agentId);
+    // This IS the moment the running pod learns its peer set — record it,
+    // even when the set is empty, so the console can say "armed" honestly
+    // (CLEAN-95). Best-effort: an indicator must never break a tools/list.
+    await this.recordServed(agentId, connections);
     return connections.length > 0;
   }
 
@@ -110,6 +142,7 @@ export class AskAgentTool
     if (!agentId) return null;
 
     const connections = await this.peers.listByAgent(agentId);
+    await this.recordServed(agentId, connections);
     if (connections.length === 0) return null;
 
     return [
@@ -193,13 +226,15 @@ export class AskAgentTool
  */
 function describePeer(connection: IAgentPeerData): string {
   const card = connection.cardSnapshot;
-  const name = card?.name ?? connection.peerAgentId;
+  const name = card?.name ?? connection.peerAgentId ?? connection.id;
   const description = card?.description ?? '';
   const skills = (card?.skills ?? [])
     .map((s) => `${s.name} (${s.description})`)
     .join('; ');
 
-  const parts = [`- "${name}" (peer: ${connection.peerAgentId})`];
+  // External peers have no agent id here; the connection id names them just
+  // as reliably — matchPeer resolves both (CLEAN-95).
+  const parts = [`- "${name}" (peer: ${connection.peerAgentId ?? connection.id})`];
   if (description) parts.push(` — ${description}`);
   if (skills) parts.push(` Skills: ${skills}`);
   return parts.join('');

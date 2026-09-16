@@ -4,3 +4,4 @@ export * from './agentPeerCandidate.dto';
 export * from './connectPeer.dto';
 export * from './agentDelegation.dto';
 export * from './listDelegations.query.dto';
+export * from './peersState.dto';

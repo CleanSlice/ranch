@@ -3,6 +3,7 @@ import { A2aTaskStates, type IA2aAgentCard, type IA2aTask } from './a2a.types';
 import {
   DelegationError,
   DelegationErrorCodes,
+  PeerOrigins,
   type IAgentPeerData,
 } from './peer.types';
 import type { IPeerGateway } from './peer.gateway';
@@ -43,7 +44,9 @@ const connection = (
   id: 'peer-1',
   agentId: 'a',
   peerAgentId: 'b',
+  origin: PeerOrigins.Internal,
   token: 'ap_' + 'x'.repeat(43),
+  outboundToken: null,
   cardSnapshot: card('Support Bot', [
     {
       id: 'knowledge:9a',

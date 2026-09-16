@@ -46,6 +46,11 @@ model Agent {
   allowedOrigins  String[]       @default([])
   knowledgeIds    String[]       @default([])
   isAdmin         Boolean        @default(false)
+  // When the running pod last received this agent's peer list over MCP, and
+  // the hash of the peer row ids it received. armed = stored hash equals the
+  // hash of the current peer set; recorded by AskAgentTool (CLEAN-95).
+  peersServedAt   DateTime?
+  peersServedHash String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

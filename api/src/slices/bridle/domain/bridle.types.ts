@@ -134,7 +134,8 @@ export interface IBridleOutgoingEvent {
  */
 export interface IBridleDelegationStep {
   delegationId: string;
-  peerAgentId: string;
+  /** Null when the peer is external — it has no agent id here (CLEAN-95). */
+  peerAgentId: string | null;
   peerName: string;
   /** The card skills that made this peer the choice. */
   matchedSkills: { id: string; name: string }[];

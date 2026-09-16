@@ -1,5 +1,6 @@
 import { PeerGateway } from './peer.gateway';
 import { PeerMapper } from './peer.mapper';
+import { PeerOrigins } from '../domain';
 import type { IA2aAgentCard } from '../domain';
 
 // In-memory Prisma stub in the shape of shareLink.gateway.spec's. It enforces
@@ -124,6 +125,7 @@ function makeGateway() {
     gateway.create({
       agentId,
       peerAgentId,
+      origin: PeerOrigins.Internal,
       token,
       cardSnapshot: card(peerAgentId),
       cardUrl: `https://api.test/a2a/agents/${peerAgentId}/.well-known/agent-card.json`,

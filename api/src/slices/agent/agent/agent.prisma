@@ -5,6 +5,8 @@ import { PaddockScenario } from "../../paddock/scenario/scenario"
 import { PaddockEvaluation } from "../../paddock/evaluation/evaluation"
 import { ChatSession } from "../../chat/chat"
 import { AgentShareLink } from "../shareLink/shareLink"
+import { AgentPeer } from "../peer/peer"
+import { AgentDelegation } from "../peer/delegation"
 
 model Agent {
   id              String         @id @default(uuid())
@@ -53,4 +55,9 @@ model Agent {
   chatSessions       ChatSession[]
   // At most one public share link per agent (CLEAN-66).
   shareLink          AgentShareLink?
+  // Agents this one may delegate to, and the ones that may delegate to it
+  // (CLEAN-74). Directed: the two lists are unrelated.
+  peers              AgentPeer[]         @relation("AgentPeerCaller")
+  peerOf             AgentPeer[]         @relation("AgentPeerTarget")
+  delegations        AgentDelegation[]
 }

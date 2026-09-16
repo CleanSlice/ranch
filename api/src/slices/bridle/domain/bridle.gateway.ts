@@ -7,6 +7,7 @@ import type {
   IBridleDebugEvent,
   BridlePart,
   IBridleAttachment,
+  IActiveTurn,
 } from './bridle.types';
 
 export interface ISyncAgentResult {
@@ -119,6 +120,19 @@ export abstract class IBridleGateway {
    * the token is already persisted as a secret, so a fresh boot picks it up.
    */
   abstract notifyMcpConnected(agentId: string, serverName: string): void;
+  /**
+   * The turn this agent is in the middle of, for the client that is watching
+   * it — or null when nothing is known. Lets API-side code (CLEAN-74) add a
+   * step to a timeline the runtime opened, instead of inventing a turn of its
+   * own: a step under an unknown turnId would close the runtime's block in
+   * every console that renders thinking.
+   *
+   * Derived purely from the thinking events already passing through the hub,
+   * so it costs nothing and stays correct without the runtime knowing. With
+   * two people chatting to one agent at once, the most recent turn wins —
+   * a tool call carries no clue which conversation it belongs to.
+   */
+  abstract findActiveTurn(agentId: string): IActiveTurn | null;
   /**
    * Tell the running agent to drop its local copy of a session (file +
    * in-memory cache) for the given bridle channel. Sent after the transcript

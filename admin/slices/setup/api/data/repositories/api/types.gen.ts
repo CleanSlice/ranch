@@ -151,7 +151,7 @@ export type CreateMcpServerDto = {
   };
   url: string;
   transport?: "streamableHttp" | "sse";
-  authType?: "none" | "bearer" | "header";
+  authType?: "none" | "bearer" | "header" | "oauth";
   authValue?: {
     [key: string]: unknown;
   };
@@ -165,7 +165,7 @@ export type UpdateMcpServerDto = {
   };
   url?: string;
   transport?: "streamableHttp" | "sse";
-  authType?: "none" | "bearer" | "header";
+  authType?: "none" | "bearer" | "header" | "oauth";
   authValue?: {
     [key: string]: unknown;
   };
@@ -592,6 +592,10 @@ export type AgentEnvVarDto = {
 
 export type AgentMcpDto = {
   /**
+   * MCP server id. For `oauth` servers the runtime keys the per-agent token secret by this id (`mcpOauth:<id>`).
+   */
+  id: string;
+  /**
    * Unique MCP server name (key in the runtime registry).
    */
   name: string;
@@ -604,9 +608,9 @@ export type AgentMcpDto = {
    */
   url: string;
   /**
-   * Auth scheme for the connection.
+   * Auth scheme. For `oauth` the runtime holds no static credential — it refreshes its own bearer from the per-agent token secret keyed by `id`.
    */
-  authType: "none" | "bearer" | "header";
+  authType: "none" | "bearer" | "header" | "oauth";
   /**
    * Auth credential. For `bearer`: raw token (runtime adds the `Bearer ` prefix). For `header`: literal `Header-Name: value` line. `null` when authType is `none`.
    */
@@ -615,6 +619,25 @@ export type AgentMcpDto = {
    * Always `true` in this list — disabled servers are filtered server-side. Kept for forward compatibility.
    */
   enabled: boolean;
+};
+
+export type AgentMcpStatusDto = {
+  /**
+   * The pod predates a change to its MCP configuration and needs a restart to pick it up.
+   */
+  restartRequired: boolean;
+  /**
+   * Most recent MCP configuration change the pod missed. Null when in sync.
+   */
+  configChangedAt: string | null;
+  /**
+   * When the current pod started; null when no pod is running, in which case there is nothing to restart.
+   */
+  podStartedAt: string | null;
+  /**
+   * Names of the servers that changed after the pod started.
+   */
+  changedServers: Array<string>;
 };
 
 export type AgentResourcesDto = {
@@ -1347,6 +1370,163 @@ export type UpdatePaddockScenarioDto = {
   setup?: CreatePaddockScenarioSetupDto | null;
 };
 
+export type AgentInterfaceDto = {
+  /**
+   * Where another agent sends tasks for this one.
+   */
+  url: string;
+  /**
+   * Transport binding.
+   */
+  protocolBinding: string;
+  /**
+   * A2A protocol version.
+   */
+  protocolVersion: string;
+};
+
+export type AgentCapabilitiesDto = {
+  /**
+   * Whether the agent streams partial answers. Ranch: false.
+   */
+  streaming?: boolean;
+  /**
+   * Whether the agent can call back when a task finishes. Ranch: false.
+   */
+  pushNotifications?: boolean;
+};
+
+export type AgentSkillDto = {
+  /**
+   * Stable id of the skill. Prefixed by where it came from: `skill:` for a template skill, `knowledge:` for a bound knowledge base.
+   */
+  id: string;
+  /**
+   * Short name.
+   */
+  name: string;
+  /**
+   * What this lets the agent do, written so another agent can decide when to ask.
+   */
+  description: string;
+  /**
+   * Origin tags: `skill` or `knowledge`.
+   */
+  tags: Array<string>;
+};
+
+export type AgentCardDto = {
+  name: string;
+  /**
+   * The agent's own description, falling back to its template's.
+   */
+  description: string;
+  /**
+   * The template's version.
+   */
+  version: string;
+  supportedInterfaces: Array<AgentInterfaceDto>;
+  capabilities: AgentCapabilitiesDto;
+  defaultInputModes: Array<string>;
+  defaultOutputModes: Array<string>;
+  /**
+   * One entry per template skill and per bound knowledge base. May be empty: an agent with nothing to advertise still has a valid card.
+   */
+  skills: Array<AgentSkillDto>;
+};
+
+export type AgentPeerDto = {
+  /**
+   * Id of the connection, not of either agent.
+   */
+  id: string;
+  /**
+   * The agent that holds the card (the caller).
+   */
+  agentId: string;
+  /**
+   * The agent whose card is held (the peer).
+   */
+  peerAgentId: string;
+  /**
+   * The peer's current name. Falls back to the name on the stored card when the agent itself is gone.
+   */
+  peerName: string;
+  /**
+   * The peer's live agent status. 'running' means a delegation can succeed right now; anything else means it would fail fast.
+   */
+  peerStatus: string;
+  /**
+   * False when the peer agent no longer exists in this installation.
+   */
+  peerExists: boolean;
+  /**
+   * The card as read at connect time or at the last refresh — NOT a live read. The delegating agent reasons from this snapshot, so a peer editing its description mid-turn cannot change behaviour until someone presses Refresh.
+   */
+  card: AgentCardDto;
+  /**
+   * Where the snapshot was read from.
+   */
+  cardUrl: string;
+  /**
+   * When the snapshot was taken.
+   */
+  cardReadAt: string;
+  createdAt: string;
+};
+
+export type AgentPeerCandidateDto = {
+  id: string;
+  name: string;
+  /**
+   * Live agent status.
+   */
+  status: string;
+  /**
+   * True when this agent is already a peer — shown as connected rather than offered again.
+   */
+  connected: boolean;
+};
+
+export type ConnectPeerDto = {
+  /**
+   * The agent to connect. Must be another agent of this installation: foreign card URLs are not accepted in this feature, and an agent cannot be its own peer.
+   */
+  peerAgentId: string;
+};
+
+export type AgentDelegationDto = {
+  id: string;
+  /**
+   * The peer that was asked.
+   */
+  peerAgentId: string;
+  peerName: string;
+  /**
+   * The self-contained task the peer received.
+   */
+  task: string;
+  /**
+   * The calling model's one-line reason for choosing this peer.
+   */
+  reason: string;
+  /**
+   * waiting | answered | failed | rejected.
+   */
+  status: string;
+  /**
+   * Why it did not produce an answer: PEER_NOT_RUNNING, PEER_TIMEOUT, PEER_REJECTED_LOOP, PEER_REJECTED_DEPTH, PEER_UNAUTHORIZED, PEER_UNREACHABLE or PEER_ERROR. Null while waiting and on success.
+   */
+  errorCode: string | null;
+  /**
+   * The first part of the reply, or the cause in product wording.
+   */
+  excerpt: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+};
+
 export type SecretEntryDto = {
   name: string;
   value: string;
@@ -1393,6 +1573,24 @@ export type ReportUsageDto = {
   byModel: {
     [key: string]: unknown;
   };
+};
+
+export type StartMcpOauthDto = {
+  /**
+   * Agent that will own the connection. The stored refresh token is scoped to this agent.
+   */
+  agentId: string;
+};
+
+export type StartMcpOauthResultDto = {
+  /**
+   * Authorization URL to hand the user. They open it, log in at the provider, and the callback stores the token.
+   */
+  authorizeUrl: string;
+};
+
+export type McpOauthStatusDto = {
+  connected: boolean;
 };
 
 export type RunPaddockJudgeOverrideDto = {
@@ -2705,6 +2903,22 @@ export type GetAgentMcpsResponses = {
 
 export type GetAgentMcpsResponse =
   GetAgentMcpsResponses[keyof GetAgentMcpsResponses];
+
+export type GetAgentMcpStatusData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/mcp-status";
+};
+
+export type GetAgentMcpStatusResponses = {
+  200: AgentMcpStatusDto;
+};
+
+export type GetAgentMcpStatusResponse =
+  GetAgentMcpStatusResponses[keyof GetAgentMcpStatusResponses];
 
 export type AgentControllerFindAdminData = {
   body?: never;
@@ -4141,6 +4355,217 @@ export type PaddockScenarioControllerGenerateResponses = {
   201: unknown;
 };
 
+export type GetAgentCardData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/card";
+};
+
+export type GetAgentCardErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent or connection with this id.
+   */
+  404: unknown;
+};
+
+export type GetAgentCardResponses = {
+  200: AgentCardDto;
+};
+
+export type GetAgentCardResponse =
+  GetAgentCardResponses[keyof GetAgentCardResponses];
+
+export type ListAgentPeersData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/peers";
+};
+
+export type ListAgentPeersErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent or connection with this id.
+   */
+  404: unknown;
+};
+
+export type ListAgentPeersResponses = {
+  200: Array<AgentPeerDto>;
+};
+
+export type ListAgentPeersResponse =
+  ListAgentPeersResponses[keyof ListAgentPeersResponses];
+
+export type ConnectAgentPeerData = {
+  body: ConnectPeerDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/peers";
+};
+
+export type ConnectAgentPeerErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent or connection with this id.
+   */
+  404: unknown;
+  /**
+   * Already a peer of this agent.
+   */
+  409: unknown;
+  /**
+   * The peer's card could not be read; nothing was saved.
+   */
+  502: unknown;
+};
+
+export type ConnectAgentPeerResponses = {
+  200: AgentPeerDto;
+};
+
+export type ConnectAgentPeerResponse =
+  ConnectAgentPeerResponses[keyof ConnectAgentPeerResponses];
+
+export type ListAgentPeerCandidatesData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/peers/candidates";
+};
+
+export type ListAgentPeerCandidatesErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent or connection with this id.
+   */
+  404: unknown;
+};
+
+export type ListAgentPeerCandidatesResponses = {
+  200: Array<AgentPeerCandidateDto>;
+};
+
+export type ListAgentPeerCandidatesResponse =
+  ListAgentPeerCandidatesResponses[keyof ListAgentPeerCandidatesResponses];
+
+export type RefreshAgentPeerData = {
+  body?: never;
+  path: {
+    agentId: string;
+    peerId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/peers/{peerId}/refresh";
+};
+
+export type RefreshAgentPeerErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent or connection with this id.
+   */
+  404: unknown;
+  /**
+   * The peer's card could not be read; the old snapshot is kept.
+   */
+  502: unknown;
+};
+
+export type RefreshAgentPeerResponses = {
+  200: AgentPeerDto;
+};
+
+export type RefreshAgentPeerResponse =
+  RefreshAgentPeerResponses[keyof RefreshAgentPeerResponses];
+
+export type RemoveAgentPeerData = {
+  body?: never;
+  path: {
+    agentId: string;
+    peerId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/peers/{peerId}";
+};
+
+export type RemoveAgentPeerErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent or connection with this id.
+   */
+  404: unknown;
+};
+
+export type RemoveAgentPeerResponses = {
+  /**
+   * Disconnected.
+   */
+  204: void;
+};
+
+export type RemoveAgentPeerResponse =
+  RemoveAgentPeerResponses[keyof RemoveAgentPeerResponses];
+
+export type ListAgentDelegationsData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: {
+    /**
+     * How many recent delegations to return.
+     */
+    limit?: number;
+  };
+  url: "/agents/{agentId}/delegations";
+};
+
+export type ListAgentDelegationsErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent or connection with this id.
+   */
+  404: unknown;
+};
+
+export type ListAgentDelegationsResponses = {
+  200: Array<AgentDelegationDto>;
+};
+
+export type ListAgentDelegationsResponse =
+  ListAgentDelegationsResponses[keyof ListAgentDelegationsResponses];
+
 export type SecretControllerDeleteData = {
   body: DeleteSecretDto;
   path: {
@@ -4319,6 +4744,62 @@ export type UpgradeControllerRunData = {
 export type UpgradeControllerRunResponses = {
   201: unknown;
 };
+
+export type StartMcpOauthData = {
+  body: StartMcpOauthDto;
+  headers: {
+    "x-bridle-api-key": string;
+  };
+  path: {
+    serverId: string;
+  };
+  query?: never;
+  url: "/mcp-servers/{serverId}/oauth/start";
+};
+
+export type StartMcpOauthResponses = {
+  200: StartMcpOauthResultDto;
+};
+
+export type StartMcpOauthResponse =
+  StartMcpOauthResponses[keyof StartMcpOauthResponses];
+
+export type McpOauthCallbackData = {
+  body?: never;
+  path: {
+    serverId: string;
+  };
+  query: {
+    code: string;
+    state: string;
+  };
+  url: "/mcp-servers/{serverId}/oauth/callback";
+};
+
+export type McpOauthCallbackResponses = {
+  200: unknown;
+};
+
+export type McpOauthStatusData = {
+  body?: never;
+  headers: {
+    "x-bridle-api-key": string;
+  };
+  path: {
+    serverId: string;
+  };
+  query: {
+    agentId: string;
+  };
+  url: "/mcp-servers/{serverId}/oauth/status";
+};
+
+export type McpOauthStatusResponses = {
+  200: McpOauthStatusDto;
+};
+
+export type McpOauthStatusResponse =
+  McpOauthStatusResponses[keyof McpOauthStatusResponses];
 
 export type PaddockEvaluationControllerListData = {
   body?: never;

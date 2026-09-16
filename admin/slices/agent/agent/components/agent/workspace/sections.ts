@@ -9,7 +9,12 @@
  */
 
 /** Tabs that can say how much they hold before you open them. */
-export type SectionCountKey = 'knowledge' | 'files' | 'secrets' | 'channels';
+export type SectionCountKey =
+  | 'knowledge'
+  | 'peers'
+  | 'files'
+  | 'secrets'
+  | 'channels';
 
 /** `null` = not known yet, or the source failed. Distinct from `0`. */
 export type SectionCounts = Record<SectionCountKey, number | null>;
@@ -34,6 +39,13 @@ export const AGENT_TABS = [
     title: 'Knowledge',
     desc: 'Knowledge bases the agent can query.',
     countKey: 'knowledge',
+    primary: true,
+  },
+  {
+    value: 'peers',
+    title: 'Peers',
+    desc: 'Other agents this one can delegate to.',
+    countKey: 'peers',
     primary: true,
   },
   {

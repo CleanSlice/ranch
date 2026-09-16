@@ -12,6 +12,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { isDynamicallyDescribed } from '../../interfaces/dynamic-description.interface';
+import { isConditionallyListed } from '../../interfaces/conditional-listing.interface';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -32,19 +33,26 @@ export class McpToolsHandler extends McpHandlerBase {
       const contextId = ContextIdFactory.getByRequest(httpRequest);
       this.moduleRef.registerRequestByContextId(httpRequest, contextId);
 
-      const tools = await Promise.all(
+      const listed = await Promise.all(
         this.registry.getTools().map(async (tool) => {
           let description = tool.metadata.description;
           // Tools may opt into per-caller descriptions by implementing
-          // IDynamicallyDescribedTool. Failure to resolve or describe falls
-          // back to the static decorator description so a broken tool can't
-          // hide the rest of the list.
+          // IDynamicallyDescribedTool, and out of the list entirely by
+          // implementing IConditionallyListedTool. Failure to resolve,
+          // describe or decide falls back to listing the tool with its
+          // static decorator description, so a broken tool can't hide
+          // itself or the rest of the list.
           try {
             const instance = await this.moduleRef.resolve(
               tool.providerClass,
               contextId,
               { strict: false },
             );
+            if (isConditionallyListed(instance)) {
+              const listedForCaller =
+                await instance.isListedForRequest(httpRequest);
+              if (!listedForCaller) return null;
+            }
             if (isDynamicallyDescribed(instance)) {
               const dyn = await instance.describeForRequest(httpRequest);
               if (typeof dyn === 'string' && dyn.length > 0) {
@@ -53,7 +61,7 @@ export class McpToolsHandler extends McpHandlerBase {
             }
           } catch (e) {
             this.logger.debug(
-              `describeForRequest failed for ${tool.metadata.name}: ${
+              `tools/list hooks failed for ${tool.metadata.name}: ${
                 e instanceof Error ? e.message : String(e)
               }`,
             );
@@ -69,7 +77,7 @@ export class McpToolsHandler extends McpHandlerBase {
       );
 
       return {
-        tools,
+        tools: listed.filter((tool) => tool !== null),
       };
     });
 
@@ -102,6 +110,26 @@ export class McpToolsHandler extends McpHandlerBase {
               ErrorCode.MethodNotFound,
               `Unknown tool: ${request.params.name}`,
             );
+          }
+
+          // A pod lists tools once at connect and caches them, so a caller
+          // can hold a name that stopped applying to it since. Refuse here
+          // rather than run it: for ask_agent that is the difference between
+          // "you have no peers" and delegating through a removed connection.
+          if (isConditionallyListed(toolInstance)) {
+            const listedForCaller =
+              await toolInstance.isListedForRequest(httpRequest);
+            if (!listedForCaller) {
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: `Tool "${request.params.name}" is not available to this caller.`,
+                  },
+                ],
+                isError: true,
+              };
+            }
           }
 
           const result = await toolInstance[toolInfo.methodName].call(

@@ -98,6 +98,8 @@ import type {
   GetAgentEnvResponse,
   GetAgentMcpsData,
   GetAgentMcpsResponse,
+  GetAgentMcpStatusData,
+  GetAgentMcpStatusResponse,
   AgentControllerFindAdminData,
   AgentControllerDemoteAdminData,
   AgentControllerPromoteAdminData,
@@ -210,6 +212,20 @@ import type {
   PaddockScenarioControllerFindByIdData,
   PaddockScenarioControllerUpdateData,
   PaddockScenarioControllerGenerateData,
+  GetAgentCardData,
+  GetAgentCardResponse,
+  ListAgentPeersData,
+  ListAgentPeersResponse,
+  ConnectAgentPeerData,
+  ConnectAgentPeerResponse,
+  ListAgentPeerCandidatesData,
+  ListAgentPeerCandidatesResponse,
+  RefreshAgentPeerData,
+  RefreshAgentPeerResponse,
+  RemoveAgentPeerData,
+  RemoveAgentPeerResponse,
+  ListAgentDelegationsData,
+  ListAgentDelegationsResponse,
   SecretControllerDeleteData,
   SecretControllerDeleteResponse,
   SecretControllerListData,
@@ -228,6 +244,11 @@ import type {
   RancherControllerEnsureTemplateData,
   UpgradeControllerStatusData,
   UpgradeControllerRunData,
+  StartMcpOauthData,
+  StartMcpOauthResponse,
+  McpOauthCallbackData,
+  McpOauthStatusData,
+  McpOauthStatusResponse,
   PaddockEvaluationControllerListData,
   PaddockEvaluationControllerStartData,
   PaddockEvaluationControllerGetData,
@@ -1627,6 +1648,22 @@ export class AgentsService {
   }
 
   /**
+   * Whether the running pod still carries the MCP configuration it booted with. An agent's servers are baked into pod env at creation, so a change made afterwards only reaches it on a restart — and until now nothing reported the gap: an unreachable server logs `connect failed`, but one the pod was never told about logs nothing at all.
+   */
+  public static getAgentMcpStatus<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentMcpStatusData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentMcpStatusResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/mcp-status",
+      ...options,
+    });
+  }
+
+  /**
    * Get the agent currently flagged as Ranch admin (or null).
    */
   public static agentControllerFindAdmin<ThrowOnError extends boolean = false>(
@@ -2907,6 +2944,124 @@ export class PaddockScenariosService {
   }
 }
 
+export class PeersService {
+  /**
+   * This agent's own A2A card, exactly as another agent would read it. Derived on every request from the name, description, template skills and bound knowledge bases — there is nothing to regenerate.
+   */
+  public static getAgentCard<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentCardData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentCardResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/card",
+      ...options,
+    });
+  }
+
+  /**
+   * Agents this one can delegate to, with the card snapshot taken when each was connected or last refreshed. Directed: this never lists the agents that can delegate TO this one.
+   */
+  public static listAgentPeers<ThrowOnError extends boolean = false>(
+    options: Options<ListAgentPeersData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      ListAgentPeersResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/peers",
+      ...options,
+    });
+  }
+
+  /**
+   * Connect another agent as a peer: mints a credential for this pair, reads the peer card with it, and stores the snapshot. Nothing is kept if the card cannot be read, so a saved connection always works. The agent picks the tool up on its next restart.
+   */
+  public static connectAgentPeer<ThrowOnError extends boolean = false>(
+    options: Options<ConnectAgentPeerData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ConnectAgentPeerResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/peers",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Every other agent of this installation, each marked with whether it is already a peer. Excludes the agent itself.
+   */
+  public static listAgentPeerCandidates<ThrowOnError extends boolean = false>(
+    options: Options<ListAgentPeerCandidatesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      ListAgentPeerCandidatesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/peers/candidates",
+      ...options,
+    });
+  }
+
+  /**
+   * Re-read the peer's card and replace the stored snapshot. A failed read keeps the old snapshot: stale is better than nothing.
+   */
+  public static refreshAgentPeer<ThrowOnError extends boolean = false>(
+    options: Options<RefreshAgentPeerData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      RefreshAgentPeerResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/peers/{peerId}/refresh",
+      ...options,
+    });
+  }
+
+  /**
+   * Disconnect a peer. This revokes the credential issued for the pair — there is no other copy of it — so the connection cannot be used again.
+   */
+  public static removeAgentPeer<ThrowOnError extends boolean = false>(
+    options: Options<RemoveAgentPeerData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      RemoveAgentPeerResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/peers/{peerId}",
+      ...options,
+    });
+  }
+
+  /**
+   * Recent tasks this agent handed to its peers, newest first: who was asked, why, how long it took and how it ended.
+   */
+  public static listAgentDelegations<ThrowOnError extends boolean = false>(
+    options: Options<ListAgentDelegationsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      ListAgentDelegationsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/delegations",
+      ...options,
+    });
+  }
+}
+
 export class SecretsService {
   /**
    * Delete a secret for an agent. No-op if the key does not exist. Returns the full secret list.
@@ -3136,6 +3291,60 @@ export class UpgradeService {
       ThrowOnError
     >({
       url: "/upgrade",
+      ...options,
+    });
+  }
+}
+
+export class McpOauthService {
+  /**
+   * Begin an OAuth connect for an agent. Returns the authorization URL the agent sends the user in chat.
+   */
+  public static startMcpOauth<ThrowOnError extends boolean = false>(
+    options: Options<StartMcpOauthData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      StartMcpOauthResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/{serverId}/oauth/start",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * OAuth redirect target. Exchanges the code, stores the per-agent token, wakes the agent, and shows a return-to-chat page.
+   */
+  public static mcpOauthCallback<ThrowOnError extends boolean = false>(
+    options: Options<McpOauthCallbackData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/{serverId}/oauth/callback",
+      ...options,
+    });
+  }
+
+  /**
+   * Whether the given agent already has a usable token for this server.
+   */
+  public static mcpOauthStatus<ThrowOnError extends boolean = false>(
+    options: Options<McpOauthStatusData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      McpOauthStatusResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/{serverId}/oauth/status",
       ...options,
     });
   }

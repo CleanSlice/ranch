@@ -347,7 +347,7 @@ export const CreateMcpServerDtoSchema = {
     },
     authType: {
       type: "string",
-      enum: ["none", "bearer", "header"],
+      enum: ["none", "bearer", "header", "oauth"],
     },
     authValue: {
       type: "object",
@@ -377,7 +377,7 @@ export const UpdateMcpServerDtoSchema = {
     },
     authType: {
       type: "string",
-      enum: ["none", "bearer", "header"],
+      enum: ["none", "bearer", "header", "oauth"],
     },
     authValue: {
       type: "object",
@@ -1411,6 +1411,11 @@ export const AgentEnvVarDtoSchema = {
 export const AgentMcpDtoSchema = {
   type: "object",
   properties: {
+    id: {
+      type: "string",
+      description:
+        "MCP server id. For `oauth` servers the runtime keys the per-agent token secret by this id (`mcpOauth:<id>`).",
+    },
     name: {
       type: "string",
       description: "Unique MCP server name (key in the runtime registry).",
@@ -1426,8 +1431,9 @@ export const AgentMcpDtoSchema = {
     },
     authType: {
       type: "string",
-      enum: ["none", "bearer", "header"],
-      description: "Auth scheme for the connection.",
+      enum: ["none", "bearer", "header", "oauth"],
+      description:
+        "Auth scheme. For `oauth` the runtime holds no static credential — it refreshes its own bearer from the per-agent token secret keyed by `id`.",
     },
     authValue: {
       type: "string",
@@ -1441,7 +1447,55 @@ export const AgentMcpDtoSchema = {
         "Always `true` in this list — disabled servers are filtered server-side. Kept for forward compatibility.",
     },
   },
-  required: ["name", "transport", "url", "authType", "authValue", "enabled"],
+  required: [
+    "id",
+    "name",
+    "transport",
+    "url",
+    "authType",
+    "authValue",
+    "enabled",
+  ],
+} as const;
+
+export const AgentMcpStatusDtoSchema = {
+  type: "object",
+  properties: {
+    restartRequired: {
+      type: "boolean",
+      description:
+        "The pod predates a change to its MCP configuration and needs a restart to pick it up.",
+      example: true,
+    },
+    configChangedAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "Most recent MCP configuration change the pod missed. Null when in sync.",
+      example: "2026-09-14T16:00:00.000Z",
+    },
+    podStartedAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the current pod started; null when no pod is running, in which case there is nothing to restart.",
+      example: "2026-09-14T10:33:00.000Z",
+    },
+    changedServers: {
+      description: "Names of the servers that changed after the pod started.",
+      example: ["Documents"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "restartRequired",
+    "configChangedAt",
+    "podStartedAt",
+    "changedServers",
+  ],
 } as const;
 
 export const AgentResourcesDtoSchema = {
@@ -2972,6 +3026,326 @@ export const UpdatePaddockScenarioDtoSchema = {
   },
 } as const;
 
+export const AgentInterfaceDtoSchema = {
+  type: "object",
+  properties: {
+    url: {
+      type: "string",
+      description: "Where another agent sends tasks for this one.",
+      example: "https://api.ranch.example/a2a/agents/6f1c…",
+    },
+    protocolBinding: {
+      type: "string",
+      description: "Transport binding.",
+      example: "JSONRPC",
+    },
+    protocolVersion: {
+      type: "string",
+      description: "A2A protocol version.",
+      example: "1.0",
+    },
+  },
+  required: ["url", "protocolBinding", "protocolVersion"],
+} as const;
+
+export const AgentCapabilitiesDtoSchema = {
+  type: "object",
+  properties: {
+    streaming: {
+      type: "boolean",
+      description: "Whether the agent streams partial answers. Ranch: false.",
+      example: false,
+    },
+    pushNotifications: {
+      type: "boolean",
+      description:
+        "Whether the agent can call back when a task finishes. Ranch: false.",
+      example: false,
+    },
+  },
+} as const;
+
+export const AgentSkillDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description:
+        "Stable id of the skill. Prefixed by where it came from: `skill:` for a template skill, `knowledge:` for a bound knowledge base.",
+      example: "knowledge:9a1f…",
+    },
+    name: {
+      type: "string",
+      description: "Short name.",
+      example: "Returns policy",
+    },
+    description: {
+      type: "string",
+      description:
+        "What this lets the agent do, written so another agent can decide when to ask.",
+      example: "Answers questions about «Returns policy»: 2026 policy PDF.",
+    },
+    tags: {
+      description: "Origin tags: `skill` or `knowledge`.",
+      example: ["knowledge"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["id", "name", "description", "tags"],
+} as const;
+
+export const AgentCardDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "Support Bot",
+    },
+    description: {
+      type: "string",
+      description:
+        "The agent's own description, falling back to its template's.",
+      example: "Answers customer questions about orders and returns.",
+    },
+    version: {
+      type: "string",
+      description: "The template's version.",
+      example: "1",
+    },
+    supportedInterfaces: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentInterfaceDto",
+      },
+    },
+    capabilities: {
+      $ref: "#/components/schemas/AgentCapabilitiesDto",
+    },
+    defaultInputModes: {
+      example: ["text/plain"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    defaultOutputModes: {
+      example: ["text/plain"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    skills: {
+      description:
+        "One entry per template skill and per bound knowledge base. May be empty: an agent with nothing to advertise still has a valid card.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentSkillDto",
+      },
+    },
+  },
+  required: [
+    "name",
+    "description",
+    "version",
+    "supportedInterfaces",
+    "capabilities",
+    "defaultInputModes",
+    "defaultOutputModes",
+    "skills",
+  ],
+} as const;
+
+export const AgentPeerDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description: "Id of the connection, not of either agent.",
+    },
+    agentId: {
+      type: "string",
+      description: "The agent that holds the card (the caller).",
+    },
+    peerAgentId: {
+      type: "string",
+      description: "The agent whose card is held (the peer).",
+    },
+    peerName: {
+      type: "string",
+      description:
+        "The peer's current name. Falls back to the name on the stored card when the agent itself is gone.",
+      example: "Support Bot",
+    },
+    peerStatus: {
+      type: "string",
+      description:
+        "The peer's live agent status. 'running' means a delegation can succeed right now; anything else means it would fail fast.",
+      example: "running",
+    },
+    peerExists: {
+      type: "boolean",
+      description:
+        "False when the peer agent no longer exists in this installation.",
+      example: true,
+    },
+    card: {
+      description:
+        "The card as read at connect time or at the last refresh — NOT a live read. The delegating agent reasons from this snapshot, so a peer editing its description mid-turn cannot change behaviour until someone presses Refresh.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentCardDto",
+        },
+      ],
+    },
+    cardUrl: {
+      type: "string",
+      description: "Where the snapshot was read from.",
+      example:
+        "https://api.ranch.example/a2a/agents/6f1c…/.well-known/agent-card.json",
+    },
+    cardReadAt: {
+      type: "string",
+      format: "date-time",
+      description: "When the snapshot was taken.",
+      example: "2026-09-14T10:00:00.000Z",
+    },
+    createdAt: {
+      type: "string",
+      format: "date-time",
+      example: "2026-09-14T10:00:00.000Z",
+    },
+  },
+  required: [
+    "id",
+    "agentId",
+    "peerAgentId",
+    "peerName",
+    "peerStatus",
+    "peerExists",
+    "card",
+    "cardUrl",
+    "cardReadAt",
+    "createdAt",
+  ],
+} as const;
+
+export const AgentPeerCandidateDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+      example: "Support Bot",
+    },
+    status: {
+      type: "string",
+      description: "Live agent status.",
+      example: "running",
+    },
+    connected: {
+      type: "boolean",
+      description:
+        "True when this agent is already a peer — shown as connected rather than offered again.",
+      example: false,
+    },
+  },
+  required: ["id", "name", "status", "connected"],
+} as const;
+
+export const ConnectPeerDtoSchema = {
+  type: "object",
+  properties: {
+    peerAgentId: {
+      type: "string",
+      description:
+        "The agent to connect. Must be another agent of this installation: foreign card URLs are not accepted in this feature, and an agent cannot be its own peer.",
+    },
+  },
+  required: ["peerAgentId"],
+} as const;
+
+export const AgentDelegationDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    peerAgentId: {
+      type: "string",
+      description: "The peer that was asked.",
+    },
+    peerName: {
+      type: "string",
+      example: "Support Bot",
+    },
+    task: {
+      type: "string",
+      description: "The self-contained task the peer received.",
+      example: "What is the return window for shoes?",
+    },
+    reason: {
+      type: "string",
+      description:
+        "The calling model's one-line reason for choosing this peer.",
+      example: "Support Bot holds the returns policy base",
+    },
+    status: {
+      type: "string",
+      description: "waiting | answered | failed | rejected.",
+      example: "answered",
+    },
+    errorCode: {
+      type: "string",
+      nullable: true,
+      description:
+        "Why it did not produce an answer: PEER_NOT_RUNNING, PEER_TIMEOUT, PEER_REJECTED_LOOP, PEER_REJECTED_DEPTH, PEER_UNAUTHORIZED, PEER_UNREACHABLE or PEER_ERROR. Null while waiting and on success.",
+      example: null,
+    },
+    excerpt: {
+      type: "string",
+      nullable: true,
+      description:
+        "The first part of the reply, or the cause in product wording.",
+      example: "Shoes can be returned within 30 days…",
+    },
+    startedAt: {
+      type: "string",
+      format: "date-time",
+      example: "2026-09-14T10:00:00.000Z",
+    },
+    finishedAt: {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+      example: "2026-09-14T10:00:03.120Z",
+    },
+    durationMs: {
+      type: "number",
+      nullable: true,
+      example: 3120,
+    },
+  },
+  required: [
+    "id",
+    "peerAgentId",
+    "peerName",
+    "task",
+    "reason",
+    "status",
+    "errorCode",
+    "excerpt",
+    "startedAt",
+    "finishedAt",
+    "durationMs",
+  ],
+} as const;
+
 export const SecretEntryDtoSchema = {
   type: "object",
   properties: {
@@ -3080,6 +3454,40 @@ export const ReportUsageDtoSchema = {
     },
   },
   required: ["date", "byModel"],
+} as const;
+
+export const StartMcpOauthDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+      description:
+        "Agent that will own the connection. The stored refresh token is scoped to this agent.",
+    },
+  },
+  required: ["agentId"],
+} as const;
+
+export const StartMcpOauthResultDtoSchema = {
+  type: "object",
+  properties: {
+    authorizeUrl: {
+      type: "string",
+      description:
+        "Authorization URL to hand the user. They open it, log in at the provider, and the callback stores the token.",
+    },
+  },
+  required: ["authorizeUrl"],
+} as const;
+
+export const McpOauthStatusDtoSchema = {
+  type: "object",
+  properties: {
+    connected: {
+      type: "boolean",
+    },
+  },
+  required: ["connected"],
 } as const;
 
 export const RunPaddockJudgeOverrideDtoSchema = {

@@ -34,3 +34,6 @@ k3s_kustomization_backup.yaml
 # Python bytecode from .specify scripts
 __pycache__/
 export-1a/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

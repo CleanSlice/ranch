@@ -15,8 +15,23 @@ export class AgentPeerDto {
   @ApiProperty({ description: 'The agent that holds the card (the caller).' })
   agentId: string;
 
-  @ApiProperty({ description: 'The agent whose card is held (the peer).' })
-  peerAgentId: string;
+  @ApiProperty({
+    description:
+      'The agent whose card is held (the peer), or null when the peer was ' +
+      'imported from outside this installation.',
+    nullable: true,
+    type: String,
+  })
+  peerAgentId: string | null;
+
+  @ApiProperty({
+    description:
+      "Where this connection points: 'internal' (another agent of this " +
+      "installation) or 'external' (imported by card URL, CLEAN-95).",
+    enum: ['internal', 'external'],
+    example: 'internal',
+  })
+  origin: 'internal' | 'external';
 
   @ApiProperty({
     description:

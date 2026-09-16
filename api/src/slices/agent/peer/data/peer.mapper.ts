@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AgentPeer } from '@prisma/client';
+import { PeerOrigins, type PeerOrigin } from '../domain';
 import type { IAgentPeerData } from '../domain';
 import type { IA2aAgentCard } from '../domain';
 
@@ -12,7 +13,10 @@ export class PeerMapper {
       id: record.id,
       agentId: record.agentId,
       peerAgentId: record.peerAgentId,
+      // Rows written before CLEAN-95 carry the column default.
+      origin: (record.origin as PeerOrigin) ?? PeerOrigins.Internal,
       token: record.token,
+      outboundToken: record.outboundToken,
       // Stored as Json: Prisma types it as JsonValue, but every write goes
       // through this slice and writes a card, so the cast is the boundary
       // where that guarantee is stated once.

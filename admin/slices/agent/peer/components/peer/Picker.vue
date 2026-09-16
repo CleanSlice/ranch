@@ -7,7 +7,7 @@ import {
   DialogRoot,
   DialogTitle,
 } from 'reka-ui';
-import { IconCheck, IconSearch } from '@tabler/icons-vue';
+import { IconCheck, IconChevronDown, IconSearch } from '@tabler/icons-vue';
 import { toast } from 'vue-sonner';
 import { AGENT_STATUS_VARIANT } from '#agent/utils/agentFormat';
 import type { AgentStatusTypes } from '#agent/domain';
@@ -17,13 +17,20 @@ import {
   type IAgentPeerCandidate,
 } from '#peer/stores/peer';
 
+/* IAgentCard is also the shape previewByUrl returns — one preview, two
+ * sources (CLEAN-95). */
+
 /**
- * Pick an agent, read its card, then connect (CLEAN-74).
+ * Pick an agent, read its card, then connect (CLEAN-74, CLEAN-94).
  *
  * The preview step is the point of this component. Connecting a peer decides
  * what another agent will be told it can ask for, so the operator sees the
  * exact text first — a name alone would make "why did it pick the wrong one"
  * unanswerable later.
+ *
+ * The preview expands under the clicked row, accordion-style: at ten
+ * candidates a panel below the list sits under the fold, and a click that
+ * renders off-screen reads as a click that did nothing (CLEAN-94).
  */
 const props = defineProps<{ open: boolean; agentId: string }>();
 const emit = defineEmits<{ 'update:open': [value: boolean]; connected: [] }>();
@@ -60,12 +67,22 @@ watch(
     selected.value = null;
     preview.value = null;
     error.value = null;
+    url.value = '';
+    urlToken.value = '';
+    urlPreview.value = null;
+    urlError.value = null;
     void store.loadCandidates(props.agentId);
   },
 );
 
-async function select(candidate: IAgentPeerCandidate) {
-  if (candidate.connected) return;
+async function toggle(candidate: IAgentPeerCandidate) {
+  if (candidate.connected || connecting.value) return;
+  if (selected.value?.id === candidate.id) {
+    selected.value = null;
+    preview.value = null;
+    error.value = null;
+    return;
+  }
   selected.value = candidate;
   preview.value = null;
   error.value = null;
@@ -96,9 +113,75 @@ async function connect() {
   }
 }
 
+// ── Import an external agent by address (CLEAN-95) ──────────────
+const url = ref('');
+const urlToken = ref('');
+const urlPreview = ref<IAgentCard | null>(null);
+const urlPreviewing = ref(false);
+const urlImporting = ref(false);
+const urlError = ref<string | null>(null);
+
+// A changed address invalidates the card already shown for the old one.
+watch(url, () => {
+  urlPreview.value = null;
+  urlError.value = null;
+});
+
+async function previewUrl() {
+  if (!url.value.trim()) return;
+  urlPreviewing.value = true;
+  urlError.value = null;
+  urlPreview.value = null;
+  try {
+    urlPreview.value = await store.previewByUrl(
+      props.agentId,
+      url.value.trim(),
+      urlToken.value.trim() || undefined,
+    );
+  } catch (err) {
+    urlError.value =
+      err instanceof Error ? err.message : 'Could not read that address';
+  } finally {
+    urlPreviewing.value = false;
+  }
+}
+
+async function importUrl() {
+  if (!urlPreview.value) return;
+  urlImporting.value = true;
+  urlError.value = null;
+  try {
+    const imported = await store.importByUrl(
+      props.agentId,
+      url.value.trim(),
+      urlToken.value.trim() || undefined,
+    );
+    toast.success(`«${imported.peerName}» connected — card read`);
+    emit('connected');
+  } catch (err) {
+    urlError.value =
+      err instanceof Error ? err.message : 'Could not import that agent';
+  } finally {
+    urlImporting.value = false;
+  }
+}
+
 function statusVariant(status: string) {
   return AGENT_STATUS_VARIANT[status as AgentStatusTypes] ?? 'outline';
 }
+
+/**
+ * The moment of maximum leverage for an empty card is BEFORE Connect: the
+ * operator is looking at exactly the text the delegating model will read,
+ * and can still fix the agent first (CLEAN-95). Connecting stays allowed —
+ * sometimes the card fills up later — but never unknowingly.
+ */
+const previewAdvertisesNothing = computed(
+  () => Boolean(preview.value) && preview.value!.skills.length === 0,
+);
+const urlPreviewAdvertisesNothing = computed(
+  () => Boolean(urlPreview.value) && urlPreview.value!.skills.length === 0,
+);
 </script>
 
 <template>
@@ -114,8 +197,8 @@ function statusVariant(status: string) {
           Add peer
         </DialogTitle>
         <DialogDescription class="mt-1 text-sm text-muted-foreground">
-          Agents on this ranch this one isn't connected to yet. Connecting is
-          one-way.
+          Agents on this ranch this one isn't connected to yet. Click an agent
+          to read its card, then connect.
         </DialogDescription>
 
         <div class="mt-3.5 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto">
@@ -142,7 +225,7 @@ function statusVariant(status: string) {
                   selected?.id === candidate.id ? 'bg-muted/60' : '',
                 ]"
                 :disabled="candidate.connected"
-                @click="select(candidate)"
+                @click="toggle(candidate)"
               >
                 <span class="flex min-w-0 items-center gap-2">
                   <span class="truncate font-semibold">
@@ -159,7 +242,61 @@ function statusVariant(status: string) {
                   <IconCheck class="size-3.5" />
                   connected
                 </span>
+                <!-- The affordance the row was missing: says what a click
+                     does, and doubles as the open/closed indicator. -->
+                <span
+                  v-else
+                  class="flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                >
+                  Info
+                  <IconChevronDown
+                    class="size-3.5 transition-transform"
+                    :class="selected?.id === candidate.id && 'rotate-180'"
+                  />
+                </span>
               </button>
+
+              <!-- Accordion body: the card opens right where the click
+                   happened, not below the whole list. -->
+              <div
+                v-if="selected?.id === candidate.id"
+                class="mb-3 space-y-3 rounded-xl border bg-muted/40 p-3"
+              >
+                <div v-if="previewing" class="space-y-2">
+                  <Skeleton class="h-4 w-40" />
+                  <Skeleton class="h-4 w-64" />
+                  <Skeleton class="h-6 w-52" />
+                </div>
+                <template v-else>
+                  <PeerCardView :card="preview" compact />
+                  <div
+                    v-if="previewAdvertisesNothing"
+                    class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
+                  >
+                    You can connect «{{ candidate.name }}», but with an empty
+                    card the delegating agent will only ask it when the user
+                    names it outright — topic matching has nothing to grip.
+                    Better first: give it a description (Edit on its page), a
+                    template with skills, or
+                    <NuxtLink
+                      :to="`/agents/${candidate.id}?tab=knowledge`"
+                      class="font-medium underline"
+                      >bind it a knowledge base</NuxtLink
+                    >, then Re-read the card here.
+                  </div>
+                  <Button
+                    size="sm"
+                    class="rounded-full"
+                    :disabled="connecting || !preview"
+                    @click="connect"
+                  >
+                    {{
+                      connecting ? 'Connecting…' : `Connect «${candidate.name}»`
+                    }}
+                  </Button>
+                </template>
+                <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+              </div>
             </li>
           </ul>
 
@@ -170,26 +307,68 @@ function statusVariant(status: string) {
             No unconnected agents left on this ranch.
           </p>
 
-          <div v-if="selected" class="space-y-3 rounded-xl border bg-muted/40 p-3">
-            <div v-if="previewing" class="space-y-2">
-              <Skeleton class="h-4 w-40" />
-              <Skeleton class="h-4 w-64" />
-              <Skeleton class="h-6 w-52" />
+          <!-- ═══ Import by URL (CLEAN-95) ═══ -->
+          <div class="border-t pt-3.5">
+            <p class="text-sm font-semibold">Import an external agent</p>
+            <p class="mt-0.5 text-xs text-muted-foreground">
+              Any A2A 1.0 agent outside this ranch, by its address. Importing
+              the same address again updates the entry — no duplicates.
+            </p>
+            <div class="mt-2.5 space-y-2">
+              <Input
+                v-model="url"
+                placeholder="https://other.ranch/a2a/agents/agent-…"
+                class="font-mono text-xs"
+              />
+              <Input
+                v-model="urlToken"
+                type="password"
+                placeholder="Access credential (optional)"
+                class="text-xs"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                class="rounded-full"
+                :disabled="urlPreviewing || !url.trim()"
+                @click="previewUrl"
+              >
+                {{ urlPreviewing ? 'Reading…' : 'Read card' }}
+              </Button>
             </div>
-            <template v-else>
-              <PeerCardView :card="preview" compact />
+
+            <div
+              v-if="urlPreview"
+              class="mt-2.5 space-y-3 rounded-xl border bg-muted/40 p-3"
+            >
+              <PeerCardView :card="urlPreview" compact />
+              <div
+                v-if="urlPreviewAdvertisesNothing"
+                class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
+              >
+                This card advertises nothing, so the delegating agent will
+                only ask «{{ urlPreview.name }}» when the user names it
+                outright. Ask its owner to publish a description and skills,
+                then Re-read the card here.
+              </div>
               <Button
                 size="sm"
                 class="rounded-full"
-                :disabled="connecting || !preview"
-                @click="connect"
+                :disabled="urlImporting"
+                @click="importUrl"
               >
-                {{ connecting ? 'Connecting…' : `Connect «${selected.name}»` }}
+                {{
+                  urlImporting
+                    ? 'Connecting…'
+                    : `Connect «${urlPreview.name}»`
+                }}
               </Button>
-            </template>
-          </div>
+            </div>
 
-          <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+            <p v-if="urlError" class="mt-2 text-sm text-destructive">
+              {{ urlError }}
+            </p>
+          </div>
         </div>
 
         <div class="mt-3.5 flex justify-end">

@@ -28,6 +28,7 @@ function makeController(options: { peers?: Partial<PeerService> } = {}) {
     id: 'peer-1',
     agentId: 'a',
     peerAgentId: 'b',
+    origin: 'internal',
     peerName: 'Support Bot',
     peerStatus: 'running',
     peerExists: true,
@@ -38,6 +39,8 @@ function makeController(options: { peers?: Partial<PeerService> } = {}) {
     // Not part of the DTO. Present here on purpose: if a route ever spreads
     // the row instead of the view, this is what leaks.
     token: 'ap_' + 'x'.repeat(43),
+    // Same trap for the external credential (CLEAN-95).
+    outboundToken: 'EXT_SECRET_bearer',
   };
 
   // Raw mocks first, cast only where the constructor needs a type. Reading a
@@ -49,6 +52,9 @@ function makeController(options: { peers?: Partial<PeerService> } = {}) {
       { id: 'b', name: 'Support Bot', status: 'running', connected: true },
     ]),
     connect: jest.fn(async () => poisoned),
+    connectByUrl: jest.fn(async () => ({ ...poisoned, origin: 'external' })),
+    previewByUrl: jest.fn(async () => ({ name: 'Foreign Bot', skills: [] })),
+    peersState: jest.fn(async () => ({ armed: false, servedAt: null })),
     refresh: jest.fn(async () => poisoned),
     remove: jest.fn(async () => undefined),
     ...options.peers,
@@ -115,6 +121,67 @@ describe('PeerController — routes', () => {
 
     expect(peers.connect).toHaveBeenCalledWith('a', 'b');
     expect(JSON.stringify(created)).not.toContain('ap_');
+    expect(JSON.stringify(created)).not.toContain('EXT_SECRET');
+  });
+
+  it('routes an url body to the import path, with the optional credential', async () => {
+    const { controller, peers } = makeController();
+
+    const imported = await controller.connect('a', {
+      url: 'https://other.example/a2a/agents/x',
+      token: 'tk',
+    });
+
+    expect(peers.connectByUrl).toHaveBeenCalledWith(
+      'a',
+      'https://other.example/a2a/agents/x',
+      'tk',
+    );
+    expect(peers.connect).not.toHaveBeenCalled();
+    expect(JSON.stringify(imported)).not.toContain('EXT_SECRET');
+    expect(JSON.stringify(imported)).not.toContain('ap_');
+  });
+
+  it('refuses a body with both or neither of id and url, as PEER_BODY', async () => {
+    const { controller, peers } = makeController();
+
+    await expect(controller.connect('a', {})).rejects.toMatchObject({
+      response: { code: 'PEER_BODY' },
+    });
+    await expect(
+      controller.connect('a', {
+        peerAgentId: 'b',
+        url: 'https://other.example/a2a/agents/x',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'PEER_BODY' } });
+    expect(peers.connect).not.toHaveBeenCalled();
+    expect(peers.connectByUrl).not.toHaveBeenCalled();
+  });
+
+  it('previews an external card without touching the connect paths', async () => {
+    const { controller, peers } = makeController();
+
+    await controller.previewPeerUrl('a', {
+      url: 'https://other.example/a2a/agents/x',
+      token: 'tk',
+    });
+
+    expect(peers.previewByUrl).toHaveBeenCalledWith(
+      'a',
+      'https://other.example/a2a/agents/x',
+      'tk',
+    );
+    expect(peers.connect).not.toHaveBeenCalled();
+    expect(peers.connectByUrl).not.toHaveBeenCalled();
+  });
+
+  it('reports the armed state the service computed', async () => {
+    const { controller, peers } = makeController();
+
+    const state = await controller.peersState('a');
+
+    expect(peers.peersState).toHaveBeenCalledWith('a');
+    expect(state).toEqual({ armed: false, servedAt: null });
   });
 
   it('refreshes and removes the connection the path names', async () => {
@@ -175,6 +242,19 @@ describe('PeerController — request validation', () => {
     expect(await validate(bareUuid)).toHaveLength(1);
     expect(await validate(garbage)).toHaveLength(1);
     expect(await validate(good)).toHaveLength(0);
+  });
+
+  it('accepts an url body, with and without a credential', async () => {
+    const plain = plainToInstance(ConnectPeerDto, {
+      url: 'https://other.example/a2a/agents/x',
+    });
+    const withToken = plainToInstance(ConnectPeerDto, {
+      url: 'https://other.example/a2a/agents/x',
+      token: 'tk',
+    });
+
+    expect(await validate(plain)).toHaveLength(0);
+    expect(await validate(withToken)).toHaveLength(0);
   });
 
   it('bounds the delegation limit', async () => {

@@ -44,6 +44,13 @@ export class AgentCardService {
     return `${url}/${A2A_CARD_PATH}`;
   }
 
+  /** This installation's own A2A prefix. An "external" import pointing here
+   *  is an internal agent in disguise and must be refused (CLEAN-95). */
+  async ownA2aBase(): Promise<string> {
+    const base = await this.infra.getApiPublicUrl();
+    return `${base}/a2a/agents/`;
+  }
+
   async build(agentId: string): Promise<IA2aAgentCard> {
     const agent = await this.agents.findById(agentId);
     if (!agent) throw new NotFoundException('Agent not found');

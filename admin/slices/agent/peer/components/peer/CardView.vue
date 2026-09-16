@@ -52,12 +52,12 @@ function skillTag(tags: string[]): string | null {
           </Badge>
         </li>
       </ul>
-      <!-- A skill-less agent is a valid peer; saying so beats an empty box,
-           because "nothing advertised" is exactly what a caller needs to know
-           before wondering why it is never chosen. -->
+      <!-- A skill-less agent is a valid peer; saying so beats an empty box.
+           Just the fact here — the surfaces that embed this view carry the
+           what-to-do-about-it guidance (CLEAN-95). -->
       <p v-else class="text-sm text-muted-foreground">
-        Nothing advertised. Another agent has no way to tell when to ask this
-        one — give it template skills or a knowledge base.
+        Nothing advertised — this text is all a delegating agent gets to
+        match a question against.
       </p>
     </div>
 

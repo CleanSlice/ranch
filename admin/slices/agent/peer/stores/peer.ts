@@ -6,6 +6,7 @@ import type {
   IAgentDelegation,
   IAgentPeer,
   IAgentPeerCandidate,
+  IPeersState,
 } from '#peer/domain';
 
 export type {
@@ -14,6 +15,7 @@ export type {
   IAgentPeer,
   IAgentPeerCandidate,
   IAgentSkill,
+  IPeersState,
 } from '#peer/domain';
 
 const getService = createServiceGetter<PeerService>('$peerService');
@@ -34,6 +36,7 @@ export const usePeerStore = defineStore('peer', () => {
   const cardByAgent = ref<Record<string, IAgentCard | null>>({});
   const candidatesByAgent = ref<Record<string, IAgentPeerCandidate[]>>({});
   const delegationsByAgent = ref<Record<string, IAgentDelegation[]>>({});
+  const stateByAgent = ref<Record<string, IPeersState | null>>({});
 
   const loading = ref(false);
   const error = ref<string | null>(null);
@@ -52,6 +55,21 @@ export const usePeerStore = defineStore('peer', () => {
 
   function delegations(agentId: string): IAgentDelegation[] {
     return delegationsByAgent.value[agentId] ?? [];
+  }
+
+  function peersState(agentId: string): IPeersState | null {
+    return stateByAgent.value[agentId] ?? null;
+  }
+
+  /** Armed/pending indicator (CLEAN-95). Silent failure: the indicator must
+   *  never take the tab down with it. */
+  async function loadState(agentId: string): Promise<void> {
+    try {
+      const state = await getService().peersState(agentId);
+      stateByAgent.value = { ...stateByAgent.value, [agentId]: state };
+    } catch {
+      stateByAgent.value = { ...stateByAgent.value, [agentId]: null };
+    }
   }
 
   function fail(err: unknown, fallback: string): never {
@@ -92,6 +110,15 @@ export const usePeerStore = defineStore('peer', () => {
     return getService().card(peerAgentId);
   }
 
+  /** Same review step for an external address (CLEAN-95): read, never save. */
+  function previewByUrl(
+    agentId: string,
+    url: string,
+    token?: string,
+  ): Promise<IAgentCard | null> {
+    return getService().previewByUrl(agentId, url, token);
+  }
+
   async function connect(agentId: string, peerAgentId: string): Promise<void> {
     const created = await getService().connect(agentId, peerAgentId);
     peersByAgent.value = {
@@ -100,6 +127,28 @@ export const usePeerStore = defineStore('peer', () => {
     };
     markConnected(agentId, peerAgentId, true);
     useAgentStore().markPendingRestart(agentId);
+    void loadState(agentId);
+  }
+
+  /** Import an external agent by address (CLEAN-95). A re-import of a known
+   *  address comes back as the same row id — replaced in place, no dupes. */
+  async function importByUrl(
+    agentId: string,
+    url: string,
+    token?: string,
+  ): Promise<IAgentPeer> {
+    const imported = await getService().importByUrl(agentId, url, token);
+    const current = peers(agentId);
+    const known = current.some((p) => p.id === imported.id);
+    peersByAgent.value = {
+      ...peersByAgent.value,
+      [agentId]: known
+        ? current.map((p) => (p.id === imported.id ? imported : p))
+        : [...current, imported],
+    };
+    useAgentStore().markPendingRestart(agentId);
+    void loadState(agentId);
+    return imported;
   }
 
   async function refresh(agentId: string, peerId: string): Promise<void> {
@@ -120,8 +169,11 @@ export const usePeerStore = defineStore('peer', () => {
       ...peersByAgent.value,
       [agentId]: peers(agentId).filter((p) => p.id !== peerId),
     };
-    if (removed) markConnected(agentId, removed.peerAgentId, false);
+    if (removed?.peerAgentId) {
+      markConnected(agentId, removed.peerAgentId, false);
+    }
     useAgentStore().markPendingRestart(agentId);
+    void loadState(agentId);
   }
 
   async function loadDelegations(agentId: string, limit = 20): Promise<void> {
@@ -161,16 +213,21 @@ export const usePeerStore = defineStore('peer', () => {
     cardByAgent,
     candidatesByAgent,
     delegationsByAgent,
+    stateByAgent,
     loading,
     error,
     peers,
     card,
     candidates,
     delegations,
+    peersState,
     load,
     loadCandidates,
+    loadState,
     previewCard,
+    previewByUrl,
     connect,
+    importByUrl,
     refresh,
     remove,
     loadDelegations,

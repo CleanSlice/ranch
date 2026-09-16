@@ -33,6 +33,12 @@ const delegations = computed(() => store.delegations(props.agent.id));
 const pendingRestart = computed(() =>
   agentStore.isPendingRestart(props.agent.id),
 );
+const peersState = computed(() => store.peersState(props.agent.id));
+/** null while unknown — the chip only renders on a definite answer. */
+const armed = computed(() =>
+  peers.value.length && peersState.value ? peersState.value.armed : null,
+);
+const restarting = ref(false);
 
 const address = computed(
   () => ownCard.value?.supportedInterfaces?.[0]?.url ?? null,
@@ -46,9 +52,10 @@ const needAttention = computed(
       .length,
 );
 
+// The connection id is the stable per-peer key for both origins — external
+// peers have no agent id here (CLEAN-95).
 function taskCount(peer: IAgentPeer): number {
-  return delegations.value.filter((d) => d.peerAgentId === peer.peerAgentId)
-    .length;
+  return delegations.value.filter((d) => d.peerId === peer.id).length;
 }
 
 /**
@@ -83,7 +90,32 @@ const warnings = computed<Record<string, string>>(() => {
 onMounted(() => {
   void store.load(props.agent.id);
   void store.loadDelegations(props.agent.id);
+  void store.loadState(props.agent.id);
 });
+
+// The pod re-reads its tool list at boot, so a completed restart is the
+// moment the armed indicator can flip — re-read it then.
+watch(
+  () => props.agent.status,
+  (status, prev) => {
+    if (status === 'running' && prev !== 'running') {
+      void store.loadState(props.agent.id);
+    }
+  },
+);
+
+async function restartNow() {
+  restarting.value = true;
+  try {
+    await agentStore.restart(props.agent.id);
+  } catch (err) {
+    toast.error(
+      err instanceof Error ? err.message : 'Could not restart the agent',
+    );
+  } finally {
+    restarting.value = false;
+  }
+}
 
 let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 onUnmounted(() => clearTimeout(copiedTimer));
@@ -102,9 +134,9 @@ async function copyAddress() {
 
 function toggleFilter(peer: IAgentPeer) {
   peerFilter.value =
-    peerFilter.value?.id === peer.peerAgentId
+    peerFilter.value?.id === peer.id
       ? null
-      : { id: peer.peerAgentId, name: peer.peerName };
+      : { id: peer.id, name: peer.peerName };
 }
 
 async function refresh(peer: IAgentPeer) {
@@ -128,7 +160,7 @@ async function confirmRemoval() {
   actionError.value = null;
   try {
     await store.remove(props.agent.id, peer.id);
-    if (peerFilter.value?.id === peer.peerAgentId) peerFilter.value = null;
+    if (peerFilter.value?.id === peer.id) peerFilter.value = null;
     confirmingRemoval.value = null;
     toast.success(`«${peer.peerName}» disconnected`);
   } catch (err) {
@@ -141,6 +173,13 @@ async function confirmRemoval() {
 
 function onConnected() {
   adding.value = false;
+}
+
+// Tab state lives in `?tab=` (useAgentTab), so any component under the page
+// can send the operator to the fix — here: bind a knowledge base.
+const { setTab } = useAgentTab();
+function goToKnowledge() {
+  setTab('knowledge');
 }
 </script>
 
@@ -169,13 +208,39 @@ function onConnected() {
           <p v-if="ownCard.description" class="text-sm">
             {{ ownCard.description }}
           </p>
+          <!-- Not just a warning: the operator's next question is always
+               "so where do I fix it?" — answer it in place (CLEAN-95). -->
           <div
             v-if="nothingAdvertised"
-            class="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            class="max-w-xl space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5"
           >
-            <span class="size-1.5 flex-none rounded-full bg-destructive" />
-            Card advertises nothing — give it skills or a knowledge base so
-            peers know when to ask
+            <p class="text-sm font-medium text-amber-700 dark:text-amber-500">
+              This card advertises nothing yet
+            </p>
+            <p class="text-sm text-amber-700/90 dark:text-amber-500/90">
+              A delegating agent matches questions against this exact text.
+              Empty card = it will only ask this agent when the user names it
+              outright — never by topic. The card fills itself from:
+            </p>
+            <ul class="list-disc space-y-0.5 pl-5 text-sm text-amber-700/90 dark:text-amber-500/90">
+              <li>
+                <b>Description</b> — the agent's description field
+                (<b>Edit</b>, top right of this page)
+              </li>
+              <li><b>Skills</b> — the skills of its template</li>
+              <li>
+                <b>Knowledge</b> — every bound knowledge base becomes a
+                "can answer about …" skill
+              </li>
+            </ul>
+            <Button
+              size="sm"
+              variant="outline"
+              class="rounded-full"
+              @click="goToKnowledge"
+            >
+              Bind a knowledge base
+            </Button>
           </div>
           <ul v-else class="flex flex-wrap gap-1.5">
             <li v-for="skill in ownCard.skills" :key="skill.id">
@@ -211,15 +276,25 @@ function onConnected() {
       </div>
     </div>
 
-    <!-- A pod reads its tool list once, at boot. Without this line an
+    <!-- A pod reads its tool list once, at boot. Without this banner an
          operator connects a peer, asks a question, gets nothing, and has
-         no way to know why. -->
-    <p
-      v-if="pendingRestart"
-      class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-500"
+         no way to know why. The button is the one click that arms it. -->
+    <div
+      v-if="pendingRestart || armed === false"
+      class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2"
     >
-      Restart the agent to apply: it reads the list of peers when it starts.
-    </p>
+      <p class="text-sm text-amber-600 dark:text-amber-500">
+        Restart the agent to apply: it reads the list of peers when it starts.
+      </p>
+      <Button
+        size="sm"
+        class="h-7 flex-none rounded-full"
+        :disabled="restarting"
+        @click="restartNow"
+      >
+        {{ restarting ? 'Restarting…' : 'Restart now' }}
+      </Button>
+    </div>
 
     <Separator />
 
@@ -228,7 +303,28 @@ function onConnected() {
       <section>
         <div class="mb-3.5 flex items-baseline justify-between gap-3">
           <div>
-            <h3 class="font-semibold tracking-tight">Peer network</h3>
+            <div class="flex items-center gap-2">
+              <h3 class="font-semibold tracking-tight">Peer network</h3>
+              <!-- Whether the RUNNING pod actually holds this peer set — the
+                   difference between "connected on screen" and "the agent can
+                   ask" (CLEAN-95). -->
+              <Badge
+                v-if="armed !== null"
+                variant="outline"
+                :class="
+                  armed
+                    ? 'border-transparent bg-emerald-500/15 text-emerald-700 dark:text-emerald-500'
+                    : 'border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-500'
+                "
+                :title="
+                  peersState?.servedAt
+                    ? `Peer list last loaded ${formatDateTime(peersState.servedAt)}`
+                    : 'The running agent has not loaded any peer list yet'
+                "
+              >
+                {{ armed ? 'armed' : 'pending restart' }}
+              </Badge>
+            </div>
             <p class="mt-0.5 text-xs text-muted-foreground">
               One-way: {{ agent.name }} delegates → peers. They can't ask back.
             </p>
@@ -267,7 +363,7 @@ function onConnected() {
             :busy="busyPeerId === peer.id"
             :warning="warnings[peer.id] ?? null"
             :task-count="taskCount(peer)"
-            :selected="peerFilter?.id === peer.peerAgentId"
+            :selected="peerFilter?.id === peer.id"
             @refresh="refresh(peer)"
             @remove="confirmingRemoval = peer"
             @select="toggleFilter(peer)"

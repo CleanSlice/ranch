@@ -7,6 +7,7 @@
 // mid-turn cannot change how A behaves until someone presses Refresh) and a
 // credential scoped to exactly this (caller, peer) pair.
 
+import * as crypto from 'crypto';
 import type { IA2aAgentCard } from './a2a.types';
 
 /** Token prefix. Makes a peer credential impossible to confuse with a share
@@ -44,6 +45,19 @@ export const DEFAULT_A2A_TIMEOUT_MS = 120_000;
 /** How much of a peer's reply travels into the visible step and the audit row. */
 export const DELEGATION_EXCERPT_CHARS = 300;
 
+/** Where a peer connection points (CLEAN-95). Internal rows reference another
+ *  agent of this installation; external rows know only a card URL. */
+export const PeerOrigins = {
+  Internal: 'internal',
+  External: 'external',
+} as const;
+
+export type PeerOrigin = (typeof PeerOrigins)[keyof typeof PeerOrigins];
+
+/** `peerStatus` shown for external rows — the console cannot know a foreign
+ *  pod's live status, so the origin doubles as the status. */
+export const EXTERNAL_PEER_STATUS = 'external';
+
 /** Machine-readable codes carried in the error body so the console can tell
  *  the failure modes apart without parsing messages. */
 export const PeerErrorCodes = {
@@ -52,6 +66,12 @@ export const PeerErrorCodes = {
   NotFound: 'PEER_NOT_FOUND',
   CardUnreachable: 'PEER_CARD_UNREACHABLE',
   Unauthorized: 'A2A_UNAUTHORIZED',
+  // External import (CLEAN-95).
+  Body: 'PEER_BODY',
+  UrlInvalid: 'PEER_URL_INVALID',
+  UrlUnreachable: 'PEER_URL_UNREACHABLE',
+  Version: 'PEER_VERSION',
+  SelfUrl: 'PEER_SELF_URL',
 } as const;
 
 export type PeerErrorCode =
@@ -63,10 +83,14 @@ export interface IAgentPeerData {
   id: string;
   /** The caller: the agent that holds the card. */
   agentId: string;
-  /** The peer: the agent whose card is held. */
-  peerAgentId: string;
-  /** Pair credential. Never leaves the API — no DTO carries it. */
-  token: string;
+  /** The peer agent, or null for an external row known only by URL. */
+  peerAgentId: string | null;
+  origin: PeerOrigin;
+  /** Pair credential (internal rows only). Never leaves the API — no DTO
+   *  carries it. */
+  token: string | null;
+  /** Bearer presented to an external agent. Write-only, like `token`. */
+  outboundToken: string | null;
   cardSnapshot: IA2aAgentCard;
   cardUrl: string;
   cardReadAt: string;
@@ -78,9 +102,12 @@ export interface IAgentPeerData {
 export interface IAgentPeerView {
   id: string;
   agentId: string;
-  peerAgentId: string;
+  /** Null for external rows. */
+  peerAgentId: string | null;
+  origin: PeerOrigin;
   peerName: string;
-  /** AgentStatusTypes as a plain string; 'running' ⇒ delegation can succeed. */
+  /** AgentStatusTypes as a plain string; 'running' ⇒ delegation can succeed.
+   *  External rows carry EXTERNAL_PEER_STATUS — no live status is knowable. */
   peerStatus: string;
   /** False when the peer agent is gone (only reachable for a remote peer). */
   peerExists: boolean;
@@ -88,6 +115,24 @@ export interface IAgentPeerView {
   cardUrl: string;
   cardReadAt: string;
   createdAt: string;
+}
+
+/** Whether the running pod has loaded the current peer set (CLEAN-95). */
+export interface IPeersState {
+  armed: boolean;
+  servedAt: string | null;
+}
+
+/**
+ * Identity of a peer SET, order-independent. Membership is the only thing a
+ * restart is needed for — the tool re-reads descriptions on every list — so
+ * the hash covers row ids and nothing else.
+ */
+export function hashPeerIds(ids: string[]): string {
+  return crypto
+    .createHash('sha256')
+    .update([...ids].sort().join('\n'))
+    .digest('hex');
 }
 
 /** An agent offered in the "add peer" picker. */
@@ -137,7 +182,8 @@ export interface IAgentDelegationData {
   agentId: string;
   /** Null once the connection it was made through has been removed. */
   peerId: string | null;
-  peerAgentId: string;
+  /** Null for delegations to external peers (CLEAN-95). */
+  peerAgentId: string | null;
   peerName: string;
   contextId: string;
   /** The caller's thinking turn, when one was known at the time. */
@@ -157,7 +203,7 @@ export interface IAgentDelegationData {
 export interface ICreateDelegationData {
   agentId: string;
   peerId: string;
-  peerAgentId: string;
+  peerAgentId: string | null;
   peerName: string;
   contextId: string;
   turnId?: string | null;
@@ -177,11 +223,14 @@ export interface IFinishDelegationData {
 
 // ── Errors raised by the outbound client ────────────────────────
 
-/** The peer's card could not be read at connect or refresh time. */
+/** The peer's card could not be read at connect or refresh time.
+ *  `kind` separates "could not reach it" from "reached it, not a card" so an
+ *  external import can answer 502 vs 400 honestly (CLEAN-95). */
 export class PeerCardUnreachableError extends Error {
   constructor(
     message: string,
     public readonly status?: number,
+    public readonly kind: 'unreachable' | 'invalid' = 'unreachable',
   ) {
     super(message);
     this.name = 'PeerCardUnreachableError';

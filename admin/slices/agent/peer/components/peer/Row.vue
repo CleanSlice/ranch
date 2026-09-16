@@ -40,7 +40,35 @@ type StatusMeta = {
   border: string;
 };
 
+const stale = computed(
+  () =>
+    Date.now() - new Date(props.peer.cardReadAt).getTime() > STALE_AFTER_MS,
+);
+
+const STALE_META: StatusMeta = {
+  label: 'stale card',
+  dot: 'bg-amber-500',
+  pulse: false,
+  badge:
+    'border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-500',
+  border: '',
+};
+
 const meta = computed<StatusMeta>(() => {
+  // An imported foreign agent has no live pod status here; the origin is the
+  // status, and only card staleness can degrade it (CLEAN-95).
+  if (props.peer.origin === 'external') {
+    if (stale.value) return STALE_META;
+    return {
+      label: 'external',
+      dot: 'bg-sky-500',
+      pulse: false,
+      badge:
+        'border-transparent bg-sky-500/15 text-sky-700 dark:text-sky-400',
+      border: '',
+    };
+  }
+
   const bad = {
     dot: 'bg-destructive',
     badge:
@@ -55,16 +83,7 @@ const meta = computed<StatusMeta>(() => {
       label: props.peer.peerStatus,
       pulse: props.peer.peerStatus === 'failed',
     };
-  const age = Date.now() - new Date(props.peer.cardReadAt).getTime();
-  if (age > STALE_AFTER_MS)
-    return {
-      label: 'stale card',
-      dot: 'bg-amber-500',
-      pulse: false,
-      badge:
-        'border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-500',
-      border: '',
-    };
+  if (stale.value) return STALE_META;
   return {
     label: 'online',
     dot: 'bg-emerald-500',
@@ -76,6 +95,7 @@ const meta = computed<StatusMeta>(() => {
 });
 
 const failReason = computed<string | null>(() => {
+  if (props.peer.origin === 'external') return null;
   if (!props.peer.peerExists)
     return (
       'This agent no longer exists on this ranch. Delegations to it fail — ' +
@@ -107,11 +127,15 @@ const failReason = computed<string | null>(() => {
           :class="[meta.dot, meta.pulse && 'animate-pulse']"
         />
         <NuxtLink
+          v-if="peer.peerAgentId"
           :to="`/agents/${peer.peerAgentId}`"
           class="text-sm font-bold hover:underline"
         >
           {{ peer.peerName }}
         </NuxtLink>
+        <span v-else class="text-sm font-bold" :title="peer.cardUrl">
+          {{ peer.peerName }}
+        </span>
         <Badge variant="outline" :class="meta.badge">{{ meta.label }}</Badge>
         <span class="text-xs text-muted-foreground">
           {{ taskCount }} {{ taskCount === 1 ? 'task' : 'tasks' }}
@@ -180,14 +204,27 @@ const failReason = computed<string | null>(() => {
           </Badge>
           <Badge v-if="overflow" variant="outline">+{{ overflow }}</Badge>
         </template>
-        <span v-else class="text-xs text-muted-foreground">
-          Advertises nothing — this agent has no way to tell when to ask it.
-        </span>
+        <!-- Consequence + the way to fix it, not just the fact (CLEAN-95).
+             An empty card means delegation only reaches this peer by name. -->
         <span
-          class="ml-auto flex items-center gap-1 text-xs text-muted-foreground"
+          v-else
+          class="text-xs text-amber-700 dark:text-amber-500"
         >
-          card read
-          <DateTimeAgo :date="peer.cardReadAt" class="!items-start" />
+          Advertises nothing — reachable by name only, never by topic.
+          <template v-if="peer.peerAgentId">
+            Give it a description or
+            <NuxtLink
+              :to="`/agents/${peer.peerAgentId}?tab=knowledge`"
+              class="font-medium underline"
+              >a knowledge base</NuxtLink
+            >, then Re-read.
+          </template>
+          <template v-else>
+            Ask its owner to publish a description and skills, then Re-read.
+          </template>
+        </span>
+        <span class="ml-auto whitespace-nowrap text-xs text-muted-foreground">
+          card read <DateTimeAgoInline :date="peer.cardReadAt" />
         </span>
       </div>
     </div>

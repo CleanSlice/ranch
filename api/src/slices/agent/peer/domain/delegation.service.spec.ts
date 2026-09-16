@@ -3,6 +3,7 @@ import { A2aTaskStates, type IA2aAgentCard, type IA2aTask } from './a2a.types';
 import {
   DelegationError,
   DelegationErrorCodes,
+  PeerOrigins,
   type IAgentPeerData,
 } from './peer.types';
 import type { IPeerGateway } from './peer.gateway';
@@ -43,7 +44,9 @@ const connection = (
   id: 'peer-1',
   agentId: 'a',
   peerAgentId: 'b',
+  origin: PeerOrigins.Internal,
   token: 'ap_' + 'x'.repeat(43),
+  outboundToken: null,
   cardSnapshot: card('Support Bot', [
     {
       id: 'knowledge:9a',
@@ -503,5 +506,81 @@ describe('DelegationService.run — the visible step', () => {
 
     expect(sent[1].data.step.label).toBe('Could not reach «Support Bot»');
     expect(sent[1].data.step.delegation.status).toBe('failed');
+  });
+});
+
+describe('DelegationService.run — external peers (CLEAN-95)', () => {
+  const externalConnection = (): IAgentPeerData =>
+    connection({
+      id: 'peer-ext',
+      peerAgentId: null,
+      origin: PeerOrigins.External,
+      token: null,
+      outboundToken: 'ext-secret-1',
+      cardSnapshot: {
+        ...connection().cardSnapshot,
+        name: 'Foreign Bot',
+        supportedInterfaces: [
+          {
+            url: 'https://other.example/a2a/agents/agent-x',
+            protocolBinding: 'JSONRPC',
+            protocolVersion: '1.0',
+          },
+        ],
+      },
+      cardUrl:
+        'https://other.example/a2a/agents/agent-x/.well-known/agent-card.json',
+    });
+
+  it('authenticates with the outbound credential, never a pair token', async () => {
+    const { run, sendMessage } = makeHarness({
+      connections: [externalConnection()],
+    });
+
+    await run({ peer: 'Foreign Bot' });
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      'https://other.example/a2a/agents/agent-x',
+      'ext-secret-1',
+      expect.anything(),
+      120_000,
+    );
+  });
+
+  it('records the audit row with a null peer agent id', async () => {
+    const { run, delegations } = makeHarness({
+      connections: [externalConnection()],
+    });
+
+    await run({ peer: 'Foreign Bot' });
+
+    expect(delegations.create).toHaveBeenCalledWith(
+      expect.objectContaining({ peerId: 'peer-ext', peerAgentId: null }),
+    );
+  });
+
+  it('refuses a private interface URL before any request goes out (SSRF)', async () => {
+    const sneaky = externalConnection();
+    sneaky.cardSnapshot.supportedInterfaces[0].url =
+      'http://169.254.169.254/latest/meta-data';
+    const { run, sendMessage } = makeHarness({ connections: [sneaky] });
+
+    const outcome = await run({ peer: 'Foreign Bot' });
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({ kind: 'done', status: 'failed' });
+  });
+
+  it('an internal peer keeps using its pair token', async () => {
+    const { run, sendMessage } = makeHarness();
+
+    await run();
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      'ap_' + 'x'.repeat(43),
+      expect.anything(),
+      120_000,
+    );
   });
 });

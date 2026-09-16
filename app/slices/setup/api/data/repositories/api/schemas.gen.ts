@@ -3172,7 +3172,16 @@ export const AgentPeerDtoSchema = {
     },
     peerAgentId: {
       type: "string",
-      description: "The agent whose card is held (the peer).",
+      description:
+        "The agent whose card is held (the peer), or null when the peer was imported from outside this installation.",
+      nullable: true,
+    },
+    origin: {
+      type: "string",
+      description:
+        "Where this connection points: 'internal' (another agent of this installation) or 'external' (imported by card URL, CLEAN-95).",
+      enum: ["internal", "external"],
+      example: "internal",
     },
     peerName: {
       type: "string",
@@ -3223,6 +3232,7 @@ export const AgentPeerDtoSchema = {
     "id",
     "agentId",
     "peerAgentId",
+    "origin",
     "peerName",
     "peerStatus",
     "peerExists",
@@ -3264,11 +3274,60 @@ export const ConnectPeerDtoSchema = {
     peerAgentId: {
       type: "string",
       description:
-        "The agent to connect. Must be another agent of this installation: foreign card URLs are not accepted in this feature, and an agent cannot be its own peer. Format: `agent-<uuid>`.",
+        "An agent of this installation to connect. Format: `agent-<uuid>`. Mutually exclusive with `url`.",
       example: "agent-3f2504e0-4f89-11d3-9a0c-0305e82c3301",
     },
+    url: {
+      type: "string",
+      description:
+        "A2A address of an agent outside this installation — the agent base URL or its `…/.well-known/agent-card.json` form. Importing an address that is already connected updates that entry in place. Mutually exclusive with `peerAgentId`.",
+      example: "https://other.example/a2a/agents/agent-1a2b…",
+    },
+    token: {
+      type: "string",
+      description:
+        "Bearer credential the external agent expects, when it needs one. Stored write-only — no response ever returns it. On re-import: omitted keeps the stored credential, empty string clears it.",
+    },
   },
-  required: ["peerAgentId"],
+} as const;
+
+export const PreviewPeerUrlDtoSchema = {
+  type: "object",
+  properties: {
+    url: {
+      type: "string",
+      description:
+        "A2A address of the agent to preview — base URL or its well-known card form.",
+      example: "https://other.example/a2a/agents/agent-1a2b…",
+    },
+    token: {
+      type: "string",
+      description:
+        "Bearer credential for the card read, when the agent needs one. Used for this read only; nothing is stored.",
+    },
+  },
+  required: ["url"],
+} as const;
+
+export const PeersStateDtoSchema = {
+  type: "object",
+  properties: {
+    armed: {
+      type: "boolean",
+      description:
+        "True when the running pod's last-served peer set matches the current one — delegation is armed.",
+      example: true,
+    },
+    servedAt: {
+      type: "string",
+      description:
+        "When the pod last received the peer list over MCP; null if never (agent not restarted since its first peer was connected).",
+      format: "date-time",
+      nullable: true,
+      example: "2026-09-16T12:00:00.000Z",
+    },
+  },
+  required: ["armed", "servedAt"],
 } as const;
 
 export const AgentDelegationDtoSchema = {
@@ -3277,9 +3336,17 @@ export const AgentDelegationDtoSchema = {
     id: {
       type: "string",
     },
+    peerId: {
+      type: "string",
+      description:
+        "The connection the task went through — the stable per-peer key for both origins; null once that connection was removed (CLEAN-95).",
+      nullable: true,
+    },
     peerAgentId: {
       type: "string",
-      description: "The peer that was asked.",
+      description:
+        "The peer agent that was asked, or null when the peer is external to this installation (CLEAN-95).",
+      nullable: true,
     },
     peerName: {
       type: "string",
@@ -3334,6 +3401,7 @@ export const AgentDelegationDtoSchema = {
   },
   required: [
     "id",
+    "peerId",
     "peerAgentId",
     "peerName",
     "task",

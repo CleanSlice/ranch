@@ -1,5 +1,10 @@
 import { AskAgentTool } from './askAgent.tool';
-import { DelegationErrorCodes, DelegationStatuses } from './domain/peer.types';
+import {
+  DelegationErrorCodes,
+  DelegationStatuses,
+  PeerOrigins,
+  hashPeerIds,
+} from './domain/peer.types';
 import type { IAgentPeerData, IA2aAgentCard } from './domain';
 import type { IPeerGateway } from './domain/peer.gateway';
 import type { DelegationService } from './domain/delegation.service';
@@ -40,12 +45,26 @@ const connection = (name = 'Support Bot', id = 'peer-1'): IAgentPeerData => ({
   id,
   agentId: 'a',
   peerAgentId: `agent-${name}`,
+  origin: PeerOrigins.Internal,
   token: 'ap_' + 'x'.repeat(43),
+  outboundToken: null,
   cardSnapshot: card(name),
   cardUrl: 'https://api.test/card',
   cardReadAt: '2026-09-14T10:00:00.000Z',
   createdAt: '2026-09-14T10:00:00.000Z',
   updatedAt: '2026-09-14T10:00:00.000Z',
+});
+
+/** An imported foreign agent: no agent id here, named by its connection id. */
+const externalConnection = (
+  name = 'Foreign Bot',
+  id = 'peer-ext-1',
+): IAgentPeerData => ({
+  ...connection(name, id),
+  peerAgentId: null,
+  origin: PeerOrigins.External,
+  token: null,
+  outboundToken: 'ext-secret',
 });
 
 const agentRequest = (sub = 'agent:a') =>
@@ -60,6 +79,7 @@ function makeHarness(
 ) {
   const peerMocks = {
     listByAgent: jest.fn(async () => options.connections ?? [connection()]),
+    recordPeersServed: jest.fn(async () => undefined),
   };
 
   const run = jest.fn(
@@ -144,6 +164,39 @@ describe('AskAgentTool — the description the model reads', () => {
     );
   });
 
+  it('carries the give-up rule, placed before the not-a-first-resort caveat', async () => {
+    const { tool } = makeHarness();
+
+    const description = (await tool.describeForRequest(agentRequest())) ?? '';
+
+    // FR-011: the model must try a plausible peer before saying I don't know.
+    const giveUp = description.search(/before you answer that you do not know/i);
+    const caveat = description.search(/not a first resort/i);
+    expect(giveUp).toBeGreaterThanOrEqual(0);
+    expect(caveat).toBeGreaterThan(giveUp);
+    expect(description).toMatch(/without having asked a matching peer/i);
+  });
+
+  it('tells the model to always ask a peer the user named', async () => {
+    const { tool } = makeHarness();
+
+    const description = (await tool.describeForRequest(agentRequest())) ?? '';
+
+    expect(description).toMatch(/names a peer.*always ask that peer/is);
+  });
+
+  it('lists an external peer exactly like an internal one, by connection id', async () => {
+    const { tool } = makeHarness({
+      connections: [externalConnection('Foreign Bot', 'peer-ext-1')],
+    });
+
+    const description = (await tool.describeForRequest(agentRequest())) ?? '';
+
+    expect(description).toContain('"Foreign Bot"');
+    expect(description).toContain('peer: peer-ext-1');
+    expect(description).toContain('Foreign Bot answers order questions.');
+  });
+
   it('warns that the peer cannot see the conversation', async () => {
     const { tool } = makeHarness();
 
@@ -170,6 +223,41 @@ describe('AskAgentTool — the description the model reads', () => {
 
     expect(description).toContain('"Support Bot"');
     expect(description).toContain('"Billing Bot"');
+  });
+});
+
+describe('AskAgentTool — recording what the pod was served (CLEAN-95)', () => {
+  it('records the membership hash when the description is served', async () => {
+    const { tool, peers } = makeHarness({
+      connections: [connection('A', 'p1'), connection('B', 'p2')],
+    });
+
+    await tool.describeForRequest(agentRequest());
+
+    expect(peers.recordPeersServed).toHaveBeenCalledWith(
+      'a',
+      hashPeerIds(['p1', 'p2']),
+    );
+  });
+
+  it('records on the listing check too, even with zero peers', async () => {
+    const { tool, peers } = makeHarness({ connections: [] });
+
+    await tool.isListedForRequest(agentRequest());
+
+    expect(peers.recordPeersServed).toHaveBeenCalledWith('a', hashPeerIds([]));
+  });
+
+  it('hash covers membership only: same set, same hash, any order', () => {
+    expect(hashPeerIds(['p2', 'p1'])).toBe(hashPeerIds(['p1', 'p2']));
+    expect(hashPeerIds(['p1'])).not.toBe(hashPeerIds(['p1', 'p2']));
+  });
+
+  it('a failed write never breaks the tool list', async () => {
+    const { tool, peers } = makeHarness();
+    peers.recordPeersServed.mockRejectedValueOnce(new Error('db down'));
+
+    await expect(tool.isListedForRequest(agentRequest())).resolves.toBe(true);
   });
 });
 

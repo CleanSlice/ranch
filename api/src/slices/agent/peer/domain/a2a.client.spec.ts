@@ -1,4 +1,8 @@
-import { A2aClient } from './a2a.client';
+import {
+  A2aClient,
+  assertPublicPeerAddress,
+  assertResolvesPublic,
+} from './a2a.client';
 import { DelegationErrorCodes, PeerCardUnreachableError } from './peer.types';
 import { A2aTaskStates, type IA2aSendMessageParams } from './a2a.types';
 
@@ -82,6 +86,8 @@ describe('A2aClient.fetchCard', () => {
       CARD_URL,
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: `Bearer ${TOKEN}` }),
+        // Redirects are an SSRF-guard bypass; the client refuses them.
+        redirect: 'error',
       }),
     );
   });
@@ -92,6 +98,23 @@ describe('A2aClient.fetchCard', () => {
     await expect(
       new A2aClient().fetchCard(CARD_URL, TOKEN),
     ).rejects.toBeInstanceOf(PeerCardUnreachableError);
+  });
+
+  it('sends no Authorization header at all without a credential (CLEAN-95)', async () => {
+    fetchMock.mockResolvedValue(respond({ json: card }));
+
+    await new A2aClient().fetchCard(CARD_URL);
+
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers).not.toHaveProperty('Authorization');
+  });
+
+  it('marks not-a-card answers as invalid, not unreachable (CLEAN-95)', async () => {
+    fetchMock.mockResolvedValue(respond({ json: { hello: 'world' } }));
+
+    await expect(new A2aClient().fetchCard(CARD_URL, TOKEN)).rejects.toMatchObject(
+      { kind: 'invalid' },
+    );
   });
 
   it('names a timeout as a timeout rather than an abort', async () => {
@@ -158,6 +181,7 @@ describe('A2aClient.sendMessage', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(RPC_URL);
     expect(init.method).toBe('POST');
+    expect(init.redirect).toBe('error');
     expect(init.headers).toMatchObject({
       Authorization: `Bearer ${TOKEN}`,
       'Content-Type': 'application/json',
@@ -253,5 +277,67 @@ describe('A2aClient.sendMessage', () => {
 
     expect(spy).toHaveBeenCalledWith(125_000);
     spy.mockRestore();
+  });
+});
+
+describe('SSRF guard (CLEAN-95)', () => {
+  const bad = (url: string) =>
+    expect(() => assertPublicPeerAddress(url)).toThrow(
+      PeerCardUnreachableError,
+    );
+  const good = (url: string) =>
+    expect(() => assertPublicPeerAddress(url)).not.toThrow();
+
+  it('refuses private and local literals in every spelling', () => {
+    bad('http://127.0.0.1/x');
+    bad('http://10.1.2.3/x');
+    bad('http://172.20.0.1/x');
+    bad('http://192.168.1.1/x');
+    bad('http://169.254.169.254/latest/meta-data');
+    bad('http://0.0.0.0/x');
+    bad('http://localhost/x');
+    bad('http://foo.internal/x');
+    bad('http://[::1]/x');
+    bad('http://[0:0:0:0:0:0:0:1]/x');
+    bad('http://[::ffff:127.0.0.1]/x');
+    bad('http://[fe80::1]/x');
+    bad('http://[fd00::1]/x');
+  });
+
+  it('refuses curl-style numeric shorthand instead of normalising it', () => {
+    bad('http://2130706433/x');
+    bad('http://0x7f000001/x');
+    bad('http://017700000001/x');
+    bad('http://127.1/x');
+  });
+
+  it('lets public addresses and names through', () => {
+    good('https://other.example/a2a/agents/x');
+    good('http://8.8.8.8/x');
+    good('http://[2001:db8::1]/x');
+  });
+
+  it('the pre-flight resolver refuses a name that points at a private address', async () => {
+    // localhost is the one name every environment resolves privately —
+    // bypass the literal layer by calling the resolver directly.
+    await expect(
+      assertResolvesPublic('http://localhost/x'),
+    ).rejects.toBeInstanceOf(PeerCardUnreachableError);
+  });
+
+  it('resolution failure passes — the fetch itself will name the problem', async () => {
+    await expect(
+      assertResolvesPublic('http://definitely-not-a-real-host.invalid/x'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('never blocks anything when the dev override is on', () => {
+    process.env.A2A_ALLOW_PRIVATE_PEERS = 'true';
+    try {
+      good('http://127.0.0.1/x');
+      good('http://localhost:4444/a2a/agents/mock-1');
+    } finally {
+      delete process.env.A2A_ALLOW_PRIVATE_PEERS;
+    }
   });
 });

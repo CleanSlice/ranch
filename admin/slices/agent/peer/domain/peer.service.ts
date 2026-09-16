@@ -4,6 +4,7 @@ import type {
   IAgentDelegation,
   IAgentPeer,
   IAgentPeerCandidate,
+  IPeersState,
 } from './peer.types';
 
 /** Pass-through to the gateway, in the slice shape the console uses everywhere. */
@@ -24,6 +25,26 @@ export class PeerService {
 
   connect(agentId: string, peerAgentId: string): Promise<IAgentPeer> {
     return this.gateway.connect(agentId, peerAgentId);
+  }
+
+  importByUrl(
+    agentId: string,
+    url: string,
+    token?: string,
+  ): Promise<IAgentPeer> {
+    return this.gateway.importByUrl(agentId, url, token);
+  }
+
+  previewByUrl(
+    agentId: string,
+    url: string,
+    token?: string,
+  ): Promise<IAgentCard | null> {
+    return this.gateway.previewByUrl(agentId, url, token);
+  }
+
+  peersState(agentId: string): Promise<IPeersState> {
+    return this.gateway.peersState(agentId);
   }
 
   refresh(agentId: string, peerId: string): Promise<IAgentPeer> {

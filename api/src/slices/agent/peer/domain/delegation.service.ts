@@ -3,7 +3,11 @@ import * as crypto from 'crypto';
 import { IBridleGateway } from '#/bridle/domain/bridle.gateway';
 import { IPeerGateway } from './peer.gateway';
 import { IDelegationGateway } from './delegation.gateway';
-import { A2aClient } from './a2a.client';
+import {
+  A2aClient,
+  assertPublicPeerAddress,
+  assertResolvesPublic,
+} from './a2a.client';
 import { buildDelegationStep, causeText } from './delegationStep';
 import {
   A2aRoles,
@@ -16,6 +20,7 @@ import {
   DelegationError,
   DelegationErrorCodes,
   DelegationStatuses,
+  PeerOrigins,
   type DelegationErrorCode,
   type DelegationStatus,
   type IAgentPeerData,
@@ -79,11 +84,13 @@ export class DelegationService {
     if (!peer) {
       return {
         kind: 'no_match',
-        peers: connections.map((c) => c.cardSnapshot?.name ?? c.peerAgentId),
+        peers: connections.map(
+          (c) => c.cardSnapshot?.name ?? c.peerAgentId ?? c.cardUrl,
+        ),
       };
     }
 
-    const peerName = peer.cardSnapshot?.name ?? peer.peerAgentId;
+    const peerName = peer.cardSnapshot?.name ?? peer.peerAgentId ?? peer.cardUrl;
     const contextId = input.contextId ?? `ctx-${crypto.randomUUID()}`;
     const matchedSkills = matchSkills(peer, `${input.reason} ${input.task}`);
 
@@ -114,9 +121,18 @@ export class DelegationService {
     let excerpt: string | null = null;
 
     try {
+      const interfaceUrl = peer.cardSnapshot.supportedInterfaces[0].url;
+      if (peer.origin === PeerOrigins.External) {
+        // The interface URL inside a foreign card is remote content — never
+        // let it point the platform at a private address (SSRF, CLEAN-95).
+        assertPublicPeerAddress(interfaceUrl);
+        await assertResolvesPublic(interfaceUrl);
+      }
       const task = await this.client.sendMessage(
-        peer.cardSnapshot.supportedInterfaces[0].url,
-        peer.token,
+        interfaceUrl,
+        peer.origin === PeerOrigins.External
+          ? (peer.outboundToken ?? undefined)
+          : (peer.token ?? undefined),
         {
           message: {
             messageId: `m-${crypto.randomUUID()}`,
@@ -214,7 +230,8 @@ function matchPeer(
   return (
     connections.find(
       (c) =>
-        c.id.toLowerCase() === needle || c.peerAgentId.toLowerCase() === needle,
+        c.id.toLowerCase() === needle ||
+        (c.peerAgentId ?? '').toLowerCase() === needle,
     ) ??
     connections.find(
       (c) => (c.cardSnapshot?.name ?? '').trim().toLowerCase() === needle,

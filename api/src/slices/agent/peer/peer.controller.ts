@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -23,6 +24,7 @@ import {
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
 import { PeerService } from './domain/peer.service';
+import { PeerErrorCodes } from './domain/peer.types';
 import type { IAgentPeerView } from './domain/peer.types';
 import { AgentCardService } from './domain/agentCard.service';
 import { IDelegationGateway } from './domain/delegation.gateway';
@@ -33,6 +35,8 @@ import {
   AgentPeerDto,
   ConnectPeerDto,
   ListDelegationsQueryDto,
+  PeersStateDto,
+  PreviewPeerUrlDto,
 } from './dtos';
 
 /**
@@ -47,6 +51,7 @@ function toPeerDto(view: IAgentPeerView): AgentPeerDto {
     id: view.id,
     agentId: view.agentId,
     peerAgentId: view.peerAgentId,
+    origin: view.origin,
     peerName: view.peerName,
     peerStatus: view.peerStatus,
     peerExists: view.peerExists,
@@ -126,10 +131,12 @@ export class PeerController {
   @ApiOperation({
     operationId: 'connectAgentPeer',
     summary:
-      'Connect another agent as a peer: mints a credential for this pair, ' +
-      'reads the peer card with it, and stores the snapshot. Nothing is kept ' +
-      'if the card cannot be read, so a saved connection always works. The ' +
-      'agent picks the tool up on its next restart.',
+      'Connect a peer. Either `peerAgentId` (another agent of this ' +
+      'installation — mints a pair credential and reads the card with it) or ' +
+      '`url` (an external A2A agent imported by address, optionally with a ' +
+      'credential; re-importing the same address updates the entry in ' +
+      'place). Nothing is kept if the card cannot be read. The agent picks ' +
+      'the tool up on its next restart.',
   })
   @ApiOkResponse({ type: AgentPeerDto })
   @ApiConflictResponse({ description: 'Already a peer of this agent.' })
@@ -140,7 +147,51 @@ export class PeerController {
     @Param('agentId') agentId: string,
     @Body() body: ConnectPeerDto,
   ): Promise<AgentPeerDto> {
-    return toPeerDto(await this.peers.connect(agentId, body.peerAgentId));
+    const hasId = Boolean(body.peerAgentId);
+    const hasUrl = Boolean(body.url);
+    if (hasId === hasUrl) {
+      throw new BadRequestException({
+        code: PeerErrorCodes.Body,
+        message: 'Provide exactly one of `peerAgentId` or `url`',
+      });
+    }
+    const view = hasUrl
+      ? await this.peers.connectByUrl(agentId, body.url!, body.token)
+      : await this.peers.connect(agentId, body.peerAgentId!);
+    return toPeerDto(view);
+  }
+
+  @Post('peers/preview')
+  @HttpCode(200)
+  @ApiOperation({
+    operationId: 'previewAgentPeerUrl',
+    summary:
+      "Read an external agent's card without saving anything — the preview " +
+      'an operator reviews before Connect. The same validation the import ' +
+      'runs: canonical address, protocol version, own-installation refusal.',
+  })
+  @ApiOkResponse({ type: AgentCardDto })
+  @ApiBadGatewayResponse({
+    description: 'The address could not be reached; nothing was saved.',
+  })
+  async previewPeerUrl(
+    @Param('agentId') agentId: string,
+    @Body() body: PreviewPeerUrlDto,
+  ): Promise<AgentCardDto> {
+    return this.peers.previewByUrl(agentId, body.url, body.token);
+  }
+
+  @Get('peers/state')
+  @ApiOperation({
+    operationId: 'getAgentPeersState',
+    summary:
+      'Whether the running pod has loaded the current peer set. A pod reads ' +
+      'its tool list once at boot, so connecting or removing a peer leaves ' +
+      'this false ("pending restart") until the agent comes back up.',
+  })
+  @ApiOkResponse({ type: PeersStateDto })
+  async peersState(@Param('agentId') agentId: string): Promise<PeersStateDto> {
+    return this.peers.peersState(agentId);
   }
 
   @Post('peers/:peerId/refresh')

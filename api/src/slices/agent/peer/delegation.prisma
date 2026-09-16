@@ -19,7 +19,9 @@ model AgentDelegation {
   // The connection used; null once that connection is gone.
   peerId        String?
   peer          AgentPeer? @relation(fields: [peerId], references: [id], onDelete: SetNull)
-  peerAgentId   String
+  // Null for delegations to external peers — they have no agent id here
+  // (CLEAN-95); the connection id above stays the stable key.
+  peerAgentId   String?
   peerName      String
   // A2A contextId — the same value across follow-ups within one turn.
   contextId     String

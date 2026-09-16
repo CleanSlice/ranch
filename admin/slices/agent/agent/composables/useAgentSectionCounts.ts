@@ -117,7 +117,7 @@ export function useAgentSectionCounts(
       files: files.value,
       secrets: secrets.value,
       channels: channels.value,
-      peers: peers.value,
+      a2a: peers.value,
     };
   });
 

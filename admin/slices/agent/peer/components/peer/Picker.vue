@@ -169,6 +169,19 @@ async function importUrl() {
 function statusVariant(status: string) {
   return AGENT_STATUS_VARIANT[status as AgentStatusTypes] ?? 'outline';
 }
+
+/**
+ * The moment of maximum leverage for an empty card is BEFORE Connect: the
+ * operator is looking at exactly the text the delegating model will read,
+ * and can still fix the agent first (CLEAN-95). Connecting stays allowed —
+ * sometimes the card fills up later — but never unknowingly.
+ */
+const previewAdvertisesNothing = computed(
+  () => Boolean(preview.value) && preview.value!.skills.length === 0,
+);
+const urlPreviewAdvertisesNothing = computed(
+  () => Boolean(urlPreview.value) && urlPreview.value!.skills.length === 0,
+);
 </script>
 
 <template>
@@ -256,6 +269,21 @@ function statusVariant(status: string) {
                 </div>
                 <template v-else>
                   <PeerCardView :card="preview" compact />
+                  <div
+                    v-if="previewAdvertisesNothing"
+                    class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
+                  >
+                    You can connect «{{ candidate.name }}», but with an empty
+                    card the delegating agent will only ask it when the user
+                    names it outright — topic matching has nothing to grip.
+                    Better first: give it a description (Edit on its page), a
+                    template with skills, or
+                    <NuxtLink
+                      :to="`/agents/${candidate.id}?tab=knowledge`"
+                      class="font-medium underline"
+                      >bind it a knowledge base</NuxtLink
+                    >, then Re-read the card here.
+                  </div>
                   <Button
                     size="sm"
                     class="rounded-full"
@@ -314,6 +342,15 @@ function statusVariant(status: string) {
               class="mt-2.5 space-y-3 rounded-xl border bg-muted/40 p-3"
             >
               <PeerCardView :card="urlPreview" compact />
+              <div
+                v-if="urlPreviewAdvertisesNothing"
+                class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
+              >
+                This card advertises nothing, so the delegating agent will
+                only ask «{{ urlPreview.name }}» when the user names it
+                outright. Ask its owner to publish a description and skills,
+                then Re-read the card here.
+              </div>
               <Button
                 size="sm"
                 class="rounded-full"

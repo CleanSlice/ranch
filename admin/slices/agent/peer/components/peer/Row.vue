@@ -204,8 +204,24 @@ const failReason = computed<string | null>(() => {
           </Badge>
           <Badge v-if="overflow" variant="outline">+{{ overflow }}</Badge>
         </template>
-        <span v-else class="text-xs text-muted-foreground">
-          Advertises nothing — this agent has no way to tell when to ask it.
+        <!-- Consequence + the way to fix it, not just the fact (CLEAN-95).
+             An empty card means delegation only reaches this peer by name. -->
+        <span
+          v-else
+          class="text-xs text-amber-700 dark:text-amber-500"
+        >
+          Advertises nothing — reachable by name only, never by topic.
+          <template v-if="peer.peerAgentId">
+            Give it a description or
+            <NuxtLink
+              :to="`/agents/${peer.peerAgentId}?tab=knowledge`"
+              class="font-medium underline"
+              >a knowledge base</NuxtLink
+            >, then Re-read.
+          </template>
+          <template v-else>
+            Ask its owner to publish a description and skills, then Re-read.
+          </template>
         </span>
         <span class="ml-auto whitespace-nowrap text-xs text-muted-foreground">
           card read <DateTimeAgoInline :date="peer.cardReadAt" />

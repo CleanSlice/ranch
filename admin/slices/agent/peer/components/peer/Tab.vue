@@ -174,6 +174,13 @@ async function confirmRemoval() {
 function onConnected() {
   adding.value = false;
 }
+
+// Tab state lives in `?tab=` (useAgentTab), so any component under the page
+// can send the operator to the fix — here: bind a knowledge base.
+const { setTab } = useAgentTab();
+function goToKnowledge() {
+  setTab('knowledge');
+}
 </script>
 
 <template>
@@ -201,13 +208,39 @@ function onConnected() {
           <p v-if="ownCard.description" class="text-sm">
             {{ ownCard.description }}
           </p>
+          <!-- Not just a warning: the operator's next question is always
+               "so where do I fix it?" — answer it in place (CLEAN-95). -->
           <div
             v-if="nothingAdvertised"
-            class="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            class="max-w-xl space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5"
           >
-            <span class="size-1.5 flex-none rounded-full bg-destructive" />
-            Card advertises nothing — give it skills or a knowledge base so
-            peers know when to ask
+            <p class="text-sm font-medium text-amber-700 dark:text-amber-500">
+              This card advertises nothing yet
+            </p>
+            <p class="text-sm text-amber-700/90 dark:text-amber-500/90">
+              A delegating agent matches questions against this exact text.
+              Empty card = it will only ask this agent when the user names it
+              outright — never by topic. The card fills itself from:
+            </p>
+            <ul class="list-disc space-y-0.5 pl-5 text-sm text-amber-700/90 dark:text-amber-500/90">
+              <li>
+                <b>Description</b> — the agent's description field
+                (<b>Edit</b>, top right of this page)
+              </li>
+              <li><b>Skills</b> — the skills of its template</li>
+              <li>
+                <b>Knowledge</b> — every bound knowledge base becomes a
+                "can answer about …" skill
+              </li>
+            </ul>
+            <Button
+              size="sm"
+              variant="outline"
+              class="rounded-full"
+              @click="goToKnowledge"
+            >
+              Bind a knowledge base
+            </Button>
           </div>
           <ul v-else class="flex flex-wrap gap-1.5">
             <li v-for="skill in ownCard.skills" :key="skill.id">

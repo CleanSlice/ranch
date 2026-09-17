@@ -38,6 +38,9 @@ const CAUSES: Record<string, string> = {
   PEER_UNAUTHORIZED: 'credential refused',
   PEER_UNREACHABLE: 'could not be reached',
   PEER_ERROR: 'error',
+  // CLEAN-97: nothing was sent, so the peer did not fail — the card did.
+  PEER_ADDRESS_REFUSED: 'refused: private address',
+  PEER_UNSUPPORTED: 'no JSON-RPC interface',
 };
 
 const live = ref(true);

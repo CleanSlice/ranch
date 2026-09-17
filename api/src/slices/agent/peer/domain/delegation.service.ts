@@ -12,7 +12,10 @@ import { buildDelegationStep, causeText } from './delegationStep';
 import {
   A2aRoles,
   A2aTaskStates,
-  textOfParts,
+  renderReplyParts,
+  replyTextOfTask,
+  selectJsonRpcInterface,
+  type A2aSendMessageResult,
   type IA2aTask,
 } from './a2a.types';
 import {
@@ -20,6 +23,7 @@ import {
   DelegationError,
   DelegationErrorCodes,
   DelegationStatuses,
+  EMPTY_REPLY_NOTE,
   PeerOrigins,
   type DelegationErrorCode,
   type DelegationStatus,
@@ -90,7 +94,8 @@ export class DelegationService {
       };
     }
 
-    const peerName = peer.cardSnapshot?.name ?? peer.peerAgentId ?? peer.cardUrl;
+    const peerName =
+      peer.cardSnapshot?.name ?? peer.peerAgentId ?? peer.cardUrl;
     const contextId = input.contextId ?? `ctx-${crypto.randomUUID()}`;
     const matchedSkills = matchSkills(peer, `${input.reason} ${input.task}`);
 
@@ -121,14 +126,31 @@ export class DelegationService {
     let excerpt: string | null = null;
 
     try {
-      const interfaceUrl = peer.cardSnapshot.supportedInterfaces[0].url;
+      // The interface import approved, not whichever the card lists first —
+      // an agent may prefer HTTP+JSON and still speak JSON-RPC (CLEAN-97).
+      const iface = selectJsonRpcInterface(peer.cardSnapshot);
+      if (!iface) {
+        throw new DelegationError(
+          DelegationErrorCodes.Unsupported,
+          'its card offers no JSON-RPC interface on A2A 1.0',
+        );
+      }
+      const interfaceUrl = iface.url;
       if (peer.origin === PeerOrigins.External) {
         // The interface URL inside a foreign card is remote content — never
         // let it point the platform at a private address (SSRF, CLEAN-95).
-        assertPublicPeerAddress(interfaceUrl);
-        await assertResolvesPublic(interfaceUrl);
+        // Import vets it too; rows saved before that check land here.
+        try {
+          assertPublicPeerAddress(interfaceUrl);
+          await assertResolvesPublic(interfaceUrl);
+        } catch (err) {
+          throw new DelegationError(
+            DelegationErrorCodes.AddressRefused,
+            err instanceof Error ? err.message : String(err),
+          );
+        }
       }
-      const task = await this.client.sendMessage(
+      const reply = await this.client.sendMessage(
         interfaceUrl,
         peer.origin === PeerOrigins.External
           ? (peer.outboundToken ?? undefined)
@@ -154,11 +176,19 @@ export class DelegationService {
         timeoutMs,
       );
 
-      ({ status, errorCode, text } = readTask(task));
-      excerpt =
-        status === DelegationStatuses.Answered
-          ? (text ?? '').slice(0, DELEGATION_EXCERPT_CHARS)
-          : (statusText(task) ?? causeText(errorCode ?? null));
+      ({ status, errorCode, text } = readReply(reply));
+      if (status === DelegationStatuses.Answered) {
+        // An answer with nothing in it is still an answer — recorded as one,
+        // and said out loud, so neither the audit row nor the model mistakes
+        // silence for content (CLEAN-97).
+        excerpt = text
+          ? text.slice(0, DELEGATION_EXCERPT_CHARS)
+          : EMPTY_REPLY_NOTE;
+      } else {
+        excerpt =
+          ('task' in reply ? statusText(reply.task) : null) ??
+          causeText(errorCode ?? null);
+      }
     } catch (err) {
       errorCode =
         err instanceof DelegationError ? err.code : DelegationErrorCodes.Error;
@@ -273,16 +303,29 @@ function matchSkills(peer: IAgentPeerData, context: string): IMatchedSkill[] {
   return chosen.map((s) => ({ id: s.id, name: s.name }));
 }
 
-function readTask(task: IA2aTask): {
+type ReadReply = {
   status: DelegationStatus;
   errorCode?: DelegationErrorCode;
   text?: string;
-} {
+};
+
+/** A plain message is a direct, finished answer; a task says how it went. */
+function readReply(reply: A2aSendMessageResult): ReadReply {
+  if ('message' in reply) {
+    return {
+      status: DelegationStatuses.Answered,
+      text: renderReplyParts(reply.message.parts),
+    };
+  }
+  return readTask(reply.task);
+}
+
+function readTask(task: IA2aTask): ReadReply {
   switch (task.status.state) {
     case A2aTaskStates.Completed:
       return {
         status: DelegationStatuses.Answered,
-        text: textOfParts(task.artifacts?.[0]?.parts),
+        text: replyTextOfTask(task),
       };
     case A2aTaskStates.Rejected:
       return {
@@ -314,7 +357,6 @@ function readTask(task: IA2aTask): {
 
 /** The peer's own words about what went wrong, when it offered any. */
 function statusText(task: IA2aTask): string | null {
-  const parts = task.status.message?.parts;
-  const text = textOfParts(parts);
-  return text || null;
+  const text = renderReplyParts(task.status.message?.parts);
+  return text ? text.slice(0, DELEGATION_EXCERPT_CHARS) : null;
 }

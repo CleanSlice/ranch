@@ -312,6 +312,90 @@ export function hasNonTextPart(parts: A2aPart[] | undefined): boolean {
   return parts.some((p) => !isTextPart(p));
 }
 
+/** The only transport Ranch calls peers over. */
+export const A2A_JSONRPC_BINDING = 'JSONRPC';
+
+/**
+ * The interface Ranch talks to on a card: the first JSON-RPC one on the
+ * protocol version this server speaks (CLEAN-97).
+ *
+ * A card lists interfaces in preference order, but "preferred" is the
+ * agent's view, not ours: an agent that prefers HTTP+JSON and also offers
+ * JSON-RPC is perfectly reachable. Import, delegation and the console's
+ * address line all go through here, so what an operator approves is what
+ * the delegation dials.
+ */
+export function selectJsonRpcInterface(
+  card: Pick<IA2aAgentCard, 'supportedInterfaces'> | null | undefined,
+): IA2aAgentInterface | null {
+  const interfaces = card?.supportedInterfaces;
+  if (!Array.isArray(interfaces)) return null;
+  return (
+    interfaces.find(
+      (i) =>
+        typeof i?.url === 'string' &&
+        String(i.protocolBinding ?? '').toUpperCase() === A2A_JSONRPC_BINDING &&
+        i.protocolVersion === A2A_VERSION,
+    ) ?? null
+  );
+}
+
+/**
+ * A peer's reply as text the calling model can read (CLEAN-97).
+ *
+ * Text parts pass through. Structured data is handed over as compact JSON
+ * rather than dropped — for many agents the data IS the answer, and a model
+ * reads JSON well. Links stay links. Binary payloads are named but not
+ * inlined: base64 in a prompt costs tokens and tells the model nothing.
+ */
+export function renderReplyParts(parts: A2aPart[] | undefined): string {
+  if (!Array.isArray(parts)) return '';
+  return parts
+    .map((part) => renderReplyPart(part))
+    .filter((chunk) => chunk.length > 0)
+    .join('\n\n');
+}
+
+function renderReplyPart(part: A2aPart): string {
+  if (!part || typeof part !== 'object') return '';
+  if (isTextPart(part)) return part.text.trim();
+
+  if ('data' in part && part.data !== undefined && part.data !== null) {
+    try {
+      const json = JSON.stringify(part.data);
+      return json === '{}' || json === '[]' ? '' : json;
+    } catch {
+      return '';
+    }
+  }
+
+  if ('url' in part && typeof part.url === 'string' && part.url) {
+    return part.filename ? `${part.filename}: ${part.url}` : part.url;
+  }
+
+  if ('raw' in part && typeof part.raw === 'string' && part.raw) {
+    const label = part.filename ?? part.mediaType ?? 'unnamed file';
+    return `[binary attachment not included: ${label}]`;
+  }
+
+  return '';
+}
+
+/**
+ * The reply carried by a finished task. Artifacts are the answer; when a
+ * peer leaves them empty and puts its words in the status message instead —
+ * a pattern real agents use — that message is the answer. Empty string only
+ * when neither says anything.
+ */
+export function replyTextOfTask(task: IA2aTask): string {
+  const fromArtifacts = (task.artifacts ?? [])
+    .map((artifact) => renderReplyParts(artifact?.parts))
+    .filter((chunk) => chunk.length > 0)
+    .join('\n\n');
+  if (fromArtifacts) return fromArtifacts;
+  return renderReplyParts(task.status?.message?.parts);
+}
+
 /** ISO 8601 UTC with the trailing Z the spec asks for. */
 export function a2aTimestamp(at: Date = new Date()): string {
   return at.toISOString();

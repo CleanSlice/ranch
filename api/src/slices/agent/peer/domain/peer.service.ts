@@ -2,6 +2,7 @@ import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
@@ -15,7 +16,13 @@ import {
   assertPublicPeerAddress,
   assertResolvesPublic,
 } from './a2a.client';
-import { A2A_CARD_PATH, A2A_VERSION } from './a2a.types';
+import {
+  A2A_CARD_PATH,
+  A2A_VERSION,
+  selectJsonRpcInterface,
+  type IA2aAgentCard,
+  type IA2aAgentInterface,
+} from './a2a.types';
 import {
   EXTERNAL_PEER_STATUS,
   PEER_TOKEN_BYTES,
@@ -181,11 +188,7 @@ export class PeerService {
    * reviews before Connect (FR-002). The same read connectByUrl performs, so
    * what they approve is literally what gets stored.
    */
-  async previewByUrl(
-    agentId: string,
-    rawUrl: string,
-    outboundToken?: string,
-  ) {
+  async previewByUrl(agentId: string, rawUrl: string, outboundToken?: string) {
     const { card } = await this.readExternalCard(
       agentId,
       rawUrl,
@@ -210,21 +213,18 @@ export class PeerService {
     }
 
     const cardUrl = this.canonicalCardUrl(rawUrl);
+
+    // Compared after normalizing, not as a string prefix: `//a2a`, `%61gents`
+    // or a trailing dot on the host all reach our own card route, and each
+    // used to slip past a startsWith (CLEAN-97).
+    const ownBase = await this.cards.ownA2aBase();
+    if (isOwnA2aAddress(cardUrl, ownBase)) throw this.selfUrl();
+
     try {
       assertPublicPeerAddress(cardUrl);
       await assertResolvesPublic(cardUrl);
     } catch (err) {
       throw this.invalidUrl(err instanceof Error ? err.message : String(err));
-    }
-
-    const ownBase = await this.cards.ownA2aBase();
-    if (cardUrl.startsWith(ownBase)) {
-      throw new BadRequestException({
-        code: PeerErrorCodes.SelfUrl,
-        message:
-          'This address belongs to an agent of this installation — pick it ' +
-          'in the agent list instead of importing it by URL.',
-      });
     }
 
     let card;
@@ -234,15 +234,74 @@ export class PeerService {
       throw this.importUnreadable(err, cardUrl);
     }
 
-    const version = card.supportedInterfaces?.[0]?.protocolVersion;
-    if (version !== A2A_VERSION) {
+    await this.vetExternalCard(card, ownBase);
+
+    return { cardUrl, card };
+  }
+
+  /**
+   * What an external card must satisfy before it is stored, beyond "it is a
+   * card" (CLEAN-97). The pasted address was already checked; these checks
+   * are about the card's own claims, which is where delegation will actually
+   * send requests:
+   *
+   * - it offers a JSON-RPC interface on the version we speak — picked the
+   *   same way delegation picks it, so the operator approves what gets dialled;
+   * - that interface is not this installation — our own card names our real
+   *   base, so this catches every alias of our host that the address check
+   *   cannot know about;
+   * - that interface is publicly reachable — otherwise the row saves fine and
+   *   every delegation fails later with nothing in the console to explain it.
+   */
+  private async vetExternalCard(
+    card: IA2aAgentCard,
+    ownBase: string,
+  ): Promise<IA2aAgentInterface> {
+    const iface = selectJsonRpcInterface(card);
+    if (!iface) {
+      const interfaces = card.supportedInterfaces ?? [];
+      const versions = unique(interfaces.map((i) => i?.protocolVersion));
+      if (!versions.includes(A2A_VERSION)) {
+        throw new BadRequestException({
+          code: PeerErrorCodes.Version,
+          message: `This agent speaks A2A ${versions.join(', ') || 'unknown'}; only ${A2A_VERSION} is supported`,
+        });
+      }
+      const bindings = unique(
+        interfaces
+          .filter((i) => i?.protocolVersion === A2A_VERSION)
+          .map((i) => i?.protocolBinding),
+      );
       throw new BadRequestException({
-        code: PeerErrorCodes.Version,
-        message: `This agent speaks A2A ${version ?? 'unknown'}; only ${A2A_VERSION} is supported`,
+        code: PeerErrorCodes.Binding,
+        message: `This agent offers A2A ${A2A_VERSION} only over ${bindings.join(', ') || 'an unnamed transport'}; Ranch calls agents over JSON-RPC`,
       });
     }
 
-    return { cardUrl, card };
+    if (isOwnA2aAddress(iface.url, ownBase)) throw this.selfUrl();
+
+    try {
+      assertPublicPeerAddress(iface.url);
+      await assertResolvesPublic(iface.url);
+    } catch (err) {
+      throw new BadRequestException({
+        code: PeerErrorCodes.UrlInvalid,
+        message: `This card sends delegations to ${iface.url}, which cannot be used: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      });
+    }
+
+    return iface;
+  }
+
+  private selfUrl(): BadRequestException {
+    return new BadRequestException({
+      code: PeerErrorCodes.SelfUrl,
+      message:
+        'This address belongs to an agent of this installation — pick it ' +
+        'in the agent list instead of importing it by URL.',
+    });
   }
 
   /**
@@ -267,6 +326,12 @@ export class PeerService {
         await assertResolvesPublic(cardUrl);
       }
       const card = await this.client.fetchCard(cardUrl, credential);
+      if (external) {
+        // A refreshed card is new remote content: held to the same bar as an
+        // import, so a peer cannot move its interface somewhere private (or
+        // onto us) between import and refresh (CLEAN-97).
+        await this.vetExternalCard(card, await this.cards.ownA2aBase());
+      }
       const updated = await this.peers.updateSnapshot(row.id, {
         cardSnapshot: card,
         cardUrl,
@@ -274,6 +339,9 @@ export class PeerService {
       });
       return this.toView(updated);
     } catch (err) {
+      // A refusal from vetting already names its cause and code; only
+      // transport failures need translating.
+      if (err instanceof HttpException) throw err;
       throw this.cardUnreachable(err, row.cardSnapshot?.name ?? 'the peer');
     }
   }
@@ -341,7 +409,10 @@ export class PeerService {
     url.hash = '';
     url.search = '';
     let path = url.pathname.replace(/\/+$/, '');
-    if (!path.endsWith(`/${A2A_CARD_PATH}`)) {
+    // An address that already names a JSON document is a card URL as it is:
+    // the pre-1.0 `/.well-known/agent.json` and custom card paths used to get
+    // `/.well-known/agent-card.json` glued onto them (CLEAN-97).
+    if (!path.toLowerCase().endsWith('.json')) {
       path = `${path}/${A2A_CARD_PATH}`;
     }
     url.pathname = path;
@@ -360,6 +431,12 @@ export class PeerService {
   private importUnreadable(err: unknown, cardUrl: string): Error {
     const detail = err instanceof Error ? err.message : String(err);
     this.logger.warn(`External card read failed at ${cardUrl}: ${detail}`);
+    if (err instanceof PeerCardUnreachableError && err.kind === 'version') {
+      return new BadRequestException({
+        code: PeerErrorCodes.Version,
+        message: detail,
+      });
+    }
     if (err instanceof PeerCardUnreachableError && err.kind === 'invalid') {
       return new BadRequestException({
         code: PeerErrorCodes.UrlInvalid,
@@ -425,4 +502,61 @@ export class PeerService {
       createdAt: row.createdAt,
     };
   }
+}
+
+function unique(values: Array<string | undefined | null>): string[] {
+  return [
+    ...new Set(
+      values.filter((v): v is string => typeof v === 'string' && v.length > 0),
+    ),
+  ];
+}
+
+/**
+ * An address reduced to what decides which route it reaches: host without a
+ * trailing dot, explicit port, and a path decoded once, collapsed and
+ * lower-cased — the way the server itself resolves it. The scheme is left
+ * out on purpose: http and https of our host are both us.
+ */
+function normalizeAddress(
+  raw: string,
+): { host: string; port: string; path: string } | null {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+
+  let path = url.pathname;
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // Malformed escapes: compare the raw form rather than give up.
+  }
+  path = path.replace(/\/{2,}/g, '/').toLowerCase();
+  try {
+    path = new URL(path, 'http://normalize.invalid').pathname;
+  } catch {
+    // Keep the collapsed form.
+  }
+  if (!path.endsWith('/')) path = `${path}/`;
+
+  return {
+    host: url.hostname.toLowerCase().replace(/\.+$/, ''),
+    port: url.port,
+    path,
+  };
+}
+
+/** True when `candidate` points into this installation's A2A surface. */
+function isOwnA2aAddress(candidate: string, ownBase: string): boolean {
+  const address = normalizeAddress(candidate);
+  const own = normalizeAddress(ownBase);
+  if (!address || !own) return false;
+  return (
+    address.host === own.host &&
+    address.port === own.port &&
+    address.path.startsWith(own.path)
+  );
 }

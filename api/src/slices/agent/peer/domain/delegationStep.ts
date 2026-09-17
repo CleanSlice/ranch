@@ -31,6 +31,10 @@ const CAUSES: Record<DelegationErrorCode, string> = {
     'it refused the credential — the connection may have been removed',
   [DelegationErrorCodes.Unreachable]: 'it could not be reached',
   [DelegationErrorCodes.Error]: 'it answered with an error',
+  [DelegationErrorCodes.AddressRefused]:
+    'its address is private or local, so it was not called',
+  [DelegationErrorCodes.Unsupported]:
+    'its card offers no interface Ranch can call',
 };
 
 export function causeText(code: DelegationErrorCode | null): string {

@@ -1,5 +1,10 @@
 import { DelegationService } from './delegation.service';
-import { A2aTaskStates, type IA2aAgentCard, type IA2aTask } from './a2a.types';
+import {
+  A2aTaskStates,
+  type A2aSendMessageResult,
+  type IA2aAgentCard,
+  type IA2aTask,
+} from './a2a.types';
 import {
   DelegationError,
   DelegationErrorCodes,
@@ -110,6 +115,8 @@ function makeHarness(
   options: {
     connections?: IAgentPeerData[];
     task?: IA2aTask;
+    /** The whole client result, for message replies (CLEAN-97). */
+    reply?: A2aSendMessageResult;
     sendThrows?: Error;
     activeTurn?: { clientId: string; turnId: string; ts: number } | null;
   } = {},
@@ -151,7 +158,7 @@ function makeHarness(
   const sendMessage = jest.fn(async (..._args: unknown[]) => {
     order.push('send');
     if (options.sendThrows) throw options.sendThrows;
-    return options.task ?? completed();
+    return options.reply ?? { task: options.task ?? completed() };
   });
   const client = { sendMessage } as unknown as A2aClient;
 
@@ -568,7 +575,13 @@ describe('DelegationService.run — external peers (CLEAN-95)', () => {
     const outcome = await run({ peer: 'Foreign Bot' });
 
     expect(sendMessage).not.toHaveBeenCalled();
-    expect(outcome).toMatchObject({ kind: 'done', status: 'failed' });
+    // A named cause, not "it answered with an error": nothing was sent, so
+    // the peer answered nothing (CLEAN-97).
+    expect(outcome).toMatchObject({
+      kind: 'done',
+      status: 'failed',
+      errorCode: DelegationErrorCodes.AddressRefused,
+    });
   });
 
   it('an internal peer keeps using its pair token', async () => {
@@ -582,5 +595,259 @@ describe('DelegationService.run — external peers (CLEAN-95)', () => {
       expect.anything(),
       120_000,
     );
+  });
+});
+
+describe('DelegationService.run — reading what a real peer sends back (CLEAN-97)', () => {
+  const task = (overrides: Partial<IA2aTask>): IA2aTask => ({
+    id: 't',
+    contextId: 'ctx-1',
+    status: {
+      state: A2aTaskStates.Completed,
+      timestamp: '2026-09-17T10:00:00Z',
+    },
+    artifacts: [],
+    history: [],
+    ...overrides,
+  });
+
+  it('takes a plain message as the answer — most public agents reply that way', async () => {
+    const { run, rows } = makeHarness({
+      reply: {
+        message: {
+          messageId: 'm-reply',
+          role: 'ROLE_AGENT',
+          parts: [{ text: 'Crown Hill Senior Care Home, Seattle, WA' }],
+        },
+      },
+    });
+
+    const outcome = await run();
+
+    expect(outcome).toMatchObject({
+      status: 'answered',
+      text: 'Crown Hill Senior Care Home, Seattle, WA',
+    });
+    const [row] = Object.values(rows);
+    expect(row).toMatchObject({ status: 'answered', errorCode: null });
+  });
+
+  it('hands structured data over as JSON instead of dropping it', async () => {
+    const { run } = makeHarness({
+      task: task({
+        artifacts: [
+          { artifactId: 'a', parts: [{ data: { accepted: true, count: 3 } }] },
+        ],
+      }),
+    });
+
+    await expect(run()).resolves.toMatchObject({
+      status: 'answered',
+      text: '{"accepted":true,"count":3}',
+    });
+  });
+
+  it('keeps links as links and names binary parts without inlining them', async () => {
+    const { run } = makeHarness({
+      task: task({
+        artifacts: [
+          {
+            artifactId: 'a',
+            parts: [
+              { url: 'https://example.test/page', filename: 'page.html' },
+              {
+                raw: 'aGVsbG8=',
+                filename: 'report.pdf',
+                mediaType: 'application/pdf',
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const outcome = (await run()) as { text: string };
+
+    expect(outcome.text).toContain('page.html: https://example.test/page');
+    expect(outcome.text).toContain(
+      '[binary attachment not included: report.pdf]',
+    );
+    expect(outcome.text).not.toContain('aGVsbG8=');
+  });
+
+  it('joins every artifact, not only the first', async () => {
+    const { run } = makeHarness({
+      task: task({
+        artifacts: [
+          { artifactId: 'a', parts: [{ text: 'first' }] },
+          { artifactId: 'b', parts: [{ text: 'second' }] },
+        ],
+      }),
+    });
+
+    await expect(run()).resolves.toMatchObject({ text: 'first\n\nsecond' });
+  });
+
+  it('reads the status message when a finished task leaves its artifacts empty', async () => {
+    const { run } = makeHarness({
+      task: task({
+        status: {
+          state: A2aTaskStates.Completed,
+          timestamp: '2026-09-17T10:00:00Z',
+          message: {
+            messageId: 's',
+            role: 'ROLE_AGENT',
+            parts: [{ text: 'No public places matched.' }],
+          },
+        },
+      }),
+    });
+
+    await expect(run()).resolves.toMatchObject({
+      status: 'answered',
+      text: 'No public places matched.',
+    });
+  });
+
+  it('prefers the artifacts over a status message that only says it is done', async () => {
+    const { run } = makeHarness({
+      task: task({
+        artifacts: [{ artifactId: 'a', parts: [{ text: 'the answer' }] }],
+        status: {
+          state: A2aTaskStates.Completed,
+          timestamp: '2026-09-17T10:00:00Z',
+          message: {
+            messageId: 's',
+            role: 'ROLE_AGENT',
+            parts: [{ text: 'Request is completed!' }],
+          },
+        },
+      }),
+    });
+
+    await expect(run()).resolves.toMatchObject({ text: 'the answer' });
+  });
+
+  it('records a truly empty reply as answered, and says so', async () => {
+    const { run, rows, sent } = makeHarness({
+      task: task({ artifacts: [{ artifactId: 'a', parts: [{ data: {} }] }] }),
+    });
+
+    const outcome = await run();
+
+    expect(outcome).toMatchObject({ status: 'answered', text: '' });
+    const [row] = Object.values(rows);
+    expect(row.excerpt).toBe(
+      'The peer answered, but its reply had no text, data or links.',
+    );
+    expect(sent[1].data.step.label).toBe('Answered by «Support Bot»');
+  });
+
+  it('treats a message with nothing readable the same way', async () => {
+    const { run, rows } = makeHarness({
+      reply: { message: { messageId: 'm', role: 'ROLE_AGENT', parts: [] } },
+    });
+
+    await expect(run()).resolves.toMatchObject({
+      status: 'answered',
+      text: '',
+    });
+    const [row] = Object.values(rows);
+    expect(row.excerpt).toMatch(/no text, data or links/);
+  });
+
+  it('quotes a failure reason given as data, not just as text', async () => {
+    const { run, rows } = makeHarness({
+      task: task({
+        status: {
+          state: A2aTaskStates.Failed,
+          timestamp: '2026-09-17T10:00:00Z',
+          message: {
+            messageId: 's',
+            role: 'ROLE_AGENT',
+            parts: [{ data: { error: 'quota exceeded' } }],
+          },
+        },
+      }),
+    });
+
+    await run();
+
+    const [row] = Object.values(rows);
+    expect(row.excerpt).toBe('{"error":"quota exceeded"}');
+  });
+});
+
+describe('DelegationService.run — which interface gets called (CLEAN-97)', () => {
+  const withInterfaces = (
+    supportedInterfaces: IA2aAgentCard['supportedInterfaces'],
+  ): IAgentPeerData =>
+    connection({
+      id: 'peer-ext',
+      peerAgentId: null,
+      origin: PeerOrigins.External,
+      token: null,
+      outboundToken: null,
+      cardSnapshot: {
+        ...connection().cardSnapshot,
+        name: 'Foreign Bot',
+        supportedInterfaces,
+      },
+      cardUrl: 'https://other.example/.well-known/agent-card.json',
+    });
+
+  it('calls the JSON-RPC interface even when the card prefers another binding', async () => {
+    const { run, sendMessage } = makeHarness({
+      connections: [
+        withInterfaces([
+          {
+            url: 'https://other.example/rest',
+            protocolBinding: 'HTTP+JSON',
+            protocolVersion: '1.0',
+          },
+          {
+            url: 'https://other.example/jsonrpc',
+            protocolBinding: 'JSONRPC',
+            protocolVersion: '1.0',
+          },
+        ]),
+      ],
+    });
+
+    await run({ peer: 'Foreign Bot' });
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      'https://other.example/jsonrpc',
+      undefined,
+      expect.anything(),
+      120_000,
+    );
+  });
+
+  it('refuses without sending when the card offers no JSON-RPC 1.0 interface', async () => {
+    const { run, sendMessage } = makeHarness({
+      connections: [
+        withInterfaces([
+          {
+            url: 'https://other.example/rest',
+            protocolBinding: 'HTTP+JSON',
+            protocolVersion: '1.0',
+          },
+          {
+            url: 'https://other.example/old',
+            protocolBinding: 'JSONRPC',
+            protocolVersion: '0.3',
+          },
+        ]),
+      ],
+    });
+
+    const outcome = await run({ peer: 'Foreign Bot' });
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      errorCode: DelegationErrorCodes.Unsupported,
+    });
   });
 });

@@ -53,7 +53,10 @@ export class AgentDelegationDto {
     description:
       'Why it did not produce an answer: PEER_NOT_RUNNING, PEER_TIMEOUT, ' +
       'PEER_REJECTED_LOOP, PEER_REJECTED_DEPTH, PEER_UNAUTHORIZED, ' +
-      'PEER_UNREACHABLE or PEER_ERROR. Null while waiting and on success.',
+      'PEER_UNREACHABLE, PEER_ADDRESS_REFUSED (the card points at a private ' +
+      'or local address, so nothing was sent), PEER_UNSUPPORTED (the card ' +
+      'offers no JSON-RPC interface on A2A 1.0) or PEER_ERROR. Null while ' +
+      'waiting and on success — including an empty reply, which is answered.',
     example: null,
   })
   errorCode: string | null;

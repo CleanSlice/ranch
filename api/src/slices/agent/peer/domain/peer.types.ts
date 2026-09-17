@@ -72,6 +72,8 @@ export const PeerErrorCodes = {
   UrlUnreachable: 'PEER_URL_UNREACHABLE',
   Version: 'PEER_VERSION',
   SelfUrl: 'PEER_SELF_URL',
+  // A 1.0 card with no JSON-RPC interface (CLEAN-97).
+  Binding: 'PEER_BINDING',
 } as const;
 
 export type PeerErrorCode =
@@ -165,7 +167,17 @@ export const DelegationErrorCodes = {
   Unauthorized: 'PEER_UNAUTHORIZED',
   Unreachable: 'PEER_UNREACHABLE',
   Error: 'PEER_ERROR',
+  // The stored card's interface resolves to a private or local address, so
+  // no request was sent (CLEAN-97).
+  AddressRefused: 'PEER_ADDRESS_REFUSED',
+  // The stored card offers no JSON-RPC interface on A2A 1.0 (CLEAN-97).
+  Unsupported: 'PEER_UNSUPPORTED',
 } as const;
+
+/** What the audit row and the visible step say when a peer answered with
+ *  nothing readable — no text, no data, no link (CLEAN-97). */
+export const EMPTY_REPLY_NOTE =
+  'The peer answered, but its reply had no text, data or links.';
 
 export type DelegationErrorCode =
   (typeof DelegationErrorCodes)[keyof typeof DelegationErrorCodes];
@@ -225,12 +237,13 @@ export interface IFinishDelegationData {
 
 /** The peer's card could not be read at connect or refresh time.
  *  `kind` separates "could not reach it" from "reached it, not a card" so an
- *  external import can answer 502 vs 400 honestly (CLEAN-95). */
+ *  external import can answer 502 vs 400 honestly (CLEAN-95), and "it is a
+ *  card, of a protocol version we do not speak" from both (CLEAN-97). */
 export class PeerCardUnreachableError extends Error {
   constructor(
     message: string,
     public readonly status?: number,
-    public readonly kind: 'unreachable' | 'invalid' = 'unreachable',
+    public readonly kind: 'unreachable' | 'invalid' | 'version' = 'unreachable',
   ) {
     super(message);
     this.name = 'PeerCardUnreachableError';

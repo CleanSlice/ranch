@@ -170,7 +170,9 @@ describe('AskAgentTool — the description the model reads', () => {
     const description = (await tool.describeForRequest(agentRequest())) ?? '';
 
     // FR-011: the model must try a plausible peer before saying I don't know.
-    const giveUp = description.search(/before you answer that you do not know/i);
+    const giveUp = description.search(
+      /before you answer that you do not know/i,
+    );
     const caveat = description.search(/not a first resort/i);
     expect(giveUp).toBeGreaterThanOrEqual(0);
     expect(caveat).toBeGreaterThan(giveUp);
@@ -296,6 +298,28 @@ describe('AskAgentTool — calling it', () => {
     expect(text).toContain('ctx-1');
     expect(text).toContain('3.1s');
     expect(text).toContain('Shoes can be returned within 30 days.');
+  });
+
+  it('says outright that a peer answered with nothing, so the model does not fill the gap (CLEAN-97)', async () => {
+    const { tool, args } = makeHarness({
+      outcome: {
+        kind: 'done',
+        status: DelegationStatuses.Answered,
+        peerName: 'Support Bot',
+        contextId: 'ctx-1',
+        durationMs: 800,
+        text: '',
+      },
+    });
+
+    const result = await tool.ask(args, null, agentRequest());
+
+    expect(result.isError).toBeUndefined();
+    const text = textOf(result);
+    expect(text).toContain('«Support Bot» answered');
+    expect(text).toContain('the reply was empty');
+    expect(text).toMatch(/do not invent/i);
+    expect(text).not.toContain('Reply from');
   });
 
   it('tells the model not to answer for a peer it could not reach', async () => {

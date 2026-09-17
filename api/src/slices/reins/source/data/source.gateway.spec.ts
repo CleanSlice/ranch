@@ -1010,3 +1010,88 @@ describe('SourceGateway.indexSources: a row the reconciler still owes a retry', 
     expect(prisma.docIds['src-1']).toBe('doc-1');
   });
 });
+
+describe('SourceGateway.requestRetry (the Retry button on a row)', () => {
+  function makeRecordStub(row: {
+    lightragDocId: string | null;
+    indexError: string | null;
+    indexedAt: Date | null;
+  }) {
+    const prisma = makePrismaStub({ 'src-1': row.lightragDocId });
+    prisma.source.findUnique.mockImplementation(() =>
+      Promise.resolve({
+        id: 'src-1',
+        knowledgeId: 'knowledge-1',
+        lightragDocId: row.lightragDocId,
+        indexError: row.indexError,
+        indexedAt: row.indexedAt,
+        indexAttempts: 3,
+      }),
+    );
+    return prisma;
+  }
+
+  it('hands a row LightRAG still holds to the reconciler, due now, count reset', async () => {
+    const prisma = makeRecordStub({
+      lightragDocId: 'doc-1',
+      indexError: 'RetryError[...]',
+      indexedAt: null,
+    });
+    const gateway = makeGateway(prisma, makeLightragStub([]));
+
+    expect(await gateway.requestRetry(makeSource())).toBe(true);
+    expect(prisma.attempts['src-1']).toBe(0);
+    expect(prisma.retryAt['src-1']).toBeInstanceOf(Date);
+    expect(prisma.states['src-1']).toBe('failed');
+  });
+
+  it('reads a duplicate refusal as LightRAG holding the document', async () => {
+    const prisma = makeRecordStub({
+      lightragDocId: null,
+      indexError:
+        'Identical content already exists under another filename. Original doc_id: doc-9, Status: failed',
+      indexedAt: null,
+    });
+    const gateway = makeGateway(prisma, makeLightragStub([]));
+
+    expect(await gateway.requestRetry(makeSource())).toBe(true);
+  });
+
+  it('leaves a row with nothing to reprocess to the upload path', async () => {
+    const prisma = makeRecordStub({
+      lightragDocId: null,
+      indexError: 'fetch failed',
+      indexedAt: null,
+    });
+    const gateway = makeGateway(prisma, makeLightragStub([]));
+
+    expect(await gateway.requestRetry(makeSource())).toBe(false);
+    expect(prisma.source.update).not.toHaveBeenCalled();
+  });
+
+  it('leaves an indexed row to the upload path even with a stale error', async () => {
+    const prisma = makeRecordStub({
+      lightragDocId: 'doc-1',
+      indexError: 'old',
+      indexedAt: new Date(0),
+    });
+    const gateway = makeGateway(prisma, makeLightragStub([]));
+
+    expect(await gateway.requestRetry(makeSource())).toBe(false);
+  });
+});
+
+describe('SourceGateway.waitForSourceIndexed: a refusal naming a processed original', () => {
+  it('adopts it instead of recording a failure', async () => {
+    const prisma = makePrismaStub({ 'src-1': 'track-1' });
+    const lightrag = makeLightragStub([duplicateOf('doc-9', 'processed')]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    const result = await gateway.waitForSourceIndexed('src-1');
+
+    expect(prisma.docIds['src-1']).toBe('doc-9');
+    expect(prisma.indexedAt['src-1']).toBeInstanceOf(Date);
+    expect(prisma.errors['src-1']).toBeNull();
+    expect(result.id).toBe('src-1');
+  });
+});

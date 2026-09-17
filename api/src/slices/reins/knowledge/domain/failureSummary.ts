@@ -4,6 +4,8 @@ export const FAILURE_SUMMARY_LIMIT = 5;
 export interface IFailureLine {
   name: string;
   error: string | null;
+  /** Set when the reconciler will retry this one on its own. */
+  retryAt: Date | null;
 }
 
 /**
@@ -23,5 +25,12 @@ export function summarizeFailures(failures: IFailureLine[]): string | null {
     rest > 0
       ? `; and ${rest} more, all listed under Sources > Failed`
       : '';
-  return `${failures.length} source(s) failed: ${shown}${tail}`;
+  // Said once, in numbers, so the line does not send anyone to re-upload a
+  // document that is about to recover by itself.
+  const retrying = failures.filter((f) => f.retryAt !== null).length;
+  const retryNote =
+    retrying > 0
+      ? `; ${retrying} of them will be retried automatically`
+      : '';
+  return `${failures.length} source(s) failed: ${shown}${tail}${retryNote}`;
 }

@@ -713,6 +713,26 @@ export class SourceGateway extends ISourceGateway {
     );
   }
 
+  async requestRetry(source: ISourceData): Promise<boolean> {
+    const record = await this.prisma.source.findUnique({
+      where: { id: source.id },
+      select: { lightragDocId: true, indexError: true, indexedAt: true },
+    });
+    if (!record || record.indexError === null || record.indexedAt !== null) {
+      return false;
+    }
+    const heldByLightrag =
+      record.lightragDocId !== null ||
+      DUPLICATE_OF.test(record.indexError) ||
+      ALREADY_STORED.test(record.indexError);
+    if (!heldByLightrag) return false;
+    await this.prisma.source.update({
+      where: { id: source.id },
+      data: { indexState: 'failed', indexAttempts: 0, indexRetryAt: new Date() },
+    });
+    return true;
+  }
+
   async findDueForRetry(now: Date): Promise<ISourceData[]> {
     const records = await this.prisma.source.findMany({
       where: { indexState: 'failed', indexRetryAt: { lte: now } },
@@ -1172,6 +1192,13 @@ export class SourceGateway extends ISourceGateway {
       // track yet - keep waiting.
       const failure = track.documents.find((d) => d.status === 'failed');
       if (failure) {
+        // Same reading as the batch path: a refusal naming a processed
+        // original means the content is searchable under that id.
+        const adopted = adoptableDocId(failure.errorMessage);
+        if (adopted !== null) {
+          await this.succeed(this.mapper.toEntity(record), adopted);
+          return this.requireEntity(sourceId);
+        }
         await this.recordFailure(
           this.mapper.toEntity(record),
           failure.errorMessage ?? 'LightRAG failed to process it',

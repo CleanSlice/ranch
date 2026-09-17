@@ -75,6 +75,15 @@ export abstract class ISourceGateway {
    * when LightRAG has nothing. Never waits.
    */
   abstract retryFailed(sources: ISourceData[]): Promise<ISourceRetryOutcome[]>;
+  /**
+   * A person retrying a failed row. Returns true when the row was handed to
+   * the reconciler with a fresh attempt count, due now, because LightRAG
+   * still holds its document (the only path that can work then: a re-upload
+   * is refused as a duplicate, a delete is refused while the pipeline is
+   * busy); false when there is nothing to reprocess and the caller should
+   * upload it again.
+   */
+  abstract requestRetry(source: ISourceData): Promise<boolean>;
   /** Hands the source to the retrieval service and marks it processing. */
   abstract indexSource(source: ISourceData): Promise<void>;
   /**

@@ -210,7 +210,12 @@ const failReason = computed<string | null>(() => {
           v-else
           class="text-xs text-amber-700 dark:text-amber-500"
         >
-          Advertises nothing — reachable by name only, never by topic.
+          <template v-if="peer.card?.description">
+            No skills advertised — matching leans on its description alone.
+          </template>
+          <template v-else>
+            Advertises nothing — reachable by name only, never by topic.
+          </template>
           <template v-if="peer.peerAgentId">
             Give it a description or
             <NuxtLink

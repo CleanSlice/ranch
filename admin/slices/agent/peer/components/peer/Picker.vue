@@ -273,11 +273,18 @@ const urlPreviewAdvertisesNothing = computed(
                     v-if="previewAdvertisesNothing"
                     class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
                   >
-                    You can connect «{{ candidate.name }}», but with an empty
-                    card the delegating agent will only ask it when the user
-                    names it outright — topic matching has nothing to grip.
-                    Better first: give it a description (Edit on its page), a
-                    template with skills, or
+                    <template v-if="preview?.description">
+                      «{{ candidate.name }}» has no skills on its card —
+                      matching will lean on its description alone. Sharper
+                      first: a template with skills, or
+                    </template>
+                    <template v-else>
+                      You can connect «{{ candidate.name }}», but with an
+                      empty card the delegating agent will only ask it when
+                      the user names it outright — topic matching has nothing
+                      to grip. Better first: give it a description (Edit on
+                      its page), a template with skills, or
+                    </template>
                     <NuxtLink
                       :to="`/agents/${candidate.id}?tab=knowledge`"
                       class="font-medium underline"
@@ -346,10 +353,17 @@ const urlPreviewAdvertisesNothing = computed(
                 v-if="urlPreviewAdvertisesNothing"
                 class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
               >
-                This card advertises nothing, so the delegating agent will
-                only ask «{{ urlPreview.name }}» when the user names it
-                outright. Ask its owner to publish a description and skills,
-                then Re-read the card here.
+                <template v-if="urlPreview.description">
+                  «{{ urlPreview.name }}» publishes no skills — matching will
+                  lean on its description alone. Ask its owner to publish
+                  skills, then Re-read the card here.
+                </template>
+                <template v-else>
+                  This card advertises nothing, so the delegating agent will
+                  only ask «{{ urlPreview.name }}» when the user names it
+                  outright. Ask its owner to publish a description and
+                  skills, then Re-read the card here.
+                </template>
               </div>
               <Button
                 size="sm"

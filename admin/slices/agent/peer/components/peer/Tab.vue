@@ -46,6 +46,21 @@ const address = computed(
 const nothingAdvertised = computed(
   () => Boolean(ownCard.value) && !ownCard.value!.skills.length,
 );
+// Per-source status for the hint: a card with a description but no skills is
+// NOT "nothing" — matching already runs on that text (CLEAN-95 prod run
+// proved it); the hint must say what is set and what is still missing.
+const cardHasDescription = computed(() =>
+  Boolean(ownCard.value?.description?.trim()),
+);
+const templateSkillCount = computed(
+  () =>
+    ownCard.value?.skills.filter((s) => s.tags.includes('skill')).length ?? 0,
+);
+const knowledgeSkillCount = computed(
+  () =>
+    ownCard.value?.skills.filter((s) => s.tags.includes('knowledge')).length ??
+    0,
+);
 const needAttention = computed(
   () =>
     peers.value.filter((p) => !p.peerExists || p.peerStatus !== 'running')
@@ -215,22 +230,70 @@ function goToKnowledge() {
             class="max-w-xl space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5"
           >
             <p class="text-sm font-medium text-amber-700 dark:text-amber-500">
-              This card advertises nothing yet
+              {{
+                cardHasDescription
+                  ? 'This card has no skills yet'
+                  : 'This card advertises nothing yet'
+              }}
             </p>
             <p class="text-sm text-amber-700/90 dark:text-amber-500/90">
               A delegating agent matches questions against this exact text.
-              Empty card = it will only ask this agent when the user names it
-              outright — never by topic. The card fills itself from:
+              <template v-if="cardHasDescription">
+                Right now that is the description alone — skills sharpen the
+                match and fill the CAN-DO section other agents read.
+              </template>
+              <template v-else>
+                An empty card means it will only be asked when the user names
+                this agent outright — never by topic.
+              </template>
+              Where the card stands:
             </p>
-            <ul class="list-disc space-y-0.5 pl-5 text-sm text-amber-700/90 dark:text-amber-500/90">
-              <li>
-                <b>Description</b> — the agent's description field
-                (<b>Edit</b>, top right of this page)
+            <!-- ✓/○ per source, so what is already set (and visible right
+                 above) is never listed as if it were missing. -->
+            <ul class="space-y-0.5 text-sm">
+              <li
+                :class="
+                  cardHasDescription
+                    ? 'text-emerald-700 dark:text-emerald-500'
+                    : 'text-amber-700/90 dark:text-amber-500/90'
+                "
+              >
+                {{ cardHasDescription ? '✓' : '○' }} <b>Description</b> —
+                <template v-if="cardHasDescription">
+                  set (the text above; edit via <b>Edit</b>, top right)
+                </template>
+                <template v-else>
+                  missing — the agent's description field (<b>Edit</b>, top
+                  right of this page)
+                </template>
               </li>
-              <li><b>Skills</b> — the skills of its template</li>
-              <li>
-                <b>Knowledge</b> — every bound knowledge base becomes a
-                "can answer about …" skill
+              <li
+                :class="
+                  templateSkillCount
+                    ? 'text-emerald-700 dark:text-emerald-500'
+                    : 'text-amber-700/90 dark:text-amber-500/90'
+                "
+              >
+                {{ templateSkillCount ? '✓' : '○' }} <b>Skills</b> —
+                {{
+                  templateSkillCount
+                    ? `${templateSkillCount} from its template`
+                    : 'none: its template has no skills'
+                }}
+              </li>
+              <li
+                :class="
+                  knowledgeSkillCount
+                    ? 'text-emerald-700 dark:text-emerald-500'
+                    : 'text-amber-700/90 dark:text-amber-500/90'
+                "
+              >
+                {{ knowledgeSkillCount ? '✓' : '○' }} <b>Knowledge</b> —
+                {{
+                  knowledgeSkillCount
+                    ? `${knowledgeSkillCount} base${knowledgeSkillCount === 1 ? '' : 's'} advertised`
+                    : 'none bound — every base becomes a "can answer about …" skill'
+                }}
               </li>
             </ul>
             <Button

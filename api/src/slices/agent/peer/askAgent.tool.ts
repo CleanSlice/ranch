@@ -203,8 +203,15 @@ export class AskAgentTool
     const took = `${(outcome.durationMs / 1000).toFixed(1)}s`;
 
     if (outcome.status === DelegationStatuses.Answered) {
+      if (!outcome.text) {
+        // Said explicitly: an empty tool result reads to a model like "no
+        // news", and it will fill the gap itself (CLEAN-97).
+        return ok(
+          `«${outcome.peerName}» answered (context_id: ${outcome.contextId}, ${took}), but the reply was empty — no text, data or links. Tell the user it returned nothing; do not invent what it might have said.`,
+        );
+      }
       return ok(
-        `Reply from «${outcome.peerName}» (context_id: ${outcome.contextId}, ${took}):\n\n${outcome.text ?? ''}`,
+        `Reply from «${outcome.peerName}» (context_id: ${outcome.contextId}, ${took}):\n\n${outcome.text}`,
       );
     }
 
@@ -234,7 +241,9 @@ function describePeer(connection: IAgentPeerData): string {
 
   // External peers have no agent id here; the connection id names them just
   // as reliably — matchPeer resolves both (CLEAN-95).
-  const parts = [`- "${name}" (peer: ${connection.peerAgentId ?? connection.id})`];
+  const parts = [
+    `- "${name}" (peer: ${connection.peerAgentId ?? connection.id})`,
+  ];
   if (description) parts.push(` — ${description}`);
   if (skills) parts.push(` Skills: ${skills}`);
   return parts.join('');

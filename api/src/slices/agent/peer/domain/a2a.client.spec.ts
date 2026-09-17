@@ -43,11 +43,17 @@ function respond(options: {
   json?: unknown;
   text?: string;
   jsonThrows?: boolean;
+  location?: string;
 }) {
   const status = options.status ?? 200;
   return {
     ok: options.ok ?? (status >= 200 && status < 300),
     status,
+    type: 'basic',
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === 'location' ? (options.location ?? null) : null,
+    },
     json: async () => {
       if (options.jsonThrows) throw new Error('not json');
       return options.json;
@@ -86,10 +92,29 @@ describe('A2aClient.fetchCard', () => {
       CARD_URL,
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: `Bearer ${TOKEN}` }),
-        // Redirects are an SSRF-guard bypass; the client refuses them.
-        redirect: 'error',
+        // Redirects are an SSRF-guard bypass: never followed, only reported.
+        redirect: 'manual',
       }),
     );
+  });
+
+  it('refuses a redirecting card and names where it points, without going there', async () => {
+    fetchMock.mockResolvedValue(
+      respond({
+        status: 301,
+        location: 'https://agent.example/.well-known/agent-card.json',
+      }),
+    );
+
+    await expect(
+      new A2aClient().fetchCard(CARD_URL, TOKEN),
+    ).rejects.toMatchObject({
+      kind: 'invalid',
+      message: expect.stringContaining(
+        'redirects to https://agent.example/.well-known/agent-card.json',
+      ),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('reports an unreachable host in words an operator can act on', async () => {
@@ -105,16 +130,19 @@ describe('A2aClient.fetchCard', () => {
 
     await new A2aClient().fetchCard(CARD_URL);
 
-    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    const headers = fetchMock.mock.calls[0][1].headers as Record<
+      string,
+      string
+    >;
     expect(headers).not.toHaveProperty('Authorization');
   });
 
   it('marks not-a-card answers as invalid, not unreachable (CLEAN-95)', async () => {
     fetchMock.mockResolvedValue(respond({ json: { hello: 'world' } }));
 
-    await expect(new A2aClient().fetchCard(CARD_URL, TOKEN)).rejects.toMatchObject(
-      { kind: 'invalid' },
-    );
+    await expect(
+      new A2aClient().fetchCard(CARD_URL, TOKEN),
+    ).rejects.toMatchObject({ kind: 'invalid' });
   });
 
   it('names a timeout as a timeout rather than an abort', async () => {
@@ -149,9 +177,40 @@ describe('A2aClient.fetchCard', () => {
   it('refuses a document that parses but is not an agent card', async () => {
     fetchMock.mockResolvedValue(respond({ json: { hello: 'world' } }));
 
-    await expect(new A2aClient().fetchCard(CARD_URL, TOKEN)).rejects.toThrow(
-      /not an agent card/,
+    await expect(
+      new A2aClient().fetchCard(CARD_URL, TOKEN),
+    ).rejects.toMatchObject({
+      kind: 'invalid',
+      message: expect.stringMatching(/not an agent card/),
+    });
+  });
+
+  it('names the protocol version of a pre-1.0 card instead of calling it "not a card"', async () => {
+    // The shape most a2a-samples still serve: version at the top level, a
+    // single `url`, no supportedInterfaces.
+    fetchMock.mockResolvedValue(
+      respond({
+        json: {
+          protocolVersion: '0.3.0',
+          name: 'Legacy Agent',
+          description: 'x',
+          url: 'https://legacy.example/',
+          preferredTransport: 'JSONRPC',
+          version: '1.0.0',
+          capabilities: {},
+          defaultInputModes: ['text'],
+          defaultOutputModes: ['text'],
+          skills: [],
+        },
+      }),
     );
+
+    await expect(
+      new A2aClient().fetchCard(CARD_URL, TOKEN),
+    ).rejects.toMatchObject({
+      kind: 'version',
+      message: 'This agent speaks A2A 0.3.0; only 1.0 is supported',
+    });
   });
 
   it('refuses a card with no way to reach the agent', async () => {
@@ -181,7 +240,7 @@ describe('A2aClient.sendMessage', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(RPC_URL);
     expect(init.method).toBe('POST');
-    expect(init.redirect).toBe('error');
+    expect(init.redirect).toBe('manual');
     expect(init.headers).toMatchObject({
       Authorization: `Bearer ${TOKEN}`,
       'Content-Type': 'application/json',
@@ -199,7 +258,7 @@ describe('A2aClient.sendMessage', () => {
 
     await expect(
       new A2aClient().sendMessage(RPC_URL, TOKEN, params, 1000),
-    ).resolves.toEqual(task);
+    ).resolves.toEqual({ task });
   });
 
   it('calls a revoked credential what it is', async () => {
@@ -231,6 +290,56 @@ describe('A2aClient.sendMessage', () => {
     });
   });
 
+  it('passes on the reason a peer gives in a JSON-RPC error sent with a 4xx status', async () => {
+    // Real public agents do this: the request arrived, the peer refused it and
+    // said why. That is an answer from the peer, not a network problem.
+    fetchMock.mockResolvedValue(
+      respond({
+        status: 400,
+        text: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          error: { code: -32602, message: 'Send a structured DataPart' },
+        }),
+      }),
+    );
+
+    await expect(
+      new A2aClient().sendMessage(RPC_URL, TOKEN, params, 1000),
+    ).rejects.toMatchObject({
+      code: DelegationErrorCodes.Error,
+      message: 'Send a structured DataPart',
+    });
+  });
+
+  it('reports a redirecting peer as unreachable, with the target, and does not follow it', async () => {
+    fetchMock.mockResolvedValue(
+      respond({ status: 302, location: 'http://10.0.0.1/rpc' }),
+    );
+
+    await expect(
+      new A2aClient().sendMessage(RPC_URL, TOKEN, params, 1000),
+    ).rejects.toMatchObject({
+      code: DelegationErrorCodes.Unreachable,
+      message:
+        'redirects to http://10.0.0.1/rpc, and redirects are not followed',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a 4xx without a JSON-RPC error as unreachable', async () => {
+    fetchMock.mockResolvedValue(
+      respond({ status: 404, text: '<html>Not Found</html>' }),
+    );
+
+    await expect(
+      new A2aClient().sendMessage(RPC_URL, TOKEN, params, 1000),
+    ).rejects.toMatchObject({
+      code: DelegationErrorCodes.Unreachable,
+      message: expect.stringContaining('404'),
+    });
+  });
+
   it('reports a network failure as unreachable', async () => {
     fetchMock.mockRejectedValue(new Error('socket hang up'));
 
@@ -256,17 +365,38 @@ describe('A2aClient.sendMessage', () => {
     });
   });
 
-  it('refuses an answer that is not a task, having nothing to poll with', async () => {
-    fetchMock.mockResolvedValue(
-      respond({ json: { result: { message: { parts: [] } } } }),
-    );
+  it('accepts a plain message reply — the spec allows it and most public agents use it', async () => {
+    const message = {
+      messageId: 'm-reply',
+      role: 'ROLE_AGENT',
+      parts: [{ text: 'Hello from a message' }],
+    };
+    fetchMock.mockResolvedValue(respond({ json: { result: { message } } }));
+
+    await expect(
+      new A2aClient().sendMessage(RPC_URL, TOKEN, params, 1000),
+    ).resolves.toEqual({ message });
+  });
+
+  it('refuses a result that is neither a task nor a message', async () => {
+    fetchMock.mockResolvedValue(respond({ json: { result: { hello: 1 } } }));
 
     await expect(
       new A2aClient().sendMessage(RPC_URL, TOKEN, params, 1000),
     ).rejects.toMatchObject({
       code: DelegationErrorCodes.Error,
-      message: 'answered without a task',
+      message: 'answered with neither a task nor a message',
     });
+  });
+
+  it('refuses a message without parts, which carries no reply at all', async () => {
+    fetchMock.mockResolvedValue(
+      respond({ json: { result: { message: { messageId: 'm' } } } }),
+    );
+
+    await expect(
+      new A2aClient().sendMessage(RPC_URL, TOKEN, params, 1000),
+    ).rejects.toMatchObject({ code: DelegationErrorCodes.Error });
   });
 
   it('waits longer than the peer own limit, so its stated timeout wins', async () => {

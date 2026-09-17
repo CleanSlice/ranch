@@ -6,7 +6,9 @@ import {
   A2A_VERSION,
   A2A_VERSION_HEADER,
   A2aMethods,
+  type A2aSendMessageResult,
   type IA2aAgentCard,
+  type IA2aMessage,
   type IA2aSendMessageParams,
   type IA2aTask,
   type IJsonRpcResponse,
@@ -25,6 +27,10 @@ const CLIENT_TIMEOUT_MARGIN_MS = 5_000;
 
 /** Enough of a failing body to diagnose, not enough to flood a log line. */
 const BODY_EXCERPT_CHARS = 200;
+
+/** A failed RPC body is read further than an excerpt: a JSON-RPC error
+ *  envelope must parse whole to be recognised as one. */
+const FAILED_RPC_BODY_CHARS = 8_000;
 
 /**
  * The outbound half of A2A (CLEAN-74): reading a peer's card and handing it a
@@ -52,13 +58,26 @@ export class A2aClient {
           Accept: 'application/json',
         },
         // A redirect would let a vetted public URL bounce the request onto a
-        // private address AFTER the SSRF guard ran. No card needs one.
-        redirect: 'error',
+        // private address AFTER the SSRF guard ran, so none is followed.
+        // 'manual' rather than 'error' keeps the 3xx and its Location, so the
+        // operator is told which address to paste instead of "fetch failed"
+        // (CLEAN-97). The target is never requested either way.
+        redirect: 'manual',
         signal: AbortSignal.timeout(CARD_TIMEOUT_MS),
       });
     } catch (err) {
       throw new PeerCardUnreachableError(
         `Could not reach the card at ${cardUrl}: ${describe(err)}`,
+      );
+    }
+
+    const redirect = redirectTarget(response);
+    if (redirect !== null) {
+      throw new PeerCardUnreachableError(
+        `The card at ${cardUrl} redirects${redirect ? ` to ${redirect}` : ''}. ` +
+          'Redirects are not followed — import the final address instead.',
+        response.status,
+        'invalid',
       );
     }
 
@@ -82,6 +101,17 @@ export class A2aClient {
     }
 
     if (!isCard(card)) {
+      // A 0.3 card is a real card in the wrong dialect: it names its version
+      // at the top level and has no supportedInterfaces. Saying "not a card"
+      // there sends the operator hunting for a broken URL (CLEAN-97).
+      const legacyVersion = legacyProtocolVersion(card);
+      if (legacyVersion) {
+        throw new PeerCardUnreachableError(
+          `This agent speaks A2A ${legacyVersion}; only ${A2A_VERSION} is supported`,
+          response.status,
+          'version',
+        );
+      }
       throw new PeerCardUnreachableError(
         `The document at ${cardUrl} is not an agent card`,
         response.status,
@@ -93,26 +123,28 @@ export class A2aClient {
   }
 
   /**
-   * Hands a task to a peer and waits for the finished task.
+   * Hands a task to a peer and waits for its reply.
    *
    * SECURITY NOTE. `interfaceUrl` comes from a stored card snapshot, and a
    * card is remote content. For internal rows every snapshot was read from
    * this API's own route — the URL is ours. External rows (CLEAN-95) are
-   * exactly the foreseen case: the callers guard both the imported card URL
-   * and the card's interface URL with `assertPublicPeerAddress` before any
-   * request goes out. Literal-address checks only; DNS rebinding is accepted
-   * as out of scope for v1.
+   * exactly the foreseen case: import vets the card's interface URL before
+   * anything is saved (CLEAN-97), and delegation re-checks it with
+   * `assertPublicPeerAddress` / `assertResolvesPublic` before any request
+   * goes out. DNS rebinding between the check and the connect is accepted as
+   * out of scope.
    *
-   * A peer that answers with a message instead of a task is treated as an
-   * error: this client asked for blocking work and has nothing to poll with,
-   * so a message would leave the delegation with no outcome to report.
+   * The spec lets a peer answer a blocking SendMessage with either a task or
+   * a plain message, and most public agents choose the message for a direct
+   * reply. Both are returned as-is; reading the answer out of them is the
+   * caller's job (CLEAN-97).
    */
   async sendMessage(
     interfaceUrl: string,
     token: string | undefined,
     params: IA2aSendMessageParams,
     timeoutMs: number,
-  ): Promise<IA2aTask> {
+  ): Promise<A2aSendMessageResult> {
     let response: Response;
     try {
       response = await fetch(interfaceUrl, {
@@ -128,14 +160,23 @@ export class A2aClient {
           method: A2aMethods.SendMessage,
           params,
         }),
-        // Same reason as fetchCard: a redirect is an SSRF-guard bypass.
-        redirect: 'error',
+        // Same reason as fetchCard: a redirect is an SSRF-guard bypass, so it
+        // is reported, never followed.
+        redirect: 'manual',
         signal: AbortSignal.timeout(timeoutMs + CLIENT_TIMEOUT_MARGIN_MS),
       });
     } catch (err) {
       throw new DelegationError(
         DelegationErrorCodes.Unreachable,
         `could not be reached: ${describe(err)}`,
+      );
+    }
+
+    const redirect = redirectTarget(response);
+    if (redirect !== null) {
+      throw new DelegationError(
+        DelegationErrorCodes.Unreachable,
+        `redirects${redirect ? ` to ${redirect}` : ''}, and redirects are not followed`,
       );
     }
 
@@ -147,10 +188,17 @@ export class A2aClient {
     }
 
     if (!response.ok) {
-      const body = await excerpt(response);
+      const body = await excerpt(response, FAILED_RPC_BODY_CHARS);
+      // Some servers send a JSON-RPC error with a 4xx status. The peer was
+      // reached and said why it refused; "could not be reached" would send
+      // the operator after the network instead of the request (CLEAN-97).
+      const rpcError = jsonRpcErrorMessage(body);
+      if (rpcError) {
+        throw new DelegationError(DelegationErrorCodes.Error, rpcError);
+      }
       throw new DelegationError(
         DelegationErrorCodes.Unreachable,
-        `answered ${response.status}${body ? `: ${body}` : ''}`,
+        `answered ${response.status}${body ? `: ${body.slice(0, BODY_EXCERPT_CHARS)}` : ''}`,
       );
     }
 
@@ -171,16 +219,31 @@ export class A2aClient {
       );
     }
 
-    const task = (payload.result as { task?: IA2aTask } | undefined)?.task;
-    if (!task?.status) {
-      throw new DelegationError(
-        DelegationErrorCodes.Error,
-        'answered without a task',
-      );
+    const result = payload.result as
+      | { task?: IA2aTask; message?: IA2aMessage }
+      | undefined;
+
+    if (result?.task?.status) return { task: result.task };
+    if (result?.message && Array.isArray(result.message.parts)) {
+      return { message: result.message };
     }
 
-    return task;
+    throw new DelegationError(
+      DelegationErrorCodes.Error,
+      'answered with neither a task nor a message',
+    );
   }
+}
+
+/** The version a pre-1.0 card declares at its top level, when it looks like one. */
+function legacyProtocolVersion(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const card = value as Record<string, unknown>;
+  if (Array.isArray(card.supportedInterfaces)) return null;
+  return typeof card.protocolVersion === 'string' &&
+    typeof card.name === 'string'
+    ? card.protocolVersion
+    : null;
 }
 
 /**
@@ -194,7 +257,8 @@ export class A2aClient {
  * `::ffff:` mapped v4 and unabbreviated loopback; curl-style numeric
  * shorthand like `2130706433` or `0x7f000001` is refused outright);
  * (2) `assertResolvesPublic` below, a pre-flight DNS check for hostnames;
- * (3) `redirect: 'error'` on every outbound fetch. Residual risk, accepted
+ * (3) no redirect is ever followed (`redirect: 'manual'`, reported as a
+ * refusal with its target). Residual risk, accepted
  * and documented: the connection itself may re-resolve (DNS rebinding
  * TOCTOU). `A2A_ALLOW_PRIVATE_PEERS=true` lifts the guard for local
  * development, where the mock peer IS loopback.
@@ -316,11 +380,47 @@ function describe(err: unknown): string {
   return String(err);
 }
 
-async function excerpt(response: Response): Promise<string> {
+async function excerpt(
+  response: Response,
+  limit: number = BODY_EXCERPT_CHARS,
+): Promise<string> {
   try {
     const text = await response.text();
-    return text.slice(0, BODY_EXCERPT_CHARS).trim();
+    return text.slice(0, limit).trim();
   } catch {
     return '';
+  }
+}
+
+/**
+ * For a 3xx answer: where it points ('' when it names nowhere). Null for any
+ * other status. An opaque redirect (status 0, as browsers report it) counts
+ * as a redirect with no known target.
+ */
+function redirectTarget(response: Response): string | null {
+  const opaque = response.type === 'opaqueredirect';
+  if (!opaque && (response.status < 300 || response.status >= 400)) {
+    return null;
+  }
+  return response.headers?.get?.('location') ?? '';
+}
+
+/** The message of a JSON-RPC error envelope, when a failed body is one. */
+function jsonRpcErrorMessage(body: string): string | null {
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { code?: unknown; message?: unknown };
+    };
+    const error = parsed?.error;
+    if (!error || typeof error !== 'object') return null;
+    if (typeof error.message === 'string' && error.message.trim()) {
+      return error.message.trim();
+    }
+    return typeof error.code === 'number'
+      ? `protocol error ${error.code}`
+      : null;
+  } catch {
+    return null;
   }
 }

@@ -9,8 +9,13 @@ import type {
   SourceIndexStatus,
   SourceType,
 } from '#reins/stores/knowledge';
-import { Download, Eye, ScanText, Trash2 } from 'lucide-vue-next';
-import { errorMessageOf, formatBytes, formatDate } from '#reins/domain';
+import { Download, Eye, RefreshCw, ScanText, Trash2 } from 'lucide-vue-next';
+import {
+  errorMessageOf,
+  formatBytes,
+  formatDate,
+  formatTime,
+} from '#reins/domain';
 import { Badge } from '#theme/components/ui/badge';
 import { Button } from '#theme/components/ui/button';
 import { Checkbox } from '#theme/components/ui/checkbox';
@@ -46,8 +51,12 @@ const STATUS_OPTIONS: { value: SourceIndexStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All statuses' },
   { value: 'indexed', label: 'Indexed' },
   { value: 'pending', label: 'Pending' },
+  { value: 'retrying', label: 'Retrying' },
   { value: 'failed', label: 'Failed' },
 ];
+// One upload plus the API's three automatic retries (MAX_INDEX_RETRIES in
+// reins/source/domain/indexFailure.ts); only shown, never enforced here.
+const MAX_INDEX_ATTEMPTS = 4;
 const TYPE_OPTIONS: { value: SourceType | 'all'; label: string }[] = [
   { value: 'all', label: 'All types' },
   { value: 'file', label: 'File' },
@@ -279,6 +288,15 @@ async function handleReextract(source: ISource) {
   await load();
 }
 
+// A failed row gets another go with a fresh attempt count. When LightRAG
+// still holds the document the API schedules it for its reconciler (the row
+// reads "Retrying" at once); otherwise it is uploaded again in the background.
+async function handleRetry(source: ISource) {
+  await store.reindexSource(knowledgeId.value, source.id);
+  await load();
+  if (refresh) await refresh();
+}
+
 async function onAdded() {
   // The new rows land at the end of the list (oldest first), so a user sitting
   // on a later page or a filter would not see them; go back to a clean view.
@@ -440,10 +458,21 @@ async function onAdded() {
                   {{ s.textError }}
                 </span>
                 <span
+                  v-else-if="s.indexStatus === 'retrying'"
+                  class="text-xs text-muted-foreground"
+                  :title="s.indexError ?? undefined"
+                >
+                  Attempt {{ s.indexAttempts + 1 }} of {{ MAX_INDEX_ATTEMPTS }},
+                  next try {{ formatTime(s.indexRetryAt) }}
+                </span>
+                <span
                   v-else-if="s.indexStatus === 'failed' && s.indexError"
                   class="line-clamp-2 text-xs break-words text-destructive"
                   :title="s.indexError"
                 >
+                  <template v-if="s.indexAttempts > 1">
+                    Gave up after {{ s.indexAttempts }} attempts:
+                  </template>
                   {{ s.indexError }}
                 </span>
               </div>
@@ -484,6 +513,16 @@ async function onAdded() {
                 >
                   <ScanText class="size-4" />
                   <span class="sr-only">Re-extract text from {{ s.name }}</span>
+                </Button>
+                <Button
+                  v-if="s.indexStatus === 'failed' || s.indexStatus === 'retrying'"
+                  size="icon-sm"
+                  variant="ghost"
+                  :title="s.indexStatus === 'retrying' ? 'Retry now' : 'Retry'"
+                  @click="handleRetry(s)"
+                >
+                  <RefreshCw class="size-4" />
+                  <span class="sr-only">Retry {{ s.name }}</span>
                 </Button>
                 <Button
                   size="icon-sm"

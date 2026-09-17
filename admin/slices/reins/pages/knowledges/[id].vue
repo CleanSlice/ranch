@@ -84,9 +84,12 @@ async function handleIndex() {
   // Sources LightRAG is still chunking are waited on, not re-sent, so they do
   // not belong in the "never confirmed" bucket that reads as work to redo.
   const processing = current.value.processingCount;
-  const neverConfirmed = toIndex.value - current.value.failedCount - processing;
+  const retrying = current.value.retryingCount;
+  const neverConfirmed =
+    toIndex.value - current.value.failedCount - retrying - processing;
   const breakdown = [
     `${current.value.failedCount} failed earlier`,
+    ...(retrying > 0 ? [`${retrying} being retried`] : []),
     ...(processing > 0 ? [`${processing} still processing`] : []),
     `${neverConfirmed} never confirmed`,
   ].join(', ');
@@ -194,7 +197,11 @@ const queuedCount = computed(() => {
   if (!k) return 0;
   // Never sent and not failed: what the Index button will actually process.
   return Math.max(
-    k.sourceCount - k.indexedCount - k.processingCount - k.failedCount,
+    k.sourceCount -
+      k.indexedCount -
+      k.processingCount -
+      k.failedCount -
+      k.retryingCount,
     0,
   );
 });
@@ -230,6 +237,12 @@ provide('knowledge-refresh', refresh);
             title="Handed to LightRAG and still being chunked. They are confirmed automatically as it finishes."
           >
             · {{ current.processingCount }} processing
+          </span>
+          <span
+            v-if="current.retryingCount"
+            title="Failed for a reason that passes (a model outage, a lost connection). The API retries them by itself."
+          >
+            · {{ current.retryingCount }} retrying
           </span>
           <span v-if="current.failedCount" class="text-destructive">
             · {{ current.failedCount }} failed

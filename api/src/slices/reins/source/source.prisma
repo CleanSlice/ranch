@@ -16,6 +16,16 @@ model Source {
   indexState    String    @default("queued")
   indexError    String?
   indexedAt     DateTime?
+  // Failed attempts since the source was last indexed or manually retried;
+  // sets the pause before the next automatic retry. Back to 0 on success.
+  indexAttempts Int       @default(0)
+  // When the reconciler may retry this failed row; null when it must not
+  // (permanent failure, retries spent, or the row is not failed).
+  indexRetryAt  DateTime?
+  // LightRAG's own timestamp on the failed verdict this row was last put back
+  // in flight over. Until LightRAG replaces that verdict, seeing it again is
+  // not a new failure. Null for a fresh upload.
+  indexRequeuedOverAt DateTime?
   // Text extracted for a PDF that has no text layer (reins/extraction):
   // none | pending | ready | failed. `none` is both "not a PDF" and "the PDF
   // has its own text"; only `ready` carries a textUrl, and that text - not
@@ -30,5 +40,6 @@ model Source {
   @@index([knowledgeId, createdAt])
   @@index([lightragDocId])
   @@index([indexState])
+  @@index([indexRetryAt])
   @@index([textState])
 }

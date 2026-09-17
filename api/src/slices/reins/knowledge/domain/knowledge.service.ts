@@ -44,6 +44,7 @@ const NO_SOURCES: ISourceCounts = {
   total: 0,
   indexed: 0,
   failed: 0,
+  retrying: 0,
   processing: 0,
 };
 
@@ -211,6 +212,7 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
       sourceCount: c.total,
       indexedCount: c.indexed,
       failedCount: c.failed,
+      retryingCount: c.retrying,
       processingCount: c.processing,
       byType: breakdown.byType,
       totalSizeBytes: breakdown.totalSizeBytes,
@@ -238,6 +240,7 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
       sourceCount: counts.total,
       indexedCount: counts.indexed,
       failedCount: counts.failed,
+      retryingCount: counts.retrying,
       processingCount: counts.processing,
       // Purely "does a task exist here". Not gated on the row's status: the
       // status the API reports is derived from the sources, and one source

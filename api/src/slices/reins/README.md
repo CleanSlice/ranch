@@ -83,6 +83,41 @@ force. The manifest itself is not in this repo - the Mazda cluster's LightRAG is
 an ArgoCD app (`ranch-lightrag`) from `connectsolutions/mazda-ai-gitops`, path
 `helm/ranch-lightrag`.
 
+## A failure that passes on its own is retried on its own
+
+Bedrock answers `ServiceUnavailableException` in waves of ten to fifteen
+minutes (on dev 2026-09-17, 170 in a row between 00:14 and 00:27). LightRAG's
+own retry is five attempts a few seconds apart, so it gives up inside the wave
+and marks the document `failed`; the row records that, and nothing a person
+could press recovered it: an Index run or a Reindex re-uploads, LightRAG
+refuses the duplicate of the failed copy it still holds (`Original doc_id: X,
+Status: failed`), and the row fails again with that message. The only thing
+that clears a failed LightRAG document is `POST /documents/reprocess_failed`,
+which re-queues everything it holds in PENDING, PROCESSING or FAILED.
+
+So the reconciler does that. A failure whose message reads as transient
+(`source/domain/indexFailure.ts`: the Bedrock wrapper's `RetryError`, a 5xx
+from LightRAG, a lost connection, a refusal naming a *failed* original) earns
+a retry slot on the row, `indexRetryAt`, after 5, then 15, then 60 minutes;
+three retries and the row is an honest `failed`. When the slot comes and the
+base's pipeline is idle, `retryFailed` puts the row back in flight under the
+handle LightRAG really holds (a refusal's original, not the rejected copy) and
+the pipeline is nudged; a document LightRAG no longer holds at all is uploaded
+again. The usual confirm pass stamps it or records the next failure. Messages
+not on the list are permanent on purpose: a wrong "permanent" costs one look,
+a wrong "transient" hides a broken file behind "Retrying" for over an hour.
+Add to the list from a log line, not from a guess.
+
+Two consequences for anyone reading a row. `retrying` is a fourth source
+status, derived (`indexError` set, `indexRetryAt` set, no `indexedAt`), and
+is neither `failed` nor `processing` in the counts. And the reconciler now
+records a LightRAG-side failure it meets on a row it was confirming instead of
+dropping the handle; before that the row stayed `processing` with nothing to
+confirm, which is how a base read "Indexing…" for four days over one document.
+LightRAG's `updated_at` on the failed verdict travels with the row when it is
+re-queued (`indexRequeuedOverAt`); seeing that same verdict again is "not
+reached yet", any other timestamp is a new failure.
+
 ## Changing the extraction model requires clearing the LLM cache
 
 LightRAG caches every extraction and summary response in `lightrag_llm_cache`,

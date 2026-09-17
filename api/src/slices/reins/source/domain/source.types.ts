@@ -4,11 +4,17 @@ export type SourceTypes = 'file' | 'url' | 'text';
 
 /**
  * Per-source view of the last index run. `indexed` = LightRAG confirmed the
- * document as processed; `failed` = the last run reported an error for it and
- * nothing has succeeded since; `pending` = never sent, or sent and still
- * waiting for a verdict.
+ * document as processed; `failed` = the last run reported an error for it,
+ * nothing has succeeded since and nothing will be tried without a person;
+ * `retrying` = it failed for a reason that passes (a model outage, a lost
+ * connection) and the reconciler will try again at `indexRetryAt`;
+ * `pending` = never sent, or sent and still waiting for a verdict.
  */
-export type SourceIndexStatusTypes = 'indexed' | 'pending' | 'failed';
+export type SourceIndexStatusTypes =
+  | 'indexed'
+  | 'pending'
+  | 'retrying'
+  | 'failed';
 
 /**
  * Stored per-source ingestion state, the migration's resume marker:
@@ -44,6 +50,10 @@ export interface ISourceData {
   indexState: SourceIndexStateTypes;
   indexError: string | null;
   indexedAt: Date | null;
+  /** Failed attempts since the last success or manual retry. */
+  indexAttempts: number;
+  /** When the reconciler may retry a failed row; null when it never will. */
+  indexRetryAt: Date | null;
   textState: SourceTextStateTypes;
   textUrl: string | null;
   textError: string | null;
@@ -61,6 +71,9 @@ export interface ISourceIndexStatePatch {
   indexState: SourceIndexStateTypes;
   indexError?: string | null;
   indexedAt?: Date | null;
+  indexAttempts?: number;
+  indexRetryAt?: Date | null;
+  indexRequeuedOverAt?: Date | null;
 }
 
 export interface ISourceFilter {
@@ -93,7 +106,10 @@ export interface ISourcePage {
 export interface ISourceCounts {
   total: number;
   indexed: number;
+  /** Terminal failures: nothing will touch them without a person. */
   failed: number;
+  /** Failed for a reason that passes; the reconciler owes them another go. */
+  retrying: number;
   /**
    * Handed to LightRAG and still moving through its pipeline: the run that
    * submitted them stopped waiting, but nothing is wrong with them. Counted
@@ -134,6 +150,28 @@ export interface ISourceIndexOutcome {
   /** Kept for callers that only care about searchable-or-not. */
   indexed: boolean;
   /** Set for `failed`, and for `pending` as the reason the wait ended. */
+  error: string | null;
+  /** For `failed`: when the reconciler will try again, null when it will not. */
+  retryAt: Date | null;
+}
+
+/**
+ * What a retry did with one failed row. `reprocess`: LightRAG still holds the
+ * document, the row is back in flight and the caller has to nudge the
+ * pipeline; `resent`: LightRAG had nothing, so the document went up again;
+ * `indexed`: it had finished after all and the row is stamped; `failed`: the
+ * re-upload itself failed, recorded on the row with whatever retry it earns.
+ */
+export type SourceRetryActionTypes =
+  | 'reprocess'
+  | 'resent'
+  | 'indexed'
+  | 'failed';
+
+export interface ISourceRetryOutcome {
+  sourceId: string;
+  name: string;
+  action: SourceRetryActionTypes;
   error: string | null;
 }
 

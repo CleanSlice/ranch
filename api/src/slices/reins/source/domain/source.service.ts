@@ -21,6 +21,7 @@ import {
   ISourceFilter,
   ISourceIndexOutcome,
   ISourcePage,
+  ISourceRetryOutcome,
   ISourceSelection,
   ISourceBreakdown,
 } from './source.types';
@@ -456,6 +457,14 @@ export class SourceService {
     return this.gateway.confirmProcessed(sources);
   }
 
+  findDueForRetry(now: Date): Promise<ISourceData[]> {
+    return this.gateway.findDueForRetry(now);
+  }
+
+  retryFailed(sources: ISourceData[]): Promise<ISourceRetryOutcome[]> {
+    return this.gateway.retryFailed(sources);
+  }
+
   /**
    * Hand the source over AND wait until the retrieval service reports it
    * processed — "indexed" means searchable, not merely submitted. Returns
@@ -470,19 +479,42 @@ export class SourceService {
     return this.gateway.updateIndexState(sourceId, {
       indexState: 'queued',
       indexError: null,
+      indexAttempts: 0,
+      indexRetryAt: null,
     });
   }
 
   /**
    * Retry a single failed source without touching the rest of the batch
    * (FR-032). Runs in the background; per-source state reports the outcome.
+   *
+   * A document LightRAG still holds as failed cannot be re-sent (the upload
+   * is refused as a duplicate of that copy) and cannot be deleted while the
+   * pipeline is busy, so for those the row is handed to the reconciler with
+   * a fresh attempt count: its next pass reprocesses the copy LightRAG has.
+   * The row reads `retrying` straight away.
    */
   async reindexSource(knowledgeId: string, sourceId: string): Promise<void> {
     const source = await this.gateway.findById(sourceId);
     if (!source || source.knowledgeId !== knowledgeId) {
       throw new NotFoundException(`Source ${sourceId} not found`);
     }
-    await this.requeueSource(sourceId);
+    if (await this.gateway.requestRetry(source)) return;
+    if (source.indexStatus === 'failed') {
+      // A failure that will not pass by itself. The copy LightRAG holds is
+      // what refuses a re-upload as a duplicate, so it goes first; best
+      // effort, since a busy pipeline refuses the delete and the upload path
+      // copes with the refusal on its own.
+      try {
+        await this.gateway.resetIndexClaim(source);
+      } catch (err) {
+        this.logger.warn(
+          `resetIndexClaim(${sourceId}) before retry failed: ${errorMessage(err)}`,
+        );
+      }
+    } else {
+      await this.requeueSource(sourceId);
+    }
     void this.indexSourceAndWait({ ...source, indexState: 'queued' }).catch(
       (err) => {
         this.logger.warn(`reindex of ${sourceId} failed: ${errorMessage(err)}`);

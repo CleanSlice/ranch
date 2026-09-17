@@ -499,6 +499,7 @@ function extractTrackStatus(body: unknown): ITrackStatus {
       id: doc.id,
       status: toProcessingStatus(doc.status),
       errorMessage: typeof doc.error_msg === 'string' ? doc.error_msg : null,
+      updatedAt: parseTimestamp(doc.updated_at),
     });
   }
   return { documents };
@@ -520,10 +521,25 @@ function extractDocuments(body: unknown): IDocumentRecord[] {
         // bucket name is the fallback (they agree in practice).
         status: toProcessingStatus(doc.status ?? statusName),
         filePath: typeof doc.file_path === 'string' ? doc.file_path : null,
+        errorMessage:
+          typeof doc.error_msg === 'string' && doc.error_msg !== ''
+            ? doc.error_msg
+            : null,
+        updatedAt: parseTimestamp(doc.updated_at),
       });
     }
   }
   return out;
+}
+
+// LightRAG writes UTC. A timestamp without an offset would be read as local
+// time by Date.parse, so one is pinned on before parsing.
+const HAS_OFFSET = /(Z|[+-]\d{2}:?\d{2})$/;
+
+function parseTimestamp(value: unknown): Date | null {
+  if (typeof value !== 'string' || value === '') return null;
+  const ms = Date.parse(HAS_OFFSET.test(value) ? value : `${value}Z`);
+  return Number.isNaN(ms) ? null : new Date(ms);
 }
 
 function toProcessingStatus(value: unknown): DocumentProcessingStatusTypes {

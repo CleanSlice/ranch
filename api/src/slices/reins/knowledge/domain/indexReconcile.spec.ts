@@ -1,6 +1,11 @@
 import { IndexReconcileService } from './indexReconcile.service';
 import { SourceService } from '../../source/domain/source.service';
-import { ISourceData, ISourceIndexOutcome } from '../../source/domain';
+import {
+  ISourceData,
+  ISourceIndexOutcome,
+  ISourceRetryOutcome,
+  SourceRetryActionTypes,
+} from '../../source/domain';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
 import { IPipelineStatus } from '../../lightrag/domain/lightrag.types';
 
@@ -19,6 +24,8 @@ function makeSource(id: string): ISourceData {
     indexState: 'queued',
     indexError: null,
     indexedAt: null,
+    indexAttempts: 0,
+    indexRetryAt: null,
     textState: 'none',
     textUrl: null,
     textError: null,
@@ -34,6 +41,7 @@ function confirmed(id: string): ISourceIndexOutcome {
     status: 'indexed',
     indexed: true,
     error: null,
+    retryAt: null,
   };
 }
 
@@ -44,6 +52,7 @@ function moving(id: string): ISourceIndexOutcome {
     status: 'pending',
     indexed: false,
     error: 'still in LightRAG pipeline',
+    retryAt: null,
   };
 }
 
@@ -60,8 +69,12 @@ function makeService(
     restartPipeline: jest.fn(() => Promise.resolve()),
   },
 ): IndexReconcileService {
+  const quiet: Partial<SourceService> = {
+    findDueForRetry: jest.fn(() => Promise.resolve([])),
+    retryFailed: jest.fn(() => Promise.resolve([])),
+  };
   return new IndexReconcileService(
-    stub as SourceService,
+    { ...quiet, ...stub } as SourceService,
     lightrag as ILightragClient,
   );
 }
@@ -213,6 +226,188 @@ describe('IndexReconcileService: recovering a stalled pipeline', () => {
     );
 
     // Recovery rides along with a reconcile pass; it must never cost one.
+    expect(await service.reconcile()).toBe(1);
+  });
+});
+
+describe('IndexReconcileService: retrying what failed for a passing reason', () => {
+  function due(id: string): ISourceData {
+    return {
+      ...makeSource(id),
+      indexState: 'failed',
+      indexStatus: 'retrying',
+      indexError: 'RetryError[<Future raised BedrockConnectionError>]',
+      indexAttempts: 1,
+      indexRetryAt: new Date(0),
+    };
+  }
+
+  function retried(
+    id: string,
+    action: SourceRetryActionTypes,
+  ): ISourceRetryOutcome {
+    return { sourceId: id, name: `${id}.md`, action, error: null };
+  }
+
+  it('puts due rows back on an idle pipeline and nudges it', async () => {
+    const retryFailed = jest.fn(() => Promise.resolve([retried('src-1', 'reprocess')]));
+    const restartPipeline = jest.fn(() => Promise.resolve());
+    const service = makeService(
+      {
+        findUnconfirmed: jest.fn(() => Promise.resolve([])),
+        findDueForRetry: jest.fn(() => Promise.resolve([due('src-1')])),
+        retryFailed,
+      },
+      {
+        getPipelineStatus: jest.fn(() => Promise.resolve(pipeline(false))),
+        restartPipeline,
+      },
+    );
+
+    await service.reconcile();
+
+    expect(retryFailed).toHaveBeenCalledWith([due('src-1')]);
+    expect(restartPipeline).toHaveBeenCalledWith('knowledge-1');
+  });
+
+  it('leaves a busy pipeline to finish; the rows stay due', async () => {
+    const retryFailed = jest.fn(() => Promise.resolve([]));
+    const restartPipeline = jest.fn(() => Promise.resolve());
+    const service = makeService(
+      {
+        findUnconfirmed: jest.fn(() => Promise.resolve([])),
+        findDueForRetry: jest.fn(() => Promise.resolve([due('src-1')])),
+        retryFailed,
+      },
+      {
+        getPipelineStatus: jest.fn(() => Promise.resolve(pipeline(true))),
+        restartPipeline,
+      },
+    );
+
+    await service.reconcile();
+
+    expect(retryFailed).not.toHaveBeenCalled();
+    expect(restartPipeline).not.toHaveBeenCalled();
+  });
+
+  it('does not nudge when nothing was left for the pipeline to reprocess', async () => {
+    const restartPipeline = jest.fn(() => Promise.resolve());
+    const service = makeService(
+      {
+        findUnconfirmed: jest.fn(() => Promise.resolve([])),
+        findDueForRetry: jest.fn(() => Promise.resolve([due('src-1')])),
+        retryFailed: jest.fn(() => Promise.resolve([retried('src-1', 'resent')])),
+      },
+      {
+        getPipelineStatus: jest.fn(() => Promise.resolve(pipeline(false))),
+        restartPipeline,
+      },
+    );
+
+    await service.reconcile();
+
+    expect(restartPipeline).not.toHaveBeenCalled();
+  });
+
+  it('shares the cooldown with the stall nudge on the same base', async () => {
+    const retryFailed = jest.fn(() => Promise.resolve([retried('src-2', 'reprocess')]));
+    const restartPipeline = jest.fn(() => Promise.resolve());
+    const findDueForRetry = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([due('src-2')]);
+    const service = makeService(
+      {
+        findUnconfirmed: jest.fn(() => Promise.resolve([makeSource('src-1')])),
+        confirmProcessed: jest.fn(() => Promise.resolve([moving('src-1')])),
+        findDueForRetry,
+        retryFailed,
+      },
+      {
+        getPipelineStatus: jest.fn(() => Promise.resolve(pipeline(false))),
+        restartPipeline,
+      },
+    );
+
+    // First pass: the stall nudge fires. Second pass, a minute later: a retry
+    // comes due on the same base and has to wait the cooldown out.
+    await service.reconcile();
+    await service.reconcile();
+
+    expect(restartPipeline).toHaveBeenCalledTimes(1);
+    expect(retryFailed).not.toHaveBeenCalled();
+  });
+
+  it('handles each base on its own pipeline in one pass', async () => {
+    const other: ISourceData = { ...due('src-2'), knowledgeId: 'knowledge-2' };
+    const retryFailed = jest.fn((rows: ISourceData[]) =>
+      Promise.resolve(rows.map((r) => retried(r.id, 'reprocess'))),
+    );
+    const restartPipeline = jest.fn(() => Promise.resolve());
+    const service = makeService(
+      {
+        findUnconfirmed: jest.fn(() => Promise.resolve([])),
+        findDueForRetry: jest.fn(() => Promise.resolve([due('src-1'), other])),
+        retryFailed,
+      },
+      {
+        getPipelineStatus: jest.fn(() => Promise.resolve(pipeline(false))),
+        restartPipeline,
+      },
+    );
+
+    await service.reconcile();
+
+    expect(retryFailed).toHaveBeenCalledTimes(2);
+    expect(restartPipeline).toHaveBeenCalledWith('knowledge-1');
+    expect(restartPipeline).toHaveBeenCalledWith('knowledge-2');
+  });
+
+  it('lets a person\'s Retry through the cooldown', async () => {
+    // Retry on a row sets the slot to now with no attempt spent; sitting on
+    // it for ten minutes reads as the button doing nothing.
+    const manual: ISourceData = { ...due('src-2'), indexAttempts: 0 };
+    const retryFailed = jest.fn(() => Promise.resolve([retried('src-2', 'reprocess')]));
+    const restartPipeline = jest.fn(() => Promise.resolve());
+    const findDueForRetry = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([manual]);
+    const service = makeService(
+      {
+        findUnconfirmed: jest.fn(() => Promise.resolve([makeSource('src-1')])),
+        confirmProcessed: jest.fn(() => Promise.resolve([moving('src-1')])),
+        findDueForRetry,
+        retryFailed,
+      },
+      {
+        getPipelineStatus: jest.fn(() => Promise.resolve(pipeline(false))),
+        restartPipeline,
+      },
+    );
+
+    await service.reconcile();
+    await service.reconcile();
+
+    expect(retryFailed).toHaveBeenCalledTimes(1);
+    expect(restartPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps its confirmations when the retry step throws', async () => {
+    const service = makeService(
+      {
+        findUnconfirmed: jest.fn(() => Promise.resolve([makeSource('src-1')])),
+        confirmProcessed: jest.fn(() => Promise.resolve([confirmed('src-1')])),
+        findDueForRetry: jest.fn(() => Promise.resolve([due('src-2')])),
+        retryFailed: jest.fn(() => Promise.reject(new Error('502'))),
+      },
+      {
+        getPipelineStatus: jest.fn(() => Promise.resolve(pipeline(false))),
+        restartPipeline: jest.fn(() => Promise.resolve()),
+      },
+    );
+
     expect(await service.reconcile()).toBe(1);
   });
 });

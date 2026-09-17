@@ -4,6 +4,7 @@ function failures(n: number) {
   return Array.from({ length: n }, (_, i) => ({
     name: `doc-${i + 1}.pdf`,
     error: 'only whitespace',
+    retryAt: null,
   }));
 }
 
@@ -28,8 +29,18 @@ describe('summarizeFailures', () => {
   });
 
   it('falls back to a wording for a failure with no message', () => {
-    expect(summarizeFailures([{ name: 'a.pdf', error: null }])).toBe(
-      '1 source(s) failed: a.pdf (unknown error)',
-    );
+    expect(
+      summarizeFailures([{ name: 'a.pdf', error: null, retryAt: null }]),
+    ).toBe('1 source(s) failed: a.pdf (unknown error)');
+  });
+
+  it('says how many of them the reconciler will retry on its own', () => {
+    const line = summarizeFailures([
+      { name: 'a.pdf', error: 'RetryError[...]', retryAt: new Date() },
+      { name: 'b.pdf', error: 'RetryError[...]', retryAt: new Date() },
+      { name: 'c.pdf', error: 'only whitespace', retryAt: null },
+    ])!;
+    expect(line.startsWith('3 source(s) failed: a.pdf')).toBe(true);
+    expect(line.endsWith('; 2 of them will be retried automatically')).toBe(true);
   });
 });

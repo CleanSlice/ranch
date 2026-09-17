@@ -132,6 +132,7 @@ export class KnowledgeMapper {
       sourceCount: num(o.sourceCount),
       indexedCount: num(o.indexedCount),
       failedCount: num(o.failedCount),
+      retryingCount: num(o.retryingCount),
       processingCount: num(o.processingCount),
       indexRunAlive: o.indexRunAlive === true,
       instanceState:
@@ -166,6 +167,7 @@ export class KnowledgeMapper {
       sourceCount: num(o.sourceCount),
       indexedCount: num(o.indexedCount),
       failedCount: num(o.failedCount),
+      retryingCount: num(o.retryingCount),
       processingCount: num(o.processingCount),
       byType: { file: num(t.file), url: num(t.url), text: num(t.text) },
       totalSizeBytes: num(o.totalSizeBytes),

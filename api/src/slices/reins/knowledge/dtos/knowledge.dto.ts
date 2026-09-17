@@ -30,9 +30,15 @@ export class KnowledgeDto implements Omit<
   @ApiProperty({ description: 'Sources LightRAG confirmed as processed' })
   indexedCount: number;
   @ApiProperty({
-    description: 'Sources whose last index run recorded an error',
+    description:
+      'Sources whose last index run recorded an error nothing will retry without a person',
   })
   failedCount: number;
+  @ApiProperty({
+    description:
+      'Sources that failed for a reason that passes (a model outage, a lost connection) and are retried automatically',
+  })
+  retryingCount: number;
   @ApiProperty({
     description:
       'Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.',

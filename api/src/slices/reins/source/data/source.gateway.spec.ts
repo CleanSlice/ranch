@@ -41,19 +41,19 @@ function makeSource(overrides: Partial<ISourceData> = {}): ISourceData {
 
 function processed(): ITrackStatus {
   return {
-    documents: [{ id: 'doc-1', status: 'processed', errorMessage: null }],
+    documents: [{ id: 'doc-1', status: 'processed', errorMessage: null, updatedAt: null }],
   };
 }
 
 function stillProcessing(): ITrackStatus {
   return {
-    documents: [{ id: 'doc-1', status: 'processing', errorMessage: null }],
+    documents: [{ id: 'doc-1', status: 'processing', errorMessage: null, updatedAt: null }],
   };
 }
 
 function failed(message: string): ITrackStatus {
   return {
-    documents: [{ id: 'doc-1', status: 'failed', errorMessage: message }],
+    documents: [{ id: 'doc-1', status: 'failed', errorMessage: message, updatedAt: null }],
   };
 }
 
@@ -62,8 +62,9 @@ interface IRowPatch {
   indexState?: string;
   indexError?: string | null;
   indexedAt?: Date | null;
-  indexAttempts?: number;
+  indexAttempts?: number | { increment: number };
   indexRetryAt?: Date | null;
+  indexRequeuedOverAt?: Date | null;
 }
 
 // Tracks the columns the gateway writes, applying only the keys each update
@@ -75,6 +76,17 @@ function makePrismaStub(docIds: Record<string, string | null> = {}) {
   const indexedAt: Record<string, Date | null> = {};
   const attempts: Record<string, number> = {};
   const retryAt: Record<string, Date | null> = {};
+  const requeuedOver: Record<string, Date | null> = {};
+  const row = (id: string) => ({
+    id,
+    knowledgeId: 'knowledge-1',
+    lightragDocId: docIds[id] ?? null,
+    indexError: errors[id] ?? null,
+    indexedAt: indexedAt[id] ?? null,
+    indexAttempts: attempts[id] ?? 0,
+    indexRetryAt: retryAt[id] ?? null,
+    indexRequeuedOverAt: requeuedOver[id] ?? null,
+  });
   return {
     docIds,
     states,
@@ -82,14 +94,13 @@ function makePrismaStub(docIds: Record<string, string | null> = {}) {
     indexedAt,
     attempts,
     retryAt,
+    requeuedOver,
     source: {
       findUnique: jest.fn(({ where }: { where: { id: string } }) =>
-        Promise.resolve({
-          id: where.id,
-          knowledgeId: 'knowledge-1',
-          lightragDocId: docIds[where.id] ?? null,
-          indexAttempts: attempts[where.id] ?? 0,
-        }),
+        Promise.resolve(row(where.id)),
+      ),
+      findMany: jest.fn(({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.map(row)),
       ),
       update: jest.fn(
         ({ where, data }: { where: { id: string }; data: IRowPatch }) => {
@@ -97,9 +108,17 @@ function makePrismaStub(docIds: Record<string, string | null> = {}) {
           if ('indexState' in data) states[where.id] = data.indexState!;
           if ('indexError' in data) errors[where.id] = data.indexError!;
           if ('indexedAt' in data) indexedAt[where.id] = data.indexedAt!;
-          if ('indexAttempts' in data) attempts[where.id] = data.indexAttempts!;
+          if (typeof data.indexAttempts === 'number') {
+            attempts[where.id] = data.indexAttempts;
+          } else if (data.indexAttempts !== undefined) {
+            attempts[where.id] =
+              (attempts[where.id] ?? 0) + data.indexAttempts.increment;
+          }
           if ('indexRetryAt' in data) retryAt[where.id] = data.indexRetryAt!;
-          return Promise.resolve({ id: where.id });
+          if ('indexRequeuedOverAt' in data) {
+            requeuedOver[where.id] = data.indexRequeuedOverAt!;
+          }
+          return Promise.resolve(row(where.id));
         },
       ),
     },
@@ -108,7 +127,7 @@ function makePrismaStub(docIds: Record<string, string | null> = {}) {
 
 function inFlight(): ITrackStatus {
   return {
-    documents: [{ id: 'doc-1', status: 'processing', errorMessage: null }],
+    documents: [{ id: 'doc-1', status: 'processing', errorMessage: null, updatedAt: null }],
   };
 }
 
@@ -119,6 +138,7 @@ function duplicateOf(docId: string, originalStatus: string): ITrackStatus {
         id: 'dup-1',
         status: 'failed',
         errorMessage: `Identical content already exists under another filename. Original doc_id: ${docId}, Status: ${originalStatus}`,
+        updatedAt: null,
       },
     ],
   };
@@ -842,39 +862,108 @@ describe('SourceGateway.confirmProcessed: a document LightRAG gave up on', () =>
     expect(prisma.indexedAt['src-1']).toBeInstanceOf(Date);
   });
 
-  it('leaves alone a row re-queued after the verdict it is looking at', async () => {
-    // The retry put the row back in flight at 00:40; LightRAG's failed
-    // status is from 00:30 and the pipeline has simply not reached the
-    // document yet. Recording that as a new failure would spend an attempt
-    // on nothing.
+  it('leaves alone a row re-queued over the very verdict it is looking at', async () => {
+    // The retry put the row back in flight over LightRAG's 00:30 verdict and
+    // the pipeline has simply not reached the document yet. Recording that
+    // as a new failure would spend an attempt on nothing.
     const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    prisma.requeuedOver['src-1'] = VERDICT;
     const lightrag = makeLightragStub([], [heldFailed('doc-1', 'RetryError[...]')]);
     const gateway = makeGateway(prisma, lightrag);
 
     const outcomes = await gateway.confirmProcessed([
-      makeSource({
-        indexState: 'processing',
-        updatedAt: new Date('2026-09-17T00:40:00Z'),
-      }),
+      makeSource({ indexState: 'processing' }),
     ]);
 
     expect(outcomes[0].status).toBe('pending');
     expect(prisma.source.update).not.toHaveBeenCalled();
   });
 
+  it('records a verdict newer than the one the row was re-queued over', async () => {
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    prisma.requeuedOver['src-1'] = VERDICT;
+    const lightrag = makeLightragStub(
+      [],
+      [heldFailed('doc-1', 'RetryError[...]', new Date('2026-09-17T00:41:00Z'))],
+    );
+    const gateway = makeGateway(prisma, lightrag);
+
+    await gateway.confirmProcessed([makeSource({ indexState: 'processing' })]);
+
+    expect(prisma.states['src-1']).toBe('failed');
+    expect(prisma.attempts['src-1']).toBe(1);
+    expect(prisma.requeuedOver['src-1']).toBeNull();
+  });
+
   it('treats a verdict with no timestamp as fresh', async () => {
     const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    prisma.requeuedOver['src-1'] = VERDICT;
     const lightrag = makeLightragStub([], [heldFailed('doc-1', 'RetryError[...]', null)]);
     const gateway = makeGateway(prisma, lightrag);
 
-    await gateway.confirmProcessed([
-      makeSource({
-        indexState: 'processing',
-        updatedAt: new Date('2026-09-17T00:40:00Z'),
-      }),
-    ]);
+    await gateway.confirmProcessed([makeSource({ indexState: 'processing' })]);
 
     expect(prisma.states['src-1']).toBe('failed');
+  });
+
+  it('does not spend a second attempt on the failure it already recorded', async () => {
+    // An index run and a reconcile pass can both meet the same verdict.
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    prisma.errors['src-1'] = 'RetryError[...]';
+    prisma.attempts['src-1'] = 1;
+    prisma.retryAt['src-1'] = new Date(Date.now() + 5 * 60_000);
+    const lightrag = makeLightragStub([], [heldFailed('doc-1', 'RetryError[...]')]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.confirmProcessed([
+      makeSource({ indexState: 'processing' }),
+    ]);
+
+    expect(outcomes[0].retryAt).toEqual(prisma.retryAt['src-1']);
+    expect(prisma.attempts['src-1']).toBe(1);
+  });
+
+  it('spends exactly one attempt per verdict and stops after the third retry', async () => {
+    // The whole loop, in one place: a fresh verdict costs an attempt, the
+    // retry re-queues the row over it, the same verdict seen again costs
+    // nothing, the next verdict costs the next attempt, and after the fourth
+    // failure no slot is scheduled.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-17T00:00:00Z'));
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    const doc = heldFailed('doc-1', 'RetryError[...]', new Date('2026-09-17T00:00:00Z'));
+    const gateway = makeGateway(prisma, makeLightragStub([], [doc]));
+    const row = () => makeSource({ indexState: 'processing' });
+    const failedRow = () =>
+      makeSource({
+        indexState: 'failed',
+        indexError: 'RetryError[...]',
+        indexAttempts: prisma.attempts['src-1'],
+        indexRetryAt: prisma.retryAt['src-1'],
+      });
+
+    try {
+      for (let verdict = 1; verdict <= 4; verdict += 1) {
+        doc.updatedAt = new Date(Date.now());
+        await gateway.confirmProcessed([row()]);
+        expect(prisma.attempts['src-1']).toBe(verdict);
+        if (verdict < 4) {
+          expect(prisma.retryAt['src-1']).toBeInstanceOf(Date);
+          jest.setSystemTime(prisma.retryAt['src-1']!);
+          await gateway.retryFailed([failedRow()]);
+          expect(prisma.states['src-1']).toBe('processing');
+          // The pipeline has not touched it yet: same verdict, no charge.
+          const again = await gateway.confirmProcessed([row()]);
+          expect(again[0].status).toBe('pending');
+          expect(prisma.attempts['src-1']).toBe(verdict);
+          jest.setSystemTime(Date.now() + 60_000);
+        }
+      }
+      expect(prisma.retryAt['src-1']).toBeNull();
+      expect(prisma.states['src-1']).toBe('failed');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
@@ -882,8 +971,9 @@ describe('SourceGateway.retryFailed', () => {
   function heldAs(
     id: string,
     status: IDocumentRecord['status'],
+    updatedAt: Date | null = null,
   ): IDocumentRecord {
-    return { id, status, filePath: 'notes.txt', errorMessage: null, updatedAt: null };
+    return { id, status, filePath: 'notes.txt', errorMessage: null, updatedAt };
   }
 
   function failedRow(overrides: Partial<ISourceData> = {}): ISourceData {
@@ -898,8 +988,9 @@ describe('SourceGateway.retryFailed', () => {
   }
 
   it('puts a document LightRAG still holds back in flight for a reprocess', async () => {
+    const verdict = new Date('2026-09-17T00:30:00Z');
     const prisma = makePrismaStub({ 'src-1': 'doc-1' });
-    const lightrag = makeLightragStub([], [heldAs('doc-1', 'failed')]);
+    const lightrag = makeLightragStub([], [heldAs('doc-1', 'failed', verdict)]);
     const gateway = makeGateway(prisma, lightrag);
 
     const outcomes = await gateway.retryFailed([failedRow()]);
@@ -909,6 +1000,8 @@ describe('SourceGateway.retryFailed', () => {
     expect(prisma.errors['src-1']).toBeNull();
     expect(prisma.retryAt['src-1']).toBeNull();
     expect(prisma.docIds['src-1']).toBe('doc-1');
+    // The verdict being re-queued over travels with the row.
+    expect(prisma.requeuedOver['src-1']).toEqual(verdict);
     expect(lightrag.ingestText).not.toHaveBeenCalled();
   });
 
@@ -1026,6 +1119,8 @@ describe('SourceGateway.requestRetry (the Retry button on a row)', () => {
         indexError: row.indexError,
         indexedAt: row.indexedAt,
         indexAttempts: 3,
+        indexRetryAt: null,
+        indexRequeuedOverAt: null,
       }),
     );
     return prisma;
@@ -1055,6 +1150,20 @@ describe('SourceGateway.requestRetry (the Retry button on a row)', () => {
     const gateway = makeGateway(prisma, makeLightragStub([]));
 
     expect(await gateway.requestRetry(makeSource())).toBe(true);
+  });
+
+  it('leaves a failure about the document itself to the upload path', async () => {
+    // Re-extracted scan, say: reprocessing the text-less copy LightRAG holds
+    // fails the same way; the OCR text has to go up instead.
+    const prisma = makeRecordStub({
+      lightragDocId: 'doc-1',
+      indexError: 'File content contains only whitespace characters',
+      indexedAt: null,
+    });
+    const gateway = makeGateway(prisma, makeLightragStub([]));
+
+    expect(await gateway.requestRetry(makeSource())).toBe(false);
+    expect(prisma.source.update).not.toHaveBeenCalled();
   });
 
   it('leaves a row with nothing to reprocess to the upload path', async () => {

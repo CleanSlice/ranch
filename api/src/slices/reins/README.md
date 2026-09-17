@@ -114,8 +114,9 @@ is neither `failed` nor `processing` in the counts. And the reconciler now
 records a LightRAG-side failure it meets on a row it was confirming instead of
 dropping the handle; before that the row stayed `processing` with nothing to
 confirm, which is how a base read "Indexing…" for four days over one document.
-LightRAG's `updated_at` on the document is what tells a fresh failure from one
-the row was already re-queued over.
+LightRAG's `updated_at` on the failed verdict travels with the row when it is
+re-queued (`indexRequeuedOverAt`); seeing that same verdict again is "not
+reached yet", any other timestamp is a new failure.
 
 ## Changing the extraction model requires clearing the LLM cache
 

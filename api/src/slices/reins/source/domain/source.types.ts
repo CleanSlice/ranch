@@ -73,6 +73,7 @@ export interface ISourceIndexStatePatch {
   indexedAt?: Date | null;
   indexAttempts?: number;
   indexRetryAt?: Date | null;
+  indexRequeuedOverAt?: Date | null;
 }
 
 export interface ISourceFilter {
@@ -105,7 +106,10 @@ export interface ISourcePage {
 export interface ISourceCounts {
   total: number;
   indexed: number;
+  /** Terminal failures: nothing will touch them without a person. */
   failed: number;
+  /** Failed for a reason that passes; the reconciler owes them another go. */
+  retrying: number;
   /**
    * Handed to LightRAG and still moving through its pipeline: the run that
    * submitted them stopped waiting, but nothing is wrong with them. Counted

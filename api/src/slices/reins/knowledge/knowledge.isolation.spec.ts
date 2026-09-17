@@ -45,6 +45,7 @@ function base(p: Partial<IKnowledgeData> & { id: string }): IKnowledgeData {
     sourceCount: 0,
     indexedCount: 0,
     failedCount: 0,
+    retryingCount: 0,
     processingCount: 0,
     indexRunAlive: false,
     createdAt: new Date(0),
@@ -149,6 +150,7 @@ function makeHarness(bases: IKnowledgeData[], sources: ISourceData[]): Harness {
           total: own.length,
           indexed: own.filter((s) => s.indexStatus === 'indexed').length,
           failed: own.filter((s) => s.indexStatus === 'failed').length,
+          retrying: 0,
           processing: 0,
         });
       }

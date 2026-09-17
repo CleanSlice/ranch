@@ -12,7 +12,10 @@ export class KnowledgeOverviewDto implements IKnowledgeOverview {
   sourceCount: number;
   @ApiProperty({ description: 'Sources LightRAG confirmed as processed' })
   indexedCount: number;
-  @ApiProperty() failedCount: number;
+  @ApiProperty({ description: 'Failed, and nothing will retry them by itself' })
+  failedCount: number;
+  @ApiProperty({ description: 'Failed for a passing reason; retried automatically' })
+  retryingCount: number;
   @ApiProperty({ description: 'Handed to LightRAG and still in its pipeline' })
   processingCount: number;
   @ApiProperty({ type: SourceTypeCountsDto }) byType: SourceTypeCountsDto;

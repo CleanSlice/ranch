@@ -12,7 +12,7 @@ import { S3Repository } from '#/aws/s3';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
 import {
-  DocumentProcessingStatusTypes,
+  IDocumentProcessingStatus,
   IDocumentRecord,
 } from '../../lightrag/domain/lightrag.types';
 import { ISourceGateway } from '../domain/source.gateway';
@@ -36,7 +36,7 @@ import {
   SourceTypes,
 } from '../domain/source.types';
 import { indexBudgetMs, pollIntervalMs } from '../domain/indexBudget';
-import { nextRetryAt } from '../domain/indexFailure';
+import { classifyIndexFailure, nextRetryAt } from '../domain/indexFailure';
 import { SourceMapper } from './source.mapper';
 
 // LightRAG processes ingested documents in a background pipeline. How long one
@@ -48,6 +48,8 @@ import { SourceMapper } from './source.mapper';
 // extraction takes minutes, and an expired deadline leaves the source in
 // flight for the reconciler to confirm, never silently indexed.
 const TRACK_POLL_INTERVAL_MS = 3_000;
+/** Failed rows one reconcile pass retries at most; see findDueForRetry. */
+const RETRY_BATCH = 50;
 const TRACK_POLL_TIMEOUT_MS = 15 * 60 * 1000;
 
 function sleep(ms: number): Promise<void> {
@@ -97,13 +99,6 @@ type IExistingIndexCheck =
     }
   | { kind: 'stale' }
   | { kind: 'unknown'; error: string };
-
-/** A document as either status endpoint describes it. */
-interface IHeldDocument {
-  status: DocumentProcessingStatusTypes;
-  errorMessage: string | null;
-  updatedAt: Date | null;
-}
 
 // "Identical content already exists under another filename. Original doc_id:
 // doc-abc123, Status: processed" - only worth adopting when that original is
@@ -319,10 +314,11 @@ export class SourceGateway extends ISourceGateway {
       return new Map(rows.map((r) => [r.knowledgeId, r._count._all]));
     };
 
-    const [total, indexed, failed, processing] = await Promise.all([
+    const [total, indexed, failed, retrying, processing] = await Promise.all([
       groupCount({}),
       groupCount(whereForStatus('indexed')),
       groupCount(whereForStatus('failed')),
+      groupCount(whereForStatus('retrying')),
       // A stored handle with no `indexedAt` yet is the one state that means
       // "LightRAG has it and is working on it". Rows never submitted have no
       // handle, so they stay plain pending.
@@ -337,6 +333,7 @@ export class SourceGateway extends ISourceGateway {
         total: count,
         indexed: indexed.get(knowledgeId) ?? 0,
         failed: failed.get(knowledgeId) ?? 0,
+        retrying: retrying.get(knowledgeId) ?? 0,
         processing: processing.get(knowledgeId) ?? 0,
       });
     }
@@ -691,12 +688,12 @@ export class SourceGateway extends ISourceGateway {
   /**
    * LightRAG holds the row's document as failed. Three readings, in order: the
    * refusal names a processed original (adopt it, the content is searchable);
-   * LightRAG's verdict predates the row's last write, which means the row was
-   * re-queued after that verdict and the pipeline has not reached it yet
-   * (still in flight); or a fresh failure, recorded with the retry it earns.
-   * Before this the failure was never written at all: the handle was dropped
-   * and the row sat at `processing` with nothing to confirm, which is how a
-   * base read "indexing" for four days over one document.
+   * the verdict is the very one the row was re-queued over, so the pipeline
+   * has not reached the document yet (still in flight); or a fresh failure,
+   * recorded with the retry it earns. Before this the failure was never
+   * written at all: the handle was dropped and the row sat at `processing`
+   * with nothing to confirm, which is how a base read "indexing" for four
+   * days over one document.
    */
   private async recordHeldFailure(
     source: ISourceData,
@@ -704,7 +701,16 @@ export class SourceGateway extends ISourceGateway {
   ): Promise<ISourceIndexOutcome> {
     const adopted = adoptableDocId(held.error);
     if (adopted !== null) return this.succeed(source, adopted);
-    if (held.failedAt !== null && held.failedAt < source.updatedAt) {
+    const row = await this.prisma.source.findUnique({
+      where: { id: source.id },
+      select: { indexRequeuedOverAt: true },
+    });
+    const requeuedOver = row?.indexRequeuedOverAt ?? null;
+    if (
+      requeuedOver !== null &&
+      held.failedAt !== null &&
+      held.failedAt.getTime() === requeuedOver.getTime()
+    ) {
       return this.stillProcessing(source, 'queued for reprocessing');
     }
     return this.recordFailure(
@@ -721,6 +727,9 @@ export class SourceGateway extends ISourceGateway {
     if (!record || record.indexError === null || record.indexedAt !== null) {
       return false;
     }
+    // Reprocessing a document that failed for what it is (no text layer, say)
+    // fails the same way; the caller has to send something different.
+    if (classifyIndexFailure(record.indexError) !== 'transient') return false;
     const heldByLightrag =
       record.lightragDocId !== null ||
       DUPLICATE_OF.test(record.indexError) ||
@@ -733,24 +742,40 @@ export class SourceGateway extends ISourceGateway {
     return true;
   }
 
+  /**
+   * Bounded per pass: after a wide outage every row comes due at once, and a
+   * pass that re-uploads hundreds of documents in one go would hold the
+   * reconcile lock for as long as that takes. The rest is due next minute.
+   */
   async findDueForRetry(now: Date): Promise<ISourceData[]> {
     const records = await this.prisma.source.findMany({
       where: { indexState: 'failed', indexRetryAt: { lte: now } },
       orderBy: { indexRetryAt: 'asc' },
+      take: RETRY_BATCH,
     });
     return records.map((r) => this.mapper.toEntity(r));
   }
 
   async retryFailed(sources: ISourceData[]): Promise<ISourceRetryOutcome[]> {
-    const snapshots = new Map<string, IDocumentSnapshot>();
     const outcomes: ISourceRetryOutcome[] = [];
+    const byBase = new Map<string, ISourceData[]>();
     for (const source of sources) {
-      let known = snapshots.get(source.knowledgeId);
-      if (!known) {
-        known = await this.snapshotDocuments(source.knowledgeId);
-        snapshots.set(source.knowledgeId, known);
+      const group = byBase.get(source.knowledgeId);
+      if (group) group.push(source);
+      else byBase.set(source.knowledgeId, [source]);
+    }
+    for (const [knowledgeId, rows] of byBase) {
+      const known = await this.snapshotDocuments(knowledgeId);
+      const handles = await this.prisma.source.findMany({
+        where: { id: { in: rows.map((r) => r.id) } },
+        select: { id: true, lightragDocId: true },
+      });
+      const handleOf = new Map(handles.map((h) => [h.id, h.lightragDocId]));
+      for (const source of rows) {
+        outcomes.push(
+          await this.retryOne(source, known, handleOf.get(source.id) ?? null),
+        );
       }
-      outcomes.push(await this.retryOne(source, known));
     }
     return outcomes;
   }
@@ -758,18 +783,12 @@ export class SourceGateway extends ISourceGateway {
   private async retryOne(
     source: ISourceData,
     known: IDocumentSnapshot,
+    stored: string | null,
   ): Promise<ISourceRetryOutcome> {
-    const record = await this.prisma.source.findUnique({
-      where: { id: source.id },
-      select: { lightragDocId: true },
-    });
     // A refused re-upload names the copy LightRAG really holds. That copy is
     // what a reprocess finishes, so it becomes the handle; the rejected
     // upload's own id leads nowhere.
-    const handle =
-      this.documentNamedByRefusal(source.indexError, known) ??
-      record?.lightragDocId ??
-      null;
+    const handle = this.documentNamedByRefusal(source.indexError, known) ?? stored;
     const held = handle === null ? undefined : known.byId.get(handle);
     if (handle === null || held === undefined) {
       // Nothing to reprocess: the failure happened before LightRAG kept
@@ -786,7 +805,14 @@ export class SourceGateway extends ISourceGateway {
       await this.succeed(source, handle);
       return this.retried(source, 'indexed', null);
     }
-    await this.markInFlight(source, handle, 'queued for reprocessing');
+    // The verdict being re-queued over travels with the row, so the confirm
+    // pass can tell it from the next one.
+    await this.markInFlight(
+      source,
+      handle,
+      'queued for reprocessing',
+      held.updatedAt,
+    );
     return this.retried(source, 'reprocess', null);
   }
 
@@ -866,6 +892,7 @@ export class SourceGateway extends ISourceGateway {
         indexError: null,
         indexAttempts: 0,
         indexRetryAt: null,
+        indexRequeuedOverAt: null,
       },
     });
     return this.indexed(source);
@@ -913,20 +940,37 @@ export class SourceGateway extends ISourceGateway {
     source: ISourceData,
     error: string,
   ): Promise<ISourceIndexOutcome> {
-    const row = await this.prisma.source.findUnique({
+    const now = new Date();
+    const current = await this.prisma.source.findUnique({
       where: { id: source.id },
-      select: { indexAttempts: true },
+      select: { indexError: true, indexRetryAt: true },
     });
-    const attempts = (row?.indexAttempts ?? 0) + 1;
-    const retryAt = nextRetryAt(error, attempts, new Date());
-    await this.prisma.source.update({
+    // The same failure seen twice (an index run and a reconcile pass can
+    // overlap on one row) is one failure, not two attempts.
+    if (
+      current !== null &&
+      current.indexError === error &&
+      current.indexRetryAt !== null &&
+      current.indexRetryAt > now
+    ) {
+      return this.failed(source, error, current.indexRetryAt);
+    }
+    // The increment happens in the database, so two writers cannot both read
+    // 1 and both write 2.
+    const updated = await this.prisma.source.update({
       where: { id: source.id },
       data: {
         indexState: 'failed',
         indexError: error,
-        indexAttempts: attempts,
-        indexRetryAt: retryAt,
+        indexAttempts: { increment: 1 },
+        indexRequeuedOverAt: null,
       },
+      select: { indexAttempts: true },
+    });
+    const retryAt = nextRetryAt(error, updated.indexAttempts, now);
+    await this.prisma.source.update({
+      where: { id: source.id },
+      data: { indexRetryAt: retryAt },
     });
     return this.failed(source, error, retryAt);
   }
@@ -942,6 +986,7 @@ export class SourceGateway extends ISourceGateway {
     source: ISourceData,
     handle: string,
     reason: string,
+    requeuedOverAt: Date | null = null,
   ): Promise<ISourceIndexOutcome> {
     await this.prisma.source.update({
       where: { id: source.id },
@@ -950,6 +995,7 @@ export class SourceGateway extends ISourceGateway {
         indexState: 'processing',
         indexError: null,
         indexRetryAt: null,
+        indexRequeuedOverAt: requeuedOverAt,
       },
     });
     return this.stillProcessing(source, reason);
@@ -1009,7 +1055,11 @@ export class SourceGateway extends ISourceGateway {
   ): Promise<void> {
     await this.prisma.source.update({
       where: { id: sourceId },
-      data: { lightragDocId: handle, indexState: 'processing' },
+      data: {
+        lightragDocId: handle,
+        indexState: 'processing',
+        indexRequeuedOverAt: null,
+      },
     });
   }
 
@@ -1044,17 +1094,10 @@ export class SourceGateway extends ISourceGateway {
       // handle the snapshot does not know - a track id from an ingest - is
       // worth a call.
       const fromSnapshot = known.get(storedId);
-      const documents: IHeldDocument[] = fromSnapshot
+      const documents: IDocumentProcessingStatus[] = fromSnapshot
         ? [fromSnapshot]
-        : (
-            await this.lightrag.getTrackStatus(source.knowledgeId, storedId)
-          ).documents.map((d) => ({
-            status: d.status,
-            errorMessage: d.errorMessage,
-            // A track id is this row's own upload, so a failure on it is
-            // always fresh; only the listing carries a timestamp.
-            updatedAt: null,
-          }));
+        : (await this.lightrag.getTrackStatus(source.knowledgeId, storedId))
+            .documents;
 
       if (documents.length === 0) {
         await this.forgetDocId(source.id);
@@ -1083,8 +1126,8 @@ export class SourceGateway extends ISourceGateway {
       return { kind: 'unknown', error: errorMessage(err) };
     }
 
-    // A state we do not treat as in flight: drop the claim so this run
-    // re-sends it.
+    // Every status LightRAG has is answered above; this guards a value a
+    // newer LightRAG might add. Drop the claim so this run re-sends it.
     await this.forgetDocId(source.id);
     return { kind: 'stale' };
   }
@@ -1209,11 +1252,7 @@ export class SourceGateway extends ISourceGateway {
         track.documents.length > 0 &&
         track.documents.every((d) => d.status === 'processed')
       ) {
-        await this.updateIndexState(sourceId, {
-          indexState: 'indexed',
-          indexError: null,
-          indexedAt: new Date(),
-        });
+        await this.succeed(this.mapper.toEntity(record), handle);
         return this.requireEntity(sourceId);
       }
       await sleep(TRACK_POLL_INTERVAL_MS);
@@ -1244,6 +1283,9 @@ export class SourceGateway extends ISourceGateway {
         }),
         ...(patch.indexRetryAt !== undefined && {
           indexRetryAt: patch.indexRetryAt,
+        }),
+        ...(patch.indexRequeuedOverAt !== undefined && {
+          indexRequeuedOverAt: patch.indexRequeuedOverAt,
         }),
       },
     });
@@ -1304,6 +1346,7 @@ export class SourceGateway extends ISourceGateway {
       indexedAt: null,
       indexAttempts: 0,
       indexRetryAt: null,
+      indexRequeuedOverAt: null,
     });
     if (docId !== null) {
       await this.lightrag.deleteDocumentsByTrackIds(source.knowledgeId, [docId]);

@@ -15,16 +15,23 @@ const knowledgeId = computed(() => current?.value?.id ?? '');
 // reports.
 const counts = computed(() => {
   const k = current?.value;
-  if (!k) return { total: 0, indexed: 0, processing: 0, failed: 0, pending: 0 };
+  if (!k) {
+    return { total: 0, indexed: 0, processing: 0, failed: 0, retrying: 0, pending: 0 };
+  }
   const pending = Math.max(
     0,
-    k.sourceCount - k.indexedCount - k.processingCount - k.failedCount,
+    k.sourceCount -
+      k.indexedCount -
+      k.processingCount -
+      k.failedCount -
+      k.retryingCount,
   );
   return {
     total: k.sourceCount,
     indexed: k.indexedCount,
     processing: k.processingCount,
     failed: k.failedCount,
+    retrying: k.retryingCount,
     pending,
   };
 });
@@ -176,6 +183,9 @@ async function save(): Promise<void> {
           :class="counts.failed ? 'text-destructive' : ''"
         >
           {{ counts.failed }}
+        </p>
+        <p v-if="counts.retrying" class="text-xs text-muted-foreground">
+          {{ counts.retrying }} retrying automatically
         </p>
         <p v-if="counts.pending" class="text-xs text-muted-foreground">
           {{ counts.pending }} never sent

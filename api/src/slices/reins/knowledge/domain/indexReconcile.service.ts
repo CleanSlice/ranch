@@ -8,7 +8,6 @@ import { SourceService } from '../../source/domain/source.service';
 import {
   ISourceData,
   ISourceRetryOutcome,
-  SourceRetryActionTypes,
 } from '../../source/domain/source.types';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
 
@@ -37,17 +36,10 @@ function groupByKnowledge(sources: ISourceData[]): Map<string, ISourceData[]> {
   return groups;
 }
 
-function countActions(
-  outcomes: ISourceRetryOutcome[],
-): Record<SourceRetryActionTypes, number> {
-  const counts: Record<SourceRetryActionTypes, number> = {
-    reprocess: 0,
-    resent: 0,
-    indexed: 0,
-    failed: 0,
-  };
-  for (const outcome of outcomes) counts[outcome.action] += 1;
-  return counts;
+function tally(outcomes: ISourceRetryOutcome[]): string {
+  const of = (action: ISourceRetryOutcome['action']): number =>
+    outcomes.filter((o) => o.action === action).length;
+  return `${of('reprocess')} reprocessed, ${of('resent')} re-sent, ${of('indexed')} already processed, ${of('failed')} failed again`;
 }
 
 /**
@@ -177,7 +169,11 @@ export class IndexReconcileService implements OnModuleInit, OnModuleDestroy {
     if (due.length === 0) return;
 
     for (const [knowledgeId, rows] of groupByKnowledge(due)) {
-      if (this.nudgedRecently(knowledgeId)) continue;
+      // A row with a due slot and no attempt spent is a person pressing Retry;
+      // making them wait out a cooldown they know nothing about reads as the
+      // button doing nothing.
+      const manual = rows.some((r) => r.indexAttempts === 0);
+      if (!manual && this.nudgedRecently(knowledgeId)) continue;
       try {
         const status = await this.lightrag.getPipelineStatus(knowledgeId);
         if (status.busy) {
@@ -187,15 +183,14 @@ export class IndexReconcileService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
         const outcomes = await this.sources.retryFailed(rows);
-        const counts = countActions(outcomes);
-        if (counts.reprocess > 0) {
+        if (outcomes.some((o) => o.action === 'reprocess')) {
           // Stamped before the call: a restart that throws half-way may still
           // have started the pipeline.
           this.lastNudgeAt.set(knowledgeId, Date.now());
           await this.lightrag.restartPipeline(knowledgeId);
         }
-        this.logger.warn(
-          `retrying ${rows.length} source(s) in ${knowledgeId}: ${counts.reprocess} reprocessed, ${counts.resent} re-sent, ${counts.indexed} already processed, ${counts.failed} failed again`,
+        this.logger.log(
+          `retrying ${rows.length} source(s) in ${knowledgeId}: ${tally(outcomes)}`,
         );
       } catch (err) {
         this.logger.error(
@@ -243,6 +238,10 @@ export class IndexReconcileService implements OnModuleInit, OnModuleDestroy {
 
   private nudgedRecently(knowledgeId: string): boolean {
     const at = this.lastNudgeAt.get(knowledgeId);
-    return at !== undefined && Date.now() - at < RESTART_COOLDOWN_MS;
+    if (at === undefined) return false;
+    if (Date.now() - at < RESTART_COOLDOWN_MS) return true;
+    // Expired: forget it, so the map does not keep a stamp per base ever seen.
+    this.lastNudgeAt.delete(knowledgeId);
+    return false;
   }
 }

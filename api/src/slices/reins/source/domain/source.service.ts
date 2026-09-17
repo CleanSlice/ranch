@@ -500,7 +500,21 @@ export class SourceService {
       throw new NotFoundException(`Source ${sourceId} not found`);
     }
     if (await this.gateway.requestRetry(source)) return;
-    await this.requeueSource(sourceId);
+    if (source.indexStatus === 'failed') {
+      // A failure that will not pass by itself. The copy LightRAG holds is
+      // what refuses a re-upload as a duplicate, so it goes first; best
+      // effort, since a busy pipeline refuses the delete and the upload path
+      // copes with the refusal on its own.
+      try {
+        await this.gateway.resetIndexClaim(source);
+      } catch (err) {
+        this.logger.warn(
+          `resetIndexClaim(${sourceId}) before retry failed: ${errorMessage(err)}`,
+        );
+      }
+    } else {
+      await this.requeueSource(sourceId);
+    }
     void this.indexSourceAndWait({ ...source, indexState: 'queued' }).catch(
       (err) => {
         this.logger.warn(`reindex of ${sourceId} failed: ${errorMessage(err)}`);

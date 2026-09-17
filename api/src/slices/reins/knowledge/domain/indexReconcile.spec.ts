@@ -339,6 +339,61 @@ describe('IndexReconcileService: retrying what failed for a passing reason', () 
     expect(retryFailed).not.toHaveBeenCalled();
   });
 
+  it('handles each base on its own pipeline in one pass', async () => {
+    const other: ISourceData = { ...due('src-2'), knowledgeId: 'knowledge-2' };
+    const retryFailed = jest.fn((rows: ISourceData[]) =>
+      Promise.resolve(rows.map((r) => retried(r.id, 'reprocess'))),
+    );
+    const restartPipeline = jest.fn(() => Promise.resolve());
+    const service = makeService(
+      {
+        findUnconfirmed: jest.fn(() => Promise.resolve([])),
+        findDueForRetry: jest.fn(() => Promise.resolve([due('src-1'), other])),
+        retryFailed,
+      },
+      {
+        getPipelineStatus: jest.fn(() => Promise.resolve(pipeline(false))),
+        restartPipeline,
+      },
+    );
+
+    await service.reconcile();
+
+    expect(retryFailed).toHaveBeenCalledTimes(2);
+    expect(restartPipeline).toHaveBeenCalledWith('knowledge-1');
+    expect(restartPipeline).toHaveBeenCalledWith('knowledge-2');
+  });
+
+  it('lets a person\'s Retry through the cooldown', async () => {
+    // Retry on a row sets the slot to now with no attempt spent; sitting on
+    // it for ten minutes reads as the button doing nothing.
+    const manual: ISourceData = { ...due('src-2'), indexAttempts: 0 };
+    const retryFailed = jest.fn(() => Promise.resolve([retried('src-2', 'reprocess')]));
+    const restartPipeline = jest.fn(() => Promise.resolve());
+    const findDueForRetry = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([manual]);
+    const service = makeService(
+      {
+        findUnconfirmed: jest.fn(() => Promise.resolve([makeSource('src-1')])),
+        confirmProcessed: jest.fn(() => Promise.resolve([moving('src-1')])),
+        findDueForRetry,
+        retryFailed,
+      },
+      {
+        getPipelineStatus: jest.fn(() => Promise.resolve(pipeline(false))),
+        restartPipeline,
+      },
+    );
+
+    await service.reconcile();
+    await service.reconcile();
+
+    expect(retryFailed).toHaveBeenCalledTimes(1);
+    expect(restartPipeline).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps its confirmations when the retry step throws', async () => {
     const service = makeService(
       {

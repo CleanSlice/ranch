@@ -48,7 +48,10 @@ export interface IKnowledgeRecord {
 export interface IKnowledgeData extends IKnowledgeRecord {
   sourceCount: number;
   indexedCount: number;
+  /** Terminal failures only; a source the reconciler will retry is not one. */
   failedCount: number;
+  /** Failed for a reason that passes; retried by the reconciler on its own. */
+  retryingCount: number;
   /**
    * Sources LightRAG is still chunking. `ready` with a non-zero value here
    * means "searchable, but not all of it yet" - without it a base that stopped
@@ -197,6 +200,7 @@ export interface IKnowledgeOverview {
   sourceCount: number;
   indexedCount: number;
   failedCount: number;
+  retryingCount: number;
   processingCount: number;
   byType: Record<SourceTypes, number>;
   totalSizeBytes: number;

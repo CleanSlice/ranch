@@ -56,7 +56,10 @@ export interface IKnowledge {
   /** Index progress over the attached sources, as counted by the API. */
   sourceCount: number;
   indexedCount: number;
+  /** Terminal failures only. */
   failedCount: number;
+  /** Failed for a reason that passes; the API retries them on its own. */
+  retryingCount: number;
   /** Handed to LightRAG, not finished yet. Not an error, just not done. */
   processingCount: number;
   /**
@@ -224,6 +227,7 @@ export interface IKnowledgeOverview {
   sourceCount: number;
   indexedCount: number;
   failedCount: number;
+  retryingCount: number;
   processingCount: number;
   byType: Record<SourceType, number>;
   totalSizeBytes: number;

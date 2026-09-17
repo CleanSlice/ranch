@@ -96,16 +96,36 @@ export class KnowledgeGateway extends IKnowledgeGateway {
       for (let i = 0; i < row._count._all; i += 1) list.push(state);
       statesOf.set(row.knowledgeId, list);
     }
+    // A failed row the reconciler still owes a retry is stored as `failed`
+    // (it did fail) but is not one for the counts: the list must agree with
+    // the detail page, which counts through the source slice's filters.
+    const retryRows = ids.length
+      ? await this.prisma.source.groupBy({
+          by: ['knowledgeId'],
+          where: {
+            knowledgeId: { in: ids },
+            indexedAt: null,
+            indexError: { not: null },
+            indexRetryAt: { not: null },
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const retryingOf = new Map(
+      retryRows.map((r) => [r.knowledgeId, r._count._all]),
+    );
 
     return {
       items: records.map((r) => {
         const states = statesOf.get(r.id) ?? [];
+        const retrying = retryingOf.get(r.id) ?? 0;
         return {
           ...this.mapper.toEntity(r),
           indexStatus: deriveIndexStatus(states),
           sourceCount: r._count.sources,
           indexedCount: states.filter((s) => s === 'indexed').length,
-          failedCount: states.filter((s) => s === 'failed').length,
+          failedCount: states.filter((s) => s === 'failed').length - retrying,
+          retryingCount: retrying,
           processingCount: states.filter((s) => s === 'processing').length,
           sourcesCount: r._count.sources,
           totalSizeBytes: sizeOf.get(r.id) ?? 0,

@@ -46,7 +46,10 @@ export type DocumentProcessingStatusTypes =
 export interface IDocumentProcessingStatus {
   id: string;
   status: DocumentProcessingStatusTypes;
+  /** LightRAG's reason for a failed document, when it left one. */
   errorMessage: string | null;
+  /** When LightRAG last changed the document's status; null when it did not say. */
+  updatedAt: Date | null;
 }
 
 export interface ITrackStatus {
@@ -58,14 +61,8 @@ export interface ITrackStatus {
  * refuses an upload whose filename it already holds, and that refusal names
  * only the file - resolving it back to a doc id needs this listing.
  */
-export interface IDocumentRecord {
-  id: string;
-  status: DocumentProcessingStatusTypes;
+export interface IDocumentRecord extends IDocumentProcessingStatus {
   filePath: string | null;
-  /** LightRAG's reason for a failed document, when it left one. */
-  errorMessage: string | null;
-  /** When LightRAG last changed the document's status; null when it did not say. */
-  updatedAt: Date | null;
 }
 
 export interface IQueryReference {

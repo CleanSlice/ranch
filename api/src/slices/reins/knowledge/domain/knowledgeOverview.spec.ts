@@ -11,7 +11,12 @@ function makeService(exists: boolean): KnowledgeService {
   } as unknown as IKnowledgeGateway;
   const sources = {
     countByKnowledgeIds: jest.fn(async () =>
-      new Map([['k1', { total: 651, indexed: 633, failed: 17, processing: 1 }]]),
+      new Map([
+        [
+          'k1',
+          { total: 651, indexed: 633, failed: 15, retrying: 2, processing: 1 },
+        ],
+      ]),
     ),
     breakdown: jest.fn(async () => ({
       byType: { file: 650, url: 1, text: 0 },
@@ -31,7 +36,8 @@ describe('KnowledgeService.getOverview', () => {
     expect(await makeService(true).getOverview('k1')).toEqual({
       sourceCount: 651,
       indexedCount: 633,
-      failedCount: 17,
+      failedCount: 15,
+      retryingCount: 2,
       processingCount: 1,
       byType: { file: 650, url: 1, text: 0 },
       totalSizeBytes: 214_000_000,

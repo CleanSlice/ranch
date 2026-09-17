@@ -37,10 +37,13 @@ function parseSourceType(value: string): SourceTypes {
 export function deriveIndexStatus(record: {
   indexedAt: Date | null;
   indexError: string | null;
+  indexRetryAt: Date | null;
 }): SourceIndexStatusTypes {
   if (record.indexedAt !== null) return 'indexed';
-  if (record.indexError !== null) return 'failed';
-  return 'pending';
+  if (record.indexError === null) return 'pending';
+  // A scheduled retry is the reconciler's promise to try again; only a
+  // failure nobody will touch reads as failed.
+  return record.indexRetryAt !== null ? 'retrying' : 'failed';
 }
 
 const TEXT_STATES: readonly SourceTextStateTypes[] = ['none', 'pending', 'ready', 'failed'];
@@ -75,6 +78,8 @@ export class SourceMapper {
       indexState: parseIndexState(record.indexState),
       indexError: record.indexError ?? null,
       indexedAt: record.indexedAt ?? null,
+      indexAttempts: record.indexAttempts,
+      indexRetryAt: record.indexRetryAt ?? null,
       textState: parseTextState(record.textState),
       textUrl: record.textUrl ?? null,
       textError: record.textError ?? null,

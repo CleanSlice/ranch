@@ -68,6 +68,8 @@ function source(
     indexState: 'indexed',
     indexError: null,
     indexedAt: new Date(0),
+    indexAttempts: 0,
+    indexRetryAt: null,
     textState: 'none',
     textUrl: null,
     textError: null,

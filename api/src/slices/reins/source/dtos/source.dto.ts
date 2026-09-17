@@ -10,6 +10,7 @@ import {
 export const SOURCE_INDEX_STATUSES: readonly SourceIndexStatusTypes[] = [
   'indexed',
   'pending',
+  'retrying',
   'failed',
 ];
 
@@ -37,6 +38,18 @@ export class SourceDto implements Omit<ISourceData, 'textUrl'> {
   })
   indexError: string | null;
   @ApiProperty({ type: String, nullable: true }) indexedAt: Date | null;
+  @ApiProperty({
+    description:
+      'Failed attempts since the source last indexed or was retried by hand; the reconciler stops retrying after three.',
+  })
+  indexAttempts: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'When the reconciler will retry a failed source on its own; null once it will not (permanent failure, or the retries are spent).',
+  })
+  indexRetryAt: Date | null;
   @ApiProperty({
     enum: ['none', 'pending', 'ready', 'failed'],
     description:

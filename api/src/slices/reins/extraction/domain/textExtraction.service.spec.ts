@@ -33,6 +33,8 @@ function pdf(id: string, overrides: Partial<ISourceData> = {}): ISourceData {
     indexState: 'queued',
     indexError: 'left over from an earlier run',
     indexedAt: null,
+    indexAttempts: 0,
+    indexRetryAt: null,
     textState: 'none',
     textUrl: null,
     textError: null,

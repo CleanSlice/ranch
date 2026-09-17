@@ -470,6 +470,8 @@ export class SourceService {
     return this.gateway.updateIndexState(sourceId, {
       indexState: 'queued',
       indexError: null,
+      indexAttempts: 0,
+      indexRetryAt: null,
     });
   }
 

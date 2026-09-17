@@ -4,11 +4,17 @@ export type SourceTypes = 'file' | 'url' | 'text';
 
 /**
  * Per-source view of the last index run. `indexed` = LightRAG confirmed the
- * document as processed; `failed` = the last run reported an error for it and
- * nothing has succeeded since; `pending` = never sent, or sent and still
- * waiting for a verdict.
+ * document as processed; `failed` = the last run reported an error for it,
+ * nothing has succeeded since and nothing will be tried without a person;
+ * `retrying` = it failed for a reason that passes (a model outage, a lost
+ * connection) and the reconciler will try again at `indexRetryAt`;
+ * `pending` = never sent, or sent and still waiting for a verdict.
  */
-export type SourceIndexStatusTypes = 'indexed' | 'pending' | 'failed';
+export type SourceIndexStatusTypes =
+  | 'indexed'
+  | 'pending'
+  | 'retrying'
+  | 'failed';
 
 /**
  * Stored per-source ingestion state, the migration's resume marker:
@@ -44,6 +50,10 @@ export interface ISourceData {
   indexState: SourceIndexStateTypes;
   indexError: string | null;
   indexedAt: Date | null;
+  /** Failed attempts since the last success or manual retry. */
+  indexAttempts: number;
+  /** When the reconciler may retry a failed row; null when it never will. */
+  indexRetryAt: Date | null;
   textState: SourceTextStateTypes;
   textUrl: string | null;
   textError: string | null;
@@ -61,6 +71,8 @@ export interface ISourceIndexStatePatch {
   indexState: SourceIndexStateTypes;
   indexError?: string | null;
   indexedAt?: Date | null;
+  indexAttempts?: number;
+  indexRetryAt?: Date | null;
 }
 
 export interface ISourceFilter {
@@ -135,6 +147,8 @@ export interface ISourceIndexOutcome {
   indexed: boolean;
   /** Set for `failed`, and for `pending` as the reason the wait ended. */
   error: string | null;
+  /** For `failed`: when the reconciler will try again, null when it will not. */
+  retryAt: Date | null;
 }
 
 export interface ICreateSourceData {

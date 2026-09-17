@@ -35,6 +35,7 @@ import {
   SourceTypes,
 } from '../domain/source.types';
 import { indexBudgetMs, pollIntervalMs } from '../domain/indexBudget';
+import { nextRetryAt } from '../domain/indexFailure';
 import { SourceMapper } from './source.mapper';
 
 // LightRAG processes ingested documents in a background pipeline. How long one
@@ -43,8 +44,8 @@ import { SourceMapper } from './source.mapper';
 // per-document figure can work.
 // The per-source wait (waitForSourceIndexed) has no batch to size a budget
 // from, so it keeps a flat deadline. Generous: a large PDF through entity
-// extraction takes minutes, and an expired deadline marks the source failed
-// (retryable), never silently indexed.
+// extraction takes minutes, and an expired deadline leaves the source in
+// flight for the reconciler to confirm, never silently indexed.
 const TRACK_POLL_INTERVAL_MS = 3_000;
 const TRACK_POLL_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -134,8 +135,14 @@ function whereForStatus(
   switch (status) {
     case 'indexed':
       return { indexedAt: { not: null } };
+    case 'retrying':
+      return {
+        indexedAt: null,
+        indexError: { not: null },
+        indexRetryAt: { not: null },
+      };
     case 'failed':
-      return { indexedAt: null, indexError: { not: null } };
+      return { indexedAt: null, indexError: { not: null }, indexRetryAt: null };
     case 'pending':
       return { indexedAt: null, indexError: null };
     case undefined:
@@ -535,7 +542,7 @@ export class SourceGateway extends ISourceGateway {
           source.id,
           block.wait
             ? this.stillProcessing(source, block.reason)
-            : await this.fail(source, block.reason),
+            : await this.recordFailure(source, block.reason),
         );
         continue;
       }
@@ -565,7 +572,7 @@ export class SourceGateway extends ISourceGateway {
           continue;
         }
 
-        outcomes.set(source.id, await this.fail(source, message));
+        outcomes.set(source.id, await this.recordFailure(source, message));
       }
     }
 
@@ -575,7 +582,7 @@ export class SourceGateway extends ISourceGateway {
     for (const s of sources) {
       results.push(
         outcomes.get(s.id) ??
-          (await this.fail(s, 'LightRAG reported no state for this document')),
+          (await this.recordFailure(s, 'LightRAG reported no state for this document')),
       );
     }
     return results;
@@ -641,13 +648,18 @@ export class SourceGateway extends ISourceGateway {
     return outcomes;
   }
 
-  private failed(source: ISourceData, error: string): ISourceIndexOutcome {
+  private failed(
+    source: ISourceData,
+    error: string,
+    retryAt: Date | null = null,
+  ): ISourceIndexOutcome {
     return {
       sourceId: source.id,
       name: source.name,
       status: 'failed',
       indexed: false,
       error,
+      retryAt,
     };
   }
 
@@ -661,6 +673,7 @@ export class SourceGateway extends ISourceGateway {
       status: 'pending',
       indexed: false,
       error: reason,
+      retryAt: null,
     };
   }
 
@@ -671,6 +684,7 @@ export class SourceGateway extends ISourceGateway {
       status: 'indexed',
       indexed: true,
       error: null,
+      retryAt: null,
     };
   }
 
@@ -690,6 +704,8 @@ export class SourceGateway extends ISourceGateway {
         indexState: 'indexed',
         indexedAt: new Date(),
         indexError: null,
+        indexAttempts: 0,
+        indexRetryAt: null,
       },
     });
     return this.indexed(source);
@@ -719,24 +735,39 @@ export class SourceGateway extends ISourceGateway {
     try {
       docId = await this.ingestByType(source);
     } catch (err) {
-      await this.updateIndexState(source.id, {
-        indexState: 'failed',
-        indexError: errorMessage(err),
-      });
+      await this.recordFailure(source, errorMessage(err));
       throw err;
     }
     await this.rememberHandle(source.id, docId);
   }
 
-  private async fail(
+  /**
+   * The one place a failure lands on a row. Besides the state and the message
+   * it decides whether the reconciler gets to try again: a transient reason
+   * (see indexFailure.ts) earns a retry after a pause that grows with each
+   * attempt; a permanent one, or a spent budget, leaves `indexRetryAt` null
+   * and the row honestly `failed`.
+   */
+  private async recordFailure(
     source: ISourceData,
     error: string,
   ): Promise<ISourceIndexOutcome> {
+    const row = await this.prisma.source.findUnique({
+      where: { id: source.id },
+      select: { indexAttempts: true },
+    });
+    const attempts = (row?.indexAttempts ?? 0) + 1;
+    const retryAt = nextRetryAt(error, attempts, new Date());
     await this.prisma.source.update({
       where: { id: source.id },
-      data: { indexState: 'failed', indexError: error },
+      data: {
+        indexState: 'failed',
+        indexError: error,
+        indexAttempts: attempts,
+        indexRetryAt: retryAt,
+      },
     });
-    return this.failed(source, error);
+    return this.failed(source, error, retryAt);
   }
 
   /**
@@ -757,6 +788,7 @@ export class SourceGateway extends ISourceGateway {
         lightragDocId: handle,
         indexState: 'processing',
         indexError: null,
+        indexRetryAt: null,
       },
     });
     return this.stillProcessing(source, reason);
@@ -934,7 +966,7 @@ export class SourceGateway extends ISourceGateway {
 
             outcomes.set(
               source.id,
-              await this.fail(
+              await this.recordFailure(
                 source,
                 failure.errorMessage ?? 'LightRAG failed to process it',
               ),
@@ -974,7 +1006,8 @@ export class SourceGateway extends ISourceGateway {
       where: { id: sourceId },
     });
     if (!record) throw new NotFoundException(`Source ${sourceId} not found`);
-    if (!record.lightragDocId) {
+    const handle = record.lightragDocId;
+    if (!handle) {
       return this.mapper.toEntity(record);
     }
 
@@ -982,7 +1015,7 @@ export class SourceGateway extends ISourceGateway {
     while (Date.now() < deadline) {
       const track = await this.lightrag.getTrackStatus(
         record.knowledgeId,
-        record.lightragDocId,
+        handle,
       );
       // One track id can cover several documents (an archive upload); the
       // source is indexed only when every one of them is processed, failed as
@@ -990,10 +1023,10 @@ export class SourceGateway extends ISourceGateway {
       // track yet - keep waiting.
       const failure = track.documents.find((d) => d.status === 'failed');
       if (failure) {
-        await this.updateIndexState(sourceId, {
-          indexState: 'failed',
-          indexError: failure.errorMessage ?? 'processing failed',
-        });
+        await this.recordFailure(
+          this.mapper.toEntity(record),
+          failure.errorMessage ?? 'LightRAG failed to process it',
+        );
         return this.requireEntity(sourceId);
       }
       if (
@@ -1009,10 +1042,14 @@ export class SourceGateway extends ISourceGateway {
       }
       await sleep(TRACK_POLL_INTERVAL_MS);
     }
-    await this.updateIndexState(sourceId, {
-      indexState: 'failed',
-      indexError: `processing did not finish within ${TRACK_POLL_TIMEOUT_MS / 60000} minutes`,
-    });
+    // Not a fault of the row: LightRAG is still working on it, the way a batch
+    // run leaves a slow document. Keeping the handle is what lets the
+    // reconciler confirm it when it lands.
+    await this.markInFlight(
+      this.mapper.toEntity(record),
+      handle,
+      `still processing after ${TRACK_POLL_TIMEOUT_MS / 60000} min - the reconciler will confirm it`,
+    );
     return this.requireEntity(sourceId);
   }
 
@@ -1026,6 +1063,12 @@ export class SourceGateway extends ISourceGateway {
         indexState: patch.indexState,
         ...(patch.indexError !== undefined && { indexError: patch.indexError }),
         ...(patch.indexedAt !== undefined && { indexedAt: patch.indexedAt }),
+        ...(patch.indexAttempts !== undefined && {
+          indexAttempts: patch.indexAttempts,
+        }),
+        ...(patch.indexRetryAt !== undefined && {
+          indexRetryAt: patch.indexRetryAt,
+        }),
       },
     });
   }
@@ -1083,6 +1126,8 @@ export class SourceGateway extends ISourceGateway {
       indexState: 'queued',
       indexError: null,
       indexedAt: null,
+      indexAttempts: 0,
+      indexRetryAt: null,
     });
     if (docId !== null) {
       await this.lightrag.deleteDocumentsByTrackIds(source.knowledgeId, [docId]);

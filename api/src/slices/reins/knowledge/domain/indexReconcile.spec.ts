@@ -19,6 +19,8 @@ function makeSource(id: string): ISourceData {
     indexState: 'queued',
     indexError: null,
     indexedAt: null,
+    indexAttempts: 0,
+    indexRetryAt: null,
     textState: 'none',
     textUrl: null,
     textError: null,
@@ -34,6 +36,7 @@ function confirmed(id: string): ISourceIndexOutcome {
     status: 'indexed',
     indexed: true,
     error: null,
+    retryAt: null,
   };
 }
 
@@ -44,6 +47,7 @@ function moving(id: string): ISourceIndexOutcome {
     status: 'pending',
     indexed: false,
     error: 'still in LightRAG pipeline',
+    retryAt: null,
   };
 }
 

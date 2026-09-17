@@ -520,10 +520,21 @@ function extractDocuments(body: unknown): IDocumentRecord[] {
         // bucket name is the fallback (they agree in practice).
         status: toProcessingStatus(doc.status ?? statusName),
         filePath: typeof doc.file_path === 'string' ? doc.file_path : null,
+        errorMessage:
+          typeof doc.error_msg === 'string' && doc.error_msg !== ''
+            ? doc.error_msg
+            : null,
+        updatedAt: parseTimestamp(doc.updated_at),
       });
     }
   }
   return out;
+}
+
+function parseTimestamp(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : new Date(ms);
 }
 
 function toProcessingStatus(value: unknown): DocumentProcessingStatusTypes {

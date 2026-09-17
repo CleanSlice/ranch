@@ -422,7 +422,7 @@ describe('SourceGateway.indexSources', () => {
     const prisma = makePrismaStub({ 'src-1': 'doc-existing' });
     const lightrag = makeLightragStub(
       [processed()],
-      [{ id: 'doc-existing', status: 'processed', filePath: 'notes.txt' }],
+      [{ id: 'doc-existing', status: 'processed', filePath: 'notes.txt', errorMessage: null, updatedAt: null }],
     );
     const gateway = makeGateway(prisma, lightrag);
 
@@ -441,7 +441,7 @@ describe('SourceGateway.indexSources', () => {
     const prisma = makePrismaStub({ 'src-1': 'track-existing' });
     const lightrag = makeLightragStub(
       [processed()],
-      [{ id: 'doc-other', status: 'processed', filePath: 'other.txt' }],
+      [{ id: 'doc-other', status: 'processed', filePath: 'other.txt', errorMessage: null, updatedAt: null }],
     );
     const gateway = makeGateway(prisma, lightrag);
 
@@ -520,6 +520,8 @@ describe('SourceGateway.indexSources', () => {
           id: 'doc-c8d0423fb8bc5700de256d6cb7fe89c8',
           status: 'processed',
           filePath: 'notes.txt',
+          errorMessage: null,
+          updatedAt: null,
         },
       ],
     );
@@ -537,7 +539,7 @@ describe('SourceGateway.indexSources', () => {
     const prisma = makePrismaStub();
     const lightrag = makeLightragStub(
       [processed()],
-      [{ id: 'doc-stored', status: 'processed', filePath: 'notes.txt' }],
+      [{ id: 'doc-stored', status: 'processed', filePath: 'notes.txt', errorMessage: null, updatedAt: null }],
     );
     // LightRAG names only the file in this refusal, never the doc id, so the
     // id has to come from the listing. Ranch reaches this state whenever it
@@ -566,7 +568,7 @@ describe('SourceGateway.indexSources', () => {
     const prisma = makePrismaStub();
     const lightrag = makeLightragStub(
       [processed()],
-      [{ id: 'doc-stored', status: 'failed', filePath: 'notes.txt' }],
+      [{ id: 'doc-stored', status: 'failed', filePath: 'notes.txt', errorMessage: null, updatedAt: null }],
     );
     lightrag.ingestText.mockRejectedValueOnce(
       new Error(
@@ -608,7 +610,7 @@ describe('SourceGateway.indexSources', () => {
     const prisma = makePrismaStub();
     const lightrag = makeLightragStub(
       [processed()],
-      [{ id: 'doc-stored', status: 'processing', filePath: 'notes.txt' }],
+      [{ id: 'doc-stored', status: 'processing', filePath: 'notes.txt', errorMessage: null, updatedAt: null }],
     );
     // Same 409 as the adopt-by-filename case, but the stored copy has not
     // finished yet. Reporting a failure here made every overlapping run red
@@ -784,3 +786,227 @@ describe('SourceGateway.indexSource (one row, the Reindex button)', () => {
   });
 });
 
+
+describe('SourceGateway.confirmProcessed: a document LightRAG gave up on', () => {
+  const VERDICT = new Date('2026-09-17T00:30:00Z');
+
+  function heldFailed(
+    id: string,
+    errorMessage: string | null,
+    updatedAt: Date | null = VERDICT,
+  ): IDocumentRecord {
+    return { id, status: 'failed', filePath: 'notes.txt', errorMessage, updatedAt };
+  }
+
+  it('records the failure and keeps the handle the retry will reprocess', async () => {
+    // Before: the handle was dropped and nothing written, so the row sat at
+    // `processing` with no way back - "Indexing…" for four days.
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    const lightrag = makeLightragStub(
+      [],
+      [heldFailed('doc-1', 'RetryError[<Future raised BedrockConnectionError>]')],
+    );
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.confirmProcessed([
+      makeSource({ indexState: 'processing', updatedAt: new Date(0) }),
+    ]);
+
+    expect(outcomes[0].status).toBe('failed');
+    expect(outcomes[0].retryAt).toBeInstanceOf(Date);
+    expect(prisma.states['src-1']).toBe('failed');
+    expect(prisma.errors['src-1']).toContain('BedrockConnectionError');
+    expect(prisma.attempts['src-1']).toBe(1);
+    expect(prisma.docIds['src-1']).toBe('doc-1');
+  });
+
+  it('adopts the processed original a refusal names', async () => {
+    const prisma = makePrismaStub({ 'src-1': 'dup-1' });
+    const lightrag = makeLightragStub(
+      [],
+      [
+        heldFailed(
+          'dup-1',
+          'Identical content already exists under another filename. Original doc_id: doc-9, Status: processed',
+        ),
+      ],
+    );
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.confirmProcessed([
+      makeSource({ indexState: 'processing', updatedAt: new Date(0) }),
+    ]);
+
+    expect(outcomes[0].indexed).toBe(true);
+    expect(prisma.docIds['src-1']).toBe('doc-9');
+    expect(prisma.indexedAt['src-1']).toBeInstanceOf(Date);
+  });
+
+  it('leaves alone a row re-queued after the verdict it is looking at', async () => {
+    // The retry put the row back in flight at 00:40; LightRAG's failed
+    // status is from 00:30 and the pipeline has simply not reached the
+    // document yet. Recording that as a new failure would spend an attempt
+    // on nothing.
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    const lightrag = makeLightragStub([], [heldFailed('doc-1', 'RetryError[...]')]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.confirmProcessed([
+      makeSource({
+        indexState: 'processing',
+        updatedAt: new Date('2026-09-17T00:40:00Z'),
+      }),
+    ]);
+
+    expect(outcomes[0].status).toBe('pending');
+    expect(prisma.source.update).not.toHaveBeenCalled();
+  });
+
+  it('treats a verdict with no timestamp as fresh', async () => {
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    const lightrag = makeLightragStub([], [heldFailed('doc-1', 'RetryError[...]', null)]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    await gateway.confirmProcessed([
+      makeSource({
+        indexState: 'processing',
+        updatedAt: new Date('2026-09-17T00:40:00Z'),
+      }),
+    ]);
+
+    expect(prisma.states['src-1']).toBe('failed');
+  });
+});
+
+describe('SourceGateway.retryFailed', () => {
+  function heldAs(
+    id: string,
+    status: IDocumentRecord['status'],
+  ): IDocumentRecord {
+    return { id, status, filePath: 'notes.txt', errorMessage: null, updatedAt: null };
+  }
+
+  function failedRow(overrides: Partial<ISourceData> = {}): ISourceData {
+    return makeSource({
+      indexState: 'failed',
+      indexStatus: 'retrying',
+      indexError: 'RetryError[...]',
+      indexAttempts: 1,
+      indexRetryAt: new Date(0),
+      ...overrides,
+    });
+  }
+
+  it('puts a document LightRAG still holds back in flight for a reprocess', async () => {
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    const lightrag = makeLightragStub([], [heldAs('doc-1', 'failed')]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.retryFailed([failedRow()]);
+
+    expect(outcomes[0].action).toBe('reprocess');
+    expect(prisma.states['src-1']).toBe('processing');
+    expect(prisma.errors['src-1']).toBeNull();
+    expect(prisma.retryAt['src-1']).toBeNull();
+    expect(prisma.docIds['src-1']).toBe('doc-1');
+    expect(lightrag.ingestText).not.toHaveBeenCalled();
+  });
+
+  it('takes the failed original a refusal named as the handle', async () => {
+    // The row's own handle is the rejected duplicate, which LightRAG will
+    // never process; the original is what a reprocess finishes.
+    const prisma = makePrismaStub({ 'src-1': 'dup-1' });
+    const lightrag = makeLightragStub([], [heldAs('doc-orig', 'failed')]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.retryFailed([
+      failedRow({
+        indexError:
+          'Identical content already exists under another filename. Original doc_id: doc-orig, Status: failed',
+      }),
+    ]);
+
+    expect(outcomes[0].action).toBe('reprocess');
+    expect(prisma.docIds['src-1']).toBe('doc-orig');
+  });
+
+  it('resolves a refusal by filename through the listing', async () => {
+    const prisma = makePrismaStub({ 'src-1': null });
+    const lightrag = makeLightragStub([], [heldAs('doc-stored', 'failed')]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.retryFailed([
+      failedRow({
+        indexError: "LightRAG /documents/upload failed: 409 Document storage already contains 'notes.txt' (Status: failed)",
+      }),
+    ]);
+
+    expect(outcomes[0].action).toBe('reprocess');
+    expect(prisma.docIds['src-1']).toBe('doc-stored');
+  });
+
+  it('uploads again when LightRAG holds nothing under the handle', async () => {
+    const prisma = makePrismaStub({ 'src-1': 'gone' });
+    const lightrag = makeLightragStub([], []);
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.retryFailed([failedRow()]);
+
+    expect(outcomes[0].action).toBe('resent');
+    expect(lightrag.ingestText).toHaveBeenCalledTimes(1);
+    expect(prisma.docIds['src-1']).toBe('track-1');
+    expect(prisma.states['src-1']).toBe('processing');
+  });
+
+  it('stamps a document that turned out processed after all', async () => {
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    const lightrag = makeLightragStub([], [heldAs('doc-1', 'processed')]);
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.retryFailed([failedRow()]);
+
+    expect(outcomes[0].action).toBe('indexed');
+    expect(prisma.indexedAt['src-1']).toBeInstanceOf(Date);
+    expect(prisma.attempts['src-1']).toBe(0);
+  });
+
+  it('reports a re-upload that failed again, recorded by the upload path', async () => {
+    const prisma = makePrismaStub({ 'src-1': null });
+    const lightrag = makeLightragStub([], []);
+    lightrag.ingestText.mockRejectedValueOnce(new Error('fetch failed'));
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.retryFailed([failedRow()]);
+
+    expect(outcomes[0]).toMatchObject({ action: 'failed', error: 'fetch failed' });
+    expect(prisma.states['src-1']).toBe('failed');
+    expect(prisma.attempts['src-1']).toBe(1);
+  });
+});
+
+describe('SourceGateway.indexSources: a row the reconciler still owes a retry', () => {
+  it('reports it without uploading or spending the attempt', async () => {
+    const retryAt = new Date('2026-09-17T00:25:00Z');
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    const lightrag = makeLightragStub(
+      [],
+      [{ id: 'doc-1', status: 'failed', filePath: 'notes.txt', errorMessage: 'RetryError[...]', updatedAt: null }],
+    );
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.indexSources([
+      makeSource({
+        indexState: 'failed',
+        indexStatus: 'retrying',
+        indexError: 'RetryError[...]',
+        indexAttempts: 1,
+        indexRetryAt: retryAt,
+      }),
+    ]);
+
+    expect(outcomes[0]).toMatchObject({ status: 'failed', retryAt });
+    expect(lightrag.ingestText).not.toHaveBeenCalled();
+    expect(prisma.source.update).not.toHaveBeenCalled();
+    expect(prisma.docIds['src-1']).toBe('doc-1');
+  });
+});

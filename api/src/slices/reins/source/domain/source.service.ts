@@ -21,6 +21,7 @@ import {
   ISourceFilter,
   ISourceIndexOutcome,
   ISourcePage,
+  ISourceRetryOutcome,
   ISourceSelection,
   ISourceBreakdown,
 } from './source.types';
@@ -454,6 +455,14 @@ export class SourceService {
 
   confirmProcessed(sources: ISourceData[]): Promise<ISourceIndexOutcome[]> {
     return this.gateway.confirmProcessed(sources);
+  }
+
+  findDueForRetry(now: Date): Promise<ISourceData[]> {
+    return this.gateway.findDueForRetry(now);
+  }
+
+  retryFailed(sources: ISourceData[]): Promise<ISourceRetryOutcome[]> {
+    return this.gateway.retryFailed(sources);
   }
 
   /**

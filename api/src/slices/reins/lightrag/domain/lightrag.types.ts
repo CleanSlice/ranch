@@ -62,6 +62,10 @@ export interface IDocumentRecord {
   id: string;
   status: DocumentProcessingStatusTypes;
   filePath: string | null;
+  /** LightRAG's reason for a failed document, when it left one. */
+  errorMessage: string | null;
+  /** When LightRAG last changed the document's status; null when it did not say. */
+  updatedAt: Date | null;
 }
 
 export interface IQueryReference {

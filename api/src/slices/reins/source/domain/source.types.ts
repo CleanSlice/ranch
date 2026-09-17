@@ -151,6 +151,26 @@ export interface ISourceIndexOutcome {
   retryAt: Date | null;
 }
 
+/**
+ * What a retry did with one failed row. `reprocess`: LightRAG still holds the
+ * document, the row is back in flight and the caller has to nudge the
+ * pipeline; `resent`: LightRAG had nothing, so the document went up again;
+ * `indexed`: it had finished after all and the row is stamped; `failed`: the
+ * re-upload itself failed, recorded on the row with whatever retry it earns.
+ */
+export type SourceRetryActionTypes =
+  | 'reprocess'
+  | 'resent'
+  | 'indexed'
+  | 'failed';
+
+export interface ISourceRetryOutcome {
+  sourceId: string;
+  name: string;
+  action: SourceRetryActionTypes;
+  error: string | null;
+}
+
 export interface ICreateSourceData {
   knowledgeId: string;
   type: SourceTypes;

@@ -11,6 +11,7 @@ import {
   IUploadSourceStreamInput,
   IUploadedSourceFile,
   ISourceIndexOutcome,
+  ISourceRetryOutcome,
   ISourceBreakdown,
   ISourceTextStatePatch,
   SourceTextStateTypes,
@@ -65,6 +66,15 @@ export abstract class ISourceGateway {
   abstract confirmProcessed(
     sources: ISourceData[],
   ): Promise<ISourceIndexOutcome[]>;
+  /** Failed rows whose scheduled retry is due, across every knowledge. */
+  abstract findDueForRetry(now: Date): Promise<ISourceData[]>;
+  /**
+   * Give each failed row another go, the cheapest way that can work: adopt
+   * the document a refusal named, put a row LightRAG still holds back in
+   * flight for a reprocess (the caller nudges the pipeline), or upload again
+   * when LightRAG has nothing. Never waits.
+   */
+  abstract retryFailed(sources: ISourceData[]): Promise<ISourceRetryOutcome[]>;
   /** Hands the source to the retrieval service and marks it processing. */
   abstract indexSource(source: ISourceData): Promise<void>;
   /**

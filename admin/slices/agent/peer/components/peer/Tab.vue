@@ -4,6 +4,7 @@ import { toast } from 'vue-sonner';
 import { useAgentStore } from '#agent/stores/agent';
 import type { IAgentData } from '#agent/domain';
 import { usePeerStore, type IAgentPeer } from '#peer/stores/peer';
+import { cardAddress } from '#peer/domain';
 
 /**
  * The Peers tab (CLEAN-74): what this agent advertises, who it can delegate
@@ -40,9 +41,7 @@ const armed = computed(() =>
 );
 const restarting = ref(false);
 
-const address = computed(
-  () => ownCard.value?.supportedInterfaces?.[0]?.url ?? null,
-);
+const address = computed(() => cardAddress(ownCard.value));
 const nothingAdvertised = computed(
   () => Boolean(ownCard.value) && !ownCard.value!.skills.length,
 );

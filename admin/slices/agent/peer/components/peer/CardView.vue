@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { IAgentCard } from '#peer/stores/peer';
+import { cardAddress } from '#peer/domain';
 
 /**
  * An agent card, rendered as the agent on the other side reads it (CLEAN-74).
@@ -17,9 +18,8 @@ const props = defineProps<{
 
 const skills = computed(() => props.card?.skills ?? []);
 
-const address = computed(
-  () => props.card?.supportedInterfaces?.[0]?.url ?? null,
-);
+// The interface delegations will dial, not merely the first one listed.
+const address = computed(() => cardAddress(props.card));
 
 function skillTag(tags: string[]): string | null {
   if (tags.includes('knowledge')) return 'knowledge';

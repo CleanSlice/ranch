@@ -23,7 +23,11 @@ export type IndexStatus =
   | 'empty'
   | 'partial';
 export type SourceType = 'file' | 'url' | 'text';
-export type SourceIndexStatus = 'indexed' | 'pending' | 'failed';
+/**
+ * `retrying` is a failure the API will try again on its own (a model outage,
+ * a lost connection); `failed` is one nobody will touch without a person.
+ */
+export type SourceIndexStatus = 'indexed' | 'pending' | 'retrying' | 'failed';
 /**
  * Text extraction for a PDF without a text layer: `none` (not a PDF, or it
  * has its own text), `pending` (probing or OCR running), `ready` (recognised
@@ -95,6 +99,10 @@ export interface ISource {
   indexState: SourceIndexState;
   indexError: string | null;
   indexedAt: string | null;
+  /** Failed attempts since the last success or manual retry. */
+  indexAttempts: number;
+  /** When the API will retry a failed row by itself; null when it will not. */
+  indexRetryAt: string | null;
   textState: SourceTextState;
   textError: string | null;
   createdAt: string;

@@ -47,3 +47,13 @@ export function formatDate(iso: string | null | undefined): string {
 export function formatDateTime(iso: string | null | undefined): string {
   return parseDate(iso)?.toLocaleString() ?? 'never';
 }
+
+/** Time of day only, for something due within the hour. */
+export function formatTime(iso: string | null | undefined): string {
+  return (
+    parseDate(iso)?.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    }) ?? '-'
+  );
+}

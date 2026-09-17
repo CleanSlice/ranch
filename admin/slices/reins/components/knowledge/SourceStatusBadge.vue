@@ -10,6 +10,8 @@ const label = computed(() => {
       return 'Indexed';
     case 'failed':
       return 'Failed';
+    case 'retrying':
+      return 'Retrying';
     case 'pending':
       return 'Pending';
     default:

@@ -38,6 +38,7 @@ const SOURCE_TYPES = new Set<SourceType>(['file', 'url', 'text']);
 const SOURCE_INDEX_STATUSES = new Set<SourceIndexStatus>([
   'indexed',
   'pending',
+  'retrying',
   'failed',
 ]);
 const IMPORT_JOB_STATUSES = new Set<ImportJobStatus>([
@@ -222,6 +223,8 @@ export class KnowledgeMapper {
           : 'queued',
       indexError: nullableStr(o.indexError),
       indexedAt: nullableStr(o.indexedAt),
+      indexAttempts: num(o.indexAttempts),
+      indexRetryAt: nullableStr(o.indexRetryAt),
       textState: readTextState(o.textState),
       textError: nullableStr(o.textError),
       createdAt: str(o.createdAt),

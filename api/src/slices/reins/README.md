@@ -118,6 +118,26 @@ LightRAG's `updated_at` on the failed verdict travels with the row when it is
 re-queued (`indexRequeuedOverAt`); seeing that same verdict again is "not
 reached yet", any other timestamp is a new failure.
 
+## LightRAG can be up and answer nothing
+
+On 2026-09-18 LightRAG's Postgres pod was moved to another node on the Mazda
+dev cluster. The data survived (PVC) and Postgres was back within a minute, but
+LightRAG kept its pool of connections to the pod that was gone: `/health` and
+`/documents/pipeline_status` answered in half a second, everything that touches
+the database hung, and its log went silent. It does not recover by itself;
+deleting the LightRAG pod is the fix. Agents saw only the MCP client's own
+60 s limit (`MCP error -32001: Request timed out`), which sent people looking
+at MCP.
+
+Every call in `LightragHttpClient` is therefore bounded and a cut-short one is
+a `LightragTimeoutError`: 30 s for status reads, 50 s for a query (under the
+MCP client's 60 s, so `query_knowledge` answers in words), two minutes for an
+upload, five for a delete. When the document listing times out, the source
+gateway stops talking to that instance for the run or pass (each upload would
+only run into its own limit, one after another), leaves every row as it was,
+and logs one error line that names the state: "answers /health but /documents
+timed out ... restart the LightRAG pod". That line is the one to alert on.
+
 ## Changing the extraction model requires clearing the LLM cache
 
 LightRAG caches every extraction and summary response in `lightrag_llm_cache`,

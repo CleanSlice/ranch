@@ -4,6 +4,7 @@ import { ISourceData } from '../domain/source.types';
 import {
   ITrackStatus,
   IDocumentRecord,
+  LightragTimeoutError,
 } from '../../lightrag/domain/lightrag.types';
 import { indexBudgetMs } from '../domain/indexBudget';
 
@@ -157,6 +158,7 @@ function makeLightragStub(
       Promise.resolve(queue.length > 1 ? queue.shift()! : queue[0]),
     ),
     listDocuments: jest.fn(() => Promise.resolve(documents)),
+    health: jest.fn(() => Promise.resolve({ ok: true, configuration: null })),
   };
 }
 
@@ -1202,5 +1204,97 @@ describe('SourceGateway.waitForSourceIndexed: a refusal naming a processed origi
     expect(prisma.indexedAt['src-1']).toBeInstanceOf(Date);
     expect(prisma.errors['src-1']).toBeNull();
     expect(result.id).toBe('src-1');
+  });
+});
+
+describe('SourceGateway: a LightRAG that takes the call and never answers', () => {
+  function hung() {
+    const lightrag = makeLightragStub([], []);
+    lightrag.listDocuments.mockRejectedValue(
+      new LightragTimeoutError('/documents', 30_000),
+    );
+    return lightrag;
+  }
+
+  it('does not upload into it: an index run reports every source and writes nothing', async () => {
+    // Each upload would hang to its own two-minute limit, one after another;
+    // on a base of a few hundred sources that is a day spent failing.
+    const prisma = makePrismaStub();
+    const lightrag = hung();
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.indexSources([
+      makeSource(),
+      makeSource({ id: 'src-2', name: 'b.txt' }),
+    ]);
+
+    expect(outcomes.map((o) => o.status)).toEqual(['failed', 'failed']);
+    expect(outcomes[0].error).toContain('LightRAG is not answering');
+    expect(outcomes[0].error).toContain('/documents timed out after 30 s');
+    expect(lightrag.ingestText).not.toHaveBeenCalled();
+    expect(lightrag.getTrackStatus).not.toHaveBeenCalled();
+    expect(prisma.source.update).not.toHaveBeenCalled();
+  });
+
+  it('leaves in-flight rows alone on a reconcile pass', async () => {
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    const lightrag = hung();
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.confirmProcessed([
+      makeSource({ indexState: 'processing' }),
+    ]);
+
+    // Not `pending`: a stalled-pipeline nudge would only hang the same way.
+    expect(outcomes[0].status).toBe('failed');
+    expect(lightrag.getTrackStatus).not.toHaveBeenCalled();
+    expect(prisma.source.update).not.toHaveBeenCalled();
+    expect(prisma.docIds['src-1']).toBe('doc-1');
+  });
+
+  it('keeps due retries due instead of spending them', async () => {
+    const prisma = makePrismaStub({ 'src-1': 'doc-1' });
+    const lightrag = hung();
+    const gateway = makeGateway(prisma, lightrag);
+
+    const outcomes = await gateway.retryFailed([
+      makeSource({
+        indexState: 'failed',
+        indexError: 'RetryError[...]',
+        indexAttempts: 1,
+        indexRetryAt: new Date(0),
+      }),
+    ]);
+
+    expect(outcomes[0].action).toBe('failed');
+    expect(lightrag.ingestText).not.toHaveBeenCalled();
+    expect(prisma.source.update).not.toHaveBeenCalled();
+  });
+
+  it('checks /health to say which kind of outage it is', async () => {
+    const lightrag = hung();
+    const gateway = makeGateway(makePrismaStub(), lightrag);
+
+    await gateway.indexSources([makeSource()]);
+
+    expect(lightrag.health).toHaveBeenCalledTimes(1);
+  });
+
+  it('still treats any other listing failure as non-fatal', async () => {
+    const prisma = makePrismaStub();
+    const lightrag = makeLightragStub([processed()]);
+    lightrag.listDocuments.mockRejectedValue(new Error('LightRAG /documents failed: 502'));
+    const gateway = makeGateway(prisma, lightrag);
+    jest.useFakeTimers();
+    try {
+      const run = gateway.indexSources([makeSource()]);
+      await jest.advanceTimersByTimeAsync(POLL_MS * 2);
+      const outcomes = await run;
+
+      expect(outcomes[0].indexed).toBe(true);
+      expect(lightrag.ingestText).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

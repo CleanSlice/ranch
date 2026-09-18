@@ -11,14 +11,15 @@ const canCreate = computed(() =>
   authStore.hasRole(UserRoleTypes.Owner, UserRoleTypes.Admin),
 );
 
-const { data: agents, pending } = await useAsyncData('agents', () =>
-  agentStore.fetchAll(),
-);
+// Awaited for its loading state; the list itself is read from the store like
+// everywhere else (docs/state.md).
+const { pending } = await useAsyncData('agents', () => agentStore.fetchAll());
+const { agents } = storeToRefs(agentStore);
 
 // Remembered agent → first running → first in the list. The remembered id is
 // only honoured while it is still in this user's visible list, so a deleted
 // or newly-hidden agent is a non-event rather than a dead landing.
-const landing = computed(() => resolveLanding(agents.value ?? []));
+const landing = computed(() => resolveLanding(agents.value));
 
 watchEffect(() => {
   if (landing.value) {
@@ -28,7 +29,7 @@ watchEffect(() => {
 </script>
 
 <template>
-  <div v-if="pending && !agents?.length" class="flex flex-col gap-4">
+  <div v-if="pending && !agents.length" class="flex flex-col gap-4">
     <div class="h-8 w-48 animate-pulse rounded bg-muted" />
     <div class="h-64 w-full animate-pulse rounded-xl bg-muted/70" />
   </div>

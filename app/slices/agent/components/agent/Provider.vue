@@ -10,8 +10,11 @@
 const route = useRoute();
 const agentStore = useAgentStore();
 
-const { data: agent, pending, error } = await useAsyncData(
+// The request is for `pending` / `error`; what renders is the store's record
+// (docs/state.md), which `fetchById` upserts into.
+const { pending, error } = await useAsyncData(
   `agent-${route.params.id}`,
   () => agentStore.fetchById(route.params.id as string),
 );
+const agent = computed(() => agentStore.byId(route.params.id as string));
 </script>

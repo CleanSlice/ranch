@@ -3,6 +3,7 @@ import type {
   IBridleChannel,
   IBridleChannelAuth,
   IBridleChannelEvents,
+  IBridleMessage,
   IBridleShareContext,
 } from './bridle.types';
 
@@ -57,4 +58,16 @@ export abstract class IBridleGateway {
     attachmentId: string,
     share?: IBridleShareContext,
   ): Promise<Blob>;
+
+  /**
+   * The newest page of what the agent runtime wrote down for one channel,
+   * oldest message first. Not a live data path: the store asks only when a
+   * turn went silent, to recover an answer the socket never delivered.
+   * `channel` is the chat identity the hub reported in `welcome`.
+   */
+  abstract transcriptTail(
+    agentId: string,
+    channel: string,
+    share?: IBridleShareContext,
+  ): Promise<IBridleMessage[]>;
 }

@@ -4,6 +4,7 @@ import type {
   IBridleChannel,
   IBridleChannelAuth,
   IBridleChannelEvents,
+  IBridleMessage,
   IBridleShareContext,
 } from './bridle.types';
 
@@ -43,5 +44,13 @@ export class BridleService {
     share?: IBridleShareContext,
   ): Promise<Blob> {
     return this.gateway.fetchAttachment(agentId, attachmentId, share);
+  }
+
+  transcriptTail(
+    agentId: string,
+    channel: string,
+    share?: IBridleShareContext,
+  ): Promise<IBridleMessage[]> {
+    return this.gateway.transcriptTail(agentId, channel, share);
   }
 }

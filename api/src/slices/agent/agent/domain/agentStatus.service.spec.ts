@@ -1,5 +1,8 @@
 import { Subject } from 'rxjs';
-import { AgentStatusService } from './agentStatus.service';
+import {
+  AgentStatusService,
+  AgentStatusStreamMessage,
+} from './agentStatus.service';
 import { IAgentData } from './agent.types';
 import { IAgentPodStatus } from '#/agent/pod/domain/pod.types';
 
@@ -215,6 +218,65 @@ describe('AgentStatusService bridle connectivity', () => {
       'wf1',
       'agent pod disappeared',
     );
+  });
+
+  // The sweep's DB-only transitions have no pod or hub event behind them. If
+  // the stream stays silent, a list keeps showing 'deploying' for an agent
+  // nobody has open while its detail view (which polls) already says 'failed'.
+  test('startup timeout on an agent nobody has open reaches the status stream', async () => {
+    const agents = [
+      makeAgent({ id: 'a1' }),
+      makeAgent({ id: 'a2', name: 'Stuck', status: 'deploying' }),
+    ];
+    const bed = createTestBed(agents, [makePod({ agentId: 'a1' })]);
+    bed.bridleGateway.isAgentConnected.mockImplementation(
+      (id: string) => id === 'a1',
+    );
+    bed.agentGateway.updateStatus.mockImplementation(
+      (id: string, status: IAgentData['status'], _wf, reason?: string) => {
+        const row = agents.find((a) => a.id === id);
+        if (row) Object.assign(row, { status, statusReason: reason ?? null });
+        return Promise.resolve(row);
+      },
+    );
+
+    const frames: AgentStatusStreamMessage[] = [];
+    const sub = bed.service.stream$().subscribe((msg) => frames.push(msg));
+    await sweep(bed.service);
+    await new Promise((resolve) => setImmediate(resolve));
+    sub.unsubscribe();
+
+    const events = frames.filter((f) => f.type === 'event');
+    expect(events).toHaveLength(1);
+    expect(events[0].payload).toMatchObject({
+      eventType: 'modified',
+      status: {
+        agent: {
+          id: 'a2',
+          status: 'failed',
+          statusReason:
+            'startup did not produce a running agent within 5 minutes',
+        },
+        pod: null,
+        bridleConnected: false,
+      },
+    });
+  });
+
+  test('notifyStatusChanged pushes the current row for writes made elsewhere', async () => {
+    const bed = createTestBed([makeAgent({ status: 'failed' })], []);
+
+    const frames: AgentStatusStreamMessage[] = [];
+    const sub = bed.service.stream$().subscribe((msg) => frames.push(msg));
+    bed.service.notifyStatusChanged('a1');
+    await new Promise((resolve) => setImmediate(resolve));
+    sub.unsubscribe();
+
+    const events = frames.filter((f) => f.type === 'event');
+    expect(events).toHaveLength(1);
+    expect(events[0].payload).toMatchObject({
+      status: { agent: { id: 'a1', status: 'failed' } },
+    });
   });
 
   test('snapshot carries live bridleConnected per agent', async () => {

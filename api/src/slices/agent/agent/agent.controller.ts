@@ -118,6 +118,9 @@ export class AgentController {
           agent.workflowId,
           `deploy workflow ${phase.toLowerCase()}`,
         );
+        // Only the caller of this GET would learn about the flip otherwise —
+        // push it to every open status stream (lists, other operators).
+        this.agentStatusService.notifyStatusChanged(agentId);
         return this.agentGateway.findById(agentId);
       }
     } catch {

@@ -27,4 +27,9 @@ string. `en.json` per slice is the source, `bun run i18n:sync` generates `ru`,
 templates use the injected `$t`, and copy decided in script travels as a key.
 Never hand-write `ru.json` as the first step. `admin/` stays English-only.
 
+**Client state (`admin` + `app`):** read `docs/state.md` before adding a store,
+a fetch or a live feed. An entity lives once in its Pinia store: fetches upsert,
+pushes patch, components render by id, `useAsyncData` is for loading state only,
+optimistic changes go through the store's `patch()` with a rollback.
+
 Project overview: `README.md`.

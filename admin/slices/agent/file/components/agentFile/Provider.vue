@@ -16,7 +16,6 @@ import {
   IconX,
 } from '@tabler/icons-vue';
 import { until } from '@vueuse/core';
-import type { IAgentData } from '#agent/domain';
 import AgentFileTree from './Tree.vue';
 import AgentFileViewer from './Viewer.vue';
 
@@ -29,15 +28,11 @@ const confirmStore = useConfirmStore();
 // The two-copy model hint (CLEAN-50): while the agent is Running, this tab
 // shows the S3 copy but the pod works on its own — surface that instead of
 // letting the operator wonder why a chat-driven change is not visible.
-// Live-first (CLEAN-59): the SSE frame carries the fresh status and markers;
-// the one-shot fetched row would freeze the banner after a restart/stop done
-// from anywhere until the page is reloaded.
-const agent = ref<IAgentData | null>(null);
-const agentStatusStore = useAgentStatusStore();
-const liveAgent = computed(() => agentStatusStore.agents[props.id]);
-const showCopyHint = computed(
-  () => (liveAgent.value?.status ?? agent.value?.status) === 'running',
-);
+// Read from the agent store's record (docs/state.md): the status stream and
+// every fetch write into it, so a restart/stop done from anywhere — and the
+// refetch after Sync below — reach this banner without a copy of its own.
+const agent = computed(() => agentStore.byId(props.id));
+const showCopyHint = computed(() => agent.value?.status === 'running');
 
 function formatMoment(iso: string | null): string | null {
   if (!iso) return null;
@@ -45,25 +40,9 @@ function formatMoment(iso: string | null): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toLocaleString();
 }
 
-// Freshest-wins for marker timestamps (CLEAN-61): the SSE stream only emits
-// on pod events, so after a Sync (no pod event) the live row keeps a STALE
-// lastSyncAt — a plain live-first `??` would let it shadow the refetched row
-// forever. Statuses stay live-first (no timestamp to compare).
-function newestIso(a: string | null | undefined, b: string | null | undefined): string | null {
-  const ta = a ? Date.parse(a) : NaN;
-  const tb = b ? Date.parse(b) : NaN;
-  if (Number.isNaN(ta)) return Number.isNaN(tb) ? null : (b as string);
-  if (Number.isNaN(tb)) return a as string;
-  return ta >= tb ? (a as string) : (b as string);
-}
-
 const copyHintDetail = computed(() => {
-  const pulled = formatMoment(
-    newestIso(liveAgent.value?.lastPullAt, agent.value?.lastPullAt),
-  );
-  const synced = formatMoment(
-    newestIso(liveAgent.value?.lastSyncAt, agent.value?.lastSyncAt),
-  );
+  const pulled = formatMoment(agent.value?.lastPullAt ?? null);
+  const synced = formatMoment(agent.value?.lastSyncAt ?? null);
   const parts: string[] = [];
   if (pulled) parts.push(`agent took its copy ${pulled}`);
   if (synced) parts.push(`last sync ${synced}`);
@@ -158,11 +137,11 @@ async function onSync() {
     // Refetch the agent row alongside the files: lastSyncAt just changed and
     // no SSE frame will carry it (the stream is pod-event driven) — without
     // this the banner shows the old "last sync" until a page reload.
-    const [freshAgent] = await Promise.all([
+    // `fetchById` upserts into the store, which is what the banner reads.
+    await Promise.all([
       agentStore.fetchById(props.id).catch(() => null),
       store.fetchList(props.id),
     ]);
-    if (freshAgent) agent.value = freshAgent;
   } catch (err) {
     syncError.value = (err as Error).message || 'Failed to load files';
   } finally {
@@ -327,12 +306,11 @@ async function onDownload() {
 useAsyncData(
   `admin-agent-files-${props.id}`,
   async () => {
-    const [agentData] = await Promise.all([
+    await Promise.all([
       // Hint-only: a failed agent fetch must not break the file browser.
       agentStore.fetchById(props.id).catch(() => null),
       store.fetchList(props.id),
     ]);
-    agent.value = agentData;
     return true;
   },
   { lazy: true },

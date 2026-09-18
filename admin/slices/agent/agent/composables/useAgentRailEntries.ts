@@ -68,34 +68,16 @@ export function agentInitials(name: string, id: string): string {
 }
 
 /**
- * Live pod state wins over the DB row where we have it — the same precedence
- * `rancher/Provider.vue` uses. The DB row is reconciled asynchronously, so
- * right after a stop/restart it can lag the pod by seconds; the rail is the
- * one place where that lag is visible across every agent at once.
+ * The rail's view model: the agent store's records, filtered by the search
+ * term. The Ranch admin agent (Rancher) is pinned first — it is the agent an
+ * operator reaches for most — and the rest keep the list's own order.
  *
- * No pod at all means either "never deployed" or "stopped" — both are states
- * the DB row describes correctly, so we defer to it rather than inventing one.
- */
-function reconcileStatus(
-  agent: IAgentData,
-  pod: { phase: string; ready: boolean } | undefined,
-): AgentStatusTypes {
-  // 'unreachable' is precisely "pod healthy, runtime absent" — a Running+Ready
-  // pod is part of the diagnosis, not evidence against it. Letting the pod
-  // override to green here would re-create the incident this status exposes.
-  if (agent.status === 'unreachable') return 'unreachable';
-  if (!pod) return agent.status;
-  if (pod.phase === 'Running') return pod.ready ? 'running' : 'deploying';
-  if (pod.phase === 'Pending') return 'pending';
-  if (pod.phase === 'Failed') return 'failed';
-  return agent.status;
-}
-
-/**
- * The rail's view model: the agent list, reconciled against the live status
- * stream, filtered by the search term. The Ranch admin agent (Rancher) is
- * pinned first — it is the agent an operator reaches for most — and the rest
- * keep the list's own order.
+ * A row shows the record's own `status` / `statusReason` — exactly what the
+ * open agent's header shows (docs/state.md). It used to derive a status of its
+ * own from the pod phase, which is a second opinion the header never shared:
+ * two derivations of one fact is how a row and a header end up disagreeing.
+ * The server reconciles pod state into the row and the status stream delivers
+ * it here.
  *
  * Deliberately carries no action handlers — a rail entry identifies an agent
  * and nothing more (FR-002). Restart/stop/delete live in the settings panel.
@@ -105,8 +87,6 @@ export function useAgentRailEntries(
   activeId: Ref<string>,
   search: Ref<string>,
 ) {
-  const agentStatusStore = useAgentStatusStore();
-
   return computed<IRailEntry[]>(() => {
     const term = search.value.trim().toLowerCase();
     return (agents.value ?? [])
@@ -114,26 +94,16 @@ export function useAgentRailEntries(
       // Stable sort: admin agents float to the top, everything else keeps
       // its relative order.
       .sort((a, b) => Number(b.isAdmin) - Number(a.isAdmin))
-      .map((a) => {
-        const live = agentStatusStore.agents[a.id];
-        // The SSE record is fresher than the fetched list (the sweep writes
-        // 'unreachable' between refetches) — prefer it when present.
-        const dbStatus = (live?.status as AgentStatusTypes) || a.status;
-        const status = reconcileStatus(
-          { ...a, status: dbStatus },
-          agentStatusStore.statuses[a.id],
-        );
-        return {
-          id: a.id,
-          name: a.name,
-          initials: agentInitials(a.name, a.id),
-          status,
-          statusReason: live?.statusReason ?? a.statusReason,
-          tone: TONE[status],
-          createdAt: a.createdAt,
-          isAdmin: a.isAdmin,
-          isActive: a.id === activeId.value,
-        };
-      });
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        initials: agentInitials(a.name, a.id),
+        status: a.status,
+        statusReason: a.statusReason,
+        tone: TONE[a.status],
+        createdAt: a.createdAt,
+        isAdmin: a.isAdmin,
+        isActive: a.id === activeId.value,
+      }));
   });
 }

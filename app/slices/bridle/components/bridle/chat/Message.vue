@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import {
+  BridleDeliveryStates,
   BridleRoleTypes,
   type IBridleConversation,
   type IBridleMessage,
 } from '#bridle/stores/bridle';
+import { failureHintKey } from '#bridle/utils/delivery';
 import { renderMarkdown } from '#bridle/utils/markdown';
 
 const props = defineProps<{
@@ -12,8 +14,56 @@ const props = defineProps<{
   conversation: IBridleConversation;
   agentName?: string;
 }>();
+const emit = defineEmits<{ resend: [id: string]; discard: [id: string] }>();
+
+// The locale itself, for date formatting — the one use of `useI18n()` that
+// docs/i18n.md keeps; every string below still goes through `$t`.
+const { locale } = useI18n();
 
 const isUser = computed(() => props.message.role === BridleRoleTypes.User);
+
+// ── Time ───────────────────────────────────────────────────────
+// Time of day under the bubble, the whole date-time on hover. The date itself
+// is the day separator's job (Provider), so it is not repeated per message.
+
+/** Null for a stored message with a broken `ts` — `Intl` throws on NaN, and
+ *  one bad record must not take the whole conversation down with it. */
+const sentAt = computed(() =>
+  Number.isFinite(props.message.ts) ? new Date(props.message.ts) : null,
+);
+const timeLabel = computed(() =>
+  sentAt.value
+    ? new Intl.DateTimeFormat(locale.value, {
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(sentAt.value)
+    : '',
+);
+const timeTitle = computed(() =>
+  sentAt.value
+    ? new Intl.DateTimeFormat(locale.value, {
+        dateStyle: 'long',
+        timeStyle: 'medium',
+      }).format(sentAt.value)
+    : '',
+);
+
+// ── Delivery ───────────────────────────────────────────────────
+// Only the person's own messages have one, and a delivered message says
+// nothing: silence is the normal case, words are for when something is off.
+
+const delivery = computed(() =>
+  isUser.value
+    ? (props.message.delivery ?? BridleDeliveryStates.Delivered)
+    : BridleDeliveryStates.Delivered,
+);
+const isSending = computed(
+  () => delivery.value === BridleDeliveryStates.Sending,
+);
+const isSlow = computed(() => delivery.value === BridleDeliveryStates.Slow);
+const isFailed = computed(() => delivery.value === BridleDeliveryStates.Failed);
+/** Copy decided in script travels as a key (docs/i18n.md). */
+const failureHint = computed(() => failureHintKey(props.message.failureCode));
 
 const agentInitial = computed(() => {
   const source = props.agentName?.trim() || 'Agent';
@@ -30,9 +80,13 @@ const renderedHtml = computed(() =>
 </script>
 
 <template>
+  <!-- data-* are hooks for browser checks: which message, whose, in what state. -->
   <div
     class="flex items-start gap-2"
     :class="isUser ? 'justify-end' : 'justify-start'"
+    :data-message-id="message.id"
+    :data-role="message.role"
+    :data-delivery="delivery"
   >
     <div
       v-if="!isUser"
@@ -42,23 +96,87 @@ const renderedHtml = computed(() =>
       {{ agentInitial }}
     </div>
 
+    <!-- The column owns the width cap so the lines under the bubble wrap to
+         the bubble's measure instead of running across the whole chat. -->
     <div
-      class="max-w-[85%] sm:max-w-[75%] wrap-break-word px-4 py-2.5 text-sm leading-relaxed shadow-sm"
-      :class="
-        isUser
-          ? 'whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary text-primary-foreground'
-          : 'chat-md rounded-2xl rounded-tl-md bg-muted text-foreground'
-      "
+      class="flex min-w-0 max-w-[85%] flex-col gap-1 sm:max-w-[75%]"
+      :class="isUser ? 'items-end' : 'items-start'"
     >
-      <!-- Media above the text, the way every chat client orders it -->
-      <BridleChatAttachmentList
-        v-if="message.attachments?.length"
-        :attachments="message.attachments"
-        :conversation="conversation"
-        :on-primary="isUser"
-      />
-      <template v-if="isUser">{{ message.text }}</template>
-      <div v-else v-html="renderedHtml" />
+      <!-- Dimmed while on its way: not there yet, and looks it — without a
+           word for as long as it is quick. -->
+      <div
+        class="max-w-full wrap-break-word px-4 py-2.5 text-sm leading-relaxed shadow-sm transition-opacity"
+        :class="[
+          isUser
+            ? 'whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary text-primary-foreground'
+            : 'chat-md rounded-2xl rounded-tl-md bg-muted text-foreground',
+          (isSending || isSlow) && 'opacity-70',
+        ]"
+      >
+        <!-- Media above the text, the way every chat client orders it -->
+        <BridleChatAttachmentList
+          v-if="message.attachments?.length"
+          :attachments="message.attachments"
+          :conversation="conversation"
+          :on-primary="isUser"
+        />
+        <template v-if="isUser">{{ message.text }}</template>
+        <div v-else v-html="renderedHtml" />
+      </div>
+
+      <div
+        class="flex flex-wrap items-center gap-x-1.5 px-1 text-[11px] text-muted-foreground"
+        :class="isUser && 'justify-end'"
+      >
+        <span
+          v-if="isSlow"
+          class="flex items-center gap-1"
+          role="status"
+        >
+          <Icon name="loader-2" :size="11" class="animate-spin" />
+          {{ $t('chat.delivery_slow') }}
+        </span>
+        <span v-else-if="isSending" class="sr-only" role="status">
+          {{ $t('chat.delivery_sending') }}
+        </span>
+        <span
+          v-else-if="isFailed"
+          class="flex items-center gap-1 font-medium text-destructive"
+        >
+          <Icon name="alert-circle" :size="11" />
+          {{ $t('chat.not_delivered') }}
+        </span>
+        <time v-if="sentAt" :datetime="sentAt.toISOString()" :title="timeTitle">
+          {{ timeLabel }}
+        </time>
+      </div>
+
+      <!-- Announced, not just coloured — and the way out sits right under
+           the explanation: nothing here needs the message to be retyped. -->
+      <div
+        v-if="isFailed"
+        class="flex flex-col items-end gap-1 px-1 text-right text-[11px] text-muted-foreground"
+        role="status"
+        aria-live="polite"
+      >
+        <p>{{ $t(failureHint) }}</p>
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            class="font-medium text-foreground underline underline-offset-2 hover:opacity-80"
+            @click="emit('resend', message.id)"
+          >
+            {{ $t('chat.resend') }}
+          </button>
+          <button
+            type="button"
+            class="underline underline-offset-2 hover:opacity-80"
+            @click="emit('discard', message.id)"
+          >
+            {{ $t('chat.discard') }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>

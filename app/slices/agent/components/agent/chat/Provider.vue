@@ -4,10 +4,14 @@ const props = defineProps<{ id: string }>();
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
 
-const { data: agent, pending, error, refresh } = await useAsyncData(
+// The request is for `pending` / `error` / `refresh`; what renders is the
+// store's record (docs/state.md) — the same object the rail row shows, so the
+// header pill and the row cannot disagree. `fetchById` upserts into it.
+const { pending, error, refresh } = await useAsyncData(
   `agent-${props.id}`,
   () => agentStore.fetchById(props.id),
 );
+const agent = computed(() => agentStore.byId(props.id));
 
 const canManage = computed(() =>
   authStore.hasRole(UserRoleTypes.Owner, UserRoleTypes.Admin),
@@ -32,14 +36,13 @@ async function onRestart() {
   restartError.value = null;
   restartFailed.value = false;
   restartStartedAt.value = Date.now();
-  const previous = agent.value.status;
-  // Optimistic flip — overlay appears immediately, status pill animates.
-  agent.value = { ...agent.value, status: 'deploying' };
+  // The optimistic 'deploying' flip — overlay appears immediately, status
+  // pill animates — and its rollback happen inside `agentStore.restart`, on
+  // the one store record, so the rail row flips with this header.
   try {
     await agentStore.restart(agent.value.id);
     await refresh();
   } catch (err) {
-    if (agent.value) agent.value = { ...agent.value, status: previous };
     restartFailed.value = true;
     // A 401 the api plugin could not recover from is the session-ended
     // dialog's story to tell; the banner falls back to `chat.restart_failed`

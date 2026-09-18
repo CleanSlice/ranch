@@ -12,7 +12,7 @@
     "pretypecheck": "openapi-ts",
     "typecheck": "nuxt typecheck",
     "lint": "echo 'admin lint: not configured (see eslint.config.mjs TODO)'",
-    "test": "echo 'admin test: no tests yet'"
+    "test": "bun test slices"
   },
   "dependencies": {
     "@hey-api/client-axios": "^0.6",

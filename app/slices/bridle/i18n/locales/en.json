@@ -28,8 +28,20 @@
     "thought": "Thought for a moment",
     "thinking_toggle": "Show what the agent did",
     "reconnecting": "Reconnecting to the agent…",
-    "error_offline": "Not connected to the agent yet. Your message is back in the composer — try again in a moment.",
     "error_message": "The agent could not take that message: {message}",
-    "error_rejected": "The agent refused the connection ({code})"
+    "error_rejected": "The agent refused the connection ({code})",
+    "error_turn_unfinished": "The agent did not finish this turn. Send your message again to continue.",
+    "delivery_sending": "Sending…",
+    "delivery_slow": "Still sending…",
+    "not_delivered": "Not delivered",
+    "not_delivered_hint": "The agent did not receive this message — it will be gone unless you resend it",
+    "not_delivered_agent_offline": "The agent is not running right now, so it did not receive this message. Resend it once the agent is back.",
+    "not_delivered_offline": "There was no connection to the agent when you sent this. Resend it once the chat has reconnected.",
+    "not_delivered_timeout": "No confirmation came back, so the agent may not have this message. Resending is safe — it will not be delivered twice.",
+    "not_delivered_attachment_failed": "An attached file could not be read, so the message did not reach the agent.",
+    "resend": "Resend",
+    "discard": "Discard",
+    "day_today": "Today",
+    "day_yesterday": "Yesterday"
   }
 }

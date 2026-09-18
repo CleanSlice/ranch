@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { BridleService as BridleApi } from '#api';
 import { client as apiClient } from '#api/data/repositories/api/client.gen';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
@@ -8,8 +9,11 @@ import type {
   IBridleChannel,
   IBridleChannelAuth,
   IBridleChannelEvents,
+  IBridleMessage,
+  IBridleSendAck,
   IBridleShareContext,
 } from '../domain/bridle.types';
+import { FAILED_MS, FAILURE_TIMEOUT } from '../utils/delivery';
 import { BridleMapper } from './bridle.mapper';
 
 /**
@@ -78,6 +82,9 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
    * A share visitor sends the pair and no bearer: on the hub a valid JWT
    * wins over the pair, and an owner opening their own link must chat as a
    * visitor (the HTTP calls send `Authorization: null` for the same reason).
+   *
+   * `lastSeq` rides in the same function for the same reason: read at
+   * (re)connect time, it tells the hub what to replay after THIS gap.
    */
   openChannel(
     agentId: string,
@@ -98,10 +105,16 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
                 shareVisitor: auth.share.visitorId,
               }
             : { token: auth.token?.() ?? '' }),
+          ...(auth.lastSeq ? { lastSeq: auth.lastSeq() } : {}),
         }),
     });
+    // The channel object below is a plain literal — no `this` inside it.
+    const mapper = this.mapper;
 
     socket.on('connect', () => events.onConnected());
+    socket.on('welcome', (raw: unknown) =>
+      events.onWelcome(mapper.toWelcome(raw)),
+    );
     socket.on('disconnect', () => events.onDisconnected());
     socket.on('connect_error', (err: Error) => {
       // Network-level: socket.io keeps retrying on its own. Logged so a
@@ -116,9 +129,10 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
       const message = (raw as { message?: unknown } | null)?.message;
       events.onMessageError(
         typeof message === 'string' ? message : 'Message could not be delivered',
+        mapper.toSeq(raw),
       );
     });
-    socket.on('typing', () => events.onTyping());
+    socket.on('typing', (raw: unknown) => events.onTyping(mapper.toSeq(raw)));
     socket.on('thinking', (raw: unknown) => {
       const event = this.mapper.toThinkingEvent(raw);
       if (event) events.onThinking(event);
@@ -132,14 +146,33 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
     socket.on('message', (raw: unknown) =>
       events.onMessage(this.mapper.toReply(raw)),
     );
+    socket.on('user_message', (raw: unknown) => {
+      const message = mapper.toUserMessage(raw);
+      if (message) events.onUserMessage(message);
+    });
 
     return {
-      send(text, attachmentIds) {
-        // `attachmentIds` is omitted entirely when empty so a plain text
-        // message is byte-identical to what the embed SDK sends.
-        socket.emit('message', {
-          text,
-          ...(attachmentIds?.length ? { attachmentIds } : {}),
+      send(text, attachmentIds, clientMessageId) {
+        // Always resolves: the store turns the verdict into a delivery state,
+        // and "no answer in time" is one of the verdicts. socket.io drops a
+        // timed-out packet from its send buffer, so a message that failed
+        // here is not quietly sent after a later reconnect.
+        return new Promise<IBridleSendAck>((resolve) => {
+          socket.timeout(FAILED_MS).emit(
+            'message',
+            {
+              text,
+              // Omitted entirely when empty, the way the embed SDK sends it.
+              ...(attachmentIds?.length ? { attachmentIds } : {}),
+              clientMessageId,
+            },
+            (err: Error | null, raw: unknown) =>
+              resolve(
+                err
+                  ? { status: 'rejected', code: FAILURE_TIMEOUT }
+                  : mapper.toSendAck(raw, clientMessageId),
+              ),
+          );
         });
       },
       reconnect() {
@@ -218,6 +251,23 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
         { responseType: 'blob', ...(headers ? { headers } : {}) },
       );
       return res.data as Blob;
+    });
+  }
+
+  transcriptTail(
+    agentId: string,
+    channel: string,
+    share?: IBridleShareContext,
+  ): Promise<IBridleMessage[]> {
+    return this.execute(async () => {
+      const headers = shareHeaders(share);
+      const res = await BridleApi.getBridleTranscript({
+        path: { agentId },
+        query: { channel },
+        ...(headers ? { headers } : {}),
+        throwOnError: true,
+      });
+      return this.mapper.toTranscript(unwrapEnvelope(res.data));
     });
   }
 }

@@ -9,11 +9,17 @@ const route = useRoute();
 
 // One list request for the whole workspace. It lives here — above the keyed
 // `Main` — so switching agents does not refetch it or flash the rail.
-const { data: agents, pending, refresh: refreshAgents } = useAsyncData(
+//
+// The request gives `pending` and `refresh`; the rail renders the store's
+// collection (docs/state.md). Rendering the array this request returned is
+// what froze a row on "Deploying" while the open agent — a separately fetched
+// copy — had already moved on to "Failed".
+const { pending, refresh: refreshAgents } = useAsyncData(
   'admin-agents',
   () => agentStore.fetchAll(),
   { lazy: true },
 );
+const { agents } = storeToRefs(agentStore);
 
 // Cluster headroom, rendered in the rail's footer next to the create action.
 // Store actions refetch on their own; the interval catches pods actually
@@ -104,9 +110,12 @@ onUnmounted(() => {
  * rail falls through to the resolver, which renders the empty state.
  */
 async function onDeleted() {
-  await refreshAgents();
-  const next = (agents.value ?? []).find((a) => a.id !== props.id);
+  // `remove` already dropped the record from the store, so the next agent is
+  // known right now — navigate first (the pane has nothing left to render),
+  // then let the refetch confirm the list.
+  const next = agents.value.find((a) => a.id !== props.id);
   await router.replace(next ? `/agents/${next.id}` : '/agents');
+  void refreshAgents();
 }
 </script>
 

@@ -8,6 +8,8 @@ import type {
   BridlePart,
   IBridleAttachment,
   IActiveTurn,
+  IBridleSendOptions,
+  BridleSendResult,
 } from './bridle.types';
 
 export interface ISyncAgentResult {
@@ -35,12 +37,26 @@ export abstract class IBridleGateway {
     text: string,
     parts: BridlePart[],
     attachments?: IBridleAttachment[],
-  ): void;
-  /** Send an event to a specific browser client (scoped to clientId + agentId) */
+    options?: IBridleSendOptions,
+  ): BridleSendResult;
+  /** Send an event to every socket open on this conversation (clientId +
+   * agentId), numbered and kept for replay like the agent's own events. */
   abstract sendToClient(clientId: string, agentId: string, data: unknown): void;
-  /** Register a browser client for a specific agent. `socketId` marks the
-   * owning socket so a stale connection's late disconnect can't wipe a newer
-   * registration for the same clientId+agentId (mirrors registerAgent). */
+  /**
+   * Events routed to this conversation after `lastSeq`, oldest first — what a
+   * browser missed while it was reconnecting. Empty when nothing is buffered
+   * or the conversation is unknown.
+   */
+  abstract replaySince(
+    clientId: string,
+    agentId: string,
+    lastSeq: number,
+  ): unknown[];
+  /** Last sequence number issued for this conversation; 0 when unknown. */
+  abstract currentSeq(clientId: string, agentId: string): number;
+  /** Register a browser socket on a conversation. Several sockets may share
+   * one clientId+agentId — they all receive its events; `socketId` tells them
+   * apart so each one can only ever unregister itself. */
   abstract registerClient(
     clientId: string,
     agentId: string,
@@ -54,8 +70,9 @@ export abstract class IBridleGateway {
      * every message so runtimes can gate `thinking`/`ui` emission. */
     capabilities?: string[],
   ): void;
-  /** Unregister a browser client — no-op unless `socketId` still owns the
-   * current registration for clientId+agentId. */
+  /** Unregister one browser socket. The conversation's other sockets are
+   * untouched; its numbering and replay buffer outlive the last one for a
+   * while so a reconnect can catch up. */
   abstract unregisterClient(
     clientId: string,
     agentId: string,

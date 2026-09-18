@@ -111,7 +111,11 @@ export class BridleSyncService {
         capabilities,
       );
 
-      this.hub.sendToAgent(clientId, agentId, text, parts, attachments);
+      // `socketId` makes this call's own capabilities travel with the message
+      // now that a conversation can hold several sockets at once.
+      this.hub.sendToAgent(clientId, agentId, text, parts, attachments, {
+        socketId,
+      });
     });
   }
 }

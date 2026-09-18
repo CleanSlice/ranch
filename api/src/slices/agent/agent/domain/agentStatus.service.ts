@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import {
   Observable,
+  Subject,
   Subscription,
   defer,
   filter,
@@ -89,6 +90,11 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
   // First-observed timestamps of "running pod, no hub connection" per agent.
   // In-memory on purpose: resets on API restart, which IS the restart grace.
   private readonly bridleDownSince = new Map<string, number>();
+  // Ids of agents whose DB status was just written. The drift sweep changes
+  // rows with no pod or hub event behind it (startup timeout → 'failed',
+  // 'unreachable'), so without this the SSE stream stayed silent and every
+  // list kept showing 'deploying' until someone opened that agent.
+  private readonly statusWrites$ = new Subject<string>();
 
   constructor(
     private readonly agentGateway: IAgentGateway,
@@ -193,11 +199,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Reconciling agent ${agentId}: bridle runtime registered — marking running`,
     );
-    await this.agentGateway.updateStatus(
-      agentId,
-      'running',
-      agent.workflowId ?? undefined,
-    );
+    await this.writeStatus(agentId, 'running', agent.workflowId ?? undefined);
     // Sync-conflict marker (CLEAN-50): a not-yet-running agent that just
     // registered on bridle is a fresh boot, and the runtime pulls its S3
     // working copy at boot, right before this connect. Deliberately NOT set
@@ -206,6 +208,21 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     // hide real conflicts. A stale baseline only over-warns — safe direction.
     await this.agentGateway.setLastPullAt(agentId);
     this.deployTracker.clear(agentId);
+  }
+
+  // Every status write in this service goes through here so SSE consumers
+  // hear about it — whatever triggered the write.
+  private async writeStatus(
+    ...args: Parameters<IAgentGateway['updateStatus']>
+  ): Promise<void> {
+    await this.agentGateway.updateStatus(...args);
+    this.statusWrites$.next(args[0]);
+  }
+
+  // For status writes made outside this service (GET /agents/:id syncStatus):
+  // pushes the agent's current row to every open status stream.
+  notifyStatusChanged(agentId: string): void {
+    this.statusWrites$.next(agentId);
   }
 
   async snapshot(): Promise<IAgentStatus[]> {
@@ -309,7 +326,42 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
       filter((msg): msg is AgentStatusStreamMessage => msg !== null),
     );
 
-    return merge(initial$, updates$, bridleUpdates$);
+    // DB-only transitions (see statusWrites$) — no pod or hub event carries
+    // them, so they get a frame of their own.
+    const statusUpdates$ = this.statusWrites$.pipe(
+      mergeMap((agentId) =>
+        from(
+          Promise.all([
+            // A failed lookup must cost this one frame, not the whole stream:
+            // an error here would end the SSE connection of every listener.
+            this.agentGateway.findById(agentId).catch(() => null),
+            Promise.resolve()
+              .then(() => this.podGateway.list())
+              .catch(() => []),
+          ]),
+        ).pipe(
+          map(([agent, pods]): AgentStatusStreamMessage | null =>
+            agent
+              ? {
+                  type: 'event',
+                  payload: {
+                    eventType: 'modified',
+                    status: {
+                      agent,
+                      pod: pods.find((p) => p.agentId === agentId) ?? null,
+                      bridleConnected:
+                        this.bridleGateway.isAgentConnected(agentId),
+                    },
+                  },
+                }
+              : null,
+          ),
+        ),
+      ),
+      filter((msg): msg is AgentStatusStreamMessage => msg !== null),
+    );
+
+    return merge(initial$, updates$, bridleUpdates$, statusUpdates$);
   }
 
   private async detectDrift(reason: 'startup' | 'periodic'): Promise<string[]> {
@@ -352,7 +404,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
             this.logger.log(
               `Drift: agent ${agent.id} (${agent.name}) is ${agent.status} in DB but bridle has it registered — marking running`,
             );
-            await this.agentGateway.updateStatus(
+            await this.writeStatus(
               agent.id,
               'running',
               agent.workflowId ?? undefined,
@@ -393,7 +445,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
             this.logger.warn(
               `Drift: agent ${agent.id} (${agent.name}) is ${agent.status} in DB but no pod exists — marking failed (${reason})`,
             );
-            await this.agentGateway.updateStatus(
+            await this.writeStatus(
               agent.id,
               'failed',
               agent.workflowId ?? undefined,
@@ -434,7 +486,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
             this.logger.warn(
               `Drift: agent ${agent.id} (${agent.name}) pod is Running+Ready but the runtime never registered on the bridle hub — marking unreachable`,
             );
-            await this.agentGateway.updateStatus(
+            await this.writeStatus(
               agent.id,
               'unreachable',
               agent.workflowId ?? undefined,
@@ -543,7 +595,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
               : '') +
             ` — marking failed`,
         );
-        await this.agentGateway.updateStatus(
+        await this.writeStatus(
           agent.id,
           'failed',
           agent.workflowId ?? undefined,
@@ -575,7 +627,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(
         `Reconciling agent ${agent.id}: pod ${podStatus.podName} is Running+Ready — marking running`,
       );
-      await this.agentGateway.updateStatus(
+      await this.writeStatus(
         agent.id,
         'running',
         agent.workflowId ?? undefined,

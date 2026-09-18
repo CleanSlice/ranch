@@ -75,10 +75,40 @@ interface RawEvent {
     params?: unknown;
     result?: unknown;
     attachments?: unknown;
+    /** `assistant` only: the bubbles the turn was shown as (runtime ≥ CLEAN-102). */
+    messages?: unknown;
   };
 }
 
 const ATTACHMENT_KINDS = new Set(['image', 'text', 'binary']);
+
+/**
+ * Same stance as {@link sanitizeAttachments}: runtime-authored, still external
+ * input. All or nothing — one malformed entry and the caller falls back to
+ * the event's whole text, because replaying only the valid bubbles would
+ * silently drop part of what the agent said.
+ */
+function sanitizeBubbles(
+  raw: unknown,
+): Array<Pick<TranscriptMessage, 'id' | 'text' | 'ts'>> {
+  if (!Array.isArray(raw)) return [];
+  const out: Array<Pick<TranscriptMessage, 'id' | 'text' | 'ts'>> = [];
+  for (const entry of raw) {
+    const b = entry as Record<string, unknown>;
+    if (
+      typeof b?.id !== 'string' ||
+      !b.id ||
+      typeof b?.text !== 'string' ||
+      !b.text.trim() ||
+      typeof b?.ts !== 'number' ||
+      !Number.isFinite(b.ts)
+    ) {
+      return [];
+    }
+    out.push({ id: b.id, text: b.text, ts: b.ts });
+  }
+  return out;
+}
 
 /**
  * The JSONL is runtime-authored but still external input to this API —
@@ -159,6 +189,18 @@ export class TranscriptReaderService {
       // split result proves the turn happened even when the runtime stored
       // no attachment metadata (legacy records).
       if (rendered === null && !attachments.length) return;
+      // A streamed turn reached the person as several bubbles but is stored
+      // as one event (its `text` is what the model sees). When the runtime
+      // recorded the bubbles, replay THOSE — same ids, same boundaries —
+      // instead of one paragraph with the sentences glued together (CLEAN-102).
+      const bubbles =
+        evt.type === 'assistant' ? sanitizeBubbles(evt.data?.messages) : [];
+      if (bubbles.length) {
+        for (const bubble of bubbles) {
+          messages.push({ ...bubble, role: 'assistant' });
+        }
+        return;
+      }
       messages.push({
         id: evt.id,
         role: evt.type as TranscriptMessage['role'],

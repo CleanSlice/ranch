@@ -87,7 +87,54 @@ function saveRestartInFlightToStorage(state: Record<string, number>): void {
 }
 
 export const useAgentStore = defineStore('agent', () => {
+  // Single source of truth (docs/state.md): an agent lives here once. Every
+  // fetch upserts into this collection, the status stream writes into it, and
+  // components render `byId(id)` — never the value a fetch handed back. A
+  // list row and a detail header are then the same object and cannot disagree.
   const agents = ref<IAgentData[]>([]);
+
+  // Plain lookup — reactive when read inside a computed.
+  function byId(id: string): IAgentData | undefined {
+    return agents.value.find((a) => a.id === id);
+  }
+
+  // Full records only (anything the API returned for one agent): replaces the
+  // row in place so the list keeps its order, appends when the id is new.
+  function upsert(agent: IAgentData): IAgentData {
+    agents.value = agents.value.some((a) => a.id === agent.id)
+      ? agents.value.map((a) => (a.id === agent.id ? agent : a))
+      : [...agents.value, agent];
+    return agent;
+  }
+
+  // Partial change to a known record — the one road for optimistic flips.
+  // Returns a rollback that restores only the fields still holding the patched
+  // value: if a fetch or a stream frame wrote something fresher in between,
+  // undoing the guess must not undo the truth.
+  function patch(id: string, partial: Partial<IAgentData>): () => void {
+    const previous = byId(id);
+    if (!previous) return () => {};
+    agents.value = agents.value.map((a) =>
+      a.id === id ? { ...a, ...partial } : a,
+    );
+    return () => {
+      const current = byId(id);
+      if (!current) return;
+      const restored: Record<string, unknown> = {};
+      for (const key of Object.keys(partial) as (keyof IAgentData)[]) {
+        if (current[key] === partial[key]) restored[key] = previous[key];
+      }
+      agents.value = agents.value.map((a) =>
+        a.id === id ? { ...a, ...(restored as Partial<IAgentData>) } : a,
+      );
+    };
+  }
+
+  // The whole collection at once — `fetchAll` and the stream's snapshot.
+  function setAll(list: IAgentData[]): void {
+    agents.value = list;
+  }
+
   const pendingRestart = ref<Record<string, true>>(
     loadPendingRestartFromStorage(),
   );
@@ -138,7 +185,7 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   async function fetchAll() {
-    agents.value = await getService().findAll();
+    setAll(await getService().findAll());
     return agents.value;
   }
 
@@ -155,12 +202,14 @@ export const useAgentStore = defineStore('agent', () => {
     return capacity.value;
   }
 
-  function fetchById(id: string) {
-    return getService().findById(id);
+  async function fetchById(id: string) {
+    const agent = await getService().findById(id);
+    return agent ? upsert(agent) : agent;
   }
 
-  function fetchAdmin() {
-    return getService().findAdmin();
+  async function fetchAdmin() {
+    const agent = await getService().findAdmin();
+    return agent ? upsert(agent) : agent;
   }
 
   async function create(data: ICreateAgentData) {
@@ -173,32 +222,22 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   async function update(id: string, data: IUpdateAgentData) {
-    const updated = await getService().update(id, data);
-    agents.value = agents.value.map((a) => (a.id === id ? updated : a));
-    return updated;
+    return upsert(await getService().update(id, data));
   }
 
   // Optimistic: flip the status so the UI reacts immediately (the lifecycle
-  // endpoints take several seconds). Revert on error.
+  // endpoints take several seconds). Revert on error. Because every screen
+  // renders this record, callers need no optimistic copy of their own.
   async function withOptimisticStatus(
     id: string,
     optimistic: IAgentData['status'],
     run: () => Promise<IAgentData>,
   ) {
-    const previous = agents.value.find((a) => a.id === id);
-    if (previous && previous.status !== optimistic) {
-      agents.value = agents.value.map((a) =>
-        a.id === id ? { ...a, status: optimistic } : a,
-      );
-    }
+    const rollback = patch(id, { status: optimistic });
     try {
-      const updated = await run();
-      agents.value = agents.value.map((a) => (a.id === id ? updated : a));
-      return updated;
+      return upsert(await run());
     } catch (err) {
-      if (previous) {
-        agents.value = agents.value.map((a) => (a.id === id ? previous : a));
-      }
+      rollback();
       throw err;
     }
   }
@@ -244,9 +283,7 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   async function demoteAdmin(id: string) {
-    const updated = await getService().demoteAdmin(id);
-    agents.value = agents.value.map((a) => (a.id === id ? updated : a));
-    return updated;
+    return upsert(await getService().demoteAdmin(id));
   }
 
   function fetchLogs(id: string): Promise<string> {
@@ -263,6 +300,10 @@ export const useAgentStore = defineStore('agent', () => {
 
   return {
     agents,
+    byId,
+    upsert,
+    patch,
+    setAll,
     capacity,
     fetchAll,
     fetchCapacity,

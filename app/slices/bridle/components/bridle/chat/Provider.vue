@@ -2,9 +2,8 @@
 import {
   BridleChannelStates,
   type IBridleConversation,
-  type IBridleMessage,
-  type IBridleThinkingBlock,
 } from '#bridle/stores/bridle';
+import { buildChatFlow } from '#bridle/utils/chatFlow';
 
 const props = withDefaults(
   defineProps<{
@@ -23,6 +22,9 @@ const props = withDefaults(
   { showHeader: true },
 );
 const bridleStore = useBridleStore();
+// The locale itself, for the date on a day separator (docs/i18n.md keeps
+// `useI18n()` for exactly this); every string still goes through `$t`.
+const { locale } = useI18n();
 
 /**
  * The descriptor every store call goes through. `withDefaults` can't derive a
@@ -46,16 +48,17 @@ watch(
   { immediate: true },
 );
 
-// The live channel follows the conversation: opened when the key settles,
-// closed when it changes or the chat unmounts. Messages are persisted, the
-// socket is not — so coming back re-opens a fresh one over the same history.
+// The live channel follows the conversation: held from the moment the key
+// settles, let go when it changes or the chat unmounts. Held, not owned — the
+// landing hero and the agent page show the same conversation, and the store
+// keeps one socket open across the handoff between them (CLEAN-102).
 watch(
   () => activeConversation.value?.key,
   (_key, _old, onCleanup) => {
     const conversation = activeConversation.value;
     if (!conversation) return;
-    void bridleStore.connect(conversation);
-    onCleanup(() => bridleStore.disconnect(conversation));
+    void bridleStore.acquire(conversation);
+    onCleanup(() => bridleStore.release(conversation));
   },
   { immediate: true },
 );
@@ -94,27 +97,22 @@ const reconnecting = computed(() => {
 });
 
 // ── Chat flow ─────────────────────────────────────────────────
-// Messages and thinking blocks interleaved by timestamp, so a frozen block
-// stays above the answer it produced and the live one always sits last.
+// Messages and thinking blocks interleaved in the order they ARRIVED, so a
+// frozen block stays above the answer it produced and the live one always
+// sits last. Never by timestamp: the person's clock and the agent's disagree,
+// and sorting by them is what used to put an answer above its question.
 
-interface IFlowItem {
-  key: string;
-  ts: number;
-  message?: IBridleMessage;
-  block?: IBridleThinkingBlock;
+const chatFlow = computed(() =>
+  buildChatFlow(messages.value, thinkingBlocks.value, {
+    locale: locale.value,
+    now: Date.now(),
+  }),
+);
+
+/** Long form for the separator's tooltip; the label may just say "Today". */
+function dayTitle(ts: number): string {
+  return new Intl.DateTimeFormat(locale.value, { dateStyle: 'full' }).format(ts);
 }
-
-const chatFlow = computed<IFlowItem[]>(() => {
-  const items: IFlowItem[] = messages.value.map((m) => ({
-    key: m.id,
-    ts: m.ts,
-    message: m,
-  }));
-  for (const b of thinkingBlocks.value) {
-    items.push({ key: `${b.turnId}:${b.seg}`, ts: b.ts, block: b });
-  }
-  return items.sort((a, b) => a.ts - b.ts);
-});
 
 const agentLabel = computed(
   () => props.title?.trim() || props.agentId || 'Agent',
@@ -125,7 +123,19 @@ function dismissError() {
   if (conversation) bridleStore.dismissError(conversation);
 }
 
+// ── Scrolling ─────────────────────────────────────────────────
+// One rule (CLEAN-102, research D8): sending always goes to the bottom;
+// incoming content is followed only by a reader who is already there.
+
 const scrollEl = ref<HTMLElement | null>(null);
+/** How close to the end still counts as "reading the newest message". */
+const NEAR_BOTTOM_PX = 80;
+
+function isNearBottom(): boolean {
+  const el = scrollEl.value;
+  if (!el) return true;
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX;
+}
 
 function scrollToBottom() {
   const el = scrollEl.value;
@@ -138,7 +148,22 @@ function scrollToBottom() {
 async function onSend(text: string) {
   const conversation = activeConversation.value;
   if (!conversation) return;
-  await bridleStore.sendMessage(conversation, text);
+  bridleStore.sendMessage(conversation, text);
+  // Wherever the person was reading, they just spoke: show them their
+  // message. The watcher below would not — it only follows a reader who was
+  // already at the bottom.
+  await nextTick();
+  scrollToBottom();
+}
+
+function onResend(id: string) {
+  const conversation = activeConversation.value;
+  if (conversation) bridleStore.resend(conversation, id);
+}
+
+function onDiscard(id: string) {
+  const conversation = activeConversation.value;
+  if (conversation) bridleStore.discard(conversation, id);
 }
 
 watch(
@@ -148,10 +173,16 @@ watch(
     // Every new step and every streamed chunk grows the flow.
     thinkingBlocks.value.reduce((n, b) => n + b.steps.length, 0),
     messages.value[messages.value.length - 1]?.text.length ?? 0,
+    // A delivery line appearing under the last message grows it too.
+    messages.value[messages.value.length - 1]?.delivery,
   ],
   async () => {
+    // Measured BEFORE the DOM grows (a watcher runs ahead of the render):
+    // afterwards the new content itself would push a reader who was at the
+    // bottom out of range. Someone scrolled up to read is left where they are.
+    const follow = isNearBottom();
     await nextTick();
-    scrollToBottom();
+    if (follow) scrollToBottom();
   },
 );
 
@@ -195,9 +226,7 @@ function onDragOver(event: DragEvent) {
   if (!dragHasFiles(event)) return;
   // Without this the browser treats the drop as a navigation.
   event.preventDefault();
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = sending.value ? 'none' : 'copy';
-  }
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
 }
 
 function onDragLeave(event: DragEvent) {
@@ -214,7 +243,7 @@ function onDrop(event: DragEvent) {
   dragDepth.value = 0;
   isDraggingFile.value = false;
   const conversation = activeConversation.value;
-  if (sending.value || !conversation) return;
+  if (!conversation) return;
 
   const files = event.dataTransfer?.files;
   if (files?.length) bridleStore.stageFiles(conversation, files);
@@ -293,14 +322,31 @@ onBeforeUnmount(() => {
 
           <template v-for="item in chatFlow" :key="item.key">
             <BridleChatMessage
-              v-if="item.message"
+              v-if="item.kind === 'message'"
               :message="item.message"
               :conversation="activeConversation"
               :agent-name="title"
+              @resend="onResend"
+              @discard="onDiscard"
             />
+            <!-- The times under the bubbles are times of day; this says of
+                 which day. Today / yesterday are keys, older days arrive
+                 already formatted for the locale. -->
+            <div
+              v-else-if="item.kind === 'day'"
+              class="flex justify-center py-1"
+              role="separator"
+            >
+              <span
+                class="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+                :title="dayTitle(item.ts)"
+              >
+                {{ item.labelKey ? $t(item.labelKey) : item.label }}
+              </span>
+            </div>
             <!-- A thinking segment sits where the agent's work happened:
                  above the answer it led to, below the message it answers. -->
-            <div v-else-if="item.block" class="flex items-start gap-2">
+            <div v-else class="flex items-start gap-2">
               <div
                 class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary/25 to-primary/5 text-[11px] font-semibold text-primary"
                 :title="title"
@@ -362,15 +408,13 @@ onBeforeUnmount(() => {
 
       <!-- The compose area is replaced, not covered: the dashed block takes
            its place while a file is overhead. Draft text and staged files live
-           in the store, so the swap cannot lose them. -->
-      <BridleChatDropZone
-        v-if="isDraggingFile"
-        :disabled="sending"
-      />
+           in the store, so the swap cannot lose them. Neither is disabled
+           while the agent answers: a follow-up mid-turn is a normal thing to
+           send, and the store gates sending on uploads alone. -->
+      <BridleChatDropZone v-if="isDraggingFile" />
       <BridleChatInput
         v-else
         :conversation="activeConversation"
-        :disabled="sending"
         @send="onSend"
       />
     </template>

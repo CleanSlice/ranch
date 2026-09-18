@@ -72,11 +72,59 @@ export interface IBridleNotice {
 /** A rejection or failure of one attachment. Same shape, named for its place. */
 export type IBridleAttachmentError = IBridleNotice;
 
+/**
+ * Where one of the person's own messages stands on its way to the agent
+ * (CLEAN-102). `sending` until the hub acknowledges it, `slow` once that has
+ * taken long enough to say so, `failed` when the hub refused it or never
+ * answered. Transitions live in `utils/delivery.ts`.
+ */
+export enum BridleDeliveryStates {
+  Sending = 'sending',
+  Slow = 'slow',
+  Delivered = 'delivered',
+  Failed = 'failed',
+}
+
+/**
+ * The hub's answer to one `message` emit — see
+ * specs/015-chat-message-reliability/contracts/bridle-socket.md. `accepted`
+ * means handed to the agent's socket; `duplicate` marks a resend of an id the
+ * hub had already accepted (it was not forwarded twice). `code` is one of the
+ * hub's (`AGENT_OFFLINE`, `ATTACHMENT_FAILED`, `SHARE_REJECTED`, `EMPTY`) or
+ * the client's own `TIMEOUT` / `OFFLINE`.
+ */
+export type IBridleSendAck =
+  | { status: 'accepted'; messageId: string; ts: number; duplicate?: true }
+  | { status: 'rejected'; code: string; message?: string };
+
 export interface IBridleMessage {
+  /**
+   * The person's message: the UUID minted at send, which is also the
+   * `clientMessageId` on the wire — one id end to end, so a resend is
+   * recognisable. Agent message: the wire `messageId`.
+   */
   id: string;
   role: BridleRoleTypes;
   text: string;
+  /**
+   * Display only. The person's message shows its local send time until the
+   * ack brings the hub's; agent messages carry the agent's clock. Two clocks
+   * — which is why nothing is ever ordered by it.
+   */
   ts: number;
+  /**
+   * Arrival order within the conversation, assigned by the store on append.
+   * The only ordering key. Optional because conversations persisted before
+   * CLEAN-102 lack it — `hydrate` numbers those in stored order.
+   */
+  seq?: number;
+  /**
+   * The person's messages only. Absent means delivered: legacy and
+   * echoed-from-another-view messages never had anything else to say.
+   */
+  delivery?: BridleDeliveryStates;
+  /** Why a `failed` message failed — picks the wording under the bubble. */
+  failureCode?: string;
   /**
    * Present on messages sent with attachments. Optional so conversations
    * persisted before this feature still hydrate unchanged.
@@ -118,6 +166,8 @@ export interface IBridleThinkingEvent {
   step?: IBridleThinkingStep;
   done?: boolean;
   ts: number;
+  /** Hub sequence of the frame — see `IBridleReply.seq`. */
+  seq?: number;
 }
 
 export enum BridleThinkingBlockStates {
@@ -137,8 +187,10 @@ export interface IBridleThinkingBlock {
   seg: number;
   steps: IBridleThinkingStep[];
   state: BridleThinkingBlockStates;
-  /** Where the block sits in the flow; agent-clock, bumped past the last message. */
+  /** When the segment opened, agent-clock. Informational — never ordered by. */
   ts: number;
+  /** Where the block sits in the flow: the conversation's arrival sequence. */
+  seq?: number;
 }
 
 // ── Live channel ────────────────────────────────────────────────
@@ -154,10 +206,38 @@ export enum BridleChannelStates {
  * in-memory bearer on every (re)connect so a renewed token is what travels;
  * the share page sends the visitor's pair and NO bearer — an owner opening
  * their own link must chat as a visitor, the way the HTTP calls already do.
+ *
+ * `lastSeq` rides along on the same handshake and is a getter for the same
+ * reason the token is: a reconnect must report the highest hub `seq` applied
+ * by then, so the hub replays exactly what the gap swallowed.
  */
 export interface IBridleChannelAuth {
   token?: () => string | null;
   share?: IBridleShareContext;
+  lastSeq?: () => number;
+}
+
+/**
+ * The hub's greeting. `clientId` is the chat identity the hub resolved for
+ * this socket — and the name of the transcript channel the agent writes this
+ * conversation to. `seq` is the hub's current sequence for the identity; one
+ * lower than ours means the hub restarted and has nothing to replay.
+ */
+export interface IBridleWelcome {
+  clientId: string | null;
+  seq: number | null;
+}
+
+/**
+ * The person's own message, echoed by the hub to their OTHER open views so a
+ * second tab shows the question and not only the answer.
+ */
+export interface IBridleUserMessageEvent {
+  messageId: string;
+  text: string;
+  ts: number | null;
+  attachments?: IBridleAttachment[];
+  seq?: number;
 }
 
 /** What a live channel reports back. Every callback is optional-free on
@@ -165,23 +245,35 @@ export interface IBridleChannelAuth {
 export interface IBridleChannelEvents {
   onConnected(): void;
   onDisconnected(): void;
+  onWelcome(welcome: IBridleWelcome): void;
   /** The hub is about to drop the socket, and says why (`TOKEN_EXPIRED`,
    *  `SHARE_LINK_INVALID`, …). */
   onRejected(code: string): void;
   /** A message the hub could not deliver; the socket stays up. */
-  onMessageError(message: string): void;
+  onMessageError(message: string, seq?: number): void;
   /** The agent started a turn. */
-  onTyping(): void;
+  onTyping(seq?: number): void;
   onThinking(event: IBridleThinkingEvent): void;
   /** `text` is the whole answer so far, not a delta; `done` on the last frame. */
   onStream(reply: IBridleReply, done: boolean): void;
   /** A complete agent message in one piece. */
   onMessage(reply: IBridleReply): void;
+  /** Sent from another view of the same identity. */
+  onUserMessage(message: IBridleUserMessageEvent): void;
 }
 
 /** A live conversation channel to one agent. */
 export interface IBridleChannel {
-  send(text: string, attachmentIds?: string[]): void;
+  /**
+   * Resolves with the hub's verdict — never rejects. No answer within
+   * `FAILED_MS` resolves as `rejected / TIMEOUT`. `clientMessageId` is the
+   * message's own id; resending with the same one is what makes a retry safe.
+   */
+  send(
+    text: string,
+    attachmentIds: string[] | undefined,
+    clientMessageId: string,
+  ): Promise<IBridleSendAck>;
   /** Re-open after the hub dropped the socket — e.g. once a token was renewed. */
   reconnect(): void;
   close(): void;
@@ -196,6 +288,12 @@ export interface IBridleReply {
   messageId: string | null;
   text: string;
   ts: number | null;
+  /**
+   * The hub's per-identity sequence of the frame that carried this. Not the
+   * message's place in the flow (`IBridleMessage.seq`) — it exists so a
+   * replayed frame that was already applied can be told apart and dropped.
+   */
+  seq?: number;
 }
 
 /**

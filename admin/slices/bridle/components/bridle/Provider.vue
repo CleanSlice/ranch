@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted, onUnmounted, type HTMLAttributes } from 'vue'
+import { ref, computed, nextTick, toRefs, watch, onMounted, onUnmounted, type HTMLAttributes } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBridleStore, type IBridleMessageData, type IBridleThinkingStep, type IThinkingBlock } from '../../stores/bridle'
+import { useBridleStore, type IBridleThinkingStep, type IThinkingBlock } from '../../stores/bridle'
+import { buildChatFlow, type IChatFlowDayItem } from '../../utils/chatFlow'
 import Message from './Message.vue'
 import Input from './Input.vue'
 import DropZone from './DropZone.vue'
@@ -20,6 +21,9 @@ import { shouldShowOfflineHint } from '../../utils/offlineHint'
 const props = withDefaults(defineProps<{
   apiUrl: string
   agentId: string
+  // Which of the agent's conversations this is. The admin panel has one —
+  // every Owner/Admin shares the `admin` channel.
+  channel?: string
   title?: string
   placeholder?: string
   class?: HTMLAttributes['class']
@@ -45,6 +49,7 @@ const props = withDefaults(defineProps<{
   // agent page otherwise loads the same agent twice on every open.
   initialDebugEnabled?: boolean | null
 }>(), {
+  channel: 'admin',
   title: 'Agent Chat',
   placeholder: 'Type a message...',
   showStatus: true,
@@ -56,34 +61,48 @@ const props = withDefaults(defineProps<{
 
 const store = useBridleStore()
 const authStore = useAuthStore()
+const { markdownEnabled } = storeToRefs(store)
+
+// This chat's own record in the store — messages, flags, socket, staged files.
+// Every mounted chat used to share one; the Rancher panel and an agent's Chat
+// tab then wrote into each other's conversation (CLEAN-102). Taken once, in
+// setup: hosts remount this widget per agent rather than swapping `agentId`.
+const conversation = store.acquire(props.agentId, props.channel)
+const conversationKey = conversation.key
 const {
   messages,
   isConnected,
   isAgentConnected,
   isTyping,
   debugEnabled,
-  markdownEnabled,
   hasMoreOlder,
   loadingOlder,
   thinkingBlocks,
-} = storeToRefs(store)
+  notice,
+} = toRefs(conversation)
 
 // ── Thinking timeline (CLEAN-10) ─────────────────────────────────────
-// Messages and thinking blocks interleaved by timestamp — a frozen block
-// stays anchored above the answer it produced, Rovo-style.
+// Messages and thinking blocks interleaved by arrival order (`seq`) — a frozen
+// block stays anchored above the answer it produced, Rovo-style. Never by
+// `ts`: the operator's message carries the browser's clock and the reply the
+// agent's, and a skew between them put answers above their questions.
 const thinkingLabel = computed(() => `${props.title} is thinking…`)
 const hasOpenThinking = computed(() => thinkingBlocks.value.some(b => b.status === 'thinking'))
 
-interface IChatFlowItem {
-  message?: IBridleMessageData
-  block?: IThinkingBlock
-  ts: number
+// Start of the local day — all "Today" / "Yesterday" needs. Derived from the
+// 1s clock below but only changes at midnight, so the flow is not rebuilt
+// every second.
+const dayStartMs = computed(() => new Date(nowMs.value).setHours(0, 0, 0, 0))
+
+const chatFlow = computed(() =>
+  buildChatFlow(messages.value, thinkingBlocks.value, { locale: 'en', now: dayStartMs.value }),
+)
+
+function dayLabel(item: IChatFlowDayItem): string {
+  if (item.relative === 'today') return 'Today'
+  if (item.relative === 'yesterday') return 'Yesterday'
+  return item.label
 }
-const chatFlow = computed<IChatFlowItem[]>(() => {
-  const items: IChatFlowItem[] = messages.value.map(m => ({ message: m, ts: m.ts }))
-  for (const b of thinkingBlocks.value) items.push({ block: b, ts: b.ts })
-  return items.sort((a, b) => a.ts - b.ts)
-})
 
 // A turn may span several segments (blocks) — turnId + seg identifies one.
 function blockKey(b: IThinkingBlock): string {
@@ -113,7 +132,7 @@ const togglingDebug = ref(false)
 async function onToggleDebug() {
   togglingDebug.value = true
   try {
-    await store.setDebugEnabled(props.apiUrl, props.agentId, !debugEnabled.value)
+    await store.setDebugEnabled(props.apiUrl, props.agentId, !debugEnabled.value, props.channel)
   } finally {
     togglingDebug.value = false
   }
@@ -121,7 +140,7 @@ async function onToggleDebug() {
 
 const inspectedMessageId = ref<string | null>(null)
 const inspectedDebug = computed(() =>
-  inspectedMessageId.value ? store.getDebugForMessage(inspectedMessageId.value) : null,
+  inspectedMessageId.value ? store.getDebugForMessage(conversationKey, inspectedMessageId.value) : null,
 )
 const isDebugOpen = computed({
   get: () => inspectedMessageId.value !== null,
@@ -273,7 +292,7 @@ async function onScroll() {
 
   const prevScrollHeight = viewport.scrollHeight
   const prevScrollTop = viewport.scrollTop
-  const added = await store.loadOlderTranscript(props.apiUrl, props.agentId)
+  const added = await store.loadOlderTranscript(props.apiUrl, props.agentId, props.channel)
   if (added <= 0) return
 
   // Preserve the visual position of whatever the user was looking at by
@@ -284,7 +303,7 @@ async function onScroll() {
 }
 
 watch(
-  () => [messages.value.length, isTyping.value, thinkingBlocks.value.reduce((n, b) => n + b.steps.length, 0)],
+  () => [messages.value.length, isTyping.value, thinkingBlocks.value.reduce((n, b) => n + b.steps.length, 0), notice.value],
   async () => {
     // Capture BEFORE the DOM grows: follow only a reader who was already at
     // the bottom — never yank back someone who scrolled up to re-read.
@@ -300,6 +319,7 @@ watch(
 // Cleanup handle for the viewport scroll listener attached in onMounted.
 // Stored as a let so onUnmounted can detach the exact same callback.
 let detachScrollListener: (() => void) | null = null
+let unmounted = false
 
 onMounted(async () => {
   // Start the clock before anything that awaits: both time-gated surfaces (the
@@ -311,24 +331,31 @@ onMounted(async () => {
   }, 1000)
   // Replay persisted history first so the chat isn't blank between
   // page refreshes / agent switches; then connect the WS for live updates.
-  // Clear before load so the previous agent's messages don't briefly leak
-  // through (the store is a shared singleton across providers).
-  store.clearMessages()
+  // No clearing first: the record is this conversation's alone, and the load
+  // MERGES — not-delivered messages and a turn still in flight stay put.
   // The host may already hold the agent record (admin page useAsyncData) —
   // seeding from the prop avoids a duplicate GET /agents/:id on every open.
   if (props.initialDebugEnabled !== null) {
-    store.debugEnabled = props.initialDebugEnabled
-    await store.loadTranscript(props.apiUrl, props.agentId)
+    conversation.debugEnabled = props.initialDebugEnabled
+    await store.loadTranscript(props.apiUrl, props.agentId, props.channel)
   } else {
     await Promise.all([
-      store.loadTranscript(props.apiUrl, props.agentId),
-      store.loadAgentMeta(props.apiUrl, props.agentId),
+      store.loadTranscript(props.apiUrl, props.agentId, props.channel),
+      store.loadAgentMeta(props.apiUrl, props.agentId, props.channel),
     ])
   }
+  // Left while the transcript was loading — connecting now would open a
+  // socket nobody is around to close.
+  if (unmounted) return
   // Re-attach debug snapshots saved in localStorage from previous sessions —
   // makes the inspect icon survive a page refresh.
-  store.loadPersistedDebug(props.agentId)
-  await store.connect(props.apiUrl, props.agentId)
+  store.loadPersistedDebug(props.agentId, props.channel)
+  await store.connect(props.apiUrl, props.agentId, props.channel)
+  if (unmounted) {
+    // Same race, one await later: hang up unless another chat holds the key.
+    if (conversation.holders === 0) store.disconnect(conversationKey)
+    return
+  }
   await nextTick()
   scrollToBottom('auto')
 
@@ -351,7 +378,10 @@ onUnmounted(() => {
     detachScrollListener()
     detachScrollListener = null
   }
-  store.disconnect()
+  unmounted = true
+  // The last chat showing this conversation closes its socket and drops the
+  // staged files (their object URLs would otherwise leak).
+  store.release(conversationKey)
 })
 
 /**
@@ -362,8 +392,20 @@ const inputDisabled = computed(
   () => !isConnected.value || !isAgentConnected.value || props.agentState !== null,
 )
 
-const handleSend = (text: string) => {
-  void store.sendMessage(text)
+const handleSend = async (text: string) => {
+  await store.sendMessage(conversationKey, text)
+  // Sending always lands on the new message, wherever the reader was — the
+  // near-bottom rule above is for INCOMING content only.
+  await nextTick()
+  scrollToBottom()
+}
+
+const onResend = (id: string) => {
+  store.resend(conversationKey, id)
+}
+
+const onDiscard = (id: string) => {
+  store.discard(conversationKey, id)
 }
 
 // ── Drag and drop ────────────────────────────
@@ -417,7 +459,7 @@ function onDrop(event: DragEvent) {
 
   const files = event.dataTransfer?.files
   if (files?.length) {
-    store.stageFiles(props.apiUrl, props.agentId, files)
+    store.stageFiles(conversationKey, props.apiUrl, files)
   }
 }
 
@@ -428,7 +470,7 @@ watch(
   () => authStore.isAuthenticated,
   (signedIn) => {
     if (signedIn && !isConnected.value) {
-      void store.connect(props.apiUrl, props.agentId)
+      void store.connect(props.apiUrl, props.agentId, props.channel)
     }
   },
 )
@@ -450,8 +492,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('dragover', preventWindowDrop)
   window.removeEventListener('drop', preventWindowDrop)
-  // Object URLs for anything still staged would otherwise leak.
-  store.clearStaged()
 })
 
 const confirmResetOpen = ref(false)
@@ -460,9 +500,9 @@ const resetting = ref(false)
 async function onConfirmReset() {
   resetting.value = true
   try {
-    store.disconnect()
-    await store.resetTranscript(props.apiUrl, props.agentId)
-    await store.connect(props.apiUrl, props.agentId)
+    store.disconnect(conversationKey)
+    await store.resetTranscript(props.apiUrl, props.agentId, props.channel)
+    await store.connect(props.apiUrl, props.agentId, props.channel)
   } finally {
     resetting.value = false
   }
@@ -549,18 +589,26 @@ async function onConfirmReset() {
 
           <template
             v-for="item in chatFlow"
-            :key="item.message ? item.message.id : (item.block ? blockKey(item.block) : '')"
+            :key="item.key"
           >
             <Message
-              v-if="item.message"
+              v-if="item.kind === 'message'"
               :message="item.message"
-              :has-debug="item.message.role === 'assistant' && !!store.getDebugForMessage(item.message.id)"
+              :has-debug="item.message.role === 'assistant' && !!store.getDebugForMessage(conversationKey, item.message.id)"
               :markdown-enabled="markdownEnabled"
               :debug-enabled="debugEnabled"
               @inspect="inspectedMessageId = $event"
+              @resend="onResend"
+              @discard="onDiscard"
             />
             <div
-              v-else-if="item.block"
+              v-else-if="item.kind === 'day'"
+              class="flex items-center justify-center py-1 text-[10px] uppercase tracking-wide text-muted-foreground/60"
+            >
+              {{ dayLabel(item) }}
+            </div>
+            <div
+              v-else-if="item.kind === 'block'"
               class="mr-auto flex max-w-full flex-col gap-1.5 px-1"
               :role="item.block.status === 'thinking' ? 'status' : undefined"
               :aria-label="item.block.status === 'thinking' ? thinkingLabel : undefined"
@@ -636,6 +684,16 @@ async function onConfirmReset() {
             </div>
             <span class="shimmer shimmer-duration-1600 text-sm font-medium text-muted-foreground">{{ thinkingLabel }}</span>
           </div>
+
+          <!-- A turn that went silent says so, instead of the shimmer just
+               disappearing as if nothing had been asked. -->
+          <p
+            v-if="notice"
+            class="text-center text-xs text-muted-foreground"
+            role="status"
+          >
+            {{ notice }}
+          </p>
         </div>
       </ScrollArea>
     </CardContent>
@@ -670,6 +728,7 @@ async function onConfirmReset() {
         v-else
         :api-url="apiUrl"
         :agent-id="agentId"
+        :channel="channel"
         :placeholder="placeholder"
         :disabled="inputDisabled"
         @send="handleSend"

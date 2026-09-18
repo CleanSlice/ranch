@@ -2,6 +2,8 @@
 // the EventSource transport and parses raw frames into these; the store applies
 // them to reactive state.
 
+import type { IAgentData } from './agent.types';
+
 export type ConnectionStateTypes =
   | 'idle'
   | 'connecting'
@@ -21,20 +23,11 @@ export interface IAgentPodStatus {
   observedAt: string;
 }
 
-export interface IAgentRecord {
-  id: string;
-  name: string;
-  status: string;
-  statusReason: string | null;
-  // Deploy/pull markers ride the stream because the API sends the full agent
-  // row in every frame; without them the header's "restarted N ago" (and the
-  // Files-tab copy banner) would freeze on the one-shot fetched row when a
-  // restart is triggered from anywhere else (CLEAN-59).
-  lastDeployStartedAt: string | null;
-  launchContext: 'initial' | 'restart' | null;
-  lastPullAt: string | null;
-  lastSyncAt: string | null;
-}
+// The API sends the full agent row (`AgentDto`) in every frame — the same
+// shape GET /agents returns. It is decoded as the same `IAgentData` so the
+// store can write it straight into the one agent record (docs/state.md); a
+// thinner projection here is what used to make the stream a second copy.
+export type IAgentRecord = IAgentData;
 
 export interface IAgentStatus {
   agent: IAgentRecord;

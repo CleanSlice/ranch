@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { Textarea } from '#theme/components/ui/textarea'
 import { Button } from '#theme/components/ui/button'
 import { AlertCircle, Paperclip, Send } from 'lucide-vue-next'
-import { useBridleStore } from '../../stores/bridle'
+import { bridleKey, useBridleStore } from '../../stores/bridle'
 import AttachmentChip from './AttachmentChip.vue'
 import {
   FILE_PICKER_ACCEPT,
@@ -13,6 +13,7 @@ import {
 const props = defineProps<{
   apiUrl: string
   agentId: string
+  channel?: string
   placeholder?: string
   disabled?: boolean
 }>()
@@ -23,11 +24,19 @@ const emit = defineEmits<{
 
 const store = useBridleStore()
 
+// The composer stages files into ITS conversation — staged files were global
+// once, and showed up in every chat that was open.
+const conversationKey = computed(() => bridleKey(props.agentId, props.channel))
+const staged = computed(() => store.conversations[conversationKey.value]?.staged ?? [])
+const attachmentError = computed(
+  () => store.conversations[conversationKey.value]?.attachmentError ?? null,
+)
+
 const input = ref('')
 const textareaRef = ref<InstanceType<typeof Textarea> | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-const atLimit = computed(() => store.staged.length >= MAX_ATTACHMENTS_PER_MESSAGE)
+const atLimit = computed(() => staged.value.length >= MAX_ATTACHMENTS_PER_MESSAGE)
 const canAttach = computed(() => !props.disabled && !atLimit.value)
 
 /**
@@ -37,8 +46,8 @@ const canAttach = computed(() => !props.disabled && !atLimit.value)
  */
 const canSend = computed(() => {
   if (props.disabled) return false
-  if (store.isUploadingAttachment || store.hasFailedAttachment) return false
-  return input.value.trim().length > 0 || store.readyAttachments.length > 0
+  if (store.isUploadingAttachment(conversationKey.value) || store.hasFailedAttachment(conversationKey.value)) return false
+  return input.value.trim().length > 0 || store.readyAttachments(conversationKey.value).length > 0
 })
 
 const attachTitle = computed(() =>
@@ -69,7 +78,7 @@ const openPicker = () => {
 const onFilesPicked = (event: Event) => {
   const el = event.target as HTMLInputElement
   if (el.files?.length) {
-    store.stageFiles(props.apiUrl, props.agentId, el.files)
+    store.stageFiles(conversationKey.value, props.apiUrl, el.files)
   }
   // Reset so picking the same file twice in a row still fires `change`.
   el.value = ''
@@ -84,20 +93,20 @@ const onPaste = (event: ClipboardEvent) => {
   const files = Array.from(event.clipboardData?.files ?? [])
   if (!files.length) return
   event.preventDefault()
-  store.stageFiles(props.apiUrl, props.agentId, files)
+  store.stageFiles(conversationKey.value, props.apiUrl, files)
 }
 </script>
 
 <template>
   <div class="flex w-full flex-col gap-1.5">
     <!-- Staged files above the composer so it still reads as one block -->
-    <div v-if="store.staged.length" class="flex flex-wrap gap-1.5">
+    <div v-if="staged.length" class="flex flex-wrap gap-1.5">
       <AttachmentChip
-        v-for="attachment in store.staged"
+        v-for="attachment in staged"
         :key="attachment.localId"
         :attachment="attachment"
-        @remove="store.removeStaged($event)"
-        @retry="store.retryStaged(apiUrl, agentId, $event)"
+        @remove="store.removeStaged(conversationKey, $event)"
+        @retry="store.retryStaged(conversationKey, apiUrl, $event)"
       />
     </div>
 
@@ -146,17 +155,17 @@ const onPaste = (event: ClipboardEvent) => {
     <!-- Rejections are announced, not just coloured: a screen reader user gets
          no signal from a red line. -->
     <p
-      v-if="store.attachmentError"
+      v-if="attachmentError"
       class="flex items-start gap-1.5 text-[11px] text-destructive"
       role="status"
       aria-live="polite"
     >
       <AlertCircle class="mt-px h-3 w-3 shrink-0" />
-      <span>{{ store.attachmentError }}</span>
+      <span>{{ attachmentError }}</span>
       <button
         type="button"
         class="ml-1 cursor-pointer underline underline-offset-2 hover:no-underline"
-        @click="store.dismissAttachmentError()"
+        @click="store.dismissAttachmentError(conversationKey)"
       >
         Dismiss
       </button>

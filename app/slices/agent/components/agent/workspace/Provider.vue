@@ -11,9 +11,13 @@ const canCreate = computed(() =>
 
 // One list request for the whole workspace, shared with the resolver page by
 // its key so landing here does not re-fetch what it already read.
-const { data: agents, pending, refresh } = await useAsyncData('agents', () =>
+//
+// The request gives `pending` and `refresh`; the rail renders the store's
+// collection (docs/state.md), the same records the open chat reads by id.
+const { pending, refresh } = await useAsyncData('agents', () =>
   agentStore.fetchAll(),
 );
+const { agents } = storeToRefs(agentStore);
 
 // The rail shows every agent's runtime state, so it has to keep up with
 // agents other people start and stop. The app console has no status stream

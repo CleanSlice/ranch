@@ -17,7 +17,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '#theme/components/ui/dropdown-menu';
-import type { IAgentData } from '#agent/domain';
 import { agentInitials } from '#agent/composables/useAgentRailEntries';
 import { useAgentSectionCounts } from '#agent/composables/useAgentSectionCounts';
 import { useAgentTab } from '#agent/composables/useAgentTab';
@@ -38,11 +37,16 @@ const apiUrl =
 // until the data arrives. Without lazy, top-level awaits in <script setup>
 // block the Vue Router transition until every promise resolves — the user
 // perceives this as a multi-second delay before the page opens.
-const { data: agent, pending, refresh } = useAsyncData(
+//
+// The request is here for `pending` and `refresh` only. What renders is the
+// store's record (docs/state.md) — the same object the rail row shows, so the
+// two cannot disagree; `fetchById` upserts into it.
+const { pending, refresh } = useAsyncData(
   `admin-agent-${props.id}`,
   () => agentStore.fetchById(props.id),
   { lazy: true },
 );
+const agent = computed(() => agentStore.byId(props.id));
 
 const {
   isRestarting,
@@ -74,20 +78,11 @@ const initials = computed(() =>
   agent.value ? agentInitials(agent.value.name, agent.value.id) : '?',
 );
 
-// The SSE record is fresher than the fetched row — the drift sweep flips
-// 'running' → 'unreachable' between refetches, and the header badge is the
-// first place an operator looks.
+// Fetches and status-stream frames both land in the one store record, so
+// there is no "live vs fetched" to pick between any more.
 const agentStatusStore = useAgentStatusStore();
-const liveAgent = computed(() => agentStatusStore.agents[props.id]);
-const displayStatus = computed(
-  () =>
-    (liveAgent.value?.status as IAgentData['status']) ??
-    agent.value?.status ??
-    'pending',
-);
-const statusReason = computed(
-  () => liveAgent.value?.statusReason ?? agent.value?.statusReason ?? null,
-);
+const displayStatus = computed(() => agent.value?.status ?? 'pending');
+const statusReason = computed(() => agent.value?.statusReason ?? null);
 // `=== false` on purpose: undefined means the stream hasn't reported yet.
 const runtimeOffline = computed(
   () =>
@@ -102,21 +97,14 @@ const lifecycleError = computed(() => restartError.value || toggleError.value);
 // deploy ran", stays 'restart' forever after the first restart) and the
 // deploying phase lasts seconds, so a snapshot look always lands on
 // status=running. The moment of the last deploy is the missing piece.
-// Live-first like displayStatus: the SSE frame carries the full agent row,
-// so a restart triggered anywhere (Files-tab banner, rancher, another tab)
-// updates the hint without a page reload — the fetched row alone goes stale.
+// A restart triggered anywhere (Files-tab banner, rancher, another tab)
+// reaches the store record through the status stream, so the hint updates
+// without a page reload.
 const lastDeployStartedAt = computed(
-  () =>
-    liveAgent.value?.lastDeployStartedAt ??
-    agent.value?.lastDeployStartedAt ??
-    null,
+  () => agent.value?.lastDeployStartedAt ?? null,
 );
-const launchContext = computed(
-  () => liveAgent.value?.launchContext ?? agent.value?.launchContext ?? null,
-);
-const lastPullAt = computed(
-  () => liveAgent.value?.lastPullAt ?? agent.value?.lastPullAt ?? null,
-);
+const launchContext = computed(() => agent.value?.launchContext ?? null);
+const lastPullAt = computed(() => agent.value?.lastPullAt ?? null);
 const { locale } = useI18n();
 const deployAgo = useTimeAgoIntl(
   () => new Date(lastDeployStartedAt.value ?? Date.now()),
@@ -323,7 +311,7 @@ async function onRemove() {
           :toggling="toggling"
           @restart="restart"
           @toggle-running="toggleRunning"
-          @agent-updated="(updated) => (agent = updated)"
+          @agent-updated="(updated) => agentStore.upsert(updated)"
         />
       </div>
 

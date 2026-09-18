@@ -51,6 +51,7 @@ function makeHandler(
       attachments?: IBridleAttachment[],
     ) => {
       sent.push({ clientId, agentId, text, parts, attachments });
+      return { status: 'accepted', messageId: 'm1', ts: 1 };
     },
   };
   const attachments = { expand } as BridleAttachmentService;
@@ -213,6 +214,8 @@ function makeConnection(options: IConnectOptions) {
       registered.push({ clientId, agentId });
     },
     isAgentConnected: () => true,
+    currentSeq: () => 0,
+    replaySince: () => [],
   };
   const shareLinks = {
     authorizeChat: options.authorizeChat ?? rejectEveryShare,
@@ -477,7 +480,10 @@ describe('BridleClientWsHandler — share-link handshake', () => {
       share: { token: 'sl_good', visitorId: 'v7' },
     });
     expect(registered).toEqual([{ clientId: 'share-v7', agentId: 'agent-1' }]);
-    expect(emitted[0]).toEqual({ event: 'welcome', payload: { clientId: 'share-v7' } });
+    expect(emitted[0]).toEqual({
+      event: 'welcome',
+      payload: { clientId: 'share-v7', seq: 0 },
+    });
   });
 
   it('rejects a dead link with the service code and never registers the socket', async () => {

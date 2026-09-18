@@ -1,10 +1,16 @@
+import type { TranscriptResponseDto } from '#api';
 import {
   BridleAttachmentKinds,
+  BridleRoleTypes,
   BridleThinkingStepStates,
   type IBridleAttachment,
+  type IBridleMessage,
   type IBridleReply,
+  type IBridleSendAck,
   type IBridleThinkingEvent,
   type IBridleThinkingStep,
+  type IBridleUserMessageEvent,
+  type IBridleWelcome,
 } from '../domain/bridle.types';
 
 /**
@@ -20,7 +26,82 @@ export class BridleMapper {
       messageId: typeof o.messageId === 'string' ? o.messageId : null,
       text: typeof o.text === 'string' ? o.text : '',
       ts: typeof o.ts === 'number' ? o.ts : null,
+      ...seqOf(o),
     };
+  }
+
+  /**
+   * The hub's per-identity sequence, carried by every hub → browser frame
+   * (CLEAN-102). A hub that predates it sends none — the store then treats
+   * the frame as live.
+   */
+  toSeq(raw: unknown): number | undefined {
+    return seqOf(asRecord(raw)).seq;
+  }
+
+  toWelcome(raw: unknown): IBridleWelcome {
+    const o = asRecord(raw);
+    return {
+      clientId: typeof o.clientId === 'string' && o.clientId ? o.clientId : null,
+      seq: seqOf(o).seq ?? null,
+    };
+  }
+
+  /**
+   * The ack of one `message` emit. Anything that is not a well-formed verdict
+   * counts as a rejection: showing "delivered" on the strength of a frame we
+   * could not read is the one mistake the ack exists to prevent.
+   */
+  toSendAck(raw: unknown, clientMessageId: string): IBridleSendAck {
+    const o = asRecord(raw);
+    if (o.status === 'accepted') {
+      return {
+        status: 'accepted',
+        messageId:
+          typeof o.messageId === 'string' && o.messageId
+            ? o.messageId
+            : clientMessageId,
+        ts: typeof o.ts === 'number' ? o.ts : Date.now(),
+        ...(o.duplicate === true ? { duplicate: true as const } : {}),
+      };
+    }
+    return {
+      status: 'rejected',
+      code: typeof o.code === 'string' && o.code ? o.code : 'UNKNOWN',
+      ...(typeof o.message === 'string' && o.message
+        ? { message: o.message }
+        : {}),
+    };
+  }
+
+  /** A `user_message` echo, or null when it names no message to match by. */
+  toUserMessage(raw: unknown): IBridleUserMessageEvent | null {
+    const o = asRecord(raw);
+    if (typeof o.messageId !== 'string' || !o.messageId) return null;
+    const attachments = Array.isArray(o.attachments)
+      ? o.attachments.map((a) => this.toAttachment(a)).filter((a) => a.id)
+      : [];
+    return {
+      messageId: o.messageId,
+      text: typeof o.text === 'string' ? o.text : '',
+      ts: typeof o.ts === 'number' ? o.ts : null,
+      ...(attachments.length ? { attachments } : {}),
+      ...seqOf(o),
+    };
+  }
+
+  /**
+   * A transcript page as conversation messages, oldest first as the API
+   * returns them. Typed by the generated DTO — this one arrives over the SDK,
+   * not as an untyped socket frame.
+   */
+  toTranscript(dto: TranscriptResponseDto | null): IBridleMessage[] {
+    return (dto?.messages ?? []).map((m) => ({
+      id: m.id,
+      role: m.role === 'user' ? BridleRoleTypes.User : BridleRoleTypes.Agent,
+      text: m.text,
+      ts: m.ts,
+    }));
   }
 
   /**
@@ -36,6 +117,7 @@ export class BridleMapper {
       ...(step ? { step } : {}),
       ...(o.done === true ? { done: true } : {}),
       ts: typeof o.ts === 'number' ? o.ts : Date.now(),
+      ...seqOf(o),
     };
   }
 
@@ -96,4 +178,11 @@ export class BridleMapper {
 
 function asRecord(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+}
+
+/** Spreadable, so a frame without a `seq` yields no `seq` key at all. */
+function seqOf(o: Record<string, unknown>): { seq?: number } {
+  return typeof o.seq === 'number' && Number.isFinite(o.seq)
+    ? { seq: o.seq }
+    : {};
 }

@@ -8,12 +8,15 @@
 // agent should leave the agents area, not bounce through the resolver.
 const agentStore = useAgentStore();
 
-const { data: agents, pending } = await useAsyncData('admin-agents', () =>
+// The request is awaited for its loading state; the list itself is read from
+// the store like everywhere else (docs/state.md).
+const { pending } = await useAsyncData('admin-agents', () =>
   agentStore.fetchAll(),
 );
+const { agents } = storeToRefs(agentStore);
 
 const landing = computed(() => {
-  const list = agents.value ?? [];
+  const list = agents.value;
   if (!list.length) return null;
   // The Ranch admin agent is the one an operator almost always wants: it is
   // the agent that can act on the rest of the install.
@@ -30,7 +33,7 @@ watchEffect(() => {
 </script>
 
 <template>
-  <div v-if="pending && !agents?.length" class="flex flex-col gap-3">
+  <div v-if="pending && !agents.length" class="flex flex-col gap-3">
     <Skeleton class="h-8 w-48" />
     <Skeleton class="h-64 w-full rounded-lg" />
   </div>

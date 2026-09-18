@@ -45,12 +45,9 @@ const restartUnderway = computed(
 // reads as "Agent reconnecting…" for 30s on a freshly opened page, because
 // bridle only sees its own WS.
 const agentStatusStore = useAgentStatusStore();
-const liveAgent = computed(() => agentStatusStore.agents[props.agent.id]);
-// The SSE record is fresher than the row this page fetched — the drift sweep
-// flips 'running' → 'unreachable' between refetches.
-const displayStatus = computed(
-  () => liveAgent.value?.status ?? props.agent.status,
-);
+// `props.agent` is the store record, which the status stream writes into —
+// the drift sweep's 'running' → 'unreachable' arrives here by itself.
+const displayStatus = computed(() => props.agent.status);
 
 const bridleAgentState = computed(() => {
   if (restartUnderway.value) return 'restarting';
@@ -81,7 +78,7 @@ const hubUnreachable = computed(
 const offlineHint = computed(() =>
   hubUnreachable.value
     ? {
-        reason: liveAgent.value?.statusReason ?? props.agent.statusReason,
+        reason: props.agent.statusReason,
         envHref: `/agents/${props.agent.id}?tab=env`,
         settingsHref: '/settings/bridle',
       }

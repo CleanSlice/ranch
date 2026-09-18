@@ -4,7 +4,6 @@ import type {
   AgentStatusStreamMessage,
   ConnectionStateTypes,
   IAgentPodStatus,
-  IAgentRecord,
 } from '#agent/domain';
 
 // Re-export the domain types so any consumer importing them from
@@ -22,7 +21,11 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
   const connectionState = ref<ConnectionStateTypes>('idle');
   const lastEventAt = ref<number | null>(null);
   const statuses = ref<Record<string, IAgentPodStatus>>({});
-  const agents = ref<Record<string, IAgentRecord>>({});
+  // No `agents` map here on purpose (docs/state.md): the agent row a frame
+  // carries is written into the agent store, the one place an agent lives.
+  // This store keeps only what exists nowhere else — pod state and hub
+  // connectivity.
+  const agentStore = useAgentStore();
   // Live hub connectivity per agent — pushed with every snapshot/event.
   const bridleConnected = ref<Record<string, boolean>>({});
 
@@ -48,29 +51,31 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
   // bridle hub — as alarming as a failing pod, surfaced the same way.
   const unreachableCount = computed(
     () =>
-      Object.values(agents.value).filter((a) => a.status === 'unreachable')
-        .length,
+      agentStore.agents.filter((a) => a.status === 'unreachable').length,
   );
 
   function applyMessage(msg: AgentStatusStreamMessage) {
     lastEventAt.value = Date.now();
     if (msg.type === 'snapshot') {
-      const nextAgents: Record<string, IAgentRecord> = {};
       const nextStatuses: Record<string, IAgentPodStatus> = {};
       const nextBridle: Record<string, boolean> = {};
       for (const item of msg.payload) {
-        nextAgents[item.agent.id] = item.agent;
         if (item.pod) nextStatuses[item.agent.id] = item.pod;
         nextBridle[item.agent.id] = item.bridleConnected;
       }
-      agents.value = nextAgents;
+      // Same rows and order as GET /agents, so it loads the collection the
+      // same way — and prunes agents deleted while the stream was down.
+      agentStore.setAll(msg.payload.map((item) => item.agent));
       statuses.value = nextStatuses;
       bridleConnected.value = nextBridle;
       return;
     }
 
     const { eventType, status } = msg.payload;
-    agents.value = { ...agents.value, [status.agent.id]: status.agent };
+    // The frame carries the full row, read from the DB when the event fired.
+    // `deleted` is about the POD (restart, stop, TTL) — the agent is still
+    // there, so the record stays.
+    agentStore.upsert(status.agent);
     bridleConnected.value = {
       ...bridleConnected.value,
       [status.agent.id]: status.bridleConnected,
@@ -110,7 +115,6 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
     connected,
     lastEventAt,
     statuses,
-    agents,
     bridleConnected,
     failingCount,
     unreachableCount,

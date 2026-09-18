@@ -20,6 +20,9 @@ const KNOWN_STATUSES = new Set<AgentStatusTypes>([
   'running',
   'failed',
   'stopped',
+  // Was missing: a fetched 'unreachable' row decoded as 'pending', which the
+  // screens papered over by preferring a second, stream-fed copy of the agent.
+  'unreachable',
 ]);
 
 const KNOWN_LAUNCH_CONTEXTS = new Set<LaunchContextTypes>([

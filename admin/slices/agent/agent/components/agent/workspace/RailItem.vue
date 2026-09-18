@@ -60,6 +60,20 @@ defineProps<{ entry: IRailEntry }>();
           {{ formatDate(entry.createdAt) }}
         </span>
       </span>
+
+      <!-- Why it is not running, where the operator scans for trouble — the
+           same condition and text as the Overview card, so the row never says
+           less than the open agent does. -->
+      <span
+        v-if="
+          (entry.status === 'failed' || entry.status === 'unreachable') &&
+          entry.statusReason
+        "
+        class="mt-0.5 block truncate text-xs text-muted-foreground"
+        :title="entry.statusReason"
+      >
+        {{ entry.statusReason }}
+      </span>
     </span>
   </button>
 </template>

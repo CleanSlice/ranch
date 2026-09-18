@@ -22,7 +22,10 @@ const pulseClass = computed(() =>
     : '',
 );
 
-const totalAgents = computed(() => Object.keys(store.agents).length);
+// Agents live in the agent store (docs/state.md); the stream's snapshot loads
+// that collection, so the count is still "what the stream knows about".
+const agentStore = useAgentStore();
+const totalAgents = computed(() => agentStore.agents.length);
 const runningCount = computed(
   () =>
     Object.values(store.statuses).filter(

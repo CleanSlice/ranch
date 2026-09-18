@@ -55,7 +55,7 @@ export function useAgentLifecycle(
   // DOWN and come back (or the reconciled status confirms running/failed).
   const agentWentDown = ref(false);
   watch(
-    () => bridleStore.isAgentConnected,
+    () => bridleStore.isAgentConnectedFor(agentId),
     (up) => {
       if (!up && (restarting.value || agentStore.isRestartInFlight(agentId))) {
         agentWentDown.value = true;
@@ -79,17 +79,15 @@ export function useAgentLifecycle(
     // status='deploying') still shows the overlay.
     agentStore.markRestartInFlight(agentId);
     // Restarting a dead pod skips the "goes down" phase — it's already down.
-    agentWentDown.value = !bridleStore.isAgentConnected;
-    // Optimistic — flip to "deploying" right away so the badge reacts before
-    // the API call resolves (cancel + submit takes a few seconds).
-    const previousStatus = agent.value.status;
-    agent.value = { ...agent.value, status: 'deploying' };
+    agentWentDown.value = !bridleStore.isAgentConnectedFor(agentId);
+    // The optimistic "deploying" flip (and its rollback on error) happens
+    // inside `agentStore.restart`, on the one store record `agent` is read
+    // from — so the rail row flips together with this header.
     try {
       await agentStore.restart(agentId);
       agentStore.clearPendingRestart(agentId);
       await refresh();
     } catch (err) {
-      if (agent.value) agent.value = { ...agent.value, status: previousStatus };
       agentStore.clearRestartInFlight(agentId);
       restartError.value = (err as Error).message || 'Restart failed';
     } finally {
@@ -111,13 +109,8 @@ export function useAgentLifecycle(
     if (!agent.value || toggling.value) return;
     toggling.value = true;
     toggleError.value = null;
-    const previousStatus = agent.value.status;
+    // Read before the call: the store's optimistic flip changes `canStop`.
     const stopping = canStop.value;
-    // Optimistic flip so the badge reacts before the API resolves.
-    agent.value = {
-      ...agent.value,
-      status: stopping ? 'stopped' : 'deploying',
-    };
     try {
       if (stopping) {
         await agentStore.stop(agentId);
@@ -129,7 +122,6 @@ export function useAgentLifecycle(
       }
       await refresh();
     } catch (err) {
-      if (agent.value) agent.value = { ...agent.value, status: previousStatus };
       if (!stopping) agentStore.clearRestartInFlight(agentId);
       toggleError.value =
         (err as Error).message || (stopping ? 'Stop failed' : 'Start failed');
@@ -149,7 +141,7 @@ export function useAgentLifecycle(
   // 'running' while the pod is still being recreated (or is gone) — without
   // polling nothing reactive ever changes, the overlay computed freezes and
   // the flag's TTL never gets re-evaluated, pinning "restarting" forever.
-  // Each refresh replaces the agent ref, which re-runs the computeds (fresh
+  // Each refresh replaces the store record, which re-runs the computeds (fresh
   // Date.now() → TTL honored) and gives the server a chance to reconcile.
   let statusTimer: ReturnType<typeof setInterval> | null = null;
   // While a lifecycle mutation (restart/stop/start) is awaiting its HTTP
@@ -228,7 +220,9 @@ export function useAgentLifecycle(
     // Strongest "agent is up" signal: chat WS is connected AND the runtime is
     // registered with the hub. This bypasses DB/pod entirely — if the agent
     // is actually talking to us, nothing else matters.
-    const chatLive = bridleStore.isConnected && bridleStore.isAgentConnected;
+    const chatLive =
+      bridleStore.isConnectedFor(agentId) &&
+      bridleStore.isAgentConnectedFor(agentId);
 
     if (chatLive) return null;
 
@@ -270,8 +264,8 @@ export function useAgentLifecycle(
       [
         agent.value?.status,
         podStatus.value?.ready,
-        bridleStore.isConnected,
-        bridleStore.isAgentConnected,
+        bridleStore.isConnectedFor(agentId),
+        bridleStore.isAgentConnectedFor(agentId),
       ] as const,
     ([status, ready, chatConnected, agentConnected]) => {
       const chatLive = chatConnected && agentConnected;

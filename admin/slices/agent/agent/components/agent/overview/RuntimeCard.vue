@@ -10,15 +10,10 @@ const agentStatusStore = useAgentStatusStore();
 const podStatus = computed(() => agentStatusStore.statuses[props.agent.id] ?? null);
 const podLabel = computed(() => podPhaseLabel(podStatus.value));
 
-// The SSE record is fresher than the fetched row (the drift sweep writes
-// 'unreachable' between refetches) — prefer it when present.
-const liveAgent = computed(() => agentStatusStore.agents[props.agent.id]);
-const displayStatus = computed(
-  () => (liveAgent.value?.status as IAgentData['status']) || props.agent.status,
-);
-const statusReason = computed(
-  () => liveAgent.value?.statusReason ?? props.agent.statusReason,
-);
+// `props.agent` is the store record — fetches and status-stream frames both
+// land in it, so this card, the header and the rail row read one value.
+const displayStatus = computed(() => props.agent.status);
+const statusReason = computed(() => props.agent.statusReason);
 // Explicit `=== false`: undefined just means the stream hasn't reported yet.
 const runtimeOffline = computed(
   () =>

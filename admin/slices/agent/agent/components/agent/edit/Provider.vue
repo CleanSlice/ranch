@@ -33,8 +33,13 @@ const apiUrl =
   (typeof process !== 'undefined' ? process.env.API_URL : undefined) ??
   'http://localhost:3333';
 
+// The agent request is here for `pending` / `refresh`; the page renders the
+// store's record (docs/state.md), which `fetchById` and every mutation below
+// upsert into.
+const agent = computed(() => agentStore.byId(props.id));
+
 const [
-  { data: agent, pending: pendingAgent, refresh: refreshAgent },
+  { pending: pendingAgent, refresh: refreshAgent },
   { data: templates, pending: pendingTemplates },
   { pending: pendingLlms },
   { data: knowledges, pending: pendingKnowledges },
@@ -180,10 +185,11 @@ async function onPromote() {
   promoting.value = true;
   promoteError.value = null;
   try {
-    const updated = agent.value.isAdmin
-      ? await agentStore.demoteAdmin(agent.value.id)
-      : await agentStore.promoteAdmin(agent.value.id);
-    agent.value = { ...updated, status: 'deploying' };
+    if (agent.value.isAdmin) await agentStore.demoteAdmin(agent.value.id);
+    else await agentStore.promoteAdmin(agent.value.id);
+    // Both redeploy the agent; show it until the refetch confirms. No
+    // rollback — the change itself has already succeeded.
+    agentStore.patch(props.id, { status: 'deploying' });
     await refreshAgent();
   } catch (err) {
     promoteError.value = (err as Error).message || 'Promote failed';
@@ -357,7 +363,7 @@ async function onRemove() {
               :api-url="apiUrl"
               :is-public="agent.isPublic"
               :allowed-origins="agent.allowedOrigins"
-              @saved="(updated) => (agent = updated)"
+              @saved="(updated) => agentStore.upsert(updated)"
             />
           </section>
 
@@ -556,8 +562,10 @@ async function onRemove() {
       </AlertDialogRoot>
     </template>
 
+    <!-- `!removing`: a delete drops the store record before the navigation
+         away lands — that gap is not a "not found". -->
     <div
-      v-else
+      v-else-if="!removing"
       class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground"
     >
       Agent not found.

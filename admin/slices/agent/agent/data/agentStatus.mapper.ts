@@ -5,6 +5,7 @@ import type {
   IAgentRecord,
   IAgentStatus,
 } from '../domain/agentStatus.types';
+import { AgentMapper } from './agent.mapper';
 
 const EVENT_TYPES = new Set<AgentStatusEventType>([
   'added',
@@ -18,9 +19,20 @@ const EVENT_TYPES = new Set<AgentStatusEventType>([
  * so the store's reducer can't crash on a malformed payload.
  */
 export class AgentStatusMapper {
+  // One decoder for an agent row, whichever transport carried it — REST and
+  // the stream must not drift into two shapes of the same entity.
+  private agentMapper = new AgentMapper();
+
   toStreamMessage(raw: unknown): AgentStatusStreamMessage | null {
     if (!raw || typeof raw !== 'object') return null;
-    const o = raw as Record<string, unknown>;
+    let o = raw as Record<string, unknown>;
+    // The API's response interceptor wraps each SSE emission too, so a frame
+    // arrives as `{ data: { type, payload } }`. Reading `type` off the wrapper
+    // dropped every frame silently — the stream looked connected and fed
+    // nothing. Accept both shapes so a bare frame keeps working.
+    if (o.type === undefined && o.data && typeof o.data === 'object') {
+      o = o.data as Record<string, unknown>;
+    }
 
     if (o.type === 'snapshot') {
       const items = Array.isArray(o.payload) ? o.payload : [];
@@ -56,34 +68,12 @@ export class AgentStatusMapper {
   private toStatus(raw: unknown): IAgentStatus | null {
     if (!raw || typeof raw !== 'object') return null;
     const o = raw as Record<string, unknown>;
-    const agent = this.toAgent(o.agent);
+    const agent: IAgentRecord | null = this.agentMapper.toEntity(o.agent);
     if (!agent) return null;
     return {
       agent,
       pod: this.toPod(o.pod),
       bridleConnected: o.bridleConnected === true,
-    };
-  }
-
-  private toAgent(raw: unknown): IAgentRecord | null {
-    if (!raw || typeof raw !== 'object') return null;
-    const o = raw as Record<string, unknown>;
-    if (typeof o.id !== 'string') return null;
-    return {
-      id: o.id,
-      name: typeof o.name === 'string' ? o.name : '',
-      status: typeof o.status === 'string' ? o.status : '',
-      statusReason: typeof o.statusReason === 'string' ? o.statusReason : null,
-      lastDeployStartedAt:
-        typeof o.lastDeployStartedAt === 'string'
-          ? o.lastDeployStartedAt
-          : null,
-      launchContext:
-        o.launchContext === 'initial' || o.launchContext === 'restart'
-          ? o.launchContext
-          : null,
-      lastPullAt: typeof o.lastPullAt === 'string' ? o.lastPullAt : null,
-      lastSyncAt: typeof o.lastSyncAt === 'string' ? o.lastSyncAt : null,
     };
   }
 

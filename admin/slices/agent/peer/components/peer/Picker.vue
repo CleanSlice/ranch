@@ -31,6 +31,11 @@ import {
  * The preview expands under the clicked row, accordion-style: at ten
  * candidates a panel below the list sits under the fold, and a click that
  * renders off-screen reads as a click that did nothing (CLEAN-94).
+ *
+ * The two ways in — an agent of this ranch, or any A2A address — are tabs, not
+ * one scrolling column (CLEAN-98). Stacked, the address form sat below every
+ * candidate: on a ranch with a dozen agents nothing on the first screen said an
+ * external import existed at all.
  */
 const props = defineProps<{ open: boolean; agentId: string }>();
 const emit = defineEmits<{ 'update:open': [value: boolean]; connected: [] }>();
@@ -46,7 +51,24 @@ const error = ref<string | null>(null);
 
 const FILTER_FROM = 6;
 
+type AddMode = 'ranch' | 'external';
+
+const mode = ref<AddMode>('ranch');
+/** True once the operator has picked a tab themselves; after that nothing
+ *  moves them, least of all the empty-ranch default below. */
+const modeTouched = ref(false);
+
+function selectMode(value: unknown): void {
+  if (value !== 'ranch' && value !== 'external') return;
+  mode.value = value;
+  modeTouched.value = true;
+}
+
 const candidates = computed(() => store.candidates(props.agentId));
+/** What the tab counts: agents that can still be added, not the whole ranch. */
+const available = computed(
+  () => candidates.value.filter((c) => !c.connected).length,
+);
 
 const visible = computed(() => {
   const q = filter.value.trim().toLowerCase();
@@ -61,7 +83,7 @@ const isOpen = computed({
 
 watch(
   () => props.open,
-  (open) => {
+  async (open) => {
     if (!open) return;
     filter.value = '';
     selected.value = null;
@@ -71,7 +93,14 @@ watch(
     urlToken.value = '';
     urlPreview.value = null;
     urlError.value = null;
-    void store.loadCandidates(props.agentId);
+    mode.value = 'ranch';
+    modeTouched.value = false;
+    await store.loadCandidates(props.agentId);
+    // With nothing left to connect on this ranch, the address form IS the
+    // dialog — opening on an empty list would read as "no way to add a peer".
+    if (!modeTouched.value && candidates.value.length === 0) {
+      mode.value = 'external';
+    }
   },
 );
 
@@ -197,193 +226,237 @@ const urlPreviewAdvertisesNothing = computed(
           Add peer
         </DialogTitle>
         <DialogDescription class="mt-1 text-sm text-muted-foreground">
-          Agents on this ranch this one isn't connected to yet. Click an agent
-          to read its card, then connect.
+          <template v-if="mode === 'ranch'">
+            Agents on this ranch this one isn't connected to yet. Click an agent
+            to read its card, then connect.
+          </template>
+          <template v-else>
+            Any A2A 1.0 agent outside this ranch, by its address. Importing the
+            same address again updates the entry — no duplicates.
+          </template>
         </DialogDescription>
 
-        <div class="mt-3.5 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto">
-          <div v-if="candidates.length >= FILTER_FROM" class="relative">
-            <IconSearch
-              class="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input v-model="filter" placeholder="Filter agents" class="pl-8" />
-          </div>
+        <Tabs
+          :model-value="mode"
+          class="mt-3.5 flex min-h-0 flex-1 flex-col gap-3.5"
+          @update:model-value="selectMode"
+        >
+          <TabsList class="grid w-full grid-cols-2">
+            <TabsTrigger value="ranch">
+              On this ranch
+              <span v-if="available" class="opacity-60">{{ available }}</span>
+            </TabsTrigger>
+            <TabsTrigger value="external">External agent</TabsTrigger>
+          </TabsList>
 
-          <ul v-if="visible.length" class="flex flex-col">
-            <li
-              v-for="candidate in visible"
-              :key="candidate.id"
-              class="border-t first:border-t-0"
-            >
-              <button
-                type="button"
-                class="flex w-full items-center justify-between gap-3 px-1 py-3 text-left text-sm transition-colors"
-                :class="[
-                  candidate.connected
-                    ? 'cursor-default text-muted-foreground'
-                    : 'hover:bg-muted/60',
-                  selected?.id === candidate.id ? 'bg-muted/60' : '',
-                ]"
-                :disabled="candidate.connected"
-                @click="toggle(candidate)"
-              >
-                <span class="flex min-w-0 items-center gap-2">
-                  <span class="truncate font-semibold">
-                    {{ candidate.name }}
-                  </span>
-                  <Badge :variant="statusVariant(candidate.status)">
-                    {{ candidate.status }}
-                  </Badge>
-                </span>
-                <span
-                  v-if="candidate.connected"
-                  class="flex shrink-0 items-center gap-1 text-xs"
-                >
-                  <IconCheck class="size-3.5" />
-                  connected
-                </span>
-                <!-- The affordance the row was missing: says what a click
-                     does, and doubles as the open/closed indicator. -->
-                <span
-                  v-else
-                  class="flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground"
-                >
-                  Info
-                  <IconChevronDown
-                    class="size-3.5 transition-transform"
-                    :class="selected?.id === candidate.id && 'rotate-180'"
-                  />
-                </span>
-              </button>
+          <div class="min-h-0 flex-1 overflow-y-auto">
+            <TabsContent value="ranch" class="flex flex-col gap-3.5">
+              <div v-if="candidates.length >= FILTER_FROM" class="relative">
+                <IconSearch
+                  class="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  v-model="filter"
+                  placeholder="Filter agents"
+                  class="pl-8"
+                  autocomplete="off"
+                />
+              </div>
 
-              <!-- Accordion body: the card opens right where the click
-                   happened, not below the whole list. -->
-              <div
-                v-if="selected?.id === candidate.id"
-                class="mb-3 space-y-3 rounded-xl border bg-muted/40 p-3"
-              >
-                <div v-if="previewing" class="space-y-2">
-                  <Skeleton class="h-4 w-40" />
-                  <Skeleton class="h-4 w-64" />
-                  <Skeleton class="h-6 w-52" />
-                </div>
-                <template v-else>
-                  <PeerCardView :card="preview" compact />
+              <ul v-if="visible.length" class="flex flex-col">
+                <li
+                  v-for="candidate in visible"
+                  :key="candidate.id"
+                  class="border-t first:border-t-0"
+                >
+                  <button
+                    type="button"
+                    class="flex w-full items-center justify-between gap-3 px-1 py-3 text-left text-sm transition-colors"
+                    :class="[
+                      candidate.connected
+                        ? 'cursor-default text-muted-foreground'
+                        : 'hover:bg-muted/60',
+                      selected?.id === candidate.id ? 'bg-muted/60' : '',
+                    ]"
+                    :disabled="candidate.connected"
+                    @click="toggle(candidate)"
+                  >
+                    <span class="min-w-0 truncate font-semibold">
+                      {{ candidate.name }}
+                    </span>
+                    <!-- Status rides with the Info chip on the right edge
+                         (CLEAN-98): beside the name it sat at a different
+                         distance in every row, so nothing lined up. -->
+                    <span class="flex shrink-0 items-center gap-2">
+                      <Badge :variant="statusVariant(candidate.status)">
+                        {{ candidate.status }}
+                      </Badge>
+                      <span
+                        v-if="candidate.connected"
+                        class="flex items-center gap-1 text-xs"
+                      >
+                        <IconCheck class="size-3.5" />
+                        connected
+                      </span>
+                      <!-- The affordance the row was missing: says what a click
+                           does, and doubles as the open/closed indicator. -->
+                      <span
+                        v-else
+                        class="flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                      >
+                        Info
+                        <IconChevronDown
+                          class="size-3.5 transition-transform"
+                          :class="selected?.id === candidate.id && 'rotate-180'"
+                        />
+                      </span>
+                    </span>
+                  </button>
+
+                  <!-- Accordion body: the card opens right where the click
+                       happened, not below the whole list. -->
                   <div
-                    v-if="previewAdvertisesNothing"
-                    class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
+                    v-if="selected?.id === candidate.id"
+                    class="mb-3 space-y-3 rounded-xl border bg-muted/40 p-3"
                   >
-                    <template v-if="preview?.description">
-                      «{{ candidate.name }}» has no skills on its card —
-                      matching will lean on its description alone. Sharper
-                      first: a template with skills, or
-                    </template>
+                    <div v-if="previewing" class="space-y-2">
+                      <Skeleton class="h-4 w-40" />
+                      <Skeleton class="h-4 w-64" />
+                      <Skeleton class="h-6 w-52" />
+                    </div>
                     <template v-else>
-                      You can connect «{{ candidate.name }}», but with an
-                      empty card the delegating agent will only ask it when
-                      the user names it outright — topic matching has nothing
-                      to grip. Better first: give it a description (Edit on
-                      its page), a template with skills, or
+                      <PeerCardView :card="preview" compact />
+                      <div
+                        v-if="previewAdvertisesNothing"
+                        class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
+                      >
+                        <template v-if="preview?.description">
+                          «{{ candidate.name }}» has no skills on its card —
+                          matching will lean on its description alone. Sharper
+                          first: a template with skills, or
+                        </template>
+                        <template v-else>
+                          You can connect «{{ candidate.name }}», but with an
+                          empty card the delegating agent will only ask it when
+                          the user names it outright — topic matching has nothing
+                          to grip. Better first: give it a description (Edit on
+                          its page), a template with skills, or
+                        </template>
+                        <NuxtLink
+                          :to="`/agents/${candidate.id}?tab=knowledge`"
+                          class="font-medium underline"
+                          >bind it a knowledge base</NuxtLink
+                        >, then Re-read the card here.
+                      </div>
+                      <Button
+                        size="sm"
+                        class="rounded-full"
+                        :disabled="connecting || !preview"
+                        @click="connect"
+                      >
+                        {{
+                          connecting ? 'Connecting…' : `Connect «${candidate.name}»`
+                        }}
+                      </Button>
                     </template>
-                    <NuxtLink
-                      :to="`/agents/${candidate.id}?tab=knowledge`"
-                      class="font-medium underline"
-                      >bind it a knowledge base</NuxtLink
-                    >, then Re-read the card here.
+                    <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
                   </div>
-                  <Button
-                    size="sm"
-                    class="rounded-full"
-                    :disabled="connecting || !preview"
-                    @click="connect"
-                  >
-                    {{
-                      connecting ? 'Connecting…' : `Connect «${candidate.name}»`
-                    }}
-                  </Button>
-                </template>
-                <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+                </li>
+              </ul>
+
+              <p v-else-if="filter" class="text-sm text-muted-foreground">
+                No agent matches "{{ filter }}".
+              </p>
+              <p v-else class="text-sm text-muted-foreground">
+                No unconnected agents left on this ranch. Anything outside
+                it comes in under <b>External agent</b>.
+              </p>
+            </TabsContent>
+
+            <!-- ═══ Import by URL (CLEAN-95) ═══ -->
+            <TabsContent value="external">
+              <!-- Autofill off on both fields, `new-password` on the
+                   credential: a text field directly above a password field
+                   is the exact shape Chrome and the password managers read
+                   as a login form, and they were dropping a saved account
+                   into the card address (CLEAN-98). -->
+              <div class="space-y-2">
+                <Input
+                  v-model="url"
+                  name="peer-card-address"
+                  placeholder="https://other.ranch/a2a/agents/agent-…"
+                  class="font-mono text-xs"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
+                />
+                <Input
+                  v-model="urlToken"
+                  type="password"
+                  name="peer-outbound-token"
+                  placeholder="Access credential (optional)"
+                  class="text-xs"
+                  autocomplete="new-password"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="rounded-full"
+                  :disabled="urlPreviewing || !url.trim()"
+                  @click="previewUrl"
+                >
+                  {{ urlPreviewing ? 'Reading…' : 'Read card' }}
+                </Button>
               </div>
-            </li>
-          </ul>
 
-          <p v-else-if="filter" class="text-sm text-muted-foreground">
-            No agent matches "{{ filter }}".
-          </p>
-          <p v-else class="border-t pt-3.5 text-sm text-muted-foreground">
-            No unconnected agents left on this ranch.
-          </p>
-
-          <!-- ═══ Import by URL (CLEAN-95) ═══ -->
-          <div class="border-t pt-3.5">
-            <p class="text-sm font-semibold">Import an external agent</p>
-            <p class="mt-0.5 text-xs text-muted-foreground">
-              Any A2A 1.0 agent outside this ranch, by its address. Importing
-              the same address again updates the entry — no duplicates.
-            </p>
-            <div class="mt-2.5 space-y-2">
-              <Input
-                v-model="url"
-                placeholder="https://other.ranch/a2a/agents/agent-…"
-                class="font-mono text-xs"
-              />
-              <Input
-                v-model="urlToken"
-                type="password"
-                placeholder="Access credential (optional)"
-                class="text-xs"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                class="rounded-full"
-                :disabled="urlPreviewing || !url.trim()"
-                @click="previewUrl"
-              >
-                {{ urlPreviewing ? 'Reading…' : 'Read card' }}
-              </Button>
-            </div>
-
-            <div
-              v-if="urlPreview"
-              class="mt-2.5 space-y-3 rounded-xl border bg-muted/40 p-3"
-            >
-              <PeerCardView :card="urlPreview" compact />
               <div
-                v-if="urlPreviewAdvertisesNothing"
-                class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
+                v-if="urlPreview"
+                class="mt-2.5 space-y-3 rounded-xl border bg-muted/40 p-3"
               >
-                <template v-if="urlPreview.description">
-                  «{{ urlPreview.name }}» publishes no skills — matching will
-                  lean on its description alone. Ask its owner to publish
-                  skills, then Re-read the card here.
-                </template>
-                <template v-else>
-                  This card advertises nothing, so the delegating agent will
-                  only ask «{{ urlPreview.name }}» when the user names it
-                  outright. Ask its owner to publish a description and
-                  skills, then Re-read the card here.
-                </template>
+                <PeerCardView :card="urlPreview" compact />
+                <div
+                  v-if="urlPreviewAdvertisesNothing"
+                  class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
+                >
+                  <template v-if="urlPreview.description">
+                    «{{ urlPreview.name }}» publishes no skills — matching will
+                    lean on its description alone. Ask its owner to publish
+                    skills, then Re-read the card here.
+                  </template>
+                  <template v-else>
+                    This card advertises nothing, so the delegating agent will
+                    only ask «{{ urlPreview.name }}» when the user names it
+                    outright. Ask its owner to publish a description and
+                    skills, then Re-read the card here.
+                  </template>
+                </div>
+                <Button
+                  size="sm"
+                  class="rounded-full"
+                  :disabled="urlImporting"
+                  @click="importUrl"
+                >
+                  {{
+                    urlImporting
+                      ? 'Connecting…'
+                      : `Connect «${urlPreview.name}»`
+                  }}
+                </Button>
               </div>
-              <Button
-                size="sm"
-                class="rounded-full"
-                :disabled="urlImporting"
-                @click="importUrl"
-              >
-                {{
-                  urlImporting
-                    ? 'Connecting…'
-                    : `Connect «${urlPreview.name}»`
-                }}
-              </Button>
-            </div>
 
-            <p v-if="urlError" class="mt-2 text-sm text-destructive">
-              {{ urlError }}
-            </p>
+              <p v-if="urlError" class="mt-2 text-sm text-destructive">
+                {{ urlError }}
+              </p>
+            </TabsContent>
           </div>
-        </div>
+        </Tabs>
 
         <div class="mt-3.5 flex justify-end">
           <Button

@@ -3,12 +3,14 @@
     "Copy-Item \"$env:ROOT_WORKTREE_PATH/.env.project\" .env.project",
     "Copy-Item \"$env:ROOT_WORKTREE_PATH/api/.env\" api/.env",
     "Copy-Item \"$env:ROOT_WORKTREE_PATH/admin/.env\" admin/.env",
-    "Copy-Item \"$env:ROOT_WORKTREE_PATH/app/.env\" app/.env"
+    "Copy-Item \"$env:ROOT_WORKTREE_PATH/app/.env\" app/.env",
+    "if (Test-Path \"$env:ROOT_WORKTREE_PATH/graft\") { New-Item -ItemType Directory -Force graft | Out-Null; Copy-Item \"$env:ROOT_WORKTREE_PATH/graft/*\" graft -Recurse -Force }"
   ],
   "setup-worktree-unix": [
     "cp \"$ROOT_WORKTREE_PATH/.env.project\" .env.project",
     "cp \"$ROOT_WORKTREE_PATH/api/.env\" api/.env",
     "cp \"$ROOT_WORKTREE_PATH/admin/.env\" admin/.env",
-    "cp \"$ROOT_WORKTREE_PATH/app/.env\" app/.env"
+    "cp \"$ROOT_WORKTREE_PATH/app/.env\" app/.env",
+    "if [ -d \"$ROOT_WORKTREE_PATH/graft\" ]; then mkdir -p graft && cp -R \"$ROOT_WORKTREE_PATH/graft/.\" graft/; fi"
   ]
 }

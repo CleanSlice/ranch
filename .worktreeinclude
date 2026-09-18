@@ -4,3 +4,5 @@
 api/.env
 admin/.env
 app/.env
+# graft's code graph — saves a `graft build` per worktree; graft refreshes it on query.
+graft/

@@ -65,8 +65,13 @@ const adminConnected = computed(() => {
   return a.status === 'running';
 });
 
+// The Rancher's OWN chat socket — chat state is per conversation now, so an
+// agent chat open elsewhere no longer answers for this one.
 const fullyConnected = computed(
-  () => adminConnected.value && bridleStore.isConnected,
+  () =>
+    adminConnected.value &&
+    !!admin.value &&
+    bridleStore.isConnectedFor(admin.value.id),
 );
 
 if (import.meta.client) {

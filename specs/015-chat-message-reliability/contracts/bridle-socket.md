@@ -105,13 +105,43 @@ additionally called by the app console for the watchdog safety net, through a ne
 on the app's bridle gateway using the generated SDK. Response shape unchanged; equal
 `ts` values are returned in file order.
 
-## Agent ↔ hub (informative — runtime is outside this repository)
+## As implemented (2026-09-18) — where the code refines the text above
 
-Required of the runtime for spec US3 and for exact de-duplication:
+- **Who gets an ack.** The handler returns the ack from `handleMessage`; Nest passes it
+  to the socket.io callback when there is one. "The caller renders the outcome itself"
+  is keyed on **`clientMessageId` being present**, not on detecting a callback: a
+  message with an id is acknowledged truthfully and never gets the synthetic "Agent is
+  not connected" reply; a message without one (embed widget, old bundles) behaves as
+  before.
+- **Which events carry `seq`.** Everything routed to a conversation: `message`,
+  `stream`, `stream_end`, `typing`, `thinking`, `user_message`, and API-originated
+  steps sent through `sendToClient`. **Not** `agent_status`, `debug`, `welcome`,
+  `message_error`, `bridle_error` — those are state or per-socket notices, sent
+  unnumbered and never replayed. Clients must ignore the `seq` rule for events without
+  one.
+- **`seq` is seeded from the hub's clock** when a conversation is first seen, then
+  incremented by one per event. After an API restart the new numbers are therefore
+  still above any `lastSeq` a browser kept, and its catch-up returns the new buffer.
+  `welcome.seq` lower than `lastSeq` can still happen (first connect to a hub that has
+  never seen the conversation reports `0`); clients treat that as "nothing to replay".
+- **Streamed frames are coalesced in the buffer**: a `stream` frame carries the whole
+  text so far, so only the newest one per `messageId` is kept for replay.
+- **`user_message`** is sent to the conversation's other sockets for every accepted
+  message, including ones that arrived over HTTP (`sendAndAwait`), and is buffered like
+  any other event; the sending socket recognises its own on replay by `messageId`.
 
-- Persist the incoming `messageId` as the `id` of the transcript's `user` event.
-- Persist **one `assistant` event per emitted message**, with the wire `messageId` as
-  its `id`, instead of one event per turn with concatenated text.
+## Agent ↔ hub — `CleanSlice/runtime` (branch `fix/CLEAN-102-transcript-per-message`)
 
-Desirable: a `persisted` acknowledgement to the hub once the user event is written, so
-"delivered" can mean "saved" rather than "handed over".
+The model-facing history must not change shape (four LLM providers build prompts from
+it), so the turn is still **one** `assistant` event whose `data.text` is the whole turn.
+What changed:
+
+- The `assistant` event gains display-only **`data.messages: [{ id, text, ts }]`** — the
+  bubbles the turn was streamed as, `id` being the wire `messageId`. The API's transcript
+  reader replays those instead of `data.text`; an event without them, or with a malformed
+  array, is replayed whole as before.
+- On the `bridle` channel the `user` event's `id` is the incoming `messageId` — which is
+  the browser's `clientMessageId` — so a reload can match a bubble with its saved copy.
+
+Still desirable, not done: a `persisted` acknowledgement to the hub once the user event
+is written, so "delivered" can mean "saved" rather than "handed over".

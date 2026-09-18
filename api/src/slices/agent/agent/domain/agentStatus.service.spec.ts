@@ -72,7 +72,10 @@ interface ITestBed {
   deployTracker: { mark: jest.Mock; clear: jest.Mock; isStale: jest.Mock };
 }
 
-function createTestBed(agents: IAgentData[], pods: IAgentPodStatus[]): ITestBed {
+function createTestBed(
+  agents: IAgentData[],
+  pods: IAgentPodStatus[],
+): ITestBed {
   const agentGateway = {
     findAll: jest.fn().mockResolvedValue(agents),
     findById: jest
@@ -291,11 +294,11 @@ describe('AgentStatusService bridle connectivity', () => {
     const snapshot = await bed.service.snapshot();
 
     expect(snapshot).toHaveLength(2);
-    expect(
-      snapshot.find((s) => s.agent.id === 'a1')?.bridleConnected,
-    ).toBe(true);
-    expect(
-      snapshot.find((s) => s.agent.id === 'a2')?.bridleConnected,
-    ).toBe(false);
+    expect(snapshot.find((s) => s.agent.id === 'a1')?.bridleConnected).toBe(
+      true,
+    );
+    expect(snapshot.find((s) => s.agent.id === 'a2')?.bridleConnected).toBe(
+      false,
+    );
   });
 });

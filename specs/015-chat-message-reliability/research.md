@@ -384,6 +384,34 @@ in `useAgentLifecycle`. Any of them can move on without the others.
 - **Scope note**: this is unrelated to the chat code. It is included in this feature on
   request; it is a small, separate slice and could equally ship as its own PR.
 
+### F12 — Server side of F11 (T051) — *Confirmed in code and against the running API*
+
+- **The database does not stay stale.** `AgentStatusService.detectDrift` runs every 30 s
+  over *every* agent (`api/src/slices/agent/agent/domain/agentStatus.service.ts`, the
+  `for (const agent of agents)` loop) and writes the startup timeout itself — the exact
+  reason in the screenshot, "startup did not produce a running agent within 5 minutes".
+  Pod events reconcile every agent too. `syncStatus` in `agent.controller.ts` (the
+  "runs on each fetchById" path) only adds an *earlier* `failed` when the deploy workflow
+  ends in a terminal phase; without it the sweep gets there after the grace window.
+- **The stream did not say so.** `stream$()` emitted on pod events and hub
+  connect/disconnect only. The sweep's DB-only transitions (no pod → `failed`,
+  `unreachable`) and `syncStatus`'s write have no such event behind them, so a list
+  never heard about them. Fixed: every status write in the service goes through
+  `writeStatus`, which feeds a `statusWrites$` subject merged into the stream as a
+  `modified` frame; `syncStatus` calls `notifyStatusChanged`. Spec:
+  `agentStatus.service.spec.ts`.
+- **And the admin was not listening at all.** The response interceptor wraps SSE
+  emissions as well, so a frame arrives as `{ "data": { "type": … } }`;
+  `AgentStatusMapper.toStreamMessage` read `type` off the wrapper and returned `null`
+  for every frame (checked by piping a live frame from `:3333` through the mapper). The
+  indicator still said "Live" because `onopen` fires. Every "live-first" fallback in the
+  admin was therefore always falling through to the fetched copy. The mapper now accepts
+  both shapes.
+- **Also found**: the REST `AgentMapper` did not know the `unreachable` status and decoded
+  it as `pending`; and a pod `deleted` event means the *pod* went away, not the agent —
+  the record must stay (T047's "remove the record on `deleted`" would have dropped
+  agents on every restart).
+
 ### Local-environment note
 
 On this Windows machine the runtime writes the session to `data/sessions/bridle:admin.jsonl`;
@@ -403,3 +431,82 @@ need the cluster or a non-Windows runtime.
 3. **Reproduce F5 and F3** in a running stack before and after the fix; they are the two
    hypotheses in this document.
 4. **API replica count in production** — D5 assumes one instance.
+
+## Update 2026-09-18 — results after the fix
+
+Same local stack (API :3333, admin :3001, app moved to :3002 because the runtime took
+:3000 after a restart). Tools: `probe.mjs` (scripted socket client) and the headless
+Chrome checks in `e2e/`. "Before" for E1–E4 is the table above; the browser scenarios
+were **not** run against the old code, so for ordering and scrolling the "before" rests on
+the code reading (F1, F8) plus the screenshots in the request, not on an observed failure.
+
+### Hub, scripted client
+
+| Check | Before | After |
+|---|---|---|
+| `probe.mjs normal` — delivery ack | never called (45 s) | `{"status":"accepted","messageId":"probe-…","ts":…}` after 3 ms; every routed event carries `seq` |
+| `probe.mjs steal` — two sockets, the first one sends | sender got nothing, the other got the answer | both got `typing` + `stream_end` with equal `seq`; the other socket also got `user_message` |
+| `probe.mjs gap` — socket dropped after `typing`, reconnect 25 s later with `lastSeq` | no events after reconnect | `stream` + `stream_end` replayed immediately (the answer was 23 s old) |
+| `probe.mjs offline` | — | **not exercised live**: the agent reconnected before the send, and stopping the requester's runtime was not mine to do. Covered by jest (`rejects instead of faking an agent reply…`, `keeps the synthetic reply for callers that send no id`). |
+
+jest: `src/slices/bridle` + `src/slices/agent` — all suites pass (545 tests in the first
+run of bridle + peer; 416 in agent; 55 in transcript reader + chat history).
+
+### Browser, headless Chrome (`e2e/chat.mjs`), page clock +2 minutes
+
+| Check | admin | app |
+|---|---|---|
+| question rendered above its answer | pass | pass |
+| question appears once, state `delivered` | pass | pass |
+| every bubble shows a time | pass | pass |
+| message, order and times survive a reload | n/a locally (see below) | pass |
+| sending from the top scrolls to the bottom | pass | pass |
+| incoming content does not pull a reader who scrolled up | pass | pass |
+| question asked in a second tab shows here once, with its answer | pass | pass |
+
+`e2e/leave.mjs` (app): leave the agent page 1.2 s into an answer, return after 1.5 s
+(inside the 3 s grace close) and after 8 s (socket closed, answer recovered by `lastSeq`
+replay) — question once, delivered, answer once, no "Reconnecting…" in both runs.
+
+`e2e/status.mjs` (admin): list row and header both show `Running`; the status stream
+answers 200 and, since the mapper fix (F12), its frames decode. **Not exercised**: a live
+`deploying → failed` transition in the browser — it needs a deploy that fails, which was
+not staged. The server side of it is covered by the two new jest cases in
+`agentStatus.service.spec.ts`.
+
+### Still not observed
+
+- **Landing page → agent page (F5).** This stack has no featured public agent, so the
+  landing page renders no chat (`e2e/handoff.mjs` skips). The mechanism — two providers
+  sharing one channel key across a route change — is what `leave.mjs` exercises, but the
+  exact landing flow is unverified.
+- **Admin reload from the transcript, and US3 (bubbles after reload).** On this Windows
+  machine the runtime writes the session into an NTFS alternate data stream and the API
+  reads 0 messages, so the admin chat is empty after any reload here. The reader is
+  covered by `transcriptReader.bubbles.spec.ts` and the runtime by
+  `loop.bubbles.spec.ts`; the two have **not** been run together. Needs the cluster, with
+  the runtime image built from `fix/CLEAN-102-transcript-per-message`.
+- **Not-delivered UI in a browser** (agent stopped → "Not delivered", Resend, Discard,
+  reload). Logic covered by `delivery.test.ts` in both clients and by the agents' store
+  tests, which were run and then deleted rather than kept.
+- **Admin: Rancher panel + agent Chat tab together (F3).** The store is per conversation
+  now; the two-chats-at-once scenario itself was not driven.
+
+### Found along the way
+
+- **F12 (SSOT track): the admin never decoded a status-stream frame.** The API wraps SSE
+  payloads in its response envelope; `AgentStatusMapper.toStreamMessage` read `type` off
+  the wrapper and returned `null` for every frame, while the "Live" dot stayed green
+  because `onopen` still fired. The REST mapper also decoded `unreachable` as `pending`,
+  and the API never pushed DB-only transitions (`failed` by startup timeout,
+  `unreachable`) to the stream. All three are fixed; together with the duplicated agent
+  copies they are why the list said "Deploying".
+- **Runtime design correction.** D6 proposed one `assistant` event per bubble. That would
+  have changed the history every LLM provider builds prompts from (an assistant text
+  message in front of each tool call, across four provider adapters). Implemented
+  instead: the turn stays one event, `data.text` untouched, plus display-only
+  `data.messages: [{ id, text, ts }]`.
+- **An accident worth recording.** `bun run test` in `api/` runs `prisma generate` in
+  `pretest`; with the dev API running on Windows that half-wrote the Prisma client and the
+  watching API crashed, taking `turbo dev` (app + admin) down with it. Regenerated and
+  restarted; specs are now run with jest directly.

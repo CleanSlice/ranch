@@ -154,3 +154,20 @@ export class LightragClientError extends Error {
     this.name = 'LightragClientError';
   }
 }
+
+/**
+ * LightRAG took the connection and never answered. Its own kind of failure
+ * because it is the signature of a LightRAG that is up but stuck: on
+ * 2026-09-18 its Postgres was moved to another node, /health kept answering
+ * in half a second, and every call that touched the database hung on a pool
+ * of dead connections until someone deleted the pod.
+ */
+export class LightragTimeoutError extends LightragClientError {
+  constructor(
+    path: string,
+    public readonly waitedMs: number,
+  ) {
+    super(`LightRAG ${path} timed out after ${waitedMs / 1000} s`, 504, path);
+    this.name = 'LightragTimeoutError';
+  }
+}

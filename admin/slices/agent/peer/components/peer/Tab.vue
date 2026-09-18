@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { IconPlus } from '@tabler/icons-vue';
 import { toast } from 'vue-sonner';
-import { useAgentStore } from '#agent/stores/agent';
 import type { IAgentData } from '#agent/domain';
 import { usePeerStore, type IAgentPeer } from '#peer/stores/peer';
 import { cardAddress } from '#peer/domain';
@@ -18,7 +17,6 @@ import { cardAddress } from '#peer/domain';
 const props = defineProps<{ agent: IAgentData }>();
 
 const store = usePeerStore();
-const agentStore = useAgentStore();
 
 const adding = ref(false);
 const busyPeerId = ref<string | null>(null);
@@ -31,15 +29,11 @@ const peerFilter = ref<{ id: string; name: string } | null>(null);
 const peers = computed(() => store.peers(props.agent.id));
 const ownCard = computed(() => store.card(props.agent.id));
 const delegations = computed(() => store.delegations(props.agent.id));
-const pendingRestart = computed(() =>
-  agentStore.isPendingRestart(props.agent.id),
-);
 const peersState = computed(() => store.peersState(props.agent.id));
 /** null while unknown — the chip only renders on a definite answer. */
 const armed = computed(() =>
   peers.value.length && peersState.value ? peersState.value.armed : null,
 );
-const restarting = ref(false);
 
 const address = computed(() => cardAddress(ownCard.value));
 const nothingAdvertised = computed(
@@ -117,19 +111,6 @@ watch(
     }
   },
 );
-
-async function restartNow() {
-  restarting.value = true;
-  try {
-    await agentStore.restart(props.agent.id);
-  } catch (err) {
-    toast.error(
-      err instanceof Error ? err.message : 'Could not restart the agent',
-    );
-  } finally {
-    restarting.value = false;
-  }
-}
 
 let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 onUnmounted(() => clearTimeout(copiedTimer));
@@ -338,26 +319,12 @@ function goToKnowledge() {
       </div>
     </div>
 
-    <!-- A pod reads its tool list once, at boot. Without this banner an
-         operator connects a peer, asks a question, gets nothing, and has
-         no way to know why. The button is the one click that arms it. -->
-    <div
-      v-if="pendingRestart || armed === false"
-      class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2"
-    >
-      <p class="text-sm text-amber-600 dark:text-amber-500">
-        Restart the agent to apply: it reads the list of peers when it starts.
-      </p>
-      <Button
-        size="sm"
-        class="h-7 flex-none rounded-full"
-        :disabled="restarting"
-        @click="restartNow"
-      >
-        {{ restarting ? 'Restarting…' : 'Restart now' }}
-      </Button>
-    </div>
-
+    <!-- A pod reads its tool list once, at boot, so a peer change needs a
+         restart. That banner lives on the agent page above every tab and is
+         raised by the peer store itself (markPendingRestart) — a second copy
+         here only offered a second button to press (CLEAN-98). What the page
+         banner cannot know stays: the armed badge on Peer network, which
+         reports what the RUNNING pod holds. -->
     <Separator />
 
     <div class="grid items-start gap-8 xl:grid-cols-2">

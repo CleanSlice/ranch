@@ -15,6 +15,8 @@ import type {
   BridlePart,
   IBridleAttachment,
   IActiveTurn,
+  IBridleSendOptions,
+  BridleSendResult,
 } from '../domain/bridle.types';
 import { randomUUID } from 'crypto';
 
@@ -26,6 +28,31 @@ interface IPendingSync {
 }
 
 const DEFAULT_SYNC_TIMEOUT_MS = 15_000;
+
+/** How much a reconnecting browser can catch up on — whichever runs out first. */
+const REPLAY_MAX_EVENTS = 500;
+const REPLAY_MAX_AGE_MS = 10 * 60_000;
+/** A conversation nobody is connected to is forgotten after this long. */
+const CHANNEL_IDLE_MS = REPLAY_MAX_AGE_MS;
+/** How long a message id is remembered, so a resend is not delivered twice. */
+const SEEN_TTL_MS = 10 * 60_000;
+const SEEN_MAX = 200;
+
+interface IBufferedEvent {
+  at: number;
+  event: Record<string, unknown> & { seq: number };
+}
+
+interface IClientChannel {
+  /** Every socket open on this conversation, by socket id. */
+  sockets: Map<string, IBridleClientData>;
+  /** Last number issued; strictly increasing for the conversation's life. */
+  seq: number;
+  buffer: IBufferedEvent[];
+  /** clientMessageId → when it was accepted. */
+  seen: Map<string, number>;
+  idleTimer?: NodeJS.Timeout;
+}
 
 /**
  * Hub implementation — manages per-agent connections and per-agent browser
@@ -49,17 +76,97 @@ export class BridleGateway extends IBridleGateway {
   /**
    * Browser clients keyed by `${clientId}\u0000${agentId}`. Keying by the pair
    * (not clientId alone) lets ONE user hold several concurrent conversations —
-   * e.g. a multi-slot dashboard chatting with N agents on N sockets — without
-   * later sockets overwriting earlier ones (they share clientId='admin'/sub).
+   * e.g. a multi-slot dashboard chatting with N agents.
+   *
+   * A conversation holds EVERY socket open on it, not one (CLEAN-102). An
+   * identity is routinely open in several places at once — two tabs, the admin
+   * panel beside the console, a colleague (every Owner/Admin shares
+   * clientId='admin'), an HTTP sendAndAwait — and with a single slot the last
+   * one to connect took every event while the others sat on a spinner for an
+   * answer that was delivered somewhere else.
+   *
+   * It also outlives its sockets for a while: events are numbered and kept in
+   * a bounded buffer so a browser that was mid-reconnect when the answer
+   * landed can ask for what it missed instead of never seeing it.
    */
-  private clients = new Map<string, IBridleClientData>();
+  private channels = new Map<string, IClientChannel>();
 
   private clientKey(clientId: string, agentId: string): string {
     return `${clientId}\u0000${agentId}`;
   }
 
+  private *sockets(): IterableIterator<IBridleClientData> {
+    for (const channel of this.channels.values()) {
+      yield* channel.sockets.values();
+    }
+  }
+
+  private channelFor(clientId: string, agentId: string): IClientChannel {
+    const key = this.clientKey(clientId, agentId);
+    let channel = this.channels.get(key);
+    if (!channel) {
+      channel = {
+        sockets: new Map(),
+        // Seeded from the clock, not zero: after an API restart the new
+        // numbers are still above any `lastSeq` a browser kept, so its
+        // catch-up request returns the new buffer instead of skipping it.
+        seq: Date.now(),
+        buffer: [],
+        seen: new Map(),
+      };
+      this.channels.set(key, channel);
+    }
+    return channel;
+  }
+
   /**
-   * Turns in flight, keyed like `clients`. Written from the thinking events
+   * Number an event, remember it, and hand it to every socket on the
+   * conversation — minus the one that caused it, for `user_message`.
+   */
+  private route(
+    channel: IClientChannel,
+    data: Record<string, unknown>,
+    exceptSocketId?: string,
+  ): void {
+    const now = Date.now();
+    const event: IBufferedEvent['event'] = { ...data, seq: ++channel.seq };
+    // A `stream` frame carries the whole text so far, so only the newest one
+    // per message is worth replaying — keeping them all would fill the buffer
+    // with every intermediate state of one long answer.
+    if (data.type === 'stream' && typeof data.messageId === 'string') {
+      channel.buffer = channel.buffer.filter(
+        (b) =>
+          !(b.event.type === 'stream' && b.event.messageId === data.messageId),
+      );
+    }
+    channel.buffer.push({ at: now, event });
+    while (
+      channel.buffer.length > REPLAY_MAX_EVENTS ||
+      (channel.buffer.length > 0 &&
+        now - channel.buffer[0].at > REPLAY_MAX_AGE_MS)
+    ) {
+      channel.buffer.shift();
+    }
+    for (const socket of channel.sockets.values()) {
+      if (socket.socketId !== exceptSocketId) socket.send(event);
+    }
+  }
+
+  replaySince(clientId: string, agentId: string, lastSeq: number): unknown[] {
+    const channel = this.channels.get(this.clientKey(clientId, agentId));
+    if (!channel) return [];
+    const cutoff = Date.now() - REPLAY_MAX_AGE_MS;
+    return channel.buffer
+      .filter((b) => b.at >= cutoff && b.event.seq > lastSeq)
+      .map((b) => b.event);
+  }
+
+  currentSeq(clientId: string, agentId: string): number {
+    return this.channels.get(this.clientKey(clientId, agentId))?.seq ?? 0;
+  }
+
+  /**
+   * Turns in flight, keyed like `channels`. Written from the thinking events
    * the hub already relays, so the API can drop a step of its own into the
    * timeline a person is watching (CLEAN-74) instead of minting a turnId that
    * would close the runtime's own block in every console.
@@ -126,7 +233,7 @@ export class BridleGateway extends IBridleGateway {
    * agent connected) vs orange (one side down) without polling.
    */
   private broadcastAgentStatus(agentId: string, connected: boolean): void {
-    for (const client of this.clients.values()) {
+    for (const client of this.sockets()) {
       if (client.agentId !== agentId) continue;
       client.send({ type: 'agent_status', agentId, connected });
     }
@@ -145,7 +252,12 @@ export class BridleGateway extends IBridleGateway {
     prompt?: string,
     capabilities?: string[],
   ): void {
-    this.clients.set(this.clientKey(clientId, agentId), {
+    const channel = this.channelFor(clientId, agentId);
+    if (channel.idleTimer) {
+      clearTimeout(channel.idleTimer);
+      channel.idleTimer = undefined;
+    }
+    channel.sockets.set(socketId, {
       clientId,
       agentId,
       socketId,
@@ -155,29 +267,28 @@ export class BridleGateway extends IBridleGateway {
       ...(capabilities && capabilities.length ? { capabilities } : {}),
     });
     this.logger.log(
-      `Browser client registered: ${clientId} agentId=${agentId} socket=${socketId} admin=${isAdmin}${capabilities?.length ? ` caps=[${capabilities.join(',')}]` : ''} (total: ${this.clients.size})`,
+      `Browser client registered: ${clientId} agentId=${agentId} socket=${socketId} admin=${isAdmin}${capabilities?.length ? ` caps=[${capabilities.join(',')}]` : ''} (sockets on this conversation: ${channel.sockets.size})`,
     );
   }
 
   unregisterClient(clientId: string, agentId: string, socketId: string): void {
     const key = this.clientKey(clientId, agentId);
-    const current = this.clients.get(key);
-    if (!current) return;
-    if (current.socketId !== socketId) {
-      // A stale/blackholed connection (detected late via ping timeout) is
-      // disconnecting after a reconnect already took over this clientId —
-      // the live registration must survive, or the browser silently stops
-      // receiving stream/message events until the page is reloaded.
-      this.logger.log(
-        `Ignoring stale disconnect for client=${clientId} agentId=${agentId}: socket=${socketId} is not the current owner (${current.socketId})`,
-      );
-      return;
-    }
-    this.clients.delete(key);
-    this.activeTurns.delete(key);
+    const channel = this.channels.get(key);
+    // Removing by socket id is what makes a stale/blackholed connection's late
+    // disconnect harmless: it can only ever remove itself.
+    if (!channel?.sockets.delete(socketId)) return;
     this.logger.log(
-      `Browser client unregistered: ${clientId} agentId=${agentId} (total: ${this.clients.size})`,
+      `Browser client unregistered: ${clientId} agentId=${agentId} socket=${socketId} (sockets left: ${channel.sockets.size})`,
     );
+    if (channel.sockets.size > 0) return;
+
+    this.activeTurns.delete(key);
+    // Keep the numbering and the buffer for a while — the usual reason for an
+    // empty conversation is a page that is about to reconnect.
+    channel.idleTimer = setTimeout(() => {
+      if (channel.sockets.size === 0) this.channels.delete(key);
+    }, CHANNEL_IDLE_MS);
+    channel.idleTimer.unref?.();
   }
 
   sendToAgent(
@@ -186,28 +297,58 @@ export class BridleGateway extends IBridleGateway {
     text: string,
     parts: BridlePart[],
     attachments?: IBridleAttachment[],
-  ): void {
+    options: IBridleSendOptions = {},
+  ): BridleSendResult {
+    const channel = this.channelFor(clientId, agentId);
+    const now = Date.now();
+
+    // A resend of something already handed over (the ack was lost, not the
+    // message) must not make the agent answer twice.
+    const { clientMessageId } = options;
+    if (clientMessageId) {
+      const acceptedAt = channel.seen.get(clientMessageId);
+      if (acceptedAt !== undefined && now - acceptedAt < SEEN_TTL_MS) {
+        return {
+          status: 'accepted',
+          messageId: clientMessageId,
+          ts: acceptedAt,
+          duplicate: true,
+        };
+      }
+    }
+
     const agentSend = this.agents.get(agentId)?.send;
     if (!agentSend) {
       this.logger.warn(
         `Cannot send to agent — not connected (agentId=${agentId})`,
       );
-      this.sendToClient(clientId, agentId, {
-        type: 'message',
-        text: 'Agent is not connected. Please try again later.',
-        parts: [
-          {
-            type: 'text',
-            text: 'Agent is not connected. Please try again later.',
-          },
-        ],
-        messageId: randomUUID(),
-        ts: Date.now(),
-      });
-      return;
+      // A caller that asked for an acknowledgement is told the truth and shows
+      // it under the person's own message. Everyone else (embed widget, older
+      // bundles) keeps the sentence they have always rendered as a reply.
+      if (!options.withAck) {
+        this.sendToClient(clientId, agentId, {
+          type: 'message',
+          text: 'Agent is not connected. Please try again later.',
+          parts: [
+            {
+              type: 'text',
+              text: 'Agent is not connected. Please try again later.',
+            },
+          ],
+          messageId: randomUUID(),
+          ts: now,
+        });
+      }
+      return { status: 'rejected', code: 'AGENT_OFFLINE' };
     }
 
-    const client = this.clients.get(this.clientKey(clientId, agentId));
+    // The browser's own id travels end to end when it sent one, so the bubble
+    // on screen, the message the agent gets and (once the runtime stores it)
+    // the transcript entry are one and the same message.
+    const messageId = clientMessageId ?? randomUUID();
+    const client =
+      (options.socketId && channel.sockets.get(options.socketId)) ||
+      channel.sockets.values().next().value;
     agentSend({
       type: 'message',
       clientId,
@@ -232,15 +373,47 @@ export class BridleGateway extends IBridleGateway {
             })),
           }
         : {}),
-      messageId: randomUUID(),
+      messageId,
     });
+
+    if (clientMessageId) {
+      channel.seen.set(clientMessageId, now);
+      for (const [id, at] of channel.seen) {
+        if (channel.seen.size <= SEEN_MAX && now - at < SEEN_TTL_MS) break;
+        channel.seen.delete(id);
+      }
+    }
+
+    // The other places this conversation is open get the question too —
+    // otherwise they would show an answer to something nobody asked there.
+    this.route(
+      channel,
+      {
+        type: 'user_message',
+        messageId,
+        text: options.displayText ?? text,
+        ...(attachments?.length
+          ? {
+              attachments: attachments.map((a) => ({
+                id: a.id,
+                name: a.name,
+                mimeType: a.mimeType,
+                size: a.size,
+                kind: a.kind,
+              })),
+            }
+          : {}),
+        ts: now,
+      },
+      options.socketId,
+    );
+
+    return { status: 'accepted', messageId, ts: now };
   }
 
   sendToClient(clientId: string, agentId: string, data: unknown): void {
-    const client = this.clients.get(this.clientKey(clientId, agentId));
-    if (client) {
-      client.send(data);
-    }
+    const channel = this.channels.get(this.clientKey(clientId, agentId));
+    if (channel) this.route(channel, data as Record<string, unknown>);
   }
 
   handleAgentEvent(agentId: string, data: IBridleOutgoingEvent): void {
@@ -251,10 +424,10 @@ export class BridleGateway extends IBridleGateway {
       this.trackTurn(agentId, clientId, data);
     }
 
-    const client = this.clients.get(this.clientKey(clientId, agentId));
-    if (client) {
-      client.send(data);
-    }
+    // No socket right now is not a reason to drop the event: `route` keeps it
+    // for the reconnect. An identity the hub has never seen gets nothing.
+    const channel = this.channels.get(this.clientKey(clientId, agentId));
+    if (channel) this.route(channel, { ...data });
   }
 
   /** A step opens or refreshes the turn; the terminal `done` closes it. */
@@ -331,7 +504,7 @@ export class BridleGateway extends IBridleGateway {
     // only knows the immediate sender, but multiple admins may be observing
     // the same agent and they all want to see prompt traces.
     let delivered = 0;
-    for (const client of this.clients.values()) {
+    for (const client of this.sockets()) {
       if (client.agentId !== agentId) continue;
       if (!client.isAdmin) continue;
       client.send(data);
@@ -348,13 +521,13 @@ export class BridleGateway extends IBridleGateway {
     return {
       ok: true,
       agentConnected: this.agents.size > 0,
-      browserClients: this.clients.size,
+      browserClients: [...this.sockets()].length,
     };
   }
 
   agentHealth(agentId: string): IBridleAgentHealthData {
     let clientCount = 0;
-    for (const client of this.clients.values()) {
+    for (const client of this.sockets()) {
       if (client.agentId === agentId) clientCount++;
     }
     return {
@@ -409,7 +582,7 @@ export class BridleGateway extends IBridleGateway {
     const result: Array<{ agentId: string; clients: number }> = [];
     for (const agentId of this.agents.keys()) {
       let clients = 0;
-      for (const c of this.clients.values()) {
+      for (const c of this.sockets()) {
         if (c.agentId === agentId) clients++;
       }
       result.push({ agentId, clients });

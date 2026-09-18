@@ -18,6 +18,7 @@ import {
   IBridleGateway,
   BridleAttachmentService,
   type BridlePart,
+  type BridleSendAck,
   type ChatRequesterKinds,
   buildParts,
   clientIdFromJwtPayload,
@@ -100,6 +101,7 @@ export class BridleClientWsHandler
       capabilities?: unknown;
       shareToken?: unknown;
       shareVisitor?: unknown;
+      lastSeq?: unknown;
     };
     // Offered AT ALL, like `hasShareToken` on the HTTP side: an empty token
     // must reach `authorizeChat` and come back rejected, never slip past into
@@ -289,6 +291,22 @@ export class BridleClientWsHandler
       client.emit(event, data);
     };
 
+    // A reconnecting browser says how far it got (CLEAN-102). What it missed
+    // goes out before the socket joins the conversation — all in one tick, so
+    // nothing live can slip in between and arrive ahead of older events.
+    const lastSeq =
+      typeof auth.lastSeq === 'number' && Number.isFinite(auth.lastSeq)
+        ? auth.lastSeq
+        : 0;
+    client.emit('welcome', {
+      clientId,
+      seq: this.hub.currentSeq(clientId, agentId),
+    });
+    if (lastSeq > 0) {
+      for (const missed of this.hub.replaySince(clientId, agentId, lastSeq)) {
+        send(missed);
+      }
+    }
     this.hub.registerClient(
       clientId,
       agentId,
@@ -298,7 +316,6 @@ export class BridleClientWsHandler
       prompt,
       capabilities,
     );
-    client.emit('welcome', { clientId });
     // Tell the new client whether the agent runtime is currently online so the
     // chat header can render the right indicator color before any subsequent
     // register/unregister broadcasts.
@@ -333,11 +350,25 @@ export class BridleClientWsHandler
       parts?: BridlePart[];
       images?: Array<{ base64: string; mediaType: string }>;
       attachmentIds?: string[];
+      clientMessageId?: string;
     },
-  ) {
+  ): Promise<BridleSendAck | undefined> {
     const clientId = client.data?.clientId as string;
     const agentId = client.data?.agentId as string;
     if (!clientId || !agentId) return;
+
+    // The return value is the socket.io acknowledgement (CLEAN-102): Nest hands
+    // it to the callback the browser passed, and drops it when there is none.
+    // A browser that mints a `clientMessageId` is one that renders the outcome
+    // under the person's message, so it is also the one that must not get the
+    // hub's synthetic "Agent is not connected" reply. The embed widget and
+    // older bundles send no id and keep today's behaviour byte for byte.
+    const clientMessageId =
+      typeof data.clientMessageId === 'string' &&
+      data.clientMessageId.length > 0 &&
+      data.clientMessageId.length <= 100
+        ? data.clientMessageId
+        : undefined;
 
     // A share link is re-validated per message, as the HTTP routes do: a
     // revoked link must stop a socket that is already open, not only the next
@@ -358,7 +389,7 @@ export class BridleClientWsHandler
         );
         client.emit('bridle_error', { code, agentId });
         client.disconnect();
-        return;
+        return { status: 'rejected', code: 'SHARE_REJECTED', message: code };
       }
     }
 
@@ -392,18 +423,25 @@ export class BridleClientWsHandler
         `Attachment expansion failed: clientId=${clientId} agentId=${agentId}: ${message}`,
       );
       client.emit('message_error', { message });
-      return;
+      return { status: 'rejected', code: 'ATTACHMENT_FAILED', message };
     }
 
     const parts = [...base, ...expanded.parts];
-    if (!expanded.text && parts.length === 0) return;
+    if (!expanded.text && parts.length === 0) {
+      return { status: 'rejected', code: 'EMPTY' };
+    }
 
-    this.hub.sendToAgent(
+    return this.hub.sendToAgent(
       clientId,
       agentId,
       expanded.text,
       parts,
       expanded.attachments,
+      {
+        socketId: client.id,
+        displayText: text,
+        ...(clientMessageId ? { clientMessageId, withAck: true } : {}),
+      },
     );
   }
 

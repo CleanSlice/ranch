@@ -101,6 +101,65 @@ export interface IBridleIncomingMessage {
   capabilities?: string[];
 }
 
+/**
+ * What a browser is told about a message it sent, through the socket.io
+ * acknowledgement (CLEAN-102). `accepted` means "handed to a connected agent",
+ * not "answered": it is what lets the chat show delivered / not delivered
+ * under a person's own message instead of a bubble that looks the same either
+ * way. Only callers that pass an ack callback get one — the embed widget and
+ * older bundles send none and behave exactly as before.
+ */
+export type BridleSendAck =
+  | {
+      status: 'accepted';
+      /** The browser's own `clientMessageId` when it sent one. */
+      messageId: string;
+      /** Hub clock at acceptance — the time both live and replayed views show. */
+      ts: number;
+      /** A resend of something already handed over; not forwarded again. */
+      duplicate?: true;
+    }
+  | {
+      status: 'rejected';
+      code: 'AGENT_OFFLINE' | 'ATTACHMENT_FAILED' | 'SHARE_REJECTED' | 'EMPTY';
+      message?: string;
+    };
+
+/** The subset of {@link BridleSendAck} the hub itself can produce. */
+export type BridleSendResult =
+  | Extract<BridleSendAck, { status: 'accepted' }>
+  | { status: 'rejected'; code: 'AGENT_OFFLINE' };
+
+export interface IBridleSendOptions {
+  /** Id minted by the browser; becomes the message id end to end. */
+  clientMessageId?: string;
+  /** The sending socket: its prompt/capabilities go to the agent, and it is
+   * the one socket that does NOT get the `user_message` echo. */
+  socketId?: string;
+  /** The caller renders the outcome itself, so no synthetic "Agent is not
+   * connected" reply is sent on its behalf. */
+  withAck?: boolean;
+  /** What the person typed, without the attachment blocks inlined for the
+   * model — that is what the other open views should show. */
+  displayText?: string;
+}
+
+/**
+ * Hub → browser: a message sent from ANOTHER socket of the same conversation
+ * (second tab, the admin next to the console). Without it that view would
+ * show an answer to a question nobody asked there.
+ */
+export interface IBridleUserMessageEvent {
+  type: 'user_message';
+  messageId: string;
+  text: string;
+  attachments?: Array<
+    Pick<IBridleAttachment, 'id' | 'name' | 'mimeType' | 'size' | 'kind'>
+  >;
+  ts: number;
+  seq: number;
+}
+
 /** Agent → Hub: events routed to browser clients */
 export interface IBridleOutgoingEvent {
   type:

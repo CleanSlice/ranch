@@ -57,6 +57,24 @@ interface ResolvedRequestConfig {
   apiKey: string;
 }
 
+/**
+ * Deadline for a call an agent waits on.
+ *
+ * It has to land below the MCP client's own 60s request timeout, which was
+ * previously the only bound anywhere in the chain: an unresponsive LightRAG
+ * held the request open until the agent's MCP client gave up and reported a
+ * bare "Request timed out" — no endpoint, no base, no duration. Failing here
+ * first turns that into an error that says what did not answer (CLEAN-101).
+ */
+const READ_TIMEOUT_MS = 45_000;
+
+/**
+ * Ingest and maintenance calls. Longer on purpose: indexing a document
+ * legitimately takes minutes, and nothing on this path is invoked through
+ * MCP, so there is no 60s ceiling to stay under.
+ */
+const WRITE_TIMEOUT_MS = 180_000;
+
 @Injectable()
 export class LightragHttpClient extends ILightragClient {
   private readonly resolveConfig: LightragConfigResolver;
@@ -66,6 +84,41 @@ export class LightragHttpClient extends ILightragClient {
     super();
     this.resolveConfig = options.resolveConfig;
     this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  /**
+   * Every LightRAG call goes through here so none can hang without a bound.
+   *
+   * A timeout surfaces as a LightragClientError naming the endpoint and the
+   * limit, because the alternative is what CLEAN-101 was filed for: the
+   * caller sees only that something, somewhere, did not answer. 504 is the
+   * honest status — this gateway did not get a timely response from upstream.
+   */
+  private async fetchWithDeadline(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number,
+    path: string,
+  ): Promise<Response> {
+    try {
+      return await this.fetchImpl(url, {
+        ...init,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      // AbortSignal.timeout aborts with a TimeoutError; an AbortError can
+      // still arrive from a caller-supplied signal, so treat both as a
+      // deadline rather than letting a bare "aborted" reach the caller.
+      const name = (err as Error)?.name;
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        throw new LightragClientError(
+          `LightRAG ${path} did not respond within ${Math.round(timeoutMs / 1000)}s`,
+          504,
+          path,
+        );
+      }
+      throw err;
+    }
   }
 
   async health(): Promise<ILightragHealth> {
@@ -91,16 +144,21 @@ export class LightragHttpClient extends ILightragClient {
       knowledgeId: input.knowledgeId,
       intent: 'write',
     });
-    const res = await this.fetchImpl(`${cfg.baseUrl}/documents/text`, {
-      method: 'POST',
-      headers: this.headers(cfg.apiKey, {
-        'content-type': 'application/json',
-      }),
-      body: JSON.stringify({
-        text: input.text,
-        file_source: input.fileSource,
-      }),
-    });
+    const res = await this.fetchWithDeadline(
+      `${cfg.baseUrl}/documents/text`,
+      {
+        method: 'POST',
+        headers: this.headers(cfg.apiKey, {
+          'content-type': 'application/json',
+        }),
+        body: JSON.stringify({
+          text: input.text,
+          file_source: input.fileSource,
+        }),
+      },
+      WRITE_TIMEOUT_MS,
+      '/documents/text',
+    );
     await this.ensureOk(res, '/documents/text');
     return this.extractDocId(res, '/documents/text');
   }
@@ -121,16 +179,21 @@ export class LightragHttpClient extends ILightragClient {
         input.url,
       );
     }
-    const res = await this.fetchImpl(`${cfg.baseUrl}/documents/text`, {
-      method: 'POST',
-      headers: this.headers(cfg.apiKey, {
-        'content-type': 'application/json',
-      }),
-      body: JSON.stringify({
-        text,
-        file_source: input.fileSource ?? input.url,
-      }),
-    });
+    const res = await this.fetchWithDeadline(
+      `${cfg.baseUrl}/documents/text`,
+      {
+        method: 'POST',
+        headers: this.headers(cfg.apiKey, {
+          'content-type': 'application/json',
+        }),
+        body: JSON.stringify({
+          text,
+          file_source: input.fileSource ?? input.url,
+        }),
+      },
+      WRITE_TIMEOUT_MS,
+      '/documents/text',
+    );
     await this.ensureOk(res, '/documents/text');
     return this.extractDocId(res, '/documents/text');
   }
@@ -171,11 +234,16 @@ export class LightragHttpClient extends ILightragClient {
     // now 404s, same drift that killed /documents/url). Upload saves the
     // file to the input dir and processes it in the background, returning a
     // track_id like the text endpoints.
-    const res = await this.fetchImpl(`${cfg.baseUrl}/documents/upload`, {
-      method: 'POST',
-      headers: this.headers(cfg.apiKey),
-      body: form,
-    });
+    const res = await this.fetchWithDeadline(
+      `${cfg.baseUrl}/documents/upload`,
+      {
+        method: 'POST',
+        headers: this.headers(cfg.apiKey),
+        body: form,
+      },
+      WRITE_TIMEOUT_MS,
+      '/documents/upload',
+    );
     await this.ensureOk(res, '/documents/upload');
     return this.extractDocId(res, '/documents/upload');
   }
@@ -185,18 +253,26 @@ export class LightragHttpClient extends ILightragClient {
       knowledgeId: input.knowledgeId,
       intent: 'read',
     });
-    const res = await this.fetchImpl(`${cfg.baseUrl}/query`, {
-      method: 'POST',
-      headers: this.headers(cfg.apiKey, {
-        'content-type': 'application/json',
-      }),
-      body: JSON.stringify({
-        query: input.query,
-        mode: input.mode ?? 'hybrid',
-        top_k: input.topK ?? 10,
-        include_references: true,
-      }),
-    });
+    // The call an agent is waiting on: bounded below the MCP client's 60s so
+    // a stalled instance produces a named error here rather than an opaque
+    // "Request timed out" three tool iterations later.
+    const res = await this.fetchWithDeadline(
+      `${cfg.baseUrl}/query`,
+      {
+        method: 'POST',
+        headers: this.headers(cfg.apiKey, {
+          'content-type': 'application/json',
+        }),
+        body: JSON.stringify({
+          query: input.query,
+          mode: input.mode ?? 'hybrid',
+          top_k: input.topK ?? 10,
+          include_references: true,
+        }),
+      },
+      READ_TIMEOUT_MS,
+      '/query',
+    );
     await this.ensureOk(res, '/query');
     const body: unknown = await res.json();
     return extractQueryResult(body);
@@ -214,7 +290,7 @@ export class LightragHttpClient extends ILightragClient {
       docIds.push(...ids);
     }
     if (docIds.length === 0) return;
-    const res = await this.fetchImpl(
+    const res = await this.fetchWithDeadline(
       `${cfg.baseUrl}/documents/delete_document`,
       {
         method: 'DELETE',
@@ -227,6 +303,8 @@ export class LightragHttpClient extends ILightragClient {
           delete_llm_cache: false,
         }),
       },
+      WRITE_TIMEOUT_MS,
+      '/documents/delete_document',
     );
     await this.ensureOk(res, '/documents/delete_document');
   }
@@ -254,10 +332,12 @@ export class LightragHttpClient extends ILightragClient {
    */
   async listDocuments(knowledgeId: string): Promise<IDocumentRecord[]> {
     const cfg = await this.requireEnabled({ knowledgeId, intent: 'write' });
-    const res = await this.fetchImpl(`${cfg.baseUrl}/documents`, {
-      method: 'GET',
-      headers: this.headers(cfg.apiKey),
-    });
+    const res = await this.fetchWithDeadline(
+      `${cfg.baseUrl}/documents`,
+      { method: 'GET', headers: this.headers(cfg.apiKey) },
+      READ_TIMEOUT_MS,
+      '/documents',
+    );
     await this.ensureOk(res, '/documents');
     const body: unknown = await res.json();
     return extractDocuments(body);
@@ -267,12 +347,11 @@ export class LightragHttpClient extends ILightragClient {
     cfg: ResolvedRequestConfig,
     trackId: string,
   ): Promise<ITrackStatus> {
-    const res = await this.fetchImpl(
+    const res = await this.fetchWithDeadline(
       `${cfg.baseUrl}/documents/track_status/${encodeURIComponent(trackId)}`,
-      {
-        method: 'GET',
-        headers: this.headers(cfg.apiKey),
-      },
+      { method: 'GET', headers: this.headers(cfg.apiKey) },
+      READ_TIMEOUT_MS,
+      `/documents/track_status/${trackId}`,
     );
     if (res.status === 404) return { documents: [] };
     await this.ensureOk(res, `/documents/track_status/${trackId}`);
@@ -292,10 +371,12 @@ export class LightragHttpClient extends ILightragClient {
     const cfg = await this.requireEnabled(
       knowledgeId ? { knowledgeId, intent: 'read' } : undefined,
     );
-    const res = await this.fetchImpl(`${cfg.baseUrl}/graph/label/list`, {
-      method: 'GET',
-      headers: this.headers(cfg.apiKey),
-    });
+    const res = await this.fetchWithDeadline(
+      `${cfg.baseUrl}/graph/label/list`,
+      { method: 'GET', headers: this.headers(cfg.apiKey) },
+      READ_TIMEOUT_MS,
+      '/graph/label/list',
+    );
     await this.ensureOk(res, '/graph/label/list');
     const body: unknown = await res.json();
     return extractLabels(body);
@@ -314,12 +395,11 @@ export class LightragHttpClient extends ILightragClient {
     if (input.maxNodes !== undefined) {
       params.set('max_nodes', String(input.maxNodes));
     }
-    const res = await this.fetchImpl(
+    const res = await this.fetchWithDeadline(
       `${cfg.baseUrl}/graphs?${params.toString()}`,
-      {
-        method: 'GET',
-        headers: this.headers(cfg.apiKey),
-      },
+      { method: 'GET', headers: this.headers(cfg.apiKey) },
+      READ_TIMEOUT_MS,
+      '/graphs',
     );
     await this.ensureOk(res, '/graphs');
     const body: unknown = await res.json();
@@ -335,9 +415,11 @@ export class LightragHttpClient extends ILightragClient {
     const cfg = await this.requireEnabled(
       knowledgeId ? { knowledgeId, intent: 'write' } : undefined,
     );
-    const res = await this.fetchImpl(
+    const res = await this.fetchWithDeadline(
       `${cfg.baseUrl}/documents/pipeline_status`,
       { method: 'GET', headers: this.headers(cfg.apiKey) },
+      READ_TIMEOUT_MS,
+      '/documents/pipeline_status',
     );
     await this.ensureOk(res, '/documents/pipeline_status');
     const body: unknown = await res.json();
@@ -357,9 +439,11 @@ export class LightragHttpClient extends ILightragClient {
     const cfg = await this.requireEnabled(
       knowledgeId ? { knowledgeId, intent: 'write' } : undefined,
     );
-    const res = await this.fetchImpl(
+    const res = await this.fetchWithDeadline(
       `${cfg.baseUrl}/documents/reprocess_failed`,
       { method: 'POST', headers: this.headers(cfg.apiKey) },
+      WRITE_TIMEOUT_MS,
+      '/documents/reprocess_failed',
     );
     await this.ensureOk(res, '/documents/reprocess_failed');
   }

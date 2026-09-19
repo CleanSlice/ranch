@@ -14,6 +14,7 @@ import { ILightragClient } from '../../lightrag/domain/lightrag.client';
 import {
   IDocumentProcessingStatus,
   IDocumentRecord,
+  LightragTimeoutError,
 } from '../../lightrag/domain/lightrag.types';
 import { ISourceGateway } from '../domain/source.gateway';
 import {
@@ -116,6 +117,14 @@ const ALREADY_STORED = /Document storage already contains ['"]([^'"]+)['"]/i;
 interface IDocumentSnapshot {
   byId: Map<string, IDocumentRecord>;
   byName: Map<string, IDocumentRecord>;
+  /**
+   * Set when LightRAG took the request and never answered: what to report for
+   * every source of that base instead of talking to it further. A LightRAG in
+   * that state answers nothing that touches its database, so each upload or
+   * status read would only run into its own timeout, one after another - a
+   * run over a few hundred sources would take a day to fail.
+   */
+  hung: string | null;
 }
 
 function normalizeName(name: string): string {
@@ -509,6 +518,11 @@ export class SourceGateway extends ISourceGateway {
 
     for (const source of sources) {
       const known = await snapshotFor(source.knowledgeId);
+      if (known.hung !== null) {
+        // Reported for this run only; the rows keep whatever they held.
+        outcomes.set(source.id, this.failed(source, known.hung));
+        continue;
+      }
       const existing = await this.checkExistingIndex(source, known.byId);
 
       if (existing.kind === 'indexed') {
@@ -655,6 +669,10 @@ export class SourceGateway extends ISourceGateway {
         known = await this.snapshotDocuments(source.knowledgeId);
         snapshots.set(source.knowledgeId, known);
       }
+      if (known.hung !== null) {
+        outcomes.push(this.failed(source, known.hung));
+        continue;
+      }
       const existing = await this.checkExistingIndex(source, known.byId);
       if (existing.kind === 'indexed') {
         outcomes.push(await this.succeed(source, existing.docId));
@@ -766,6 +784,13 @@ export class SourceGateway extends ISourceGateway {
     }
     for (const [knowledgeId, rows] of byBase) {
       const known = await this.snapshotDocuments(knowledgeId);
+      if (known.hung !== null) {
+        // Nothing to retry against; the rows stay due for the next pass.
+        for (const source of rows) {
+          outcomes.push(this.retried(source, 'failed', known.hung));
+        }
+        continue;
+      }
       const handles = await this.prisma.source.findMany({
         where: { id: { in: rows.map((r) => r.id) } },
         select: { id: true, lightragDocId: true },
@@ -1011,12 +1036,17 @@ export class SourceGateway extends ISourceGateway {
   private async snapshotDocuments(
     knowledgeId: string,
   ): Promise<IDocumentSnapshot> {
-    const empty: IDocumentSnapshot = { byId: new Map(), byName: new Map() };
+    const empty: IDocumentSnapshot = {
+      byId: new Map(),
+      byName: new Map(),
+      hung: null,
+    };
     try {
       const documents = await this.lightrag.listDocuments(knowledgeId);
       const snapshot: IDocumentSnapshot = {
         byId: new Map(),
         byName: new Map(),
+        hung: null,
       };
       for (const doc of documents) {
         snapshot.byId.set(doc.id, doc);
@@ -1028,9 +1058,36 @@ export class SourceGateway extends ISourceGateway {
     } catch (err) {
       // Not fatal: the per-source track lookups still work, the snapshot only
       // helps reconcile documents Ranch has lost the id for.
+      if (err instanceof LightragTimeoutError) {
+        await this.reportHung(knowledgeId, err);
+        return { ...empty, hung: `LightRAG is not answering (${err.message})` };
+      }
       this.logger.warn(`listDocuments failed: ${errorMessage(err)}`);
       return empty;
     }
+  }
+
+  /**
+   * The one log line to alert on. A timeout on a data call while /health still
+   * answers is the signature of LightRAG holding a pool of dead database
+   * connections (its Postgres was restarted or moved): it never recovers by
+   * itself, and until its pod is restarted every knowledge query hangs.
+   */
+  private async reportHung(
+    knowledgeId: string,
+    err: LightragTimeoutError,
+  ): Promise<void> {
+    let healthy = false;
+    try {
+      healthy = (await this.lightrag.health()).ok;
+    } catch {
+      healthy = false;
+    }
+    this.logger.error(
+      healthy
+        ? `LightRAG for ${knowledgeId} answers /health but ${err.path} timed out after ${err.waitedMs / 1000} s: its database connections are most likely stuck (a restarted Postgres leaves the pool dead). Restart the LightRAG pod; nothing recovers until then.`
+        : `LightRAG for ${knowledgeId} is not answering: ${err.message}`,
+    );
   }
 
   /**

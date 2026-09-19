@@ -8,6 +8,7 @@ import { ITemplateGateway } from '#/agent/template/domain';
 import { IDynamicallyDescribedTool } from '#/mcp/interfaces/dynamic-description.interface';
 import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
+import { LightragTimeoutError } from '../lightrag/domain/lightrag.types';
 
 // The batching sentence is not stylistic advice: one call spends several
 // seconds inside the knowledge service composing an answer, and the service
@@ -148,10 +149,19 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
             return { knowledge_id: id, knowledge_name, ...r };
           } catch (e) {
             const message = e instanceof Error ? e.message : 'query failed';
+            // Logged here because this failure never reaches the outer catch:
+            // it is folded into a normal result, and on 2026-09-18 that left
+            // an hour of timeouts with no line of ours in the API log.
+            this.logger.warn(
+              `query_knowledge failed for agent=${callerAgentId} knowledge=${id}: ${message}`,
+            );
             return {
               knowledge_id: id,
               knowledge_name,
-              error: `Knowledge base ${knowledge_name ?? id} could not be reached: ${message}`,
+              error:
+                e instanceof LightragTimeoutError
+                  ? `Knowledge base ${knowledge_name ?? id} is not answering right now (${message}). It is most likely restarting: say so to the user and try again in a few minutes instead of repeating the call straight away.`
+                  : `Knowledge base ${knowledge_name ?? id} could not be reached: ${message}`,
             };
           }
         }),

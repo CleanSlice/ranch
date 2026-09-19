@@ -11,6 +11,7 @@ import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain';
+import { LightragTimeoutError } from '../lightrag/domain/lightrag.types';
 
 const K2_SECRET = 'the Grangemouth override code is 9944';
 
@@ -28,12 +29,13 @@ interface Harness {
   findExistingByIds: jest.Mock;
 }
 
-function makeHarness(boundIds: string[]): Harness {
+function makeHarness(boundIds: string[], failWith?: Error): Harness {
   const queriedIds: string[] = [];
 
   const knowledgeService = {
     query: jest.fn(async (knowledgeId: string) => {
       queriedIds.push(knowledgeId);
+      if (failWith) throw failWith;
       if (knowledgeId === 'k2') {
         // If the tool ever lets a query through to K2, the secret leaks
         // into the result and the assertions below catch it.
@@ -336,5 +338,42 @@ describe('FR-006 — a multi-base answer attributes each part', () => {
     expect(queriedIds).toEqual(['k1']);
     const parsed = JSON.parse(textOf(result)) as { answer: string };
     expect(parsed.answer).toBe('shared answer');
+  });
+});
+
+describe('query_knowledge when the knowledge base does not answer', () => {
+  test('says so in words and asks the agent to come back later', async () => {
+    // 2026-09-18: LightRAG hung on dead database connections and the agent
+    // only ever saw the MCP client's "-32001: Request timed out", which sent
+    // everyone looking at MCP.
+    const { tool } = makeHarness(
+      ['k1'],
+      new LightragTimeoutError('/query', 50_000),
+    );
+
+    const result = await tool.query(
+      { query: 'CX-5 advantages over RAV4' },
+      null,
+      agentRequest('agent-1'),
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result)).toContain('Relays is not answering right now');
+    expect(textOf(result)).toContain('LightRAG /query timed out after 50 s');
+    expect(textOf(result)).toContain('try again in a few minutes');
+  });
+
+  test('keeps the plain wording for any other failure', async () => {
+    const { tool } = makeHarness(['k1'], new Error('LightRAG /query failed: 502'));
+
+    const result = await tool.query(
+      { query: 'anything' },
+      null,
+      agentRequest('agent-1'),
+    );
+
+    expect(textOf(result)).toContain(
+      'Relays could not be reached: LightRAG /query failed: 502',
+    );
   });
 });

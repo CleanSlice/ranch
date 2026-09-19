@@ -20,6 +20,7 @@ import { A2aClient } from './domain/a2a.client';
 import { PeerService } from './domain/peer.service';
 import { DelegationService } from './domain/delegation.service';
 import { AskAgentTool } from './askAgent.tool';
+import { PeerAdminTool } from './peerAdmin.tool';
 import { A2aController } from './a2a.controller';
 import { PeerController } from './peer.controller';
 
@@ -54,6 +55,8 @@ import { PeerController } from './peer.controller';
     // MCP tool: ask_agent. Discovered by the #mcp registry like every
     // @Tool provider, and listed only for agents that have peers.
     AskAgentTool,
+    // MCP tools: the peer set itself, for operator agents only (CLEAN-103).
+    PeerAdminTool,
     A2aTaskStore,
     A2aServerService,
     A2aCardGuard,

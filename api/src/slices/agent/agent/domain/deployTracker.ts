@@ -28,6 +28,16 @@ export class DeployTracker {
     return new Date(podStartedAt).getTime() < cutoff;
   }
 
+  // The runtime on the bridle hub registered before the latest mark(): it is
+  // the instance this deploy is replacing, still connected while Argo gets
+  // round to deleting its pod. Being on the hub proves nothing about the
+  // deploy in flight, and must not end it (CLEAN-106).
+  isFromBeforeDeploy(agentId: string, connectedSince: number | null): boolean {
+    const cutoff = this.cutoffs.get(agentId);
+    if (cutoff === undefined || connectedSince === null) return false;
+    return connectedSince < cutoff;
+  }
+
   clear(agentId: string): void {
     this.cutoffs.delete(agentId);
   }

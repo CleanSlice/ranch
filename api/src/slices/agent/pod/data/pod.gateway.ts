@@ -194,6 +194,7 @@ export class KubePodGateway
     return (
       prev.phase !== next.phase ||
       prev.ready !== next.ready ||
+      prev.terminating !== next.terminating ||
       prev.containerWaitingReason !== next.containerWaitingReason ||
       prev.lastTerminationReason !== next.lastTerminationReason ||
       prev.restartCount !== next.restartCount ||
@@ -290,6 +291,7 @@ export class KubePodGateway
       ready: containerState?.ready ?? false,
       restartCount: containerState?.restartCount ?? 0,
       startedAt: this.toIso(pod.status?.startTime),
+      terminating: Boolean(pod.metadata?.deletionTimestamp),
       lastTerminationReason:
         containerState?.lastState?.terminated?.reason ?? null,
       containerWaitingReason: containerState?.state?.waiting?.reason ?? null,

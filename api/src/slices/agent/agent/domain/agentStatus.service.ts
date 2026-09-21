@@ -400,7 +400,23 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
           // would find a pod-less 'running' agent and mark it FAILED. We
           // still `continue` so a stopped-but-lingering runtime isn't drift
           // -failed either.
-          if (agent.status !== 'running' && agent.status !== 'stopped') {
+          //
+          // A restart in flight is exempt too, for as long as the runtime on
+          // the hub is the one being REPLACED: it stays connected for the
+          // seconds Argo needs to reach its pod. Promoting on its account
+          // wrote 'running' over 'deploying' and — worse — dropped the deploy
+          // cutoff, so the old pod's clean exit a moment later was read as
+          // the new deploy failing: a healthy restart flashed 'failed'
+          // ("agent runtime exited") until the new pod came up (CLEAN-106).
+          const replacedRuntime = this.deployTracker.isFromBeforeDeploy(
+            agent.id,
+            this.bridleGateway.agentConnectedSince(agent.id),
+          );
+          if (
+            agent.status !== 'running' &&
+            agent.status !== 'stopped' &&
+            !replacedRuntime
+          ) {
             this.logger.log(
               `Drift: agent ${agent.id} (${agent.name}) is ${agent.status} in DB but bridle has it registered — marking running`,
             );
@@ -567,6 +583,17 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
         FAIL_WAITING_REASONS.has(podStatus.containerWaitingReason));
 
     if (isFailed) {
+      // A pod that is being deleted ends in Succeeded or Failed by design:
+      // the runtime exits on SIGTERM. That is a restart, a stop or a manual
+      // delete doing its job. Unlike the deploy cutoff below this needs no
+      // memory of who started what, so it also holds across an API restart
+      // and when the cutoff was already consumed (CLEAN-106).
+      if (podStatus.terminating) {
+        this.logger.debug(
+          `Skipping ${podStatus.phase} event for agent ${agent.id} pod ${podStatus.podName} — the pod is being deleted`,
+        );
+        return;
+      }
       // Stale failure from the OLD pod during a restart — Argo cancels the
       // previous workflow, kubelet flips its pod to Failed, the watch emits a
       // MODIFIED event. Without this skip the DB toggles to 'failed' between
@@ -612,6 +639,8 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     if (
       podStatus.phase === 'Running' &&
       podStatus.ready &&
+      // A pod on its way out is no evidence that the agent is up.
+      !podStatus.terminating &&
       agent.status !== 'running' &&
       // 'unreachable' is exactly "pod healthy, runtime absent" — a pod event
       // proves nothing new. Only a bridle registration promotes out of it;

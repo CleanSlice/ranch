@@ -21,6 +21,7 @@ import { PeerService } from './domain/peer.service';
 import { DelegationService } from './domain/delegation.service';
 import { AskAgentTool } from './askAgent.tool';
 import { PeerAdminTool } from './peerAdmin.tool';
+import { PeerSelfTool } from './peerSelf.tool';
 import { A2aController } from './a2a.controller';
 import { PeerController } from './peer.controller';
 
@@ -57,6 +58,8 @@ import { PeerController } from './peer.controller';
     AskAgentTool,
     // MCP tools: the peer set itself, for operator agents only (CLEAN-103).
     PeerAdminTool,
+    // MCP tools: any agent, its own colleagues only (CLEAN-105).
+    PeerSelfTool,
     A2aTaskStore,
     A2aServerService,
     A2aCardGuard,

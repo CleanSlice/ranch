@@ -4,7 +4,9 @@ interface IFieldDef {
   name: string;
   label: string;
   description?: string;
-  type?: 'text' | 'password';
+  // `toggle` stores the strings 'true' / 'false' — settings are text either
+  // way, and a switch nobody can find is not a switch (CLEAN-105).
+  type?: 'text' | 'password' | 'toggle';
   placeholder?: string;
   // Localhost / dev default. Pre-filled when no value is saved, and used
   // as the target for the "Reset to localhost values" button.
@@ -21,7 +23,14 @@ interface IProps {
 const props = defineProps<IProps>();
 
 const settingStore = useSettingStore();
-await useAsyncData('admin-settings', () => settingStore.fetchAll());
+// Keyed by the fields it shows, not by a constant: a page may now carry more
+// than one of these forms, and two useAsyncData calls sharing a key with
+// different handlers is undefined behaviour. The values themselves live in the
+// store — this only tracks the load (docs/state.md).
+const loadKey = `admin-settings-${props.fields
+  .map((f) => `${f.group}.${f.name}`)
+  .join(',')}`;
+await useAsyncData(loadKey, () => settingStore.fetchAll());
 
 const keyOf = (g: string, n: string) => `${g}.${n}`;
 
@@ -107,14 +116,37 @@ async function onSave() {
           :key="keyOf(field.group, field.name)"
           class="grid gap-2"
         >
-          <Label :for="keyOf(field.group, field.name)">{{ field.label }}</Label>
-          <Input
-            :id="keyOf(field.group, field.name)"
-            v-model="values[keyOf(field.group, field.name)]"
-            :type="field.type ?? 'text'"
-            :placeholder="field.placeholder"
-            :autocomplete="field.type === 'password' ? 'off' : undefined"
-          />
+          <!-- A toggle reads as "on unless it was turned off": an unsaved
+               setting is the default, and the default is on. -->
+          <div
+            v-if="field.type === 'toggle'"
+            class="flex items-center gap-2.5"
+          >
+            <Checkbox
+              :id="keyOf(field.group, field.name)"
+              :model-value="values[keyOf(field.group, field.name)] !== 'false'"
+              @update:model-value="
+                (v: boolean | 'indeterminate') =>
+                  (values[keyOf(field.group, field.name)] =
+                    v === true ? 'true' : 'false')
+              "
+            />
+            <Label :for="keyOf(field.group, field.name)">
+              {{ field.label }}
+            </Label>
+          </div>
+          <template v-else>
+            <Label :for="keyOf(field.group, field.name)">
+              {{ field.label }}
+            </Label>
+            <Input
+              :id="keyOf(field.group, field.name)"
+              v-model="values[keyOf(field.group, field.name)]"
+              :type="field.type ?? 'text'"
+              :placeholder="field.placeholder"
+              :autocomplete="field.type === 'password' ? 'off' : undefined"
+            />
+          </template>
           <p v-if="field.description" class="text-xs text-muted-foreground">
             {{ field.description }}
           </p>

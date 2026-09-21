@@ -1,38 +1,23 @@
-import {
-  ForbiddenException,
-  HttpException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
 import { Tool } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
-import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
-import { UserRoleTypes } from '#/user/user/domain';
 import { PeerService } from './domain/peer.service';
 import { AgentCardService } from './domain/agentCard.service';
 import { IDelegationGateway } from './domain/delegation.gateway';
-import { PeerErrorCodes, type IAgentPeerView } from './domain/peer.types';
-
-interface ToolResult {
-  content: { type: 'text'; text: string }[];
-  isError?: boolean;
-}
-
-const ok = (value: unknown): ToolResult => ({
-  content: [
-    {
-      type: 'text',
-      text: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
-    },
-  ],
-});
-
-const err = (text: string): ToolResult => ({
-  content: [{ type: 'text', text }],
-  isError: true,
-});
+import { PeerErrorCodes } from './domain/peer.types';
+import {
+  advertises,
+  callerIsOperator,
+  err,
+  ok,
+  SHARED_HINTS,
+  toToolPeer,
+  withRefusalAdvice,
+  type RefusalHints,
+  type ToolResult,
+} from './toolSupport';
 
 /** How many delegations `list_agent_delegations` returns when not told. */
 const DEFAULT_DELEGATION_LIMIT = 20;
@@ -72,7 +57,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(isOperator(httpRequest));
+    return Promise.resolve(callerIsOperator(httpRequest));
   }
 
   /**
@@ -81,7 +66,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
    * two is refactored.
    */
   private requireOperator(httpRequest: Request): void {
-    if (!isOperator(httpRequest)) {
+    if (!callerIsOperator(httpRequest)) {
       throw new ForbiddenException(
         'Managing peers requires the Ranch operator role.',
       );
@@ -259,13 +244,14 @@ export class PeerAdminTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     this.requireOperator(httpRequest);
     return this.guard(async () => {
+      const hadPeers = (await this.peers.list(agentId)).length > 0;
       const peer = await this.peers.connect(agentId, peerAgentId);
       this.logger.log(
         `Peer connected through MCP: agent=${agentId} peer=${peerAgentId}`,
       );
       return ok(
         `«${peer.peerName}» is now a peer of ${agentId} (connection ${peer.id}). ` +
-          `${advertises(peer)} ${restartLine(agentId)}`,
+          `${advertises(peer)} ${restartLine(agentId, hadPeers)}`,
       );
     });
   }
@@ -305,13 +291,15 @@ export class PeerAdminTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     this.requireOperator(httpRequest);
     return this.guard(async () => {
+      const hadPeers = (await this.peers.list(agentId)).length > 0;
       const peer = await this.peers.connectByUrl(agentId, url, credential);
       this.logger.log(
         `External peer imported through MCP: agent=${agentId} url=${peer.cardUrl}`,
       );
       return ok(
         `«${peer.peerName}» (${peer.cardUrl}) is now a peer of ${agentId} ` +
-          `(connection ${peer.id}). ${advertises(peer)} ${restartLine(agentId)}`,
+          `(connection ${peer.id}). ${advertises(peer)} ` +
+          `${restartLine(agentId, hadPeers)}`,
       );
     });
   }
@@ -378,95 +366,39 @@ export class PeerAdminTool implements IConditionallyListedTool {
     });
   }
 
-  /**
-   * The MCP layer turns a thrown error into `isError` text already. This adds
-   * the one thing it cannot: what the model should do next. A refusal that
-   * names the fix ("that address is ours — connect it by id") is the
-   * difference between the agent correcting itself and the agent telling the
-   * person it cannot be done.
-   */
-  private async guard(run: () => Promise<ToolResult>): Promise<ToolResult> {
-    try {
-      return await run();
-    } catch (error) {
-      if (!(error instanceof HttpException)) throw error;
-      const body = error.getResponse();
-      const code =
-        typeof body === 'object' && body !== null
-          ? (body as { code?: string }).code
-          : undefined;
-      const hint = code ? NEXT_STEP[code] : undefined;
-      return err(hint ? `${error.message} ${hint}` : error.message);
-    }
+  private guard(run: () => Promise<ToolResult>): Promise<ToolResult> {
+    return withRefusalAdvice(run, OPERATOR_HINTS);
   }
 }
 
-/** What to try next, per refusal the peer service can raise. */
-const NEXT_STEP: Record<string, string> = {
+/** What to try next, in the vocabulary of the operator tool set. */
+const OPERATOR_HINTS: RefusalHints = {
+  ...SHARED_HINTS,
   [PeerErrorCodes.SelfUrl]:
     'Call list_peer_candidates and connect it with connect_agent_peer instead.',
-  [PeerErrorCodes.Self]: 'An agent cannot be its own peer.',
   [PeerErrorCodes.Exists]:
     'It is already connected — list_agent_peers shows it.',
-  [PeerErrorCodes.Version]:
-    'Nothing was saved. Ranch speaks A2A 1.0 only; ask its owner whether it ' +
-    'publishes a 1.0 card.',
-  [PeerErrorCodes.Binding]:
-    'Nothing was saved. Ranch calls agents over JSON-RPC only.',
-  [PeerErrorCodes.UrlInvalid]: 'Nothing was saved. Check the address.',
-  [PeerErrorCodes.UrlUnreachable]:
-    'Nothing was saved. Tell the person the address did not answer; do not ' +
-    'invent what that agent can do.',
-  [PeerErrorCodes.CardUnreachable]:
-    'Nothing was saved — the card could not be read.',
   [PeerErrorCodes.NotFound]:
     'Check the ids with list_agents and list_agent_peers.',
 };
 
-/** Peers as a model needs them: what it is, what it claims, is it usable. */
-function toToolPeer(view: IAgentPeerView) {
-  return {
-    peerId: view.id,
-    name: view.peerName,
-    origin: view.origin,
-    status: view.peerStatus,
-    exists: view.peerExists,
-    address: view.cardUrl,
-    description: view.card?.description ?? '',
-    skills: (view.card?.skills ?? []).map((s) => ({
-      name: s.name,
-      description: s.description,
-    })),
-    cardReadAt: view.cardReadAt,
-  };
-}
-
 /**
- * A peer with an empty card is connected and useless: the delegating model
- * matches questions against this text, so "nothing advertised" is the single
- * most useful thing to say back at connect time (CLEAN-95).
+ * What a restart is actually for, which depends on whether this was the
+ * agent's first colleague. `ask_agent` is listed only for an agent that had
+ * peers when it booted, and its roster of colleagues is captured then too —
+ * but `delegation.service.run` resolves the peer against the live rows. So an
+ * agent that already had peers can reach a new one the moment someone names
+ * it; an agent getting its first one cannot delegate at all until it restarts
+ * (CLEAN-105).
  */
-function advertises(view: IAgentPeerView): string {
-  const skills = view.card?.skills ?? [];
-  if (skills.length) {
-    return `It advertises: ${skills.map((s) => s.name).join(', ')}.`;
-  }
-  return view.card?.description
-    ? 'Its card lists no skills, so matching leans on its description alone.'
-    : 'Warning: its card advertises nothing — no description, no skills. It ' +
-        'will only ever be asked when the person names it outright.';
-}
-
-function restartLine(agentId: string): string {
-  return (
-    `It is not live yet: that agent reads its peer list when it starts, so ` +
-    `call restart_agent with id=${agentId}. A restart ends whatever ` +
-    'conversation that agent is in, so ask the person first if it might be busy.'
-  );
-}
-
-/** Admin agents hold the Owner role; plain agents hold `Agent` (auth.service). */
-function isOperator(httpRequest: Request): boolean {
-  const user = (httpRequest as Request & { user?: IAuthTokenPayload }).user;
-  return (user?.roles ?? []).includes(UserRoleTypes.Owner);
+function restartLine(agentId: string, hadPeers: boolean): string {
+  return hadPeers
+    ? `It can be reached already — delegation resolves peers by name when the ` +
+        `call is made. What is stale is that agent's own roster of colleagues, ` +
+        `captured when it started: until restart_agent with id=${agentId} it ` +
+        `will only ask this peer if someone names it, never by topic.`
+    : `This is that agent's FIRST colleague, so it has no ask_agent tool yet — ` +
+        `that is decided when it starts. It cannot delegate at all until ` +
+        `restart_agent with id=${agentId}. A restart ends whatever conversation ` +
+        `that agent is in, so ask the person first if it might be busy.`;
 }

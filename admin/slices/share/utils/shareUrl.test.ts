@@ -29,17 +29,29 @@ describe('resolveAppOrigin', () => {
     );
   });
 
-  test('does not guess the app host of a deployment', () => {
-    expect(resolveAppOrigin('', 'https://admin.ranch.example.com')).toBe(null);
+  test('derives the app from admin.<domain> with nothing configured', () => {
+    expect(resolveAppOrigin('', 'https://admin.ranch.example.com')).toBe(
+      'https://ranch.example.com',
+    );
+    expect(resolveAppOrigin(undefined, 'https://admin.example.com:8443')).toBe(
+      'https://example.com:8443',
+    );
+  });
+
+  test('does not guess when admin is not on an admin.<domain> host', () => {
+    expect(resolveAppOrigin('', 'https://console.example.com')).toBe(null);
+    expect(resolveAppOrigin('', 'https://admin.com')).toBe(null);
   });
 
   test('ignores a configured value that is not an http(s) url', () => {
     expect(
-      resolveAppOrigin('ranch.example.com', 'https://admin.example.com'),
+      resolveAppOrigin('ranch.example.com', 'https://console.example.com'),
     ).toBe(null);
+    // …and an unusable override falls through to the address rule, it does
+    // not switch the rule off.
     expect(
       resolveAppOrigin('javascript:alert(1)', 'https://admin.example.com'),
-    ).toBe(null);
+    ).toBe('https://example.com');
   });
 });
 

@@ -249,7 +249,6 @@ resource "kubectl_manifest" "ranch_admin_deployment" {
   yaml_body = templatefile("${path.module}/templates/ranch-admin-deployment.yaml.tftpl", {
     image   = var.admin_image
     api_url = "https://${local.api_host}"
-    app_url = "https://${local.app_host}"
   })
 }
 

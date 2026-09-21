@@ -33,10 +33,11 @@ export default defineNuxtConfig({
       // and the axios client resolves requests against its own origin
       // instead of the api.
       apiUrl: process.env.API_URL || '',
-      // Where the `app` console lives. Share links open its `/share` page, so
-      // admin has to be told — it cannot read this off its own address bar.
-      // Prod sets NUXT_PUBLIC_APP_URL; empty is fine under `ranch dev`, where
-      // the share store falls back to the app's fixed dev port.
+      // Where the `app` console lives — share links open its `/share` page.
+      // Normally left empty: the share slice works it out from admin's own
+      // address (`admin.<domain>` → `<domain>`, localhost → the app's dev
+      // port). Set NUXT_PUBLIC_APP_URL only for an install that puts the app
+      // somewhere else.
       appUrl: process.env.APP_URL || '',
     },
   },

@@ -45,8 +45,9 @@ const link = computed(() => shareStore.linkFor(props.agentId));
 const isShared = computed(() => Boolean(link.value?.active));
 
 /**
- * Shared, but admin was never told where the app lives, so there is no URL to
- * hand out. Revoke and Regenerate still work — they need no URL.
+ * Shared, but admin could not work out where the app lives (`resolveAppOrigin`),
+ * so there is no URL to hand out. Revoke and Regenerate still work — they need
+ * no URL.
  */
 const appUrlMissing = computed(() => isShared.value && !link.value?.url);
 
@@ -222,10 +223,10 @@ onBeforeUnmount(resetCopied);
             v-else
             class="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs leading-snug text-amber-900 dark:text-amber-200"
           >
-            This agent is shared, but admin doesn't know the app's address, so
-            it can't build the link. Set
-            <code class="font-mono">NUXT_PUBLIC_APP_URL</code> on the admin
-            deployment, or copy the link from the app.
+            This agent is shared, but admin can't tell where the app lives from
+            this address, so it can't build the link. Copy it from the app, or
+            set <code class="font-mono">NUXT_PUBLIC_APP_URL</code> on the admin
+            deployment.
           </p>
 
           <p v-if="sharedSince" class="mt-1.5 text-xs text-muted-foreground">

@@ -3,19 +3,26 @@ const DEV_APP_PORT = 3000;
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+/** Admin is served from `admin.<domain>`, the app from `<domain>` itself
+ *  (`terraform/modules/apps/main.tf`: `admin_host` / `app_host`). */
+const ADMIN_HOST_PREFIX = 'admin.';
+
 /**
  * Where the app console lives, as an origin with no trailing slash — or `null`
  * when admin has no way to know.
  *
  * A share link only means something in the app: `/share` is an app page, and
- * admin has no such route. So unlike the app, which can read its own address
- * bar, admin has to be told (`NUXT_PUBLIC_APP_URL`).
+ * admin has no such route. The app reads its own address bar for this; admin
+ * works it out from its own address instead, so a standard deployment needs
+ * no setting at all:
  *
- * The only guess made is for local dev, where the app's port is fixed. In a
- * deployment the two hosts follow no rule admin could rely on (`app.<domain>`
- * in one setup, the bare domain in another), and a wrong guess is a link that
- * looks fine and opens nothing — so there it is `null`, and the panel says the
- * setting is missing instead.
+ * - `admin.<domain>` → `<domain>`, the layout terraform deploys;
+ * - localhost → the app's fixed dev port.
+ *
+ * `NUXT_PUBLIC_APP_URL` overrides both, for an install that puts the app
+ * somewhere else (`app.<domain>`, a sub-path). Anything that fits neither rule
+ * is `null`: a wrong guess is a link that looks fine and opens nothing, so the
+ * panel says it cannot build one instead.
  */
 export function resolveAppOrigin(
   configured: string | null | undefined,
@@ -25,8 +32,14 @@ export function resolveAppOrigin(
   if (explicit) return explicit;
 
   const admin = toUrl(adminOrigin);
-  if (admin && LOCAL_HOSTS.has(admin.hostname)) {
+  if (!admin) return null;
+  if (LOCAL_HOSTS.has(admin.hostname)) {
     return `${admin.protocol}//${admin.hostname}:${DEV_APP_PORT}`;
+  }
+  if (admin.hostname.startsWith(ADMIN_HOST_PREFIX)) {
+    const appHost = admin.host.slice(ADMIN_HOST_PREFIX.length);
+    // `admin.com` is somebody's whole domain, not an admin subdomain of `com`.
+    if (appHost.includes('.')) return `${admin.protocol}//${appHost}`;
   }
   return null;
 }

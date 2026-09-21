@@ -17,8 +17,9 @@ export const useShareStore = defineStore('share', () => {
   const error = ref<string | null>(null);
 
   /**
-   * Where the link has to point: the app console, not this one. `null` means
-   * nobody told admin where the app lives (see `resolveAppOrigin`).
+   * Where the link has to point: the app console, not this one. Worked out
+   * from admin's own address; `null` when that is not possible (see
+   * `resolveAppOrigin`).
    */
   const appOrigin = computed(() =>
     resolveAppOrigin(

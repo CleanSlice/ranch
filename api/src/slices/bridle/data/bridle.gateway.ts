@@ -70,7 +70,7 @@ export class BridleGateway extends IBridleGateway {
    * runtime invisible ("Agent reconnecting…") until its next restart. */
   private agents = new Map<
     string,
-    { socketId: string; send: (data: unknown) => void }
+    { socketId: string; send: (data: unknown) => void; connectedAt: number }
   >();
 
   /**
@@ -184,7 +184,7 @@ export class BridleGateway extends IBridleGateway {
     socketId: string,
     send: (data: unknown) => void,
   ): void {
-    this.agents.set(agentId, { socketId, send });
+    this.agents.set(agentId, { socketId, send, connectedAt: Date.now() });
     this.logger.log(
       `Agent registered: agentId=${agentId} socket=${socketId} (total agents: ${this.agents.size})`,
     );
@@ -241,6 +241,10 @@ export class BridleGateway extends IBridleGateway {
 
   isAgentConnected(agentId: string): boolean {
     return this.agents.has(agentId);
+  }
+
+  agentConnectedSince(agentId: string): number | null {
+    return this.agents.get(agentId)?.connectedAt ?? null;
   }
 
   registerClient(

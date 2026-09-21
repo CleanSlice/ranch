@@ -12,6 +12,13 @@ export interface IAgentPodStatus {
   ready: boolean;
   restartCount: number;
   startedAt: string | null;
+  /**
+   * The pod has been asked to go away (`metadata.deletionTimestamp` is set):
+   * a restart's cleanup step, a stop, a manual delete. Its containers exiting
+   * — and the phase turning Succeeded/Failed on the way out — is the delete
+   * working, not an agent that failed (CLEAN-106).
+   */
+  terminating: boolean;
   lastTerminationReason: string | null;
   containerWaitingReason: string | null;
   message: string | null;

@@ -105,6 +105,14 @@ export abstract class IBridleGateway {
   /** Whether an agent runtime is currently registered for this agentId. */
   abstract isAgentConnected(agentId: string): boolean;
   /**
+   * When the currently registered runtime for agentId joined the hub (epoch
+   * ms), or null when none is. "Connected" alone cannot tell the instance a
+   * restart is replacing from the one it is bringing up — for several seconds
+   * after a restart begins the OLD runtime is still the one on the hub
+   * (CLEAN-106).
+   */
+  abstract agentConnectedSince(agentId: string): number | null;
+  /**
    * Observable stream of agent connect/disconnect events. Consumed by
    * AgentStatusService to flip the DB status the moment a runtime registers
    * (faster + more reliable than the K8s readiness probe — runtime connects

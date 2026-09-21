@@ -27,6 +27,14 @@ export class AgentPodStatusDto {
   })
   startedAt: string | null;
 
+  @ApiProperty({
+    example: false,
+    description:
+      'The pod is being deleted (restart cleanup, stop, manual delete). Its ' +
+      'phase on the way out says nothing about the health of the agent.',
+  })
+  terminating: boolean;
+
   @ApiProperty({ nullable: true, type: String, example: 'OOMKilled' })
   lastTerminationReason: string | null;
 

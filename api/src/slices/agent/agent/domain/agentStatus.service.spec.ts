@@ -44,6 +44,7 @@ function makePod(overrides: Partial<IAgentPodStatus> = {}): IAgentPodStatus {
     ready: true,
     restartCount: 0,
     startedAt: new Date(BASE_NOW - 30 * 60_000).toISOString(),
+    terminating: false,
     lastTerminationReason: null,
     containerWaitingReason: null,
     message: null,
@@ -94,12 +95,14 @@ function createTestBed(
   };
   const bridleGateway = {
     isAgentConnected: jest.fn().mockReturnValue(false),
+    agentConnectedSince: jest.fn().mockReturnValue(null),
     agentEvents$: jest.fn().mockReturnValue(new Subject()),
   };
   const deployTracker = {
     mark: jest.fn(),
     clear: jest.fn(),
     isStale: jest.fn().mockReturnValue(false),
+    isFromBeforeDeploy: jest.fn().mockReturnValue(false),
   };
   const agentDeployService = { deploy: jest.fn() };
 

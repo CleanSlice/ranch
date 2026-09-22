@@ -76,12 +76,13 @@ const query = computed({
 const groups = computed(() => filterCatalog(catalog.value, query.value))
 
 // While searching, every matching topic is open; otherwise the person's own
-// choice, with the first topic open on a fresh catalogue so the panel never
-// looks empty.
+// choice. Only an untouched sheet (`expanded === null`) opens the first topic
+// so the panel never looks empty — once the person collapses it, `[]` is a
+// choice and stays.
 const expanded = computed<string[]>({
   get: () => {
     if (query.value.trim()) return groups.value.map((g) => g.key)
-    if (ui.value.expanded.length) return ui.value.expanded
+    if (ui.value.expanded !== null) return ui.value.expanded
     return groups.value.length ? [groups.value[0].key] : []
   },
   set: (keys: string[]) => {

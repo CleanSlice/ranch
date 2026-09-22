@@ -28,9 +28,11 @@ const emit = defineEmits<{
 
 <template>
   <AccordionItem :value="group.key">
-    <AccordionTrigger class="py-2.5">
+    <!-- The trigger's default hover underline would run under the count and
+         the "after restart" badge too; underline the title alone. -->
+    <AccordionTrigger class="group py-2.5 hover:no-underline">
       <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-        <span class="truncate">{{ group.title }}</span>
+        <span class="truncate group-hover:underline">{{ group.title }}</span>
         <span
           v-if="group.kind === 'builtin'"
           class="rounded-full bg-muted px-1.5 text-[10px] font-medium text-muted-foreground"

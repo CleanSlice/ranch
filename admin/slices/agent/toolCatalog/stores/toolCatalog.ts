@@ -12,10 +12,15 @@ const getService = createServiceGetter<ToolCatalogService>('$toolCatalogService'
 
 export interface IToolCatalogUiState {
   query: string;
-  expanded: string[];
+  /**
+   * Which accordions the person opened. `null` means they never touched
+   * them and the sheet may pick a default; `[]` means they closed every one
+   * — the two must stay distinct or the first group reopens on every collapse.
+   */
+  expanded: string[] | null;
 }
 
-const EMPTY_UI: IToolCatalogUiState = { query: '', expanded: [] };
+const EMPTY_UI: IToolCatalogUiState = { query: '', expanded: null };
 
 /**
  * One catalogue per agent (CLEAN-109), the entity the Tools panel renders.
@@ -56,7 +61,7 @@ export const useToolCatalogStore = defineStore('toolCatalog', () => {
   }
 
   function toggleGroup(agentId: string, key: string): void {
-    const current = uiOf(agentId).expanded;
+    const current = uiOf(agentId).expanded ?? [];
     setExpanded(
       agentId,
       current.includes(key) ? current.filter((k) => k !== key) : [...current, key],

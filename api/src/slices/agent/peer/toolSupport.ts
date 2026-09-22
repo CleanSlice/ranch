@@ -1,42 +1,17 @@
 import { HttpException } from '@nestjs/common';
-import type { Request } from 'express';
-import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
-import { UserRoleTypes } from '#/user/user/domain';
+import { err, type ToolResult } from '#/mcp/tooling';
 import { PeerErrorCodes, type IAgentPeerView } from './domain/peer.types';
 
-/** What an MCP tool hands back. The shape the SDK expects, nothing more. */
-export interface ToolResult {
-  content: { type: 'text'; text: string }[];
-  isError?: boolean;
-}
-
-export const ok = (value: unknown): ToolResult => ({
-  content: [
-    {
-      type: 'text',
-      text: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
-    },
-  ],
-});
-
-export const err = (text: string): ToolResult => ({
-  content: [{ type: 'text', text }],
-  isError: true,
-});
-
-/** Agent service tokens carry `sub = agent:<id>`; anything else is not an agent. */
-export function callerAgentId(httpRequest: Request): string | null {
-  const user = (httpRequest as Request & { user?: IAuthTokenPayload }).user;
-  const sub = user?.sub ?? '';
-  if (!sub.startsWith('agent:')) return null;
-  return sub.slice('agent:'.length);
-}
-
-/** Admin agents hold the Owner role; plain agents hold `Agent` (auth.service). */
-export function callerIsOperator(httpRequest: Request): boolean {
-  const user = (httpRequest as Request & { user?: IAuthTokenPayload }).user;
-  return (user?.roles ?? []).includes(UserRoleTypes.Owner);
-}
+// The result shape and caller helpers moved to the shared `#/mcp/tooling`
+// (CLEAN-109) so every tool file speaks the same vocabulary; re-exported here
+// so the peer tools and their specs read as before.
+export {
+  ok,
+  err,
+  callerAgentId,
+  callerIsOperator,
+  type ToolResult,
+} from '#/mcp/tooling';
 
 /** Peers as a model needs them: what it is, what it claims, is it usable. */
 export function toToolPeer(view: IAgentPeerView) {

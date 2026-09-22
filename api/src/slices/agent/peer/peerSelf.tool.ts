@@ -1,7 +1,8 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool } from '#mcp';
+import { Tool, ToolTopics } from '#mcp';
+import { CONFIRM_SENTENCE, confirmed } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { ISettingGateway } from '#/setting/domain';
 import { PeerService } from './domain/peer.service';
@@ -111,6 +112,9 @@ export class PeerSelfTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'list_my_peers',
+    topic: ToolTopics.Peers,
+    title: 'My peers',
+    template: 'Who are your peers?',
     description:
       'The colleagues you can delegate to, with what each one advertises. ' +
       'Read this before connecting anything someone asks for — you may have ' +
@@ -138,6 +142,9 @@ export class PeerSelfTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'list_ranch_agents',
+    topic: ToolTopics.Peers,
+    title: 'Agents of this Ranch',
+    template: 'Which agents on this Ranch could you ask for help?',
     description:
       'The other agents living on this Ranch, each marked with whether it is ' +
       'already your colleague. Use it to turn a name a person said into the ' +
@@ -158,6 +165,9 @@ export class PeerSelfTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'preview_agent_card_by_address',
+    topic: ToolTopics.Peers,
+    title: 'Preview a card by address',
+    template: 'What does the agent at «url» say it can do?',
     description:
       'Read another agent’s A2A card from its address WITHOUT connecting ' +
       'anything — its name, what it says it does, the skills it publishes. ' +
@@ -194,6 +204,9 @@ export class PeerSelfTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'connect_my_peer',
+    topic: ToolTopics.Peers,
+    title: 'Connect a peer for yourself',
+    template: 'Add the agent «name» as your peer',
     description:
       'Take an agent of this Ranch as your colleague, so you can hand it ' +
       'tasks with ask_agent. Directed: it gains nothing in return. Nothing is ' +
@@ -226,6 +239,9 @@ export class PeerSelfTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'import_my_peer_by_address',
+    topic: ToolTopics.Peers,
+    title: 'Import a peer by address',
+    template: 'Add the external agent at «url» as your peer',
     description:
       'Take an A2A agent from outside this Ranch as your colleague, by its ' +
       'address. This is what a pasted /.well-known/agent-card.json link is ' +
@@ -272,21 +288,32 @@ export class PeerSelfTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'remove_my_peer',
+    topic: ToolTopics.Peers,
+    title: 'Remove one of my peers',
+    template: 'Drop your peer «name»',
+    destructive: true,
     description:
       'Drop one of your colleagues. For an agent of this Ranch the credential ' +
-      'issued for the pair stops working. Reversible — connect it again later.',
+      'issued for the pair stops working. Reversible — connect it again later. ' +
+      CONFIRM_SENTENCE,
     parameters: z.object({
       peerId: z
         .string()
         .describe('Connection id from list_my_peers (not the agent id)'),
+      confirm: z
+        .boolean()
+        .describe('Set true only after the person confirmed in the chat.'),
     }),
   })
   async removeMyPeer(
-    { peerId }: { peerId: string },
+    args: { peerId: string; confirm?: boolean },
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
     const agentId = await this.requireSelf(httpRequest);
+    const { peerId } = args;
+    const refusal = confirmed(args, `drop your peer connection ${peerId}`);
+    if (refusal) return refusal;
     return withRefusalAdvice(async () => {
       await this.peers.remove(agentId, peerId);
       this.logger.log(

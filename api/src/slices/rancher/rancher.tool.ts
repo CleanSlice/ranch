@@ -1,7 +1,14 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool } from '#mcp';
+import { Tool, ToolTopics } from '#mcp';
+import {
+  CONFIRM_SENTENCE,
+  confirmed,
+  ok,
+  requireOperator,
+  stripSecrets,
+} from '#/mcp/tooling';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { AgentDeployService } from '#/agent/agent/domain/agentDeploy.service';
 import { ITemplateGateway } from '#/agent/template/domain';
@@ -12,17 +19,13 @@ import { ISettingGateway } from '#/setting/domain';
 import { IUsageGateway } from '#/usage/domain';
 import { IFileGateway } from '#/agent/file/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain';
-import { UserRoleTypes } from '#/user/user/domain';
 
-const asText = (value: unknown): string => {
-  if (typeof value === 'string') return value;
-  return JSON.stringify(value, null, 2);
-};
-
-const ok = (value: unknown) => ({
-  content: [{ type: 'text' as const, text: asText(value) }],
-});
-
+/**
+ * The original Ranch management tools — agents, templates, skills, LLM
+ * credentials, files, usage, settings. Operator-only: the Ranch admin agent
+ * holds the Owner role, plain agents do not (CLEAN-109 moved the check to
+ * the shared `requireOperator`; the tools themselves are unchanged).
+ */
 @Injectable()
 export class RancherTool {
   private readonly logger = new Logger(RancherTool.name);
@@ -42,16 +45,16 @@ export class RancherTool {
   private requireOwner(
     httpRequest: Request & { user?: IAuthTokenPayload },
   ): void {
-    const roles = httpRequest.user?.roles ?? [];
-    if (!roles.includes(UserRoleTypes.Owner)) {
-      throw new ForbiddenException('This tool requires platform admin role.');
-    }
+    requireOperator(httpRequest);
   }
 
   // ─── Agents ──────────────────────────────────────────────────────────
 
   @Tool({
     name: 'list_agents',
+    topic: ToolTopics.Agents,
+    title: 'List agents',
+    template: 'List all agents and their status',
     description:
       'List every agent on this Ranch with their status, template, and resources.',
     parameters: z.object({}),
@@ -68,6 +71,9 @@ export class RancherTool {
 
   @Tool({
     name: 'get_agent',
+    topic: ToolTopics.Agents,
+    title: 'Show an agent',
+    template: 'Show the agent «name»',
     description:
       'Get a single agent by id, including current status, workflowId and config.',
     parameters: z.object({
@@ -87,6 +93,9 @@ export class RancherTool {
 
   @Tool({
     name: 'restart_agent',
+    topic: ToolTopics.Agents,
+    title: 'Restart an agent',
+    template: 'Restart the agent «name»',
     description:
       'Restart an agent pod. Use after editing its files or LLM credential to apply changes.',
     parameters: z.object({
@@ -118,6 +127,10 @@ export class RancherTool {
 
   @Tool({
     name: 'create_agent',
+    topic: ToolTopics.Agents,
+    title: 'Create an agent',
+    template:
+      'Create an agent «name» from the template «template» using the LLM credential «credential»',
     description:
       'Create and deploy a new agent from a template. Seeds template files, ' +
       'syncs skills and starts the first deploy — the agent will appear as ' +
@@ -133,7 +146,7 @@ export class RancherTool {
       knowledgeIds: z
         .array(z.string())
         .optional()
-        .describe('Knowledge base ids to bind (GET /knowledges for the list)'),
+        .describe('Knowledge base ids to bind (list_knowledges for the list)'),
       isAdmin: z
         .boolean()
         .optional()
@@ -183,6 +196,9 @@ export class RancherTool {
 
   @Tool({
     name: 'update_agent',
+    topic: ToolTopics.Agents,
+    title: 'Update an agent',
+    template: 'Change the agent «name»: «what to change»',
     description:
       'Update an agent: rename, switch LLM credential, or bind knowledge ' +
       'bases. knowledgeIds REPLACES the full list (fetch current via ' +
@@ -242,6 +258,9 @@ export class RancherTool {
 
   @Tool({
     name: 'set_agent_admin',
+    topic: ToolTopics.Agents,
+    title: 'Make an agent the Ranch admin',
+    template: 'Make «name» the Ranch admin agent',
     description:
       'Promote or demote an agent to/from Ranch admin. Single-admin invariant: enabling clears the flag from any other agent.',
     parameters: z.object({
@@ -263,6 +282,9 @@ export class RancherTool {
 
   @Tool({
     name: 'list_templates',
+    topic: ToolTopics.Templates,
+    title: 'List templates',
+    template: 'List all agent templates',
     description:
       'List all agent templates (image + defaults that pods are spawned from).',
     parameters: z.object({}),
@@ -278,6 +300,9 @@ export class RancherTool {
 
   @Tool({
     name: 'get_template',
+    topic: ToolTopics.Templates,
+    title: 'Show a template',
+    template: 'Show the template «name»',
     description:
       'Get a template by id, including image, defaultResources, and attached skill ids.',
     parameters: z.object({ id: z.string() }),
@@ -294,6 +319,9 @@ export class RancherTool {
 
   @Tool({
     name: 'set_template_skills',
+    topic: ToolTopics.Templates,
+    title: 'Set template skills',
+    template: 'Give the template «name» the skills «skill list»',
     description:
       'Replace the full set of skills attached to a template. The list is exhaustive — omitted ids are detached.',
     parameters: z.object({
@@ -318,6 +346,9 @@ export class RancherTool {
 
   @Tool({
     name: 'update_template',
+    topic: ToolTopics.Templates,
+    title: 'Update a template',
+    template: 'Change the template «name»: «what to change»',
     description:
       'Update template fields in place. Pass only the fields you want to change. ' +
       'Useful for editing defaultConfig, paddockConfig (passThreshold, scenarios, ' +
@@ -359,6 +390,9 @@ export class RancherTool {
 
   @Tool({
     name: 'list_template_files',
+    topic: ToolTopics.Templates,
+    title: 'List template files',
+    template: 'List the files of the template «name»',
     description:
       "List files stored in a template's S3 prefix (templates/{id}/). These are " +
       'seeded into every new agent that uses this template.',
@@ -377,6 +411,9 @@ export class RancherTool {
 
   @Tool({
     name: 'read_template_file',
+    topic: ToolTopics.Templates,
+    title: 'Read a template file',
+    template: 'Show «path» of the template «name»',
     description:
       'Read a single template file by relative path (e.g. ".agent/SOUL.md", ' +
       '".paddock/config.json"). Files larger than 256 KiB are rejected.',
@@ -400,6 +437,9 @@ export class RancherTool {
 
   @Tool({
     name: 'write_template_file',
+    topic: ToolTopics.Templates,
+    title: 'Write a template file',
+    template: 'Write «path» in the template «name» with: «content»',
     description:
       'Write or replace a template file. Only `.md` and `.json` are accepted. ' +
       'Use this to add files like ".agent/SOUL.md" or ".paddock/config.json" ' +
@@ -435,7 +475,11 @@ export class RancherTool {
 
   @Tool({
     name: 'list_llms',
-    description: 'List configured LLM credentials (provider, model, status).',
+    topic: ToolTopics.Llm,
+    title: 'List LLM credentials',
+    template: 'List the LLM credentials',
+    description:
+      'List configured LLM credentials (provider, model, status). Keys are never returned.',
     parameters: z.object({}),
   })
   async listLlms(
@@ -444,13 +488,16 @@ export class RancherTool {
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
     this.requireOwner(httpRequest);
-    return ok(await this.llms.findAll());
+    return ok(stripSecrets(await this.llms.findAll()));
   }
 
   // ─── Skills ──────────────────────────────────────────────────────────
 
   @Tool({
     name: 'list_skills',
+    topic: ToolTopics.Skills,
+    title: 'List skills',
+    template: 'List all skills',
     description:
       'List skills available in the Ranch. Skills are bundles of instructions + helper files attached to templates.',
     parameters: z.object({}),
@@ -466,6 +513,9 @@ export class RancherTool {
 
   @Tool({
     name: 'update_skill',
+    topic: ToolTopics.Skills,
+    title: 'Update a skill',
+    template: 'Change the skill «name»: «what to change»',
     description:
       'Edit a skill in place. Pass only the fields you want to change. ' +
       'Skills are baked into agent pods at deploy time — after editing, ' +
@@ -480,15 +530,20 @@ export class RancherTool {
         .describe('Full SKILL.md markdown body — replaces existing content.'),
     }),
   })
-  async updateSkill({
-    id,
-    ...patch
-  }: {
-    id: string;
-    title?: string;
-    description?: string;
-    body?: string;
-  }) {
+  async updateSkill(
+    {
+      id,
+      ...patch
+    }: {
+      id: string;
+      title?: string;
+      description?: string;
+      body?: string;
+    },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     const skill = await this.skills.findById(id);
     if (!skill) return ok({ error: `Skill ${id} not found` });
     const updated = await this.skills.update(id, patch);
@@ -497,6 +552,9 @@ export class RancherTool {
 
   @Tool({
     name: 'list_skill_agents',
+    topic: ToolTopics.Skills,
+    title: 'Which agents use a skill',
+    template: 'Which agents use the skill «name»?',
     description:
       'List agents currently using this skill (via their template). Use this ' +
       'before `redeploy_skill_agents` to preview what will be restarted.',
@@ -504,22 +562,41 @@ export class RancherTool {
       skillId: z.string(),
     }),
   })
-  async listSkillAgents({ skillId }: { skillId: string }) {
+  async listSkillAgents(
+    { skillId }: { skillId: string },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
     return ok(await this.skills.findDependentAgents(skillId));
   }
 
   @Tool({
     name: 'redeploy_skill_agents',
+    topic: ToolTopics.Skills,
+    title: 'Redeploy agents of a skill',
+    template: 'Redeploy every agent that uses the skill «name»',
+    destructive: true,
     description:
       'Restart every agent whose template includes this skill so it picks up ' +
       "the edited SKILL.md. Each agent's workflow is cancelled and resubmitted " +
       '(template files + skills resynced from DB). Sequential with concurrency 3 ' +
-      'to avoid slamming the cluster. Returns aggregate counts and per-agent errors.',
+      'to avoid slamming the cluster. Returns aggregate counts and per-agent errors. ' +
+      CONFIRM_SENTENCE,
     parameters: z.object({
       skillId: z.string(),
+      confirm: z
+        .boolean()
+        .describe('Set true only after the person confirmed in the chat.'),
     }),
   })
-  async redeploySkillAgents({ skillId }: { skillId: string }) {
+  async redeploySkillAgents(
+    args: { skillId: string; confirm?: boolean },
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
+    const { skillId } = args;
     const skill = await this.skills.findById(skillId);
     if (!skill) return ok({ error: `Skill ${skillId} not found` });
 
@@ -527,6 +604,11 @@ export class RancherTool {
     if (dependents.length === 0) {
       return ok({ skillId, total: 0, restarted: 0, failed: 0, errors: [] });
     }
+    const refusal = confirmed(
+      args,
+      `restart ${dependents.length} agent(s) that use the skill «${skill.title ?? skillId}»`,
+    );
+    if (refusal) return refusal;
 
     const CONCURRENCY = 3;
     const errors: { agentId: string; error: string }[] = [];
@@ -566,6 +648,9 @@ export class RancherTool {
 
   @Tool({
     name: 'list_agent_files',
+    topic: ToolTopics.AgentWorkspace,
+    title: 'List workspace files',
+    template: 'List the files of the agent «name»',
     description:
       "List files in an agent's S3 prefix (the files mounted into its pod's `.agent/` dir).",
     parameters: z.object({ agentId: z.string() }),
@@ -581,6 +666,9 @@ export class RancherTool {
 
   @Tool({
     name: 'read_agent_file',
+    topic: ToolTopics.AgentWorkspace,
+    title: 'Read a workspace file',
+    template: 'Show «path» from the agent «name»',
     description:
       'Read a single agent file by relative path (e.g. SOUL.md, MEMORY.md, agent.config.json).',
     parameters: z.object({
@@ -599,6 +687,9 @@ export class RancherTool {
 
   @Tool({
     name: 'write_agent_file',
+    topic: ToolTopics.AgentWorkspace,
+    title: 'Write a workspace file',
+    template: 'Write «path» in the agent «name» with: «content»',
     description:
       'Write or replace an agent file. Only `.md` and `.json` are supported. Restart the agent for changes to take effect.',
     parameters: z.object({
@@ -640,6 +731,9 @@ export class RancherTool {
 
   @Tool({
     name: 'agent_usage',
+    topic: ToolTopics.ChatsUsage,
+    title: 'Usage of an agent',
+    template: 'How much did the agent «name» cost in the last «30» days?',
     description: 'Recent token usage records for an agent (default 30 days).',
     parameters: z.object({
       agentId: z.string(),
@@ -664,6 +758,9 @@ export class RancherTool {
 
   @Tool({
     name: 'list_settings',
+    topic: ToolTopics.Settings,
+    title: 'List settings',
+    template: 'Show the settings in «group»',
     description:
       'List all platform settings, optionally filtered by group (e.g. integrations, agent_defaults, auth).',
     parameters: z.object({
@@ -682,6 +779,9 @@ export class RancherTool {
 
   @Tool({
     name: 'upsert_setting',
+    topic: ToolTopics.Settings,
+    title: 'Set a setting',
+    template: 'Set «group».«name» to «value»',
     description:
       'Create or replace a setting by group/name. Use valueType="string" for plain strings, "json" for everything else.',
     parameters: z.object({

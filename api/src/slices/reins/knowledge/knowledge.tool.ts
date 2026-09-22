@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
-import { Tool } from '#mcp';
+import { Tool, ToolTopics } from '#mcp';
 import { Request } from 'express';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -84,6 +84,9 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
 
   @Tool({
     name: 'query_knowledge',
+    topic: ToolTopics.Knowledge,
+    title: 'Ask the knowledge bases',
+    template: 'What does our knowledge say about «question»?',
     description: BASE_DESCRIPTION,
     parameters: z.object({
       knowledge_id: z

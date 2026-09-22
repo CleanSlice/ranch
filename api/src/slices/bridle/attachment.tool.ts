@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import type { Workbook } from 'exceljs';
 import { z } from 'zod';
-import { Tool } from '#mcp';
+import { Tool, ToolTopics } from '#mcp';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { IBridleAttachmentGateway } from './domain/attachment.gateway';
 import { MAX_QUERY_CELLS } from './domain/attachment.constants';
@@ -131,7 +131,14 @@ export class BridleAttachmentTool {
 
   constructor(private readonly attachments: IBridleAttachmentGateway) {}
 
-  @Tool({ name: 'query_attachment', description: DESCRIPTION, parameters })
+  @Tool({
+    name: 'query_attachment',
+    topic: ToolTopics.Attachments,
+    title: 'Ask a question about an attached file',
+    template: 'In the attached file, «question»',
+    description: DESCRIPTION,
+    parameters,
+  })
   async query(
     args: Args,
     _context: unknown,

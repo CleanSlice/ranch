@@ -9,11 +9,63 @@ import {
   MCP_RESOURCE_METADATA_KEY,
   MCP_TOOL_METADATA_KEY,
   ToolMetadata,
+  isToolTopic,
 } from '../decorators';
 import { ResourceMetadata } from '../decorators/resource.decorator';
 import { match } from 'path-to-regexp';
 import { PromptMetadata } from '../decorators/prompt.decorator';
 import { Logger } from '@nestjs/common';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+
+export const TOOL_TITLE_MAX = 60;
+export const TOOL_TEMPLATE_MAX = 200;
+
+/**
+ * The panel contract every tool must satisfy (CLEAN-109). Returns the
+ * problems found, empty when the metadata is complete. Exported so a spec
+ * can exercise it without booting a module.
+ */
+export function toolMetadataProblems(metadata: Partial<ToolMetadata>): string[] {
+  const problems: string[] = [];
+  const name = metadata.name ?? '<unnamed>';
+  if (!metadata.name) problems.push('missing name');
+  if (!isToolTopic(metadata.topic)) {
+    problems.push(`unknown topic "${String(metadata.topic)}"`);
+  }
+  const title = (metadata.title ?? '').trim();
+  if (!title) problems.push('missing title');
+  else if (title.length > TOOL_TITLE_MAX) {
+    problems.push(`title longer than ${TOOL_TITLE_MAX} chars`);
+  }
+  const template = (metadata.template ?? '').trim();
+  if (!template) problems.push('missing template');
+  else if (template.length > TOOL_TEMPLATE_MAX) {
+    problems.push(`template longer than ${TOOL_TEMPLATE_MAX} chars`);
+  }
+
+  let properties: Record<string, unknown> = {};
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const params = metadata.parameters as any;
+    const schema = (params ? zodToJsonSchema(params) : {}) as unknown as {
+      properties?: Record<string, unknown>;
+    };
+    properties = schema.properties ?? {};
+  } catch {
+    problems.push('parameters cannot be converted to JSON schema');
+  }
+  const hasParams = Object.keys(properties).length > 0;
+  if (template && hasParams && !template.includes('«')) {
+    problems.push('template has parameters but no «…» placeholder');
+  }
+  if (metadata.destructive) {
+    const confirm = properties.confirm as { type?: unknown } | undefined;
+    if (!confirm || confirm.type !== 'boolean') {
+      problems.push('destructive tool without a boolean `confirm` parameter');
+    }
+  }
+  return problems.map((p) => `${name}: ${p}`);
+}
 
 /**
  * Interface representing a discovered tool
@@ -40,6 +92,30 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
   onApplicationBootstrap() {
     this.discoverTools();
+    this.validateToolMetadata();
+  }
+
+  /**
+   * A tool the Tools panel cannot show is a tool the person never finds, so
+   * the API refuses to start with one (CLEAN-109, FR-005). Names must also be
+   * unique: `findTool` would silently serve the first of two.
+   */
+  validateToolMetadata(): void {
+    const tools = this.getTools();
+    const problems = tools.flatMap((t) => toolMetadataProblems(t.metadata));
+    const seen = new Set<string>();
+    for (const t of tools) {
+      const name = t.metadata?.name;
+      if (!name) continue;
+      if (seen.has(name)) problems.push(`${name}: duplicate tool name`);
+      seen.add(name);
+    }
+    if (problems.length) {
+      throw new Error(
+        `MCP tool metadata is incomplete — every @Tool needs topic, title and template, and a destructive tool needs a boolean confirm parameter:\n  - ${problems.join('\n  - ')}`,
+      );
+    }
+    this.logger.log(`Validated ${tools.length} MCP tools`);
   }
 
   /**

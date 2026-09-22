@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
-import { Tool } from '#mcp';
+import { Tool, ToolTopics } from '#mcp';
+import { CONFIRM_SENTENCE, confirmed, ok } from '#/mcp/tooling';
 import { IPaddockScenarioGateway } from './domain';
 import {
   ICreatePaddockScenarioData,
@@ -9,12 +10,6 @@ import {
   PaddockScenarioDifficulty,
 } from './domain/scenario.types';
 
-const asText = (value: unknown): string =>
-  typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-
-const ok = (value: unknown) => ({
-  content: [{ type: 'text' as const, text: asText(value) }],
-});
 
 const categoryEnum = z.enum([
   'tool_use',
@@ -64,6 +59,9 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'list_paddock_scenarios',
+    topic: ToolTopics.Paddock,
+    title: 'List paddock scenarios',
+    template: 'List the paddock scenarios of «template or agent»',
     description:
       'List paddock scenarios. Filter by templateId or agentId; without filters returns all.',
     parameters: z.object({
@@ -83,6 +81,9 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'get_paddock_scenario',
+    topic: ToolTopics.Paddock,
+    title: 'Show a scenario',
+    template: 'Show the paddock scenario «id»',
     description: 'Get a single paddock scenario by id.',
     parameters: z.object({ id: z.string() }),
   })
@@ -93,6 +94,9 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'list_agent_paddock_scenarios',
+    topic: ToolTopics.Paddock,
+    title: 'Scenarios of an agent',
+    template: 'Which paddock scenarios does the agent «name» have?',
     description:
       'List the merged set of paddock scenarios that would run for a given agent (template defaults + agent overrides; overrides win on name collision).',
     parameters: z.object({ agentId: z.string() }),
@@ -103,6 +107,10 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'create_paddock_scenario',
+    topic: ToolTopics.Paddock,
+    title: 'Create a scenario',
+    template:
+      'Create a paddock scenario for «agent or template» that checks «what it checks»',
     description:
       'Create a paddock scenario. Pass exactly one of templateId or agentId — that defines the scope.',
     parameters: z.object({
@@ -163,6 +171,9 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'update_paddock_scenario',
+    topic: ToolTopics.Paddock,
+    title: 'Update a scenario',
+    template: 'Change the paddock scenario «id»: «what to change»',
     description:
       'Update a paddock scenario. Scope (templateId / agentId) is immutable — recreate the scenario to change scope.',
     parameters: z.object({
@@ -185,12 +196,27 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'delete_paddock_scenario',
-    description: 'Delete a paddock scenario by id.',
-    parameters: z.object({ id: z.string() }),
+    topic: ToolTopics.Paddock,
+    title: 'Delete a scenario',
+    template: 'Delete the paddock scenario «id»',
+    destructive: true,
+    description: 'Delete a paddock scenario by id. ' + CONFIRM_SENTENCE,
+    parameters: z.object({
+      id: z.string(),
+      confirm: z
+        .boolean()
+        .describe('Set true only after the person confirmed in the chat.'),
+    }),
   })
-  async remove({ id }: { id: string }) {
+  async remove(args: { id: string; confirm?: boolean }) {
+    const { id } = args;
     const existing = await this.scenarios.findById(id);
     if (!existing) return ok({ error: `Scenario ${id} not found` });
+    const refusal = confirmed(
+      args,
+      `delete the paddock scenario «${existing.name ?? id}»`,
+    );
+    if (refusal) return refusal;
     await this.scenarios.delete(id);
     return ok({ ok: true, id });
   }

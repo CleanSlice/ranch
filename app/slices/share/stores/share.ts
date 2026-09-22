@@ -1,5 +1,5 @@
 import { createServiceGetter } from '#common/composables/createServiceGetter';
-import { buildShareUrl } from '#share/domain';
+import { buildShareUrl, resolveAppOrigin } from '#share/domain';
 import type {
   IShareLinkState,
   IShareResolved,
@@ -33,32 +33,33 @@ function errorText(err: unknown): string | null {
 /**
  * The API never learns the console's origin (`runtimeConfig.public.apiUrl` is
  * the *API* host), so the shareable URL is assembled here — the one place that
- * knows both the token and the browser's address bar.
+ * knows both the token and where this console is published.
  *
- * The address bar is the starting point, not the answer: a deployment can
- * answer on more than one hostname, and the link must carry the published one.
- * `buildShareUrl` applies the configured base, then the known-host rules, then
- * falls back to the origin unchanged (CLEAN-110).
+ * The address bar is the default, not the answer: a deployment can answer on
+ * more than one hostname and the link must carry the published one, which is
+ * what `appUrl` settles (CLEAN-110).
  */
-function withUrl(
-  state: IShareLinkState,
-  shareBaseUrl: string,
-): IShareLinkState {
-  if (!state.active || !state.token || typeof window === 'undefined') {
+function withUrl(state: IShareLinkState, appOrigin: string | null) {
+  if (!state.active || !state.token || !appOrigin) {
     return { ...state, url: null };
   }
-  return {
-    ...state,
-    url: buildShareUrl(window.location.origin, state.token, shareBaseUrl),
-  };
+  return { ...state, url: buildShareUrl(appOrigin, state.token) };
 }
 
 export const useShareStore = defineStore('share', () => {
-  // Read once at store setup: the published base does not change while the
-  // page is open, and reaching for the Nuxt context inside an action would
-  // tie link building to where it happens to be called from.
-  const shareBaseUrl = String(
-    useRuntimeConfig().public.shareBaseUrl ?? '',
+  const config = useRuntimeConfig();
+
+  /**
+   * Where the link points. Normally this console's own address; `appUrl`
+   * overrides it where the published host differs. Same variable and same
+   * shape as the admin console's `appOrigin`, so the two cannot drift
+   * (CLEAN-111).
+   */
+  const appOrigin = computed(() =>
+    resolveAppOrigin(
+      (config.public as { appUrl?: string }).appUrl,
+      typeof window === 'undefined' ? null : window.location.origin,
+    ),
   );
 
   /** Owner-side link state, one entry per agent the panel has looked at. */
@@ -83,7 +84,7 @@ export const useShareStore = defineStore('share', () => {
     pending.value = true;
     error.value = null;
     try {
-      const state = withUrl(await call(getService()), shareBaseUrl);
+      const state = withUrl(await call(getService()), appOrigin.value);
       links.value[agentId] = state;
       return state;
     } catch (err) {

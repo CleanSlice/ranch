@@ -27,7 +27,12 @@ interface FakeTool {
   resolveThrows?: boolean;
 }
 
-function makeHarness(tools: FakeTool[]) {
+interface HarnessOptions {
+  recorder?: { record: jest.Mock };
+  request?: object;
+}
+
+function makeHarness(tools: FakeTool[], options: HarnessOptions = {}) {
   const discovered = tools.map((t) => ({
     type: 'tool' as const,
     metadata: {
@@ -53,7 +58,11 @@ function makeHarness(tools: FakeTool[]) {
       if (tool.resolveThrows) throw new Error('resolve blew up');
       return tool.instance;
     }),
+    // The listing recorder (CLEAN-109) is optional; tests that want one
+    // install it on `recorder`.
+    get: jest.fn(() => recorder),
   } as unknown as ModuleRef;
+  let recorder: { record: jest.Mock } | undefined = options.recorder;
 
   const handlers = new Map<unknown, Handler>();
   const mcpServer = {
@@ -65,7 +74,9 @@ function makeHarness(tools: FakeTool[]) {
     },
   } as unknown as McpServer;
 
-  const httpRequest = { user: { sub: 'agent:a1' } } as unknown as Request;
+  const httpRequest = (options.request ?? {
+    user: { sub: 'agent:a1' },
+  }) as unknown as Request;
 
   const handler = new McpToolsHandler(moduleRef, registry);
   handler.registerHandlers(mcpServer, httpRequest);
@@ -194,6 +205,63 @@ describe('McpToolsHandler — per-caller listing', () => {
     await list();
 
     expect(describeForRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe('McpToolsHandler — listing snapshot (CLEAN-109)', () => {
+  const flush = () => new Promise((r) => setImmediate(r));
+
+  it('hands the listed names to the recorder for an agent token', async () => {
+    const recorder = { record: jest.fn(async () => undefined) };
+    const { list } = makeHarness(
+      [
+        { name: 'a', instance: { run: jest.fn() } },
+        {
+          name: 'hidden',
+          instance: { run: jest.fn(), isListedForRequest: jest.fn(async () => false) },
+        },
+        { name: 'b', instance: { run: jest.fn() } },
+      ],
+      { recorder },
+    );
+
+    await list();
+    await flush();
+
+    expect(recorder.record).toHaveBeenCalledWith('a1', ['a', 'b']);
+  });
+
+  it('records nothing for a person listing through the console', async () => {
+    const recorder = { record: jest.fn(async () => undefined) };
+    const { list } = makeHarness([{ name: 'a', instance: { run: jest.fn() } }], {
+      recorder,
+      request: { user: { sub: 'user-7', roles: ['owner'] } },
+    });
+
+    await list();
+    await flush();
+
+    expect(recorder.record).not.toHaveBeenCalled();
+  });
+
+  it('lists as before when no recorder is wired or the recorder fails', async () => {
+    const { list: listWithout } = makeHarness([
+      { name: 'a', instance: { run: jest.fn() } },
+    ]);
+    expect((await listWithout()).tools).toHaveLength(1);
+
+    const failing = {
+      record: jest.fn(async () => {
+        throw new Error('db down');
+      }),
+    };
+    const { list } = makeHarness([{ name: 'a', instance: { run: jest.fn() } }], {
+      recorder: failing,
+    });
+    const result = await list();
+    await flush();
+    expect(result.tools).toHaveLength(1);
+    expect(failing.record).toHaveBeenCalledTimes(1);
   });
 });
 

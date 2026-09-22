@@ -1,10 +1,21 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { Textarea } from '#theme/components/ui/textarea'
 import { Button } from '#theme/components/ui/button'
-import { AlertCircle, Paperclip, Send } from 'lucide-vue-next'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '#theme/components/ui/tooltip'
+import { AlertCircle, Paperclip, Send, Wrench } from 'lucide-vue-next'
 import { bridleKey, useBridleStore } from '../../stores/bridle'
 import AttachmentChip from './AttachmentChip.vue'
+import ToolCatalogSheet from '#toolCatalog/components/toolCatalog/Sheet.vue'
+import {
+  hasPlaceholder,
+  insertTemplate,
+} from '#toolCatalog/utils/insertTemplate'
 import {
   FILE_PICKER_ACCEPT,
   MAX_ATTACHMENTS_PER_MESSAGE,
@@ -62,6 +73,36 @@ const handleSend = () => {
   input.value = ''
   textareaRef.value?.$el?.focus()
 }
+
+// ─── Tools panel (CLEAN-109) ─────────────────────────────────────────────
+// The sheet lives here, not in the Provider, because the draft does: picking
+// a tool must write into `input` and move the caret, and nothing else owns
+// those. A template is a starter, not a form — it lands at the caret and the
+// person keeps typing.
+const toolsOpen = ref(false)
+
+const textareaEl = (): HTMLTextAreaElement | null => {
+  const el = textareaRef.value?.$el as HTMLTextAreaElement | undefined
+  return el && typeof el.setSelectionRange === 'function' ? el : null
+}
+
+const onPickTemplate = (template: string) => {
+  const el = textareaEl()
+  const cursor = el?.selectionStart ?? input.value.length
+  const insertion = insertTemplate(input.value, cursor, template)
+  input.value = insertion.text
+  toolsOpen.value = false
+  void nextTick(() => {
+    const target = textareaEl()
+    if (!target) return
+    target.focus()
+    target.setSelectionRange(insertion.selectionStart, insertion.selectionEnd)
+  })
+}
+
+// A «…» left in the draft is allowed — the agent will ask — but it is shown,
+// so nobody sends "Restart the agent «name»" by accident.
+const draftHasPlaceholder = computed(() => hasPlaceholder(input.value))
 
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -131,12 +172,40 @@ const onPaste = (event: ClipboardEvent) => {
         @change="onFilesPicked"
       >
 
+      <TooltipProvider :delay-duration="300">
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              aria-label="Tools"
+              :aria-expanded="toolsOpen"
+              class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-input bg-transparent text-muted-foreground transition-colors hover:text-foreground"
+              :class="toolsOpen ? 'text-foreground' : ''"
+              @click="toolsOpen = true"
+            >
+              <Wrench class="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            Tools — what this agent can do, one click to try
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+
+      <ToolCatalogSheet
+        v-model:open="toolsOpen"
+        :agent-id="agentId"
+        @pick="onPickTemplate"
+      />
+
       <Textarea
         ref="textareaRef"
         v-model="input"
         :placeholder="placeholder"
         :disabled="disabled"
         class="min-h-[40px] max-h-[120px] resize-none"
+        :class="draftHasPlaceholder ? 'ring-1 ring-amber-500/50' : ''"
+        :title="draftHasPlaceholder ? 'Fill in the «…» placeholders, or send as is and the agent will ask.' : undefined"
         :rows="1"
         @keydown="handleKeydown"
         @paste="onPaste"

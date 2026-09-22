@@ -230,6 +230,8 @@ import type {
   RemoveAgentPeerResponse,
   ListAgentDelegationsData,
   ListAgentDelegationsResponse,
+  GetAgentToolsData,
+  GetAgentToolsResponse,
   SecretControllerDeleteData,
   SecretControllerDeleteResponse,
   SecretControllerListData,
@@ -1812,6 +1814,22 @@ export class AgentsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * The tools this agent's runtime would receive from the built-in Ranch MCP server, grouped by topic for the chat's Tools panel, with a per-tool "present in the running pod" flag, plus the agent's external MCP servers as opaque groups. Owner or Admin only; agent tokens get their list from MCP tools/list instead (CLEAN-109).
+   */
+  public static getAgentTools<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentToolsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentToolsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/tools",
+      ...options,
     });
   }
 }

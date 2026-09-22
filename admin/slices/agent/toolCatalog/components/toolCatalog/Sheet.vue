@@ -145,10 +145,13 @@ const searchRef = ref<InstanceType<typeof Input> | null>(null)
         </SheetDescription>
         <div class="relative mt-2">
           <Search class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <!-- type="text", not "search": Chromium draws its own clear
+               button on search inputs, and the sheet already has one. -->
           <Input
             ref="searchRef"
             v-model="query"
-            type="search"
+            type="text"
+            autocomplete="off"
             placeholder="Search tools…"
             aria-label="Search tools"
             class="h-9 pl-8 pr-8"

@@ -44,18 +44,24 @@ export function toolMetadataProblems(metadata: Partial<ToolMetadata>): string[] 
   }
 
   let properties: Record<string, unknown> = {};
+  let required: string[] = [];
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const params = metadata.parameters as any;
     const schema = (params ? zodToJsonSchema(params) : {}) as unknown as {
       properties?: Record<string, unknown>;
+      required?: string[];
     };
     properties = schema.properties ?? {};
+    required = schema.required ?? [];
   } catch {
     problems.push('parameters cannot be converted to JSON schema');
   }
-  const hasParams = Object.keys(properties).length > 0;
-  if (template && hasParams && !template.includes('«')) {
+  // A template needs a «…» only when the person must supply something: a
+  // required parameter other than `confirm` (which the model sets, not the
+  // person). Optional filters ("List the knowledge bases") need none.
+  const needsPlaceholder = required.some((k) => k !== 'confirm');
+  if (template && needsPlaceholder && !template.includes('«')) {
     problems.push('template has parameters but no «…» placeholder');
   }
   if (metadata.destructive) {

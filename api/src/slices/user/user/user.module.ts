@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { UserController } from './user.controller';
+import { UserTool } from './user.tool';
 import { IUserGateway } from './domain/user.gateway';
 import { UserGateway } from './data/user.gateway';
 import { UserMapper } from './data/user.mapper';
@@ -10,6 +11,7 @@ import { AuthModule } from '#/user/auth/auth.module';
   controllers: [UserController],
   providers: [
     UserMapper,
+    UserTool,
     {
       provide: IUserGateway,
       useClass: UserGateway,

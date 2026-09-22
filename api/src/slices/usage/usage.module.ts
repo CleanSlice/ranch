@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { UsageController } from './usage.controller';
+import { UsageTool } from './usage.tool';
 import { IUsageGateway } from './domain/usage.gateway';
 import { UsageGateway } from './data/usage.gateway';
 import { UsageMapper } from './data/usage.mapper';
@@ -13,6 +14,7 @@ import { LlmModule } from '#/llm/llm.module';
   controllers: [UsageController],
   providers: [
     UsageMapper,
+    UsageTool,
     {
       provide: IUsageGateway,
       useClass: UsageGateway,

@@ -14,6 +14,7 @@ import { IndexReconcileService } from './domain/indexReconcile.service';
 import { KnowledgeGateway } from './data/knowledge.gateway';
 import { KnowledgeMapper } from './data/knowledge.mapper';
 import { KnowledgeTool } from './knowledge.tool';
+import { KnowledgeAdminTool } from './knowledgeAdmin.tool';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { KnowledgeTool } from './knowledge.tool';
     IndexReconcileService,
     { provide: IKnowledgeGateway, useClass: KnowledgeGateway },
     KnowledgeTool,
+    KnowledgeAdminTool,
   ],
   exports: [IKnowledgeGateway, KnowledgeService],
 })

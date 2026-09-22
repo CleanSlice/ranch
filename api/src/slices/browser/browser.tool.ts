@@ -159,7 +159,7 @@ export class BrowserTool {
     name: 'browser_session_list',
     topic: ToolTopics.Browser,
     title: 'List browser sessions',
-    template: 'List my browser sessions',
+    template: 'List the browser sessions of the user «user»',
     description: 'List browser sessions for a user.',
     parameters: z.object({
       userId: z.string(),

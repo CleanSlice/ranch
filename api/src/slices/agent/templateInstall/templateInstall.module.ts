@@ -6,6 +6,7 @@ import { SkillModule } from '#/skill/skill.module';
 import { PaddockScenarioModule } from '#/paddock/scenario/scenario.module';
 import { TemplateInstallController } from './templateInstall.controller';
 import { TemplateExportController } from './templateExport.controller';
+import { TemplateInstallTool } from './templateInstall.tool';
 import { TemplateInstallService } from './domain/templateInstall.service';
 import { TemplateExportService } from './domain/templateExport.service';
 import { IManifestGateway } from './domain/manifest.gateway';
@@ -27,6 +28,7 @@ import { GitGateway } from './data/git.gateway';
   providers: [
     TemplateInstallService,
     TemplateExportService,
+    TemplateInstallTool,
     { provide: IManifestGateway, useClass: ManifestGateway },
     { provide: IArchiveGateway, useClass: ArchiveGateway },
     { provide: IGitGateway, useClass: GitGateway },

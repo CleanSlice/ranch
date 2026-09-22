@@ -158,7 +158,8 @@ export class SkillController {
   }
 }
 
-function deriveSlug(path: string): string {
+/** Exported so `skill.tool.ts` derives the same slug the console import does. */
+export function deriveSlug(path: string): string {
   const parts = path.split('/').filter(Boolean);
   const fname = parts.pop() ?? '';
   const parent = parts.pop();

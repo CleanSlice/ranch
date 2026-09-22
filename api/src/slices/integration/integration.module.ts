@@ -7,6 +7,7 @@ import { UserSecretModule } from '#/user/secret/secret.module';
 import { UserBrowserStateModule } from '#/user/browserState/browserState.module';
 import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
 import { IntegrationController } from './integration.controller';
+import { IntegrationTool } from './integration.tool';
 import { IntegrationInternalController } from './integration.internal.controller';
 import { IntegrationExtensionController } from './integration.extension.controller';
 import { IntegrationService } from './domain/integration.service';
@@ -36,6 +37,7 @@ import { IntegrationMapper } from './data/integration.mapper';
   providers: [
     IntegrationMapper,
     IntegrationService,
+    IntegrationTool,
     BridleApiKeyGuard,
     {
       provide: IIntegrationGateway,

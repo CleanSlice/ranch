@@ -7,6 +7,7 @@ import { ShareLinkGateway } from './data/shareLink.gateway';
 import { ShareLinkMapper } from './data/shareLink.mapper';
 import { ShareLinkController } from './shareLink.controller';
 import { ShareController } from './share.controller';
+import { ShareLinkTool } from './shareLink.tool';
 
 // AgentModule must be a forwardRef here because BridleModule (which imports
 // ShareLinkModule for chat-time token validation) is itself imported by
@@ -24,6 +25,7 @@ import { ShareController } from './share.controller';
   providers: [
     ShareLinkMapper,
     ShareLinkService,
+    ShareLinkTool,
     {
       provide: IShareLinkGateway,
       useClass: ShareLinkGateway,

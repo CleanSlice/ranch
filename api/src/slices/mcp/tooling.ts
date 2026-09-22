@@ -92,33 +92,44 @@ export function confirmed(
 const SECRET_KEYS = [
   'apiKey',
   'authValue',
+  'oauthClientId',
+  'clientSecret',
   'password',
   'passwordHash',
   'secret',
   'token',
+  'accessToken',
+  'refreshToken',
+  'keyHash',
+  'cookies',
+  'privateKey',
   'value',
 ] as const;
 
+const DEFAULT_SECRET_KEYS: readonly string[] = SECRET_KEYS.filter(
+  (k) => k !== 'value',
+);
+
 /**
  * Strip secret-bearing fields from a value before it becomes tool output
- * (FR-004). Recurses into arrays and plain objects; `keys` defaults to the
- * names Ranch uses for credentials. `value` is only stripped when asked for,
- * since most rows have an innocent `value`.
+ * (FR-004). Recurses into arrays and plain objects. The default set (every
+ * name Ranch uses for a credential) is ALWAYS stripped; `extraKeys` adds
+ * more for a slice's own field names. `value` is only stripped when asked
+ * for, since most rows have an innocent `value`.
  */
-export function stripSecrets<T>(
-  input: T,
-  keys: readonly string[] = SECRET_KEYS.filter((k) => k !== 'value'),
-): T {
-  if (Array.isArray(input)) {
-    return input.map((item) => stripSecrets(item, keys)) as unknown as T;
-  }
-  if (input && typeof input === 'object' && !(input instanceof Date)) {
-    const out: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(input as Record<string, unknown>)) {
-      if (keys.includes(key)) continue;
-      out[key] = stripSecrets(val, keys);
+export function stripSecrets<T>(input: T, extraKeys: readonly string[] = []): T {
+  const keys = new Set<string>([...DEFAULT_SECRET_KEYS, ...extraKeys]);
+  const walk = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object' && !(v instanceof Date)) {
+      const out: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(v as Record<string, unknown>)) {
+        if (keys.has(key)) continue;
+        out[key] = walk(val);
+      }
+      return out;
     }
-    return out as T;
-  }
-  return input;
+    return v;
+  };
+  return walk(input) as T;
 }

@@ -2,14 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { Tool, ToolTopics } from '#mcp';
 import { CONFIRM_SENTENCE, confirmed, ok } from '#/mcp/tooling';
-import { IPaddockScenarioGateway } from './domain';
+import {
+  IPaddockScenarioGateway,
+  IPaddockScenarioGeneratorGateway,
+} from './domain';
 import {
   ICreatePaddockScenarioData,
   IUpdatePaddockScenarioData,
   PaddockScenarioCategory,
   PaddockScenarioDifficulty,
 } from './domain/scenario.types';
-
 
 const categoryEnum = z.enum([
   'tool_use',
@@ -55,7 +57,10 @@ const setupSchema = z
 export class PaddockScenarioTool {
   private readonly logger = new Logger(PaddockScenarioTool.name);
 
-  constructor(private readonly scenarios: IPaddockScenarioGateway) {}
+  constructor(
+    private readonly scenarios: IPaddockScenarioGateway,
+    private readonly generator: IPaddockScenarioGeneratorGateway,
+  ) {}
 
   @Tool({
     name: 'list_paddock_scenarios',
@@ -219,5 +224,74 @@ export class PaddockScenarioTool {
     if (refusal) return refusal;
     await this.scenarios.delete(id);
     return ok({ ok: true, id });
+  }
+
+  @Tool({
+    name: 'generate_paddock_scenarios',
+    topic: ToolTopics.Paddock,
+    title: 'Generate scenarios from a description',
+    template:
+      'Generate «3» paddock scenarios for the agent «name» about «topic»',
+    description:
+      'Draft paddock scenarios from a plain-language description of what to test, using an LLM. Pass exactly one of agentId or templateId as the scope (resolve names with list_agents / list_templates first). Returns the drafts only — nothing is saved. Review them, then call create_paddock_scenario for each one worth keeping.',
+    parameters: z.object({
+      description: z
+        .string()
+        .describe('What behaviour or problem the scenarios should test.'),
+      agentId: z.string().optional(),
+      templateId: z.string().optional(),
+      count: z
+        .number()
+        .int()
+        .min(1)
+        .max(5)
+        .optional()
+        .describe('How many drafts to produce (1–5, default 1).'),
+      category: categoryEnum.optional(),
+      difficulty: difficultyEnum.optional(),
+      credentialId: z
+        .string()
+        .optional()
+        .describe('LlmCredential id to draft with; default: first active.'),
+    }),
+  })
+  async generate(input: {
+    description: string;
+    agentId?: string;
+    templateId?: string;
+    count?: number;
+    category?: PaddockScenarioCategory;
+    difficulty?: PaddockScenarioDifficulty;
+    credentialId?: string;
+  }) {
+    // Same XOR rule the controller enforces on POST /paddock-scenarios/generate.
+    const hasTemplate = Boolean(input.templateId);
+    const hasAgent = Boolean(input.agentId);
+    if (hasTemplate === hasAgent) {
+      return ok({
+        error: 'Scenario must be scoped to exactly one of: templateId, agentId',
+      });
+    }
+    // The generator drafts one scenario per call; the console asks for one at
+    // a time, a chat asks for "three about refunds". Sequential on purpose —
+    // each is an LLM call and parallel drafts tend to come back near-identical.
+    const count = input.count ?? 1;
+    const drafts: ICreatePaddockScenarioData[] = [];
+    for (let i = 0; i < count; i++) {
+      drafts.push(
+        await this.generator.generate({
+          description: input.description,
+          templateId: input.templateId ?? undefined,
+          agentId: input.agentId ?? undefined,
+          category: input.category,
+          difficulty: input.difficulty,
+          credentialId: input.credentialId,
+        }),
+      );
+    }
+    return ok({
+      drafts,
+      note: 'Not saved. Call create_paddock_scenario with a draft to keep it.',
+    });
   }
 }

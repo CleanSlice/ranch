@@ -15,10 +15,16 @@ import { ITemplateGateway } from '#/agent/template/domain';
 import { ITemplateFileGateway } from '#/agent/templateFile/domain';
 import { ILlmGateway } from '#/llm/domain';
 import { ISkillGateway } from '#/skill/domain';
-import { ISettingGateway } from '#/setting/domain';
+import {
+  ISettingGateway,
+  describeSettingCatalog,
+  findSettingDefinition,
+  nearestSettingDefinition,
+} from '#/setting/domain';
 import { IUsageGateway } from '#/usage/domain';
 import { IFileGateway } from '#/agent/file/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain';
+import { RancherService } from './domain/rancher.service';
 
 /**
  * The original Ranch management tools — agents, templates, skills, LLM
@@ -40,7 +46,28 @@ export class RancherTool {
     private readonly settings: ISettingGateway,
     private readonly usage: IUsageGateway,
     private readonly files: IFileGateway,
+    private readonly rancher: RancherService,
   ) {}
+
+  // ─── Platform ────────────────────────────────────────────────────────
+
+  @Tool({
+    name: 'get_rancher_status',
+    topic: ToolTopics.Platform,
+    title: 'Rancher setup status',
+    template: 'Is the Rancher setup complete?',
+    description:
+      'The Rancher setup wizard state: is there an LLM credential, the special Rancher template, an admin agent, and S3 configured. Read-only; the console shows the same stepper.',
+    parameters: z.object({}),
+  })
+  async getRancherStatus(
+    _args: Record<string, never>,
+    _context: unknown,
+    httpRequest: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.requireOwner(httpRequest);
+    return ok(await this.rancher.getStatus());
+  }
 
   private requireOwner(
     httpRequest: Request & { user?: IAuthTokenPayload },
@@ -761,8 +788,13 @@ export class RancherTool {
     topic: ToolTopics.Settings,
     title: 'List settings',
     template: 'Show the settings in «group»',
+    // The catalogue rides in the description so tools/list already tells the
+    // model which keys exist — a setting is a free-form row, and a guessed
+    // key would be saved as a row nothing reads (CLEAN-109).
     description:
-      'List all platform settings, optionally filtered by group (e.g. integrations, agent_defaults, auth).',
+      'List all platform settings, optionally filtered by group (e.g. integrations, agent_defaults, auth).' +
+      '\n\n' +
+      describeSettingCatalog(),
     parameters: z.object({
       group: z.string().optional(),
     }),
@@ -773,8 +805,25 @@ export class RancherTool {
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
     this.requireOwner(httpRequest);
-    if (group) return ok(await this.settings.findByGroup(group));
-    return ok(await this.settings.findAll());
+    const rows = group
+      ? await this.settings.findByGroup(group)
+      : await this.settings.findAll();
+    // Password-type settings (bot tokens, S3 secrets, the knowledge api key)
+    // are catalogued as secret; the list says whether they are set, never
+    // what they hold (FR-004).
+    return ok(
+      rows.map((row) =>
+        findSettingDefinition(row.group, row.name)?.secret
+          ? {
+              ...row,
+              value:
+                row.value === null || row.value === undefined || row.value === ''
+                  ? '(secret — empty)'
+                  : '(secret — set)',
+            }
+          : row,
+      ),
+    );
   }
 
   @Tool({
@@ -783,7 +832,10 @@ export class RancherTool {
     title: 'Set a setting',
     template: 'Set «group».«name» to «value»',
     description:
-      'Create or replace a setting by group/name. Use valueType="string" for plain strings, "json" for everything else.',
+      'Create or replace a setting by group/name. Use valueType="string" for plain strings, "json" for everything else. ' +
+      'Unknown keys are accepted, as in the console, but nothing reads them — prefer a key from the list below.' +
+      '\n\n' +
+      describeSettingCatalog(),
     parameters: z.object({
       group: z.string(),
       name: z.string(),
@@ -811,11 +863,20 @@ export class RancherTool {
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
     this.requireOwner(httpRequest);
-    return ok(
-      await this.settings.upsert(group, name, {
-        value,
-        valueType: valueType ?? 'string',
-      }),
-    );
+    const saved = await this.settings.upsert(group, name, {
+      value,
+      valueType: valueType ?? 'string',
+    });
+    if (findSettingDefinition(group, name)) return ok(saved);
+    // Saved anyway (the console allows any key), but say what it probably
+    // should have been, so a typo does not silently become a dead row.
+    const near = nearestSettingDefinition(group, name);
+    return ok({
+      ...saved,
+      ...(near && { nearestKey: `${near.group}.${near.name}` }),
+      hint: near
+        ? `«${group}.${name}» is not a key the platform reads — did you mean «${near.group}.${near.name}» (${near.description})?`
+        : `«${group}.${name}» is not a key the platform reads; it is saved but nothing uses it.`,
+    });
   }
 }

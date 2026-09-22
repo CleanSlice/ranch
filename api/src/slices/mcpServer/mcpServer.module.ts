@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { McpServerController } from './mcpServer.controller';
+import { McpServerTool } from './mcpServer.tool';
 import { IMcpServerGateway } from './domain/mcpServer.gateway';
 import { McpServerSeeder } from './domain/mcpServer.seeder';
 import { AgentMcpResolver } from './domain/agentMcpResolver.service';
@@ -20,6 +21,9 @@ import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.mod
     McpServerMapper,
     McpServerSeeder,
     AgentMcpResolver,
+    // The chat-side mirror of McpServerController (CLEAN-109). start_mcp_oauth
+    // lives in oauth/mcpOauth.tool.ts, because McpOauthModule imports this one.
+    McpServerTool,
     {
       provide: IMcpServerGateway,
       useClass: McpServerGateway,

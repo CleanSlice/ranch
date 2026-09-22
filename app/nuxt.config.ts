@@ -32,6 +32,13 @@ export default defineNuxtConfig({
       // and the axios client resolves requests against its own origin
       // instead of the api.
       apiUrl: process.env.API_URL || '',
+      // Public address share links should carry, when it is not the host the
+      // console is reached on. Mazda's console answers on the bare domain
+      // while it is published under `ranch.`, so links built from the address
+      // bar went out a label short (CLEAN-110). Prod sets
+      // NUXT_PUBLIC_SHARE_BASE_URL; empty falls back to the rule table in
+      // slices/share/domain/shareOrigin.ts, then to the current origin.
+      shareBaseUrl: process.env.SHARE_BASE_URL || '',
     },
   },
   app: {

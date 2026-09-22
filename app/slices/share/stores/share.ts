@@ -1,4 +1,5 @@
 import { createServiceGetter } from '#common/composables/createServiceGetter';
+import { buildShareUrl } from '#share/domain';
 import type {
   IShareLinkState,
   IShareResolved,
@@ -33,18 +34,33 @@ function errorText(err: unknown): string | null {
  * The API never learns the console's origin (`runtimeConfig.public.apiUrl` is
  * the *API* host), so the shareable URL is assembled here — the one place that
  * knows both the token and the browser's address bar.
+ *
+ * The address bar is the starting point, not the answer: a deployment can
+ * answer on more than one hostname, and the link must carry the published one.
+ * `buildShareUrl` applies the configured base, then the known-host rules, then
+ * falls back to the origin unchanged (CLEAN-110).
  */
-function withUrl(state: IShareLinkState): IShareLinkState {
+function withUrl(
+  state: IShareLinkState,
+  shareBaseUrl: string,
+): IShareLinkState {
   if (!state.active || !state.token || typeof window === 'undefined') {
     return { ...state, url: null };
   }
   return {
     ...state,
-    url: `${window.location.origin}/share?token=${state.token}`,
+    url: buildShareUrl(window.location.origin, state.token, shareBaseUrl),
   };
 }
 
 export const useShareStore = defineStore('share', () => {
+  // Read once at store setup: the published base does not change while the
+  // page is open, and reaching for the Nuxt context inside an action would
+  // tie link building to where it happens to be called from.
+  const shareBaseUrl = String(
+    useRuntimeConfig().public.shareBaseUrl ?? '',
+  );
+
   /** Owner-side link state, one entry per agent the panel has looked at. */
   const links = ref<Record<string, IShareLinkState>>({});
   const pending = ref(false);
@@ -67,7 +83,7 @@ export const useShareStore = defineStore('share', () => {
     pending.value = true;
     error.value = null;
     try {
-      const state = withUrl(await call(getService()));
+      const state = withUrl(await call(getService()), shareBaseUrl);
       links.value[agentId] = state;
       return state;
     } catch (err) {

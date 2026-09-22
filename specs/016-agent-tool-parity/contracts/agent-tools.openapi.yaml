@@ -1,0 +1,83 @@
+openapi: 3.1.0
+info:
+  title: Ranch API — agent tool catalogue (CLEAN-109)
+  version: 1.0.0
+paths:
+  /agents/{id}/tools:
+    get:
+      operationId: getAgentTools
+      summary: >-
+        The tools this agent's runtime would receive from the built-in Ranch MCP
+        server, grouped by topic, with per-tool "present in the running pod"
+        flags, plus the agent's external MCP servers as opaque groups. Owner or
+        Admin only; agent tokens get their list from MCP tools/list instead.
+      tags: [Agents]
+      security: [{ bearer: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The catalogue.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentToolCatalogDto' }
+        '403': { description: Caller is not Owner/Admin, or is an agent token. }
+        '404': { description: Agent not found. }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    AgentToolCatalogDto:
+      type: object
+      required: [agentId, podStartedAt, listedAt, groups]
+      properties:
+        agentId: { type: string }
+        podStartedAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the current pod started; null when no pod runs.
+        listedAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the pod last called tools/list; null if it never did.
+        groups:
+          type: array
+          items: { $ref: '#/components/schemas/AgentToolGroupDto' }
+    AgentToolGroupDto:
+      type: object
+      required: [key, title, kind, afterRestart, tools]
+      properties:
+        key:
+          type: string
+          description: Topic key (e.g. mcp_servers) or mcp:<serverId> for an external server.
+        title: { type: string }
+        kind: { type: string, enum: [builtin, external] }
+        description:
+          type: string
+          description: External servers only — the server row's description. Never its url or auth value.
+        afterRestart:
+          type: boolean
+          description: >-
+            builtin — at least one tool has inPod=false; external — the server row changed
+            after the pod started (same rule as GET /agents/{id}/mcp-status).
+        tools:
+          type: array
+          items: { $ref: '#/components/schemas/AgentToolEntryDto' }
+          description: Empty for external groups; their tools are served by the server itself.
+    AgentToolEntryDto:
+      type: object
+      required: [name, title, description, template, destructive, inPod]
+      properties:
+        name: { type: string, description: Technical MCP tool name. }
+        title: { type: string }
+        description:
+          type: string
+          description: The per-caller description, exactly what the runtime would be given.
+        template: { type: string, description: Starter prompt with «…» placeholders. }
+        destructive: { type: boolean }
+        inPod:
+          type: [boolean, 'null']
+          description: null — no pod; false — the running pod did not list it; true — it did.

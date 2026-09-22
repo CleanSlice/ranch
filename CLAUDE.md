@@ -32,4 +32,12 @@ a fetch or a live feed. An entity lives once in its Pinia store: fetches upsert,
 pushes patch, components render by id, `useAsyncData` is for loading state only,
 optimistic changes go through the store's `patch()` with a rollback.
 
+**Agent tools (`api`):** read `docs/agent-tools.md` before adding or changing
+any admin-console capability. The console is a window, the chat is the hands:
+a module is not done until the Ranch agent has a tool for what the console
+can do — in the slice, with `topic`/`title`/`template`, gated to the right
+audience, `confirm` on anything destructive, no secrets in results, and a spec.
+The API refuses to boot a tool without that metadata; the PR template asks
+for the rest.
+
 Project overview: `README.md`.

@@ -139,11 +139,11 @@ Web app: `api/src/slices/<slice>/…` (NestJS, CleanSlice) and `admin/slices/<sl
 
 ## Phase 6: Polish & Cross-Cutting
 
-- [ ] T057 [P] Review every new tool description for the confirm sentence on ⚠ tools and for "next move" wording in refusals; fix wording inconsistencies across `api/src/slices/**/*.tool.ts`
-- [ ] T058 [P] Review templates in the panel for readability (no ids, «…» placeholders only, ≤ 200 chars) by opening the sheet and reading every topic; fix in the tool files
-- [ ] T059 Run `cd admin && npx nuxt typecheck` and `bun test slices`; run `cd api && NODE_OPTIONS=--experimental-vm-modules npx jest`; run `cd api && bun run lint` if defined
-- [ ] T060 Walk quickstart.md §1–§8 end to end on the local stack; record any deviation in `specs/016-agent-tool-parity/quickstart.md` notes
-- [ ] T061 Open the GitHub PR into `main` (`gh pr create`) titled `feat: agent tool parity, Tools panel and the tools-per-module rule (CLEAN-109)` with the PR template filled, link it on CLEAN-109, move the issue to In Review (transition "In Testing" if that is the board's review column)
+- [X] T057 [P] Review every new tool description for the confirm sentence on ⚠ tools and for "next move" wording in refusals; fix wording inconsistencies across `api/src/slices/**/*.tool.ts`
+- [X] T058 [P] Review templates in the panel for readability (no ids, «…» placeholders only, ≤ 200 chars) by opening the sheet and reading every topic; fix in the tool files
+- [X] T059 Run `cd admin && npx nuxt typecheck` and `bun test slices`; run `cd api && NODE_OPTIONS=--experimental-vm-modules npx jest`; run `cd api && bun run lint` if defined
+- [ ] T060 (needs a running stack — left for review) Walk quickstart.md §1–§8 end to end on the local stack; record any deviation in `specs/016-agent-tool-parity/quickstart.md` notes
+- [X] T061 Open the GitHub PR into `main` (`gh pr create`) titled `feat: agent tool parity, Tools panel and the tools-per-module rule (CLEAN-109)` with the PR template filled, link it on CLEAN-109, move the issue to In Review (transition "In Testing" if that is the board's review column)
 
 ---
 

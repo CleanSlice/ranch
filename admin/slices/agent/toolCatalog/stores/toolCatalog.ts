@@ -33,6 +33,19 @@ export const useToolCatalogStore = defineStore('toolCatalog', () => {
   const catalogs = ref<Record<string, IAgentToolCatalog>>({});
   const ui = ref<Record<string, IToolCatalogUiState>>({});
 
+  // Which agent's sheet is open. The button lives in the page header, the
+  // sheet next to the composer it writes into; this is the one fact both
+  // read, so neither has to know about the other.
+  const sheetOpenFor = ref<string | null>(null);
+
+  function openSheet(agentId: string): void {
+    sheetOpenFor.value = agentId;
+  }
+
+  function closeSheet(): void {
+    sheetOpenFor.value = null;
+  }
+
   function byAgent(agentId: string): IAgentToolCatalog | undefined {
     return catalogs.value[agentId];
   }
@@ -71,6 +84,9 @@ export const useToolCatalogStore = defineStore('toolCatalog', () => {
   return {
     catalogs,
     ui,
+    sheetOpenFor,
+    openSheet,
+    closeSheet,
     byAgent,
     upsert,
     fetchByAgent,

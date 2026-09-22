@@ -6,6 +6,7 @@ import { buildChatFlow, type IChatFlowDayItem } from '../../utils/chatFlow'
 import Message from './Message.vue'
 import Input from './Input.vue'
 import DropZone from './DropZone.vue'
+import ToolCatalogButton from '#toolCatalog/components/toolCatalog/Button.vue'
 import DebugPanel from './DebugPanel.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
 import { ScrollArea } from '#theme/components/ui/scroll-area'
@@ -31,6 +32,9 @@ const props = withDefaults(defineProps<{
   // Hosts with their own restart controls (the admin agent page) turn the
   // header's built-in restart prompt off to keep the header uncluttered.
   restartPrompt?: boolean
+  // The Tools button (CLEAN-109). Hosts with their own header actions (the
+  // admin agent page puts it beside Share and Edit) turn this one off.
+  toolsButton?: boolean
   // Host-supplied reconciled agent state. The WS alone can't tell the truth
   // fast enough: after a restart the OLD pod keeps its socket alive for a few
   // seconds ("Connected" while the pod is dying), and on a freshly opened
@@ -54,6 +58,7 @@ const props = withDefaults(defineProps<{
   placeholder: 'Type a message...',
   showStatus: true,
   restartPrompt: true,
+  toolsButton: true,
   agentState: null,
   offlineHint: null,
   initialDebugEnabled: null,
@@ -523,6 +528,11 @@ async function onConfirmReset() {
         <h3 class="font-semibold text-sm">{{ title }}</h3>
       </div>
       <div class="flex items-center gap-3">
+        <ToolCatalogButton
+          v-if="toolsButton"
+          :agent-id="agentId"
+          class="h-7 px-2 text-xs"
+        />
         <Button
           v-if="showRestartPrompt"
           variant="outline"

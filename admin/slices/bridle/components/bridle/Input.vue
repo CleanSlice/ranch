@@ -2,16 +2,11 @@
 import { computed, nextTick, ref } from 'vue'
 import { Textarea } from '#theme/components/ui/textarea'
 import { Button } from '#theme/components/ui/button'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '#theme/components/ui/tooltip'
-import { AlertCircle, Paperclip, Send, Wrench } from 'lucide-vue-next'
+import { AlertCircle, Paperclip, Send } from 'lucide-vue-next'
 import { bridleKey, useBridleStore } from '../../stores/bridle'
 import AttachmentChip from './AttachmentChip.vue'
 import ToolCatalogSheet from '#toolCatalog/components/toolCatalog/Sheet.vue'
+import { useToolCatalogStore } from '#toolCatalog/stores/toolCatalog'
 import {
   hasPlaceholder,
   insertTemplate,
@@ -77,9 +72,17 @@ const handleSend = () => {
 // ─── Tools panel (CLEAN-109) ─────────────────────────────────────────────
 // The sheet lives here, not in the Provider, because the draft does: picking
 // a tool must write into `input` and move the caret, and nothing else owns
-// those. A template is a starter, not a form — it lands at the caret and the
-// person keeps typing.
-const toolsOpen = ref(false)
+// those. The button that opens it sits in the page header (ToolCatalogButton)
+// and talks to the composer through the store. A template is a starter, not
+// a form — it lands at the caret and the person keeps typing.
+const toolCatalog = useToolCatalogStore()
+const toolsOpen = computed({
+  get: () => toolCatalog.sheetOpenFor === props.agentId,
+  set: (open: boolean) => {
+    if (open) toolCatalog.openSheet(props.agentId)
+    else if (toolCatalog.sheetOpenFor === props.agentId) toolCatalog.closeSheet()
+  },
+})
 
 const textareaEl = (): HTMLTextAreaElement | null => {
   const el = textareaRef.value?.$el as HTMLTextAreaElement | undefined
@@ -171,26 +174,6 @@ const onPaste = (event: ClipboardEvent) => {
         :accept="FILE_PICKER_ACCEPT"
         @change="onFilesPicked"
       >
-
-      <TooltipProvider :delay-duration="300">
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <button
-              type="button"
-              aria-label="Tools"
-              :aria-expanded="toolsOpen"
-              class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-input bg-transparent text-muted-foreground transition-colors hover:text-foreground"
-              :class="toolsOpen ? 'text-foreground' : ''"
-              @click="toolsOpen = true"
-            >
-              <Wrench class="h-4 w-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            Tools — what this agent can do, one click to try
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
 
       <ToolCatalogSheet
         v-model:open="toolsOpen"

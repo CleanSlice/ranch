@@ -152,7 +152,7 @@ Web app, CleanSlice layout: `api/src/slices/agent/file/…` (NestJS), `api/src/s
 - [X] T051 [P] Bundle check: `cd admin && bun run build`, inspect `admin/.output/public/_nuxt/` and confirm `monaco-editor` lands in its own chunk imported only from `admin/slices/agent/file/composables/useMonaco.ts`; record the chunk size in the PR
 - [X] T052 Full verification: `cd api && NODE_OPTIONS=--experimental-vm-modules npx jest src/slices/agent/file src/slices/bridle src/slices/mcp`; `cd admin && bun test slices && npx nuxt typecheck`; `cd app && bun test slices && npx nuxt typecheck && bun run i18n:sync` (no diff after sync); revert any regenerated SDK noise
 - [ ] T053 Run every quickstart.md scenario once more on a clean environment and tick them in the Jira comment
-- [ ] T054 Open the PR into `main` with `CLEAN-112` in the title, the twin-console statement (bridle: admin + app; Files tab: admin only, no twin), the tools-per-module checklist from `docs/agent-tools.md`, the Monaco chunk size, and the limits table; put the PR URL on CLEAN-112 and move it to In Testing (transition 51)
+- [X] T054 Open the PR into `main` with `CLEAN-112` in the title, the twin-console statement (bridle: admin + app; Files tab: admin only, no twin), the tools-per-module checklist from `docs/agent-tools.md`, the Monaco chunk size, and the limits table; put the PR URL on CLEAN-112 and move it to In Testing (transition 51)
 
 ---
 

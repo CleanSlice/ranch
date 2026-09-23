@@ -828,6 +828,8 @@ async function onConfirmReset() {
   border-radius: 0.25rem;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 0.9em;
+  /* Inline code has no spaces to break at — a long id or URL must still fold. */
+  overflow-wrap: anywhere;
 }
 
 .chat-md pre {
@@ -835,7 +837,11 @@ async function onConfirmReset() {
   border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
   border-radius: 0.5rem;
   padding: 0.75em 0.9em;
-  overflow-x: auto;
+  /* A chat bubble is not an editor: a one-line tool result or JSON error
+     wraps inside the bubble instead of running off its edge behind a
+     scrollbar nobody notices (CLEAN-113). */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   margin: 0.6em 0;
   font-size: 0.85em;
   line-height: 1.5;

@@ -664,6 +664,88 @@ export type ImportRemoveConflictDto = {
   remove: number;
 };
 
+export type ProposalSetSummaryDto = {
+  counts: ImportCountsDto;
+  /**
+   * First rows only.
+   */
+  rows: Array<ImportPlanEntryDto>;
+  /**
+   * Rows not listed.
+   */
+  more: number;
+  mode: "merge" | "replace";
+  includeSessions: boolean;
+  wrapperStripped: string | null;
+  warnings: Array<string>;
+};
+
+export type FileChangeProposalDto = {
+  id: string;
+  /**
+   * Target workspace.
+   */
+  agentId: string;
+  agentName: string;
+  /**
+   * The agent whose chat raised it.
+   */
+  chatAgentId: string;
+  channel: string;
+  kind: "single" | "set";
+  op: "write" | "create" | "import";
+  path: string | null;
+  mode: "merge" | "replace" | null;
+  includeSessions: boolean;
+  proposedBytes: number;
+  diffStatus: "ok" | "too_large" | "binary" | "none";
+  additions: number | null;
+  deletions: number | null;
+  changedLines: number | null;
+  firstChangedLine: number | null;
+  /**
+   * Unified diff hunks; null when over the inline caps or not computed.
+   */
+  inlineDiff: string | null;
+  summary: ProposalSetSummaryDto | null;
+  status: "pending" | "applied" | "skipped" | "stale" | "refused";
+  actedBy: string | null;
+  actedVia: "card" | "tool" | "editor" | null;
+  actedAt: string | null;
+  /**
+   * ImportResult for a set; `{ etag }` for a single.
+   */
+  result: {
+    [key: string]: unknown;
+  } | null;
+  reason: string | null;
+  /**
+   * The target agent is running — applies on its next restart.
+   */
+  restartRequired: boolean;
+  createdAt: string;
+};
+
+export type ApplyProposalDto = {
+  via?: "card" | "editor";
+  /**
+   * Editor only — the edited content replaces the proposed one.
+   */
+  content?: string;
+  /**
+   * Replace-mode imports that remove files need this acknowledgement.
+   */
+  confirmRemove?: boolean;
+};
+
+export type ProposalRemoveConflictDto = {
+  requiresConfirmation: boolean;
+  /**
+   * Files replace mode would delete.
+   */
+  remove: number;
+};
+
 export type BridleTextPartDto = {
   type: "text" | "image" | "file";
   text: string;
@@ -799,6 +881,10 @@ export type TranscriptResponseDto = {
    */
   nextCursor: string | null;
   hasMore: boolean;
+  /**
+   * File change proposals raised in this chat inside the page’s window, plus every pending one (CLEAN-112). The client places them by `createdAt`.
+   */
+  proposals: Array<FileChangeProposalDto>;
 };
 
 export type ShareLinkDto = {
@@ -3161,6 +3247,124 @@ export type ApplyAgentImportResponses = {
 
 export type ApplyAgentImportResponse =
   ApplyAgentImportResponses[keyof ApplyAgentImportResponses];
+
+export type ListAgentFileProposalsData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query: {
+    /**
+     * The agent whose chat raised the proposals.
+     */
+    chatAgentId: string;
+    channel?: string;
+    since?: string;
+    until?: string;
+  };
+  url: "/agents/{agentId}/files/proposals";
+};
+
+export type ListAgentFileProposalsResponses = {
+  200: Array<FileChangeProposalDto>;
+};
+
+export type ListAgentFileProposalsResponse =
+  ListAgentFileProposalsResponses[keyof ListAgentFileProposalsResponses];
+
+export type GetAgentFileProposalData = {
+  body?: never;
+  path: {
+    agentId: string;
+    proposalId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/proposals/{proposalId}";
+};
+
+export type GetAgentFileProposalResponses = {
+  200: FileChangeProposalDto;
+};
+
+export type GetAgentFileProposalResponse =
+  GetAgentFileProposalResponses[keyof GetAgentFileProposalResponses];
+
+export type GetAgentFileProposalContentData = {
+  body?: never;
+  path: {
+    agentId: string;
+    proposalId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/proposals/{proposalId}/content";
+};
+
+export type GetAgentFileProposalContentResponses = {
+  200: unknown;
+};
+
+export type GetAgentFileProposalDiffData = {
+  body?: never;
+  path: {
+    agentId: string;
+    proposalId: string;
+  };
+  query?: {
+    /**
+     * Set proposals: which entry to compare.
+     */
+    path?: string;
+  };
+  url: "/agents/{agentId}/files/proposals/{proposalId}/diff";
+};
+
+export type GetAgentFileProposalDiffErrors = {
+  /**
+   * Over the comparison limit — no diff computed.
+   */
+  413: unknown;
+};
+
+export type ApplyAgentFileProposalData = {
+  body: ApplyProposalDto;
+  path: {
+    agentId: string;
+    proposalId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/proposals/{proposalId}/apply";
+};
+
+export type ApplyAgentFileProposalErrors = {
+  409: ProposalRemoveConflictDto;
+};
+
+export type ApplyAgentFileProposalError =
+  ApplyAgentFileProposalErrors[keyof ApplyAgentFileProposalErrors];
+
+export type ApplyAgentFileProposalResponses = {
+  200: FileChangeProposalDto;
+};
+
+export type ApplyAgentFileProposalResponse =
+  ApplyAgentFileProposalResponses[keyof ApplyAgentFileProposalResponses];
+
+export type SkipAgentFileProposalData = {
+  body?: never;
+  path: {
+    agentId: string;
+    proposalId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/proposals/{proposalId}/skip";
+};
+
+export type SkipAgentFileProposalResponses = {
+  200: FileChangeProposalDto;
+};
+
+export type SkipAgentFileProposalResponse =
+  SkipAgentFileProposalResponses[keyof SkipAgentFileProposalResponses];
 
 export type SendBridleMessageData = {
   body: SendMessageDto;

@@ -3,10 +3,17 @@ import type {
   IFileChunk,
   IFileContent,
   IFileLimits,
+  IFileChangeProposal,
   IFileNode,
+  IImportApplyOptions,
+  IImportApplyOutcome,
+  IImportPlan,
   IOpenLink,
+  IProposalApplyOutcome,
   ISaveOptions,
   ISyncOutcome,
+  ImportMode,
+  ProposalVia,
 } from './agentFile.types';
 
 /**
@@ -51,4 +58,42 @@ export abstract class IAgentFileGateway {
   abstract exportZip(agentId: string, paths?: string[]): Promise<Blob>;
   /** Mints a short-lived link to the raw stored file (Open full). */
   abstract openLink(agentId: string, path: string): Promise<IOpenLink>;
+
+  // ── Import (CLEAN-112) ────────────────────────────────────────
+  /** Upload + validate once; returns the merge-mode plan with its importId. */
+  abstract stageImport(
+    agentId: string,
+    archive: File,
+    onProgress?: (percent: number) => void,
+  ): Promise<IImportPlan>;
+  abstract planImport(
+    agentId: string,
+    importId: string,
+    mode: ImportMode,
+    includeSessions: boolean,
+  ): Promise<IImportPlan>;
+  abstract applyImport(
+    agentId: string,
+    importId: string,
+    options: IImportApplyOptions,
+  ): Promise<IImportApplyOutcome>;
+
+  // ── Change proposals (CLEAN-112) ──────────────────────────────
+  abstract listProposals(
+    agentId: string,
+    chatAgentId: string,
+    channel: string,
+  ): Promise<IFileChangeProposal[]>;
+  abstract getProposal(agentId: string, proposalId: string): Promise<IFileChangeProposal>;
+  /** Raw proposed text (Edit before applying). */
+  abstract proposalContent(agentId: string, proposalId: string): Promise<string>;
+  /** Unified diff; throws with a clear message over the comparison cap (413). */
+  abstract proposalDiff(agentId: string, proposalId: string, path?: string): Promise<string>;
+  abstract applyProposal(
+    agentId: string,
+    proposalId: string,
+    via: ProposalVia,
+    options?: { content?: string; confirmRemove?: boolean },
+  ): Promise<IProposalApplyOutcome>;
+  abstract skipProposal(agentId: string, proposalId: string): Promise<IFileChangeProposal>;
 }

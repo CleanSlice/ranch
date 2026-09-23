@@ -66,6 +66,14 @@ export abstract class IFileGateway {
     agentId: string,
     paths?: string[],
   ): Promise<{ filename: string; buffer: Buffer }>;
+  // ── Change proposals (CLEAN-112) ──────────────────────────────
+  /** ETag of the stored object (quotes stripped), or null when absent. */
+  abstract headEtag(agentId: string, path: string): Promise<string | null>;
+  /** Proposed content lives outside every agent prefix until applied. */
+  abstract putProposalContent(proposalId: string, content: string): Promise<void>;
+  abstract getProposalContent(proposalId: string): Promise<string | null>;
+  abstract deleteProposalContent(proposalId: string): Promise<void>;
+
   /**
    * The raw object as a stream, for the "Open full" link (CLEAN-112). No
    * size cap: the browser renders or downloads whatever is stored.

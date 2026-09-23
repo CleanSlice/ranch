@@ -1,6 +1,7 @@
 export * from './deleteFile.query.dto';
 export * from './deleteFiles.dto';
 export * from './exportFiles.dto';
+export * from './fileChangeProposal.dto';
 export * from './fileChunk.dto';
 export * from './fileContent.dto';
 export * from './fileLimits.dto';

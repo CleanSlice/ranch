@@ -1501,6 +1501,236 @@ export const ImportRemoveConflictDtoSchema = {
   required: ["requiresConfirmation", "remove"],
 } as const;
 
+export const ProposalSetSummaryDtoSchema = {
+  type: "object",
+  properties: {
+    counts: {
+      $ref: "#/components/schemas/ImportCountsDto",
+    },
+    rows: {
+      description: "First rows only.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ImportPlanEntryDto",
+      },
+    },
+    more: {
+      type: "number",
+      example: 0,
+      description: "Rows not listed.",
+    },
+    mode: {
+      type: "string",
+      enum: ["merge", "replace"],
+    },
+    includeSessions: {
+      type: "boolean",
+    },
+    wrapperStripped: {
+      type: "string",
+      nullable: true,
+    },
+    warnings: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "counts",
+    "rows",
+    "more",
+    "mode",
+    "includeSessions",
+    "wrapperStripped",
+    "warnings",
+  ],
+} as const;
+
+export const FileChangeProposalDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    agentId: {
+      type: "string",
+      description: "Target workspace.",
+    },
+    agentName: {
+      type: "string",
+    },
+    chatAgentId: {
+      type: "string",
+      description: "The agent whose chat raised it.",
+    },
+    channel: {
+      type: "string",
+      example: "admin",
+    },
+    kind: {
+      type: "string",
+      enum: ["single", "set"],
+    },
+    op: {
+      type: "string",
+      enum: ["write", "create", "import"],
+    },
+    path: {
+      type: "string",
+      nullable: true,
+      example: "agent.config.json",
+    },
+    mode: {
+      type: "string",
+      nullable: true,
+      enum: ["merge", "replace", null],
+    },
+    includeSessions: {
+      type: "boolean",
+    },
+    proposedBytes: {
+      type: "number",
+      example: 856,
+    },
+    diffStatus: {
+      type: "string",
+      enum: ["ok", "too_large", "binary", "none"],
+    },
+    additions: {
+      type: "number",
+      nullable: true,
+    },
+    deletions: {
+      type: "number",
+      nullable: true,
+    },
+    changedLines: {
+      type: "number",
+      nullable: true,
+    },
+    firstChangedLine: {
+      type: "number",
+      nullable: true,
+    },
+    inlineDiff: {
+      type: "string",
+      nullable: true,
+      description:
+        "Unified diff hunks; null when over the inline caps or not computed.",
+    },
+    summary: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/ProposalSetSummaryDto",
+        },
+      ],
+    },
+    status: {
+      type: "string",
+      enum: ["pending", "applied", "skipped", "stale", "refused"],
+    },
+    actedBy: {
+      type: "string",
+      nullable: true,
+    },
+    actedVia: {
+      type: "string",
+      nullable: true,
+      enum: ["card", "tool", "editor", null],
+    },
+    actedAt: {
+      type: "string",
+      nullable: true,
+      format: "date-time",
+    },
+    result: {
+      type: "object",
+      nullable: true,
+      description: "ImportResult for a set; `{ etag }` for a single.",
+    },
+    reason: {
+      type: "string",
+      nullable: true,
+    },
+    restartRequired: {
+      type: "boolean",
+      description: "The target agent is running — applies on its next restart.",
+    },
+    createdAt: {
+      type: "string",
+      format: "date-time",
+    },
+  },
+  required: [
+    "id",
+    "agentId",
+    "agentName",
+    "chatAgentId",
+    "channel",
+    "kind",
+    "op",
+    "path",
+    "mode",
+    "includeSessions",
+    "proposedBytes",
+    "diffStatus",
+    "additions",
+    "deletions",
+    "changedLines",
+    "firstChangedLine",
+    "inlineDiff",
+    "summary",
+    "status",
+    "actedBy",
+    "actedVia",
+    "actedAt",
+    "result",
+    "reason",
+    "restartRequired",
+    "createdAt",
+  ],
+} as const;
+
+export const ApplyProposalDtoSchema = {
+  type: "object",
+  properties: {
+    via: {
+      type: "string",
+      enum: ["card", "editor"],
+      default: "card",
+    },
+    content: {
+      type: "string",
+      description:
+        "Editor only — the edited content replaces the proposed one.",
+    },
+    confirmRemove: {
+      type: "boolean",
+      description:
+        "Replace-mode imports that remove files need this acknowledgement.",
+    },
+  },
+} as const;
+
+export const ProposalRemoveConflictDtoSchema = {
+  type: "object",
+  properties: {
+    requiresConfirmation: {
+      type: "boolean",
+      example: true,
+    },
+    remove: {
+      type: "number",
+      example: 12,
+      description: "Files replace mode would delete.",
+    },
+  },
+  required: ["requiresConfirmation", "remove"],
+} as const;
+
 export const BridleTextPartDtoSchema = {
   type: "object",
   properties: {
@@ -1752,8 +1982,16 @@ export const TranscriptResponseDtoSchema = {
       type: "boolean",
       example: false,
     },
+    proposals: {
+      description:
+        "File change proposals raised in this chat inside the page’s window, plus every pending one (CLEAN-112). The client places them by `createdAt`.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/FileChangeProposalDto",
+      },
+    },
   },
-  required: ["messages", "channel", "nextCursor", "hasMore"],
+  required: ["messages", "channel", "nextCursor", "hasMore", "proposals"],
 } as const;
 
 export const ShareLinkDtoSchema = {

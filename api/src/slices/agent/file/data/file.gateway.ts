@@ -44,6 +44,9 @@ import {
 
 // Staged import archives (CLEAN-112) live outside every agent prefix.
 const STAGE_PREFIX = 'imports/';
+// Proposed content of a single-file change proposal (CLEAN-112), outside
+// every agent prefix like the import stages.
+const PROPOSAL_PREFIX = 'proposals/';
 
 // Every cap lives in domain/file.limits.ts (CLEAN-112). `MAX_EDIT_BYTES`
 // (1 MiB since CLEAN-56: 256KB was too small for large SOUL.md instructions)
@@ -51,13 +54,6 @@ const STAGE_PREFIX = 'imports/';
 const MAX_BYTES = MAX_EDIT_BYTES;
 const DEFAULT_RANGE_BYTES = RANGE_BYTES;
 
-/**
- * Turn the raw bytes of a range read into a chunk that never ends in the
- * middle of a UTF-8 character (CLEAN-112, FR-009). When the slice does not
- * reach the end of the object, a trailing partial sequence is handed back to
- * the next request by shortening `size`/`nextOffset`. At the end of the
- * object nothing is trimmed — a truncated final byte is the file's own.
- */
 const CONTENT_TYPES: Record<string, string> = {
   '.json': 'application/json; charset=utf-8',
   '.jsonl': 'application/x-ndjson; charset=utf-8',
@@ -93,55 +89,18 @@ export function contentTypeFor(path: string): string {
     : 'text/plain; charset=utf-8';
 }
 
-/** `JSON.parse` with a "line L col C" message the editor can show. */
-export function assertJson(content: string): void {
-  try {
-    JSON.parse(content);
-  } catch (err) {
-    const msg = (err as Error).message;
-    const at = jsonErrorPosition(content, msg);
-    if (at) {
-      throw new BadRequestException(
-        `invalid JSON at line ${at.line} col ${at.col}: ${msg}`,
-      );
-    }
-    throw new BadRequestException(`invalid JSON: ${msg}`);
-  }
-}
+// JSON validation lives in the domain (the proposal service needs it too);
+// re-exported so the gateway spec keeps one import.
+import { assertJson, jsonErrorPosition } from '../domain/jsonCheck';
+export { assertJson, jsonErrorPosition };
 
 /**
- * V8 has had three message shapes: `… at position N`, `… (line L column C)`
- * and `Unexpected token 'x', "…<context>" is not valid JSON` where the
- * context ends at the offending token. All three are turned into line/col.
+ * Turn the raw bytes of a range read into a chunk that never ends in the
+ * middle of a UTF-8 character (CLEAN-112, FR-009). When the slice does not
+ * reach the end of the object, a trailing partial sequence is handed back to
+ * the next request by shortening `size`/`nextOffset`. At the end of the
+ * object nothing is trimmed — a truncated final byte is the file's own.
  */
-export function jsonErrorPosition(
-  content: string,
-  message: string,
-): { line: number; col: number } | null {
-  const lineCol = /line (\d+) column (\d+)/.exec(message);
-  if (lineCol) return { line: Number(lineCol[1]), col: Number(lineCol[2]) };
-
-  let pos: number | null = null;
-  const position = /position (\d+)/.exec(message);
-  if (position) {
-    pos = Number(position[1]);
-  } else {
-    const ctx = /, (?:\.\.\.)?"([\s\S]*?)"(?:\.\.\.)? is not valid JSON$/.exec(
-      message,
-    );
-    if (ctx) {
-      const snippet = ctx[1];
-      const idx = snippet ? content.indexOf(snippet) : -1;
-      if (idx >= 0) pos = idx + Math.max(0, snippet.length - 1);
-    }
-  }
-  if (pos === null) return null;
-  const before = content.slice(0, pos);
-  const line = before.split('\n').length;
-  const col = pos - before.lastIndexOf('\n');
-  return { line, col };
-}
-
 export function sliceChunk(
   raw: Buffer,
   offset: number,
@@ -1070,6 +1029,64 @@ export class S3FileGateway extends IFileGateway {
         : undefined;
     } while (continuationToken);
     return deleted;
+  }
+
+  // ── Change proposals (CLEAN-112) ────────────────────────────────
+
+  /** ETag of the stored object (quotes stripped), or null when absent. */
+  async headEtag(agentId: string, path: string): Promise<string | null> {
+    this.assertSafePath(path);
+    const { client, bucket } = await this.connect();
+    try {
+      const head = await client.send(
+        new HeadObjectCommand({ Bucket: bucket, Key: this.prefix(agentId) + path }),
+      );
+      return head.ETag ? head.ETag.replace(/"/g, '') : null;
+    } catch (err) {
+      if (this.isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
+  private proposalKey(proposalId: string): string {
+    return `${PROPOSAL_PREFIX}${proposalId}/content`;
+  }
+
+  async putProposalContent(proposalId: string, content: string): Promise<void> {
+    const { client, bucket } = await this.connect();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: this.proposalKey(proposalId),
+        Body: content,
+        ContentType: 'text/plain; charset=utf-8',
+      }),
+    );
+  }
+
+  async getProposalContent(proposalId: string): Promise<string | null> {
+    const { client, bucket } = await this.connect();
+    try {
+      const res = await client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: this.proposalKey(proposalId) }),
+      );
+      return (await res.Body?.transformToString('utf-8')) ?? '';
+    } catch (err) {
+      if (this.isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
+  async deleteProposalContent(proposalId: string): Promise<void> {
+    const { client, bucket } = await this.connect();
+    try {
+      await client.send(
+        new DeleteObjectCommand({ Bucket: bucket, Key: this.proposalKey(proposalId) }),
+      );
+    } catch (err) {
+      if (this.isNotFound(err)) return;
+      throw err;
+    }
   }
 
   private prefix(agentId: string): string {

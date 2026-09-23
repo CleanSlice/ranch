@@ -295,6 +295,8 @@ export interface IBridleProposalUpdateEvent {
   type: 'proposal_update';
   ts: number;
   proposalId: string;
+  /** Target workspace — lets a client that never saw the card fetch it. */
+  agentId: string;
   status: 'applied' | 'skipped' | 'stale' | 'refused';
   actedBy: string | null;
   actedVia: 'card' | 'tool' | 'editor' | null;

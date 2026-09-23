@@ -6,7 +6,11 @@ import { SettingModule } from '#/setting/setting.module';
 import { BridleModule } from '#/bridle/bridle.module';
 import { FileController } from './file.controller';
 import { FileImportController } from './fileImport.controller';
+import { FileProposalController } from './fileProposal.controller';
 import { FileTool } from './file.tool';
+import { FileProposalRepository } from './data/fileProposal.repository';
+import { IFileProposalRepository } from './domain/fileProposal.types';
+import { FileProposalService } from './domain/fileProposal.service';
 import { WorkspaceArchiveService } from './domain/workspaceArchive.service';
 import { IFileGateway } from './domain/file.gateway';
 import { S3FileGateway } from './data/file.gateway';
@@ -33,7 +37,7 @@ import { TranscriptReaderService } from './domain/transcriptReader.service';
       inject: [ConfigService],
     }),
   ],
-  controllers: [FileController, FileImportController],
+  controllers: [FileController, FileImportController, FileProposalController],
   providers: [
     {
       provide: IFileGateway,
@@ -44,9 +48,18 @@ import { TranscriptReaderService } from './domain/transcriptReader.service';
     TranscriptReaderService,
     // Workspace import (CLEAN-112): validate → stage → plan → apply.
     WorkspaceArchiveService,
+    // Change proposals (CLEAN-112): what a chat-driven write becomes before
+    // the person approves it; the bridle transcript reads them back.
+    { provide: IFileProposalRepository, useClass: FileProposalRepository },
+    FileProposalService,
     // MCP tools of this slice (CLEAN-109): discovered by the registry.
     FileTool,
   ],
-  exports: [IFileGateway, TranscriptReaderService, WorkspaceArchiveService],
+  exports: [
+    IFileGateway,
+    TranscriptReaderService,
+    WorkspaceArchiveService,
+    FileProposalService,
+  ],
 })
 export class FileModule {}

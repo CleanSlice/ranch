@@ -38,6 +38,8 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
+import { FileProposalService } from '#/agent/file/domain/fileProposal.service';
+import type { FileChangeProposalDto } from '#/agent/file/dtos';
 import {
   BridleSyncService,
   IBridleGateway,
@@ -157,6 +159,8 @@ export class BridleController {
     private readonly attachments: BridleAttachmentService,
     private readonly shareLinks: ShareLinkService,
     private readonly sync: BridleSyncService,
+    @Inject(forwardRef(() => FileProposalService))
+    private readonly proposals: FileProposalService,
   ) {}
 
   /**
@@ -599,7 +603,13 @@ export class BridleController {
           `Transcript read failed for ${agentId}/${channel}: ${(err as Error).message}`,
         );
       }
-      return { messages: [], channel, nextCursor: null, hasMore: false };
+      return {
+        messages: [],
+        channel,
+        nextCursor: null,
+        hasMore: false,
+        proposals: await this.proposalsFor(agentId, channel, []),
+      };
     }
 
     const { messages, nextCursor, hasMore } = TranscriptReaderService.page(
@@ -612,7 +622,39 @@ export class BridleController {
       channel,
       nextCursor,
       hasMore,
+      proposals: await this.proposalsFor(agentId, channel, messages),
     };
+  }
+
+  /**
+   * File change proposals raised in this chat (CLEAN-112): the ones created
+   * inside the page's time window, plus every pending one so an unanswered
+   * card is never lost to paging. A failure here must not break the replay.
+   */
+  private async proposalsFor(
+    chatAgentId: string,
+    channel: string,
+    page: Array<{ ts: number }>,
+  ): Promise<FileChangeProposalDto[]> {
+    try {
+      const stamps = page.map((m) => m.ts).filter((t) => Number.isFinite(t));
+      const since = stamps.length ? new Date(Math.min(...stamps)) : undefined;
+      const rows = await this.proposals.listForChat(chatAgentId, channel, {
+        since,
+        includePending: true,
+      });
+      const views = await this.proposals.toViews(rows);
+      return views.map((v) => ({
+        ...v,
+        summary: v.summary as unknown as FileChangeProposalDto['summary'],
+        result: v.result as unknown as FileChangeProposalDto['result'],
+      }));
+    } catch (err) {
+      this.logger.warn(
+        `Proposals lookup failed for ${chatAgentId}/${channel}: ${(err as Error).message}`,
+      );
+      return [];
+    }
   }
 
   @ApiOperation({

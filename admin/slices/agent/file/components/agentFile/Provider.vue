@@ -14,6 +14,7 @@ import {
   IconFile,
   IconFiles,
   IconRefresh,
+  IconUpload,
   IconX,
 } from '@tabler/icons-vue';
 import { SaveRefusedError } from '#agentFile/domain';
@@ -22,8 +23,17 @@ import { basename, formatBytes, formatModified } from '#agentFile/utils/format';
 import AgentFileTree from './Tree.vue';
 import AgentFileTabs from './Tabs.vue';
 import AgentFileEditor from './Editor.vue';
+import AgentFileImportDialog from './ImportDialog.vue';
 
 const props = defineProps<{ id: string }>();
+
+const importOpen = ref(false);
+
+async function onImported() {
+  // The store already refetched the list; the agent row carries the status
+  // the restart hint depends on.
+  await agentStore.fetchById(props.id).catch(() => null);
+}
 
 const store = useAgentFileStore();
 const agentStore = useAgentStore();
@@ -350,6 +360,8 @@ watch(() => route.query.path, () => void consumeQuery());
 
 <template>
   <div class="flex flex-col gap-3">
+    <AgentFileImportDialog v-model:open="importOpen" :agent-id="id" @applied="onImported" />
+
     <div
       v-if="pendingRestart"
       class="flex flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
@@ -417,6 +429,10 @@ watch(() => route.query.path, () => void consumeQuery());
           <span class="font-medium">{{ syncing ? 'Syncing…' : 'Sync now' }}</span>
         </button>
         <slot name="actions" />
+        <Button variant="outline" size="sm" @click="importOpen = true">
+          <IconUpload class="size-4" />
+          Import
+        </Button>
         <Button variant="outline" size="sm" :disabled="downloading" @click="onDownload()">
           <IconDownload class="size-4" />
           {{ downloading ? 'Downloading…' : 'Download' }}

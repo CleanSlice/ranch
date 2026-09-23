@@ -11,11 +11,32 @@ import {
 } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAgentGateway } from '#/agent/agent/domain';
-import { IBridleGateway } from '#/bridle/domain';
+import { IBridleAttachmentGateway, IBridleGateway } from '#/bridle/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain';
-import { IFileGateway, SyncGuardService } from './domain';
+import { callerAgentId, err } from '#/mcp/tooling';
+import {
+  FileProposalService,
+  IFileGateway,
+  IMPORT_MAX_ARCHIVE_BYTES,
+  MAX_EDIT_BYTES,
+  MAX_RANGE_BYTES,
+  ProposalNeedsRemoveConfirmError,
+  ProposalNotPendingError,
+  RANGE_BYTES,
+  SyncGuardService,
+  WorkspaceArchiveService,
+} from './domain';
+import type { IFileChangeProposal } from './domain';
+import { randomUUID } from 'crypto';
+import { lookup } from 'dns/promises';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
+
+const CONFIRM_BY_PROPOSAL =
+  'The first call only proposes: the person sees a card with the change ' +
+  'and must accept it (Apply on the card, or a yes in the chat). Call again ' +
+  'with confirm: true AND the proposalId from the first result to apply ' +
+  'exactly that proposal. Changes reach the running agent on its next restart.';
 
 /**
  * The workspace actions of the console's Files tab that `rancher.tool.ts`
@@ -40,10 +61,489 @@ export class FileTool implements IConditionallyListedTool {
     @Inject(forwardRef(() => IBridleGateway))
     private readonly bridle: IBridleGateway,
     private readonly syncGuard: SyncGuardService,
+    private readonly archive: WorkspaceArchiveService,
+    private readonly proposals: FileProposalService,
+    @Inject(forwardRef(() => IBridleAttachmentGateway))
+    private readonly attachments: IBridleAttachmentGateway,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     return callerIsOperator(httpRequest);
+  }
+
+  // ── Read (CLEAN-112) ─────────────────────────────────────────────
+
+  @Tool({
+    name: 'list_agent_files',
+    topic: ToolTopics.AgentWorkspace,
+    title: 'List workspace files',
+    template: 'List the files of the agent «name»',
+    description:
+      'Files stored for an agent (path, size, kind, editable, updated). Use ' +
+      '`prefix` to narrow (for example `skills/`). Binary files can be listed ' +
+      'and exported, not read. Resolve the agent id with list_agents first.',
+    parameters: z.object({
+      agentId: z.string(),
+      prefix: z
+        .string()
+        .optional()
+        .describe('Only paths under this folder, e.g. skills/'),
+    }),
+  })
+  async listAgentFiles(
+    args: { agentId: string; prefix?: string },
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ) {
+    requireOperator(httpRequest);
+    const agent = await this.agents.findById(args.agentId);
+    if (!agent) return this.agentNotFound(args.agentId);
+    const prefix = args.prefix
+      ? args.prefix.endsWith('/')
+        ? args.prefix
+        : `${args.prefix}/`
+      : '';
+    const nodes = (await this.files.list(args.agentId)).filter(
+      (n) => !prefix || n.path.startsWith(prefix),
+    );
+    return ok({
+      agentId: args.agentId,
+      agentName: agent.name,
+      count: nodes.length,
+      files: nodes.map((n) => ({
+        path: n.path,
+        size: n.size,
+        kind: n.kind,
+        editable: n.editable,
+        updatedAt: n.updatedAt.toISOString(),
+      })),
+    });
+  }
+
+  @Tool({
+    name: 'read_agent_file',
+    topic: ToolTopics.AgentWorkspace,
+    title: 'Read a workspace file',
+    template: 'Read «path» from the agent «name»',
+    description:
+      'Reads a text file in slices of up to 512 KB; the result carries ' +
+      '`nextOffset` when more remains — pass it as `offset` to continue. ' +
+      'Binary files are refused: offer export_agent_files instead.',
+    parameters: z.object({
+      agentId: z.string(),
+      path: z.string().describe('Relative path, e.g. agent.config.json'),
+      offset: z.number().int().min(0).optional(),
+      limit: z.number().int().min(1).optional(),
+    }),
+  })
+  async readAgentFile(
+    args: { agentId: string; path: string; offset?: number; limit?: number },
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ) {
+    requireOperator(httpRequest);
+    const agent = await this.agents.findById(args.agentId);
+    if (!agent) return this.agentNotFound(args.agentId);
+    try {
+      const chunk = await this.files.readRange(
+        args.agentId,
+        args.path,
+        args.offset ?? 0,
+        Math.min(MAX_RANGE_BYTES, args.limit ?? RANGE_BYTES),
+      );
+      return ok({
+        agentId: args.agentId,
+        path: chunk.path,
+        kind: chunk.kind,
+        editable: chunk.editable,
+        totalSize: chunk.totalSize,
+        offset: chunk.offset,
+        size: chunk.size,
+        nextOffset: chunk.nextOffset,
+        hasMore: chunk.hasMore,
+        updatedAt: chunk.updatedAt.toISOString(),
+        content: chunk.content,
+      });
+    } catch (e) {
+      return err(this.messageOf(e, `Could not read ${args.path}`));
+    }
+  }
+
+  // ── Write through a proposal (CLEAN-112) ─────────────────────────
+
+  @Tool({
+    name: 'write_agent_file',
+    topic: ToolTopics.AgentWorkspace,
+    title: 'Change a workspace file',
+    template: 'Change «path» of the agent «name»: «what to change»',
+    destructive: true,
+    description:
+      'Replaces the content of a text file in the agent workspace. ' +
+      CONFIRM_BY_PROPOSAL +
+      ' Files larger than 1 MiB cannot be written this way — tell the ' +
+      'person to use the Files tab. Invalid JSON for a `.json` path is ' +
+      'refused before proposing.',
+    parameters: z.object({
+      agentId: z.string(),
+      path: z.string().describe('Relative path, e.g. agent.config.json'),
+      content: z.string().describe('The whole new content of the file.'),
+      confirm: z
+        .boolean()
+        .optional()
+        .describe('Set true only together with `proposalId`, after the person accepted.'),
+      proposalId: z
+        .string()
+        .optional()
+        .describe('The id returned by the proposing call.'),
+    }),
+  })
+  async writeAgentFile(
+    args: {
+      agentId: string;
+      path: string;
+      content: string;
+      confirm?: boolean;
+      proposalId?: string;
+    },
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ) {
+    return this.proposeOrApply(args, 'write', httpRequest);
+  }
+
+  @Tool({
+    name: 'create_agent_file',
+    topic: ToolTopics.AgentWorkspace,
+    title: 'Create a workspace file',
+    template: 'Create «path» in the agent «name»',
+    destructive: true,
+    description:
+      'Creates a new text file in the agent workspace; refused when the path ' +
+      'already exists (use write_agent_file for that). ' +
+      CONFIRM_BY_PROPOSAL,
+    parameters: z.object({
+      agentId: z.string(),
+      path: z.string().describe('Relative path, e.g. notes/todo.md'),
+      content: z.string().optional().describe('Initial content; empty by default.'),
+      confirm: z.boolean().optional(),
+      proposalId: z.string().optional(),
+    }),
+  })
+  async createAgentFile(
+    args: {
+      agentId: string;
+      path: string;
+      content?: string;
+      confirm?: boolean;
+      proposalId?: string;
+    },
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ) {
+    return this.proposeOrApply(
+      { ...args, content: args.content ?? '' },
+      'create',
+      httpRequest,
+    );
+  }
+
+  private async proposeOrApply(
+    args: {
+      agentId: string;
+      path: string;
+      content: string;
+      confirm?: boolean;
+      proposalId?: string;
+    },
+    op: 'write' | 'create',
+    httpRequest: AuthedRequest,
+  ) {
+    requireOperator(httpRequest);
+    const agent = await this.agents.findById(args.agentId);
+    if (!agent) return this.agentNotFound(args.agentId);
+    const chatAgentId = callerAgentId(httpRequest) ?? 'operator';
+
+    if (args.confirm) {
+      return this.confirmProposal(args.agentId, args.proposalId, chatAgentId, undefined);
+    }
+    if (Buffer.byteLength(args.content, 'utf-8') > MAX_EDIT_BYTES) {
+      return err(
+        `${args.path} is too large to write from the chat (limit ${MAX_EDIT_BYTES} bytes) — ask the person to use the Files tab.`,
+      );
+    }
+    try {
+      const row = await this.proposals.propose({
+        agentId: args.agentId,
+        chatAgentId,
+        path: args.path,
+        content: args.content,
+        op,
+      });
+      return ok(this.pendingResult(row, agent.name));
+    } catch (e) {
+      return err(this.messageOf(e, `Could not propose the change to ${args.path}`));
+    }
+  }
+
+  // ── Import through a proposal (CLEAN-112) ────────────────────────
+
+  @Tool({
+    name: 'import_agent_files',
+    topic: ToolTopics.AgentWorkspace,
+    title: 'Import a workspace archive',
+    template: 'Import the archive «attachment or link» into the agent «name»',
+    destructive: true,
+    description:
+      'Imports a zip with the workspace layout (root files, data/, memory/, ' +
+      'skills/, workspace/). Give either the id of the chat attachment the ' +
+      'person uploaded or an https link. The first call stages the archive ' +
+      'and previews it (added / changed / removed / skipped); the person ' +
+      'must accept. `mode: replace` also deletes files that are not in the ' +
+      'archive and needs its own explicit acceptance (confirmRemove). ' +
+      'Chat attachments are limited to 10 MB; larger archives go through ' +
+      'the Import button in the Files tab (a local file picker stays in the ' +
+      'console) or a link. ' +
+      CONFIRM_BY_PROPOSAL,
+    parameters: z.object({
+      agentId: z.string(),
+      attachmentId: z
+        .string()
+        .optional()
+        .describe('Id of a zip the person attached in this chat.'),
+      url: z.string().optional().describe('https link to a zip.'),
+      mode: z.enum(['merge', 'replace']).optional(),
+      includeSessions: z.boolean().optional(),
+      confirm: z.boolean().optional(),
+      proposalId: z.string().optional(),
+      confirmRemove: z
+        .boolean()
+        .optional()
+        .describe('Replace mode: the person also accepted the removals.'),
+    }),
+  })
+  async importAgentFiles(
+    args: {
+      agentId: string;
+      attachmentId?: string;
+      url?: string;
+      mode?: 'merge' | 'replace';
+      includeSessions?: boolean;
+      confirm?: boolean;
+      proposalId?: string;
+      confirmRemove?: boolean;
+    },
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ) {
+    requireOperator(httpRequest);
+    const agent = await this.agents.findById(args.agentId);
+    if (!agent) return this.agentNotFound(args.agentId);
+    const chatAgentId = callerAgentId(httpRequest) ?? 'operator';
+
+    if (args.confirm) {
+      return this.confirmProposal(
+        args.agentId,
+        args.proposalId,
+        chatAgentId,
+        args.confirmRemove,
+      );
+    }
+
+    let zip: Buffer;
+    let source: 'attachment' | 'url';
+    try {
+      if (args.attachmentId) {
+        // Attachments are scoped to the chat agent (the one the person is
+        // talking to), never to the target workspace.
+        const stored = await this.attachments.fetch(chatAgentId, args.attachmentId);
+        if (!stored) return err(`Attachment ${args.attachmentId} was not found in this chat.`);
+        zip = stored.body;
+        source = 'attachment';
+      } else if (args.url) {
+        zip = await this.fetchArchive(args.url);
+        source = 'url';
+      } else {
+        return err('Give either `attachmentId` (a zip attached in the chat) or `url` (an https link).');
+      }
+    } catch (e) {
+      return err(this.messageOf(e, 'Could not fetch the archive'));
+    }
+
+    const mode = args.mode ?? 'merge';
+    const includeSessions = args.includeSessions ?? false;
+    try {
+      const { entries, wrapperStripped } = await this.archive.validate(zip);
+      const importId = randomUUID();
+      await this.files.putStage(args.agentId, importId, zip, {
+        agentId: args.agentId,
+        source,
+        size: zip.length,
+        entries: entries.length,
+        createdAt: new Date(),
+      });
+      const plan = await this.archive.plan(
+        args.agentId,
+        entries,
+        { mode, includeSessions },
+        { importId, wrapperStripped },
+      );
+      const row = await this.proposals.proposeImport({
+        agentId: args.agentId,
+        chatAgentId,
+        importId,
+        plan,
+        mode,
+        includeSessions,
+      });
+      return ok({
+        ...this.pendingResult(row, agent.name),
+        plan: {
+          mode,
+          includeSessions,
+          counts: plan.counts,
+          totalBytes: plan.totalBytes,
+          wrapperStripped: plan.wrapperStripped,
+          warnings: plan.warnings,
+          sample: plan.entries.filter((e) => e.action !== 'unchanged').slice(0, 20),
+        },
+      });
+    } catch (e) {
+      return err(this.messageOf(e, 'The archive was refused'));
+    }
+  }
+
+  private async confirmProposal(
+    agentId: string,
+    proposalId: string | undefined,
+    chatAgentId: string,
+    confirmRemove: boolean | undefined,
+  ) {
+    if (!proposalId) {
+      return err(
+        'No pending proposal to confirm: call without confirm first to propose, then confirm with its proposalId.',
+      );
+    }
+    let row: IFileChangeProposal;
+    try {
+      row = await this.proposals.get(proposalId);
+    } catch {
+      return err(`No proposal ${proposalId}.`);
+    }
+    if (row.agentId !== agentId) {
+      return err(`Proposal ${proposalId} belongs to another agent.`);
+    }
+    if (row.status !== 'pending') {
+      // The person may have pressed Apply on the card already — say so.
+      return ok(this.finalResult(row));
+    }
+    try {
+      const done = await this.proposals.apply(proposalId, {
+        actor: `agent:${chatAgentId}`,
+        via: 'tool',
+        confirmRemove,
+      });
+      return ok(this.finalResult(done));
+    } catch (e) {
+      if (e instanceof ProposalNotPendingError) return ok(this.finalResult(e.row));
+      if (e instanceof ProposalNeedsRemoveConfirmError) {
+        return err(
+          `Replace would remove ${e.remove} files that are not in the archive. Ask the person to accept the removals, then call again with confirm: true, proposalId and confirmRemove: true.`,
+        );
+      }
+      return err(this.messageOf(e, 'Could not apply the proposal'));
+    }
+  }
+
+  private pendingResult(row: IFileChangeProposal, agentName: string) {
+    return {
+      ok: true,
+      proposalId: row.id,
+      status: 'pending',
+      agentId: row.agentId,
+      agentName,
+      summary:
+        row.kind === 'single'
+          ? {
+              path: row.path,
+              op: row.op,
+              additions: row.additions,
+              deletions: row.deletions,
+              changedLines: row.changedLines,
+              firstChangedLine: row.firstChangedLine,
+              diffStatus: row.diffStatus,
+              proposedBytes: row.proposedBytes,
+            }
+          : { counts: row.summary?.counts, mode: row.mode },
+      next:
+        'Show the person the change and wait. Call again with confirm: true ' +
+        'and this proposalId only after they accept in the chat or press Apply on the card.',
+    };
+  }
+
+  private finalResult(row: IFileChangeProposal) {
+    return {
+      ok: row.status === 'applied',
+      proposalId: row.id,
+      status: row.status,
+      agentId: row.agentId,
+      path: row.path,
+      reason: row.reason,
+      result: row.result,
+      notice:
+        row.status === 'applied'
+          ? 'Saved to S3. The running agent picks it up on its next restart.'
+          : row.status === 'stale'
+            ? 'The file changed since this was proposed — read it again and propose anew.'
+            : undefined,
+    };
+  }
+
+  /** https only, public addresses only, capped at the archive limit. */
+  private async fetchArchive(url: string): Promise<Buffer> {
+    let target: URL;
+    try {
+      target = new URL(url);
+    } catch {
+      throw new Error('The link is not a valid URL');
+    }
+    if (target.protocol !== 'https:') throw new Error('Only https links are accepted');
+    const addresses = await lookup(target.hostname, { all: true });
+    for (const a of addresses) {
+      if (isPrivateAddress(a.address)) {
+        throw new Error('The link points at a private address');
+      }
+    }
+    const res = await fetch(target, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) throw new Error(`The link answered ${res.status}`);
+    const declared = Number(res.headers.get('content-length') ?? '0');
+    if (declared > IMPORT_MAX_ARCHIVE_BYTES) {
+      throw new Error(`The archive is over the ${IMPORT_MAX_ARCHIVE_BYTES}-byte limit`);
+    }
+    const chunks: Buffer[] = [];
+    let total = 0;
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('The link returned no body');
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > IMPORT_MAX_ARCHIVE_BYTES) {
+        await reader.cancel();
+        throw new Error(`The archive is over the ${IMPORT_MAX_ARCHIVE_BYTES}-byte limit`);
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  private messageOf(e: unknown, fallback: string): string {
+    const msg = (e as { message?: unknown })?.message;
+    if (typeof msg === 'string' && msg) return msg;
+    if (Array.isArray(msg)) return msg.join('; ');
+    return fallback;
   }
 
   @Tool({
@@ -227,4 +727,27 @@ export class FileTool implements IConditionallyListedTool {
       error: `Agent ${agentId} not found — call list_agents to find the id`,
     });
   }
+}
+
+/** Loopback, link-local, private and unspecified ranges (SSRF guard). */
+export function isPrivateAddress(address: string): boolean {
+  const ip = address.toLowerCase();
+  if (ip === '::1' || ip === '::' || ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) {
+    return true;
+  }
+  const v4 = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  const parts = v4.split('.').map((p) => Number(p));
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) {
+    return false;
+  }
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 100 && b >= 64 && b <= 127)
+  );
 }

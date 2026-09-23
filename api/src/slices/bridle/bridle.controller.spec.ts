@@ -154,6 +154,13 @@ function makeController(stubs: IStubs = {}) {
     ),
   };
 
+  // Proposals (CLEAN-112): the transcript replay asks for them and tolerates
+  // an empty answer; the fixture never raises one.
+  const proposals = {
+    listForChat: jest.fn(async () => []),
+    toViews: jest.fn(async () => []),
+  };
+
   const controller = new BridleController(
     hub as never,
     jwt,
@@ -162,6 +169,7 @@ function makeController(stubs: IStubs = {}) {
     attachments,
     shareLinks,
     sync as never,
+    proposals as never,
   );
 
   return {

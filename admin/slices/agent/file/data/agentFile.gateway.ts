@@ -1,5 +1,5 @@
 import { FilesService } from '#api/data';
-import { authedFetch } from '#auth/utils/authedFetch';
+import { authedFetch, authedXhrHeaders, ensureFreshToken } from '#auth/utils/authedFetch';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IAgentFileGateway } from '../domain/agentFile.gateway';
@@ -10,10 +10,17 @@ import {
   type IFileChunk,
   type IFileContent,
   type IFileLimits,
+  type IFileChangeProposal,
   type IFileNode,
+  type IImportApplyOptions,
+  type IImportApplyOutcome,
+  type IImportPlan,
   type IOpenLink,
+  type IProposalApplyOutcome,
   type ISaveOptions,
   type ISyncOutcome,
+  type ImportMode,
+  type ProposalVia,
 } from '../domain/agentFile.types';
 import { AgentFileMapper } from './agentFile.mapper';
 
@@ -179,6 +186,208 @@ export class AgentFileGateway extends BaseGateway implements IAgentFileGateway {
       const link = unwrapEnvelope<{ url?: string; expiresAt?: string }>(res.data);
       if (!link?.url) throw new Error(errorMessage(res, 'Could not create the link'));
       return { url: link.url, expiresAt: link.expiresAt ?? '' };
+    });
+  }
+
+  // Multipart upload through XHR so the dialog can show progress; the SDK's
+  // axios client has no progress hook here. Same bearer rules as attachments
+  // (ensureFreshToken + authedXhrHeaders).
+  stageImport(
+    agentId: string,
+    archive: File,
+    onProgress?: (percent: number) => void,
+  ): Promise<IImportPlan> {
+    return this.execute(async () => {
+      const runtime = useRuntimeConfig();
+      const url = `${String(runtime.public.apiUrl).replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}/files/import/stage`;
+      await ensureFreshToken();
+      const headers = authedXhrHeaders();
+      const body = await new Promise<unknown>((resolve, reject) => {
+        const form = new FormData();
+        form.append('archive', archive);
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url);
+        for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && e.total > 0 && onProgress) {
+            onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Upload failed'));
+        xhr.onload = () => {
+          let parsed: unknown = null;
+          try {
+            parsed = JSON.parse(xhr.responseText);
+          } catch {
+            parsed = null;
+          }
+          if (xhr.status < 200 || xhr.status >= 300) {
+            const msg = (parsed as { message?: string | string[] } | null)?.message;
+            const text = Array.isArray(msg) ? msg.join('; ') : msg;
+            reject(
+              new Error(
+                text ||
+                  (xhr.status === 413
+                    ? 'Archive is over the size limit'
+                    : `Upload failed (${xhr.status})`),
+              ),
+            );
+            return;
+          }
+          resolve(parsed);
+        };
+        xhr.send(form);
+      });
+      const plan = this.mapper.toImportPlan(unwrapEnvelope(body));
+      if (!plan) throw new Error('Import preview returned an unreadable response');
+      return plan;
+    });
+  }
+
+  planImport(
+    agentId: string,
+    importId: string,
+    mode: ImportMode,
+    includeSessions: boolean,
+  ): Promise<IImportPlan> {
+    return this.execute(async () => {
+      const res = await FilesService.planAgentImport({
+        path: { agentId, importId },
+        query: { mode, includeSessions },
+      });
+      const plan = this.mapper.toImportPlan(unwrapEnvelope(res.data));
+      if (!plan) throw new Error(errorMessage(res, 'Import preview failed'));
+      return plan;
+    });
+  }
+
+  applyImport(
+    agentId: string,
+    importId: string,
+    options: IImportApplyOptions,
+  ): Promise<IImportApplyOutcome> {
+    return this.execute(async () => {
+      const res = await FilesService.applyAgentImport({
+        path: { agentId, importId },
+        body: {
+          mode: options.mode,
+          includeSessions: options.includeSessions,
+          confirmRemove: options.confirmRemove,
+        },
+      });
+      if (statusOf(res) === 409) {
+        const c = (res as SdkFailure).error as { remove?: number; requiresConfirmation?: boolean };
+        if (c?.requiresConfirmation) {
+          return { status: 'conflict' as const, remove: c.remove ?? 0 };
+        }
+        throw new Error(errorMessage(res, 'An import is already running for this agent'));
+      }
+      if ((res as SdkFailure).error !== undefined) {
+        throw new Error(errorMessage(res, 'Import failed'));
+      }
+      const result = this.mapper.toImportResult(unwrapEnvelope(res.data));
+      if (!result) throw new Error('Import returned an unreadable response');
+      return { status: 'done' as const, result };
+    });
+  }
+
+  // ── Change proposals (CLEAN-112) ──────────────────────────────
+
+  listProposals(agentId: string, chatAgentId: string, channel: string): Promise<IFileChangeProposal[]> {
+    return this.execute(async () => {
+      const res = await FilesService.listAgentFileProposals({
+        path: { agentId },
+        query: { chatAgentId, channel },
+      });
+      return this.mapper.toProposalList(unwrapEnvelope(res.data));
+    });
+  }
+
+  getProposal(agentId: string, proposalId: string): Promise<IFileChangeProposal> {
+    return this.execute(async () => {
+      const res = await FilesService.getAgentFileProposal({ path: { agentId, proposalId } });
+      const row = this.mapper.toProposal(unwrapEnvelope(res.data));
+      if (!row) throw new Error(errorMessage(res, 'Proposal not found'));
+      return row;
+    });
+  }
+
+  // Raw text routes (no envelope): plain fetch with the session bearer.
+  proposalContent(agentId: string, proposalId: string): Promise<string> {
+    return this.execute(async () => {
+      const runtime = useRuntimeConfig();
+      const res = await authedFetch(
+        `${String(runtime.public.apiUrl).replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}/files/proposals/${encodeURIComponent(proposalId)}/content`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) throw new Error(`Could not load the proposed content (${res.status})`);
+      return res.text();
+    });
+  }
+
+  proposalDiff(agentId: string, proposalId: string, path?: string): Promise<string> {
+    return this.execute(async () => {
+      const runtime = useRuntimeConfig();
+      const q = path ? `?path=${encodeURIComponent(path)}` : '';
+      const res = await authedFetch(
+        `${String(runtime.public.apiUrl).replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}/files/proposals/${encodeURIComponent(proposalId)}/diff${q}`,
+        { credentials: 'include' },
+      );
+      if (res.status === 413) {
+        throw new Error((await res.text()) || 'Too large to compare — download both versions');
+      }
+      if (!res.ok) throw new Error(`Could not compute the diff (${res.status})`);
+      return res.text();
+    });
+  }
+
+  applyProposal(
+    agentId: string,
+    proposalId: string,
+    via: ProposalVia,
+    options: { content?: string; confirmRemove?: boolean } = {},
+  ): Promise<IProposalApplyOutcome> {
+    return this.execute(async () => {
+      const res = await FilesService.applyAgentFileProposal({
+        path: { agentId, proposalId },
+        body: {
+          via: via === 'editor' ? 'editor' : 'card',
+          content: options.content,
+          confirmRemove: options.confirmRemove,
+        },
+      });
+      if (statusOf(res) === 409) {
+        const c = (res as SdkFailure).error as Record<string, unknown>;
+        if (c?.requiresConfirmation === true) {
+          return { status: 'conflict' as const, remove: typeof c.remove === 'number' ? c.remove : 0 };
+        }
+        // Not pending any more: the body is the current row.
+        const row = this.mapper.toProposal(c);
+        if (row) return { status: 'done' as const, proposal: row };
+        throw new Error(errorMessage(res, 'The proposal is no longer pending'));
+      }
+      if ((res as SdkFailure).error !== undefined) {
+        throw new Error(errorMessage(res, 'Apply failed'));
+      }
+      const row = this.mapper.toProposal(unwrapEnvelope(res.data));
+      if (!row) throw new Error('Apply returned an unreadable response');
+      return { status: 'done' as const, proposal: row };
+    });
+  }
+
+  skipProposal(agentId: string, proposalId: string): Promise<IFileChangeProposal> {
+    return this.execute(async () => {
+      const res = await FilesService.skipAgentFileProposal({ path: { agentId, proposalId } });
+      if (statusOf(res) === 409) {
+        const row = this.mapper.toProposal((res as SdkFailure).error);
+        if (row) return row;
+      }
+      if ((res as SdkFailure).error !== undefined) {
+        throw new Error(errorMessage(res, 'Skip failed'));
+      }
+      const row = this.mapper.toProposal(unwrapEnvelope(res.data));
+      if (!row) throw new Error('Skip returned an unreadable response');
+      return row;
     });
   }
 

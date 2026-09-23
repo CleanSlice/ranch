@@ -4,10 +4,17 @@ import type {
   IFileChunk,
   IFileContent,
   IFileLimits,
+  IFileChangeProposal,
   IFileNode,
+  IImportApplyOptions,
+  IImportApplyOutcome,
+  IImportPlan,
   IOpenLink,
+  IProposalApplyOutcome,
   ISaveOptions,
   ISyncOutcome,
+  ImportMode,
+  ProposalVia,
 } from './agentFile.types';
 
 /**
@@ -61,5 +68,59 @@ export class AgentFileService {
 
   openLink(agentId: string, path: string): Promise<IOpenLink> {
     return this.gateway.openLink(agentId, path);
+  }
+
+  stageImport(
+    agentId: string,
+    archive: File,
+    onProgress?: (percent: number) => void,
+  ): Promise<IImportPlan> {
+    return this.gateway.stageImport(agentId, archive, onProgress);
+  }
+
+  planImport(
+    agentId: string,
+    importId: string,
+    mode: ImportMode,
+    includeSessions: boolean,
+  ): Promise<IImportPlan> {
+    return this.gateway.planImport(agentId, importId, mode, includeSessions);
+  }
+
+  applyImport(
+    agentId: string,
+    importId: string,
+    options: IImportApplyOptions,
+  ): Promise<IImportApplyOutcome> {
+    return this.gateway.applyImport(agentId, importId, options);
+  }
+
+  listProposals(agentId: string, chatAgentId: string, channel: string): Promise<IFileChangeProposal[]> {
+    return this.gateway.listProposals(agentId, chatAgentId, channel);
+  }
+
+  getProposal(agentId: string, proposalId: string): Promise<IFileChangeProposal> {
+    return this.gateway.getProposal(agentId, proposalId);
+  }
+
+  proposalContent(agentId: string, proposalId: string): Promise<string> {
+    return this.gateway.proposalContent(agentId, proposalId);
+  }
+
+  proposalDiff(agentId: string, proposalId: string, path?: string): Promise<string> {
+    return this.gateway.proposalDiff(agentId, proposalId, path);
+  }
+
+  applyProposal(
+    agentId: string,
+    proposalId: string,
+    via: ProposalVia,
+    options?: { content?: string; confirmRemove?: boolean },
+  ): Promise<IProposalApplyOutcome> {
+    return this.gateway.applyProposal(agentId, proposalId, via, options);
+  }
+
+  skipProposal(agentId: string, proposalId: string): Promise<IFileChangeProposal> {
+    return this.gateway.skipProposal(agentId, proposalId);
   }
 }

@@ -151,6 +151,16 @@ export interface IImportApplyOptions {
   confirmRemove?: boolean;
 }
 
+/** Apply either ran, or was refused because Replace would remove files. */
+export type IImportApplyOutcome =
+  | { status: 'done'; result: IImportResult }
+  | { status: 'conflict'; remove: number };
+
+/** Applying a proposal: done (any final state), or a replace needs the removal ack. */
+export type IProposalApplyOutcome =
+  | { status: 'done'; proposal: IFileChangeProposal }
+  | { status: 'conflict'; remove: number };
+
 // ── Change proposals (CLEAN-112) ────────────────────────────────
 
 export type ProposalStatus = 'pending' | 'applied' | 'skipped' | 'stale' | 'refused';

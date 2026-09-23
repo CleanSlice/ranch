@@ -7,7 +7,11 @@ import type {
   IFileContent,
   IFileLimits,
   IFileNode,
+  IImportApplyOptions,
+  IImportApplyOutcome,
+  IImportPlan,
   ISaveOptions,
+  ImportMode,
 } from '#agentFile/domain';
 
 // Re-export the domain types so components importing from
@@ -417,6 +421,48 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     return getService().sync(agentId, confirm);
   }
 
+  // ── Import (CLEAN-112) ──────────────────────────────────────────
+
+  function stageImport(
+    agentId: string,
+    archive: File,
+    onProgress?: (percent: number) => void,
+  ): Promise<IImportPlan> {
+    return getService().stageImport(agentId, archive, onProgress);
+  }
+
+  function planImport(
+    agentId: string,
+    importId: string,
+    mode: ImportMode,
+    includeSessions: boolean,
+  ): Promise<IImportPlan> {
+    return getService().planImport(agentId, importId, mode, includeSessions);
+  }
+
+  /** Apply a staged archive; on success the list is refetched and a restart is pending. */
+  async function applyImport(
+    agentId: string,
+    importId: string,
+    options: IImportApplyOptions,
+  ): Promise<IImportApplyOutcome> {
+    const outcome = await getService().applyImport(agentId, importId, options);
+    if (outcome.status === 'done') {
+      // Drafts survive; loaded slices are stale for anything the import wrote.
+      for (const p of Object.keys(loaded.value[agentId] ?? {})) {
+        if (!draftFor(agentId, p)) forget(agentId, p);
+      }
+      await fetchList(agentId);
+      for (const p of tabsFor(agentId)) {
+        if (!draftFor(agentId, p) && nodeFor(agentId, p)?.kind === 'text') {
+          void fetchContent(agentId, p, true);
+        }
+      }
+      markPendingRestart(agentId);
+    }
+    return outcome;
+  }
+
   /** Open the raw stored file in a new tab through a short-lived link. */
   async function openFull(agentId: string, path: string): Promise<void> {
     const link = await getService().openLink(agentId, path);
@@ -476,6 +522,9 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     removeMany,
     sync,
     openFull,
+    stageImport,
+    planImport,
+    applyImport,
     downloadZip,
     isPendingRestart,
     markPendingRestart,

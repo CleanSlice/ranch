@@ -95,6 +95,17 @@ import type {
   ApplyAgentImportData,
   ApplyAgentImportResponse,
   ApplyAgentImportError,
+  ListAgentFileProposalsData,
+  ListAgentFileProposalsResponse,
+  GetAgentFileProposalData,
+  GetAgentFileProposalResponse,
+  GetAgentFileProposalContentData,
+  GetAgentFileProposalDiffData,
+  ApplyAgentFileProposalData,
+  ApplyAgentFileProposalResponse,
+  ApplyAgentFileProposalError,
+  SkipAgentFileProposalData,
+  SkipAgentFileProposalResponse,
   SendBridleMessageData,
   SendBridleMessageSyncData,
   UploadBridleAttachmentData,
@@ -1628,6 +1639,106 @@ export class FilesService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Proposals raised in a chat, oldest first. `since`/`until` bound the window; pending ones are always included.
+   */
+  public static listAgentFileProposals<ThrowOnError extends boolean = false>(
+    options: Options<ListAgentFileProposalsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      ListAgentFileProposalsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals",
+      ...options,
+    });
+  }
+
+  /**
+   * One proposal.
+   */
+  public static getAgentFileProposal<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentFileProposalData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentFileProposalResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals/{proposalId}",
+      ...options,
+    });
+  }
+
+  /**
+   * Proposed content of a single-file proposal (Edit before applying).
+   */
+  public static getAgentFileProposalContent<
+    ThrowOnError extends boolean = false,
+  >(options: Options<GetAgentFileProposalContentData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals/{proposalId}/content",
+      ...options,
+    });
+  }
+
+  /**
+   * Full unified diff, computed on demand and capped (413 over the comparison limit). Set proposals need `path`.
+   */
+  public static getAgentFileProposalDiff<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentFileProposalDiffData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals/{proposalId}/diff",
+      ...options,
+    });
+  }
+
+  /**
+   * Apply a pending proposal. Answers 409 with the current row when it is no longer pending, or with the removal count when a replace import needs `confirmRemove`.
+   */
+  public static applyAgentFileProposal<ThrowOnError extends boolean = false>(
+    options: Options<ApplyAgentFileProposalData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ApplyAgentFileProposalResponse,
+      ApplyAgentFileProposalError,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals/{proposalId}/apply",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Skip a pending proposal; nothing is written.
+   */
+  public static skipAgentFileProposal<ThrowOnError extends boolean = false>(
+    options: Options<SkipAgentFileProposalData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      SkipAgentFileProposalResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals/{proposalId}/skip",
+      ...options,
     });
   }
 }

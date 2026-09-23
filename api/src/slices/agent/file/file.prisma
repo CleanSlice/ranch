@@ -1,0 +1,53 @@
+import { Agent } from "../agent/agent"
+
+// A file change an agent proposed through a confirm-gated file tool
+// (CLEAN-112). Nothing is written to the workspace until the proposal is
+// applied — from the chat card, from the editor, or by the agent confirming
+// with this row's id. The proposed content lives in S3
+// (`proposals/<id>/content`, or the staged import archive for a set); the
+// row keeps the facts the card and the apply step need.
+model FileChangeProposal {
+  id               String    @id @default(uuid())
+  // Target workspace.
+  agentId          String
+  agent            Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // The agent whose chat raised it (Rancher) — the card shows in this chat.
+  chatAgentId      String
+  channel          String    @default("admin")
+  clientId         String?
+  turnId           String?
+  // 'single' | 'set'
+  kind             String
+  // 'write' | 'create' | 'import'
+  op               String
+  path             String?
+  // S3 ETag of the target at proposal time; null = file did not exist.
+  baseEtag         String?
+  contentKey       String?
+  importId         String?
+  // 'merge' | 'replace' (set only)
+  mode             String?
+  includeSessions  Boolean   @default(false)
+  proposedBytes    Int       @default(0)
+  // 'ok' | 'too_large' | 'binary' | 'none'
+  diffStatus       String    @default("none")
+  additions        Int?
+  deletions        Int?
+  changedLines     Int?
+  firstChangedLine Int?
+  inlineDiff       String?
+  // set: counts + first rows + more
+  summary          Json?
+  // 'pending' | 'applied' | 'skipped' | 'stale' | 'refused'
+  status           String    @default("pending")
+  actedBy          String?
+  // 'card' | 'tool' | 'editor'
+  actedVia         String?
+  actedAt          DateTime?
+  result           Json?
+  reason           String?
+  createdAt        DateTime  @default(now())
+
+  @@index([chatAgentId, channel, createdAt])
+  @@index([agentId, path, status])
+}

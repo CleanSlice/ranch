@@ -15,6 +15,7 @@ const catalog: IAgentToolCatalog = {
   agentId: 'a',
   podStartedAt: null,
   listedAt: null,
+  listingState: 'none',
   groups: [
     {
       key: 'agents',

@@ -19,6 +19,7 @@ import {
   IAgentToolEntry,
   IAgentToolGroup,
   IToolListingGateway,
+  ToolListingStates,
 } from './toolCatalog.types';
 
 /**
@@ -76,14 +77,20 @@ export class ToolCatalogService {
 
     const pod = pods.find((p) => p.agentId === agentId) ?? null;
     const podStartedAt = pod?.startedAt ?? null;
-    const known = snapshot ? new Set(snapshot.toolNames) : null;
+
+    // A snapshot only speaks for the pod that made it. Right after a restart
+    // the new pod is up before it has listed its tools, and the previous
+    // pod's snapshot would read as "this pod lacks everything" — a badge that
+    // told the person to restart the agent they had just restarted. So a
+    // snapshot older than the pod counts as "not listed yet": no badge,
+    // and the sheet says the agent is still loading its tools.
+    const listingState = listingStateOf(podStartedAt, snapshot?.listedAt ?? null);
+    const known =
+      listingState === 'fresh' && snapshot ? new Set(snapshot.toolNames) : null;
 
     const inPodOf = (name: string): boolean | null => {
-      // No pod: nothing to restart, so no marker (data-model.md §3).
-      if (!podStartedAt) return null;
-      // A pod that never listed predates this feature — it needs a restart
-      // to receive anything new, so every tool reads as absent.
-      if (!known) return false;
+      // No pod, or no listing from this pod yet: nothing to claim.
+      if (!known) return null;
       return known.has(name);
     };
 
@@ -140,7 +147,26 @@ export class ToolCatalogService {
       agentId,
       podStartedAt,
       listedAt: snapshot ? snapshot.listedAt.toISOString() : null,
+      listingState,
       groups,
     };
   }
+}
+
+/**
+ * Container start and the first tools/list are seconds apart in the same
+ * direction, but the two clocks (kubelet vs. this API) need not agree to the
+ * millisecond; a small slack keeps a legitimate listing from reading as
+ * older than its pod.
+ */
+const CLOCK_SLACK_MS = 10_000;
+
+export function listingStateOf(
+  podStartedAt: string | null,
+  listedAt: Date | null,
+): ToolListingStates {
+  if (!podStartedAt) return 'none';
+  if (!listedAt) return 'pending';
+  const start = new Date(podStartedAt).getTime();
+  return listedAt.getTime() + CLOCK_SLACK_MS >= start ? 'fresh' : 'pending';
 }

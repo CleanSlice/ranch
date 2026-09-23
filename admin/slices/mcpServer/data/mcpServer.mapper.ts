@@ -11,7 +11,7 @@ import type {
 } from '../domain/mcpServer.types';
 
 const TRANSPORTS = new Set<McpServerTransportTypes>(['streamableHttp', 'sse']);
-const AUTH_TYPES = new Set<McpServerAuthTypes>(['none', 'bearer', 'header']);
+const AUTH_TYPES = new Set<McpServerAuthTypes>(['none', 'bearer', 'header', 'oauth']);
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : '';

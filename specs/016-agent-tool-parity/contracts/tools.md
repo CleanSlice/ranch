@@ -103,6 +103,7 @@ Zip install and binary file upload stay console-only (spec Assumptions); `instal
 | update_mcp_server | new | O | Update or enable/disable a server | Disable the MCP server «name» | IMcpServerGateway (built-in rows: enabled/description only, as the controller enforces) |
 | delete_mcp_server | new | O ⚠ | Delete an MCP server | Delete the MCP server «name» | IMcpServerGateway (built-ins refused with the controller's message) |
 | start_mcp_oauth | new | O | Start OAuth for a server | Connect the MCP server «name» with OAuth | McpOauthService → returns the URL the person must open |
+| probe_mcp_server | new (CLEAN-78) | O | Check what an MCP server offers | Check what the MCP server at «url» offers | McpProbeService → transport, authType, OAuth capabilities, tools/list; pasted urls pass the A2A public-address guard, registered rows (by id) skip it; never returns a credential |
 
 ## knowledge — Knowledge
 

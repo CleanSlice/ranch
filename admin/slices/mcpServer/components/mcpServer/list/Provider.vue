@@ -33,6 +33,14 @@ async function onRemove() {
         <p class="text-sm text-muted-foreground">
           Tool servers that agents connect to. Attach them to templates so spawned agents inherit the toolset.
         </p>
+        <!-- The chat is the hands (docs/agent-tools.md): the Rancher agent can
+             look at a URL, register it and attach it in one conversation. -->
+        <p class="mt-1 text-xs text-muted-foreground">
+          Quicker from the
+          <NuxtLink to="/rancher" class="underline underline-offset-2">Rancher chat</NuxtLink>:
+          paste a server URL and it will check the transport, auth and tools, register the
+          server and attach it. The Tools panel (wrench) has the starter messages.
+        </p>
       </div>
       <Button as-child>
         <NuxtLink to="/mcps/create">New MCP server</NuxtLink>

@@ -1,7 +1,7 @@
 // Domain types for MCP servers.
 
 export type McpServerTransportTypes = 'streamableHttp' | 'sse';
-export type McpServerAuthTypes = 'none' | 'bearer' | 'header';
+export type McpServerAuthTypes = 'none' | 'bearer' | 'header' | 'oauth';
 
 export interface IMcpServerData {
   id: string;

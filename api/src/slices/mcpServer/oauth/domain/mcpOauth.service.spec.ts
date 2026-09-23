@@ -288,3 +288,40 @@ describe('secret key helpers', () => {
     expect(isEphemeralSubject('agent-1')).toBe(false);
   });
 });
+
+/**
+ * The S3-backed secret gateway lists entries as `<agentId>/<key>`; the AWS
+ * one as the bare key. Found live: a bundle stored a minute earlier read as
+ * "not connected" because the comparison only knew the bare form.
+ */
+describe('McpOauthService — scoped secret names from the file gateway', () => {
+  it('finds a bundle listed under the agent scope prefix', async () => {
+    const h = harness();
+    h.secrets.list.mockResolvedValueOnce({
+      secrets: [
+        {
+          name: `agent-1/${mcpOauthSecretKey('srv-1', 'user-a')}`,
+          value: bundle({ subject: 'user-a', email: 'a@example.test' }),
+        },
+      ],
+    });
+
+    await expect(h.service.status('srv-1', 'agent-1', 'user-a')).resolves.toMatchObject({
+      connected: true,
+      scope: 'subject',
+      email: 'a@example.test',
+    });
+  });
+
+  it('sweeps a stale per-browser bundle listed under the scope prefix, deleting by the listed name', async () => {
+    const h = harness();
+    const stale = Date.now() - EPHEMERAL_BUNDLE_TTL_MS - DAY;
+    const listed = `agent-1/${mcpOauthSecretKey('srv-1', 'share-old')}`;
+    h.secrets.list.mockResolvedValueOnce({
+      secrets: [{ name: listed, value: bundle({ lastUsedAt: stale }) }],
+    });
+
+    await expect(h.service.sweepEphemeral()).resolves.toBe(1);
+    expect(h.secrets.delete).toHaveBeenCalledWith('agent-1', listed);
+  });
+});

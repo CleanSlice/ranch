@@ -271,7 +271,8 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
     subject?: string,
   ): Promise<IMcpOauthStatus> {
     const list = await this.secrets.list(agentId);
-    const find = (name: string) => list.secrets.find((s) => s.name === name);
+    const find = (name: string) =>
+      list.secrets.find((s) => bareSecretName(s.name, agentId) === name);
     const candidates: Array<{ scope: 'subject' | 'agent'; name: string }> = [];
     if (subject) {
       candidates.push({
@@ -321,7 +322,7 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
       for (const entry of list.secrets) {
-        const key = parseMcpOauthSecretKey(entry.name);
+        const key = parseMcpOauthSecretKey(bareSecretName(entry.name, agent.id));
         if (!key?.subject || !isEphemeralSubject(key.subject)) continue;
         const bundle = parseBundle(entry.value);
         const lastUsed = bundle?.lastUsedAt ?? bundle?.connectedAt ?? 0;
@@ -351,6 +352,18 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
     }
     return dropped;
   }
+}
+
+/**
+ * The name a listed secret was stored under. The S3-backed gateway reports
+ * entries as `<scope>/<key>` (scope = the agent id for everything the OAuth
+ * flow writes), the AWS gateway as the bare key; a comparison against the
+ * bare key has to accept both, or `status` says "not connected" over a
+ * bundle that is right there (found live on the file provider, CLEAN-80).
+ */
+function bareSecretName(listed: string, agentId: string): string {
+  const scoped = `${agentId}/`;
+  return listed.startsWith(scoped) ? listed.slice(scoped.length) : listed;
 }
 
 function parseBundle(raw: string): IMcpOauthBundle | null {

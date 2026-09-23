@@ -29,6 +29,7 @@ import {
 import type { IFileChangeProposal } from './domain';
 import { randomUUID } from 'crypto';
 import { lookup } from 'dns/promises';
+import { request as httpsRequest } from 'https';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 
@@ -507,36 +508,23 @@ export class FileTool implements IConditionallyListedTool {
       throw new Error('The link is not a valid URL');
     }
     if (target.protocol !== 'https:') throw new Error('Only https links are accepted');
+    if (target.username || target.password) {
+      throw new Error('The link must not carry credentials');
+    }
+    // Resolve once, refuse private ranges, and PIN that address into the
+    // connection: a second resolution at connect time is what a DNS-rebinding
+    // host exploits (public answer for the check, private one for the fetch).
+    // TLS still validates the certificate against the hostname (SNI is set
+    // from `servername`), so the pin does not weaken the transport.
     const addresses = await lookup(target.hostname, { all: true });
+    if (!addresses.length) throw new Error('The link does not resolve');
     for (const a of addresses) {
       if (isPrivateAddress(a.address)) {
         throw new Error('The link points at a private address');
       }
     }
-    const res = await fetch(target, {
-      redirect: 'error',
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) throw new Error(`The link answered ${res.status}`);
-    const declared = Number(res.headers.get('content-length') ?? '0');
-    if (declared > IMPORT_MAX_ARCHIVE_BYTES) {
-      throw new Error(`The archive is over the ${IMPORT_MAX_ARCHIVE_BYTES}-byte limit`);
-    }
-    const chunks: Buffer[] = [];
-    let total = 0;
-    const reader = res.body?.getReader();
-    if (!reader) throw new Error('The link returned no body');
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > IMPORT_MAX_ARCHIVE_BYTES) {
-        await reader.cancel();
-        throw new Error(`The archive is over the ${IMPORT_MAX_ARCHIVE_BYTES}-byte limit`);
-      }
-      chunks.push(Buffer.from(value));
-    }
-    return Buffer.concat(chunks);
+    const pinned = addresses[0];
+    return downloadPinned(target, pinned.address, pinned.family, IMPORT_MAX_ARCHIVE_BYTES);
   }
 
   private messageOf(e: unknown, fallback: string): string {
@@ -727,6 +715,83 @@ export class FileTool implements IConditionallyListedTool {
       error: `Agent ${agentId} not found — call list_agents to find the id`,
     });
   }
+}
+
+/**
+ * HTTPS GET that connects to `address` (already checked) instead of resolving
+ * the hostname again, never follows redirects (a redirect could point back
+ * inside), and stops reading past `maxBytes`. Exported for the spec.
+ */
+export function downloadPinned(
+  target: URL,
+  address: string,
+  family: number,
+  maxBytes: number,
+  timeoutMs = 30_000,
+): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const req = httpsRequest(
+      {
+        protocol: 'https:',
+        hostname: target.hostname,
+        servername: target.hostname,
+        port: target.port || 443,
+        path: `${target.pathname}${target.search}`,
+        method: 'GET',
+        headers: { accept: 'application/zip, application/octet-stream' },
+        timeout: timeoutMs,
+        // The pin: whatever the resolver says now is ignored in favour of the
+        // address that passed the private-range check.
+        lookup: (_host, options, callback) => {
+          if (options && typeof options === 'object' && (options as { all?: boolean }).all) {
+            (callback as (e: null, a: Array<{ address: string; family: number }>) => void)(
+              null,
+              [{ address, family }],
+            );
+          } else {
+            (callback as (e: null, a: string, f: number) => void)(null, address, family);
+          }
+        },
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        if (status >= 300 && status < 400) {
+          res.resume();
+          reject(new Error('The link redirects — give the final address instead'));
+          return;
+        }
+        if (status < 200 || status >= 300) {
+          res.resume();
+          reject(new Error(`The link answered ${status}`));
+          return;
+        }
+        const declared = Number(res.headers['content-length'] ?? '0');
+        if (declared > maxBytes) {
+          res.destroy();
+          reject(new Error(`The archive is over the ${maxBytes}-byte limit`));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let total = 0;
+        res.on('data', (chunk: Buffer) => {
+          total += chunk.length;
+          if (total > maxBytes) {
+            res.destroy();
+            reject(new Error(`The archive is over the ${maxBytes}-byte limit`));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('error', reject);
+      },
+    );
+    req.on('timeout', () => {
+      req.destroy(new Error('The link did not answer in time'));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 /** Loopback, link-local, private and unspecified ranges (SSRF guard). */

@@ -257,6 +257,25 @@ describe('import_agent_files', () => {
     expect(missing.isError).toBe(true);
   });
 
+  it('refuses links with credentials and loopback hosts before any request', async () => {
+    const { tool, files } = harness();
+    const creds = await tool.importAgentFiles(
+      { agentId: 'agent-a', url: 'https://user:pw@example.com/a.zip' },
+      undefined,
+      operator(),
+    );
+    expect(creds.isError).toBe(true);
+    expect(textOf(creds)).toContain('credentials');
+    const loop = await tool.importAgentFiles(
+      { agentId: 'agent-a', url: 'https://127.0.0.1/a.zip' },
+      undefined,
+      operator(),
+    );
+    expect(loop.isError).toBe(true);
+    expect(textOf(loop)).toContain('private address');
+    expect(files.putStage).not.toHaveBeenCalled();
+  });
+
   it('confirming a replace with removals needs confirmRemove', async () => {
     const { tool, proposals } = harness();
     proposals.get.mockResolvedValue(pendingRow({ id: 'prop-set', kind: 'set', op: 'import', mode: 'replace', path: null }));

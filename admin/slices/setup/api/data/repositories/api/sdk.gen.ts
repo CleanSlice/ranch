@@ -39,45 +39,6 @@ import type {
   TemplateControllerUpdateData,
   TemplateControllerSetSkillsData,
   TemplateControllerSetMcpsData,
-  McpServerControllerFindAllData,
-  McpServerControllerCreateData,
-  McpServerControllerRemoveData,
-  McpServerControllerFindByIdData,
-  McpServerControllerUpdateData,
-  GetKnowledgesData,
-  GetKnowledgesResponse,
-  CreateKnowledgeData,
-  GetKnowledgeStatusData,
-  GetGraphLabelsData,
-  GetGraphLabelsResponse,
-  GetGraphData,
-  GetGraphResponse,
-  GetKnowledgeOverviewData,
-  GetKnowledgeOverviewResponse,
-  DeleteKnowledgeData,
-  DeleteKnowledgeResponse,
-  GetKnowledgeData,
-  UpdateKnowledgeData,
-  IndexKnowledgeData,
-  QueryKnowledgeData,
-  QueryKnowledgeResponse,
-  GetKnowledgeSourcesData,
-  GetKnowledgeSourcesResponse,
-  AddKnowledgeSourceData,
-  GetKnowledgeSourceImportsData,
-  GetKnowledgeSourceImportsResponse,
-  ExportKnowledgeSourcesData,
-  GetKnowledgeSourceContentData,
-  ReindexKnowledgeSourceData,
-  ExtractKnowledgeSourceTextData,
-  AddKnowledgeFileSourcesData,
-  AddKnowledgeFileSourcesResponse,
-  AddKnowledgeSourcesFromSitemapData,
-  AddKnowledgeSourcesFromSitemapResponse,
-  AddKnowledgeSourcesFromArchiveData,
-  AddKnowledgeSourcesFromArchiveResponse,
-  DeleteKnowledgeSourceData,
-  DeleteKnowledgeSourceResponse,
   AgentControllerFindAllData,
   AgentControllerFindAllResponse,
   AgentControllerCreateData,
@@ -141,6 +102,45 @@ import type {
   RegenerateAgentShareLinkResponse,
   ResolveShareLinkData,
   ResolveShareLinkResponse,
+  McpServerControllerFindAllData,
+  McpServerControllerCreateData,
+  McpServerControllerRemoveData,
+  McpServerControllerFindByIdData,
+  McpServerControllerUpdateData,
+  GetKnowledgesData,
+  GetKnowledgesResponse,
+  CreateKnowledgeData,
+  GetKnowledgeStatusData,
+  GetGraphLabelsData,
+  GetGraphLabelsResponse,
+  GetGraphData,
+  GetGraphResponse,
+  GetKnowledgeOverviewData,
+  GetKnowledgeOverviewResponse,
+  DeleteKnowledgeData,
+  DeleteKnowledgeResponse,
+  GetKnowledgeData,
+  UpdateKnowledgeData,
+  IndexKnowledgeData,
+  QueryKnowledgeData,
+  QueryKnowledgeResponse,
+  GetKnowledgeSourcesData,
+  GetKnowledgeSourcesResponse,
+  AddKnowledgeSourceData,
+  GetKnowledgeSourceImportsData,
+  GetKnowledgeSourceImportsResponse,
+  ExportKnowledgeSourcesData,
+  GetKnowledgeSourceContentData,
+  ReindexKnowledgeSourceData,
+  ExtractKnowledgeSourceTextData,
+  AddKnowledgeFileSourcesData,
+  AddKnowledgeFileSourcesResponse,
+  AddKnowledgeSourcesFromSitemapData,
+  AddKnowledgeSourcesFromSitemapResponse,
+  AddKnowledgeSourcesFromArchiveData,
+  AddKnowledgeSourcesFromArchiveResponse,
+  DeleteKnowledgeSourceData,
+  DeleteKnowledgeSourceResponse,
   SkillControllerFindAllData,
   SkillControllerCreateData,
   SkillControllerListSourcesData,
@@ -977,481 +977,6 @@ export class TemplatesService {
   }
 }
 
-export class McpServersService {
-  /**
-   * List all MCP servers registered in this Ranch.
-   */
-  public static mcpServerControllerFindAll<
-    ThrowOnError extends boolean = false,
-  >(options?: Options<McpServerControllerFindAllData, ThrowOnError>) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/mcp-servers",
-      ...options,
-    });
-  }
-
-  /**
-   * Register a new MCP server.
-   */
-  public static mcpServerControllerCreate<ThrowOnError extends boolean = false>(
-    options: Options<McpServerControllerCreateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/mcp-servers",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Delete an MCP server. Built-in entries (e.g. the Ranch MCP itself) cannot be deleted — only disabled.
-   */
-  public static mcpServerControllerRemove<ThrowOnError extends boolean = false>(
-    options: Options<McpServerControllerRemoveData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/mcp-servers/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Get an MCP server by id.
-   */
-  public static mcpServerControllerFindById<
-    ThrowOnError extends boolean = false,
-  >(options: Options<McpServerControllerFindByIdData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/mcp-servers/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Update an MCP server.
-   */
-  public static mcpServerControllerUpdate<ThrowOnError extends boolean = false>(
-    options: Options<McpServerControllerUpdateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).patch<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/mcp-servers/{id}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-}
-
-export class KnowledgesService {
-  /**
-   * List knowledges (searchable, paged)
-   */
-  public static getKnowledges<ThrowOnError extends boolean = false>(
-    options?: Options<GetKnowledgesData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      GetKnowledgesResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges",
-      ...options,
-    });
-  }
-
-  /**
-   * Create knowledge
-   */
-  public static createKnowledge<ThrowOnError extends boolean = false>(
-    options: Options<CreateKnowledgeData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Knowledge service availability and setup readiness
-   */
-  public static getKnowledgeStatus<ThrowOnError extends boolean = false>(
-    options?: Options<GetKnowledgeStatusData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/status",
-      ...options,
-    });
-  }
-
-  /**
-   * List entity labels of one knowledge base
-   */
-  public static getGraphLabels<ThrowOnError extends boolean = false>(
-    options: Options<GetGraphLabelsData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetGraphLabelsResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{id}/graph/labels",
-      ...options,
-    });
-  }
-
-  /**
-   * Get the graph of one knowledge base
-   */
-  public static getGraph<ThrowOnError extends boolean = false>(
-    options: Options<GetGraphData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetGraphResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{id}/graph",
-      ...options,
-    });
-  }
-
-  /**
-   * Source counts by status and type, and total size, in one read
-   */
-  public static getKnowledgeOverview<ThrowOnError extends boolean = false>(
-    options: Options<GetKnowledgeOverviewData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetKnowledgeOverviewResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{id}/overview",
-      ...options,
-    });
-  }
-
-  /**
-   * Delete knowledge
-   */
-  public static deleteKnowledge<ThrowOnError extends boolean = false>(
-    options: Options<DeleteKnowledgeData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      DeleteKnowledgeResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Get one knowledge
-   */
-  public static getKnowledge<ThrowOnError extends boolean = false>(
-    options: Options<GetKnowledgeData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Update knowledge
-   */
-  public static updateKnowledge<ThrowOnError extends boolean = false>(
-    options: Options<UpdateKnowledgeData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{id}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Start indexing
-   */
-  public static indexKnowledge<ThrowOnError extends boolean = false>(
-    options: Options<IndexKnowledgeData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{id}/index",
-      ...options,
-    });
-  }
-
-  /**
-   * Query knowledge (LLM-generated answer)
-   */
-  public static queryKnowledge<ThrowOnError extends boolean = false>(
-    options: Options<QueryKnowledgeData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      QueryKnowledgeResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{id}/query",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-}
-
-export class KnowledgeSourcesService {
-  /**
-   * List sources (paginated)
-   */
-  public static getKnowledgeSources<ThrowOnError extends boolean = false>(
-    options: Options<GetKnowledgeSourcesData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetKnowledgeSourcesResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{knowledgeId}/sources",
-      ...options,
-    });
-  }
-
-  /**
-   * Add source (file|url|text)
-   */
-  public static addKnowledgeSource<ThrowOnError extends boolean = false>(
-    options: Options<AddKnowledgeSourceData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      ...formDataBodySerializer,
-      url: "/knowledges/{knowledgeId}/sources",
-      ...options,
-      headers: {
-        "Content-Type": null,
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Background imports for this knowledge (running and recent)
-   * Progress of archive imports started through from-archive. Jobs are kept in memory for an hour after they finish.
-   */
-  public static getKnowledgeSourceImports<ThrowOnError extends boolean = false>(
-    options: Options<GetKnowledgeSourceImportsData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetKnowledgeSourceImportsResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{knowledgeId}/sources/imports",
-      ...options,
-    });
-  }
-
-  /**
-   * Download selected sources as one zip
-   * Selection is either an explicit `ids` list or the same filter the list takes, so "select all" travels as a filter rather than every id. File and text sources become entries; url sources are recorded in the `_ranch-export.yaml` manifest, whose extension the archive importer skips so the zip round-trips through from-archive.
-   */
-  public static exportKnowledgeSources<ThrowOnError extends boolean = false>(
-    options: Options<ExportKnowledgeSourcesData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{knowledgeId}/sources/export",
-      ...options,
-    });
-  }
-
-  /**
-   * Stream the stored bytes of a file or text source
-   * Streams the file straight from S3 (or the text body from the row). Not available for url sources - open the url itself.
-   */
-  public static getKnowledgeSourceContent<ThrowOnError extends boolean = false>(
-    options: Options<GetKnowledgeSourceContentData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{knowledgeId}/sources/{sourceId}/content",
-      ...options,
-    });
-  }
-
-  /**
-   * Retry indexing a single source
-   * Requeues one source and re-ingests it without touching the rest of the batch. Progress is reported through the source own indexState.
-   */
-  public static reindexKnowledgeSource<ThrowOnError extends boolean = false>(
-    options: Options<ReindexKnowledgeSourceData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex",
-      ...options,
-    });
-  }
-
-  /**
-   * Re-run text extraction for a scanned PDF
-   * Probes the PDF for a text layer and, if it has none, sends it to OCR in the background. Progress is reported through the source own textState; press Index once it reads ready.
-   */
-  public static extractKnowledgeSourceText<
-    ThrowOnError extends boolean = false,
-  >(options: Options<ExtractKnowledgeSourceTextData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{knowledgeId}/sources/{sourceId}/extract",
-      ...options,
-    });
-  }
-
-  /**
-   * Add several file sources at once
-   * Accepts a multi-file selection (field "files") and creates one file-type source per upload. Runs inline and returns per-batch counts. Files whose name already exists on this knowledge are skipped; a single failed file does not abort the rest. Indexing into LightRAG happens through the normal reindex flow.
-   */
-  public static addKnowledgeFileSources<ThrowOnError extends boolean = false>(
-    options: Options<AddKnowledgeFileSourcesData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      AddKnowledgeFileSourcesResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{knowledgeId}/sources/files",
-      ...options,
-    });
-  }
-
-  /**
-   * Add url sources from a sitemap
-   * Fetches a sitemap.xml (or sitemap-index), filters by optional URL prefix, then creates one url-type source per discovered page. Indexing into LightRAG happens through the normal reindex flow.
-   */
-  public static addKnowledgeSourcesFromSitemap<
-    ThrowOnError extends boolean = false,
-  >(options: Options<AddKnowledgeSourcesFromSitemapData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).post<
-      AddKnowledgeSourcesFromSitemapResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{knowledgeId}/sources/from-sitemap",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Bulk-import sources from a zip archive
-   * Accepts a .zip, extracts every ingestable file (pdf, docx, xlsx, txt, html, ...), and creates one file-type source per entry. Upload runs in the background and streams each entry to S3; the response returns immediately with the detected file count and a job id to poll via GET .../sources/imports. Indexing into LightRAG happens through the normal reindex flow. Max size: KNOWLEDGE_ARCHIVE_MAX_BYTES (default 4 GiB).
-   */
-  public static addKnowledgeSourcesFromArchive<
-    ThrowOnError extends boolean = false,
-  >(options: Options<AddKnowledgeSourcesFromArchiveData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).post<
-      AddKnowledgeSourcesFromArchiveResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{knowledgeId}/sources/from-archive",
-      ...options,
-    });
-  }
-
-  /**
-   * Delete source
-   */
-  public static deleteKnowledgeSource<ThrowOnError extends boolean = false>(
-    options: Options<DeleteKnowledgeSourceData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      DeleteKnowledgeSourceResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/knowledges/{knowledgeId}/sources/{sourceId}",
-      ...options,
-    });
-  }
-}
-
 export class AgentsService {
   /**
    * List all agents. Public — landing/chat pages render without auth. Mutations and details still require login.
@@ -2199,6 +1724,481 @@ export class ShareService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+}
+
+export class McpServersService {
+  /**
+   * List all MCP servers registered in this Ranch.
+   */
+  public static mcpServerControllerFindAll<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<McpServerControllerFindAllData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers",
+      ...options,
+    });
+  }
+
+  /**
+   * Register a new MCP server.
+   */
+  public static mcpServerControllerCreate<ThrowOnError extends boolean = false>(
+    options: Options<McpServerControllerCreateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Delete an MCP server. Built-in entries (e.g. the Ranch MCP itself) cannot be deleted — only disabled.
+   */
+  public static mcpServerControllerRemove<ThrowOnError extends boolean = false>(
+    options: Options<McpServerControllerRemoveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Get an MCP server by id.
+   */
+  public static mcpServerControllerFindById<
+    ThrowOnError extends boolean = false,
+  >(options: Options<McpServerControllerFindByIdData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Update an MCP server.
+   */
+  public static mcpServerControllerUpdate<ThrowOnError extends boolean = false>(
+    options: Options<McpServerControllerUpdateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).patch<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/{id}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
+export class KnowledgesService {
+  /**
+   * List knowledges (searchable, paged)
+   */
+  public static getKnowledges<ThrowOnError extends boolean = false>(
+    options?: Options<GetKnowledgesData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetKnowledgesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges",
+      ...options,
+    });
+  }
+
+  /**
+   * Create knowledge
+   */
+  public static createKnowledge<ThrowOnError extends boolean = false>(
+    options: Options<CreateKnowledgeData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Knowledge service availability and setup readiness
+   */
+  public static getKnowledgeStatus<ThrowOnError extends boolean = false>(
+    options?: Options<GetKnowledgeStatusData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/status",
+      ...options,
+    });
+  }
+
+  /**
+   * List entity labels of one knowledge base
+   */
+  public static getGraphLabels<ThrowOnError extends boolean = false>(
+    options: Options<GetGraphLabelsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetGraphLabelsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{id}/graph/labels",
+      ...options,
+    });
+  }
+
+  /**
+   * Get the graph of one knowledge base
+   */
+  public static getGraph<ThrowOnError extends boolean = false>(
+    options: Options<GetGraphData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetGraphResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{id}/graph",
+      ...options,
+    });
+  }
+
+  /**
+   * Source counts by status and type, and total size, in one read
+   */
+  public static getKnowledgeOverview<ThrowOnError extends boolean = false>(
+    options: Options<GetKnowledgeOverviewData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetKnowledgeOverviewResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{id}/overview",
+      ...options,
+    });
+  }
+
+  /**
+   * Delete knowledge
+   */
+  public static deleteKnowledge<ThrowOnError extends boolean = false>(
+    options: Options<DeleteKnowledgeData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      DeleteKnowledgeResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Get one knowledge
+   */
+  public static getKnowledge<ThrowOnError extends boolean = false>(
+    options: Options<GetKnowledgeData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Update knowledge
+   */
+  public static updateKnowledge<ThrowOnError extends boolean = false>(
+    options: Options<UpdateKnowledgeData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{id}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Start indexing
+   */
+  public static indexKnowledge<ThrowOnError extends boolean = false>(
+    options: Options<IndexKnowledgeData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{id}/index",
+      ...options,
+    });
+  }
+
+  /**
+   * Query knowledge (LLM-generated answer)
+   */
+  public static queryKnowledge<ThrowOnError extends boolean = false>(
+    options: Options<QueryKnowledgeData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      QueryKnowledgeResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{id}/query",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
+export class KnowledgeSourcesService {
+  /**
+   * List sources (paginated)
+   */
+  public static getKnowledgeSources<ThrowOnError extends boolean = false>(
+    options: Options<GetKnowledgeSourcesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetKnowledgeSourcesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources",
+      ...options,
+    });
+  }
+
+  /**
+   * Add source (file|url|text)
+   */
+  public static addKnowledgeSource<ThrowOnError extends boolean = false>(
+    options: Options<AddKnowledgeSourceData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/knowledges/{knowledgeId}/sources",
+      ...options,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Background imports for this knowledge (running and recent)
+   * Progress of archive imports started through from-archive. Jobs are kept in memory for an hour after they finish.
+   */
+  public static getKnowledgeSourceImports<ThrowOnError extends boolean = false>(
+    options: Options<GetKnowledgeSourceImportsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetKnowledgeSourceImportsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/imports",
+      ...options,
+    });
+  }
+
+  /**
+   * Download selected sources as one zip
+   * Selection is either an explicit `ids` list or the same filter the list takes, so "select all" travels as a filter rather than every id. File and text sources become entries; url sources are recorded in the `_ranch-export.yaml` manifest, whose extension the archive importer skips so the zip round-trips through from-archive.
+   */
+  public static exportKnowledgeSources<ThrowOnError extends boolean = false>(
+    options: Options<ExportKnowledgeSourcesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/export",
+      ...options,
+    });
+  }
+
+  /**
+   * Stream the stored bytes of a file or text source
+   * Streams the file straight from S3 (or the text body from the row). Not available for url sources - open the url itself.
+   */
+  public static getKnowledgeSourceContent<ThrowOnError extends boolean = false>(
+    options: Options<GetKnowledgeSourceContentData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/{sourceId}/content",
+      ...options,
+    });
+  }
+
+  /**
+   * Retry indexing a single source
+   * Requeues one source and re-ingests it without touching the rest of the batch. Progress is reported through the source own indexState.
+   */
+  public static reindexKnowledgeSource<ThrowOnError extends boolean = false>(
+    options: Options<ReindexKnowledgeSourceData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex",
+      ...options,
+    });
+  }
+
+  /**
+   * Re-run text extraction for a scanned PDF
+   * Probes the PDF for a text layer and, if it has none, sends it to OCR in the background. Progress is reported through the source own textState; press Index once it reads ready.
+   */
+  public static extractKnowledgeSourceText<
+    ThrowOnError extends boolean = false,
+  >(options: Options<ExtractKnowledgeSourceTextData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/{sourceId}/extract",
+      ...options,
+    });
+  }
+
+  /**
+   * Add several file sources at once
+   * Accepts a multi-file selection (field "files") and creates one file-type source per upload. Runs inline and returns per-batch counts. Files whose name already exists on this knowledge are skipped; a single failed file does not abort the rest. Indexing into LightRAG happens through the normal reindex flow.
+   */
+  public static addKnowledgeFileSources<ThrowOnError extends boolean = false>(
+    options: Options<AddKnowledgeFileSourcesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      AddKnowledgeFileSourcesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/files",
+      ...options,
+    });
+  }
+
+  /**
+   * Add url sources from a sitemap
+   * Fetches a sitemap.xml (or sitemap-index), filters by optional URL prefix, then creates one url-type source per discovered page. Indexing into LightRAG happens through the normal reindex flow.
+   */
+  public static addKnowledgeSourcesFromSitemap<
+    ThrowOnError extends boolean = false,
+  >(options: Options<AddKnowledgeSourcesFromSitemapData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      AddKnowledgeSourcesFromSitemapResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/from-sitemap",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Bulk-import sources from a zip archive
+   * Accepts a .zip, extracts every ingestable file (pdf, docx, xlsx, txt, html, ...), and creates one file-type source per entry. Upload runs in the background and streams each entry to S3; the response returns immediately with the detected file count and a job id to poll via GET .../sources/imports. Indexing into LightRAG happens through the normal reindex flow. Max size: KNOWLEDGE_ARCHIVE_MAX_BYTES (default 4 GiB).
+   */
+  public static addKnowledgeSourcesFromArchive<
+    ThrowOnError extends boolean = false,
+  >(options: Options<AddKnowledgeSourcesFromArchiveData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      AddKnowledgeSourcesFromArchiveResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/from-archive",
+      ...options,
+    });
+  }
+
+  /**
+   * Delete source
+   */
+  public static deleteKnowledgeSource<ThrowOnError extends boolean = false>(
+    options: Options<DeleteKnowledgeSourceData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      DeleteKnowledgeSourceResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/knowledges/{knowledgeId}/sources/{sourceId}",
+      ...options,
     });
   }
 }

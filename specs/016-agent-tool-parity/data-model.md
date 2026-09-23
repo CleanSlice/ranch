@@ -72,7 +72,8 @@ interface AgentToolEntry {
 
 Derivation:
 - `tools` = `ToolCatalogService.listFor(principal)` with `principal = { sub: 'agent:<id>', roles: agent.isAdmin ? [Owner] : [Agent] }`.
-- `inPod` = `podStartedAt === null ? null : (snapshot ? snapshot.toolNames.includes(name) : false)`.
+- `listingState`: `none` when no pod runs; `pending` when there is no snapshot or the snapshot is older than the pod (with 10 s of clock slack) — the running pod has not listed its tools yet; `fresh` otherwise.
+- `inPod` = `listingState === 'fresh' ? snapshot.toolNames.includes(name) : null`. A badge is only ever a claim backed by this pod's own listing; right after a restart the sheet shows "loading its tools" and polls instead.
 - External groups = `AgentMcpResolver.resolveForAgent(agent)` minus built-in ids (`mcp-ranch`, `mcp-knowledge`, `mcp-documents`, `mcp-cleanslice`); `authValue` and `url` are **not** returned.
 - Response is not cached; one DB read (snapshot) + resolver + pod list.
 

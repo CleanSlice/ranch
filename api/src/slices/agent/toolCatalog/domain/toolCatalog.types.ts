@@ -34,12 +34,20 @@ export interface IAgentToolGroup {
   tools: IAgentToolEntry[];
 }
 
+/**
+ * none — no pod runs; pending — the running pod has not listed its tools yet
+ * (or only an older pod did); fresh — the snapshot comes from this pod, so
+ * per-tool `inPod` flags are meaningful.
+ */
+export type ToolListingStates = 'none' | 'pending' | 'fresh';
+
 export interface IAgentToolCatalog {
   agentId: string;
   /** ISO; null when no pod runs. */
   podStartedAt: string | null;
   /** ISO of the last tools/list the pod made; null if it never did. */
   listedAt: string | null;
+  listingState: ToolListingStates;
   groups: IAgentToolGroup[];
 }
 

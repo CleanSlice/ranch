@@ -144,302 +144,6 @@ export type SetTemplateMcpsDto = {
   mcpServerIds: Array<string>;
 };
 
-export type CreateMcpServerDto = {
-  name: string;
-  description?: {
-    [key: string]: unknown;
-  };
-  url: string;
-  transport?: "streamableHttp" | "sse";
-  authType?: "none" | "bearer" | "header" | "oauth";
-  authValue?: {
-    [key: string]: unknown;
-  };
-  enabled?: boolean;
-};
-
-export type UpdateMcpServerDto = {
-  name?: string;
-  description?: {
-    [key: string]: unknown;
-  };
-  url?: string;
-  transport?: "streamableHttp" | "sse";
-  authType?: "none" | "bearer" | "header" | "oauth";
-  authValue?: {
-    [key: string]: unknown;
-  };
-  enabled?: boolean;
-};
-
-export type KnowledgeListItemDto = {
-  id: string;
-  name: string;
-  description: string | null;
-  /**
-   * Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).
-   */
-  indexStatus: "idle" | "indexing" | "ready" | "failed" | "empty" | "partial";
-  indexError: string | null;
-  indexedAt: string | null;
-  indexStartedAt: string | null;
-  /**
-   * Sources attached to this knowledge
-   */
-  sourceCount: number;
-  /**
-   * Sources LightRAG confirmed as processed
-   */
-  indexedCount: number;
-  /**
-   * Sources whose last index run recorded an error nothing will retry without a person
-   */
-  failedCount: number;
-  /**
-   * Sources that failed for a reason that passes (a model outage, a lost connection) and are retried automatically
-   */
-  retryingCount: number;
-  /**
-   * Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.
-   */
-  processingCount: number;
-  /**
-   * True while the index run that set `indexing` is still executing in the API. False with `indexing` means the run is gone (rejected, timed out, or lost to a restart) and a new one may be started at once.
-   */
-  indexRunAlive: boolean;
-  instanceState: "absent" | "starting" | "ready" | "failed" | "stopping";
-  instanceError: string | null;
-  migrationState: "notStarted" | "inProgress" | "done" | "failed";
-  createdAt: string;
-  updatedAt: string;
-  sourcesCount: number;
-  totalSizeBytes: number;
-};
-
-export type KnowledgePageDto = {
-  items: Array<KnowledgeListItemDto>;
-  total: number;
-  page: number;
-  perPage: number;
-};
-
-export type GraphLabelsDto = {
-  labels: Array<string>;
-  total: number;
-  truncated: boolean;
-};
-
-export type GraphNodeDto = {
-  id: string;
-  label: string;
-  entityType: string;
-  description: string;
-};
-
-export type GraphEdgeDto = {
-  id: string;
-  source: string;
-  target: string;
-  weight: number;
-  keywords: string;
-  description: string;
-};
-
-export type GraphDto = {
-  nodes: Array<GraphNodeDto>;
-  edges: Array<GraphEdgeDto>;
-  isTruncated: boolean;
-};
-
-export type SourceTypeCountsDto = {
-  file: number;
-  url: number;
-  text: number;
-};
-
-export type KnowledgeOverviewDto = {
-  /**
-   * Sources attached to this knowledge
-   */
-  sourceCount: number;
-  /**
-   * Sources LightRAG confirmed as processed
-   */
-  indexedCount: number;
-  /**
-   * Failed, and nothing will retry them by itself
-   */
-  failedCount: number;
-  /**
-   * Failed for a passing reason; retried automatically
-   */
-  retryingCount: number;
-  /**
-   * Handed to LightRAG and still in its pipeline
-   */
-  processingCount: number;
-  byType: SourceTypeCountsDto;
-  /**
-   * Sum of the stored files, in bytes
-   */
-  totalSizeBytes: number;
-};
-
-export type CreateKnowledgeDto = {
-  name: string;
-  description?: string;
-};
-
-export type UpdateKnowledgeDto = {
-  name?: string;
-  description?: string | null;
-};
-
-export type QueryKnowledgeDto = {
-  query: string;
-  mode?: "hybrid" | "local" | "global" | "naive";
-  topK?: number;
-};
-
-export type KnowledgeQueryReferenceDto = {
-  referenceId: string;
-  filePath: string;
-  sourceId: string | null;
-  sourceName: string | null;
-};
-
-export type KnowledgeQueryResultDto = {
-  /**
-   * null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.
-   */
-  answer: string | null;
-  reason?: "no_relevant_content";
-  knowledgeId: string;
-  /**
-   * false while this base is still being re-processed into its own area — answers may be incomplete.
-   */
-  complete: boolean;
-  references: Array<KnowledgeQueryReferenceDto>;
-};
-
-export type SourceDto = {
-  id: string;
-  knowledgeId: string;
-  type: "file" | "url" | "text";
-  name: string;
-  url: string | null;
-  mimeType: string | null;
-  content: string | null;
-  sizeBytes: number | null;
-  /**
-   * True when indexStatus is "indexed". Kept for older callers.
-   */
-  indexed: boolean;
-  indexStatus: "indexed" | "pending" | "retrying" | "failed";
-  indexState: "queued" | "processing" | "indexed" | "failed";
-  /**
-   * Error from the last index run, null once the source indexes.
-   */
-  indexError: string | null;
-  indexedAt: string | null;
-  /**
-   * Failed attempts since the source last indexed or was retried by hand; the reconciler stops retrying after three.
-   */
-  indexAttempts: number;
-  /**
-   * When the reconciler will retry a failed source on its own; null once it will not (permanent failure, or the retries are spent).
-   */
-  indexRetryAt: string | null;
-  /**
-   * Text extraction for a PDF without a text layer: none (not a PDF, or it has its own text), pending (probing or OCR running), ready (recognised text is what gets indexed), failed (see textError).
-   */
-  textState: "none" | "pending" | "ready" | "failed";
-  textError: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type SourcePageDto = {
-  items: Array<SourceDto>;
-  /**
-   * Rows matching the filter across all pages
-   */
-  total: number;
-  page: number;
-  perPage: number;
-};
-
-export type ImportJobDto = {
-  id: string;
-  knowledgeId: string;
-  kind: "archive" | "extraction";
-  status: "running" | "done" | "failed";
-  /**
-   * Ingestable entries found up front
-   */
-  detected: number;
-  added: number;
-  /**
-   * Entries skipped because a source with that name exists
-   */
-  skipped: number;
-  failed: number;
-  /**
-   * First failures as "<name>: <reason>", capped
-   */
-  errors: Array<string>;
-  startedAt: string;
-  finishedAt: string | null;
-};
-
-export type CreateSourceDto = {
-  type: "file" | "url" | "text";
-  name: string;
-  url?: string;
-  content?: string;
-};
-
-export type AddFilesResultDto = {
-  /**
-   * Files uploaded and registered.
-   */
-  added: number;
-  /**
-   * Files skipped because a file source with the same name already exists on this knowledge.
-   */
-  skipped: number;
-  /**
-   * Files that failed to upload.
-   */
-  failed: number;
-  /**
-   * One line per failed file.
-   */
-  errors: Array<string>;
-};
-
-export type AddFromSitemapDto = {
-  sitemapUrl: string;
-  urlPrefix?: string;
-};
-
-export type AddFromSitemapResultDto = {
-  added: number;
-  discovered: number;
-};
-
-export type AddFromArchiveResultDto = {
-  /**
-   * Number of ingestable files detected in the archive. Import runs in the background; poll GET .../sources/imports for progress.
-   */
-  detected: number;
-  started: boolean;
-  /**
-   * Id of the background import job (see GET .../sources/imports)
-   */
-  jobId: string;
-};
-
 export type AgentDto = {
   id: string;
   name: string;
@@ -972,6 +676,302 @@ export type ShareResolvedDto = {
    * The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.
    */
   agentStatus: string;
+};
+
+export type CreateMcpServerDto = {
+  name: string;
+  description?: {
+    [key: string]: unknown;
+  };
+  url: string;
+  transport?: "streamableHttp" | "sse";
+  authType?: "none" | "bearer" | "header" | "oauth";
+  authValue?: {
+    [key: string]: unknown;
+  };
+  enabled?: boolean;
+};
+
+export type UpdateMcpServerDto = {
+  name?: string;
+  description?: {
+    [key: string]: unknown;
+  };
+  url?: string;
+  transport?: "streamableHttp" | "sse";
+  authType?: "none" | "bearer" | "header" | "oauth";
+  authValue?: {
+    [key: string]: unknown;
+  };
+  enabled?: boolean;
+};
+
+export type KnowledgeListItemDto = {
+  id: string;
+  name: string;
+  description: string | null;
+  /**
+   * Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).
+   */
+  indexStatus: "idle" | "indexing" | "ready" | "failed" | "empty" | "partial";
+  indexError: string | null;
+  indexedAt: string | null;
+  indexStartedAt: string | null;
+  /**
+   * Sources attached to this knowledge
+   */
+  sourceCount: number;
+  /**
+   * Sources LightRAG confirmed as processed
+   */
+  indexedCount: number;
+  /**
+   * Sources whose last index run recorded an error nothing will retry without a person
+   */
+  failedCount: number;
+  /**
+   * Sources that failed for a reason that passes (a model outage, a lost connection) and are retried automatically
+   */
+  retryingCount: number;
+  /**
+   * Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.
+   */
+  processingCount: number;
+  /**
+   * True while the index run that set `indexing` is still executing in the API. False with `indexing` means the run is gone (rejected, timed out, or lost to a restart) and a new one may be started at once.
+   */
+  indexRunAlive: boolean;
+  instanceState: "absent" | "starting" | "ready" | "failed" | "stopping";
+  instanceError: string | null;
+  migrationState: "notStarted" | "inProgress" | "done" | "failed";
+  createdAt: string;
+  updatedAt: string;
+  sourcesCount: number;
+  totalSizeBytes: number;
+};
+
+export type KnowledgePageDto = {
+  items: Array<KnowledgeListItemDto>;
+  total: number;
+  page: number;
+  perPage: number;
+};
+
+export type GraphLabelsDto = {
+  labels: Array<string>;
+  total: number;
+  truncated: boolean;
+};
+
+export type GraphNodeDto = {
+  id: string;
+  label: string;
+  entityType: string;
+  description: string;
+};
+
+export type GraphEdgeDto = {
+  id: string;
+  source: string;
+  target: string;
+  weight: number;
+  keywords: string;
+  description: string;
+};
+
+export type GraphDto = {
+  nodes: Array<GraphNodeDto>;
+  edges: Array<GraphEdgeDto>;
+  isTruncated: boolean;
+};
+
+export type SourceTypeCountsDto = {
+  file: number;
+  url: number;
+  text: number;
+};
+
+export type KnowledgeOverviewDto = {
+  /**
+   * Sources attached to this knowledge
+   */
+  sourceCount: number;
+  /**
+   * Sources LightRAG confirmed as processed
+   */
+  indexedCount: number;
+  /**
+   * Failed, and nothing will retry them by itself
+   */
+  failedCount: number;
+  /**
+   * Failed for a passing reason; retried automatically
+   */
+  retryingCount: number;
+  /**
+   * Handed to LightRAG and still in its pipeline
+   */
+  processingCount: number;
+  byType: SourceTypeCountsDto;
+  /**
+   * Sum of the stored files, in bytes
+   */
+  totalSizeBytes: number;
+};
+
+export type CreateKnowledgeDto = {
+  name: string;
+  description?: string;
+};
+
+export type UpdateKnowledgeDto = {
+  name?: string;
+  description?: string | null;
+};
+
+export type QueryKnowledgeDto = {
+  query: string;
+  mode?: "hybrid" | "local" | "global" | "naive";
+  topK?: number;
+};
+
+export type KnowledgeQueryReferenceDto = {
+  referenceId: string;
+  filePath: string;
+  sourceId: string | null;
+  sourceName: string | null;
+};
+
+export type KnowledgeQueryResultDto = {
+  /**
+   * null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.
+   */
+  answer: string | null;
+  reason?: "no_relevant_content";
+  knowledgeId: string;
+  /**
+   * false while this base is still being re-processed into its own area — answers may be incomplete.
+   */
+  complete: boolean;
+  references: Array<KnowledgeQueryReferenceDto>;
+};
+
+export type SourceDto = {
+  id: string;
+  knowledgeId: string;
+  type: "file" | "url" | "text";
+  name: string;
+  url: string | null;
+  mimeType: string | null;
+  content: string | null;
+  sizeBytes: number | null;
+  /**
+   * True when indexStatus is "indexed". Kept for older callers.
+   */
+  indexed: boolean;
+  indexStatus: "indexed" | "pending" | "retrying" | "failed";
+  indexState: "queued" | "processing" | "indexed" | "failed";
+  /**
+   * Error from the last index run, null once the source indexes.
+   */
+  indexError: string | null;
+  indexedAt: string | null;
+  /**
+   * Failed attempts since the source last indexed or was retried by hand; the reconciler stops retrying after three.
+   */
+  indexAttempts: number;
+  /**
+   * When the reconciler will retry a failed source on its own; null once it will not (permanent failure, or the retries are spent).
+   */
+  indexRetryAt: string | null;
+  /**
+   * Text extraction for a PDF without a text layer: none (not a PDF, or it has its own text), pending (probing or OCR running), ready (recognised text is what gets indexed), failed (see textError).
+   */
+  textState: "none" | "pending" | "ready" | "failed";
+  textError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SourcePageDto = {
+  items: Array<SourceDto>;
+  /**
+   * Rows matching the filter across all pages
+   */
+  total: number;
+  page: number;
+  perPage: number;
+};
+
+export type ImportJobDto = {
+  id: string;
+  knowledgeId: string;
+  kind: "archive" | "extraction";
+  status: "running" | "done" | "failed";
+  /**
+   * Ingestable entries found up front
+   */
+  detected: number;
+  added: number;
+  /**
+   * Entries skipped because a source with that name exists
+   */
+  skipped: number;
+  failed: number;
+  /**
+   * First failures as "<name>: <reason>", capped
+   */
+  errors: Array<string>;
+  startedAt: string;
+  finishedAt: string | null;
+};
+
+export type CreateSourceDto = {
+  type: "file" | "url" | "text";
+  name: string;
+  url?: string;
+  content?: string;
+};
+
+export type AddFilesResultDto = {
+  /**
+   * Files uploaded and registered.
+   */
+  added: number;
+  /**
+   * Files skipped because a file source with the same name already exists on this knowledge.
+   */
+  skipped: number;
+  /**
+   * Files that failed to upload.
+   */
+  failed: number;
+  /**
+   * One line per failed file.
+   */
+  errors: Array<string>;
+};
+
+export type AddFromSitemapDto = {
+  sitemapUrl: string;
+  urlPrefix?: string;
+};
+
+export type AddFromSitemapResultDto = {
+  added: number;
+  discovered: number;
+};
+
+export type AddFromArchiveResultDto = {
+  /**
+   * Number of ingestable files detected in the archive. Import runs in the background; poll GET .../sources/imports for progress.
+   */
+  detected: number;
+  started: boolean;
+  /**
+   * Id of the background import job (see GET .../sources/imports)
+   */
+  jobId: string;
 };
 
 export type ImportSkillUrlDto = {
@@ -1643,6 +1643,10 @@ export type AgentToolCatalogDto = {
    * When the pod last called tools/list; null if it never did.
    */
   listedAt: string | null;
+  /**
+   * none — no pod runs; pending — the running pod has not listed its tools yet, so no inPod flag is set; fresh — the snapshot is from this pod.
+   */
+  listingState: "none" | "pending" | "fresh";
   groups: Array<AgentToolGroupDto>;
 };
 
@@ -2433,425 +2437,6 @@ export type TemplateControllerSetMcpsData = {
 export type TemplateControllerSetMcpsResponses = {
   200: unknown;
 };
-
-export type McpServerControllerFindAllData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/mcp-servers";
-};
-
-export type McpServerControllerFindAllResponses = {
-  200: unknown;
-};
-
-export type McpServerControllerCreateData = {
-  body: CreateMcpServerDto;
-  path?: never;
-  query?: never;
-  url: "/mcp-servers";
-};
-
-export type McpServerControllerCreateResponses = {
-  201: unknown;
-};
-
-export type McpServerControllerRemoveData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/mcp-servers/{id}";
-};
-
-export type McpServerControllerRemoveResponses = {
-  200: unknown;
-};
-
-export type McpServerControllerFindByIdData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/mcp-servers/{id}";
-};
-
-export type McpServerControllerFindByIdResponses = {
-  200: unknown;
-};
-
-export type McpServerControllerUpdateData = {
-  body: UpdateMcpServerDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/mcp-servers/{id}";
-};
-
-export type McpServerControllerUpdateResponses = {
-  200: unknown;
-};
-
-export type GetKnowledgesData = {
-  body?: never;
-  path?: never;
-  query?: {
-    search?: string;
-    page?: number;
-    perPage?: number;
-  };
-  url: "/knowledges";
-};
-
-export type GetKnowledgesResponses = {
-  200: KnowledgePageDto;
-};
-
-export type GetKnowledgesResponse =
-  GetKnowledgesResponses[keyof GetKnowledgesResponses];
-
-export type CreateKnowledgeData = {
-  body: CreateKnowledgeDto;
-  path?: never;
-  query?: never;
-  url: "/knowledges";
-};
-
-export type CreateKnowledgeResponses = {
-  201: unknown;
-};
-
-export type GetKnowledgeStatusData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/knowledges/status";
-};
-
-export type GetKnowledgeStatusResponses = {
-  200: unknown;
-};
-
-export type GetGraphLabelsData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: {
-    /**
-     * Case-insensitive substring filter
-     */
-    search?: string;
-    limit?: number;
-  };
-  url: "/knowledges/{id}/graph/labels";
-};
-
-export type GetGraphLabelsResponses = {
-  200: GraphLabelsDto;
-};
-
-export type GetGraphLabelsResponse =
-  GetGraphLabelsResponses[keyof GetGraphLabelsResponses];
-
-export type GetGraphData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query: {
-    label: string;
-    maxDepth?: number;
-    maxNodes?: number;
-  };
-  url: "/knowledges/{id}/graph";
-};
-
-export type GetGraphResponses = {
-  200: GraphDto;
-};
-
-export type GetGraphResponse = GetGraphResponses[keyof GetGraphResponses];
-
-export type GetKnowledgeOverviewData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}/overview";
-};
-
-export type GetKnowledgeOverviewResponses = {
-  200: KnowledgeOverviewDto;
-};
-
-export type GetKnowledgeOverviewResponse =
-  GetKnowledgeOverviewResponses[keyof GetKnowledgeOverviewResponses];
-
-export type DeleteKnowledgeData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}";
-};
-
-export type DeleteKnowledgeResponses = {
-  204: void;
-};
-
-export type DeleteKnowledgeResponse =
-  DeleteKnowledgeResponses[keyof DeleteKnowledgeResponses];
-
-export type GetKnowledgeData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}";
-};
-
-export type GetKnowledgeResponses = {
-  200: unknown;
-};
-
-export type UpdateKnowledgeData = {
-  body: UpdateKnowledgeDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}";
-};
-
-export type UpdateKnowledgeResponses = {
-  200: unknown;
-};
-
-export type IndexKnowledgeData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}/index";
-};
-
-export type IndexKnowledgeResponses = {
-  202: unknown;
-};
-
-export type QueryKnowledgeData = {
-  body: QueryKnowledgeDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}/query";
-};
-
-export type QueryKnowledgeResponses = {
-  200: KnowledgeQueryResultDto;
-};
-
-export type QueryKnowledgeResponse =
-  QueryKnowledgeResponses[keyof QueryKnowledgeResponses];
-
-export type GetKnowledgeSourcesData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-  };
-  query?: {
-    /**
-     * Case-insensitive substring match on the source name
-     */
-    search?: string;
-    status?: "indexed" | "pending" | "retrying" | "failed";
-    type?: "file" | "url" | "text";
-    page?: number;
-    perPage?: number;
-  };
-  url: "/knowledges/{knowledgeId}/sources";
-};
-
-export type GetKnowledgeSourcesResponses = {
-  200: SourcePageDto;
-};
-
-export type GetKnowledgeSourcesResponse =
-  GetKnowledgeSourcesResponses[keyof GetKnowledgeSourcesResponses];
-
-export type AddKnowledgeSourceData = {
-  body: CreateSourceDto;
-  path: {
-    knowledgeId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources";
-};
-
-export type AddKnowledgeSourceResponses = {
-  201: unknown;
-};
-
-export type GetKnowledgeSourceImportsData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/imports";
-};
-
-export type GetKnowledgeSourceImportsResponses = {
-  200: Array<ImportJobDto>;
-};
-
-export type GetKnowledgeSourceImportsResponse =
-  GetKnowledgeSourceImportsResponses[keyof GetKnowledgeSourceImportsResponses];
-
-export type ExportKnowledgeSourcesData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-  };
-  query?: {
-    /**
-     * Comma-separated source ids. When present the filter fields are ignored.
-     */
-    ids?: string;
-    /**
-     * Case-insensitive substring match on the source name
-     */
-    search?: string;
-    status?: "indexed" | "pending" | "retrying" | "failed";
-    type?: "file" | "url" | "text";
-  };
-  url: "/knowledges/{knowledgeId}/sources/export";
-};
-
-export type ExportKnowledgeSourcesResponses = {
-  200: unknown;
-};
-
-export type GetKnowledgeSourceContentData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-    sourceId: string;
-  };
-  query?: {
-    /**
-     * "inline" lets the browser render what it can (pdf, images, text); "attachment" forces a download.
-     */
-    disposition?: "inline" | "attachment";
-  };
-  url: "/knowledges/{knowledgeId}/sources/{sourceId}/content";
-};
-
-export type GetKnowledgeSourceContentResponses = {
-  200: unknown;
-};
-
-export type ReindexKnowledgeSourceData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-    sourceId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex";
-};
-
-export type ReindexKnowledgeSourceResponses = {
-  202: unknown;
-};
-
-export type ExtractKnowledgeSourceTextData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-    sourceId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/{sourceId}/extract";
-};
-
-export type ExtractKnowledgeSourceTextResponses = {
-  202: unknown;
-};
-
-export type AddKnowledgeFileSourcesData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/files";
-};
-
-export type AddKnowledgeFileSourcesResponses = {
-  201: AddFilesResultDto;
-};
-
-export type AddKnowledgeFileSourcesResponse =
-  AddKnowledgeFileSourcesResponses[keyof AddKnowledgeFileSourcesResponses];
-
-export type AddKnowledgeSourcesFromSitemapData = {
-  body: AddFromSitemapDto;
-  path: {
-    knowledgeId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/from-sitemap";
-};
-
-export type AddKnowledgeSourcesFromSitemapResponses = {
-  201: AddFromSitemapResultDto;
-};
-
-export type AddKnowledgeSourcesFromSitemapResponse =
-  AddKnowledgeSourcesFromSitemapResponses[keyof AddKnowledgeSourcesFromSitemapResponses];
-
-export type AddKnowledgeSourcesFromArchiveData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/from-archive";
-};
-
-export type AddKnowledgeSourcesFromArchiveResponses = {
-  201: AddFromArchiveResultDto;
-};
-
-export type AddKnowledgeSourcesFromArchiveResponse =
-  AddKnowledgeSourcesFromArchiveResponses[keyof AddKnowledgeSourcesFromArchiveResponses];
-
-export type DeleteKnowledgeSourceData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-    sourceId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/{sourceId}";
-};
-
-export type DeleteKnowledgeSourceResponses = {
-  204: void;
-};
-
-export type DeleteKnowledgeSourceResponse =
-  DeleteKnowledgeSourceResponses[keyof DeleteKnowledgeSourceResponses];
 
 export type AgentControllerFindAllData = {
   body?: never;
@@ -3713,6 +3298,425 @@ export type ResolveShareLinkResponses = {
 
 export type ResolveShareLinkResponse =
   ResolveShareLinkResponses[keyof ResolveShareLinkResponses];
+
+export type McpServerControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/mcp-servers";
+};
+
+export type McpServerControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type McpServerControllerCreateData = {
+  body: CreateMcpServerDto;
+  path?: never;
+  query?: never;
+  url: "/mcp-servers";
+};
+
+export type McpServerControllerCreateResponses = {
+  201: unknown;
+};
+
+export type McpServerControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/mcp-servers/{id}";
+};
+
+export type McpServerControllerRemoveResponses = {
+  200: unknown;
+};
+
+export type McpServerControllerFindByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/mcp-servers/{id}";
+};
+
+export type McpServerControllerFindByIdResponses = {
+  200: unknown;
+};
+
+export type McpServerControllerUpdateData = {
+  body: UpdateMcpServerDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/mcp-servers/{id}";
+};
+
+export type McpServerControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type GetKnowledgesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    search?: string;
+    page?: number;
+    perPage?: number;
+  };
+  url: "/knowledges";
+};
+
+export type GetKnowledgesResponses = {
+  200: KnowledgePageDto;
+};
+
+export type GetKnowledgesResponse =
+  GetKnowledgesResponses[keyof GetKnowledgesResponses];
+
+export type CreateKnowledgeData = {
+  body: CreateKnowledgeDto;
+  path?: never;
+  query?: never;
+  url: "/knowledges";
+};
+
+export type CreateKnowledgeResponses = {
+  201: unknown;
+};
+
+export type GetKnowledgeStatusData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/knowledges/status";
+};
+
+export type GetKnowledgeStatusResponses = {
+  200: unknown;
+};
+
+export type GetGraphLabelsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    /**
+     * Case-insensitive substring filter
+     */
+    search?: string;
+    limit?: number;
+  };
+  url: "/knowledges/{id}/graph/labels";
+};
+
+export type GetGraphLabelsResponses = {
+  200: GraphLabelsDto;
+};
+
+export type GetGraphLabelsResponse =
+  GetGraphLabelsResponses[keyof GetGraphLabelsResponses];
+
+export type GetGraphData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query: {
+    label: string;
+    maxDepth?: number;
+    maxNodes?: number;
+  };
+  url: "/knowledges/{id}/graph";
+};
+
+export type GetGraphResponses = {
+  200: GraphDto;
+};
+
+export type GetGraphResponse = GetGraphResponses[keyof GetGraphResponses];
+
+export type GetKnowledgeOverviewData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}/overview";
+};
+
+export type GetKnowledgeOverviewResponses = {
+  200: KnowledgeOverviewDto;
+};
+
+export type GetKnowledgeOverviewResponse =
+  GetKnowledgeOverviewResponses[keyof GetKnowledgeOverviewResponses];
+
+export type DeleteKnowledgeData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}";
+};
+
+export type DeleteKnowledgeResponses = {
+  204: void;
+};
+
+export type DeleteKnowledgeResponse =
+  DeleteKnowledgeResponses[keyof DeleteKnowledgeResponses];
+
+export type GetKnowledgeData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}";
+};
+
+export type GetKnowledgeResponses = {
+  200: unknown;
+};
+
+export type UpdateKnowledgeData = {
+  body: UpdateKnowledgeDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}";
+};
+
+export type UpdateKnowledgeResponses = {
+  200: unknown;
+};
+
+export type IndexKnowledgeData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}/index";
+};
+
+export type IndexKnowledgeResponses = {
+  202: unknown;
+};
+
+export type QueryKnowledgeData = {
+  body: QueryKnowledgeDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}/query";
+};
+
+export type QueryKnowledgeResponses = {
+  200: KnowledgeQueryResultDto;
+};
+
+export type QueryKnowledgeResponse =
+  QueryKnowledgeResponses[keyof QueryKnowledgeResponses];
+
+export type GetKnowledgeSourcesData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: {
+    /**
+     * Case-insensitive substring match on the source name
+     */
+    search?: string;
+    status?: "indexed" | "pending" | "retrying" | "failed";
+    type?: "file" | "url" | "text";
+    page?: number;
+    perPage?: number;
+  };
+  url: "/knowledges/{knowledgeId}/sources";
+};
+
+export type GetKnowledgeSourcesResponses = {
+  200: SourcePageDto;
+};
+
+export type GetKnowledgeSourcesResponse =
+  GetKnowledgeSourcesResponses[keyof GetKnowledgeSourcesResponses];
+
+export type AddKnowledgeSourceData = {
+  body: CreateSourceDto;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources";
+};
+
+export type AddKnowledgeSourceResponses = {
+  201: unknown;
+};
+
+export type GetKnowledgeSourceImportsData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/imports";
+};
+
+export type GetKnowledgeSourceImportsResponses = {
+  200: Array<ImportJobDto>;
+};
+
+export type GetKnowledgeSourceImportsResponse =
+  GetKnowledgeSourceImportsResponses[keyof GetKnowledgeSourceImportsResponses];
+
+export type ExportKnowledgeSourcesData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: {
+    /**
+     * Comma-separated source ids. When present the filter fields are ignored.
+     */
+    ids?: string;
+    /**
+     * Case-insensitive substring match on the source name
+     */
+    search?: string;
+    status?: "indexed" | "pending" | "retrying" | "failed";
+    type?: "file" | "url" | "text";
+  };
+  url: "/knowledges/{knowledgeId}/sources/export";
+};
+
+export type ExportKnowledgeSourcesResponses = {
+  200: unknown;
+};
+
+export type GetKnowledgeSourceContentData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: {
+    /**
+     * "inline" lets the browser render what it can (pdf, images, text); "attachment" forces a download.
+     */
+    disposition?: "inline" | "attachment";
+  };
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/content";
+};
+
+export type GetKnowledgeSourceContentResponses = {
+  200: unknown;
+};
+
+export type ReindexKnowledgeSourceData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex";
+};
+
+export type ReindexKnowledgeSourceResponses = {
+  202: unknown;
+};
+
+export type ExtractKnowledgeSourceTextData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/extract";
+};
+
+export type ExtractKnowledgeSourceTextResponses = {
+  202: unknown;
+};
+
+export type AddKnowledgeFileSourcesData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/files";
+};
+
+export type AddKnowledgeFileSourcesResponses = {
+  201: AddFilesResultDto;
+};
+
+export type AddKnowledgeFileSourcesResponse =
+  AddKnowledgeFileSourcesResponses[keyof AddKnowledgeFileSourcesResponses];
+
+export type AddKnowledgeSourcesFromSitemapData = {
+  body: AddFromSitemapDto;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/from-sitemap";
+};
+
+export type AddKnowledgeSourcesFromSitemapResponses = {
+  201: AddFromSitemapResultDto;
+};
+
+export type AddKnowledgeSourcesFromSitemapResponse =
+  AddKnowledgeSourcesFromSitemapResponses[keyof AddKnowledgeSourcesFromSitemapResponses];
+
+export type AddKnowledgeSourcesFromArchiveData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/from-archive";
+};
+
+export type AddKnowledgeSourcesFromArchiveResponses = {
+  201: AddFromArchiveResultDto;
+};
+
+export type AddKnowledgeSourcesFromArchiveResponse =
+  AddKnowledgeSourcesFromArchiveResponses[keyof AddKnowledgeSourcesFromArchiveResponses];
+
+export type DeleteKnowledgeSourceData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}";
+};
+
+export type DeleteKnowledgeSourceResponses = {
+  204: void;
+};
+
+export type DeleteKnowledgeSourceResponse =
+  DeleteKnowledgeSourceResponses[keyof DeleteKnowledgeSourceResponses];
 
 export type SkillControllerFindAllData = {
   body?: never;

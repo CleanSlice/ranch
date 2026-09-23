@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { Search, X } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { Loader2, Search, X } from 'lucide-vue-next'
 import {
   Sheet,
   SheetContent,
@@ -41,11 +41,24 @@ const catalog = computed(() => store.byAgent(props.agentId))
 const agent = computed(() => agentStore.byId(props.agentId))
 const ui = computed(() => store.uiOf(props.agentId))
 
-const { pending, error, refresh } = useAsyncData(
-  `admin-tool-catalog-${props.agentId}`,
-  () => store.fetchByAgent(props.agentId),
-  { immediate: false, server: false },
-)
+// Loading state only; the record itself is read from the store (docs/state.md).
+// Plain refs rather than useAsyncData: this sheet re-reads on every open and
+// polls while the agent boots, and a keyed cache in between is exactly the
+// kind of second copy that showed a restarted agent its old list.
+const pending = ref(false)
+const error = ref<unknown>(null)
+
+async function refresh(): Promise<void> {
+  pending.value = true
+  try {
+    await store.fetchByAgent(props.agentId)
+    error.value = null
+  } catch (e) {
+    error.value = e
+  } finally {
+    pending.value = false
+  }
+}
 
 // Load on first open, and again on every open so a tool that landed since is
 // there; the cached record renders meanwhile, so nothing flickers.
@@ -67,6 +80,46 @@ watch(
     }
   },
 )
+
+// A freshly started pod lists its tools a few seconds after it is up. While
+// the sheet is open and the API says the listing is still pending, poll —
+// bounded, so a pod that never lists (or an operator who walks away) does not
+// keep the tab busy forever.
+const POLL_MS = 4000
+const POLL_LIMIT = 30
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+let pollCount = 0
+
+function stopPolling() {
+  if (pollTimer) clearTimeout(pollTimer)
+  pollTimer = null
+  pollCount = 0
+}
+
+function schedulePoll() {
+  if (pollTimer || !props.open) return
+  if (catalog.value?.listingState !== 'pending') return
+  if (pollCount >= POLL_LIMIT) return
+  pollTimer = setTimeout(async () => {
+    pollTimer = null
+    pollCount += 1
+    if (!props.open) return
+    await refresh()
+    schedulePoll()
+  }, POLL_MS)
+}
+
+watch(
+  () => [props.open, catalog.value?.listingState] as const,
+  ([isOpen, state]) => {
+    if (!isOpen) return stopPolling()
+    if (state === 'pending') schedulePoll()
+    else stopPolling()
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(stopPolling)
 
 const query = computed({
   get: () => ui.value.query,
@@ -192,10 +245,18 @@ const searchRef = ref<InstanceType<typeof Input> | null>(null)
       </ScrollArea>
 
       <p
-        v-if="catalog?.podStartedAt === null"
+        v-if="catalog?.listingState === 'none'"
         class="border-t px-4 py-2 text-[11px] text-muted-foreground"
       >
         The agent is not running. Tools are listed as they will be once it starts.
+      </p>
+      <p
+        v-else-if="catalog?.listingState === 'pending'"
+        class="flex items-center gap-1.5 border-t px-4 py-2 text-[11px] text-muted-foreground"
+        role="status"
+      >
+        <Loader2 class="size-3 animate-spin" />
+        The agent has started and is loading its tools; this list updates on its own.
       </p>
     </SheetContent>
   </Sheet>

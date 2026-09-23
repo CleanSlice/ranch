@@ -49,6 +49,10 @@ export class ToolCatalogMapper {
       agentId: str(dto.agentId),
       podStartedAt: dto.podStartedAt ?? null,
       listedAt: dto.listedAt ?? null,
+      listingState:
+        dto.listingState === 'fresh' || dto.listingState === 'pending'
+          ? dto.listingState
+          : 'none',
       groups: Array.isArray(dto.groups)
         ? dto.groups.map((g) => this.toGroup(g))
         : [],

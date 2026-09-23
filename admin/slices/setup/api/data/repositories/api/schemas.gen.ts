@@ -329,733 +329,6 @@ export const SetTemplateMcpsDtoSchema = {
   required: ["mcpServerIds"],
 } as const;
 
-export const CreateMcpServerDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "object",
-    },
-    url: {
-      type: "string",
-    },
-    transport: {
-      type: "string",
-      enum: ["streamableHttp", "sse"],
-    },
-    authType: {
-      type: "string",
-      enum: ["none", "bearer", "header", "oauth"],
-    },
-    authValue: {
-      type: "object",
-    },
-    enabled: {
-      type: "boolean",
-    },
-  },
-  required: ["name", "url"],
-} as const;
-
-export const UpdateMcpServerDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "object",
-    },
-    url: {
-      type: "string",
-    },
-    transport: {
-      type: "string",
-      enum: ["streamableHttp", "sse"],
-    },
-    authType: {
-      type: "string",
-      enum: ["none", "bearer", "header", "oauth"],
-    },
-    authValue: {
-      type: "object",
-    },
-    enabled: {
-      type: "boolean",
-    },
-  },
-} as const;
-
-export const KnowledgeListItemDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-      nullable: true,
-    },
-    indexStatus: {
-      type: "string",
-      enum: ["idle", "indexing", "ready", "failed", "empty", "partial"],
-      description:
-        "Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).",
-    },
-    indexError: {
-      type: "string",
-      nullable: true,
-    },
-    indexedAt: {
-      type: "string",
-      nullable: true,
-    },
-    indexStartedAt: {
-      type: "string",
-      nullable: true,
-    },
-    sourceCount: {
-      type: "number",
-      description: "Sources attached to this knowledge",
-    },
-    indexedCount: {
-      type: "number",
-      description: "Sources LightRAG confirmed as processed",
-    },
-    failedCount: {
-      type: "number",
-      description:
-        "Sources whose last index run recorded an error nothing will retry without a person",
-    },
-    retryingCount: {
-      type: "number",
-      description:
-        "Sources that failed for a reason that passes (a model outage, a lost connection) and are retried automatically",
-    },
-    processingCount: {
-      type: "number",
-      description:
-        "Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.",
-    },
-    indexRunAlive: {
-      type: "boolean",
-      description:
-        "True while the index run that set `indexing` is still executing in the API. False with `indexing` means the run is gone (rejected, timed out, or lost to a restart) and a new one may be started at once.",
-    },
-    instanceState: {
-      type: "string",
-      enum: ["absent", "starting", "ready", "failed", "stopping"],
-    },
-    instanceError: {
-      type: "string",
-      nullable: true,
-    },
-    migrationState: {
-      type: "string",
-      enum: ["notStarted", "inProgress", "done", "failed"],
-    },
-    createdAt: {
-      format: "date-time",
-      type: "string",
-    },
-    updatedAt: {
-      format: "date-time",
-      type: "string",
-    },
-    sourcesCount: {
-      type: "number",
-    },
-    totalSizeBytes: {
-      type: "number",
-    },
-  },
-  required: [
-    "id",
-    "name",
-    "description",
-    "indexStatus",
-    "indexError",
-    "indexedAt",
-    "indexStartedAt",
-    "sourceCount",
-    "indexedCount",
-    "failedCount",
-    "retryingCount",
-    "processingCount",
-    "indexRunAlive",
-    "instanceState",
-    "instanceError",
-    "migrationState",
-    "createdAt",
-    "updatedAt",
-    "sourcesCount",
-    "totalSizeBytes",
-  ],
-} as const;
-
-export const KnowledgePageDtoSchema = {
-  type: "object",
-  properties: {
-    items: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/KnowledgeListItemDto",
-      },
-    },
-    total: {
-      type: "number",
-    },
-    page: {
-      type: "number",
-    },
-    perPage: {
-      type: "number",
-    },
-  },
-  required: ["items", "total", "page", "perPage"],
-} as const;
-
-export const GraphLabelsDtoSchema = {
-  type: "object",
-  properties: {
-    labels: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    total: {
-      type: "number",
-    },
-    truncated: {
-      type: "boolean",
-    },
-  },
-  required: ["labels", "total", "truncated"],
-} as const;
-
-export const GraphNodeDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    label: {
-      type: "string",
-    },
-    entityType: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-    },
-  },
-  required: ["id", "label", "entityType", "description"],
-} as const;
-
-export const GraphEdgeDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    source: {
-      type: "string",
-    },
-    target: {
-      type: "string",
-    },
-    weight: {
-      type: "number",
-    },
-    keywords: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-    },
-  },
-  required: ["id", "source", "target", "weight", "keywords", "description"],
-} as const;
-
-export const GraphDtoSchema = {
-  type: "object",
-  properties: {
-    nodes: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/GraphNodeDto",
-      },
-    },
-    edges: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/GraphEdgeDto",
-      },
-    },
-    isTruncated: {
-      type: "boolean",
-    },
-  },
-  required: ["nodes", "edges", "isTruncated"],
-} as const;
-
-export const SourceTypeCountsDtoSchema = {
-  type: "object",
-  properties: {
-    file: {
-      type: "number",
-    },
-    url: {
-      type: "number",
-    },
-    text: {
-      type: "number",
-    },
-  },
-  required: ["file", "url", "text"],
-} as const;
-
-export const KnowledgeOverviewDtoSchema = {
-  type: "object",
-  properties: {
-    sourceCount: {
-      type: "number",
-      description: "Sources attached to this knowledge",
-    },
-    indexedCount: {
-      type: "number",
-      description: "Sources LightRAG confirmed as processed",
-    },
-    failedCount: {
-      type: "number",
-      description: "Failed, and nothing will retry them by itself",
-    },
-    retryingCount: {
-      type: "number",
-      description: "Failed for a passing reason; retried automatically",
-    },
-    processingCount: {
-      type: "number",
-      description: "Handed to LightRAG and still in its pipeline",
-    },
-    byType: {
-      $ref: "#/components/schemas/SourceTypeCountsDto",
-    },
-    totalSizeBytes: {
-      type: "number",
-      description: "Sum of the stored files, in bytes",
-    },
-  },
-  required: [
-    "sourceCount",
-    "indexedCount",
-    "failedCount",
-    "retryingCount",
-    "processingCount",
-    "byType",
-    "totalSizeBytes",
-  ],
-} as const;
-
-export const CreateKnowledgeDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-    },
-  },
-  required: ["name"],
-} as const;
-
-export const UpdateKnowledgeDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-      nullable: true,
-    },
-  },
-} as const;
-
-export const QueryKnowledgeDtoSchema = {
-  type: "object",
-  properties: {
-    query: {
-      type: "string",
-    },
-    mode: {
-      type: "string",
-      enum: ["hybrid", "local", "global", "naive"],
-      default: "hybrid",
-    },
-    topK: {
-      type: "number",
-      default: 25,
-    },
-  },
-  required: ["query"],
-} as const;
-
-export const KnowledgeQueryReferenceDtoSchema = {
-  type: "object",
-  properties: {
-    referenceId: {
-      type: "string",
-    },
-    filePath: {
-      type: "string",
-    },
-    sourceId: {
-      type: "string",
-      nullable: true,
-    },
-    sourceName: {
-      type: "string",
-      nullable: true,
-    },
-  },
-  required: ["referenceId", "filePath", "sourceId", "sourceName"],
-} as const;
-
-export const KnowledgeQueryResultDtoSchema = {
-  type: "object",
-  properties: {
-    answer: {
-      type: "string",
-      nullable: true,
-      description:
-        "null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.",
-    },
-    reason: {
-      type: "string",
-      enum: ["no_relevant_content"],
-    },
-    knowledgeId: {
-      type: "string",
-    },
-    complete: {
-      type: "boolean",
-      description:
-        "false while this base is still being re-processed into its own area — answers may be incomplete.",
-    },
-    references: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/KnowledgeQueryReferenceDto",
-      },
-    },
-  },
-  required: ["answer", "knowledgeId", "complete", "references"],
-} as const;
-
-export const SourceDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    knowledgeId: {
-      type: "string",
-    },
-    type: {
-      type: "string",
-      enum: ["file", "url", "text"],
-    },
-    name: {
-      type: "string",
-    },
-    url: {
-      type: "string",
-      nullable: true,
-    },
-    mimeType: {
-      type: "string",
-      nullable: true,
-    },
-    content: {
-      type: "string",
-      nullable: true,
-    },
-    sizeBytes: {
-      type: "number",
-      nullable: true,
-    },
-    indexed: {
-      type: "boolean",
-      description:
-        'True when indexStatus is "indexed". Kept for older callers.',
-    },
-    indexStatus: {
-      type: "string",
-      enum: ["indexed", "pending", "retrying", "failed"],
-    },
-    indexState: {
-      type: "string",
-      enum: ["queued", "processing", "indexed", "failed"],
-    },
-    indexError: {
-      type: "string",
-      nullable: true,
-      description:
-        "Error from the last index run, null once the source indexes.",
-    },
-    indexedAt: {
-      type: "string",
-      nullable: true,
-    },
-    indexAttempts: {
-      type: "number",
-      description:
-        "Failed attempts since the source last indexed or was retried by hand; the reconciler stops retrying after three.",
-    },
-    indexRetryAt: {
-      type: "string",
-      nullable: true,
-      description:
-        "When the reconciler will retry a failed source on its own; null once it will not (permanent failure, or the retries are spent).",
-    },
-    textState: {
-      type: "string",
-      enum: ["none", "pending", "ready", "failed"],
-      description:
-        "Text extraction for a PDF without a text layer: none (not a PDF, or it has its own text), pending (probing or OCR running), ready (recognised text is what gets indexed), failed (see textError).",
-    },
-    textError: {
-      type: "string",
-      nullable: true,
-    },
-    createdAt: {
-      format: "date-time",
-      type: "string",
-    },
-    updatedAt: {
-      format: "date-time",
-      type: "string",
-    },
-  },
-  required: [
-    "id",
-    "knowledgeId",
-    "type",
-    "name",
-    "url",
-    "mimeType",
-    "content",
-    "sizeBytes",
-    "indexed",
-    "indexStatus",
-    "indexState",
-    "indexError",
-    "indexedAt",
-    "indexAttempts",
-    "indexRetryAt",
-    "textState",
-    "textError",
-    "createdAt",
-    "updatedAt",
-  ],
-} as const;
-
-export const SourcePageDtoSchema = {
-  type: "object",
-  properties: {
-    items: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/SourceDto",
-      },
-    },
-    total: {
-      type: "number",
-      description: "Rows matching the filter across all pages",
-    },
-    page: {
-      type: "number",
-    },
-    perPage: {
-      type: "number",
-    },
-  },
-  required: ["items", "total", "page", "perPage"],
-} as const;
-
-export const ImportJobDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    knowledgeId: {
-      type: "string",
-    },
-    kind: {
-      type: "string",
-      enum: ["archive", "extraction"],
-    },
-    status: {
-      type: "string",
-      enum: ["running", "done", "failed"],
-    },
-    detected: {
-      type: "number",
-      description: "Ingestable entries found up front",
-    },
-    added: {
-      type: "number",
-    },
-    skipped: {
-      type: "number",
-      description: "Entries skipped because a source with that name exists",
-    },
-    failed: {
-      type: "number",
-    },
-    errors: {
-      description: 'First failures as "<name>: <reason>", capped',
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    startedAt: {
-      format: "date-time",
-      type: "string",
-    },
-    finishedAt: {
-      type: "string",
-      nullable: true,
-    },
-  },
-  required: [
-    "id",
-    "knowledgeId",
-    "kind",
-    "status",
-    "detected",
-    "added",
-    "skipped",
-    "failed",
-    "errors",
-    "startedAt",
-    "finishedAt",
-  ],
-} as const;
-
-export const CreateSourceDtoSchema = {
-  type: "object",
-  properties: {
-    type: {
-      type: "string",
-      enum: ["file", "url", "text"],
-    },
-    name: {
-      type: "string",
-    },
-    url: {
-      type: "string",
-    },
-    content: {
-      type: "string",
-    },
-  },
-  required: ["type", "name"],
-} as const;
-
-export const AddFilesResultDtoSchema = {
-  type: "object",
-  properties: {
-    added: {
-      type: "number",
-      example: 8,
-      description: "Files uploaded and registered.",
-    },
-    skipped: {
-      type: "number",
-      example: 2,
-      description:
-        "Files skipped because a file source with the same name already exists on this knowledge.",
-    },
-    failed: {
-      type: "number",
-      example: 1,
-      description: "Files that failed to upload.",
-    },
-    errors: {
-      example: ["broken.pdf: S3 upload failed"],
-      description: "One line per failed file.",
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-  },
-  required: ["added", "skipped", "failed", "errors"],
-} as const;
-
-export const AddFromSitemapDtoSchema = {
-  type: "object",
-  properties: {
-    sitemapUrl: {
-      type: "string",
-      example: "https://developer.paypal.com/sitemap.xml",
-    },
-    urlPrefix: {
-      type: "string",
-      example: "https://developer.paypal.com/docs/checkout/",
-    },
-  },
-  required: ["sitemapUrl"],
-} as const;
-
-export const AddFromSitemapResultDtoSchema = {
-  type: "object",
-  properties: {
-    added: {
-      type: "number",
-      example: 47,
-    },
-    discovered: {
-      type: "number",
-      example: 51,
-    },
-  },
-  required: ["added", "discovered"],
-} as const;
-
-export const AddFromArchiveResultDtoSchema = {
-  type: "object",
-  properties: {
-    detected: {
-      type: "number",
-      example: 288,
-      description:
-        "Number of ingestable files detected in the archive. Import runs in the background; poll GET .../sources/imports for progress.",
-    },
-    started: {
-      type: "boolean",
-      example: true,
-    },
-    jobId: {
-      type: "string",
-      description:
-        "Id of the background import job (see GET .../sources/imports)",
-    },
-  },
-  required: ["detected", "started", "jobId"],
-} as const;
-
 export const AgentDtoSchema = {
   type: "object",
   properties: {
@@ -2118,6 +1391,733 @@ export const ShareResolvedDtoSchema = {
     },
   },
   required: ["agentId", "agentName", "agentStatus"],
+} as const;
+
+export const CreateMcpServerDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "object",
+    },
+    url: {
+      type: "string",
+    },
+    transport: {
+      type: "string",
+      enum: ["streamableHttp", "sse"],
+    },
+    authType: {
+      type: "string",
+      enum: ["none", "bearer", "header", "oauth"],
+    },
+    authValue: {
+      type: "object",
+    },
+    enabled: {
+      type: "boolean",
+    },
+  },
+  required: ["name", "url"],
+} as const;
+
+export const UpdateMcpServerDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "object",
+    },
+    url: {
+      type: "string",
+    },
+    transport: {
+      type: "string",
+      enum: ["streamableHttp", "sse"],
+    },
+    authType: {
+      type: "string",
+      enum: ["none", "bearer", "header", "oauth"],
+    },
+    authValue: {
+      type: "object",
+    },
+    enabled: {
+      type: "boolean",
+    },
+  },
+} as const;
+
+export const KnowledgeListItemDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+      nullable: true,
+    },
+    indexStatus: {
+      type: "string",
+      enum: ["idle", "indexing", "ready", "failed", "empty", "partial"],
+      description:
+        "Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).",
+    },
+    indexError: {
+      type: "string",
+      nullable: true,
+    },
+    indexedAt: {
+      type: "string",
+      nullable: true,
+    },
+    indexStartedAt: {
+      type: "string",
+      nullable: true,
+    },
+    sourceCount: {
+      type: "number",
+      description: "Sources attached to this knowledge",
+    },
+    indexedCount: {
+      type: "number",
+      description: "Sources LightRAG confirmed as processed",
+    },
+    failedCount: {
+      type: "number",
+      description:
+        "Sources whose last index run recorded an error nothing will retry without a person",
+    },
+    retryingCount: {
+      type: "number",
+      description:
+        "Sources that failed for a reason that passes (a model outage, a lost connection) and are retried automatically",
+    },
+    processingCount: {
+      type: "number",
+      description:
+        "Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.",
+    },
+    indexRunAlive: {
+      type: "boolean",
+      description:
+        "True while the index run that set `indexing` is still executing in the API. False with `indexing` means the run is gone (rejected, timed out, or lost to a restart) and a new one may be started at once.",
+    },
+    instanceState: {
+      type: "string",
+      enum: ["absent", "starting", "ready", "failed", "stopping"],
+    },
+    instanceError: {
+      type: "string",
+      nullable: true,
+    },
+    migrationState: {
+      type: "string",
+      enum: ["notStarted", "inProgress", "done", "failed"],
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+    sourcesCount: {
+      type: "number",
+    },
+    totalSizeBytes: {
+      type: "number",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "description",
+    "indexStatus",
+    "indexError",
+    "indexedAt",
+    "indexStartedAt",
+    "sourceCount",
+    "indexedCount",
+    "failedCount",
+    "retryingCount",
+    "processingCount",
+    "indexRunAlive",
+    "instanceState",
+    "instanceError",
+    "migrationState",
+    "createdAt",
+    "updatedAt",
+    "sourcesCount",
+    "totalSizeBytes",
+  ],
+} as const;
+
+export const KnowledgePageDtoSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/KnowledgeListItemDto",
+      },
+    },
+    total: {
+      type: "number",
+    },
+    page: {
+      type: "number",
+    },
+    perPage: {
+      type: "number",
+    },
+  },
+  required: ["items", "total", "page", "perPage"],
+} as const;
+
+export const GraphLabelsDtoSchema = {
+  type: "object",
+  properties: {
+    labels: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    total: {
+      type: "number",
+    },
+    truncated: {
+      type: "boolean",
+    },
+  },
+  required: ["labels", "total", "truncated"],
+} as const;
+
+export const GraphNodeDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    label: {
+      type: "string",
+    },
+    entityType: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+    },
+  },
+  required: ["id", "label", "entityType", "description"],
+} as const;
+
+export const GraphEdgeDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    source: {
+      type: "string",
+    },
+    target: {
+      type: "string",
+    },
+    weight: {
+      type: "number",
+    },
+    keywords: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+    },
+  },
+  required: ["id", "source", "target", "weight", "keywords", "description"],
+} as const;
+
+export const GraphDtoSchema = {
+  type: "object",
+  properties: {
+    nodes: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/GraphNodeDto",
+      },
+    },
+    edges: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/GraphEdgeDto",
+      },
+    },
+    isTruncated: {
+      type: "boolean",
+    },
+  },
+  required: ["nodes", "edges", "isTruncated"],
+} as const;
+
+export const SourceTypeCountsDtoSchema = {
+  type: "object",
+  properties: {
+    file: {
+      type: "number",
+    },
+    url: {
+      type: "number",
+    },
+    text: {
+      type: "number",
+    },
+  },
+  required: ["file", "url", "text"],
+} as const;
+
+export const KnowledgeOverviewDtoSchema = {
+  type: "object",
+  properties: {
+    sourceCount: {
+      type: "number",
+      description: "Sources attached to this knowledge",
+    },
+    indexedCount: {
+      type: "number",
+      description: "Sources LightRAG confirmed as processed",
+    },
+    failedCount: {
+      type: "number",
+      description: "Failed, and nothing will retry them by itself",
+    },
+    retryingCount: {
+      type: "number",
+      description: "Failed for a passing reason; retried automatically",
+    },
+    processingCount: {
+      type: "number",
+      description: "Handed to LightRAG and still in its pipeline",
+    },
+    byType: {
+      $ref: "#/components/schemas/SourceTypeCountsDto",
+    },
+    totalSizeBytes: {
+      type: "number",
+      description: "Sum of the stored files, in bytes",
+    },
+  },
+  required: [
+    "sourceCount",
+    "indexedCount",
+    "failedCount",
+    "retryingCount",
+    "processingCount",
+    "byType",
+    "totalSizeBytes",
+  ],
+} as const;
+
+export const CreateKnowledgeDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+    },
+  },
+  required: ["name"],
+} as const;
+
+export const UpdateKnowledgeDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+      nullable: true,
+    },
+  },
+} as const;
+
+export const QueryKnowledgeDtoSchema = {
+  type: "object",
+  properties: {
+    query: {
+      type: "string",
+    },
+    mode: {
+      type: "string",
+      enum: ["hybrid", "local", "global", "naive"],
+      default: "hybrid",
+    },
+    topK: {
+      type: "number",
+      default: 25,
+    },
+  },
+  required: ["query"],
+} as const;
+
+export const KnowledgeQueryReferenceDtoSchema = {
+  type: "object",
+  properties: {
+    referenceId: {
+      type: "string",
+    },
+    filePath: {
+      type: "string",
+    },
+    sourceId: {
+      type: "string",
+      nullable: true,
+    },
+    sourceName: {
+      type: "string",
+      nullable: true,
+    },
+  },
+  required: ["referenceId", "filePath", "sourceId", "sourceName"],
+} as const;
+
+export const KnowledgeQueryResultDtoSchema = {
+  type: "object",
+  properties: {
+    answer: {
+      type: "string",
+      nullable: true,
+      description:
+        "null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.",
+    },
+    reason: {
+      type: "string",
+      enum: ["no_relevant_content"],
+    },
+    knowledgeId: {
+      type: "string",
+    },
+    complete: {
+      type: "boolean",
+      description:
+        "false while this base is still being re-processed into its own area — answers may be incomplete.",
+    },
+    references: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/KnowledgeQueryReferenceDto",
+      },
+    },
+  },
+  required: ["answer", "knowledgeId", "complete", "references"],
+} as const;
+
+export const SourceDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    knowledgeId: {
+      type: "string",
+    },
+    type: {
+      type: "string",
+      enum: ["file", "url", "text"],
+    },
+    name: {
+      type: "string",
+    },
+    url: {
+      type: "string",
+      nullable: true,
+    },
+    mimeType: {
+      type: "string",
+      nullable: true,
+    },
+    content: {
+      type: "string",
+      nullable: true,
+    },
+    sizeBytes: {
+      type: "number",
+      nullable: true,
+    },
+    indexed: {
+      type: "boolean",
+      description:
+        'True when indexStatus is "indexed". Kept for older callers.',
+    },
+    indexStatus: {
+      type: "string",
+      enum: ["indexed", "pending", "retrying", "failed"],
+    },
+    indexState: {
+      type: "string",
+      enum: ["queued", "processing", "indexed", "failed"],
+    },
+    indexError: {
+      type: "string",
+      nullable: true,
+      description:
+        "Error from the last index run, null once the source indexes.",
+    },
+    indexedAt: {
+      type: "string",
+      nullable: true,
+    },
+    indexAttempts: {
+      type: "number",
+      description:
+        "Failed attempts since the source last indexed or was retried by hand; the reconciler stops retrying after three.",
+    },
+    indexRetryAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the reconciler will retry a failed source on its own; null once it will not (permanent failure, or the retries are spent).",
+    },
+    textState: {
+      type: "string",
+      enum: ["none", "pending", "ready", "failed"],
+      description:
+        "Text extraction for a PDF without a text layer: none (not a PDF, or it has its own text), pending (probing or OCR running), ready (recognised text is what gets indexed), failed (see textError).",
+    },
+    textError: {
+      type: "string",
+      nullable: true,
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "knowledgeId",
+    "type",
+    "name",
+    "url",
+    "mimeType",
+    "content",
+    "sizeBytes",
+    "indexed",
+    "indexStatus",
+    "indexState",
+    "indexError",
+    "indexedAt",
+    "indexAttempts",
+    "indexRetryAt",
+    "textState",
+    "textError",
+    "createdAt",
+    "updatedAt",
+  ],
+} as const;
+
+export const SourcePageDtoSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/SourceDto",
+      },
+    },
+    total: {
+      type: "number",
+      description: "Rows matching the filter across all pages",
+    },
+    page: {
+      type: "number",
+    },
+    perPage: {
+      type: "number",
+    },
+  },
+  required: ["items", "total", "page", "perPage"],
+} as const;
+
+export const ImportJobDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    knowledgeId: {
+      type: "string",
+    },
+    kind: {
+      type: "string",
+      enum: ["archive", "extraction"],
+    },
+    status: {
+      type: "string",
+      enum: ["running", "done", "failed"],
+    },
+    detected: {
+      type: "number",
+      description: "Ingestable entries found up front",
+    },
+    added: {
+      type: "number",
+    },
+    skipped: {
+      type: "number",
+      description: "Entries skipped because a source with that name exists",
+    },
+    failed: {
+      type: "number",
+    },
+    errors: {
+      description: 'First failures as "<name>: <reason>", capped',
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    startedAt: {
+      format: "date-time",
+      type: "string",
+    },
+    finishedAt: {
+      type: "string",
+      nullable: true,
+    },
+  },
+  required: [
+    "id",
+    "knowledgeId",
+    "kind",
+    "status",
+    "detected",
+    "added",
+    "skipped",
+    "failed",
+    "errors",
+    "startedAt",
+    "finishedAt",
+  ],
+} as const;
+
+export const CreateSourceDtoSchema = {
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      enum: ["file", "url", "text"],
+    },
+    name: {
+      type: "string",
+    },
+    url: {
+      type: "string",
+    },
+    content: {
+      type: "string",
+    },
+  },
+  required: ["type", "name"],
+} as const;
+
+export const AddFilesResultDtoSchema = {
+  type: "object",
+  properties: {
+    added: {
+      type: "number",
+      example: 8,
+      description: "Files uploaded and registered.",
+    },
+    skipped: {
+      type: "number",
+      example: 2,
+      description:
+        "Files skipped because a file source with the same name already exists on this knowledge.",
+    },
+    failed: {
+      type: "number",
+      example: 1,
+      description: "Files that failed to upload.",
+    },
+    errors: {
+      example: ["broken.pdf: S3 upload failed"],
+      description: "One line per failed file.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["added", "skipped", "failed", "errors"],
+} as const;
+
+export const AddFromSitemapDtoSchema = {
+  type: "object",
+  properties: {
+    sitemapUrl: {
+      type: "string",
+      example: "https://developer.paypal.com/sitemap.xml",
+    },
+    urlPrefix: {
+      type: "string",
+      example: "https://developer.paypal.com/docs/checkout/",
+    },
+  },
+  required: ["sitemapUrl"],
+} as const;
+
+export const AddFromSitemapResultDtoSchema = {
+  type: "object",
+  properties: {
+    added: {
+      type: "number",
+      example: 47,
+    },
+    discovered: {
+      type: "number",
+      example: 51,
+    },
+  },
+  required: ["added", "discovered"],
+} as const;
+
+export const AddFromArchiveResultDtoSchema = {
+  type: "object",
+  properties: {
+    detected: {
+      type: "number",
+      example: 288,
+      description:
+        "Number of ingestable files detected in the archive. Import runs in the background; poll GET .../sources/imports for progress.",
+    },
+    started: {
+      type: "boolean",
+      example: true,
+    },
+    jobId: {
+      type: "string",
+      description:
+        "Id of the background import job (see GET .../sources/imports)",
+    },
+  },
+  required: ["detected", "started", "jobId"],
 } as const;
 
 export const ImportSkillUrlDtoSchema = {
@@ -3549,6 +3549,12 @@ export const AgentToolCatalogDtoSchema = {
       description: "When the pod last called tools/list; null if it never did.",
       example: "2026-09-22T10:33:05.000Z",
     },
+    listingState: {
+      type: "string",
+      enum: ["none", "pending", "fresh"],
+      description:
+        "none — no pod runs; pending — the running pod has not listed its tools yet, so no inPod flag is set; fresh — the snapshot is from this pod.",
+    },
     groups: {
       type: "array",
       items: {
@@ -3556,7 +3562,7 @@ export const AgentToolCatalogDtoSchema = {
       },
     },
   },
-  required: ["agentId", "podStartedAt", "listedAt", "groups"],
+  required: ["agentId", "podStartedAt", "listedAt", "listingState", "groups"],
 } as const;
 
 export const SecretEntryDtoSchema = {

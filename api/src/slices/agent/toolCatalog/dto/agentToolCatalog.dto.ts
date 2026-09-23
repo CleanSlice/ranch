@@ -88,6 +88,13 @@ export class AgentToolCatalogDto {
   })
   listedAt: string | null;
 
+  @ApiProperty({
+    enum: ['none', 'pending', 'fresh'],
+    description:
+      'none — no pod runs; pending — the running pod has not listed its tools yet, so no inPod flag is set; fresh — the snapshot is from this pod.',
+  })
+  listingState: 'none' | 'pending' | 'fresh';
+
   @ApiProperty({ type: [AgentToolGroupDto] })
   groups: AgentToolGroupDto[];
 }

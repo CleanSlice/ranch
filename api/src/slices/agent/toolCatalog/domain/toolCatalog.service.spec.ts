@@ -1,5 +1,9 @@
 import { NotFoundException } from '@nestjs/common';
-import { ToolCatalogService, agentPrincipal } from './toolCatalog.service';
+import {
+  ToolCatalogService,
+  agentPrincipal,
+  listingStateOf,
+} from './toolCatalog.service';
 import type { IListedTool } from '#/mcp/services/tool-catalog.service';
 import { UserRoleTypes } from '#/user/user/domain';
 
@@ -130,27 +134,51 @@ describe('ToolCatalogService.forAgent', () => {
     });
   });
 
-  it('inPod: null without a pod, false for a pod that never listed, per name otherwise', async () => {
+  it('inPod: null without a pod or a listing from this pod, per name once the pod listed', async () => {
     const tools = [listed('old', 'agents'), listed('new', 'agents')];
 
     const noPod = await harness({ tools, pod: false }).service.forAgent('agent-1');
     expect(noPod.podStartedAt).toBeNull();
+    expect(noPod.listingState).toBe('none');
     expect(noPod.groups[0].tools.map((t) => t.inPod)).toEqual([null, null]);
     expect(noPod.groups[0].afterRestart).toBe(false);
 
+    // Never listed: we cannot say what the pod lacks, so no badge.
     const neverListed = await harness({ tools, snapshot: null }).service.forAgent('agent-1');
     expect(neverListed.listedAt).toBeNull();
-    expect(neverListed.groups[0].tools.map((t) => t.inPod)).toEqual([false, false]);
-    expect(neverListed.groups[0].afterRestart).toBe(true);
+    expect(neverListed.listingState).toBe('pending');
+    expect(neverListed.groups[0].tools.map((t) => t.inPod)).toEqual([null, null]);
+    expect(neverListed.groups[0].afterRestart).toBe(false);
 
+    // The previous pod's snapshot, right after a restart: the new pod has not
+    // listed yet, and its predecessor's list must not read as this pod's.
+    const stale = await harness({
+      tools,
+      snapshot: { toolNames: ['old'], listedAt: new Date('2026-09-22T09:00:00.000Z') },
+    }).service.forAgent('agent-1');
+    expect(stale.listingState).toBe('pending');
+    expect(stale.groups[0].tools.map((t) => t.inPod)).toEqual([null, null]);
+    expect(stale.groups[0].afterRestart).toBe(false);
+
+    // Listed by this pod (a few seconds after it started): precise flags.
     const partial = await harness({
       tools,
-      snapshot: { toolNames: ['old'], listedAt: new Date(POD_START) },
+      snapshot: { toolNames: ['old'], listedAt: new Date('2026-09-22T10:00:05.000Z') },
     }).service.forAgent('agent-1');
+    expect(partial.listingState).toBe('fresh');
     const byName = Object.fromEntries(partial.groups[0].tools.map((t) => [t.name, t.inPod]));
     expect(byName).toEqual({ old: true, new: false });
     expect(partial.groups[0].afterRestart).toBe(true);
-    expect(partial.listedAt).toBe(POD_START);
+    expect(partial.listedAt).toBe('2026-09-22T10:00:05.000Z');
+  });
+
+  it('listingStateOf tolerates clock skew between kubelet and the API', () => {
+    expect(listingStateOf(null, new Date())).toBe('none');
+    expect(listingStateOf(POD_START, null)).toBe('pending');
+    // Listed 3 s "before" the pod started: two clocks, one pod — still fresh.
+    expect(listingStateOf(POD_START, new Date('2026-09-22T09:59:57.000Z'))).toBe('fresh');
+    // Listed a minute before: a previous pod.
+    expect(listingStateOf(POD_START, new Date('2026-09-22T09:59:00.000Z'))).toBe('pending');
   });
 
   it('appends external servers as opaque groups without url or auth, with drift', async () => {

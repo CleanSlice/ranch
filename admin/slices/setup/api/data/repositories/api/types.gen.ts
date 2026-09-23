@@ -1643,6 +1643,10 @@ export type AgentToolCatalogDto = {
    * When the pod last called tools/list; null if it never did.
    */
   listedAt: string | null;
+  /**
+   * none — no pod runs; pending — the running pod has not listed its tools yet, so no inPod flag is set; fresh — the snapshot is from this pod.
+   */
+  listingState: "none" | "pending" | "fresh";
   groups: Array<AgentToolGroupDto>;
 };
 

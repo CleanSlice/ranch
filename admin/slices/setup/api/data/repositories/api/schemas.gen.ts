@@ -3549,6 +3549,12 @@ export const AgentToolCatalogDtoSchema = {
       description: "When the pod last called tools/list; null if it never did.",
       example: "2026-09-22T10:33:05.000Z",
     },
+    listingState: {
+      type: "string",
+      enum: ["none", "pending", "fresh"],
+      description:
+        "none — no pod runs; pending — the running pod has not listed its tools yet, so no inPod flag is set; fresh — the snapshot is from this pod.",
+    },
     groups: {
       type: "array",
       items: {
@@ -3556,7 +3562,7 @@ export const AgentToolCatalogDtoSchema = {
       },
     },
   },
-  required: ["agentId", "podStartedAt", "listedAt", "groups"],
+  required: ["agentId", "podStartedAt", "listedAt", "listingState", "groups"],
 } as const;
 
 export const SecretEntryDtoSchema = {

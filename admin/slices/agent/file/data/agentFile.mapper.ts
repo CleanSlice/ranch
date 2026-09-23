@@ -175,6 +175,11 @@ export class AgentFileMapper {
           more: num(summaryRaw.more),
           mode: summaryRaw.mode === 'replace' ? 'replace' : 'merge',
           includeSessions: summaryRaw.includeSessions === true,
+          wrapperStripped:
+            typeof summaryRaw.wrapperStripped === 'string' ? summaryRaw.wrapperStripped : null,
+          warnings: Array.isArray(summaryRaw.warnings)
+            ? summaryRaw.warnings.filter((w): w is string => typeof w === 'string')
+            : [],
         }
       : null;
     const nullableNum = (v: unknown): number | null => (typeof v === 'number' ? v : null);

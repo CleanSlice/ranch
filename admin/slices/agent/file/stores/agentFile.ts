@@ -24,6 +24,8 @@ export type {
   ISyncResult,
 } from '#agentFile/domain';
 
+import { closeTab as closeTabUtil, openTab as openTabUtil } from '#agentFile/utils/tabs';
+
 const getService = createServiceGetter<AgentFileService>('$agentFileService');
 
 const PENDING_RESTART_KEY = 'agentFile:pendingRestart';
@@ -300,24 +302,16 @@ export const useAgentFileStore = defineStore('agentFile', () => {
 
   /** Open a file in a tab (loading its first slice) and make it active. */
   async function open(agentId: string, path: string): Promise<ILoadedFile> {
-    const tabs = tabsFor(agentId);
-    if (!tabs.includes(path)) {
-      openTabs.value = { ...openTabs.value, [agentId]: [...tabs, path] };
-    }
+    openTabs.value = { ...openTabs.value, [agentId]: openTabUtil(tabsFor(agentId), path) };
     activate(agentId, path);
     return fetchContent(agentId, path);
   }
 
   function closeTab(agentId: string, path: string): void {
-    const tabs = tabsFor(agentId);
-    const idx = tabs.indexOf(path);
-    if (idx < 0) return;
-    const next = tabs.filter((p) => p !== path);
-    openTabs.value = { ...openTabs.value, [agentId]: next };
+    const result = closeTabUtil(tabsFor(agentId), path, activeFor(agentId));
+    openTabs.value = { ...openTabs.value, [agentId]: result.tabs };
     clearDraft(agentId, path);
-    if (activeFor(agentId) === path) {
-      activate(agentId, next[Math.min(idx, next.length - 1)] ?? null);
-    }
+    activate(agentId, result.active);
   }
 
   // ── Selection ───────────────────────────────────────────────────

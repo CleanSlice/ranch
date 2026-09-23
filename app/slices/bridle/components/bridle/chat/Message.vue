@@ -7,6 +7,7 @@ import {
 } from '#bridle/stores/bridle';
 import { failureHintKey } from '#bridle/utils/delivery';
 import { renderMarkdown } from '#bridle/utils/markdown';
+import BridleChatProposalCard from './ProposalCard.vue';
 
 const props = defineProps<{
   message: IBridleMessage;
@@ -121,6 +122,8 @@ const renderedHtml = computed(() =>
           :on-primary="isUser"
         />
         <template v-if="isUser">{{ message.text }}</template>
+        <!-- A file change proposal (CLEAN-112): read-only card in this console. -->
+        <BridleChatProposalCard v-else-if="message.proposal" :proposal="message.proposal" />
         <div v-else v-html="renderedHtml" />
       </div>
 

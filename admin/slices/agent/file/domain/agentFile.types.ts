@@ -175,6 +175,8 @@ export interface IProposalSetSummary {
   more: number;
   mode: ImportMode;
   includeSessions: boolean;
+  wrapperStripped: string | null;
+  warnings: string[];
 }
 
 export interface IFileChangeProposal {

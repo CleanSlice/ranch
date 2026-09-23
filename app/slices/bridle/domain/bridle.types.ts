@@ -136,6 +136,11 @@ export interface IBridleMessage {
    * "in progress" for an answer that finished long ago.
    */
   streaming?: boolean;
+  /**
+   * Present on the bubble that carries a file change proposal card
+   * (CLEAN-112); such a bubble has no text of its own.
+   */
+  proposal?: IBridleProposalSnapshot;
 }
 
 // ── Thinking (live reasoning steps) ────────────────────────────
@@ -260,6 +265,59 @@ export interface IBridleChannelEvents {
   onMessage(reply: IBridleReply): void;
   /** Sent from another view of the same identity. */
   onUserMessage(message: IBridleUserMessageEvent): void;
+  /** An agent proposed a file change (CLEAN-112); shown read-only here. */
+  onProposal(proposal: IBridleProposalSnapshot, seq?: number): void;
+  /** A proposal left `pending` — from the admin card, the editor or the agent. */
+  onProposalUpdate(update: IBridleProposalUpdate, seq?: number): void;
+}
+
+// ── File change proposals (CLEAN-112) ──────────────────────────
+
+export type BridleProposalStatus = 'pending' | 'applied' | 'skipped' | 'stale' | 'refused';
+
+/** One row of a set (import) proposal's summary list. */
+export interface IBridleProposalRow {
+  path: string;
+  action: 'add' | 'change' | 'unchanged' | 'remove' | 'skip';
+  size: number;
+}
+
+/**
+ * What the app console shows of a proposal: the card is read-only here (the
+ * write tools are operator-only and the app has no Files tab), so the
+ * snapshot travels inside the message and is patched by `proposal_update`.
+ */
+export interface IBridleProposalSnapshot {
+  id: string;
+  agentId: string;
+  agentName: string;
+  kind: 'single' | 'set';
+  op: 'write' | 'create' | 'import';
+  path: string | null;
+  mode: 'merge' | 'replace' | null;
+  proposedBytes: number;
+  diffStatus: 'ok' | 'too_large' | 'binary' | 'none';
+  additions: number | null;
+  deletions: number | null;
+  changedLines: number | null;
+  firstChangedLine: number | null;
+  inlineDiff: string | null;
+  counts: { add: number; change: number; unchanged: number; remove: number; skip: number } | null;
+  rows: IBridleProposalRow[];
+  more: number;
+  status: BridleProposalStatus;
+  actedAt: string | null;
+  reason: string | null;
+  restartRequired: boolean;
+  createdAt: string;
+}
+
+export interface IBridleProposalUpdate {
+  proposalId: string;
+  status: BridleProposalStatus;
+  actedAt: number;
+  reason: string | null;
+  restartRequired?: boolean;
 }
 
 /** A live conversation channel to one agent. */

@@ -19,6 +19,17 @@ import {
 } from '../utils/attachment'
 import { nextSeq, numberLegacy } from '../utils/chatFlow'
 import {
+  mergeProposals,
+  proposalMessageId,
+  proposalTs,
+  type IProposalStamp,
+} from '../utils/proposalMerge'
+import {
+  useFileProposalStore,
+  type IFileChangeProposal,
+  type IProposalUpdate,
+} from '#agentFile/stores/fileProposal'
+import {
   FAILED_MS,
   SLOW_MS,
   nextDelivery,
@@ -30,6 +41,13 @@ export enum BridlePartTypes {
   Text = 'text',
   Image = 'image',
   File = 'file',
+  /** A file change proposal card (CLEAN-112); the proposal itself lives in the fileProposal store. */
+  Proposal = 'proposal',
+}
+
+export interface IBridleProposalPart {
+  type: BridlePartTypes.Proposal
+  proposalId: string
 }
 
 export interface IBridleTextPart {
@@ -50,7 +68,7 @@ export interface IBridleFilePart {
   mimeType?: string
 }
 
-export type BridlePart = IBridleTextPart | IBridleImagePart | IBridleFilePart
+export type BridlePart = IBridleTextPart | IBridleImagePart | IBridleFilePart | IBridleProposalPart
 
 /**
  * Stored-attachment reference. Metadata only — the bytes stay behind
@@ -278,6 +296,8 @@ interface ITranscriptPage {
   channel: string
   nextCursor: string | null
   hasMore: boolean
+  /** File change proposals raised in this window, plus every pending one (CLEAN-112). */
+  proposals?: IFileChangeProposal[]
 }
 
 /**
@@ -407,8 +427,21 @@ function hasVisibleContent(text: string, parts: BridlePart[]): boolean {
   if (text && text.trim().length > 0) return true
   return parts.some(p => {
     if (p.type === BridlePartTypes.Image || p.type === BridlePartTypes.File) return true
+    if (p.type === BridlePartTypes.Proposal) return true
     return p.type === BridlePartTypes.Text && p.text.trim().length > 0
   })
+}
+
+/** The agent-side bubble that carries one proposal card (CLEAN-112). */
+function proposalBubble(p: IProposalStamp, replayed: boolean): IBridleMessageData {
+  return {
+    id: proposalMessageId(p.id),
+    role: 'assistant',
+    text: '',
+    parts: [{ type: BridlePartTypes.Proposal, proposalId: p.id }],
+    ts: proposalTs(p),
+    ...(replayed ? { replayed: true as const } : {}),
+  }
 }
 
 // ── Conversations ────────────────────────────────────────────
@@ -785,7 +818,7 @@ export const useBridleStore = defineStore('bridle', {
           cb({
             token: useAuthStore().accessToken ?? '',
             agentId,
-            capabilities: ['streaming', 'images', 'files', 'thinking'],
+            capabilities: ['streaming', 'images', 'files', 'thinking', 'proposals'],
             lastSeq: c.lastHubSeq,
           }),
       })
@@ -969,6 +1002,30 @@ export const useBridleStore = defineStore('bridle', {
         // tool execution and re-arm the watchdog.
         c.isTyping = true
         this._armThinkingWatchdog(key)
+      })
+
+      // A file change proposal (CLEAN-112): the row goes to the proposal
+      // store, the conversation gets one bubble carrying its id.
+      socket.on('proposal', (e: { proposal?: IFileChangeProposal; ts?: number; seq?: number }) => {
+        if (!acceptHubSeq(c, e.seq)) return
+        const proposal = e.proposal
+        if (!proposal?.id) return
+        useFileProposalStore().upsert(proposal)
+        const id = proposalMessageId(proposal.id)
+        if (c.messages.some(m => m.id === id)) return
+        this._push(key, proposalBubble(proposal, false))
+      })
+
+      socket.on('proposal_update', (e: IProposalUpdate & { agentId?: string; seq?: number }) => {
+        if (!acceptHubSeq(c, e.seq)) return
+        const proposals = useFileProposalStore()
+        if (proposals.get(e.proposalId)) {
+          proposals.patch(e)
+        } else if (e.agentId) {
+          // A card this tab never saw (proposed while it was closed): fetch
+          // the row so a later reload merge finds it already known.
+          void proposals.fetch(e.agentId, e.proposalId).catch(() => undefined)
+        }
       })
 
       socket.on('stream', (data: { text?: string; parts?: BridlePart[]; messageId?: string; ts?: number; seq?: number }) => {
@@ -1734,12 +1791,23 @@ export const useBridleStore = defineStore('bridle', {
 
       // Transcript first, in the order returned, numbered from 1 — then the
       // local tail in the order it happened (restored entries have no `seq`
-      // yet and go last).
-      const transcript = page ? numberLegacy(source.map(toBridleMessage)) : []
+      // yet and go last). Proposal cards (CLEAN-112) take their place among
+      // the replayed messages by creation time; their rows go to the
+      // proposal store, the bubble only carries the id.
+      const pageProposals = page?.proposals ?? []
+      if (pageProposals.length) useFileProposalStore().upsertMany(pageProposals)
+      const replayed = page
+        ? mergeProposals(source.map(toBridleMessage), pageProposals, (p) => proposalBubble(p, true))
+        : []
+      const transcript = numberLegacy(replayed)
       let seq = nextSeq(transcript)
       const order = (s?: number) => s ?? Number.MAX_SAFE_INTEGER
+      // A live proposal bubble the page also carries is the same card twice.
+      const transcriptIds = new Set(transcript.map(m => m.id))
       const tail = [
-        ...kept.map(m => ({ seq: m.seq, message: m, block: null as IThinkingBlock | null })),
+        ...kept
+          .filter(m => !transcriptIds.has(m.id))
+          .map(m => ({ seq: m.seq, message: m, block: null as IThinkingBlock | null })),
         ...blocks.map(b => ({ seq: b.seq, message: null as IBridleMessageData | null, block: b })),
       ].sort((a, b) => order(a.seq) - order(b.seq))
       const messages: IBridleMessageData[] = [...transcript]
@@ -1860,12 +1928,22 @@ export const useBridleStore = defineStore('bridle', {
         if (!page) return 0
         const known = new Set(c.messages.map(m => m.id))
         const fresh = page.messages.filter(m => !known.has(m.id))
+        // Proposals of this older window (CLEAN-112), minus the ones on screen.
+        const olderProposals = (page.proposals ?? []).filter(
+          p => !known.has(proposalMessageId(p.id)),
+        )
+        if (olderProposals.length) useFileProposalStore().upsertMany(olderProposals)
+        const olderItems = mergeProposals(
+          fresh.map(toBridleMessage),
+          olderProposals,
+          (p) => proposalBubble(p, true),
+        )
         // Numbered BELOW the current minimum, so everything already on screen
         // keeps its `seq` — and with it its place and its render key.
         const floor = c.messages.reduce((min, m) => Math.min(min, m.seq ?? min), 1)
-        const olderMessages = fresh.map((m, i) => ({
-          ...toBridleMessage(m),
-          seq: floor - fresh.length + i,
+        const olderMessages = olderItems.map((m, i) => ({
+          ...m,
+          seq: floor - olderItems.length + i,
         }))
         c.messages = [...olderMessages, ...c.messages]
         c.transcriptCursor = page.nextCursor

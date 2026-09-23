@@ -13,6 +13,7 @@ import {
   IconExternalLink,
   IconFile,
   IconFiles,
+  IconPlus,
   IconRefresh,
   IconUpload,
   IconX,
@@ -20,14 +21,159 @@ import {
 import { SaveRefusedError } from '#agentFile/domain';
 import { useAgentFileStore } from '#agentFile/stores/agentFile';
 import { basename, formatBytes, formatModified } from '#agentFile/utils/format';
-import AgentFileTree from './Tree.vue';
+import AgentFileExplorer from './Explorer.vue';
+import AgentFileNewFileDialog from './NewFileDialog.vue';
 import AgentFileTabs from './Tabs.vue';
 import AgentFileEditor from './Editor.vue';
 import AgentFileImportDialog from './ImportDialog.vue';
+import AgentFileDiffView from './DiffView.vue';
+import { useFileProposalStore, ProposalRemoveConfirmNeeded } from '#agentFile/stores/fileProposal';
 
 const props = defineProps<{ id: string }>();
 
 const importOpen = ref(false);
+const newFileOpen = ref(false);
+const proposalStore = useFileProposalStore();
+
+// ── Explorer: selection and bulk actions (US5) ─────────────────────
+const selection = computed(() => store.selectionFor(props.id));
+const dirtyPaths = computed(() => store.dirtyPaths(props.id));
+const bulkBusy = ref(false);
+
+function onSelectionChange(paths: string[]) {
+  store.setSelection(props.id, paths);
+}
+
+async function onBulkDownload(paths: string[]) {
+  await onDownload(paths);
+}
+
+async function onBulkDelete(paths: string[]) {
+  if (!paths.length || bulkBusy.value) return;
+  const skillNote = paths.some((p) => p.startsWith('skills/'))
+    ? ' Skills attached to the agent’s template are re-created on the next restart.'
+    : '';
+  const ok = await confirmStore.ask({
+    title: `Delete ${paths.length} file${paths.length === 1 ? '' : 's'}?`,
+    description: `This permanently deletes the selected files from S3.${skillNote}`,
+    confirmLabel: 'Delete',
+    cancelLabel: 'Cancel',
+    variant: 'destructive',
+  });
+  if (!ok) return;
+  bulkBusy.value = true;
+  actionError.value = null;
+  try {
+    let outcome = await store.removeMany(props.id, paths);
+    if (outcome.status === 'conflict') {
+      const sure = await confirmStore.ask({
+        title: 'This empties the whole workspace',
+        description: `The selection covers all ${outcome.conflict.total} files. The agent would boot with nothing — its identity, memory and skills gone. Download the workspace first if you might need it.`,
+        confirmLabel: 'Delete everything',
+        cancelLabel: 'Keep the files',
+        variant: 'destructive',
+      });
+      if (!sure) return;
+      outcome = await store.removeMany(props.id, paths, true);
+    }
+    if (outcome.status === 'done') {
+      syncMessage.value = `Deleted ${outcome.deleted} file${outcome.deleted === 1 ? '' : 's'}`;
+    }
+  } catch (err) {
+    actionError.value = (err as Error).message || 'Delete failed';
+  } finally {
+    bulkBusy.value = false;
+  }
+}
+
+async function onCreated(path: string) {
+  await store.open(props.id, path);
+}
+
+/** Folder of the active file, offered as the default for New file. */
+const activeFolder = computed(() => {
+  const p = active.value;
+  if (!p || !p.includes('/')) return null;
+  return p.slice(0, p.lastIndexOf('/'));
+});
+
+// ── Chat proposals in the editor (CLEAN-112, US4) ──────────────────
+// `?proposal=<id>` opens the target file with the proposed content as an
+// unsaved draft; Save then applies the proposal (via: editor). `&compare=1`
+// shows the stored and proposed versions side by side instead.
+const compare = ref<{
+  path: string;
+  original: string;
+  modified: string;
+  originalLabel: string;
+  modifiedLabel: string;
+} | null>(null);
+const compareError = ref<string | null>(null);
+
+async function openProposal(proposalId: string, wantCompare: boolean) {
+  try {
+    const proposal = await proposalStore.fetch(props.id, proposalId);
+    if (proposal.kind !== 'single' || !proposal.path) {
+      actionError.value = 'This proposal imports a whole archive — apply it from the chat card.';
+      return;
+    }
+    const proposed = await proposalStore.content(props.id, proposalId);
+    const path = proposal.path;
+    const exists = !!store.nodeFor(props.id, path);
+    if (exists) {
+      await store.open(props.id, path);
+      // Wait for the whole file: a draft over a partial file would truncate it.
+      let loaded = store.loadedFor(props.id, path);
+      while (loaded && loaded.hasMore) {
+        loaded = await store.fetchMore(props.id, path);
+      }
+    } else {
+      // A `create` proposal: nothing stored yet — the editor opens empty.
+      store.upsertNode(props.id, {
+        path,
+        size: 0,
+        updatedAt: '',
+        kind: 'text',
+        editable: true,
+      });
+      if (!store.tabsFor(props.id).includes(path)) {
+        store.openTabs = { ...store.openTabs, [props.id]: [...store.tabsFor(props.id), path] };
+      }
+      store.activate(props.id, path);
+    }
+    if (wantCompare) {
+      await showCompare(path, proposed, proposal.status === 'pending' ? 'proposed' : `proposed · ${proposal.status}`);
+    }
+    if (proposal.status === 'pending') {
+      store.setDraft(props.id, path, proposed, proposalId);
+    } else if (!wantCompare) {
+      actionError.value = `This proposal is already ${proposal.status}.`;
+    }
+  } catch (err) {
+    actionError.value = (err as Error).message || 'Could not open the proposal';
+  }
+}
+
+async function showCompare(path: string, proposed: string, label = 'proposed') {
+  compareError.value = null;
+  const lim = limits.value;
+  const cap = lim?.diffCompareMaxBytes ?? Number.POSITIVE_INFINITY;
+  const loaded = store.loadedFor(props.id, path);
+  const original = loaded?.content ?? '';
+  if (new Blob([proposed]).size > cap || (loaded?.totalSize ?? 0) > cap) {
+    compareError.value = 'Too large to compare — download both versions instead.';
+    return;
+  }
+  compare.value = { path, original, modified: proposed, originalLabel: 'stored', modifiedLabel: label };
+}
+
+async function onCompare() {
+  const path = active.value;
+  if (!path) return;
+  const draft = store.draftFor(props.id, path);
+  if (!draft) return;
+  await showCompare(path, draft.content, draft.proposalId ? 'proposed' : 'draft');
+}
 
 async function onImported() {
   // The store already refetched the list; the agent row carries the status
@@ -154,6 +300,34 @@ async function onSave() {
   saving.value = true;
   saveError.value = null;
   try {
+    const draft = store.draftFor(props.id, path);
+    if (draft?.proposalId) {
+      // Saving a proposal draft applies the proposal with the edited text —
+      // the card in the chat flips through the proposal_update event.
+      try {
+        const row = await proposalStore.apply(props.id, draft.proposalId, 'editor', {
+          content: draft.content,
+        });
+        if (row.status !== 'applied') {
+          saveError.value =
+            row.status === 'stale'
+              ? 'The file changed since this was proposed — reload it and ask the agent to propose again.'
+              : `The proposal is ${row.status}${row.reason ? `: ${row.reason}` : ''}.`;
+          return;
+        }
+        store.clearDraft(props.id, path);
+        await store.fetchContent(props.id, path, true);
+        await store.fetchList(props.id);
+        store.markPendingRestart(props.id);
+      } catch (err) {
+        if (err instanceof ProposalRemoveConfirmNeeded) {
+          saveError.value = 'Replace imports are applied from the chat card.';
+        } else {
+          saveError.value = (err as Error).message || 'Failed to apply';
+        }
+      }
+      return;
+    }
     await store.save(props.id, path);
   } catch (err) {
     if (err instanceof SaveRefusedError && err.reason === 'conflict') {
@@ -333,9 +507,17 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload)
 // ── Deep link: ?tab=files&path=… ───────────────────────────────────
 async function consumeQuery() {
   const wanted = typeof route.query.path === 'string' ? route.query.path : null;
-  if (!wanted) return;
-  if (store.nodeFor(props.id, wanted)) await openFile(wanted);
-  void router.replace({ query: { ...route.query, path: undefined } });
+  const proposalId = typeof route.query.proposal === 'string' ? route.query.proposal : null;
+  const wantCompare = route.query.compare === '1' || route.query.compare === 'true';
+  if (!wanted && !proposalId) return;
+  if (proposalId) {
+    await openProposal(proposalId, wantCompare);
+  } else if (wanted && store.nodeFor(props.id, wanted)) {
+    await openFile(wanted);
+  }
+  void router.replace({
+    query: { ...route.query, path: undefined, proposal: undefined, compare: undefined },
+  });
 }
 
 // Lazy so this sub-provider doesn't re-suspend the page once the parent's
@@ -355,12 +537,21 @@ useAsyncData(
   { lazy: true },
 );
 
-watch(() => route.query.path, () => void consumeQuery());
+watch(
+  () => [route.query.path, route.query.proposal],
+  () => void consumeQuery(),
+);
 </script>
 
 <template>
   <div class="flex flex-col gap-3">
     <AgentFileImportDialog v-model:open="importOpen" :agent-id="id" @applied="onImported" />
+    <AgentFileNewFileDialog
+      v-model:open="newFileOpen"
+      :agent-id="id"
+      :folder="activeFolder"
+      @created="onCreated"
+    />
 
     <div
       v-if="pendingRestart"
@@ -399,8 +590,19 @@ watch(() => route.query.path, () => void consumeQuery());
             <SheetHeader>
               <SheetTitle>Files</SheetTitle>
             </SheetHeader>
-            <div class="overflow-auto px-2 pb-4">
-              <AgentFileTree :files="nodes" :selected="active" @select="openFile" @delete="onDelete" />
+            <div class="h-[80vh] overflow-hidden pb-4">
+              <AgentFileExplorer
+                :files="nodes"
+                :active="active"
+                :selected="selection"
+                :dirty="dirtyPaths"
+                :busy="bulkBusy || downloading"
+                @open="openFile"
+                @update:selected="onSelectionChange"
+                @delete="onDelete"
+                @bulk-download="onBulkDownload"
+                @bulk-delete="onBulkDelete"
+              />
             </div>
           </SheetContent>
         </Sheet>
@@ -433,6 +635,10 @@ watch(() => route.query.path, () => void consumeQuery());
           <IconUpload class="size-4" />
           Import
         </Button>
+        <Button size="sm" @click="newFileOpen = true">
+          <IconPlus class="size-4" />
+          New file
+        </Button>
         <Button variant="outline" size="sm" :disabled="downloading" @click="onDownload()">
           <IconDownload class="size-4" />
           {{ downloading ? 'Downloading…' : 'Download' }}
@@ -455,8 +661,19 @@ watch(() => route.query.path, () => void consumeQuery());
     </div>
 
     <div class="grid gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:items-start">
-      <div class="hidden max-h-[680px] overflow-auto rounded-md border p-2 md:block">
-        <AgentFileTree :files="nodes" :selected="active" @select="openFile" @delete="onDelete" />
+      <div class="hidden h-[680px] overflow-hidden rounded-md border md:block">
+        <AgentFileExplorer
+          :files="nodes"
+          :active="active"
+          :selected="selection"
+          :dirty="dirtyPaths"
+          :busy="bulkBusy || downloading"
+          @open="openFile"
+          @update:selected="onSelectionChange"
+          @delete="onDelete"
+          @bulk-download="onBulkDownload"
+          @bulk-delete="onBulkDelete"
+        />
       </div>
 
       <div class="flex min-h-[560px] flex-col overflow-hidden rounded-md border">
@@ -510,7 +727,22 @@ watch(() => route.query.path, () => void consumeQuery());
           </div>
         </div>
 
+        <ClientOnly v-else-if="compare && active">
+          <AgentFileDiffView
+            :path="compare.path"
+            :original="compare.original"
+            :modified="compare.modified"
+            :original-label="compare.originalLabel"
+            :modified-label="compare.modifiedLabel"
+            class="flex-1"
+            @close="compare = null"
+          />
+        </ClientOnly>
+
         <template v-else-if="active">
+          <p v-if="compareError" class="border-b bg-amber-500/10 px-3 py-1 text-xs text-amber-900 dark:text-amber-200">
+            {{ compareError }}
+          </p>
           <div class="flex items-center gap-2 border-b px-3 py-1 text-xs text-muted-foreground">
             <span class="truncate font-mono" :title="active">{{ active }}</span>
             <span class="ml-auto shrink-0">
@@ -533,6 +765,7 @@ watch(() => route.query.path, () => void consumeQuery());
               class="flex-1"
               @save="onSave"
               @discard="onDiscard"
+              @compare="onCompare"
             />
             <template #fallback>
               <div class="flex flex-1 items-center justify-center text-xs text-muted-foreground">Loading editor…</div>

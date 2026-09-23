@@ -8,76 +8,74 @@ import {
 import { Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { Request } from 'express';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
-import { isDynamicallyDescribed } from '../../interfaces/dynamic-description.interface';
 import { isConditionallyListed } from '../../interfaces/conditional-listing.interface';
+import {
+  TOOL_LISTING_RECORDER,
+  type IToolListingRecorder,
+} from '../../interfaces/tool-listing-recorder.interface';
+import { ToolCatalogService } from '../tool-catalog.service';
+import { callerAgentId } from '../../tooling';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
+  private readonly catalog: ToolCatalogService;
+
   constructor(moduleRef: ModuleRef, registry: McpRegistryService) {
     super(moduleRef, registry, McpToolsHandler.name);
+    // Constructed rather than injected: the executor builds this handler by
+    // hand, and the service is stateless over the same two dependencies.
+    this.catalog = new ToolCatalogService(moduleRef, registry);
   }
 
-  private convertZodToJsonSchema(parameters: any): any {
+  /**
+   * Fire-and-forget. Only agent runtimes are recorded (a person listing
+   * through the console has no pod), and neither a missing recorder nor a
+   * failed write may touch the listing itself.
+   */
+  private recordListing(httpRequest: Request, toolNames: string[]): void {
+    const agentId = callerAgentId(httpRequest);
+    if (!agentId) return;
+    let recorder: IToolListingRecorder | undefined;
     try {
-      return zodToJsonSchema(parameters);
+      recorder = this.moduleRef.get<IToolListingRecorder>(
+        TOOL_LISTING_RECORDER,
+        { strict: false },
+      );
     } catch {
-      return undefined;
+      return;
     }
+    if (!recorder || typeof recorder.record !== 'function') return;
+    void Promise.resolve()
+      .then(() => recorder.record(agentId, toolNames))
+      .catch((e: unknown) => {
+        this.logger.warn(
+          `tool listing snapshot failed for agent ${agentId}: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      });
   }
 
   registerHandlers(mcpServer: McpServer, httpRequest: Request) {
     mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const contextId = ContextIdFactory.getByRequest(httpRequest);
-      this.moduleRef.registerRequestByContextId(httpRequest, contextId);
+      // The per-caller list (conditional listing, dynamic descriptions) is
+      // computed by ToolCatalogService so the console's catalogue endpoint
+      // and this handler can never disagree (CLEAN-109).
+      const listed = await this.catalog.listFor(httpRequest);
 
-      const listed = await Promise.all(
-        this.registry.getTools().map(async (tool) => {
-          let description = tool.metadata.description;
-          // Tools may opt into per-caller descriptions by implementing
-          // IDynamicallyDescribedTool, and out of the list entirely by
-          // implementing IConditionallyListedTool. Failure to resolve,
-          // describe or decide falls back to listing the tool with its
-          // static decorator description, so a broken tool can't hide
-          // itself or the rest of the list.
-          try {
-            const instance = await this.moduleRef.resolve(
-              tool.providerClass,
-              contextId,
-              { strict: false },
-            );
-            if (isConditionallyListed(instance)) {
-              const listedForCaller =
-                await instance.isListedForRequest(httpRequest);
-              if (!listedForCaller) return null;
-            }
-            if (isDynamicallyDescribed(instance)) {
-              const dyn = await instance.describeForRequest(httpRequest);
-              if (typeof dyn === 'string' && dyn.length > 0) {
-                description = dyn;
-              }
-            }
-          } catch (e) {
-            this.logger.debug(
-              `tools/list hooks failed for ${tool.metadata.name}: ${
-                e instanceof Error ? e.message : String(e)
-              }`,
-            );
-          }
-          return {
-            name: tool.metadata.name,
-            description,
-            inputSchema: tool.metadata.parameters
-              ? this.convertZodToJsonSchema(tool.metadata.parameters)
-              : undefined,
-          };
-        }),
-      );
+      // A pod lists once at boot: what it was told here is what it believes
+      // it has. Hand the names to the recorder, if one is wired, so the
+      // console can later tell a tool the pod has from one it lacks.
+      this.recordListing(httpRequest, listed.map((t) => t.name));
 
       return {
-        tools: listed.filter((tool) => tool !== null),
+        tools: listed.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        })),
       };
     });
 

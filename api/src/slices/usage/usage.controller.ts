@@ -12,11 +12,15 @@ import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { IUsageGateway } from './domain';
 import { costUsd } from './domain/model-pricing';
 import {
+  dayKey,
+  resolveAgentNames,
+  rollUpAcrossAgents,
+} from './domain/usage-rollup';
+import {
   IAgentUsageResponse,
   ICredentialUsageResponse,
   IOverviewUsageResponse,
   IUsageDailyEntry,
-  IUsageData,
 } from './domain/usage.types';
 import { ReportUsageDto } from './dtos';
 import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
@@ -30,10 +34,6 @@ interface IRuntimeUsageSnapshot {
   totalOutputTokens: number;
   totalCallCount: number;
   reportedAt: string | null;
-}
-
-function dayKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
 }
 
 @ApiTags('usage')
@@ -212,8 +212,10 @@ export class UsageController {
   ): Promise<ICredentialUsageResponse> {
     const rows = await this.gateway.findRecentForCredential(credentialId, 30);
     const { last30days, totals, topModel, agentTotals } =
-      this.rollUpAcrossAgents(rows);
-    const byAgent = await this.resolveAgentNames(agentTotals);
+      rollUpAcrossAgents(rows);
+    const byAgent = await resolveAgentNames(agentTotals, (id) =>
+      this.agentGateway.findById(id),
+    );
     return { last30days, totals, topModel, byAgent };
   }
 
@@ -228,148 +230,10 @@ export class UsageController {
     // per agent per page view.
     const rows = await this.gateway.findRecentAll(30);
     const { last30days, totals, topModel, agentTotals } =
-      this.rollUpAcrossAgents(rows);
-    const byAgent = await this.resolveAgentNames(agentTotals);
+      rollUpAcrossAgents(rows);
+    const byAgent = await resolveAgentNames(agentTotals, (id) =>
+      this.agentGateway.findById(id),
+    );
     return { last30days, totals, topModel, byAgent };
-  }
-
-  /**
-   * Rolls multi-agent usage rows up to the `${date}|${model}` grain the
-   * per-agent endpoint uses, plus per-agent totals. Shared by the
-   * credential and overview endpoints.
-   */
-  private rollUpAcrossAgents(rows: IUsageData[]): {
-    last30days: IUsageDailyEntry[];
-    totals: {
-      inputTokens: number;
-      outputTokens: number;
-      callCount: number;
-      costUsd: number;
-    };
-    topModel: string | null;
-    agentTotals: Array<{
-      agentId: string;
-      inputTokens: number;
-      outputTokens: number;
-      callCount: number;
-      costUsd: number;
-    }>;
-  } {
-    const dailyMap = new Map<string, IUsageDailyEntry>();
-    const agentMap = new Map<
-      string,
-      {
-        agentId: string;
-        inputTokens: number;
-        outputTokens: number;
-        callCount: number;
-        costUsd: number;
-      }
-    >();
-
-    for (const r of rows) {
-      const date = dayKey(r.date);
-      const dailyKey = `${date}|${r.model}`;
-      const cost = costUsd(r.model, r.inputTokens, r.outputTokens);
-
-      const daily = dailyMap.get(dailyKey);
-      if (daily) {
-        daily.inputTokens += r.inputTokens;
-        daily.outputTokens += r.outputTokens;
-        daily.callCount += r.callCount;
-        daily.costUsd += cost;
-      } else {
-        dailyMap.set(dailyKey, {
-          date,
-          model: r.model,
-          inputTokens: r.inputTokens,
-          outputTokens: r.outputTokens,
-          callCount: r.callCount,
-          costUsd: cost,
-        });
-      }
-
-      const agent = agentMap.get(r.agentId);
-      if (agent) {
-        agent.inputTokens += r.inputTokens;
-        agent.outputTokens += r.outputTokens;
-        agent.callCount += r.callCount;
-        agent.costUsd += cost;
-      } else {
-        agentMap.set(r.agentId, {
-          agentId: r.agentId,
-          inputTokens: r.inputTokens,
-          outputTokens: r.outputTokens,
-          callCount: r.callCount,
-          costUsd: cost,
-        });
-      }
-    }
-
-    const last30days = Array.from(dailyMap.values()).sort((a, b) =>
-      b.date.localeCompare(a.date),
-    );
-
-    const totals = last30days.reduce(
-      (acc, e) => ({
-        inputTokens: acc.inputTokens + e.inputTokens,
-        outputTokens: acc.outputTokens + e.outputTokens,
-        callCount: acc.callCount + e.callCount,
-        costUsd: acc.costUsd + e.costUsd,
-      }),
-      { inputTokens: 0, outputTokens: 0, callCount: 0, costUsd: 0 },
-    );
-
-    const perModelTokens = new Map<string, number>();
-    for (const e of last30days) {
-      perModelTokens.set(
-        e.model,
-        (perModelTokens.get(e.model) ?? 0) + e.inputTokens + e.outputTokens,
-      );
-    }
-    let topModel: string | null = null;
-    let topTokens = -1;
-    for (const [m, t] of perModelTokens) {
-      if (t > topTokens) {
-        topTokens = t;
-        topModel = m;
-      }
-    }
-
-    const agentTotals = Array.from(agentMap.values()).sort(
-      (a, b) => b.costUsd - a.costUsd,
-    );
-
-    return { last30days, totals, topModel, agentTotals };
-  }
-
-  /**
-   * Resolve agent names. Failed lookups (deleted agents) fall back to the
-   * raw ID so the row is still visible — usage outlives the agent record.
-   */
-  private async resolveAgentNames(
-    agentTotals: Array<{
-      agentId: string;
-      inputTokens: number;
-      outputTokens: number;
-      callCount: number;
-      costUsd: number;
-    }>,
-  ): Promise<ICredentialUsageResponse['byAgent']> {
-    return Promise.all(
-      agentTotals.map(async (entry) => {
-        const agent = await this.agentGateway
-          .findById(entry.agentId)
-          .catch(() => null);
-        return {
-          agentId: entry.agentId,
-          agentName: agent?.name ?? entry.agentId,
-          inputTokens: entry.inputTokens,
-          outputTokens: entry.outputTokens,
-          callCount: entry.callCount,
-          costUsd: entry.costUsd,
-        };
-      }),
-    );
   }
 }

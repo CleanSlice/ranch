@@ -4,6 +4,7 @@ import { IApiKeyGateway } from './domain/apiKey.gateway';
 import { ApiKeyService } from './domain/apiKey.service';
 import { ApiKeyGateway } from './data/apiKey.gateway';
 import { ApiKeyMapper } from './data/apiKey.mapper';
+import { ApiKeyTool } from './apiKey.tool';
 import { AuthModule } from '#/user/auth/auth.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { AuthModule } from '#/user/auth/auth.module';
       provide: IApiKeyGateway,
       useClass: ApiKeyGateway,
     },
+    ApiKeyTool,
   ],
   exports: [IApiKeyGateway, ApiKeyService],
 })

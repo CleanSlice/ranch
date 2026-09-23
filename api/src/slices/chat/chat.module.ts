@@ -4,6 +4,7 @@ import { AgentModule } from '#/agent/agent/agent.module';
 import { LlmModule } from '#/llm/llm.module';
 import { ChatController } from './chat.controller';
 import { MyChatController } from './myChat.controller';
+import { ChatTool } from './chat.tool';
 import { IChatGateway, ChatSyncService, ChatInsightService } from './domain';
 import { ChatGateway } from './data/chat.gateway';
 import { ChatMapper } from './data/chat.mapper';
@@ -21,6 +22,7 @@ import { ChatMapper } from './data/chat.mapper';
     ChatMapper,
     ChatSyncService,
     ChatInsightService,
+    ChatTool,
     {
       provide: IChatGateway,
       useClass: ChatGateway,

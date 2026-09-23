@@ -120,6 +120,18 @@ Set `PUBLIC_API_URL` to the origin other agents reach this API on — every
 card URL is built from it. See `specs/013-a2a-agent-peers/` and
 `specs/014-a2a-protocol-upgrade/` for the full specifications.
 
+## Agent tools and the Tools panel
+
+The console is a window; the chat is the hands. Everything the admin console
+can do, the Ranch admin agent can do through a tool served by this API's own
+MCP server — agents, templates, skills, LLM credentials, MCP servers,
+knowledge bases and sources, settings, peers, paddock, users and API keys,
+chats and usage, browser sessions, upgrades. Press the wrench beside the chat
+composer to see the agent's tools grouped by topic; a click drops a starter
+prompt into the composer. Tools added after a pod started show "after restart"
+until it restarts. Adding a console capability means adding its tool in the
+same PR — see `docs/agent-tools.md` and `specs/016-agent-tool-parity/`.
+
 ## Project Structure
 
 ```

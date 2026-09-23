@@ -7,6 +7,7 @@ import { ChatSession } from "../../chat/chat"
 import { AgentShareLink } from "../shareLink/shareLink"
 import { AgentPeer } from "../peer/peer"
 import { AgentDelegation } from "../peer/delegation"
+import { AgentToolListing } from "../toolCatalog/toolCatalog"
 
 model Agent {
   id              String         @id @default(uuid())
@@ -65,4 +66,6 @@ model Agent {
   peers              AgentPeer[]         @relation("AgentPeerCaller")
   peerOf             AgentPeer[]         @relation("AgentPeerTarget")
   delegations        AgentDelegation[]
+  // Last tools/list served to this agent's pod (CLEAN-109).
+  toolListing        AgentToolListing?
 }

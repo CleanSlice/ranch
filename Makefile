@@ -13,6 +13,10 @@ help: ## Show this help
 
 init: ## Interactive setup wizard (local + optional Hetzner deploy)
 	@bash scripts/init.sh
+	@node scripts/ensure-agent-tools-rule.mjs
+
+agent-tools-rule: ## Re-insert the agent-tools rule pointer into graft-owned guidance files
+	@node scripts/ensure-agent-tools-rule.mjs
 
 setup: install db db-wait migrate k3d ## Full local setup (non-interactive)
 	@echo ""

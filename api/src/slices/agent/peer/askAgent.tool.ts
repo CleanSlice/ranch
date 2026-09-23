@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
-import { Tool } from '#mcp';
+import { Tool, ToolTopics } from '#mcp';
 import type { Request } from 'express';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import type { IDynamicallyDescribedTool } from '#/mcp/interfaces/dynamic-description.interface';
@@ -155,6 +155,9 @@ export class AskAgentTool
 
   @Tool({
     name: 'ask_agent',
+    topic: ToolTopics.Peers,
+    title: 'Ask a peer agent',
+    template: 'Ask your peer «name» to «task»',
     description: NO_PEERS_DESCRIPTION,
     parameters: schema,
   })

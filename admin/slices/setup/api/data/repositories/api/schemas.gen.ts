@@ -429,7 +429,13 @@ export const KnowledgeListItemDtoSchema = {
     },
     failedCount: {
       type: "number",
-      description: "Sources whose last index run recorded an error",
+      description:
+        "Sources whose last index run recorded an error nothing will retry without a person",
+    },
+    retryingCount: {
+      type: "number",
+      description:
+        "Sources that failed for a reason that passes (a model outage, a lost connection) and are retried automatically",
     },
     processingCount: {
       type: "number",
@@ -479,6 +485,7 @@ export const KnowledgeListItemDtoSchema = {
     "sourceCount",
     "indexedCount",
     "failedCount",
+    "retryingCount",
     "processingCount",
     "indexRunAlive",
     "instanceState",
@@ -627,6 +634,11 @@ export const KnowledgeOverviewDtoSchema = {
     },
     failedCount: {
       type: "number",
+      description: "Failed, and nothing will retry them by itself",
+    },
+    retryingCount: {
+      type: "number",
+      description: "Failed for a passing reason; retried automatically",
     },
     processingCount: {
       type: "number",
@@ -644,6 +656,7 @@ export const KnowledgeOverviewDtoSchema = {
     "sourceCount",
     "indexedCount",
     "failedCount",
+    "retryingCount",
     "processingCount",
     "byType",
     "totalSizeBytes",
@@ -786,7 +799,7 @@ export const SourceDtoSchema = {
     },
     indexStatus: {
       type: "string",
-      enum: ["indexed", "pending", "failed"],
+      enum: ["indexed", "pending", "retrying", "failed"],
     },
     indexState: {
       type: "string",
@@ -801,6 +814,17 @@ export const SourceDtoSchema = {
     indexedAt: {
       type: "string",
       nullable: true,
+    },
+    indexAttempts: {
+      type: "number",
+      description:
+        "Failed attempts since the source last indexed or was retried by hand; the reconciler stops retrying after three.",
+    },
+    indexRetryAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the reconciler will retry a failed source on its own; null once it will not (permanent failure, or the retries are spent).",
     },
     textState: {
       type: "string",
@@ -835,6 +859,8 @@ export const SourceDtoSchema = {
     "indexState",
     "indexError",
     "indexedAt",
+    "indexAttempts",
+    "indexRetryAt",
     "textState",
     "textError",
     "createdAt",
@@ -1193,6 +1219,12 @@ export const AgentPodStatusDtoSchema = {
       nullable: true,
       example: "2026-04-30T10:15:00Z",
     },
+    terminating: {
+      type: "boolean",
+      example: false,
+      description:
+        "The pod is being deleted (restart cleanup, stop, manual delete). Its phase on the way out says nothing about the health of the agent.",
+    },
     lastTerminationReason: {
       type: "string",
       nullable: true,
@@ -1219,6 +1251,7 @@ export const AgentPodStatusDtoSchema = {
     "ready",
     "restartCount",
     "startedAt",
+    "terminating",
     "lastTerminationReason",
     "containerWaitingReason",
     "message",
@@ -3372,7 +3405,7 @@ export const AgentDelegationDtoSchema = {
       type: "string",
       nullable: true,
       description:
-        "Why it did not produce an answer: PEER_NOT_RUNNING, PEER_TIMEOUT, PEER_REJECTED_LOOP, PEER_REJECTED_DEPTH, PEER_UNAUTHORIZED, PEER_UNREACHABLE or PEER_ERROR. Null while waiting and on success.",
+        "Why it did not produce an answer: PEER_NOT_RUNNING, PEER_TIMEOUT, PEER_REJECTED_LOOP, PEER_REJECTED_DEPTH, PEER_UNAUTHORIZED, PEER_UNREACHABLE, PEER_ADDRESS_REFUSED (the card points at a private or local address, so nothing was sent), PEER_UNSUPPORTED (the card offers no JSON-RPC interface on A2A 1.0) or PEER_ERROR. Null while waiting and on success — including an empty reply, which is answered.",
       example: null,
     },
     excerpt: {
@@ -3413,6 +3446,117 @@ export const AgentDelegationDtoSchema = {
     "finishedAt",
     "durationMs",
   ],
+} as const;
+
+export const AgentToolEntryDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      description: "Technical MCP tool name.",
+      example: "register_mcp_server",
+    },
+    title: {
+      type: "string",
+      example: "Register an MCP server",
+    },
+    description: {
+      type: "string",
+      description:
+        "The per-caller description, exactly what the runtime would be given.",
+    },
+    template: {
+      type: "string",
+      description: "Starter prompt with «…» placeholders.",
+      example: "Register the MCP server at «url» named «name»",
+    },
+    destructive: {
+      type: "boolean",
+      description:
+        "The tool removes, revokes or interrupts something and needs confirm: true.",
+    },
+    inPod: {
+      type: "boolean",
+      nullable: true,
+      description:
+        "null — no pod runs; false — the running pod did not list this tool (restart needed); true — it did.",
+    },
+  },
+  required: [
+    "name",
+    "title",
+    "description",
+    "template",
+    "destructive",
+    "inPod",
+  ],
+} as const;
+
+export const AgentToolGroupDtoSchema = {
+  type: "object",
+  properties: {
+    key: {
+      type: "string",
+      description:
+        "Topic key (e.g. mcp_servers) or mcp:<serverId> for an external server.",
+      example: "mcp_servers",
+    },
+    title: {
+      type: "string",
+      example: "MCP servers",
+    },
+    kind: {
+      type: "string",
+      enum: ["builtin", "external"],
+    },
+    description: {
+      type: "string",
+      description:
+        "External servers only — the server row's description. Never its url or auth value.",
+    },
+    afterRestart: {
+      type: "boolean",
+      description:
+        "builtin — at least one tool has inPod=false; external — the server row changed after the pod started.",
+    },
+    tools: {
+      description:
+        "Empty for external groups; their tools are served by the server itself.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentToolEntryDto",
+      },
+    },
+  },
+  required: ["key", "title", "kind", "afterRestart", "tools"],
+} as const;
+
+export const AgentToolCatalogDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+    },
+    podStartedAt: {
+      type: "string",
+      nullable: true,
+      description: "When the current pod started; null when no pod runs.",
+      example: "2026-09-22T10:33:00.000Z",
+    },
+    listedAt: {
+      type: "string",
+      nullable: true,
+      description: "When the pod last called tools/list; null if it never did.",
+      example: "2026-09-22T10:33:05.000Z",
+    },
+    groups: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentToolGroupDto",
+      },
+    },
+  },
+  required: ["agentId", "podStartedAt", "listedAt", "groups"],
 } as const;
 
 export const SecretEntryDtoSchema = {

@@ -144,6 +144,7 @@ watch(
         :agent-id="agent.id"
         :title="`Chat with ${agent.name}`"
         :restart-prompt="false"
+        :tools-button="false"
         :agent-state="bridleAgentState"
         :offline-hint="offlineHint"
         :initial-debug-enabled="agent.debugEnabled"

@@ -1,20 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
-import { Tool } from '#mcp';
-import { IPaddockScenarioGateway } from './domain';
+import { Tool, ToolTopics } from '#mcp';
+import { CONFIRM_SENTENCE, confirmed, ok } from '#/mcp/tooling';
+import {
+  IPaddockScenarioGateway,
+  IPaddockScenarioGeneratorGateway,
+} from './domain';
 import {
   ICreatePaddockScenarioData,
   IUpdatePaddockScenarioData,
   PaddockScenarioCategory,
   PaddockScenarioDifficulty,
 } from './domain/scenario.types';
-
-const asText = (value: unknown): string =>
-  typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-
-const ok = (value: unknown) => ({
-  content: [{ type: 'text' as const, text: asText(value) }],
-});
 
 const categoryEnum = z.enum([
   'tool_use',
@@ -60,10 +57,16 @@ const setupSchema = z
 export class PaddockScenarioTool {
   private readonly logger = new Logger(PaddockScenarioTool.name);
 
-  constructor(private readonly scenarios: IPaddockScenarioGateway) {}
+  constructor(
+    private readonly scenarios: IPaddockScenarioGateway,
+    private readonly generator: IPaddockScenarioGeneratorGateway,
+  ) {}
 
   @Tool({
     name: 'list_paddock_scenarios',
+    topic: ToolTopics.Paddock,
+    title: 'List paddock scenarios',
+    template: 'List the paddock scenarios of «template or agent»',
     description:
       'List paddock scenarios. Filter by templateId or agentId; without filters returns all.',
     parameters: z.object({
@@ -83,6 +86,9 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'get_paddock_scenario',
+    topic: ToolTopics.Paddock,
+    title: 'Show a scenario',
+    template: 'Show the paddock scenario «id»',
     description: 'Get a single paddock scenario by id.',
     parameters: z.object({ id: z.string() }),
   })
@@ -93,6 +99,9 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'list_agent_paddock_scenarios',
+    topic: ToolTopics.Paddock,
+    title: 'Scenarios of an agent',
+    template: 'Which paddock scenarios does the agent «name» have?',
     description:
       'List the merged set of paddock scenarios that would run for a given agent (template defaults + agent overrides; overrides win on name collision).',
     parameters: z.object({ agentId: z.string() }),
@@ -103,6 +112,10 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'create_paddock_scenario',
+    topic: ToolTopics.Paddock,
+    title: 'Create a scenario',
+    template:
+      'Create a paddock scenario for «agent or template» that checks «what it checks»',
     description:
       'Create a paddock scenario. Pass exactly one of templateId or agentId — that defines the scope.',
     parameters: z.object({
@@ -163,6 +176,9 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'update_paddock_scenario',
+    topic: ToolTopics.Paddock,
+    title: 'Update a scenario',
+    template: 'Change the paddock scenario «id»: «what to change»',
     description:
       'Update a paddock scenario. Scope (templateId / agentId) is immutable — recreate the scenario to change scope.',
     parameters: z.object({
@@ -185,13 +201,97 @@ export class PaddockScenarioTool {
 
   @Tool({
     name: 'delete_paddock_scenario',
-    description: 'Delete a paddock scenario by id.',
-    parameters: z.object({ id: z.string() }),
+    topic: ToolTopics.Paddock,
+    title: 'Delete a scenario',
+    template: 'Delete the paddock scenario «id»',
+    destructive: true,
+    description: 'Delete a paddock scenario by id. ' + CONFIRM_SENTENCE,
+    parameters: z.object({
+      id: z.string(),
+      confirm: z
+        .boolean()
+        .describe('Set true only after the person confirmed in the chat.'),
+    }),
   })
-  async remove({ id }: { id: string }) {
+  async remove(args: { id: string; confirm?: boolean }) {
+    const { id } = args;
     const existing = await this.scenarios.findById(id);
     if (!existing) return ok({ error: `Scenario ${id} not found` });
+    const refusal = confirmed(
+      args,
+      `delete the paddock scenario «${existing.name ?? id}»`,
+    );
+    if (refusal) return refusal;
     await this.scenarios.delete(id);
     return ok({ ok: true, id });
+  }
+
+  @Tool({
+    name: 'generate_paddock_scenarios',
+    topic: ToolTopics.Paddock,
+    title: 'Generate scenarios from a description',
+    template:
+      'Generate «3» paddock scenarios for the agent «name» about «topic»',
+    description:
+      'Draft paddock scenarios from a plain-language description of what to test, using an LLM. Pass exactly one of agentId or templateId as the scope (resolve names with list_agents / list_templates first). Returns the drafts only — nothing is saved. Review them, then call create_paddock_scenario for each one worth keeping.',
+    parameters: z.object({
+      description: z
+        .string()
+        .describe('What behaviour or problem the scenarios should test.'),
+      agentId: z.string().optional(),
+      templateId: z.string().optional(),
+      count: z
+        .number()
+        .int()
+        .min(1)
+        .max(5)
+        .optional()
+        .describe('How many drafts to produce (1–5, default 1).'),
+      category: categoryEnum.optional(),
+      difficulty: difficultyEnum.optional(),
+      credentialId: z
+        .string()
+        .optional()
+        .describe('LlmCredential id to draft with; default: first active.'),
+    }),
+  })
+  async generate(input: {
+    description: string;
+    agentId?: string;
+    templateId?: string;
+    count?: number;
+    category?: PaddockScenarioCategory;
+    difficulty?: PaddockScenarioDifficulty;
+    credentialId?: string;
+  }) {
+    // Same XOR rule the controller enforces on POST /paddock-scenarios/generate.
+    const hasTemplate = Boolean(input.templateId);
+    const hasAgent = Boolean(input.agentId);
+    if (hasTemplate === hasAgent) {
+      return ok({
+        error: 'Scenario must be scoped to exactly one of: templateId, agentId',
+      });
+    }
+    // The generator drafts one scenario per call; the console asks for one at
+    // a time, a chat asks for "three about refunds". Sequential on purpose —
+    // each is an LLM call and parallel drafts tend to come back near-identical.
+    const count = input.count ?? 1;
+    const drafts: ICreatePaddockScenarioData[] = [];
+    for (let i = 0; i < count; i++) {
+      drafts.push(
+        await this.generator.generate({
+          description: input.description,
+          templateId: input.templateId ?? undefined,
+          agentId: input.agentId ?? undefined,
+          category: input.category,
+          difficulty: input.difficulty,
+          credentialId: input.credentialId,
+        }),
+      );
+    }
+    return ok({
+      drafts,
+      note: 'Not saved. Call create_paddock_scenario with a draft to keep it.',
+    });
   }
 }

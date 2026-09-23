@@ -1,7 +1,8 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool } from '#mcp';
+import { Tool, ToolTopics } from '#mcp';
+import { CONFIRM_SENTENCE, confirmed } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { PeerService } from './domain/peer.service';
 import { AgentCardService } from './domain/agentCard.service';
@@ -77,6 +78,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'list_agent_peers',
+    topic: ToolTopics.Peers,
+    title: "List an agent's peers",
+    template: 'Which peers does the agent «name» have?',
     description:
       'Who an agent can delegate to: every peer connected to it, what each ' +
       "peer's card advertises, and whether the running pod has actually " +
@@ -115,6 +119,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'list_peer_candidates',
+    topic: ToolTopics.Peers,
+    title: 'Agents that can become peers',
+    template: 'Which agents could «name» delegate to?',
     description:
       'Agents of this Ranch that could become peers of the given agent, each ' +
       'marked with whether it already is one. Use it to turn a name the ' +
@@ -134,6 +141,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'preview_agent_card',
+    topic: ToolTopics.Peers,
+    title: "Preview an agent's card",
+    template: 'Show the A2A card of the agent «name»',
     description:
       'Read a card WITHOUT connecting anything: what that agent tells other ' +
       'agents it can do. Pass `peerAgentId` for an agent of this Ranch, or ' +
@@ -190,6 +200,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'list_agent_delegations',
+    topic: ToolTopics.Peers,
+    title: 'Recent delegations',
+    template: 'What did the agent «name» delegate recently?',
     description:
       'What this agent recently handed to its peers: the task, the peer it ' +
       'picked, the reason it gave, how it ended and an excerpt of the reply. ' +
@@ -226,6 +239,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'connect_agent_peer',
+    topic: ToolTopics.Peers,
+    title: 'Connect a peer',
+    template: 'Connect the agent «peer» as a peer of «name»',
     description:
       'Let one agent of this Ranch delegate to another: reads the peer card, ' +
       'mints a credential for exactly this pair and saves the connection. ' +
@@ -258,6 +274,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'import_external_agent',
+    topic: ToolTopics.Peers,
+    title: 'Import an external A2A agent',
+    template: 'Import the external agent at «url» as a peer of «name»',
     description:
       'Connect an A2A agent outside this Ranch by its address, so the given ' +
       'agent can delegate to it. Reads the card first and saves nothing if it ' +
@@ -306,6 +325,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'refresh_agent_peer',
+    topic: ToolTopics.Peers,
+    title: "Refresh a peer's card",
+    template: 'Refresh the card of the peer «peer» on the agent «name»',
     description:
       "Re-read a peer's card, for when its owner says it can do something " +
       'new. A failed read keeps the card already stored — a stale description ' +
@@ -336,23 +358,34 @@ export class PeerAdminTool implements IConditionallyListedTool {
 
   @Tool({
     name: 'remove_agent_peer',
+    topic: ToolTopics.Peers,
+    title: 'Remove a peer',
+    template: 'Remove the peer «peer» from the agent «name»',
+    destructive: true,
     description:
       'Disconnect a peer. For a peer of this Ranch the credential issued for ' +
       'the pair stops working — there is no other copy of it. Reversible: ' +
-      'connect it again later and a new credential is minted.',
+      'connect it again later and a new credential is minted. ' +
+      CONFIRM_SENTENCE,
     parameters: z.object({
       agentId: z.string(),
       peerId: z
         .string()
         .describe('Connection id from list_agent_peers (not the agent id)'),
+      confirm: z
+        .boolean()
+        .describe('Set true only after the person confirmed in the chat.'),
     }),
   })
   async removeAgentPeer(
-    { agentId, peerId }: { agentId: string; peerId: string },
+    args: { agentId: string; peerId: string; confirm?: boolean },
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
     this.requireOperator(httpRequest);
+    const { agentId, peerId } = args;
+    const refusal = confirmed(args, `disconnect peer ${peerId} from agent ${agentId}`);
+    if (refusal) return refusal;
     return this.guard(async () => {
       await this.peers.remove(agentId, peerId);
       this.logger.log(

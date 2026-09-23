@@ -258,6 +258,7 @@ async function onRemove() {
             <IconRefresh v-else class="size-4" />
             {{ isRestarting ? 'Restarting…' : 'Restart' }}
           </Button>
+          <ToolCatalogButton :agent-id="agent.id" />
           <SharePanelProvider :agent-id="agent.id" />
           <Button variant="outline" size="sm" as-child>
             <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>

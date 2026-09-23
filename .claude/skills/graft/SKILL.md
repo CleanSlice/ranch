@@ -154,3 +154,14 @@ When the graft MCP server is connected, these are exposed as tools too:
 `graft_find_code`, `graft_find_all`, `graft_file_api`, `graft_trace_calls` (with
 `direction` / `depth`), `graft_repo_map`, `graft_check_freshness`. Use whichever surface is
 available; the guidance is identical.
+
+<!-- ranch:agent-tools:start -->
+## Project rule: agent tools
+
+A module is not done until the Ranch agent has tools for what the console
+can do. Before adding or changing an admin-console capability, read
+`docs/agent-tools.md`: tools live in the slice as `<name>.tool.ts` with
+`topic` / `title` / `template`, audience gating, `confirm` on anything
+destructive, no secrets in results, and a spec. The API refuses to boot a
+tool without that metadata.
+<!-- ranch:agent-tools:end -->

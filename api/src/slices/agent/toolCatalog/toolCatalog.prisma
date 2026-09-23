@@ -1,0 +1,15 @@
+import { Agent } from "../agent/agent"
+
+// The tool names the API last served to this agent's runtime on MCP
+// tools/list — i.e. what the running pod believes it has (CLEAN-109). A pod
+// reads its tools once at boot, so a tool added to the API afterwards is not
+// in its hands until a restart; this row is how the console tells the two
+// apart. Written on every tools/list from an agent token (once per boot in
+// practice), read by GET /agents/:id/tools. Never read by the runtime.
+model AgentToolListing {
+  agentId   String   @id
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // string[]
+  toolNames Json
+  listedAt  DateTime @default(now())
+}

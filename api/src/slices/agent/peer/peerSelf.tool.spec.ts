@@ -298,17 +298,37 @@ describe('PeerSelfTool — reading and dropping', () => {
     const { tool, peers } = harness();
     peers.list.mockResolvedValue([view({ peerName: 'Skyhunter' })]);
     const text = textOf(
-      await tool.removeMyPeer({ peerId: 'peer-1' }, null, agentRequest()),
+      await tool.removeMyPeer(
+        { peerId: 'peer-1', confirm: true },
+        null,
+        agentRequest(),
+      ),
     );
     expect(peers.remove).toHaveBeenCalledWith('agent-me', 'peer-1');
     expect(text).toContain('«Skyhunter»');
+  });
+
+  it('refuses to drop a peer without the confirmation argument (CLEAN-109)', async () => {
+    const { tool, peers } = harness();
+    const result = await tool.removeMyPeer(
+      { peerId: 'peer-1' },
+      null,
+      agentRequest(),
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('confirm: true');
+    expect(peers.remove).not.toHaveBeenCalled();
   });
 
   it('says the ask_agent tool itself goes away with the last colleague', async () => {
     const { tool, peers } = harness();
     peers.list.mockResolvedValue([]);
     const text = textOf(
-      await tool.removeMyPeer({ peerId: 'peer-1' }, null, agentRequest()),
+      await tool.removeMyPeer(
+        { peerId: 'peer-1', confirm: true },
+        null,
+        agentRequest(),
+      ),
     );
     expect(text).toContain('last colleague');
     expect(text).toContain('ask_agent');

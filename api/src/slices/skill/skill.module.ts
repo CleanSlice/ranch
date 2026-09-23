@@ -4,6 +4,7 @@ import { ISkillGateway } from './domain/skill.gateway';
 import { SkillGateway } from './data/skill.gateway';
 import { SkillMapper } from './data/skill.mapper';
 import { GithubSearch } from './data/github.search';
+import { SkillTool } from './skill.tool';
 import { SettingModule } from '#/setting/setting.module';
 
 @Module({
@@ -12,6 +13,7 @@ import { SettingModule } from '#/setting/setting.module';
   providers: [
     SkillMapper,
     GithubSearch,
+    SkillTool,
     {
       provide: ISkillGateway,
       useClass: SkillGateway,

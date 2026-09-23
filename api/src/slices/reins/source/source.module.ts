@@ -10,6 +10,7 @@ import { ISourceGateway } from './domain/source.gateway';
 import { ImportJobRegistry } from './domain/importJob.registry';
 import { SourceGateway } from './data/source.gateway';
 import { SourceMapper } from './data/source.mapper';
+import { SourceTool } from './source.tool';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { SourceMapper } from './data/source.mapper';
   providers: [
     SourceMapper,
     SourceService,
+    SourceTool,
     ImportJobRegistry,
     { provide: ISourceGateway, useClass: SourceGateway },
   ],

@@ -3,6 +3,7 @@ import { DiscoveryModule } from '@nestjs/core';
 import { McpOptions, McpTransportType } from './interfaces';
 import { McpExecutorService } from './services/mcp-executor.service';
 import { McpRegistryService } from './services/mcp-registry.service';
+import { ToolCatalogService } from './services/tool-catalog.service';
 import { SsePingService } from './services/sse-ping.service';
 import { StdioService } from './transport/stdio.service';
 import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
@@ -10,7 +11,7 @@ import { createSseController } from './transport/sse.controller.factory';
 let instanceIdCounter = 0;
 @Module({
   imports: [DiscoveryModule],
-  providers: [McpRegistryService, McpExecutorService],
+  providers: [McpRegistryService, McpExecutorService, ToolCatalogService],
 })
 export class McpModule {
   static forRoot(options: McpOptions): DynamicModule {
@@ -42,11 +43,14 @@ export class McpModule {
     const controllers = this.createControllersFromOptions(mergedOptions);
 
     return {
+      // Global so a slice can read the per-caller tool list (ToolCatalogService)
+      // without re-instantiating this module — there is one registry.
+      global: true,
       imports: [],
       module: McpModule,
       controllers,
       providers,
-      exports: [McpRegistryService],
+      exports: [McpRegistryService, ToolCatalogService],
     };
   }
 
@@ -107,6 +111,7 @@ export class McpModule {
       },
       McpRegistryService,
       McpExecutorService,
+      ToolCatalogService,
     ];
 
     const transports = Array.isArray(options.transport)

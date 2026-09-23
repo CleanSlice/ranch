@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { AgentController } from './agent.controller';
+import { AgentAdminTool } from './agentAdmin.tool';
 import { IAgentGateway } from './domain/agent.gateway';
 import { AgentStatusService } from './domain/agentStatus.service';
 import { AgentDeployService } from './domain/agentDeploy.service';
@@ -36,6 +37,7 @@ import { SkillModule } from '#/skill/skill.module';
     AgentStatusService,
     AgentDeployService,
     DeployTracker,
+    AgentAdminTool,
     {
       provide: IAgentGateway,
       useClass: AgentGateway,

@@ -192,9 +192,13 @@ export type KnowledgeListItemDto = {
    */
   indexedCount: number;
   /**
-   * Sources whose last index run recorded an error
+   * Sources whose last index run recorded an error nothing will retry without a person
    */
   failedCount: number;
+  /**
+   * Sources that failed for a reason that passes (a model outage, a lost connection) and are retried automatically
+   */
+  retryingCount: number;
   /**
    * Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.
    */
@@ -262,7 +266,14 @@ export type KnowledgeOverviewDto = {
    * Sources LightRAG confirmed as processed
    */
   indexedCount: number;
+  /**
+   * Failed, and nothing will retry them by itself
+   */
   failedCount: number;
+  /**
+   * Failed for a passing reason; retried automatically
+   */
+  retryingCount: number;
   /**
    * Handed to LightRAG and still in its pipeline
    */
@@ -324,13 +335,21 @@ export type SourceDto = {
    * True when indexStatus is "indexed". Kept for older callers.
    */
   indexed: boolean;
-  indexStatus: "indexed" | "pending" | "failed";
+  indexStatus: "indexed" | "pending" | "retrying" | "failed";
   indexState: "queued" | "processing" | "indexed" | "failed";
   /**
    * Error from the last index run, null once the source indexes.
    */
   indexError: string | null;
   indexedAt: string | null;
+  /**
+   * Failed attempts since the source last indexed or was retried by hand; the reconciler stops retrying after three.
+   */
+  indexAttempts: number;
+  /**
+   * When the reconciler will retry a failed source on its own; null once it will not (permanent failure, or the retries are spent).
+   */
+  indexRetryAt: string | null;
   /**
    * Text extraction for a PDF without a text layer: none (not a PDF, or it has its own text), pending (probing or OCR running), ready (recognised text is what gets indexed), failed (see textError).
    */
@@ -493,6 +512,10 @@ export type AgentPodStatusDto = {
   ready: boolean;
   restartCount: number;
   startedAt: string | null;
+  /**
+   * The pod is being deleted (restart cleanup, stop, manual delete). Its phase on the way out says nothing about the health of the agent.
+   */
+  terminating: boolean;
   lastTerminationReason: string | null;
   containerWaitingReason: string | null;
   message: string | null;
@@ -1553,7 +1576,7 @@ export type AgentDelegationDto = {
    */
   status: string;
   /**
-   * Why it did not produce an answer: PEER_NOT_RUNNING, PEER_TIMEOUT, PEER_REJECTED_LOOP, PEER_REJECTED_DEPTH, PEER_UNAUTHORIZED, PEER_UNREACHABLE or PEER_ERROR. Null while waiting and on success.
+   * Why it did not produce an answer: PEER_NOT_RUNNING, PEER_TIMEOUT, PEER_REJECTED_LOOP, PEER_REJECTED_DEPTH, PEER_UNAUTHORIZED, PEER_UNREACHABLE, PEER_ADDRESS_REFUSED (the card points at a private or local address, so nothing was sent), PEER_UNSUPPORTED (the card offers no JSON-RPC interface on A2A 1.0) or PEER_ERROR. Null while waiting and on success — including an empty reply, which is answered.
    */
   errorCode: string | null;
   /**
@@ -1563,6 +1586,64 @@ export type AgentDelegationDto = {
   startedAt: string;
   finishedAt: string | null;
   durationMs: number | null;
+};
+
+export type AgentToolEntryDto = {
+  /**
+   * Technical MCP tool name.
+   */
+  name: string;
+  title: string;
+  /**
+   * The per-caller description, exactly what the runtime would be given.
+   */
+  description: string;
+  /**
+   * Starter prompt with «…» placeholders.
+   */
+  template: string;
+  /**
+   * The tool removes, revokes or interrupts something and needs confirm: true.
+   */
+  destructive: boolean;
+  /**
+   * null — no pod runs; false — the running pod did not list this tool (restart needed); true — it did.
+   */
+  inPod: boolean | null;
+};
+
+export type AgentToolGroupDto = {
+  /**
+   * Topic key (e.g. mcp_servers) or mcp:<serverId> for an external server.
+   */
+  key: string;
+  title: string;
+  kind: "builtin" | "external";
+  /**
+   * External servers only — the server row's description. Never its url or auth value.
+   */
+  description?: string;
+  /**
+   * builtin — at least one tool has inPod=false; external — the server row changed after the pod started.
+   */
+  afterRestart: boolean;
+  /**
+   * Empty for external groups; their tools are served by the server itself.
+   */
+  tools: Array<AgentToolEntryDto>;
+};
+
+export type AgentToolCatalogDto = {
+  agentId: string;
+  /**
+   * When the current pod started; null when no pod runs.
+   */
+  podStartedAt: string | null;
+  /**
+   * When the pod last called tools/list; null if it never did.
+   */
+  listedAt: string | null;
+  groups: Array<AgentToolGroupDto>;
 };
 
 export type SecretEntryDto = {
@@ -2592,7 +2673,7 @@ export type GetKnowledgeSourcesData = {
      * Case-insensitive substring match on the source name
      */
     search?: string;
-    status?: "indexed" | "pending" | "failed";
+    status?: "indexed" | "pending" | "retrying" | "failed";
     type?: "file" | "url" | "text";
     page?: number;
     perPage?: number;
@@ -2650,7 +2731,7 @@ export type ExportKnowledgeSourcesData = {
      * Case-insensitive substring match on the source name
      */
     search?: string;
-    status?: "indexed" | "pending" | "failed";
+    status?: "indexed" | "pending" | "retrying" | "failed";
     type?: "file" | "url" | "text";
   };
   url: "/knowledges/{knowledgeId}/sources/export";
@@ -4661,6 +4742,22 @@ export type ListAgentDelegationsResponses = {
 
 export type ListAgentDelegationsResponse =
   ListAgentDelegationsResponses[keyof ListAgentDelegationsResponses];
+
+export type GetAgentToolsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/tools";
+};
+
+export type GetAgentToolsResponses = {
+  200: AgentToolCatalogDto;
+};
+
+export type GetAgentToolsResponse =
+  GetAgentToolsResponses[keyof GetAgentToolsResponses];
 
 export type SecretControllerDeleteData = {
   body: DeleteSecretDto;

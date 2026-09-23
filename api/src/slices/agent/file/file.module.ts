@@ -3,6 +3,7 @@ import { AgentModule } from '#/agent/agent/agent.module';
 import { SettingModule } from '#/setting/setting.module';
 import { BridleModule } from '#/bridle/bridle.module';
 import { FileController } from './file.controller';
+import { FileTool } from './file.tool';
 import { IFileGateway } from './domain/file.gateway';
 import { S3FileGateway } from './data/file.gateway';
 import { SyncGuardService } from './domain/syncGuard.service';
@@ -25,6 +26,8 @@ import { TranscriptReaderService } from './domain/transcriptReader.service';
     },
     SyncGuardService,
     TranscriptReaderService,
+    // MCP tools of this slice (CLEAN-109): discovered by the registry.
+    FileTool,
   ],
   exports: [IFileGateway, TranscriptReaderService],
 })

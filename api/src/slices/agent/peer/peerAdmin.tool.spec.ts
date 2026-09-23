@@ -326,13 +326,25 @@ describe('PeerAdminTool — changing the peer set', () => {
     const { tool, peers } = harness();
     const text = textOf(
       await tool.removeAgentPeer(
-        { agentId: 'agent-a', peerId: 'peer-1' },
+        { agentId: 'agent-a', peerId: 'peer-1', confirm: true },
         null,
         operator(),
       ),
     );
     expect(peers.remove).toHaveBeenCalledWith('agent-a', 'peer-1');
     expect(text).toContain('still believes it has that colleague');
+  });
+
+  it('refuses to remove a peer without the confirmation argument (CLEAN-109)', async () => {
+    const { tool, peers } = harness();
+    const result = await tool.removeAgentPeer(
+      { agentId: 'agent-a', peerId: 'peer-1' },
+      null,
+      operator(),
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('confirm: true');
+    expect(peers.remove).not.toHaveBeenCalled();
   });
 });
 

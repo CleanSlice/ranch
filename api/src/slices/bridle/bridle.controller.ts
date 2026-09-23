@@ -198,7 +198,25 @@ export class BridleController {
     if (token) {
       const verified = this.verifyJwt(token);
       const identity = clientIdFromJwtPayload(verified.payload);
-      if (identity) return { clientId: identity.clientId, kind: 'jwt' };
+      if (identity) {
+        // The person apart from the channel (CLEAN-80) — same as the socket
+        // handshake does, so a message sent over HTTP carries the same
+        // identity as one sent over the socket.
+        const sub = verified.payload?.sub;
+        const email = verified.payload?.email;
+        const user =
+          typeof sub === 'string' && sub
+            ? {
+                id: sub,
+                ...(typeof email === 'string' && email ? { email } : {}),
+              }
+            : undefined;
+        return {
+          clientId: identity.clientId,
+          kind: 'jwt',
+          ...(user ? { user } : {}),
+        };
+      }
       if (!shareOffered) {
         throw unauthorized(
           verified.error
@@ -359,6 +377,7 @@ export class BridleController {
       text: expanded.text,
       parts: [...base, ...expanded.parts],
       attachments: expanded.attachments,
+      ...(requester.user ? { user: requester.user } : {}),
     });
 
     return {

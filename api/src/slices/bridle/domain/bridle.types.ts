@@ -80,6 +80,35 @@ export interface IBridleStoredAttachment {
 
 // ── Wire protocol messages ───────────────────────────────────
 
+/**
+ * The person behind a message, separate from the conversation it belongs
+ * to (CLEAN-80). `clientId` decides history and access and folds every
+ * owner/admin into one shared `admin` channel on purpose; this is the JWT
+ * `sub` (plus the email for display), so a runtime can keep per-person state
+ * — an MCP OAuth token, say — without splitting the shared chat. Absent for
+ * share visitors and anonymous embeds, whose `clientId` is already theirs
+ * alone.
+ */
+export interface IBridleUserIdentity {
+  id: string;
+  email?: string;
+}
+
+/**
+ * Hub → Agent control event: an MCP OAuth login finished and the token was
+ * stored (CLEAN-75, CLEAN-80). `subject` names whose token it is — a user id
+ * from `IBridleUserIdentity`, a share/anon client id, or the agent id for a
+ * connection started on the agent's behalf — so the runtime can bring up the
+ * client for exactly that person.
+ */
+export interface IBridleMcpConnectedEvent {
+  type: 'mcp_connected';
+  /** Display name of the MCP server row. */
+  server: string;
+  serverId: string;
+  subject: string;
+}
+
 /** Hub → Agent: incoming message from a browser client */
 export interface IBridleIncomingMessage {
   type: 'message';
@@ -88,6 +117,8 @@ export interface IBridleIncomingMessage {
   text: string;
   messageId: string;
   parts: BridlePart[];
+  /** Who typed it, when a console login is behind the socket. */
+  user?: IBridleUserIdentity;
   /** Integrator context from the embed's `data-prompt`, carried on every
    * message so the agent runtime can fold it into the system prompt. */
   prompt?: string;
@@ -335,6 +366,9 @@ export interface IBridleClientData {
   /** Handshake-advertised render capabilities; attached to every message
    * forwarded to the agent (capability gate for `thinking`, `ui`, …). */
   capabilities?: string[];
+  /** The console login behind this socket; attached to every message it
+   * sends so the runtime can keep per-person state on a shared channel. */
+  user?: IBridleUserIdentity;
 }
 
 // ── Helpers ──────────────────────────────────────────────────

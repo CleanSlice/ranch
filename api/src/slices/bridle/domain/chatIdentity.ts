@@ -36,6 +36,13 @@ export interface IChatAuth {
 export interface IAttachmentRequester {
   clientId: string | null;
   kind: ChatRequesterKinds;
+  /**
+   * The console login behind a `jwt` requester — the JWT `sub` and email.
+   * `clientId` folds owners and admins into `admin` for a shared history;
+   * this keeps them apart where it matters (per-person MCP tokens,
+   * CLEAN-80). Absent for share visitors and anonymous callers.
+   */
+  user?: { id: string; email?: string };
 }
 
 /** The one method this module needs from `ShareLinkService`. Structural on

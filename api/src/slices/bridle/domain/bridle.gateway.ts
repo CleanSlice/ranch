@@ -10,6 +10,8 @@ import type {
   IActiveTurn,
   IBridleSendOptions,
   BridleSendResult,
+  IBridleUserIdentity,
+  IBridleMcpConnectedEvent,
 } from './bridle.types';
 
 export interface ISyncAgentResult {
@@ -69,6 +71,10 @@ export abstract class IBridleGateway {
     /** Handshake-advertised render capabilities; forwarded to the agent on
      * every message so runtimes can gate `thinking`/`ui` emission. */
     capabilities?: string[],
+    /** The console login behind this socket (JWT `sub` + email); forwarded
+     * on every message it sends so a runtime can keep per-person state
+     * (CLEAN-80). Absent for share visitors and anonymous embeds. */
+    user?: IBridleUserIdentity,
   ): void;
   /** Unregister one browser socket. The conversation's other sockets are
    * untouched; its numbering and replay buffer outlive the last one for a
@@ -144,7 +150,10 @@ export abstract class IBridleGateway {
    * on the next boot. Silently skipped if the agent isn't currently connected —
    * the token is already persisted as a secret, so a fresh boot picks it up.
    */
-  abstract notifyMcpConnected(agentId: string, serverName: string): void;
+  abstract notifyMcpConnected(
+    agentId: string,
+    event: Omit<IBridleMcpConnectedEvent, 'type'>,
+  ): void;
   /**
    * The turn this agent is in the middle of, for the client that is watching
    * it — or null when nothing is known. Lets API-side code (CLEAN-74) add a

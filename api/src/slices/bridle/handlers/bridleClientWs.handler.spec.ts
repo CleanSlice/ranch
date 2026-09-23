@@ -208,10 +208,23 @@ interface IConnectOptions {
 }
 
 function makeConnection(options: IConnectOptions) {
-  const registered: Array<{ clientId: string; agentId: string }> = [];
+  const registered: Array<{
+    clientId: string;
+    agentId: string;
+    user?: { id: string; email?: string };
+  }> = [];
   const hub = {
-    registerClient: (clientId: string, agentId: string) => {
-      registered.push({ clientId, agentId });
+    registerClient: (
+      clientId: string,
+      agentId: string,
+      _socketId: string,
+      _send: unknown,
+      _isAdmin: boolean,
+      _prompt?: string,
+      _capabilities?: string[],
+      user?: { id: string; email?: string },
+    ) => {
+      registered.push({ clientId, agentId, ...(user ? { user } : {}) });
     },
     isAgentConnected: () => true,
     currentSeq: () => 0,
@@ -284,7 +297,34 @@ describe('BridleClientWsHandler — handshake identity', () => {
       isAdmin: false,
       kind: 'jwt',
     });
-    expect(registered).toEqual([{ clientId: 'u1', agentId: 'agent-1' }]);
+    expect(registered).toEqual([
+      {
+        clientId: 'u1',
+        agentId: 'agent-1',
+        user: { id: 'u1', email: 'u1@example.test' },
+      },
+    ]);
+  });
+
+  it('keeps the admin sub as the user while the channel stays "admin" (CLEAN-80)', async () => {
+    const { handler, client, registered } = makeConnection({
+      auth: { agentId: 'agent-1', token: 'signed' },
+      verify: () => ({
+        sub: 'u2',
+        email: 'boss@example.test',
+        roles: ['Owner'],
+      }),
+    });
+
+    await handler.handleConnection(client);
+
+    expect(registered).toEqual([
+      {
+        clientId: 'admin',
+        agentId: 'agent-1',
+        user: { id: 'u2', email: 'boss@example.test' },
+      },
+    ]);
   });
 
   it('folds an admin token onto the shared "admin" client id, still kind "jwt"', async () => {

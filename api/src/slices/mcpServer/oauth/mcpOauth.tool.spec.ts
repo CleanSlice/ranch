@@ -58,7 +58,7 @@ describe('McpOauthTool — starting a connect', () => {
     const text = textOf(
       await tool.startMcpOauth({ serverId: 'mcp-1' }, null, operator()),
     );
-    expect(oauth.start).toHaveBeenCalledWith('mcp-1', 'agent-ops');
+    expect(oauth.start).toHaveBeenCalledWith({ serverId: 'mcp-1', agentId: 'agent-ops' });
     expect(text).toContain(AUTHORIZE_URL);
     expect(text).toContain('"agentId": "agent-ops"');
     expect(text).toContain('browser');
@@ -71,7 +71,7 @@ describe('McpOauthTool — starting a connect', () => {
       null,
       operator(),
     );
-    expect(oauth.start).toHaveBeenCalledWith('mcp-1', 'agent-support');
+    expect(oauth.start).toHaveBeenCalledWith({ serverId: 'mcp-1', agentId: 'agent-support' });
   });
 
   it('asks for an agentId when the operator is a person', async () => {

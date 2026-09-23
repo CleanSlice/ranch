@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { IBridleGateway } from './bridle.gateway';
-import type { BridlePart, IBridleAttachment } from './bridle.types';
+import type {
+  BridlePart,
+  IBridleAttachment,
+  IBridleUserIdentity,
+} from './bridle.types';
 
 /** Same ceiling the synchronous chat route has always used. */
 export const DEFAULT_SYNC_TIMEOUT_MS = 120_000;
@@ -20,6 +24,8 @@ export interface ISendAndAwaitInput {
    */
   capabilities?: string[];
   isAdmin?: boolean;
+  /** The console login behind the call, forwarded to the agent (CLEAN-80). */
+  user?: IBridleUserIdentity;
   timeoutMs?: number;
 }
 
@@ -59,6 +65,7 @@ export class BridleSyncService {
       attachments,
       capabilities = [],
       isAdmin = false,
+      user,
       timeoutMs = DEFAULT_SYNC_TIMEOUT_MS,
     } = input;
 
@@ -109,6 +116,7 @@ export class BridleSyncService {
         isAdmin,
         undefined,
         capabilities,
+        user,
       );
 
       // `socketId` makes this call's own capabilities travel with the message

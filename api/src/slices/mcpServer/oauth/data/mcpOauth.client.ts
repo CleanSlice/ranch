@@ -105,4 +105,30 @@ export class McpOauthClient {
     }
     return (await res.json()) as IOauthTokenResponse;
   }
+
+  /**
+   * RFC 7009 revocation of a refresh token we are about to forget (the
+   * CLEAN-80 sweep). Public client, so only `client_id` identifies us. A
+   * provider answers 200 whether or not it knew the token; anything else is
+   * reported and the caller deletes the bundle regardless.
+   */
+  async revoke(
+    revocationEndpoint: string,
+    refreshToken: string,
+    clientId: string,
+  ): Promise<void> {
+    const form = new URLSearchParams({
+      token: refreshToken,
+      token_type_hint: 'refresh_token',
+      client_id: clientId,
+    });
+    const res = await fetch(revocationEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+    });
+    if (!res.ok) {
+      throw new BadGatewayException(`Token revocation failed (${res.status})`);
+    }
+  }
 }

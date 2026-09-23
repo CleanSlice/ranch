@@ -226,3 +226,36 @@ describe('BridleGateway — catching up after a reconnect', () => {
     expect(gateway.replaySince('admin', 'agent-1', 0)).toEqual([]);
   });
 });
+
+/**
+ * The person apart from the channel (CLEAN-80). Two admins share `admin`
+ * and its history, but each sits on their own socket; the identity the hub
+ * attaches to a message is the sender's, never the first socket's.
+ */
+describe('BridleGateway — user identity follows the sending socket', () => {
+  it('attaches the sending socket user, and nothing for a socket without one', () => {
+    const gateway = new BridleGateway();
+    const toAgent: Event[] = [];
+    gateway.registerAgent('agent-1', 'agent-socket', collector(toAgent));
+    gateway.registerClient('admin', 'agent-1', 'tab-a', collector([]), true, undefined, undefined, {
+      id: 'user-a',
+      email: 'a@example.test',
+    });
+    gateway.registerClient('admin', 'agent-1', 'tab-b', collector([]), true, undefined, undefined, {
+      id: 'user-b',
+    });
+    gateway.registerClient('anon-7', 'agent-1', 'widget', collector([]), false);
+
+    gateway.sendToAgent('admin', 'agent-1', 'from b', [], undefined, { socketId: 'tab-b' });
+    gateway.sendToAgent('admin', 'agent-1', 'from a', [], undefined, { socketId: 'tab-a' });
+    gateway.sendToAgent('anon-7', 'agent-1', 'from widget', [], undefined, { socketId: 'widget' });
+
+    expect(toAgent.map((e) => e.user)).toEqual([
+      { id: 'user-b' },
+      { id: 'user-a', email: 'a@example.test' },
+      undefined,
+    ]);
+    // History is still one channel: every message went out as `admin`.
+    expect(toAgent.slice(0, 2).map((e) => e.clientId)).toEqual(['admin', 'admin']);
+  });
+});

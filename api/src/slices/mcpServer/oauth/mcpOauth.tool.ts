@@ -48,8 +48,12 @@ export class McpOauthTool implements IConditionallyListedTool {
       'oauth. Returns an authorization URL: give it to the person to open in ' +
       'their browser; they log in at the provider, and the callback stores ' +
       'the token for the agent named by `agentId` (the calling agent when ' +
-      'omitted) and wakes it. The link is single-use and expires in ten ' +
-      'minutes. Find the server id with list_mcp_servers.',
+      'omitted) and wakes it. Without `subject` this is the agent-wide ' +
+      'connection everyone who talks to that agent shares; a person who ' +
+      'wants their own account connects from that agent\'s chat instead, ' +
+      'where its «server»__connect tool keys the token to them. The link is ' +
+      'single-use and expires in ten minutes. Find the server id with ' +
+      'list_mcp_servers.',
     parameters: z.object({
       serverId: z
         .string()
@@ -60,10 +64,21 @@ export class McpOauthTool implements IConditionallyListedTool {
         .describe(
           'Agent that will own the connection. Defaults to the calling agent.',
         ),
+      subject: z
+        .string()
+        .max(200)
+        .optional()
+        .describe(
+          'Whose token this will be (a user id). Omit for the agent-wide connection.',
+        ),
     }),
   })
   async startMcpOauth(
-    { serverId, agentId }: { serverId: string; agentId?: string },
+    {
+      serverId,
+      agentId,
+      subject,
+    }: { serverId: string; agentId?: string; subject?: string },
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
@@ -76,17 +91,22 @@ export class McpOauthTool implements IConditionallyListedTool {
       );
     }
     try {
-      const { authorizeUrl } = await this.oauth.start(serverId, owner);
+      const { authorizeUrl } = await this.oauth.start({
+        serverId,
+        agentId: owner,
+        ...(subject ? { subject } : {}),
+      });
       this.logger.log(
-        `OAuth connect started through MCP: server=${serverId} agent=${owner}`,
+        `OAuth connect started through MCP: server=${serverId} agent=${owner} subject=${subject ?? 'agent-wide'}`,
       );
       return ok({
         authorizeUrl,
         agentId: owner,
+        subject: subject ?? owner,
         instruction:
           'Send this URL to the person and ask them to open it in their ' +
           'browser and log in at the provider. Once they see "Connected", ' +
-          `the token is stored for ${owner} — nothing more to call here.`,
+          `the token is stored for ${subject ? `subject ${subject} on ` : ''}${owner} — nothing more to call here.`,
       });
     } catch (error) {
       // The service's own refusals — no such server, not oauth, no public

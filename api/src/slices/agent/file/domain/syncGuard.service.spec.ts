@@ -15,6 +15,8 @@ const node = (path: string, updatedAt: Date): IFileNode => ({
   path,
   size: 1,
   updatedAt,
+  kind: 'text',
+  editable: true,
 });
 
 describe('SyncGuardService', () => {

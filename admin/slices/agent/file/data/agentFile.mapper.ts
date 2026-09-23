@@ -1,6 +1,8 @@
 import type {
+  FileKind,
   IFileChunk,
   IFileContent,
+  IFileLimits,
   IFileNode,
   ISyncResult,
 } from '../domain/agentFile.types';
@@ -11,6 +13,10 @@ function str(value: unknown): string {
 
 function num(value: unknown): number {
   return typeof value === 'number' ? value : 0;
+}
+
+function kind(value: unknown): FileKind {
+  return value === 'binary' ? 'binary' : 'text';
 }
 
 /** Maps the files API onto domain shapes; reads defensively. */
@@ -31,6 +37,8 @@ export class AgentFileMapper {
       content: str(o.content),
       size: num(o.size),
       updatedAt: str(o.updatedAt),
+      kind: kind(o.kind),
+      editable: o.editable === true,
     };
   }
 
@@ -47,6 +55,30 @@ export class AgentFileMapper {
       nextOffset: typeof o.nextOffset === 'number' ? o.nextOffset : null,
       hasMore: o.hasMore === true,
       updatedAt: str(o.updatedAt),
+      kind: kind(o.kind),
+      editable: o.editable === true,
+    };
+  }
+
+  toLimits(raw: unknown): IFileLimits {
+    const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    return {
+      maxEditBytes: num(o.maxEditBytes),
+      maxViewBytes: num(o.maxViewBytes),
+      rangeBytes: num(o.rangeBytes),
+      maxRangeBytes: num(o.maxRangeBytes),
+      openLinkTtlSec: num(o.openLinkTtlSec),
+      importMaxArchiveBytes: num(o.importMaxArchiveBytes),
+      importMaxEntries: num(o.importMaxEntries),
+      importMaxFileBytes: num(o.importMaxFileBytes),
+      importPlanListRows: num(o.importPlanListRows),
+      diffCompareMaxBytes: num(o.diffCompareMaxBytes),
+      diffInlineMaxLines: num(o.diffInlineMaxLines),
+      diffInlineMaxBytes: num(o.diffInlineMaxBytes),
+      proposalListRows: num(o.proposalListRows),
+      textExtensions: Array.isArray(o.textExtensions)
+        ? o.textExtensions.filter((e): e is string => typeof e === 'string')
+        : [],
     };
   }
 
@@ -60,6 +92,12 @@ export class AgentFileMapper {
     if (!raw || typeof raw !== 'object') return null;
     const o = raw as Record<string, unknown>;
     if (typeof o.path !== 'string') return null;
-    return { path: o.path, size: num(o.size), updatedAt: str(o.updatedAt) };
+    return {
+      path: o.path,
+      size: num(o.size),
+      updatedAt: str(o.updatedAt),
+      kind: kind(o.kind),
+      editable: o.editable === true,
+    };
   }
 }

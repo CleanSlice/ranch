@@ -19,8 +19,12 @@ interface FileNode {
 
 type TreeNode = FolderNode | FileNode;
 
+// Only the three shared fields are needed here: template files (no
+// `kind`/`editable`) render through the same tree.
+type TreeFile = Pick<IFileNode, 'path' | 'size' | 'updatedAt'>;
+
 const props = defineProps<{
-  files: IFileNode[];
+  files: TreeFile[];
   selected: string | null;
 }>();
 
@@ -31,7 +35,7 @@ const emit = defineEmits<{
 
 const tree = computed<TreeNode[]>(() => buildTree(props.files));
 
-function buildTree(files: IFileNode[]): TreeNode[] {
+function buildTree(files: TreeFile[]): TreeNode[] {
   const root: FolderNode = { type: 'folder', name: '', path: '', children: [] };
   for (const file of files) {
     const segments = file.path.split('/');

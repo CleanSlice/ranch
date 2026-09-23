@@ -6,7 +6,7 @@ import {
 } from '@tabler/icons-vue';
 import { until } from '@vueuse/core';
 import AgentFileTree from '#agentFile/components/agentFile/Tree.vue';
-import AgentFileViewer from '#agentFile/components/agentFile/Viewer.vue';
+import AgentFileViewer from './Viewer.vue';
 
 const props = defineProps<{ id: string }>();
 

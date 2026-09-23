@@ -420,6 +420,23 @@ export class BridleGateway extends IBridleGateway {
     if (channel) this.route(channel, data as Record<string, unknown>);
   }
 
+  sendToAgentClients(agentId: string, data: unknown, capability?: string): void {
+    const suffix = `\u0000${agentId}`;
+    for (const [key, channel] of this.channels) {
+      if (!key.endsWith(suffix)) continue;
+      if (capability) {
+        // Route numbers and buffers the event for the conversation; a socket
+        // that never declared the capability is skipped at delivery so a
+        // reconnecting capable tab still finds it in the replay buffer.
+        const capable = [...channel.sockets.values()].some((s) =>
+          s.capabilities?.includes(capability),
+        );
+        if (!capable && channel.sockets.size > 0) continue;
+      }
+      this.route(channel, data as Record<string, unknown>);
+    }
+  }
+
   handleAgentEvent(agentId: string, data: IBridleOutgoingEvent): void {
     const clientId = data.clientId;
     if (!clientId) return;

@@ -15,6 +15,8 @@ function fakeFiles(content: string): IFileGateway {
       nextOffset: null,
       hasMore: false,
       updatedAt: new Date(0),
+      kind: 'text',
+      editable: true,
     }),
   } as unknown as IFileGateway;
 }

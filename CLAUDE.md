@@ -48,7 +48,7 @@ any admin-console capability. The console is a window, the chat is the hands:
 a module is not done until the Ranch agent has a tool for what the console
 can do — in the slice, with `topic`/`title`/`template`, gated to the right
 audience, `confirm` on anything destructive, no secrets in results, and a spec.
-The API refuses to boot a tool without that metadata; the PR template asks
-for the rest.
+The API refuses to boot a tool without that metadata; the reviewer checks the
+rest against the checklist at the end of that doc.
 
 Project overview: `README.md`.

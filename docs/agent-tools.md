@@ -22,7 +22,7 @@ nobody handed the agent the tool. So, alongside tests:
 
 The API enforces the shape: it refuses to boot a tool without `topic`,
 `title` and `template`, or a destructive tool without a `confirm` parameter.
-The reviewer enforces the rest: the checklist line in the PR template.
+The reviewer enforces the rest: the checklist at the end of this document.
 
 ## Definition of done for a capability
 

@@ -32,4 +32,15 @@ a fetch or a live feed. An entity lives once in its Pinia store: fetches upsert,
 pushes patch, components render by id, `useAsyncData` is for loading state only,
 optimistic changes go through the store's `patch()` with a rollback.
 
+**Twin consoles (`admin` + `app`):** seven slices exist in both — `agent`,
+`bridle`, `chat`, `common`, `setup`, `share`, `user`. Touching one of them is
+not finished until you have looked at its twin. Grep the symbol in both trees,
+and say in the PR which console you checked and why the other needed nothing.
+Shared behaviour gets copied rather than shared, and the copies drift silently:
+`share` currently ships two `buildShareUrl` functions with different env vars
+and different token encoding, because CLEAN-104 and CLEAN-110 fixed the same
+problem a day apart without meeting. A fix that lands in one console and leaves
+the other behind is half a fix, and the missing half is the one the user
+clicks.
+
 Project overview: `README.md`.

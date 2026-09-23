@@ -94,7 +94,9 @@ describe('tools/list snapshot — real container lookup (CLEAN-109)', () => {
     await handlers.get(ListToolsRequestSchema)!({});
     await new Promise((r) => setImmediate(r));
 
-    const recorder = app.get(IRecorderGateway) as RecorderGateway;
+    const recorder = app.get<IRecorderGateway, RecorderGateway>(
+      IRecorderGateway,
+    );
     expect(recorder.calls).toEqual([['a-9', ['list_agents']]]);
   });
 });

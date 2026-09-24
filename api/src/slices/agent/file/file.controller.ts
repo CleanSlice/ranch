@@ -10,6 +10,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   Res,
   forwardRef,
 } from '@nestjs/common';
@@ -19,8 +20,12 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { Response } from 'express';
+import type { Request, Response } from 'express';
 import { HttpException, HttpStatus } from '@nestjs/common';
+import type { IAuthTokenPayload } from '#/user/auth/domain';
+import { refuseAgentWrite } from './domain/agentTokenGuard';
+
+type AuthedRequest = Request & { user?: IAuthTokenPayload };
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IBridleGateway } from '#/bridle/domain';
 import { Public } from '#/user/auth/guards';
@@ -116,7 +121,9 @@ export class FileController {
     @Param('agentId') agentId: string,
     @Query('path') path: string,
     @Body() dto: SaveFileDto,
+    @Req() req: AuthedRequest,
   ): Promise<FileContentDto> {
+    refuseAgentWrite(req);
     await this.assertAgent(agentId);
     await this.fileGateway.save(agentId, path, dto.content, {
       createOnly: dto.createOnly,
@@ -137,7 +144,9 @@ export class FileController {
   async delete(
     @Param('agentId') agentId: string,
     @Query() query: DeleteFileQueryDto,
+    @Req() req: AuthedRequest,
   ): Promise<DeleteFilesDto> {
+    refuseAgentWrite(req);
     await this.assertAgent(agentId);
     if (query.recursive) {
       const deleted = await this.fileGateway.deletePrefix(agentId, query.path);
@@ -159,7 +168,9 @@ export class FileController {
   async deleteSelection(
     @Param('agentId') agentId: string,
     @Body() body: DeleteFilesBodyDto,
+    @Req() req: AuthedRequest,
   ): Promise<DeleteFilesDto> {
+    refuseAgentWrite(req);
     await this.assertAgent(agentId);
     const all = await this.fileGateway.list(agentId);
     const wanted = body.paths;

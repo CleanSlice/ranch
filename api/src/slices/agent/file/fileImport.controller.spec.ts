@@ -64,6 +64,9 @@ function build(opts: { stage?: boolean; remove?: number; status?: string } = {})
   return { controller, files, archives, release };
 }
 
+// A person at the console; an agent token is refused before the plan is read.
+const operator = () => ({ user: { sub: 'user-1', email: '', roles: [] } }) as never;
+
 describe('FileImportController', () => {
   it('answers 404 when the stage is gone', async () => {
     const { controller } = build({ stage: false });
@@ -75,7 +78,7 @@ describe('FileImportController', () => {
   it('refuses replace with removals until confirmRemove is set', async () => {
     const { controller, archives } = build({ remove: 3 });
     const err = await controller
-      .apply('a1', 'imp', { mode: 'replace' })
+      .apply('a1', 'imp', { mode: 'replace' }, operator())
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(HttpException);
     expect((err as HttpException).getStatus()).toBe(409);
@@ -92,7 +95,7 @@ describe('FileImportController', () => {
     const result = await controller.apply('a1', 'imp', {
       mode: 'replace',
       confirmRemove: true,
-    });
+    }, operator());
     expect(result.removed).toBe(3);
     expect(result.restartRequired).toBe(true);
     expect(files.deleteStage).toHaveBeenCalledWith('a1', 'imp');
@@ -100,16 +103,16 @@ describe('FileImportController', () => {
 
   it('answers 409 while another import runs for the same agent', async () => {
     const { controller, release } = build();
-    const first = controller.apply('a1', 'imp', { mode: 'merge' });
+    const first = controller.apply('a1', 'imp', { mode: 'merge' }, operator());
     // Let the first call reach `archives.apply` (it awaits the plan first).
     await new Promise((r) => setImmediate(r));
     await expect(
-      controller.apply('a1', 'imp', { mode: 'merge' }),
+      controller.apply('a1', 'imp', { mode: 'merge' }, operator()),
     ).rejects.toBeInstanceOf(ConflictException);
     release();
     await first;
     // Lock released: a new import is accepted again.
-    await expect(controller.apply('a1', 'imp', { mode: 'merge' })).resolves.toMatchObject({
+    await expect(controller.apply('a1', 'imp', { mode: 'merge' }, operator())).resolves.toMatchObject({
       written: 1,
     });
   });

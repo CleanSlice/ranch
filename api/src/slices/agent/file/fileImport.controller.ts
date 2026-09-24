@@ -18,6 +18,12 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Req } from '@nestjs/common';
+import type { Request } from 'express';
+import type { IAuthTokenPayload } from '#/user/auth/domain';
+import { refuseAgentWrite } from './domain/agentTokenGuard';
+
+type AuthedRequest = Request & { user?: IAuthTokenPayload };
 import {
   ApiBody,
   ApiConsumes,
@@ -96,7 +102,9 @@ export class FileImportController {
   async stage(
     @Param('agentId') agentId: string,
     @UploadedFile() archive: UploadedFileLike | undefined,
+    @Req() req: AuthedRequest,
   ): Promise<ImportPlanDto> {
+    refuseAgentWrite(req);
     await this.assertAgent(agentId);
     this.assertNotRunning(agentId);
     const zip = this.requireZip(archive);
@@ -162,7 +170,9 @@ export class FileImportController {
     @Param('agentId') agentId: string,
     @Param('importId') importId: string,
     @Body() body: ImportApplyDto,
+    @Req() req: AuthedRequest,
   ): Promise<ImportResultDto> {
+    refuseAgentWrite(req);
     const agent = await this.agentGateway.findById(agentId);
     if (!agent) throw new NotFoundException('Agent not found');
     this.assertNotRunning(agentId);

@@ -638,8 +638,10 @@ export class FileTool implements IConditionallyListedTool {
     description:
       'Ask the running agent to push its local workspace files to S3, so the ' +
       'console and read_agent_file see what the pod sees. Refuses with an ' +
-      '`atRisk` list (and does NOT sync) when S3 holds files edited after ' +
-      "the pod's last pull or push — those could be overwritten. Show the " +
+      '`atRisk` list (and does NOT sync) when S3 holds files edited from ' +
+      "Ranch (console, tools, import) after the pod's last pull or push — " +
+      'those could be overwritten; files the pod uploaded itself are never ' +
+      'listed. Show the ' +
       'list to the person; call again with `confirm: true` only after they ' +
       'accepted the risk. Returns `agentOnline` and the number of files ' +
       'pushed; an offline agent pushes nothing.',

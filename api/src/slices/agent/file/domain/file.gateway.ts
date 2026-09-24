@@ -73,6 +73,14 @@ export abstract class IFileGateway {
   // ── Change proposals (CLEAN-112) ──────────────────────────────
   /** ETag of the stored object (quotes stripped), or null when absent. */
   abstract headEtag(agentId: string, path: string): Promise<string | null>;
+  /**
+   * Whether the stored object was last written through Ranch (console save,
+   * agent tool, import, skill sync) rather than uploaded by the pod's own
+   * S3 watcher (CLEAN-115). Ranch tags every write it makes; an object
+   * without the tag is the pod's copy and can never be at risk from a Sync.
+   * False when the object is absent.
+   */
+  abstract wasWrittenByRanch(agentId: string, path: string): Promise<boolean>;
   /** Proposed content lives outside every agent prefix until applied. */
   abstract putProposalContent(
     proposalId: string,

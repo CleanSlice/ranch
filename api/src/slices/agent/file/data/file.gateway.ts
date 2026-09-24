@@ -139,6 +139,18 @@ const AGENT_OWNED_ROOT_FILES = new Set([
   'MEMORY.md',
 ]);
 
+// Object metadata stamped on every write Ranch makes into an agent prefix
+// (CLEAN-115). The pod's S3 watcher uploads its own changes with no metadata
+// (usage.json on every LLM call, memory, sessions), so the sync guard reads
+// this tag to keep only console/tool/import edits in the at-risk list.
+// Template copies (seed/resync) stay untagged on purpose: they land before
+// the pod's boot pull, so they are never newer than the guard's baseline,
+// and CopyObject would need MetadataDirective=REPLACE plus a re-declared
+// content type to carry the tag.
+export const RANCH_ORIGIN_METADATA: Readonly<Record<string, string>> = {
+  origin: 'ranch',
+};
+
 @Injectable()
 export class S3FileGateway extends IFileGateway {
   // Sentinel file written into every template-managed skill dir. syncSkills
@@ -461,6 +473,7 @@ export class S3FileGateway extends IFileGateway {
         Key: key,
         Body: content,
         ContentType: this.contentType(path),
+        Metadata: RANCH_ORIGIN_METADATA,
       }),
     );
   }
@@ -739,6 +752,7 @@ export class S3FileGateway extends IFileGateway {
           Key: base + 'SKILL.md',
           Body: skill.body,
           ContentType: this.contentType('SKILL.md'),
+          Metadata: RANCH_ORIGIN_METADATA,
         }),
       );
       written++;
@@ -750,6 +764,7 @@ export class S3FileGateway extends IFileGateway {
             Key: base + file.path,
             Body: file.content,
             ContentType: this.contentType(file.path),
+            Metadata: RANCH_ORIGIN_METADATA,
           }),
         );
         written++;
@@ -916,6 +931,7 @@ export class S3FileGateway extends IFileGateway {
         Key: this.prefix(agentId) + path,
         Body: bytes,
         ContentType: contentType ?? this.contentType(path),
+        Metadata: RANCH_ORIGIN_METADATA,
       }),
     );
   }
@@ -1049,6 +1065,24 @@ export class S3FileGateway extends IFileGateway {
       return head.ETag ? head.ETag.replace(/"/g, '') : null;
     } catch (err) {
       if (this.isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
+  async wasWrittenByRanch(agentId: string, path: string): Promise<boolean> {
+    this.assertSafePath(path);
+    const { client, bucket } = await this.connect();
+    try {
+      const head = await client.send(
+        new HeadObjectCommand({
+          Bucket: bucket,
+          Key: this.prefix(agentId) + path,
+        }),
+      );
+      // S3 lower-cases user metadata keys on the way back.
+      return head.Metadata?.origin === RANCH_ORIGIN_METADATA.origin;
+    } catch (err) {
+      if (this.isNotFound(err)) return false;
       throw err;
     }
   }

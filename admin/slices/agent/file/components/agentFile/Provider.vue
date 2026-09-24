@@ -187,9 +187,12 @@ const confirmStore = useConfirmStore();
 const route = useRoute();
 const router = useRouter();
 
-// ── Agent copy hint (CLEAN-50) ─────────────────────────────────────
-// While the agent is Running, this tab shows the S3 copy but the pod works on
-// its own. Read from the agent store's record (docs/state.md).
+// ── Agent copy hint (CLEAN-50, reworded in CLEAN-115) ──────────────
+// While the agent is Running, this tab shows the S3 copy. The pod works on
+// its own copy and its watcher pushes whatever it changes to S3 within about
+// 30 s, so the two rarely differ for long — the pill must not claim the pod
+// holds something newer. Sync forces a full push and catches what the
+// watcher missed. Read from the agent store's record (docs/state.md).
 const agent = computed(() => agentStore.byId(props.id));
 const agentRunning = computed(() => agent.value?.status === 'running');
 
@@ -204,14 +207,14 @@ function formatClock(iso: string | null): string | null {
 const copyPill = computed(() => {
   if (!agentRunning.value) return null;
   const pulled = formatClock(agent.value?.lastPullAt ?? null);
-  return pulled ? `Agent copy is newer (${pulled})` : 'Agent works on its own copy';
+  return pulled ? `Agent running since ${pulled}` : 'Agent is running';
 });
 
 const copyPillTitle = computed(() => {
   const pulled = agent.value?.lastPullAt ? new Date(agent.value.lastPullAt).toLocaleString() : null;
   const synced = agent.value?.lastSyncAt ? new Date(agent.value.lastSyncAt).toLocaleString() : null;
   const parts = [
-    'This tab shows the stored (S3) copy. The running agent works on its own copy and may hold newer content — Sync brings it in.',
+    'This tab shows the stored (S3) copy. The running agent works on its own copy and pushes the files it changes to S3 within about 30 seconds. Sync forces a full push and picks up anything the watcher missed.',
   ];
   if (pulled) parts.push(`Agent took its copy ${pulled}.`);
   if (synced) parts.push(`Last sync ${synced}.`);
@@ -406,8 +409,8 @@ async function onSync() {
         title: 'Overwrite newer files in S3?',
         description:
           `${atRisk.length} file${atRisk.length === 1 ? ' was' : 's were'} ` +
-          'edited in S3 after the running agent last took its copy: ' +
-          `${describeAtRisk(atRisk)}. ` +
+          'edited from Ranch (console, chat tools or import) after the ' +
+          `running agent last took its copy: ${describeAtRisk(atRisk)}. ` +
           'If the agent also changed them, Sync will overwrite the S3 ' +
           'version with the agent’s copy. Files changed only in S3 are safe.',
         confirmLabel: 'Sync anyway',
@@ -621,12 +624,12 @@ watch(
         <button
           v-if="copyPill"
           type="button"
-          class="flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-900 hover:bg-amber-500/20 dark:text-amber-200"
+          class="flex items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
           :title="copyPillTitle"
           :disabled="syncing"
           @click="onSync"
         >
-          <span class="size-1.5 rounded-full bg-amber-500" />
+          <span class="size-1.5 rounded-full bg-emerald-500" />
           {{ copyPill }}
           <span class="font-medium">{{ syncing ? 'Syncing…' : 'Sync now' }}</span>
         </button>

@@ -210,8 +210,9 @@ export class FileController {
     status: 409,
     type: SyncConflictDto,
     description:
-      'S3 files newer than the pod’s working copy were found and confirm was ' +
-      'not set. No sync was performed.',
+      'S3 files edited from Ranch after the pod’s last pull/push were found ' +
+      'and confirm was not set. No sync was performed. Files the pod ' +
+      'uploaded itself are not counted.',
   })
   async sync(
     @Param('agentId') agentId: string,

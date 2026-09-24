@@ -55,3 +55,11 @@
 - Status updates: `agent.gateway.ts:91-111` (`updateStatus`), driven by `agentStatus.service.ts` subscribing to bridle `agentEvents$` (`bridle.gateway.ts:75` emits `connected`) — `lastPullAt` hooks into the same path.
 - Tests: api uses jest (`test: jest --passWithNoTests`); admin has no tests (manual validation via quickstart).
 - OpenAPI: regenerate `api` swagger (`generate:swagger`) then `admin bun run build:api` (openapi-ts) after DTO changes.
+
+## R8. Amendment (CLEAN-115, 2026-09-24): the runtime's watcher was missed in R1
+
+**Finding**: R1 described the bridle `sync` event as the pod's only push path. The runtime also starts an fs.watch pusher whenever `S3_BUCKET` is set (`runtime.module.ts:347` → `s3-sync.gateway.ts:startWatcher`, 30 s debounce, always on). Every local change the pod makes reaches S3 on its own: `data/usage.json` after each LLM call, memory, sessions. Those objects are newer than the R2 baseline yet are the pod's own copy, so the guard listed them on every Sync after the first LLM call (`data/usage.json` in the 409 dialog), and the "Agent copy is newer" pill claimed a lag that in practice is under a minute.
+
+**Decision**: every S3 write Ranch makes into an agent prefix (console save, agent tool, import, skill sync) carries object metadata `origin=ranch` (`file.gateway.ts:RANCH_ORIGIN_METADATA`). `SyncGuardService.assess` keeps only tagged objects among the newer-than-baseline candidates, one `HeadObject` per candidate. Untagged = uploaded by the pod = never at risk. Template copies (seed/resync via `CopyObject`) stay untagged: they land before the boot pull and are never newer than the baseline. The pill now says the agent is running and that the pod pushes its changes within about 30 s; Sync remains the full-push safety net.
+
+**Residual risk (out of scope here, runtime repo)**: the watcher itself never checks S3 freshness. A Ranch edit to a file the pod rewrites on its own (usage, memory, sessions) is overwritten by the next watcher flush, well before any Sync click, and the guard cannot intervene. Files the pod only reads (SOUL.md, skills, config) are not affected: the watcher pushes only paths whose local mtime/size changed. Hardening belongs in the runtime: tag its own uploads (`origin=pod`) and/or `HeadObject` before overwriting an object newer than its manifest entry.

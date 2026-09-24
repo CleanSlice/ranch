@@ -5,10 +5,22 @@ import { IFileNode } from './file.types';
 const T0 = new Date('2026-08-31T10:00:00Z').getTime();
 const at = (offsetSec: number) => new Date(T0 + offsetSec * 1000);
 
-function fileStub(nodes: IFileNode[]): IFileGateway {
+/**
+ * `ranchPaths` — objects carrying the Ranch origin tag. Defaults to every
+ * node, i.e. "all of these were written from the console"; pass a subset to
+ * model files the pod's own watcher uploaded (CLEAN-115).
+ */
+function fileStub(
+  nodes: IFileNode[],
+  ranchPaths: string[] = nodes.map((n) => n.path),
+): IFileGateway & { wasWrittenByRanch: jest.Mock } {
+  const tagged = new Set(ranchPaths);
   return {
     list: async (): Promise<IFileNode[]> => nodes,
-  } as unknown as IFileGateway;
+    wasWrittenByRanch: jest.fn(
+      async (_agentId: string, path: string) => tagged.has(path),
+    ),
+  } as unknown as IFileGateway & { wasWrittenByRanch: jest.Mock };
 }
 
 const node = (path: string, updatedAt: Date): IFileNode => ({
@@ -84,6 +96,48 @@ describe('SyncGuardService', () => {
         fileStub([node('a.md', at(-120)), node('b.md', at(-90))]),
       );
       const result = await guard.assess('agent-1', at(0), null);
+      expect(result.atRisk).toEqual([]);
+    });
+
+    // CLEAN-115: the pod's fs.watch pusher uploads its own changes (usage.json
+    // on every LLM call, memory, sessions). Those objects are newer than the
+    // baseline but were never edited from Ranch — the pod already holds them.
+    it('ignores newer files the pod pushed itself (no Ranch origin tag)', async () => {
+      const files = fileStub(
+        [
+          node('data/usage.json', at(600)), // watcher upload → pod's own copy
+          node('SOUL.md', at(500)), // console save → at risk
+        ],
+        ['SOUL.md'],
+      );
+      const guard = new SyncGuardService(files);
+      const result = await guard.assess('agent-1', at(-1000), at(100));
+      expect(result.atRisk.map((n) => n.path)).toEqual(['SOUL.md']);
+    });
+
+    it('looks up the origin only for files newer than the baseline', async () => {
+      const files = fileStub([
+        node('data/usage.json', at(600)),
+        node('notes.md', at(-500)),
+      ]);
+      const guard = new SyncGuardService(files);
+      await guard.assess('agent-1', at(-1000), at(100));
+      expect(files.wasWrittenByRanch).toHaveBeenCalledTimes(1);
+      expect(files.wasWrittenByRanch).toHaveBeenCalledWith(
+        'agent-1',
+        'data/usage.json',
+      );
+    });
+
+    it('reports nothing when every newer file came from the pod', async () => {
+      const guard = new SyncGuardService(
+        fileStub(
+          [node('data/usage.json', at(600)), node('memory/today.md', at(700))],
+          [],
+        ),
+      );
+      const result = await guard.assess('agent-1', at(-1000), at(100));
+      expect(result.baseline).toEqual(at(100));
       expect(result.atRisk).toEqual([]);
     });
   });

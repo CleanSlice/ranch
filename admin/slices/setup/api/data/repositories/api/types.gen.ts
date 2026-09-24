@@ -553,7 +553,7 @@ export type SyncConflictDto = {
    */
   requiresConfirmation: boolean;
   /**
-   * S3 files modified after the pod last pulled/pushed. A sync MAY overwrite or delete them if the pod also changed them locally.
+   * S3 files written from Ranch (console, tools, import) after the pod last pulled/pushed. A sync MAY overwrite or delete them if the pod also changed them locally. Objects the pod uploaded itself are excluded (no Ranch origin tag).
    */
   atRisk: Array<AtRiskFileDto>;
   /**
@@ -3103,7 +3103,7 @@ export type FileControllerSyncData = {
 
 export type FileControllerSyncErrors = {
   /**
-   * S3 files newer than the pod’s working copy were found and confirm was not set. No sync was performed.
+   * S3 files edited from Ranch after the pod’s last pull/push were found and confirm was not set. No sync was performed. Files the pod uploaded itself are not counted.
    */
   409: SyncConflictDto;
 };

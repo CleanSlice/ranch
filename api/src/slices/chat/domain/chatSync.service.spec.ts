@@ -22,6 +22,8 @@ function fileStub(
         path: f.path,
         size: f.size,
         updatedAt: new Date(0),
+        kind: 'text',
+        editable: true,
       })),
     readRange: async (_a: string, path: string): Promise<IFileChunk> => {
       const content = contents[path] ?? '';
@@ -35,6 +37,8 @@ function fileStub(
         nextOffset: null,
         hasMore: false,
         updatedAt: new Date(0),
+        kind: 'text',
+        editable: true,
       };
     },
   } as unknown as IFileGateway;

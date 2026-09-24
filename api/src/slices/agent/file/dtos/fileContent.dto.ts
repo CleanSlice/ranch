@@ -12,4 +12,10 @@ export class FileContentDto {
 
   @ApiProperty({ format: 'date-time' })
   updatedAt!: string;
+
+  @ApiProperty({ enum: ['text', 'binary'] })
+  kind!: 'text' | 'binary';
+
+  @ApiProperty()
+  editable!: boolean;
 }

@@ -1,11 +1,20 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { AgentModule } from '#/agent/agent/agent.module';
 import { SettingModule } from '#/setting/setting.module';
 import { BridleModule } from '#/bridle/bridle.module';
 import { FileController } from './file.controller';
+import { FileImportController } from './fileImport.controller';
+import { FileProposalController } from './fileProposal.controller';
 import { FileTool } from './file.tool';
+import { FileProposalRepository } from './data/fileProposal.repository';
+import { IFileProposalRepository } from './domain/fileProposal.types';
+import { FileProposalService } from './domain/fileProposal.service';
+import { WorkspaceArchiveService } from './domain/workspaceArchive.service';
 import { IFileGateway } from './domain/file.gateway';
 import { S3FileGateway } from './data/file.gateway';
+import { OpenLinkService } from './domain/openLink.service';
 import { SyncGuardService } from './domain/syncGuard.service';
 import { TranscriptReaderService } from './domain/transcriptReader.service';
 
@@ -17,18 +26,40 @@ import { TranscriptReaderService } from './domain/transcriptReader.service';
     forwardRef(() => AgentModule),
     SettingModule,
     forwardRef(() => BridleModule),
+    // "Open full" links (CLEAN-112): short-lived JWTs minted and verified
+    // here with the same secret every other slice uses.
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: (config: ConfigService) => ({
+        secret: config.get('JWT_SECRET', 'dev-secret-change-me'),
+        signOptions: { expiresIn: '24h' },
+      }),
+      inject: [ConfigService],
+    }),
   ],
-  controllers: [FileController],
+  controllers: [FileController, FileImportController, FileProposalController],
   providers: [
     {
       provide: IFileGateway,
       useClass: S3FileGateway,
     },
+    OpenLinkService,
     SyncGuardService,
     TranscriptReaderService,
+    // Workspace import (CLEAN-112): validate → stage → plan → apply.
+    WorkspaceArchiveService,
+    // Change proposals (CLEAN-112): what a chat-driven write becomes before
+    // the person approves it; the bridle transcript reads them back.
+    { provide: IFileProposalRepository, useClass: FileProposalRepository },
+    FileProposalService,
     // MCP tools of this slice (CLEAN-109): discovered by the registry.
     FileTool,
   ],
-  exports: [IFileGateway, TranscriptReaderService],
+  exports: [
+    IFileGateway,
+    TranscriptReaderService,
+    WorkspaceArchiveService,
+    FileProposalService,
+  ],
 })
 export class FileModule {}

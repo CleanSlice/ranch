@@ -610,6 +610,7 @@ async function onConfirmReset() {
               @inspect="inspectedMessageId = $event"
               @resend="onResend"
               @discard="onDiscard"
+              @proposal-applied="handleSend"
             />
             <div
               v-else-if="item.kind === 'day'"

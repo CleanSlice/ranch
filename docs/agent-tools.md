@@ -111,6 +111,24 @@ the model went through a confirmation step. The description ends with
 revokes, replaces wholesale, changes a role, restarts a fleet or interrupts
 work.
 
+### Confirm by proposal (writes the person must see first)
+
+A write whose *content* matters — a file edit, an import — refines the rule
+(CLEAN-112, `agent/file/file.tool.ts`): the first call, without `confirm`,
+**creates a proposal** (`FileProposalService`) and returns `{ proposalId,
+status: 'pending' }`; the person sees a card in the chat with the diff and
+Apply / Edit / Skip. The confirming call carries `confirm: true` **and** that
+`proposalId`, and applies exactly that proposal — so a yes for one change can
+never be spent on another, and the console's Apply and the agent's confirm
+meet in the same service. Use this shape whenever the person needs to see
+what will be written, not only that something will be.
+
+| Tool (topic `agent_workspace`) | Backing |
+|---|---|
+| `list_agent_files`, `read_agent_file` | `IFileGateway.list` / `readRange` (same slices as the console) |
+| `write_agent_file`, `create_agent_file` | `FileProposalService.propose` → `apply` (confirm by proposal) |
+| `import_agent_files` | `WorkspaceArchiveService` + `FileProposalService.proposeImport` → `apply`; an archive comes as a chat attachment or an https link — the local file picker stays in the console, as its description says |
+
 ## Secrets
 
 Parameters may carry secrets. Results never do. Strip `apiKey`, `authValue`,

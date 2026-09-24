@@ -4,7 +4,10 @@ export class FileChunkDto {
   @ApiProperty({ example: 'data/sessions/bridle:admin.jsonl' })
   path!: string;
 
-  @ApiProperty({ description: 'UTF-8 slice of the file from `offset`.' })
+  @ApiProperty({
+    description:
+      'UTF-8 slice of the file from `offset`. Never ends in the middle of a character.',
+  })
   content!: string;
 
   @ApiProperty({ example: 262144, description: 'Byte length of `content`.' })
@@ -36,4 +39,13 @@ export class FileChunkDto {
 
   @ApiProperty({ format: 'date-time' })
   updatedAt!: string;
+
+  @ApiProperty({ enum: ['text', 'binary'] })
+  kind!: 'text' | 'binary';
+
+  @ApiProperty({
+    description:
+      'Whole file is text and within the editable size limit. Editing also needs `hasMore === false`.',
+  })
+  editable!: boolean;
 }

@@ -30,10 +30,46 @@ const agentRow = (overrides: Record<string, unknown> = {}) => ({
 interface Harness {
   tool: FileTool;
   agents: { findById: jest.Mock; setLastSyncAt: jest.Mock };
-  files: { list: jest.Mock; delete: jest.Mock; deletePrefix: jest.Mock };
+  files: {
+    list: jest.Mock;
+    delete: jest.Mock;
+    deletePrefix: jest.Mock;
+    readRange: jest.Mock;
+    putStage: jest.Mock;
+    save: jest.Mock;
+  };
   bridle: { syncAgent: jest.Mock };
   syncGuard: { assess: jest.Mock };
+  archive: { validate: jest.Mock; plan: jest.Mock };
+  proposals: {
+    propose: jest.Mock;
+    proposeImport: jest.Mock;
+    get: jest.Mock;
+    apply: jest.Mock;
+  };
+  attachments: { fetch: jest.Mock };
 }
+
+const pendingRow = (overrides: Record<string, unknown> = {}) => ({
+  id: 'prop-1',
+  agentId: 'agent-a',
+  chatAgentId: 'agent-ops',
+  kind: 'single',
+  op: 'write',
+  path: 'agent.config.json',
+  status: 'pending',
+  additions: 1,
+  deletions: 1,
+  changedLines: 2,
+  firstChangedLine: 12,
+  diffStatus: 'ok',
+  proposedBytes: 856,
+  summary: null,
+  mode: null,
+  reason: null,
+  result: null,
+  ...overrides,
+});
 
 function harness(): Harness {
   const agents = {
@@ -46,15 +82,40 @@ function harness(): Harness {
         path: 'SOUL.md',
         size: 10,
         updatedAt: new Date('2026-09-17T09:00:00.000Z'),
+        kind: 'text',
+        editable: true,
       },
       {
         path: 'skills/x/SKILL.md',
         size: 20,
         updatedAt: new Date('2026-09-17T09:00:00.000Z'),
+        kind: 'text',
+        editable: true,
+      },
+      {
+        path: 'data/photo.png',
+        size: 2000,
+        updatedAt: new Date('2026-09-17T09:00:00.000Z'),
+        kind: 'binary',
+        editable: false,
       },
     ]),
     delete: jest.fn().mockResolvedValue(undefined),
     deletePrefix: jest.fn().mockResolvedValue(3),
+    readRange: jest.fn().mockResolvedValue({
+      path: 'SOUL.md',
+      content: 'hello',
+      size: 5,
+      totalSize: 5,
+      offset: 0,
+      nextOffset: null,
+      hasMore: false,
+      updatedAt: new Date('2026-09-17T09:00:00.000Z'),
+      kind: 'text',
+      editable: true,
+    }),
+    putStage: jest.fn().mockResolvedValue(undefined),
+    save: jest.fn().mockResolvedValue(undefined),
   };
   const bridle = {
     syncAgent: jest.fn().mockResolvedValue({ agentOnline: true, pushed: 4 }),
@@ -62,14 +123,75 @@ function harness(): Harness {
   const syncGuard = {
     assess: jest.fn().mockResolvedValue({ baseline: null, atRisk: [] }),
   };
+  const archive = {
+    validate: jest.fn().mockResolvedValue({
+      entries: [
+        { path: 'SOUL.md', size: 3, md5: 'x', bytes: Buffer.from('new') },
+      ],
+      wrapperStripped: null,
+    }),
+    plan: jest.fn().mockResolvedValue({
+      importId: 'imp',
+      mode: 'merge',
+      includeSessions: false,
+      wrapperStripped: null,
+      counts: { add: 0, change: 1, unchanged: 0, remove: 0, skip: 0 },
+      totalBytes: 3,
+      entries: [{ path: 'SOUL.md', action: 'change', size: 3 }],
+      more: 0,
+      warnings: [],
+    }),
+  };
+  const proposals = {
+    propose: jest.fn().mockResolvedValue(pendingRow()),
+    proposeImport: jest.fn().mockResolvedValue(
+      pendingRow({
+        id: 'prop-set',
+        kind: 'set',
+        op: 'import',
+        path: null,
+        mode: 'merge',
+        summary: {
+          counts: { add: 0, change: 1, unchanged: 0, remove: 0, skip: 0 },
+        },
+      }),
+    ),
+    get: jest.fn().mockResolvedValue(pendingRow()),
+    apply: jest
+      .fn()
+      .mockResolvedValue(
+        pendingRow({ status: 'applied', result: { etag: 'e2' } }),
+      ),
+  };
+  const attachments = {
+    fetch: jest.fn().mockResolvedValue({
+      id: 'att-1',
+      name: 'ws.zip',
+      mimeType: 'application/zip',
+      size: 3,
+      body: Buffer.from('zip'),
+    }),
+  };
 
   const tool = new FileTool(
     agents as unknown as IAgentGateway,
     files as unknown as IFileGateway,
     bridle as unknown as IBridleGateway,
     syncGuard as unknown as SyncGuardService,
+    archive as never,
+    proposals as never,
+    attachments as never,
   );
-  return { tool, agents, files, bridle, syncGuard };
+  return {
+    tool,
+    agents,
+    files,
+    bridle,
+    syncGuard,
+    archive,
+    proposals,
+    attachments,
+  };
 }
 
 const textOf = (result: { content: { text: string }[] }) =>
@@ -273,7 +395,7 @@ describe('export_agent_files', () => {
     expect(files.list).toHaveBeenCalledWith('agent-a');
     const body = JSON.parse(textOf(result));
     expect(body.downloadPath).toBe('/agents/agent-a/files/export');
-    expect(body.fileCount).toBe(2);
+    expect(body.fileCount).toBe(3);
     expect(body.note).toContain('login');
   });
 

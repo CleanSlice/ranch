@@ -85,7 +85,21 @@
       "chat.thinking": "98a06dc7c627",
       "chat.thinking_toggle": "c4bc88aedb52",
       "chat.thought": "bec23247cccd",
-      "chat.you": "08b041935798"
+      "chat.you": "08b041935798",
+      "proposal.applied": "0c79a9c22284",
+      "proposal.binary": "9a3924b98ad3",
+      "proposal.binary_body": "7a1f0769ced7",
+      "proposal.import_into": "6da1ae08b97e",
+      "proposal.large_change": "5f756f254283",
+      "proposal.line": "ff004c3d1bd6",
+      "proposal.more": "827ab9506d94",
+      "proposal.pending": "2c0e5c6cc19c",
+      "proposal.refused": "66b873543aeb",
+      "proposal.restart_hint": "83f5b2de5e76",
+      "proposal.skipped": "12698ce1ea5c",
+      "proposal.stale": "8fe236ab9d49",
+      "proposal.too_large": "0894ca39d8a4",
+      "proposal.too_large_body": "3118fa05a630"
     },
     "chat:ru": {
       "history.empty_cta": "9c6a7d961b50",

@@ -23,7 +23,7 @@ import { BridleMapper } from './bridle.mapper';
  * no matter what the agent does. No `ui`: the console has no interactive
  * ui parts.
  */
-const CAPABILITIES = ['streaming', 'images', 'files', 'thinking'];
+const CAPABILITIES = ['streaming', 'images', 'files', 'thinking', 'proposals'];
 
 /**
  * What one share-link request carries instead of the console session.
@@ -149,6 +149,16 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
     socket.on('user_message', (raw: unknown) => {
       const message = mapper.toUserMessage(raw);
       if (message) events.onUserMessage(message);
+    });
+    // File change proposals (CLEAN-112): read-only cards in this console.
+    socket.on('proposal', (raw: unknown) => {
+      const o = (raw ?? {}) as Record<string, unknown>;
+      const proposal = mapper.toProposal(o.proposal);
+      if (proposal) events.onProposal(proposal, mapper.toSeq(raw));
+    });
+    socket.on('proposal_update', (raw: unknown) => {
+      const update = mapper.toProposalUpdate(raw);
+      if (update) events.onProposalUpdate(update, mapper.toSeq(raw));
     });
 
     return {

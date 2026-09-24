@@ -1,7 +1,9 @@
 import {
   Injectable,
   BadRequestException,
+  ConflictException,
   NotFoundException,
+  PreconditionFailedException,
 } from '@nestjs/common';
 import {
   S3Client,
@@ -21,18 +23,103 @@ import {
   IFileChunk,
   IFileContent,
   IFileNode,
+  ISaveOptions,
   ISkillBundle,
 } from '../domain/file.types';
+import {
+  MAX_EDIT_BYTES,
+  MAX_RANGE_BYTES,
+  RANGE_BYTES,
+} from '../domain/file.limits';
+import { IImportStageMeta } from '../domain/import.types';
+import {
+  FileKind,
+  SNIFF_BYTES,
+  extensionOf,
+  isEditable,
+  kindFromPath,
+  sniffKind,
+  trailingPartialUtf8,
+} from '../domain/fileKind';
 
-// 1 MiB (CLEAN-56): 256KB was too small for large SOUL.md instructions.
-// main.ts raises the express json body limit above this — keep them in sync.
-const MAX_BYTES = 1024 * 1024;
-// Range reads bypass the editor cap — used by the chunked viewer and the
-// transcript replay. Per-request cap so a malicious / buggy caller can't
-// ask for a 100 MB slice in one go.
-const MAX_RANGE_BYTES = 512 * 1024;
-const DEFAULT_RANGE_BYTES = 256 * 1024;
-const ALLOWED_WRITE_EXT = new Set(['.md', '.json']);
+// Staged import archives (CLEAN-112) live outside every agent prefix.
+const STAGE_PREFIX = 'imports/';
+// Proposed content of a single-file change proposal (CLEAN-112), outside
+// every agent prefix like the import stages.
+const PROPOSAL_PREFIX = 'proposals/';
+
+// Every cap lives in domain/file.limits.ts (CLEAN-112). `MAX_EDIT_BYTES`
+// (1 MiB since CLEAN-56: 256KB was too small for large SOUL.md instructions)
+// is what main.ts's express json body limit must stay above.
+const MAX_BYTES = MAX_EDIT_BYTES;
+const DEFAULT_RANGE_BYTES = RANGE_BYTES;
+
+const CONTENT_TYPES: Record<string, string> = {
+  '.json': 'application/json; charset=utf-8',
+  '.jsonl': 'application/x-ndjson; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.markdown': 'text/markdown; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.csv': 'text/csv; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.yaml': 'application/yaml; charset=utf-8',
+  '.yml': 'application/yaml; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.cjs': 'text/javascript; charset=utf-8',
+  '.ts': 'text/plain; charset=utf-8',
+  '.py': 'text/x-python; charset=utf-8',
+  '.sh': 'text/x-shellscript; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+  '.zip': 'application/zip',
+};
+
+export function contentTypeFor(path: string): string {
+  const ext = extensionOf(path);
+  if (ext in CONTENT_TYPES) return CONTENT_TYPES[ext];
+  return kindFromPath(path) === 'binary'
+    ? 'application/octet-stream'
+    : 'text/plain; charset=utf-8';
+}
+
+// JSON validation lives in the domain (the proposal service needs it too);
+// re-exported so the gateway spec keeps one import.
+import { assertJson, jsonErrorPosition } from '../domain/jsonCheck';
+export { assertJson, jsonErrorPosition };
+
+/**
+ * Turn the raw bytes of a range read into a chunk that never ends in the
+ * middle of a UTF-8 character (CLEAN-112, FR-009). When the slice does not
+ * reach the end of the object, a trailing partial sequence is handed back to
+ * the next request by shortening `size`/`nextOffset`. At the end of the
+ * object nothing is trimmed — a truncated final byte is the file's own.
+ */
+export function sliceChunk(
+  raw: Buffer,
+  offset: number,
+  totalSize: number,
+): Pick<IFileChunk, 'content' | 'size' | 'offset' | 'nextOffset' | 'hasMore'> {
+  const reachesEnd = offset + raw.length >= totalSize;
+  const trim = reachesEnd ? 0 : trailingPartialUtf8(raw);
+  const kept = trim > 0 ? raw.subarray(0, raw.length - trim) : raw;
+  const size = kept.length;
+  const nextOffset = offset + size;
+  const hasMore = nextOffset < totalSize;
+  return {
+    content: kept.toString('utf-8'),
+    size,
+    offset,
+    nextOffset: hasMore ? nextOffset : null,
+    hasMore,
+  };
+}
 
 // Prefixes the runtime writes to at runtime (state that must survive restarts).
 // resyncFromTemplate refuses to overwrite anything under these — only template-
@@ -80,10 +167,16 @@ export class S3FileGateway extends IFileGateway {
       );
       for (const obj of res.Contents ?? []) {
         if (!obj.Key) continue;
+        const path = obj.Key.slice(prefix.length);
+        if (!path) continue;
+        const size = obj.Size ?? 0;
+        const kind = await this.classify(client, bucket, obj.Key, path, size);
         out.push({
-          path: obj.Key.slice(prefix.length),
-          size: obj.Size ?? 0,
+          path,
+          size,
           updatedAt: obj.LastModified ?? new Date(0),
+          kind,
+          editable: isEditable(kind, size),
         });
       }
       continuationToken = res.IsTruncated
@@ -92,6 +185,83 @@ export class S3FileGateway extends IFileGateway {
     } while (continuationToken);
 
     return out.sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  /**
+   * Text or binary (CLEAN-112). Extension first; unknown extensions get
+   * their first few KB sniffed. Empty objects are text (nothing to sniff).
+   */
+  private async classify(
+    client: S3Client,
+    bucket: string,
+    key: string,
+    path: string,
+    size: number,
+  ): Promise<FileKind> {
+    const guess = kindFromPath(path);
+    if (guess !== 'unknown') return guess;
+    if (size === 0) return 'text';
+    try {
+      const res = await client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Range: `bytes=0-${Math.min(size, SNIFF_BYTES) - 1}`,
+        }),
+      );
+      const head = Buffer.from(
+        (await res.Body?.transformToByteArray()) ?? new Uint8Array(),
+      );
+      return sniffKind(head);
+    } catch {
+      // A sniff that fails (object vanished between list and get, throttling)
+      // must not break the listing — call it binary, the safe side.
+      return 'binary';
+    }
+  }
+
+  async streamRaw(
+    agentId: string,
+    path: string,
+  ): Promise<{
+    body: NodeJS.ReadableStream;
+    size: number;
+    contentType: string;
+    kind: FileKind;
+  }> {
+    this.assertSafePath(path);
+    const { client, bucket } = await this.connect();
+    const key = this.prefix(agentId) + path;
+
+    let head;
+    try {
+      head = await client.send(
+        new HeadObjectCommand({ Bucket: bucket, Key: key }),
+      );
+    } catch (err) {
+      if (this.isNotFound(err)) throw new NotFoundException('File not found');
+      throw err;
+    }
+    const size = head.ContentLength ?? 0;
+    const kind = await this.classify(client, bucket, key, path, size);
+
+    let res;
+    try {
+      res = await client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: key }),
+      );
+    } catch (err) {
+      if (this.isNotFound(err)) throw new NotFoundException('File not found');
+      throw err;
+    }
+    if (!res.Body) throw new NotFoundException('File not found');
+
+    return {
+      body: res.Body as unknown as NodeJS.ReadableStream,
+      size,
+      contentType: contentTypeFor(path),
+      kind,
+    };
   }
 
   async read(agentId: string, path: string): Promise<IFileContent> {
@@ -119,13 +289,19 @@ export class S3FileGateway extends IFileGateway {
     const res = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: key }),
     );
-    const content = (await res.Body?.transformToString('utf-8')) ?? '';
+    const bytes = Buffer.from(
+      (await res.Body?.transformToByteArray()) ?? new Uint8Array(),
+    );
+    const guess = kindFromPath(path);
+    const kind: FileKind = guess === 'unknown' ? sniffKind(bytes) : guess;
 
     return {
       path,
-      content,
+      content: bytes.toString('utf-8'),
       size,
       updatedAt: head.LastModified ?? new Date(0),
+      kind,
+      editable: isEditable(kind, size),
     };
   }
 
@@ -159,6 +335,11 @@ export class S3FileGateway extends IFileGateway {
 
     const totalSize = head.ContentLength ?? 0;
     const updatedAt = head.LastModified ?? new Date(0);
+    const kind = await this.classify(client, bucket, key, path, totalSize);
+    if (kind === 'binary') {
+      throw new BadRequestException(`${path} is not a text file`);
+    }
+    const editable = isEditable(kind, totalSize);
 
     if (totalSize === 0 || safeOffset >= totalSize) {
       return {
@@ -170,6 +351,8 @@ export class S3FileGateway extends IFileGateway {
         nextOffset: null,
         hasMore: false,
         updatedAt,
+        kind,
+        editable,
       };
     }
 
@@ -181,26 +364,26 @@ export class S3FileGateway extends IFileGateway {
         Range: `bytes=${safeOffset}-${end}`,
       }),
     );
-    const content = (await res.Body?.transformToString('utf-8')) ?? '';
-    const bytesRead = Buffer.byteLength(content, 'utf-8');
-    const nextOffset = safeOffset + bytesRead;
-    const hasMore = nextOffset < totalSize;
-
+    const raw = Buffer.from(
+      (await res.Body?.transformToByteArray()) ?? new Uint8Array(),
+    );
     return {
+      ...sliceChunk(raw, safeOffset, totalSize),
       path,
-      content,
-      size: bytesRead,
       totalSize,
-      offset: safeOffset,
-      nextOffset: hasMore ? nextOffset : null,
-      hasMore,
       updatedAt,
+      kind,
+      editable,
     };
   }
 
-  async save(agentId: string, path: string, content: string): Promise<void> {
+  async save(
+    agentId: string,
+    path: string,
+    content: string,
+    options: ISaveOptions = {},
+  ): Promise<void> {
     this.assertSafePath(path);
-    this.assertWritableExt(path);
 
     const bytes = Buffer.byteLength(content, 'utf-8');
     if (bytes > MAX_BYTES) {
@@ -209,12 +392,43 @@ export class S3FileGateway extends IFileGateway {
       );
     }
 
-    if (path.endsWith('.json')) {
+    // Any text kind may be written (CLEAN-112). A path whose extension says
+    // nothing is judged by the bytes being saved; a known-binary extension
+    // is refused outright.
+    const guess = kindFromPath(path);
+    const kind: FileKind =
+      guess === 'unknown' ? sniffKind(Buffer.from(content, 'utf-8')) : guess;
+    if (kind !== 'text') {
+      throw new BadRequestException(
+        `${path} is not a text file — only text files can be edited`,
+      );
+    }
+
+    if (extensionOf(path) === '.json') {
+      assertJson(content);
+    }
+
+    if (options.createOnly || options.ifUnmodifiedSince) {
+      const { client, bucket } = await this.connect();
+      const key = this.prefix(agentId) + path;
+      let head: { LastModified?: Date } | null = null;
       try {
-        JSON.parse(content);
+        head = await client.send(
+          new HeadObjectCommand({ Bucket: bucket, Key: key }),
+        );
       } catch (err) {
-        throw new BadRequestException(
-          `Invalid JSON: ${(err as Error).message}`,
+        if (!this.isNotFound(err)) throw err;
+      }
+      if (options.createOnly && head) {
+        throw new ConflictException(`${path} already exists`);
+      }
+      if (
+        options.ifUnmodifiedSince &&
+        head?.LastModified &&
+        head.LastModified.getTime() > options.ifUnmodifiedSince.getTime() + 999
+      ) {
+        throw new PreconditionFailedException(
+          `${path} changed since you opened it`,
         );
       }
     }
@@ -592,9 +806,20 @@ export class S3FileGateway extends IFileGateway {
   // pathological keys (empty rel, traversal segments) defensively.
   async exportZip(
     agentId: string,
+    paths?: string[],
   ): Promise<{ filename: string; buffer: Buffer }> {
     const { client, bucket } = await this.connect();
     const prefix = this.prefix(agentId);
+    // A selection (CLEAN-112): exact files, or folders by prefix.
+    const wanted = (paths ?? []).map((p) => {
+      this.assertSafePath(p);
+      return p;
+    });
+    const selected = (rel: string): boolean =>
+      wanted.length === 0 ||
+      wanted.some(
+        (w) => rel === w || rel.startsWith(w.endsWith('/') ? w : w + '/'),
+      );
 
     const archive = archiver('zip', { zlib: { level: 6 } });
     const chunks: Buffer[] = [];
@@ -618,6 +843,7 @@ export class S3FileGateway extends IFileGateway {
         const rel = obj.Key.slice(prefix.length);
         if (!rel) continue;
         if (rel.split('/').some((s) => s === '..' || s === '.')) continue;
+        if (!selected(rel)) continue;
         const res = await client.send(
           new GetObjectCommand({ Bucket: bucket, Key: obj.Key }),
         );
@@ -634,9 +860,244 @@ export class S3FileGateway extends IFileGateway {
     await done;
 
     return {
-      filename: `agent-${agentId}.zip`,
+      filename:
+        wanted.length > 0
+          ? `agent-${agentId}-selection.zip`
+          : `agent-${agentId}.zip`,
       buffer: Buffer.concat(chunks),
     };
+  }
+
+  // ── Workspace import (CLEAN-112) ─────────────────────────────
+
+  async listWithEtags(
+    agentId: string,
+  ): Promise<Array<{ path: string; size: number; etag: string }>> {
+    const { client, bucket } = await this.connect();
+    const prefix = this.prefix(agentId);
+    const out: Array<{ path: string; size: number; etag: string }> = [];
+    let continuationToken: string | undefined;
+    do {
+      const res = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      for (const obj of res.Contents ?? []) {
+        if (!obj.Key) continue;
+        const path = obj.Key.slice(prefix.length);
+        if (!path) continue;
+        out.push({
+          path,
+          size: obj.Size ?? 0,
+          etag: (obj.ETag ?? '').replace(/^"|"$/g, ''),
+        });
+      }
+      continuationToken = res.IsTruncated
+        ? res.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+    return out;
+  }
+
+  async putObjectRaw(
+    agentId: string,
+    path: string,
+    bytes: Buffer,
+    contentType?: string,
+  ): Promise<void> {
+    this.assertSafePath(path);
+    const { client, bucket } = await this.connect();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: this.prefix(agentId) + path,
+        Body: bytes,
+        ContentType: contentType ?? this.contentType(path),
+      }),
+    );
+  }
+
+  private stageKey(agentId: string, importId: string): string {
+    return `${STAGE_PREFIX}${agentId}/${importId}.zip`;
+  }
+
+  async putStage(
+    agentId: string,
+    importId: string,
+    zip: Buffer,
+    meta: IImportStageMeta,
+  ): Promise<void> {
+    const { client, bucket } = await this.connect();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: this.stageKey(agentId, importId),
+        Body: zip,
+        ContentType: 'application/zip',
+        Metadata: {
+          agentid: meta.agentId,
+          source: meta.source,
+          size: String(meta.size),
+          entries: String(meta.entries),
+          createdat: meta.createdAt.toISOString(),
+        },
+      }),
+    );
+  }
+
+  async getStage(
+    agentId: string,
+    importId: string,
+  ): Promise<{ zip: Buffer; meta: IImportStageMeta } | null> {
+    const { client, bucket } = await this.connect();
+    let res;
+    try {
+      res = await client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: this.stageKey(agentId, importId),
+        }),
+      );
+    } catch (err) {
+      if (this.isNotFound(err)) return null;
+      throw err;
+    }
+    const zip = Buffer.from(
+      (await res.Body?.transformToByteArray()) ?? new Uint8Array(),
+    );
+    const m = res.Metadata ?? {};
+    const source = m.source;
+    return {
+      zip,
+      meta: {
+        agentId: m.agentid ?? agentId,
+        source: source === 'attachment' || source === 'url' ? source : 'upload',
+        size: Number(m.size ?? zip.length) || zip.length,
+        entries: Number(m.entries ?? 0) || 0,
+        createdAt: m.createdat
+          ? new Date(m.createdat)
+          : (res.LastModified ?? new Date(0)),
+      },
+    };
+  }
+
+  async deleteStage(agentId: string, importId: string): Promise<void> {
+    const { client, bucket } = await this.connect();
+    try {
+      await client.send(
+        new DeleteObjectCommand({
+          Bucket: bucket,
+          Key: this.stageKey(agentId, importId),
+        }),
+      );
+    } catch (err) {
+      if (this.isNotFound(err)) return;
+      throw err;
+    }
+  }
+
+  async sweepStages(olderThanMin: number): Promise<number> {
+    const { client, bucket } = await this.connect();
+    const cutoff = Date.now() - olderThanMin * 60 * 1000;
+    let deleted = 0;
+    let continuationToken: string | undefined;
+    do {
+      const list = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: STAGE_PREFIX,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      const keys = (list.Contents ?? [])
+        .filter(
+          (o) => o.Key && o.LastModified && o.LastModified.getTime() < cutoff,
+        )
+        .map((o) => o.Key as string);
+      if (keys.length > 0) {
+        await client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+        deleted += keys.length;
+      }
+      continuationToken = list.IsTruncated
+        ? list.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+    return deleted;
+  }
+
+  // ── Change proposals (CLEAN-112) ────────────────────────────────
+
+  /** ETag of the stored object (quotes stripped), or null when absent. */
+  async headEtag(agentId: string, path: string): Promise<string | null> {
+    this.assertSafePath(path);
+    const { client, bucket } = await this.connect();
+    try {
+      const head = await client.send(
+        new HeadObjectCommand({
+          Bucket: bucket,
+          Key: this.prefix(agentId) + path,
+        }),
+      );
+      return head.ETag ? head.ETag.replace(/"/g, '') : null;
+    } catch (err) {
+      if (this.isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
+  private proposalKey(proposalId: string): string {
+    return `${PROPOSAL_PREFIX}${proposalId}/content`;
+  }
+
+  async putProposalContent(proposalId: string, content: string): Promise<void> {
+    const { client, bucket } = await this.connect();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: this.proposalKey(proposalId),
+        Body: content,
+        ContentType: 'text/plain; charset=utf-8',
+      }),
+    );
+  }
+
+  async getProposalContent(proposalId: string): Promise<string | null> {
+    const { client, bucket } = await this.connect();
+    try {
+      const res = await client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: this.proposalKey(proposalId),
+        }),
+      );
+      return (await res.Body?.transformToString('utf-8')) ?? '';
+    } catch (err) {
+      if (this.isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
+  async deleteProposalContent(proposalId: string): Promise<void> {
+    const { client, bucket } = await this.connect();
+    try {
+      await client.send(
+        new DeleteObjectCommand({
+          Bucket: bucket,
+          Key: this.proposalKey(proposalId),
+        }),
+      );
+    } catch (err) {
+      if (this.isNotFound(err)) return;
+      throw err;
+    }
   }
 
   private prefix(agentId: string): string {
@@ -654,20 +1115,8 @@ export class S3FileGateway extends IFileGateway {
     }
   }
 
-  private assertWritableExt(path: string): void {
-    const dot = path.lastIndexOf('.');
-    const ext = dot >= 0 ? path.slice(dot).toLowerCase() : '';
-    if (!ALLOWED_WRITE_EXT.has(ext)) {
-      throw new BadRequestException(
-        `Only ${[...ALLOWED_WRITE_EXT].join(', ')} files can be edited`,
-      );
-    }
-  }
-
   private contentType(path: string): string {
-    if (path.endsWith('.json')) return 'application/json; charset=utf-8';
-    if (path.endsWith('.md')) return 'text/markdown; charset=utf-8';
-    return 'text/plain; charset=utf-8';
+    return contentTypeFor(path);
   }
 
   private isNotFound(err: unknown): boolean {

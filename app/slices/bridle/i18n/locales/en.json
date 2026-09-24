@@ -43,5 +43,21 @@
     "discard": "Discard",
     "day_today": "Today",
     "day_yesterday": "Yesterday"
+  },
+  "proposal": {
+    "import_into": "Import into {name}",
+    "line": "line {n}",
+    "too_large": "too large to compare",
+    "binary": "binary file",
+    "too_large_body": "Too large to compare inline ({size}).",
+    "binary_body": "Binary file — {size}; applying replaces it.",
+    "large_change": "Large change over {lines} lines ({size}).",
+    "more": "and {n} more",
+    "pending": "Waiting for the operator to apply or skip this in the admin console.",
+    "applied": "Applied",
+    "restart_hint": "applies on the agent's next restart",
+    "skipped": "Skipped",
+    "stale": "The file changed since this was proposed — the agent needs to propose again.",
+    "refused": "Refused"
   }
 }

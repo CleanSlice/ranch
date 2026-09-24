@@ -2,6 +2,7 @@
 import { computed, ref, onBeforeUnmount, watch } from 'vue'
 import { BridlePartTypes, type IBridleMessageData } from '../../stores/bridle'
 import { renderMarkdown } from '../../utils/markdown'
+import ProposalCard from './ProposalCard.vue'
 import { AlertCircle, Bot, User, FileText, Info, Loader2, X } from 'lucide-vue-next'
 import { Button } from '#theme/components/ui/button'
 import { cn } from '#theme/utils/cn'
@@ -26,6 +27,8 @@ defineEmits<{
   inspect: [id: string]
   resend: [id: string]
   discard: [id: string]
+  /** A proposal card was applied — the provider posts the follow-up line. */
+  proposalApplied: [text: string]
 }>()
 
 const isUser = computed(() => props.message.role === 'user')
@@ -168,6 +171,13 @@ onBeforeUnmount(() => {
             :alt="`Image ${i + 1}`"
             class="max-w-full cursor-zoom-in rounded transition-opacity hover:opacity-90"
             @click="openLightbox(`data:${part.mediaType};base64,${part.base64}`)"
+          />
+
+          <!-- A file change proposal (CLEAN-112): the card renders by id. -->
+          <ProposalCard
+            v-else-if="part.type === BridlePartTypes.Proposal"
+            :proposal-id="part.proposalId"
+            @applied="(text) => $emit('proposalApplied', text)"
           />
 
           <!-- An url-less chip is a replayed attachment whose stored object is

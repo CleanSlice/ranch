@@ -134,11 +134,7 @@ function makeController(stubs: IStubs = {}) {
   // controller resolved — that question outlived the refactor.
   const sync = {
     sendAndAwait: jest.fn(
-      async (input: {
-        clientId: string;
-        agentId: string;
-        text: string;
-      }) => {
+      async (input: { clientId: string; agentId: string; text: string }) => {
         registered.push({
           clientId: input.clientId,
           agentId: input.agentId,
@@ -154,6 +150,13 @@ function makeController(stubs: IStubs = {}) {
     ),
   };
 
+  // Proposals (CLEAN-112): the transcript replay asks for them and tolerates
+  // an empty answer; the fixture never raises one.
+  const proposals = {
+    listForChat: jest.fn(async () => []),
+    toViews: jest.fn(async () => []),
+  };
+
   const controller = new BridleController(
     hub as never,
     jwt,
@@ -162,6 +165,7 @@ function makeController(stubs: IStubs = {}) {
     attachments,
     shareLinks,
     sync as never,
+    proposals as never,
   );
 
   return {

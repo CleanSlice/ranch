@@ -329,6 +329,1762 @@ export const SetTemplateMcpsDtoSchema = {
   required: ["mcpServerIds"],
 } as const;
 
+export const AgentDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+    templateId: {
+      type: "string",
+    },
+    llmCredentialId: {
+      type: "object",
+      nullable: true,
+    },
+    status: {
+      type: "string",
+      enum: [
+        "pending",
+        "deploying",
+        "running",
+        "failed",
+        "stopped",
+        "unreachable",
+      ],
+    },
+    statusReason: {
+      type: "string",
+      nullable: true,
+      description: `Human-readable reason accompanying status='failed' or 'unreachable' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.`,
+    },
+    workflowId: {
+      type: "object",
+      nullable: true,
+    },
+    firstDeployedAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When this agent was first successfully deployed. Null ⇒ the agent has never been deployed.",
+    },
+    lastDeployStartedAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the current/last deploy was started. Anchor of the server-side deploy grace window.",
+    },
+    launchContext: {
+      type: "string",
+      nullable: true,
+      enum: ["initial", "restart"],
+      description:
+        "Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.",
+    },
+    lastPullAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the running pod last pulled its working copy of the agent files from S3 (recorded at runtime boot). Null ⇒ agent not restarted since this field shipped. Files-tab freshness hint + sync-conflict baseline.",
+    },
+    lastSyncAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the last successful Sync push completed. Null ⇒ never synced since this field shipped.",
+    },
+    config: {
+      type: "object",
+    },
+    resources: {
+      type: "object",
+    },
+    debugEnabled: {
+      type: "boolean",
+      description:
+        "When true, the agent runtime emits prompt-debug snapshots to admin clients via the bridle hub.",
+    },
+    isPublic: {
+      type: "boolean",
+      description:
+        "When true, the agent is visible on the public landing page to unauthenticated visitors.",
+    },
+    allowedOrigins: {
+      description:
+        "Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.",
+      example: ["https://bridle.cleanslice.org", "http://localhost:5173"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    knowledgeIds: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    isAdmin: {
+      type: "boolean",
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "templateId",
+    "status",
+    "statusReason",
+    "workflowId",
+    "firstDeployedAt",
+    "lastDeployStartedAt",
+    "launchContext",
+    "lastPullAt",
+    "lastSyncAt",
+    "config",
+    "resources",
+    "debugEnabled",
+    "isPublic",
+    "allowedOrigins",
+    "knowledgeIds",
+    "isAdmin",
+    "createdAt",
+    "updatedAt",
+  ],
+} as const;
+
+export const AgentPodStatusDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+      example: "agent-abc-123",
+    },
+    podName: {
+      type: "string",
+      example: "agent-agent-abc-123",
+    },
+    phase: {
+      type: "string",
+      enum: ["Pending", "Running", "Succeeded", "Failed", "Unknown"],
+      example: "Running",
+    },
+    ready: {
+      type: "boolean",
+      example: true,
+    },
+    restartCount: {
+      type: "number",
+      example: 0,
+    },
+    startedAt: {
+      type: "string",
+      nullable: true,
+      example: "2026-04-30T10:15:00Z",
+    },
+    terminating: {
+      type: "boolean",
+      example: false,
+      description:
+        "The pod is being deleted (restart cleanup, stop, manual delete). Its phase on the way out says nothing about the health of the agent.",
+    },
+    lastTerminationReason: {
+      type: "string",
+      nullable: true,
+      example: "OOMKilled",
+    },
+    containerWaitingReason: {
+      type: "string",
+      nullable: true,
+      example: "CrashLoopBackOff",
+    },
+    message: {
+      type: "string",
+      nullable: true,
+    },
+    observedAt: {
+      type: "string",
+      example: "2026-04-30T10:30:00Z",
+    },
+  },
+  required: [
+    "agentId",
+    "podName",
+    "phase",
+    "ready",
+    "restartCount",
+    "startedAt",
+    "terminating",
+    "lastTerminationReason",
+    "containerWaitingReason",
+    "message",
+    "observedAt",
+  ],
+} as const;
+
+export const AgentStatusDtoSchema = {
+  type: "object",
+  properties: {
+    agent: {
+      description: "Agent DB record (id, name, status, launchContext, etc.)",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentDto",
+        },
+      ],
+    },
+    pod: {
+      nullable: true,
+      description:
+        "Live pod status; null if no pod is currently running for this agent.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentPodStatusDto",
+        },
+      ],
+    },
+    bridleConnected: {
+      type: "boolean",
+      description:
+        "Whether the agent runtime currently holds a live connection to the bridle hub. In-memory truth of the API process — false for a few seconds after an API restart until runtimes reconnect.",
+      example: true,
+    },
+  },
+  required: ["agent", "pod", "bridleConnected"],
+} as const;
+
+export const NodeCapacityDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "k3s-agent-gnk",
+    },
+    freeCpuMilli: {
+      type: "number",
+      example: 3200,
+      description: "Allocatable CPU minus summed pod requests, in millicores",
+    },
+    freeMemBytes: {
+      type: "number",
+      example: 6442450944,
+      description: "Allocatable memory minus summed pod requests, in bytes",
+    },
+    freeSlots: {
+      type: "number",
+      example: 12,
+      description: "How many more agent pods fit on this node",
+    },
+  },
+  required: ["name", "freeCpuMilli", "freeMemBytes", "freeSlots"],
+} as const;
+
+export const ClusterCapacityDtoSchema = {
+  type: "object",
+  properties: {
+    freeAgentSlots: {
+      type: "number",
+      example: 12,
+      description:
+        "How many more agents can start right now, across all agent nodes",
+    },
+    usedAgentSlots: {
+      type: "number",
+      example: 8,
+      description: "Agents currently holding a slot (live pods + deploying)",
+    },
+    totalAgentSlots: {
+      type: "number",
+      example: 20,
+      description: "usedAgentSlots + freeAgentSlots under current cluster load",
+    },
+    slotCpuMilli: {
+      type: "number",
+      example: 100,
+      description: "CPU request one agent slot reserves, in millicores",
+    },
+    slotMemBytes: {
+      type: "number",
+      example: 536870912,
+      description: "Memory request one agent slot reserves, in bytes",
+    },
+    nodes: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/NodeCapacityDto",
+      },
+    },
+    observedAt: {
+      type: "string",
+      example: "2026-07-29T12:00:00.000Z",
+    },
+  },
+  required: [
+    "freeAgentSlots",
+    "usedAgentSlots",
+    "totalAgentSlots",
+    "slotCpuMilli",
+    "slotMemBytes",
+    "nodes",
+    "observedAt",
+  ],
+} as const;
+
+export const AgentPodMetricsDtoSchema = {
+  type: "object",
+  properties: {
+    cpuMilli: {
+      type: "number",
+      example: 234,
+      description: "Current CPU usage in millicores",
+    },
+    memBytes: {
+      type: "number",
+      example: 471859200,
+      description: "Current memory usage in bytes",
+    },
+    cpuLimitMilli: {
+      type: "number",
+      example: 2000,
+      description: "CPU limit in millicores",
+    },
+    memLimitBytes: {
+      type: "number",
+      example: 2147483648,
+      description: "Memory limit in bytes",
+    },
+  },
+  required: ["cpuMilli", "memBytes", "cpuLimitMilli", "memLimitBytes"],
+} as const;
+
+export const AgentNodeMetricsDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "k3s-agent-gnk",
+    },
+    diskAvailBytes: {
+      type: "number",
+      example: 157109764096,
+    },
+    diskCapacityBytes: {
+      type: "number",
+      example: 163817959424,
+    },
+  },
+  required: ["name", "diskAvailBytes", "diskCapacityBytes"],
+} as const;
+
+export const AgentMetricsDtoSchema = {
+  type: "object",
+  properties: {
+    pod: {
+      $ref: "#/components/schemas/AgentPodMetricsDto",
+    },
+    node: {
+      $ref: "#/components/schemas/AgentNodeMetricsDto",
+    },
+  },
+  required: ["pod", "node"],
+} as const;
+
+export const AgentEnvVarDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "LOG_LEVEL",
+    },
+    value: {
+      type: "string",
+      example: "debug",
+    },
+  },
+  required: ["name", "value"],
+} as const;
+
+export const AgentMcpDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description:
+        "MCP server id. For `oauth` servers the runtime keys the per-agent token secret by this id (`mcpOauth:<id>`).",
+    },
+    name: {
+      type: "string",
+      description: "Unique MCP server name (key in the runtime registry).",
+    },
+    transport: {
+      type: "string",
+      enum: ["streamableHttp", "sse"],
+      description: "Transport protocol the runtime should use to connect.",
+    },
+    url: {
+      type: "string",
+      description: "MCP server endpoint URL.",
+    },
+    authType: {
+      type: "string",
+      enum: ["none", "bearer", "header", "oauth"],
+      description:
+        "Auth scheme. For `oauth` the runtime holds no static credential — it refreshes its own bearer from the per-agent token secret keyed by `id`.",
+    },
+    authValue: {
+      type: "string",
+      nullable: true,
+      description:
+        "Auth credential. For `bearer`: raw token (runtime adds the `Bearer ` prefix). For `header`: literal `Header-Name: value` line. `null` when authType is `none`.",
+    },
+    enabled: {
+      type: "boolean",
+      description:
+        "Always `true` in this list — disabled servers are filtered server-side. Kept for forward compatibility.",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "transport",
+    "url",
+    "authType",
+    "authValue",
+    "enabled",
+  ],
+} as const;
+
+export const AgentMcpStatusDtoSchema = {
+  type: "object",
+  properties: {
+    restartRequired: {
+      type: "boolean",
+      description:
+        "The pod predates a change to its MCP configuration and needs a restart to pick it up.",
+      example: true,
+    },
+    configChangedAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "Most recent MCP configuration change the pod missed. Null when in sync.",
+      example: "2026-09-14T16:00:00.000Z",
+    },
+    podStartedAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the current pod started; null when no pod is running, in which case there is nothing to restart.",
+      example: "2026-09-14T10:33:00.000Z",
+    },
+    changedServers: {
+      description: "Names of the servers that changed after the pod started.",
+      example: ["Documents"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "restartRequired",
+    "configChangedAt",
+    "podStartedAt",
+    "changedServers",
+  ],
+} as const;
+
+export const AgentResourcesDtoSchema = {
+  type: "object",
+  properties: {
+    cpu: {
+      type: "string",
+      example: "500m",
+    },
+    memory: {
+      type: "string",
+      example: "512Mi",
+    },
+  },
+  required: ["cpu", "memory"],
+} as const;
+
+export const CreateAgentDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    templateId: {
+      type: "string",
+    },
+    llmCredentialId: {
+      type: "string",
+    },
+    config: {
+      type: "object",
+    },
+    resources: {
+      $ref: "#/components/schemas/AgentResourcesDto",
+    },
+    isPublic: {
+      type: "boolean",
+      description:
+        "When true, the agent is visible on the public landing page to unauthenticated visitors.",
+    },
+    allowedOrigins: {
+      description:
+        "Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.",
+      example: ["https://bridle.cleanslice.org", "http://localhost:5173"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    knowledgeIds: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    isAdmin: {
+      type: "boolean",
+      description:
+        "When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.",
+    },
+  },
+  required: ["name", "templateId"],
+} as const;
+
+export const UpdateAgentDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    templateId: {
+      type: "string",
+    },
+    llmCredentialId: {
+      type: "string",
+    },
+    config: {
+      type: "object",
+    },
+    resources: {
+      $ref: "#/components/schemas/AgentResourcesDto",
+    },
+    isPublic: {
+      type: "boolean",
+      description:
+        "When true, the agent is visible on the public landing page to unauthenticated visitors.",
+    },
+    allowedOrigins: {
+      description:
+        "Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.",
+      example: ["https://bridle.cleanslice.org", "http://localhost:5173"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    knowledgeIds: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    isAdmin: {
+      type: "boolean",
+      description:
+        "When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.",
+    },
+    debugEnabled: {
+      type: "boolean",
+      description:
+        "Enable debug mode — emits the prompt-debug event stream and verbose pod logs (LOG_LEVEL=debug). The verbose-log half applies on the next agent restart; the prompt-debug stream flips live.",
+    },
+  },
+} as const;
+
+export const FileNodeDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "memory/MEMORY.md",
+    },
+    size: {
+      type: "number",
+      example: 3712,
+    },
+    updatedAt: {
+      type: "string",
+      format: "date-time",
+    },
+    kind: {
+      type: "string",
+      enum: ["text", "binary"],
+      description:
+        "Decided by the API: known extension, or a sniff of the first bytes for unknown ones.",
+    },
+    editable: {
+      type: "boolean",
+      description:
+        "Text and within the editable size limit (see /files/limits).",
+    },
+  },
+  required: ["path", "size", "updatedAt", "kind", "editable"],
+} as const;
+
+export const FileLimitsDtoSchema = {
+  type: "object",
+  properties: {
+    maxEditBytes: {
+      type: "number",
+      example: 1048576,
+    },
+    maxViewBytes: {
+      type: "number",
+      example: 26214400,
+    },
+    rangeBytes: {
+      type: "number",
+      example: 262144,
+    },
+    maxRangeBytes: {
+      type: "number",
+      example: 524288,
+    },
+    openLinkTtlSec: {
+      type: "number",
+      example: 900,
+    },
+    importMaxArchiveBytes: {
+      type: "number",
+      example: 104857600,
+    },
+    importMaxEntries: {
+      type: "number",
+      example: 2000,
+    },
+    importMaxFileBytes: {
+      type: "number",
+      example: 26214400,
+    },
+    importPlanListRows: {
+      type: "number",
+      example: 500,
+    },
+    diffCompareMaxBytes: {
+      type: "number",
+      example: 1048576,
+    },
+    diffInlineMaxLines: {
+      type: "number",
+      example: 200,
+    },
+    diffInlineMaxBytes: {
+      type: "number",
+      example: 102400,
+    },
+    proposalListRows: {
+      type: "number",
+      example: 50,
+    },
+    textExtensions: {
+      example: [".md", ".json", ".py"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "maxEditBytes",
+    "maxViewBytes",
+    "rangeBytes",
+    "maxRangeBytes",
+    "openLinkTtlSec",
+    "importMaxArchiveBytes",
+    "importMaxEntries",
+    "importMaxFileBytes",
+    "importPlanListRows",
+    "diffCompareMaxBytes",
+    "diffInlineMaxLines",
+    "diffInlineMaxBytes",
+    "proposalListRows",
+    "textExtensions",
+  ],
+} as const;
+
+export const FileChunkDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "data/sessions/bridle:admin.jsonl",
+    },
+    content: {
+      type: "string",
+      description:
+        "UTF-8 slice of the file from `offset`. Never ends in the middle of a character.",
+    },
+    size: {
+      type: "number",
+      example: 262144,
+      description: "Byte length of `content`.",
+    },
+    totalSize: {
+      type: "number",
+      example: 393216,
+      description: "Full byte length of the file.",
+    },
+    offset: {
+      type: "number",
+      example: 0,
+      description: "Byte offset of the first byte of `content`.",
+    },
+    nextOffset: {
+      type: "number",
+      nullable: true,
+      example: 262144,
+      description:
+        "Pass as `offset` on the next request. `null` when there is no more data.",
+    },
+    hasMore: {
+      type: "boolean",
+      example: true,
+    },
+    updatedAt: {
+      type: "string",
+      format: "date-time",
+    },
+    kind: {
+      type: "string",
+      enum: ["text", "binary"],
+    },
+    editable: {
+      type: "boolean",
+      description:
+        "Whole file is text and within the editable size limit. Editing also needs `hasMore === false`.",
+    },
+  },
+  required: [
+    "path",
+    "content",
+    "size",
+    "totalSize",
+    "offset",
+    "nextOffset",
+    "hasMore",
+    "updatedAt",
+    "kind",
+    "editable",
+  ],
+} as const;
+
+export const SaveFileDtoSchema = {
+  type: "object",
+  properties: {
+    content: {
+      type: "string",
+      description: "Full file content as text",
+    },
+    createOnly: {
+      type: "boolean",
+      default: false,
+      description: "Refuse with 409 when the file already exists (New file).",
+    },
+    ifUnmodifiedSince: {
+      type: "string",
+      format: "date-time",
+      description:
+        "Refuse with 412 when the stored file changed after this instant (the `updatedAt` the editor loaded).",
+    },
+  },
+  required: ["content"],
+} as const;
+
+export const FileContentDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "memory/MEMORY.md",
+    },
+    content: {
+      type: "string",
+    },
+    size: {
+      type: "number",
+      example: 3712,
+    },
+    updatedAt: {
+      type: "string",
+      format: "date-time",
+    },
+    kind: {
+      type: "string",
+      enum: ["text", "binary"],
+    },
+    editable: {
+      type: "boolean",
+    },
+  },
+  required: ["path", "content", "size", "updatedAt", "kind", "editable"],
+} as const;
+
+export const DeleteFilesDtoSchema = {
+  type: "object",
+  properties: {
+    deleted: {
+      type: "number",
+      example: 3,
+      description: "Number of S3 objects deleted by this request.",
+    },
+  },
+  required: ["deleted"],
+} as const;
+
+export const DeleteFilesBodyDtoSchema = {
+  type: "object",
+  properties: {
+    paths: {
+      description: "Files, or folders (deleted recursively).",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    confirm: {
+      type: "boolean",
+      default: false,
+      description:
+        "Required when the selection would remove every file of the workspace.",
+    },
+  },
+  required: ["paths"],
+} as const;
+
+export const DeleteFilesConflictDtoSchema = {
+  type: "object",
+  properties: {
+    requiresConfirmation: {
+      type: "boolean",
+      example: true,
+    },
+    wouldRemove: {
+      type: "number",
+      example: 177,
+    },
+    total: {
+      type: "number",
+      example: 177,
+    },
+  },
+  required: ["requiresConfirmation", "wouldRemove", "total"],
+} as const;
+
+export const SyncFilesBodyDtoSchema = {
+  type: "object",
+  properties: {
+    confirm: {
+      type: "boolean",
+      description:
+        "Set to true to run the sync even when at-risk files were reported (the operator explicitly accepted the overwrite risk). Without it a non-empty at-risk list makes the endpoint answer 409 and skip the sync.",
+    },
+  },
+} as const;
+
+export const AtRiskFileDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "SOUL.md",
+    },
+    updatedAt: {
+      type: "string",
+      format: "date-time",
+      description: "When the S3 (shared) copy of this file was last modified",
+    },
+  },
+  required: ["path", "updatedAt"],
+} as const;
+
+export const SyncConflictDtoSchema = {
+  type: "object",
+  properties: {
+    requiresConfirmation: {
+      type: "boolean",
+      description:
+        "Always true: the sync was NOT executed — resend with confirm=true to proceed",
+    },
+    atRisk: {
+      description:
+        "S3 files modified after the pod last pulled/pushed. A sync MAY overwrite or delete them if the pod also changed them locally.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AtRiskFileDto",
+      },
+    },
+    baseline: {
+      type: "string",
+      format: "date-time",
+      description:
+        "Reference moment the S3 copies were compared against (max of last boot pull minus margin and last completed sync)",
+    },
+  },
+  required: ["requiresConfirmation", "atRisk", "baseline"],
+} as const;
+
+export const ExportFilesBodyDtoSchema = {
+  type: "object",
+  properties: {
+    paths: {
+      description: "Files, or folders by prefix. Omit for the whole workspace.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+} as const;
+
+export const OpenLinkBodyDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "workspace/log.txt",
+    },
+  },
+  required: ["path"],
+} as const;
+
+export const OpenLinkDtoSchema = {
+  type: "object",
+  properties: {
+    url: {
+      type: "string",
+      description:
+        "Address of the raw stored file. Absolute when PUBLIC_API_URL is configured, otherwise a path the console prefixes with its API base.",
+      example: "/agents/agent-1/files/raw?token=eyJ…",
+    },
+    expiresAt: {
+      type: "string",
+      format: "date-time",
+    },
+  },
+  required: ["url", "expiresAt"],
+} as const;
+
+export const ImportCountsDtoSchema = {
+  type: "object",
+  properties: {
+    add: {
+      type: "number",
+      example: 12,
+    },
+    change: {
+      type: "number",
+      example: 3,
+    },
+    unchanged: {
+      type: "number",
+      example: 160,
+    },
+    remove: {
+      type: "number",
+      example: 0,
+      description: "Replace mode only.",
+    },
+    skip: {
+      type: "number",
+      example: 2,
+    },
+  },
+  required: ["add", "change", "unchanged", "remove", "skip"],
+} as const;
+
+export const ImportPlanEntryDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "skills/run.py",
+    },
+    action: {
+      type: "string",
+      enum: ["add", "change", "unchanged", "remove", "skip"],
+    },
+    size: {
+      type: "number",
+      example: 1024,
+    },
+    reason: {
+      type: "string",
+      example: "runtime-owned session state",
+      description: "Why the entry is skipped or treated as changed.",
+    },
+  },
+  required: ["path", "action", "size"],
+} as const;
+
+export const ImportPlanDtoSchema = {
+  type: "object",
+  properties: {
+    importId: {
+      type: "string",
+      format: "uuid",
+    },
+    mode: {
+      type: "string",
+      enum: ["merge", "replace"],
+    },
+    includeSessions: {
+      type: "boolean",
+    },
+    wrapperStripped: {
+      type: "string",
+      nullable: true,
+      description:
+        "Top-level folder removed from every entry, if the archive had one.",
+    },
+    counts: {
+      $ref: "#/components/schemas/ImportCountsDto",
+    },
+    totalBytes: {
+      type: "number",
+      description: "Bytes of the entries that will be written.",
+    },
+    entries: {
+      description: "Capped at the plan list limit; `more` counts the rest.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ImportPlanEntryDto",
+      },
+    },
+    more: {
+      type: "number",
+      example: 0,
+    },
+    warnings: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "importId",
+    "mode",
+    "includeSessions",
+    "wrapperStripped",
+    "counts",
+    "totalBytes",
+    "entries",
+    "more",
+    "warnings",
+  ],
+} as const;
+
+export const ImportApplyDtoSchema = {
+  type: "object",
+  properties: {
+    mode: {
+      type: "string",
+      enum: ["merge", "replace"],
+      description: `\`merge\` writes the archive and keeps everything else; \`replace\` also deletes files not in the archive.`,
+    },
+    includeSessions: {
+      type: "boolean",
+      default: false,
+      description:
+        "Also write (and in replace mode remove) runtime session state.",
+    },
+    confirmRemove: {
+      type: "boolean",
+      default: false,
+      description:
+        "Required when `mode=replace` would remove files — the second acknowledgement.",
+    },
+  },
+  required: ["mode"],
+} as const;
+
+export const ImportFailureDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "workspace/big.bin",
+    },
+    reason: {
+      type: "string",
+      example: "S3 put failed: AccessDenied",
+    },
+  },
+  required: ["path", "reason"],
+} as const;
+
+export const ImportResultDtoSchema = {
+  type: "object",
+  properties: {
+    importId: {
+      type: "string",
+      format: "uuid",
+    },
+    mode: {
+      type: "string",
+      enum: ["merge", "replace"],
+    },
+    written: {
+      type: "number",
+      example: 15,
+    },
+    removed: {
+      type: "number",
+      example: 0,
+    },
+    skipped: {
+      type: "number",
+      example: 2,
+    },
+    failed: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ImportFailureDto",
+      },
+    },
+    restartRequired: {
+      type: "boolean",
+      description:
+        "The agent is running — the files apply on its next restart.",
+    },
+  },
+  required: [
+    "importId",
+    "mode",
+    "written",
+    "removed",
+    "skipped",
+    "failed",
+    "restartRequired",
+  ],
+} as const;
+
+export const ImportRemoveConflictDtoSchema = {
+  type: "object",
+  properties: {
+    requiresConfirmation: {
+      type: "boolean",
+      example: true,
+    },
+    remove: {
+      type: "number",
+      example: 7,
+      description: "Files replace mode would delete.",
+    },
+  },
+  required: ["requiresConfirmation", "remove"],
+} as const;
+
+export const ProposalSetSummaryDtoSchema = {
+  type: "object",
+  properties: {
+    counts: {
+      $ref: "#/components/schemas/ImportCountsDto",
+    },
+    rows: {
+      description: "First rows only.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ImportPlanEntryDto",
+      },
+    },
+    more: {
+      type: "number",
+      example: 0,
+      description: "Rows not listed.",
+    },
+    mode: {
+      type: "string",
+      enum: ["merge", "replace"],
+    },
+    includeSessions: {
+      type: "boolean",
+    },
+    wrapperStripped: {
+      type: "string",
+      nullable: true,
+    },
+    warnings: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "counts",
+    "rows",
+    "more",
+    "mode",
+    "includeSessions",
+    "wrapperStripped",
+    "warnings",
+  ],
+} as const;
+
+export const FileChangeProposalDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    agentId: {
+      type: "string",
+      description: "Target workspace.",
+    },
+    agentName: {
+      type: "string",
+    },
+    chatAgentId: {
+      type: "string",
+      description: "The agent whose chat raised it.",
+    },
+    channel: {
+      type: "string",
+      example: "admin",
+    },
+    kind: {
+      type: "string",
+      enum: ["single", "set"],
+    },
+    op: {
+      type: "string",
+      enum: ["write", "create", "import"],
+    },
+    path: {
+      type: "string",
+      nullable: true,
+      example: "agent.config.json",
+    },
+    mode: {
+      type: "string",
+      nullable: true,
+      enum: ["merge", "replace", null],
+    },
+    includeSessions: {
+      type: "boolean",
+    },
+    proposedBytes: {
+      type: "number",
+      example: 856,
+    },
+    diffStatus: {
+      type: "string",
+      enum: ["ok", "too_large", "binary", "none"],
+    },
+    additions: {
+      type: "number",
+      nullable: true,
+    },
+    deletions: {
+      type: "number",
+      nullable: true,
+    },
+    changedLines: {
+      type: "number",
+      nullable: true,
+    },
+    firstChangedLine: {
+      type: "number",
+      nullable: true,
+    },
+    inlineDiff: {
+      type: "string",
+      nullable: true,
+      description:
+        "Unified diff hunks; null when over the inline caps or not computed.",
+    },
+    summary: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/ProposalSetSummaryDto",
+        },
+      ],
+    },
+    status: {
+      type: "string",
+      enum: ["pending", "applied", "skipped", "stale", "refused"],
+    },
+    actedBy: {
+      type: "string",
+      nullable: true,
+    },
+    actedVia: {
+      type: "string",
+      nullable: true,
+      enum: ["card", "tool", "editor", null],
+    },
+    actedAt: {
+      type: "string",
+      nullable: true,
+      format: "date-time",
+    },
+    result: {
+      type: "object",
+      nullable: true,
+      description: "ImportResult for a set; `{ etag }` for a single.",
+    },
+    reason: {
+      type: "string",
+      nullable: true,
+    },
+    restartRequired: {
+      type: "boolean",
+      description: "The target agent is running — applies on its next restart.",
+    },
+    createdAt: {
+      type: "string",
+      format: "date-time",
+    },
+  },
+  required: [
+    "id",
+    "agentId",
+    "agentName",
+    "chatAgentId",
+    "channel",
+    "kind",
+    "op",
+    "path",
+    "mode",
+    "includeSessions",
+    "proposedBytes",
+    "diffStatus",
+    "additions",
+    "deletions",
+    "changedLines",
+    "firstChangedLine",
+    "inlineDiff",
+    "summary",
+    "status",
+    "actedBy",
+    "actedVia",
+    "actedAt",
+    "result",
+    "reason",
+    "restartRequired",
+    "createdAt",
+  ],
+} as const;
+
+export const ApplyProposalDtoSchema = {
+  type: "object",
+  properties: {
+    via: {
+      type: "string",
+      enum: ["card", "editor"],
+      default: "card",
+    },
+    content: {
+      type: "string",
+      description:
+        "Editor only — the edited content replaces the proposed one.",
+    },
+    confirmRemove: {
+      type: "boolean",
+      description:
+        "Replace-mode imports that remove files need this acknowledgement.",
+    },
+  },
+} as const;
+
+export const ProposalRemoveConflictDtoSchema = {
+  type: "object",
+  properties: {
+    requiresConfirmation: {
+      type: "boolean",
+      example: true,
+    },
+    remove: {
+      type: "number",
+      example: 12,
+      description: "Files replace mode would delete.",
+    },
+  },
+  required: ["requiresConfirmation", "remove"],
+} as const;
+
+export const BridleTextPartDtoSchema = {
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      enum: ["text", "image", "file"],
+      example: "text",
+    },
+    text: {
+      type: "string",
+    },
+  },
+  required: ["type", "text"],
+} as const;
+
+export const BridleImagePartDtoSchema = {
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      enum: ["text", "image", "file"],
+      example: "image",
+    },
+    base64: {
+      type: "string",
+      description: "Base64-encoded image data",
+    },
+    mediaType: {
+      type: "string",
+      description: "MIME type",
+      example: "image/jpeg",
+    },
+  },
+  required: ["type", "base64", "mediaType"],
+} as const;
+
+export const SendMessageDtoSchema = {
+  type: "object",
+  properties: {
+    text: {
+      type: "string",
+      description: "Message text (plain-text shorthand)",
+    },
+    parts: {
+      description: "Rich content parts. If omitted, built from text + images.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/BridleTextPartDto",
+      },
+    },
+    images: {
+      description: "Attached images (legacy — prefer parts)",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/BridleImagePartDto",
+      },
+    },
+    attachmentIds: {
+      description:
+        "Ids from POST /api/agent/{agentId}/attachment. The API expands them server-side into parts — images as image content, text files with their contents inlined into the message, everything else as a named reference — and appends them to whatever `parts` resolved to. Omit the field and the request behaves exactly as before.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["text"],
+} as const;
+
+export const BridleAttachmentDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description: "Attachment id, also the storage key stem",
+    },
+    name: {
+      type: "string",
+      description: "Original filename, for display",
+    },
+    mimeType: {
+      type: "string",
+      description: "Resolved MIME type",
+      example: "image/png",
+    },
+    size: {
+      type: "number",
+      description: "Size in bytes",
+    },
+    kind: {
+      type: "string",
+      enum: ["image", "text", "binary"],
+      description:
+        "How the attachment reaches the agent: image content, inlined text, or a named reference",
+    },
+    url: {
+      type: "string",
+      description:
+        "Path of the authenticated download route. Never a direct storage URL.",
+    },
+    readableByAgent: {
+      type: "boolean",
+      description:
+        "False when the agent will see only the file name, not its contents",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "mimeType",
+    "size",
+    "kind",
+    "url",
+    "readableByAgent",
+  ],
+} as const;
+
+export const BridleHealthDtoSchema = {
+  type: "object",
+  properties: {
+    ok: {
+      type: "boolean",
+      example: true,
+    },
+    agentConnected: {
+      type: "boolean",
+      description: "Whether any agent runtime is connected via WebSocket",
+    },
+    browserClients: {
+      type: "number",
+      description: "Number of browser clients connected",
+    },
+  },
+  required: ["ok", "agentConnected", "browserClients"],
+} as const;
+
+export const BridleAgentHealthDtoSchema = {
+  type: "object",
+  properties: {
+    ok: {
+      type: "boolean",
+      example: true,
+    },
+    agentConnected: {
+      type: "boolean",
+      description: "Whether this agent is connected via WebSocket",
+    },
+    browserClients: {
+      type: "number",
+      description: "Number of browser clients connected to this agent",
+    },
+    agentId: {
+      type: "string",
+      description: "Bot identifier",
+    },
+  },
+  required: ["ok", "agentConnected", "browserClients", "agentId"],
+} as const;
+
+export const TranscriptAttachmentDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      example: "0b53c9a4-7f4e-4bb1-a6b1-6a1f2f9c8f21",
+    },
+    name: {
+      type: "string",
+      example: "screenshot.png",
+    },
+    mimeType: {
+      type: "string",
+      example: "image/png",
+    },
+    size: {
+      type: "number",
+      example: 48213,
+    },
+    kind: {
+      type: "string",
+      enum: ["image", "text", "binary"],
+      example: "image",
+    },
+  },
+  required: ["id", "name", "mimeType", "size", "kind"],
+} as const;
+
+export const TranscriptMessageDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      example: "c94dbcf2-64f1-4e84-9723-c94e2d815f61",
+    },
+    role: {
+      type: "string",
+      enum: ["user", "assistant"],
+      example: "assistant",
+    },
+    text: {
+      type: "string",
+      example: "Hello, how can I help?",
+      description:
+        "For user messages: what the person typed. Attachment contents the API inlined for the model are not included — see `agentText`.",
+    },
+    ts: {
+      type: "number",
+      example: 1777562539964,
+      description: "Unix epoch milliseconds.",
+    },
+    attachments: {
+      description:
+        "Stored-attachment references for files sent with this message. Fetch the bytes via GET /api/agent/{agentId}/attachment/{id}.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/TranscriptAttachmentDto",
+      },
+    },
+    agentText: {
+      type: "string",
+      description:
+        "User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.",
+    },
+  },
+  required: ["id", "role", "text", "ts"],
+} as const;
+
+export const TranscriptResponseDtoSchema = {
+  type: "object",
+  properties: {
+    messages: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/TranscriptMessageDto",
+      },
+    },
+    channel: {
+      type: "string",
+      example: "admin",
+      description: "Channel the transcript was loaded from.",
+    },
+    nextCursor: {
+      type: "string",
+      nullable: true,
+      description:
+        "Pass back as `cursor` to fetch the previous page. `null` when no older messages.",
+    },
+    hasMore: {
+      type: "boolean",
+      example: false,
+    },
+    proposals: {
+      description:
+        "File change proposals raised in this chat inside the page’s window, plus every pending one (CLEAN-112). The client places them by `createdAt`.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/FileChangeProposalDto",
+      },
+    },
+  },
+  required: ["messages", "channel", "nextCursor", "hasMore", "proposals"],
+} as const;
+
+export const ShareLinkDtoSchema = {
+  type: "object",
+  properties: {
+    active: {
+      type: "boolean",
+      description:
+        "True while the link accepts visitors. False when the agent was never shared or the link has been revoked.",
+      example: true,
+    },
+    token: {
+      type: "string",
+      nullable: true,
+      description:
+        "The share secret. Exposed only while the link is active — a revoked token is dead and is never handed back, so this is null whenever active is false.",
+      example: "sl_mCV1jC5G3nre2dz7hEx7Y8PnbwfyZTVaTKJ8L2SAaDU",
+    },
+    createdAt: {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+      description: "When the link row was first created; null if never shared.",
+      example: "2026-09-07T10:00:00.000Z",
+    },
+    revokedAt: {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+      description: "When the link was revoked; null while it is active.",
+      example: null,
+    },
+    rotatedAt: {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+      description:
+        "When the token was last replaced; null until the first regenerate.",
+      example: null,
+    },
+    rotationCount: {
+      type: "number",
+      description: "How many times the token has been replaced.",
+      example: 0,
+    },
+  },
+  required: [
+    "active",
+    "token",
+    "createdAt",
+    "revokedAt",
+    "rotatedAt",
+    "rotationCount",
+  ],
+} as const;
+
+export const ShareResolveRequestDtoSchema = {
+  type: "object",
+  properties: {
+    token: {
+      type: "string",
+      description:
+        "The share token from the link (`sl_` + 43 url-safe characters).",
+      pattern: "^sl_[A-Za-z0-9_-]{43}$",
+      example: "sl_mCV1jC5G3nre2dz7hEx7Y8PnbwfyZTVaTKJ8L2SAaDU",
+    },
+  },
+  required: ["token"],
+} as const;
+
+export const ShareResolvedDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+      description: "Id of the shared agent — used for the chat requests.",
+      example: "a1b2c3d4-0000-4000-8000-000000000001",
+    },
+    agentName: {
+      type: "string",
+      description: "Display name of the shared agent.",
+      example: "Support bot",
+    },
+    agentStatus: {
+      type: "string",
+      description:
+        "The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.",
+      example: "running",
+    },
+  },
+  required: ["agentId", "agentName", "agentStatus"],
+} as const;
+
 export const CreateMcpServerDtoSchema = {
   type: "object",
   properties: {
@@ -1054,1070 +2810,6 @@ export const AddFromArchiveResultDtoSchema = {
     },
   },
   required: ["detected", "started", "jobId"],
-} as const;
-
-export const AgentDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    name: {
-      type: "string",
-    },
-    templateId: {
-      type: "string",
-    },
-    llmCredentialId: {
-      type: "object",
-      nullable: true,
-    },
-    status: {
-      type: "string",
-      enum: [
-        "pending",
-        "deploying",
-        "running",
-        "failed",
-        "stopped",
-        "unreachable",
-      ],
-    },
-    statusReason: {
-      type: "string",
-      nullable: true,
-      description: `Human-readable reason accompanying status='failed' or 'unreachable' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.`,
-    },
-    workflowId: {
-      type: "object",
-      nullable: true,
-    },
-    firstDeployedAt: {
-      type: "string",
-      nullable: true,
-      description:
-        "When this agent was first successfully deployed. Null ⇒ the agent has never been deployed.",
-    },
-    lastDeployStartedAt: {
-      type: "string",
-      nullable: true,
-      description:
-        "When the current/last deploy was started. Anchor of the server-side deploy grace window.",
-    },
-    launchContext: {
-      type: "string",
-      nullable: true,
-      enum: ["initial", "restart"],
-      description:
-        "Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.",
-    },
-    lastPullAt: {
-      type: "string",
-      nullable: true,
-      description:
-        "When the running pod last pulled its working copy of the agent files from S3 (recorded at runtime boot). Null ⇒ agent not restarted since this field shipped. Files-tab freshness hint + sync-conflict baseline.",
-    },
-    lastSyncAt: {
-      type: "string",
-      nullable: true,
-      description:
-        "When the last successful Sync push completed. Null ⇒ never synced since this field shipped.",
-    },
-    config: {
-      type: "object",
-    },
-    resources: {
-      type: "object",
-    },
-    debugEnabled: {
-      type: "boolean",
-      description:
-        "When true, the agent runtime emits prompt-debug snapshots to admin clients via the bridle hub.",
-    },
-    isPublic: {
-      type: "boolean",
-      description:
-        "When true, the agent is visible on the public landing page to unauthenticated visitors.",
-    },
-    allowedOrigins: {
-      description:
-        "Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.",
-      example: ["https://bridle.cleanslice.org", "http://localhost:5173"],
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    knowledgeIds: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    isAdmin: {
-      type: "boolean",
-    },
-    createdAt: {
-      format: "date-time",
-      type: "string",
-    },
-    updatedAt: {
-      format: "date-time",
-      type: "string",
-    },
-  },
-  required: [
-    "id",
-    "name",
-    "templateId",
-    "status",
-    "statusReason",
-    "workflowId",
-    "firstDeployedAt",
-    "lastDeployStartedAt",
-    "launchContext",
-    "lastPullAt",
-    "lastSyncAt",
-    "config",
-    "resources",
-    "debugEnabled",
-    "isPublic",
-    "allowedOrigins",
-    "knowledgeIds",
-    "isAdmin",
-    "createdAt",
-    "updatedAt",
-  ],
-} as const;
-
-export const AgentPodStatusDtoSchema = {
-  type: "object",
-  properties: {
-    agentId: {
-      type: "string",
-      example: "agent-abc-123",
-    },
-    podName: {
-      type: "string",
-      example: "agent-agent-abc-123",
-    },
-    phase: {
-      type: "string",
-      enum: ["Pending", "Running", "Succeeded", "Failed", "Unknown"],
-      example: "Running",
-    },
-    ready: {
-      type: "boolean",
-      example: true,
-    },
-    restartCount: {
-      type: "number",
-      example: 0,
-    },
-    startedAt: {
-      type: "string",
-      nullable: true,
-      example: "2026-04-30T10:15:00Z",
-    },
-    terminating: {
-      type: "boolean",
-      example: false,
-      description:
-        "The pod is being deleted (restart cleanup, stop, manual delete). Its phase on the way out says nothing about the health of the agent.",
-    },
-    lastTerminationReason: {
-      type: "string",
-      nullable: true,
-      example: "OOMKilled",
-    },
-    containerWaitingReason: {
-      type: "string",
-      nullable: true,
-      example: "CrashLoopBackOff",
-    },
-    message: {
-      type: "string",
-      nullable: true,
-    },
-    observedAt: {
-      type: "string",
-      example: "2026-04-30T10:30:00Z",
-    },
-  },
-  required: [
-    "agentId",
-    "podName",
-    "phase",
-    "ready",
-    "restartCount",
-    "startedAt",
-    "terminating",
-    "lastTerminationReason",
-    "containerWaitingReason",
-    "message",
-    "observedAt",
-  ],
-} as const;
-
-export const AgentStatusDtoSchema = {
-  type: "object",
-  properties: {
-    agent: {
-      description: "Agent DB record (id, name, status, launchContext, etc.)",
-      allOf: [
-        {
-          $ref: "#/components/schemas/AgentDto",
-        },
-      ],
-    },
-    pod: {
-      nullable: true,
-      description:
-        "Live pod status; null if no pod is currently running for this agent.",
-      allOf: [
-        {
-          $ref: "#/components/schemas/AgentPodStatusDto",
-        },
-      ],
-    },
-    bridleConnected: {
-      type: "boolean",
-      description:
-        "Whether the agent runtime currently holds a live connection to the bridle hub. In-memory truth of the API process — false for a few seconds after an API restart until runtimes reconnect.",
-      example: true,
-    },
-  },
-  required: ["agent", "pod", "bridleConnected"],
-} as const;
-
-export const NodeCapacityDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "k3s-agent-gnk",
-    },
-    freeCpuMilli: {
-      type: "number",
-      example: 3200,
-      description: "Allocatable CPU minus summed pod requests, in millicores",
-    },
-    freeMemBytes: {
-      type: "number",
-      example: 6442450944,
-      description: "Allocatable memory minus summed pod requests, in bytes",
-    },
-    freeSlots: {
-      type: "number",
-      example: 12,
-      description: "How many more agent pods fit on this node",
-    },
-  },
-  required: ["name", "freeCpuMilli", "freeMemBytes", "freeSlots"],
-} as const;
-
-export const ClusterCapacityDtoSchema = {
-  type: "object",
-  properties: {
-    freeAgentSlots: {
-      type: "number",
-      example: 12,
-      description:
-        "How many more agents can start right now, across all agent nodes",
-    },
-    usedAgentSlots: {
-      type: "number",
-      example: 8,
-      description: "Agents currently holding a slot (live pods + deploying)",
-    },
-    totalAgentSlots: {
-      type: "number",
-      example: 20,
-      description: "usedAgentSlots + freeAgentSlots under current cluster load",
-    },
-    slotCpuMilli: {
-      type: "number",
-      example: 100,
-      description: "CPU request one agent slot reserves, in millicores",
-    },
-    slotMemBytes: {
-      type: "number",
-      example: 536870912,
-      description: "Memory request one agent slot reserves, in bytes",
-    },
-    nodes: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/NodeCapacityDto",
-      },
-    },
-    observedAt: {
-      type: "string",
-      example: "2026-07-29T12:00:00.000Z",
-    },
-  },
-  required: [
-    "freeAgentSlots",
-    "usedAgentSlots",
-    "totalAgentSlots",
-    "slotCpuMilli",
-    "slotMemBytes",
-    "nodes",
-    "observedAt",
-  ],
-} as const;
-
-export const AgentPodMetricsDtoSchema = {
-  type: "object",
-  properties: {
-    cpuMilli: {
-      type: "number",
-      example: 234,
-      description: "Current CPU usage in millicores",
-    },
-    memBytes: {
-      type: "number",
-      example: 471859200,
-      description: "Current memory usage in bytes",
-    },
-    cpuLimitMilli: {
-      type: "number",
-      example: 2000,
-      description: "CPU limit in millicores",
-    },
-    memLimitBytes: {
-      type: "number",
-      example: 2147483648,
-      description: "Memory limit in bytes",
-    },
-  },
-  required: ["cpuMilli", "memBytes", "cpuLimitMilli", "memLimitBytes"],
-} as const;
-
-export const AgentNodeMetricsDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "k3s-agent-gnk",
-    },
-    diskAvailBytes: {
-      type: "number",
-      example: 157109764096,
-    },
-    diskCapacityBytes: {
-      type: "number",
-      example: 163817959424,
-    },
-  },
-  required: ["name", "diskAvailBytes", "diskCapacityBytes"],
-} as const;
-
-export const AgentMetricsDtoSchema = {
-  type: "object",
-  properties: {
-    pod: {
-      $ref: "#/components/schemas/AgentPodMetricsDto",
-    },
-    node: {
-      $ref: "#/components/schemas/AgentNodeMetricsDto",
-    },
-  },
-  required: ["pod", "node"],
-} as const;
-
-export const AgentEnvVarDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "LOG_LEVEL",
-    },
-    value: {
-      type: "string",
-      example: "debug",
-    },
-  },
-  required: ["name", "value"],
-} as const;
-
-export const AgentMcpDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-      description:
-        "MCP server id. For `oauth` servers the runtime keys the per-agent token secret by this id (`mcpOauth:<id>`).",
-    },
-    name: {
-      type: "string",
-      description: "Unique MCP server name (key in the runtime registry).",
-    },
-    transport: {
-      type: "string",
-      enum: ["streamableHttp", "sse"],
-      description: "Transport protocol the runtime should use to connect.",
-    },
-    url: {
-      type: "string",
-      description: "MCP server endpoint URL.",
-    },
-    authType: {
-      type: "string",
-      enum: ["none", "bearer", "header", "oauth"],
-      description:
-        "Auth scheme. For `oauth` the runtime holds no static credential — it refreshes its own bearer from the per-agent token secret keyed by `id`.",
-    },
-    authValue: {
-      type: "string",
-      nullable: true,
-      description:
-        "Auth credential. For `bearer`: raw token (runtime adds the `Bearer ` prefix). For `header`: literal `Header-Name: value` line. `null` when authType is `none`.",
-    },
-    enabled: {
-      type: "boolean",
-      description:
-        "Always `true` in this list — disabled servers are filtered server-side. Kept for forward compatibility.",
-    },
-  },
-  required: [
-    "id",
-    "name",
-    "transport",
-    "url",
-    "authType",
-    "authValue",
-    "enabled",
-  ],
-} as const;
-
-export const AgentMcpStatusDtoSchema = {
-  type: "object",
-  properties: {
-    restartRequired: {
-      type: "boolean",
-      description:
-        "The pod predates a change to its MCP configuration and needs a restart to pick it up.",
-      example: true,
-    },
-    configChangedAt: {
-      type: "string",
-      nullable: true,
-      description:
-        "Most recent MCP configuration change the pod missed. Null when in sync.",
-      example: "2026-09-14T16:00:00.000Z",
-    },
-    podStartedAt: {
-      type: "string",
-      nullable: true,
-      description:
-        "When the current pod started; null when no pod is running, in which case there is nothing to restart.",
-      example: "2026-09-14T10:33:00.000Z",
-    },
-    changedServers: {
-      description: "Names of the servers that changed after the pod started.",
-      example: ["Documents"],
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-  },
-  required: [
-    "restartRequired",
-    "configChangedAt",
-    "podStartedAt",
-    "changedServers",
-  ],
-} as const;
-
-export const AgentResourcesDtoSchema = {
-  type: "object",
-  properties: {
-    cpu: {
-      type: "string",
-      example: "500m",
-    },
-    memory: {
-      type: "string",
-      example: "512Mi",
-    },
-  },
-  required: ["cpu", "memory"],
-} as const;
-
-export const CreateAgentDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-    },
-    templateId: {
-      type: "string",
-    },
-    llmCredentialId: {
-      type: "string",
-    },
-    config: {
-      type: "object",
-    },
-    resources: {
-      $ref: "#/components/schemas/AgentResourcesDto",
-    },
-    isPublic: {
-      type: "boolean",
-      description:
-        "When true, the agent is visible on the public landing page to unauthenticated visitors.",
-    },
-    allowedOrigins: {
-      description:
-        "Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.",
-      example: ["https://bridle.cleanslice.org", "http://localhost:5173"],
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    knowledgeIds: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    isAdmin: {
-      type: "boolean",
-      description:
-        "When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.",
-    },
-  },
-  required: ["name", "templateId"],
-} as const;
-
-export const UpdateAgentDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-    },
-    templateId: {
-      type: "string",
-    },
-    llmCredentialId: {
-      type: "string",
-    },
-    config: {
-      type: "object",
-    },
-    resources: {
-      $ref: "#/components/schemas/AgentResourcesDto",
-    },
-    isPublic: {
-      type: "boolean",
-      description:
-        "When true, the agent is visible on the public landing page to unauthenticated visitors.",
-    },
-    allowedOrigins: {
-      description:
-        "Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.",
-      example: ["https://bridle.cleanslice.org", "http://localhost:5173"],
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    knowledgeIds: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    isAdmin: {
-      type: "boolean",
-      description:
-        "When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.",
-    },
-    debugEnabled: {
-      type: "boolean",
-      description:
-        "Enable debug mode — emits the prompt-debug event stream and verbose pod logs (LOG_LEVEL=debug). The verbose-log half applies on the next agent restart; the prompt-debug stream flips live.",
-    },
-  },
-} as const;
-
-export const FileChunkDtoSchema = {
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      example: "data/sessions/bridle:admin.jsonl",
-    },
-    content: {
-      type: "string",
-      description: "UTF-8 slice of the file from `offset`.",
-    },
-    size: {
-      type: "number",
-      example: 262144,
-      description: "Byte length of `content`.",
-    },
-    totalSize: {
-      type: "number",
-      example: 393216,
-      description: "Full byte length of the file.",
-    },
-    offset: {
-      type: "number",
-      example: 0,
-      description: "Byte offset of the first byte of `content`.",
-    },
-    nextOffset: {
-      type: "number",
-      nullable: true,
-      example: 262144,
-      description:
-        "Pass as `offset` on the next request. `null` when there is no more data.",
-    },
-    hasMore: {
-      type: "boolean",
-      example: true,
-    },
-    updatedAt: {
-      type: "string",
-      format: "date-time",
-    },
-  },
-  required: [
-    "path",
-    "content",
-    "size",
-    "totalSize",
-    "offset",
-    "nextOffset",
-    "hasMore",
-    "updatedAt",
-  ],
-} as const;
-
-export const SaveFileDtoSchema = {
-  type: "object",
-  properties: {
-    content: {
-      type: "string",
-      description: "Full file content as text",
-    },
-  },
-  required: ["content"],
-} as const;
-
-export const DeleteFilesDtoSchema = {
-  type: "object",
-  properties: {
-    deleted: {
-      type: "number",
-      example: 3,
-      description: "Number of S3 objects deleted by this request.",
-    },
-  },
-  required: ["deleted"],
-} as const;
-
-export const SyncFilesBodyDtoSchema = {
-  type: "object",
-  properties: {
-    confirm: {
-      type: "boolean",
-      description:
-        "Set to true to run the sync even when at-risk files were reported (the operator explicitly accepted the overwrite risk). Without it a non-empty at-risk list makes the endpoint answer 409 and skip the sync.",
-    },
-  },
-} as const;
-
-export const AtRiskFileDtoSchema = {
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      example: "SOUL.md",
-    },
-    updatedAt: {
-      type: "string",
-      format: "date-time",
-      description: "When the S3 (shared) copy of this file was last modified",
-    },
-  },
-  required: ["path", "updatedAt"],
-} as const;
-
-export const SyncConflictDtoSchema = {
-  type: "object",
-  properties: {
-    requiresConfirmation: {
-      type: "boolean",
-      description:
-        "Always true: the sync was NOT executed — resend with confirm=true to proceed",
-    },
-    atRisk: {
-      description:
-        "S3 files modified after the pod last pulled/pushed. A sync MAY overwrite or delete them if the pod also changed them locally.",
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/AtRiskFileDto",
-      },
-    },
-    baseline: {
-      type: "string",
-      format: "date-time",
-      description:
-        "Reference moment the S3 copies were compared against (max of last boot pull minus margin and last completed sync)",
-    },
-  },
-  required: ["requiresConfirmation", "atRisk", "baseline"],
-} as const;
-
-export const BridleTextPartDtoSchema = {
-  type: "object",
-  properties: {
-    type: {
-      type: "string",
-      enum: ["text", "image", "file"],
-      example: "text",
-    },
-    text: {
-      type: "string",
-    },
-  },
-  required: ["type", "text"],
-} as const;
-
-export const BridleImagePartDtoSchema = {
-  type: "object",
-  properties: {
-    type: {
-      type: "string",
-      enum: ["text", "image", "file"],
-      example: "image",
-    },
-    base64: {
-      type: "string",
-      description: "Base64-encoded image data",
-    },
-    mediaType: {
-      type: "string",
-      description: "MIME type",
-      example: "image/jpeg",
-    },
-  },
-  required: ["type", "base64", "mediaType"],
-} as const;
-
-export const SendMessageDtoSchema = {
-  type: "object",
-  properties: {
-    text: {
-      type: "string",
-      description: "Message text (plain-text shorthand)",
-    },
-    parts: {
-      description: "Rich content parts. If omitted, built from text + images.",
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/BridleTextPartDto",
-      },
-    },
-    images: {
-      description: "Attached images (legacy — prefer parts)",
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/BridleImagePartDto",
-      },
-    },
-    attachmentIds: {
-      description:
-        "Ids from POST /api/agent/{agentId}/attachment. The API expands them server-side into parts — images as image content, text files with their contents inlined into the message, everything else as a named reference — and appends them to whatever `parts` resolved to. Omit the field and the request behaves exactly as before.",
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-  },
-  required: ["text"],
-} as const;
-
-export const BridleAttachmentDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-      description: "Attachment id, also the storage key stem",
-    },
-    name: {
-      type: "string",
-      description: "Original filename, for display",
-    },
-    mimeType: {
-      type: "string",
-      description: "Resolved MIME type",
-      example: "image/png",
-    },
-    size: {
-      type: "number",
-      description: "Size in bytes",
-    },
-    kind: {
-      type: "string",
-      enum: ["image", "text", "binary"],
-      description:
-        "How the attachment reaches the agent: image content, inlined text, or a named reference",
-    },
-    url: {
-      type: "string",
-      description:
-        "Path of the authenticated download route. Never a direct storage URL.",
-    },
-    readableByAgent: {
-      type: "boolean",
-      description:
-        "False when the agent will see only the file name, not its contents",
-    },
-  },
-  required: [
-    "id",
-    "name",
-    "mimeType",
-    "size",
-    "kind",
-    "url",
-    "readableByAgent",
-  ],
-} as const;
-
-export const BridleHealthDtoSchema = {
-  type: "object",
-  properties: {
-    ok: {
-      type: "boolean",
-      example: true,
-    },
-    agentConnected: {
-      type: "boolean",
-      description: "Whether any agent runtime is connected via WebSocket",
-    },
-    browserClients: {
-      type: "number",
-      description: "Number of browser clients connected",
-    },
-  },
-  required: ["ok", "agentConnected", "browserClients"],
-} as const;
-
-export const BridleAgentHealthDtoSchema = {
-  type: "object",
-  properties: {
-    ok: {
-      type: "boolean",
-      example: true,
-    },
-    agentConnected: {
-      type: "boolean",
-      description: "Whether this agent is connected via WebSocket",
-    },
-    browserClients: {
-      type: "number",
-      description: "Number of browser clients connected to this agent",
-    },
-    agentId: {
-      type: "string",
-      description: "Bot identifier",
-    },
-  },
-  required: ["ok", "agentConnected", "browserClients", "agentId"],
-} as const;
-
-export const TranscriptAttachmentDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-      example: "0b53c9a4-7f4e-4bb1-a6b1-6a1f2f9c8f21",
-    },
-    name: {
-      type: "string",
-      example: "screenshot.png",
-    },
-    mimeType: {
-      type: "string",
-      example: "image/png",
-    },
-    size: {
-      type: "number",
-      example: 48213,
-    },
-    kind: {
-      type: "string",
-      enum: ["image", "text", "binary"],
-      example: "image",
-    },
-  },
-  required: ["id", "name", "mimeType", "size", "kind"],
-} as const;
-
-export const TranscriptMessageDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-      example: "c94dbcf2-64f1-4e84-9723-c94e2d815f61",
-    },
-    role: {
-      type: "string",
-      enum: ["user", "assistant"],
-      example: "assistant",
-    },
-    text: {
-      type: "string",
-      example: "Hello, how can I help?",
-      description:
-        "For user messages: what the person typed. Attachment contents the API inlined for the model are not included — see `agentText`.",
-    },
-    ts: {
-      type: "number",
-      example: 1777562539964,
-      description: "Unix epoch milliseconds.",
-    },
-    attachments: {
-      description:
-        "Stored-attachment references for files sent with this message. Fetch the bytes via GET /api/agent/{agentId}/attachment/{id}.",
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/TranscriptAttachmentDto",
-      },
-    },
-    agentText: {
-      type: "string",
-      description:
-        "User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.",
-    },
-  },
-  required: ["id", "role", "text", "ts"],
-} as const;
-
-export const TranscriptResponseDtoSchema = {
-  type: "object",
-  properties: {
-    messages: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/TranscriptMessageDto",
-      },
-    },
-    channel: {
-      type: "string",
-      example: "admin",
-      description: "Channel the transcript was loaded from.",
-    },
-    nextCursor: {
-      type: "string",
-      nullable: true,
-      description:
-        "Pass back as `cursor` to fetch the previous page. `null` when no older messages.",
-    },
-    hasMore: {
-      type: "boolean",
-      example: false,
-    },
-  },
-  required: ["messages", "channel", "nextCursor", "hasMore"],
-} as const;
-
-export const ShareLinkDtoSchema = {
-  type: "object",
-  properties: {
-    active: {
-      type: "boolean",
-      description:
-        "True while the link accepts visitors. False when the agent was never shared or the link has been revoked.",
-      example: true,
-    },
-    token: {
-      type: "string",
-      nullable: true,
-      description:
-        "The share secret. Exposed only while the link is active — a revoked token is dead and is never handed back, so this is null whenever active is false.",
-      example: "sl_mCV1jC5G3nre2dz7hEx7Y8PnbwfyZTVaTKJ8L2SAaDU",
-    },
-    createdAt: {
-      type: "string",
-      format: "date-time",
-      nullable: true,
-      description: "When the link row was first created; null if never shared.",
-      example: "2026-09-07T10:00:00.000Z",
-    },
-    revokedAt: {
-      type: "string",
-      format: "date-time",
-      nullable: true,
-      description: "When the link was revoked; null while it is active.",
-      example: null,
-    },
-    rotatedAt: {
-      type: "string",
-      format: "date-time",
-      nullable: true,
-      description:
-        "When the token was last replaced; null until the first regenerate.",
-      example: null,
-    },
-    rotationCount: {
-      type: "number",
-      description: "How many times the token has been replaced.",
-      example: 0,
-    },
-  },
-  required: [
-    "active",
-    "token",
-    "createdAt",
-    "revokedAt",
-    "rotatedAt",
-    "rotationCount",
-  ],
-} as const;
-
-export const ShareResolveRequestDtoSchema = {
-  type: "object",
-  properties: {
-    token: {
-      type: "string",
-      description:
-        "The share token from the link (`sl_` + 43 url-safe characters).",
-      pattern: "^sl_[A-Za-z0-9_-]{43}$",
-      example: "sl_mCV1jC5G3nre2dz7hEx7Y8PnbwfyZTVaTKJ8L2SAaDU",
-    },
-  },
-  required: ["token"],
-} as const;
-
-export const ShareResolvedDtoSchema = {
-  type: "object",
-  properties: {
-    agentId: {
-      type: "string",
-      description: "Id of the shared agent — used for the chat requests.",
-      example: "a1b2c3d4-0000-4000-8000-000000000001",
-    },
-    agentName: {
-      type: "string",
-      description: "Display name of the shared agent.",
-      example: "Support bot",
-    },
-    agentStatus: {
-      type: "string",
-      description:
-        "The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.",
-      example: "running",
-    },
-  },
-  required: ["agentId", "agentName", "agentStatus"],
 } as const;
 
 export const ImportSkillUrlDtoSchema = {

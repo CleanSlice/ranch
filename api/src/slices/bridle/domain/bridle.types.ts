@@ -200,6 +200,8 @@ export interface IBridleOutgoingEvent {
     | 'stream_end'
     | 'typing'
     | 'thinking'
+    | 'proposal'
+    | 'proposal_update'
     | 'ping';
   clientId?: string;
   text?: string;
@@ -290,6 +292,49 @@ export interface IBridleThinkingEvent {
   /** True on the terminal event of a turn. */
   done?: boolean;
   ts: number;
+}
+
+// ── File change proposals (CLEAN-112) ────────────────────────
+
+/**
+ * Capability a browser client declares at handshake to receive proposal
+ * cards. Both consoles declare it; a surface that does not is never sent
+ * `proposal` / `proposal_update`.
+ */
+export const PROPOSALS_CAPABILITY = 'proposals';
+
+/**
+ * API → Hub → Browser: an agent proposed a file change (through a
+ * confirm-gated file tool). Sent to the active turn's client so the card lands
+ * inside the conversation the person is watching; on reload the transcript
+ * endpoint returns the same rows under `proposals`. The payload is the
+ * proposal DTO the files API serves (see agent/file/dtos).
+ */
+export interface IBridleProposalEvent {
+  type: 'proposal';
+  clientId: string;
+  turnId: string;
+  ts: number;
+  proposal: Record<string, unknown>;
+}
+
+/**
+ * API → Hub → every browser of the chat agent: a proposal left `pending`
+ * (applied / skipped / stale / refused), from whichever path acted on it.
+ */
+export interface IBridleProposalUpdateEvent {
+  type: 'proposal_update';
+  ts: number;
+  proposalId: string;
+  /** Target workspace — lets a client that never saw the card fetch it. */
+  agentId: string;
+  status: 'applied' | 'skipped' | 'stale' | 'refused';
+  actedBy: string | null;
+  actedVia: 'card' | 'tool' | 'editor' | null;
+  actedAt: number;
+  result?: unknown;
+  restartRequired?: boolean;
+  reason?: string | null;
 }
 
 /**

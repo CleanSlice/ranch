@@ -329,707 +329,6 @@ export const SetTemplateMcpsDtoSchema = {
   required: ["mcpServerIds"],
 } as const;
 
-export const CreateMcpServerDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "object",
-    },
-    url: {
-      type: "string",
-    },
-    transport: {
-      type: "string",
-      enum: ["streamableHttp", "sse"],
-    },
-    authType: {
-      type: "string",
-      enum: ["none", "bearer", "header", "oauth"],
-    },
-    authValue: {
-      type: "object",
-    },
-    enabled: {
-      type: "boolean",
-    },
-  },
-  required: ["name", "url"],
-} as const;
-
-export const UpdateMcpServerDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "object",
-    },
-    url: {
-      type: "string",
-    },
-    transport: {
-      type: "string",
-      enum: ["streamableHttp", "sse"],
-    },
-    authType: {
-      type: "string",
-      enum: ["none", "bearer", "header", "oauth"],
-    },
-    authValue: {
-      type: "object",
-    },
-    enabled: {
-      type: "boolean",
-    },
-  },
-} as const;
-
-export const KnowledgeListItemDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-      nullable: true,
-    },
-    indexStatus: {
-      type: "string",
-      enum: ["idle", "indexing", "ready", "failed", "empty", "partial"],
-      description:
-        "Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).",
-    },
-    indexError: {
-      type: "string",
-      nullable: true,
-    },
-    indexedAt: {
-      type: "string",
-      nullable: true,
-    },
-    indexStartedAt: {
-      type: "string",
-      nullable: true,
-    },
-    sourceCount: {
-      type: "number",
-      description: "Sources attached to this knowledge",
-    },
-    indexedCount: {
-      type: "number",
-      description: "Sources LightRAG confirmed as processed",
-    },
-    failedCount: {
-      type: "number",
-      description: "Sources whose last index run recorded an error",
-    },
-    processingCount: {
-      type: "number",
-      description:
-        "Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.",
-    },
-    indexRunAlive: {
-      type: "boolean",
-      description:
-        "True while the index run that set `indexing` is still executing in the API. False with `indexing` means the run is gone (rejected, timed out, or lost to a restart) and a new one may be started at once.",
-    },
-    instanceState: {
-      type: "string",
-      enum: ["absent", "starting", "ready", "failed", "stopping"],
-    },
-    instanceError: {
-      type: "string",
-      nullable: true,
-    },
-    migrationState: {
-      type: "string",
-      enum: ["notStarted", "inProgress", "done", "failed"],
-    },
-    createdAt: {
-      format: "date-time",
-      type: "string",
-    },
-    updatedAt: {
-      format: "date-time",
-      type: "string",
-    },
-    sourcesCount: {
-      type: "number",
-    },
-    totalSizeBytes: {
-      type: "number",
-    },
-  },
-  required: [
-    "id",
-    "name",
-    "description",
-    "indexStatus",
-    "indexError",
-    "indexedAt",
-    "indexStartedAt",
-    "sourceCount",
-    "indexedCount",
-    "failedCount",
-    "processingCount",
-    "indexRunAlive",
-    "instanceState",
-    "instanceError",
-    "migrationState",
-    "createdAt",
-    "updatedAt",
-    "sourcesCount",
-    "totalSizeBytes",
-  ],
-} as const;
-
-export const KnowledgePageDtoSchema = {
-  type: "object",
-  properties: {
-    items: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/KnowledgeListItemDto",
-      },
-    },
-    total: {
-      type: "number",
-    },
-    page: {
-      type: "number",
-    },
-    perPage: {
-      type: "number",
-    },
-  },
-  required: ["items", "total", "page", "perPage"],
-} as const;
-
-export const GraphLabelsDtoSchema = {
-  type: "object",
-  properties: {
-    labels: {
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    total: {
-      type: "number",
-    },
-    truncated: {
-      type: "boolean",
-    },
-  },
-  required: ["labels", "total", "truncated"],
-} as const;
-
-export const GraphNodeDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    label: {
-      type: "string",
-    },
-    entityType: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-    },
-  },
-  required: ["id", "label", "entityType", "description"],
-} as const;
-
-export const GraphEdgeDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    source: {
-      type: "string",
-    },
-    target: {
-      type: "string",
-    },
-    weight: {
-      type: "number",
-    },
-    keywords: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-    },
-  },
-  required: ["id", "source", "target", "weight", "keywords", "description"],
-} as const;
-
-export const GraphDtoSchema = {
-  type: "object",
-  properties: {
-    nodes: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/GraphNodeDto",
-      },
-    },
-    edges: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/GraphEdgeDto",
-      },
-    },
-    isTruncated: {
-      type: "boolean",
-    },
-  },
-  required: ["nodes", "edges", "isTruncated"],
-} as const;
-
-export const SourceTypeCountsDtoSchema = {
-  type: "object",
-  properties: {
-    file: {
-      type: "number",
-    },
-    url: {
-      type: "number",
-    },
-    text: {
-      type: "number",
-    },
-  },
-  required: ["file", "url", "text"],
-} as const;
-
-export const KnowledgeOverviewDtoSchema = {
-  type: "object",
-  properties: {
-    sourceCount: {
-      type: "number",
-      description: "Sources attached to this knowledge",
-    },
-    indexedCount: {
-      type: "number",
-      description: "Sources LightRAG confirmed as processed",
-    },
-    failedCount: {
-      type: "number",
-    },
-    processingCount: {
-      type: "number",
-      description: "Handed to LightRAG and still in its pipeline",
-    },
-    byType: {
-      $ref: "#/components/schemas/SourceTypeCountsDto",
-    },
-    totalSizeBytes: {
-      type: "number",
-      description: "Sum of the stored files, in bytes",
-    },
-  },
-  required: [
-    "sourceCount",
-    "indexedCount",
-    "failedCount",
-    "processingCount",
-    "byType",
-    "totalSizeBytes",
-  ],
-} as const;
-
-export const CreateKnowledgeDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-    },
-  },
-  required: ["name"],
-} as const;
-
-export const UpdateKnowledgeDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-    },
-    description: {
-      type: "string",
-      nullable: true,
-    },
-  },
-} as const;
-
-export const QueryKnowledgeDtoSchema = {
-  type: "object",
-  properties: {
-    query: {
-      type: "string",
-    },
-    mode: {
-      type: "string",
-      enum: ["hybrid", "local", "global", "naive"],
-      default: "hybrid",
-    },
-    topK: {
-      type: "number",
-      default: 25,
-    },
-  },
-  required: ["query"],
-} as const;
-
-export const KnowledgeQueryReferenceDtoSchema = {
-  type: "object",
-  properties: {
-    referenceId: {
-      type: "string",
-    },
-    filePath: {
-      type: "string",
-    },
-    sourceId: {
-      type: "string",
-      nullable: true,
-    },
-    sourceName: {
-      type: "string",
-      nullable: true,
-    },
-  },
-  required: ["referenceId", "filePath", "sourceId", "sourceName"],
-} as const;
-
-export const KnowledgeQueryResultDtoSchema = {
-  type: "object",
-  properties: {
-    answer: {
-      type: "string",
-      nullable: true,
-      description:
-        "null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.",
-    },
-    reason: {
-      type: "string",
-      enum: ["no_relevant_content"],
-    },
-    knowledgeId: {
-      type: "string",
-    },
-    complete: {
-      type: "boolean",
-      description:
-        "false while this base is still being re-processed into its own area — answers may be incomplete.",
-    },
-    references: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/KnowledgeQueryReferenceDto",
-      },
-    },
-  },
-  required: ["answer", "knowledgeId", "complete", "references"],
-} as const;
-
-export const SourceDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    knowledgeId: {
-      type: "string",
-    },
-    type: {
-      type: "string",
-      enum: ["file", "url", "text"],
-    },
-    name: {
-      type: "string",
-    },
-    url: {
-      type: "string",
-      nullable: true,
-    },
-    mimeType: {
-      type: "string",
-      nullable: true,
-    },
-    content: {
-      type: "string",
-      nullable: true,
-    },
-    sizeBytes: {
-      type: "number",
-      nullable: true,
-    },
-    indexed: {
-      type: "boolean",
-      description:
-        'True when indexStatus is "indexed". Kept for older callers.',
-    },
-    indexStatus: {
-      type: "string",
-      enum: ["indexed", "pending", "failed"],
-    },
-    indexState: {
-      type: "string",
-      enum: ["queued", "processing", "indexed", "failed"],
-    },
-    indexError: {
-      type: "string",
-      nullable: true,
-      description:
-        "Error from the last index run, null once the source indexes.",
-    },
-    indexedAt: {
-      type: "string",
-      nullable: true,
-    },
-    textState: {
-      type: "string",
-      enum: ["none", "pending", "ready", "failed"],
-      description:
-        "Text extraction for a PDF without a text layer: none (not a PDF, or it has its own text), pending (probing or OCR running), ready (recognised text is what gets indexed), failed (see textError).",
-    },
-    textError: {
-      type: "string",
-      nullable: true,
-    },
-    createdAt: {
-      format: "date-time",
-      type: "string",
-    },
-    updatedAt: {
-      format: "date-time",
-      type: "string",
-    },
-  },
-  required: [
-    "id",
-    "knowledgeId",
-    "type",
-    "name",
-    "url",
-    "mimeType",
-    "content",
-    "sizeBytes",
-    "indexed",
-    "indexStatus",
-    "indexState",
-    "indexError",
-    "indexedAt",
-    "textState",
-    "textError",
-    "createdAt",
-    "updatedAt",
-  ],
-} as const;
-
-export const SourcePageDtoSchema = {
-  type: "object",
-  properties: {
-    items: {
-      type: "array",
-      items: {
-        $ref: "#/components/schemas/SourceDto",
-      },
-    },
-    total: {
-      type: "number",
-      description: "Rows matching the filter across all pages",
-    },
-    page: {
-      type: "number",
-    },
-    perPage: {
-      type: "number",
-    },
-  },
-  required: ["items", "total", "page", "perPage"],
-} as const;
-
-export const ImportJobDtoSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-    },
-    knowledgeId: {
-      type: "string",
-    },
-    kind: {
-      type: "string",
-      enum: ["archive", "extraction"],
-    },
-    status: {
-      type: "string",
-      enum: ["running", "done", "failed"],
-    },
-    detected: {
-      type: "number",
-      description: "Ingestable entries found up front",
-    },
-    added: {
-      type: "number",
-    },
-    skipped: {
-      type: "number",
-      description: "Entries skipped because a source with that name exists",
-    },
-    failed: {
-      type: "number",
-    },
-    errors: {
-      description: 'First failures as "<name>: <reason>", capped',
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-    startedAt: {
-      format: "date-time",
-      type: "string",
-    },
-    finishedAt: {
-      type: "string",
-      nullable: true,
-    },
-  },
-  required: [
-    "id",
-    "knowledgeId",
-    "kind",
-    "status",
-    "detected",
-    "added",
-    "skipped",
-    "failed",
-    "errors",
-    "startedAt",
-    "finishedAt",
-  ],
-} as const;
-
-export const CreateSourceDtoSchema = {
-  type: "object",
-  properties: {
-    type: {
-      type: "string",
-      enum: ["file", "url", "text"],
-    },
-    name: {
-      type: "string",
-    },
-    url: {
-      type: "string",
-    },
-    content: {
-      type: "string",
-    },
-  },
-  required: ["type", "name"],
-} as const;
-
-export const AddFilesResultDtoSchema = {
-  type: "object",
-  properties: {
-    added: {
-      type: "number",
-      example: 8,
-      description: "Files uploaded and registered.",
-    },
-    skipped: {
-      type: "number",
-      example: 2,
-      description:
-        "Files skipped because a file source with the same name already exists on this knowledge.",
-    },
-    failed: {
-      type: "number",
-      example: 1,
-      description: "Files that failed to upload.",
-    },
-    errors: {
-      example: ["broken.pdf: S3 upload failed"],
-      description: "One line per failed file.",
-      type: "array",
-      items: {
-        type: "string",
-      },
-    },
-  },
-  required: ["added", "skipped", "failed", "errors"],
-} as const;
-
-export const AddFromSitemapDtoSchema = {
-  type: "object",
-  properties: {
-    sitemapUrl: {
-      type: "string",
-      example: "https://developer.paypal.com/sitemap.xml",
-    },
-    urlPrefix: {
-      type: "string",
-      example: "https://developer.paypal.com/docs/checkout/",
-    },
-  },
-  required: ["sitemapUrl"],
-} as const;
-
-export const AddFromSitemapResultDtoSchema = {
-  type: "object",
-  properties: {
-    added: {
-      type: "number",
-      example: 47,
-    },
-    discovered: {
-      type: "number",
-      example: 51,
-    },
-  },
-  required: ["added", "discovered"],
-} as const;
-
-export const AddFromArchiveResultDtoSchema = {
-  type: "object",
-  properties: {
-    detected: {
-      type: "number",
-      example: 288,
-      description:
-        "Number of ingestable files detected in the archive. Import runs in the background; poll GET .../sources/imports for progress.",
-    },
-    started: {
-      type: "boolean",
-      example: true,
-    },
-    jobId: {
-      type: "string",
-      description:
-        "Id of the background import job (see GET .../sources/imports)",
-    },
-  },
-  required: ["detected", "started", "jobId"],
-} as const;
-
 export const AgentDtoSchema = {
   type: "object",
   properties: {
@@ -1193,6 +492,12 @@ export const AgentPodStatusDtoSchema = {
       nullable: true,
       example: "2026-04-30T10:15:00Z",
     },
+    terminating: {
+      type: "boolean",
+      example: false,
+      description:
+        "The pod is being deleted (restart cleanup, stop, manual delete). Its phase on the way out says nothing about the health of the agent.",
+    },
     lastTerminationReason: {
       type: "string",
       nullable: true,
@@ -1219,6 +524,7 @@ export const AgentPodStatusDtoSchema = {
     "ready",
     "restartCount",
     "startedAt",
+    "terminating",
     "lastTerminationReason",
     "containerWaitingReason",
     "message",
@@ -1611,6 +917,117 @@ export const UpdateAgentDtoSchema = {
   },
 } as const;
 
+export const FileNodeDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "memory/MEMORY.md",
+    },
+    size: {
+      type: "number",
+      example: 3712,
+    },
+    updatedAt: {
+      type: "string",
+      format: "date-time",
+    },
+    kind: {
+      type: "string",
+      enum: ["text", "binary"],
+      description:
+        "Decided by the API: known extension, or a sniff of the first bytes for unknown ones.",
+    },
+    editable: {
+      type: "boolean",
+      description:
+        "Text and within the editable size limit (see /files/limits).",
+    },
+  },
+  required: ["path", "size", "updatedAt", "kind", "editable"],
+} as const;
+
+export const FileLimitsDtoSchema = {
+  type: "object",
+  properties: {
+    maxEditBytes: {
+      type: "number",
+      example: 1048576,
+    },
+    maxViewBytes: {
+      type: "number",
+      example: 26214400,
+    },
+    rangeBytes: {
+      type: "number",
+      example: 262144,
+    },
+    maxRangeBytes: {
+      type: "number",
+      example: 524288,
+    },
+    openLinkTtlSec: {
+      type: "number",
+      example: 900,
+    },
+    importMaxArchiveBytes: {
+      type: "number",
+      example: 104857600,
+    },
+    importMaxEntries: {
+      type: "number",
+      example: 2000,
+    },
+    importMaxFileBytes: {
+      type: "number",
+      example: 26214400,
+    },
+    importPlanListRows: {
+      type: "number",
+      example: 500,
+    },
+    diffCompareMaxBytes: {
+      type: "number",
+      example: 1048576,
+    },
+    diffInlineMaxLines: {
+      type: "number",
+      example: 200,
+    },
+    diffInlineMaxBytes: {
+      type: "number",
+      example: 102400,
+    },
+    proposalListRows: {
+      type: "number",
+      example: 50,
+    },
+    textExtensions: {
+      example: [".md", ".json", ".py"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "maxEditBytes",
+    "maxViewBytes",
+    "rangeBytes",
+    "maxRangeBytes",
+    "openLinkTtlSec",
+    "importMaxArchiveBytes",
+    "importMaxEntries",
+    "importMaxFileBytes",
+    "importPlanListRows",
+    "diffCompareMaxBytes",
+    "diffInlineMaxLines",
+    "diffInlineMaxBytes",
+    "proposalListRows",
+    "textExtensions",
+  ],
+} as const;
+
 export const FileChunkDtoSchema = {
   type: "object",
   properties: {
@@ -1620,7 +1037,8 @@ export const FileChunkDtoSchema = {
     },
     content: {
       type: "string",
-      description: "UTF-8 slice of the file from `offset`.",
+      description:
+        "UTF-8 slice of the file from `offset`. Never ends in the middle of a character.",
     },
     size: {
       type: "number",
@@ -1652,6 +1070,15 @@ export const FileChunkDtoSchema = {
       type: "string",
       format: "date-time",
     },
+    kind: {
+      type: "string",
+      enum: ["text", "binary"],
+    },
+    editable: {
+      type: "boolean",
+      description:
+        "Whole file is text and within the editable size limit. Editing also needs `hasMore === false`.",
+    },
   },
   required: [
     "path",
@@ -1662,6 +1089,8 @@ export const FileChunkDtoSchema = {
     "nextOffset",
     "hasMore",
     "updatedAt",
+    "kind",
+    "editable",
   ],
 } as const;
 
@@ -1672,8 +1101,48 @@ export const SaveFileDtoSchema = {
       type: "string",
       description: "Full file content as text",
     },
+    createOnly: {
+      type: "boolean",
+      default: false,
+      description: "Refuse with 409 when the file already exists (New file).",
+    },
+    ifUnmodifiedSince: {
+      type: "string",
+      format: "date-time",
+      description:
+        "Refuse with 412 when the stored file changed after this instant (the `updatedAt` the editor loaded).",
+    },
   },
   required: ["content"],
+} as const;
+
+export const FileContentDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "memory/MEMORY.md",
+    },
+    content: {
+      type: "string",
+    },
+    size: {
+      type: "number",
+      example: 3712,
+    },
+    updatedAt: {
+      type: "string",
+      format: "date-time",
+    },
+    kind: {
+      type: "string",
+      enum: ["text", "binary"],
+    },
+    editable: {
+      type: "boolean",
+    },
+  },
+  required: ["path", "content", "size", "updatedAt", "kind", "editable"],
 } as const;
 
 export const DeleteFilesDtoSchema = {
@@ -1686,6 +1155,45 @@ export const DeleteFilesDtoSchema = {
     },
   },
   required: ["deleted"],
+} as const;
+
+export const DeleteFilesBodyDtoSchema = {
+  type: "object",
+  properties: {
+    paths: {
+      description: "Files, or folders (deleted recursively).",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    confirm: {
+      type: "boolean",
+      default: false,
+      description:
+        "Required when the selection would remove every file of the workspace.",
+    },
+  },
+  required: ["paths"],
+} as const;
+
+export const DeleteFilesConflictDtoSchema = {
+  type: "object",
+  properties: {
+    requiresConfirmation: {
+      type: "boolean",
+      example: true,
+    },
+    wouldRemove: {
+      type: "number",
+      example: 177,
+    },
+    total: {
+      type: "number",
+      example: 177,
+    },
+  },
+  required: ["requiresConfirmation", "wouldRemove", "total"],
 } as const;
 
 export const SyncFilesBodyDtoSchema = {
@@ -1739,6 +1247,488 @@ export const SyncConflictDtoSchema = {
     },
   },
   required: ["requiresConfirmation", "atRisk", "baseline"],
+} as const;
+
+export const ExportFilesBodyDtoSchema = {
+  type: "object",
+  properties: {
+    paths: {
+      description: "Files, or folders by prefix. Omit for the whole workspace.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+} as const;
+
+export const OpenLinkBodyDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "workspace/log.txt",
+    },
+  },
+  required: ["path"],
+} as const;
+
+export const OpenLinkDtoSchema = {
+  type: "object",
+  properties: {
+    url: {
+      type: "string",
+      description:
+        "Address of the raw stored file. Absolute when PUBLIC_API_URL is configured, otherwise a path the console prefixes with its API base.",
+      example: "/agents/agent-1/files/raw?token=eyJ…",
+    },
+    expiresAt: {
+      type: "string",
+      format: "date-time",
+    },
+  },
+  required: ["url", "expiresAt"],
+} as const;
+
+export const ImportCountsDtoSchema = {
+  type: "object",
+  properties: {
+    add: {
+      type: "number",
+      example: 12,
+    },
+    change: {
+      type: "number",
+      example: 3,
+    },
+    unchanged: {
+      type: "number",
+      example: 160,
+    },
+    remove: {
+      type: "number",
+      example: 0,
+      description: "Replace mode only.",
+    },
+    skip: {
+      type: "number",
+      example: 2,
+    },
+  },
+  required: ["add", "change", "unchanged", "remove", "skip"],
+} as const;
+
+export const ImportPlanEntryDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "skills/run.py",
+    },
+    action: {
+      type: "string",
+      enum: ["add", "change", "unchanged", "remove", "skip"],
+    },
+    size: {
+      type: "number",
+      example: 1024,
+    },
+    reason: {
+      type: "string",
+      example: "runtime-owned session state",
+      description: "Why the entry is skipped or treated as changed.",
+    },
+  },
+  required: ["path", "action", "size"],
+} as const;
+
+export const ImportPlanDtoSchema = {
+  type: "object",
+  properties: {
+    importId: {
+      type: "string",
+      format: "uuid",
+    },
+    mode: {
+      type: "string",
+      enum: ["merge", "replace"],
+    },
+    includeSessions: {
+      type: "boolean",
+    },
+    wrapperStripped: {
+      type: "string",
+      nullable: true,
+      description:
+        "Top-level folder removed from every entry, if the archive had one.",
+    },
+    counts: {
+      $ref: "#/components/schemas/ImportCountsDto",
+    },
+    totalBytes: {
+      type: "number",
+      description: "Bytes of the entries that will be written.",
+    },
+    entries: {
+      description: "Capped at the plan list limit; `more` counts the rest.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ImportPlanEntryDto",
+      },
+    },
+    more: {
+      type: "number",
+      example: 0,
+    },
+    warnings: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "importId",
+    "mode",
+    "includeSessions",
+    "wrapperStripped",
+    "counts",
+    "totalBytes",
+    "entries",
+    "more",
+    "warnings",
+  ],
+} as const;
+
+export const ImportApplyDtoSchema = {
+  type: "object",
+  properties: {
+    mode: {
+      type: "string",
+      enum: ["merge", "replace"],
+      description: `\`merge\` writes the archive and keeps everything else; \`replace\` also deletes files not in the archive.`,
+    },
+    includeSessions: {
+      type: "boolean",
+      default: false,
+      description:
+        "Also write (and in replace mode remove) runtime session state.",
+    },
+    confirmRemove: {
+      type: "boolean",
+      default: false,
+      description:
+        "Required when `mode=replace` would remove files — the second acknowledgement.",
+    },
+  },
+  required: ["mode"],
+} as const;
+
+export const ImportFailureDtoSchema = {
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      example: "workspace/big.bin",
+    },
+    reason: {
+      type: "string",
+      example: "S3 put failed: AccessDenied",
+    },
+  },
+  required: ["path", "reason"],
+} as const;
+
+export const ImportResultDtoSchema = {
+  type: "object",
+  properties: {
+    importId: {
+      type: "string",
+      format: "uuid",
+    },
+    mode: {
+      type: "string",
+      enum: ["merge", "replace"],
+    },
+    written: {
+      type: "number",
+      example: 15,
+    },
+    removed: {
+      type: "number",
+      example: 0,
+    },
+    skipped: {
+      type: "number",
+      example: 2,
+    },
+    failed: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ImportFailureDto",
+      },
+    },
+    restartRequired: {
+      type: "boolean",
+      description:
+        "The agent is running — the files apply on its next restart.",
+    },
+  },
+  required: [
+    "importId",
+    "mode",
+    "written",
+    "removed",
+    "skipped",
+    "failed",
+    "restartRequired",
+  ],
+} as const;
+
+export const ImportRemoveConflictDtoSchema = {
+  type: "object",
+  properties: {
+    requiresConfirmation: {
+      type: "boolean",
+      example: true,
+    },
+    remove: {
+      type: "number",
+      example: 7,
+      description: "Files replace mode would delete.",
+    },
+  },
+  required: ["requiresConfirmation", "remove"],
+} as const;
+
+export const ProposalSetSummaryDtoSchema = {
+  type: "object",
+  properties: {
+    counts: {
+      $ref: "#/components/schemas/ImportCountsDto",
+    },
+    rows: {
+      description: "First rows only.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ImportPlanEntryDto",
+      },
+    },
+    more: {
+      type: "number",
+      example: 0,
+      description: "Rows not listed.",
+    },
+    mode: {
+      type: "string",
+      enum: ["merge", "replace"],
+    },
+    includeSessions: {
+      type: "boolean",
+    },
+    wrapperStripped: {
+      type: "string",
+      nullable: true,
+    },
+    warnings: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "counts",
+    "rows",
+    "more",
+    "mode",
+    "includeSessions",
+    "wrapperStripped",
+    "warnings",
+  ],
+} as const;
+
+export const FileChangeProposalDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    agentId: {
+      type: "string",
+      description: "Target workspace.",
+    },
+    agentName: {
+      type: "string",
+    },
+    chatAgentId: {
+      type: "string",
+      description: "The agent whose chat raised it.",
+    },
+    channel: {
+      type: "string",
+      example: "admin",
+    },
+    kind: {
+      type: "string",
+      enum: ["single", "set"],
+    },
+    op: {
+      type: "string",
+      enum: ["write", "create", "import"],
+    },
+    path: {
+      type: "string",
+      nullable: true,
+      example: "agent.config.json",
+    },
+    mode: {
+      type: "string",
+      nullable: true,
+      enum: ["merge", "replace", null],
+    },
+    includeSessions: {
+      type: "boolean",
+    },
+    proposedBytes: {
+      type: "number",
+      example: 856,
+    },
+    diffStatus: {
+      type: "string",
+      enum: ["ok", "too_large", "binary", "none"],
+    },
+    additions: {
+      type: "number",
+      nullable: true,
+    },
+    deletions: {
+      type: "number",
+      nullable: true,
+    },
+    changedLines: {
+      type: "number",
+      nullable: true,
+    },
+    firstChangedLine: {
+      type: "number",
+      nullable: true,
+    },
+    inlineDiff: {
+      type: "string",
+      nullable: true,
+      description:
+        "Unified diff hunks; null when over the inline caps or not computed.",
+    },
+    summary: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/ProposalSetSummaryDto",
+        },
+      ],
+    },
+    status: {
+      type: "string",
+      enum: ["pending", "applied", "skipped", "stale", "refused"],
+    },
+    actedBy: {
+      type: "string",
+      nullable: true,
+    },
+    actedVia: {
+      type: "string",
+      nullable: true,
+      enum: ["card", "tool", "editor", null],
+    },
+    actedAt: {
+      type: "string",
+      nullable: true,
+      format: "date-time",
+    },
+    result: {
+      type: "object",
+      nullable: true,
+      description: "ImportResult for a set; `{ etag }` for a single.",
+    },
+    reason: {
+      type: "string",
+      nullable: true,
+    },
+    restartRequired: {
+      type: "boolean",
+      description: "The target agent is running — applies on its next restart.",
+    },
+    createdAt: {
+      type: "string",
+      format: "date-time",
+    },
+  },
+  required: [
+    "id",
+    "agentId",
+    "agentName",
+    "chatAgentId",
+    "channel",
+    "kind",
+    "op",
+    "path",
+    "mode",
+    "includeSessions",
+    "proposedBytes",
+    "diffStatus",
+    "additions",
+    "deletions",
+    "changedLines",
+    "firstChangedLine",
+    "inlineDiff",
+    "summary",
+    "status",
+    "actedBy",
+    "actedVia",
+    "actedAt",
+    "result",
+    "reason",
+    "restartRequired",
+    "createdAt",
+  ],
+} as const;
+
+export const ApplyProposalDtoSchema = {
+  type: "object",
+  properties: {
+    via: {
+      type: "string",
+      enum: ["card", "editor"],
+      default: "card",
+    },
+    content: {
+      type: "string",
+      description:
+        "Editor only — the edited content replaces the proposed one.",
+    },
+    confirmRemove: {
+      type: "boolean",
+      description:
+        "Replace-mode imports that remove files need this acknowledgement.",
+    },
+  },
+} as const;
+
+export const ProposalRemoveConflictDtoSchema = {
+  type: "object",
+  properties: {
+    requiresConfirmation: {
+      type: "boolean",
+      example: true,
+    },
+    remove: {
+      type: "number",
+      example: 12,
+      description: "Files replace mode would delete.",
+    },
+  },
+  required: ["requiresConfirmation", "remove"],
 } as const;
 
 export const BridleTextPartDtoSchema = {
@@ -1992,8 +1982,16 @@ export const TranscriptResponseDtoSchema = {
       type: "boolean",
       example: false,
     },
+    proposals: {
+      description:
+        "File change proposals raised in this chat inside the page’s window, plus every pending one (CLEAN-112). The client places them by `createdAt`.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/FileChangeProposalDto",
+      },
+    },
   },
-  required: ["messages", "channel", "nextCursor", "hasMore"],
+  required: ["messages", "channel", "nextCursor", "hasMore", "proposals"],
 } as const;
 
 export const ShareLinkDtoSchema = {
@@ -2085,6 +2083,733 @@ export const ShareResolvedDtoSchema = {
     },
   },
   required: ["agentId", "agentName", "agentStatus"],
+} as const;
+
+export const CreateMcpServerDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "object",
+    },
+    url: {
+      type: "string",
+    },
+    transport: {
+      type: "string",
+      enum: ["streamableHttp", "sse"],
+    },
+    authType: {
+      type: "string",
+      enum: ["none", "bearer", "header", "oauth"],
+    },
+    authValue: {
+      type: "object",
+    },
+    enabled: {
+      type: "boolean",
+    },
+  },
+  required: ["name", "url"],
+} as const;
+
+export const UpdateMcpServerDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "object",
+    },
+    url: {
+      type: "string",
+    },
+    transport: {
+      type: "string",
+      enum: ["streamableHttp", "sse"],
+    },
+    authType: {
+      type: "string",
+      enum: ["none", "bearer", "header", "oauth"],
+    },
+    authValue: {
+      type: "object",
+    },
+    enabled: {
+      type: "boolean",
+    },
+  },
+} as const;
+
+export const KnowledgeListItemDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+      nullable: true,
+    },
+    indexStatus: {
+      type: "string",
+      enum: ["idle", "indexing", "ready", "failed", "empty", "partial"],
+      description:
+        "Derived from the sources: empty (nothing added), indexing (a source is being processed), partial (some sources are not searchable), ready (every source answers).",
+    },
+    indexError: {
+      type: "string",
+      nullable: true,
+    },
+    indexedAt: {
+      type: "string",
+      nullable: true,
+    },
+    indexStartedAt: {
+      type: "string",
+      nullable: true,
+    },
+    sourceCount: {
+      type: "number",
+      description: "Sources attached to this knowledge",
+    },
+    indexedCount: {
+      type: "number",
+      description: "Sources LightRAG confirmed as processed",
+    },
+    failedCount: {
+      type: "number",
+      description:
+        "Sources whose last index run recorded an error nothing will retry without a person",
+    },
+    retryingCount: {
+      type: "number",
+      description:
+        "Sources that failed for a reason that passes (a model outage, a lost connection) and are retried automatically",
+    },
+    processingCount: {
+      type: "number",
+      description:
+        "Sources handed to LightRAG that it has not finished processing. A ready knowledge with a non-zero count is searchable but not complete yet; run Index again once the pipeline drains.",
+    },
+    indexRunAlive: {
+      type: "boolean",
+      description:
+        "True while the index run that set `indexing` is still executing in the API. False with `indexing` means the run is gone (rejected, timed out, or lost to a restart) and a new one may be started at once.",
+    },
+    instanceState: {
+      type: "string",
+      enum: ["absent", "starting", "ready", "failed", "stopping"],
+    },
+    instanceError: {
+      type: "string",
+      nullable: true,
+    },
+    migrationState: {
+      type: "string",
+      enum: ["notStarted", "inProgress", "done", "failed"],
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+    sourcesCount: {
+      type: "number",
+    },
+    totalSizeBytes: {
+      type: "number",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "description",
+    "indexStatus",
+    "indexError",
+    "indexedAt",
+    "indexStartedAt",
+    "sourceCount",
+    "indexedCount",
+    "failedCount",
+    "retryingCount",
+    "processingCount",
+    "indexRunAlive",
+    "instanceState",
+    "instanceError",
+    "migrationState",
+    "createdAt",
+    "updatedAt",
+    "sourcesCount",
+    "totalSizeBytes",
+  ],
+} as const;
+
+export const KnowledgePageDtoSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/KnowledgeListItemDto",
+      },
+    },
+    total: {
+      type: "number",
+    },
+    page: {
+      type: "number",
+    },
+    perPage: {
+      type: "number",
+    },
+  },
+  required: ["items", "total", "page", "perPage"],
+} as const;
+
+export const GraphLabelsDtoSchema = {
+  type: "object",
+  properties: {
+    labels: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    total: {
+      type: "number",
+    },
+    truncated: {
+      type: "boolean",
+    },
+  },
+  required: ["labels", "total", "truncated"],
+} as const;
+
+export const GraphNodeDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    label: {
+      type: "string",
+    },
+    entityType: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+    },
+  },
+  required: ["id", "label", "entityType", "description"],
+} as const;
+
+export const GraphEdgeDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    source: {
+      type: "string",
+    },
+    target: {
+      type: "string",
+    },
+    weight: {
+      type: "number",
+    },
+    keywords: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+    },
+  },
+  required: ["id", "source", "target", "weight", "keywords", "description"],
+} as const;
+
+export const GraphDtoSchema = {
+  type: "object",
+  properties: {
+    nodes: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/GraphNodeDto",
+      },
+    },
+    edges: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/GraphEdgeDto",
+      },
+    },
+    isTruncated: {
+      type: "boolean",
+    },
+  },
+  required: ["nodes", "edges", "isTruncated"],
+} as const;
+
+export const SourceTypeCountsDtoSchema = {
+  type: "object",
+  properties: {
+    file: {
+      type: "number",
+    },
+    url: {
+      type: "number",
+    },
+    text: {
+      type: "number",
+    },
+  },
+  required: ["file", "url", "text"],
+} as const;
+
+export const KnowledgeOverviewDtoSchema = {
+  type: "object",
+  properties: {
+    sourceCount: {
+      type: "number",
+      description: "Sources attached to this knowledge",
+    },
+    indexedCount: {
+      type: "number",
+      description: "Sources LightRAG confirmed as processed",
+    },
+    failedCount: {
+      type: "number",
+      description: "Failed, and nothing will retry them by itself",
+    },
+    retryingCount: {
+      type: "number",
+      description: "Failed for a passing reason; retried automatically",
+    },
+    processingCount: {
+      type: "number",
+      description: "Handed to LightRAG and still in its pipeline",
+    },
+    byType: {
+      $ref: "#/components/schemas/SourceTypeCountsDto",
+    },
+    totalSizeBytes: {
+      type: "number",
+      description: "Sum of the stored files, in bytes",
+    },
+  },
+  required: [
+    "sourceCount",
+    "indexedCount",
+    "failedCount",
+    "retryingCount",
+    "processingCount",
+    "byType",
+    "totalSizeBytes",
+  ],
+} as const;
+
+export const CreateKnowledgeDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+    },
+  },
+  required: ["name"],
+} as const;
+
+export const UpdateKnowledgeDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+      nullable: true,
+    },
+  },
+} as const;
+
+export const QueryKnowledgeDtoSchema = {
+  type: "object",
+  properties: {
+    query: {
+      type: "string",
+    },
+    mode: {
+      type: "string",
+      enum: ["hybrid", "local", "global", "naive"],
+      default: "hybrid",
+    },
+    topK: {
+      type: "number",
+      default: 25,
+    },
+  },
+  required: ["query"],
+} as const;
+
+export const KnowledgeQueryReferenceDtoSchema = {
+  type: "object",
+  properties: {
+    referenceId: {
+      type: "string",
+    },
+    filePath: {
+      type: "string",
+    },
+    sourceId: {
+      type: "string",
+      nullable: true,
+    },
+    sourceName: {
+      type: "string",
+      nullable: true,
+    },
+  },
+  required: ["referenceId", "filePath", "sourceId", "sourceName"],
+} as const;
+
+export const KnowledgeQueryResultDtoSchema = {
+  type: "object",
+  properties: {
+    answer: {
+      type: "string",
+      nullable: true,
+      description:
+        "null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.",
+    },
+    reason: {
+      type: "string",
+      enum: ["no_relevant_content"],
+    },
+    knowledgeId: {
+      type: "string",
+    },
+    complete: {
+      type: "boolean",
+      description:
+        "false while this base is still being re-processed into its own area — answers may be incomplete.",
+    },
+    references: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/KnowledgeQueryReferenceDto",
+      },
+    },
+  },
+  required: ["answer", "knowledgeId", "complete", "references"],
+} as const;
+
+export const SourceDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    knowledgeId: {
+      type: "string",
+    },
+    type: {
+      type: "string",
+      enum: ["file", "url", "text"],
+    },
+    name: {
+      type: "string",
+    },
+    url: {
+      type: "string",
+      nullable: true,
+    },
+    mimeType: {
+      type: "string",
+      nullable: true,
+    },
+    content: {
+      type: "string",
+      nullable: true,
+    },
+    sizeBytes: {
+      type: "number",
+      nullable: true,
+    },
+    indexed: {
+      type: "boolean",
+      description:
+        'True when indexStatus is "indexed". Kept for older callers.',
+    },
+    indexStatus: {
+      type: "string",
+      enum: ["indexed", "pending", "retrying", "failed"],
+    },
+    indexState: {
+      type: "string",
+      enum: ["queued", "processing", "indexed", "failed"],
+    },
+    indexError: {
+      type: "string",
+      nullable: true,
+      description:
+        "Error from the last index run, null once the source indexes.",
+    },
+    indexedAt: {
+      type: "string",
+      nullable: true,
+    },
+    indexAttempts: {
+      type: "number",
+      description:
+        "Failed attempts since the source last indexed or was retried by hand; the reconciler stops retrying after three.",
+    },
+    indexRetryAt: {
+      type: "string",
+      nullable: true,
+      description:
+        "When the reconciler will retry a failed source on its own; null once it will not (permanent failure, or the retries are spent).",
+    },
+    textState: {
+      type: "string",
+      enum: ["none", "pending", "ready", "failed"],
+      description:
+        "Text extraction for a PDF without a text layer: none (not a PDF, or it has its own text), pending (probing or OCR running), ready (recognised text is what gets indexed), failed (see textError).",
+    },
+    textError: {
+      type: "string",
+      nullable: true,
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "knowledgeId",
+    "type",
+    "name",
+    "url",
+    "mimeType",
+    "content",
+    "sizeBytes",
+    "indexed",
+    "indexStatus",
+    "indexState",
+    "indexError",
+    "indexedAt",
+    "indexAttempts",
+    "indexRetryAt",
+    "textState",
+    "textError",
+    "createdAt",
+    "updatedAt",
+  ],
+} as const;
+
+export const SourcePageDtoSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/SourceDto",
+      },
+    },
+    total: {
+      type: "number",
+      description: "Rows matching the filter across all pages",
+    },
+    page: {
+      type: "number",
+    },
+    perPage: {
+      type: "number",
+    },
+  },
+  required: ["items", "total", "page", "perPage"],
+} as const;
+
+export const ImportJobDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    knowledgeId: {
+      type: "string",
+    },
+    kind: {
+      type: "string",
+      enum: ["archive", "extraction"],
+    },
+    status: {
+      type: "string",
+      enum: ["running", "done", "failed"],
+    },
+    detected: {
+      type: "number",
+      description: "Ingestable entries found up front",
+    },
+    added: {
+      type: "number",
+    },
+    skipped: {
+      type: "number",
+      description: "Entries skipped because a source with that name exists",
+    },
+    failed: {
+      type: "number",
+    },
+    errors: {
+      description: 'First failures as "<name>: <reason>", capped',
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    startedAt: {
+      format: "date-time",
+      type: "string",
+    },
+    finishedAt: {
+      type: "string",
+      nullable: true,
+    },
+  },
+  required: [
+    "id",
+    "knowledgeId",
+    "kind",
+    "status",
+    "detected",
+    "added",
+    "skipped",
+    "failed",
+    "errors",
+    "startedAt",
+    "finishedAt",
+  ],
+} as const;
+
+export const CreateSourceDtoSchema = {
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      enum: ["file", "url", "text"],
+    },
+    name: {
+      type: "string",
+    },
+    url: {
+      type: "string",
+    },
+    content: {
+      type: "string",
+    },
+  },
+  required: ["type", "name"],
+} as const;
+
+export const AddFilesResultDtoSchema = {
+  type: "object",
+  properties: {
+    added: {
+      type: "number",
+      example: 8,
+      description: "Files uploaded and registered.",
+    },
+    skipped: {
+      type: "number",
+      example: 2,
+      description:
+        "Files skipped because a file source with the same name already exists on this knowledge.",
+    },
+    failed: {
+      type: "number",
+      example: 1,
+      description: "Files that failed to upload.",
+    },
+    errors: {
+      example: ["broken.pdf: S3 upload failed"],
+      description: "One line per failed file.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["added", "skipped", "failed", "errors"],
+} as const;
+
+export const AddFromSitemapDtoSchema = {
+  type: "object",
+  properties: {
+    sitemapUrl: {
+      type: "string",
+      example: "https://developer.paypal.com/sitemap.xml",
+    },
+    urlPrefix: {
+      type: "string",
+      example: "https://developer.paypal.com/docs/checkout/",
+    },
+  },
+  required: ["sitemapUrl"],
+} as const;
+
+export const AddFromSitemapResultDtoSchema = {
+  type: "object",
+  properties: {
+    added: {
+      type: "number",
+      example: 47,
+    },
+    discovered: {
+      type: "number",
+      example: 51,
+    },
+  },
+  required: ["added", "discovered"],
+} as const;
+
+export const AddFromArchiveResultDtoSchema = {
+  type: "object",
+  properties: {
+    detected: {
+      type: "number",
+      example: 288,
+      description:
+        "Number of ingestable files detected in the archive. Import runs in the background; poll GET .../sources/imports for progress.",
+    },
+    started: {
+      type: "boolean",
+      example: true,
+    },
+    jobId: {
+      type: "string",
+      description:
+        "Id of the background import job (see GET .../sources/imports)",
+    },
+  },
+  required: ["detected", "started", "jobId"],
 } as const;
 
 export const ImportSkillUrlDtoSchema = {
@@ -3372,7 +4097,7 @@ export const AgentDelegationDtoSchema = {
       type: "string",
       nullable: true,
       description:
-        "Why it did not produce an answer: PEER_NOT_RUNNING, PEER_TIMEOUT, PEER_REJECTED_LOOP, PEER_REJECTED_DEPTH, PEER_UNAUTHORIZED, PEER_UNREACHABLE or PEER_ERROR. Null while waiting and on success.",
+        "Why it did not produce an answer: PEER_NOT_RUNNING, PEER_TIMEOUT, PEER_REJECTED_LOOP, PEER_REJECTED_DEPTH, PEER_UNAUTHORIZED, PEER_UNREACHABLE, PEER_ADDRESS_REFUSED (the card points at a private or local address, so nothing was sent), PEER_UNSUPPORTED (the card offers no JSON-RPC interface on A2A 1.0) or PEER_ERROR. Null while waiting and on success — including an empty reply, which is answered.",
       example: null,
     },
     excerpt: {
@@ -3413,6 +4138,117 @@ export const AgentDelegationDtoSchema = {
     "finishedAt",
     "durationMs",
   ],
+} as const;
+
+export const AgentToolEntryDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      description: "Technical MCP tool name.",
+      example: "register_mcp_server",
+    },
+    title: {
+      type: "string",
+      example: "Register an MCP server",
+    },
+    description: {
+      type: "string",
+      description:
+        "The per-caller description, exactly what the runtime would be given.",
+    },
+    template: {
+      type: "string",
+      description: "Starter prompt with «…» placeholders.",
+      example: "Register the MCP server at «url» named «name»",
+    },
+    destructive: {
+      type: "boolean",
+      description:
+        "The tool removes, revokes or interrupts something and needs confirm: true.",
+    },
+    inPod: {
+      type: "boolean",
+      nullable: true,
+      description:
+        "null — no pod runs; false — the running pod did not list this tool (restart needed); true — it did.",
+    },
+  },
+  required: [
+    "name",
+    "title",
+    "description",
+    "template",
+    "destructive",
+    "inPod",
+  ],
+} as const;
+
+export const AgentToolGroupDtoSchema = {
+  type: "object",
+  properties: {
+    key: {
+      type: "string",
+      description:
+        "Topic key (e.g. mcp_servers) or mcp:<serverId> for an external server.",
+      example: "mcp_servers",
+    },
+    title: {
+      type: "string",
+      example: "MCP servers",
+    },
+    kind: {
+      type: "string",
+      enum: ["builtin", "external"],
+    },
+    description: {
+      type: "string",
+      description:
+        "External servers only — the server row's description. Never its url or auth value.",
+    },
+    afterRestart: {
+      type: "boolean",
+      description:
+        "builtin — at least one tool has inPod=false; external — the server row changed after the pod started.",
+    },
+    tools: {
+      description:
+        "Empty for external groups; their tools are served by the server itself.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentToolEntryDto",
+      },
+    },
+  },
+  required: ["key", "title", "kind", "afterRestart", "tools"],
+} as const;
+
+export const AgentToolCatalogDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+    },
+    podStartedAt: {
+      type: "string",
+      nullable: true,
+      description: "When the current pod started; null when no pod runs.",
+      example: "2026-09-22T10:33:00.000Z",
+    },
+    listedAt: {
+      type: "string",
+      nullable: true,
+      description: "When the pod last called tools/list; null if it never did.",
+      example: "2026-09-22T10:33:05.000Z",
+    },
+    groups: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentToolGroupDto",
+      },
+    },
+  },
+  required: ["agentId", "podStartedAt", "listedAt", "groups"],
 } as const;
 
 export const SecretEntryDtoSchema = {

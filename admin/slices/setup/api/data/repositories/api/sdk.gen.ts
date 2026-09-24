@@ -39,6 +39,98 @@ import type {
   TemplateControllerUpdateData,
   TemplateControllerSetSkillsData,
   TemplateControllerSetMcpsData,
+  AgentControllerFindAllData,
+  AgentControllerFindAllResponse,
+  AgentControllerCreateData,
+  AgentControllerFindPublicData,
+  AgentControllerFindPublicResponse,
+  AgentControllerStatusData,
+  AgentControllerStatusResponse,
+  AgentControllerStatusStreamData,
+  GetClusterCapacityData,
+  GetClusterCapacityResponse,
+  AgentControllerRemoveData,
+  AgentControllerFindByIdData,
+  AgentControllerFindByIdResponse,
+  AgentControllerUpdateData,
+  GetAgentMetricsData,
+  GetAgentMetricsResponse,
+  GetAgentEnvData,
+  GetAgentEnvResponse,
+  GetAgentMcpsData,
+  GetAgentMcpsResponse,
+  GetAgentMcpStatusData,
+  GetAgentMcpStatusResponse,
+  AgentControllerFindAdminData,
+  AgentControllerDemoteAdminData,
+  AgentControllerPromoteAdminData,
+  AgentControllerRestartData,
+  AgentControllerStopData,
+  AgentControllerStartData,
+  RestartByTemplateData,
+  DeleteAgentFileSelectionData,
+  DeleteAgentFileSelectionResponse,
+  DeleteAgentFileSelectionError,
+  FileControllerListData,
+  FileControllerListResponse,
+  FileControllerLimitsData,
+  FileControllerLimitsResponse,
+  FileControllerDeleteData,
+  FileControllerDeleteResponse,
+  FileControllerReadData,
+  FileControllerReadResponse,
+  FileControllerSaveData,
+  FileControllerSaveResponse,
+  FileControllerSyncData,
+  FileControllerSyncError,
+  ExportAgentFilesData,
+  ExportAgentFileSelectionData,
+  MintAgentFileOpenLinkData,
+  MintAgentFileOpenLinkResponse,
+  ReadAgentFileRawData,
+  StageAgentImportData,
+  StageAgentImportResponse,
+  PlanAgentImportData,
+  PlanAgentImportResponse,
+  ApplyAgentImportData,
+  ApplyAgentImportResponse,
+  ApplyAgentImportError,
+  ListAgentFileProposalsData,
+  ListAgentFileProposalsResponse,
+  GetAgentFileProposalData,
+  GetAgentFileProposalResponse,
+  GetAgentFileProposalContentData,
+  GetAgentFileProposalDiffData,
+  ApplyAgentFileProposalData,
+  ApplyAgentFileProposalResponse,
+  ApplyAgentFileProposalError,
+  SkipAgentFileProposalData,
+  SkipAgentFileProposalResponse,
+  SendBridleMessageData,
+  SendBridleMessageSyncData,
+  UploadBridleAttachmentData,
+  UploadBridleAttachmentResponse,
+  GetBridleAttachmentData,
+  BridleHealthData,
+  BridleHealthResponse,
+  BridleAgentHealthData,
+  BridleAgentHealthResponse,
+  ListAgentsData,
+  ResetBridleTranscriptData,
+  ResetBridleTranscriptResponse,
+  GetBridleTranscriptData,
+  GetBridleTranscriptResponse,
+  ArchiveBridleTranscriptData,
+  RevokeAgentShareLinkData,
+  RevokeAgentShareLinkResponse,
+  GetAgentShareLinkData,
+  GetAgentShareLinkResponse,
+  CreateAgentShareLinkData,
+  CreateAgentShareLinkResponse,
+  RegenerateAgentShareLinkData,
+  RegenerateAgentShareLinkResponse,
+  ResolveShareLinkData,
+  ResolveShareLinkResponse,
   McpServerControllerFindAllData,
   McpServerControllerCreateData,
   McpServerControllerRemoveData,
@@ -78,69 +170,6 @@ import type {
   AddKnowledgeSourcesFromArchiveResponse,
   DeleteKnowledgeSourceData,
   DeleteKnowledgeSourceResponse,
-  AgentControllerFindAllData,
-  AgentControllerFindAllResponse,
-  AgentControllerCreateData,
-  AgentControllerFindPublicData,
-  AgentControllerFindPublicResponse,
-  AgentControllerStatusData,
-  AgentControllerStatusResponse,
-  AgentControllerStatusStreamData,
-  GetClusterCapacityData,
-  GetClusterCapacityResponse,
-  AgentControllerRemoveData,
-  AgentControllerFindByIdData,
-  AgentControllerFindByIdResponse,
-  AgentControllerUpdateData,
-  GetAgentMetricsData,
-  GetAgentMetricsResponse,
-  GetAgentEnvData,
-  GetAgentEnvResponse,
-  GetAgentMcpsData,
-  GetAgentMcpsResponse,
-  GetAgentMcpStatusData,
-  GetAgentMcpStatusResponse,
-  AgentControllerFindAdminData,
-  AgentControllerDemoteAdminData,
-  AgentControllerPromoteAdminData,
-  AgentControllerRestartData,
-  AgentControllerStopData,
-  AgentControllerStartData,
-  RestartByTemplateData,
-  FileControllerListData,
-  FileControllerDeleteData,
-  FileControllerDeleteResponse,
-  FileControllerReadData,
-  FileControllerReadResponse,
-  FileControllerSaveData,
-  FileControllerSyncData,
-  FileControllerSyncError,
-  ExportAgentFilesData,
-  SendBridleMessageData,
-  SendBridleMessageSyncData,
-  UploadBridleAttachmentData,
-  UploadBridleAttachmentResponse,
-  GetBridleAttachmentData,
-  BridleHealthData,
-  BridleHealthResponse,
-  BridleAgentHealthData,
-  BridleAgentHealthResponse,
-  ListAgentsData,
-  ResetBridleTranscriptData,
-  ResetBridleTranscriptResponse,
-  GetBridleTranscriptData,
-  GetBridleTranscriptResponse,
-  ArchiveBridleTranscriptData,
-  RevokeAgentShareLinkData,
-  RevokeAgentShareLinkResponse,
-  GetAgentShareLinkData,
-  GetAgentShareLinkResponse,
-  CreateAgentShareLinkData,
-  CreateAgentShareLinkResponse,
-  RegenerateAgentShareLinkData,
-  RegenerateAgentShareLinkResponse,
-  ResolveShareLinkData,
-  ResolveShareLinkResponse,
   SkillControllerFindAllData,
   SkillControllerCreateData,
   SkillControllerListSourcesData,
@@ -977,6 +1006,1006 @@ export class TemplatesService {
   }
 }
 
+export class AgentsService {
+  /**
+   * List all agents. Public — landing/chat pages render without auth. Mutations and details still require login.
+   */
+  public static agentControllerFindAll<ThrowOnError extends boolean = false>(
+    options?: Options<AgentControllerFindAllData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      AgentControllerFindAllResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents",
+      ...options,
+    });
+  }
+
+  /**
+   * Create and deploy a new agent. Admin or Owner.
+   */
+  public static agentControllerCreate<ThrowOnError extends boolean = false>(
+    options: Options<AgentControllerCreateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * List agents flagged as public. Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.
+   */
+  public static agentControllerFindPublic<ThrowOnError extends boolean = false>(
+    options?: Options<AgentControllerFindPublicData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      AgentControllerFindPublicResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/public",
+      ...options,
+    });
+  }
+
+  /**
+   * Snapshot of all agents joined with live pod status. Public.
+   */
+  public static agentControllerStatus<ThrowOnError extends boolean = false>(
+    options?: Options<AgentControllerStatusData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      AgentControllerStatusResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/status",
+      ...options,
+    });
+  }
+
+  /**
+   * Live SSE stream of agent pod state changes. Public — EventSource cannot send Authorization headers.
+   */
+  public static agentControllerStatusStream<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<AgentControllerStatusStreamData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/status/stream",
+      ...options,
+    });
+  }
+
+  /**
+   * How many more agents fit on the cluster. Free schedulable CPU/memory on node-role=agents nodes divided by the fixed agent request floor (100m / 512Mi), minus agents still deploying without a pod. Cached ~15s; null when the Kubernetes API is unreachable. Admin or Owner — the only roles that can act on the number, and the response reveals node topology.
+   */
+  public static getClusterCapacity<ThrowOnError extends boolean = false>(
+    options?: Options<GetClusterCapacityData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetClusterCapacityResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/capacity",
+      ...options,
+    });
+  }
+
+  /**
+   * Stop and delete an agent. Pass `?wipeS3=true` to also drop every object under `agents/{id}/` — opt-in so accidental deletes don’t nuke files. Admin or Owner.
+   */
+  public static agentControllerRemove<ThrowOnError extends boolean = false>(
+    options: Options<AgentControllerRemoveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Get agent by ID. Public — chat needs agent metadata (name, status) to render.
+   */
+  public static agentControllerFindById<ThrowOnError extends boolean = false>(
+    options: Options<AgentControllerFindByIdData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      AgentControllerFindByIdResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Update agent configuration. Admin or Owner.
+   */
+  public static agentControllerUpdate<ThrowOnError extends boolean = false>(
+    options: Options<AgentControllerUpdateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Live resource usage for the agent: pod CPU/memory (from metrics-server) and free disk space on the K8s node hosting the pod (from kubelet stats/summary). Returns null while no pod exists yet.
+   */
+  public static getAgentMetrics<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentMetricsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentMetricsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/metrics",
+      ...options,
+    });
+  }
+
+  /**
+   * Env vars the agent pod receives on its next deploy. Built from the same code as the real pod manifest — the source of truth, never a hand-maintained copy. The UI masks secret values for display.
+   */
+  public static getAgentEnv<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentEnvData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentEnvResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/env",
+      ...options,
+    });
+  }
+
+  /**
+   * List of MCP servers this agent should connect to at runtime. Resolves the agent's template and returns its enabled MCP attachments. Called by the runtime on boot to populate its tool registry. Tokens with role=Agent (issued to runtimes) can only read their OWN agent — `sub` must match `agent:<id>`.
+   */
+  public static getAgentMcps<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentMcpsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentMcpsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/mcps",
+      ...options,
+    });
+  }
+
+  /**
+   * Whether the running pod still carries the MCP configuration it booted with. An agent's servers are baked into pod env at creation, so a change made afterwards only reaches it on a restart — and until now nothing reported the gap: an unreachable server logs `connect failed`, but one the pod was never told about logs nothing at all.
+   */
+  public static getAgentMcpStatus<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentMcpStatusData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentMcpStatusResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/mcp-status",
+      ...options,
+    });
+  }
+
+  /**
+   * Get the agent currently flagged as Ranch admin (or null).
+   */
+  public static agentControllerFindAdmin<ThrowOnError extends boolean = false>(
+    options?: Options<AgentControllerFindAdminData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/admin/current",
+      ...options,
+    });
+  }
+
+  /**
+   * Demote this agent from Ranch admin. Redeploys without RANCH_ADMIN.
+   */
+  public static agentControllerDemoteAdmin<
+    ThrowOnError extends boolean = false,
+  >(options: Options<AgentControllerDemoteAdminData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/promote-admin",
+      ...options,
+    });
+  }
+
+  /**
+   * Mark this agent as the Ranch admin. Clears the flag from any other agent (single-admin invariant) and redeploys with RANCH_ADMIN=true + a service token. Any previous admin is redeployed without the flag.
+   */
+  public static agentControllerPromoteAdmin<
+    ThrowOnError extends boolean = false,
+  >(options: Options<AgentControllerPromoteAdminData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/promote-admin",
+      ...options,
+    });
+  }
+
+  /**
+   * Restart an agent. Admin or Owner.
+   */
+  public static agentControllerRestart<ThrowOnError extends boolean = false>(
+    options: Options<AgentControllerRestartData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/restart",
+      ...options,
+    });
+  }
+
+  /**
+   * Stop an agent without deleting it: cancels its workflow and deletes its pod to free cluster CPU/memory, then marks it `stopped`. Use this to free a slot so another agent can start. Bring it back with POST :id/start. Admin or Owner.
+   */
+  public static agentControllerStop<ThrowOnError extends boolean = false>(
+    options: Options<AgentControllerStopData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/stop",
+      ...options,
+    });
+  }
+
+  /**
+   * Start a stopped agent: deploys a fresh pod and reattaches the runtime. Inverse of POST :id/stop. Admin or Owner.
+   */
+  public static agentControllerStart<ThrowOnError extends boolean = false>(
+    options: Options<AgentControllerStartData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/start",
+      ...options,
+    });
+  }
+
+  /**
+   * Restart every agent that uses this template. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner.
+   */
+  public static restartByTemplate<ThrowOnError extends boolean = false>(
+    options: Options<RestartByTemplateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/restart-by-template/{templateId}",
+      ...options,
+    });
+  }
+
+  /**
+   * List the agent's configured channels with live status. Config comes from agents/{id}/data/channels/<type>.json in S3 — the runtime's per-channel layout, mutated by its channel_* tools (falls back read-only to the pre-split data/channels.json for agents configured before the convergence). Status (connected/statusReason) comes from data/channels/status.json, written by the runtime; null = unknown. Returns [] when nothing is configured. Always fresh, no caching.
+   */
+  public static getAgentChannels<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentChannelsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentChannelsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/channels",
+      ...options,
+    });
+  }
+
+  /**
+   * Replace the agent's channels. Writes agents/{id}/data/channels/<type>.json (read-modify-write — the runtime-owned group registry in the same file is preserved). Body is the exhaustive list — anything omitted is tombstoned (removed: true), never deleted, so a restart can't resurrect it from stale pod env vars. Pass [] to clear. Panel-side changes reach a running agent on its next restart (env re-injection at pod submit); agent-side (chat tool) changes apply immediately.
+   */
+  public static setAgentChannels<ThrowOnError extends boolean = false>(
+    options: Options<SetAgentChannelsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SetAgentChannelsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/channels",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * The tools this agent's runtime would receive from the built-in Ranch MCP server, grouped by topic for the chat's Tools panel, with a per-tool "present in the running pod" flag, plus the agent's external MCP servers as opaque groups. Owner or Admin only; agent tokens get their list from MCP tools/list instead (CLEAN-109).
+   */
+  public static getAgentTools<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentToolsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentToolsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/tools",
+      ...options,
+    });
+  }
+}
+
+export class FilesService {
+  /**
+   * Delete a selection of files and folders. Answers 409 (and deletes nothing) when the selection would empty the workspace, unless `confirm` is set.
+   */
+  public static deleteAgentFileSelection<ThrowOnError extends boolean = false>(
+    options: Options<DeleteAgentFileSelectionData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      DeleteAgentFileSelectionResponse,
+      DeleteAgentFileSelectionError,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * List files for an agent. Each node says whether it is text or binary and whether it can be edited in place.
+   */
+  public static fileControllerList<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerListData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      FileControllerListResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files",
+      ...options,
+    });
+  }
+
+  /**
+   * Effective limits of the file slice (editable size, slice size, import and diff caps, text formats). Clients never hardcode these.
+   */
+  public static fileControllerLimits<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerLimitsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      FileControllerLimitsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/limits",
+      ...options,
+    });
+  }
+
+  /**
+   * Delete a file, or a whole folder (e.g. a skill dir) when `recursive=true`. Template-managed skills are recreated on the next restart unless detached from the template first.
+   */
+  public static fileControllerDelete<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerDeleteData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      FileControllerDeleteResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/content",
+      ...options,
+    });
+  }
+
+  /**
+   * Read a slice of a text file. Omit `offset`/`limit` to read the first 256 KB; the slice never ends mid-character. Use the returned `nextOffset` to continue. Binary files are refused (400) — use export or an open link.
+   */
+  public static fileControllerRead<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerReadData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      FileControllerReadResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/content",
+      ...options,
+    });
+  }
+
+  /**
+   * Save a text file (any recognised text format; `.json` must parse). `createOnly` answers 409 when the file exists; `ifUnmodifiedSince` answers 412 when the stored file is newer.
+   */
+  public static fileControllerSave<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerSaveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      FileControllerSaveResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/content",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Ask the agent runtime to push its local files to S3. Answers 409 with the at-risk file list (and does NOT sync) when S3 holds edits newer than the pod’s last pull/push, unless `confirm` is set.
+   */
+  public static fileControllerSync<ThrowOnError extends boolean = false>(
+    options: Options<FileControllerSyncData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      FileControllerSyncError,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/sync",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Download a ZIP archive of the agent’s entire S3 prefix (files, skills, runtime state). Used as a safety net before destructive actions.
+   */
+  public static exportAgentFiles<ThrowOnError extends boolean = false>(
+    options: Options<ExportAgentFilesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/export",
+      ...options,
+    });
+  }
+
+  /**
+   * Download a ZIP of a selection: files, or folders by prefix. Omit `paths` for the whole workspace.
+   */
+  public static exportAgentFileSelection<ThrowOnError extends boolean = false>(
+    options: Options<ExportAgentFileSelectionData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/export",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Mint a short-lived, credential-free link to the raw stored file ("Open full"). Text opens inline in a new tab; binary downloads. Expires after the configured lifetime (see /files/limits).
+   */
+  public static mintAgentFileOpenLink<ThrowOnError extends boolean = false>(
+    options: Options<MintAgentFileOpenLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      MintAgentFileOpenLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/open-link",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Stream the raw stored file for an open link. 401 when the token is invalid, expired or minted for another agent; 404 (plain text) when the file is gone.
+   */
+  public static readAgentFileRaw<ThrowOnError extends boolean = false>(
+    options: Options<ReadAgentFileRawData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/raw",
+      ...options,
+    });
+  }
+
+  /**
+   * Upload and validate a workspace archive. Stages it once and returns the merge plan (add / change / unchanged / skip) — nothing is written to the workspace.
+   */
+  public static stageAgentImport<ThrowOnError extends boolean = false>(
+    options: Options<StageAgentImportData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      StageAgentImportResponse,
+      unknown,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/agents/{agentId}/files/import/stage",
+      ...options,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Re-plan a staged archive with a mode and the sessions option.
+   */
+  public static planAgentImport<ThrowOnError extends boolean = false>(
+    options: Options<PlanAgentImportData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      PlanAgentImportResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/import/{importId}/plan",
+      ...options,
+    });
+  }
+
+  /**
+   * Apply a staged archive. Replace mode that would remove files needs `confirmRemove`. Answers 409 while another import runs for the agent.
+   */
+  public static applyAgentImport<ThrowOnError extends boolean = false>(
+    options: Options<ApplyAgentImportData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ApplyAgentImportResponse,
+      ApplyAgentImportError,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/import/{importId}/apply",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Proposals raised in a chat, oldest first. `since`/`until` bound the window; pending ones are always included.
+   */
+  public static listAgentFileProposals<ThrowOnError extends boolean = false>(
+    options: Options<ListAgentFileProposalsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      ListAgentFileProposalsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals",
+      ...options,
+    });
+  }
+
+  /**
+   * One proposal.
+   */
+  public static getAgentFileProposal<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentFileProposalData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentFileProposalResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals/{proposalId}",
+      ...options,
+    });
+  }
+
+  /**
+   * Proposed content of a single-file proposal (Edit before applying).
+   */
+  public static getAgentFileProposalContent<
+    ThrowOnError extends boolean = false,
+  >(options: Options<GetAgentFileProposalContentData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals/{proposalId}/content",
+      ...options,
+    });
+  }
+
+  /**
+   * Full unified diff, computed on demand and capped (413 over the comparison limit). Set proposals need `path`.
+   */
+  public static getAgentFileProposalDiff<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentFileProposalDiffData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals/{proposalId}/diff",
+      ...options,
+    });
+  }
+
+  /**
+   * Apply a pending proposal. Answers 409 with the current row when it is no longer pending, or with the removal count when a replace import needs `confirmRemove`.
+   */
+  public static applyAgentFileProposal<ThrowOnError extends boolean = false>(
+    options: Options<ApplyAgentFileProposalData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ApplyAgentFileProposalResponse,
+      ApplyAgentFileProposalError,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals/{proposalId}/apply",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Skip a pending proposal; nothing is written.
+   */
+  public static skipAgentFileProposal<ThrowOnError extends boolean = false>(
+    options: Options<SkipAgentFileProposalData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      SkipAgentFileProposalResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/proposals/{proposalId}/skip",
+      ...options,
+    });
+  }
+}
+
+export class BridleService {
+  /**
+   * Send a message to a agent (HTTP fallback — fire & forget). Accepts a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); with neither, the caller is the anonymous embed visitor and gets a throwaway channel.
+   */
+  public static sendBridleMessage<ThrowOnError extends boolean = false>(
+    options: Options<SendBridleMessageData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/message",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Send a message and wait for the agent response (synchronous). Accepts a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); with neither, the caller is the anonymous embed visitor and gets a throwaway channel.
+   */
+  public static sendBridleMessageSync<ThrowOnError extends boolean = false>(
+    options: Options<SendBridleMessageSyncData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/message/sync",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Upload a chat attachment. Returns the id the send call references via `attachmentIds`. Requires a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`).
+   */
+  public static uploadBridleAttachment<ThrowOnError extends boolean = false>(
+    options: Options<UploadBridleAttachmentData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      UploadBridleAttachmentResponse,
+      unknown,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/api/agent/{agentId}/attachment",
+      ...options,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Download a chat attachment. Streams the stored bytes with their original content type. Requires a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); a share visitor may only read attachments they uploaded themselves.
+   */
+  public static getBridleAttachment<ThrowOnError extends boolean = false>(
+    options: Options<GetBridleAttachmentData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/attachment/{attachmentId}",
+      ...options,
+    });
+  }
+
+  /**
+   * Check overall hub status
+   */
+  public static bridleHealth<ThrowOnError extends boolean = false>(
+    options?: Options<BridleHealthData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      BridleHealthResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/health",
+      ...options,
+    });
+  }
+
+  /**
+   * Check agent connection status
+   */
+  public static bridleAgentHealth<ThrowOnError extends boolean = false>(
+    options: Options<BridleAgentHealthData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      BridleAgentHealthResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/health",
+      ...options,
+    });
+  }
+
+  /**
+   * List all connected agents
+   */
+  public static listAgents<ThrowOnError extends boolean = false>(
+    options?: Options<ListAgentsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/list",
+      ...options,
+    });
+  }
+
+  /**
+   * Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
+   */
+  public static resetBridleTranscript<ThrowOnError extends boolean = false>(
+    options: Options<ResetBridleTranscriptData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      ResetBridleTranscriptResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/transcript",
+      ...options,
+    });
+  }
+
+  /**
+   * Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
+   */
+  public static getBridleTranscript<ThrowOnError extends boolean = false>(
+    options: Options<GetBridleTranscriptData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetBridleTranscriptResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/transcript",
+      ...options,
+    });
+  }
+
+  /**
+   * Archive the persisted chat transcript for an agent/channel — the live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`) and the live slot starts empty. Used by the embed's "New chat" action when the visitor wants a clean slate but we still want the prior conversation for admin/audit. No-op (returns `{}`) when there's nothing to archive. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
+   */
+  public static archiveBridleTranscript<ThrowOnError extends boolean = false>(
+    options: Options<ArchiveBridleTranscriptData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/transcript/archive",
+      ...options,
+    });
+  }
+}
+
+export class ShareLinksService {
+  /**
+   * Stop sharing the agent. Returns the link with active: false and token: null; visitors are cut off on their very next request, with no cached decision anywhere. Idempotent — revoking twice, or an agent that was never shared, is still 200. 404 when the agent does not exist.
+   */
+  public static revokeAgentShareLink<ThrowOnError extends boolean = false>(
+    options: Options<RevokeAgentShareLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      RevokeAgentShareLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/share-link",
+      ...options,
+    });
+  }
+
+  /**
+   * Current state of the agent's share link. Returns active: false with every field null when the agent was never shared or the link has been revoked — the token is only ever exposed while the link is active. 404 when the agent does not exist.
+   */
+  public static getAgentShareLink<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentShareLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentShareLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/share-link",
+      ...options,
+    });
+  }
+
+  /**
+   * Share the agent. Idempotent: an already active link is returned unchanged (same token), so pressing Share twice never invalidates a link that is already in circulation. A fresh token is minted when the agent has never been shared or the previous link was revoked. 404 when the agent does not exist. 200, not 201: the usual outcome is an existing link handed back, and the operation is idempotent.
+   */
+  public static createAgentShareLink<ThrowOnError extends boolean = false>(
+    options: Options<CreateAgentShareLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      CreateAgentShareLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/share-link",
+      ...options,
+    });
+  }
+
+  /**
+   * Replace the token with one that has never been valid before. The previous token stops working in the same write, so anyone holding the old link loses access immediately. Revives a revoked link. 404 when the agent does not exist.
+   */
+  public static regenerateAgentShareLink<ThrowOnError extends boolean = false>(
+    options: Options<RegenerateAgentShareLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      RegenerateAgentShareLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/share-link/regenerate",
+      ...options,
+    });
+  }
+}
+
+export class ShareService {
+  /**
+   * Exchange a share token for the little the visitor may know about the agent behind it: id, name and status. Nothing else about the agent is exposed. An unknown token and a revoked token answer with the exact same 404 body ({ code: 'SHARE_LINK_NOT_FOUND' }), so a link that was turned off is indistinguishable from one that never existed. A malformed token is rejected as 400 before any lookup happens.
+   */
+  public static resolveShareLink<ThrowOnError extends boolean = false>(
+    options: Options<ResolveShareLinkData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ResolveShareLinkResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/share/resolve",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
 export class McpServersService {
   /**
    * List all MCP servers registered in this Ranch.
@@ -1448,757 +2477,6 @@ export class KnowledgeSourcesService {
     >({
       url: "/knowledges/{knowledgeId}/sources/{sourceId}",
       ...options,
-    });
-  }
-}
-
-export class AgentsService {
-  /**
-   * List all agents. Public — landing/chat pages render without auth. Mutations and details still require login.
-   */
-  public static agentControllerFindAll<ThrowOnError extends boolean = false>(
-    options?: Options<AgentControllerFindAllData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      AgentControllerFindAllResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents",
-      ...options,
-    });
-  }
-
-  /**
-   * Create and deploy a new agent. Admin or Owner.
-   */
-  public static agentControllerCreate<ThrowOnError extends boolean = false>(
-    options: Options<AgentControllerCreateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * List agents flagged as public. Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.
-   */
-  public static agentControllerFindPublic<ThrowOnError extends boolean = false>(
-    options?: Options<AgentControllerFindPublicData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      AgentControllerFindPublicResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/public",
-      ...options,
-    });
-  }
-
-  /**
-   * Snapshot of all agents joined with live pod status. Public.
-   */
-  public static agentControllerStatus<ThrowOnError extends boolean = false>(
-    options?: Options<AgentControllerStatusData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      AgentControllerStatusResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/status",
-      ...options,
-    });
-  }
-
-  /**
-   * Live SSE stream of agent pod state changes. Public — EventSource cannot send Authorization headers.
-   */
-  public static agentControllerStatusStream<
-    ThrowOnError extends boolean = false,
-  >(options?: Options<AgentControllerStatusStreamData, ThrowOnError>) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/status/stream",
-      ...options,
-    });
-  }
-
-  /**
-   * How many more agents fit on the cluster. Free schedulable CPU/memory on node-role=agents nodes divided by the fixed agent request floor (100m / 512Mi), minus agents still deploying without a pod. Cached ~15s; null when the Kubernetes API is unreachable. Admin or Owner — the only roles that can act on the number, and the response reveals node topology.
-   */
-  public static getClusterCapacity<ThrowOnError extends boolean = false>(
-    options?: Options<GetClusterCapacityData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      GetClusterCapacityResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/capacity",
-      ...options,
-    });
-  }
-
-  /**
-   * Stop and delete an agent. Pass `?wipeS3=true` to also drop every object under `agents/{id}/` — opt-in so accidental deletes don’t nuke files. Admin or Owner.
-   */
-  public static agentControllerRemove<ThrowOnError extends boolean = false>(
-    options: Options<AgentControllerRemoveData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Get agent by ID. Public — chat needs agent metadata (name, status) to render.
-   */
-  public static agentControllerFindById<ThrowOnError extends boolean = false>(
-    options: Options<AgentControllerFindByIdData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      AgentControllerFindByIdResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Update agent configuration. Admin or Owner.
-   */
-  public static agentControllerUpdate<ThrowOnError extends boolean = false>(
-    options: Options<AgentControllerUpdateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Live resource usage for the agent: pod CPU/memory (from metrics-server) and free disk space on the K8s node hosting the pod (from kubelet stats/summary). Returns null while no pod exists yet.
-   */
-  public static getAgentMetrics<ThrowOnError extends boolean = false>(
-    options: Options<GetAgentMetricsData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetAgentMetricsResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/metrics",
-      ...options,
-    });
-  }
-
-  /**
-   * Env vars the agent pod receives on its next deploy. Built from the same code as the real pod manifest — the source of truth, never a hand-maintained copy. The UI masks secret values for display.
-   */
-  public static getAgentEnv<ThrowOnError extends boolean = false>(
-    options: Options<GetAgentEnvData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetAgentEnvResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/env",
-      ...options,
-    });
-  }
-
-  /**
-   * List of MCP servers this agent should connect to at runtime. Resolves the agent's template and returns its enabled MCP attachments. Called by the runtime on boot to populate its tool registry. Tokens with role=Agent (issued to runtimes) can only read their OWN agent — `sub` must match `agent:<id>`.
-   */
-  public static getAgentMcps<ThrowOnError extends boolean = false>(
-    options: Options<GetAgentMcpsData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetAgentMcpsResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/mcps",
-      ...options,
-    });
-  }
-
-  /**
-   * Whether the running pod still carries the MCP configuration it booted with. An agent's servers are baked into pod env at creation, so a change made afterwards only reaches it on a restart — and until now nothing reported the gap: an unreachable server logs `connect failed`, but one the pod was never told about logs nothing at all.
-   */
-  public static getAgentMcpStatus<ThrowOnError extends boolean = false>(
-    options: Options<GetAgentMcpStatusData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetAgentMcpStatusResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/mcp-status",
-      ...options,
-    });
-  }
-
-  /**
-   * Get the agent currently flagged as Ranch admin (or null).
-   */
-  public static agentControllerFindAdmin<ThrowOnError extends boolean = false>(
-    options?: Options<AgentControllerFindAdminData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/admin/current",
-      ...options,
-    });
-  }
-
-  /**
-   * Demote this agent from Ranch admin. Redeploys without RANCH_ADMIN.
-   */
-  public static agentControllerDemoteAdmin<
-    ThrowOnError extends boolean = false,
-  >(options: Options<AgentControllerDemoteAdminData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).delete<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/promote-admin",
-      ...options,
-    });
-  }
-
-  /**
-   * Mark this agent as the Ranch admin. Clears the flag from any other agent (single-admin invariant) and redeploys with RANCH_ADMIN=true + a service token. Any previous admin is redeployed without the flag.
-   */
-  public static agentControllerPromoteAdmin<
-    ThrowOnError extends boolean = false,
-  >(options: Options<AgentControllerPromoteAdminData, ThrowOnError>) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/promote-admin",
-      ...options,
-    });
-  }
-
-  /**
-   * Restart an agent. Admin or Owner.
-   */
-  public static agentControllerRestart<ThrowOnError extends boolean = false>(
-    options: Options<AgentControllerRestartData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/restart",
-      ...options,
-    });
-  }
-
-  /**
-   * Stop an agent without deleting it: cancels its workflow and deletes its pod to free cluster CPU/memory, then marks it `stopped`. Use this to free a slot so another agent can start. Bring it back with POST :id/start. Admin or Owner.
-   */
-  public static agentControllerStop<ThrowOnError extends boolean = false>(
-    options: Options<AgentControllerStopData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/stop",
-      ...options,
-    });
-  }
-
-  /**
-   * Start a stopped agent: deploys a fresh pod and reattaches the runtime. Inverse of POST :id/stop. Admin or Owner.
-   */
-  public static agentControllerStart<ThrowOnError extends boolean = false>(
-    options: Options<AgentControllerStartData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/start",
-      ...options,
-    });
-  }
-
-  /**
-   * Restart every agent that uses this template. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner.
-   */
-  public static restartByTemplate<ThrowOnError extends boolean = false>(
-    options: Options<RestartByTemplateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/restart-by-template/{templateId}",
-      ...options,
-    });
-  }
-
-  /**
-   * List the agent's configured channels with live status. Config comes from agents/{id}/data/channels/<type>.json in S3 — the runtime's per-channel layout, mutated by its channel_* tools (falls back read-only to the pre-split data/channels.json for agents configured before the convergence). Status (connected/statusReason) comes from data/channels/status.json, written by the runtime; null = unknown. Returns [] when nothing is configured. Always fresh, no caching.
-   */
-  public static getAgentChannels<ThrowOnError extends boolean = false>(
-    options: Options<GetAgentChannelsData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetAgentChannelsResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/channels",
-      ...options,
-    });
-  }
-
-  /**
-   * Replace the agent's channels. Writes agents/{id}/data/channels/<type>.json (read-modify-write — the runtime-owned group registry in the same file is preserved). Body is the exhaustive list — anything omitted is tombstoned (removed: true), never deleted, so a restart can't resurrect it from stale pod env vars. Pass [] to clear. Panel-side changes reach a running agent on its next restart (env re-injection at pod submit); agent-side (chat tool) changes apply immediately.
-   */
-  public static setAgentChannels<ThrowOnError extends boolean = false>(
-    options: Options<SetAgentChannelsData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      SetAgentChannelsResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/channels",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * The tools this agent's runtime would receive from the built-in Ranch MCP server, grouped by topic for the chat's Tools panel, with a per-tool "present in the running pod" flag, plus the agent's external MCP servers as opaque groups. Owner or Admin only; agent tokens get their list from MCP tools/list instead (CLEAN-109).
-   */
-  public static getAgentTools<ThrowOnError extends boolean = false>(
-    options: Options<GetAgentToolsData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetAgentToolsResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{id}/tools",
-      ...options,
-    });
-  }
-}
-
-export class FilesService {
-  /**
-   * List files for an agent
-   */
-  public static fileControllerList<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerListData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files",
-      ...options,
-    });
-  }
-
-  /**
-   * Delete a file, or a whole folder (e.g. a skill dir) when `recursive=true`. Template-managed skills are recreated on the next restart unless detached from the template first.
-   */
-  public static fileControllerDelete<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerDeleteData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      FileControllerDeleteResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/content",
-      ...options,
-    });
-  }
-
-  /**
-   * Read a chunk of a file. Omit `offset`/`limit` to read the first 256 KB. Use the returned `nextOffset` to continue.
-   */
-  public static fileControllerRead<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerReadData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      FileControllerReadResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/content",
-      ...options,
-    });
-  }
-
-  /**
-   * Save a file (.md / .json only)
-   */
-  public static fileControllerSave<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerSaveData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/content",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Ask the agent runtime to push its local files to S3. Answers 409 with the at-risk file list (and does NOT sync) when S3 holds edits newer than the pod’s last pull/push, unless `confirm` is set.
-   */
-  public static fileControllerSync<ThrowOnError extends boolean = false>(
-    options: Options<FileControllerSyncData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      FileControllerSyncError,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/sync",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Download a ZIP archive of the agent’s entire S3 prefix (files, skills, runtime state). Used as a safety net before destructive actions.
-   */
-  public static exportAgentFiles<ThrowOnError extends boolean = false>(
-    options: Options<ExportAgentFilesData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/files/export",
-      ...options,
-    });
-  }
-}
-
-export class BridleService {
-  /**
-   * Send a message to a agent (HTTP fallback — fire & forget). Accepts a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); with neither, the caller is the anonymous embed visitor and gets a throwaway channel.
-   */
-  public static sendBridleMessage<ThrowOnError extends boolean = false>(
-    options: Options<SendBridleMessageData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api/agent/{agentId}/message",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Send a message and wait for the agent response (synchronous). Accepts a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); with neither, the caller is the anonymous embed visitor and gets a throwaway channel.
-   */
-  public static sendBridleMessageSync<ThrowOnError extends boolean = false>(
-    options: Options<SendBridleMessageSyncData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api/agent/{agentId}/message/sync",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Upload a chat attachment. Returns the id the send call references via `attachmentIds`. Requires a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`).
-   */
-  public static uploadBridleAttachment<ThrowOnError extends boolean = false>(
-    options: Options<UploadBridleAttachmentData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      UploadBridleAttachmentResponse,
-      unknown,
-      ThrowOnError
-    >({
-      ...formDataBodySerializer,
-      url: "/api/agent/{agentId}/attachment",
-      ...options,
-      headers: {
-        "Content-Type": null,
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Download a chat attachment. Streams the stored bytes with their original content type. Requires a bearer token or the share-link headers (`X-Share-Token` + `X-Share-Visitor`); a share visitor may only read attachments they uploaded themselves.
-   */
-  public static getBridleAttachment<ThrowOnError extends boolean = false>(
-    options: Options<GetBridleAttachmentData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api/agent/{agentId}/attachment/{attachmentId}",
-      ...options,
-    });
-  }
-
-  /**
-   * Check overall hub status
-   */
-  public static bridleHealth<ThrowOnError extends boolean = false>(
-    options?: Options<BridleHealthData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      BridleHealthResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api/agent/health",
-      ...options,
-    });
-  }
-
-  /**
-   * Check agent connection status
-   */
-  public static bridleAgentHealth<ThrowOnError extends boolean = false>(
-    options: Options<BridleAgentHealthData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      BridleAgentHealthResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api/agent/{agentId}/health",
-      ...options,
-    });
-  }
-
-  /**
-   * List all connected agents
-   */
-  public static listAgents<ThrowOnError extends boolean = false>(
-    options?: Options<ListAgentsData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api/agent/list",
-      ...options,
-    });
-  }
-
-  /**
-   * Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
-   */
-  public static resetBridleTranscript<ThrowOnError extends boolean = false>(
-    options: Options<ResetBridleTranscriptData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      ResetBridleTranscriptResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api/agent/{agentId}/transcript",
-      ...options,
-    });
-  }
-
-  /**
-   * Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
-   */
-  public static getBridleTranscript<ThrowOnError extends boolean = false>(
-    options: Options<GetBridleTranscriptData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetBridleTranscriptResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api/agent/{agentId}/transcript",
-      ...options,
-    });
-  }
-
-  /**
-   * Archive the persisted chat transcript for an agent/channel — the live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`) and the live slot starts empty. Used by the embed's "New chat" action when the visitor wants a clean slate but we still want the prior conversation for admin/audit. No-op (returns `{}`) when there's nothing to archive. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
-   */
-  public static archiveBridleTranscript<ThrowOnError extends boolean = false>(
-    options: Options<ArchiveBridleTranscriptData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/api/agent/{agentId}/transcript/archive",
-      ...options,
-    });
-  }
-}
-
-export class ShareLinksService {
-  /**
-   * Stop sharing the agent. Returns the link with active: false and token: null; visitors are cut off on their very next request, with no cached decision anywhere. Idempotent — revoking twice, or an agent that was never shared, is still 200. 404 when the agent does not exist.
-   */
-  public static revokeAgentShareLink<ThrowOnError extends boolean = false>(
-    options: Options<RevokeAgentShareLinkData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      RevokeAgentShareLinkResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/share-link",
-      ...options,
-    });
-  }
-
-  /**
-   * Current state of the agent's share link. Returns active: false with every field null when the agent was never shared or the link has been revoked — the token is only ever exposed while the link is active. 404 when the agent does not exist.
-   */
-  public static getAgentShareLink<ThrowOnError extends boolean = false>(
-    options: Options<GetAgentShareLinkData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      GetAgentShareLinkResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/share-link",
-      ...options,
-    });
-  }
-
-  /**
-   * Share the agent. Idempotent: an already active link is returned unchanged (same token), so pressing Share twice never invalidates a link that is already in circulation. A fresh token is minted when the agent has never been shared or the previous link was revoked. 404 when the agent does not exist. 200, not 201: the usual outcome is an existing link handed back, and the operation is idempotent.
-   */
-  public static createAgentShareLink<ThrowOnError extends boolean = false>(
-    options: Options<CreateAgentShareLinkData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      CreateAgentShareLinkResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/share-link",
-      ...options,
-    });
-  }
-
-  /**
-   * Replace the token with one that has never been valid before. The previous token stops working in the same write, so anyone holding the old link loses access immediately. Revives a revoked link. 404 when the agent does not exist.
-   */
-  public static regenerateAgentShareLink<ThrowOnError extends boolean = false>(
-    options: Options<RegenerateAgentShareLinkData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      RegenerateAgentShareLinkResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/agents/{agentId}/share-link/regenerate",
-      ...options,
-    });
-  }
-}
-
-export class ShareService {
-  /**
-   * Exchange a share token for the little the visitor may know about the agent behind it: id, name and status. Nothing else about the agent is exposed. An unknown token and a revoked token answer with the exact same 404 body ({ code: 'SHARE_LINK_NOT_FOUND' }), so a link that was turned off is indistinguishable from one that never existed. A malformed token is rejected as 400 before any lookup happens.
-   */
-  public static resolveShareLink<ThrowOnError extends boolean = false>(
-    options: Options<ResolveShareLinkData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      ResolveShareLinkResponse,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/share/resolve",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
     });
   }
 }

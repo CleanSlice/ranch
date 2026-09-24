@@ -43,6 +43,11 @@ import {
   type IDeliveryEvent,
 } from '#bridle/utils/delivery';
 import { missedReplies } from '#bridle/utils/transcriptTail';
+import { proposalMessageId, proposalTs } from '#bridle/utils/proposalMerge';
+import type {
+  IBridleProposalSnapshot,
+  IBridleProposalUpdate,
+} from '#bridle/domain';
 
 // Re-export the domain enums/types so consumers importing them from
 // `#bridle/stores/bridle` (Message.vue) keep working. The enums are used as
@@ -652,7 +657,21 @@ export const useBridleStore = defineStore('bridle', () => {
         ts: m.ts,
       });
     }
-    return missed.length > 0;
+    // Proposal cards (CLEAN-112) have no text to match on: by id, and a
+    // card already on screen takes the transcript's state (it may have been
+    // applied from the admin console meanwhile).
+    let cards = 0;
+    for (const m of tail) {
+      if (!m.proposal) continue;
+      const existing = findMessage(key, m.id);
+      if (!existing) {
+        appendMessage(conv, m);
+        cards++;
+      } else if (existing.proposal?.status !== m.proposal.status) {
+        replaceMessage(conv, { ...existing, proposal: m.proposal });
+      }
+    }
+    return missed.length > 0 || cards > 0;
   }
 
   function disarmWatchdog(key: string) {
@@ -907,7 +926,56 @@ export const useBridleStore = defineStore('bridle', () => {
       onStream: (reply, done) => onStream(conv, reply, done),
       onMessage: (reply) => onMessage(conv, reply),
       onUserMessage: (message) => onUserMessage(conv, message),
+      onProposal: (proposal, seq) => onProposal(conv, proposal, seq),
+      onProposalUpdate: (update, seq) => onProposalUpdate(conv, update, seq),
     };
+  }
+
+  /**
+   * A file change proposal (CLEAN-112): one agent-side bubble carrying the
+   * read-only snapshot. Persisted with the conversation like any message.
+   */
+  function onProposal(
+    conv: IBridleConversation,
+    proposal: IBridleProposalSnapshot,
+    seq?: number,
+  ) {
+    if (!acceptSeq(conv.key, seq)) return;
+    const message = proposalBubble(proposal);
+    if (findMessage(conv.key, message.id)) return;
+    appendMessage(conv, message);
+  }
+
+  /** The bubble that carries one proposal card. */
+  function proposalBubble(proposal: IBridleProposalSnapshot): IBridleMessage {
+    return {
+      id: proposalMessageId(proposal.id),
+      role: BridleRoleTypes.Agent,
+      text: '',
+      ts: proposalTs(proposal),
+      proposal,
+    };
+  }
+
+  function onProposalUpdate(
+    conv: IBridleConversation,
+    update: IBridleProposalUpdate,
+    seq?: number,
+  ) {
+    if (!acceptSeq(conv.key, seq)) return;
+    const id = proposalMessageId(update.proposalId);
+    const existing = findMessage(conv.key, id);
+    if (!existing?.proposal) return;
+    replaceMessage(conv, {
+      ...existing,
+      proposal: {
+        ...existing.proposal,
+        status: update.status,
+        actedAt: new Date(update.actedAt).toISOString(),
+        reason: update.reason,
+        restartRequired: update.restartRequired ?? existing.proposal.restartRequired,
+      },
+    });
   }
 
   function onWelcome(conv: IBridleConversation, welcome: IBridleWelcome) {

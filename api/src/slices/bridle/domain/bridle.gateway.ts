@@ -45,6 +45,16 @@ export abstract class IBridleGateway {
    * agentId), numbered and kept for replay like the agent's own events. */
   abstract sendToClient(clientId: string, agentId: string, data: unknown): void;
   /**
+   * Hand an event to every browser conversation of `agentId` (CLEAN-112:
+   * `proposal_update` must flip the card in every open tab). Only sockets
+   * that declared `capability` at handshake receive it when one is given.
+   */
+  abstract sendToAgentClients(
+    agentId: string,
+    data: unknown,
+    capability?: string,
+  ): void;
+  /**
    * Events routed to this conversation after `lastSeq`, oldest first — what a
    * browser missed while it was reconnecting. Empty when nothing is buffered
    * or the conversation is unknown.

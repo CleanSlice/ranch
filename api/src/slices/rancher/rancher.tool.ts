@@ -672,87 +672,9 @@ export class RancherTool {
   }
 
   // ─── Files (per-agent) ───────────────────────────────────────────────
-
-  @Tool({
-    name: 'list_agent_files',
-    topic: ToolTopics.AgentWorkspace,
-    title: 'List workspace files',
-    template: 'List the files of the agent «name»',
-    description:
-      "List files in an agent's S3 prefix (the files mounted into its pod's `.agent/` dir).",
-    parameters: z.object({ agentId: z.string() }),
-  })
-  async listAgentFiles(
-    { agentId }: { agentId: string },
-    _context: unknown,
-    httpRequest: Request & { user?: IAuthTokenPayload },
-  ) {
-    this.requireOwner(httpRequest);
-    return ok(await this.files.list(agentId));
-  }
-
-  @Tool({
-    name: 'read_agent_file',
-    topic: ToolTopics.AgentWorkspace,
-    title: 'Read a workspace file',
-    template: 'Show «path» from the agent «name»',
-    description:
-      'Read a single agent file by relative path (e.g. SOUL.md, MEMORY.md, agent.config.json).',
-    parameters: z.object({
-      agentId: z.string(),
-      path: z.string(),
-    }),
-  })
-  async readAgentFile(
-    { agentId, path }: { agentId: string; path: string },
-    _context: unknown,
-    httpRequest: Request & { user?: IAuthTokenPayload },
-  ) {
-    this.requireOwner(httpRequest);
-    return ok(await this.files.read(agentId, path));
-  }
-
-  @Tool({
-    name: 'write_agent_file',
-    topic: ToolTopics.AgentWorkspace,
-    title: 'Write a workspace file',
-    template: 'Write «path» in the agent «name» with: «content»',
-    description:
-      'Write or replace an agent file. Only `.md` and `.json` are supported. Restart the agent for changes to take effect.',
-    parameters: z.object({
-      agentId: z.string(),
-      path: z.string(),
-      content: z.string(),
-    }),
-  })
-  async writeAgentFile(
-    {
-      agentId,
-      path,
-      content,
-    }: {
-      agentId: string;
-      path: string;
-      content: string;
-    },
-    _context: unknown,
-    httpRequest: Request & { user?: IAuthTokenPayload },
-  ) {
-    this.requireOwner(httpRequest);
-    await this.files.save(agentId, path, content);
-    // The reminder rides in the RESULT (not just the tool description) so the
-    // model reliably relays it: the write landed in S3 only — the running
-    // agent keeps using its boot-time copy until restarted (CLEAN-50).
-    return ok({
-      ok: true,
-      agentId,
-      path,
-      notice:
-        'Saved to S3 only. The running agent still uses its boot-time copy — ' +
-        'a restart is required for this change to take effect. Tell the user ' +
-        'and offer to run restart_agent.',
-    });
-  }
+  // `list_agent_files`, `read_agent_file` and `write_agent_file` moved to
+  // `agent/file/file.tool.ts` (CLEAN-112): reads use the same slices as the
+  // console and writes go through a proposal the person approves first.
 
   // ─── Usage ───────────────────────────────────────────────────────────
 
@@ -817,7 +739,9 @@ export class RancherTool {
           ? {
               ...row,
               value:
-                row.value === null || row.value === undefined || row.value === ''
+                row.value === null ||
+                row.value === undefined ||
+                row.value === ''
                   ? '(secret — empty)'
                   : '(secret — set)',
             }

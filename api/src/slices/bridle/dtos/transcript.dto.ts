@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { FileChangeProposalDto } from '#/agent/file/dtos/fileChangeProposal.dto';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
@@ -109,4 +110,11 @@ export class TranscriptResponseDto {
 
   @ApiProperty({ example: false })
   hasMore!: boolean;
+
+  @ApiProperty({
+    type: [FileChangeProposalDto],
+    description:
+      'File change proposals raised in this chat inside the page’s window, plus every pending one (CLEAN-112). The client places them by `createdAt`.',
+  })
+  proposals!: FileChangeProposalDto[];
 }

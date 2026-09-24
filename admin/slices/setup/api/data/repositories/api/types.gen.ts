@@ -144,6 +144,798 @@ export type SetTemplateMcpsDto = {
   mcpServerIds: Array<string>;
 };
 
+export type AgentDto = {
+  id: string;
+  name: string;
+  templateId: string;
+  llmCredentialId?: {
+    [key: string]: unknown;
+  } | null;
+  status:
+    | "pending"
+    | "deploying"
+    | "running"
+    | "failed"
+    | "stopped"
+    | "unreachable";
+  /**
+   * Human-readable reason accompanying status='failed' or 'unreachable' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.
+   */
+  statusReason: string | null;
+  workflowId: {
+    [key: string]: unknown;
+  } | null;
+  /**
+   * When this agent was first successfully deployed. Null ⇒ the agent has never been deployed.
+   */
+  firstDeployedAt: string | null;
+  /**
+   * When the current/last deploy was started. Anchor of the server-side deploy grace window.
+   */
+  lastDeployStartedAt: string | null;
+  /**
+   * Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.
+   */
+  launchContext: "initial" | "restart";
+  /**
+   * When the running pod last pulled its working copy of the agent files from S3 (recorded at runtime boot). Null ⇒ agent not restarted since this field shipped. Files-tab freshness hint + sync-conflict baseline.
+   */
+  lastPullAt: string | null;
+  /**
+   * When the last successful Sync push completed. Null ⇒ never synced since this field shipped.
+   */
+  lastSyncAt: string | null;
+  config: {
+    [key: string]: unknown;
+  };
+  resources: {
+    [key: string]: unknown;
+  };
+  /**
+   * When true, the agent runtime emits prompt-debug snapshots to admin clients via the bridle hub.
+   */
+  debugEnabled: boolean;
+  /**
+   * When true, the agent is visible on the public landing page to unauthenticated visitors.
+   */
+  isPublic: boolean;
+  /**
+   * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
+   */
+  allowedOrigins: Array<string>;
+  knowledgeIds: Array<string>;
+  isAdmin: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentPodStatusDto = {
+  agentId: string;
+  podName: string;
+  phase: "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown";
+  ready: boolean;
+  restartCount: number;
+  startedAt: string | null;
+  /**
+   * The pod is being deleted (restart cleanup, stop, manual delete). Its phase on the way out says nothing about the health of the agent.
+   */
+  terminating: boolean;
+  lastTerminationReason: string | null;
+  containerWaitingReason: string | null;
+  message: string | null;
+  observedAt: string;
+};
+
+export type AgentStatusDto = {
+  /**
+   * Agent DB record (id, name, status, launchContext, etc.)
+   */
+  agent: AgentDto;
+  /**
+   * Live pod status; null if no pod is currently running for this agent.
+   */
+  pod: AgentPodStatusDto | null;
+  /**
+   * Whether the agent runtime currently holds a live connection to the bridle hub. In-memory truth of the API process — false for a few seconds after an API restart until runtimes reconnect.
+   */
+  bridleConnected: boolean;
+};
+
+export type NodeCapacityDto = {
+  name: string;
+  /**
+   * Allocatable CPU minus summed pod requests, in millicores
+   */
+  freeCpuMilli: number;
+  /**
+   * Allocatable memory minus summed pod requests, in bytes
+   */
+  freeMemBytes: number;
+  /**
+   * How many more agent pods fit on this node
+   */
+  freeSlots: number;
+};
+
+export type ClusterCapacityDto = {
+  /**
+   * How many more agents can start right now, across all agent nodes
+   */
+  freeAgentSlots: number;
+  /**
+   * Agents currently holding a slot (live pods + deploying)
+   */
+  usedAgentSlots: number;
+  /**
+   * usedAgentSlots + freeAgentSlots under current cluster load
+   */
+  totalAgentSlots: number;
+  /**
+   * CPU request one agent slot reserves, in millicores
+   */
+  slotCpuMilli: number;
+  /**
+   * Memory request one agent slot reserves, in bytes
+   */
+  slotMemBytes: number;
+  nodes: Array<NodeCapacityDto>;
+  observedAt: string;
+};
+
+export type AgentPodMetricsDto = {
+  /**
+   * Current CPU usage in millicores
+   */
+  cpuMilli: number;
+  /**
+   * Current memory usage in bytes
+   */
+  memBytes: number;
+  /**
+   * CPU limit in millicores
+   */
+  cpuLimitMilli: number;
+  /**
+   * Memory limit in bytes
+   */
+  memLimitBytes: number;
+};
+
+export type AgentNodeMetricsDto = {
+  name: string;
+  diskAvailBytes: number;
+  diskCapacityBytes: number;
+};
+
+export type AgentMetricsDto = {
+  pod: AgentPodMetricsDto;
+  node: AgentNodeMetricsDto;
+};
+
+export type AgentEnvVarDto = {
+  name: string;
+  value: string;
+};
+
+export type AgentMcpDto = {
+  /**
+   * MCP server id. For `oauth` servers the runtime keys the per-agent token secret by this id (`mcpOauth:<id>`).
+   */
+  id: string;
+  /**
+   * Unique MCP server name (key in the runtime registry).
+   */
+  name: string;
+  /**
+   * Transport protocol the runtime should use to connect.
+   */
+  transport: "streamableHttp" | "sse";
+  /**
+   * MCP server endpoint URL.
+   */
+  url: string;
+  /**
+   * Auth scheme. For `oauth` the runtime holds no static credential — it refreshes its own bearer from the per-agent token secret keyed by `id`.
+   */
+  authType: "none" | "bearer" | "header" | "oauth";
+  /**
+   * Auth credential. For `bearer`: raw token (runtime adds the `Bearer ` prefix). For `header`: literal `Header-Name: value` line. `null` when authType is `none`.
+   */
+  authValue: string | null;
+  /**
+   * Always `true` in this list — disabled servers are filtered server-side. Kept for forward compatibility.
+   */
+  enabled: boolean;
+};
+
+export type AgentMcpStatusDto = {
+  /**
+   * The pod predates a change to its MCP configuration and needs a restart to pick it up.
+   */
+  restartRequired: boolean;
+  /**
+   * Most recent MCP configuration change the pod missed. Null when in sync.
+   */
+  configChangedAt: string | null;
+  /**
+   * When the current pod started; null when no pod is running, in which case there is nothing to restart.
+   */
+  podStartedAt: string | null;
+  /**
+   * Names of the servers that changed after the pod started.
+   */
+  changedServers: Array<string>;
+};
+
+export type AgentResourcesDto = {
+  cpu: string;
+  memory: string;
+};
+
+export type CreateAgentDto = {
+  name: string;
+  templateId: string;
+  llmCredentialId?: string;
+  config?: {
+    [key: string]: unknown;
+  };
+  resources?: AgentResourcesDto;
+  /**
+   * When true, the agent is visible on the public landing page to unauthenticated visitors.
+   */
+  isPublic?: boolean;
+  /**
+   * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
+   */
+  allowedOrigins?: Array<string>;
+  knowledgeIds?: Array<string>;
+  /**
+   * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
+   */
+  isAdmin?: boolean;
+};
+
+export type UpdateAgentDto = {
+  name?: string;
+  templateId?: string;
+  llmCredentialId?: string;
+  config?: {
+    [key: string]: unknown;
+  };
+  resources?: AgentResourcesDto;
+  /**
+   * When true, the agent is visible on the public landing page to unauthenticated visitors.
+   */
+  isPublic?: boolean;
+  /**
+   * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
+   */
+  allowedOrigins?: Array<string>;
+  knowledgeIds?: Array<string>;
+  /**
+   * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
+   */
+  isAdmin?: boolean;
+  /**
+   * Enable debug mode — emits the prompt-debug event stream and verbose pod logs (LOG_LEVEL=debug). The verbose-log half applies on the next agent restart; the prompt-debug stream flips live.
+   */
+  debugEnabled?: boolean;
+};
+
+export type FileNodeDto = {
+  path: string;
+  size: number;
+  updatedAt: string;
+  /**
+   * Decided by the API: known extension, or a sniff of the first bytes for unknown ones.
+   */
+  kind: "text" | "binary";
+  /**
+   * Text and within the editable size limit (see /files/limits).
+   */
+  editable: boolean;
+};
+
+export type FileLimitsDto = {
+  maxEditBytes: number;
+  maxViewBytes: number;
+  rangeBytes: number;
+  maxRangeBytes: number;
+  openLinkTtlSec: number;
+  importMaxArchiveBytes: number;
+  importMaxEntries: number;
+  importMaxFileBytes: number;
+  importPlanListRows: number;
+  diffCompareMaxBytes: number;
+  diffInlineMaxLines: number;
+  diffInlineMaxBytes: number;
+  proposalListRows: number;
+  textExtensions: Array<string>;
+};
+
+export type FileChunkDto = {
+  path: string;
+  /**
+   * UTF-8 slice of the file from `offset`. Never ends in the middle of a character.
+   */
+  content: string;
+  /**
+   * Byte length of `content`.
+   */
+  size: number;
+  /**
+   * Full byte length of the file.
+   */
+  totalSize: number;
+  /**
+   * Byte offset of the first byte of `content`.
+   */
+  offset: number;
+  /**
+   * Pass as `offset` on the next request. `null` when there is no more data.
+   */
+  nextOffset: number | null;
+  hasMore: boolean;
+  updatedAt: string;
+  kind: "text" | "binary";
+  /**
+   * Whole file is text and within the editable size limit. Editing also needs `hasMore === false`.
+   */
+  editable: boolean;
+};
+
+export type SaveFileDto = {
+  /**
+   * Full file content as text
+   */
+  content: string;
+  /**
+   * Refuse with 409 when the file already exists (New file).
+   */
+  createOnly?: boolean;
+  /**
+   * Refuse with 412 when the stored file changed after this instant (the `updatedAt` the editor loaded).
+   */
+  ifUnmodifiedSince?: string;
+};
+
+export type FileContentDto = {
+  path: string;
+  content: string;
+  size: number;
+  updatedAt: string;
+  kind: "text" | "binary";
+  editable: boolean;
+};
+
+export type DeleteFilesDto = {
+  /**
+   * Number of S3 objects deleted by this request.
+   */
+  deleted: number;
+};
+
+export type DeleteFilesBodyDto = {
+  /**
+   * Files, or folders (deleted recursively).
+   */
+  paths: Array<string>;
+  /**
+   * Required when the selection would remove every file of the workspace.
+   */
+  confirm?: boolean;
+};
+
+export type DeleteFilesConflictDto = {
+  requiresConfirmation: boolean;
+  wouldRemove: number;
+  total: number;
+};
+
+export type SyncFilesBodyDto = {
+  /**
+   * Set to true to run the sync even when at-risk files were reported (the operator explicitly accepted the overwrite risk). Without it a non-empty at-risk list makes the endpoint answer 409 and skip the sync.
+   */
+  confirm?: boolean;
+};
+
+export type AtRiskFileDto = {
+  path: string;
+  /**
+   * When the S3 (shared) copy of this file was last modified
+   */
+  updatedAt: string;
+};
+
+export type SyncConflictDto = {
+  /**
+   * Always true: the sync was NOT executed — resend with confirm=true to proceed
+   */
+  requiresConfirmation: boolean;
+  /**
+   * S3 files modified after the pod last pulled/pushed. A sync MAY overwrite or delete them if the pod also changed them locally.
+   */
+  atRisk: Array<AtRiskFileDto>;
+  /**
+   * Reference moment the S3 copies were compared against (max of last boot pull minus margin and last completed sync)
+   */
+  baseline: string;
+};
+
+export type ExportFilesBodyDto = {
+  /**
+   * Files, or folders by prefix. Omit for the whole workspace.
+   */
+  paths?: Array<string>;
+};
+
+export type OpenLinkBodyDto = {
+  path: string;
+};
+
+export type OpenLinkDto = {
+  /**
+   * Address of the raw stored file. Absolute when PUBLIC_API_URL is configured, otherwise a path the console prefixes with its API base.
+   */
+  url: string;
+  expiresAt: string;
+};
+
+export type ImportCountsDto = {
+  add: number;
+  change: number;
+  unchanged: number;
+  /**
+   * Replace mode only.
+   */
+  remove: number;
+  skip: number;
+};
+
+export type ImportPlanEntryDto = {
+  path: string;
+  action: "add" | "change" | "unchanged" | "remove" | "skip";
+  size: number;
+  /**
+   * Why the entry is skipped or treated as changed.
+   */
+  reason?: string;
+};
+
+export type ImportPlanDto = {
+  importId: string;
+  mode: "merge" | "replace";
+  includeSessions: boolean;
+  /**
+   * Top-level folder removed from every entry, if the archive had one.
+   */
+  wrapperStripped: string | null;
+  counts: ImportCountsDto;
+  /**
+   * Bytes of the entries that will be written.
+   */
+  totalBytes: number;
+  /**
+   * Capped at the plan list limit; `more` counts the rest.
+   */
+  entries: Array<ImportPlanEntryDto>;
+  more: number;
+  warnings: Array<string>;
+};
+
+export type ImportApplyDto = {
+  /**
+   * `merge` writes the archive and keeps everything else; `replace` also deletes files not in the archive.
+   */
+  mode: "merge" | "replace";
+  /**
+   * Also write (and in replace mode remove) runtime session state.
+   */
+  includeSessions?: boolean;
+  /**
+   * Required when `mode=replace` would remove files — the second acknowledgement.
+   */
+  confirmRemove?: boolean;
+};
+
+export type ImportFailureDto = {
+  path: string;
+  reason: string;
+};
+
+export type ImportResultDto = {
+  importId: string;
+  mode: "merge" | "replace";
+  written: number;
+  removed: number;
+  skipped: number;
+  failed: Array<ImportFailureDto>;
+  /**
+   * The agent is running — the files apply on its next restart.
+   */
+  restartRequired: boolean;
+};
+
+export type ImportRemoveConflictDto = {
+  requiresConfirmation: boolean;
+  /**
+   * Files replace mode would delete.
+   */
+  remove: number;
+};
+
+export type ProposalSetSummaryDto = {
+  counts: ImportCountsDto;
+  /**
+   * First rows only.
+   */
+  rows: Array<ImportPlanEntryDto>;
+  /**
+   * Rows not listed.
+   */
+  more: number;
+  mode: "merge" | "replace";
+  includeSessions: boolean;
+  wrapperStripped: string | null;
+  warnings: Array<string>;
+};
+
+export type FileChangeProposalDto = {
+  id: string;
+  /**
+   * Target workspace.
+   */
+  agentId: string;
+  agentName: string;
+  /**
+   * The agent whose chat raised it.
+   */
+  chatAgentId: string;
+  channel: string;
+  kind: "single" | "set";
+  op: "write" | "create" | "import";
+  path: string | null;
+  mode: "merge" | "replace" | null;
+  includeSessions: boolean;
+  proposedBytes: number;
+  diffStatus: "ok" | "too_large" | "binary" | "none";
+  additions: number | null;
+  deletions: number | null;
+  changedLines: number | null;
+  firstChangedLine: number | null;
+  /**
+   * Unified diff hunks; null when over the inline caps or not computed.
+   */
+  inlineDiff: string | null;
+  summary: ProposalSetSummaryDto | null;
+  status: "pending" | "applied" | "skipped" | "stale" | "refused";
+  actedBy: string | null;
+  actedVia: "card" | "tool" | "editor" | null;
+  actedAt: string | null;
+  /**
+   * ImportResult for a set; `{ etag }` for a single.
+   */
+  result: {
+    [key: string]: unknown;
+  } | null;
+  reason: string | null;
+  /**
+   * The target agent is running — applies on its next restart.
+   */
+  restartRequired: boolean;
+  createdAt: string;
+};
+
+export type ApplyProposalDto = {
+  via?: "card" | "editor";
+  /**
+   * Editor only — the edited content replaces the proposed one.
+   */
+  content?: string;
+  /**
+   * Replace-mode imports that remove files need this acknowledgement.
+   */
+  confirmRemove?: boolean;
+};
+
+export type ProposalRemoveConflictDto = {
+  requiresConfirmation: boolean;
+  /**
+   * Files replace mode would delete.
+   */
+  remove: number;
+};
+
+export type BridleTextPartDto = {
+  type: "text" | "image" | "file";
+  text: string;
+};
+
+export type BridleImagePartDto = {
+  type: "text" | "image" | "file";
+  /**
+   * Base64-encoded image data
+   */
+  base64: string;
+  /**
+   * MIME type
+   */
+  mediaType: string;
+};
+
+export type SendMessageDto = {
+  /**
+   * Message text (plain-text shorthand)
+   */
+  text: string;
+  /**
+   * Rich content parts. If omitted, built from text + images.
+   */
+  parts?: Array<BridleTextPartDto>;
+  /**
+   * Attached images (legacy — prefer parts)
+   */
+  images?: Array<BridleImagePartDto>;
+  /**
+   * Ids from POST /api/agent/{agentId}/attachment. The API expands them server-side into parts — images as image content, text files with their contents inlined into the message, everything else as a named reference — and appends them to whatever `parts` resolved to. Omit the field and the request behaves exactly as before.
+   */
+  attachmentIds?: Array<string>;
+};
+
+export type BridleAttachmentDto = {
+  /**
+   * Attachment id, also the storage key stem
+   */
+  id: string;
+  /**
+   * Original filename, for display
+   */
+  name: string;
+  /**
+   * Resolved MIME type
+   */
+  mimeType: string;
+  /**
+   * Size in bytes
+   */
+  size: number;
+  /**
+   * How the attachment reaches the agent: image content, inlined text, or a named reference
+   */
+  kind: "image" | "text" | "binary";
+  /**
+   * Path of the authenticated download route. Never a direct storage URL.
+   */
+  url: string;
+  /**
+   * False when the agent will see only the file name, not its contents
+   */
+  readableByAgent: boolean;
+};
+
+export type BridleHealthDto = {
+  ok: boolean;
+  /**
+   * Whether any agent runtime is connected via WebSocket
+   */
+  agentConnected: boolean;
+  /**
+   * Number of browser clients connected
+   */
+  browserClients: number;
+};
+
+export type BridleAgentHealthDto = {
+  ok: boolean;
+  /**
+   * Whether this agent is connected via WebSocket
+   */
+  agentConnected: boolean;
+  /**
+   * Number of browser clients connected to this agent
+   */
+  browserClients: number;
+  /**
+   * Bot identifier
+   */
+  agentId: string;
+};
+
+export type TranscriptAttachmentDto = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: "image" | "text" | "binary";
+};
+
+export type TranscriptMessageDto = {
+  id: string;
+  role: "user" | "assistant";
+  /**
+   * For user messages: what the person typed. Attachment contents the API inlined for the model are not included — see `agentText`.
+   */
+  text: string;
+  /**
+   * Unix epoch milliseconds.
+   */
+  ts: number;
+  /**
+   * Stored-attachment references for files sent with this message. Fetch the bytes via GET /api/agent/{agentId}/attachment/{id}.
+   */
+  attachments?: Array<TranscriptAttachmentDto>;
+  /**
+   * User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.
+   */
+  agentText?: string;
+};
+
+export type TranscriptResponseDto = {
+  messages: Array<TranscriptMessageDto>;
+  /**
+   * Channel the transcript was loaded from.
+   */
+  channel: string;
+  /**
+   * Pass back as `cursor` to fetch the previous page. `null` when no older messages.
+   */
+  nextCursor: string | null;
+  hasMore: boolean;
+  /**
+   * File change proposals raised in this chat inside the page’s window, plus every pending one (CLEAN-112). The client places them by `createdAt`.
+   */
+  proposals: Array<FileChangeProposalDto>;
+};
+
+export type ShareLinkDto = {
+  /**
+   * True while the link accepts visitors. False when the agent was never shared or the link has been revoked.
+   */
+  active: boolean;
+  /**
+   * The share secret. Exposed only while the link is active — a revoked token is dead and is never handed back, so this is null whenever active is false.
+   */
+  token: string | null;
+  /**
+   * When the link row was first created; null if never shared.
+   */
+  createdAt: string | null;
+  /**
+   * When the link was revoked; null while it is active.
+   */
+  revokedAt: string | null;
+  /**
+   * When the token was last replaced; null until the first regenerate.
+   */
+  rotatedAt: string | null;
+  /**
+   * How many times the token has been replaced.
+   */
+  rotationCount: number;
+};
+
+export type ShareResolveRequestDto = {
+  /**
+   * The share token from the link (`sl_` + 43 url-safe characters).
+   */
+  token: string;
+};
+
+export type ShareResolvedDto = {
+  /**
+   * Id of the shared agent — used for the chat requests.
+   */
+  agentId: string;
+  /**
+   * Display name of the shared agent.
+   */
+  agentName: string;
+  /**
+   * The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.
+   */
+  agentStatus: string;
+};
+
 export type CreateMcpServerDto = {
   name: string;
   description?: {
@@ -438,540 +1230,6 @@ export type AddFromArchiveResultDto = {
    * Id of the background import job (see GET .../sources/imports)
    */
   jobId: string;
-};
-
-export type AgentDto = {
-  id: string;
-  name: string;
-  templateId: string;
-  llmCredentialId?: {
-    [key: string]: unknown;
-  } | null;
-  status:
-    | "pending"
-    | "deploying"
-    | "running"
-    | "failed"
-    | "stopped"
-    | "unreachable";
-  /**
-   * Human-readable reason accompanying status='failed' or 'unreachable' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.
-   */
-  statusReason: string | null;
-  workflowId: {
-    [key: string]: unknown;
-  } | null;
-  /**
-   * When this agent was first successfully deployed. Null ⇒ the agent has never been deployed.
-   */
-  firstDeployedAt: string | null;
-  /**
-   * When the current/last deploy was started. Anchor of the server-side deploy grace window.
-   */
-  lastDeployStartedAt: string | null;
-  /**
-   * Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.
-   */
-  launchContext: "initial" | "restart";
-  /**
-   * When the running pod last pulled its working copy of the agent files from S3 (recorded at runtime boot). Null ⇒ agent not restarted since this field shipped. Files-tab freshness hint + sync-conflict baseline.
-   */
-  lastPullAt: string | null;
-  /**
-   * When the last successful Sync push completed. Null ⇒ never synced since this field shipped.
-   */
-  lastSyncAt: string | null;
-  config: {
-    [key: string]: unknown;
-  };
-  resources: {
-    [key: string]: unknown;
-  };
-  /**
-   * When true, the agent runtime emits prompt-debug snapshots to admin clients via the bridle hub.
-   */
-  debugEnabled: boolean;
-  /**
-   * When true, the agent is visible on the public landing page to unauthenticated visitors.
-   */
-  isPublic: boolean;
-  /**
-   * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
-   */
-  allowedOrigins: Array<string>;
-  knowledgeIds: Array<string>;
-  isAdmin: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type AgentPodStatusDto = {
-  agentId: string;
-  podName: string;
-  phase: "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown";
-  ready: boolean;
-  restartCount: number;
-  startedAt: string | null;
-  /**
-   * The pod is being deleted (restart cleanup, stop, manual delete). Its phase on the way out says nothing about the health of the agent.
-   */
-  terminating: boolean;
-  lastTerminationReason: string | null;
-  containerWaitingReason: string | null;
-  message: string | null;
-  observedAt: string;
-};
-
-export type AgentStatusDto = {
-  /**
-   * Agent DB record (id, name, status, launchContext, etc.)
-   */
-  agent: AgentDto;
-  /**
-   * Live pod status; null if no pod is currently running for this agent.
-   */
-  pod: AgentPodStatusDto | null;
-  /**
-   * Whether the agent runtime currently holds a live connection to the bridle hub. In-memory truth of the API process — false for a few seconds after an API restart until runtimes reconnect.
-   */
-  bridleConnected: boolean;
-};
-
-export type NodeCapacityDto = {
-  name: string;
-  /**
-   * Allocatable CPU minus summed pod requests, in millicores
-   */
-  freeCpuMilli: number;
-  /**
-   * Allocatable memory minus summed pod requests, in bytes
-   */
-  freeMemBytes: number;
-  /**
-   * How many more agent pods fit on this node
-   */
-  freeSlots: number;
-};
-
-export type ClusterCapacityDto = {
-  /**
-   * How many more agents can start right now, across all agent nodes
-   */
-  freeAgentSlots: number;
-  /**
-   * Agents currently holding a slot (live pods + deploying)
-   */
-  usedAgentSlots: number;
-  /**
-   * usedAgentSlots + freeAgentSlots under current cluster load
-   */
-  totalAgentSlots: number;
-  /**
-   * CPU request one agent slot reserves, in millicores
-   */
-  slotCpuMilli: number;
-  /**
-   * Memory request one agent slot reserves, in bytes
-   */
-  slotMemBytes: number;
-  nodes: Array<NodeCapacityDto>;
-  observedAt: string;
-};
-
-export type AgentPodMetricsDto = {
-  /**
-   * Current CPU usage in millicores
-   */
-  cpuMilli: number;
-  /**
-   * Current memory usage in bytes
-   */
-  memBytes: number;
-  /**
-   * CPU limit in millicores
-   */
-  cpuLimitMilli: number;
-  /**
-   * Memory limit in bytes
-   */
-  memLimitBytes: number;
-};
-
-export type AgentNodeMetricsDto = {
-  name: string;
-  diskAvailBytes: number;
-  diskCapacityBytes: number;
-};
-
-export type AgentMetricsDto = {
-  pod: AgentPodMetricsDto;
-  node: AgentNodeMetricsDto;
-};
-
-export type AgentEnvVarDto = {
-  name: string;
-  value: string;
-};
-
-export type AgentMcpDto = {
-  /**
-   * MCP server id. For `oauth` servers the runtime keys the per-agent token secret by this id (`mcpOauth:<id>`).
-   */
-  id: string;
-  /**
-   * Unique MCP server name (key in the runtime registry).
-   */
-  name: string;
-  /**
-   * Transport protocol the runtime should use to connect.
-   */
-  transport: "streamableHttp" | "sse";
-  /**
-   * MCP server endpoint URL.
-   */
-  url: string;
-  /**
-   * Auth scheme. For `oauth` the runtime holds no static credential — it refreshes its own bearer from the per-agent token secret keyed by `id`.
-   */
-  authType: "none" | "bearer" | "header" | "oauth";
-  /**
-   * Auth credential. For `bearer`: raw token (runtime adds the `Bearer ` prefix). For `header`: literal `Header-Name: value` line. `null` when authType is `none`.
-   */
-  authValue: string | null;
-  /**
-   * Always `true` in this list — disabled servers are filtered server-side. Kept for forward compatibility.
-   */
-  enabled: boolean;
-};
-
-export type AgentMcpStatusDto = {
-  /**
-   * The pod predates a change to its MCP configuration and needs a restart to pick it up.
-   */
-  restartRequired: boolean;
-  /**
-   * Most recent MCP configuration change the pod missed. Null when in sync.
-   */
-  configChangedAt: string | null;
-  /**
-   * When the current pod started; null when no pod is running, in which case there is nothing to restart.
-   */
-  podStartedAt: string | null;
-  /**
-   * Names of the servers that changed after the pod started.
-   */
-  changedServers: Array<string>;
-};
-
-export type AgentResourcesDto = {
-  cpu: string;
-  memory: string;
-};
-
-export type CreateAgentDto = {
-  name: string;
-  templateId: string;
-  llmCredentialId?: string;
-  config?: {
-    [key: string]: unknown;
-  };
-  resources?: AgentResourcesDto;
-  /**
-   * When true, the agent is visible on the public landing page to unauthenticated visitors.
-   */
-  isPublic?: boolean;
-  /**
-   * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
-   */
-  allowedOrigins?: Array<string>;
-  knowledgeIds?: Array<string>;
-  /**
-   * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
-   */
-  isAdmin?: boolean;
-};
-
-export type UpdateAgentDto = {
-  name?: string;
-  templateId?: string;
-  llmCredentialId?: string;
-  config?: {
-    [key: string]: unknown;
-  };
-  resources?: AgentResourcesDto;
-  /**
-   * When true, the agent is visible on the public landing page to unauthenticated visitors.
-   */
-  isPublic?: boolean;
-  /**
-   * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
-   */
-  allowedOrigins?: Array<string>;
-  knowledgeIds?: Array<string>;
-  /**
-   * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
-   */
-  isAdmin?: boolean;
-  /**
-   * Enable debug mode — emits the prompt-debug event stream and verbose pod logs (LOG_LEVEL=debug). The verbose-log half applies on the next agent restart; the prompt-debug stream flips live.
-   */
-  debugEnabled?: boolean;
-};
-
-export type FileChunkDto = {
-  path: string;
-  /**
-   * UTF-8 slice of the file from `offset`.
-   */
-  content: string;
-  /**
-   * Byte length of `content`.
-   */
-  size: number;
-  /**
-   * Full byte length of the file.
-   */
-  totalSize: number;
-  /**
-   * Byte offset of the first byte of `content`.
-   */
-  offset: number;
-  /**
-   * Pass as `offset` on the next request. `null` when there is no more data.
-   */
-  nextOffset: number | null;
-  hasMore: boolean;
-  updatedAt: string;
-};
-
-export type SaveFileDto = {
-  /**
-   * Full file content as text
-   */
-  content: string;
-};
-
-export type DeleteFilesDto = {
-  /**
-   * Number of S3 objects deleted by this request.
-   */
-  deleted: number;
-};
-
-export type SyncFilesBodyDto = {
-  /**
-   * Set to true to run the sync even when at-risk files were reported (the operator explicitly accepted the overwrite risk). Without it a non-empty at-risk list makes the endpoint answer 409 and skip the sync.
-   */
-  confirm?: boolean;
-};
-
-export type AtRiskFileDto = {
-  path: string;
-  /**
-   * When the S3 (shared) copy of this file was last modified
-   */
-  updatedAt: string;
-};
-
-export type SyncConflictDto = {
-  /**
-   * Always true: the sync was NOT executed — resend with confirm=true to proceed
-   */
-  requiresConfirmation: boolean;
-  /**
-   * S3 files modified after the pod last pulled/pushed. A sync MAY overwrite or delete them if the pod also changed them locally.
-   */
-  atRisk: Array<AtRiskFileDto>;
-  /**
-   * Reference moment the S3 copies were compared against (max of last boot pull minus margin and last completed sync)
-   */
-  baseline: string;
-};
-
-export type BridleTextPartDto = {
-  type: "text" | "image" | "file";
-  text: string;
-};
-
-export type BridleImagePartDto = {
-  type: "text" | "image" | "file";
-  /**
-   * Base64-encoded image data
-   */
-  base64: string;
-  /**
-   * MIME type
-   */
-  mediaType: string;
-};
-
-export type SendMessageDto = {
-  /**
-   * Message text (plain-text shorthand)
-   */
-  text: string;
-  /**
-   * Rich content parts. If omitted, built from text + images.
-   */
-  parts?: Array<BridleTextPartDto>;
-  /**
-   * Attached images (legacy — prefer parts)
-   */
-  images?: Array<BridleImagePartDto>;
-  /**
-   * Ids from POST /api/agent/{agentId}/attachment. The API expands them server-side into parts — images as image content, text files with their contents inlined into the message, everything else as a named reference — and appends them to whatever `parts` resolved to. Omit the field and the request behaves exactly as before.
-   */
-  attachmentIds?: Array<string>;
-};
-
-export type BridleAttachmentDto = {
-  /**
-   * Attachment id, also the storage key stem
-   */
-  id: string;
-  /**
-   * Original filename, for display
-   */
-  name: string;
-  /**
-   * Resolved MIME type
-   */
-  mimeType: string;
-  /**
-   * Size in bytes
-   */
-  size: number;
-  /**
-   * How the attachment reaches the agent: image content, inlined text, or a named reference
-   */
-  kind: "image" | "text" | "binary";
-  /**
-   * Path of the authenticated download route. Never a direct storage URL.
-   */
-  url: string;
-  /**
-   * False when the agent will see only the file name, not its contents
-   */
-  readableByAgent: boolean;
-};
-
-export type BridleHealthDto = {
-  ok: boolean;
-  /**
-   * Whether any agent runtime is connected via WebSocket
-   */
-  agentConnected: boolean;
-  /**
-   * Number of browser clients connected
-   */
-  browserClients: number;
-};
-
-export type BridleAgentHealthDto = {
-  ok: boolean;
-  /**
-   * Whether this agent is connected via WebSocket
-   */
-  agentConnected: boolean;
-  /**
-   * Number of browser clients connected to this agent
-   */
-  browserClients: number;
-  /**
-   * Bot identifier
-   */
-  agentId: string;
-};
-
-export type TranscriptAttachmentDto = {
-  id: string;
-  name: string;
-  mimeType: string;
-  size: number;
-  kind: "image" | "text" | "binary";
-};
-
-export type TranscriptMessageDto = {
-  id: string;
-  role: "user" | "assistant";
-  /**
-   * For user messages: what the person typed. Attachment contents the API inlined for the model are not included — see `agentText`.
-   */
-  text: string;
-  /**
-   * Unix epoch milliseconds.
-   */
-  ts: number;
-  /**
-   * Stored-attachment references for files sent with this message. Fetch the bytes via GET /api/agent/{agentId}/attachment/{id}.
-   */
-  attachments?: Array<TranscriptAttachmentDto>;
-  /**
-   * User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.
-   */
-  agentText?: string;
-};
-
-export type TranscriptResponseDto = {
-  messages: Array<TranscriptMessageDto>;
-  /**
-   * Channel the transcript was loaded from.
-   */
-  channel: string;
-  /**
-   * Pass back as `cursor` to fetch the previous page. `null` when no older messages.
-   */
-  nextCursor: string | null;
-  hasMore: boolean;
-};
-
-export type ShareLinkDto = {
-  /**
-   * True while the link accepts visitors. False when the agent was never shared or the link has been revoked.
-   */
-  active: boolean;
-  /**
-   * The share secret. Exposed only while the link is active — a revoked token is dead and is never handed back, so this is null whenever active is false.
-   */
-  token: string | null;
-  /**
-   * When the link row was first created; null if never shared.
-   */
-  createdAt: string | null;
-  /**
-   * When the link was revoked; null while it is active.
-   */
-  revokedAt: string | null;
-  /**
-   * When the token was last replaced; null until the first regenerate.
-   */
-  rotatedAt: string | null;
-  /**
-   * How many times the token has been replaced.
-   */
-  rotationCount: number;
-};
-
-export type ShareResolveRequestDto = {
-  /**
-   * The share token from the link (`sl_` + 43 url-safe characters).
-   */
-  token: string;
-};
-
-export type ShareResolvedDto = {
-  /**
-   * Id of the shared agent — used for the chat requests.
-   */
-  agentId: string;
-  /**
-   * Display name of the shared agent.
-   */
-  agentName: string;
-  /**
-   * The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.
-   */
-  agentStatus: string;
 };
 
 export type ImportSkillUrlDto = {
@@ -2438,425 +2696,6 @@ export type TemplateControllerSetMcpsResponses = {
   200: unknown;
 };
 
-export type McpServerControllerFindAllData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/mcp-servers";
-};
-
-export type McpServerControllerFindAllResponses = {
-  200: unknown;
-};
-
-export type McpServerControllerCreateData = {
-  body: CreateMcpServerDto;
-  path?: never;
-  query?: never;
-  url: "/mcp-servers";
-};
-
-export type McpServerControllerCreateResponses = {
-  201: unknown;
-};
-
-export type McpServerControllerRemoveData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/mcp-servers/{id}";
-};
-
-export type McpServerControllerRemoveResponses = {
-  200: unknown;
-};
-
-export type McpServerControllerFindByIdData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/mcp-servers/{id}";
-};
-
-export type McpServerControllerFindByIdResponses = {
-  200: unknown;
-};
-
-export type McpServerControllerUpdateData = {
-  body: UpdateMcpServerDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/mcp-servers/{id}";
-};
-
-export type McpServerControllerUpdateResponses = {
-  200: unknown;
-};
-
-export type GetKnowledgesData = {
-  body?: never;
-  path?: never;
-  query?: {
-    search?: string;
-    page?: number;
-    perPage?: number;
-  };
-  url: "/knowledges";
-};
-
-export type GetKnowledgesResponses = {
-  200: KnowledgePageDto;
-};
-
-export type GetKnowledgesResponse =
-  GetKnowledgesResponses[keyof GetKnowledgesResponses];
-
-export type CreateKnowledgeData = {
-  body: CreateKnowledgeDto;
-  path?: never;
-  query?: never;
-  url: "/knowledges";
-};
-
-export type CreateKnowledgeResponses = {
-  201: unknown;
-};
-
-export type GetKnowledgeStatusData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/knowledges/status";
-};
-
-export type GetKnowledgeStatusResponses = {
-  200: unknown;
-};
-
-export type GetGraphLabelsData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: {
-    /**
-     * Case-insensitive substring filter
-     */
-    search?: string;
-    limit?: number;
-  };
-  url: "/knowledges/{id}/graph/labels";
-};
-
-export type GetGraphLabelsResponses = {
-  200: GraphLabelsDto;
-};
-
-export type GetGraphLabelsResponse =
-  GetGraphLabelsResponses[keyof GetGraphLabelsResponses];
-
-export type GetGraphData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query: {
-    label: string;
-    maxDepth?: number;
-    maxNodes?: number;
-  };
-  url: "/knowledges/{id}/graph";
-};
-
-export type GetGraphResponses = {
-  200: GraphDto;
-};
-
-export type GetGraphResponse = GetGraphResponses[keyof GetGraphResponses];
-
-export type GetKnowledgeOverviewData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}/overview";
-};
-
-export type GetKnowledgeOverviewResponses = {
-  200: KnowledgeOverviewDto;
-};
-
-export type GetKnowledgeOverviewResponse =
-  GetKnowledgeOverviewResponses[keyof GetKnowledgeOverviewResponses];
-
-export type DeleteKnowledgeData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}";
-};
-
-export type DeleteKnowledgeResponses = {
-  204: void;
-};
-
-export type DeleteKnowledgeResponse =
-  DeleteKnowledgeResponses[keyof DeleteKnowledgeResponses];
-
-export type GetKnowledgeData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}";
-};
-
-export type GetKnowledgeResponses = {
-  200: unknown;
-};
-
-export type UpdateKnowledgeData = {
-  body: UpdateKnowledgeDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}";
-};
-
-export type UpdateKnowledgeResponses = {
-  200: unknown;
-};
-
-export type IndexKnowledgeData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}/index";
-};
-
-export type IndexKnowledgeResponses = {
-  202: unknown;
-};
-
-export type QueryKnowledgeData = {
-  body: QueryKnowledgeDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/knowledges/{id}/query";
-};
-
-export type QueryKnowledgeResponses = {
-  200: KnowledgeQueryResultDto;
-};
-
-export type QueryKnowledgeResponse =
-  QueryKnowledgeResponses[keyof QueryKnowledgeResponses];
-
-export type GetKnowledgeSourcesData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-  };
-  query?: {
-    /**
-     * Case-insensitive substring match on the source name
-     */
-    search?: string;
-    status?: "indexed" | "pending" | "retrying" | "failed";
-    type?: "file" | "url" | "text";
-    page?: number;
-    perPage?: number;
-  };
-  url: "/knowledges/{knowledgeId}/sources";
-};
-
-export type GetKnowledgeSourcesResponses = {
-  200: SourcePageDto;
-};
-
-export type GetKnowledgeSourcesResponse =
-  GetKnowledgeSourcesResponses[keyof GetKnowledgeSourcesResponses];
-
-export type AddKnowledgeSourceData = {
-  body: CreateSourceDto;
-  path: {
-    knowledgeId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources";
-};
-
-export type AddKnowledgeSourceResponses = {
-  201: unknown;
-};
-
-export type GetKnowledgeSourceImportsData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/imports";
-};
-
-export type GetKnowledgeSourceImportsResponses = {
-  200: Array<ImportJobDto>;
-};
-
-export type GetKnowledgeSourceImportsResponse =
-  GetKnowledgeSourceImportsResponses[keyof GetKnowledgeSourceImportsResponses];
-
-export type ExportKnowledgeSourcesData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-  };
-  query?: {
-    /**
-     * Comma-separated source ids. When present the filter fields are ignored.
-     */
-    ids?: string;
-    /**
-     * Case-insensitive substring match on the source name
-     */
-    search?: string;
-    status?: "indexed" | "pending" | "retrying" | "failed";
-    type?: "file" | "url" | "text";
-  };
-  url: "/knowledges/{knowledgeId}/sources/export";
-};
-
-export type ExportKnowledgeSourcesResponses = {
-  200: unknown;
-};
-
-export type GetKnowledgeSourceContentData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-    sourceId: string;
-  };
-  query?: {
-    /**
-     * "inline" lets the browser render what it can (pdf, images, text); "attachment" forces a download.
-     */
-    disposition?: "inline" | "attachment";
-  };
-  url: "/knowledges/{knowledgeId}/sources/{sourceId}/content";
-};
-
-export type GetKnowledgeSourceContentResponses = {
-  200: unknown;
-};
-
-export type ReindexKnowledgeSourceData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-    sourceId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex";
-};
-
-export type ReindexKnowledgeSourceResponses = {
-  202: unknown;
-};
-
-export type ExtractKnowledgeSourceTextData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-    sourceId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/{sourceId}/extract";
-};
-
-export type ExtractKnowledgeSourceTextResponses = {
-  202: unknown;
-};
-
-export type AddKnowledgeFileSourcesData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/files";
-};
-
-export type AddKnowledgeFileSourcesResponses = {
-  201: AddFilesResultDto;
-};
-
-export type AddKnowledgeFileSourcesResponse =
-  AddKnowledgeFileSourcesResponses[keyof AddKnowledgeFileSourcesResponses];
-
-export type AddKnowledgeSourcesFromSitemapData = {
-  body: AddFromSitemapDto;
-  path: {
-    knowledgeId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/from-sitemap";
-};
-
-export type AddKnowledgeSourcesFromSitemapResponses = {
-  201: AddFromSitemapResultDto;
-};
-
-export type AddKnowledgeSourcesFromSitemapResponse =
-  AddKnowledgeSourcesFromSitemapResponses[keyof AddKnowledgeSourcesFromSitemapResponses];
-
-export type AddKnowledgeSourcesFromArchiveData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/from-archive";
-};
-
-export type AddKnowledgeSourcesFromArchiveResponses = {
-  201: AddFromArchiveResultDto;
-};
-
-export type AddKnowledgeSourcesFromArchiveResponse =
-  AddKnowledgeSourcesFromArchiveResponses[keyof AddKnowledgeSourcesFromArchiveResponses];
-
-export type DeleteKnowledgeSourceData = {
-  body?: never;
-  path: {
-    knowledgeId: string;
-    sourceId: string;
-  };
-  query?: never;
-  url: "/knowledges/{knowledgeId}/sources/{sourceId}";
-};
-
-export type DeleteKnowledgeSourceResponses = {
-  204: void;
-};
-
-export type DeleteKnowledgeSourceResponse =
-  DeleteKnowledgeSourceResponses[keyof DeleteKnowledgeSourceResponses];
-
 export type AgentControllerFindAllData = {
   body?: never;
   path?: never;
@@ -3132,6 +2971,29 @@ export type RestartByTemplateResponses = {
   201: unknown;
 };
 
+export type DeleteAgentFileSelectionData = {
+  body: DeleteFilesBodyDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files";
+};
+
+export type DeleteAgentFileSelectionErrors = {
+  409: DeleteFilesConflictDto;
+};
+
+export type DeleteAgentFileSelectionError =
+  DeleteAgentFileSelectionErrors[keyof DeleteAgentFileSelectionErrors];
+
+export type DeleteAgentFileSelectionResponses = {
+  200: DeleteFilesDto;
+};
+
+export type DeleteAgentFileSelectionResponse =
+  DeleteAgentFileSelectionResponses[keyof DeleteAgentFileSelectionResponses];
+
 export type FileControllerListData = {
   body?: never;
   path: {
@@ -3142,8 +3004,27 @@ export type FileControllerListData = {
 };
 
 export type FileControllerListResponses = {
-  200: unknown;
+  200: Array<FileNodeDto>;
 };
+
+export type FileControllerListResponse =
+  FileControllerListResponses[keyof FileControllerListResponses];
+
+export type FileControllerLimitsData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/limits";
+};
+
+export type FileControllerLimitsResponses = {
+  200: FileLimitsDto;
+};
+
+export type FileControllerLimitsResponse =
+  FileControllerLimitsResponses[keyof FileControllerLimitsResponses];
 
 export type FileControllerDeleteData = {
   body?: never;
@@ -3205,8 +3086,11 @@ export type FileControllerSaveData = {
 };
 
 export type FileControllerSaveResponses = {
-  200: unknown;
+  200: FileContentDto;
 };
+
+export type FileControllerSaveResponse =
+  FileControllerSaveResponses[keyof FileControllerSaveResponses];
 
 export type FileControllerSyncData = {
   body: SyncFilesBodyDto;
@@ -3239,6 +3123,252 @@ export type ExportAgentFilesData = {
 export type ExportAgentFilesResponses = {
   200: unknown;
 };
+
+export type ExportAgentFileSelectionData = {
+  body: ExportFilesBodyDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/export";
+};
+
+export type ExportAgentFileSelectionResponses = {
+  201: unknown;
+};
+
+export type MintAgentFileOpenLinkData = {
+  body: OpenLinkBodyDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/open-link";
+};
+
+export type MintAgentFileOpenLinkResponses = {
+  200: OpenLinkDto;
+};
+
+export type MintAgentFileOpenLinkResponse =
+  MintAgentFileOpenLinkResponses[keyof MintAgentFileOpenLinkResponses];
+
+export type ReadAgentFileRawData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query: {
+    token: string;
+  };
+  url: "/agents/{agentId}/files/raw";
+};
+
+export type ReadAgentFileRawResponses = {
+  200: unknown;
+};
+
+export type StageAgentImportData = {
+  body: {
+    archive: Blob | File;
+  };
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/import/stage";
+};
+
+export type StageAgentImportErrors = {
+  /**
+   * Archive refused; the message names the entry or limit.
+   */
+  400: unknown;
+  /**
+   * An import for this agent is already running.
+   */
+  409: unknown;
+  /**
+   * Archive over the size limit.
+   */
+  413: unknown;
+};
+
+export type StageAgentImportResponses = {
+  200: ImportPlanDto;
+};
+
+export type StageAgentImportResponse =
+  StageAgentImportResponses[keyof StageAgentImportResponses];
+
+export type PlanAgentImportData = {
+  body?: never;
+  path: {
+    agentId: string;
+    importId: string;
+  };
+  query?: {
+    mode?: "merge" | "replace";
+    includeSessions?: boolean;
+  };
+  url: "/agents/{agentId}/files/import/{importId}/plan";
+};
+
+export type PlanAgentImportErrors = {
+  /**
+   * Stage expired or unknown.
+   */
+  404: unknown;
+};
+
+export type PlanAgentImportResponses = {
+  200: ImportPlanDto;
+};
+
+export type PlanAgentImportResponse =
+  PlanAgentImportResponses[keyof PlanAgentImportResponses];
+
+export type ApplyAgentImportData = {
+  body: ImportApplyDto;
+  path: {
+    agentId: string;
+    importId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/import/{importId}/apply";
+};
+
+export type ApplyAgentImportErrors = {
+  409: ImportRemoveConflictDto;
+};
+
+export type ApplyAgentImportError =
+  ApplyAgentImportErrors[keyof ApplyAgentImportErrors];
+
+export type ApplyAgentImportResponses = {
+  200: ImportResultDto;
+};
+
+export type ApplyAgentImportResponse =
+  ApplyAgentImportResponses[keyof ApplyAgentImportResponses];
+
+export type ListAgentFileProposalsData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query: {
+    /**
+     * The agent whose chat raised the proposals.
+     */
+    chatAgentId: string;
+    channel?: string;
+    since?: string;
+    until?: string;
+  };
+  url: "/agents/{agentId}/files/proposals";
+};
+
+export type ListAgentFileProposalsResponses = {
+  200: Array<FileChangeProposalDto>;
+};
+
+export type ListAgentFileProposalsResponse =
+  ListAgentFileProposalsResponses[keyof ListAgentFileProposalsResponses];
+
+export type GetAgentFileProposalData = {
+  body?: never;
+  path: {
+    agentId: string;
+    proposalId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/proposals/{proposalId}";
+};
+
+export type GetAgentFileProposalResponses = {
+  200: FileChangeProposalDto;
+};
+
+export type GetAgentFileProposalResponse =
+  GetAgentFileProposalResponses[keyof GetAgentFileProposalResponses];
+
+export type GetAgentFileProposalContentData = {
+  body?: never;
+  path: {
+    agentId: string;
+    proposalId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/proposals/{proposalId}/content";
+};
+
+export type GetAgentFileProposalContentResponses = {
+  200: unknown;
+};
+
+export type GetAgentFileProposalDiffData = {
+  body?: never;
+  path: {
+    agentId: string;
+    proposalId: string;
+  };
+  query?: {
+    /**
+     * Set proposals: which entry to compare.
+     */
+    path?: string;
+  };
+  url: "/agents/{agentId}/files/proposals/{proposalId}/diff";
+};
+
+export type GetAgentFileProposalDiffErrors = {
+  /**
+   * Over the comparison limit — no diff computed.
+   */
+  413: unknown;
+};
+
+export type ApplyAgentFileProposalData = {
+  body: ApplyProposalDto;
+  path: {
+    agentId: string;
+    proposalId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/proposals/{proposalId}/apply";
+};
+
+export type ApplyAgentFileProposalErrors = {
+  409: ProposalRemoveConflictDto;
+};
+
+export type ApplyAgentFileProposalError =
+  ApplyAgentFileProposalErrors[keyof ApplyAgentFileProposalErrors];
+
+export type ApplyAgentFileProposalResponses = {
+  200: FileChangeProposalDto;
+};
+
+export type ApplyAgentFileProposalResponse =
+  ApplyAgentFileProposalResponses[keyof ApplyAgentFileProposalResponses];
+
+export type SkipAgentFileProposalData = {
+  body?: never;
+  path: {
+    agentId: string;
+    proposalId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/proposals/{proposalId}/skip";
+};
+
+export type SkipAgentFileProposalResponses = {
+  200: FileChangeProposalDto;
+};
+
+export type SkipAgentFileProposalResponse =
+  SkipAgentFileProposalResponses[keyof SkipAgentFileProposalResponses];
 
 export type SendBridleMessageData = {
   body: SendMessageDto;
@@ -3717,6 +3847,425 @@ export type ResolveShareLinkResponses = {
 
 export type ResolveShareLinkResponse =
   ResolveShareLinkResponses[keyof ResolveShareLinkResponses];
+
+export type McpServerControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/mcp-servers";
+};
+
+export type McpServerControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type McpServerControllerCreateData = {
+  body: CreateMcpServerDto;
+  path?: never;
+  query?: never;
+  url: "/mcp-servers";
+};
+
+export type McpServerControllerCreateResponses = {
+  201: unknown;
+};
+
+export type McpServerControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/mcp-servers/{id}";
+};
+
+export type McpServerControllerRemoveResponses = {
+  200: unknown;
+};
+
+export type McpServerControllerFindByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/mcp-servers/{id}";
+};
+
+export type McpServerControllerFindByIdResponses = {
+  200: unknown;
+};
+
+export type McpServerControllerUpdateData = {
+  body: UpdateMcpServerDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/mcp-servers/{id}";
+};
+
+export type McpServerControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type GetKnowledgesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    search?: string;
+    page?: number;
+    perPage?: number;
+  };
+  url: "/knowledges";
+};
+
+export type GetKnowledgesResponses = {
+  200: KnowledgePageDto;
+};
+
+export type GetKnowledgesResponse =
+  GetKnowledgesResponses[keyof GetKnowledgesResponses];
+
+export type CreateKnowledgeData = {
+  body: CreateKnowledgeDto;
+  path?: never;
+  query?: never;
+  url: "/knowledges";
+};
+
+export type CreateKnowledgeResponses = {
+  201: unknown;
+};
+
+export type GetKnowledgeStatusData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/knowledges/status";
+};
+
+export type GetKnowledgeStatusResponses = {
+  200: unknown;
+};
+
+export type GetGraphLabelsData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: {
+    /**
+     * Case-insensitive substring filter
+     */
+    search?: string;
+    limit?: number;
+  };
+  url: "/knowledges/{id}/graph/labels";
+};
+
+export type GetGraphLabelsResponses = {
+  200: GraphLabelsDto;
+};
+
+export type GetGraphLabelsResponse =
+  GetGraphLabelsResponses[keyof GetGraphLabelsResponses];
+
+export type GetGraphData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query: {
+    label: string;
+    maxDepth?: number;
+    maxNodes?: number;
+  };
+  url: "/knowledges/{id}/graph";
+};
+
+export type GetGraphResponses = {
+  200: GraphDto;
+};
+
+export type GetGraphResponse = GetGraphResponses[keyof GetGraphResponses];
+
+export type GetKnowledgeOverviewData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}/overview";
+};
+
+export type GetKnowledgeOverviewResponses = {
+  200: KnowledgeOverviewDto;
+};
+
+export type GetKnowledgeOverviewResponse =
+  GetKnowledgeOverviewResponses[keyof GetKnowledgeOverviewResponses];
+
+export type DeleteKnowledgeData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}";
+};
+
+export type DeleteKnowledgeResponses = {
+  204: void;
+};
+
+export type DeleteKnowledgeResponse =
+  DeleteKnowledgeResponses[keyof DeleteKnowledgeResponses];
+
+export type GetKnowledgeData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}";
+};
+
+export type GetKnowledgeResponses = {
+  200: unknown;
+};
+
+export type UpdateKnowledgeData = {
+  body: UpdateKnowledgeDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}";
+};
+
+export type UpdateKnowledgeResponses = {
+  200: unknown;
+};
+
+export type IndexKnowledgeData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}/index";
+};
+
+export type IndexKnowledgeResponses = {
+  202: unknown;
+};
+
+export type QueryKnowledgeData = {
+  body: QueryKnowledgeDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/knowledges/{id}/query";
+};
+
+export type QueryKnowledgeResponses = {
+  200: KnowledgeQueryResultDto;
+};
+
+export type QueryKnowledgeResponse =
+  QueryKnowledgeResponses[keyof QueryKnowledgeResponses];
+
+export type GetKnowledgeSourcesData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: {
+    /**
+     * Case-insensitive substring match on the source name
+     */
+    search?: string;
+    status?: "indexed" | "pending" | "retrying" | "failed";
+    type?: "file" | "url" | "text";
+    page?: number;
+    perPage?: number;
+  };
+  url: "/knowledges/{knowledgeId}/sources";
+};
+
+export type GetKnowledgeSourcesResponses = {
+  200: SourcePageDto;
+};
+
+export type GetKnowledgeSourcesResponse =
+  GetKnowledgeSourcesResponses[keyof GetKnowledgeSourcesResponses];
+
+export type AddKnowledgeSourceData = {
+  body: CreateSourceDto;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources";
+};
+
+export type AddKnowledgeSourceResponses = {
+  201: unknown;
+};
+
+export type GetKnowledgeSourceImportsData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/imports";
+};
+
+export type GetKnowledgeSourceImportsResponses = {
+  200: Array<ImportJobDto>;
+};
+
+export type GetKnowledgeSourceImportsResponse =
+  GetKnowledgeSourceImportsResponses[keyof GetKnowledgeSourceImportsResponses];
+
+export type ExportKnowledgeSourcesData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: {
+    /**
+     * Comma-separated source ids. When present the filter fields are ignored.
+     */
+    ids?: string;
+    /**
+     * Case-insensitive substring match on the source name
+     */
+    search?: string;
+    status?: "indexed" | "pending" | "retrying" | "failed";
+    type?: "file" | "url" | "text";
+  };
+  url: "/knowledges/{knowledgeId}/sources/export";
+};
+
+export type ExportKnowledgeSourcesResponses = {
+  200: unknown;
+};
+
+export type GetKnowledgeSourceContentData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: {
+    /**
+     * "inline" lets the browser render what it can (pdf, images, text); "attachment" forces a download.
+     */
+    disposition?: "inline" | "attachment";
+  };
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/content";
+};
+
+export type GetKnowledgeSourceContentResponses = {
+  200: unknown;
+};
+
+export type ReindexKnowledgeSourceData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/reindex";
+};
+
+export type ReindexKnowledgeSourceResponses = {
+  202: unknown;
+};
+
+export type ExtractKnowledgeSourceTextData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}/extract";
+};
+
+export type ExtractKnowledgeSourceTextResponses = {
+  202: unknown;
+};
+
+export type AddKnowledgeFileSourcesData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/files";
+};
+
+export type AddKnowledgeFileSourcesResponses = {
+  201: AddFilesResultDto;
+};
+
+export type AddKnowledgeFileSourcesResponse =
+  AddKnowledgeFileSourcesResponses[keyof AddKnowledgeFileSourcesResponses];
+
+export type AddKnowledgeSourcesFromSitemapData = {
+  body: AddFromSitemapDto;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/from-sitemap";
+};
+
+export type AddKnowledgeSourcesFromSitemapResponses = {
+  201: AddFromSitemapResultDto;
+};
+
+export type AddKnowledgeSourcesFromSitemapResponse =
+  AddKnowledgeSourcesFromSitemapResponses[keyof AddKnowledgeSourcesFromSitemapResponses];
+
+export type AddKnowledgeSourcesFromArchiveData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/from-archive";
+};
+
+export type AddKnowledgeSourcesFromArchiveResponses = {
+  201: AddFromArchiveResultDto;
+};
+
+export type AddKnowledgeSourcesFromArchiveResponse =
+  AddKnowledgeSourcesFromArchiveResponses[keyof AddKnowledgeSourcesFromArchiveResponses];
+
+export type DeleteKnowledgeSourceData = {
+  body?: never;
+  path: {
+    knowledgeId: string;
+    sourceId: string;
+  };
+  query?: never;
+  url: "/knowledges/{knowledgeId}/sources/{sourceId}";
+};
+
+export type DeleteKnowledgeSourceResponses = {
+  204: void;
+};
+
+export type DeleteKnowledgeSourceResponse =
+  DeleteKnowledgeSourceResponses[keyof DeleteKnowledgeSourceResponses];
 
 export type SkillControllerFindAllData = {
   body?: never;

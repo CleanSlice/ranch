@@ -1,0 +1,319 @@
+openapi: 3.1.0
+info:
+  title: Agent files (CLEAN-112 additions)
+  version: 0.1.0
+  description: >
+    Additions and changes to /agents/{agentId}/files. Existing routes (list,
+    content, save, delete, sync, export) keep their shape unless listed here.
+    All routes need the operator session except GET /raw, whose token is the
+    credential.
+paths:
+  /agents/{agentId}/files:
+    get:
+      summary: List workspace files (extended with kind/editable)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/FileNode' } }
+    delete:
+      summary: Delete one path (existing, query) or several (new, body)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paths: { type: array, items: { type: string }, maxItems: 2000 }
+                confirm: { type: boolean, description: Required when the selection would empty the workspace }
+      responses:
+        '200': { description: DeleteFilesDto with deleted count }
+        '409': { description: Selection empties the workspace and confirm is not set }
+
+  /agents/{agentId}/files/limits:
+    get:
+      summary: Effective limits (so no client hardcodes them)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileLimits' }
+
+  /agents/{agentId}/files/content:
+    get:
+      summary: Read a slice (existing). Content never ends mid-character.
+    put:
+      summary: Save a text file (existing) — now any text kind; createOnly added
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+                createOnly: { type: boolean, default: false }
+                ifUnmodifiedSince: { type: string, format: date-time, description: Refuse with 412 when the object changed after this }
+      responses:
+        '200': { description: FileContentDto }
+        '400': { description: Not a text kind, over MAX_EDIT_BYTES, or invalid JSON for .json }
+        '409': { description: createOnly and the object exists }
+        '412': { description: Changed since ifUnmodifiedSince }
+
+  /agents/{agentId}/files/open-link:
+    post:
+      summary: Mint a short-lived link to the raw stored file
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties: { path: { type: string } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+                  expiresAt: { type: string, format: date-time }
+
+  /agents/{agentId}/files/raw:
+    get:
+      summary: Stream the raw object for an open link (no session; token only)
+      parameters:
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: text/plain inline for text kinds, stored type as attachment for binary }
+        '401': { description: Token invalid or expired }
+        '404': { description: Object gone — plain text body, not a storage error page }
+
+  /agents/{agentId}/files/export:
+    get:
+      summary: Whole workspace as zip (existing)
+    post:
+      summary: Selected paths as one zip
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paths: { type: array, items: { type: string }, description: Files or folder prefixes }
+      responses:
+        '200': { description: application/zip }
+
+  /agents/{agentId}/files/import/stage:
+    post:
+      summary: Upload and validate an archive; returns importId + plan preview (merge mode)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archive: { type: string, format: binary }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportPlan' }
+        '400': { description: Archive refused; message names the entry or limit }
+        '409': { description: An import for this agent is already running }
+        '413': { description: Over IMPORT_MAX_ARCHIVE_BYTES }
+
+  /agents/{agentId}/files/import/{importId}/plan:
+    get:
+      summary: Re-plan a staged archive with options
+      parameters:
+        - { name: mode, in: query, schema: { type: string, enum: [merge, replace], default: merge } }
+        - { name: includeSessions, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportPlan' }
+        '404': { description: Stage expired or unknown }
+
+  /agents/{agentId}/files/import/{importId}/apply:
+    post:
+      summary: Apply a staged archive
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { type: string, enum: [merge, replace] }
+                includeSessions: { type: boolean, default: false }
+                confirmRemove: { type: boolean, description: Required when mode=replace and counts.remove > 0 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportResult' }
+        '409': { description: replace without confirmRemove, or import already running }
+
+  /agents/{agentId}/files/proposals:
+    get:
+      summary: Proposals raised in a chat (for transcript merge)
+      parameters:
+        - { name: chatAgentId, in: query, required: true, schema: { type: string } }
+        - { name: channel, in: query, schema: { type: string, default: admin } }
+        - { name: since, in: query, schema: { type: string, format: date-time } }
+        - { name: until, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/FileChangeProposal' } }
+
+  /agents/{agentId}/files/proposals/{proposalId}:
+    get:
+      summary: One proposal
+  /agents/{agentId}/files/proposals/{proposalId}/content:
+    get:
+      summary: Proposed content of a single-file proposal (for Edit before applying)
+      responses:
+        '200': { description: text/plain; charset=utf-8 }
+  /agents/{agentId}/files/proposals/{proposalId}/diff:
+    get:
+      summary: Full unified diff (single) or one entry's diff (set, path required); computed on demand, capped
+      parameters:
+        - { name: path, in: query, schema: { type: string } }
+      responses:
+        '200': { description: text/x-diff }
+        '413': { description: Over DIFF_COMPARE_MAX_BYTES — no diff computed }
+  /agents/{agentId}/files/proposals/{proposalId}/apply:
+    post:
+      summary: Apply a pending proposal from the console
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                via: { type: string, enum: [card, editor], default: card }
+                content: { type: string, description: editor only — the edited content replaces the proposed one }
+      responses:
+        '200': { description: The proposal in its final state (applied | stale | refused) }
+        '409': { description: Not pending — body is the current row }
+  /agents/{agentId}/files/proposals/{proposalId}/skip:
+    post:
+      summary: Skip a pending proposal
+      responses:
+        '200': { description: The proposal, status skipped }
+        '409': { description: Not pending }
+
+  /api/agent/{agentId}/transcript:
+    get:
+      summary: (bridle, existing) — response gains `proposals` for the page's time range
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages: { type: array }
+                  nextCursor: { type: [string, 'null'] }
+                  hasMore: { type: boolean }
+                  proposals: { type: array, items: { $ref: '#/components/schemas/FileChangeProposal' } }
+
+components:
+  schemas:
+    FileNode:
+      type: object
+      required: [path, size, updatedAt, kind, editable]
+      properties:
+        path: { type: string }
+        size: { type: integer }
+        updatedAt: { type: string, format: date-time }
+        kind: { type: string, enum: [text, binary] }
+        editable: { type: boolean }
+    FileLimits:
+      type: object
+      properties:
+        maxEditBytes: { type: integer }
+        maxViewBytes: { type: integer }
+        rangeBytes: { type: integer }
+        openLinkTtlSec: { type: integer }
+        importMaxArchiveBytes: { type: integer }
+        importMaxEntries: { type: integer }
+        importMaxFileBytes: { type: integer }
+        diffInlineMaxLines: { type: integer }
+        diffInlineMaxBytes: { type: integer }
+        diffCompareMaxBytes: { type: integer }
+        proposalListRows: { type: integer }
+        textExtensions: { type: array, items: { type: string } }
+    ImportPlanEntry:
+      type: object
+      properties:
+        path: { type: string }
+        action: { type: string, enum: [add, change, unchanged, remove, skip] }
+        size: { type: integer }
+        reason: { type: string }
+    ImportPlan:
+      type: object
+      properties:
+        importId: { type: string }
+        mode: { type: string, enum: [merge, replace] }
+        includeSessions: { type: boolean }
+        wrapperStripped: { type: [string, 'null'] }
+        counts:
+          type: object
+          properties:
+            add: { type: integer }
+            change: { type: integer }
+            unchanged: { type: integer }
+            remove: { type: integer }
+            skip: { type: integer }
+        totalBytes: { type: integer }
+        entries: { type: array, items: { $ref: '#/components/schemas/ImportPlanEntry' } }
+        more: { type: integer }
+        warnings: { type: array, items: { type: string } }
+    ImportResult:
+      type: object
+      properties:
+        importId: { type: string }
+        mode: { type: string }
+        written: { type: integer }
+        removed: { type: integer }
+        skipped: { type: integer }
+        failed:
+          type: array
+          items:
+            type: object
+            properties: { path: { type: string }, reason: { type: string } }
+        restartRequired: { type: boolean }
+    FileChangeProposal:
+      type: object
+      properties:
+        id: { type: string }
+        agentId: { type: string }
+        agentName: { type: string }
+        chatAgentId: { type: string }
+        channel: { type: string }
+        kind: { type: string, enum: [single, set] }
+        op: { type: string, enum: [write, create, import] }
+        path: { type: [string, 'null'] }
+        proposedBytes: { type: integer }
+        diffStatus: { type: string, enum: [ok, too_large, binary, none] }
+        additions: { type: [integer, 'null'] }
+        deletions: { type: [integer, 'null'] }
+        changedLines: { type: [integer, 'null'] }
+        firstChangedLine: { type: [integer, 'null'] }
+        inlineDiff: { type: [string, 'null'], description: unified hunks; null when over the inline caps }
+        summary: { type: [object, 'null'], description: set only — counts, first rows, more }
+        status: { type: string, enum: [pending, applied, skipped, stale, refused] }
+        actedBy: { type: [string, 'null'] }
+        actedVia: { type: [string, 'null'], enum: [card, tool, editor, null] }
+        actedAt: { type: [string, 'null'], format: date-time }
+        result: { type: [object, 'null'] }
+        restartRequired: { type: boolean }
+        createdAt: { type: string, format: date-time }

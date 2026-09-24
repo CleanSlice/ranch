@@ -31,6 +31,15 @@ export abstract class IInfraConfigGateway {
   abstract getApiPublicUrl(): Promise<string>;
 
   /**
+   * The public origin exactly as the operator configured it — the
+   * `api_public_url` setting or `PUBLIC_API_URL` — and null when neither is
+   * set. No integration or localhost fallback: an OAuth redirect_uri that
+   * guessed the in-cluster address would send the person's browser nowhere
+   * (CLEAN-80). Returned without a trailing slash.
+   */
+  abstract getConfiguredApiPublicUrl(): Promise<string | null>;
+
+  /**
    * Drop the in-memory cache. Useful when settings are upserted via the
    * settings controller and we want subsequent reads to see fresh values.
    */

@@ -4,6 +4,7 @@ import { McpServerModule } from '../mcpServer.module';
 import { SecretModule } from '#/agent/secret/secret.module';
 import { BridleModule } from '#/bridle/bridle.module';
 import { AgentModule } from '#/agent/agent/agent.module';
+import { SettingModule } from '#/setting/setting.module';
 import { McpOauthController } from './mcpOauth.controller';
 import { McpOauthTool } from './mcpOauth.tool';
 import { McpOauthService } from './domain/mcpOauth.service';
@@ -19,6 +20,9 @@ import { McpOauthClient } from './data/mcpOauth.client';
     SecretModule,
     BridleModule,
     forwardRef(() => AgentModule),
+    // The public API URL for the OAuth redirect, resolved like every other
+    // public address (setting → env → integration).
+    SettingModule,
   ],
   controllers: [McpOauthController],
   // McpOauthTool sits here, not in McpServerModule, so the service stays

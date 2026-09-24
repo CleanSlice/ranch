@@ -13,6 +13,7 @@ import { PrismaService } from '#/setup/prisma/prisma.service';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { ISecretGateway } from '#/agent/secret/domain';
 import { IBridleGateway } from '#/bridle/domain';
+import { IInfraConfigGateway } from '#/setting/domain/infraConfig.gateway';
 import { IMcpServerGateway } from '../../domain/mcpServer.gateway';
 import { McpOauthClient } from '../data/mcpOauth.client';
 import {
@@ -80,6 +81,7 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
     private readonly bridle: IBridleGateway,
     @Inject(forwardRef(() => IAgentGateway))
     private readonly agents: IAgentGateway,
+    private readonly infra: IInfraConfigGateway,
   ) {}
 
   onModuleInit(): void {
@@ -104,19 +106,31 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
     this.sweeper = null;
   }
 
-  /** Public base URL the user's browser reaches ranch-api on (for redirect_uri). */
-  private publicApiUrl(): string {
-    const url = process.env.PUBLIC_API_URL;
+  /**
+   * Public base URL the user's browser reaches ranch-api on (for
+   * redirect_uri). Read the way every other public address is — the
+   * `infrastructure.api_public_url` setting, then `PUBLIC_API_URL` — instead
+   * of the env var alone: a platform where the operator set the setting from
+   * the console and never touched the pod env used to answer "not
+   * configured" (seen on ranch.cleanslice.org). Only an explicit value is
+   * accepted: the resolver's in-cluster and localhost fallbacks are fine for
+   * an agent card, but a redirect_uri built from them sends the person's
+   * browser nowhere, so the refusal names what to set.
+   */
+  private async publicApiUrl(): Promise<string> {
+    const url = await this.infra.getConfiguredApiPublicUrl();
     if (!url) {
       throw new BadRequestException(
-        'PUBLIC_API_URL is not configured — OAuth MCP connect is unavailable',
+        'The public API URL is not configured — set infrastructure.api_public_url ' +
+          '(Settings → Infrastructure) or PUBLIC_API_URL on the api pod; ' +
+          'OAuth MCP connect is unavailable until then',
       );
     }
-    return url.replace(/\/+$/, '');
+    return url;
   }
 
-  private callbackUri(serverId: string): string {
-    return `${this.publicApiUrl()}/mcp-servers/${serverId}/oauth/callback`;
+  private async callbackUri(serverId: string): Promise<string> {
+    return `${await this.publicApiUrl()}/mcp-servers/${serverId}/oauth/callback`;
   }
 
   /**
@@ -132,7 +146,7 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const meta = await this.client.discover(server.url);
-    const redirectUri = this.callbackUri(serverId);
+    const redirectUri = await this.callbackUri(serverId);
 
     let clientId = server.oauthClientId;
     if (!clientId) {
@@ -217,7 +231,7 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
       code,
       codeVerifier: st.codeVerifier,
       clientId: server.oauthClientId,
-      redirectUri: this.callbackUri(serverId),
+      redirectUri: await this.callbackUri(serverId),
     });
 
     const subject = st.subject ?? undefined;

@@ -49,7 +49,9 @@ export class FileProposalRepository extends IFileProposalRepository {
   }
 
   async findById(id: string): Promise<IFileChangeProposal | null> {
-    const row = await this.prisma.fileChangeProposal.findUnique({ where: { id } });
+    const row = await this.prisma.fileChangeProposal.findUnique({
+      where: { id },
+    });
     return row ? toDomain(row) : null;
   }
 
@@ -107,7 +109,13 @@ export class FileProposalRepository extends IFileProposalRepository {
     exceptId: string,
   ): Promise<IFileChangeProposal[]> {
     const siblings = await this.prisma.fileChangeProposal.findMany({
-      where: { agentId, path, kind: 'single', status: 'pending', NOT: { id: exceptId } },
+      where: {
+        agentId,
+        path,
+        kind: 'single',
+        status: 'pending',
+        NOT: { id: exceptId },
+      },
     });
     if (!siblings.length) return [];
     await this.prisma.fileChangeProposal.updateMany({
@@ -158,7 +166,9 @@ function toDomain(row: FileChangeProposal): IFileChangeProposal {
     actedBy: row.actedBy,
     actedVia: (row.actedVia as IFileChangeProposal['actedVia']) ?? null,
     actedAt: row.actedAt,
-    result: (row.result as unknown as IImportResult | { etag: string } | null) ?? null,
+    result:
+      (row.result as unknown as IImportResult | { etag: string } | null) ??
+      null,
     reason: row.reason,
     createdAt: row.createdAt,
   };

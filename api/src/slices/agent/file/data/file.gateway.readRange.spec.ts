@@ -76,7 +76,9 @@ describe('contentTypeFor', () => {
   it('maps recognised extensions', () => {
     expect(contentTypeFor('a.json')).toBe('application/json; charset=utf-8');
     expect(contentTypeFor('SOUL.md')).toBe('text/markdown; charset=utf-8');
-    expect(contentTypeFor('data/x.yaml')).toBe('application/yaml; charset=utf-8');
+    expect(contentTypeFor('data/x.yaml')).toBe(
+      'application/yaml; charset=utf-8',
+    );
     expect(contentTypeFor('img.png')).toBe('image/png');
   });
 

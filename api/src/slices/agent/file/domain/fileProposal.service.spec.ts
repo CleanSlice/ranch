@@ -46,7 +46,12 @@ function memoryRepo() {
     async listForChat() {
       return [...rows.values()];
     },
-    async transition(id: string, from: ProposalStatus, to: ProposalStatus, patch: ITransitionPatch) {
+    async transition(
+      id: string,
+      from: ProposalStatus,
+      to: ProposalStatus,
+      patch: ITransitionPatch,
+    ) {
       const row = rows.get(id);
       if (!row) return { won: false, row: null };
       if (row.status !== from) return { won: false, row };
@@ -65,9 +70,14 @@ function memoryRepo() {
     async markSiblingsStale(agentId: string, path: string, exceptId: string) {
       const out: IFileChangeProposal[] = [];
       for (const [id, row] of rows) {
-        if (id === exceptId || row.agentId !== agentId || row.path !== path) continue;
+        if (id === exceptId || row.agentId !== agentId || row.path !== path)
+          continue;
         if (row.status !== 'pending' || row.kind !== 'single') continue;
-        const next = { ...row, status: 'stale' as const, reason: 'sibling applied' };
+        const next = {
+          ...row,
+          status: 'stale' as const,
+          reason: 'sibling applied',
+        };
         rows.set(id, next);
         out.push(next);
       }
@@ -80,7 +90,8 @@ function memoryRepo() {
 function memoryFiles(initial: Record<string, string> = {}) {
   const objects = new Map<string, string>(Object.entries(initial));
   const proposals = new Map<string, string>();
-  const etagOf = (s: string) => `etag-${Buffer.from(s).toString('base64').slice(0, 12)}`;
+  const etagOf = (s: string) =>
+    `etag-${Buffer.from(s).toString('base64').slice(0, 12)}`;
   const files = {
     async headEtag(_a: string, path: string) {
       const c = objects.get(path);
@@ -97,8 +108,14 @@ function memoryFiles(initial: Record<string, string> = {}) {
         editable: true,
       };
     },
-    async save(_a: string, path: string, content: string, opts: { createOnly?: boolean } = {}) {
-      if (opts.createOnly && objects.has(path)) throw new ConflictException('exists');
+    async save(
+      _a: string,
+      path: string,
+      content: string,
+      opts: { createOnly?: boolean } = {},
+    ) {
+      if (opts.createOnly && objects.has(path))
+        throw new ConflictException('exists');
       objects.set(path, content);
     },
     async putProposalContent(id: string, content: string) {
@@ -118,7 +135,10 @@ function memoryFiles(initial: Record<string, string> = {}) {
   return { files: files as unknown as IFileGateway, objects, proposals };
 }
 
-function build(initial: Record<string, string> = {}, turn: { clientId: string; turnId: string } | null = null) {
+function build(
+  initial: Record<string, string> = {},
+  turn: { clientId: string; turnId: string } | null = null,
+) {
   const { repo, rows } = memoryRepo();
   const { files, objects, proposals } = memoryFiles(initial);
   const sent: unknown[] = [];
@@ -129,7 +149,11 @@ function build(initial: Record<string, string> = {}, turn: { clientId: string; t
     sendToAgentClients: (_a: string, data: unknown) => broadcast.push(data),
   };
   const agents = {
-    findById: async (id: string) => ({ id, name: `agent-${id}`, status: 'running' }),
+    findById: async (id: string) => ({
+      id,
+      name: `agent-${id}`,
+      status: 'running',
+    }),
   };
   const archive = {
     validate: jest.fn(),
@@ -167,7 +191,11 @@ describe('computeDiff', () => {
     const atCap = computeDiff('f.txt', '', lines(DIFF_INLINE_MAX_LINES, 'l'));
     expect(atCap.changedLines).toBe(DIFF_INLINE_MAX_LINES);
     expect(atCap.inlineDiff).not.toBeNull();
-    const over = computeDiff('f.txt', '', lines(DIFF_INLINE_MAX_LINES + 1, 'l'));
+    const over = computeDiff(
+      'f.txt',
+      '',
+      lines(DIFF_INLINE_MAX_LINES + 1, 'l'),
+    );
     expect(over.inlineDiff).toBeNull();
     expect(over.additions).toBe(DIFF_INLINE_MAX_LINES + 1);
   });
@@ -192,7 +220,10 @@ describe('computeDiff', () => {
 describe('FileProposalService.propose', () => {
   it('stores the content, computes the diff, writes nothing and publishes to the active turn', async () => {
     const { service, objects, proposals, sent } = build(
-      { 'agent.config.json': '{\n  "heartbeat": {\n    "intervalMin": 30\n  }\n}\n' },
+      {
+        'agent.config.json':
+          '{\n  "heartbeat": {\n    "intervalMin": 30\n  }\n}\n',
+      },
       { clientId: 'admin', turnId: 't1' },
     );
     const row = await service.propose({
@@ -232,10 +263,22 @@ describe('FileProposalService.propose', () => {
   it('refuses invalid JSON, binary paths and oversize content before proposing', async () => {
     const { service, rows } = build();
     await expect(
-      service.propose({ agentId: 'a1', chatAgentId: 'r', path: 'x.json', content: '{', op: 'write' }),
+      service.propose({
+        agentId: 'a1',
+        chatAgentId: 'r',
+        path: 'x.json',
+        content: '{',
+        op: 'write',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      service.propose({ agentId: 'a1', chatAgentId: 'r', path: 'x.png', content: 'p', op: 'write' }),
+      service.propose({
+        agentId: 'a1',
+        chatAgentId: 'r',
+        path: 'x.png',
+        content: 'p',
+        op: 'write',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
       service.propose({
@@ -252,7 +295,13 @@ describe('FileProposalService.propose', () => {
   it('refuses create on an existing path', async () => {
     const { service } = build({ 'notes.md': 'x' });
     await expect(
-      service.propose({ agentId: 'a1', chatAgentId: 'r', path: 'notes.md', content: 'y', op: 'create' }),
+      service.propose({
+        agentId: 'a1',
+        chatAgentId: 'r',
+        path: 'notes.md',
+        content: 'y',
+        op: 'create',
+      }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 });
@@ -261,7 +310,10 @@ describe('FileProposalService.propose', () => {
 
 describe('FileProposalService.apply', () => {
   const setup = async () => {
-    const ctx = build({ 'SOUL.md': 'old\n' }, { clientId: 'admin', turnId: 't' });
+    const ctx = build(
+      { 'SOUL.md': 'old\n' },
+      { clientId: 'admin', turnId: 't' },
+    );
     const row = await ctx.service.propose({
       agentId: 'a1',
       chatAgentId: 'rancher',
@@ -278,15 +330,21 @@ describe('FileProposalService.apply', () => {
     expect(applied.status).toBe('applied');
     expect(objects.get('SOUL.md')).toBe('new\n');
     expect(proposals.has(row.id)).toBe(false);
-    expect(broadcast.map((e) => (e as { status: string }).status)).toEqual(['applied']);
-    await expect(service.apply(row.id, { actor: 'u1', via: 'card' })).rejects.toBeInstanceOf(
-      ProposalNotPendingError,
-    );
+    expect(broadcast.map((e) => (e as { status: string }).status)).toEqual([
+      'applied',
+    ]);
+    await expect(
+      service.apply(row.id, { actor: 'u1', via: 'card' }),
+    ).rejects.toBeInstanceOf(ProposalNotPendingError);
   });
 
   it('applies the edited content from the editor instead of the proposed one', async () => {
     const { service, row, objects } = await setup();
-    await service.apply(row.id, { actor: 'u1', via: 'editor', content: 'edited\n' });
+    await service.apply(row.id, {
+      actor: 'u1',
+      via: 'editor',
+      content: 'edited\n',
+    });
     expect(objects.get('SOUL.md')).toBe('edited\n');
   });
 
@@ -351,10 +409,14 @@ describe('FileProposalService import proposals', () => {
     expect(row.diffStatus).toBe('none');
     expect(row.summary?.rows.map((r) => r.path)).toEqual(['a.md', 'c.md']);
 
-    ctx.archive.validate.mockResolvedValue({ entries: [], wrapperStripped: null });
+    ctx.archive.validate.mockResolvedValue({
+      entries: [],
+      wrapperStripped: null,
+    });
     ctx.archive.plan.mockResolvedValue(plan);
-    (ctx.service as unknown as { files: { getStage: () => Promise<unknown> } }).files.getStage =
-      async () => ({ zip: Buffer.alloc(0), meta: {} });
+    (
+      ctx.service as unknown as { files: { getStage: () => Promise<unknown> } }
+    ).files.getStage = async () => ({ zip: Buffer.alloc(0), meta: {} });
     await expect(
       ctx.service.apply(row.id, { actor: 'u1', via: 'card' }),
     ).rejects.toBeInstanceOf(ProposalNeedsRemoveConfirmError);
@@ -369,9 +431,15 @@ describe('FileProposalService import proposals', () => {
       failed: [],
       restartRequired: false,
     });
-    const applied = await ctx.service.apply(row.id, { actor: 'u1', via: 'card', confirmRemove: true });
+    const applied = await ctx.service.apply(row.id, {
+      actor: 'u1',
+      via: 'card',
+      confirmRemove: true,
+    });
     expect(applied.status).toBe('applied');
     expect((applied.result as { written: number }).written).toBe(3);
-    expect((applied.result as { restartRequired: boolean }).restartRequired).toBe(true);
+    expect(
+      (applied.result as { restartRequired: boolean }).restartRequired,
+    ).toBe(true);
   });
 });

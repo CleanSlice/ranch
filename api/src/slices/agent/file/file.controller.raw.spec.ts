@@ -56,14 +56,21 @@ function fakeResponse(): FakeRes & Response {
   return new FakeResponse() as unknown as FakeRes & Response;
 }
 
-function makeController(streams: Record<string, { kind: 'text' | 'binary'; contentType: string }>) {
+function makeController(
+  streams: Record<string, { kind: 'text' | 'binary'; contentType: string }>,
+) {
   const openLinks = new OpenLinkService(new JwtService({ secret: 'test' }));
   const fileGateway = {
     streamRaw: async (_agentId: string, path: string) => {
       const entry = streams[path];
       if (!entry) throw new NotFoundException('File not found');
       const body = Readable.from([Buffer.from('<html></html>')]);
-      return { body, size: 13, contentType: entry.contentType, kind: entry.kind };
+      return {
+        body,
+        size: 13,
+        contentType: entry.contentType,
+        kind: entry.kind,
+      };
     },
   } as unknown as IFileGateway;
   const agentGateway = {
@@ -82,14 +89,19 @@ function makeController(streams: Record<string, { kind: 'text' | 'binary'; conte
 describe('GET /agents/:id/files/raw — headers', () => {
   const { controller, openLinks } = makeController({
     'SOUL.md': { kind: 'text', contentType: 'text/markdown; charset=utf-8' },
-    'workspace/page.html': { kind: 'text', contentType: 'text/html; charset=utf-8' },
+    'workspace/page.html': {
+      kind: 'text',
+      contentType: 'text/html; charset=utf-8',
+    },
     'data/photo.png': { kind: 'binary', contentType: 'image/png' },
     'data/logo.svgz': { kind: 'binary', contentType: 'image/svg+xml' },
   });
 
   const expectHardening = (res: FakeRes) => {
     expect(res.headers['X-Content-Type-Options']).toBe('nosniff');
-    expect(res.headers['Content-Security-Policy']).toBe("sandbox; default-src 'none'");
+    expect(res.headers['Content-Security-Policy']).toBe(
+      "sandbox; default-src 'none'",
+    );
     expect(res.headers['Cache-Control']).toBe('private, no-store');
     expect(res.headers['Referrer-Policy']).toBe('no-referrer');
   };
@@ -100,7 +112,9 @@ describe('GET /agents/:id/files/raw — headers', () => {
     await controller.raw('agent-1', token, res);
     expect(res.statusCode).toBe(200);
     expect(res.headers['Content-Type']).toBe('text/plain; charset=utf-8');
-    expect(res.headers['Content-Disposition']).toBe('inline; filename="SOUL.md"');
+    expect(res.headers['Content-Disposition']).toBe(
+      'inline; filename="SOUL.md"',
+    );
     expect(res.headers['Content-Length']).toBe('13');
     expectHardening(res);
   });
@@ -110,7 +124,9 @@ describe('GET /agents/:id/files/raw — headers', () => {
     const res = fakeResponse();
     await controller.raw('agent-1', token, res);
     expect(res.headers['Content-Type']).toBe('text/plain; charset=utf-8');
-    expect(res.headers['Content-Disposition']).toBe('inline; filename="page.html"');
+    expect(res.headers['Content-Disposition']).toBe(
+      'inline; filename="page.html"',
+    );
     expectHardening(res);
   });
 
@@ -119,7 +135,9 @@ describe('GET /agents/:id/files/raw — headers', () => {
     const res = fakeResponse();
     await controller.raw('agent-1', token, res);
     expect(res.headers['Content-Type']).toBe('image/png');
-    expect(res.headers['Content-Disposition']).toBe('attachment; filename="photo.png"');
+    expect(res.headers['Content-Disposition']).toBe(
+      'attachment; filename="photo.png"',
+    );
     expectHardening(res);
   });
 
@@ -128,7 +146,9 @@ describe('GET /agents/:id/files/raw — headers', () => {
     const res = fakeResponse();
     await controller.raw('agent-1', token, res);
     expect(res.headers['Content-Type']).toBe('application/octet-stream');
-    expect(res.headers['Content-Disposition']).toBe('attachment; filename="logo.svgz"');
+    expect(res.headers['Content-Disposition']).toBe(
+      'attachment; filename="logo.svgz"',
+    );
   });
 
   it('answers 401 for a token minted for another agent', async () => {
@@ -169,16 +189,20 @@ describe('POST /agents/:id/files/open-link', () => {
     process.env.PUBLIC_API_URL = 'https://api.example.test/';
     const { controller } = makeController({});
     const out = await controller.openLink('agent-1', { path: 'SOUL.md' });
-    expect(out.url.startsWith('https://api.example.test/agents/agent-1/files/raw?token=')).toBe(true);
+    expect(
+      out.url.startsWith(
+        'https://api.example.test/agents/agent-1/files/raw?token=',
+      ),
+    ).toBe(true);
     if (prev === undefined) delete process.env.PUBLIC_API_URL;
     else process.env.PUBLIC_API_URL = prev;
   });
 
   it('refuses an unknown agent', async () => {
     const { controller } = makeController({});
-    await expect(controller.openLink('nope', { path: 'SOUL.md' })).rejects.toThrow(
-      NotFoundException,
-    );
+    await expect(
+      controller.openLink('nope', { path: 'SOUL.md' }),
+    ).rejects.toThrow(NotFoundException);
   });
 });
 

@@ -1,5 +1,8 @@
 import { ForbiddenException } from '@nestjs/common';
-import { AGENT_DIRECT_WRITE_REFUSAL, refuseAgentWrite } from './agentTokenGuard';
+import {
+  AGENT_DIRECT_WRITE_REFUSAL,
+  refuseAgentWrite,
+} from './agentTokenGuard';
 
 describe('refuseAgentWrite', () => {
   it('lets a person through', () => {
@@ -9,9 +12,9 @@ describe('refuseAgentWrite', () => {
   });
 
   it('refuses an agent token, Rancher included, and names the tools to use', () => {
-    expect(() => refuseAgentWrite({ user: { sub: 'agent:agent-0db1552e' } })).toThrow(
-      ForbiddenException,
-    );
+    expect(() =>
+      refuseAgentWrite({ user: { sub: 'agent:agent-0db1552e' } }),
+    ).toThrow(ForbiddenException);
     try {
       refuseAgentWrite({ user: { sub: 'agent:x' } });
     } catch (e) {

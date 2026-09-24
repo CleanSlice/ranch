@@ -91,8 +91,14 @@ export class FileImportController {
     },
   })
   @ApiOkResponse({ type: ImportPlanDto })
-  @ApiResponse({ status: 400, description: 'Archive refused; the message names the entry or limit.' })
-  @ApiResponse({ status: 409, description: 'An import for this agent is already running.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Archive refused; the message names the entry or limit.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'An import for this agent is already running.',
+  })
   @ApiResponse({ status: 413, description: 'Archive over the size limit.' })
   @UseInterceptors(
     FileInterceptor('archive', {
@@ -145,7 +151,10 @@ export class FileImportController {
     @Query() query: ImportPlanQueryDto,
   ): Promise<ImportPlanDto> {
     await this.assertAgent(agentId);
-    const { entries, wrapperStripped } = await this.loadStage(agentId, importId);
+    const { entries, wrapperStripped } = await this.loadStage(
+      agentId,
+      importId,
+    );
     return this.archives.plan(
       agentId,
       entries,
@@ -177,7 +186,10 @@ export class FileImportController {
     if (!agent) throw new NotFoundException('Agent not found');
     this.assertNotRunning(agentId);
 
-    const { entries, wrapperStripped } = await this.loadStage(agentId, importId);
+    const { entries, wrapperStripped } = await this.loadStage(
+      agentId,
+      importId,
+    );
     const mode: ImportMode = body.mode;
     const includeSessions = body.includeSessions === true;
     const plan: IImportPlan = await this.archives.plan(
@@ -200,7 +212,9 @@ export class FileImportController {
     } finally {
       this.running.delete(agentId);
     }
-    await this.fileGateway.deleteStage(agentId, importId).catch(() => undefined);
+    await this.fileGateway
+      .deleteStage(agentId, importId)
+      .catch(() => undefined);
 
     return {
       ...result,
@@ -211,7 +225,12 @@ export class FileImportController {
   private async loadStage(
     agentId: string,
     importId: string,
-  ): Promise<{ entries: Awaited<ReturnType<WorkspaceArchiveService['validate']>>['entries']; wrapperStripped: string | null }> {
+  ): Promise<{
+    entries: Awaited<
+      ReturnType<WorkspaceArchiveService['validate']>
+    >['entries'];
+    wrapperStripped: string | null;
+  }> {
     const stage = await this.fileGateway.getStage(agentId, importId);
     if (!stage || stage.meta.agentId !== agentId) {
       throw new NotFoundException('Import stage expired or unknown');
@@ -233,7 +252,9 @@ export class FileImportController {
 
   private assertNotRunning(agentId: string): void {
     if (this.running.has(agentId)) {
-      throw new ConflictException('An import for this agent is already running');
+      throw new ConflictException(
+        'An import for this agent is already running',
+      );
     }
   }
 

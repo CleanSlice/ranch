@@ -37,7 +37,10 @@ export const IMPORT_MAX_ARCHIVE_BYTES = envNumber(
 /** Import archive: entry count. */
 export const IMPORT_MAX_ENTRIES = envNumber('IMPORT_MAX_ENTRIES', 2000);
 /** Import archive: one entry, uncompressed. */
-export const IMPORT_MAX_FILE_BYTES = envNumber('IMPORT_MAX_FILE_BYTES', 25 * MB);
+export const IMPORT_MAX_FILE_BYTES = envNumber(
+  'IMPORT_MAX_FILE_BYTES',
+  25 * MB,
+);
 /** Import archive: all entries, uncompressed (zip-bomb guard). */
 export const IMPORT_MAX_UNCOMPRESSED_BYTES = envNumber(
   'IMPORT_MAX_UNCOMPRESSED_BYTES',
@@ -49,11 +52,17 @@ export const IMPORT_PLAN_LIST_ROWS = envNumber('IMPORT_PLAN_LIST_ROWS', 500);
 export const IMPORT_STAGE_TTL_MIN = envNumber('IMPORT_STAGE_TTL_MIN', 60);
 
 /** Above this proposed size no diff is computed at all. */
-export const DIFF_COMPARE_MAX_BYTES = envNumber('DIFF_COMPARE_MAX_BYTES', 1 * MB);
+export const DIFF_COMPARE_MAX_BYTES = envNumber(
+  'DIFF_COMPARE_MAX_BYTES',
+  1 * MB,
+);
 /** Inline card diff: changed lines. */
 export const DIFF_INLINE_MAX_LINES = envNumber('DIFF_INLINE_MAX_LINES', 200);
 /** Inline card diff: proposed content size. */
-export const DIFF_INLINE_MAX_BYTES = envNumber('DIFF_INLINE_MAX_BYTES', 100 * KB);
+export const DIFF_INLINE_MAX_BYTES = envNumber(
+  'DIFF_INLINE_MAX_BYTES',
+  100 * KB,
+);
 /** File rows a set (import) card lists inline. */
 export const PROPOSAL_LIST_ROWS = envNumber('PROPOSAL_LIST_ROWS', 50);
 

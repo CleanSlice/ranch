@@ -13,7 +13,8 @@ export class ImportApplyDto {
 
   @ApiPropertyOptional({
     default: false,
-    description: 'Also write (and in replace mode remove) runtime session state.',
+    description:
+      'Also write (and in replace mode remove) runtime session state.',
   })
   @IsOptional()
   @IsBoolean()

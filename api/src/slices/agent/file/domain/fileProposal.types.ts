@@ -63,7 +63,14 @@ export interface IFileChangeProposal {
 
 export type ICreateProposal = Omit<
   IFileChangeProposal,
-  'id' | 'status' | 'actedBy' | 'actedVia' | 'actedAt' | 'result' | 'reason' | 'createdAt'
+  | 'id'
+  | 'status'
+  | 'actedBy'
+  | 'actedVia'
+  | 'actedAt'
+  | 'result'
+  | 'reason'
+  | 'createdAt'
 > & {
   /** Minted by the service so the S3 content key can carry it before the row exists. */
   id?: string;

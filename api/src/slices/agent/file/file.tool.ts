@@ -191,7 +191,9 @@ export class FileTool implements IConditionallyListedTool {
       confirm: z
         .boolean()
         .optional()
-        .describe('Set true only together with `proposalId`, after the person accepted.'),
+        .describe(
+          'Set true only together with `proposalId`, after the person accepted.',
+        ),
       proposalId: z
         .string()
         .optional()
@@ -225,7 +227,10 @@ export class FileTool implements IConditionallyListedTool {
     parameters: z.object({
       agentId: z.string(),
       path: z.string().describe('Relative path, e.g. notes/todo.md'),
-      content: z.string().optional().describe('Initial content; empty by default.'),
+      content: z
+        .string()
+        .optional()
+        .describe('Initial content; empty by default.'),
       confirm: z.boolean().optional(),
       proposalId: z.string().optional(),
     }),
@@ -265,7 +270,12 @@ export class FileTool implements IConditionallyListedTool {
     const chatAgentId = callerAgentId(httpRequest) ?? 'operator';
 
     if (args.confirm) {
-      return this.confirmProposal(args.agentId, args.proposalId, chatAgentId, undefined);
+      return this.confirmProposal(
+        args.agentId,
+        args.proposalId,
+        chatAgentId,
+        undefined,
+      );
     }
     if (Buffer.byteLength(args.content, 'utf-8') > MAX_EDIT_BYTES) {
       return err(
@@ -282,7 +292,9 @@ export class FileTool implements IConditionallyListedTool {
       });
       return ok(this.pendingResult(row, agent.name));
     } catch (e) {
-      return err(this.messageOf(e, `Could not propose the change to ${args.path}`));
+      return err(
+        this.messageOf(e, `Could not propose the change to ${args.path}`),
+      );
     }
   }
 
@@ -356,15 +368,23 @@ export class FileTool implements IConditionallyListedTool {
       if (args.attachmentId) {
         // Attachments are scoped to the chat agent (the one the person is
         // talking to), never to the target workspace.
-        const stored = await this.attachments.fetch(chatAgentId, args.attachmentId);
-        if (!stored) return err(`Attachment ${args.attachmentId} was not found in this chat.`);
+        const stored = await this.attachments.fetch(
+          chatAgentId,
+          args.attachmentId,
+        );
+        if (!stored)
+          return err(
+            `Attachment ${args.attachmentId} was not found in this chat.`,
+          );
         zip = stored.body;
         source = 'attachment';
       } else if (args.url) {
         zip = await this.fetchArchive(args.url);
         source = 'url';
       } else {
-        return err('Give either `attachmentId` (a zip attached in the chat) or `url` (an https link).');
+        return err(
+          'Give either `attachmentId` (a zip attached in the chat) or `url` (an https link).',
+        );
       }
     } catch (e) {
       return err(this.messageOf(e, 'Could not fetch the archive'));
@@ -405,7 +425,9 @@ export class FileTool implements IConditionallyListedTool {
           totalBytes: plan.totalBytes,
           wrapperStripped: plan.wrapperStripped,
           warnings: plan.warnings,
-          sample: plan.entries.filter((e) => e.action !== 'unchanged').slice(0, 20),
+          sample: plan.entries
+            .filter((e) => e.action !== 'unchanged')
+            .slice(0, 20),
         },
       });
     } catch (e) {
@@ -445,7 +467,8 @@ export class FileTool implements IConditionallyListedTool {
       });
       return ok(this.finalResult(done));
     } catch (e) {
-      if (e instanceof ProposalNotPendingError) return ok(this.finalResult(e.row));
+      if (e instanceof ProposalNotPendingError)
+        return ok(this.finalResult(e.row));
       if (e instanceof ProposalNeedsRemoveConfirmError) {
         return err(
           `Replace would remove ${e.remove} files that are not in the archive. Ask the person to accept the removals, then call again with confirm: true, proposalId and confirmRemove: true.`,
@@ -507,7 +530,8 @@ export class FileTool implements IConditionallyListedTool {
     } catch {
       throw new Error('The link is not a valid URL');
     }
-    if (target.protocol !== 'https:') throw new Error('Only https links are accepted');
+    if (target.protocol !== 'https:')
+      throw new Error('Only https links are accepted');
     if (target.username || target.password) {
       throw new Error('The link must not carry credentials');
     }
@@ -524,7 +548,12 @@ export class FileTool implements IConditionallyListedTool {
       }
     }
     const pinned = addresses[0];
-    return downloadPinned(target, pinned.address, pinned.family, IMPORT_MAX_ARCHIVE_BYTES);
+    return downloadPinned(
+      target,
+      pinned.address,
+      pinned.family,
+      IMPORT_MAX_ARCHIVE_BYTES,
+    );
   }
 
   private messageOf(e: unknown, fallback: string): string {
@@ -743,13 +772,23 @@ export function downloadPinned(
         // The pin: whatever the resolver says now is ignored in favour of the
         // address that passed the private-range check.
         lookup: (_host, options, callback) => {
-          if (options && typeof options === 'object' && (options as { all?: boolean }).all) {
-            (callback as (e: null, a: Array<{ address: string; family: number }>) => void)(
-              null,
-              [{ address, family }],
-            );
+          if (
+            options &&
+            typeof options === 'object' &&
+            (options as { all?: boolean }).all
+          ) {
+            (
+              callback as (
+                e: null,
+                a: Array<{ address: string; family: number }>,
+              ) => void
+            )(null, [{ address, family }]);
           } else {
-            (callback as (e: null, a: string, f: number) => void)(null, address, family);
+            (callback as (e: null, a: string, f: number) => void)(
+              null,
+              address,
+              family,
+            );
           }
         },
       },
@@ -757,7 +796,9 @@ export function downloadPinned(
         const status = res.statusCode ?? 0;
         if (status >= 300 && status < 400) {
           res.resume();
-          reject(new Error('The link redirects — give the final address instead'));
+          reject(
+            new Error('The link redirects — give the final address instead'),
+          );
           return;
         }
         if (status < 200 || status >= 300) {
@@ -797,12 +838,21 @@ export function downloadPinned(
 /** Loopback, link-local, private and unspecified ranges (SSRF guard). */
 export function isPrivateAddress(address: string): boolean {
   const ip = address.toLowerCase();
-  if (ip === '::1' || ip === '::' || ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) {
+  if (
+    ip === '::1' ||
+    ip === '::' ||
+    ip.startsWith('fe80:') ||
+    ip.startsWith('fc') ||
+    ip.startsWith('fd')
+  ) {
     return true;
   }
   const v4 = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
   const parts = v4.split('.').map((p) => Number(p));
-  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) {
+  if (
+    parts.length !== 4 ||
+    parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)
+  ) {
     return false;
   }
   const [a, b] = parts;

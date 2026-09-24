@@ -51,7 +51,9 @@ describe('sniffKind', () => {
   });
 
   it('calls plain ASCII and valid UTF-8 text', () => {
-    expect(sniffKind(Buffer.from('all: build\n\tbun run build\n'))).toBe('text');
+    expect(sniffKind(Buffer.from('all: build\n\tbun run build\n'))).toBe(
+      'text',
+    );
     expect(sniffKind(Buffer.from('привет — ok'))).toBe('text');
   });
 
@@ -73,12 +75,18 @@ describe('trailingPartialUtf8', () => {
 
   it('returns 0 for ASCII and for complete sequences', () => {
     expect(trailingPartialUtf8(Buffer.from('abc'))).toBe(0);
-    expect(trailingPartialUtf8(Buffer.concat([Buffer.from('a'), euro]))).toBe(0);
+    expect(trailingPartialUtf8(Buffer.concat([Buffer.from('a'), euro]))).toBe(
+      0,
+    );
     expect(trailingPartialUtf8(smile)).toBe(0);
   });
 
   it('counts the dangling bytes of a 2-byte sequence', () => {
-    expect(trailingPartialUtf8(Buffer.concat([Buffer.from('a'), eacute.subarray(0, 1)]))).toBe(1);
+    expect(
+      trailingPartialUtf8(
+        Buffer.concat([Buffer.from('a'), eacute.subarray(0, 1)]),
+      ),
+    ).toBe(1);
   });
 
   it('counts the dangling bytes of a 3-byte sequence at each cut', () => {

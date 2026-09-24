@@ -86,7 +86,8 @@ export class FileChangeProposalDto {
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'Unified diff hunks; null when over the inline caps or not computed.',
+    description:
+      'Unified diff hunks; null when over the inline caps or not computed.',
   })
   inlineDiff!: string | null;
 
@@ -115,7 +116,9 @@ export class FileChangeProposalDto {
   @ApiProperty({ nullable: true, type: String })
   reason!: string | null;
 
-  @ApiProperty({ description: 'The target agent is running — applies on its next restart.' })
+  @ApiProperty({
+    description: 'The target agent is running — applies on its next restart.',
+  })
   restartRequired!: boolean;
 
   @ApiProperty({ format: 'date-time' })
@@ -144,7 +147,9 @@ export class ListProposalsQueryDto {
 }
 
 export class ProposalDiffQueryDto {
-  @ApiPropertyOptional({ description: 'Set proposals: which entry to compare.' })
+  @ApiPropertyOptional({
+    description: 'Set proposals: which entry to compare.',
+  })
   @IsOptional()
   @IsString()
   path?: string;
@@ -164,7 +169,8 @@ export class ApplyProposalDto {
   content?: string;
 
   @ApiPropertyOptional({
-    description: 'Replace-mode imports that remove files need this acknowledgement.',
+    description:
+      'Replace-mode imports that remove files need this acknowledgement.',
   })
   @IsOptional()
   @Type(() => Boolean)

@@ -13,7 +13,9 @@ export const AGENT_DIRECT_WRITE_REFUSAL =
   'create_agent_file or import_agent_files: the person sees the change and ' +
   'confirms it.';
 
-export function refuseAgentWrite(req: { user?: { sub?: string } } | undefined): void {
+export function refuseAgentWrite(
+  req: { user?: { sub?: string } } | undefined,
+): void {
   const sub = req?.user?.sub ?? '';
   if (sub.startsWith('agent:')) {
     throw new ForbiddenException(AGENT_DIRECT_WRITE_REFUSAL);

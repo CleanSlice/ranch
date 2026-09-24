@@ -739,7 +739,9 @@ export class RancherTool {
           ? {
               ...row,
               value:
-                row.value === null || row.value === undefined || row.value === ''
+                row.value === null ||
+                row.value === undefined ||
+                row.value === ''
                   ? '(secret — empty)'
                   : '(secret — set)',
             }

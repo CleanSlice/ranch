@@ -125,7 +125,9 @@ function harness(): Harness {
   };
   const archive = {
     validate: jest.fn().mockResolvedValue({
-      entries: [{ path: 'SOUL.md', size: 3, md5: 'x', bytes: Buffer.from('new') }],
+      entries: [
+        { path: 'SOUL.md', size: 3, md5: 'x', bytes: Buffer.from('new') },
+      ],
       wrapperStripped: null,
     }),
     plan: jest.fn().mockResolvedValue({
@@ -149,13 +151,17 @@ function harness(): Harness {
         op: 'import',
         path: null,
         mode: 'merge',
-        summary: { counts: { add: 0, change: 1, unchanged: 0, remove: 0, skip: 0 } },
+        summary: {
+          counts: { add: 0, change: 1, unchanged: 0, remove: 0, skip: 0 },
+        },
       }),
     ),
     get: jest.fn().mockResolvedValue(pendingRow()),
-    apply: jest.fn().mockResolvedValue(
-      pendingRow({ status: 'applied', result: { etag: 'e2' } }),
-    ),
+    apply: jest
+      .fn()
+      .mockResolvedValue(
+        pendingRow({ status: 'applied', result: { etag: 'e2' } }),
+      ),
   };
   const attachments = {
     fetch: jest.fn().mockResolvedValue({
@@ -176,7 +182,16 @@ function harness(): Harness {
     proposals as never,
     attachments as never,
   );
-  return { tool, agents, files, bridle, syncGuard, archive, proposals, attachments };
+  return {
+    tool,
+    agents,
+    files,
+    bridle,
+    syncGuard,
+    archive,
+    proposals,
+    attachments,
+  };
 }
 
 const textOf = (result: { content: { text: string }[] }) =>

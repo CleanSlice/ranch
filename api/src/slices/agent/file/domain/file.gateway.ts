@@ -37,7 +37,11 @@ export abstract class IFileGateway {
    * this to user-facing endpoints; the guard on save() exists to keep
    * the file-editor UI from being used to overwrite binary blobs.
    */
-  abstract saveRaw(agentId: string, path: string, content: string): Promise<void>;
+  abstract saveRaw(
+    agentId: string,
+    path: string,
+    content: string,
+  ): Promise<void>;
   abstract delete(agentId: string, path: string): Promise<void>;
   // Delete every object under `agents/{agentId}/{path}/`. Used by the admin
   // Files tab to remove whole folders (e.g. an agent-owned skill dir that
@@ -70,7 +74,10 @@ export abstract class IFileGateway {
   /** ETag of the stored object (quotes stripped), or null when absent. */
   abstract headEtag(agentId: string, path: string): Promise<string | null>;
   /** Proposed content lives outside every agent prefix until applied. */
-  abstract putProposalContent(proposalId: string, content: string): Promise<void>;
+  abstract putProposalContent(
+    proposalId: string,
+    content: string,
+  ): Promise<void>;
   abstract getProposalContent(proposalId: string): Promise<string | null>;
   abstract deleteProposalContent(proposalId: string): Promise<void>;
 

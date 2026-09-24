@@ -369,9 +369,10 @@ export class BridleController {
       // This route has always answered a timeout with a sentence in the
       // reply body rather than an error status; kept verbatim so no caller
       // has to learn a new shape.
-      text: reply.timedOut && !reply.text
-        ? 'Timeout: no response from agent'
-        : reply.text,
+      text:
+        reply.timedOut && !reply.text
+          ? 'Timeout: no response from agent'
+          : reply.text,
       messageId: reply.messageId,
       ts: reply.ts,
     };

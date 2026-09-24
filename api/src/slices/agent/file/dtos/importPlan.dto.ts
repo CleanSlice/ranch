@@ -2,7 +2,13 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsIn, IsOptional } from 'class-validator';
 
-const IMPORT_ACTIONS = ['add', 'change', 'unchanged', 'remove', 'skip'] as const;
+const IMPORT_ACTIONS = [
+  'add',
+  'change',
+  'unchanged',
+  'remove',
+  'skip',
+] as const;
 
 export class ImportPlanEntryDto {
   @ApiProperty({ example: 'skills/run.py' })
@@ -51,7 +57,8 @@ export class ImportPlanDto {
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'Top-level folder removed from every entry, if the archive had one.',
+    description:
+      'Top-level folder removed from every entry, if the archive had one.',
   })
   wrapperStripped!: string | null;
 

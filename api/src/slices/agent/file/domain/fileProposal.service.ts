@@ -79,7 +79,16 @@ export interface IApplyInput {
 }
 
 /** What the card shows — the DTO shape of contracts/files.openapi.yaml. */
-export interface IProposalView extends Omit<IFileChangeProposal, 'actedAt' | 'createdAt' | 'contentKey' | 'importId' | 'baseEtag' | 'clientId' | 'turnId'> {
+export interface IProposalView extends Omit<
+  IFileChangeProposal,
+  | 'actedAt'
+  | 'createdAt'
+  | 'contentKey'
+  | 'importId'
+  | 'baseEtag'
+  | 'clientId'
+  | 'turnId'
+> {
   agentName: string;
   actedAt: string | null;
   createdAt: string;
@@ -118,7 +127,8 @@ export class FileProposalService {
       );
     }
     const guess = kindFromPath(path);
-    const kind = guess === 'unknown' ? sniffKind(Buffer.from(content, 'utf-8')) : guess;
+    const kind =
+      guess === 'unknown' ? sniffKind(Buffer.from(content, 'utf-8')) : guess;
     if (kind !== 'text') {
       throw new BadRequestException(`${path} is not a text file`);
     }
@@ -138,12 +148,15 @@ export class FileProposalService {
       try {
         const current = await this.files.read(agentId, path);
         if (current.kind !== 'text') diffStatus = 'binary';
-        else if (current.size > DIFF_COMPARE_MAX_BYTES) diffStatus = 'too_large';
+        else if (current.size > DIFF_COMPARE_MAX_BYTES)
+          diffStatus = 'too_large';
         else base = current.content;
       } catch (err) {
         // A base that cannot be read (too large for the whole-file read)
         // means no diff, not no proposal.
-        this.logger.debug(`No diff base for ${agentId}/${path}: ${(err as Error).message}`);
+        this.logger.debug(
+          `No diff base for ${agentId}/${path}: ${(err as Error).message}`,
+        );
         diffStatus = 'too_large';
       }
     } else {
@@ -188,7 +201,9 @@ export class FileProposalService {
     return row;
   }
 
-  async proposeImport(input: IProposeImportInput): Promise<IFileChangeProposal> {
+  async proposeImport(
+    input: IProposeImportInput,
+  ): Promise<IFileChangeProposal> {
     const plan = input.plan;
     const summary: IProposalSetSummary = {
       counts: plan.counts,
@@ -295,7 +310,11 @@ export class FileProposalService {
     });
     await this.files.deleteProposalContent(row.id).catch(() => undefined);
 
-    const siblings = await this.proposals.markSiblingsStale(row.agentId, path, row.id);
+    const siblings = await this.proposals.markSiblingsStale(
+      row.agentId,
+      path,
+      row.id,
+    );
     for (const s of siblings) await this.publishUpdate(s);
     return applied;
   }
@@ -339,7 +358,10 @@ export class FileProposalService {
     const row = await this.proposals.findById(id);
     if (!row) throw new NotFoundException('Proposal not found');
     if (row.status !== 'pending') throw new ProposalNotPendingError(row);
-    const skipped = await this.settle(id, 'skipped', { actedBy: actor, actedVia: 'card' });
+    const skipped = await this.settle(id, 'skipped', {
+      actedBy: actor,
+      actedVia: 'card',
+    });
     if (row.contentKey) {
       await this.files.deleteProposalContent(id).catch(() => undefined);
     }
@@ -352,7 +374,12 @@ export class FileProposalService {
     to: IFileChangeProposal['status'],
     patch: Parameters<IFileProposalRepository['transition']>[3],
   ): Promise<IFileChangeProposal> {
-    const { won, row } = await this.proposals.transition(id, 'pending', to, patch);
+    const { won, row } = await this.proposals.transition(
+      id,
+      'pending',
+      to,
+      patch,
+    );
     if (!row) throw new NotFoundException('Proposal not found');
     if (!won) throw new ProposalNotPendingError(row);
     await this.publishUpdate(row);
@@ -382,7 +409,8 @@ export class FileProposalService {
       throw new BadRequestException('A set proposal has no single content');
     }
     const content = await this.files.getProposalContent(id);
-    if (content === null) throw new NotFoundException('Proposed content is gone');
+    if (content === null)
+      throw new NotFoundException('Proposed content is gone');
     return content;
   }
 
@@ -399,12 +427,24 @@ export class FileProposalService {
         throw new PayloadTooLarge(`${target} is over the comparison limit`);
       }
       const proposed = await this.files.getProposalContent(id);
-      if (proposed === null) throw new NotFoundException('Proposed content is gone');
+      if (proposed === null)
+        throw new NotFoundException('Proposed content is gone');
       const base = await this.currentText(row.agentId, target);
-      return createTwoFilesPatch(target, target, base, proposed, 'stored', 'proposed');
+      return createTwoFilesPatch(
+        target,
+        target,
+        base,
+        proposed,
+        'stored',
+        'proposed',
+      );
     }
-    if (!path) throw new BadRequestException('path is required for a set proposal');
-    const stage = await this.files.getStage(row.agentId, row.importId as string);
+    if (!path)
+      throw new BadRequestException('path is required for a set proposal');
+    const stage = await this.files.getStage(
+      row.agentId,
+      row.importId as string,
+    );
     if (!stage) throw new NotFoundException('The staged archive expired');
     const { entries } = await this.archive.validate(stage.zip);
     const entry = entries.find((e) => e.path === path);
@@ -422,7 +462,9 @@ export class FileProposalService {
     if (!etag) return '';
     const current = await this.files.read(agentId, path);
     if (current.kind !== 'text') {
-      throw new BadRequestException(`${path} is binary — download both to compare`);
+      throw new BadRequestException(
+        `${path} is binary — download both to compare`,
+      );
     }
     return current.content;
   }
@@ -439,7 +481,10 @@ export class FileProposalService {
       let info = names.get(row.agentId);
       if (!info) {
         const agent = await this.agents.findById(row.agentId).catch(() => null);
-        info = { name: agent?.name ?? row.agentId, running: agent?.status === 'running' };
+        info = {
+          name: agent?.name ?? row.agentId,
+          running: agent?.status === 'running',
+        };
         names.set(row.agentId, info);
       }
       out.push(viewOf(row, info.name, info.running));
@@ -484,7 +529,9 @@ export class FileProposalService {
       actedAt: (row.actedAt ?? new Date()).getTime(),
       result: row.result ?? undefined,
       restartRequired:
-        row.status === 'applied' ? await this.isRunning(row.agentId) : undefined,
+        row.status === 'applied'
+          ? await this.isRunning(row.agentId)
+          : undefined,
       reason: row.reason,
     };
     this.hub.sendToAgentClients(row.chatAgentId, event, PROPOSALS_CAPABILITY);
@@ -510,10 +557,22 @@ export interface IDiffStats {
  * Line diff with three lines of context. The inline text is kept only
  * within the card caps (research R7); counts are always kept.
  */
-export function computeDiff(path: string, base: string, proposed: string): IDiffStats {
-  const patch = structuredPatch(path, path, base, proposed, 'stored', 'proposed', {
-    context: 3,
-  });
+export function computeDiff(
+  path: string,
+  base: string,
+  proposed: string,
+): IDiffStats {
+  const patch = structuredPatch(
+    path,
+    path,
+    base,
+    proposed,
+    'stored',
+    'proposed',
+    {
+      context: 3,
+    },
+  );
   let additions = 0;
   let deletions = 0;
   let firstChangedLine: number | null = null;
@@ -539,12 +598,24 @@ export function computeDiff(path: string, base: string, proposed: string): IDiff
     changedLines > 0 &&
     changedLines <= DIFF_INLINE_MAX_LINES &&
     proposedBytes <= DIFF_INLINE_MAX_BYTES
-      ? createTwoFilesPatch(path, path, base, proposed, 'stored', 'proposed', { context: 3 })
+      ? createTwoFilesPatch(path, path, base, proposed, 'stored', 'proposed', {
+          context: 3,
+        })
       : null;
-  return { additions, deletions, changedLines, firstChangedLine, inlineDiff: inline };
+  return {
+    additions,
+    deletions,
+    changedLines,
+    firstChangedLine,
+    inlineDiff: inline,
+  };
 }
 
-function viewOf(row: IFileChangeProposal, agentName: string, running: boolean): IProposalView {
+function viewOf(
+  row: IFileChangeProposal,
+  agentName: string,
+  running: boolean,
+): IProposalView {
   return {
     id: row.id,
     agentId: row.agentId,

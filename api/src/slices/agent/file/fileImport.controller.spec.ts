@@ -1,4 +1,8 @@
-import { ConflictException, HttpException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpException,
+  NotFoundException,
+} from '@nestjs/common';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IFileGateway } from './domain/file.gateway';
 import { IArchiveEntry, IImportPlan } from './domain/import.types';
@@ -21,7 +25,9 @@ function planOf(remove: number): IImportPlan {
   };
 }
 
-function build(opts: { stage?: boolean; remove?: number; status?: string } = {}) {
+function build(
+  opts: { stage?: boolean; remove?: number; status?: string } = {},
+) {
   const agents = {
     findById: jest.fn(async (id: string) =>
       id === 'a1' ? { id, status: opts.status ?? 'running' } : null,
@@ -31,7 +37,16 @@ function build(opts: { stage?: boolean; remove?: number; status?: string } = {})
     getStage: jest.fn(async () =>
       opts.stage === false
         ? null
-        : { zip: ZIP, meta: { agentId: 'a1', source: 'upload', size: 3, entries: 1, createdAt: new Date() } },
+        : {
+            zip: ZIP,
+            meta: {
+              agentId: 'a1',
+              source: 'upload',
+              size: 3,
+              entries: 1,
+              createdAt: new Date(),
+            },
+          },
     ),
     deleteStage: jest.fn(async () => undefined),
     putStage: jest.fn(async () => undefined),
@@ -65,7 +80,8 @@ function build(opts: { stage?: boolean; remove?: number; status?: string } = {})
 }
 
 // A person at the console; an agent token is refused before the plan is read.
-const operator = () => ({ user: { sub: 'user-1', email: '', roles: [] } }) as never;
+const operator = () =>
+  ({ user: { sub: 'user-1', email: '', roles: [] } }) as never;
 
 describe('FileImportController', () => {
   it('answers 404 when the stage is gone', async () => {
@@ -86,18 +102,25 @@ describe('FileImportController', () => {
       requiresConfirmation: true,
       remove: 3,
     });
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock behind the typed service
     expect(archives.apply).not.toHaveBeenCalled();
   });
 
   it('applies replace once confirmed, deletes the stage and reports restart', async () => {
     const { controller, files, release } = build({ remove: 3 });
     release();
-    const result = await controller.apply('a1', 'imp', {
-      mode: 'replace',
-      confirmRemove: true,
-    }, operator());
+    const result = await controller.apply(
+      'a1',
+      'imp',
+      {
+        mode: 'replace',
+        confirmRemove: true,
+      },
+      operator(),
+    );
     expect(result.removed).toBe(3);
     expect(result.restartRequired).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock behind the typed gateway
     expect(files.deleteStage).toHaveBeenCalledWith('a1', 'imp');
   });
 
@@ -112,15 +135,17 @@ describe('FileImportController', () => {
     release();
     await first;
     // Lock released: a new import is accepted again.
-    await expect(controller.apply('a1', 'imp', { mode: 'merge' }, operator())).resolves.toMatchObject({
+    await expect(
+      controller.apply('a1', 'imp', { mode: 'merge' }, operator()),
+    ).resolves.toMatchObject({
       written: 1,
     });
   });
 
   it('answers 404 for an unknown agent', async () => {
     const { controller } = build();
-    await expect(
-      controller.plan('nope', 'imp', {}),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(controller.plan('nope', 'imp', {})).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

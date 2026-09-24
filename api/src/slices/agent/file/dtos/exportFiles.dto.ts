@@ -5,8 +5,7 @@ import { ArrayMaxSize, IsArray, IsOptional, IsString } from 'class-validator';
 export class ExportFilesBodyDto {
   @ApiPropertyOptional({
     type: [String],
-    description:
-      'Files, or folders by prefix. Omit for the whole workspace.',
+    description: 'Files, or folders by prefix. Omit for the whole workspace.',
   })
   @IsOptional()
   @IsArray()

@@ -83,7 +83,10 @@ export class FileProposalController {
   }
 
   @Get(':proposalId')
-  @ApiOperation({ operationId: 'getAgentFileProposal', summary: 'One proposal.' })
+  @ApiOperation({
+    operationId: 'getAgentFileProposal',
+    summary: 'One proposal.',
+  })
   @ApiOkResponse({ type: FileChangeProposalDto })
   async get(
     @Param('agentId') agentId: string,
@@ -97,7 +100,8 @@ export class FileProposalController {
   @Get(':proposalId/content')
   @ApiOperation({
     operationId: 'getAgentFileProposalContent',
-    summary: 'Proposed content of a single-file proposal (Edit before applying).',
+    summary:
+      'Proposed content of a single-file proposal (Edit before applying).',
   })
   async content(
     @Param('agentId') agentId: string,
@@ -117,7 +121,10 @@ export class FileProposalController {
     summary:
       'Full unified diff, computed on demand and capped (413 over the comparison limit). Set proposals need `path`.',
   })
-  @ApiResponse({ status: 413, description: 'Over the comparison limit — no diff computed.' })
+  @ApiResponse({
+    status: 413,
+    description: 'Over the comparison limit — no diff computed.',
+  })
   async diff(
     @Param('agentId') agentId: string,
     @Param('proposalId') proposalId: string,
@@ -215,7 +222,8 @@ export class FileProposalController {
   private async owned(agentId: string, proposalId: string) {
     await this.assertAgent(agentId);
     const row = await this.proposals.get(proposalId);
-    if (row.agentId !== agentId) throw new NotFoundException('Proposal not found');
+    if (row.agentId !== agentId)
+      throw new NotFoundException('Proposal not found');
     return row;
   }
 }

@@ -175,7 +175,9 @@ export class FileController {
     const all = await this.fileGateway.list(agentId);
     const wanted = body.paths;
     const covered = (p: string): boolean =>
-      wanted.some((w) => p === w || p.startsWith(w.endsWith('/') ? w : w + '/'));
+      wanted.some(
+        (w) => p === w || p.startsWith(w.endsWith('/') ? w : w + '/'),
+      );
     const wouldRemove = all.filter((n) => covered(n.path)).length;
     if (wouldRemove > 0 && wouldRemove >= all.length && !body.confirm) {
       throw new HttpException(
@@ -334,7 +336,10 @@ export class FileController {
     try {
       claims = this.openLinks.verify(token ?? '');
     } catch {
-      res.status(401).type('text/plain').send('Open link is invalid or has expired');
+      res
+        .status(401)
+        .type('text/plain')
+        .send('Open link is invalid or has expired');
       return;
     }
     if (claims.agentId !== agentId) {
@@ -352,7 +357,12 @@ export class FileController {
       throw err;
     }
     for (const [name, value] of Object.entries(
-      rawResponseHeaders(claims.path, stream.kind, stream.contentType, stream.size),
+      rawResponseHeaders(
+        claims.path,
+        stream.kind,
+        stream.contentType,
+        stream.size,
+      ),
     )) {
       res.setHeader(name, value);
     }

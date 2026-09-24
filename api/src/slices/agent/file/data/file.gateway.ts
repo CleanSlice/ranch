@@ -220,7 +220,6 @@ export class S3FileGateway extends IFileGateway {
     }
   }
 
-
   async streamRaw(
     agentId: string,
     path: string,
@@ -248,7 +247,9 @@ export class S3FileGateway extends IFileGateway {
 
     let res;
     try {
-      res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      res = await client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: key }),
+      );
     } catch (err) {
       if (this.isNotFound(err)) throw new NotFoundException('File not found');
       throw err;
@@ -816,7 +817,9 @@ export class S3FileGateway extends IFileGateway {
     });
     const selected = (rel: string): boolean =>
       wanted.length === 0 ||
-      wanted.some((w) => rel === w || rel.startsWith(w.endsWith('/') ? w : w + '/'));
+      wanted.some(
+        (w) => rel === w || rel.startsWith(w.endsWith('/') ? w : w + '/'),
+      );
 
     const archive = archiver('zip', { zlib: { level: 6 } });
     const chunks: Buffer[] = [];
@@ -971,8 +974,7 @@ export class S3FileGateway extends IFileGateway {
       zip,
       meta: {
         agentId: m.agentid ?? agentId,
-        source:
-          source === 'attachment' || source === 'url' ? source : 'upload',
+        source: source === 'attachment' || source === 'url' ? source : 'upload',
         size: Number(m.size ?? zip.length) || zip.length,
         entries: Number(m.entries ?? 0) || 0,
         createdAt: m.createdat
@@ -1039,7 +1041,10 @@ export class S3FileGateway extends IFileGateway {
     const { client, bucket } = await this.connect();
     try {
       const head = await client.send(
-        new HeadObjectCommand({ Bucket: bucket, Key: this.prefix(agentId) + path }),
+        new HeadObjectCommand({
+          Bucket: bucket,
+          Key: this.prefix(agentId) + path,
+        }),
       );
       return head.ETag ? head.ETag.replace(/"/g, '') : null;
     } catch (err) {
@@ -1068,7 +1073,10 @@ export class S3FileGateway extends IFileGateway {
     const { client, bucket } = await this.connect();
     try {
       const res = await client.send(
-        new GetObjectCommand({ Bucket: bucket, Key: this.proposalKey(proposalId) }),
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: this.proposalKey(proposalId),
+        }),
       );
       return (await res.Body?.transformToString('utf-8')) ?? '';
     } catch (err) {
@@ -1081,7 +1089,10 @@ export class S3FileGateway extends IFileGateway {
     const { client, bucket } = await this.connect();
     try {
       await client.send(
-        new DeleteObjectCommand({ Bucket: bucket, Key: this.proposalKey(proposalId) }),
+        new DeleteObjectCommand({
+          Bucket: bucket,
+          Key: this.proposalKey(proposalId),
+        }),
       );
     } catch (err) {
       if (this.isNotFound(err)) return;

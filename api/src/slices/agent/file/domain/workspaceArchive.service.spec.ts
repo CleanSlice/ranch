@@ -62,7 +62,10 @@ describe('WorkspaceArchiveService.validate', () => {
     const zip = await zipOf({ 'SOUL.md': 'hi', 'skills/run.py': 'print(1)' });
     const { entries, wrapperStripped } = await service.validate(zip);
     expect(wrapperStripped).toBeNull();
-    expect(entries.map((e) => e.path).sort()).toEqual(['SOUL.md', 'skills/run.py']);
+    expect(entries.map((e) => e.path).sort()).toEqual([
+      'SOUL.md',
+      'skills/run.py',
+    ]);
     const soul = entries.find((e) => e.path === 'SOUL.md')!;
     expect(soul.size).toBe(2);
     expect(soul.md5).toBe(md5('hi'));
@@ -76,7 +79,10 @@ describe('WorkspaceArchiveService.validate', () => {
     });
     const { entries, wrapperStripped } = await service.validate(zip);
     expect(wrapperStripped).toBe('agent-x');
-    expect(entries.map((e) => e.path).sort()).toEqual(['SOUL.md', 'memory/2026.md']);
+    expect(entries.map((e) => e.path).sort()).toEqual([
+      'SOUL.md',
+      'memory/2026.md',
+    ]);
   });
 
   it('does not strip when a root file sits beside the folder', async () => {
@@ -87,10 +93,16 @@ describe('WorkspaceArchiveService.validate', () => {
   });
 
   it('never treats a workspace folder as a wrapper', async () => {
-    const zip = await zipOf({ 'skills/a/SKILL.md': 'a', 'skills/b/SKILL.md': 'b' });
+    const zip = await zipOf({
+      'skills/a/SKILL.md': 'a',
+      'skills/b/SKILL.md': 'b',
+    });
     const { entries, wrapperStripped } = await service.validate(zip);
     expect(wrapperStripped).toBeNull();
-    expect(entries.map((e) => e.path).sort()).toEqual(['skills/a/SKILL.md', 'skills/b/SKILL.md']);
+    expect(entries.map((e) => e.path).sort()).toEqual([
+      'skills/a/SKILL.md',
+      'skills/b/SKILL.md',
+    ]);
   });
 
   it('does not strip when two top-level folders exist', async () => {
@@ -211,20 +223,33 @@ describe('WorkspaceArchiveService.plan', () => {
       'sessions/x.jsonl': 'skip',
       'workspace/multi.bin': 'change',
     });
-    expect(plan.counts).toEqual({ add: 1, change: 2, unchanged: 1, remove: 0, skip: 2 });
+    expect(plan.counts).toEqual({
+      add: 1,
+      change: 2,
+      unchanged: 1,
+      remove: 0,
+      skip: 2,
+    });
     expect(plan.totalBytes).toBe(
-      Buffer.byteLength('{"a":1}') + Buffer.byteLength('print()') + Buffer.byteLength('whatever!'),
+      Buffer.byteLength('{"a":1}') +
+        Buffer.byteLength('print()') +
+        Buffer.byteLength('whatever!'),
     );
     expect(plan.importId).toBe('imp');
     expect(plan.wrapperStripped).toBe('wrap');
     expect(plan.mode).toBe('merge');
     expect(plan.more).toBe(0);
-    expect(plan.warnings).toEqual(['1 file use multipart ETags — treated as changed']);
+    expect(plan.warnings).toEqual([
+      '1 file use multipart ETags — treated as changed',
+    ]);
   });
 
   it('includes session files when asked', async () => {
     const service = new WorkspaceArchiveService(fakeGateway(stored).gateway);
-    const plan = await service.plan('a1', entries, { mode: 'merge', includeSessions: true });
+    const plan = await service.plan('a1', entries, {
+      mode: 'merge',
+      includeSessions: true,
+    });
     const by = Object.fromEntries(plan.entries.map((e) => [e.path, e.action]));
     expect(by['data/sessions/bridle:admin.jsonl']).toBe('change');
     expect(by['sessions/x.jsonl']).toBe('add');
@@ -233,22 +258,34 @@ describe('WorkspaceArchiveService.plan', () => {
 
   it('lists removals in replace mode, sparing runtime state unless included', async () => {
     const service = new WorkspaceArchiveService(fakeGateway(stored).gateway);
-    const plan = await service.plan('a1', entries, { mode: 'replace', includeSessions: false });
-    const removes = plan.entries.filter((e) => e.action === 'remove').map((e) => e.path);
+    const plan = await service.plan('a1', entries, {
+      mode: 'replace',
+      includeSessions: false,
+    });
+    const removes = plan.entries
+      .filter((e) => e.action === 'remove')
+      .map((e) => e.path);
     expect(removes).toEqual(['workspace/old.txt']);
     expect(plan.counts.remove).toBe(1);
   });
 
   it('never removes in merge mode', async () => {
     const service = new WorkspaceArchiveService(fakeGateway(stored).gateway);
-    const plan = await service.plan('a1', entries, { mode: 'merge', includeSessions: false });
+    const plan = await service.plan('a1', entries, {
+      mode: 'merge',
+      includeSessions: false,
+    });
     expect(plan.entries.some((e) => e.action === 'remove')).toBe(false);
   });
 
   it('lists the gateway once per plan', async () => {
     const { gateway } = fakeGateway(stored);
     const service = new WorkspaceArchiveService(gateway);
-    await service.plan('a1', entries, { mode: 'merge', includeSessions: false });
+    await service.plan('a1', entries, {
+      mode: 'merge',
+      includeSessions: false,
+    });
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock behind the typed gateway
     expect(gateway.listWithEtags).toHaveBeenCalledTimes(1);
   });
 });
@@ -270,7 +307,12 @@ describe('WorkspaceArchiveService.apply', () => {
   it('writes add/change, skips unchanged and sessions, removes in replace mode', async () => {
     const { gateway, puts, deletes } = fakeGateway(stored);
     const service = new WorkspaceArchiveService(gateway);
-    const plan = await service.plan('a1', entries, { mode: 'replace', includeSessions: false }, { importId: 'imp' });
+    const plan = await service.plan(
+      'a1',
+      entries,
+      { mode: 'replace', includeSessions: false },
+      { importId: 'imp' },
+    );
     const result = await service.apply('a1', entries, plan);
     expect(puts.sort()).toEqual(['memory/a.md', 'skills/new.py']);
     expect(deletes).toEqual(['workspace/old.txt']);
@@ -289,18 +331,26 @@ describe('WorkspaceArchiveService.apply', () => {
     const { gateway, puts, failing } = fakeGateway(stored);
     failing.add('skills/new.py');
     const service = new WorkspaceArchiveService(gateway);
-    const plan = await service.plan('a1', entries, { mode: 'merge', includeSessions: false });
+    const plan = await service.plan('a1', entries, {
+      mode: 'merge',
+      includeSessions: false,
+    });
     const result = await service.apply('a1', entries, plan);
     expect(puts).toEqual(['memory/a.md']);
     expect(result.written).toBe(1);
-    expect(result.failed).toEqual([{ path: 'skills/new.py', reason: 'boom skills/new.py' }]);
+    expect(result.failed).toEqual([
+      { path: 'skills/new.py', reason: 'boom skills/new.py' },
+    ]);
   });
 
   it('writes nothing for an all-unchanged merge', async () => {
     const { gateway, puts, deletes } = fakeGateway(stored);
     const service = new WorkspaceArchiveService(gateway);
     const only = [entry('SOUL.md', 'same')];
-    const plan = await service.plan('a1', only, { mode: 'merge', includeSessions: false });
+    const plan = await service.plan('a1', only, {
+      mode: 'merge',
+      includeSessions: false,
+    });
     const result = await service.apply('a1', only, plan);
     expect(puts).toEqual([]);
     expect(deletes).toEqual([]);

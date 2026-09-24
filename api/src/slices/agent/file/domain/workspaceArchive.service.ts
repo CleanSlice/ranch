@@ -228,7 +228,8 @@ export class WorkspaceArchiveService {
     if (opts.mode === 'replace') {
       for (const current of existing) {
         if (inArchive.has(current.path)) continue;
-        if (!opts.includeSessions && this.isRuntimeOwned(current.path)) continue;
+        if (!opts.includeSessions && this.isRuntimeOwned(current.path))
+          continue;
         counts.remove += 1;
         rows.push({ path: current.path, action: 'remove', size: current.size });
       }
@@ -298,7 +299,10 @@ export class WorkspaceArchiveService {
       }
     };
     await Promise.all(
-      Array.from({ length: Math.min(APPLY_CONCURRENCY, toWrite.length) }, worker),
+      Array.from(
+        { length: Math.min(APPLY_CONCURRENCY, toWrite.length) },
+        worker,
+      ),
     );
 
     for (const [path, action] of actions) {
@@ -346,7 +350,8 @@ export class WorkspaceArchiveService {
     if (opts.mode === 'replace') {
       for (const current of existing) {
         if (inArchive.has(current.path)) continue;
-        if (!opts.includeSessions && this.isRuntimeOwned(current.path)) continue;
+        if (!opts.includeSessions && this.isRuntimeOwned(current.path))
+          continue;
         out.set(current.path, 'remove');
       }
     }

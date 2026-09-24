@@ -134,6 +134,11 @@ export class InfraConfigGateway
    * value is already the API URL as agent pods see it, which is a far better
    * guess on a configured cluster than any built-in default.
    */
+  async getConfiguredApiPublicUrl(): Promise<string | null> {
+    const configured = await this.resolve('api_public_url');
+    return configured ? configured.replace(TRAILING_SLASHES, '') : null;
+  }
+
   async getApiPublicUrl(): Promise<string> {
     const configured = await this.resolve('api_public_url');
     if (configured) return configured.replace(TRAILING_SLASHES, '');

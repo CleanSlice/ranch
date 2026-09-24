@@ -92,6 +92,11 @@ function harness() {
   };
   const bridle = { notifyMcpConnected: jest.fn() };
   const agents = { findAll: jest.fn().mockResolvedValue([{ id: 'agent-1' }]) };
+  // Stands in for IInfraConfigGateway — the explicitly configured public
+  // origin (setting or env), already stripped of a trailing slash.
+  const infra = {
+    getConfiguredApiPublicUrl: jest.fn().mockResolvedValue('https://ranch.test'),
+  };
 
   const service = new McpOauthService(
     servers as never,
@@ -100,18 +105,10 @@ function harness() {
     secrets as never,
     bridle as never,
     agents as never,
+    infra as never,
   );
-  return { service, prisma, secrets, client, servers, bridle, agents, stores };
+  return { service, prisma, secrets, client, servers, bridle, agents, infra, stores };
 }
-
-const originalPublicUrl = process.env.PUBLIC_API_URL;
-beforeEach(() => {
-  process.env.PUBLIC_API_URL = 'https://ranch.test/';
-});
-afterEach(() => {
-  if (originalPublicUrl === undefined) delete process.env.PUBLIC_API_URL;
-  else process.env.PUBLIC_API_URL = originalPublicUrl;
-});
 
 /** Runs start + callback and returns what the callback stored. */
 async function connect(
@@ -323,5 +320,30 @@ describe('McpOauthService — scoped secret names from the file gateway', () => 
 
     await expect(h.service.sweepEphemeral()).resolves.toBe(1);
     expect(h.secrets.delete).toHaveBeenCalledWith('agent-1', listed);
+  });
+});
+
+/**
+ * Where the redirect points. The platform resolves its public address in one
+ * place (setting → env → integration); a connect that read only the env var
+ * answered "not configured" on a cluster where the operator had set the
+ * setting from the console (seen on ranch.cleanslice.org).
+ */
+describe('McpOauthService — public API URL', () => {
+  it('builds the redirect from the resolved public URL', async () => {
+    const h = harness();
+    const { authorizeUrl } = await h.service.start({ serverId: 'srv-1', agentId: 'agent-1' });
+    expect(new URL(authorizeUrl).searchParams.get('redirect_uri')).toBe(
+      'https://ranch.test/mcp-servers/srv-1/oauth/callback',
+    );
+  });
+
+  it('refuses to start when no public URL is configured, naming the setting', async () => {
+    const h = harness();
+    h.infra.getConfiguredApiPublicUrl.mockResolvedValueOnce(null);
+    await expect(
+      h.service.start({ serverId: 'srv-1', agentId: 'agent-1' }),
+    ).rejects.toThrow(/api_public_url/);
+    expect(h.client.register).not.toHaveBeenCalled();
   });
 });

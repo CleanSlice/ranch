@@ -72,6 +72,7 @@ interface Harness {
       | 'candidates'
       | 'connect'
       | 'connectByUrl'
+      | 'connectByCard'
       | 'previewByUrl'
       | 'refresh'
       | 'remove'
@@ -104,6 +105,16 @@ function harness(): Harness {
         peerName: 'Elderly Care Match',
         cardUrl: 'https://elderly.example/.well-known/agent-card.json',
         card: card('Elderly Care Match', ['Assisted living search']),
+      }),
+    ),
+    connectByCard: jest.fn().mockResolvedValue(
+      view({
+        id: 'peer-3',
+        peerAgentId: null,
+        origin: PeerOrigins.External,
+        peerName: 'Pasted Bot',
+        cardUrl: 'https://pasted.example/a2a/.well-known/agent-card.json',
+        card: card('Pasted Bot', ['Care search']),
       }),
     ),
     previewByUrl: jest.fn().mockResolvedValue(card('Elderly Care Match')),
@@ -409,5 +420,41 @@ describe('PeerAdminTool — refusals carry the next move', () => {
     await expect(
       tool.listAgentPeers({ agentId: 'agent-a' }, null, operator()),
     ).rejects.toThrow('database is down');
+  });
+});
+
+describe('PeerAdminTool — importing from a card (CLEAN-116)', () => {
+  const CARD = '{"name":"Pasted Bot","skills":[]}';
+
+  it('connects the card to the agent it was told, and names the address it found', async () => {
+    const { tool, peers } = harness();
+
+    const text = textOf(
+      await tool.importAgentFromCard(
+        { agentId: 'agent-a', card: CARD, credential: 'secret' },
+        null,
+        operator(),
+      ),
+    );
+
+    expect(peers.connectByCard).toHaveBeenCalledWith('agent-a', CARD, 'secret');
+    expect(text).toContain('«Pasted Bot»');
+    expect(text).toContain(
+      'https://pasted.example/a2a/.well-known/agent-card.json',
+    );
+    expect(text).toContain('restart_agent with id=agent-a');
+  });
+
+  it('stays shut to an agent that is not a Ranch operator', async () => {
+    const { tool, peers } = harness();
+
+    await expect(
+      tool.importAgentFromCard(
+        { agentId: 'agent-a', card: CARD },
+        null,
+        plainAgent(),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(peers.connectByCard).not.toHaveBeenCalled();
   });
 });

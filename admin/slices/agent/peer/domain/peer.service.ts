@@ -43,6 +43,18 @@ export class PeerService {
     return this.gateway.previewByUrl(agentId, url, token);
   }
 
+  importByCard(
+    agentId: string,
+    card: string,
+    token?: string,
+  ): Promise<IAgentPeer> {
+    return this.gateway.importByCard(agentId, card, token);
+  }
+
+  previewCard(agentId: string, card: string): Promise<IAgentCard | null> {
+    return this.gateway.previewCard(agentId, card);
+  }
+
   peersState(agentId: string): Promise<IPeersState> {
     return this.gateway.peersState(agentId);
   }

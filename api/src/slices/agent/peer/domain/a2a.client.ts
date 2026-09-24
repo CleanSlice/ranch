@@ -6,6 +6,7 @@ import {
   A2A_VERSION,
   A2A_VERSION_HEADER,
   A2aMethods,
+  isA2aCardShape,
   type A2aSendMessageResult,
   type IA2aAgentCard,
   type IA2aMessage,
@@ -386,16 +387,7 @@ function isNumericShorthand(host: string): boolean {
   return /^[\d.]+$/.test(host) || /^0x[0-9a-f]+$/i.test(host);
 }
 
-function isCard(value: unknown): value is IA2aAgentCard {
-  if (!value || typeof value !== 'object') return false;
-  const card = value as Record<string, unknown>;
-  return (
-    typeof card.name === 'string' &&
-    Array.isArray(card.skills) &&
-    Array.isArray(card.supportedInterfaces) &&
-    card.supportedInterfaces.length > 0
-  );
-}
+const isCard = isA2aCardShape;
 
 function describe(err: unknown): string {
   if (err instanceof Error) {

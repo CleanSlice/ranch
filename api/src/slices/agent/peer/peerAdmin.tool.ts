@@ -324,6 +324,58 @@ export class PeerAdminTool implements IConditionallyListedTool {
   }
 
   @Tool({
+    name: 'import_agent_from_card',
+    topic: ToolTopics.Peers,
+    title: 'Import an agent from its card',
+    template: 'Connect this agent to «name» — here is its card',
+    description:
+      'Connect an outside agent from its card itself, for a card nobody has ' +
+      'published at an address: the person pastes the JSON or YAML, or ' +
+      'attaches the file. Checked exactly like an imported address, and ' +
+      'identified by the address the card names — so importing the same ' +
+      'agent later by URL updates this entry instead of duplicating it. The ' +
+      'address inside the card is what delegations will call, so a card ' +
+      'pointing at localhost or a private network is refused.',
+    parameters: z.object({
+      agentId: z.string().describe('The agent that will be doing the asking'),
+      card: z
+        .string()
+        .min(1)
+        .describe('The agent card, JSON or YAML, exactly as it was given'),
+      credential: z
+        .string()
+        .optional()
+        .describe(
+          'Bearer that agent requires, if any. Stored write-only and never ' +
+            'read back.',
+        ),
+    }),
+  })
+  async importAgentFromCard(
+    {
+      agentId,
+      card,
+      credential,
+    }: { agentId: string; card: string; credential?: string },
+    _context: unknown,
+    httpRequest: Request,
+  ): Promise<ToolResult> {
+    this.requireOperator(httpRequest);
+    return this.guard(async () => {
+      const hadPeers = (await this.peers.list(agentId)).length > 0;
+      const peer = await this.peers.connectByCard(agentId, card, credential);
+      this.logger.log(
+        `Peer imported from a pasted card through MCP: agent=${agentId} url=${peer.cardUrl}`,
+      );
+      return ok(
+        `«${peer.peerName}» is now a peer of ${agentId} (connection ` +
+          `${peer.id}), from the card given. Delegations go to ` +
+          `${peer.cardUrl}. ${advertises(peer)} ${restartLine(agentId, hadPeers)}`,
+      );
+    });
+  }
+
+  @Tool({
     name: 'refresh_agent_peer',
     topic: ToolTopics.Peers,
     title: "Refresh a peer's card",
@@ -384,7 +436,10 @@ export class PeerAdminTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     this.requireOperator(httpRequest);
     const { agentId, peerId } = args;
-    const refusal = confirmed(args, `disconnect peer ${peerId} from agent ${agentId}`);
+    const refusal = confirmed(
+      args,
+      `disconnect peer ${peerId} from agent ${agentId}`,
+    );
     if (refusal) return refusal;
     return this.guard(async () => {
       await this.peers.remove(agentId, peerId);

@@ -51,7 +51,9 @@ const error = ref<string | null>(null);
 
 const FILTER_FROM = 6;
 
-type AddMode = 'ranch' | 'external';
+type AddMode = 'ranch' | 'external' | 'card';
+
+const MODES: readonly AddMode[] = ['ranch', 'external', 'card'];
 
 const mode = ref<AddMode>('ranch');
 /** True once the operator has picked a tab themselves; after that nothing
@@ -59,8 +61,8 @@ const mode = ref<AddMode>('ranch');
 const modeTouched = ref(false);
 
 function selectMode(value: unknown): void {
-  if (value !== 'ranch' && value !== 'external') return;
-  mode.value = value;
+  if (!MODES.includes(value as AddMode)) return;
+  mode.value = value as AddMode;
   modeTouched.value = true;
 }
 
@@ -93,6 +95,11 @@ watch(
     urlToken.value = '';
     urlPreview.value = null;
     urlError.value = null;
+    cardText.value = '';
+    cardToken.value = '';
+    cardPreview.value = null;
+    cardError.value = null;
+    cardFileName.value = null;
     mode.value = 'ranch';
     modeTouched.value = false;
     await store.loadCandidates(props.agentId);
@@ -195,6 +202,77 @@ async function importUrl() {
   }
 }
 
+// ── Connect from a card in hand (CLEAN-116) ─────────────────────
+// Same two steps as the address path — read, then connect — because what is
+// being approved is the same thing: the text a delegating model will read.
+const cardText = ref('');
+const cardToken = ref('');
+const cardPreview = ref<IAgentCard | null>(null);
+const cardPreviewing = ref(false);
+const cardImporting = ref(false);
+const cardError = ref<string | null>(null);
+const cardFileName = ref<string | null>(null);
+
+watch(cardText, () => {
+  cardPreview.value = null;
+  cardError.value = null;
+});
+
+/** The file never leaves the browser: it is read here and sent as text, so
+ *  the API keeps one way in and one set of checks. */
+async function onCardFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    cardText.value = await file.text();
+    cardFileName.value = file.name;
+  } catch {
+    cardError.value = 'Could not read that file';
+  } finally {
+    // Let the same file be picked again after an edit.
+    input.value = '';
+  }
+}
+
+async function previewPastedCard() {
+  if (!cardText.value.trim()) return;
+  cardPreviewing.value = true;
+  cardError.value = null;
+  cardPreview.value = null;
+  try {
+    cardPreview.value = await store.previewPastedCard(
+      props.agentId,
+      cardText.value,
+    );
+  } catch (err) {
+    cardError.value =
+      err instanceof Error ? err.message : 'Could not read that card';
+  } finally {
+    cardPreviewing.value = false;
+  }
+}
+
+async function importCard() {
+  if (!cardPreview.value) return;
+  cardImporting.value = true;
+  cardError.value = null;
+  try {
+    const imported = await store.importByCard(
+      props.agentId,
+      cardText.value,
+      cardToken.value.trim() || undefined,
+    );
+    toast.success(`«${imported.peerName}» connected — card read`);
+    emit('connected');
+  } catch (err) {
+    cardError.value =
+      err instanceof Error ? err.message : 'Could not connect that agent';
+  } finally {
+    cardImporting.value = false;
+  }
+}
+
 function statusVariant(status: string) {
   return AGENT_STATUS_VARIANT[status as AgentStatusTypes] ?? 'outline';
 }
@@ -210,6 +288,9 @@ const previewAdvertisesNothing = computed(
 );
 const urlPreviewAdvertisesNothing = computed(
   () => Boolean(urlPreview.value) && urlPreview.value!.skills.length === 0,
+);
+const cardPreviewAdvertisesNothing = computed(
+  () => Boolean(cardPreview.value) && cardPreview.value!.skills.length === 0,
 );
 </script>
 
@@ -230,9 +311,14 @@ const urlPreviewAdvertisesNothing = computed(
             Agents on this ranch this one isn't connected to yet. Click an agent
             to read its card, then connect.
           </template>
-          <template v-else>
-            Any A2A 1.0 agent outside this ranch, by its address. Importing the
+          <template v-else-if="mode === 'external'">
+            Any A2A agent outside this ranch, by its address. Importing the
             same address again updates the entry — no duplicates.
+          </template>
+          <template v-else>
+            For an agent whose card is not published anywhere: paste it, or
+            pick the file. The address inside the card is what delegations
+            will call.
           </template>
         </DialogDescription>
 
@@ -241,12 +327,13 @@ const urlPreviewAdvertisesNothing = computed(
           class="mt-3.5 flex min-h-0 flex-1 flex-col gap-3.5"
           @update:model-value="selectMode"
         >
-          <TabsList class="grid w-full grid-cols-2">
+          <TabsList class="grid w-full grid-cols-3">
             <TabsTrigger value="ranch">
               On this ranch
               <span v-if="available" class="opacity-60">{{ available }}</span>
             </TabsTrigger>
-            <TabsTrigger value="external">External agent</TabsTrigger>
+            <TabsTrigger value="external">By address</TabsTrigger>
+            <TabsTrigger value="card">From a card</TabsTrigger>
           </TabsList>
 
           <div class="min-h-0 flex-1 overflow-y-auto">
@@ -369,7 +456,7 @@ const urlPreviewAdvertisesNothing = computed(
               </p>
               <p v-else class="text-sm text-muted-foreground">
                 No unconnected agents left on this ranch. Anything outside
-                it comes in under <b>External agent</b>.
+                it comes in under <b>By address</b> or <b>From a card</b>.
               </p>
             </TabsContent>
 
@@ -453,6 +540,95 @@ const urlPreviewAdvertisesNothing = computed(
 
               <p v-if="urlError" class="mt-2 text-sm text-destructive">
                 {{ urlError }}
+              </p>
+            </TabsContent>
+
+            <!-- ═══ Connect from a card in hand (CLEAN-116) ═══ -->
+            <TabsContent value="card">
+              <div class="space-y-2">
+                <textarea
+                  v-model="cardText"
+                  rows="8"
+                  spellcheck="false"
+                  autocomplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  placeholder='{ "name": "…", "skills": [ … ], "supportedInterfaces": [ { "url": "https://…" } ] }'
+                  class="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs shadow-xs outline-none focus-visible:ring-[3px]"
+                />
+                <div class="flex flex-wrap items-center gap-2">
+                  <!-- The file is read in the browser and sent as text: one
+                       way in on the API, one set of checks. -->
+                  <label
+                    class="cursor-pointer rounded-full border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Choose a file
+                    <input
+                      type="file"
+                      accept=".json,.yaml,.yml,.txt,application/json,text/yaml,text/plain"
+                      class="hidden"
+                      @change="onCardFile"
+                    />
+                  </label>
+                  <span
+                    v-if="cardFileName"
+                    class="truncate font-mono text-xs text-muted-foreground"
+                  >
+                    {{ cardFileName }}
+                  </span>
+                </div>
+                <Input
+                  v-model="cardToken"
+                  type="password"
+                  name="peer-card-token"
+                  placeholder="Access credential (optional)"
+                  class="text-xs"
+                  autocomplete="new-password"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="rounded-full"
+                  :disabled="cardPreviewing || !cardText.trim()"
+                  @click="previewPastedCard"
+                >
+                  {{ cardPreviewing ? 'Reading…' : 'Read card' }}
+                </Button>
+              </div>
+
+              <div
+                v-if="cardPreview"
+                class="mt-2.5 space-y-3 rounded-xl border bg-muted/40 p-3"
+              >
+                <PeerCardView :card="cardPreview" compact />
+                <div
+                  v-if="cardPreviewAdvertisesNothing"
+                  class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-500"
+                >
+                  This card publishes no skills, so the delegating agent will
+                  only ask «{{ cardPreview.name }}» when someone names it
+                  outright. Ask its owner for a card with skills, then paste
+                  that one.
+                </div>
+                <Button
+                  size="sm"
+                  class="rounded-full"
+                  :disabled="cardImporting"
+                  @click="importCard"
+                >
+                  {{
+                    cardImporting
+                      ? 'Connecting…'
+                      : `Connect «${cardPreview.name}»`
+                  }}
+                </Button>
+              </div>
+
+              <p v-if="cardError" class="mt-2 text-sm text-destructive">
+                {{ cardError }}
               </p>
             </TabsContent>
           </div>

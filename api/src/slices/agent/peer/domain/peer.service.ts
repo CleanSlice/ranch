@@ -20,10 +20,16 @@ import {
   A2A_CARD_PATH,
   A2A_JSONRPC_BINDING,
   A2A_VERSION,
+  isA2aCardShape,
   type IA2aAgentCard,
   type IA2aAgentInterface,
 } from './a2a.types';
-import { A2A_LEGACY_VERSION, selectCallableInterface } from './a2a.legacy';
+import { parse as parseYaml } from 'yaml';
+import {
+  A2A_LEGACY_VERSION,
+  normalizeLegacyCard,
+  selectCallableInterface,
+} from './a2a.legacy';
 import {
   EXTERNAL_PEER_STATUS,
   PEER_TOKEN_BYTES,
@@ -196,6 +202,126 @@ export class PeerService {
       outboundToken?.trim() || undefined,
     );
     return card;
+  }
+
+  /**
+   * Connect from a card somebody handed us rather than from an address
+   * (CLEAN-116). Plenty of cards are never published at a URL: one arrives in
+   * an email, one lives in a repository as YAML, one belongs to an agent
+   * still on a laptop.
+   *
+   * Everything after the parse is the address path exactly: the same vetting,
+   * so a pasted card cannot reach anywhere an imported address could not.
+   */
+  async connectByCard(
+    agentId: string,
+    text: string,
+    outboundToken?: string,
+  ): Promise<IAgentPeerView> {
+    const token =
+      outboundToken === undefined ? undefined : outboundToken.trim() || null;
+    const { cardUrl, card } = await this.readPastedCard(agentId, text);
+
+    const existing = await this.peers.findByCardUrl(agentId, cardUrl);
+    const row = existing
+      ? await this.peers.updateSnapshot(existing.id, {
+          cardSnapshot: card,
+          cardUrl,
+          cardReadAt: new Date(),
+          ...(token !== undefined ? { outboundToken: token } : {}),
+        })
+      : await this.peers.create({
+          agentId,
+          peerAgentId: null,
+          origin: PeerOrigins.External,
+          token: null,
+          outboundToken: token ?? null,
+          cardSnapshot: card,
+          cardUrl,
+          cardReadAt: new Date(),
+        });
+
+    this.logger.log(
+      `External peer ${existing ? 're-imported' : 'imported'} from a pasted card: agent=${agentId} url=${cardUrl}`,
+    );
+    return this.toView(row);
+  }
+
+  /** The same read, saving nothing — what the operator approves first. */
+  async previewCard(agentId: string, text: string): Promise<IA2aAgentCard> {
+    const { card } = await this.readPastedCard(agentId, text);
+    return card;
+  }
+
+  /**
+   * Parse, vet, and work out what address this card would have been read
+   * from. That derived URL is the peer's identity: importing the same agent
+   * later by its address lands on the same row instead of a duplicate, and
+   * Re-read has somewhere to go. When the agent publishes no card there, the
+   * refresh fails and the stored snapshot stays — which is the existing,
+   * documented behaviour for an unreachable card.
+   */
+  private async readPastedCard(agentId: string, text: string) {
+    const caller = await this.agents.findById(agentId);
+    if (!caller) {
+      throw new NotFoundException({
+        code: PeerErrorCodes.NotFound,
+        message: 'Agent not found',
+      });
+    }
+
+    const card = this.cardFromText(text);
+    const ownBase = await this.cards.ownA2aBase();
+    const iface = await this.vetExternalCard(card, ownBase);
+    const cardUrl = this.canonicalCardUrl(iface.url);
+
+    return { cardUrl, card };
+  }
+
+  /**
+   * JSON or YAML, because cards in the wild are written both ways — and a
+   * document whose only top-level key is `card` is unwrapped, because that is
+   * how agent frameworks write the file an operator will copy to us.
+   */
+  private cardFromText(text: string): IA2aAgentCard {
+    const trimmed = text.trim();
+    if (!trimmed) throw this.notACard('it is empty');
+    if (trimmed.length > MAX_CARD_CHARS) {
+      throw this.notACard(
+        `it is larger than ${MAX_CARD_CHARS} characters — a card is a small document`,
+      );
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      try {
+        parsed = parseYaml(trimmed);
+      } catch (err) {
+        throw this.notACard(
+          `it is neither JSON nor YAML: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`,
+        );
+      }
+    }
+
+    const unwrapped = unwrapCardDocument(parsed);
+    if (isA2aCardShape(unwrapped)) return unwrapped;
+
+    const legacy = normalizeLegacyCard(unwrapped);
+    if (legacy) return legacy;
+
+    throw this.notACard(
+      'an agent card needs a name, a list of skills, and an address — ' +
+        'either `supportedInterfaces` (A2A 1.0) or a top-level `url`',
+    );
+  }
+
+  private notACard(detail: string): BadRequestException {
+    return new BadRequestException({
+      code: PeerErrorCodes.Body,
+      message: `This is not an agent card: ${detail}`,
+    });
   }
 
   /** Shared validate-and-fetch for preview and import: canonicalize, SSRF
@@ -516,6 +642,23 @@ export class PeerService {
       createdAt: row.createdAt,
     };
   }
+}
+
+/** A card is a small document; anything this size is a mistake or a probe. */
+const MAX_CARD_CHARS = 256_000;
+
+/**
+ * Agent frameworks write the card as one key of a larger config file — the
+ * Adobe Learning Manager example nests everything under `card:`. An operator
+ * copying that file to us is handing us the card; digging it out for them
+ * costs four lines and saves an explanation.
+ */
+function unwrapCardDocument(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value;
+  const doc = value as Record<string, unknown>;
+  if (typeof doc.name === 'string') return doc;
+  const inner = doc.card ?? doc.agentCard ?? doc.agent_card;
+  return inner && typeof inner === 'object' ? inner : value;
 }
 
 function unique(values: Array<string | undefined | null>): string[] {

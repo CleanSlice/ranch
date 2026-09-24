@@ -1783,6 +1783,10 @@ export type ConnectPeerDto = {
    */
   url?: string;
   /**
+   * The agent card itself, as JSON or YAML, for an agent whose card is not published at an address (CLEAN-116). Vetted exactly like an imported address, and identified by the address the card names, so importing the same agent later by URL updates this entry rather than duplicating it. Mutually exclusive with `peerAgentId` and `url`.
+   */
+  card?: string;
+  /**
    * Bearer credential the external agent expects, when it needs one. Stored write-only — no response ever returns it. On re-import: omitted keeps the stored credential, empty string clears it.
    */
   token?: string;
@@ -1790,9 +1794,13 @@ export type ConnectPeerDto = {
 
 export type PreviewPeerUrlDto = {
   /**
-   * A2A address of the agent to preview — base URL or its well-known card form.
+   * A2A address of the agent to preview — base URL or its well-known card form. Mutually exclusive with `card`.
    */
-  url: string;
+  url?: string;
+  /**
+   * The card itself, as JSON or YAML, when it is not published anywhere (CLEAN-116). Read and checked, never saved. Mutually exclusive with `url`.
+   */
+  card?: string;
   /**
    * Bearer credential for the card read, when the agent needs one. Used for this read only; nothing is stored.
    */
@@ -1958,9 +1966,17 @@ export type ReportUsageDto = {
 
 export type StartMcpOauthDto = {
   /**
-   * Agent that will own the connection. The stored refresh token is scoped to this agent.
+   * Agent whose secret store receives the token. The stored refresh token is scoped to this agent.
    */
   agentId: string;
+  /**
+   * Whose token it will be (CLEAN-80): the chat user id the hub forwarded on the message, or a share/anon client id. Omit for an agent-wide connection shared by everyone who talks to the agent.
+   */
+  subject?: string;
+  /**
+   * Display only — shown back as "connected as …".
+   */
+  email?: string;
 };
 
 export type StartMcpOauthResultDto = {
@@ -1972,6 +1988,15 @@ export type StartMcpOauthResultDto = {
 
 export type McpOauthStatusDto = {
   connected: boolean;
+  /**
+   * Which bundle answered: the subject's own, the agent-wide one, or null when none.
+   */
+  scope?: "subject" | "agent";
+  email?: string;
+  /**
+   * epoch ms of the login
+   */
+  connectedAt?: number;
 };
 
 export type RunPaddockJudgeOverrideDto = {
@@ -5536,6 +5561,7 @@ export type McpOauthStatusData = {
   };
   query: {
     agentId: string;
+    subject: string;
   };
   url: "/mcp-servers/{serverId}/oauth/status";
 };

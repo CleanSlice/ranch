@@ -147,17 +147,18 @@ export class PeerController {
     @Param('agentId') agentId: string,
     @Body() body: ConnectPeerDto,
   ): Promise<AgentPeerDto> {
-    const hasId = Boolean(body.peerAgentId);
-    const hasUrl = Boolean(body.url);
-    if (hasId === hasUrl) {
+    const given = [body.peerAgentId, body.url, body.card].filter(Boolean);
+    if (given.length !== 1) {
       throw new BadRequestException({
         code: PeerErrorCodes.Body,
-        message: 'Provide exactly one of `peerAgentId` or `url`',
+        message: 'Provide exactly one of `peerAgentId`, `url` or `card`',
       });
     }
-    const view = hasUrl
-      ? await this.peers.connectByUrl(agentId, body.url!, body.token)
-      : await this.peers.connect(agentId, body.peerAgentId!);
+    const view = body.card
+      ? await this.peers.connectByCard(agentId, body.card, body.token)
+      : body.url
+        ? await this.peers.connectByUrl(agentId, body.url, body.token)
+        : await this.peers.connect(agentId, body.peerAgentId!);
     return toPeerDto(view);
   }
 
@@ -178,7 +179,15 @@ export class PeerController {
     @Param('agentId') agentId: string,
     @Body() body: PreviewPeerUrlDto,
   ): Promise<AgentCardDto> {
-    return this.peers.previewByUrl(agentId, body.url, body.token);
+    if (Boolean(body.url) === Boolean(body.card)) {
+      throw new BadRequestException({
+        code: PeerErrorCodes.Body,
+        message: 'Provide exactly one of `url` or `card`',
+      });
+    }
+    return body.card
+      ? this.peers.previewCard(agentId, body.card)
+      : this.peers.previewByUrl(agentId, body.url!, body.token);
   }
 
   @Get('peers/state')

@@ -660,7 +660,9 @@ watch(
       {{ syncMessage }}
     </div>
 
-    <div class="grid gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:items-start">
+    <!-- The explorer takes what nested paths need: names are the point of the
+         tree, the size/date columns are kept narrow so they never win. -->
+    <div class="grid gap-4 md:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] md:items-start xl:grid-cols-[460px_minmax(0,1fr)]">
       <div class="hidden h-[680px] overflow-hidden rounded-md border md:block">
         <AgentFileExplorer
           :files="nodes"

@@ -128,7 +128,7 @@ defineExpose({ focusFilter: () => searchInput.value?.focus() });
       </button>
     </div>
 
-    <div class="grid grid-cols-[1.25rem_minmax(0,1fr)_4.5rem_4.5rem_1.5rem] gap-1 px-2 pb-1 pr-3 text-[10px] uppercase tracking-wide text-muted-foreground">
+    <div class="grid grid-cols-[1.25rem_minmax(0,1fr)_3.75rem_3.5rem_1.25rem] gap-1 px-2 pb-1 pr-3 text-[10px] uppercase tracking-wide text-muted-foreground">
       <span />
       <span>Name</span>
       <span class="text-right">Size</span>

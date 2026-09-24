@@ -37,7 +37,8 @@ const emit = defineEmits<{
 const isOpen = computed(() => props.node.type === 'folder' && props.expanded.has(props.node.path));
 const isChecked = computed(() => props.selected.has(props.node.path));
 const isPartial = computed(() => props.node.type === 'folder' && props.partial.has(props.node.path));
-const indent = computed(() => `${props.level * 14}px`);
+// Tight steps: three levels of nesting must still leave room for a name.
+const indent = computed(() => `${props.level * 10}px`);
 
 function iconFor(name: string) {
   const ext = name.slice(name.lastIndexOf('.')).toLowerCase();
@@ -56,7 +57,7 @@ function onCheck(e: Event) {
 
 <template>
   <div
-    class="group grid grid-cols-[1.25rem_minmax(0,1fr)_4.5rem_4.5rem_1.5rem] items-center gap-1 rounded-md pr-1 text-xs hover:bg-accent/60"
+    class="group grid grid-cols-[1.25rem_minmax(0,1fr)_3.75rem_3.5rem_1.25rem] items-center gap-1 rounded-md pr-1 text-xs hover:bg-accent/60"
     :class="[
       node.type === 'file' && active === node.path && 'bg-accent text-accent-foreground',
       isChecked && 'bg-primary/5',
@@ -78,6 +79,7 @@ function onCheck(e: Event) {
       v-if="node.type === 'folder'"
       type="button"
       class="flex min-w-0 items-center gap-1.5 py-1 text-left"
+      :title="`${node.path} — ${node.count} file${node.count === 1 ? '' : 's'}`"
       @click="emit('toggle', node.path)"
     >
       <component :is="isOpen ? IconChevronDown : IconChevronRight" class="size-3.5 shrink-0 text-muted-foreground" />

@@ -14,6 +14,14 @@ import {
   type IJsonRpcResponse,
 } from './a2a.types';
 import {
+  A2A_LEGACY_SEND_METHOD,
+  A2aDialects,
+  fromLegacyResult,
+  normalizeLegacyCard,
+  toLegacySendParams,
+  type A2aDialect,
+} from './a2a.legacy';
+import {
   DelegationError,
   DelegationErrorCodes,
   PeerCardUnreachableError,
@@ -101,15 +109,20 @@ export class A2aClient {
     }
 
     if (!isCard(card)) {
-      // A 0.3 card is a real card in the wrong dialect: it names its version
-      // at the top level and has no supportedInterfaces. Saying "not a card"
-      // there sends the operator hunting for a broken URL (CLEAN-97).
+      // A 0.3 card is a real card in the wrong dialect: it names one `url` at
+      // the top level where 1.0 has `supportedInterfaces`. Rewriting it here
+      // means one card shape is stored and read everywhere; the version it
+      // declared rides on the interface and is what later decides which
+      // dialect to speak (CLEAN-114).
+      const legacy = normalizeLegacyCard(card);
+      if (legacy) return legacy;
+
       const legacyVersion = legacyProtocolVersion(card);
       if (legacyVersion) {
         throw new PeerCardUnreachableError(
-          `This agent speaks A2A ${legacyVersion}; only ${A2A_VERSION} is supported`,
+          `This card declares A2A ${legacyVersion} but names no address to call`,
           response.status,
-          'version',
+          'invalid',
         );
       }
       throw new PeerCardUnreachableError(
@@ -144,7 +157,12 @@ export class A2aClient {
     token: string | undefined,
     params: IA2aSendMessageParams,
     timeoutMs: number,
+    dialect: A2aDialect = A2aDialects.V1,
   ): Promise<A2aSendMessageResult> {
+    // 0.3 has a different method name, no version header (its absence is how
+    // a 0.3 server knows the caller is one of its own) and its own spelling
+    // of messages and parts (CLEAN-114).
+    const legacy = dialect === A2aDialects.Legacy;
     let response: Response;
     try {
       response = await fetch(interfaceUrl, {
@@ -152,13 +170,13 @@ export class A2aClient {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           'Content-Type': 'application/json',
-          [A2A_VERSION_HEADER]: A2A_VERSION,
+          ...(legacy ? {} : { [A2A_VERSION_HEADER]: A2A_VERSION }),
         },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: crypto.randomUUID(),
-          method: A2aMethods.SendMessage,
-          params,
+          method: legacy ? A2A_LEGACY_SEND_METHOD : A2aMethods.SendMessage,
+          params: legacy ? toLegacySendParams(params) : params,
         }),
         // Same reason as fetchCard: a redirect is an SSRF-guard bypass, so it
         // is reported, never followed.
@@ -216,6 +234,15 @@ export class A2aClient {
       throw new DelegationError(
         DelegationErrorCodes.Error,
         payload.error.message || `protocol error ${payload.error.code}`,
+      );
+    }
+
+    if (legacy) {
+      const normalized = fromLegacyResult(payload.result);
+      if (normalized) return normalized;
+      throw new DelegationError(
+        DelegationErrorCodes.Error,
+        'answered with neither a task nor a message',
       );
     }
 

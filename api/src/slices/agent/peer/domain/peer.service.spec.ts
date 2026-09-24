@@ -449,6 +449,24 @@ describe('PeerService — importing an external agent by URL (CLEAN-95)', () => 
     });
     expect(Object.keys(rows)).toHaveLength(0);
   });
+
+  it('imports an agent on the old dialect, which is most of the public ones', async () => {
+    // The client hands over a 0.3 card already rewritten into the 1.0 shape,
+    // with the version it declared on the interface (CLEAN-114).
+    const externalCard = foreignCard('Legacy Bot', [
+      {
+        url: 'https://other.example/a2a/agents/agent-x',
+        protocolBinding: 'JSONRPC',
+        protocolVersion: '0.3.0',
+      },
+    ]);
+    const { service, rows } = makeHarness({ externalCard });
+
+    const view = await service.connectByUrl('a', EXT_BASE);
+
+    expect(view.peerName).toBe('Legacy Bot');
+    expect(Object.keys(rows)).toHaveLength(1);
+  });
 });
 
 describe('PeerService — previewing an external URL (CLEAN-95)', () => {

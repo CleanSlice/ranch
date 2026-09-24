@@ -5,6 +5,7 @@ import {
 } from './a2a.client';
 import { DelegationErrorCodes, PeerCardUnreachableError } from './peer.types';
 import { A2aTaskStates, type IA2aSendMessageParams } from './a2a.types';
+import { A2aDialects } from './a2a.legacy';
 
 /**
  * The outbound edge. Its whole job is to turn somebody else's failure into a
@@ -185,9 +186,9 @@ describe('A2aClient.fetchCard', () => {
     });
   });
 
-  it('names the protocol version of a pre-1.0 card instead of calling it "not a card"', async () => {
+  it('reads a pre-1.0 card into the 1.0 shape, keeping the version it declared', async () => {
     // The shape most a2a-samples still serve: version at the top level, a
-    // single `url`, no supportedInterfaces.
+    // single `url`, no supportedInterfaces (CLEAN-114).
     fetchMock.mockResolvedValue(
       respond({
         json: {
@@ -205,11 +206,89 @@ describe('A2aClient.fetchCard', () => {
       }),
     );
 
+    const card = await new A2aClient().fetchCard(CARD_URL, TOKEN);
+
+    expect(card.name).toBe('Legacy Agent');
+    expect(card.supportedInterfaces).toEqual([
+      {
+        url: 'https://legacy.example/',
+        protocolBinding: 'JSONRPC',
+        protocolVersion: '0.3.0',
+      },
+    ]);
+  });
+
+  it('takes a version-less card with a url as the old dialect', async () => {
+    // Hand-written cards skip protocolVersion entirely. Refusing them would
+    // refuse the very agents this was built for (CLEAN-114).
+    fetchMock.mockResolvedValue(
+      respond({
+        json: {
+          name: 'Handmade Agent',
+          description: 'x',
+          url: 'https://handmade.example/a2a',
+          version: '1.0.0',
+          skills: [{ id: 's', name: 's', description: 'd', tags: [] }],
+        },
+      }),
+    );
+
+    const card = await new A2aClient().fetchCard(CARD_URL, TOKEN);
+
+    expect(card.supportedInterfaces).toEqual([
+      {
+        url: 'https://handmade.example/a2a',
+        protocolBinding: 'JSONRPC',
+        protocolVersion: '0.3',
+      },
+    ]);
+  });
+
+  it('puts a JSON-RPC additional interface ahead of a preferred gRPC one', async () => {
+    fetchMock.mockResolvedValue(
+      respond({
+        json: {
+          protocolVersion: '0.3.0',
+          name: 'Grpc First',
+          description: 'x',
+          url: 'https://legacy.example/grpc',
+          preferredTransport: 'GRPC',
+          additionalInterfaces: [
+            { url: 'https://legacy.example/rpc', transport: 'JSONRPC' },
+          ],
+          version: '1.0.0',
+          skills: [],
+        },
+      }),
+    );
+
+    const card = await new A2aClient().fetchCard(CARD_URL, TOKEN);
+
+    expect(card.supportedInterfaces[0]).toEqual({
+      url: 'https://legacy.example/rpc',
+      protocolBinding: 'JSONRPC',
+      protocolVersion: '0.3.0',
+    });
+  });
+
+  it('refuses a pre-1.0 card that names no address', async () => {
+    fetchMock.mockResolvedValue(
+      respond({
+        json: {
+          protocolVersion: '0.3.0',
+          name: 'Addressless',
+          description: 'x',
+          version: '1.0.0',
+          skills: [],
+        },
+      }),
+    );
+
     await expect(
       new A2aClient().fetchCard(CARD_URL, TOKEN),
     ).rejects.toMatchObject({
-      kind: 'version',
-      message: 'This agent speaks A2A 0.3.0; only 1.0 is supported',
+      kind: 'invalid',
+      message: 'This card declares A2A 0.3.0 but names no address to call',
     });
   });
 
@@ -259,6 +338,57 @@ describe('A2aClient.sendMessage', () => {
     await expect(
       new A2aClient().sendMessage(RPC_URL, TOKEN, params, 1000),
     ).resolves.toEqual({ task });
+  });
+
+  it('calls a 0.3 peer by its own method name, and sends no version header', async () => {
+    fetchMock.mockResolvedValue(
+      respond({
+        json: {
+          result: {
+            kind: 'message',
+            messageId: 'm-9',
+            role: 'agent',
+            parts: [{ kind: 'text', text: 'the old answer' }],
+          },
+        },
+      }),
+    );
+
+    const reply = await new A2aClient().sendMessage(
+      RPC_URL,
+      TOKEN,
+      params,
+      1000,
+      A2aDialects.Legacy,
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).not.toHaveProperty('A2A-Version');
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      method: 'message/send',
+      params: { message: { kind: 'message', role: 'user' } },
+    });
+    // The caller reads 1.0 shapes whichever dialect answered (CLEAN-114).
+    expect(reply).toMatchObject({
+      message: { role: 'ROLE_AGENT', parts: [{ text: 'the old answer' }] },
+    });
+  });
+
+  it('reports a 0.3 peer that answers with neither a task nor a message', async () => {
+    fetchMock.mockResolvedValue(respond({ json: { result: { huh: true } } }));
+
+    await expect(
+      new A2aClient().sendMessage(
+        RPC_URL,
+        TOKEN,
+        params,
+        1000,
+        A2aDialects.Legacy,
+      ),
+    ).rejects.toMatchObject({
+      code: DelegationErrorCodes.Error,
+      message: 'answered with neither a task nor a message',
+    });
   });
 
   it('calls a revoked credential what it is', async () => {

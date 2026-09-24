@@ -14,10 +14,10 @@ import {
   A2aTaskStates,
   renderReplyParts,
   replyTextOfTask,
-  selectJsonRpcInterface,
   type A2aSendMessageResult,
   type IA2aTask,
 } from './a2a.types';
+import { selectCallableInterface } from './a2a.legacy';
 import {
   DELEGATION_EXCERPT_CHARS,
   DelegationError,
@@ -128,14 +128,15 @@ export class DelegationService {
     try {
       // The interface import approved, not whichever the card lists first —
       // an agent may prefer HTTP+JSON and still speak JSON-RPC (CLEAN-97).
-      const iface = selectJsonRpcInterface(peer.cardSnapshot);
-      if (!iface) {
+      // The same call decides which dialect to speak to it (CLEAN-114).
+      const callable = selectCallableInterface(peer.cardSnapshot);
+      if (!callable) {
         throw new DelegationError(
           DelegationErrorCodes.Unsupported,
-          'its card offers no JSON-RPC interface on A2A 1.0',
+          'its card offers no JSON-RPC interface Ranch can call',
         );
       }
-      const interfaceUrl = iface.url;
+      const interfaceUrl = callable.iface.url;
       if (peer.origin === PeerOrigins.External) {
         // The interface URL inside a foreign card is remote content — never
         // let it point the platform at a private address (SSRF, CLEAN-95).
@@ -174,6 +175,7 @@ export class DelegationService {
           },
         },
         timeoutMs,
+        callable.dialect,
       );
 
       ({ status, errorCode, text } = readReply(reply));

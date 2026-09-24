@@ -18,11 +18,12 @@ import {
 } from './a2a.client';
 import {
   A2A_CARD_PATH,
+  A2A_JSONRPC_BINDING,
   A2A_VERSION,
-  selectJsonRpcInterface,
   type IA2aAgentCard,
   type IA2aAgentInterface,
 } from './a2a.types';
+import { A2A_LEGACY_VERSION, selectCallableInterface } from './a2a.legacy';
 import {
   EXTERNAL_PEER_STATUS,
   PEER_TOKEN_BYTES,
@@ -257,26 +258,39 @@ export class PeerService {
     card: IA2aAgentCard,
     ownBase: string,
   ): Promise<IA2aAgentInterface> {
-    const iface = selectJsonRpcInterface(card);
-    if (!iface) {
+    // JSON-RPC on 1.0 or on the old dialect — both are callable, and the
+    // choice here is the choice delegation makes later (CLEAN-114).
+    const callable = selectCallableInterface(card);
+    if (!callable) {
       const interfaces = card.supportedInterfaces ?? [];
-      const versions = unique(interfaces.map((i) => i?.protocolVersion));
-      if (!versions.includes(A2A_VERSION)) {
+      if (!interfaces.length) {
         throw new BadRequestException({
           code: PeerErrorCodes.Version,
-          message: `This agent speaks A2A ${versions.join(', ') || 'unknown'}; only ${A2A_VERSION} is supported`,
+          message: 'This card names no address Ranch can call',
         });
       }
-      const bindings = unique(
-        interfaces
-          .filter((i) => i?.protocolVersion === A2A_VERSION)
-          .map((i) => i?.protocolBinding),
+      // It speaks JSON-RPC, just not a version we know: a future 2.0 is not
+      // a dialect to guess at (CLEAN-114).
+      const jsonRpc = interfaces.filter(
+        (i) =>
+          String(i?.protocolBinding ?? '').toUpperCase() ===
+          A2A_JSONRPC_BINDING,
       );
+      if (jsonRpc.length) {
+        const versions = unique(jsonRpc.map((i) => i?.protocolVersion));
+        throw new BadRequestException({
+          code: PeerErrorCodes.Version,
+          message: `This agent speaks A2A ${versions.join(', ') || 'an unnamed version'}; Ranch speaks ${A2A_VERSION} and ${A2A_LEGACY_VERSION}`,
+        });
+      }
+      const bindings = unique(interfaces.map((i) => i?.protocolBinding));
+      const offered = unique(interfaces.map((i) => i?.protocolVersion));
       throw new BadRequestException({
         code: PeerErrorCodes.Binding,
-        message: `This agent offers A2A ${A2A_VERSION} only over ${bindings.join(', ') || 'an unnamed transport'}; Ranch calls agents over JSON-RPC`,
+        message: `This agent offers A2A ${offered.join(', ') || 'an unnamed version'} only over ${bindings.join(', ') || 'an unnamed transport'}; Ranch calls agents over JSON-RPC`,
       });
     }
+    const iface = callable.iface;
 
     if (isOwnA2aAddress(iface.url, ownBase)) throw this.selfUrl();
 

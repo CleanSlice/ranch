@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { IAgentCard } from '#peer/stores/peer';
-import { cardAddress } from '#peer/domain';
+import { cardAddress, cardLegacyVersion } from '#peer/domain';
 
 /**
  * An agent card, rendered as the agent on the other side reads it (CLEAN-74).
@@ -20,6 +20,9 @@ const skills = computed(() => props.card?.skills ?? []);
 
 // The interface delegations will dial, not merely the first one listed.
 const address = computed(() => cardAddress(props.card));
+// Null on a current agent; the version itself on one Ranch talks to in the
+// old dialect, which is worth seeing before connecting (CLEAN-114).
+const legacyVersion = computed(() => cardLegacyVersion(props.card));
 
 function skillTag(tags: string[]): string | null {
   if (tags.includes('knowledge')) return 'knowledge';
@@ -31,7 +34,16 @@ function skillTag(tags: string[]): string | null {
 <template>
   <div v-if="card" :class="compact ? 'space-y-3' : 'space-y-4'">
     <div>
-      <p class="font-medium">{{ card.name }}</p>
+      <div class="flex flex-wrap items-center gap-2">
+        <p class="font-medium">{{ card.name }}</p>
+        <Badge
+          v-if="legacyVersion"
+          variant="outline"
+          title="Ranch talks to this agent in the older A2A dialect. It works, but the protocol carries less: no streaming, and replies arrive whole."
+        >
+          A2A {{ legacyVersion }}
+        </Badge>
+      </div>
       <p class="text-sm text-muted-foreground">{{ card.description }}</p>
     </div>
 

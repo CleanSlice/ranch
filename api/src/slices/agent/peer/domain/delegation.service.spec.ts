@@ -5,6 +5,7 @@ import {
   type IA2aAgentCard,
   type IA2aTask,
 } from './a2a.types';
+import { A2aDialects } from './a2a.legacy';
 import {
   DelegationError,
   DelegationErrorCodes,
@@ -551,6 +552,7 @@ describe('DelegationService.run — external peers (CLEAN-95)', () => {
       'ext-secret-1',
       expect.anything(),
       120_000,
+      A2aDialects.V1,
     );
   });
 
@@ -594,6 +596,7 @@ describe('DelegationService.run — external peers (CLEAN-95)', () => {
       'ap_' + 'x'.repeat(43),
       expect.anything(),
       120_000,
+      A2aDialects.V1,
     );
   });
 });
@@ -821,10 +824,11 @@ describe('DelegationService.run — which interface gets called (CLEAN-97)', () 
       undefined,
       expect.anything(),
       120_000,
+      A2aDialects.V1,
     );
   });
 
-  it('refuses without sending when the card offers no JSON-RPC 1.0 interface', async () => {
+  it('speaks the old dialect to a JSON-RPC interface that is not 1.0', async () => {
     const { run, sendMessage } = makeHarness({
       connections: [
         withInterfaces([
@@ -836,6 +840,64 @@ describe('DelegationService.run — which interface gets called (CLEAN-97)', () 
           {
             url: 'https://other.example/old',
             protocolBinding: 'JSONRPC',
+            protocolVersion: '0.3',
+          },
+        ]),
+      ],
+    });
+
+    await run({ peer: 'Foreign Bot' });
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      'https://other.example/old',
+      undefined,
+      expect.anything(),
+      120_000,
+      A2aDialects.Legacy,
+    );
+  });
+
+  it('prefers 1.0 when the card offers both dialects', async () => {
+    const { run, sendMessage } = makeHarness({
+      connections: [
+        withInterfaces([
+          {
+            url: 'https://other.example/old',
+            protocolBinding: 'JSONRPC',
+            protocolVersion: '0.3',
+          },
+          {
+            url: 'https://other.example/jsonrpc',
+            protocolBinding: 'JSONRPC',
+            protocolVersion: '1.0',
+          },
+        ]),
+      ],
+    });
+
+    await run({ peer: 'Foreign Bot' });
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      'https://other.example/jsonrpc',
+      undefined,
+      expect.anything(),
+      120_000,
+      A2aDialects.V1,
+    );
+  });
+
+  it('refuses without sending when no interface speaks JSON-RPC at all', async () => {
+    const { run, sendMessage } = makeHarness({
+      connections: [
+        withInterfaces([
+          {
+            url: 'https://other.example/rest',
+            protocolBinding: 'HTTP+JSON',
+            protocolVersion: '1.0',
+          },
+          {
+            url: 'https://other.example/grpc',
+            protocolBinding: 'GRPC',
             protocolVersion: '0.3',
           },
         ]),

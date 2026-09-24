@@ -78,4 +78,17 @@ export class McpServerGateway extends IMcpServerGateway {
   async delete(id: string): Promise<void> {
     await this.prisma.mcpServer.delete({ where: { id } });
   }
+
+  async setOauthClientId(id: string, clientId: string): Promise<void> {
+    const current = await this.prisma.mcpServer.findUniqueOrThrow({
+      where: { id },
+      select: { updatedAt: true },
+    });
+    // `@updatedAt` only auto-bumps when the field is not written explicitly;
+    // writing the current value back keeps the drift check quiet.
+    await this.prisma.mcpServer.update({
+      where: { id },
+      data: { oauthClientId: clientId, updatedAt: current.updatedAt },
+    });
+  }
 }

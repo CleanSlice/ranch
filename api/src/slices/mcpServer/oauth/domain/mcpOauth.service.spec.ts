@@ -89,6 +89,7 @@ function harness() {
   const servers = {
     findById: jest.fn().mockResolvedValue(SERVER),
     update: jest.fn(),
+    setOauthClientId: jest.fn().mockResolvedValue(undefined),
   };
   const bridle = { notifyMcpConnected: jest.fn() };
   const agents = { findAll: jest.fn().mockResolvedValue([{ id: 'agent-1' }]) };
@@ -345,5 +346,31 @@ describe('McpOauthService — public API URL', () => {
       h.service.start({ serverId: 'srv-1', agentId: 'agent-1' }),
     ).rejects.toThrow(/api_public_url/);
     expect(h.client.register).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The first connect registers ranch as an OAuth client and remembers the id
+ * on the server row. Seen on ranch.cleanslice.org: doing that through the
+ * ordinary update bumped updatedAt, and the drift check then told every
+ * console the agent needed a restart it did not need (CLEAN-118).
+ */
+describe('McpOauthService — remembering the registered client id', () => {
+  it('stores the client id through the timestamp-preserving write, not update', async () => {
+    const h = harness();
+    h.servers.findById.mockResolvedValue({ ...SERVER, oauthClientId: null });
+
+    await h.service.start({ serverId: 'srv-1', agentId: 'agent-1' });
+
+    expect(h.client.register).toHaveBeenCalledTimes(1);
+    expect(h.servers.setOauthClientId).toHaveBeenCalledWith('srv-1', 'client-1');
+    expect(h.servers.update).not.toHaveBeenCalled();
+  });
+
+  it('does not register again once the id is known', async () => {
+    const h = harness();
+    await h.service.start({ serverId: 'srv-1', agentId: 'agent-1' });
+    expect(h.client.register).not.toHaveBeenCalled();
+    expect(h.servers.setOauthClientId).not.toHaveBeenCalled();
   });
 });

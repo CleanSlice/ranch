@@ -17,6 +17,8 @@ import type {
   IActiveTurn,
   IBridleSendOptions,
   BridleSendResult,
+  IBridleUserIdentity,
+  IBridleMcpConnectedEvent,
 } from '../domain/bridle.types';
 import { randomUUID } from 'crypto';
 
@@ -255,6 +257,7 @@ export class BridleGateway extends IBridleGateway {
     isAdmin: boolean,
     prompt?: string,
     capabilities?: string[],
+    user?: IBridleUserIdentity,
   ): void {
     const channel = this.channelFor(clientId, agentId);
     if (channel.idleTimer) {
@@ -269,6 +272,9 @@ export class BridleGateway extends IBridleGateway {
       isAdmin,
       ...(prompt ? { prompt } : {}),
       ...(capabilities && capabilities.length ? { capabilities } : {}),
+      // Per socket, not per conversation: two admins share `admin` but each
+      // sits on their own socket, so the identity follows the sender.
+      ...(user?.id ? { user } : {}),
     });
     this.logger.log(
       `Browser client registered: ${clientId} agentId=${agentId} socket=${socketId} admin=${isAdmin}${capabilities?.length ? ` caps=[${capabilities.join(',')}]` : ''} (sockets on this conversation: ${channel.sockets.size})`,
@@ -362,6 +368,7 @@ export class BridleGateway extends IBridleGateway {
       ...(client?.capabilities?.length
         ? { capabilities: client.capabilities }
         : {}),
+      ...(client?.user ? { user: client.user } : {}),
       // Metadata only: the runtime persists this array verbatim into its
       // session transcript. The url is this API's own route (useless to the
       // runtime) and readableByAgent is a UI concern — neither belongs in
@@ -475,7 +482,10 @@ export class BridleGateway extends IBridleGateway {
     this.logger.log(`Pushed debug_set=${enabled} to agent agentId=${agentId}`);
   }
 
-  notifyMcpConnected(agentId: string, serverName: string): void {
+  notifyMcpConnected(
+    agentId: string,
+    event: Omit<IBridleMcpConnectedEvent, 'type'>,
+  ): void {
     const agentSend = this.agents.get(agentId)?.send;
     if (!agentSend) {
       this.logger.debug(
@@ -483,9 +493,10 @@ export class BridleGateway extends IBridleGateway {
       );
       return;
     }
-    agentSend({ type: 'mcp_connected', server: serverName });
+    const payload: IBridleMcpConnectedEvent = { type: 'mcp_connected', ...event };
+    agentSend(payload);
     this.logger.log(
-      `Pushed mcp_connected server=${serverName} to agent agentId=${agentId}`,
+      `Pushed mcp_connected server=${event.server} subject=${event.subject} to agent agentId=${agentId}`,
     );
   }
 

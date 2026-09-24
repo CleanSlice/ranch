@@ -20,6 +20,7 @@ import {
   type BridlePart,
   type BridleSendAck,
   type ChatRequesterKinds,
+  type IBridleUserIdentity,
   buildParts,
   clientIdFromJwtPayload,
 } from '../domain';
@@ -159,6 +160,7 @@ export class BridleClientWsHandler
     // "was this a real login?" from the shape of the client id.
     let kind: ChatRequesterKinds = 'anonymous';
     let share: IShareSocketAuth | undefined;
+    let user: IBridleUserIdentity | undefined;
 
     if (auth.token) {
       // Authenticated path takes PRECEDENCE over the public/anon path: a
@@ -182,6 +184,12 @@ export class BridleClientWsHandler
         clientId = identity.clientId;
         email = payload?.email as string | undefined;
         kind = 'jwt';
+        // The person, apart from the channel: owners and admins share the
+        // `admin` conversation, but each keeps their own `sub` (CLEAN-80).
+        const sub = payload?.sub;
+        if (typeof sub === 'string' && sub) {
+          user = { id: sub, ...(email ? { email } : {}) };
+        }
       } else if (shareOffered) {
         // Unusable console token next to a share pair: the pair decides
         // below, exactly like the HTTP guard. Nothing to reject yet.
@@ -315,6 +323,7 @@ export class BridleClientWsHandler
       isAdmin,
       prompt,
       capabilities,
+      user,
     );
     // Tell the new client whether the agent runtime is currently online so the
     // chat header can render the right indicator color before any subsequent

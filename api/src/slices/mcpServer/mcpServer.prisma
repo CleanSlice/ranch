@@ -47,6 +47,11 @@ model McpOauthState {
   agentId      String
   // PKCE code_verifier; the callback sends it to the token endpoint.
   codeVerifier String
+  // Whose token the callback will store (CLEAN-80): a chat user's id, a
+  // share/anon client id, or null for an agent-wide connection.
+  subject      String?
+  // For "connected as …"; display only.
+  subjectEmail String?
   // Where to bounce the user's browser after a successful/failed exchange
   // (the agent chat, or a small "you can return to the chat" page).
   redirectBack String?

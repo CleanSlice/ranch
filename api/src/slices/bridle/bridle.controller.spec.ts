@@ -437,7 +437,9 @@ describe('BridleController — requester travels into attachment expansion', () 
       { text: 'hello', attachmentIds: ['a1'] } as never,
     );
 
-    expect(expandCalls).toEqual([{ clientId: 'user-1', kind: 'jwt' }]);
+    expect(expandCalls).toEqual([
+      { clientId: 'user-1', kind: 'jwt', user: { id: 'user-1' } },
+    ]);
   });
 
   it('refuses a signed token with no subject as TOKEN_INVALID, never as an empty id', async () => {

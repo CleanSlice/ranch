@@ -56,7 +56,12 @@ export class McpOauthController {
     @Param('serverId') serverId: string,
     @Body() dto: StartMcpOauthDto,
   ): Promise<StartMcpOauthResultDto> {
-    return this.service.start(serverId, dto.agentId);
+    return this.service.start({
+      serverId,
+      agentId: dto.agentId,
+      ...(dto.subject ? { subject: dto.subject } : {}),
+      ...(dto.email ? { email: dto.email } : {}),
+    });
   }
 
   @Get('callback')
@@ -124,7 +129,8 @@ export class McpOauthController {
   async status(
     @Param('serverId') serverId: string,
     @Query('agentId') agentId: string,
+    @Query('subject') subject?: string,
   ): Promise<McpOauthStatusDto> {
-    return this.service.status(serverId, agentId);
+    return this.service.status(serverId, agentId, subject || undefined);
   }
 }

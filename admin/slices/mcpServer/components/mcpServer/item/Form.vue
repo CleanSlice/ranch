@@ -49,7 +49,10 @@ function onSubmit() {
     url: form.url.trim(),
     transport: form.transport,
     authType: form.authType,
-    authValue: form.authType === 'none' ? null : (form.authValue.trim() || null),
+    authValue:
+      form.authType === 'none' || form.authType === 'oauth'
+        ? null
+        : (form.authValue.trim() || null),
     enabled: form.enabled,
   });
 }
@@ -141,18 +144,31 @@ function onSubmit() {
               <SelectItem value="none">None</SelectItem>
               <SelectItem value="bearer">Bearer token</SelectItem>
               <SelectItem value="header">Custom header</SelectItem>
+              <SelectItem value="oauth">OAuth (connect from the chat)</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        <div v-if="form.authType !== 'none'" class="grid gap-2">
+        <!-- OAuth stores no credential here: the person logs in at the
+             provider from a chat, and the token lands on the agent (CLEAN-75). -->
+        <p v-if="form.authType === 'oauth'" class="text-xs text-muted-foreground">
+          No credential to enter. Each agent connects through the chat: it offers a
+          <code>«name»__connect</code> tool that hands the person a login link, or an operator
+          runs <code>start_mcp_oauth</code> from the Rancher chat. The provider must publish
+          OAuth metadata at <code>/.well-known/oauth-authorization-server</code>.
+        </p>
+
+        <div v-if="form.authType !== 'none' && form.authType !== 'oauth'" class="grid gap-2">
           <Label for="mcp-authValue">
-            {{ form.authType === 'bearer' ? 'Token' : 'Header (JSON: { "X-Foo": "value" })' }}
+            {{ form.authType === 'bearer' ? 'Token' : 'Header (Header-Name: value)' }}
           </Label>
+          <!-- The colon form is what the runtime parses (mcp.gateway.ts
+               buildAuthHeaders) and what the API DTO documents; the JSON
+               spelling this label used to show was never read by the agent. -->
           <Input
             id="mcp-authValue"
             v-model="form.authValue"
-            :placeholder="form.authType === 'bearer' ? '${RANCH_API_TOKEN}  or  ghp_...' : '{ \&quot;X-Token\&quot;: \&quot;...\&quot; }'"
+            :placeholder="form.authType === 'bearer' ? '${RANCH_API_TOKEN}  or  ghp_...' : 'X-Token: ...'"
             type="password"
             autocomplete="off"
             :disabled="submitting || isBuiltIn"

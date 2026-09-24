@@ -160,7 +160,9 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
         'Ranch',
         redirectUri,
       );
-      await this.servers.update(serverId, { oauthClientId: clientId });
+      // Not `update`: that bumps updatedAt and the drift check then asks
+      // for a restart the pod does not need (CLEAN-118).
+      await this.servers.setOauthClientId(serverId, clientId);
       this.logger.log(`Registered OAuth client for server ${serverId}`);
     }
 

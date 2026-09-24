@@ -34,8 +34,10 @@ export class SyncConflictDto {
   @ApiProperty({
     type: [AtRiskFileDto],
     description:
-      'S3 files modified after the pod last pulled/pushed. A sync MAY ' +
-      'overwrite or delete them if the pod also changed them locally.',
+      'S3 files written from Ranch (console, tools, import) after the pod ' +
+      'last pulled/pushed. A sync MAY overwrite or delete them if the pod ' +
+      'also changed them locally. Objects the pod uploaded itself are ' +
+      'excluded (no Ranch origin tag).',
   })
   atRisk!: AtRiskFileDto[];
 

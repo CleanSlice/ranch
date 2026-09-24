@@ -62,7 +62,7 @@ Expected: file slice specs green (archive validation, plan classification, diff 
 3. Select everything → Delete → refused with the "would empty the workspace" acknowledgement.
 4. Open three files, edit one → dot on its tab; switch tabs → edit kept; close it → keep/discard prompt; reload page with a dirty draft → browser warns.
 5. **New file** `notes/todo.md` → appears in the tree, editable; `notes/todo.md` again → 409 "already exists"; `../x.md` → refused.
-6. Running agent with an older copy → header shows the "Agent copy is newer (HH:MM) — Sync now" pill instead of the banner.
+6. Running agent → header shows the neutral "Agent running since HH:MM — Sync now" pill instead of the banner (CLEAN-115: the pod pushes its own changes within ~30 s, so the pill no longer claims the pod holds newer files; Sync is the full-push safety net). After the agent made an LLM call, Sync must NOT open the "Overwrite newer files" dialog for `data/usage.json`; a file saved from the console while the agent runs still does.
 
 ## Done when
 

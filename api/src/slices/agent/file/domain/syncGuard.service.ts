@@ -22,6 +22,12 @@ export interface ISyncRiskAssessment {
  * "at risk" — a Sync could overwrite or delete them if the pod's local copy
  * also changed. The platform cannot see the pod's local state, so this is an
  * upper bound by design (false positives possible, false negatives not).
+ *
+ * CLEAN-115: the pod also has an fs.watch pusher that uploads its own
+ * changes as they happen (usage.json on every LLM call, memory, sessions).
+ * Those objects are newer than the baseline too, but they ARE the pod's copy
+ * and cannot be at risk. Ranch tags every write it makes; a newer object
+ * without the tag is a watcher upload and is dropped from the list.
  */
 @Injectable()
 export class SyncGuardService {
@@ -48,9 +54,15 @@ export class SyncGuardService {
     // behave exactly as before the guard existed.
     if (!baseline) return { baseline: null, atRisk: [] };
     const nodes = await this.files.list(agentId);
-    const atRisk = nodes.filter(
+    const newer = nodes.filter(
       (n) => n.updatedAt.getTime() > baseline.getTime(),
     );
+    // One HeadObject per newer file — usually a handful, never the whole
+    // workspace. Files at or below the baseline are not looked up.
+    const origins = await Promise.all(
+      newer.map((n) => this.files.wasWrittenByRanch(agentId, n.path)),
+    );
+    const atRisk = newer.filter((_, i) => origins[i]);
     return { baseline, atRisk };
   }
 }

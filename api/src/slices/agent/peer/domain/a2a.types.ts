@@ -325,6 +325,23 @@ export const A2A_JSONRPC_BINDING = 'JSONRPC';
  * address line all go through here, so what an operator approves is what
  * the delegation dials.
  */
+/**
+ * The least a document must have to be treated as a 1.0 card: a name, skills
+ * to advertise, and at least one way to be reached. Everything else a card
+ * carries is optional in practice, and refusing on it would refuse agents
+ * that work.
+ */
+export function isA2aCardShape(value: unknown): value is IA2aAgentCard {
+  if (!value || typeof value !== 'object') return false;
+  const card = value as Record<string, unknown>;
+  return (
+    typeof card.name === 'string' &&
+    Array.isArray(card.skills) &&
+    Array.isArray(card.supportedInterfaces) &&
+    card.supportedInterfaces.length > 0
+  );
+}
+
 export function selectJsonRpcInterface(
   card: Pick<IA2aAgentCard, 'supportedInterfaces'> | null | undefined,
 ): IA2aAgentInterface | null {

@@ -53,7 +53,9 @@ function makeController(options: { peers?: Partial<PeerService> } = {}) {
     ]),
     connect: jest.fn(async () => poisoned),
     connectByUrl: jest.fn(async () => ({ ...poisoned, origin: 'external' })),
+    connectByCard: jest.fn(async () => ({ ...poisoned, origin: 'external' })),
     previewByUrl: jest.fn(async () => ({ name: 'Foreign Bot', skills: [] })),
+    previewCard: jest.fn(async () => ({ name: 'Pasted Bot', skills: [] })),
     peersState: jest.fn(async () => ({ armed: false, servedAt: null })),
     refresh: jest.fn(async () => poisoned),
     remove: jest.fn(async () => undefined),
@@ -142,7 +144,7 @@ describe('PeerController — routes', () => {
     expect(JSON.stringify(imported)).not.toContain('ap_');
   });
 
-  it('refuses a body with both or neither of id and url, as PEER_BODY', async () => {
+  it('refuses a body with more or fewer than one of id, url and card, as PEER_BODY', async () => {
     const { controller, peers } = makeController();
 
     await expect(controller.connect('a', {})).rejects.toMatchObject({
@@ -154,8 +156,48 @@ describe('PeerController — routes', () => {
         url: 'https://other.example/a2a/agents/x',
       }),
     ).rejects.toMatchObject({ response: { code: 'PEER_BODY' } });
+    await expect(
+      controller.connect('a', {
+        url: 'https://other.example/a2a/agents/x',
+        card: '{"name":"x"}',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'PEER_BODY' } });
     expect(peers.connect).not.toHaveBeenCalled();
     expect(peers.connectByUrl).not.toHaveBeenCalled();
+    expect(peers.connectByCard).not.toHaveBeenCalled();
+  });
+
+  it('connects from a pasted card without going near the address paths (CLEAN-116)', async () => {
+    const { controller, peers } = makeController();
+
+    await controller.connect('a', {
+      card: '{"name":"Pasted Bot"}',
+      token: 'tk',
+    });
+
+    expect(peers.connectByCard).toHaveBeenCalledWith(
+      'a',
+      '{"name":"Pasted Bot"}',
+      'tk',
+    );
+    expect(peers.connectByUrl).not.toHaveBeenCalled();
+  });
+
+  it('previews a pasted card, and refuses a preview naming both ways in', async () => {
+    const { controller, peers } = makeController();
+
+    await controller.previewPeerUrl('a', { card: '{"name":"Pasted Bot"}' });
+    expect(peers.previewCard).toHaveBeenCalledWith(
+      'a',
+      '{"name":"Pasted Bot"}',
+    );
+
+    await expect(
+      controller.previewPeerUrl('a', {
+        url: 'https://other.example/a2a/agents/x',
+        card: '{"name":"x"}',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'PEER_BODY' } });
   });
 
   it('previews an external card without touching the connect paths', async () => {

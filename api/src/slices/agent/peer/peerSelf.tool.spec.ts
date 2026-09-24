@@ -80,6 +80,7 @@ interface Harness {
     candidates: jest.Mock;
     connect: jest.Mock;
     connectByUrl: jest.Mock;
+    connectByCard: jest.Mock;
     previewByUrl: jest.Mock;
     remove: jest.Mock;
   };
@@ -106,6 +107,7 @@ function harness(): Harness {
       }),
     ),
     connectByUrl: jest.fn().mockResolvedValue(view()),
+    connectByCard: jest.fn().mockResolvedValue(view()),
     previewByUrl: jest.fn().mockResolvedValue(card('Elderly Care Match')),
     remove: jest.fn().mockResolvedValue(undefined),
   };
@@ -378,5 +380,69 @@ describe('PeerSelfTool — refusals in its own vocabulary', () => {
     await expect(tool.listMyPeers({}, null, agentRequest())).rejects.toThrow(
       'database is down',
     );
+  });
+});
+
+describe('PeerSelfTool — connecting from a card it was handed (CLEAN-116)', () => {
+  const CARD = '{"name":"Elderly Care Match","skills":[]}';
+
+  it('passes the card text through under its own id', async () => {
+    const { tool, peers } = harness();
+
+    await tool.connectMyPeerFromCard(
+      { card: CARD, credential: 'secret' },
+      null,
+      agentRequest(),
+    );
+
+    expect(peers.connectByCard).toHaveBeenCalledWith(
+      'agent-me',
+      CARD,
+      'secret',
+    );
+  });
+
+  it('says where delegations will actually go, since nobody typed an address', async () => {
+    const { tool, peers } = harness();
+    peers.list.mockResolvedValue([view()]);
+
+    const text = textOf(
+      await tool.connectMyPeerFromCard({ card: CARD }, null, agentRequest()),
+    );
+
+    expect(text).toContain('«Elderly Care Match»');
+    expect(text).toContain(
+      'https://www.elderlycarematch.com/.well-known/agent-card.json',
+    );
+    expect(text).toContain('right now');
+  });
+
+  it('is refused like every other self-service tool when the Ranch says no', async () => {
+    const { tool, settings, peers } = harness();
+    settings.findByKey.mockResolvedValue({ value: false });
+
+    await expect(
+      tool.connectMyPeerFromCard({ card: CARD }, null, agentRequest()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(peers.connectByCard).not.toHaveBeenCalled();
+  });
+
+  it('hands back the reason a card was refused', async () => {
+    const { tool, peers } = harness();
+    peers.connectByCard.mockRejectedValue(
+      new BadRequestException({
+        code: PeerErrorCodes.Body,
+        message: 'This is not an agent card: it is empty.',
+      }),
+    );
+
+    const result = await tool.connectMyPeerFromCard(
+      { card: '   ' },
+      null,
+      agentRequest(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('not an agent card');
   });
 });

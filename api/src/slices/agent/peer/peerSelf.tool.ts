@@ -287,6 +287,55 @@ export class PeerSelfTool implements IConditionallyListedTool {
   }
 
   @Tool({
+    name: 'connect_my_peer_from_card',
+    topic: ToolTopics.Peers,
+    title: 'Connect from a card I was given',
+    template: 'Connect this agent from its card: «card»',
+    description:
+      'Take an agent as your colleague from its card itself, when the card ' +
+      'is not published at any address: someone pastes the JSON or YAML into ' +
+      'the chat, or attaches the file and you read it with query_attachment. ' +
+      'Pass the card text exactly as you got it. It is checked the same way ' +
+      'an address is, and the address INSIDE the card is what you will be ' +
+      'calling — a card pointing at localhost or a private network is ' +
+      'refused, and saying so is more use to the person than trying. ' +
+      'Picking a file from their own machine happens in the console; here it ' +
+      'has to arrive as text or as an attachment you can read.',
+    parameters: z.object({
+      card: z
+        .string()
+        .min(1)
+        .describe('The agent card, JSON or YAML, exactly as you received it'),
+      credential: z
+        .string()
+        .optional()
+        .describe(
+          'Bearer that agent requires, if the person supplied one. Stored ' +
+            'write-only and never read back.',
+        ),
+    }),
+  })
+  async connectMyPeerFromCard(
+    { card, credential }: { card: string; credential?: string },
+    _context: unknown,
+    httpRequest: Request,
+  ): Promise<ToolResult> {
+    const agentId = await this.requireSelf(httpRequest);
+    return withRefusalAdvice(async () => {
+      const hadPeers = (await this.peers.list(agentId)).length > 0;
+      const peer = await this.peers.connectByCard(agentId, card, credential);
+      this.logger.log(
+        `Agent connected a peer from a pasted card: agent=${agentId} url=${peer.cardUrl}`,
+      );
+      return ok(
+        `«${peer.peerName}» is now your colleague, from the card you were ` +
+          `given. Delegations go to ${peer.cardUrl}. ${advertises(peer)} ` +
+          `${usabilityLine(peer.peerName, hadPeers)}`,
+      );
+    }, SELF_HINTS);
+  }
+
+  @Tool({
     name: 'remove_my_peer',
     topic: ToolTopics.Peers,
     title: 'Remove one of my peers',

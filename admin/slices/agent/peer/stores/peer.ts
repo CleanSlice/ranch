@@ -151,6 +151,39 @@ export const usePeerStore = defineStore('peer', () => {
     return imported;
   }
 
+  /** The same import from a card in hand rather than an address (CLEAN-116).
+   *  Upserts the row exactly as the address path does: the peer is identified
+   *  by the address its card names, so pasting a card for an agent already
+   *  imported by URL replaces that row instead of adding a second. */
+  async function importByCard(
+    agentId: string,
+    card: string,
+    token?: string,
+  ): Promise<IAgentPeer> {
+    const imported = await getService().importByCard(agentId, card, token);
+    const current = peers(agentId);
+    const known = current.some((p) => p.id === imported.id);
+    peersByAgent.value = {
+      ...peersByAgent.value,
+      [agentId]: known
+        ? current.map((p) => (p.id === imported.id ? imported : p))
+        : [...current, imported],
+    };
+    useAgentStore().markPendingRestart(agentId);
+    void loadState(agentId);
+    return imported;
+  }
+
+  /** Read a pasted card, save nothing — the same review step as an address.
+   *  Named apart from `previewCard`, which reads a card off an agent of this
+   *  Ranch by id; this one is handed the document itself. */
+  function previewPastedCard(
+    agentId: string,
+    card: string,
+  ): Promise<IAgentCard | null> {
+    return getService().previewCard(agentId, card);
+  }
+
   async function refresh(agentId: string, peerId: string): Promise<void> {
     const updated = await getService().refresh(agentId, peerId);
     peersByAgent.value = {
@@ -226,8 +259,10 @@ export const usePeerStore = defineStore('peer', () => {
     loadState,
     previewCard,
     previewByUrl,
+    previewPastedCard,
     connect,
     importByUrl,
+    importByCard,
     refresh,
     remove,
     loadDelegations,

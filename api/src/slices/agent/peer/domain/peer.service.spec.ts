@@ -765,3 +765,171 @@ describe('PeerService — refreshing holds a card to the import bar (CLEAN-97)',
     });
   });
 });
+
+describe('PeerService — connecting from a card, not an address (CLEAN-116)', () => {
+  const cardText = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      name: 'Pasted Bot',
+      description: 'Answers care questions.',
+      version: '1.0.0',
+      supportedInterfaces: [
+        {
+          url: 'https://pasted.example/a2a',
+          protocolBinding: 'JSONRPC',
+          protocolVersion: '1.0',
+        },
+      ],
+      capabilities: {},
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      skills: [
+        { id: 's', name: 'Care search', description: 'Finds care', tags: [] },
+      ],
+      ...extra,
+    });
+
+  it('saves the peer and never fetches anything', async () => {
+    const { service, rows, fetchCard } = makeHarness();
+
+    const view = await service.connectByCard('a', cardText());
+
+    expect(view.peerName).toBe('Pasted Bot');
+    expect(fetchCard).not.toHaveBeenCalled();
+    expect(Object.keys(rows)).toHaveLength(1);
+  });
+
+  it('identifies it by the address the card names, so a later URL import lands on the same row', async () => {
+    const { service, rows } = makeHarness();
+
+    const view = await service.connectByCard('a', cardText());
+
+    expect(view.cardUrl).toBe(
+      'https://pasted.example/a2a/.well-known/agent-card.json',
+    );
+    expect(Object.values(rows)[0].cardUrl).toBe(view.cardUrl);
+  });
+
+  it('updates in place when the same card is given twice', async () => {
+    const { service, rows } = makeHarness();
+
+    await service.connectByCard('a', cardText());
+    await service.connectByCard('a', cardText({ description: 'Now better.' }));
+
+    expect(Object.keys(rows)).toHaveLength(1);
+    expect(Object.values(rows)[0].cardSnapshot.description).toBe('Now better.');
+  });
+
+  it('reads YAML, which is how cards arrive from a repository', async () => {
+    const { service } = makeHarness();
+    const yaml = [
+      'name: Yaml Bot',
+      'description: From a config file.',
+      'version: "1.0.0"',
+      'supportedInterfaces:',
+      '  - url: "https://yaml.example/a2a"',
+      '    protocolBinding: JSONRPC',
+      '    protocolVersion: "1.0"',
+      'skills:',
+      '  - id: s1',
+      '    name: Ask',
+      '    description: Answers',
+      '    tags: []',
+    ].join('\n');
+
+    await expect(service.connectByCard('a', yaml)).resolves.toMatchObject({
+      peerName: 'Yaml Bot',
+    });
+  });
+
+  it('digs the card out of a config file that nests it under `card:`', async () => {
+    const { service } = makeHarness();
+    const yaml = [
+      'card:',
+      '  name: Nested Bot',
+      '  description: The ALM shape.',
+      '  url: "https://nested.example/a2a"',
+      '  version: "1.0.0"',
+      '  skills:',
+      '    - id: s1',
+      '      name: Ask',
+      '      description: Answers',
+      '      tags: []',
+    ].join('\n');
+
+    await expect(service.connectByCard('a', yaml)).resolves.toMatchObject({
+      peerName: 'Nested Bot',
+    });
+  });
+
+  it('accepts a card on the old dialect', async () => {
+    const { service } = makeHarness();
+    const legacy = JSON.stringify({
+      protocolVersion: '0.3.0',
+      name: 'Legacy Pasted',
+      description: 'x',
+      url: 'https://legacy.example/a2a',
+      version: '1.0.0',
+      skills: [],
+    });
+
+    await expect(service.connectByCard('a', legacy)).resolves.toMatchObject({
+      peerName: 'Legacy Pasted',
+    });
+  });
+
+  it('refuses a card whose address is private — the upload does not make an agent reachable', async () => {
+    const { service, rows } = makeHarness();
+    const local = cardText({
+      supportedInterfaces: [
+        {
+          url: 'http://localhost:9999/',
+          protocolBinding: 'JSONRPC',
+          protocolVersion: '1.0',
+        },
+      ],
+    });
+
+    await expect(service.connectByCard('a', local)).rejects.toMatchObject({
+      response: { code: 'PEER_URL_INVALID' },
+    });
+    expect(Object.keys(rows)).toHaveLength(0);
+  });
+
+  it('refuses a card that points back at this installation', async () => {
+    const { service } = makeHarness();
+    const own = cardText({
+      supportedInterfaces: [
+        {
+          url: 'https://api.test/a2a/agents/b',
+          protocolBinding: 'JSONRPC',
+          protocolVersion: '1.0',
+        },
+      ],
+    });
+
+    await expect(service.connectByCard('a', own)).rejects.toMatchObject({
+      response: { code: 'PEER_SELF_URL' },
+    });
+  });
+
+  it.each([
+    ['empty text', '   '],
+    ['prose', 'here is the agent, please connect it'],
+    ['JSON that is not a card', '{"hello":"world"}'],
+  ])('says plainly that %s is not a card', async (_label, text) => {
+    const { service } = makeHarness();
+
+    await expect(service.connectByCard('a', text)).rejects.toMatchObject({
+      response: { code: 'PEER_BODY' },
+    });
+  });
+
+  it('previews without saving', async () => {
+    const { service, rows } = makeHarness();
+
+    const card = await service.previewCard('a', cardText());
+
+    expect(card.name).toBe('Pasted Bot');
+    expect(Object.keys(rows)).toHaveLength(0);
+  });
+});

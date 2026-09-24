@@ -107,6 +107,32 @@ export class PeerGateway extends BaseGateway {
 
   /** Read an external card without saving anything — the preview an
    *  operator reviews before Connect (CLEAN-95). */
+  /** A card the operator has in hand rather than published (CLEAN-116). */
+  importByCard(
+    agentId: string,
+    card: string,
+    token?: string,
+  ): Promise<IAgentPeer> {
+    return this.execute(async () => {
+      const res = await PeersService.connectAgentPeer({
+        path: { agentId },
+        body: { card, ...(token !== undefined ? { token } : {}) },
+      });
+      return unwrapOrThrow(res, 'Connecting the agent') as IAgentPeer;
+    });
+  }
+
+  previewCard(agentId: string, card: string): Promise<IAgentCard | null> {
+    return this.execute(async () => {
+      const res = await PeersService.previewAgentPeerUrl({
+        path: { agentId },
+        body: { card },
+      });
+      return ((unwrapOrThrow(res, 'Reading the card') as AgentCardDto) ??
+        null) as IAgentCard | null;
+    });
+  }
+
   previewByUrl(
     agentId: string,
     url: string,

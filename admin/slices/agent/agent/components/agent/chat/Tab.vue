@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useResizeObserver } from '@vueuse/core';
 import type { IAgentData } from '#agent/domain';
 import type { ChatOverlay } from '#agent/composables/useAgentLifecycle';
 import {
@@ -103,6 +104,9 @@ function measureOverlayBox() {
 }
 
 onMounted(measureOverlayBox);
+// The column's width changes with the rail, the window and the Settings
+// round trip; a box measured once at mount would drift.
+useResizeObserver(chatWrapRef, measureOverlayBox);
 watch(
   () => props.overlay,
   async (o) => {
@@ -119,7 +123,7 @@ watch(
        workspace canvas gives it, frameless, with the pod logs as a bar under
        the composer. The bar is `v-if="active"` so its poller stops the moment
        another tab covers the chat — the chat itself stays mounted behind it. -->
-  <div class="flex h-full min-h-0 min-w-0 flex-col gap-2">
+  <div class="flex h-full min-h-0 min-w-0 flex-col gap-2.5">
     <div
       v-if="authStore.isAuthenticated"
       ref="chatWrapRef"
@@ -195,7 +199,7 @@ watch(
       :agent-id="agent.id"
       :restarting="restartUnderway"
       :first-start="agent.launchContext === 'initial'"
-      class="mx-auto w-full max-w-4xl shrink-0"
+      class="mx-auto w-full max-w-5xl shrink-0"
     />
   </div>
 </template>

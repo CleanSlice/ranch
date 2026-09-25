@@ -6,6 +6,7 @@ import { buildChatFlow, type IChatFlowDayItem } from '../../utils/chatFlow'
 import Message from './Message.vue'
 import Input from './Input.vue'
 import DropZone from './DropZone.vue'
+import Toggles from './Toggles.vue'
 import ToolCatalogButton from '#toolCatalog/components/toolCatalog/Button.vue'
 import DebugPanel from './DebugPanel.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
@@ -525,7 +526,7 @@ async function onConfirmReset() {
   <Card
     :class="cn(
       'flex flex-col gap-0 h-[600px] w-full max-w-2xl',
-      frameless && 'max-w-none border-0 bg-transparent shadow-none',
+      frameless && 'max-w-none border-0 bg-transparent py-0 shadow-none',
       props.class,
     )"
     @dragenter="onDragEnter"
@@ -592,7 +593,7 @@ async function onConfirmReset() {
       <ScrollArea ref="scrollRef" class="h-full">
         <div
           class="flex flex-col gap-4 p-4"
-          :class="frameless && 'mx-auto w-full max-w-4xl'"
+          :class="frameless && 'mx-auto w-full max-w-5xl px-0'"
         >
           <div
             v-if="loadingOlder"
@@ -728,7 +729,7 @@ async function onConfirmReset() {
 
     <CardFooter
       class="flex shrink-0 flex-col items-stretch gap-2 border-t pt-4"
-      :class="frameless && 'mx-auto w-full max-w-4xl border-t-0 pt-2'"
+      :class="frameless && 'mx-auto w-full max-w-5xl border-t-0 px-0 pt-3 pb-0'"
     >
       <div
         v-if="showOfflineHint"
@@ -762,41 +763,27 @@ async function onConfirmReset() {
         :channel="channel"
         :placeholder="placeholder"
         :disabled="inputDisabled"
+        :boxed="frameless"
         @send="handleSend"
-      />
-      <div class="flex items-center justify-end gap-2">
-        <button
-          type="button"
-          :disabled="togglingDebug"
-          :title="debugEnabled
-            ? 'Prompt debug: ON — runtime is emitting debug snapshots. Click to disable.'
-            : 'Prompt debug: OFF — click to enable. Pushed live to the agent without restart.'"
-          class="cursor-pointer rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/70 disabled:cursor-wait disabled:opacity-50"
-          :class="debugEnabled
-            ? 'border border-foreground/30 text-foreground'
-            : 'border border-transparent'"
-          @click="onToggleDebug"
-        >
-          Debug
-        </button>
-        <button
-          type="button"
-          class="cursor-pointer rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/70"
-          :class="markdownEnabled
-            ? 'border border-foreground/30 text-foreground'
-            : 'border border-transparent'"
-          @click="onMarkdownChange(!markdownEnabled)"
-        >
-          Markdown
-        </button>
-        <!-- Frameless hosts have no header, so the two things it carried
-             that still matter sit here, after the toggles. -->
-        <template v-if="frameless">
+      >
+        <!-- Frameless: the toggles sit inside the composer box, and the two
+             things the header carried that still matter — New chat and the
+             connection status — sit at its right end. -->
+        <template v-if="frameless" #tools>
+          <Toggles
+            :debug-enabled="debugEnabled"
+            :markdown-enabled="markdownEnabled"
+            :toggling-debug="togglingDebug"
+            @toggle-debug="onToggleDebug"
+            @toggle-markdown="onMarkdownChange(!markdownEnabled)"
+          />
+        </template>
+        <template v-if="frameless" #status>
           <Button
             v-if="isConnected && isAgentConnected && !agentState"
             variant="ghost"
             size="sm"
-            class="h-6 px-2 text-[11px]"
+            class="h-7 px-2 text-xs"
             :disabled="resetting || messages.length === 0"
             :title="messages.length === 0 ? 'Already empty' : 'Start a new chat'"
             @click="confirmResetOpen = true"
@@ -812,6 +799,15 @@ async function onConfirmReset() {
             {{ connectionStatus.label }}
           </div>
         </template>
+      </Input>
+      <div v-if="!frameless" class="flex items-center justify-end gap-2">
+        <Toggles
+          :debug-enabled="debugEnabled"
+          :markdown-enabled="markdownEnabled"
+          :toggling-debug="togglingDebug"
+          @toggle-debug="onToggleDebug"
+          @toggle-markdown="onMarkdownChange(!markdownEnabled)"
+        />
       </div>
     </CardFooter>
 

@@ -22,6 +22,10 @@ const props = defineProps<{
   channel?: string
   placeholder?: string
   disabled?: boolean
+  // One bordered box (specs/017): the textarea on top, a toolbar row under
+  // it with attach + the host's `tools` slot on the left and send on the
+  // right. The card layout keeps the flat attach / field / send row.
+  boxed?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -142,7 +146,10 @@ const onPaste = (event: ClipboardEvent) => {
 </script>
 
 <template>
-  <div class="flex w-full flex-col gap-1.5">
+  <div
+    class="flex w-full flex-col gap-1.5"
+    :class="boxed && 'rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm focus-within:border-ring/60'"
+  >
     <!-- Staged files above the composer so it still reads as one block -->
     <div v-if="staged.length" class="flex flex-wrap gap-1.5">
       <AttachmentChip
@@ -154,7 +161,62 @@ const onPaste = (event: ClipboardEvent) => {
       />
     </div>
 
-    <div class="flex w-full items-end gap-2">
+    <input
+      ref="fileInputRef"
+      type="file"
+      multiple
+      class="hidden"
+      :accept="FILE_PICKER_ACCEPT"
+      @change="onFilesPicked"
+    >
+
+    <ToolCatalogSheet
+      v-model:open="toolsOpen"
+      :agent-id="agentId"
+      @pick="onPickTemplate"
+    />
+
+    <!-- Boxed: field on top, toolbar under it, all inside one border. -->
+    <template v-if="boxed">
+      <Textarea
+        ref="textareaRef"
+        v-model="input"
+        :placeholder="placeholder"
+        :disabled="disabled"
+        class="min-h-10 max-h-40 resize-none border-0 bg-transparent px-1 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
+        :class="draftHasPlaceholder ? 'ring-1 ring-amber-500/50' : ''"
+        :title="draftHasPlaceholder ? 'Fill in the «…» placeholders, or send as is and the agent will ask.' : undefined"
+        :rows="1"
+        @keydown="handleKeydown"
+        @paste="onPaste"
+      />
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          :disabled="!canAttach"
+          :aria-label="attachTitle"
+          :title="attachTitle"
+          class="flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          @click="openPicker"
+        >
+          <Paperclip class="h-4 w-4" />
+          <span v-if="staged.length" class="tabular-nums">{{ staged.length }}</span>
+        </button>
+        <slot name="tools" />
+        <div class="flex-1" />
+        <slot name="status" />
+        <Button
+          size="icon"
+          :disabled="!canSend"
+          class="size-8 shrink-0 rounded-full"
+          @click="handleSend"
+        >
+          <Send class="h-4 w-4" />
+        </Button>
+      </div>
+    </template>
+
+    <div v-else class="flex w-full items-end gap-2">
       <button
         type="button"
         :disabled="!canAttach"
@@ -165,21 +227,6 @@ const onPaste = (event: ClipboardEvent) => {
       >
         <Paperclip class="h-4 w-4" />
       </button>
-
-      <input
-        ref="fileInputRef"
-        type="file"
-        multiple
-        class="hidden"
-        :accept="FILE_PICKER_ACCEPT"
-        @change="onFilesPicked"
-      >
-
-      <ToolCatalogSheet
-        v-model:open="toolsOpen"
-        :agent-id="agentId"
-        @pick="onPickTemplate"
-      />
 
       <Textarea
         ref="textareaRef"

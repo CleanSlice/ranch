@@ -193,7 +193,9 @@ async function onRemove() {
            dot on the avatar, the two workspace tabs, then the lifecycle on the
            right. The status word, its reason and "restarted 2m ago" live in
            the dot's tooltip; only warnings stay as visible text. -->
-      <div class="flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
+      <div
+        class="flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-border/70 pb-3"
+      >
         <span class="relative shrink-0">
           <span
             class="flex size-8 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"

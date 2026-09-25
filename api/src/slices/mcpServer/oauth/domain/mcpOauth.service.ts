@@ -177,7 +177,7 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('MCP server is not OAuth-based');
     }
 
-    const meta = await this.client.discover(server.url);
+    const { metadata: meta, resource } = await this.client.discover(server.url);
     const redirectUri = await this.callbackUri(serverId);
 
     let clientId = server.oauthClientId;
@@ -223,8 +223,9 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
     url.searchParams.set('code_challenge', codeChallenge);
     url.searchParams.set('code_challenge_method', 'S256');
     url.searchParams.set('state', state);
-    // RFC 8707 — bind the token to this MCP resource.
-    url.searchParams.set('resource', server.url);
+    // RFC 8707 — bind the token to this MCP resource (the one its metadata
+    // names, else the URL itself).
+    url.searchParams.set('resource', resource);
     if (meta.scopes_supported?.length) {
       url.searchParams.set('scope', meta.scopes_supported.join(' '));
     }
@@ -266,13 +267,14 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('MCP server is not registered for OAuth');
     }
 
-    const meta = await this.client.discover(server.url);
+    const { metadata: meta, resource } = await this.client.discover(server.url);
     const tokens = await this.client.exchangeCode({
       tokenEndpoint: meta.token_endpoint,
       code,
       codeVerifier: st.codeVerifier,
       clientId: server.oauthClientId,
       redirectUri: await this.callbackUri(serverId),
+      resource,
     });
 
     const subject = st.subject ?? undefined;

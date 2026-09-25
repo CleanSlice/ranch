@@ -79,7 +79,9 @@ function harness() {
     }),
   };
   const client = {
-    discover: jest.fn().mockResolvedValue(META),
+    discover: jest
+      .fn()
+      .mockResolvedValue({ metadata: META, resource: SERVER.url, via: 'origin' }),
     register: jest.fn().mockResolvedValue('client-1'),
     exchangeCode: jest
       .fn()

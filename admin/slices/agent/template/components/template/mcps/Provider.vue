@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { IconShield } from '@tabler/icons-vue';
+import { ALWAYS_ON_MCP_IDS, KNOWLEDGE_MCP_ID } from '#mcpServer/domain';
+import type { IMcpServerData } from '#mcpServer/stores/mcpServer';
 
 const props = defineProps<{
   templateId: string;
@@ -18,6 +20,27 @@ const { pending: mcpsPending } = useAsyncData(
 );
 
 const selected = ref<Set<string>>(new Set(props.initialMcpServerIds));
+
+// The API's resolver hands CleanSlice and Documents to every agent and
+// Knowledge to any agent with knowledge bases, whatever the template says
+// (CLEAN-119). Drawing them as choices here made the console say "3
+// selected" while the pod booted with 5. They are shown locked, in the
+// state the resolver gives them, and never enter the saved set.
+function isAlwaysOn(m: IMcpServerData): boolean {
+  return ALWAYS_ON_MCP_IDS.includes(m.id);
+}
+function isKnowledgeBuiltIn(m: IMcpServerData): boolean {
+  return m.id === KNOWLEDGE_MCP_ID;
+}
+function isLocked(m: IMcpServerData): boolean {
+  return isAlwaysOn(m) || isKnowledgeBuiltIn(m);
+}
+/** What the checkbox shows: the resolver's verdict for locked rows, the choice otherwise. */
+function isChecked(m: IMcpServerData): boolean {
+  if (isAlwaysOn(m)) return m.enabled;
+  if (isKnowledgeBuiltIn(m)) return false;
+  return selected.value.has(m.id);
+}
 watch(
   () => props.initialMcpServerIds,
   (ids) => (selected.value = new Set(ids)),
@@ -83,19 +106,29 @@ function onReset() {
       >
         <Checkbox
           :id="`mcp-${m.id}`"
-          :model-value="selected.has(m.id)"
-          :disabled="!m.enabled"
+          :model-value="isChecked(m)"
+          :disabled="!m.enabled || isLocked(m)"
           class="mt-0.5"
           @update:model-value="(v: boolean | 'indeterminate') => toggle(m.id, v === true)"
         />
-        <label :for="`mcp-${m.id}`" class="flex-1 cursor-pointer">
+        <label :for="`mcp-${m.id}`" class="flex-1" :class="isLocked(m) ? 'cursor-default' : 'cursor-pointer'">
           <div class="flex items-center gap-2 text-sm font-medium">
             {{ m.name }}
             <Badge v-if="m.builtIn" variant="secondary" class="gap-1 text-xs">
               <IconShield class="size-3" /> Built-in
             </Badge>
+            <Badge v-if="isAlwaysOn(m) && m.enabled" variant="outline" class="text-xs">Always on</Badge>
+            <Badge v-else-if="isKnowledgeBuiltIn(m)" variant="outline" class="text-xs">With knowledge bases</Badge>
             <Badge v-if="!m.enabled" variant="outline" class="text-xs">Disabled</Badge>
           </div>
+          <!-- Not a choice: say where the switch actually is. -->
+          <p v-if="isAlwaysOn(m)" class="mt-0.5 text-xs text-muted-foreground">
+            Every agent gets this server whatever the template says. Turn it off for the whole Ranch on the
+            <NuxtLink :to="`/mcps/${m.id}`" class="underline">MCP servers</NuxtLink> page.
+          </p>
+          <p v-else-if="isKnowledgeBuiltIn(m)" class="mt-0.5 text-xs text-muted-foreground">
+            Attached automatically to agents that have a knowledge base; nothing to pick here.
+          </p>
           <p
             v-if="m.description"
             class="mt-0.5 text-xs text-muted-foreground"

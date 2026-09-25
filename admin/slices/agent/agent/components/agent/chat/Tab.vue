@@ -3,7 +3,6 @@ import type { IAgentData } from '#agent/domain';
 import type { ChatOverlay } from '#agent/composables/useAgentLifecycle';
 import {
   IconAlertTriangle,
-  IconFileText,
   IconLoader2,
   IconPlayerPlay,
   IconPlayerStop,
@@ -18,8 +17,9 @@ const props = withDefaults(
     restarting: boolean;
     toggling: boolean;
     /** False while another tab is on screen. The chat itself stays mounted
-     *  (v-show) so its socket and transcript survive, but the side logs must
-     *  not keep polling behind a full-width Logs tab showing the same thing. */
+     *  (v-show) so its socket and transcript survive, but the logs bar must
+     *  not keep polling behind Settings or behind the full-width Logs
+     *  section showing the same thing. */
     active?: boolean;
   }>(),
   { active: true },
@@ -28,11 +28,6 @@ const props = withDefaults(
 const emit = defineEmits<{ restart: []; toggleRunning: [] }>();
 
 const authStore = useAuthStore();
-
-// Side column next to the chat: logs fill the full height (usage lives in
-// the page-level header strip). The logs panel is only mounted while open,
-// so its 5s polling stops the moment it's collapsed.
-const showSideLogs = ref(true);
 
 // One "restart is underway" signal for every surface (bridle header status,
 // disabled input, logs overlay) — covers both an explicit Restart click and
@@ -86,10 +81,10 @@ const offlineHint = computed(() =>
 );
 
 // The failure overlay blurs only the MESSAGE AREA (the card-content box).
-// Header (title, status, Logs toggle), footer (input, disabled by bridle
-// while the agent is down) and the card border all stay visible — the user
-// keeps the frame and the controls, only the transcript is dimmed. The box is
-// measured from the DOM because header/footer heights are content-driven.
+// Footer (input, disabled by bridle while the agent is down) and the logs bar
+// stay visible — the user keeps the frame and the controls, only the
+// transcript is dimmed. The box is measured from the DOM because the footer
+// height is content-driven.
 const chatWrapRef = ref<HTMLElement | null>(null);
 const overlayBox = ref({ top: 0, right: 0, bottom: 0, left: 0 });
 
@@ -120,24 +115,15 @@ watch(
 </script>
 
 <template>
-  <!-- Height comes from the workspace canvas (h-full) rather than a viewport
-       calc — the chrome above this now varies, and a magic number that has to
-       be re-tuned every time a header or a padding moves is a bug waiting to
-       happen.
-
-       Widths: `max-w-200` and the even 50/50 split are unchanged, so on a wide
-       screen this pair looks exactly as it always did. What changed is the
-       floor. `min-w-100` on both halves meant a hard 812px minimum, and the
-       workspace's agent rail can take the container below that — at which
-       point the row simply overflowed and `overflow-x-clip` ate the chat's
-       right border. The floor is now gated on there being room for it; below
-       that both halves shrink, the logs can be collapsed with their own
-       button, and the Logs tab gives them the full width when needed. -->
-  <div class="flex h-full min-h-0 min-w-0 items-stretch justify-center gap-3">
+  <!-- One column (specs/017): the conversation takes the whole width the
+       workspace canvas gives it, frameless, with the pod logs as a bar under
+       the composer. The bar is `v-if="active"` so its poller stops the moment
+       another tab covers the chat — the chat itself stays mounted behind it. -->
+  <div class="flex h-full min-h-0 min-w-0 flex-col gap-2">
     <div
       v-if="authStore.isAuthenticated"
       ref="chatWrapRef"
-      class="relative h-full min-h-0 w-full min-w-0 max-w-200 basis-1/2 min-[1400px]:min-w-100"
+      class="relative min-h-0 w-full min-w-0 flex-1"
     >
       <BridleProvider
         :api-url="apiUrl"
@@ -145,6 +131,7 @@ watch(
         :title="`Chat with ${agent.name}`"
         :restart-prompt="false"
         :tools-button="false"
+        frameless
         :agent-state="bridleAgentState"
         :offline-hint="offlineHint"
         :initial-debug-enabled="agent.debugEnabled"
@@ -202,30 +189,13 @@ watch(
         </div>
       </Transition>
     </div>
-    <div
-      class="flex h-full min-h-0 w-full min-w-0 max-w-200 basis-1/2 flex-col gap-1"
-    >
-      <div v-if="showSideLogs && props.active" class="min-h-0 flex-1 overflow-hidden">
-        <AgentLogsPanel
-          :agent-id="agent.id"
-          closable
-          :restarting="restartUnderway"
-          :first-start="agent.launchContext === 'initial'"
-          class="h-full min-w-0"
-          @close="showSideLogs = false"
-        />
-      </div>
-      <Button
-        v-else
-        variant="outline"
-        size="sm"
-        class="self-start"
-        title="Show pod logs"
-        @click="showSideLogs = true"
-      >
-        <IconFileText class="size-4" />
-        Logs
-      </Button>
-    </div>
+
+    <AgentLogsBar
+      v-if="active"
+      :agent-id="agent.id"
+      :restarting="restartUnderway"
+      :first-start="agent.launchContext === 'initial'"
+      class="mx-auto w-full max-w-4xl shrink-0"
+    />
   </div>
 </template>

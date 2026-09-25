@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import type { IAgentData } from '#agent/domain';
 import type { ChatOverlay } from '#agent/composables/useAgentLifecycle';
-import type { AgentTab } from './sections';
+import {
+  SECTIONS,
+  sectionOf,
+  type AgentTab,
+  type SectionCounts,
+} from './sections';
 
 const props = defineProps<{
   agent: IAgentData;
   apiUrl: string;
   tab: AgentTab;
+  counts: SectionCounts;
   overlay: ChatOverlay;
   restarting: boolean;
   toggling: boolean;
@@ -15,13 +21,19 @@ const props = defineProps<{
 const emit = defineEmits<{
   restart: [];
   toggleRunning: [];
+  setTab: [tab: AgentTab];
   'agent-updated': [IAgentData];
 }>();
 
 const chatActive = computed(() => props.tab === 'chat');
 
+// The section a `?tab=` value opens, or null for the chat and for the hub
+// (specs/017, R2). Sections render exactly as they did under the old tab bar,
+// only now under a "← Settings" row.
+const section = computed(() => sectionOf(props.tab));
+
 // One "restart is underway" signal for the full-width logs view, matching what
-// the chat tab derives for its own side panel.
+// the chat tab derives for its own logs bar.
 const restartUnderway = computed(
   () => props.restarting || props.overlay?.kind === 'starting',
 );
@@ -34,8 +46,8 @@ const restartUnderway = computed(
          coming back from another tab would cost a reconnect and a refetch.
          Hidden, the conversation keeps living behind whatever is open.
 
-         `:active` lets the chat skip mounting its own side logs while it is
-         hidden — otherwise the Logs tab would have two log panels polling at
+         `:active` lets the chat skip mounting its logs bar while it is
+         hidden — otherwise the Logs section would have two log pollers at
          once, one of them invisible. -->
     <div v-show="chatActive" class="min-h-0 flex-1">
       <AgentChatTab
@@ -50,10 +62,24 @@ const restartUnderway = computed(
       />
     </div>
 
-    <!-- Everything else mounts fresh and unmounts when left — the
-         remount-on-activate refetch behaviour these components had as
-         `TabsContent`, preserved. -->
-    <div v-if="!chatActive" class="min-h-0 flex-1 overflow-y-auto">
+    <!-- The Settings hub: every section as a card. -->
+    <div v-if="tab === 'settings'" class="min-h-0 flex-1 overflow-y-auto">
+      <AgentWorkspaceSettingsHub
+        :sections="SECTIONS"
+        :counts="counts"
+        @open="(v) => emit('setTab', v)"
+      />
+    </div>
+
+    <!-- One section, full width. Everything here mounts fresh and unmounts
+         when left — the remount-on-activate refetch behaviour these
+         components had as `TabsContent`, preserved. -->
+    <AgentWorkspaceSectionFrame
+      v-else-if="section"
+      :section="section"
+      class="min-h-0 flex-1"
+      @back="emit('setTab', 'settings')"
+    >
       <AgentOverviewTab
         v-if="tab === 'overview'"
         :agent="agent"
@@ -115,6 +141,6 @@ const restartUnderway = computed(
       <ChatListProvider v-else-if="tab === 'chats'" :agent-id="agent.id" />
 
       <AgentPaddockTab v-else-if="tab === 'paddock'" :agent-id="agent.id" />
-    </div>
+    </AgentWorkspaceSectionFrame>
   </div>
 </template>

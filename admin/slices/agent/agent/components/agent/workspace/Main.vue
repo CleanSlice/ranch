@@ -4,10 +4,12 @@ import {
   IconAlertTriangle,
   IconDotsVertical,
   IconLoader2,
+  IconPencil,
   IconPlayerPlay,
   IconPlayerStop,
   IconRefresh,
   IconShield,
+  IconTool,
   IconTrash,
   IconX,
 } from '@tabler/icons-vue';
@@ -15,11 +17,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '#theme/components/ui/dropdown-menu';
+import { useToolCatalogStore } from '#toolCatalog/stores/toolCatalog';
 import { agentInitials } from '#agent/composables/useAgentRailEntries';
 import { useAgentSectionCounts } from '#agent/composables/useAgentSectionCounts';
 import { useAgentTab } from '#agent/composables/useAgentTab';
+import { workspaceTabOf } from './sections';
 
 const props = defineProps<{ id: string }>();
 
@@ -63,8 +68,8 @@ const {
 
 const { tab, setTab } = useAgentTab();
 
-// The tab bar shows counts before you click, so unlike the old settings panel
-// there is nothing to gate them behind — they are on screen from first paint.
+// The Settings hub's cards show counts before you click, so there is nothing
+// to gate them behind — they are fetched from first paint.
 const { counts } = useAgentSectionCounts(props.id, agent);
 
 // The status badge renders from the DB row (not the SSE pod stream). Re-fetch
@@ -92,8 +97,8 @@ const runtimeOffline = computed(
 
 const lifecycleError = computed(() => restartError.value || toggleError.value);
 
-// "restarted 2m ago" (CLEAN-59): the badge alone can't tell the operator a
-// restart actually happened — launchContext is historical ("why the LAST
+// "restarted 2m ago" (CLEAN-59), now in the status dot's tooltip (specs/017):
+// the colour alone can't tell the operator a restart actually happened — launchContext is historical ("why the LAST
 // deploy ran", stays 'restart' forever after the first restart) and the
 // deploying phase lasts seconds, so a snapshot look always lands on
 // status=running. The moment of the last deploy is the missing piece.
@@ -125,9 +130,13 @@ const deployHintTitle = computed(() => {
   return parts.join(' · ');
 });
 
-// Delete lives in the overflow menu rather than beside Edit: it is the one
-// action in this row you cannot undo, and it should not sit one mis-click
-// away from the one you reach for most.
+// Tools opens the catalogue sheet, which the chat composer mounts — and the
+// chat stays mounted behind Settings, so this works from any tab.
+const toolCatalogStore = useToolCatalogStore();
+
+// Delete sits last in the menu, behind a separator: it is the one action
+// there you cannot undo, and it should not sit one mis-click away from the
+// ones you reach for most.
 const confirmRemoveOpen = ref(false);
 const removing = ref(false);
 const removeError = ref<string | null>(null);
@@ -180,26 +189,32 @@ async function onRemove() {
     </div>
 
     <template v-else-if="agent">
-      <!-- Identity on the left, the agent's lifecycle on the right. -->
-      <div class="flex shrink-0 items-center gap-2.5">
-        <span
-          class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"
-        >
-          {{ initials }}
+      <!-- One header row (specs/017): identity with its status folded into a
+           dot on the avatar, the two workspace tabs, then the lifecycle on the
+           right. The status word, its reason and "restarted 2m ago" live in
+           the dot's tooltip; only warnings stay as visible text. -->
+      <div class="flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
+        <span class="relative shrink-0">
+          <span
+            class="flex size-8 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"
+          >
+            {{ initials }}
+          </span>
+          <AgentStatusDot
+            class="absolute -bottom-0.5 -right-0.5"
+            :status="displayStatus"
+            :status-reason="statusReason"
+            :deploy-verb="lastDeployStartedAt ? deployVerb : null"
+            :deploy-ago="lastDeployStartedAt ? deployAgo : null"
+            :deploy-hint-title="deployHintTitle"
+          />
         </span>
-        <h1 class="truncate text-base font-semibold">{{ agent.name }}</h1>
+        <h1 class="min-w-0 truncate text-base font-semibold">{{ agent.name }}</h1>
         <IconShield
           v-if="agent.isAdmin"
           class="size-4 shrink-0 text-primary"
           title="This agent has the ranch_* admin tools and a service token"
         />
-        <Badge
-          :variant="AGENT_STATUS_VARIANT[displayStatus]"
-          class="shrink-0 capitalize"
-          :title="statusReason ?? undefined"
-        >
-          {{ displayStatus }}
-        </Badge>
         <span
           v-if="runtimeOffline"
           class="shrink-0 text-xs text-orange-600 dark:text-orange-400"
@@ -207,21 +222,23 @@ async function onRemove() {
         >
           runtime offline
         </span>
-        <span
-          v-if="lastDeployStartedAt"
-          class="shrink-0 text-xs text-muted-foreground"
-          :title="deployHintTitle"
-        >
-          {{ deployVerb }}
-          <!-- Keyed by the label so every relative-time tick ("just now" →
-               "1 minute ago") re-enters with a tiny slide — enough for
-               peripheral vision to register the timer is alive. -->
-          <Transition name="time-tick" mode="out-in">
-            <span :key="deployAgo" class="inline-block">{{ deployAgo }}</span>
-          </Transition>
-        </span>
+
+        <AgentWorkspaceTabs
+          class="ml-2"
+          :active="workspaceTabOf(tab)"
+          @select="setTab"
+        />
 
         <div class="flex-1" />
+
+        <!-- One line of usage; the figures open on click (specs/017, R3).
+             Below ~900px it wraps under the tabs (`order-last basis-full`)
+             so Stop and the menu never leave the row. -->
+        <UsageLine
+          :agent-id="agent.id"
+          class="order-last basis-full md:order-none md:basis-auto md:max-w-72"
+          @details="setTab('overview')"
+        />
 
         <div class="flex shrink-0 items-center gap-2">
           <Button
@@ -248,29 +265,42 @@ async function onRemove() {
                   : 'Start'
             }}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            :disabled="isRestarting || toggling"
-            @click="restart"
-          >
-            <IconLoader2 v-if="isRestarting" class="size-4 animate-spin" />
-            <IconRefresh v-else class="size-4" />
-            {{ isRestarting ? 'Restarting…' : 'Restart' }}
-          </Button>
-          <ToolCatalogButton :agent-id="agent.id" />
-          <SharePanelProvider :agent-id="agent.id" />
-          <Button variant="outline" size="sm" as-child>
-            <NuxtLink :to="`/agents/${agent.id}/edit`">Edit</NuxtLink>
-          </Button>
+          <!-- Everything but Stop/Start lives in the menu (specs/017, R6):
+               Restart, Tools, Edit, Share as a submenu of rows, and Delete
+               last, separated — the one action here you cannot undo. -->
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
-              <Button variant="ghost" size="sm" class="size-8 p-0">
+              <Button variant="outline" size="sm" class="size-8 p-0">
                 <span class="sr-only">More agent actions</span>
                 <IconDotsVertical class="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" class="min-w-44">
+              <DropdownMenuItem
+                class="cursor-pointer"
+                :disabled="isRestarting || toggling"
+                @select="restart"
+              >
+                <IconLoader2 v-if="isRestarting" class="size-4 animate-spin" />
+                <IconRefresh v-else class="size-4" />
+                {{ isRestarting ? 'Restarting…' : 'Restart' }}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                class="cursor-pointer"
+                title="What this agent can do — click a tool to drop a starter prompt into the chat"
+                @select="toolCatalogStore.openSheet(agent.id)"
+              >
+                <IconTool class="size-4" />
+                Tools
+              </DropdownMenuItem>
+              <DropdownMenuItem as-child class="cursor-pointer">
+                <NuxtLink :to="`/agents/${agent.id}/edit`">
+                  <IconPencil class="size-4" />
+                  Edit
+                </NuxtLink>
+              </DropdownMenuItem>
+              <ShareMenuSub :agent-id="agent.id" />
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 class="cursor-pointer text-destructive focus:text-destructive"
                 :disabled="removing"
@@ -291,28 +321,18 @@ async function onRemove() {
         {{ lifecycleError || removeError }}
       </p>
 
-      <!-- Usage strip sits with the identity above it and the tabs below, so
-           the tab bar stays directly attached to the content it switches. -->
-      <UsagePanel
-        :agent-id="agent.id"
-        agent-only
-        variant="strip"
-        class="shrink-0"
-        @details="setTab('overview')"
-      />
-
-      <AgentWorkspaceTabs :active="tab" :counts="counts" @select="setTab" />
-
       <div class="min-h-0 flex-1">
         <AgentWorkspaceCanvas
           :agent="agent"
           :api-url="apiUrl"
           :tab="tab"
+          :counts="counts"
           :overlay="chatOverlay"
           :restarting="isRestarting"
           :toggling="toggling"
           @restart="restart"
           @toggle-running="toggleRunning"
+          @set-tab="setTab"
           @agent-updated="(updated) => agentStore.upsert(updated)"
         />
       </div>
@@ -335,26 +355,3 @@ async function onRemove() {
     </div>
   </div>
 </template>
-
-<style scoped>
-.time-tick-enter-active,
-.time-tick-leave-active {
-  transition:
-    opacity 0.25s ease,
-    transform 0.25s ease;
-}
-.time-tick-enter-from {
-  opacity: 0;
-  transform: translateY(3px);
-}
-.time-tick-leave-to {
-  opacity: 0;
-  transform: translateY(-3px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .time-tick-enter-active,
-  .time-tick-leave-active {
-    transition: none;
-  }
-}
-</style>

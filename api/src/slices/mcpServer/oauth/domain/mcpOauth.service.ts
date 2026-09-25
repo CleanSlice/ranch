@@ -49,6 +49,14 @@ export interface IMcpOauthStartInput {
   subject?: string;
   /** Display only — "connected as …". */
   email?: string;
+  /**
+   * Where the callback page sends the person afterwards (CLEAN-120): the
+   * chat they started from, as an absolute URL. Kept only when its origin is
+   * one of ours — the configured public API URL, ADMIN_URL, PUBLIC_APP_URL,
+   * or localhost — and silently dropped otherwise; a bad value costs the
+   * person a click, never a redirect somewhere else.
+   */
+  returnTo?: string;
 }
 
 export interface IMcpOauthStatus {
@@ -134,6 +142,30 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Origins a callback page may send the person to (CLEAN-120): this API,
+   * the two consoles, and any localhost for development. The consoles come
+   * from the env the API already uses for their addresses; an unset one is
+   * simply not an option.
+   */
+  private async ownOrigins(): Promise<string[]> {
+    const candidates = [
+      await this.infra.getConfiguredApiPublicUrl(),
+      process.env.ADMIN_URL ?? process.env.ADMIN_BASE_URL,
+      process.env.PUBLIC_APP_URL,
+    ];
+    const origins: string[] = [];
+    for (const value of candidates) {
+      if (!value) continue;
+      try {
+        origins.push(new URL(value).origin);
+      } catch {
+        // A malformed address is not an allowed one.
+      }
+    }
+    return origins;
+  }
+
+  /**
    * Begin a connect: ensure the server is registered, mint PKCE state, and
    * return the authorization URL for the agent to hand the user.
    */
@@ -180,6 +212,7 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
         codeVerifier,
         subject: input.subject ?? null,
         subjectEmail: input.email ?? null,
+        redirectBack: allowedReturnTo(input.returnTo, await this.ownOrigins()),
       },
     });
 
@@ -209,7 +242,13 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
     serverId: string,
     state: string,
     code: string,
-  ): Promise<{ agentId: string; serverName: string; subject: string }> {
+  ): Promise<{
+    agentId: string;
+    serverName: string;
+    subject: string;
+    /** Where the callback page sends the person; null when nobody said. */
+    redirectBack: string | null;
+  }> {
     const st = await this.prisma.mcpOauthState.findUnique({ where: { state } });
     if (!st || st.mcpServerId !== serverId) {
       throw new BadRequestException('Unknown or mismatched OAuth state');
@@ -274,7 +313,12 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
       `OAuth connected: agent=${st.agentId} server=${server.name} subject=${eventSubject}`,
     );
 
-    return { agentId: st.agentId, serverName: server.name, subject: eventSubject };
+    return {
+      agentId: st.agentId,
+      serverName: server.name,
+      subject: eventSubject,
+      redirectBack: st.redirectBack ?? null,
+    };
   }
 
   /**
@@ -377,6 +421,29 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
  * bare key has to accept both, or `status` says "not connected" over a
  * bundle that is right there (found live on the file provider, CLEAN-80).
  */
+/**
+ * The return address the callback page may use, or null. Only an absolute
+ * http(s) URL on one of our own origins — or any localhost, for development
+ * — survives; everything else is dropped rather than refused, because the
+ * connect itself must not fail over a courtesy redirect.
+ */
+export function allowedReturnTo(
+  raw: string | undefined,
+  ownOrigins: readonly string[],
+): string | null {
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (!local && !ownOrigins.includes(url.origin)) return null;
+  return url.toString();
+}
+
 function bareSecretName(listed: string, agentId: string): string {
   const scoped = `${agentId}/`;
   return listed.startsWith(scoped) ? listed.slice(scoped.length) : listed;

@@ -212,6 +212,7 @@ function makeConnection(options: IConnectOptions) {
     clientId: string;
     agentId: string;
     user?: { id: string; email?: string };
+    origin?: string;
   }> = [];
   const hub = {
     registerClient: (
@@ -223,8 +224,14 @@ function makeConnection(options: IConnectOptions) {
       _prompt?: string,
       _capabilities?: string[],
       user?: { id: string; email?: string },
+      origin?: string,
     ) => {
-      registered.push({ clientId, agentId, ...(user ? { user } : {}) });
+      registered.push({
+        clientId,
+        agentId,
+        ...(user ? { user } : {}),
+        ...(origin ? { origin } : {}),
+      });
     },
     isAgentConnected: () => true,
     currentSeq: () => 0,
@@ -327,6 +334,25 @@ describe('BridleClientWsHandler — handshake identity', () => {
     ]);
   });
 
+  it('hands the handshake origin to the hub so messages can point back to the page (CLEAN-120)', async () => {
+    const { handler, client, registered } = makeConnection({
+      auth: { agentId: 'agent-1', token: 'signed' },
+      origin: 'https://admin.ranch.test',
+      verify: () => ({ sub: 'u2', email: 'boss@example.test', roles: ['Owner'] }),
+    });
+
+    await handler.handleConnection(client);
+
+    expect(registered).toEqual([
+      {
+        clientId: 'admin',
+        agentId: 'agent-1',
+        user: { id: 'u2', email: 'boss@example.test' },
+        origin: 'https://admin.ranch.test',
+      },
+    ]);
+  });
+
   it('folds an admin token onto the shared "admin" client id, still kind "jwt"', async () => {
     const { handler, client } = makeConnection({
       auth: { agentId: 'agent-1', token: 'signed' },
@@ -363,7 +389,11 @@ describe('BridleClientWsHandler — handshake identity', () => {
       kind: 'anonymous',
     });
     expect(registered).toEqual([
-      { clientId: 'anon-visitor7', agentId: 'agent-1' },
+      {
+        clientId: 'anon-visitor7',
+        agentId: 'agent-1',
+        origin: 'https://embed.test',
+      },
     ]);
   });
 

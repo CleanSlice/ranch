@@ -61,6 +61,7 @@ export class McpOauthController {
       agentId: dto.agentId,
       ...(dto.subject ? { subject: dto.subject } : {}),
       ...(dto.email ? { email: dto.email } : {}),
+      ...(dto.returnTo ? { returnTo: dto.returnTo } : {}),
     });
   }
 
@@ -79,16 +80,21 @@ export class McpOauthController {
   ): Promise<void> {
     let heading = 'Connected ✅';
     let sub = 'You can return to the chat.';
+    let returnTo: string | null = null;
     try {
       if (!code || !state) {
         throw new BadRequestException('Missing code or state');
       }
-      const { serverName } = await this.service.handleCallback(
+      const { serverName, redirectBack } = await this.service.handleCallback(
         serverId,
         state,
         code,
       );
       heading = `Connected to ${serverName} ✅`;
+      // Only a successful login goes back on its own: after a failure the
+      // person should read why before the page moves on.
+      returnTo = redirectBack;
+      if (returnTo) sub = 'Your account is linked.';
     } catch (err) {
       heading = 'Connection failed';
       // Only our own, deliberately worded rejections reach the person
@@ -115,7 +121,7 @@ export class McpOauthController {
     res.setHeader('Content-Security-Policy', callbackPageCsp(nonce));
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    res.send(renderCallbackPage({ heading, sub, nonce }));
+    res.send(renderCallbackPage({ heading, sub, nonce, returnTo }));
   }
 
   @Get('status')

@@ -14,6 +14,7 @@ import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { ISecretGateway } from '#/agent/secret/domain';
 import { IBridleGateway } from '#/bridle/domain';
 import { IInfraConfigGateway } from '#/setting/domain/infraConfig.gateway';
+import { resolveAppOrigin } from '#/agent/shareLink/shareLink.tool';
 import { IMcpServerGateway } from '../../domain/mcpServer.gateway';
 import { McpOauthClient } from '../data/mcpOauth.client';
 import {
@@ -151,7 +152,10 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
     const candidates = [
       await this.infra.getConfiguredApiPublicUrl(),
       process.env.ADMIN_URL ?? process.env.ADMIN_BASE_URL,
-      process.env.PUBLIC_APP_URL,
+      // The app console: PUBLIC_APP_URL when set, else derived from ADMIN_URL
+      // the way share links do (admin.<domain> -> <domain>), so a person in
+      // the app console gets sent back without a second env var.
+      resolveAppOrigin(),
     ];
     const origins: string[] = [];
     for (const value of candidates) {

@@ -416,6 +416,26 @@ describe('McpOauthService — where the callback page returns to', () => {
     expect(result.redirectBack).toBeNull();
   });
 
+  it('keeps an app-console address derived from ADMIN_URL, with no PUBLIC_APP_URL set', async () => {
+    const originalApp = process.env.PUBLIC_APP_URL;
+    delete process.env.PUBLIC_APP_URL;
+    try {
+      const h = harness();
+      const { authorizeUrl } = await h.service.start({
+        serverId: 'srv-1',
+        agentId: 'agent-1',
+        subject: 'user-a',
+        returnTo: 'https://ranch.test/agents/agent-1',
+      });
+      const state = new URL(authorizeUrl).searchParams.get('state') as string;
+      const result = await h.service.handleCallback('srv-1', state, 'code-1');
+      expect(result.redirectBack).toBe('https://ranch.test/agents/agent-1');
+    } finally {
+      if (originalApp === undefined) delete process.env.PUBLIC_APP_URL;
+      else process.env.PUBLIC_APP_URL = originalApp;
+    }
+  });
+
   it('accepts localhost for development and refuses non-http schemes', () => {
     const own = ['https://admin.ranch.test'];
     expect(allowedReturnTo('http://localhost:3002/agents/a', own)).toBe('http://localhost:3002/agents/a');

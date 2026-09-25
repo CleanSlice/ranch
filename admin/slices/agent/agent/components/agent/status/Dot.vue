@@ -13,7 +13,12 @@ import {
  * (specs/017, R7). The word, its reason and the "restarted 2 minutes ago"
  * hint live in the tooltip; the colour is the rail's, so the row on the left
  * and the open agent agree at a glance.
+ *
+ * `TooltipProvider` renders no element, so host classes (the absolute
+ * position on the avatar) are bound to an explicit root span instead.
  */
+defineOptions({ inheritAttrs: false });
+
 const props = defineProps<{
   status: AgentStatusTypes;
   statusReason: string | null;
@@ -33,36 +38,38 @@ const headline = computed(() => {
 </script>
 
 <template>
-  <TooltipProvider :delay-duration="200">
-    <Tooltip>
-      <TooltipTrigger as-child>
-        <span
-          class="flex size-3 items-center justify-center rounded-full bg-background"
-          :aria-label="headline"
-          role="img"
-        >
-          <span class="relative flex size-2.5">
-            <span
-              v-if="tone.pulse"
-              class="absolute inline-flex size-full rounded-full opacity-60 motion-safe:animate-ping"
-              :class="tone.dot"
-            />
-            <span
-              class="relative inline-flex size-2.5 rounded-full"
-              :class="tone.dot"
-            />
+  <span v-bind="$attrs" class="inline-flex">
+    <TooltipProvider :delay-duration="200">
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <span
+            class="flex size-3.5 items-center justify-center rounded-full bg-background"
+            :aria-label="headline"
+            role="img"
+          >
+            <span class="relative flex size-2.5">
+              <span
+                v-if="tone.pulse"
+                class="absolute inline-flex size-full rounded-full opacity-60 motion-safe:animate-ping"
+                :class="tone.dot"
+              />
+              <span
+                class="relative inline-flex size-2.5 rounded-full"
+                :class="tone.dot"
+              />
+            </span>
           </span>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" align="start">
-        <div class="space-y-0.5">
-          <div class="font-medium capitalize">{{ headline }}</div>
-          <div v-if="statusReason" class="opacity-80">{{ statusReason }}</div>
-          <div v-if="deployHintTitle" class="opacity-80">
-            {{ deployHintTitle }}
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="start">
+          <div class="space-y-0.5">
+            <div class="font-medium capitalize">{{ headline }}</div>
+            <div v-if="statusReason" class="opacity-80">{{ statusReason }}</div>
+            <div v-if="deployHintTitle" class="opacity-80">
+              {{ deployHintTitle }}
+            </div>
           </div>
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  </TooltipProvider>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  </span>
 </template>

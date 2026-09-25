@@ -525,7 +525,7 @@ async function onConfirmReset() {
   <Card
     :class="cn(
       'flex flex-col gap-0 h-[600px] w-full max-w-2xl',
-      frameless && 'border-0 bg-transparent shadow-none',
+      frameless && 'max-w-none border-0 bg-transparent shadow-none',
       props.class,
     )"
     @dragenter="onDragEnter"

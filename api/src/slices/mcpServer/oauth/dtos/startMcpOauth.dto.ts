@@ -26,6 +26,16 @@ export class StartMcpOauthDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Where the callback page sends the person after the login — the chat they started from, as an absolute URL. Honoured only on one of the platform\'s own origins (API, admin, app, localhost); otherwise the page just says to return to the chat.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  returnTo?: string;
 }
 
 export class McpOauthStatusDto {

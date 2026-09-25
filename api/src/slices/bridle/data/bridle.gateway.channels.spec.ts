@@ -259,3 +259,33 @@ describe('BridleGateway — user identity follows the sending socket', () => {
     expect(toAgent.slice(0, 2).map((e) => e.clientId)).toEqual(['admin', 'admin']);
   });
 });
+
+/**
+ * The page apart from the channel (CLEAN-120). The browser origin recorded
+ * at the handshake rides along on each message from that socket, so a
+ * runtime can send the person back to the console they came from.
+ */
+describe('BridleGateway — origin follows the sending socket', () => {
+  it('attaches the sending socket origin, and nothing for a socket without one', () => {
+    const gateway = new BridleGateway();
+    const toAgent: Event[] = [];
+    gateway.registerAgent('agent-1', 'agent-socket', collector(toAgent));
+    gateway.registerClient(
+      'admin',
+      'agent-1',
+      'tab-a',
+      collector([]),
+      true,
+      undefined,
+      undefined,
+      { id: 'user-a' },
+      'https://admin.ranch.test',
+    );
+    gateway.registerClient('anon-7', 'agent-1', 'widget', collector([]), false);
+
+    gateway.sendToAgent('admin', 'agent-1', 'from a', [], undefined, { socketId: 'tab-a' });
+    gateway.sendToAgent('anon-7', 'agent-1', 'from widget', [], undefined, { socketId: 'widget' });
+
+    expect(toAgent.map((e) => e.origin)).toEqual(['https://admin.ranch.test', undefined]);
+  });
+});

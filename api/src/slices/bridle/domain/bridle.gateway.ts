@@ -85,6 +85,9 @@ export abstract class IBridleGateway {
      * on every message it sends so a runtime can keep per-person state
      * (CLEAN-80). Absent for share visitors and anonymous embeds. */
     user?: IBridleUserIdentity,
+    /** Browser origin from the handshake, forwarded on every message this
+     * socket sends so a runtime can link back to the page (CLEAN-120). */
+    origin?: string,
   ): void;
   /** Unregister one browser socket. The conversation's other sockets are
    * untouched; its numbering and replay buffer outlive the last one for a

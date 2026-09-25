@@ -6,6 +6,7 @@ import { buildChatFlow, type IChatFlowDayItem } from '../../utils/chatFlow'
 import Message from './Message.vue'
 import Input from './Input.vue'
 import DropZone from './DropZone.vue'
+import Toggles from './Toggles.vue'
 import ToolCatalogButton from '#toolCatalog/components/toolCatalog/Button.vue'
 import DebugPanel from './DebugPanel.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
@@ -35,6 +36,12 @@ const props = withDefaults(defineProps<{
   // The Tools button (CLEAN-109). Hosts with their own header actions (the
   // admin agent page puts it beside Share and Edit) turn this one off.
   toolsButton?: boolean
+  // No card chrome and no header (specs/017): the admin agent workspace
+  // gives the conversation the whole column, so the border, the title row and
+  // its buttons go. What the header held that still matters — New chat and
+  // the connection status — moves into the composer's toggle row, and the
+  // transcript is capped at a readable measure instead of the card's width.
+  frameless?: boolean
   // Host-supplied reconciled agent state. The WS alone can't tell the truth
   // fast enough: after a restart the OLD pod keeps its socket alive for a few
   // seconds ("Connected" while the pod is dying), and on a freshly opened
@@ -59,6 +66,7 @@ const props = withDefaults(defineProps<{
   showStatus: true,
   restartPrompt: true,
   toolsButton: true,
+  frameless: false,
   agentState: null,
   offlineHint: null,
   initialDebugEnabled: null,
@@ -516,13 +524,20 @@ async function onConfirmReset() {
 
 <template>
   <Card
-    :class="cn('flex flex-col gap-0 h-[600px] w-full max-w-2xl', props.class)"
+    :class="cn(
+      'flex flex-col gap-0 h-[600px] w-full max-w-2xl',
+      frameless && 'max-w-none border-0 bg-transparent py-0 shadow-none',
+      props.class,
+    )"
     @dragenter="onDragEnter"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-    <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-3 border-b">
+    <CardHeader
+      v-if="!frameless"
+      class="flex flex-row items-center justify-between space-y-0 pb-3 border-b"
+    >
       <div class="flex items-center gap-2">
         <Bot class="h-5 w-5" />
         <h3 class="font-semibold text-sm">{{ title }}</h3>
@@ -576,7 +591,10 @@ async function onConfirmReset() {
 
     <CardContent class="min-h-0 flex-1 overflow-hidden p-0">
       <ScrollArea ref="scrollRef" class="h-full">
-        <div class="flex flex-col gap-4 p-4">
+        <div
+          class="flex flex-col gap-4 p-4"
+          :class="frameless && 'mx-auto w-full max-w-5xl px-0'"
+        >
           <div
             v-if="loadingOlder"
             class="flex items-center justify-center py-2 text-xs text-muted-foreground"
@@ -709,7 +727,10 @@ async function onConfirmReset() {
       </ScrollArea>
     </CardContent>
 
-    <CardFooter class="flex shrink-0 flex-col items-stretch gap-2 border-t pt-4">
+    <CardFooter
+      class="flex shrink-0 flex-col items-stretch gap-2 border-t pt-4"
+      :class="frameless && 'mx-auto w-full max-w-5xl border-t-0 px-0 pt-3 pb-0'"
+    >
       <div
         v-if="showOfflineHint"
         class="rounded-md border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-xs text-orange-700 dark:text-orange-300"
@@ -742,33 +763,51 @@ async function onConfirmReset() {
         :channel="channel"
         :placeholder="placeholder"
         :disabled="inputDisabled"
+        :boxed="frameless"
         @send="handleSend"
-      />
-      <div class="flex items-center justify-end gap-2">
-        <button
-          type="button"
-          :disabled="togglingDebug"
-          :title="debugEnabled
-            ? 'Prompt debug: ON — runtime is emitting debug snapshots. Click to disable.'
-            : 'Prompt debug: OFF — click to enable. Pushed live to the agent without restart.'"
-          class="cursor-pointer rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/70 disabled:cursor-wait disabled:opacity-50"
-          :class="debugEnabled
-            ? 'border border-foreground/30 text-foreground'
-            : 'border border-transparent'"
-          @click="onToggleDebug"
-        >
-          Debug
-        </button>
-        <button
-          type="button"
-          class="cursor-pointer rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/70"
-          :class="markdownEnabled
-            ? 'border border-foreground/30 text-foreground'
-            : 'border border-transparent'"
-          @click="onMarkdownChange(!markdownEnabled)"
-        >
-          Markdown
-        </button>
+      >
+        <!-- Frameless: the toggles sit inside the composer box, and the two
+             things the header carried that still matter — New chat and the
+             connection status — sit at its right end. -->
+        <template v-if="frameless" #tools>
+          <Toggles
+            :debug-enabled="debugEnabled"
+            :markdown-enabled="markdownEnabled"
+            :toggling-debug="togglingDebug"
+            @toggle-debug="onToggleDebug"
+            @toggle-markdown="onMarkdownChange(!markdownEnabled)"
+          />
+        </template>
+        <template v-if="frameless" #status>
+          <Button
+            v-if="isConnected && isAgentConnected && !agentState"
+            variant="ghost"
+            size="sm"
+            class="h-7 px-2 text-xs"
+            :disabled="resetting || messages.length === 0"
+            :title="messages.length === 0 ? 'Already empty' : 'Start a new chat'"
+            @click="confirmResetOpen = true"
+          >
+            <MessageSquarePlus class="h-3.5 w-3.5" />
+            New chat
+          </Button>
+          <div
+            v-if="showStatus && connectionStatus"
+            class="flex items-center gap-1.5 text-xs text-muted-foreground"
+          >
+            <Circle :class="cn('h-2 w-2 fill-current', connectionStatus.color)" />
+            {{ connectionStatus.label }}
+          </div>
+        </template>
+      </Input>
+      <div v-if="!frameless" class="flex items-center justify-end gap-2">
+        <Toggles
+          :debug-enabled="debugEnabled"
+          :markdown-enabled="markdownEnabled"
+          :toggling-debug="togglingDebug"
+          @toggle-debug="onToggleDebug"
+          @toggle-markdown="onMarkdownChange(!markdownEnabled)"
+        />
       </div>
     </CardFooter>
 

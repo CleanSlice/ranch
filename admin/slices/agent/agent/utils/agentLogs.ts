@@ -123,3 +123,29 @@ export function parseAgentLogs(raw: string): IAgentLogGroup[] {
 
   return groups;
 }
+
+/** What the collapsed Logs bar shows (specs/017): the newest line and how
+ *  much sits behind it. `alerts` = lines with a detected warn/error level. */
+export interface ILogSummary {
+  latest: IAgentLogLine | null;
+  total: number;
+  alerts: number;
+}
+
+// Index loops on purpose: `for…of` plus non-null assertions over these arrays
+// trips a Bun 1.3 JIT crash in `bun test` (see memory).
+export function summarizeAgentLogs(groups: IAgentLogGroup[]): ILogSummary {
+  let latest: IAgentLogLine | null = null;
+  let total = 0;
+  let alerts = 0;
+  for (let g = 0; g < groups.length; g += 1) {
+    const lines = groups[g]!.lines;
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]!;
+      total += 1;
+      if (line.level) alerts += 1;
+      latest = line;
+    }
+  }
+  return { latest, total, alerts };
+}

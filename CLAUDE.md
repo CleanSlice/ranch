@@ -37,11 +37,11 @@ optimistic changes go through the store's `patch()` with a rollback.
 not finished until you have looked at its twin. Grep the symbol in both trees,
 and say in the PR which console you checked and why the other needed nothing.
 Shared behaviour gets copied rather than shared, and the copies drift silently:
-`share` currently ships two `buildShareUrl` functions with different env vars
-and different token encoding, because CLEAN-104 and CLEAN-110 fixed the same
-problem a day apart without meeting. A fix that lands in one console and leaves
-the other behind is half a fix, and the missing half is the one the user
-clicks.
+`share` shipped two `buildShareUrl` functions with different env vars and
+different token encoding, because CLEAN-104 and CLEAN-110 fixed the same problem
+a day apart without meeting — CLEAN-111 went back and collapsed them. A fix that
+lands in one console and leaves the other behind is half a fix, and the missing
+half is the one the user clicks.
 
 **Agent tools (`api`):** read `docs/agent-tools.md` before adding or changing
 any admin-console capability. The console is a window, the chat is the hands:
@@ -50,5 +50,12 @@ can do — in the slice, with `topic`/`title`/`template`, gated to the right
 audience, `confirm` on anything destructive, no secrets in results, and a spec.
 The API refuses to boot a tool without that metadata; the reviewer checks the
 rest against the checklist at the end of that doc.
+
+**Plans (`SpecKit`):** `.specify/memory/constitution.md` holds the principles a
+plan is checked against at its Constitution Check gate — slice boundaries, twin
+consoles, secrets behind `api/`, one entity per store, an agent tool per console
+capability, English as the i18n source, and a rule before a judgment. The rules
+above and that file must agree; when a change makes one wrong, fix both in the
+same PR.
 
 Project overview: `README.md`.

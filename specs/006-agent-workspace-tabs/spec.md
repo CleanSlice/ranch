@@ -10,6 +10,8 @@
 
 **Visual reference**: `export-1a/Agent Interface 1a.dc.html` plus a later screenshot of the tab bar — left rail of agents, conversation in the middle, agent settings as horizontal tabs above it. Deliberately untracked and temporary: it is dropped once the implementation lands, so treat the description in this spec as the durable record of it.
 
+**Superseded (2026-09-25)**: the horizontal tab bar, the side log column and the usage strip this spec introduced were replaced by `specs/017-compact-agent-workspace` (CLEAN-123) — two header tabs (Chat / Settings), a Settings hub of section cards, a one-line usage with a popover, and a logs bar under the composer. The agent rail and the `?tab=` address contract from this spec are unchanged.
+
 **Input**: User description: "Необходимо обыграть реализацию для admin/app приложений. В app набор агентов — это скучные плашки сейчас, должен быть список табов вертикальных. То же самое и в admin, только все настройки агента перетекают в правый бар с возможностью быть свернутыми; в настройках чуть больше деталей, например количество знаний, файлов и т.д. Важно, чтобы основные пункты навигации в админке не были удалены — референс может запутать: мы работаем лишь с интерфейсом агентов. Отказываясь от agents-таблицы, мы сразу будем падать в главного агента (rancher) с возможностью переключиться на других по табам; в табах можно вывести лёгкую информацию как сейчас в таблице — статус, дату создания, не перегружая."
 
 ## Overview

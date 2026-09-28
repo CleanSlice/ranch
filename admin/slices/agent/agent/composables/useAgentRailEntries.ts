@@ -19,7 +19,9 @@ export interface IRailEntry {
   isActive: boolean;
 }
 
-const TONE: Record<AgentStatusTypes, IRailStatusTone> = {
+// Shared with the workspace header's avatar dot (status/Dot.vue), so the rail
+// row and the open agent never disagree on what a colour means.
+export const TONE: Record<AgentStatusTypes, IRailStatusTone> = {
   running: {
     dot: 'bg-emerald-500',
     text: 'text-emerald-700 dark:text-emerald-400',

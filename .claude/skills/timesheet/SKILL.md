@@ -24,11 +24,16 @@ node .claude/skills/timesheet/scripts/collect.mjs --month 2026-09
 
 Without `--month` it takes the current month from the 15th on, the previous
 one before that. It scans this clone plus the `runtime` and `bridle` clones
-beside it (`--repos a,b` to override).
+beside it (`--repos a,b` to override, `--out file.json` to choose where the
+data lands).
 
 It prints a short header and two paths. Read the `digest` file in full: it is
 the month day by day, each ticket with its Jira events and commits. `data` is
 the same as JSON.
+
+Everything in the digest is the person's own: commits they authored, tickets
+they created, status changes and comments they made. Work before 05:00 is
+already filed under the evening before and marked `+1d`.
 
 ## 2 · Read the identity line first
 
@@ -37,7 +42,7 @@ The first line of the header says whose month this is.
 | First line | What to do |
 |---|---|
 | `identity: … (verified)` | `git config user.email` was found in Jira. Carry on. |
-| `WARNING identity: …` | The git address is unset or unknown to Jira, and the data is the **default person's**. Open your reply with this, naming both addresses, before any table. |
+| `WARNING identity: …` | The git address is unset or unknown to Jira, and the data is the **default person's**. Build the table all the same, and open your reply with the warning, naming both addresses, before anything else. |
 | `timesheet: …` and exit 1 | Nothing was collected. Report the message and stop. |
 
 The person is never chosen by name, by guess, or from the conversation. To
@@ -45,57 +50,57 @@ report for someone else, that person runs it from their own clone.
 
 ## 3 · Turn evidence into rows
 
-One row per ticket per day. What counts as evidence that day:
+One row per ticket per day. Take the first line of this table that fits:
 
-| The ticket that day has | Row |
+| The ticket that day | Row |
 |---|---|
-| a commit or a comment | yes |
-| `created` and nothing else | yes, 1 hour, as the write-up of the task |
-| `created`, and it is a `subtask of` a ticket with a row that day | no, it is part of the parent's row |
-| status changes and nothing else | no |
+| is `absent in Jira` | no |
+| is marked `assignee: …` (someone else, or nobody) and has no commit | no |
+| has a commit | yes |
+| has a comment | yes |
+| was `created`, and is a `subtask of` a ticket with a row that day | no, it is part of the parent's row |
+| was `created` | yes, 1 hour, as the write-up of the task |
+| only changed status | no |
 
-**Days**
-
-- Work before 05:00 that continues the evening before belongs to that evening's
-  date.
-- `weekdays still ahead` — leave them out and say so.
-- `today` — today counts for what it shows so far. Say the day was not over.
-- `weekdays without any activity` — ask the person what they did. If they
-  already said they worked every day, put the nearest large ticket there and
-  list the day under assumptions.
-- A weekday that shows little — one merge, a couple of comments — is filled to
-  6 only if the person said they worked every day, and is listed under
-  assumptions. Otherwise it gets what it shows.
+`(no ticket)` commits join a ticket when the subject names the same feature as
+that ticket's title or its other commits; they count as that ticket's commits,
+and may give it a row on a day it has nothing else. The rest stay out. List
+both kinds under assumptions.
 
 **Hours**
 
 - Whole numbers, 1 at the least.
-- Weigh first, then fit the day. Weight comes from the span between the first
-  and last event, the number of commits, spec/plan/tasks commits, a release
-  bump. A ticket opened and sent to testing within minutes on one commit is 1;
-  a ticket with a spec and a dozen commits is 3 or more, whatever else
-  happened that day.
-- A weekday lands on 6–8 when the weights allow it, and may reach 10 when the
-  day was crowded. Above 10, `build-csv.mjs` names the day: take the hours off
-  its largest rows.
-- A weekend day gets what it shows, with no target.
+- Each row is weighed on its own evidence: the number of commits, the span
+  between the first and last event, spec/plan/tasks commits, a release bump.
+  A ticket opened and sent to testing within minutes on one commit is 1. A
+  ticket with a spec and a dozen commits is 3 or more. A lone `(#NN)` merge
+  days after the work is 1: review and merge.
+- Tickets worked side by side in the same hour share that hour. Commits that
+  carry one timestamp were rebased together; count them, ignore their span.
 - A commit naming two tickets counts for both, and its weight is shared, not
   doubled.
+- A day is the sum of its rows. A full weekday usually comes to 6–8; that is
+  what to expect, not a number to reach.
+- Above 10 hours `build-csv.mjs` names the day. Take hours off its largest
+  rows, unless the 1-hour minimums alone make the day that long.
 
-**Tickets**
+**Days**
 
-- `(no ticket)` commits: when the subject makes the ticket plain, they add to
-  that ticket's weight and are listed under assumptions. Otherwise leave them
-  out and list them too.
-- A ticket marked `assignee: <someone else>` stays in if the person committed
-  to it; list it under assumptions.
-- `absent in Jira` tickets get no row.
+- `weekdays still ahead` — leave them out and say so.
+- `today` — today gets what it shows so far. Say the day was not over.
+- `weekdays without any activity` — leave them out, list them, and ask what
+  was done on them.
+- When the person has said they worked every weekday in full, and only then:
+  a weekday under 6 is raised to 6 on its largest row, and a weekday without
+  activity gets the nearest large ticket at 6. List every such day under
+  assumptions.
+- A weekend day gets what it shows.
 
 **Descriptions** — Russian, one line, up to about 100 characters, no full stop.
 Say what landed that day, from the commit subjects. When a ticket spans
 several days, each day names its own part. A row without commits is worded
-from the ticket title: `Постановка: …` for a created ticket, `Проверка и
-обсуждение: …` for a commented one.
+from the ticket title: `Постановка: …` when the ticket was created that day,
+`Проверка и обсуждение: …` otherwise.
 
 ## 4 · Build the CSV
 
@@ -113,12 +118,13 @@ node .claude/skills/timesheet/scripts/build-csv.mjs --rows <rows.json>
 
 It checks the rows, adds the day names, links and the `ИТОГО` row, and writes
 `timesheet-YYYY-MM.csv` to the person's Downloads folder (`--out` to override).
-Exit 1 lists rows to fix; fix them and run it again. Do not write the CSV by
-hand. `рабочих дней` in the last row counts every day worked, weekends too.
+Exit 1 lists rows to fix; fix them and run it again. A `days above 10h` line
+comes with exit 0 and a written file: see Hours. Do not write the CSV by hand.
+`рабочих дней` in the last row counts every day worked, weekends too.
 
 ## 5 · Report
 
-In this order:
+In the language the person wrote in, in this order:
 
 1. Whose month it is: the Jira name and the address. With the identity
    warning, if there was one, in front of it.

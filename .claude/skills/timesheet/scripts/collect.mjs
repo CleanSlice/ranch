@@ -26,6 +26,7 @@ import {
 const DEFAULT_EMAIL = 'maksym.hryzodub@dreamvention.com';
 const SIBLING_REPOS = ['runtime', 'bridle'];
 const FIELD_SEPARATOR = '\x1f';
+const NIGHT_ENDS_AT = 5;
 
 const args = parseArgs(process.argv.slice(2));
 const root = repoRoot();
@@ -102,7 +103,9 @@ function reposToScan() {
 function readCommits(repo) {
   const since = new Date(start.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const format = ['%H', '%aI', '%an', '%ae', '%s'].join('%x1f');
-  const log = git(repo, ['log', '--all', '--no-merges', `--since=${since}`, `--pretty=format:${format}`]);
+  // `--all` would also walk refs/stash, whose entries look like commits but are not work landed.
+  const refs = ['--exclude=refs/stash', '--all'];
+  const log = git(repo, ['log', ...refs, '--no-merges', `--since=${since}`, `--pretty=format:${format}`]);
   return log
     .split('\n')
     .filter(Boolean)
@@ -207,19 +210,34 @@ issues.sort((a, b) => Number(a.key.split('-')[1]) - Number(b.key.split('-')[1]))
 
 // One bucket per local day, holding what happened on each ticket that day.
 const days = new Map();
-const bucket = (date, key) => {
-  const day = localDate(date);
+
+// An evening that runs past midnight is still that evening's working day, so anything
+// before 05:00 is filed under the date before, unless that date belongs to another month.
+function workday(date) {
+  const evening = new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1);
+  if (date.getHours() >= NIGHT_ENDS_AT || evening < start) return { day: localDate(date), time: localTime(date) };
+  return { day: localDate(evening), time: `${localTime(date)}+1d` };
+}
+
+function place(date, key) {
+  const { day, time } = workday(date);
   if (!days.has(day)) days.set(day, new Map());
   const tickets = days.get(day);
   if (!tickets.has(key)) tickets.set(key, { jira: [], git: [] });
-  return tickets.get(key);
-};
+  return { activity: tickets.get(key), time };
+}
+
 for (const issue of issues) {
-  for (const event of issue.events) bucket(event.date, issue.key).jira.push(`${localTime(event.date)} ${event.text}`);
+  for (const event of issue.events) {
+    const { activity, time } = place(event.date, issue.key);
+    activity.jira.push(`${time} ${event.text}`);
+  }
 }
 for (const commit of commits) {
-  const line = `${localTime(commit.date)} ${commit.repo}: ${commit.subject}`;
-  for (const key of commit.keys.length ? commit.keys : ['(no ticket)']) bucket(commit.date, key).git.push(line);
+  for (const key of commit.keys.length ? commit.keys : ['(no ticket)']) {
+    const { activity, time } = place(commit.date, key);
+    activity.git.push(`${time} ${commit.repo}: ${commit.subject}`);
+  }
 }
 
 const weekdaysWithoutActivity = [];

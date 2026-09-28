@@ -156,7 +156,7 @@ T014 is kept as is.
 
 - [X] T036 Add `DEFAULT_SECTION` and `settingsSectionOf(tab)` to `admin/slices/agent/agent/components/agent/workspace/sections.ts` and cover them in `admin/slices/agent/agent/utils/sections.test.ts` (null for chat, `overview` for a bare `settings`, identity for every section value).
 - [X] T037 [P] Add the `active` prop (highlight + `role="tab"` / `aria-selected`) to `admin/slices/agent/agent/components/agent/workspace/SectionCard.vue`; look otherwise unchanged.
-- [X] T038 Create `admin/slices/agent/agent/components/agent/workspace/SettingsNav.vue` (`<AgentWorkspaceSettingsNav>`): vertical `w-72` list of cards from `lg` up, one horizontally scrolling row below; props `sections`, `counts`, `active`; emit `select`.
+- [X] T038 Create `admin/slices/agent/agent/components/agent/workspace/SettingsNav.vue` (`<AgentWorkspaceSettingsNav>`): vertical `w-64` list of cards from `lg` up, one horizontally scrolling row below; props `sections`, `counts`, `active`; emit `select`.
 - [X] T039 Rework `admin/slices/agent/agent/components/agent/workspace/Canvas.vue`: for any tab but `chat`, `SettingsNav` beside the open section (`settingsSectionOf(tab)`), section box keyed by value; delete `SettingsHub.vue` and `SectionFrame.vue` from the same directory.
 - [X] T040 Update `admin/slices/agent/agent/components/agent/workspace/Main.vue`: `lastSection` per agent so the Settings tab reopens the section last open; Overview refresh keyed on what is on screen (`settingsSectionOf`).
 - [X] T041 Gates in `admin/`: `bun test slices` (92 green), `npx nuxt typecheck` at baseline; docs in `specs/017-compact-agent-workspace/` revised (spec US2 + FR-005…009a, research R2, contracts, data model, quickstart US2).

@@ -14,8 +14,8 @@ slice path convention.
 | `counts` | `SectionCounts` | from `useAgentSectionCounts` |
 | `active` | `SectionValue` | the open section; its card is highlighted |
 
-Emits `select: [value: SectionValue]`. `role="tablist"`, vertical. From `lg` up: a `w-72`
-column of cards, scrolling on its own. Below `lg`: one horizontally scrolling row of `w-60`
+Emits `select: [value: SectionValue]`. `role="tablist"`, vertical. From `lg` up: a `w-64`
+column of cards, scrolling on its own. Below `lg`: one horizontally scrolling row of `w-56`
 cards above the content.
 
 ### `AgentWorkspaceSectionCard` — `…/workspace/SectionCard.vue`

@@ -190,7 +190,7 @@ only. No new slice, no new store, no new route.
 └──────┘ └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Settings tab: the same header, then a row — the list of section cards in a `w-72` column
+Settings tab: the same header, then a row — the list of section cards in a `w-64` column
 on the left, the open section rendered exactly as it renders today on the right:
 
 ```text

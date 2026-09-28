@@ -68,7 +68,7 @@ const restartUnderway = computed(
          is one click from every other. -->
     <div
       v-if="open"
-      class="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row lg:gap-4"
+      class="flex min-h-0 flex-1 flex-col gap-2.5 lg:flex-row lg:gap-3"
     >
       <AgentWorkspaceSettingsNav
         :sections="SECTIONS"

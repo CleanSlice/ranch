@@ -48,7 +48,7 @@ list already shows everything.
 **Decision** (revised 2026-09-28 at the requester's call): Settings is master–detail.
 `Canvas.vue` renders, for any tab other than `chat`, a row of two things: on the left
 `<AgentWorkspaceSettingsNav :sections :counts :active @select>` — the ten `SectionCard`s
-stacked vertically in a `w-72` column that scrolls on its own — and on the right the
+stacked vertically in a `w-64` column that scrolls on its own — and on the right the
 content of the open section, rendered exactly as it renders today, in a box keyed by the
 section so each one still mounts fresh. `SectionCard` is unchanged in look (icon tile in
 the tinted square the avatars use, title, the `desc` one-liner, count chip with a muted
@@ -61,8 +61,8 @@ agent (component state; the component is keyed by agent id) and the tab reopens 
 Chat → Settings returns the operator to where they were. `?tab=settings` stays a valid
 address and shows Overview.
 
-Below `lg` a 288 px column would squeeze the section, so the same nav becomes a
-horizontally scrolling row of `w-60` cards above the content.
+Below `lg` a 256 px column would squeeze the section, so the same nav becomes a
+horizontally scrolling row of `w-56` cards above the content.
 
 **Rationale**: the first cut was a hub — a grid of these cards that opened a section at full
 width under a "← Settings" row. It made every change of section two clicks (back, then the

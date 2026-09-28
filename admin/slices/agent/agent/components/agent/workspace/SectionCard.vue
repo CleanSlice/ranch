@@ -23,7 +23,7 @@ defineEmits<{ select: [] }>();
     type="button"
     role="tab"
     :aria-selected="active"
-    class="flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    class="flex w-full items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     :class="
       active
         ? 'border-primary/40 bg-muted'
@@ -32,9 +32,9 @@ defineEmits<{ select: [] }>();
     @click="$emit('select')"
   >
     <span
-      class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-primary"
+      class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-primary"
     >
-      <component :is="section.icon" class="size-4.5" />
+      <component :is="section.icon" class="size-4" />
     </span>
     <span class="min-w-0 flex-1">
       <span class="flex items-center gap-2">

@@ -28,7 +28,7 @@ function countFor(section: ISection): number | null {
     role="tablist"
     aria-label="Agent settings"
     aria-orientation="vertical"
-    class="flex shrink-0 gap-2 overflow-x-auto pb-1 lg:w-72 lg:flex-col lg:overflow-x-visible lg:overflow-y-auto lg:pb-0 lg:pr-1"
+    class="flex shrink-0 gap-1.5 overflow-x-auto pb-1 lg:w-64 lg:flex-col lg:overflow-x-visible lg:overflow-y-auto lg:pb-0 lg:pr-1"
   >
     <AgentWorkspaceSectionCard
       v-for="s in sections"
@@ -36,7 +36,7 @@ function countFor(section: ISection): number | null {
       :section="s"
       :count="countFor(s)"
       :active="s.value === active"
-      class="w-60 shrink-0 lg:w-full"
+      class="w-56 shrink-0 lg:w-full"
       @select="$emit('select', s.value as SectionValue)"
     />
   </nav>

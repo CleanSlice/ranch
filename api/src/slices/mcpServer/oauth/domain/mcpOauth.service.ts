@@ -14,6 +14,7 @@ import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { ISecretGateway } from '#/agent/secret/domain';
 import { IBridleGateway } from '#/bridle/domain';
 import { IInfraConfigGateway } from '#/setting/domain/infraConfig.gateway';
+import { resolveAppOrigin } from '#/agent/shareLink/shareLink.tool';
 import { IMcpServerGateway } from '../../domain/mcpServer.gateway';
 import { McpOauthClient } from '../data/mcpOauth.client';
 import {
@@ -49,6 +50,14 @@ export interface IMcpOauthStartInput {
   subject?: string;
   /** Display only — "connected as …". */
   email?: string;
+  /**
+   * Where the callback page sends the person afterwards (CLEAN-120): the
+   * chat they started from, as an absolute URL. Kept only when its origin is
+   * one of ours — the configured public API URL, ADMIN_URL, PUBLIC_APP_URL,
+   * or localhost — and silently dropped otherwise; a bad value costs the
+   * person a click, never a redirect somewhere else.
+   */
+  returnTo?: string;
 }
 
 export interface IMcpOauthStatus {
@@ -134,6 +143,33 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Origins a callback page may send the person to (CLEAN-120): this API,
+   * the two consoles, and any localhost for development. The consoles come
+   * from the env the API already uses for their addresses; an unset one is
+   * simply not an option.
+   */
+  private async ownOrigins(): Promise<string[]> {
+    const candidates = [
+      await this.infra.getConfiguredApiPublicUrl(),
+      process.env.ADMIN_URL ?? process.env.ADMIN_BASE_URL,
+      // The app console: PUBLIC_APP_URL when set, else derived from ADMIN_URL
+      // the way share links do (admin.<domain> -> <domain>), so a person in
+      // the app console gets sent back without a second env var.
+      resolveAppOrigin(),
+    ];
+    const origins: string[] = [];
+    for (const value of candidates) {
+      if (!value) continue;
+      try {
+        origins.push(new URL(value).origin);
+      } catch {
+        // A malformed address is not an allowed one.
+      }
+    }
+    return origins;
+  }
+
+  /**
    * Begin a connect: ensure the server is registered, mint PKCE state, and
    * return the authorization URL for the agent to hand the user.
    */
@@ -145,7 +181,7 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('MCP server is not OAuth-based');
     }
 
-    const meta = await this.client.discover(server.url);
+    const { metadata: meta, resource } = await this.client.discover(server.url);
     const redirectUri = await this.callbackUri(serverId);
 
     let clientId = server.oauthClientId;
@@ -180,6 +216,7 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
         codeVerifier,
         subject: input.subject ?? null,
         subjectEmail: input.email ?? null,
+        redirectBack: allowedReturnTo(input.returnTo, await this.ownOrigins()),
       },
     });
 
@@ -190,8 +227,9 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
     url.searchParams.set('code_challenge', codeChallenge);
     url.searchParams.set('code_challenge_method', 'S256');
     url.searchParams.set('state', state);
-    // RFC 8707 — bind the token to this MCP resource.
-    url.searchParams.set('resource', server.url);
+    // RFC 8707 — bind the token to this MCP resource (the one its metadata
+    // names, else the URL itself).
+    url.searchParams.set('resource', resource);
     if (meta.scopes_supported?.length) {
       url.searchParams.set('scope', meta.scopes_supported.join(' '));
     }
@@ -209,7 +247,13 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
     serverId: string,
     state: string,
     code: string,
-  ): Promise<{ agentId: string; serverName: string; subject: string }> {
+  ): Promise<{
+    agentId: string;
+    serverName: string;
+    subject: string;
+    /** Where the callback page sends the person; null when nobody said. */
+    redirectBack: string | null;
+  }> {
     const st = await this.prisma.mcpOauthState.findUnique({ where: { state } });
     if (!st || st.mcpServerId !== serverId) {
       throw new BadRequestException('Unknown or mismatched OAuth state');
@@ -227,13 +271,14 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('MCP server is not registered for OAuth');
     }
 
-    const meta = await this.client.discover(server.url);
+    const { metadata: meta, resource } = await this.client.discover(server.url);
     const tokens = await this.client.exchangeCode({
       tokenEndpoint: meta.token_endpoint,
       code,
       codeVerifier: st.codeVerifier,
       clientId: server.oauthClientId,
       redirectUri: await this.callbackUri(serverId),
+      resource,
     });
 
     const subject = st.subject ?? undefined;
@@ -274,7 +319,12 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
       `OAuth connected: agent=${st.agentId} server=${server.name} subject=${eventSubject}`,
     );
 
-    return { agentId: st.agentId, serverName: server.name, subject: eventSubject };
+    return {
+      agentId: st.agentId,
+      serverName: server.name,
+      subject: eventSubject,
+      redirectBack: st.redirectBack ?? null,
+    };
   }
 
   /**
@@ -377,6 +427,29 @@ export class McpOauthService implements OnModuleInit, OnModuleDestroy {
  * bare key has to accept both, or `status` says "not connected" over a
  * bundle that is right there (found live on the file provider, CLEAN-80).
  */
+/**
+ * The return address the callback page may use, or null. Only an absolute
+ * http(s) URL on one of our own origins — or any localhost, for development
+ * — survives; everything else is dropped rather than refused, because the
+ * connect itself must not fail over a courtesy redirect.
+ */
+export function allowedReturnTo(
+  raw: string | undefined,
+  ownOrigins: readonly string[],
+): string | null {
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (!local && !ownOrigins.includes(url.origin)) return null;
+  return url.toString();
+}
+
 function bareSecretName(listed: string, agentId: string): string {
   const scoped = `${agentId}/`;
   return listed.startsWith(scoped) ? listed.slice(scoped.length) : listed;

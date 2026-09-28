@@ -258,6 +258,7 @@ export class BridleGateway extends IBridleGateway {
     prompt?: string,
     capabilities?: string[],
     user?: IBridleUserIdentity,
+    origin?: string,
   ): void {
     const channel = this.channelFor(clientId, agentId);
     if (channel.idleTimer) {
@@ -275,6 +276,7 @@ export class BridleGateway extends IBridleGateway {
       // Per socket, not per conversation: two admins share `admin` but each
       // sits on their own socket, so the identity follows the sender.
       ...(user?.id ? { user } : {}),
+      ...(origin ? { origin } : {}),
     });
     this.logger.log(
       `Browser client registered: ${clientId} agentId=${agentId} socket=${socketId} admin=${isAdmin}${capabilities?.length ? ` caps=[${capabilities.join(',')}]` : ''} (sockets on this conversation: ${channel.sockets.size})`,
@@ -369,6 +371,7 @@ export class BridleGateway extends IBridleGateway {
         ? { capabilities: client.capabilities }
         : {}),
       ...(client?.user ? { user: client.user } : {}),
+      ...(client?.origin ? { origin: client.origin } : {}),
       // Metadata only: the runtime persists this array verbatim into its
       // session transcript. The url is this API's own route (useless to the
       // runtime) and readableByAgent is a UI concern — neither belongs in

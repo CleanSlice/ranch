@@ -324,6 +324,9 @@ export class BridleClientWsHandler
       prompt,
       capabilities,
       user,
+      // Only a browser has one; a runtime linking back to "the page the
+      // person is on" must never guess it from a header a client did not send.
+      typeof origin === 'string' && origin ? origin : undefined,
     );
     // Tell the new client whether the agent runtime is currently online so the
     // chat header can render the right indicator color before any subsequent

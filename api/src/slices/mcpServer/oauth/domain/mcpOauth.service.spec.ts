@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { EPHEMERAL_BUNDLE_TTL_MS, McpOauthService } from './mcpOauth.service';
+import { EPHEMERAL_BUNDLE_TTL_MS, McpOauthService, allowedReturnTo } from './mcpOauth.service';
 import {
   isEphemeralSubject,
   mcpOauthSecretKey,
@@ -79,7 +79,9 @@ function harness() {
     }),
   };
   const client = {
-    discover: jest.fn().mockResolvedValue(META),
+    discover: jest
+      .fn()
+      .mockResolvedValue({ metadata: META, resource: SERVER.url, via: 'origin' }),
     register: jest.fn().mockResolvedValue('client-1'),
     exchangeCode: jest
       .fn()
@@ -131,7 +133,7 @@ describe('McpOauthService — where a token lands', () => {
 
     const result = await connect(h, { subject: 'user-a', email: 'a@example.test' });
 
-    expect(result).toEqual({ agentId: 'agent-1', serverName: 'Silpo', subject: 'user-a' });
+    expect(result).toEqual({ agentId: 'agent-1', serverName: 'Silpo', subject: 'user-a', redirectBack: null });
     const stored = JSON.parse(
       h.stores.get('agent-1')!.get('mcpOauth:srv-1:user-a') as string,
     ) as IMcpOauthBundle;
@@ -372,5 +374,73 @@ describe('McpOauthService — remembering the registered client id', () => {
     await h.service.start({ serverId: 'srv-1', agentId: 'agent-1' });
     expect(h.client.register).not.toHaveBeenCalled();
     expect(h.servers.setOauthClientId).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The return address (CLEAN-120): kept only on our own origins, dropped
+ * without failing the connect otherwise, and handed back by the callback.
+ */
+describe('McpOauthService — where the callback page returns to', () => {
+  const originalAdmin = process.env.ADMIN_URL;
+  beforeEach(() => {
+    process.env.ADMIN_URL = 'https://admin.ranch.test';
+  });
+  afterEach(() => {
+    if (originalAdmin === undefined) delete process.env.ADMIN_URL;
+    else process.env.ADMIN_URL = originalAdmin;
+  });
+
+  it('keeps a console address and returns it from the callback', async () => {
+    const h = harness();
+    const { authorizeUrl } = await h.service.start({
+      serverId: 'srv-1',
+      agentId: 'agent-1',
+      subject: 'user-a',
+      returnTo: 'https://admin.ranch.test/agents/agent-1',
+    });
+    const state = new URL(authorizeUrl).searchParams.get('state') as string;
+    const result = await h.service.handleCallback('srv-1', state, 'code-1');
+    expect(result.redirectBack).toBe('https://admin.ranch.test/agents/agent-1');
+  });
+
+  it('drops an address on a foreign origin but still connects', async () => {
+    const h = harness();
+    const { authorizeUrl } = await h.service.start({
+      serverId: 'srv-1',
+      agentId: 'agent-1',
+      returnTo: 'https://evil.test/agents/agent-1',
+    });
+    const state = new URL(authorizeUrl).searchParams.get('state') as string;
+    const result = await h.service.handleCallback('srv-1', state, 'code-1');
+    expect(result.redirectBack).toBeNull();
+  });
+
+  it('keeps an app-console address derived from ADMIN_URL, with no PUBLIC_APP_URL set', async () => {
+    const originalApp = process.env.PUBLIC_APP_URL;
+    delete process.env.PUBLIC_APP_URL;
+    try {
+      const h = harness();
+      const { authorizeUrl } = await h.service.start({
+        serverId: 'srv-1',
+        agentId: 'agent-1',
+        subject: 'user-a',
+        returnTo: 'https://ranch.test/agents/agent-1',
+      });
+      const state = new URL(authorizeUrl).searchParams.get('state') as string;
+      const result = await h.service.handleCallback('srv-1', state, 'code-1');
+      expect(result.redirectBack).toBe('https://ranch.test/agents/agent-1');
+    } finally {
+      if (originalApp === undefined) delete process.env.PUBLIC_APP_URL;
+      else process.env.PUBLIC_APP_URL = originalApp;
+    }
+  });
+
+  it('accepts localhost for development and refuses non-http schemes', () => {
+    const own = ['https://admin.ranch.test'];
+    expect(allowedReturnTo('http://localhost:3002/agents/a', own)).toBe('http://localhost:3002/agents/a');
+    expect(allowedReturnTo('javascript:alert(1)', own)).toBeNull();
+    expect(allowedReturnTo('not a url', own)).toBeNull();
+    expect(allowedReturnTo(undefined, own)).toBeNull();
   });
 });

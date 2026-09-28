@@ -11,9 +11,9 @@ import {
   type McpProbeHeaders,
 } from './mcpProbe.types';
 import type { McpServerAuthTypes } from './mcpServer.types';
+import { discoverOauthServer } from '../oauth/data/oauthDiscovery';
 
 /** How long the well-known lookup may take; the handshake has its own budget. */
-const DISCOVERY_TIMEOUT_MS = 5_000;
 
 /** Statuses that mean "you need a credential", on either transport. */
 const AUTH_STATUSES = new Set([401, 403]);
@@ -167,48 +167,23 @@ export class McpProbeService {
   }
 
   /**
-   * RFC 8414 metadata on the endpoint's origin — the same place
-   * `McpOauthClient.discover` reads for a real connect. Soft: a missing or
-   * malformed document means "not OAuth as far as we can tell", never an
-   * error, because most servers do not publish one.
+   * The authorization server the way a real connect finds it (RFC 9728
+   * resource metadata first, the host document as the fallback — the same
+   * walk as `McpOauthClient.discover`, CLEAN-122). Soft: nothing found
+   * means "not OAuth as far as we can tell", never an error, because most
+   * servers publish no metadata at all.
    */
   private async discoverOauth(url: string): Promise<IMcpProbeOauth | null> {
-    const origin = new URL(url).origin;
-    const wellKnown = `${origin}/.well-known/oauth-authorization-server`;
-    try {
-      const res = await fetch(wellKnown, {
-        headers: { Accept: 'application/json' },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
-      });
-      if (!res.ok) return null;
-      const meta = (await res.json()) as Record<string, unknown>;
-      if (
-        typeof meta.authorization_endpoint !== 'string' ||
-        typeof meta.token_endpoint !== 'string'
-      ) {
-        return null;
-      }
-      const methods = Array.isArray(meta.code_challenge_methods_supported)
-        ? (meta.code_challenge_methods_supported as unknown[])
-        : null;
-      const scopes = Array.isArray(meta.scopes_supported)
-        ? (meta.scopes_supported as unknown[]).filter(
-            (s): s is string => typeof s === 'string',
-          )
-        : [];
-      return {
-        issuer: typeof meta.issuer === 'string' ? meta.issuer : origin,
-        dynamicRegistration: typeof meta.registration_endpoint === 'string',
-        pkce: methods === null || methods.includes('S256'),
-        scopes,
-      };
-    } catch (error) {
-      this.logger.debug(
-        `no OAuth metadata at ${wellKnown}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return null;
-    }
+    const found = await discoverOauthServer(url);
+    if (!found) return null;
+    const meta = found.metadata;
+    const methods = meta.code_challenge_methods_supported ?? null;
+    return {
+      issuer: meta.issuer,
+      dynamicRegistration: typeof meta.registration_endpoint === 'string',
+      pkce: methods === null || methods.includes('S256'),
+      scopes: meta.scopes_supported ?? [],
+    };
   }
 }
 

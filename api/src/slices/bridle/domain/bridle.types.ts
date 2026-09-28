@@ -119,6 +119,12 @@ export interface IBridleIncomingMessage {
   parts: BridlePart[];
   /** Who typed it, when a console login is behind the socket. */
   user?: IBridleUserIdentity;
+  /**
+   * The browser origin the sending socket connected from (`Origin` header
+   * at handshake), e.g. the admin console. Lets a runtime build a link back
+   * to the page the person is on (CLEAN-120). Absent on the HTTP paths.
+   */
+  origin?: string;
   /** Integrator context from the embed's `data-prompt`, carried on every
    * message so the agent runtime can fold it into the system prompt. */
   prompt?: string;
@@ -414,6 +420,9 @@ export interface IBridleClientData {
   /** The console login behind this socket; attached to every message it
    * sends so the runtime can keep per-person state on a shared channel. */
   user?: IBridleUserIdentity;
+  /** Browser origin from the handshake; attached to every message it sends
+   * so a runtime can link back to the page the person is on (CLEAN-120). */
+  origin?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────

@@ -1,8 +1,9 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
-import {
-  IAuthServerMetadata,
-  IOauthTokenResponse,
-} from '../domain/mcpOauth.types';
+import { IOauthTokenResponse } from '../domain/mcpOauth.types';
+import { discoverOauthServer, IOauthDiscovery } from './oauthDiscovery';
+
+/** A discovery answer is reused this long: start and callback share one. */
+const DISCOVERY_CACHE_MS = 10 * 60 * 1000;
 
 /**
  * Thin HTTP client for the remote OAuth 2.1 authorization server backing an MCP
@@ -14,27 +15,32 @@ import {
 export class McpOauthClient {
   private readonly logger = new Logger(McpOauthClient.name);
 
+  private readonly discovered = new Map<
+    string,
+    { at: number; answer: IOauthDiscovery }
+  >();
+
   /**
-   * RFC 8414 discovery. The MCP server URL's origin hosts the authorization
-   * server metadata (verified for Silpo at
-   * https://mcp.silpo.ua/.well-known/oauth-authorization-server).
+   * The authorization server for this MCP URL, found the way the agent
+   * runtime's MCP SDK finds it (RFC 9728 resource metadata first, the host
+   * document as the fallback — see `oauthDiscovery.ts`, CLEAN-122), so the
+   * token we mint is one the runtime can refresh. Cached briefly: the
+   * callback reads the same answer the start did.
    */
-  async discover(serverUrl: string): Promise<IAuthServerMetadata> {
-    const origin = new URL(serverUrl).origin;
-    const url = `${origin}/.well-known/oauth-authorization-server`;
-    const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) {
+  async discover(serverUrl: string): Promise<IOauthDiscovery> {
+    const hit = this.discovered.get(serverUrl);
+    if (hit && Date.now() - hit.at < DISCOVERY_CACHE_MS) return hit.answer;
+    const answer = await discoverOauthServer(serverUrl);
+    if (!answer) {
       throw new BadGatewayException(
-        `OAuth discovery failed (${res.status}) at ${url}`,
+        `OAuth discovery failed: no authorization server metadata for ${serverUrl}`,
       );
     }
-    const meta = (await res.json()) as IAuthServerMetadata;
-    if (!meta.authorization_endpoint || !meta.token_endpoint) {
-      throw new BadGatewayException(
-        `OAuth metadata at ${url} missing authorization/token endpoint`,
-      );
-    }
-    return meta;
+    this.logger.log(
+      `OAuth discovery for ${serverUrl}: ${answer.metadata.issuer} via ${answer.via}`,
+    );
+    this.discovered.set(serverUrl, { at: Date.now(), answer });
+    return answer;
   }
 
   /**
@@ -74,13 +80,18 @@ export class McpOauthClient {
     return json.client_id;
   }
 
-  /** Exchange an authorization code (+ PKCE verifier) for tokens. */
+  /**
+   * Exchange an authorization code (+ PKCE verifier) for tokens. `resource`
+   * (RFC 8707) goes on the token request too, as it did on the authorize
+   * request — a server that binds tokens to a resource expects both.
+   */
   async exchangeCode(input: {
     tokenEndpoint: string;
     code: string;
     codeVerifier: string;
     clientId: string;
     redirectUri: string;
+    resource: string;
   }): Promise<IOauthTokenResponse> {
     const form = new URLSearchParams({
       grant_type: 'authorization_code',
@@ -88,6 +99,7 @@ export class McpOauthClient {
       code_verifier: input.codeVerifier,
       client_id: input.clientId,
       redirect_uri: input.redirectUri,
+      resource: input.resource,
     });
     const res = await fetch(input.tokenEndpoint, {
       method: 'POST',

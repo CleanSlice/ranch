@@ -1,17 +1,19 @@
 /**
  * The agent workspace's tab model (specs/017-compact-agent-workspace, R1).
  *
- * The header shows two tabs, Chat and Settings. Settings is a hub of cards,
- * one per SECTION below, and a card opens its section at full width. That
- * replaced the eleven-tab bar of specs/006, which in turn replaced a
- * right-hand navigator, which replaced an accordion.
+ * The header shows two tabs, Chat and Settings. Settings is a vertical list
+ * of section cards on the left, one per SECTION below, with the selected
+ * section's content beside it — switching sections never leaves the screen.
+ * That replaced a hub you fell into and climbed back out of, which replaced
+ * the eleven-tab bar of specs/006, which replaced a right-hand navigator,
+ * which replaced an accordion.
  *
  * `?tab=` stays the single address of the screen and keeps its whole old
  * vocabulary: the `value` strings are a shared-link contract that predates
  * every one of those redesigns, so the ten section values are byte-identical
  * (including `logs`, and `peers` as a legacy alias of `a2a`, CLEAN-95). The
- * only addition is `settings`, the hub itself. `chat` is the default and
- * carries no parameter.
+ * only addition is `settings`, which opens Settings on its default section.
+ * `chat` is the default and carries no parameter.
  */
 import type { Component } from 'vue';
 import {
@@ -156,10 +158,23 @@ export function workspaceTabOf(tab: AgentTab): WorkspaceTab {
   return tab === 'chat' ? 'chat' : 'settings';
 }
 
-/** The section a `?tab=` value opens; `null` for the chat and for the hub. */
+/** The section a `?tab=` value names; `null` for `chat` and for `settings`. */
 export function sectionOf(tab: AgentTab): ISection | null {
   for (let i = 0; i < SECTIONS.length; i += 1) {
     if (SECTIONS[i]!.value === tab) return SECTIONS[i]!;
   }
   return null;
+}
+
+/** What Settings shows when nothing more specific was asked for. */
+export const DEFAULT_SECTION: SectionValue = 'overview';
+
+/**
+ * The section Settings has on screen for a `?tab=` value. Settings is a
+ * list of sections beside the open one, so it always has one open: a bare
+ * `settings` lands on the default. `null` only for the chat.
+ */
+export function settingsSectionOf(tab: AgentTab): ISection | null {
+  if (tab === 'chat') return null;
+  return sectionOf(tab) ?? sectionOf(DEFAULT_SECTION);
 }

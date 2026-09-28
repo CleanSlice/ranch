@@ -12,7 +12,7 @@ new components compute and the transient state they hold, so tasks can name them
 | Value | Meaning | Workspace tab | Section |
 |-------|---------|---------------|---------|
 | *(absent)* / `chat` | conversation | `chat` | — |
-| `settings` | **new** — the Settings hub | `settings` | — |
+| `settings` | **new** — Settings on its default section | `settings` | `overview` (shown, not written) |
 | `overview` `knowledge` `a2a` `files` `channels` `logs` `secrets` `env` `chats` `paddock` | one section open at full width | `settings` | that section |
 | `peers` | legacy alias, normalised to `a2a` on read | `settings` | `a2a` |
 | anything else | normalised to `chat` | `chat` | — |
@@ -21,7 +21,8 @@ Derivations (pure, in `sections.ts`):
 
 - `toAgentTab(raw: unknown): AgentTab` — existing; now also returns `'settings'`.
 - `workspaceTabOf(tab: AgentTab): 'chat' | 'settings'`.
-- `sectionOf(tab: AgentTab): ISection | null`.
+- `sectionOf(tab: AgentTab): ISection | null` — the section the value *names*; `null` for `chat` and `settings`.
+- `settingsSectionOf(tab: AgentTab): ISection | null` — the section Settings has *open*: `sectionOf(tab)`, or the `DEFAULT_SECTION` (`overview`) for a bare `settings`; `null` only for `chat`.
 
 Rules: `chat` is the default and is stripped from the address (existing behaviour of
 `useAgentTab`); switching tabs uses `router.replace`, switching agents uses `push`
@@ -39,7 +40,7 @@ Rules: `chat` is the default and is stripped from the address (existing behaviou
 | `countKey` | `SectionCountKey \| null` | `knowledge`, `a2a`, `files`, `secrets`, `channels`, else `null` |
 | `icon` | tabler icon component | **new** — the card's tile |
 
-`SECTIONS: readonly ISection[]` in hub order: Overview, Knowledge, A2A, Files, Channels,
+`SECTIONS: readonly ISection[]` in list order: Overview, Knowledge, A2A, Files, Channels,
 Logs, Secrets, Environment, Chats, Paddock.
 
 ### `SectionCounts` — unchanged
@@ -86,6 +87,7 @@ Tone (`dot`, `text`, `pulse`) comes from the exported `TONE[status]` map.
 
 | Owner | State | Type | Reset when |
 |-------|-------|------|------------|
+| `Main.vue` | `lastSection` | `SectionValue` (default `overview`) — the section the Settings tab reopens | agent changes (`Main` is keyed by id); updated whenever `?tab=` names a section |
 | `AgentLogsBar` | `expanded` | `boolean` (default `false`) | agent changes (`Main` is keyed by id) |
 | `UsageLine` | `open` (popover) | `boolean` | agent changes; closes on outside click / Escape |
 | `ShareMenuSub` (via `useShareLink`) | `copied` | `boolean` + 1.5 s timer | after the timer; on submenu open; before revoke/regenerate |
@@ -102,6 +104,7 @@ Tone (`dot`, `text`, `pulse`) comes from the exported `TONE[status]` map.
    (collapsed) or `AgentLogsPanel` (expanded), never both; the bar is not mounted while
    the chat is inactive; the full-width Logs section is a different tab, so the chat is
    inactive whenever it is shown.
-3. **The conversation survives every tab change**: the chat stays `v-show`n behind the
-   hub and any section (existing Canvas rule).
+3. **The conversation survives every tab change**: the chat stays `v-show`n behind
+   Settings, whichever section is open (existing Canvas rule).
 4. **`null` counts never render as `0`** (existing rule, carried to the cards).
+5. **Settings always has exactly one section open**, and its card is the highlighted one.

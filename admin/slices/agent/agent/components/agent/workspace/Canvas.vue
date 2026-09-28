@@ -3,9 +3,10 @@ import type { IAgentData } from '#agent/domain';
 import type { ChatOverlay } from '#agent/composables/useAgentLifecycle';
 import {
   SECTIONS,
-  sectionOf,
+  settingsSectionOf,
   type AgentTab,
   type SectionCounts,
+  type SectionValue,
 } from './sections';
 
 const props = defineProps<{
@@ -27,10 +28,10 @@ const emit = defineEmits<{
 
 const chatActive = computed(() => props.tab === 'chat');
 
-// The section a `?tab=` value opens, or null for the chat and for the hub
-// (specs/017, R2). Sections render exactly as they did under the old tab bar,
-// only now under a "← Settings" row.
-const section = computed(() => sectionOf(props.tab));
+// Settings always has one section open beside its list (specs/017, R2): the
+// one `?tab=` names, or the default for a bare `settings`. Null for the chat.
+const section = computed(() => settingsSectionOf(props.tab));
+const open = computed(() => (section.value?.value ?? null) as SectionValue | null);
 
 // One "restart is underway" signal for the full-width logs view, matching what
 // the chat tab derives for its own logs bar.
@@ -62,85 +63,91 @@ const restartUnderway = computed(
       />
     </div>
 
-    <!-- The Settings hub: every section as a card. -->
-    <div v-if="tab === 'settings'" class="min-h-0 flex-1 overflow-y-auto">
-      <AgentWorkspaceSettingsHub
+    <!-- Settings: the list of sections on the left, the open one on the
+         right. The list stays put while the content swaps, so every section
+         is one click from every other. -->
+    <div
+      v-if="open"
+      class="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row lg:gap-4"
+    >
+      <AgentWorkspaceSettingsNav
         :sections="SECTIONS"
         :counts="counts"
-        @open="(v) => emit('setTab', v)"
+        :active="open"
+        @select="(v) => emit('setTab', v)"
       />
+
+      <!-- Keyed by section: each one mounts fresh and unmounts when left —
+           the remount-on-activate refetch behaviour these components had as
+           `TabsContent`, preserved — and the scroll position resets with it. -->
+      <div
+        :key="open"
+        role="tabpanel"
+        :aria-label="section?.title"
+        class="min-h-0 min-w-0 flex-1 overflow-y-auto"
+      >
+        <AgentOverviewTab
+          v-if="open === 'overview'"
+          :agent="agent"
+          :api-url="apiUrl"
+          @agent-updated="(updated: IAgentData) => emit('agent-updated', updated)"
+        />
+
+        <AgentKnowledgeTab v-else-if="open === 'knowledge'" :agent="agent" />
+
+        <PeerTab v-else-if="open === 'a2a'" :agent="agent" />
+
+        <Card v-else-if="open === 'files'">
+          <CardHeader>
+            <CardTitle>Files</CardTitle>
+            <CardDescription>
+              Agent data stored in S3 (<code>agents/{{ agent.id }}/</code>).
+              <code>.md</code> and <code>.json</code> files can be edited;
+              changes apply on next agent restart.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AgentFileProvider :id="agent.id" />
+          </CardContent>
+        </Card>
+
+        <AgentChannelProvider
+          v-else-if="open === 'channels'"
+          :agent-id="agent.id"
+        />
+
+        <AgentLogsPanel
+          v-else-if="open === 'logs'"
+          :agent-id="agent.id"
+          :restarting="restartUnderway"
+          :first-start="agent.launchContext === 'initial'"
+          class="h-full"
+        />
+
+        <Card v-else-if="open === 'secrets'">
+          <CardHeader>
+            <CardTitle>Secrets</CardTitle>
+            <CardDescription>
+              User-scoped secrets stored by the agent runtime. Source depends on
+              <code>SECRET_PROVIDER</code>:
+              <code>aws</code> reads from AWS Secrets Manager
+              (<code>aws_secret_prefix/&lt;agentId&gt;</code>);
+              <code>file</code> lists S3 under
+              <code>agents/{{ agent.id }}/data/secrets/</code>. Values are
+              masked — click the eye icon to reveal.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AgentSecretProvider :id="agent.id" />
+          </CardContent>
+        </Card>
+
+        <AgentEnvTab v-else-if="open === 'env'" :agent-id="agent.id" />
+
+        <ChatListProvider v-else-if="open === 'chats'" :agent-id="agent.id" />
+
+        <AgentPaddockTab v-else-if="open === 'paddock'" :agent-id="agent.id" />
+      </div>
     </div>
-
-    <!-- One section, full width. Everything here mounts fresh and unmounts
-         when left — the remount-on-activate refetch behaviour these
-         components had as `TabsContent`, preserved. -->
-    <AgentWorkspaceSectionFrame
-      v-else-if="section"
-      :section="section"
-      class="min-h-0 flex-1"
-      @back="emit('setTab', 'settings')"
-    >
-      <AgentOverviewTab
-        v-if="tab === 'overview'"
-        :agent="agent"
-        :api-url="apiUrl"
-        @agent-updated="(updated: IAgentData) => emit('agent-updated', updated)"
-      />
-
-      <AgentKnowledgeTab v-else-if="tab === 'knowledge'" :agent="agent" />
-
-      <PeerTab v-else-if="tab === 'a2a'" :agent="agent" />
-
-      <Card v-else-if="tab === 'files'">
-        <CardHeader>
-          <CardTitle>Files</CardTitle>
-          <CardDescription>
-            Agent data stored in S3 (<code>agents/{{ agent.id }}/</code>).
-            <code>.md</code> and <code>.json</code> files can be edited;
-            changes apply on next agent restart.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AgentFileProvider :id="agent.id" />
-        </CardContent>
-      </Card>
-
-      <AgentChannelProvider
-        v-else-if="tab === 'channels'"
-        :agent-id="agent.id"
-      />
-
-      <AgentLogsPanel
-        v-else-if="tab === 'logs'"
-        :agent-id="agent.id"
-        :restarting="restartUnderway"
-        :first-start="agent.launchContext === 'initial'"
-        class="h-full"
-      />
-
-      <Card v-else-if="tab === 'secrets'">
-        <CardHeader>
-          <CardTitle>Secrets</CardTitle>
-          <CardDescription>
-            User-scoped secrets stored by the agent runtime. Source depends on
-            <code>SECRET_PROVIDER</code>:
-            <code>aws</code> reads from AWS Secrets Manager
-            (<code>aws_secret_prefix/&lt;agentId&gt;</code>);
-            <code>file</code> lists S3 under
-            <code>agents/{{ agent.id }}/data/secrets/</code>. Values are
-            masked — click the eye icon to reveal.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AgentSecretProvider :id="agent.id" />
-        </CardContent>
-      </Card>
-
-      <AgentEnvTab v-else-if="tab === 'env'" :agent-id="agent.id" />
-
-      <ChatListProvider v-else-if="tab === 'chats'" :agent-id="agent.id" />
-
-      <AgentPaddockTab v-else-if="tab === 'paddock'" :agent-id="agent.id" />
-    </AgentWorkspaceSectionFrame>
   </div>
 </template>

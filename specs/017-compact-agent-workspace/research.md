@@ -38,30 +38,44 @@ that one value describes the screen and would need a migration for old links.
 **Alternatives considered**: nested routes (`/agents/:id/settings/files`) — rejected: the
 page is pinned to one instance by `definePageMeta({ key: 'agents-workspace' })` so the rail
 survives agent switches, and a route change would reintroduce the remount the key exists
-to prevent. Keeping `More` as an overflow inside Settings — rejected: the hub already
-lists everything.
+to prevent. Keeping `More` as an overflow inside Settings — rejected: the Settings
+list already shows everything.
 
 ---
 
-## R2 — Settings hub and section frame
+## R2 — Settings as a list of cards beside the open section
 
-**Decision**: `Canvas.vue` gains one branch: when `tab === 'settings'` it renders
-`<AgentWorkspaceSettingsHub :sections :counts @open>`; when `sectionOf(tab)` is set it
-renders `<AgentWorkspaceSectionFrame :section @back>` above the section component exactly
-as it renders today. The hub is a responsive grid of `SectionCard`s modelled on the second
-reference screenshot: an icon tile (tabler icon per section, in the same tinted square the
-agent avatars use), title, one-line description (the `desc` already on each section), and
-a count chip for the five countable sections (`null` → a muted "…" placeholder, never
-`0`). The frame is one row: a ghost button "← Settings" that calls `setTab('settings')`
-and the section title.
+**Decision** (revised 2026-09-28 at the requester's call): Settings is master–detail.
+`Canvas.vue` renders, for any tab other than `chat`, a row of two things: on the left
+`<AgentWorkspaceSettingsNav :sections :counts :active @select>` — the ten `SectionCard`s
+stacked vertically in a `w-72` column that scrolls on its own — and on the right the
+content of the open section, rendered exactly as it renders today, in a box keyed by the
+section so each one still mounts fresh. `SectionCard` is unchanged in look (icon tile in
+the tinted square the avatars use, title, the `desc` one-liner, count chip with a muted
+"…" for `null`, never `0`) and gains one prop, `active`, for the highlighted state.
 
-**Rationale**: the existing section components are untouched (the same argument specs/006
-made — they already render at full width). The hub costs one new grid and one small card;
-the frame is the "visible way back" FR-007 asks for.
+Settings always has a section open. `settingsSectionOf(tab)` answers which: the one the
+value names, the default (`overview`) for a bare `settings`, `null` for `chat`. The header's
+Settings tab does not write `settings` at all — `Main.vue` remembers the last section per
+agent (component state; the component is keyed by agent id) and the tab reopens it, so
+Chat → Settings returns the operator to where they were. `?tab=settings` stays a valid
+address and shows Overview.
 
-**Alternatives considered**: keeping a slim secondary tab row under Settings — rejected
-by the request ("основное всё вынесено"); a hub that opens sections in a sheet/drawer —
-rejected: several sections (Files tree, Paddock, Chats) need the full width.
+Below `lg` a 288 px column would squeeze the section, so the same nav becomes a
+horizontally scrolling row of `w-60` cards above the content.
+
+**Rationale**: the first cut was a hub — a grid of these cards that opened a section at full
+width under a "← Settings" row. It made every change of section two clicks (back, then the
+next card) and hid the counts while a section was open. With the list always on screen,
+sections are one click apart and the counts stay in view. It costs the content 300 px of
+width, which the removed log column more than paid for. The section components are still
+untouched.
+
+**Alternatives considered**: the hub plus a back row (the first cut) — replaced, see above.
+A slim text-only sidebar — rejected by the request: the cards with icon and data are to stay
+as they are. Keeping the horizontal tab bar of specs/006 — that is what this feature set out
+to remove from the header. Sections in a sheet/drawer — rejected: Files, Paddock and Chats
+need the width.
 
 ---
 

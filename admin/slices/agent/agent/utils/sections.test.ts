@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  DEFAULT_SECTION,
   DEFAULT_TAB,
   SECTIONS,
   WORKSPACE_TABS,
   sectionOf,
+  settingsSectionOf,
   toAgentTab,
   workspaceTabOf,
   type AgentTab,
@@ -91,6 +93,24 @@ describe('workspaceTabOf', () => {
     expect(workspaceTabOf('settings')).toBe('settings');
     for (let i = 0; i < SECTION_VALUES.length; i += 1) {
       expect(workspaceTabOf(SECTION_VALUES[i]!)).toBe('settings');
+    }
+  });
+});
+
+describe('settingsSectionOf', () => {
+  test('is null only for the chat', () => {
+    expect(settingsSectionOf('chat')).toBe(null);
+  });
+
+  test('a bare settings lands on the default section', () => {
+    expect(DEFAULT_SECTION).toBe('overview');
+    expect(settingsSectionOf('settings')?.value).toBe('overview');
+  });
+
+  test('a section value opens that section', () => {
+    for (let i = 0; i < SECTION_VALUES.length; i += 1) {
+      const v: AgentTab = SECTION_VALUES[i]!;
+      expect(settingsSectionOf(v)?.value).toBe(v);
     }
   });
 });

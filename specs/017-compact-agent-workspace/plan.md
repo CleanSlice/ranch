@@ -9,9 +9,10 @@
 ## Summary
 
 Compress the admin agent workspace (specs/006) without dropping a capability. The header
-keeps two tabs, **Chat** and **Settings**; the ten sections become cards in a Settings hub
-and open at full width from there, with every old `?tab=` deep link still landing on its
-section. The six-figure usage strip becomes one muted line that opens a small popover. The
+keeps two tabs, **Chat** and **Settings**; the ten sections become a vertical list of cards
+on the left of Settings with the open section's content on the right (revised 2026-09-28:
+the first cut was a hub you fell into), with every old `?tab=` deep link still landing on
+its section. The six-figure usage strip becomes one muted line that opens a small popover. The
 side log column goes: the chat drops its card chrome and takes the whole middle column,
 and the pod logs become a collapsed bar under the composer that expands in place. Stop /
 Start stays in the header; Restart, Tools, Edit, Share ▸ and Delete fold into the `…` menu.
@@ -54,7 +55,7 @@ poller, keyboard walk). There is no component-test harness and this plan does no
 monorepo. `api` and `app` are untouched.
 
 **Performance Goals**: no new requests. The usage line reuses the per-agent usage fetch
-the strip already makes; hub card counts reuse `useAgentSectionCounts`; the logs bar
+the strip already makes; Settings card counts reuse `useAgentSectionCounts`; the logs bar
 polls at the same 5 s cadence the side panel did, and **at most one** log poller is alive
 in any workspace state (SC-005).
 
@@ -65,7 +66,7 @@ in any workspace state (SC-005).
 - The conversation stays mounted behind Settings (`v-show`, never `v-if` — the rule in
   `workspace/Canvas.vue`); only its log polling pauses.
 - `?tab=` values are a shared-link contract: the eleven existing values (nine original,
-  `logs`, legacy alias `peers`) keep their meaning; one value is added for the hub.
+  `logs`, legacy alias `peers`) keep their meaning; one value, `settings`, is added.
 - Overlay rule from the spec: the `…` menu is the header's only floating surface; Share is
   a submenu of it whose rows keep it open (`select` default prevented).
 
@@ -124,10 +125,9 @@ admin/slices/agent/agent/
 │   ├── workspace/
 │   │   ├── Main.vue            # EDIT: header → identity+dot, Chat/Settings tabs, UsageLine, Stop, … menu (Share/Tools/Edit/Restart/Delete)
 │   │   ├── Tabs.vue            # EDIT: two tabs, no overflow menu
-│   │   ├── Canvas.vue          # EDIT: 'settings' branch → SettingsHub; section views get SectionFrame
-│   │   ├── SettingsHub.vue     # NEW: grid of SectionCard
-│   │   ├── SectionCard.vue     # NEW: one section card (icon, title, desc, count)
-│   │   ├── SectionFrame.vue    # NEW: back-to-hub row + title above an open section
+│   │   ├── Canvas.vue          # EDIT: chat (v-show) | SettingsNav beside the open section
+│   │   ├── SettingsNav.vue     # NEW: vertical list of SectionCard (row below lg)
+│   │   ├── SectionCard.vue     # NEW: one section card (icon, title, desc, count, active)
 │   │   └── sections.ts         # EDIT: WORKSPACE_TABS, SECTIONS, 'settings' value, sectionOf()/workspaceTabOf()
 │   ├── chat/Tab.vue            # EDIT: drop side column, frameless BridleProvider, AgentLogsBar under it
 │   ├── logs/
@@ -161,7 +161,7 @@ admin/slices/bridle/components/bridle/Provider.vue
 ```
 
 **Structure Decision**: everything stays in the slices that own it today. The workspace
-gains three small components (hub, card, frame) and the logs slice gains the bar; the
+gains two small components (the Settings list and its card) and the logs slice gains the bar; the
 usage line is a sibling of the panel it replaces; share and bridle receive additive props
 only. No new slice, no new store, no new route.
 
@@ -190,13 +190,25 @@ only. No new slice, no new store, no new route.
 └──────┘ └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Settings tab: the same header, then either the hub grid (cards, 3 per row ≥1280 px, 2
-below) or `SectionFrame` (← Settings · Section title) above the section rendered exactly
-as it renders today.
+Settings tab: the same header, then a row — the list of section cards in a `w-72` column
+on the left, the open section rendered exactly as it renders today on the right:
+
+```text
+│ (R•) Rancher  ⛨   [Chat] [Settings]              $14.48 / 30d · haiku  [■ Stop] [⋯] │
+│ ───────────────────────────────────────────────────────────────────────────────── │
+│ ┌ ▣ Overview        ┐  ┌ Files ───────────────────────────────────────────────┐   │
+│ │   Usage, runtime… │  │ Agent data stored in S3 …                            │   │
+│ ├ ▣ Knowledge   2   ┤  │                                                      │   │
+│ ├ ▣ A2A         0   ┤  │   (the section, unchanged)                           │   │
+│ ┢━▣ Files      14 ━━┪  │                                                      │   │
+│ ├ ▣ Channels    1   ┤  │                                                      │   │
+│ ├ ▣ Logs            ┤  │                                                      │   │
+│ │ …                 │  └──────────────────────────────────────────────────────┘   │
+```
 
 ## Phase 0 → [research.md](./research.md)
 
-Nine decisions, none left open: tab model (R1), hub and frame (R2), usage line (R3),
+Nine decisions, none left open: tab model (R1), Settings list beside the open section (R2, revised 2026-09-28), usage line (R3),
 frameless chat (R4), logs bar and the single-poller rule (R5), `…` menu and the Share
 submenu (R6, revised 2026-09-25 at the requester's call), status dot (R7), width budget
 (R8), tests (R9).

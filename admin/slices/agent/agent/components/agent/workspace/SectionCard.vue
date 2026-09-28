@@ -2,14 +2,17 @@
 import type { ISection } from './sections';
 
 /**
- * One card of the Settings hub (specs/017, R2): icon tile, name, one-line
+ * One card of the Settings list (specs/017, R2): icon tile, name, one-line
  * description and — for the countable sections — how much it holds. `null`
  * renders a muted placeholder, never `0`: "none attached" is real information
  * and must not read as "unknown".
+ *
+ * `active` marks the section whose content is on screen beside the list.
  */
 defineProps<{
   section: ISection;
   count: number | null;
+  active?: boolean;
 }>();
 
 defineEmits<{ select: [] }>();
@@ -18,7 +21,14 @@ defineEmits<{ select: [] }>();
 <template>
   <button
     type="button"
-    class="flex w-full items-start gap-3 rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    role="tab"
+    :aria-selected="active"
+    class="flex w-full items-start gap-3 rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    :class="
+      active
+        ? 'border-primary/40 bg-muted'
+        : 'bg-card hover:bg-muted/50'
+    "
     @click="$emit('select')"
   >
     <span
@@ -31,7 +41,8 @@ defineEmits<{ select: [] }>();
         <span class="truncate text-sm font-medium">{{ section.title }}</span>
         <span
           v-if="section.countKey"
-          class="shrink-0 rounded bg-muted px-1.5 text-xs tabular-nums text-muted-foreground"
+          class="shrink-0 rounded px-1.5 text-xs tabular-nums text-muted-foreground"
+          :class="active ? 'bg-background' : 'bg-muted'"
           :title="count === null ? 'Not known yet' : undefined"
         >
           {{ count === null ? '…' : count }}

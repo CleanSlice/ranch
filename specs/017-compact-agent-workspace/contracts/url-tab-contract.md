@@ -21,14 +21,18 @@ value is frozen.
 | `env` | More › Environment | Settings › Environment section |
 | `chats` | More › Chats | Settings › Chats section |
 | `paddock` | More › Paddock | Settings › Paddock section |
-| `settings` | *(unknown → Chat)* | **new** — the Settings hub |
+| `settings` | *(unknown → Chat)* | **new** — Settings, on its default section (Overview) |
 | any other | Chat | unchanged |
 
 ## Rules
 
 - Values are byte-identical to today's; no value is renamed or removed.
-- `settings` is the only addition. Old consoles that do not know it fall back to Chat,
-  which is the existing rule for unknown values.
+- `settings` is the only addition. The console itself never writes it: the Settings tab
+  writes the section it reopens (`overview` on a first visit). It exists so a hand-typed or
+  shared "open Settings" link has a meaning. Old consoles that do not know it fall back to
+  Chat, which is the existing rule for unknown values.
+- In every row that says "Settings › X", the list of section cards is on screen beside X
+  with X's card highlighted.
 - Writing: Chat strips the parameter; every other value is written verbatim with
   `router.replace` (no history entry per tab switch).
 - Other query parameters on the route are preserved on every write (existing
@@ -37,4 +41,4 @@ value is frozen.
 ## Test surface
 
 `admin/slices/agent/agent/utils/sections.test.ts` asserts the table above through
-`toAgentTab`, `workspaceTabOf` and `sectionOf`.
+`toAgentTab`, `workspaceTabOf`, `sectionOf` and `settingsSectionOf`.

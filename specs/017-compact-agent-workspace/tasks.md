@@ -16,7 +16,7 @@ no component-test harness — interaction rules are verified through quickstart.
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: can run in parallel (different files, no dependency on an unfinished task)
-- **[Story]**: US1 conversation gets the room · US2 Settings hub · US3 usage line · US4 `…` menu + Share submenu
+- **[Story]**: US1 conversation gets the room · US2 Settings list · US3 usage line · US4 `…` menu + Share submenu
 
 ## Path conventions
 
@@ -91,7 +91,7 @@ no component-test harness — interaction rules are verified through quickstart.
 - [X] T016 [P] [US2] Create `admin/slices/agent/agent/components/agent/workspace/SectionFrame.vue` (`<AgentWorkspaceSectionFrame>`): prop `section: ISection`; emit `back`; one `shrink-0` row with a ghost `Button` (`IconArrowLeft` + "Settings") and the section title (`text-sm font-medium`), then a default `<slot />` in a `min-h-0 flex-1 overflow-y-auto` box.
 - [X] T017 [US2] Update `admin/slices/agent/agent/components/agent/workspace/Canvas.vue`: add props `counts: SectionCounts`; add emit `setTab: [AgentTab]`; `chatActive = tab === 'chat'` stays; new `v-else-if="tab === 'settings'"` branch renders `<AgentWorkspaceSettingsHub :sections="SECTIONS" :counts @open="(v) => emit('setTab', v)" />`; the existing section `v-if` chain moves inside `<AgentWorkspaceSectionFrame v-else :section="sectionOf(tab)!" @back="emit('setTab', 'settings')">…</AgentWorkspaceSectionFrame>` with the per-section components unchanged (Overview, Knowledge, A2A, Files card, Channels, Logs panel, Secrets card, Env, Chats, Paddock). Keep the `v-show` rule comment for the chat.
 - [X] T018 [US2] Update `admin/slices/agent/agent/components/agent/workspace/Main.vue` for US2: pass `:counts="counts"` to `<AgentWorkspaceCanvas>` and handle `@set-tab="setTab"`; keep the `watch(tab, t => t === 'overview' && refresh())`. Confirm `useAgentTab` needs no change (T003 made `toAgentTab` accept `settings`; `setTab('chat')` still strips the param).
-- [ ] T019 [US2] Walk quickstart.md US2 steps 1–5 (all twelve `?tab=` inputs from `contracts/url-tab-contract.md`, hub ↔ section ↔ chat round trip with transcript intact, agent switch lands on Chat); post the US2 checkpoint comment on CLEAN-123 and commit `feat(admin): settings hub of section cards (CLEAN-123)`.
+- [X] T019 [US2] (superseded by T042 — the hub this walk described was replaced in Phase 8) Walk quickstart.md US2 steps 1–5 (all twelve `?tab=` inputs from `contracts/url-tab-contract.md`, hub ↔ section ↔ chat round trip with transcript intact, agent switch lands on Chat); post the US2 checkpoint comment on CLEAN-123 and commit `feat(admin): settings hub of section cards (CLEAN-123)`.
 
 **Checkpoint**: US1 + US2 work together; the old tab bar and More menu are gone from the screen.
 
@@ -144,6 +144,23 @@ no component-test harness — interaction rules are verified through quickstart.
 - [X] T033 Update `admin/slices/agent/agent/components/agent/workspace/Canvas.vue` and `sections.ts` header comments to point at `specs/017-compact-agent-workspace` (they currently narrate specs/006's tab bar), and add a one-paragraph note to `specs/006-agent-workspace-tabs/spec.md` under "Visual reference" saying the tab bar was superseded by 017 (no other doc lists the workspace layout).
 - [X] T034 Final gates in `admin/`: `bun test slices` (89 tests green, 12 files), `npx nuxt typecheck` at baseline (8 pre-existing monaco errors), `npx nuxt build` passes; twin check done by inspection (no `app/` changes). The browser walk of quickstart.md is still open — see T013/T019/T025/T030.
 - [X] T035 Open the GitHub PR into `main` titled `feat(admin): compact agent workspace — Chat / Settings, one-line usage, logs bar (CLEAN-123)` with `curl` against `https://api.github.com/repos/CleanSlice/ranch/pulls` (body from a UTF-8 file, `--data-binary`): summary per story, the Share-submenu decision, the twin-check line ("app checked, nothing needed: no tabs, usage strip, side logs or menu exist there; `share` and `bridle` app twins untouched"), link to the spec, and the Claude attribution footer; put the PR URL on CLEAN-123 and transition the issue to **51 In Testing** (the board has no In Review column).
+
+---
+
+## Phase 8: Revision — Settings as a list beside the open section (2026-09-28)
+
+**Why**: the hub of Phase 4 made every change of section two clicks (back, then the next
+card). The requester asked for the same cards stacked vertically on the left with the
+content on the right. This supersedes T015 (hub grid) and T016 (back frame); the card of
+T014 is kept as is.
+
+- [X] T036 Add `DEFAULT_SECTION` and `settingsSectionOf(tab)` to `admin/slices/agent/agent/components/agent/workspace/sections.ts` and cover them in `admin/slices/agent/agent/utils/sections.test.ts` (null for chat, `overview` for a bare `settings`, identity for every section value).
+- [X] T037 [P] Add the `active` prop (highlight + `role="tab"` / `aria-selected`) to `admin/slices/agent/agent/components/agent/workspace/SectionCard.vue`; look otherwise unchanged.
+- [X] T038 Create `admin/slices/agent/agent/components/agent/workspace/SettingsNav.vue` (`<AgentWorkspaceSettingsNav>`): vertical `w-72` list of cards from `lg` up, one horizontally scrolling row below; props `sections`, `counts`, `active`; emit `select`.
+- [X] T039 Rework `admin/slices/agent/agent/components/agent/workspace/Canvas.vue`: for any tab but `chat`, `SettingsNav` beside the open section (`settingsSectionOf(tab)`), section box keyed by value; delete `SettingsHub.vue` and `SectionFrame.vue` from the same directory.
+- [X] T040 Update `admin/slices/agent/agent/components/agent/workspace/Main.vue`: `lastSection` per agent so the Settings tab reopens the section last open; Overview refresh keyed on what is on screen (`settingsSectionOf`).
+- [X] T041 Gates in `admin/`: `bun test slices` (92 green), `npx nuxt typecheck` at baseline; docs in `specs/017-compact-agent-workspace/` revised (spec US2 + FR-005…009a, research R2, contracts, data model, quickstart US2).
+- [ ] T042 Walk US2 steps 1–7 of `specs/017-compact-agent-workspace/quickstart.md` in the browser (replaces T019).
 
 ---
 

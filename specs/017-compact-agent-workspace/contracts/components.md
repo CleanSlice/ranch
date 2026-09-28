@@ -6,16 +6,17 @@ slice path convention.
 
 ## New
 
-### `AgentWorkspaceSettingsHub` — `agent/agent/components/agent/workspace/SettingsHub.vue`
+### `AgentWorkspaceSettingsNav` — `agent/agent/components/agent/workspace/SettingsNav.vue`
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `sections` | `readonly ISection[]` | `SECTIONS` in hub order |
+| `sections` | `readonly ISection[]` | `SECTIONS` in list order |
 | `counts` | `SectionCounts` | from `useAgentSectionCounts` |
+| `active` | `SectionValue` | the open section; its card is highlighted |
 
-Emits `open: [value: SectionValue]`. Renders a grid (`grid-cols-1 md:grid-cols-2
-xl:grid-cols-3 gap-3`) of `AgentWorkspaceSectionCard`. Cards are `<button>`s (focusable,
-Enter opens).
+Emits `select: [value: SectionValue]`. `role="tablist"`, vertical. From `lg` up: a `w-72`
+column of cards, scrolling on its own. Below `lg`: one horizontally scrolling row of `w-60`
+cards above the content.
 
 ### `AgentWorkspaceSectionCard` — `…/workspace/SectionCard.vue`
 
@@ -23,17 +24,13 @@ Enter opens).
 |------|------|-------|
 | `section` | `ISection` | icon tile, title, desc |
 | `count` | `number \| null` | `null` → muted "…" placeholder; number → chip |
+| `active` | `boolean` | highlighted state; sets `aria-selected` |
 
-Emits `select: []`.
+Emits `select: []`. A `<button role="tab">`.
 
-### `AgentWorkspaceSectionFrame` — `…/workspace/SectionFrame.vue`
-
-| Prop | Type | Notes |
-|------|------|-------|
-| `section` | `ISection` | title in the row |
-
-Emits `back: []` (host calls `setTab('settings')`). One row: ghost button "← Settings",
-section title. Slot: the section content.
+*(The first cut had `SettingsHub.vue`, a grid of these cards, and `SectionFrame.vue`, a
+"← Settings" row above an open section. Both are deleted: the list beside the content
+replaced the hub, and with the list always on screen there is nothing to go back to.)*
 
 ### `AgentLogsBar` — `agent/agent/components/agent/logs/Bar.vue`
 
@@ -77,19 +74,20 @@ ready; the button toggles a reka-ui popover with the six figures and a Details b
 | Prop | Type | Change |
 |------|------|--------|
 | `active` | `'chat' \| 'settings'` | was `AgentTab`; host passes `workspaceTabOf(tab)` |
-| ~~`counts`~~ | — | removed (counts move to the hub cards) |
+| ~~`counts`~~ | — | removed (counts move to the Settings cards) |
 
 Emits `select: [tab: 'chat' \| 'settings']`. No overflow menu.
 
 ### `AgentWorkspaceCanvas` — `…/workspace/Canvas.vue`
 
-Props unchanged (`tab: AgentTab` still). New branches: `tab === 'settings'` → hub;
-`sectionOf(tab)` → frame + existing section component. Emits gain `setTab: [AgentTab]`
-(the hub's `open` and the frame's `back` bubble up as `setTab`).
+Props gain `counts: SectionCounts`; `tab: AgentTab` as before. For any tab other than
+`chat` it renders `SettingsNav` beside the open section (`settingsSectionOf(tab)`), the
+section box keyed by its value. Emits gain `setTab: [AgentTab]` (the nav's `select`).
 
 ### `AgentWorkspaceMain` — `…/workspace/Main.vue`
 
-Props/emits unchanged (`id`; `deleted`). Internals: header per plan § Layout; menu items
+Props/emits unchanged (`id`; `deleted`). Internals: header per plan § Layout; `lastSection`
+so the Settings tab reopens the section last open for this agent; menu items
 Restart / Tools / Edit / `<ShareMenuSub>` / — / Delete agent. Uses `UsageLine` (Details → `setTab('overview')`) instead of
 `UsagePanel variant="strip"`.
 
@@ -143,7 +141,8 @@ confirms `Main.vue` was the only host. `panel` variant unchanged.
 ### `sections.ts` — `…/workspace/sections.ts`
 
 Exports: `WORKSPACE_TABS`, `SECTIONS`, `ISection`, `SectionValue`, `AgentTab`,
-`DEFAULT_TAB`, `toAgentTab`, `workspaceTabOf`, `sectionOf`. Removed: `AGENT_TABS`,
+`DEFAULT_TAB`, `DEFAULT_SECTION`, `toAgentTab`, `workspaceTabOf`, `sectionOf`,
+`settingsSectionOf`. Removed: `AGENT_TABS`,
 `PRIMARY_TABS`, `OVERFLOW_TABS`, `IAgentTab`. Consumers on origin/main (`graft grep`): only
 `Tabs.vue`; `useAgentTab.ts` imports `DEFAULT_TAB`, `toAgentTab`, `AgentTab`, all of which stay.
 

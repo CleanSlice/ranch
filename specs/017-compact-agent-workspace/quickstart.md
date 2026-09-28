@@ -41,18 +41,25 @@ Expected: all tests green; typecheck clean. (Memory: run jest/bun directly rathe
 6. Open Settings, wait 15 s, watch the network tab: no log requests while Settings is
    open. Back to Chat: polling resumes, transcript and scroll position intact.
 
-### US2 — Settings hub
+### US2 — Settings: list of cards beside the open section
 
-1. Click **Settings** → URL is `?tab=settings`; ten cards in a grid, each with icon,
-   title, description; Knowledge / A2A / Files / Secrets / Channels show a count chip
-   (or a muted "…" while unknown — never `0` for unknown).
-2. Click **Files** → URL `?tab=files`; the frame row shows "← Settings · Files"; the Files
-   section renders as before; Settings stays highlighted.
-3. Click "← Settings" → hub again, `?tab=settings`.
-4. Paste each of `?tab=overview|knowledge|a2a|peers|files|channels|logs|secrets|env|chats|paddock`
-   → lands on that section inside Settings (`peers` shows A2A and the URL rewrites to
-   `a2a` on the next tab change). `?tab=chat`, `?tab=bogus`, no param → Chat.
-5. From the hub, switch agents in the rail → the new agent opens on Chat.
+1. Click **Settings** → URL is `?tab=overview`; ten cards stacked on the left, each with
+   icon, title, description; Knowledge / A2A / Files / Channels / Secrets show a count chip
+   (or a muted "…" while unknown — never `0` for unknown). Overview is highlighted and its
+   content is on the right.
+2. Click **Files** → URL `?tab=files`; the content on the right swaps to Files, the Files
+   card is highlighted, the list has not moved; Settings stays highlighted in the header.
+3. Click **Secrets**, then **Paddock** straight from there → one click each, no way back
+   needed. Scroll the list on a short window: it scrolls on its own, the content does not
+   move with it.
+4. Click **Chat**, then **Settings** → Settings reopens on Paddock, not on Overview.
+5. Paste each of `?tab=overview|knowledge|a2a|peers|files|channels|logs|secrets|env|chats|paddock`
+   → lands on that section with its card highlighted (`peers` shows A2A). `?tab=settings`
+   → Overview. `?tab=chat`, `?tab=bogus`, no param → Chat.
+6. From Settings, switch agents in the rail → the new agent opens on Chat, and its
+   Settings opens on Overview.
+7. Narrow the window below ~1024 px → the cards become one horizontally scrolling row
+   above the content.
 
 ### US3 — usage line
 
@@ -93,7 +100,7 @@ Expected: all tests green; typecheck clean. (Memory: run jest/bun directly rathe
 Tab from the page start: Chat → Settings → usage line → Stop → ⋯. Enter on ⋯ opens the
 menu; ↓ moves; → on Share opens the submenu with focus on its first row; ↓ reaches Copy
 link; Enter copies and the menu stays; ← returns to Share; Escape closes the menu. In the
-hub, Tab moves card to card; Enter opens.
+Settings list, Tab moves card to card; Enter opens that section beside the list.
 
 ### Twin console (FR-022)
 

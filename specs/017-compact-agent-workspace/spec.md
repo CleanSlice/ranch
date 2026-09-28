@@ -12,7 +12,7 @@
 with a `Chat · Overview · Files` header, `$14.48 · 30d`, a `Stop` button and a `…` menu,
 a borderless conversation, and a collapsed `▸ Logs` bar under the composer; (2) a grid of
 agent cards (initials, name, created date, one-line description, resource chips, a status
-footer) used as the look for the Settings hub. They are not tracked; this document is the
+footer) used as the look for the Settings cards. They are not tracked; this document is the
 durable record of them.
 
 **Input**: User description: "Идея в доработке интерфейса агента, чтобы максимально сжать все лишнее. Вот референс. По тезисам: табы оставить chat / settings — а там уже все остальные табы; в usage блоке оставить только «$15.31/30d · claude-haiku-4-5» — остальное по клику на текст; логи слева убрать вниз и снести границы у чата, дав ему максимально пространства; и при переходе в settings там будут карточки (примерный дизайн) и при клике мы попадаем в нужную табу. Но основное все вынесено. Только проработай кнопку share, так как она переносится под «...» кнопку, выпадашку, а при клике на нее открывается еще один оверлей выпадашка, могут быть колизии кликов, проверь как лучше будет, может эту кнопку тогда аккордеоном сделать, или не стоит если проблем не возникнет."
@@ -28,9 +28,11 @@ down.
 
 This feature keeps every capability and hides most of the chrome:
 
-- **Two tabs, not eleven.** The header offers **Chat** and **Settings**. Settings is a hub
-  of cards, one per section the old tab bar used to show; a card opens that section. Every
-  old `?tab=` deep link still lands on its section.
+- **Two tabs, not eleven.** The header offers **Chat** and **Settings**. Settings is a
+  vertical list of cards on the left, one per section the old tab bar used to show, with
+  the selected section's content on the right. Picking another card swaps the content in
+  place — there is nothing to fall into and climb back out of. Every old `?tab=` deep link
+  still lands on its section.
 - **One usage line.** The strip becomes a single muted line — cost for 30 days and the top
   model — and clicking it reveals the rest.
 - **The chat owns the column.** The side logs go; the conversation loses its card border
@@ -140,40 +142,53 @@ bar is collapsed by default and shows a live line.
 
 ---
 
-### User Story 2 - Settings is a hub of cards (Priority: P2)
+### User Story 2 - Settings is a list of cards beside the open section (Priority: P2)
 
-The operator clicks **Settings**. Instead of a bar of tabs they see a grid of cards, one
-per section: Overview, Knowledge, A2A, Files, Channels, Logs, Secrets, Environment, Chats,
-Paddock. Each card shows the section name, its one-line description and, where the
-section has a count today (knowledge bases, peers, files, secrets, channels), that count.
-Clicking a card opens that section at full width; a way back to the hub is visible from
-inside any section. Old deep links (`?tab=knowledge`, `?tab=peers`, …) still land on their
-section.
+The operator clicks **Settings**. On the left they see a vertical list of cards, one per
+section: Overview, Knowledge, A2A, Files, Channels, Logs, Secrets, Environment, Chats,
+Paddock. Each card shows the section's icon, name, one-line description and, where the
+section has a count today (knowledge bases, peers, files, channels, secrets), that count.
+On the right is the content of the selected section; its card is highlighted. Clicking
+another card swaps the content on the right and the list stays where it is, so moving
+between sections is one click each time and never a trip back to an index. Old deep links
+(`?tab=knowledge`, `?tab=peers`, …) still land on their section.
+
+*(Revised 2026-09-28 at the requester's call. The first cut was a hub: a grid of the same
+cards that opened a section at full width under a "← Settings" row. It made every change of
+section two clicks — back, then the next card. The cards were kept exactly as they were;
+only their arrangement changed.)*
 
 **Why this priority**: it is what makes hiding nine tabs acceptable — every section stays
-two clicks from the chat and its counts stay visible before opening.
+one click from every other, and its count stays visible before opening.
 
-**Independent Test**: open Settings, count ten cards with their descriptions and counts;
-click Files, land on the Files section; use the back affordance and land on the hub; open
-`?tab=knowledge` directly and land on Knowledge.
+**Independent Test**: open Settings, see ten cards stacked on the left with Overview
+selected and its content on the right; click Files, the content swaps and the list does not
+move; click Secrets straight from there; open `?tab=knowledge` directly and land on
+Knowledge with its card highlighted.
 
 **Acceptance Scenarios**:
 
-1. **Given** the Chat tab is active, **When** the operator clicks Settings, **Then** a hub
-   with exactly ten cards appears, each with name and description, and the five countable
-   ones show their counts (a count that is not known yet shows a placeholder, not `0`).
-2. **Given** the hub, **When** the operator clicks a card, **Then** that section renders at
-   full width where the hub was, the Settings tab stays highlighted, and the address bar
-   reflects the section so the link can be shared.
-3. **Given** a section is open, **When** the operator uses the back affordance, **Then**
-   the hub returns without leaving the workspace.
+1. **Given** the Chat tab is active, **When** the operator clicks Settings for the first
+   time on this agent, **Then** the list of exactly ten cards appears on the left, each with
+   icon, name and description, the five countable ones with their counts (a count that is
+   not known yet shows a placeholder, not `0`), and the Overview section is open on the
+   right with its card highlighted.
+2. **Given** Settings is open, **When** the operator clicks another card, **Then** that
+   section replaces the content on the right, its card becomes the highlighted one, the
+   list keeps its place and scroll position, the Settings tab stays highlighted, and the
+   address bar reflects the section so the link can be shared.
+3. **Given** a section is open, **When** the operator goes to Chat and back to Settings,
+   **Then** Settings reopens on the section they left, not on Overview.
 4. **Given** a link with any of the eleven pre-existing `?tab=` values (including the
    legacy `peers`), **When** it is opened, **Then** the workspace lands on that section
-   inside Settings; `chat`, an unknown value, or no value lands on Chat.
+   inside Settings with its card highlighted; `settings` alone lands on Overview; `chat`,
+   an unknown value, or no value lands on Chat.
 5. **Given** a section is open, **When** the operator clicks Chat, **Then** the
    conversation returns with its transcript, scroll position and connection intact.
-6. **Given** the Settings hub is open, **When** the operator switches to another agent in
-   the rail, **Then** the new agent opens on Chat.
+6. **Given** Settings is open, **When** the operator switches to another agent in the
+   rail, **Then** the new agent opens on Chat.
+7. **Given** a window too narrow for a column beside the content, **When** Settings is
+   open, **Then** the same cards form one horizontally scrolling row above the content.
 
 ---
 
@@ -261,12 +276,12 @@ then Cancel (rows restore, menu stays); press ← (submenu closes, focus on Shar
   or `unreachable` status still reads at a glance through the dot's colour.
 - **Logs bar while the log is empty**: the bar shows "no entries yet" with a count of 0.
 - **Logs expanded then agent switched**: the new agent opens with the bar collapsed.
-- **Deep link to `?tab=settings`**: opens the hub itself.
+- **Deep link to `?tab=settings`**: opens Settings on its default section, Overview.
 - **Narrow window**: the tabs, usage line, Stop and `…` stay on one row; the usage line
   truncates its model name; below the width where they cannot share a row, the usage line
   wraps under the tabs rather than pushing `…` off screen.
 - **Keyboard-only operator**: Tab reaches Chat, Settings, the usage line, Stop and `…` in
-  that order; the hub cards are focusable and open on Enter; the Share submenu is walked
+  that order; the Settings cards are focusable and open on Enter; the Share submenu is walked
   with ↑ ↓, opened with → and closed with ← or Escape, like any nested menu.
 - **Chat overlays** (starting / stopped / failed) that blur the message area today keep
   doing so over the borderless chat; the composer and the Logs bar stay usable.
@@ -287,22 +302,28 @@ then Cancel (rows restore, menu stays); press ← (submenu closes, focus on Shar
 - **FR-004**: The pending-restart banner and the "runtime offline" warning MUST remain
   visible text where they are today.
 
-**Settings hub**
+**Settings**
 
-- **FR-005**: The Settings tab MUST open a hub of cards, one per existing section
+- **FR-005**: The Settings tab MUST show a vertical list of cards, one per existing section
   (Overview, Knowledge, A2A, Files, Channels, Logs, Secrets, Environment, Chats, Paddock),
-  each showing the section's name and one-line description.
+  each showing the section's icon, name and one-line description, beside the content of the
+  one section that is open; the open section's card MUST be visibly highlighted.
 - **FR-006**: Cards for sections that expose a count today (Knowledge, A2A, Files,
   Secrets, Channels) MUST show that count, with a distinct placeholder while the count is
   unknown; an unknown count MUST NOT render as `0`.
-- **FR-007**: Clicking a card MUST open that section at full width under the header, keep
-  the Settings tab highlighted, and MUST offer a visible way back to the hub.
+- **FR-007**: Clicking a card MUST replace the content beside the list with that section
+  without hiding or resetting the list, and MUST keep the Settings tab highlighted. Settings
+  MUST always have one section open: Overview on the first visit for an agent, afterwards
+  the section the operator last had open for that agent.
 - **FR-008**: The address MUST reflect the open section so it can be shared, and every
   pre-existing `?tab=` value (the nine original tabs, `logs`, and the legacy `peers`) MUST
-  land on its section inside Settings; `chat`, no value, or an unknown value MUST land on
-  Chat; a value for the hub itself MUST open the hub.
+  land on its section inside Settings; `settings` alone MUST open Settings on Overview;
+  `chat`, no value, or an unknown value MUST land on Chat.
 - **FR-009**: Switching between Chat and any Settings view MUST NOT tear down the
   conversation: transcript, scroll position and connection survive the round trip.
+- **FR-009a**: Where the window is too narrow for the list to sit beside the content, the
+  cards MUST become one horizontally scrolling row above it rather than squeeze the
+  content.
 
 **Usage**
 
@@ -356,8 +377,7 @@ then Cancel (rows restore, menu stays); press ← (submenu closes, focus on Shar
 ### Key Entities
 
 - **Section**: one of the ten agent sections (name, description, optional count, address
-  value). The Settings hub is a view over the list of sections; a section view is one
-  section opened at full width.
+  value). Settings is the list of sections beside the content of the one that is open.
 - **Usage summary**: the agent's 30-day totals (cost, calls, input, output), today's calls
   and model, and the top model — shown as one line, expanded on click.
 - **Log entry**: a timestamped line with an optional warning/error level; the bar shows the
@@ -371,8 +391,8 @@ then Cancel (rows restore, menu stays); press ← (submenu closes, focus on Shar
   column's width (today: 50%) and its first message starts within two rows of the top of
   the column (today: four — banner aside).
 - **SC-002**: Every one of the ten sections is reachable from Chat in at most two clicks
-  (Settings, card), and every one of the eleven pre-existing `?tab=` values plus the hub
-  value opens the right view on first load.
+  (Settings, card) and from any other section in one; every one of the eleven pre-existing
+  `?tab=` values plus `settings` opens the right view on first load.
 - **SC-003**: All six usage figures remain reachable in one click from the header line, and
   the full usage card in two.
 - **SC-004**: Across the Share flow (open `…`, open Share, Copy link, Revoke → Cancel, ←,
@@ -382,7 +402,7 @@ then Cancel (rows restore, menu stays); press ← (submenu closes, focus on Shar
 - **SC-005**: The log is fetched by at most one poller at a time in any state of the
   workspace (bar collapsed, bar expanded, Settings open, Logs section open).
 - **SC-006**: The workspace passes a keyboard-only walk: tabs, usage line, Stop, `…`, every
-  menu item, the share panel and its close, and every hub card, with focus visibly landing
+  menu item, the share panel and its close, and every Settings card, with focus visibly landing
   where the walk expects.
 
 ## Assumptions
@@ -403,10 +423,10 @@ then Cancel (rows restore, menu stays); press ← (submenu closes, focus on Shar
   classification is introduced.
 - **The usage panel opens under the line, not as a page.** The full card stays where it is
   in Overview; the click-through panel is the strip's six figures and the Details link.
-- **Hub card counts reuse the counts the old tab bar already showed**; no new sources.
+- **Card counts reuse the counts the old tab bar already showed**; no new sources.
 - **Section descriptions on the cards are the one-liners the tab bar already carries.**
 - **Deep-link contract is unchanged**: the existing address values are kept byte-for-byte;
-  one new value for the hub is added. The default (no value) stays Chat.
+  one new value, `settings`, is added. The default (no value) stays Chat.
 - **The conversation is kept alive behind Settings**, as the current workspace rule requires; only its
   log polling pauses.
 - **The share link's lifecycle is unchanged** (read on open, never mint; Regenerate and

@@ -24,7 +24,14 @@ import { useToolCatalogStore } from '#toolCatalog/stores/toolCatalog';
 import { agentInitials } from '#agent/composables/useAgentRailEntries';
 import { useAgentSectionCounts } from '#agent/composables/useAgentSectionCounts';
 import { useAgentTab } from '#agent/composables/useAgentTab';
-import { workspaceTabOf } from './sections';
+import {
+  DEFAULT_SECTION,
+  sectionOf,
+  settingsSectionOf,
+  workspaceTabOf,
+  type AgentTab,
+  type WorkspaceTab,
+} from './sections';
 
 const props = defineProps<{ id: string }>();
 
@@ -68,6 +75,22 @@ const {
 
 const { tab, setTab } = useAgentTab();
 
+// Settings reopens on the section the operator left it on, not on the first
+// one: Chat → Settings → Files → Chat → Settings lands on Files again. Kept
+// per agent — this component is keyed by agent id — and not persisted.
+const lastSection = ref<AgentTab>(DEFAULT_SECTION);
+watch(
+  tab,
+  (t) => {
+    if (sectionOf(t)) lastSection.value = t;
+  },
+  { immediate: true },
+);
+
+function onSelectWorkspaceTab(next: WorkspaceTab) {
+  setTab(next === 'chat' ? 'chat' : lastSection.value);
+}
+
 // The Settings hub's cards show counts before you click, so there is nothing
 // to gate them behind — they are fetched from first paint.
 const { counts } = useAgentSectionCounts(props.id, agent);
@@ -76,7 +99,9 @@ const { counts } = useAgentSectionCounts(props.id, agent);
 // when the operator opens Overview so a stale 'failed' or 'deploying' from
 // initial load doesn't outlive the reconciled state.
 watch(tab, (t) => {
-  if (t === 'overview') void refresh();
+  // A bare `?tab=settings` shows Overview too, so ask what is on screen
+  // rather than what the address says.
+  if (settingsSectionOf(t)?.value === 'overview') void refresh();
 });
 
 const initials = computed(() =>
@@ -228,7 +253,7 @@ async function onRemove() {
         <AgentWorkspaceTabs
           class="ml-2"
           :active="workspaceTabOf(tab)"
-          @select="setTab"
+          @select="onSelectWorkspaceTab"
         />
 
         <div class="flex-1" />

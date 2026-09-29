@@ -185,8 +185,8 @@ numbers ("entries 29–30") refer to the tables in [inventory.md](./inventory.md
 - [X] T051 Run every gate in quickstart §1 from a clean checkout of the branch and keep the output for the PR: `bun run locale:check`, `bun run i18n:check`, `bun run test:scripts`, `bun test slices` and `npx nuxt typecheck` in `admin/` and `app/`, the peer tool spec and `bun run build` in `api/`.
 - [ ] T052 **For a person, in a browser** — walk quickstart §2–§8 end to end against the running consoles: Russian browser for admin, German for app in both languages, including the language switch without reload (§6) and the server's reason shown character for character the same in both languages (§7). Everything that can be proved without a browser is proved by the tests, which run on a machine whose own default language is Russian.
 - [X] T053 Close [inventory.md](./inventory.md): `grep -c "| open |"` returns `0`, every entry reads `corrected` or `confirmed correct`, the totals table is updated, and the shared-area review has a sentence in both columns for all seven slices.
-- [ ] T054 [P] Create two follow-up issues in Jira `CLEAN`, each linked to CLEAN-127 and assigned like it: `[ADMIN]` collapse the admin byte formatters that round differently; `[APP]` language switcher on the sign-in, register and shared-link layouts.
-- [ ] T055 Commit with Conventional Commits and the ticket id, one commit per phase (`feat(tooling): locale check …`, `fix(admin): …`, `fix(app): …`, `fix(api): …`, `ci: …`, `docs: …`, each ending `(CLEAN-127)`), open the pull request into `main`, and in its description give: the twin-console table in words, the commands run with their results, the reason for `en-US` and the 24-hour clock, the visible changes for an English-browser operator, and the decision that server messages and logs are shown as received, so a Russian screen can carry an English sentence from the server. Put the PR link on CLEAN-127 and move the issue to In Testing (transition 51).
+- [X] T054 [P] Create two follow-up issues in Jira `CLEAN`, each linked to CLEAN-127 and assigned like it: `[ADMIN]` collapse the admin byte formatters that round differently; `[APP]` language switcher on the sign-in, register and shared-link layouts. Created: CLEAN-128, CLEAN-129.
+- [X] T055 Commit with Conventional Commits and the ticket id, one commit per phase (`feat(tooling): locale check …`, `fix(admin): …`, `fix(app): …`, `fix(api): …`, `ci: …`, `docs: …`, each ending `(CLEAN-127)`), open the pull request into `main`, and in its description give: the twin-console table in words, the commands run with their results, the reason for `en-US` and the 24-hour clock, the visible changes for an English-browser operator, and the decision that server messages and logs are shown as received, so a Russian screen can carry an English sentence from the server. Put the PR link on CLEAN-127 and move the issue to In Testing (transition 51).
 
 ---
 
@@ -282,18 +282,6 @@ Phase 3 — admin (T001–T022) first, app and the rest (T023–T055) stacked on
 CI wiring stays in the second either way.
 
 ---
-
-## As built — where the work differs from the task text
-
-- **Function names in the admin module** are not the ones T006 and T008 list. `formatCount`, `formatMessageTime` and `formatModified` are already auto-imported from other admin slices, so the module exports `formatNumber`, `formatStamp` and `formatStampDate`, plus `formatClock`, `formatClockSeconds`, `formatLongDate`, `formatMoney`, `compareText`, `compareInstants`. The slice helpers keep their old names and delegate.
-- **`useRelativeTime` is its own file**, `admin/slices/common/composables/useRelativeTime.ts`, not part of `format.ts` (T008). Inside the module it pulled Vue into every pure utility that imports a date formatter. The allowlist has a third L1 entry for it.
-- **`formatDate.ts` was removed**, not turned into a re-export (T009). `utils/index.ts` exports the module; a third file exporting the same two names only added an auto-import duplicate.
-- **`formatMoney` takes a precision.** The usage panel shows cost per call to four decimals (`$0.0012`); rounding to two would print every call as `$0.00`.
-- **L1 knows 16 names, not 15**: `Intl.DisplayNames` was added, since the app module uses it for language names.
-- **A value outside a closed list is shown as received**, not as a translated "Unknown" (T027, T031, T032, T033). It follows from the decision on server text: what the console was handed is not hidden. Two inventory entries — the unknown-status fallbacks — were therefore already right and are `confirmed correct`.
-- **`noticeParams`** (`app/slices/bridle/utils/noticeParams.ts`, with tests) is how a size limit stored as a number becomes a size when the notice is shown (T029). Three components render notices; one function serves them.
-- **Inventory entry 28 is two findings**: the check reports the formatter's type annotation as well as its construction, so admin had 58 L1 findings for 57 entries.
-- **The `api` build reports 4 errors**, all in `src/slices/mcpServer/oauth/domain/mcpOauth.service.ts`, from a Prisma client that was not regenerated in this worktree. They are not from this change and the file is untouched; the peer tool spec (26 tests) passes. `prisma generate` was not run here because it takes a running dev API down on Windows.
 
 ## As built — where the work differs from the task text
 

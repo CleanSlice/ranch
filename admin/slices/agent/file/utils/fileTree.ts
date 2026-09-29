@@ -3,6 +3,7 @@
  * `bun test` runs them: build a tree from flat paths, filter it, and answer
  * "which files does this folder cover" for the checkboxes.
  */
+import { compareText } from '#common/utils/format';
 
 export interface ITreeFile {
   path: string;
@@ -101,7 +102,7 @@ function total(node: IFolderNode): void {
 function sortTree(node: IFolderNode): void {
   node.children.sort((a, b) => {
     if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
-    return a.name.localeCompare(b.name);
+    return compareText(a.name, b.name);
   });
   for (const c of node.children) if (c.type === 'folder') sortTree(c);
 }

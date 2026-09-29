@@ -13,6 +13,7 @@
  *
  * No Vue / Nuxt imports: this file runs under `bun test`.
  */
+import { formatLongDate } from '#common/utils/format'
 
 /** The least a message must carry to be placed in the flow. */
 export interface IChatFlowMessage {
@@ -52,7 +53,7 @@ export interface IChatFlowDayItem {
   ts: number
   /** Set when the day is today / yesterday relative to `now`. */
   relative: 'today' | 'yesterday' | null
-  /** Long date in `locale` — what to show when `relative` is null. */
+  /** Long date — what to show when `relative` is null. */
   label: string
 }
 
@@ -62,6 +63,7 @@ export type ChatFlowItem<M, B> =
   | IChatFlowDayItem
 
 export interface IChatFlowOptions {
+  /** Not read in admin: labels are English regardless (`#common/utils/format`). */
   locale: string
   /** Epoch ms "now" — injected so today / yesterday is testable. */
   now: number
@@ -118,7 +120,6 @@ export function buildChatFlow<M extends IChatFlowMessage, B extends IChatFlowBlo
   // Array.prototype.sort is stable: equal `seq` keeps the given order.
   items.sort((a, b) => a.seq - b.seq)
 
-  let dateFormat: Intl.DateTimeFormat | null = null
   const flow: ChatFlowItem<M, B>[] = []
   let previousDay: number | null = null
   const today = dayOf(options.now)
@@ -127,14 +128,13 @@ export function buildChatFlow<M extends IChatFlowMessage, B extends IChatFlowBlo
     if (item.kind === 'message') {
       const day = dayOf(item.message.ts)
       if (previousDay === null ? day !== today : day !== previousDay) {
-        dateFormat ??= new Intl.DateTimeFormat(options.locale, { dateStyle: 'long' })
         flow.push({
           key: `d-${item.message.id}`,
           seq: item.seq,
           kind: 'day',
           ts: item.message.ts,
           relative: relativeDay(item.message.ts, options.now),
-          label: dateFormat.format(item.message.ts),
+          label: formatLongDate(item.message.ts),
         })
       }
       previousDay = day

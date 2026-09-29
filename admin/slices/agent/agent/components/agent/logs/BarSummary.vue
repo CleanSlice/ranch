@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { IconAlertTriangle, IconChevronRight, IconLoader2 } from '@tabler/icons-vue';
 import { summarizeAgentLogs, type AgentLogLevel } from '#agent/utils/agentLogs';
+import { formatNumber } from '#common/utils/format';
 
 /**
  * The collapsed Logs bar: one row with the newest line and the entry count.
@@ -46,8 +47,6 @@ const LEVEL_TEXT: Record<AgentLogLevel, string> = {
   error: 'text-red-700 dark:text-red-300',
   warn: 'text-amber-700 dark:text-amber-300',
 };
-
-const count = new Intl.NumberFormat('en-US');
 </script>
 
 <template>
@@ -86,13 +85,13 @@ const count = new Intl.NumberFormat('en-US');
     </span>
 
     <span class="ml-auto flex shrink-0 items-center gap-1.5 text-muted-foreground">
-      <span class="tabular-nums">{{ count.format(summary.total) }} entries</span>
+      <span class="tabular-nums">{{ formatNumber(summary.total) }} entries</span>
       <span
         v-if="summary.alerts > 0"
         class="flex items-center gap-0.5 text-amber-700 dark:text-amber-300"
         :title="`${summary.alerts} warnings or errors`"
       >
-        · {{ count.format(summary.alerts) }}
+        · {{ formatNumber(summary.alerts) }}
         <IconAlertTriangle class="size-3.5" />
       </span>
     </span>

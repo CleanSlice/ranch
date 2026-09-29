@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { IconCheck, IconAlertCircle, IconRefresh } from '@tabler/icons-vue';
+import { formatClock } from '#common/utils/format';
 
 interface IGithubUser {
   login: string;
@@ -85,7 +86,7 @@ async function runCheck() {
         status: res.status,
         error: body.message ?? `HTTP ${res.status}`,
         rateLimit: limit
-          ? { remaining, limit, resetAt: new Date(reset * 1000).toLocaleTimeString() }
+          ? { remaining, limit, resetAt: formatClock(reset * 1000) }
           : undefined,
       };
       return;
@@ -98,7 +99,7 @@ async function runCheck() {
       user,
       scopes,
       rateLimit: limit
-        ? { remaining, limit, resetAt: new Date(reset * 1000).toLocaleTimeString() }
+        ? { remaining, limit, resetAt: formatClock(reset * 1000) }
         : undefined,
       // Compare exposed login vs the stored username so a mismatched
       // pairing (PAT belongs to a different account) doesn't get

@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from '#theme/components/ui/card';
+import { formatClockSeconds } from '#common/utils/format';
 
 const SETTING_GROUP = 'knowledge';
 
@@ -186,7 +187,7 @@ async function onSave(): Promise<void> {
     }
 
     await Promise.all(tasks);
-    savedAt.value = new Date().toLocaleTimeString();
+    savedAt.value = formatClockSeconds(new Date());
   } catch (err: unknown) {
     const e = err as {
       response?: { data?: { message?: string } };

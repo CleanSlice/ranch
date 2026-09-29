@@ -8,6 +8,7 @@ import {
 import { IconChevronDown } from '@tabler/icons-vue';
 import { formatCount, formatUsd } from '#agent/utils/agentFormat';
 import { usageLineText } from '#usage/utils/usageLine';
+import { formatNumber } from '#common/utils/format';
 
 /**
  * The agent's usage as one muted line in the workspace header (specs/017,
@@ -54,13 +55,11 @@ const text = computed(() =>
     : '',
 );
 
-const count = new Intl.NumberFormat('en-US');
-
 const todayTitle = computed(() => {
   const today = agentUsage.value?.today;
   if (!today) return undefined;
   const m = today.model ? ` · ${today.model}` : '';
-  return `Today · in ${count.format(today.inputTokens)} / out ${count.format(today.outputTokens)}${m}`;
+  return `Today · in ${formatNumber(today.inputTokens)} / out ${formatNumber(today.outputTokens)}${m}`;
 });
 
 const open = ref(false);
@@ -124,7 +123,7 @@ function onDetails() {
           </dd>
           <dt class="text-muted-foreground">Calls</dt>
           <dd class="text-right font-medium tabular-nums">
-            {{ count.format(agentUsage.totals.callCount) }}
+            {{ formatNumber(agentUsage.totals.callCount) }}
           </dd>
           <dt class="text-muted-foreground">Input</dt>
           <dd class="text-right font-medium tabular-nums">
@@ -136,7 +135,7 @@ function onDetails() {
           </dd>
           <dt class="text-muted-foreground" :title="todayTitle">Today</dt>
           <dd class="text-right font-medium tabular-nums" :title="todayTitle">
-            {{ count.format(agentUsage.today.callCount) }} calls
+            {{ formatNumber(agentUsage.today.callCount) }} calls
           </dd>
           <dt v-if="model" class="text-muted-foreground">Model</dt>
           <dd v-if="model" class="truncate text-right font-mono text-xs" :title="model">

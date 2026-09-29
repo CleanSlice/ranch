@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ITemplateData } from '#template/stores/template';
 import { IconDotsVertical, IconRefresh, IconTrash, IconPackageImport } from '@tabler/icons-vue';
+import { formatDate } from '#common/utils/format';
 
 const templateStore = useTemplateStore();
 const rancherStore = useRancherStore();
@@ -30,9 +31,6 @@ async function onEnsureRancher() {
     ensuringRancher.value = false;
   }
 }
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
 const pendingRemoval = ref<ITemplateData | null>(null);
 const confirmRemoveOpen = computed({

@@ -21,6 +21,7 @@ import {
 import { SaveRefusedError } from '#agentFile/domain';
 import { useAgentFileStore } from '#agentFile/stores/agentFile';
 import { basename, formatBytes, formatModified } from '#agentFile/utils/format';
+import { formatClock, formatDateTime } from '#common/utils/format';
 import AgentFileExplorer from './Explorer.vue';
 import AgentFileNewFileDialog from './NewFileDialog.vue';
 import AgentFileTabs from './Tabs.vue';
@@ -196,23 +197,15 @@ const router = useRouter();
 const agent = computed(() => agentStore.byId(props.id));
 const agentRunning = computed(() => agent.value?.status === 'running');
 
-function formatClock(iso: string | null): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? null
-    : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-}
-
 const copyPill = computed(() => {
   if (!agentRunning.value) return null;
-  const pulled = formatClock(agent.value?.lastPullAt ?? null);
+  const pulled = formatClock(agent.value?.lastPullAt);
   return pulled ? `Agent running since ${pulled}` : 'Agent is running';
 });
 
 const copyPillTitle = computed(() => {
-  const pulled = agent.value?.lastPullAt ? new Date(agent.value.lastPullAt).toLocaleString() : null;
-  const synced = agent.value?.lastSyncAt ? new Date(agent.value.lastSyncAt).toLocaleString() : null;
+  const pulled = agent.value?.lastPullAt ? formatDateTime(agent.value.lastPullAt) : null;
+  const synced = agent.value?.lastSyncAt ? formatDateTime(agent.value.lastSyncAt) : null;
   const parts = [
     'This tab shows the stored (S3) copy. The running agent works on its own copy and pushes the files it changes to S3 within about 30 seconds. Sync forces a full push and picks up anything the watcher missed.',
   ];

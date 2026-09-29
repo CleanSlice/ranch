@@ -5,6 +5,7 @@ import { FileText, RotateCw, ExternalLink } from 'lucide-vue-next'
 import { useFileProposalStore, ProposalRemoveConfirmNeeded } from '#agentFile/stores/fileProposal'
 import { useAgentFileStore } from '#agentFile/stores/agentFile'
 import { parseUnifiedDiff } from '../../utils/diffLines'
+import { formatClock } from '#common/utils/format'
 
 /**
  * A file change proposal inside the chat (CLEAN-112, contracts/bridle-events.md).
@@ -34,10 +35,9 @@ const isSet = computed(() => p.value?.kind === 'set')
 const counts = computed(() => p.value?.summary?.counts ?? null)
 const removing = computed(() => (p.value?.summary?.mode === 'replace' ? counts.value?.remove ?? 0 : 0))
 
-const timeFormat = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit' })
 const actedTime = computed(() => {
   const at = p.value?.actedAt ? Date.parse(p.value.actedAt) : NaN
-  return Number.isFinite(at) ? timeFormat.format(at) : ''
+  return Number.isFinite(at) ? formatClock(at) : ''
 })
 
 const filesHref = computed(() => {

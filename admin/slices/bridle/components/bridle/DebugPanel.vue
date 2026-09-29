@@ -15,6 +15,7 @@ import { Input } from '#theme/components/ui/input'
 import { Separator } from '#theme/components/ui/separator'
 import { Bug, Check, Copy, Search, X } from 'lucide-vue-next'
 import { cn } from '#theme/utils/cn'
+import { formatClockSeconds, formatNumber } from '#common/utils/format'
 
 const props = defineProps<{
   open: boolean
@@ -157,7 +158,7 @@ function eventBadgeClass(type: string): string {
 
 function fmtTime(ts: number): string {
   if (!ts) return '—'
-  return new Date(ts).toLocaleTimeString('en-GB', { hour12: false })
+  return formatClockSeconds(ts)
 }
 
 function eventHeadline(evt: ParsedEvent): string {
@@ -216,7 +217,7 @@ function clearQuery() {
           </Badge>
           <Badge variant="outline" class="font-mono">{{ debug.latencyMs }}ms</Badge>
           <span v-if="debug.usage" class="text-muted-foreground">
-            {{ debug.usage.totalTokens.toLocaleString() }} tokens
+            {{ formatNumber(debug.usage.totalTokens) }} tokens
           </span>
         </SheetDescription>
         <SheetDescription v-else class="text-xs text-muted-foreground">
@@ -451,19 +452,19 @@ function clearQuery() {
                     <tr class="border-b">
                       <td class="py-2 px-3 text-muted-foreground">Input</td>
                       <td class="py-2 px-3 text-right font-mono tabular-nums">
-                        {{ debug.usage.inputTokens.toLocaleString() }}
+                        {{ formatNumber(debug.usage.inputTokens) }}
                       </td>
                     </tr>
                     <tr class="border-b">
                       <td class="py-2 px-3 text-muted-foreground">Output</td>
                       <td class="py-2 px-3 text-right font-mono tabular-nums">
-                        {{ debug.usage.outputTokens.toLocaleString() }}
+                        {{ formatNumber(debug.usage.outputTokens) }}
                       </td>
                     </tr>
                     <tr class="bg-muted/30">
                       <td class="py-2 px-3 font-semibold">Total</td>
                       <td class="py-2 px-3 text-right font-mono font-semibold tabular-nums">
-                        {{ debug.usage.totalTokens.toLocaleString() }}
+                        {{ formatNumber(debug.usage.totalTokens) }}
                       </td>
                     </tr>
                   </tbody>

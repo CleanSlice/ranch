@@ -1,9 +1,7 @@
 <script setup lang="ts">
-const { rows, totals, loading, load } = useLlmUsageOverview();
+import { formatNumber } from '#common/utils/format';
 
-function formatNumber(n: number): string {
-  return n.toLocaleString('en-US');
-}
+const { rows, totals, loading, load } = useLlmUsageOverview();
 
 function formatCost(n: number): string {
   if (n === 0) return '$0.00';

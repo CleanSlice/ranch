@@ -15,6 +15,7 @@ import type {
   IPaddockJudgeScore,
 } from '#paddock/stores/paddockEvaluation';
 import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
+import { compareText } from '#common/utils/format';
 
 const props = defineProps<{ evaluationId: string }>();
 
@@ -368,7 +369,7 @@ const sortedResults = computed<IPaddockEvaluationResult[]>(() => {
   return [...list].sort((a, b) => {
     const ca = scenarioInfoFor(a.scenarioId)?.category ?? '';
     const cb = scenarioInfoFor(b.scenarioId)?.category ?? '';
-    if (ca !== cb) return ca.localeCompare(cb);
+    if (ca !== cb) return compareText(ca, cb);
     return b.finalScore - a.finalScore;
   });
 });

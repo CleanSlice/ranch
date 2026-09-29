@@ -1,3 +1,5 @@
+import { formatDate } from '#common/utils/format';
+
 export type AgentLogLevel = 'error' | 'warn';
 
 export interface IAgentLogLine {
@@ -106,11 +108,7 @@ export function parseAgentLogs(raw: string): IAgentLogGroup[] {
         text = rawText.replace(RUNTIME_TIME_PREFIX_RE, '');
         time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
         dayKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-        dayLabel = d.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
+        dayLabel = formatDate(d);
       }
     }
 

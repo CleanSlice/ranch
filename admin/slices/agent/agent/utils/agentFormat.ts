@@ -12,7 +12,7 @@ export const AGENT_STATUS_VARIANT: Record<AgentStatusTypes, BadgeVariant> = {
 };
 
 // Date formatting comes from the shared `formatDateTime` in
-// slices/common/utils/formatDate.ts (auto-imported).
+// slices/common/utils/format.ts (auto-imported).
 
 export function formatCount(n: number) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';

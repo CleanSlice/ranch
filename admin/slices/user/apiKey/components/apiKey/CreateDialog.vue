@@ -15,6 +15,7 @@ import {
   ApiKeyScopeTypes,
   type ICreatedApiKey,
 } from '#apiKey/stores/apiKey';
+import { formatDateTime } from '#common/utils/format';
 
 const props = defineProps<{ open: boolean }>();
 
@@ -60,13 +61,7 @@ const resolvedExpiresAt = computed<Date | null>(() => {
 const resolvedExpiryLabel = computed(() => {
   const d = resolvedExpiresAt.value;
   if (!d) return null;
-  return d.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateTime(d);
 });
 
 const SCOPE_OPTIONS: Array<{ value: ApiKeyScopeTypes; label: string; description: string }> = [

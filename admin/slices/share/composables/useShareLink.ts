@@ -1,4 +1,5 @@
 import type { MaybeRefOrGetter } from 'vue';
+import { formatDate } from '#common/utils/format';
 
 /**
  * The owner side of an agent's share link, as the admin console shows it
@@ -53,12 +54,7 @@ export function useShareLink(agentId: MaybeRefOrGetter<string>) {
     () => !loadingLink.value && !link.value && Boolean(shareStore.error),
   );
 
-  const sharedSince = computed(() => {
-    const iso = link.value?.createdAt;
-    if (!iso) return '';
-    const date = new Date(iso);
-    return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString();
-  });
+  const sharedSince = computed(() => formatDate(link.value?.createdAt));
 
   const pending = computed(() => shareStore.pending);
   const error = computed(() => shareStore.error);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { UserStatusTypes, UserRoleTypes } from '#user/domain/user.types';
 import {IconArrowLeft} from '@tabler/icons-vue';
+import { formatDate } from '#common/utils/format';
 
 const props = defineProps<{ id: string }>();
 const userStore = useUserStore();
@@ -15,9 +16,6 @@ const statusVariant: Record<UserStatusTypes, 'default' | 'secondary' | 'outline'
   [UserStatusTypes.Invited]: 'secondary',
   [UserStatusTypes.Disabled]: 'outline',
 };
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
 const confirmRemoveOpen = ref(false);
 

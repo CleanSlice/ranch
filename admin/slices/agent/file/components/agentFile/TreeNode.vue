@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { IconFile, IconFolder, IconFolderOpen, IconTrash } from '@tabler/icons-vue';
+import { formatDateTime } from '#common/utils/format';
 
 defineOptions({ name: 'TreeNode' });
 
@@ -48,10 +49,8 @@ function formatSize(n: number) {
 // S3-copy freshness (CLEAN-50): shown in the row tooltip so an operator can
 // tell how old the stored copy is without opening the file.
 function fileTitle(node: FileNodeT): string {
-  const d = new Date(node.updatedAt);
-  return Number.isNaN(d.getTime())
-    ? node.path
-    : `${node.path} — last modified ${d.toLocaleString()}`;
+  const modified = formatDateTime(node.updatedAt);
+  return modified ? `${node.path} — last modified ${modified}` : node.path;
 }
 </script>
 

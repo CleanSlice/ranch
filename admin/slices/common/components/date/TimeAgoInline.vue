@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-import { useTimeAgoIntl } from '@vueuse/core';
+import { useRelativeTime } from '#common/composables/useRelativeTime';
+import { formatDateTime } from '#common/utils/format';
 
 /**
  * One-line relative time for inline meta ("card read 5 minutes ago") where
@@ -7,11 +8,8 @@ import { useTimeAgoIntl } from '@vueuse/core';
  * tooltip. Same Intl source as DateTimeAgo, so the wording matches.
  */
 const { date } = defineProps<{ date: string }>();
-const { locale } = useI18n();
 // Getter (not a plain Date) so it re-evaluates if `date` changes.
-const timeAgo = useTimeAgoIntl(() => new Date(date || Date.now()), {
-    locale: locale.value,
-});
+const timeAgo = useRelativeTime(() => date);
 </script>
 <template>
     <span v-if="date" :title="formatDateTime(date)">{{ timeAgo }}</span>

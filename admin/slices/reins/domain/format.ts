@@ -1,3 +1,9 @@
+import {
+  formatClock,
+  formatDate as formatDay,
+  formatDateTime as formatDayTime,
+} from '#common/utils/format';
+
 /** Human-readable byte count for tables and previews; `-` when unknown. */
 export function formatBytes(size: number | null): string {
   if (size === null) return '-';
@@ -32,28 +38,17 @@ export function errorMessageOf(err: unknown, fallback: string): string {
   return typeof message === 'string' && message.trim() ? message : fallback;
 }
 
-function parseDate(iso: string | null | undefined): Date | null {
-  if (!iso) return null;
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
 /** Date only, for table columns where the time of day is noise. */
 export function formatDate(iso: string | null | undefined): string {
-  return parseDate(iso)?.toLocaleDateString() ?? '-';
+  return formatDay(iso) || '-';
 }
 
 /** Date and time, for "when did this last finish" readouts. */
 export function formatDateTime(iso: string | null | undefined): string {
-  return parseDate(iso)?.toLocaleString() ?? 'never';
+  return formatDayTime(iso) || 'never';
 }
 
 /** Time of day only, for something due within the hour. */
 export function formatTime(iso: string | null | undefined): string {
-  return (
-    parseDate(iso)?.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    }) ?? '-'
-  );
+  return formatClock(iso) || '-';
 }

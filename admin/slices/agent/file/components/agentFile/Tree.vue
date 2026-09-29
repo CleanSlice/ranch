@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { IFileNode } from '#agentFile/stores/agentFile';
+import { compareText } from '#common/utils/format';
 import TreeNode from './TreeNode.vue';
 
 interface FolderNode {
@@ -67,7 +68,7 @@ function buildTree(files: TreeFile[]): TreeNode[] {
 function sortTree(node: FolderNode) {
   node.children.sort((a, b) => {
     if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
-    return a.name.localeCompare(b.name);
+    return compareText(a.name, b.name);
   });
   for (const c of node.children) {
     if (c.type === 'folder') sortTree(c);

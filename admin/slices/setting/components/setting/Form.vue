@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatClockSeconds } from '#common/utils/format';
+
 interface IFieldDef {
   group: string;
   name: string;
@@ -76,7 +78,7 @@ async function onSave() {
       }
     }
     await Promise.all(tasks);
-    savedAt.value = new Date().toLocaleTimeString();
+    savedAt.value = formatClockSeconds(new Date());
   } catch (err: unknown) {
     const e = err as { response?: { data?: { message?: string } }; message?: string };
     errorMessage.value = e?.response?.data?.message ?? e?.message ?? 'Save failed';

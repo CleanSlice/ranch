@@ -19,6 +19,8 @@
     "dev:admin": "turbo dev --filter=admin",
     "i18n:sync": "bun scripts/i18n-sync.ts",
     "i18n:check": "bun scripts/i18n-sync.ts --check",
+    "locale:check": "bun scripts/locale-check.ts",
+    "test:scripts": "bun test scripts",
     "release": "npm version --message 'chore(release): v%s'"
   },
   "devDependencies": {

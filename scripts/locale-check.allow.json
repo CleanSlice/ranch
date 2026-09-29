@@ -1,0 +1,29 @@
+[
+  {
+    "file": "admin/slices/common/utils/format.ts",
+    "rule": "L1",
+    "reason": "The admin format module: the one place in admin where language-sensitive formatting is allowed, fixed to English."
+  },
+  {
+    "file": "admin/slices/common/composables/useRelativeTime.ts",
+    "rule": "L1",
+    "reason": "The relative-time half of the admin format module (\"5 minutes ago\"), fixed to English. Kept apart so utils/format.ts stays free of Vue."
+  },
+  {
+    "file": "app/slices/common/utils/format.ts",
+    "rule": "L1",
+    "reason": "The app format module: the one place in app where language-sensitive formatting is allowed, given the active language."
+  },
+  {
+    "file": "app/slices/bridle/components/bridle/chat/Input.vue",
+    "rule": "L5",
+    "match": "Enter",
+    "reason": "A key cap: the label printed on the key, the same in every language."
+  },
+  {
+    "file": "app/slices/bridle/components/bridle/chat/Input.vue",
+    "rule": "L5",
+    "match": "Shift+Enter",
+    "reason": "A key cap: the label printed on the keys, the same in every language."
+  }
+]

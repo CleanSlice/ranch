@@ -127,8 +127,10 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
     });
     socket.on('message_error', (raw: unknown) => {
       const message = (raw as { message?: unknown } | null)?.message;
+      // What the hub said goes on as received. When it said nothing the store
+      // picks the console's own wording, which is a key and gets translated.
       events.onMessageError(
-        typeof message === 'string' ? message : 'Message could not be delivered',
+        typeof message === 'string' && message.trim() ? message : null,
         mapper.toSeq(raw),
       );
     });

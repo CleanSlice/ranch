@@ -17,6 +17,7 @@
     "attachment_remove": "Удалить {name}",
     "attachment_retry": "Повторить {name}",
     "attachment_uploading": "Загрузка {name}",
+    "attachment_progress": "Загрузка {percent}",
     "attachment_failed": "Не удалось загрузить {name}",
     "attachment_unavailable": "Этот файл больше недоступен",
     "attachment_not_readable": "Агент видит имя файла, но не содержимое",
@@ -29,6 +30,7 @@
     "thinking_toggle": "Показать, что делал агент",
     "reconnecting": "Переподключение к агенту…",
     "error_message": "Агент не принял это сообщение: {message}",
+    "error_generic": "Не удалось доставить сообщение",
     "error_rejected": "Агент отклонил подключение ({code})",
     "error_turn_unfinished": "Агент не завершил этот ход. Отправьте сообщение ещё раз, чтобы продолжить.",
     "delivery_sending": "Отправка…",
@@ -58,6 +60,13 @@
     "restart_hint": "применится при следующем перезапуске агента",
     "skipped": "Пропущено",
     "stale": "Файл изменился после создания предложения — агенту нужно предложить снова.",
-    "refused": "Отклонено"
+    "refused": "Отклонено",
+    "mode_merge": "слияние",
+    "mode_replace": "замена",
+    "action_add": "добавить",
+    "action_change": "изменить",
+    "action_unchanged": "без изменений",
+    "action_remove": "удалить",
+    "action_skip": "пропустить"
   }
 }

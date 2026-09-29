@@ -4,9 +4,12 @@ import {
   BridleAttachmentStates,
   type IBridleStagedAttachment,
 } from '#bridle/stores/bridle';
-import { formatBytes, isReadableByAgent } from '#bridle/domain';
+import { isReadableByAgent } from '#bridle/domain';
+import { noticeParams } from '#bridle/utils/noticeParams';
+import { useFormat } from '#common/composables/useFormat';
 
 const props = defineProps<{ attachment: IBridleStagedAttachment }>();
+const format = useFormat();
 const emit = defineEmits<{
   remove: [localId: string];
   retry: [localId: string];
@@ -89,13 +92,13 @@ const displayName = computed(() => {
         v-if="isFailed && attachment.error"
         class="text-[11px] text-destructive"
       >
-        {{ $t(attachment.error.key, attachment.error.params ?? {}) }}
+        {{ $t(attachment.error.key, noticeParams(attachment.error, format.size)) }}
       </p>
       <p
         v-else-if="isUploading"
         class="text-[11px] text-muted-foreground"
       >
-        {{ $t('chat.attachment_uploading', { name: '' }) }} {{ attachment.progress }}%
+        {{ $t('chat.attachment_progress', { percent: format.percent(attachment.progress / 100) }) }}
       </p>
       <p
         v-else-if="notReadable"
@@ -108,7 +111,7 @@ const displayName = computed(() => {
         v-else
         class="text-[11px] text-muted-foreground"
       >
-        {{ formatBytes(attachment.size) }}
+        {{ format.size(attachment.size) }}
       </p>
 
       <!-- Determinate progress: a large file should never look like a hang -->

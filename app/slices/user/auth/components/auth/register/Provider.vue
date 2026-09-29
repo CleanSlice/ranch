@@ -6,6 +6,7 @@ await useAsyncData('app-auth-registration-enabled', () => refresh());
 
 const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
+const errorKey = ref<string | null>(null);
 const failed = ref(false);
 
 async function onSubmit(values: {
@@ -16,17 +17,18 @@ async function onSubmit(values: {
   if (!enabled.value || !values.name) return;
   submitting.value = true;
   errorMessage.value = null;
+  errorKey.value = null;
   failed.value = false;
   try {
     await authStore.register(values.name, values.email, values.password);
     await navigateTo('/agents');
   } catch (err: unknown) {
-    const e = err as {
-      response?: { data?: { message?: string } };
-      message?: string;
-    };
+    // The gateway maps every failure to an AuthError: what the API said, as
+    // received, and the key for what the console says when it said nothing.
+    const e = err as { serverMessage?: string | null; messageKey?: string };
     failed.value = true;
-    errorMessage.value = e?.response?.data?.message ?? e?.message ?? null;
+    errorMessage.value = e?.serverMessage ?? null;
+    errorKey.value = e?.messageKey ?? null;
   } finally {
     submitting.value = false;
   }
@@ -66,6 +68,7 @@ async function onSubmit(values: {
     mode="register"
     :submitting="submitting"
     :error-message="errorMessage"
+    :error-key="errorKey"
     :failed="failed"
     :registration-enabled="true"
     @submit="onSubmit"

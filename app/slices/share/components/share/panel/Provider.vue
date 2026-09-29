@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useFormat } from '#common/composables/useFormat';
+
 /**
  * Owner-side share panel: the Share button in the agent header and the popover
  * behind it.
@@ -17,9 +19,7 @@
 const props = defineProps<{ agentId: string }>();
 
 const shareStore = useShareStore();
-// The one sanctioned use of `useI18n()` in a component: the locale itself, for
-// date formatting (docs/i18n.md). Copy still goes through the injected `$t`.
-const { locale } = useI18n();
+const format = useFormat();
 
 const root = ref<HTMLElement | null>(null);
 
@@ -60,14 +60,7 @@ const linkUnknown = computed(
   () => !loadingLink.value && !link.value && Boolean(shareStore.error),
 );
 
-const sharedSince = computed(() => {
-  const iso = link.value?.createdAt;
-  if (!iso) return '';
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? ''
-    : date.toLocaleDateString(locale.value);
-});
+const sharedSince = computed(() => format.date(link.value?.createdAt));
 
 // Copy computed in script travels as a key, never as text (docs/i18n.md).
 const emptyStateKey = computed(() =>

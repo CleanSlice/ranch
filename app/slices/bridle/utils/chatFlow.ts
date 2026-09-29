@@ -6,6 +6,7 @@
 // and sorting by it is what used to put an answer above its question. Pure on
 // purpose: no Vue, no Nuxt aliases, so `bun test` runs it.
 
+import { formatLongDate } from '../../common/utils/format';
 import type {
   IBridleMessage,
   IBridleThinkingBlock,
@@ -107,9 +108,7 @@ function dayItem(
   if (day === yesterday) return { ...base, labelKey: 'chat.day_yesterday' };
   return {
     ...base,
-    label: new Intl.DateTimeFormat(options.locale, { dateStyle: 'long' }).format(
-      message.ts,
-    ),
+    label: formatLongDate(options.locale, message.ts),
   };
 }
 

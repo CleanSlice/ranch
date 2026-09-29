@@ -1,19 +1,18 @@
+import { formatStamp } from '../../common/utils/format';
+
 export interface INavMapItem {
   id: string;
   isUser: boolean;
   snippet: string;
 }
 
-export function formatMessageTime(ts: number, locale?: string): string {
-  const d = new Date(ts);
-  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (sameDay) return time;
-  return `${d.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}, ${time}`;
+/**
+ * When a message was sent: the time today, `Aug 21, 12:46 AM` · `21 авг., 00:46`
+ * earlier. `locale` is required — left out, the date would follow the browser
+ * instead of the language the customer picked.
+ */
+export function formatMessageTime(ts: number, locale: string, now: Date = new Date()): string {
+  return formatStamp(locale, ts, now);
 }
 
 /** One-line plain-text snippet for the navigation mini-map. */

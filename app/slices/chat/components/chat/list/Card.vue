@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { IChatSession } from '#chat/stores/chat';
+import { useFormat } from '#common/composables/useFormat';
 
 const props = defineProps<{ session: IChatSession }>();
+const format = useFormat();
 
 // Prefer an explicit title; else lean on the LLM summary / last preview so the
 // card is never blank.
@@ -59,7 +61,7 @@ const relative = computed<{ key: string; count: number } | null>(() => {
         {{
           $t(
             'session.message_count',
-            { count: session.messageCount },
+            { count: format.number(session.messageCount) },
             session.messageCount,
           )
         }}

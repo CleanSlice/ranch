@@ -7,7 +7,6 @@ import {
   MAX_ATTACHMENT_BYTES,
   MAX_MESSAGE_ATTACHMENT_BYTES,
   TEXT_MIME_TYPES,
-  formatBytes,
   isReadableByAgent,
   resolveMimeType,
 } from '#bridle/domain';
@@ -449,13 +448,13 @@ export const useBridleStore = defineStore('bridle', () => {
     if (file.size > MAX_ATTACHMENT_BYTES) {
       return {
         key: 'chat.error_size',
-        params: { name: file.name, limit: formatBytes(MAX_ATTACHMENT_BYTES) },
+        params: { name: file.name, limitBytes: MAX_ATTACHMENT_BYTES },
       };
     }
     if (pendingBytes + file.size > MAX_MESSAGE_ATTACHMENT_BYTES) {
       return {
         key: 'chat.error_total',
-        params: { limit: formatBytes(MAX_MESSAGE_ATTACHMENT_BYTES) },
+        params: { limitBytes: MAX_MESSAGE_ATTACHMENT_BYTES },
       };
     }
     return null;
@@ -912,10 +911,9 @@ export const useBridleStore = defineStore('bridle', () => {
       onMessageError(message, seq) {
         if (!acceptSeq(key, seq)) return;
         pending.value[key] = false;
-        errors.value[key] = {
-          key: 'chat.error_message',
-          params: { message },
-        };
+        errors.value[key] = message
+          ? { key: 'chat.error_message', params: { message } }
+          : { key: 'chat.error_generic' };
       },
       onTyping(seq) {
         if (!acceptSeq(key, seq)) return;

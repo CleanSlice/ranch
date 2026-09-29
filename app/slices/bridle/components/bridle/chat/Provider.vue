@@ -4,6 +4,8 @@ import {
   type IBridleConversation,
 } from '#bridle/stores/bridle';
 import { buildChatFlow } from '#bridle/utils/chatFlow';
+import { noticeParams } from '#bridle/utils/noticeParams';
+import { useFormat } from '#common/composables/useFormat';
 
 const props = withDefaults(
   defineProps<{
@@ -22,9 +24,10 @@ const props = withDefaults(
   { showHeader: true },
 );
 const bridleStore = useBridleStore();
-// The locale itself, for the date on a day separator (docs/i18n.md keeps
-// `useI18n()` for exactly this); every string still goes through `$t`.
+// The locale itself, handed to the pure `buildChatFlow` for the date on a day
+// separator; every string still goes through `$t`.
 const { locale } = useI18n();
+const format = useFormat();
 
 /**
  * The descriptor every store call goes through. `withDefaults` can't derive a
@@ -111,12 +114,12 @@ const chatFlow = computed(() =>
 
 /** Long form for the separator's tooltip; the label may just say "Today". */
 function dayTitle(ts: number): string {
-  return new Intl.DateTimeFormat(locale.value, { dateStyle: 'full' }).format(ts);
+  return format.fullDate(ts);
 }
 
-const agentLabel = computed(
-  () => props.title?.trim() || props.agentId || 'Agent',
-);
+/** Null when the agent has no name to show; the template then says "Agent"
+ *  in the customer's language. */
+const agentLabel = computed(() => props.title?.trim() || props.agentId || null);
 
 function dismissError() {
   const conversation = activeConversation.value;
@@ -355,7 +358,7 @@ onBeforeUnmount(() => {
               </div>
               <BridleChatThinking
                 :block="item.block"
-                :agent-name="agentLabel"
+                :agent-name="agentLabel ?? $t('chat.agent')"
               />
             </div>
           </template>
@@ -367,7 +370,7 @@ onBeforeUnmount(() => {
             v-if="sending && !hasOpenThinking"
             class="flex items-center gap-2"
             role="status"
-            :aria-label="$t('chat.thinking', { name: agentLabel })"
+            :aria-label="$t('chat.thinking', { name: agentLabel ?? $t('chat.agent') })"
           >
             <div
               class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary/25 to-primary/5 text-[11px] font-semibold text-primary"
@@ -375,7 +378,7 @@ onBeforeUnmount(() => {
               {{ agentInitial }}
             </div>
             <span class="shimmer shimmer-duration-1600 px-1 text-sm font-medium text-muted-foreground">
-              {{ $t('chat.thinking', { name: agentLabel }) }}
+              {{ $t('chat.thinking', { name: agentLabel ?? $t('chat.agent') }) }}
             </span>
           </div>
 
@@ -393,7 +396,7 @@ onBeforeUnmount(() => {
             class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive"
           >
             <Icon name="alert-triangle" :size="14" class="mt-px shrink-0" />
-            <span class="flex-1">{{ $t(error.key, error.params ?? {}) }}</span>
+            <span class="flex-1">{{ $t(error.key, noticeParams(error, format.size)) }}</span>
             <button
               type="button"
               class="shrink-0 rounded p-0.5 hover:bg-destructive/10"

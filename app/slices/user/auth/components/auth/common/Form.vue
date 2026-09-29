@@ -4,9 +4,12 @@ type Mode = 'login' | 'register';
 const props = defineProps<{
   mode: Mode;
   submitting?: boolean;
-  /** Human text from the API — already English, not a key. Null when the call
-   *  failed without a usable message, in which case `failed` drives our copy. */
+  /** What the API said, shown exactly as received — not a key, not translated.
+   *  Null when it said nothing worth showing; then `errorKey` speaks. */
   errorMessage?: string | null;
+  /** i18n key for the console's own words about the failure. Null when the
+   *  failure could not be told apart, in which case `failed` drives our copy. */
+  errorKey?: string | null;
   failed?: boolean;
   registrationEnabled?: boolean;
   /** Starting value for the email field — the session-ended dialog knows who was signed in. */
@@ -108,8 +111,10 @@ const submitLabelKey = computed(() => {
     : 'account.submit_register';
 });
 
-const failureKey = computed(() =>
-  props.mode === 'login' ? 'account.login_failed' : 'account.register_failed',
+const failureKey = computed(
+  () =>
+    props.errorKey ??
+    (props.mode === 'login' ? 'account.login_failed' : 'account.register_failed'),
 );
 
 const inputClass = (field: 'name' | 'email' | 'password') =>

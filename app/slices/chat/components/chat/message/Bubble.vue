@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { renderMarkdown } from '#bridle/utils/markdown';
-import { formatBytes } from '#bridle/domain/attachment.constants';
 import type { IChatMessage } from '#chat/stores/chat';
 import { formatMessageTime } from '#chat/utils/transcript';
+import { useFormat } from '#common/composables/useFormat';
 
 // Read-only transcript message. Renders one persisted event by role: user /
 // assistant bubbles, plus a collapsible marker for `summary` events (where
@@ -12,6 +12,7 @@ const props = defineProps<{ message: IChatMessage; rating?: number | null }>();
 const emit = defineEmits<{ rate: [rating: 1 | -1] }>();
 
 const { locale, t } = useI18n();
+const format = useFormat();
 
 const isUser = computed(() => props.message.role === 'user');
 
@@ -83,7 +84,7 @@ function onCopy() {
         <span
           v-for="file in message.attachments"
           :key="file.id"
-          :title="`${$t('message.attached_file')}: ${file.name} · ${formatBytes(file.size)}`"
+          :title="$t('message.attached_file_detail', { name: file.name, size: format.size(file.size) })"
           class="inline-flex max-w-full items-center gap-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-xs"
         >
           <Icon name="paperclip" :size="12" class="shrink-0" />

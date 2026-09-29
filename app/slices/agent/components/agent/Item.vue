@@ -6,7 +6,7 @@
         class="px-2 py-1 rounded text-sm"
         :class="statusClass"
       >
-        {{ agent.status }}
+        {{ statusKey ? $t(statusKey) : agent.status }}
       </span>
     </div>
     <div class="grid grid-cols-2 gap-4">
@@ -38,6 +38,17 @@ const props = defineProps<{
     resources: { cpu: string; memory: string };
   };
 }>();
+
+// A status the console knows is shown through its key. One it does not know —
+// the runtime can add them — is shown as received rather than hidden.
+const STATUS_KEYS: Record<string, string> = {
+  running: 'status.running',
+  pending: 'status.pending',
+  deploying: 'status.deploying',
+  failed: 'status.failed',
+  stopped: 'status.stopped',
+};
+const statusKey = computed(() => STATUS_KEYS[props.agent.status] ?? null);
 
 const statusClass = computed(() => {
   const map: Record<string, string> = {

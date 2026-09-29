@@ -7,6 +7,7 @@ import {
 } from '#bridle/stores/bridle';
 import { failureHintKey } from '#bridle/utils/delivery';
 import { renderMarkdown } from '#bridle/utils/markdown';
+import { useFormat } from '#common/composables/useFormat';
 import BridleChatProposalCard from './ProposalCard.vue';
 
 const props = defineProps<{
@@ -17,9 +18,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ resend: [id: string]; discard: [id: string] }>();
 
-// The locale itself, for date formatting — the one use of `useI18n()` that
-// docs/i18n.md keeps; every string below still goes through `$t`.
-const { locale } = useI18n();
+const format = useFormat();
 
 const isUser = computed(() => props.message.role === BridleRoleTypes.User);
 
@@ -27,27 +26,13 @@ const isUser = computed(() => props.message.role === BridleRoleTypes.User);
 // Time of day under the bubble, the whole date-time on hover. The date itself
 // is the day separator's job (Provider), so it is not repeated per message.
 
-/** Null for a stored message with a broken `ts` — `Intl` throws on NaN, and
- *  one bad record must not take the whole conversation down with it. */
+/** Null for a stored message with a broken `ts` — `toISOString` throws on it,
+ *  and one bad record must not take the whole conversation down with it. */
 const sentAt = computed(() =>
   Number.isFinite(props.message.ts) ? new Date(props.message.ts) : null,
 );
-const timeLabel = computed(() =>
-  sentAt.value
-    ? new Intl.DateTimeFormat(locale.value, {
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(sentAt.value)
-    : '',
-);
-const timeTitle = computed(() =>
-  sentAt.value
-    ? new Intl.DateTimeFormat(locale.value, {
-        dateStyle: 'long',
-        timeStyle: 'medium',
-      }).format(sentAt.value)
-    : '',
-);
+const timeLabel = computed(() => format.clock(props.message.ts));
+const timeTitle = computed(() => format.stampTitle(props.message.ts));
 
 // ── Delivery ───────────────────────────────────────────────────
 // Only the person's own messages have one, and a delivered message says

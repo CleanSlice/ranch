@@ -59,7 +59,7 @@
             v-if="authStore.role"
             class="hidden sm:inline rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
           >
-            {{ authStore.role }}
+            {{ roleKey ? $t(roleKey) : authStore.role }}
           </span>
           <button
             type="button"
@@ -120,10 +120,20 @@
 </template>
 
 <script setup lang="ts">
+import { UserRoleTypes } from '#auth/domain/auth.types';
+
 const route = useRoute();
 const authStore = useAuthStore();
 const { locale, locales, setLocale } = useI18n();
 const year = new Date().getFullYear();
+
+// A role the console knows is shown through its key: `role.owner`, `role.admin`…
+// One it does not know is shown as received.
+const KNOWN_ROLES = new Set<string>(Object.values(UserRoleTypes));
+const roleKey = computed(() => {
+  const role = authStore.role;
+  return role && KNOWN_ROLES.has(role) ? `role.${role.toLowerCase()}` : null;
+});
 
 async function onLocaleChange(event: Event) {
   await setLocale((event.target as HTMLSelectElement).value as typeof locale.value);

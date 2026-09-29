@@ -21,7 +21,7 @@
         class="ml-auto px-2 py-0.5 rounded-full text-[10px] uppercase"
         :class="statusClass"
       >
-        {{ agent.status }}
+        {{ statusKey ? $t(statusKey) : agent.status }}
       </span>
     </div>
 
@@ -89,6 +89,17 @@ const initials = computed(() =>
     .map((word) => word[0]?.toUpperCase() ?? '')
     .join('') || '🤖',
 );
+
+// A status the console knows is shown through its key. One it does not know —
+// the runtime can add them — is shown as received rather than hidden.
+const STATUS_KEYS: Record<string, string> = {
+  running: 'status.running',
+  pending: 'status.pending',
+  deploying: 'status.deploying',
+  failed: 'status.failed',
+  stopped: 'status.stopped',
+};
+const statusKey = computed(() => STATUS_KEYS[props.agent.status] ?? null);
 
 const statusClass = computed(() => {
   const map: Record<string, string> = {

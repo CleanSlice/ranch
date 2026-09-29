@@ -1,13 +1,12 @@
-import { ErrorEntity } from '#error/domain/error.entity';
+import { AuthError, type IAuthErrorOptions } from './auth.error';
 import { AuthErrorType } from './error.types';
 
 /** 403 — action not allowed (e.g. self-service registration disabled). */
-export class ForbiddenError extends ErrorEntity {
-  constructor(message: string, options?: { statusCode?: number; isToast?: boolean }) {
-    super(message, {
+export class ForbiddenError extends AuthError {
+  constructor(messageKey: string, options?: IAuthErrorOptions) {
+    super(messageKey, AuthErrorType.FORBIDDEN, {
+      ...options,
       statusCode: options?.statusCode ?? 403,
-      isToast: options?.isToast ?? false,
-      name: AuthErrorType.FORBIDDEN,
     });
   }
 }

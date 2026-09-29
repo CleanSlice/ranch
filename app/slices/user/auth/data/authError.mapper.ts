@@ -14,9 +14,14 @@ interface AxiosLikeError {
 }
 
 /**
- * Translates a raw auth API failure into a typed domain error with a
- * user-facing message. The `#api` client is axios-based, so error bodies live
- * on `error.response.data` (main-site's ofetch client uses `_data` instead).
+ * Translates a raw auth API failure into a typed domain error. The `#api`
+ * client is axios-based, so error bodies live on `error.response.data`
+ * (main-site's ofetch client uses `_data` instead).
+ *
+ * The error carries an i18n key for what the console says itself, and the
+ * API's own sentence — when it sent one worth showing — exactly as received.
+ * The form prefers the sentence and falls back to the key, so nothing the
+ * console writes is left in English on a Russian screen.
  *
  * Wired into `AuthGateway` via `BaseGateway`'s constructor — every gateway
  * method that throws is funneled through here.
@@ -30,10 +35,7 @@ export class AuthErrorMapper implements IErrorMapper {
     const code = pickCode(body);
 
     if (e.code === 'ERR_NETWORK' || status === 0) {
-      return new UnknownAuthError(
-        'Network error — check your connection and try again.',
-        { statusCode: 0 },
-      );
+      return new UnknownAuthError('account.error_network', { statusCode: 0 });
     }
     if (status === 401) {
       // A 401 with a machine-readable code is the API talking about the
@@ -41,27 +43,25 @@ export class AuthErrorMapper implements IErrorMapper {
       // /auth/me), never about the credentials just typed. The store reads
       // `code`; a login/register 401 stays "wrong email or password".
       if (isSessionCode(code)) {
-        return new UnknownAuthError(serverMessage ?? 'Your session has ended.', {
+        return new UnknownAuthError('account.error_session_ended', {
           statusCode: 401,
           code,
+          serverMessage,
         });
       }
-      return new BadCredentialsError('Incorrect email or password.', { code });
+      return new BadCredentialsError('account.error_bad_credentials', { code });
     }
     if (status === 429) {
-      return new TooManyAttemptsError(
-        'Too many attempts. Please wait a moment and try again.',
-      );
+      return new TooManyAttemptsError('account.error_too_many_attempts');
     }
     if (status === 403) {
-      return new ForbiddenError(
-        serverMessage ?? 'You don’t have access to do that.',
-      );
+      return new ForbiddenError('account.error_forbidden', { serverMessage });
     }
-    return new UnknownAuthError(
-      serverMessage ?? 'Something went wrong. Please try again.',
-      { statusCode: status || 500, code },
-    );
+    return new UnknownAuthError('account.error_unknown', {
+      statusCode: status || 500,
+      code,
+      serverMessage,
+    });
   }
 }
 

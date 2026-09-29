@@ -254,8 +254,9 @@ export interface IBridleChannelEvents {
   /** The hub is about to drop the socket, and says why (`TOKEN_EXPIRED`,
    *  `SHARE_LINK_INVALID`, …). */
   onRejected(code: string): void;
-  /** A message the hub could not deliver; the socket stays up. */
-  onMessageError(message: string, seq?: number): void;
+  /** A message the hub could not deliver; the socket stays up. `message` is
+   *  what the hub said, as received, or null when it said nothing. */
+  onMessageError(message: string | null, seq?: number): void;
   /** The agent started a turn. */
   onTyping(seq?: number): void;
   onThinking(event: IBridleThinkingEvent): void;

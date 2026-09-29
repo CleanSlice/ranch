@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { IBridleProposalSnapshot } from '#bridle/domain';
+import type { IBridleProposalRow, IBridleProposalSnapshot } from '#bridle/domain';
+import { useFormat } from '#common/composables/useFormat';
 
 /**
  * A file change proposal in the app chat (CLEAN-112) — read-only twin of the
@@ -8,7 +9,7 @@ import type { IBridleProposalSnapshot } from '#bridle/domain';
  */
 const props = defineProps<{ proposal: IBridleProposalSnapshot }>();
 
-const { locale } = useI18n();
+const format = useFormat();
 
 type Row = { kind: 'hunk' | 'context' | 'add' | 'remove'; line: number | null; text: string };
 const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
@@ -50,18 +51,27 @@ const rows = computed(() => (props.proposal.inlineDiff ? parse(props.proposal.in
 const isSet = computed(() => props.proposal.kind === 'set');
 const counts = computed(() => props.proposal.counts);
 
-const actedTime = computed(() => {
-  const at = props.proposal.actedAt ? Date.parse(props.proposal.actedAt) : NaN;
-  return Number.isFinite(at)
-    ? new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit' }).format(at)
-    : '';
-});
+const actedTime = computed(() => format.clock(props.proposal.actedAt));
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
+/** One decimal in kilobytes: a proposal is often a small file. */
+const size = (bytes: number) => format.size(bytes, true);
+
+// A value the console knows is shown through its key. One it does not know —
+// the API can add them — is shown as received rather than hidden.
+const MODE_KEYS: Record<NonNullable<IBridleProposalSnapshot['mode']>, string> = {
+  merge: 'proposal.mode_merge',
+  replace: 'proposal.mode_replace',
+};
+const ACTION_KEYS: Record<IBridleProposalRow['action'], string> = {
+  add: 'proposal.action_add',
+  change: 'proposal.action_change',
+  unchanged: 'proposal.action_unchanged',
+  remove: 'proposal.action_remove',
+  skip: 'proposal.action_skip',
+};
+const modeKey = computed(() => MODE_KEYS[props.proposal.mode ?? 'merge'] ?? null);
+const actionKey = (action: IBridleProposalRow['action']): string | null =>
+  ACTION_KEYS[action] ?? null;
 </script>
 
 <template>
@@ -73,7 +83,7 @@ function formatBytes(n: number): string {
     <div class="flex flex-wrap items-center gap-2 border-b px-3 py-2">
       <template v-if="isSet">
         <span class="font-medium">{{ $t('proposal.import_into', { name: proposal.agentName }) }}</span>
-        <span class="text-muted-foreground">· {{ proposal.mode ?? 'merge' }}</span>
+        <span class="text-muted-foreground">· {{ modeKey ? $t(modeKey) : proposal.mode }}</span>
       </template>
       <template v-else>
         <span class="truncate font-mono font-medium" :title="proposal.path ?? ''">{{ proposal.path }}</span>
@@ -83,11 +93,11 @@ function formatBytes(n: number): string {
       </template>
       <span class="ml-auto whitespace-nowrap text-muted-foreground">
         <template v-if="isSet && counts">
-          +{{ counts.add }} · ~{{ counts.change }}<template v-if="proposal.mode === 'replace'"> · −{{ counts.remove }}</template>
+          +{{ format.number(counts.add) }} · ~{{ format.number(counts.change) }}<template v-if="proposal.mode === 'replace'"> · −{{ format.number(counts.remove) }}</template>
         </template>
         <template v-else-if="proposal.diffStatus === 'too_large'">{{ $t('proposal.too_large') }}</template>
         <template v-else-if="proposal.diffStatus === 'binary'">{{ $t('proposal.binary') }}</template>
-        <template v-else>+{{ proposal.additions ?? 0 }} −{{ proposal.deletions ?? 0 }}</template>
+        <template v-else>+{{ format.number(proposal.additions ?? 0) }} −{{ format.number(proposal.deletions ?? 0) }}</template>
       </span>
     </div>
 
@@ -109,13 +119,13 @@ function formatBytes(n: number): string {
     </div>
     <div v-else-if="!isSet" class="px-3 py-2 text-muted-foreground">
       <template v-if="proposal.diffStatus === 'too_large'">
-        {{ $t('proposal.too_large_body', { size: formatBytes(proposal.proposedBytes) }) }}
+        {{ $t('proposal.too_large_body', { size: size(proposal.proposedBytes) }) }}
       </template>
       <template v-else-if="proposal.diffStatus === 'binary'">
-        {{ $t('proposal.binary_body', { size: formatBytes(proposal.proposedBytes) }) }}
+        {{ $t('proposal.binary_body', { size: size(proposal.proposedBytes) }) }}
       </template>
       <template v-else>
-        {{ $t('proposal.large_change', { lines: proposal.changedLines ?? 0, size: formatBytes(proposal.proposedBytes) }) }}
+        {{ $t('proposal.large_change', { lines: format.number(proposal.changedLines ?? 0), size: size(proposal.proposedBytes) }) }}
       </template>
     </div>
     <div v-else class="px-3 py-2">
@@ -129,9 +139,9 @@ function formatBytes(n: number): string {
               row.action === 'remove' && 'bg-destructive/15 text-destructive',
               row.action === 'skip' && 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
             ]"
-          >{{ row.action }}</span>
+          >{{ actionKey(row.action) ? $t(actionKey(row.action)!) : row.action }}</span>
           <span class="truncate" :title="row.path">{{ row.path }}</span>
-          <span class="ml-auto shrink-0 text-muted-foreground">{{ formatBytes(row.size) }}</span>
+          <span class="ml-auto shrink-0 text-muted-foreground">{{ size(row.size) }}</span>
         </div>
         <p v-if="proposal.more > 0" class="text-muted-foreground">{{ $t('proposal.more', { n: proposal.more }) }}</p>
       </div>

@@ -245,8 +245,9 @@ export class PeerSelfTool implements IConditionallyListedTool {
     description:
       'Take an A2A agent from outside this Ranch as your colleague, by its ' +
       'address. This is what a pasted /.well-known/agent-card.json link is ' +
-      'for: when someone says "connect this", "подключи" or "add this agent" ' +
-      'with an address, call this — do not settle for describing the file. ' +
+      'for: when someone says "connect this" or "add this agent", in any ' +
+      'language, with an address, call this — do not settle for describing ' +
+      'the file. ' +
       'The card is read first and nothing is saved if it cannot be read, is ' +
       'not A2A 1.0 over JSON-RPC, or resolves to a private address. Giving ' +
       'the same address twice updates that colleague instead of duplicating ' +

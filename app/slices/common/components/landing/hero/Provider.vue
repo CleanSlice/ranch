@@ -52,20 +52,20 @@
                 {{ $t('hero.stat_agents') }}
               </dt>
               <dd class="text-2xl font-semibold">
-                {{ agentStore.publicAgents.length }}
+                {{ format.number(agentStore.publicAgents.length) }}
               </dd>
             </div>
             <div>
               <dt class="text-xs text-muted-foreground">
                 {{ $t('hero.stat_running') }}
               </dt>
-              <dd class="text-2xl font-semibold">{{ runningCount }}</dd>
+              <dd class="text-2xl font-semibold">{{ format.number(runningCount) }}</dd>
             </div>
             <div>
               <dt class="text-xs text-muted-foreground">
                 {{ $t('hero.stat_uptime') }}
               </dt>
-              <dd class="text-2xl font-semibold">99.9%</dd>
+              <dd class="text-2xl font-semibold">{{ format.percent(UPTIME) }}</dd>
             </div>
           </dl>
         </div>
@@ -93,9 +93,14 @@
 
 <script setup lang="ts">
 import type { IAgentData } from '#agent/stores/agent';
+import { useFormat } from '#common/composables/useFormat';
 
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
+const format = useFormat();
+
+/** The uptime shown on the landing page, as a ratio. */
+const UPTIME = 0.999;
 
 await useAsyncData('landing-agents', () => agentStore.fetchPublic());
 

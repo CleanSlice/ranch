@@ -25,7 +25,11 @@
     "navigation": "Navigation",
     "refresh": "Refresh",
     "meta_messages": "Messages",
-    "meta_activity": "Last activity"
+    "meta_activity": "Last activity",
+    "sentiment_positive": "positive",
+    "sentiment_neutral": "neutral",
+    "sentiment_negative": "negative",
+    "sentiment_mixed": "mixed"
   },
   "message": {
     "summarized": "Earlier in this conversation — summarized",
@@ -35,6 +39,6 @@
     "not_helpful": "Not helpful",
     "copy": "Copy",
     "copied": "Copied",
-    "attached_file": "Attached file"
+    "attached_file_detail": "Attached file: {name} · {size}"
   }
 }

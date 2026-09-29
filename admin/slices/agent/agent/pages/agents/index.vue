@@ -6,6 +6,8 @@
 //
 // `replace: true` keeps `/agents` out of the history stack — Back from an
 // agent should leave the agents area, not bounce through the resolver.
+import { compareInstants } from '#common/utils/format';
+
 const agentStore = useAgentStore();
 
 // The request is awaited for its loading state; the list itself is read from
@@ -22,7 +24,7 @@ const landing = computed(() => {
   // the agent that can act on the rest of the install.
   const rancher = list.find((a) => a.isAdmin);
   if (rancher) return rancher;
-  return [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  return [...list].sort((a, b) => compareInstants(b.updatedAt, a.updatedAt))[0];
 });
 
 watchEffect(() => {

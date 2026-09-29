@@ -3,6 +3,7 @@ import type { HTMLAttributes } from "vue"
 import type { ChartConfig } from "."
 import { computed } from "vue"
 import { cn } from '#theme/utils'
+import { formatNumber } from '#common/utils/format'
 
 const props = withDefaults(defineProps<{
   hideLabel?: boolean
@@ -95,7 +96,7 @@ const tooltipLabel = computed(() => {
               </span>
             </div>
             <span v-if="value" class="text-foreground font-mono font-medium tabular-nums">
-              {{ value.toLocaleString() }}
+              {{ typeof value === 'number' ? formatNumber(value) : value }}
             </span>
           </div>
         </div>

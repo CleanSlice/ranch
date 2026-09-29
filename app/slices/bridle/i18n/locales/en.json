@@ -17,6 +17,7 @@
     "attachment_remove": "Remove {name}",
     "attachment_retry": "Retry {name}",
     "attachment_uploading": "Uploading {name}",
+    "attachment_progress": "Uploading {percent}",
     "attachment_failed": "Couldn't upload {name}",
     "attachment_unavailable": "This file is no longer available",
     "attachment_not_readable": "The agent sees the name, not the contents",
@@ -29,6 +30,7 @@
     "thinking_toggle": "Show what the agent did",
     "reconnecting": "Reconnecting to the agent…",
     "error_message": "The agent could not take that message: {message}",
+    "error_generic": "Message could not be delivered",
     "error_rejected": "The agent refused the connection ({code})",
     "error_turn_unfinished": "The agent did not finish this turn. Send your message again to continue.",
     "delivery_sending": "Sending…",
@@ -58,6 +60,13 @@
     "restart_hint": "applies on the agent's next restart",
     "skipped": "Skipped",
     "stale": "The file changed since this was proposed — the agent needs to propose again.",
-    "refused": "Refused"
+    "refused": "Refused",
+    "mode_merge": "merge",
+    "mode_replace": "replace",
+    "action_add": "add",
+    "action_change": "change",
+    "action_unchanged": "unchanged",
+    "action_remove": "remove",
+    "action_skip": "skip"
   }
 }

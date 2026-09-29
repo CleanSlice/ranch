@@ -25,7 +25,11 @@
     "navigation": "Навигация",
     "refresh": "Обновить",
     "meta_messages": "Сообщений",
-    "meta_activity": "Последняя активность"
+    "meta_activity": "Последняя активность",
+    "sentiment_positive": "позитивная",
+    "sentiment_neutral": "нейтральная",
+    "sentiment_negative": "негативная",
+    "sentiment_mixed": "смешанная"
   },
   "message": {
     "summarized": "Ранее в этой беседе — сводка",
@@ -35,6 +39,6 @@
     "not_helpful": "Не полезно",
     "copy": "Копировать",
     "copied": "Скопировано",
-    "attached_file": "Прикреплённый файл"
+    "attached_file_detail": "Прикреплённый файл: {name} · {size}"
   }
 }

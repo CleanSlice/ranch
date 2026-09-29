@@ -26,6 +26,11 @@ Do not commit, push, or open a PR without a `CLEAN-` id. Do not use Linear in th
 string. `en.json` per slice is the source, `bun run i18n:sync` generates `ru`,
 templates use the injected `$t`, and copy decided in script travels as a key.
 Never hand-write `ru.json` as the first step. `admin/` stays English-only.
+Dates, numbers and name order go through the console's format module
+(`#common/utils/format`; in `app`, `useFormat()`), never `toLocale*String` or
+`Intl.*` in a component: admin is English whatever the browser says, app follows
+its active language. Logs and anything else the server sent are shown as
+received, never translated or reformatted. `bun run locale:check` enforces it.
 
 **Client state (`admin` + `app`):** read `docs/state.md` before adding a store,
 a fetch or a live feed. An entity lives once in its Pinia store: fetches upsert,

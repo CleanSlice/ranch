@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from '#common/utils/format';
 
 const props = defineProps<{
   agentId?: string;
@@ -50,8 +51,7 @@ const templateName = (id: string | null): string => {
   return t?.name ?? id;
 };
 
-const formatDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—';
+const formatDate = (iso: string | null) => formatDateTime(iso) || '—';
 
 const formatPassRate = (rate: number | null) =>
   rate === null ? '—' : `${Math.round(rate * 100)}%`;

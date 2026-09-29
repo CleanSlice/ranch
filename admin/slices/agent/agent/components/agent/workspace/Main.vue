@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useTimeAgoIntl } from '@vueuse/core';
 import {
   IconAlertTriangle,
   IconDotsVertical,
@@ -24,6 +23,8 @@ import { useToolCatalogStore } from '#toolCatalog/stores/toolCatalog';
 import { agentInitials } from '#agent/composables/useAgentRailEntries';
 import { useAgentSectionCounts } from '#agent/composables/useAgentSectionCounts';
 import { useAgentTab } from '#agent/composables/useAgentTab';
+import { useRelativeTime } from '#common/composables/useRelativeTime';
+import { formatDateTime } from '#common/utils/format';
 import {
   DEFAULT_SECTION,
   sectionOf,
@@ -135,11 +136,7 @@ const lastDeployStartedAt = computed(
 );
 const launchContext = computed(() => agent.value?.launchContext ?? null);
 const lastPullAt = computed(() => agent.value?.lastPullAt ?? null);
-const { locale } = useI18n();
-const deployAgo = useTimeAgoIntl(
-  () => new Date(lastDeployStartedAt.value ?? Date.now()),
-  { locale: locale.value },
-);
+const deployAgo = useRelativeTime(() => lastDeployStartedAt.value);
 const deployVerb = computed(() =>
   launchContext.value === 'restart' ? 'restarted' : 'started',
 );

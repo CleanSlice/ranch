@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { IconTrash, IconEye } from '@tabler/icons-vue';
 import type { ISessionData, SessionStatusTypes } from '#sessions/stores/session';
+import { formatDateTime } from '#common/utils/format';
 
 defineProps<{ items: ISessionData[] }>();
 
@@ -29,11 +30,7 @@ function statusBadge(status: SessionStatusTypes): {
 
 function formatDate(value: string | null): string {
   if (!value) return '—';
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
+  return formatDateTime(value) || value;
 }
 </script>
 

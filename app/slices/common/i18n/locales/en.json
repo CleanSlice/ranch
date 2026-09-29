@@ -73,5 +73,19 @@
     "minutes": "{count}m ago",
     "hours": "{count}h ago",
     "days": "{count}d ago"
+  },
+  "unit": {
+    "b": "{value} B",
+    "kb": "{value} KB",
+    "mb": "{value} MB"
+  },
+  "value": {
+    "unknown": "Unknown"
+  },
+  "role": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "user": "User",
+    "agent": "Agent"
   }
 }

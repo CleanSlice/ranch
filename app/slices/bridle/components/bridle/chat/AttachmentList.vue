@@ -4,7 +4,7 @@ import {
   type IBridleAttachment,
   type IBridleConversation,
 } from '#bridle/stores/bridle';
-import { formatBytes } from '#bridle/domain';
+import { useFormat } from '#common/composables/useFormat';
 
 const props = defineProps<{
   attachments: IBridleAttachment[];
@@ -15,6 +15,7 @@ const props = defineProps<{
 }>();
 
 const bridleStore = useBridleStore();
+const format = useFormat();
 
 /**
  * The download route is behind the JWT guard, and a browser sends no
@@ -155,7 +156,7 @@ function displayName(name: string): string {
       />
       <span class="min-w-0 flex-1 truncate">{{ displayName(file.name) }}</span>
       <span class="shrink-0 text-[11px] opacity-60">
-        {{ formatBytes(file.size) }}
+        {{ format.size(file.size) }}
       </span>
     </component>
   </div>

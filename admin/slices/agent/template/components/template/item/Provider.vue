@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { IconArrowLeft, IconDownload, IconRefresh } from '@tabler/icons-vue';
 import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
+import { formatDate } from '#common/utils/format';
 
 const props = defineProps<{ id: string }>();
 const templateStore = useTemplateStore();
@@ -63,9 +64,6 @@ const linkedIdsWithoutKnowledges = computed(() => {
     (id) => !linkedSet.has(id),
   );
 });
-
-const formatDate = (iso: string): string =>
-  new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
 type SectionId = 'blueprint' | 'skills' | 'mcps' | 'knowledges' | 'files' | 'evaluations';
 

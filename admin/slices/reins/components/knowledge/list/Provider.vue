@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { IKnowledge } from '#reins/stores/knowledge';
+import { formatDateTime } from '#common/utils/format';
 
 const store = useKnowledgeStore();
 const confirmStore = useConfirmStore();
@@ -34,7 +35,7 @@ const pageCount = computed(() =>
 );
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString();
+  return formatDateTime(iso);
 }
 
 function formatSize(bytes?: number): string {

@@ -1,4 +1,5 @@
 import { createServiceGetter } from '#common/composables/createServiceGetter';
+import { compareText } from '#common/utils/format';
 import type {
   AgentFileService,
   FileKind,
@@ -149,7 +150,7 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     const list = nodesFor(agentId);
     const next = list.some((n) => n.path === node.path)
       ? list.map((n) => (n.path === node.path ? node : n))
-      : [...list, node].sort((a, b) => a.path.localeCompare(b.path));
+      : [...list, node].sort((a, b) => compareText(a.path, b.path));
     filesByAgent.value = { ...filesByAgent.value, [agentId]: next };
   }
 

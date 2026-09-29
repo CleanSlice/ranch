@@ -1,4 +1,5 @@
 import type { IChatMessage } from '#chat/stores/chat';
+import { formatStamp } from '#common/utils/format';
 
 export interface IToolEvent {
   id: string;
@@ -95,16 +96,9 @@ export function formatDuration(ms: number | null): string {
   return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
 }
 
-export function formatMessageTime(ts: number): string {
-  const d = new Date(ts);
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (sameDay) return time;
-  return `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}, ${time}`;
+/** `00:46` today, `Aug 21, 00:46` earlier — English in every browser. */
+export function formatMessageTime(ts: number, now: Date = new Date()): string {
+  return formatStamp(ts, now);
 }
 
 /** One-line plain-text snippet for the navigation mini-map. */

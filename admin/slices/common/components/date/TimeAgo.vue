@@ -1,14 +1,14 @@
 <script lang="ts" setup>
-import { useTimeAgoIntl } from '@vueuse/core';
+import { useRelativeTime } from '#common/composables/useRelativeTime';
+import { formatDateTime } from '#common/utils/format';
 
 const { date, class: className } = defineProps<{
     date: string;
     class?: string;
 }>();
-const { locale } = useI18n();
 // Getter (not a plain Date) so it re-evaluates if `date` changes.
-const timeAgoIntl = useTimeAgoIntl(() => new Date(date || Date.now()), { locale: locale.value });
-const timeAgo = computed(() => (date ? timeAgoIntl.value : ''));
+const relativeTime = useRelativeTime(() => date);
+const timeAgo = computed(() => (date ? relativeTime.value : ''));
 </script>
 <template>
     <div :class="cn('flex flex-col items-end leading-none', className)">

@@ -43,6 +43,9 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
+      // The admin console is English-only. Without this a browser set to
+      // another language offers to translate the page.
+      htmlAttrs: { lang: 'en', translate: 'no' },
       link: [{ rel: 'icon', type: 'image/png', href: '/favicon.png' }],
     },
   },

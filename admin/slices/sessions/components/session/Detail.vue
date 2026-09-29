@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { IconCopy, IconCheck, IconShieldLock } from '@tabler/icons-vue';
 import type { ISessionData, SessionStatusTypes } from '#sessions/stores/session';
+import { formatDateTime } from '#common/utils/format';
 
 const props = defineProps<{ session: ISessionData | null }>();
 const emit = defineEmits<{ (event: 'close'): void }>();
@@ -61,11 +62,7 @@ function statusInfo(status: SessionStatusTypes): {
 
 function formatDate(value: string | null): string {
   if (!value) return '—';
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
+  return formatDateTime(value) || value;
 }
 </script>
 

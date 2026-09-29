@@ -6,6 +6,7 @@ import ProposalCard from './ProposalCard.vue'
 import { AlertCircle, Bot, User, FileText, Info, Loader2, X } from 'lucide-vue-next'
 import { Button } from '#theme/components/ui/button'
 import { cn } from '#theme/utils/cn'
+import { formatClock, formatDateTime } from '#common/utils/format'
 
 const props = defineProps<{
   message: IBridleMessageData
@@ -34,16 +35,11 @@ defineEmits<{
 const isUser = computed(() => props.message.role === 'user')
 
 // ── Time and delivery line ───────────────────────────────────
-// The admin panel is English-only, hence the fixed locale. Built once per
-// bubble, not per render — constructing a formatter is the expensive part.
-const timeFormat = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit' })
-const dateTimeFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium' })
-
-// `format` throws on an invalid date; a message with a broken `ts` should
+// `toISOString` throws on an invalid date; a message with a broken `ts` should
 // lose its time line, not take the whole chat down.
 const hasTime = computed(() => Number.isFinite(props.message.ts))
-const timeOfDay = computed(() => (hasTime.value ? timeFormat.format(props.message.ts) : ''))
-const fullDateTime = computed(() => (hasTime.value ? dateTimeFormat.format(props.message.ts) : ''))
+const timeOfDay = computed(() => (hasTime.value ? formatClock(props.message.ts) : ''))
+const fullDateTime = computed(() => (hasTime.value ? formatDateTime(props.message.ts) : ''))
 const isoDateTime = computed(() => (hasTime.value ? new Date(props.message.ts).toISOString() : undefined))
 
 // Only the operator's own messages have a delivery state; absent means

@@ -11,6 +11,7 @@ import {
   IconX,
 } from '@tabler/icons-vue';
 import type { ISecretEntry } from '#agentSecret/stores/agentSecret';
+import { compareText, formatDateTime } from '#common/utils/format';
 
 const props = defineProps<{ id: string }>();
 
@@ -43,11 +44,7 @@ function mask(v: string): string {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  return formatDateTime(iso) || '—';
 }
 
 async function refresh() {
@@ -129,7 +126,7 @@ const jsonSaving = ref(false);
 const jsonError = ref<string | null>(null);
 
 function buildJson(secrets: ISecretEntry[]): string {
-  const sorted = [...secrets].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = [...secrets].sort((a, b) => compareText(a.name, b.name));
   const obj: Record<string, string> = {};
   for (const s of sorted) obj[s.name] = s.value;
   return JSON.stringify(obj, null, 2);

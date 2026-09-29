@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from '#theme/components/ui/card';
+import { formatClockSeconds } from '#common/utils/format';
 
 const settingStore = useSettingStore();
 await useAsyncData('admin-settings-auth', () => settingStore.fetchAll());
@@ -36,7 +37,7 @@ async function onSave() {
       registrationEnabled.value ? 'true' : 'false',
       'string',
     );
-    savedAt.value = new Date().toLocaleTimeString();
+    savedAt.value = formatClockSeconds(new Date());
   } catch (err: unknown) {
     const e = err as { response?: { data?: { message?: string } }; message?: string };
     errorMessage.value = e?.response?.data?.message ?? e?.message ?? 'Save failed';

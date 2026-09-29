@@ -40,8 +40,20 @@ jobs:
       - name: Check i18n locale parity
         run: bun run i18n:check
 
+      # Where a value gets its language from: admin is English whatever the
+      # browser says, app follows its active language. No network either.
+      # Every finding names its fix; exceptions live in
+      # scripts/locale-check.allow.json with a reason.
+      - name: Check locale rules
+        run: bun run locale:check
+
       - name: Lint
         run: bun run lint
 
       - name: Test
         run: bun run test
+
+      # `bun run test` covers the workspaces; the checks under scripts/ are
+      # code too and have their own tests.
+      - name: Test scripts
+        run: bun run test:scripts

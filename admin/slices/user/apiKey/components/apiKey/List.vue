@@ -11,6 +11,7 @@ import {
   TableRow,
 } from '#theme/components/ui/table';
 import { IconTrash } from '@tabler/icons-vue';
+import { formatDateTime } from '#common/utils/format';
 
 defineProps<{ items: IApiKeyData[] }>();
 
@@ -20,11 +21,7 @@ defineEmits<{
 
 function formatDate(value: string | null): string {
   if (!value) return '—';
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
+  return formatDateTime(value) || value;
 }
 </script>
 

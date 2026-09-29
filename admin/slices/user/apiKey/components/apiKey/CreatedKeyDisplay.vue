@@ -10,6 +10,7 @@ import {
 import { Button } from '#theme/components/ui/button';
 import { IconCopy, IconCheck, IconAlertTriangle } from '@tabler/icons-vue';
 import type { ICreatedApiKey } from '#apiKey/stores/apiKey';
+import { formatDateTime } from '#common/utils/format';
 
 const props = defineProps<{ created: ICreatedApiKey | null }>();
 
@@ -104,7 +105,7 @@ async function copyKey() {
           </span>
           <span v-if="created.apiKey.expiresAt">
             <strong class="font-medium text-foreground">Expires:</strong>
-            {{ new Date(created.apiKey.expiresAt).toLocaleString() }}
+            {{ formatDateTime(created.apiKey.expiresAt) }}
           </span>
         </div>
 

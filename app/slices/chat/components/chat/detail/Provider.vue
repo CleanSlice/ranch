@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ChatExportFormat, IChatMessage } from '#chat/stores/chat';
 import { snippet, type INavMapItem } from '#chat/utils/transcript';
+import { useFormat } from '#common/composables/useFormat';
 
 const props = defineProps<{ id: string }>();
 const chatStore = useChatStore();
@@ -83,11 +84,11 @@ onMounted(() => {
   }
 });
 
-const { locale } = useI18n();
+const format = useFormat();
 
 const heading = computed(() => session.value?.title?.trim() || null);
 function fmt(iso?: string | null): string {
-  return iso ? new Date(iso).toLocaleString(locale.value) : '—';
+  return format.dateTime(iso) || '—';
 }
 
 const navItems = computed<INavMapItem[]>(() =>
@@ -102,6 +103,16 @@ function onJump(id: string) {
     ?.querySelector(`[data-msg-id="${id}"]`)
     ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
+
+// A sentiment the console knows is shown through its key; the mapper has
+// already folded anything else into 'neutral'.
+const SENTIMENT_KEYS: Record<string, string> = {
+  positive: 'session.sentiment_positive',
+  neutral: 'session.sentiment_neutral',
+  negative: 'session.sentiment_negative',
+  mixed: 'session.sentiment_mixed',
+};
+const sentimentKey = (sentiment: string): string | null => SENTIMENT_KEYS[sentiment] ?? null;
 
 const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   positive: 'secondary',
@@ -197,7 +208,7 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
               <span class="text-muted-foreground/70">
                 {{ $t('session.meta_messages') }}
               </span>
-              <span class="font-medium">{{ session.messageCount }}</span>
+              <span class="font-medium">{{ format.number(session.messageCount) }}</span>
             </div>
             <div class="flex items-center justify-between gap-3 text-[12.5px]">
               <span class="text-muted-foreground/70">
@@ -221,13 +232,22 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
                 :variant="sentimentVariant[session.insights.sentiment] ?? 'secondary'"
                 class="capitalize"
               >
-                {{ session.insights.sentiment }}
+                {{
+                  sentimentKey(session.insights.sentiment)
+                    ? $t(sentimentKey(session.insights.sentiment)!)
+                    : session.insights.sentiment
+                }}
               </Badge>
               <Badge variant="outline" class="capitalize">
                 {{ $t(session.insights.resolved ? 'session.resolved' : 'session.unresolved') }}
               </Badge>
               <Badge variant="outline" class="capitalize">
-                {{ session.insights.language }}
+                <!-- An ISO 639-1 code, or 'unknown' when none was detected. -->
+                {{
+                  session.insights.language === 'unknown'
+                    ? $t('value.unknown')
+                    : format.languageName(session.insights.language)
+                }}
               </Badge>
             </div>
             <p

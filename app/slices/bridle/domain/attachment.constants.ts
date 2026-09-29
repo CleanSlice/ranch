@@ -108,13 +108,6 @@ export function isReadableByAgent(kind: string, mimeType?: string): boolean {
   return !!mimeType && EXTRACTABLE_DOCUMENT_MIME_TYPES.includes(mimeType);
 }
 
-/** Human-readable byte size for chips and error copy. */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /** Resolve a file's MIME type, falling back to its extension when blank. */
 export function resolveMimeType(file: File): string {
   const reported = (file.type || '').trim().toLowerCase();

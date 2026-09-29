@@ -73,5 +73,19 @@
     "minutes": "{count} мин назад",
     "hours": "{count} ч назад",
     "days": "{count} дн назад"
+  },
+  "unit": {
+    "b": "{value} Б",
+    "kb": "{value} КБ",
+    "mb": "{value} МБ"
+  },
+  "value": {
+    "unknown": "Неизвестно"
+  },
+  "role": {
+    "owner": "Владелец",
+    "admin": "Администратор",
+    "user": "Пользователь",
+    "agent": "Агент"
   }
 }

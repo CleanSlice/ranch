@@ -4,6 +4,8 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from '#bridle/domain';
 import type { IBridleConversation } from '#bridle/stores/bridle';
+import { noticeParams } from '#bridle/utils/noticeParams';
+import { useFormat } from '#common/composables/useFormat';
 
 const props = defineProps<{
   disabled?: boolean;
@@ -12,6 +14,7 @@ const props = defineProps<{
 const emit = defineEmits<{ send: [text: string] }>();
 
 const bridleStore = useBridleStore();
+const format = useFormat();
 
 const draft = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
@@ -192,7 +195,7 @@ watch(draft, () => nextTick(autoResize));
           :size="12"
           class="mt-px shrink-0"
         />
-        <span>{{ $t(attachmentError.key, attachmentError.params ?? {}) }}</span>
+        <span>{{ $t(attachmentError.key, noticeParams(attachmentError, format.size)) }}</span>
         <button
           type="button"
           class="ml-1 underline underline-offset-2 hover:opacity-80"

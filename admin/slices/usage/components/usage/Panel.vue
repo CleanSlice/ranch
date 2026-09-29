@@ -7,6 +7,7 @@ import {
 } from '@tabler/icons-vue';
 import type { IUsageDailyEntry } from '#usage/domain';
 import { formatCount, formatUsd } from '#agent/utils/agentFormat';
+import { formatMoney, formatNumber } from '#common/utils/format';
 
 // Host classes (flex sizing in side stacks) must land on the visible root —
 // Card or collapsed button — not a wrapper. The former `strip` variant is
@@ -124,12 +125,8 @@ const viewHint = computed(() =>
   view.value === 'agent' ? 'this agent only' : 'all agents',
 );
 
-const cost = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 4,
-});
-const count = new Intl.NumberFormat('en-US');
+// Four decimals: a single call costs fractions of a cent.
+const cost = (usd: number) => formatMoney(usd, 4);
 
 function shortDate(iso: string): string {
   return iso.slice(5); // YYYY-MM-DD → MM-DD
@@ -222,7 +219,7 @@ defineExpose({ refresh });
           <div class="flex flex-col">
             <span class="text-xs text-muted-foreground">30d · cost, all agents</span>
             <span class="text-2xl font-semibold tabular-nums">
-              {{ cost.format(overview.totals.costUsd) }}
+              {{ cost(overview.totals.costUsd) }}
             </span>
           </div>
           <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -235,7 +232,7 @@ defineExpose({ refresh });
             </div>
             <div>
               <dt class="text-xs text-muted-foreground">30d · calls</dt>
-              <dd class="mt-0.5 font-mono text-sm">{{ count.format(overview.totals.callCount) }}</dd>
+              <dd class="mt-0.5 font-mono text-sm">{{ formatNumber(overview.totals.callCount) }}</dd>
             </div>
             <div class="col-span-2">
               <dt class="text-xs text-muted-foreground">30d · top model</dt>
@@ -252,7 +249,7 @@ defineExpose({ refresh });
             >
               <span class="truncate">{{ a.agentName }}</span>
               <span class="shrink-0 font-mono tabular-nums text-xs">
-                {{ cost.format(a.costUsd) }}
+                {{ cost(a.costUsd) }}
               </span>
             </div>
             <Button
@@ -272,7 +269,7 @@ defineExpose({ refresh });
           <div class="flex flex-col">
             <span class="text-xs text-muted-foreground">30d · calls, all agents</span>
             <span class="text-2xl font-semibold tabular-nums">
-              {{ count.format(overview.totals.callCount) }}
+              {{ formatNumber(overview.totals.callCount) }}
             </span>
           </div>
           <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -295,7 +292,7 @@ defineExpose({ refresh });
           <div class="flex flex-col">
             <span class="text-xs text-muted-foreground">30d · cost, this agent</span>
             <span class="text-2xl font-semibold tabular-nums">
-              {{ cost.format(agentUsage.totals.costUsd) }}
+              {{ cost(agentUsage.totals.costUsd) }}
             </span>
           </div>
           <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -305,15 +302,15 @@ defineExpose({ refresh });
             </div>
             <div>
               <dt class="text-xs text-muted-foreground">30d · calls</dt>
-              <dd class="mt-0.5 font-mono text-sm">{{ count.format(agentUsage.totals.callCount) }}</dd>
+              <dd class="mt-0.5 font-mono text-sm">{{ formatNumber(agentUsage.totals.callCount) }}</dd>
             </div>
             <div>
               <dt class="text-xs text-muted-foreground">30d · input</dt>
-              <dd class="mt-0.5 font-mono text-sm">{{ count.format(agentUsage.totals.inputTokens) }}</dd>
+              <dd class="mt-0.5 font-mono text-sm">{{ formatNumber(agentUsage.totals.inputTokens) }}</dd>
             </div>
             <div>
               <dt class="text-xs text-muted-foreground">30d · output</dt>
-              <dd class="mt-0.5 font-mono text-sm">{{ count.format(agentUsage.totals.outputTokens) }}</dd>
+              <dd class="mt-0.5 font-mono text-sm">{{ formatNumber(agentUsage.totals.outputTokens) }}</dd>
             </div>
             <div>
               <dt class="text-xs text-muted-foreground">Today · model</dt>
@@ -321,13 +318,13 @@ defineExpose({ refresh });
             </div>
             <div>
               <dt class="text-xs text-muted-foreground">Today · calls</dt>
-              <dd class="mt-0.5 font-mono text-sm">{{ count.format(agentUsage.today.callCount) }}</dd>
+              <dd class="mt-0.5 font-mono text-sm">{{ formatNumber(agentUsage.today.callCount) }}</dd>
             </div>
             <div class="col-span-2">
               <dt class="text-xs text-muted-foreground">Today · in / out</dt>
               <dd class="mt-0.5 font-mono text-sm">
-                {{ count.format(agentUsage.today.inputTokens) }} /
-                {{ count.format(agentUsage.today.outputTokens) }}
+                {{ formatNumber(agentUsage.today.inputTokens) }} /
+                {{ formatNumber(agentUsage.today.outputTokens) }}
               </dd>
             </div>
           </dl>
@@ -349,8 +346,8 @@ defineExpose({ refresh });
                   {{ formatCount(e.inputTokens) }}/{{ formatCount(e.outputTokens) }}
                 </td>
                 <td class="py-1 text-right font-mono tabular-nums">
-                  <template v-if="view === 'calls'">{{ count.format(e.callCount) }}</template>
-                  <template v-else>{{ cost.format(e.costUsd) }}</template>
+                  <template v-if="view === 'calls'">{{ formatNumber(e.callCount) }}</template>
+                  <template v-else>{{ cost(e.costUsd) }}</template>
                 </td>
               </tr>
             </tbody>

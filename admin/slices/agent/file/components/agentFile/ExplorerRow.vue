@@ -14,6 +14,7 @@ import {
 } from '@tabler/icons-vue';
 import type { TreeNode } from '#agentFile/utils/fileTree';
 import { formatBytes, formatModified } from '#agentFile/utils/format';
+import { formatDateTime } from '#common/utils/format';
 
 defineOptions({ name: 'AgentFileExplorerRow' });
 
@@ -90,7 +91,7 @@ function onCheck(e: Event) {
       v-else
       type="button"
       class="flex min-w-0 items-center gap-1.5 py-1 text-left"
-      :title="`${node.path} — modified ${node.updatedAt ? new Date(node.updatedAt).toLocaleString() : 'unknown'}`"
+      :title="`${node.path} — modified ${formatDateTime(node.updatedAt) || 'unknown'}`"
       @click="emit('open', node.path)"
     >
       <span class="size-3.5 shrink-0" />

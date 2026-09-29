@@ -45,8 +45,9 @@ async function onRestart() {
   } catch (err) {
     restartFailed.value = true;
     // A 401 the api plugin could not recover from is the session-ended
-    // dialog's story to tell; the banner falls back to `chat.restart_failed`
-    // rather than echoing a raw auth string (CLEAN-72).
+    // dialog's story to tell, so the banner says `chat.restart_failed` alone
+    // rather than echoing a raw auth string (CLEAN-72). Any other detail is
+    // shown after it exactly as received.
     const status = (err as { response?: { status?: number } } | null)
       ?.response?.status;
     restartError.value =
@@ -98,7 +99,7 @@ const statusMeta = computed(() => {
     case 'stopped':
       return { labelKey: 'status.stopped', label: status, dot: 'bg-muted-foreground', pulse: false };
     default:
-      // No wording for a status the runtime invented — show it verbatim.
+      // No wording for a status the runtime invented — show it as received.
       return { labelKey: null, label: status ?? '', dot: 'bg-muted-foreground', pulse: false };
   }
 });
@@ -248,7 +249,7 @@ const initials = computed(() => {
       <p
         class="mx-auto w-full max-w-3xl px-4 py-2 text-xs text-rose-700 dark:text-rose-400"
       >
-        {{ restartError ?? $t('chat.restart_failed') }}
+        {{ $t('chat.restart_failed') }}<template v-if="restartError">: {{ restartError }}</template>
       </p>
     </div>
 

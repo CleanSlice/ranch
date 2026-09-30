@@ -13,6 +13,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
   SidebarTrigger,
+  useSidebar,
 } from '#theme/components/ui/sidebar';
 import {
   DropdownMenu,
@@ -53,6 +54,9 @@ async function onLogout() {
 
 const menu = useMenuStore();
 
+const { state: sidebarState } = useSidebar();
+const collapsed = computed(() => sidebarState.value === 'collapsed');
+
 const iconMap: Record<string, unknown> = {
   Bot,
   LayoutTemplate: IconTemplate,
@@ -81,14 +85,14 @@ const itemsByGroup = (group: MenuGroupTypes) =>
 
 <template>
   <Sidebar collapsible="icon" variant="inset">
-    <SidebarHeader>
+    <SidebarHeader class="gap-0">
       <!-- The content header used to hold these (CLEAN-131). Expanded: the
            Live stream indicator in its own line above, right-aligned; the
            collapse toggle opposite the Ranch / Admin block. Collapsed to
-           icons: the toggle drops under the logo so the rail is not the sole
-           way back; the stream's state is still on the agents pages. -->
-      <div class="flex justify-end group-data-[collapsible=icon]:hidden">
-        <AgentStatusIndicator class="-mr-1" />
+           icons: the indicator keeps its place as a bare dot and the toggle
+           drops under the logo so the rail is not the sole way back. -->
+      <div class="flex justify-end group-data-[collapsible=icon]:justify-center">
+        <AgentStatusIndicator class="-mr-1 group-data-[collapsible=icon]:mr-0" :compact="collapsed" />
       </div>
       <div class="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
         <SidebarMenu class="min-w-0 flex-1">

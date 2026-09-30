@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { ITemplateData } from '#template/domain';
-import { agentsLabel, cpuLabel, memoryLabel } from '#template/utils/templateFormat';
+import {
+  agentsLabel,
+  capabilitiesLabel,
+  cpuLabel,
+  memoryLabel,
+} from '#template/utils/templateFormat';
 import { formatDate } from '#common/utils/format';
 import TemplateTile from '../Tile.vue';
 import TemplateListActions from './Actions.vue';
@@ -17,6 +22,9 @@ defineEmits<{ restart: []; remove: [] }>();
 const cpu = computed(() => cpuLabel(props.template.defaultResources.cpu));
 const memory = computed(() => memoryLabel(props.template.defaultResources.memory));
 const agents = computed(() => agentsLabel(props.running));
+const capabilities = computed(() =>
+  capabilitiesLabel(props.template.skillIds.length, props.template.mcpServerIds.length),
+);
 </script>
 
 <template>
@@ -40,9 +48,7 @@ const agents = computed(() => agentsLabel(props.running));
       <code class="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11.5px]">{{ cpu }}</code>
       <code class="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11.5px]">{{ memory }}</code>
     </div>
-    <span class="hidden text-[12.5px] text-muted-foreground md:block">
-      {{ template.skillIds.length }} skills · {{ template.mcpServerIds.length }} MCP
-    </span>
+    <span class="hidden text-[12.5px] text-muted-foreground md:block">{{ capabilities }}</span>
     <span class="hidden items-center gap-1.5 text-[12.5px] text-muted-foreground md:flex">
       <span
         class="size-[7px] rounded-full"

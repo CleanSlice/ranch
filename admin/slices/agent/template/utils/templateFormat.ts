@@ -95,6 +95,11 @@ export function resourceShare(value: number, reference: number): number {
 export const AGENT_REFERENCE_CPU_MILLI = 4000;
 export const AGENT_REFERENCE_MEMORY_MI = 4096;
 
+/** `2 skills · 1 MCP`, `1 skill · 0 MCP` — what a template hands every agent. */
+export function capabilitiesLabel(skills: number, mcps: number): string {
+  return `${skills} skill${skills === 1 ? '' : 's'} · ${mcps} MCP`;
+}
+
 export function agentsLabel(running: number): string {
   if (running === 0) return 'No agents running';
   return `${running} agent${running === 1 ? '' : 's'} running`;

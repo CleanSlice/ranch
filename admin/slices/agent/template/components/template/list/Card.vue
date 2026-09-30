@@ -2,6 +2,7 @@
 import type { ITemplateData } from '#template/domain';
 import {
   agentsLabel,
+  capabilitiesLabel,
   cpuLabel,
   imageTag,
   memoryLabel,
@@ -25,6 +26,9 @@ defineEmits<{ restart: []; remove: [] }>();
 const cpu = computed(() => cpuLabel(props.template.defaultResources.cpu));
 const memory = computed(() => memoryLabel(props.template.defaultResources.memory));
 const agents = computed(() => agentsLabel(props.running));
+const capabilities = computed(() =>
+  capabilitiesLabel(props.template.skillIds.length, props.template.mcpServerIds.length),
+);
 const tag = computed(() => imageTag(props.template.image));
 </script>
 
@@ -59,9 +63,7 @@ const tag = computed(() => imageTag(props.template.image));
     <div class="flex flex-wrap items-center gap-1.5">
       <code class="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11.5px]">{{ cpu }}</code>
       <code class="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11.5px]">{{ memory }}</code>
-      <span class="ml-1 text-xs text-muted-foreground">
-        {{ template.skillIds.length }} skills · {{ template.mcpServerIds.length }} MCP
-      </span>
+      <span class="ml-1 text-xs text-muted-foreground">{{ capabilities }}</span>
     </div>
 
     <div class="-mx-[18px] -mb-[18px] flex items-center gap-2 border-t px-[18px] py-2.5 text-[12.5px] text-muted-foreground">

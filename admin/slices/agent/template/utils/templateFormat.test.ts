@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   agentsLabel,
+  capabilitiesLabel,
   cpuLabel,
   cpuMilli,
   imageTag,
@@ -95,6 +96,14 @@ describe('resourceShare', () => {
 
   test('no reference → no bar', () => {
     expect(resourceShare(2000, 0)).toBe(0);
+  });
+});
+
+describe('capabilitiesLabel', () => {
+  test('one skill is singular, MCP never changes', () => {
+    expect(capabilitiesLabel(1, 0)).toBe('1 skill · 0 MCP');
+    expect(capabilitiesLabel(0, 1)).toBe('0 skills · 1 MCP');
+    expect(capabilitiesLabel(2, 3)).toBe('2 skills · 3 MCP');
   });
 });
 

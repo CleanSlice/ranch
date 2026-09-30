@@ -2,6 +2,7 @@ import { KnowledgesService, KnowledgeSourcesService } from '#api/data';
 import { client as apiClient } from '#api/data/repositories/api/client.gen';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
+import { ErrorMapper } from '#error/data/error.mapper';
 import { IKnowledgeGateway } from '../domain/knowledge.gateway';
 import type {
   ICreateKnowledgeInput,
@@ -48,6 +49,12 @@ function filenameFromDisposition(header: unknown, fallback: string): string {
 
 export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
   private mapper = new KnowledgeMapper();
+
+  constructor() {
+    // Thrown SDK failures become an ErrorEntity carrying the API's own message
+    // ("LightRAG /query timed out after 50 s"), not axios's status line.
+    super(new ErrorMapper());
+  }
 
   // Raw client: /knowledges/status isn't in the generated SDK. Swallow errors
   // to a disabled/empty status (mirrors the store's try/catch).
@@ -139,9 +146,14 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
     topK: number,
   ): Promise<IQueryResult> {
     return this.execute(async () => {
+      // Without `throwOnError` a 500 comes back as `data: undefined`, which the
+      // mapper turns into `answer: null` - the Query tab then reported a
+      // LightRAG timeout as "This base has no content relevant to that
+      // question".
       const res = await KnowledgesService.queryKnowledge({
         path: { id },
         body: { query: q, mode, topK },
+        throwOnError: true,
       });
       return this.mapper.toQueryResult(unwrapEnvelope(res.data));
     });

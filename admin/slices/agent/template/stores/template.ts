@@ -20,27 +20,38 @@ export type {
 const getService = createServiceGetter<TemplateService>('$templateService');
 
 export const useTemplateStore = defineStore('template', () => {
+  // A template lives here once (docs/state.md): the list fetch replaces the
+  // collection, every single-entity call upserts into it, and the list and
+  // the detail page read the same record by id.
   const templates = ref<ITemplateData[]>([]);
+
+  function byId(id: string): ITemplateData | undefined {
+    return templates.value.find((t) => t.id === id);
+  }
+
+  function upsert(template: ITemplateData): ITemplateData {
+    const i = templates.value.findIndex((t) => t.id === template.id);
+    if (i === -1) templates.value = [template, ...templates.value];
+    else templates.value.splice(i, 1, template);
+    return template;
+  }
 
   async function fetchAll() {
     templates.value = await getService().findAll();
     return templates.value;
   }
 
-  function fetchById(id: string) {
-    return getService().findById(id);
+  async function fetchById(id: string) {
+    const found = await getService().findById(id);
+    return found ? upsert(found) : null;
   }
 
   async function create(data: ICreateTemplateData) {
-    const created = await getService().create(data);
-    templates.value = [created, ...templates.value];
-    return created;
+    return upsert(await getService().create(data));
   }
 
   async function update(id: string, data: IUpdateTemplateData) {
-    const updated = await getService().update(id, data);
-    templates.value = templates.value.map((t) => (t.id === id ? updated : t));
-    return updated;
+    return upsert(await getService().update(id, data));
   }
 
   async function remove(id: string) {
@@ -49,15 +60,11 @@ export const useTemplateStore = defineStore('template', () => {
   }
 
   async function setSkills(id: string, skillIds: string[]) {
-    const updated = await getService().setSkills(id, skillIds);
-    templates.value = templates.value.map((t) => (t.id === id ? updated : t));
-    return updated;
+    return upsert(await getService().setSkills(id, skillIds));
   }
 
   async function setMcps(id: string, mcpServerIds: string[]) {
-    const updated = await getService().setMcps(id, mcpServerIds);
-    templates.value = templates.value.map((t) => (t.id === id ? updated : t));
-    return updated;
+    return upsert(await getService().setMcps(id, mcpServerIds));
   }
 
   // Restart every agent using this template. The endpoint lives on the agent
@@ -69,6 +76,7 @@ export const useTemplateStore = defineStore('template', () => {
 
   return {
     templates,
+    byId,
     fetchAll,
     fetchById,
     create,

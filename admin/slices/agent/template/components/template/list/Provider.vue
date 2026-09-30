@@ -1,20 +1,77 @@
 <script setup lang="ts">
 import type { ITemplateData } from '#template/stores/template';
-import { IconDotsVertical, IconRefresh, IconTrash, IconPackageImport } from '@tabler/icons-vue';
-import { formatDate } from '#common/utils/format';
+import {
+  IconArrowsSort,
+  IconLayoutGrid,
+  IconListDetails,
+  IconPackageImport,
+  IconPlus,
+  IconSearch,
+} from '@tabler/icons-vue';
+import { useLocalStorage } from '@vueuse/core';
+import {
+  SIZE_BUCKETS,
+  selectTemplates,
+  type SizeBucket,
+  type TemplateSort,
+} from '#template/utils/templateList';
+import TemplateListCard from './Card.vue';
+import TemplateListRow from './Row.vue';
 
+/**
+ * The templates list (CLEAN-130): search, a memory-size filter, Newest/Name
+ * sort and a cards-or-table view that the browser remembers. Every row reads
+ * the template store; agents are counted from the agent store so "3 agents
+ * running" is the same number the agents rail shows.
+ */
 const templateStore = useTemplateStore();
+const agentStore = useAgentStore();
 const rancherStore = useRancherStore();
 
-const { data: templates, pending, refresh } = await useAsyncData(
-  'admin-templates',
-  () => templateStore.fetchAll(),
-);
+const { templates } = storeToRefs(templateStore);
+const { agents } = storeToRefs(agentStore);
+const { status: rancherStatus } = storeToRefs(rancherStore);
 
-const { data: rancherStatus, refresh: refreshRancher } = await useAsyncData(
+const { pending, refresh } = await useAsyncData('admin-templates', () =>
+  templateStore.fetchAll(),
+);
+const { refresh: refreshRancher } = await useAsyncData(
   'admin-rancher-status',
   () => rancherStore.fetchStatus(),
 );
+// Lazy: the list is useful before the agent counts arrive.
+useAsyncData('admin-templates-agents', () => agentStore.fetchAll(), { lazy: true });
+
+const query = ref('');
+const size = ref<SizeBucket>('all');
+const sort = ref<TemplateSort>('recent');
+const view = useLocalStorage<'cards' | 'table'>('admin.templates.view', 'cards');
+
+const items = computed(() =>
+  selectTemplates(templates.value, {
+    query: query.value,
+    size: size.value,
+    sort: sort.value,
+  }),
+);
+
+const runningByTemplate = computed(() => {
+  const counts = new Map<string, number>();
+  for (const a of agents.value) {
+    if (a.status !== 'running') continue;
+    counts.set(a.templateId, (counts.get(a.templateId) ?? 0) + 1);
+  }
+  return counts;
+});
+const running = (t: ITemplateData) => runningByTemplate.value.get(t.id) ?? 0;
+
+const managedId = computed(() => rancherStatus.value?.template?.id ?? null);
+
+/** The table's footer names the image once when every template shares it. */
+const sharedImage = computed(() => {
+  const images = new Set(templates.value.map((t) => t.image));
+  return images.size === 1 ? templates.value[0]!.image : null;
+});
 
 const ensuringRancher = ref(false);
 const ensureError = ref<string | null>(null);
@@ -48,7 +105,6 @@ async function onRemove() {
   removeError.value = null;
   try {
     await templateStore.remove(template.id);
-    await refresh();
   } catch (err: unknown) {
     removeError.value = err instanceof Error ? err.message : 'Failed to delete template.';
   }
@@ -79,22 +135,90 @@ async function onRestartAgents() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold">Templates</h1>
-        <p class="text-sm text-muted-foreground">Agent blueprints used when spawning runtime instances.</p>
+  <div class="flex flex-col gap-5">
+    <div class="flex flex-wrap items-end gap-4">
+      <div class="flex min-w-0 flex-col gap-1.5">
+        <div class="flex items-baseline gap-2.5">
+          <h1 class="text-[28px] font-semibold tracking-tight">Templates</h1>
+          <span class="font-mono text-[13px] text-muted-foreground/70">{{ templates.length }}</span>
+        </div>
+        <p class="text-sm text-muted-foreground text-pretty">
+          Agent blueprints — image, resources, skills and tools every new agent starts with.
+        </p>
       </div>
-      <div class="flex gap-2">
+      <div class="ml-auto flex gap-2">
         <Button variant="outline" as-child>
           <NuxtLink to="/templates/install" class="inline-flex items-center gap-1.5">
             <IconPackageImport class="size-4" />
-            Install
+            Install from file
           </NuxtLink>
         </Button>
         <Button as-child>
-          <NuxtLink to="/templates/create">New template</NuxtLink>
+          <NuxtLink to="/templates/create" class="inline-flex items-center gap-1.5">
+            <IconPlus class="size-4" />
+            New template
+          </NuxtLink>
         </Button>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2.5">
+      <div class="relative min-w-60 max-w-md flex-1">
+        <IconSearch class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input v-model="query" placeholder="Search templates" class="pl-9" />
+      </div>
+      <div class="flex gap-1 rounded-[9px] bg-muted p-[3px]" role="radiogroup" aria-label="Memory size">
+        <button
+          v-for="b in SIZE_BUCKETS"
+          :key="b.key"
+          type="button"
+          role="radio"
+          :aria-checked="size === b.key"
+          class="h-[30px] rounded-md px-[11px] text-[12.5px] font-medium transition-colors"
+          :class="
+            size === b.key
+              ? 'bg-background text-foreground shadow-xs'
+              : 'text-muted-foreground hover:text-foreground'
+          "
+          @click="size = b.key"
+        >
+          {{ b.label }}
+        </button>
+      </div>
+      <div class="ml-auto flex items-center gap-2.5">
+        <button
+          type="button"
+          class="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted"
+          @click="sort = sort === 'name' ? 'recent' : 'name'"
+        >
+          Sort:
+          <span class="font-medium text-foreground">{{ sort === 'name' ? 'Name' : 'Newest' }}</span>
+          <IconArrowsSort class="size-3.5" />
+        </button>
+        <div class="flex gap-0.5 rounded-[9px] bg-muted p-[3px]" role="radiogroup" aria-label="View">
+          <button
+            type="button"
+            role="radio"
+            :aria-checked="view === 'cards'"
+            title="Cards"
+            class="grid h-7 w-[30px] place-items-center rounded-md transition-colors"
+            :class="view === 'cards' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+            @click="view = 'cards'"
+          >
+            <IconLayoutGrid class="size-3.5" />
+          </button>
+          <button
+            type="button"
+            role="radio"
+            :aria-checked="view === 'table'"
+            title="Table"
+            class="grid h-7 w-[30px] place-items-center rounded-md transition-colors"
+            :class="view === 'table' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+            @click="view = 'table'"
+          >
+            <IconListDetails class="size-3.5" />
+          </button>
+        </div>
       </div>
     </div>
 
@@ -136,76 +260,74 @@ async function onRestartAgents() {
       </Button>
     </div>
 
-    <div v-if="pending" class="text-sm text-muted-foreground">Loading templates…</div>
-
-    <div v-else-if="templates?.length" class="rounded-md border bg-card">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Image</TableHead>
-            <TableHead>Resources</TableHead>
-            <TableHead>Created</TableHead>
-            <TableHead class="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow
-            v-for="template in templates"
-            :key="template.id"
-            class="cursor-pointer"
-            @click="navigateTo(`/templates/${template.id}`)"
-          >
-            <TableCell class="max-w-sm">
-              <div class="font-medium">{{ template.name }}</div>
-              <div class="text-xs text-muted-foreground line-clamp-2 wrap-break-word">{{ template.description }}</div>
-            </TableCell>
-            <TableCell>
-              <code class="text-xs text-muted-foreground">{{ template.image }}</code>
-            </TableCell>
-            <TableCell>
-              <div class="flex gap-1">
-                <Badge variant="outline">{{ template.defaultResources.cpu }} CPU</Badge>
-                <Badge variant="outline">{{ template.defaultResources.memory }}</Badge>
-              </div>
-            </TableCell>
-            <TableCell class="text-muted-foreground">{{ formatDate(template.createdAt) }}</TableCell>
-            <TableCell @click.stop>
-              <div class="flex justify-end gap-2">
-                <Button size="sm" variant="outline" as-child>
-                  <NuxtLink :to="`/templates/${template.id}/edit`">Edit</NuxtLink>
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger as-child>
-                    <Button size="sm" variant="ghost" class="size-8 p-0">
-                      <span class="sr-only">Open menu</span>
-                      <IconDotsVertical class="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem @select="pendingRestart = template">
-                      <IconRefresh class="size-4" />
-                      Restart all agents
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      class="text-destructive focus:text-destructive"
-                      @select="pendingRemoval = template"
-                    >
-                      <IconTrash class="size-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+    <div v-if="pending && !templates.length" class="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+      <Skeleton v-for="i in 6" :key="i" class="h-[200px] rounded-[14px]" />
     </div>
 
-    <div v-else class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
-      No templates yet.
-    </div>
+    <template v-else>
+      <div v-if="view === 'cards'" class="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <NuxtLink
+          to="/templates/create"
+          class="flex min-h-[200px] flex-col items-start justify-center gap-2.5 rounded-[14px] border-[1.5px] border-dashed p-[22px] text-muted-foreground transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span class="grid size-[38px] place-items-center rounded-[10px] border border-current">
+            <IconPlus class="size-4" />
+          </span>
+          <span class="text-[14.5px] font-semibold text-foreground">New template</span>
+          <span class="text-[13px] leading-snug">
+            Start blank, duplicate an existing one, or install a
+            <code class="font-mono text-xs">.agent</code> bundle.
+          </span>
+        </NuxtLink>
+        <TemplateListCard
+          v-for="t in items"
+          :key="t.id"
+          :template="t"
+          :running="running(t)"
+          :managed="t.id === managedId"
+          @restart="pendingRestart = t"
+          @remove="pendingRemoval = t"
+        />
+      </div>
+
+      <div v-else-if="items.length" class="overflow-hidden rounded-[14px] border bg-card">
+        <div
+          class="grid gap-4 border-b bg-muted/40 px-[18px] py-2.5 text-xs font-medium text-muted-foreground grid-cols-[minmax(0,1fr)_44px] md:grid-cols-[minmax(0,1fr)_170px_140px_150px_110px_44px]"
+        >
+          <span>Template</span>
+          <span class="hidden md:block">Resources</span>
+          <span class="hidden md:block">Capabilities</span>
+          <span class="hidden md:block">Agents</span>
+          <span class="hidden md:block">Created</span>
+          <span />
+        </div>
+        <TemplateListRow
+          v-for="t in items"
+          :key="t.id"
+          :template="t"
+          :running="running(t)"
+          :managed="t.id === managedId"
+          @restart="pendingRestart = t"
+          @remove="pendingRemoval = t"
+        />
+        <div v-if="sharedImage" class="px-[18px] py-2.5 text-xs text-muted-foreground/70">
+          All templates use <code class="font-mono">{{ sharedImage }}</code>
+        </div>
+      </div>
+
+      <div
+        v-if="!items.length && templates.length"
+        class="rounded-[14px] border border-dashed p-12 text-sm text-muted-foreground"
+      >
+        No templates match “{{ query }}”.
+      </div>
+      <div
+        v-else-if="!templates.length && view === 'table'"
+        class="rounded-[14px] border border-dashed p-12 text-sm text-muted-foreground"
+      >
+        No templates yet.
+      </div>
+    </template>
 
     <ConfirmDialog
       v-model:open="confirmRemoveOpen"

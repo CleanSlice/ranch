@@ -28,11 +28,11 @@ const counts = computed(() => ({
   off: skillStore.items.filter((s) => !selectedSet.value.has(s.id)).length,
 }));
 
-const segments: { key: Segment; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'on', label: 'Attached' },
-  { key: 'off', label: 'Available' },
-];
+const segments = computed(() => [
+  { key: 'all' as Segment, label: `All ${counts.value.all}` },
+  { key: 'on' as Segment, label: `Attached ${counts.value.on}` },
+  { key: 'off' as Segment, label: `Available ${counts.value.off}` },
+]);
 
 const visible = computed(() => {
   const q = filter.value.trim().toLowerCase();
@@ -54,29 +54,15 @@ function toggle(id: string) {
 
 <template>
   <div class="flex flex-col gap-3.5">
-    <div class="flex flex-wrap items-center gap-2.5">
-      <div class="relative min-w-60 max-w-md flex-1">
-        <IconSearch class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input v-model="filter" placeholder="Filter skills" class="pl-9" />
-      </div>
-      <div class="flex gap-1 rounded-[9px] bg-muted p-[3px]" role="radiogroup" aria-label="Show">
-        <button
-          v-for="s in segments"
-          :key="s.key"
-          type="button"
-          role="radio"
-          :aria-checked="segment === s.key"
-          class="h-[30px] rounded-md px-[11px] text-[12.5px] font-medium transition-colors"
-          :class="segment === s.key ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
-          @click="segment = s.key"
-        >
-          {{ s.label }} {{ counts[s.key] }}
-        </button>
-      </div>
-      <span class="ml-auto text-[13px] text-muted-foreground">
-        Content lives in <NuxtLink to="/skills" class="text-primary hover:underline">Skills</NuxtLink>
-      </span>
-    </div>
+    <ListToolbar>
+      <ListSearch v-model="filter" placeholder="Filter skills" />
+      <ListSegments v-model="segment" :options="segments" label="Show" />
+      <template #end>
+        <span class="text-[13px] text-muted-foreground">
+          Content lives in <NuxtLink to="/skills" class="text-primary hover:underline">Skills</NuxtLink>
+        </span>
+      </template>
+    </ListToolbar>
 
     <div v-if="pending && !skillStore.items.length" class="grid gap-2.5 md:grid-cols-2">
       <Skeleton v-for="i in 4" :key="i" class="h-20 rounded-xl" />

@@ -56,7 +56,7 @@ defineExpose({ refresh });
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 
-    <div v-else-if="scenarios?.length" class="rounded-md border bg-card">
+    <div v-else-if="scenarios?.length">
       <Table>
         <TableHeader>
           <TableRow>

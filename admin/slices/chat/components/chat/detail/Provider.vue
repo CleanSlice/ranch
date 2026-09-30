@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { IconArrowLeft } from '@tabler/icons-vue';
 import {
   groupTranscript,
   snippet,
@@ -45,15 +44,8 @@ function onExport(format: 'json' | 'markdown' | 'csv') {
   <div class="flex w-full flex-col gap-4">
     <!-- Slim header -->
     <div class="flex items-center gap-3 border-b pb-3">
-      <NuxtLink
-        to="/chats"
-        class="inline-flex shrink-0 items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <IconArrowLeft class="size-4" /> Chats
-      </NuxtLink>
-      <div class="h-[18px] w-px bg-border" />
+      <PageBreadcrumbs :items="[{ label: 'Chats', to: '/chats' }, { label: who }]" class="min-w-0" />
       <div class="flex min-w-0 flex-1 items-baseline gap-2">
-        <span class="truncate text-[15px] font-semibold tracking-tight">{{ who }}</span>
         <Badge v-if="session" variant="secondary" class="capitalize">
           {{ session.channel }}
         </Badge>

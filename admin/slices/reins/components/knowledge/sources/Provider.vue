@@ -380,7 +380,7 @@ async function onAdded() {
       Could not load sources: {{ listError }}
     </p>
 
-    <div v-if="rows.length" class="min-w-0 overflow-hidden rounded-md border bg-card">
+    <div v-if="rows.length" class="min-w-0">
       <Table>
         <TableHeader>
           <TableRow>

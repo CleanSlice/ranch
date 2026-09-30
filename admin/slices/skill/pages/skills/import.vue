@@ -1,15 +1,6 @@
-<script setup lang="ts">
-import { Button } from '#theme/components/ui/button';
-import { IconArrowLeft } from '@tabler/icons-vue';
-</script>
-
 <template>
   <div class="flex flex-col gap-6">
-    <Button variant="ghost" size="sm" as-child class="w-fit -ml-3 text-muted-foreground">
-      <NuxtLink to="/skills">
-        <IconArrowLeft class="size-4" /> Back to skills
-      </NuxtLink>
-    </Button>
+    <PageBreadcrumbs :items="[{ label: 'Skills', to: '/skills' }, { label: 'Import from GitHub' }]" />
 
     <div>
       <h1 class="text-2xl font-semibold">Import skill from GitHub</h1>

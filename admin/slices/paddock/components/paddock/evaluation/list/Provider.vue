@@ -70,7 +70,7 @@ defineExpose({ refresh, pending });
   <div class="flex flex-col gap-4">
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 
-    <div v-else-if="evaluations?.length" class="rounded-md border bg-card">
+    <div v-else-if="evaluations?.length">
       <Table>
         <TableHeader>
           <TableRow>

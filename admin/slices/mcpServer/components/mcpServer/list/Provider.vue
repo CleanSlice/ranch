@@ -55,7 +55,7 @@ async function onRemove() {
       </div>
     </div>
 
-    <div v-else-if="items?.length" class="rounded-md border bg-card">
+    <div v-else-if="items?.length">
       <Table>
         <TableHeader>
           <TableRow>

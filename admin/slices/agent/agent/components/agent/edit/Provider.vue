@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import type { ICreateAgentData, IUpdateAgentData } from '#agent/stores/agent';
 import {
-  IconAlertTriangle,
-  IconArrowLeft,
-  IconCheck,
+  IconAlertTriangle,  IconCheck,
   IconDownload,
   IconLoader2,
   IconRefresh,
@@ -252,12 +250,7 @@ async function onRemove() {
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink
-      :to="`/agents/${id}`"
-      class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <IconArrowLeft class="size-4" /> Back to agent
-    </NuxtLink>
+    <PageBreadcrumbs :items="[{ label: 'Agents', to: '/agents' }, { label: agent?.name ?? '…', to: `/agents/${id}` }, { label: 'Edit' }]" />
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 

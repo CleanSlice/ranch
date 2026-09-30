@@ -28,7 +28,7 @@ function formatDate(value: string | null): string {
 <template>
   <div
     v-if="items.length"
-    class="rounded-md border bg-card"
+   
   >
     <Table>
       <TableHeader>

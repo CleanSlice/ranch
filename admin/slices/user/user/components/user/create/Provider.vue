@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ICreateUserData } from '#user/domain/user.types';
-import { IconArrowLeft } from '@tabler/icons-vue';
 
 const userStore = useUserStore();
 const submitting = ref(false);
@@ -19,12 +18,7 @@ function onCancel() {
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink
-      to="/users"
-      class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <IconArrowLeft class="size-4" /> Back to users
-    </NuxtLink>
+    <PageBreadcrumbs :items="[{ label: 'Users', to: '/users' }, { label: 'Create user' }]" />
 
     <div>
       <h1 class="text-2xl font-semibold">Create user</h1>

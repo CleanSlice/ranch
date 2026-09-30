@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ISkillInput } from '#skill/stores/skill';
-import { IconArrowLeft } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 
@@ -38,12 +37,7 @@ function onCancel() {
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink
-      to="/skills"
-      class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <IconArrowLeft class="size-4" /> Back to skills
-    </NuxtLink>
+    <PageBreadcrumbs :items="[{ label: 'Skills', to: '/skills' }, { label: skill?.title ?? '…' }]" />
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 

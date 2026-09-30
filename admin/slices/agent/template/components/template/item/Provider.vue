@@ -326,13 +326,9 @@ async function onRemove() {
 
 <template>
   <div class="flex flex-col gap-6 pb-24">
-    <nav class="flex items-center gap-2 text-[13.5px]" aria-label="Breadcrumb">
-      <NuxtLink to="/templates" class="text-muted-foreground hover:text-foreground">Templates</NuxtLink>
-      <template v-if="template">
-        <span class="text-muted-foreground/40">/</span>
-        <span class="font-medium">{{ template.name }}</span>
-      </template>
-    </nav>
+    <PageBreadcrumbs
+      :items="[{ label: 'Templates', to: '/templates' }, ...(template ? [{ label: template.name }] : [])]"
+    />
 
     <div v-if="pending && !template" class="flex flex-col gap-4">
       <Skeleton class="h-14 w-2/3 rounded-xl" />

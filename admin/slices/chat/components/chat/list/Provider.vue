@@ -131,7 +131,7 @@ function who(s: IChatSession): string {
 
     <!-- Table -->
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
-    <div v-else-if="rows.length" class="rounded-md border bg-card">
+    <div v-else-if="rows.length">
       <Table>
         <TableHeader>
           <TableRow>

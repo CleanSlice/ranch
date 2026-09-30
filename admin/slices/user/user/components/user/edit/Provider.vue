@@ -4,7 +4,6 @@ import {
   type ICreateUserData,
   type IUpdateUserData,
 } from '#user/domain/user.types';
-import { IconArrowLeft } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 const userStore = useUserStore();
@@ -51,12 +50,7 @@ function onCancel() {
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink
-      :to="`/users/${id}`"
-      class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <IconArrowLeft class="size-4" /> Back to user
-    </NuxtLink>
+    <PageBreadcrumbs :items="[{ label: 'Users', to: '/users' }, { label: user?.name ?? '…', to: `/users/${id}` }, { label: 'Edit' }]" />
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 

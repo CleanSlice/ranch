@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ILlmCredentialInput } from '#llm/stores/llm';
-import { IconArrowLeft } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 
@@ -34,12 +33,7 @@ function onCancel() {
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink
-      to="/llms"
-      class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <IconArrowLeft class="size-4" /> Back to LLMs
-    </NuxtLink>
+    <PageBreadcrumbs :items="[{ label: 'LLMs', to: '/llms' }, { label: credential ? `${credential.provider} · ${credential.model}` : '…' }]" />
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 

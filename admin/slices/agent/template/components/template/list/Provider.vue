@@ -1,14 +1,7 @@
 <script setup lang="ts">
 import type { ITemplateData } from '#template/stores/template';
-import {
-  IconArrowsSort,
-  IconLayoutGrid,
-  IconListDetails,
-  IconPackageImport,
-  IconPlus,
-  IconSearch,
-} from '@tabler/icons-vue';
-import { useLocalStorage } from '@vueuse/core';
+import { IconPackageImport, IconPlus } from '@tabler/icons-vue';
+import type { ListView } from '#common/utils/listView';
 import {
   SIZE_BUCKETS,
   selectTemplates,
@@ -45,7 +38,11 @@ useAsyncData('admin-templates-agents', () => agentStore.fetchAll(), { lazy: true
 const query = ref('');
 const size = ref<SizeBucket>('all');
 const sort = ref<TemplateSort>('recent');
-const view = useLocalStorage<'cards' | 'table'>('admin.templates.view', 'cards');
+const view = ref<ListView>('cards');
+const SORTS = [
+  { key: 'recent', label: 'Newest' },
+  { key: 'name', label: 'Name' },
+] as const;
 
 const items = computed(() =>
   selectTemplates(templates.value, {
@@ -162,65 +159,14 @@ async function onRestartAgents() {
       </div>
     </div>
 
-    <div class="flex flex-wrap items-center gap-2.5">
-      <div class="relative min-w-60 max-w-md flex-1">
-        <IconSearch class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input v-model="query" placeholder="Search templates" class="pl-9" />
-      </div>
-      <div class="flex gap-1 rounded-[9px] bg-muted p-[3px]" role="radiogroup" aria-label="Memory size">
-        <button
-          v-for="b in SIZE_BUCKETS"
-          :key="b.key"
-          type="button"
-          role="radio"
-          :aria-checked="size === b.key"
-          class="h-[30px] rounded-md px-[11px] text-[12.5px] font-medium transition-colors"
-          :class="
-            size === b.key
-              ? 'bg-background text-foreground shadow-xs'
-              : 'text-muted-foreground hover:text-foreground'
-          "
-          @click="size = b.key"
-        >
-          {{ b.label }}
-        </button>
-      </div>
-      <div class="ml-auto flex items-center gap-2.5">
-        <button
-          type="button"
-          class="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted"
-          @click="sort = sort === 'name' ? 'recent' : 'name'"
-        >
-          Sort:
-          <span class="font-medium text-foreground">{{ sort === 'name' ? 'Name' : 'Newest' }}</span>
-          <IconArrowsSort class="size-3.5" />
-        </button>
-        <div class="flex gap-0.5 rounded-[9px] bg-muted p-[3px]" role="radiogroup" aria-label="View">
-          <button
-            type="button"
-            role="radio"
-            :aria-checked="view === 'cards'"
-            title="Cards"
-            class="grid h-7 w-[30px] place-items-center rounded-md transition-colors"
-            :class="view === 'cards' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
-            @click="view = 'cards'"
-          >
-            <IconLayoutGrid class="size-3.5" />
-          </button>
-          <button
-            type="button"
-            role="radio"
-            :aria-checked="view === 'table'"
-            title="Table"
-            class="grid h-7 w-[30px] place-items-center rounded-md transition-colors"
-            :class="view === 'table' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
-            @click="view = 'table'"
-          >
-            <IconListDetails class="size-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
+    <ListToolbar>
+      <ListSearch v-model="query" placeholder="Search templates" />
+      <ListSegments v-model="size" :options="SIZE_BUCKETS" label="Memory size" />
+      <template #end>
+        <ListSort v-model="sort" :options="SORTS" />
+        <ListViewToggle v-model="view" list="templates" />
+      </template>
+    </ListToolbar>
 
     <div
       v-if="removeError"
@@ -290,30 +236,36 @@ async function onRestartAgents() {
         />
       </div>
 
-      <div v-else-if="items.length" class="overflow-hidden rounded-[14px] border bg-card">
-        <div
-          class="grid gap-4 border-b bg-muted/40 px-[18px] py-2.5 text-xs font-medium text-muted-foreground grid-cols-[minmax(0,1fr)_44px] md:grid-cols-[minmax(0,1fr)_170px_140px_150px_110px_44px]"
-        >
-          <span>Template</span>
-          <span class="hidden md:block">Resources</span>
-          <span class="hidden md:block">Capabilities</span>
-          <span class="hidden md:block">Agents</span>
-          <span class="hidden md:block">Created</span>
-          <span />
-        </div>
-        <TemplateListRow
-          v-for="t in items"
-          :key="t.id"
-          :template="t"
-          :running="running(t)"
-          :managed="t.id === managedId"
-          @restart="pendingRestart = t"
-          @remove="pendingRemoval = t"
-        />
-        <div v-if="sharedImage" class="px-[18px] py-2.5 text-xs text-muted-foreground/70">
-          All templates use <code class="font-mono">{{ sharedImage }}</code>
-        </div>
-      </div>
+      <Table v-else-if="items.length">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Template</TableHead>
+            <TableHead>Resources</TableHead>
+            <TableHead>Capabilities</TableHead>
+            <TableHead>Agents</TableHead>
+            <TableHead>Created</TableHead>
+            <TableHead class="text-right"><span class="sr-only">Actions</span></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TemplateListRow
+            v-for="t in items"
+            :key="t.id"
+            :template="t"
+            :running="running(t)"
+            :managed="t.id === managedId"
+            @restart="pendingRestart = t"
+            @remove="pendingRemoval = t"
+          />
+        </TableBody>
+        <TableFooter v-if="sharedImage">
+          <TableRow>
+            <TableCell colspan="6" class="py-2.5 font-normal">
+              All templates use <code class="font-mono">{{ sharedImage }}</code>
+            </TableCell>
+          </TableRow>
+        </TableFooter>
+      </Table>
 
       <div
         v-if="!items.length && templates.length"

@@ -1,31 +1,29 @@
 <script setup lang="ts">
-import { IconShield } from '@tabler/icons-vue';
 import { ALWAYS_ON_MCP_IDS, KNOWLEDGE_MCP_ID } from '#mcpServer/domain';
 import type { IMcpServerData } from '#mcpServer/stores/mcpServer';
+import TemplateTile from '../Tile.vue';
+import TemplateItemToggle from '../item/Toggle.vue';
 
-const props = defineProps<{
-  templateId: string;
-  initialMcpServerIds: string[];
-}>();
+/**
+ * The MCP servers tab (CLEAN-130): built-in servers first, then the ones
+ * registered on this Ranch, each a row with a switch. Toggling edits the
+ * parent's draft (`v-model:selected`); the "Unsaved changes" bar saves.
+ *
+ * The API's resolver hands CleanSlice and Documents to every agent and
+ * Knowledge to any agent with knowledge bases, whatever the template says
+ * (CLEAN-119). Those rows are drawn locked, in the state the resolver gives
+ * them, and never enter the saved set.
+ */
+const selected = defineModel<string[]>('selected', { required: true });
 
-const emit = defineEmits<{ saved: [mcpServerIds: string[]] }>();
-
-const templateStore = useTemplateStore();
 const mcpServerStore = useMcpServerStore();
 
-const { pending: mcpsPending } = useAsyncData(
-  'admin-template-mcps-list',
-  () => mcpServerStore.fetchAll(),
-  { lazy: true },
-);
+const { pending } = useAsyncData('admin-template-mcps-list', () => mcpServerStore.fetchAll(), {
+  lazy: true,
+});
 
-const selected = ref<Set<string>>(new Set(props.initialMcpServerIds));
+const selectedSet = computed(() => new Set(selected.value));
 
-// The API's resolver hands CleanSlice and Documents to every agent and
-// Knowledge to any agent with knowledge bases, whatever the template says
-// (CLEAN-119). Drawing them as choices here made the console say "3
-// selected" while the pod booted with 5. They are shown locked, in the
-// state the resolver gives them, and never enter the saved set.
 function isAlwaysOn(m: IMcpServerData): boolean {
   return ALWAYS_ON_MCP_IDS.includes(m.id);
 }
@@ -33,130 +31,99 @@ function isKnowledgeBuiltIn(m: IMcpServerData): boolean {
   return m.id === KNOWLEDGE_MCP_ID;
 }
 function isLocked(m: IMcpServerData): boolean {
-  return isAlwaysOn(m) || isKnowledgeBuiltIn(m);
+  return isAlwaysOn(m) || isKnowledgeBuiltIn(m) || !m.enabled;
 }
-/** What the checkbox shows: the resolver's verdict for locked rows, the choice otherwise. */
-function isChecked(m: IMcpServerData): boolean {
+/** What the switch shows: the resolver's verdict for locked rows, the draft otherwise. */
+function isOn(m: IMcpServerData): boolean {
   if (isAlwaysOn(m)) return m.enabled;
   if (isKnowledgeBuiltIn(m)) return false;
-  return selected.value.has(m.id);
-}
-watch(
-  () => props.initialMcpServerIds,
-  (ids) => (selected.value = new Set(ids)),
-);
-
-const dirty = computed(() => {
-  if (selected.value.size !== props.initialMcpServerIds.length) return true;
-  for (const id of props.initialMcpServerIds) {
-    if (!selected.value.has(id)) return true;
-  }
-  return false;
-});
-
-const saving = ref(false);
-const error = ref<string | null>(null);
-
-function toggle(id: string, on: boolean) {
-  const next = new Set(selected.value);
-  if (on) next.add(id);
-  else next.delete(id);
-  selected.value = next;
+  return selectedSet.value.has(m.id);
 }
 
-async function onSave() {
-  saving.value = true;
-  error.value = null;
-  try {
-    const ids = [...selected.value];
-    await templateStore.setMcps(props.templateId, ids);
-    emit('saved', ids);
-  } catch (err) {
-    const e = err as { message?: string; response?: { data?: { message?: string } } };
-    error.value = e?.response?.data?.message ?? e?.message ?? 'Save failed';
-  } finally {
-    saving.value = false;
-  }
+function lockNote(m: IMcpServerData): string | null {
+  if (isAlwaysOn(m)) return 'Every agent gets this server whatever the template says. Turn it off for the whole Ranch on the MCP servers page.';
+  if (isKnowledgeBuiltIn(m)) return 'Attached automatically to agents that have a knowledge base; nothing to pick here.';
+  if (!m.enabled) return 'Disabled on the MCP servers page; enable it there first.';
+  return null;
 }
 
-function onReset() {
-  selected.value = new Set(props.initialMcpServerIds);
+const groups = computed(() => [
+  {
+    key: 'builtin',
+    title: 'Built-in',
+    note: 'Hosted by this Ranch',
+    items: mcpServerStore.items.filter((m) => m.builtIn),
+  },
+  {
+    key: 'registered',
+    title: 'Registered',
+    note: 'External servers added to the workspace',
+    items: mcpServerStore.items.filter((m) => !m.builtIn),
+  },
+]);
+
+function toggle(m: IMcpServerData) {
+  if (isLocked(m)) return;
+  selected.value = selectedSet.value.has(m.id)
+    ? selected.value.filter((x) => x !== m.id)
+    : [...selected.value, m.id];
 }
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <div v-if="mcpsPending && mcpServerStore.items.length === 0" class="flex flex-col gap-2">
-      <Skeleton v-for="i in 3" :key="i" class="h-14 w-full rounded-md" />
+  <div class="flex flex-col gap-5">
+    <div v-if="pending && !mcpServerStore.items.length" class="flex flex-col gap-2.5">
+      <Skeleton v-for="i in 3" :key="i" class="h-16 rounded-xl" />
     </div>
 
     <div
-      v-else-if="mcpServerStore.items.length === 0"
-      class="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground"
+      v-else-if="!mcpServerStore.items.length"
+      class="rounded-[14px] border border-dashed p-10 text-sm text-muted-foreground"
     >
       No MCP servers yet. Register one in
-      <NuxtLink to="/mcps" class="underline">MCP servers</NuxtLink>.
+      <NuxtLink to="/mcps" class="text-primary hover:underline">MCP servers</NuxtLink>.
     </div>
 
-    <ul v-else class="flex flex-col divide-y rounded-md border">
-      <li
-        v-for="m in mcpServerStore.items"
-        :key="m.id"
-        class="flex items-start gap-3 px-3 py-3"
-      >
-        <Checkbox
-          :id="`mcp-${m.id}`"
-          :model-value="isChecked(m)"
-          :disabled="!m.enabled || isLocked(m)"
-          class="mt-0.5"
-          @update:model-value="(v: boolean | 'indeterminate') => toggle(m.id, v === true)"
-        />
-        <label :for="`mcp-${m.id}`" class="flex-1" :class="isLocked(m) ? 'cursor-default' : 'cursor-pointer'">
-          <div class="flex items-center gap-2 text-sm font-medium">
-            {{ m.name }}
-            <Badge v-if="m.builtIn" variant="secondary" class="gap-1 text-xs">
-              <IconShield class="size-3" /> Built-in
-            </Badge>
-            <Badge v-if="isAlwaysOn(m) && m.enabled" variant="outline" class="text-xs">Always on</Badge>
-            <Badge v-else-if="isKnowledgeBuiltIn(m)" variant="outline" class="text-xs">With knowledge bases</Badge>
-            <Badge v-if="!m.enabled" variant="outline" class="text-xs">Disabled</Badge>
-          </div>
-          <!-- Not a choice: say where the switch actually is. -->
-          <p v-if="isAlwaysOn(m)" class="mt-0.5 text-xs text-muted-foreground">
-            Every agent gets this server whatever the template says. Turn it off for the whole Ranch on the
-            <NuxtLink :to="`/mcps/${m.id}`" class="underline">MCP servers</NuxtLink> page.
-          </p>
-          <p v-else-if="isKnowledgeBuiltIn(m)" class="mt-0.5 text-xs text-muted-foreground">
-            Attached automatically to agents that have a knowledge base; nothing to pick here.
-          </p>
-          <p
-            v-if="m.description"
-            class="mt-0.5 text-xs text-muted-foreground"
+    <template v-else>
+      <div v-for="g in groups" :key="g.key" class="flex flex-col gap-2.5">
+        <div v-if="g.items.length" class="flex items-baseline gap-2">
+          <h3 class="text-[13px] font-semibold">{{ g.title }}</h3>
+          <span class="text-[12.5px] text-muted-foreground/70">{{ g.note }}</span>
+        </div>
+        <div v-if="g.items.length" class="overflow-hidden rounded-[14px] border bg-card">
+          <button
+            v-for="m in g.items"
+            :key="m.id"
+            type="button"
+            role="switch"
+            :aria-checked="isOn(m)"
+            :aria-disabled="isLocked(m)"
+            class="flex w-full items-center gap-3.5 border-b px-[18px] py-3.5 text-left transition-colors last:border-b-0 focus-visible:outline-none focus-visible:bg-muted/40"
+            :class="isLocked(m) ? 'cursor-default' : 'hover:bg-muted/40'"
+            @click="toggle(m)"
           >
-            {{ m.description }}
-          </p>
-          <code class="mt-0.5 block text-xs text-muted-foreground/70">{{ m.url }}</code>
-        </label>
-      </li>
-    </ul>
-
-    <p v-if="error" class="text-xs text-destructive">{{ error }}</p>
-
-    <div class="flex items-center gap-3">
-      <Button :disabled="!dirty || saving" @click="onSave">
-        {{ saving ? 'Saving…' : 'Save MCPs' }}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        :disabled="!dirty || saving"
-        @click="onReset"
-      >
-        Reset
-      </Button>
-      <span class="text-xs text-muted-foreground">
-        {{ selected.size }} selected
-      </span>
-    </div>
+            <TemplateTile :id="m.id" :name="m.name" size="sm" class="rounded-[9px]" />
+            <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span class="flex items-center gap-2 text-sm font-semibold">
+                {{ m.name }}
+                <Badge v-if="isAlwaysOn(m) && m.enabled" variant="outline" class="text-[10.5px]">Always on</Badge>
+                <Badge v-else-if="isKnowledgeBuiltIn(m)" variant="outline" class="text-[10.5px]">With knowledge bases</Badge>
+                <Badge v-if="!m.enabled" variant="outline" class="text-[10.5px]">Disabled</Badge>
+              </span>
+              <span v-if="m.description" class="text-[13px] leading-snug text-muted-foreground text-pretty">
+                {{ m.description }}
+              </span>
+              <span v-if="lockNote(m)" class="text-xs text-muted-foreground/80">{{ lockNote(m) }}</span>
+              <code class="truncate font-mono text-[11.5px] text-muted-foreground/70">{{ m.url }}</code>
+            </span>
+            <TemplateItemToggle :on="isOn(m)" :locked="isLocked(m)" />
+          </button>
+        </div>
+      </div>
+      <div class="text-[13px] text-muted-foreground">
+        Need another server? Register it in
+        <NuxtLink to="/mcps" class="text-primary hover:underline">MCP servers</NuxtLink>.
+      </div>
+    </template>
   </div>
 </template>

@@ -28,6 +28,21 @@ const pending = computed(
     pendingKnowledgeStatus.value,
 );
 
+// "Spawn agent" on a template page lands here with `?templateId=` (CLEAN-130):
+// that template is preselected and its resource defaults fill the form, the
+// same as picking it in the select would.
+const route = useRoute();
+const initialValues = computed<ICreateAgentData | undefined>(() => {
+  const id = route.query.templateId;
+  const preset = typeof id === 'string' ? templates.value?.find((t) => t.id === id) : undefined;
+  if (!preset) return undefined;
+  return {
+    name: '',
+    templateId: preset.id,
+    resources: { ...preset.defaultResources },
+  };
+});
+
 const submitting = ref(false);
 
 async function onSubmit(values: ICreateAgentData) {
@@ -64,6 +79,7 @@ function onCancel() {
       :llms="llmStore.items"
       :knowledges="knowledges ?? []"
       :knowledge-service-enabled="knowledgeStore.enabled"
+      :initial-values="initialValues"
       :submitting="submitting"
       submit-label="Create agent"
       @submit="onSubmit"

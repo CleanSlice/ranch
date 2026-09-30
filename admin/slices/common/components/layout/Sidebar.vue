@@ -12,6 +12,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarTrigger,
 } from '#theme/components/ui/sidebar';
 import {
   DropdownMenu,
@@ -81,23 +82,34 @@ const itemsByGroup = (group: MenuGroupTypes) =>
 <template>
   <Sidebar collapsible="icon" variant="inset">
     <SidebarHeader>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton as-child size="lg">
-            <NuxtLink to="/rancher">
-              <div
-                class="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
-              >
-                <IconTractor class="size-4 p-0" />
-              </div>
-              <div class="flex flex-col">
-                <span class="font-semibold text-sm">Ranch</span>
-                <span class="text-xs text-muted-foreground">Admin</span>
-              </div>
-            </NuxtLink>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      <!-- The content header used to hold these (CLEAN-131). Expanded: the
+           Live stream indicator in its own line above, right-aligned; the
+           collapse toggle opposite the Ranch / Admin block. Collapsed to
+           icons: the toggle drops under the logo so the rail is not the sole
+           way back; the stream's state is still on the agents pages. -->
+      <div class="flex justify-end group-data-[collapsible=icon]:hidden">
+        <AgentStatusIndicator class="-mr-1" />
+      </div>
+      <div class="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
+        <SidebarMenu class="min-w-0 flex-1">
+          <SidebarMenuItem>
+            <SidebarMenuButton as-child size="lg">
+              <NuxtLink to="/rancher">
+                <div
+                  class="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+                >
+                  <IconTractor class="size-4 p-0" />
+                </div>
+                <div class="flex flex-col">
+                  <span class="font-semibold text-sm">Ranch</span>
+                  <span class="text-xs text-muted-foreground">Admin</span>
+                </div>
+              </NuxtLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarTrigger class="shrink-0 text-muted-foreground hover:text-foreground" />
+      </div>
     </SidebarHeader>
 
     <SidebarContent>

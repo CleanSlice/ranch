@@ -347,15 +347,16 @@ async function onDeploy() {
 
     <!-- Post-setup: the Rancher chat is the central surface, the usage panel
          sits to its right and stacks below the chat under lg. -->
-    <!-- 13.5rem = header (3.5rem) + main p-6 top (1.5rem) + page title row
-         + gap-6 (1.5rem) + main p-6 bottom, matching the previous layout's
-         sticky chat column height. -->
+    <!-- 10rem = main p-6 top (1.5rem) + page title row + gap-6 (1.5rem)
+         + main p-6 bottom, matching the previous layout's sticky chat column
+         height. The content header that used to add 3.5rem is gone
+         (CLEAN-131). -->
     <div
       v-else-if="admin"
       class="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:justify-center"
     >
       <div
-        class="flex min-h-0 w-full flex-1 flex-col lg:sticky lg:top-6 lg:h-[calc(100svh-13.5rem)] lg:max-w-200 lg:self-start"
+        class="flex min-h-0 w-full flex-1 flex-col lg:sticky lg:top-6 lg:h-[calc(100svh-10rem)] lg:max-w-200 lg:self-start"
       >
         <BridleProvider
           v-if="authStore.isAuthenticated"

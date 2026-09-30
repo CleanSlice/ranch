@@ -68,7 +68,7 @@ function onExport(format: 'json' | 'markdown' | 'csv') {
       <!-- Feed -->
       <div
         ref="scroller"
-        class="flex h-[calc(100vh-10.5rem)] min-h-0 flex-col gap-4 overflow-y-auto pr-1"
+        class="flex h-[calc(100vh-7rem)] min-h-0 flex-col gap-4 overflow-y-auto pr-1"
       >
         <div v-if="hasMore" class="flex justify-center">
           <Button size="sm" variant="outline" :disabled="loading" @click="loadOlder">
@@ -101,7 +101,7 @@ function onExport(format: 'json' | 'markdown' | 'csv') {
 
       <!-- Right rail -->
       <div
-        class="flex flex-col gap-3.5 lg:max-h-[calc(100vh-10.5rem)] lg:overflow-y-auto"
+        class="flex flex-col gap-3.5 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto"
       >
         <ChatDetailMetaCard
           v-if="session"

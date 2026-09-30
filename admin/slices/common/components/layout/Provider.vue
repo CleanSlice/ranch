@@ -1,44 +1,27 @@
 <script setup lang="ts">
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from '#theme/components/ui/sidebar';
-import { Separator } from '#theme/components/ui/separator';
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '#theme/components/ui/sidebar';
 import { Sonner } from '#theme/components/ui/sonner';
 
-const route = useRoute();
+// No content header (CLEAN-131): the route-name title it carried duplicated
+// every page's own heading and sat in the way of real breadcrumbs, and the
+// collapse toggle and the Live indicator now live in the sidebar header. On
+// a phone the sidebar is a sheet with nothing on screen to open it from, so
+// a floating toggle stays there.
 const confirmStore = useConfirmStore();
-
-const pageTitle = computed(() => {
-  const name = route.name?.toString() ?? '';
-  if (!name) return 'Admin';
-  return name
-    .split('-')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-});
 </script>
 
 <template>
   <SidebarProvider>
     <LayoutSidebar />
     <SidebarInset>
-      <header
-        class="flex h-14 shrink-0 items-center gap-2 border-b px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12"
-      >
-        <SidebarTrigger class="-ml-1" />
-        <Separator orientation="vertical" class="mx-2 h-4" />
-        <h1 class="text-sm font-medium">{{ pageTitle }}</h1>
-        <div class="ml-auto flex items-center">
-          <AgentStatusIndicator />
-        </div>
-      </header>
+      <SidebarTrigger
+        class="fixed left-3 top-3 z-30 size-9 rounded-lg border bg-background/90 shadow-xs backdrop-blur md:hidden"
+      />
       <!-- overflow-x-clip (not -auto): `-auto` coerces overflow-y to `auto`,
            turning this into a scroll container that breaks `position: sticky`
            for every page inside it. `clip` contains horizontal blow-out
            without that side effect. -->
-      <div class="flex flex-1 flex-col gap-4 p-3 min-w-0 overflow-x-clip">
+      <div class="flex flex-1 flex-col gap-4 p-3 pt-14 min-w-0 overflow-x-clip md:pt-3">
         <slot />
       </div>
     </SidebarInset>

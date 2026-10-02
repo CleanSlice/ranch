@@ -41,9 +41,18 @@ const relative = computed<{ key: string; count: number } | null>(() => {
         <Icon name="message-square" :size="18" />
       </div>
       <div class="min-w-0 flex-1">
-        <h3 class="truncate text-base font-semibold">
-          {{ heading ?? $t('session.fallback_title') }}
-        </h3>
+        <div class="flex items-center gap-2">
+          <h3 class="min-w-0 truncate text-base font-semibold">
+            {{ heading ?? $t('session.fallback_title') }}
+          </h3>
+          <!-- Closed by "New chat": read-only from here on (CLEAN-136). -->
+          <span
+            v-if="session.archived"
+            class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+          >
+            {{ $t('session.closed') }}
+          </span>
+        </div>
         <p
           v-if="session.preview"
           class="mt-0.5 truncate text-xs text-muted-foreground"

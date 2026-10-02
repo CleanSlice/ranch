@@ -39,6 +39,13 @@ const CHANNEL_IDLE_MS = REPLAY_MAX_AGE_MS;
 /** How long a message id is remembered, so a resend is not delivered twice. */
 const SEEN_TTL_MS = 10 * 60_000;
 const SEEN_MAX = 200;
+/**
+ * How long a turn may stay silent before the hub stops calling it open. The
+ * same 75 s after which the consoles declare a turn dead and tell the person
+ * so (`THINKING_STALE_MS` in the app's bridle store): past it neither side
+ * waits any longer, so a reset is no longer held back by it (CLEAN-136).
+ */
+const TURN_SILENCE_MS = 75_000;
 
 interface IBufferedEvent {
   at: number;
@@ -54,6 +61,17 @@ interface IClientChannel {
   /** clientMessageId → when it was accepted. */
   seen: Map<string, number>;
   idleTimer?: NodeJS.Timeout;
+  /**
+   * When a message was handed to the agent and nothing that ends a turn has
+   * come back yet (a `message`, a `stream_end`, the terminal thinking event).
+   * `typing` and thinking steps do not clear it: they say the agent is
+   * working, which is the opposite of done.
+   */
+  awaitingSince: number | null;
+  /** Streams that started and have not ended, by message id. */
+  openStreams: Set<string>;
+  /** Hub clock of the last event the agent sent for this conversation. */
+  lastAgentEventAt: number;
 }
 
 /**
@@ -115,6 +133,9 @@ export class BridleGateway extends IBridleGateway {
         seq: Date.now(),
         buffer: [],
         seen: new Map(),
+        awaitingSince: null,
+        openStreams: new Set(),
+        lastAgentEventAt: 0,
       };
       this.channels.set(key, channel);
     }
@@ -389,6 +410,8 @@ export class BridleGateway extends IBridleGateway {
         : {}),
       messageId,
     });
+    // A turn is open from here until the agent says otherwise (isTurnOpen).
+    channel.awaitingSince = now;
 
     if (clientMessageId) {
       channel.seen.set(clientMessageId, now);
@@ -462,7 +485,69 @@ export class BridleGateway extends IBridleGateway {
     // No socket right now is not a reason to drop the event: `route` keeps it
     // for the reconnect. An identity the hub has never seen gets nothing.
     const channel = this.channels.get(this.clientKey(clientId, agentId));
-    if (channel) this.route(channel, { ...data });
+    if (!channel) return;
+    this.noteAgentEvent(channel, data);
+    this.route(channel, { ...data });
+  }
+
+  /** Keep the conversation's turn state in step with what the agent sends. */
+  private noteAgentEvent(
+    channel: IClientChannel,
+    data: IBridleOutgoingEvent,
+  ): void {
+    channel.lastAgentEventAt = Date.now();
+    if (data.type === 'stream') {
+      if (typeof data.messageId === 'string') {
+        channel.openStreams.add(data.messageId);
+      }
+      return;
+    }
+    if (data.type === 'stream_end') {
+      if (typeof data.messageId === 'string') {
+        channel.openStreams.delete(data.messageId);
+      }
+      channel.awaitingSince = null;
+      return;
+    }
+    if (data.type === 'message') {
+      channel.awaitingSince = null;
+      return;
+    }
+    if (data.type === 'thinking' && data.done === true) {
+      channel.awaitingSince = null;
+    }
+  }
+
+  isTurnOpen(agentId: string, clientId: string): boolean {
+    const key = this.clientKey(clientId, agentId);
+    const channel = this.channels.get(key);
+    if (!channel) return false;
+    const open =
+      channel.awaitingSince !== null ||
+      channel.openStreams.size > 0 ||
+      this.activeTurns.has(key);
+    if (!open) return false;
+    const lastSign = Math.max(
+      channel.lastAgentEventAt,
+      channel.awaitingSince ?? 0,
+    );
+    return Date.now() - lastSign < TURN_SILENCE_MS;
+  }
+
+  resetConversation(agentId: string, clientId: string): void {
+    const key = this.clientKey(clientId, agentId);
+    this.activeTurns.delete(key);
+    this.clearAgentSession(agentId, clientId);
+
+    const channel = this.channels.get(key);
+    if (!channel) return;
+    channel.awaitingSince = null;
+    channel.openStreams.clear();
+    // Emptied BEFORE the frame is routed: a browser that reconnects with an
+    // older `lastSeq` must be replayed the reset and nothing of the
+    // conversation that was just closed.
+    channel.buffer = [];
+    this.route(channel, { type: 'conversation_reset', ts: Date.now() });
   }
 
   /** A step opens or refreshes the turn; the terminal `done` closes it. */
@@ -524,7 +609,12 @@ export class BridleGateway extends IBridleGateway {
     );
   }
 
-  clearAgentSession(agentId: string, channel: string): void {
+  /**
+   * Tell the running agent to drop its local copy of a session (file +
+   * in-memory cache). Without it the agent's own S3 watcher would re-upload
+   * its still-intact local session file on the next local change.
+   */
+  private clearAgentSession(agentId: string, channel: string): void {
     const agentSend = this.agents.get(agentId)?.send;
     if (!agentSend) {
       this.logger.debug(

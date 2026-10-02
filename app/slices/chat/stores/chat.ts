@@ -1,6 +1,10 @@
 import { createServiceGetter } from '#common/composables/createServiceGetter';
 import type { ChatService } from '#chat/domain';
-import type { ChatExportFormat, IChatMessagesQuery } from '#chat/domain';
+import type {
+  ChatExportFormat,
+  IChatMessagesQuery,
+  IChatSession,
+} from '#chat/domain';
 
 // Re-export the domain types so existing consumers that import them from
 // `#chat/stores/chat` (Bubble, Card, chatDetail/Provider) keep working.
@@ -36,8 +40,34 @@ function triggerDownload(blob: Blob, filename: string): void {
  * now live in the data layer behind the service.
  */
 export const useChatStore = defineStore('chat', () => {
-  function listMine(page = 1, perPage = 50) {
-    return getService().listMine(page, perPage);
+  /**
+   * The history page's list. It lives here, and the page renders it from
+   * here: a request's own `data` is for loading state only (docs/state.md).
+   */
+  const sessions = ref<IChatSession[]>([]);
+  /**
+   * Which of the two lists is loaded: the current conversations, or the ones
+   * closed by "New chat" (CLEAN-136).
+   */
+  const showArchived = ref(false);
+
+  /** Load the list `showArchived` asks for and replace the collection. */
+  async function listMine(page = 1, perPage = 50): Promise<void> {
+    // Pinned before the await: a toggle while the request is open must not
+    // let the answer for the other list land in this one.
+    const archived = showArchived.value;
+    const result = await getService().listMine(page, perPage, archived);
+    if (showArchived.value === archived) sessions.value = result.items;
+  }
+
+  /** Switch between current and earlier conversations, and load them. */
+  async function setShowArchived(value: boolean): Promise<void> {
+    if (showArchived.value === value) return;
+    showArchived.value = value;
+    // The other list's cards must not sit under the new filter while the
+    // request is open.
+    sessions.value = [];
+    await listMine();
   }
 
   function getMine(id: string) {
@@ -70,6 +100,9 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   return {
+    sessions,
+    showArchived,
+    setShowArchived,
     listMine,
     getMine,
     messages,

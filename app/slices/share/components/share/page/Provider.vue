@@ -325,7 +325,10 @@ onBeforeUnmount(() => {
 
     <template v-else>
       <header class="shrink-0 border-b bg-card">
-        <div class="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3">
+        <!-- `relative` anchors the "New chat" confirmation to the header strip. -->
+        <div
+          class="relative mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3"
+        >
           <div
             class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-linear-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary"
           >
@@ -351,6 +354,11 @@ onBeforeUnmount(() => {
               {{ $t('share.page.powered_by') }}
             </p>
           </div>
+
+          <!-- The visitor's way out of a conversation (CLEAN-136). Same
+               descriptor as the chat below: it resets that conversation and
+               no other. -->
+          <BridleChatNewChat :conversation="conversation" />
         </div>
       </header>
 

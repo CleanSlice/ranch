@@ -1994,6 +1994,19 @@ export const TranscriptResponseDtoSchema = {
   required: ["messages", "channel", "nextCursor", "hasMore", "proposals"],
 } as const;
 
+export const ArchiveTranscriptResponseDtoSchema = {
+  type: "object",
+  properties: {
+    archivedPath: {
+      type: "string",
+      example:
+        "data/sessions/bridle:admin.2026-10-02T09-14-03-512Z.archived.jsonl",
+      description:
+        "Where the closed conversation was set aside. Absent when there was nothing to close — the conversation is reset either way.",
+    },
+  },
+} as const;
+
 export const ShareLinkDtoSchema = {
   type: "object",
   properties: {
@@ -4008,6 +4021,11 @@ export const ConnectPeerDtoSchema = {
         "A2A address of an agent outside this installation — the agent base URL or its `…/.well-known/agent-card.json` form. Importing an address that is already connected updates that entry in place. Mutually exclusive with `peerAgentId`.",
       example: "https://other.example/a2a/agents/agent-1a2b…",
     },
+    card: {
+      type: "string",
+      description:
+        "The agent card itself, as JSON or YAML, for an agent whose card is not published at an address (CLEAN-116). Vetted exactly like an imported address, and identified by the address the card names, so importing the same agent later by URL updates this entry rather than duplicating it. Mutually exclusive with `peerAgentId` and `url`.",
+    },
     token: {
       type: "string",
       description:
@@ -4022,8 +4040,13 @@ export const PreviewPeerUrlDtoSchema = {
     url: {
       type: "string",
       description:
-        "A2A address of the agent to preview — base URL or its well-known card form.",
+        "A2A address of the agent to preview — base URL or its well-known card form. Mutually exclusive with `card`.",
       example: "https://other.example/a2a/agents/agent-1a2b…",
+    },
+    card: {
+      type: "string",
+      description:
+        "The card itself, as JSON or YAML, when it is not published anywhere (CLEAN-116). Read and checked, never saved. Mutually exclusive with `url`.",
     },
     token: {
       type: "string",
@@ -4031,7 +4054,6 @@ export const PreviewPeerUrlDtoSchema = {
         "Bearer credential for the card read, when the agent needs one. Used for this read only; nothing is stored.",
     },
   },
-  required: ["url"],
 } as const;
 
 export const PeersStateDtoSchema = {
@@ -4241,6 +4263,12 @@ export const AgentToolCatalogDtoSchema = {
       description: "When the pod last called tools/list; null if it never did.",
       example: "2026-09-22T10:33:05.000Z",
     },
+    listingState: {
+      type: "string",
+      enum: ["none", "pending", "fresh"],
+      description:
+        "none — no pod runs; pending — the running pod has not listed its tools yet, so no inPod flag is set; fresh — the snapshot is from this pod.",
+    },
     groups: {
       type: "array",
       items: {
@@ -4248,7 +4276,7 @@ export const AgentToolCatalogDtoSchema = {
       },
     },
   },
-  required: ["agentId", "podStartedAt", "listedAt", "groups"],
+  required: ["agentId", "podStartedAt", "listedAt", "listingState", "groups"],
 } as const;
 
 export const SecretEntryDtoSchema = {
@@ -4367,7 +4395,21 @@ export const StartMcpOauthDtoSchema = {
     agentId: {
       type: "string",
       description:
-        "Agent that will own the connection. The stored refresh token is scoped to this agent.",
+        "Agent whose secret store receives the token. The stored refresh token is scoped to this agent.",
+    },
+    subject: {
+      type: "string",
+      description:
+        "Whose token it will be (CLEAN-80): the chat user id the hub forwarded on the message, or a share/anon client id. Omit for an agent-wide connection shared by everyone who talks to the agent.",
+    },
+    email: {
+      type: "string",
+      description: 'Display only — shown back as "connected as …".',
+    },
+    returnTo: {
+      type: "string",
+      description:
+        "Where the callback page sends the person after the login — the chat they started from, as an absolute URL. Honoured only on one of the platform's own origins (API, admin, app, localhost); otherwise the page just says to return to the chat.",
     },
   },
   required: ["agentId"],
@@ -4390,6 +4432,20 @@ export const McpOauthStatusDtoSchema = {
   properties: {
     connected: {
       type: "boolean",
+    },
+    scope: {
+      type: "string",
+      enum: ["subject", "agent"],
+      nullable: true,
+      description:
+        "Which bundle answered: the subject's own, the agent-wide one, or null when none.",
+    },
+    email: {
+      type: "string",
+    },
+    connectedAt: {
+      type: "number",
+      description: "epoch ms of the login",
     },
   },
   required: ["connected"],

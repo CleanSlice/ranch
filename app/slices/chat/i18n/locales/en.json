@@ -6,9 +6,14 @@
     "syncing": "Syncing…",
     "empty_title": "No conversations yet",
     "empty_hint": "Chat with an agent and it'll show up here so you can revisit it later.",
-    "empty_cta": "Browse agents"
+    "empty_cta": "Browse agents",
+    "filter_current": "Current",
+    "filter_earlier": "Earlier",
+    "empty_earlier_title": "No earlier chats",
+    "empty_earlier_hint": "A conversation moves here when you start a new chat."
   },
   "session": {
+    "closed": "Closed",
     "fallback_title": "Conversation",
     "message_count": "no messages | {count} message | {count} messages",
     "not_found_title": "Conversation not found",

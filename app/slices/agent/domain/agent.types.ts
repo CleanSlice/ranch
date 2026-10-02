@@ -11,6 +11,9 @@ export interface IAgentData {
   config: Record<string, unknown>;
   resources: { cpu: string; memory: string };
   isPublic: boolean;
+  /** The Ranch admin agent — the one that manages the install. Pinned first
+   *  in the rail, as in the admin console (CLEAN-136). */
+  isAdmin: boolean;
   createdAt: string;
   updatedAt: string;
 }

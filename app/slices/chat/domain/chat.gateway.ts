@@ -15,7 +15,16 @@ import type {
  * abstraction, so the SDK/transport stays swappable and mockable.
  */
 export abstract class IChatGateway {
-  abstract listMine(page: number, perPage: number): Promise<IChatListResult>;
+  /**
+   * The caller's own conversations, newest first. `archived` picks which
+   * ones: the current conversations, or the ones closed by "New chat"
+   * (CLEAN-136). The API's filter is exclusive, so it is one or the other.
+   */
+  abstract listMine(
+    page: number,
+    perPage: number,
+    archived: boolean,
+  ): Promise<IChatListResult>;
   abstract getMine(id: string): Promise<IChatSession | null>;
   abstract messages(
     id: string,

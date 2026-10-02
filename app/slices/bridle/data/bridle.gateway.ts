@@ -9,9 +9,9 @@ import type {
   IBridleChannel,
   IBridleChannelAuth,
   IBridleChannelEvents,
-  IBridleMessage,
   IBridleSendAck,
   IBridleShareContext,
+  IBridleTranscriptPage,
 } from '../domain/bridle.types';
 import { FAILED_MS, FAILURE_TIMEOUT } from '../utils/delivery';
 import { BridleMapper } from './bridle.mapper';
@@ -162,6 +162,18 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
       const update = mapper.toProposalUpdate(raw);
       if (update) events.onProposalUpdate(update, mapper.toSeq(raw));
     });
+    // The conversation was reset somewhere — here, another tab, the admin
+    // console (CLEAN-136). Numbered, so a reconnect is replayed it.
+    socket.on('conversation_reset', (raw: unknown) =>
+      events.onReset(mapper.toSeq(raw)),
+    );
+    // Whether the agent runtime is on the hub: sent on connect and on every
+    // change. State, not history — it carries no `seq`.
+    socket.on('agent_status', (raw: unknown) =>
+      events.onAgentStatus(
+        (raw as { connected?: unknown } | null)?.connected === true,
+      ),
+    );
 
     return {
       send(text, attachmentIds, clientMessageId) {
@@ -266,20 +278,42 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
     });
   }
 
-  transcriptTail(
+  transcriptPage(
     agentId: string,
     channel: string,
+    cursor?: string | null,
     share?: IBridleShareContext,
-  ): Promise<IBridleMessage[]> {
+  ): Promise<IBridleTranscriptPage> {
     return this.execute(async () => {
       const headers = shareHeaders(share);
       const res = await BridleApi.getBridleTranscript({
+        path: { agentId },
+        query: { channel, ...(cursor ? { cursor } : {}) },
+        ...(headers ? { headers } : {}),
+        throwOnError: true,
+      });
+      return this.mapper.toTranscriptPage(unwrapEnvelope(res.data), agentId);
+    });
+  }
+
+  /**
+   * `throwOnError` is the point: the generated client otherwise hands a 409
+   * back as an ordinary result, and a refusal would read as a new chat that
+   * started. The store decides what to say from the status and the `code`.
+   */
+  archiveTranscript(
+    agentId: string,
+    channel: string,
+    share?: IBridleShareContext,
+  ): Promise<void> {
+    return this.execute(async () => {
+      const headers = shareHeaders(share);
+      await BridleApi.archiveBridleTranscript({
         path: { agentId },
         query: { channel },
         ...(headers ? { headers } : {}),
         throwOnError: true,
       });
-      return this.mapper.toTranscript(unwrapEnvelope(res.data));
     });
   }
 }

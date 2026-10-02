@@ -315,6 +315,61 @@ describe('ChatGateway.recordActivity', () => {
   });
 });
 
+/**
+ * Closing a conversation (CLEAN-136). The row IS the conversation's record —
+ * its id, its ratings, its summary — so it moves to the archived key instead
+ * of being left behind as a hollow duplicate of the archived file.
+ */
+describe('ChatGateway.archiveSession', () => {
+  const ARCHIVED = 'bridle:admin.2026-10-02T09-14-03-512Z.archived';
+
+  it('moves the live row to the archived key and keeps what it carries', async () => {
+    const { gw, rows } = newGateway();
+    const live = await gw.reconcileUpsert(input({ messageCount: 6 }));
+    rows[live.id].summary = 'asked about billing';
+
+    await gw.archiveSession('agent-1', 'bridle:admin', ARCHIVED);
+
+    const moved = await gw.findById(live.id);
+    expect(moved?.sessionKey).toBe(ARCHIVED);
+    expect(moved?.archived).toBe(true);
+    expect(moved?.externalUserId).toBe('admin');
+    expect(moved?.messageCount).toBe(6);
+    expect(moved?.summary).toBe('asked about billing');
+    expect(Object.keys(rows)).toHaveLength(1);
+  });
+
+  it('does nothing, quietly, when the conversation was never indexed', async () => {
+    const { gw, rows } = newGateway();
+
+    await gw.archiveSession('agent-1', 'bridle:admin', ARCHIVED);
+
+    expect(Object.keys(rows)).toHaveLength(0);
+  });
+
+  it('leaves the same conversation key of another agent alone', async () => {
+    const { gw } = newGateway();
+    const other = await gw.reconcileUpsert(input({ agentId: 'agent-2' }));
+    await gw.reconcileUpsert(input());
+
+    await gw.archiveSession('agent-1', 'bridle:admin', ARCHIVED);
+
+    const untouched = await gw.findById(other.id);
+    expect(untouched?.sessionKey).toBe('bridle:admin');
+    expect(untouched?.archived).toBe(false);
+  });
+
+  it('lets the next conversation start a row of its own', async () => {
+    const { gw, rows } = newGateway();
+    await gw.reconcileUpsert(input());
+    await gw.archiveSession('agent-1', 'bridle:admin', ARCHIVED);
+
+    await gw.reconcileUpsert(input({ preview: 'new chat', messageCount: 1 }));
+
+    expect(Object.keys(rows)).toHaveLength(2);
+  });
+});
+
 describe('ChatGateway.list', () => {
   it('hides internal channel unless includeInternal, and returns total', async () => {
     const { gw } = newGateway();

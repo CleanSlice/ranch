@@ -32,11 +32,22 @@ interface IStubs {
     agentId: string,
     visitorId: string,
   ) => Promise<string>;
+  /** Closing a conversation (CLEAN-136). Defaults: a reachable, idle agent
+   *  and no stored conversation — the route's long-standing early return. */
+  agentConnected?: boolean;
+  turnOpen?: boolean;
+  syncFails?: boolean;
+  /** What the live session file holds; undefined = it does not exist. */
+  liveContent?: string;
+  deleteLiveFails?: boolean;
+  indexMoveFails?: boolean;
 }
 
 function makeController(stubs: IStubs = {}) {
   const registered: IRegistered[] = [];
   const sent: Array<{ clientId: string; agentId: string; text: string }> = [];
+  /** The order the archive route did things in, across hub, files and index. */
+  const order: string[] = [];
 
   const hub = {
     registerClient: (
@@ -52,7 +63,16 @@ function makeController(stubs: IStubs = {}) {
       );
     },
     unregisterClient: jest.fn(),
-    clearAgentSession: jest.fn(),
+    isAgentConnected: jest.fn(() => stubs.agentConnected ?? true),
+    isTurnOpen: jest.fn(() => stubs.turnOpen ?? false),
+    syncAgent: jest.fn(async (_agentId: string, _timeoutMs?: number) => {
+      order.push('sync');
+      if (stubs.syncFails) throw new Error('Sync timed out');
+      return { agentOnline: true, pushed: 1 };
+    }),
+    resetConversation: jest.fn((_agentId: string, _clientId: string) => {
+      order.push('reset');
+    }),
     sendToAgent: (
       clientId: string,
       agentId: string,
@@ -114,11 +134,23 @@ function makeController(stubs: IStubs = {}) {
   const fileGateway = {
     delete: async (_agentId: string, path: string) => {
       fileCalls.push({ op: 'delete', path });
+      order.push(path.endsWith('.archived.jsonl') ? 'undo' : 'delete');
+      if (stubs.deleteLiveFails && !path.endsWith('.archived.jsonl')) {
+        throw new Error('storage unavailable');
+      }
     },
     read: async (_agentId: string, path: string) => {
       fileCalls.push({ op: 'read', path });
+      order.push('read');
+      if (stubs.liveContent !== undefined) {
+        return { content: stubs.liveContent };
+      }
       // "Nothing to archive" — the archive route's documented early return.
       throw Object.assign(new Error('not found'), { status: 404 });
+    },
+    saveRaw: async (_agentId: string, path: string, _content: string) => {
+      fileCalls.push({ op: 'saveRaw', path });
+      order.push('save');
     },
   };
   const transcriptReader = {
@@ -157,6 +189,16 @@ function makeController(stubs: IStubs = {}) {
     toViews: jest.fn(async () => []),
   };
 
+  // The chat index (CLEAN-136): closing a conversation moves its row.
+  const chats = {
+    archiveSession: jest.fn(
+      async (_agentId: string, _key: string, _archivedKey: string) => {
+        order.push('index');
+        if (stubs.indexMoveFails) throw new Error('database unavailable');
+      },
+    ),
+  };
+
   const controller = new BridleController(
     hub as never,
     jwt,
@@ -166,11 +208,14 @@ function makeController(stubs: IStubs = {}) {
     shareLinks,
     sync as never,
     proposals as never,
+    chats as never,
   );
 
   return {
     controller,
     hub,
+    chats,
+    order,
     registered,
     sent,
     shareCalls,
@@ -647,6 +692,22 @@ describe('BridleController — transcripts on a share channel', () => {
     ]);
   });
 
+  it('refuses an archive aimed at another visitor before anything is asked of the agent', async () => {
+    const { controller, hub, fileCalls } = makeController();
+
+    await expect(
+      controller.archiveTranscript(
+        AGENT,
+        request(SHARE_HEADERS),
+        'share-other',
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+
+    expect(hub.syncAgent).not.toHaveBeenCalled();
+    expect(hub.resetConversation).not.toHaveBeenCalled();
+    expect(fileCalls).toHaveLength(0);
+  });
+
   it('leaves non-share channels exactly as unauthenticated as they were', async () => {
     const { controller, fileCalls, shareCalls } = makeController();
 
@@ -656,5 +717,181 @@ describe('BridleController — transcripts on a share channel', () => {
 
     expect(fileCalls[0].path).toContain('bridle:admin.jsonl');
     expect(shareCalls).toHaveLength(0);
+  });
+});
+
+/**
+ * "New chat" (CLEAN-136). The route either closes the conversation for real —
+ * old one set aside complete, index moved, agent and every browser told — or
+ * refuses and changes nothing. It never reports a clean slate it did not make.
+ */
+describe('BridleController — closing a conversation', () => {
+  const OWNER = { verify: () => ({ sub: 'user-1', roles: ['Owner'] }) };
+  const BEARER = request({ authorization: 'Bearer jwt-token' });
+  const LIVE = 'data/sessions/bridle:admin.jsonl';
+  const TRANSCRIPT = '{"type":"user","data":{"text":"hi"}}\n';
+
+  it('refuses while the agent is off the hub, and touches nothing', async () => {
+    const { controller, hub, fileCalls } = makeController({
+      ...OWNER,
+      agentConnected: false,
+      liveContent: TRANSCRIPT,
+    });
+
+    await expect(
+      controller.archiveTranscript(AGENT, BEARER, 'admin'),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'AGENT_OFFLINE' },
+    });
+
+    expect(fileCalls).toHaveLength(0);
+    expect(hub.syncAgent).not.toHaveBeenCalled();
+    expect(hub.resetConversation).not.toHaveBeenCalled();
+  });
+
+  it('refuses while the agent is still answering, and touches nothing', async () => {
+    const { controller, hub, fileCalls } = makeController({
+      ...OWNER,
+      turnOpen: true,
+      liveContent: TRANSCRIPT,
+    });
+
+    await expect(
+      controller.archiveTranscript(AGENT, BEARER, 'admin'),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'TURN_IN_PROGRESS' },
+    });
+
+    expect(hub.isTurnOpen).toHaveBeenCalledWith(AGENT, 'admin');
+    expect(fileCalls).toHaveLength(0);
+    expect(hub.resetConversation).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the agent does not push its files in time, and touches nothing', async () => {
+    const { controller, hub, fileCalls } = makeController({
+      ...OWNER,
+      syncFails: true,
+      liveContent: TRANSCRIPT,
+    });
+
+    await expect(
+      controller.archiveTranscript(AGENT, BEARER, 'admin'),
+    ).rejects.toMatchObject({
+      status: 503,
+      response: { code: 'SYNC_FAILED' },
+    });
+
+    expect(fileCalls).toHaveLength(0);
+    expect(hub.resetConversation).not.toHaveBeenCalled();
+  });
+
+  it('pushes, copies, deletes, moves the index row and only then resets', async () => {
+    const { controller, hub, chats, order } = makeController({
+      ...OWNER,
+      liveContent: TRANSCRIPT,
+    });
+
+    const out = await controller.archiveTranscript(AGENT, BEARER, 'admin');
+
+    expect(order).toEqual(['sync', 'read', 'save', 'delete', 'index', 'reset']);
+    expect(hub.syncAgent).toHaveBeenCalledWith(AGENT, 5000);
+    expect(hub.resetConversation).toHaveBeenCalledTimes(1);
+    expect(hub.resetConversation).toHaveBeenCalledWith(AGENT, 'admin');
+
+    const archivedPath = out.archivedPath as string;
+    expect(
+      /^data\/sessions\/bridle:admin\.[0-9TZ-]+\.archived\.jsonl$/.test(
+        archivedPath,
+      ),
+    ).toBe(true);
+    // The index key is the archived file's basename — what reconciliation
+    // will look the row up by.
+    expect(chats.archiveSession).toHaveBeenCalledWith(
+      AGENT,
+      'bridle:admin',
+      archivedPath.slice('data/sessions/'.length, -'.jsonl'.length),
+    );
+  });
+
+  it('closes a visitor’s conversation under the visitor’s own channel', async () => {
+    const { controller, hub, chats, fileCalls } = makeController({
+      liveContent: TRANSCRIPT,
+    });
+
+    const out = await controller.archiveTranscript(
+      AGENT,
+      request(SHARE_HEADERS),
+      'share-visitor-7',
+    );
+
+    expect(fileCalls.map((c) => c.op)).toEqual(['read', 'saveRaw', 'delete']);
+    expect(out.archivedPath).toContain('bridle:share-visitor-7.');
+    expect(chats.archiveSession).toHaveBeenCalledTimes(1);
+    expect(hub.resetConversation).toHaveBeenCalledWith(AGENT, 'share-visitor-7');
+  });
+
+  it('still resets when there is nothing to close, and creates no empty copy', async () => {
+    const { controller, hub, chats, fileCalls } = makeController(OWNER);
+
+    await expect(
+      controller.archiveTranscript(AGENT, BEARER, 'admin'),
+    ).resolves.toEqual({});
+
+    expect(fileCalls).toEqual([{ op: 'read', path: LIVE }]);
+    expect(chats.archiveSession).not.toHaveBeenCalled();
+    expect(hub.resetConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a blank session file as nothing to close', async () => {
+    const { controller, hub, fileCalls } = makeController({
+      ...OWNER,
+      liveContent: '  \n',
+    });
+
+    await expect(
+      controller.archiveTranscript(AGENT, BEARER, 'admin'),
+    ).resolves.toEqual({});
+
+    expect(fileCalls.map((c) => c.op)).toEqual(['read']);
+    expect(hub.resetConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes the copy back and does not reset when the live file cannot be removed', async () => {
+    const { controller, hub, chats, order } = makeController({
+      ...OWNER,
+      liveContent: TRANSCRIPT,
+      deleteLiveFails: true,
+    });
+
+    await expect(
+      controller.archiveTranscript(AGENT, BEARER, 'admin'),
+    ).rejects.toThrow('storage unavailable');
+
+    expect(order).toEqual(['sync', 'read', 'save', 'delete', 'undo']);
+    expect(chats.archiveSession).not.toHaveBeenCalled();
+    expect(hub.resetConversation).not.toHaveBeenCalled();
+  });
+
+  it('finishes the reset even when the index cannot be updated', async () => {
+    const { controller, hub } = makeController({
+      ...OWNER,
+      liveContent: TRANSCRIPT,
+      indexMoveFails: true,
+    });
+
+    const out = await controller.archiveTranscript(AGENT, BEARER, 'admin');
+
+    expect(typeof out.archivedPath).toBe('string');
+    expect(hub.resetConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells every browser when the admin console deletes a conversation', async () => {
+    const { controller, hub } = makeController(OWNER);
+
+    await controller.resetTranscript(AGENT, BEARER, 'admin');
+
+    expect(hub.resetConversation).toHaveBeenCalledWith(AGENT, 'admin');
   });
 });

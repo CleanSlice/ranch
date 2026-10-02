@@ -27,9 +27,17 @@ import { ChatMapper } from './chat.mapper';
 export class ChatGateway extends BaseGateway implements IChatGateway {
   private mapper = new ChatMapper();
 
-  listMine(page: number, perPage: number): Promise<IChatListResult> {
+  listMine(
+    page: number,
+    perPage: number,
+    archived: boolean,
+  ): Promise<IChatListResult> {
     return this.execute(async () => {
-      const res = await ChatsService.getMyChats({ query: { page, perPage } });
+      const res = await ChatsService.getMyChats({
+        // Sent only when asked for: without it the API lists the current
+        // conversations, as it always has.
+        query: { page, perPage, ...(archived ? { archived: true } : {}) },
+      });
       const dto = unwrapEnvelope<ChatListResponseDto>(res.data);
       return dto ? this.mapper.toList(dto) : emptyChatList(page, perPage);
     });

@@ -887,6 +887,13 @@ export type TranscriptResponseDto = {
   proposals: Array<FileChangeProposalDto>;
 };
 
+export type ArchiveTranscriptResponseDto = {
+  /**
+   * Where the closed conversation was set aside. Absent when there was nothing to close — the conversation is reset either way.
+   */
+  archivedPath?: string;
+};
+
 export type ShareLinkDto = {
   /**
    * True while the link accepts visitors. False when the agent was never shared or the link has been revoked.
@@ -1977,6 +1984,10 @@ export type StartMcpOauthDto = {
    * Display only — shown back as "connected as …".
    */
   email?: string;
+  /**
+   * Where the callback page sends the person after the login — the chat they started from, as an absolute URL. Honoured only on one of the platform's own origins (API, admin, app, localhost); otherwise the page just says to return to the chat.
+   */
+  returnTo?: string;
 };
 
 export type StartMcpOauthResultDto = {
@@ -3719,14 +3730,22 @@ export type ArchiveBridleTranscriptErrors = {
    * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
    */
   403: unknown;
+  /**
+   * `AGENT_OFFLINE` — the agent is not connected and cannot be told to forget; `TURN_IN_PROGRESS` — the agent is still answering. Nothing was changed.
+   */
+  409: unknown;
+  /**
+   * `SYNC_FAILED` — the agent did not push its files in time, so the conversation could not be saved complete. Nothing was changed.
+   */
+  503: unknown;
 };
 
 export type ArchiveBridleTranscriptResponses = {
-  /**
-   * `{ archivedPath }` for the timestamped copy, or `{}` when there was nothing to archive.
-   */
-  200: unknown;
+  200: ArchiveTranscriptResponseDto;
 };
+
+export type ArchiveBridleTranscriptResponse =
+  ArchiveBridleTranscriptResponses[keyof ArchiveBridleTranscriptResponses];
 
 export type RevokeAgentShareLinkData = {
   body?: never;

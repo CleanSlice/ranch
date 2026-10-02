@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { IAgentData, IClusterCapacityData } from '#agent/domain';
+import { railOrder } from '#agent/utils/railOrder';
 
 const props = defineProps<{
   agents: IAgentData[] | null | undefined;
@@ -18,10 +19,14 @@ defineEmits<{ select: [id: string] }>();
 // staring at a list missing agents with no memory of why.
 const search = ref('');
 
+// Search first, then the pin: a term that does not match the Ranch admin
+// agent hides it like any other entry (CLEAN-136).
 const filtered = computed(() => {
   const term = search.value.trim().toLowerCase();
   const list = props.agents ?? [];
-  return term ? list.filter((a) => a.name.toLowerCase().includes(term)) : list;
+  return railOrder(
+    term ? list.filter((a) => a.name.toLowerCase().includes(term)) : list,
+  );
 });
 
 const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);

@@ -40,6 +40,7 @@ export class AgentMapper {
         memory: typeof resources.memory === 'string' ? resources.memory : '',
       },
       isPublic: o.isPublic === true,
+      isAdmin: o.isAdmin === true,
       createdAt: typeof o.createdAt === 'string' ? o.createdAt : '',
       updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : '',
     };

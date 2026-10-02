@@ -1,11 +1,4 @@
 <script setup lang="ts">
-/**
- * `compact` drops the word ("Live", "Connecting…") and keeps the dot and the
- * alert count: the sidebar collapsed to icons is 3rem wide (CLEAN-131). The
- * word still reaches the tooltip.
- */
-defineProps<{ compact?: boolean }>();
-
 const store = useAgentStatusStore();
 
 onMounted(() => store.connect());
@@ -72,7 +65,7 @@ const label = computed(() => {
               class="relative inline-flex rounded-full h-2.5 w-2.5"
             />
           </span>
-          <span v-if="!compact" class="font-medium">{{ label }}</span>
+          <span class="font-medium">{{ label }}</span>
           <span
             v-if="alertCount > 0"
             class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-semibold"
@@ -83,7 +76,7 @@ const label = computed(() => {
       </TooltipTrigger>
       <TooltipContent side="bottom" align="end">
         <div class="text-xs space-y-0.5">
-          <div class="font-medium">Agent status stream · {{ label }}</div>
+          <div class="font-medium">Agent status stream</div>
           <div>State: {{ store.connectionState }}</div>
           <div>Agents: {{ totalAgents }}</div>
           <div>Running &amp; ready: {{ runningCount }}</div>

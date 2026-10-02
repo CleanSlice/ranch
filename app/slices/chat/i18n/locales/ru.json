@@ -6,9 +6,14 @@
     "syncing": "Синхронизация…",
     "empty_title": "Пока нет бесед",
     "empty_hint": "Начните беседу с агентом — она появится здесь, и вы сможете вернуться к ней позже.",
-    "empty_cta": "Смотреть агентов"
+    "empty_cta": "Смотреть агентов",
+    "filter_current": "Текущие",
+    "filter_earlier": "Ранее",
+    "empty_earlier_title": "Нет прошлых чатов",
+    "empty_earlier_hint": "Диалог попадёт сюда, когда вы начнёте новый чат."
   },
   "session": {
+    "closed": "Закрыт",
     "fallback_title": "Беседа",
     "message_count": "нет сообщений | {count} сообщение | {count} сообщения | {count} сообщений",
     "not_found_title": "Беседа не найдена",

@@ -28,7 +28,11 @@ What is still open, and why:
   revoked-link path are unverified. The unit-level gates in those tasks did
   run and are green.
 - **Before merge** — T059 (final clean-tree gate run), T061 (the embed's
-  handling of a `409`), T062–T064.
+  handling of a `409`), T063 (follow-up tickets).
+
+The pull request ([#133](https://github.com/CleanSlice/ranch/pull/133)) was
+taken out of draft at the owner's request with CI green, and the ticket moved
+to In Testing (T062, T064). What it says is unverified is the list above.
 
 Decided while building, and recorded in [data-model.md](./data-model.md):
 the merge numbers the page *below* the kept tail instead of from 1; a
@@ -254,9 +258,9 @@ the text layer of a pdf` fails in `api` on `main` in this checkout.
 - [ ] T059 Run every gate from quickstart "Gates" from a clean tree, in order, and paste the commands and results into the PR description. `git status` must show no regenerated SDK noise beyond T011's change.
 - [ ] T060 Walk all 18 quickstart scenarios once more end to end against the final build, Russian included (scenario 12). Record the two measurements — the agent's push time (scenario 9) and the transcript lag (scenario 15) — in the PR next to `ARCHIVE_SYNC_TIMEOUT_MS` and `UNSAVED_KEEP_MS`.
 - [ ] T061 Before merge, check how the embed (the `bridle` repository) handles a non-200 from `POST …/transcript/archive`; it can now answer `409` when the agent is off the hub. Write what was found in the PR.
-- [ ] T062 Write the PR description: the three gaps and how each is closed; the twin-console statement in words (plan, Constitution Check, row II); each number with its reason; what is knowingly not closed (the interim text match; unauthenticated non-share transcript routes, D12; the admin button's own gaps); the runtime PR's link and whether it has shipped.
+- [X] T062 Write the PR description: the three gaps and how each is closed; the twin-console statement in words (plan, Constitution Check, row II); each number with its reason; what is knowingly not closed (the interim text match; unauthenticated non-share transcript routes, D12; the admin button's own gaps); the runtime PR's link and whether it has shipped.
 - [ ] T063 Create the follow-up tickets in Jira `CLEAN`, assigned and labelled, and link them from CLEAN-136: `[ADMIN]` switch the admin "New chat" to the archive route and fix its warning text; `[API]` require a bearer on transcript routes for channels that are neither `share-` nor `anon-`; `[APP]` decide who may see the Ranch admin agent in the customer console; `[API]` the chat index count that trails the transcript (research F8).
-- [ ] T064 Commit with `feat(app): … (CLEAN-136)` per logical group, open the PR into `main`, put its URL on CLEAN-136, post the end-of-implementation comment, and move the ticket to In Testing (transition 51 — the board has no In Review column).
+- [X] T064 Commit with `feat(app): … (CLEAN-136)` per logical group, open the PR into `main`, put its URL on CLEAN-136, post the end-of-implementation comment, and move the ticket to In Testing (transition 51 — the board has no In Review column).
 
 ---
 

@@ -3,8 +3,8 @@ import type {
   IBridleChannel,
   IBridleChannelAuth,
   IBridleChannelEvents,
-  IBridleMessage,
   IBridleShareContext,
+  IBridleTranscriptPage,
 } from './bridle.types';
 
 /**
@@ -60,14 +60,30 @@ export abstract class IBridleGateway {
   ): Promise<Blob>;
 
   /**
-   * The newest page of what the agent runtime wrote down for one channel,
-   * oldest message first. Not a live data path: the store asks only when a
-   * turn went silent, to recover an answer the socket never delivered.
-   * `channel` is the chat identity the hub reported in `welcome`.
+   * One page of what the agent runtime wrote down for one channel, oldest
+   * message first: the newest page without a `cursor`, the next older one
+   * with the cursor the previous page returned. This is the conversation as
+   * the server holds it — what a chat shows when it opens (CLEAN-136) — and
+   * also where the store looks when a turn went silent, to recover an answer
+   * the socket never delivered. `channel` is the chat identity the hub
+   * reported in `welcome`.
    */
-  abstract transcriptTail(
+  abstract transcriptPage(
+    agentId: string,
+    channel: string,
+    cursor?: string | null,
+    share?: IBridleShareContext,
+  ): Promise<IBridleTranscriptPage>;
+
+  /**
+   * "New chat": close the current conversation on the server — set aside,
+   * not deleted — and have the agent forget it. Rejects when the server
+   * refused (the agent is unreachable or still answering) or could not do
+   * it; nothing was changed in that case.
+   */
+  abstract archiveTranscript(
     agentId: string,
     channel: string,
     share?: IBridleShareContext,
-  ): Promise<IBridleMessage[]>;
+  ): Promise<void>;
 }

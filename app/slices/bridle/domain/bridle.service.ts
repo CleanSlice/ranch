@@ -4,8 +4,8 @@ import type {
   IBridleChannel,
   IBridleChannelAuth,
   IBridleChannelEvents,
-  IBridleMessage,
   IBridleShareContext,
+  IBridleTranscriptPage,
 } from './bridle.types';
 
 /**
@@ -46,11 +46,20 @@ export class BridleService {
     return this.gateway.fetchAttachment(agentId, attachmentId, share);
   }
 
-  transcriptTail(
+  transcriptPage(
+    agentId: string,
+    channel: string,
+    cursor?: string | null,
+    share?: IBridleShareContext,
+  ): Promise<IBridleTranscriptPage> {
+    return this.gateway.transcriptPage(agentId, channel, cursor, share);
+  }
+
+  archiveTranscript(
     agentId: string,
     channel: string,
     share?: IBridleShareContext,
-  ): Promise<IBridleMessage[]> {
-    return this.gateway.transcriptTail(agentId, channel, share);
+  ): Promise<void> {
+    return this.gateway.archiveTranscript(agentId, channel, share);
   }
 }

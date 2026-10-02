@@ -15,6 +15,7 @@ import {
   type IBridleSendAck,
   type IBridleThinkingEvent,
   type IBridleThinkingStep,
+  type IBridleTranscriptPage,
   type IBridleUserMessageEvent,
   type IBridleWelcome,
 } from '../domain/bridle.types';
@@ -101,13 +102,29 @@ export class BridleMapper {
    * returns them. Typed by the generated DTO — this one arrives over the SDK,
    * not as an untyped socket frame.
    */
-  toTranscript(dto: TranscriptResponseDto | null): IBridleMessage[] {
-    const messages: IBridleMessage[] = (dto?.messages ?? []).map((m) => ({
-      id: m.id,
-      role: m.role === 'user' ? BridleRoleTypes.User : BridleRoleTypes.Agent,
-      text: m.text,
-      ts: m.ts,
-    }));
+  toTranscript(
+    dto: TranscriptResponseDto | null,
+    agentId: string,
+  ): IBridleMessage[] {
+    const messages: IBridleMessage[] = (dto?.messages ?? []).map((m) => {
+      // References only: the bytes come through the guarded download route,
+      // the same path the live echo of a sent file points at.
+      const attachments = (m.attachments ?? [])
+        .map((a) =>
+          this.toAttachment({
+            ...a,
+            url: `/api/agent/${encodeURIComponent(agentId)}/attachment/${a.id}`,
+          }),
+        )
+        .filter((a) => a.id);
+      return {
+        id: m.id,
+        role: m.role === 'user' ? BridleRoleTypes.User : BridleRoleTypes.Agent,
+        text: m.text,
+        ts: m.ts,
+        ...(attachments.length ? { attachments } : {}),
+      };
+    });
     // Proposal cards (CLEAN-112) take their place by creation time.
     const proposals = ((dto as { proposals?: unknown[] } | null)?.proposals ?? [])
       .map((p) => this.toProposal(p))
@@ -116,6 +133,21 @@ export class BridleMapper {
     return mergeProposals(messages, proposals, (p) =>
       this.toProposalMessage(byId.get(p.id) as IBridleProposalSnapshot),
     );
+  }
+
+  /**
+   * A transcript page with what paging needs: where the next older page
+   * starts and whether there is one (CLEAN-136).
+   */
+  toTranscriptPage(
+    dto: TranscriptResponseDto | null,
+    agentId: string,
+  ): IBridleTranscriptPage {
+    return {
+      messages: this.toTranscript(dto, agentId),
+      nextCursor: dto?.nextCursor ?? null,
+      hasMore: dto?.hasMore === true,
+    };
   }
 
   /** The bubble that carries one proposal card. */

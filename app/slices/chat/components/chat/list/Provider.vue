@@ -1,11 +1,36 @@
 <script setup lang="ts">
 const chatStore = useChatStore();
 
-const { data: result, pending, refresh } = await useAsyncData('my-chats', () =>
-  chatStore.listMine(),
+// The request gives `pending` and `refresh`; the list itself is the store's
+// collection (docs/state.md), which `listMine` replaces.
+const { pending, refresh } = await useAsyncData('my-chats', () =>
+  // A value, because a handler that resolves to nothing is reported as a
+  // failed fetch; what it loaded is in the store.
+  chatStore.listMine().then(() => true),
 );
+const { sessions, showArchived } = storeToRefs(chatStore);
 
-const sessions = computed(() => result.value?.items ?? []);
+// Current conversations, or the ones a "New chat" closed (CLEAN-136). The
+// two are separate lists on the server, so this is a switch, not a filter
+// over what is already loaded.
+const switching = ref(false);
+async function onShow(archived: boolean) {
+  if (switching.value || showArchived.value === archived) return;
+  switching.value = true;
+  try {
+    await chatStore.setShowArchived(archived);
+  } finally {
+    switching.value = false;
+  }
+}
+
+// Copy decided in script travels as a key (docs/i18n.md).
+const emptyTitleKey = computed(() =>
+  showArchived.value ? 'history.empty_earlier_title' : 'history.empty_title',
+);
+const emptyHintKey = computed(() =>
+  showArchived.value ? 'history.empty_earlier_hint' : 'history.empty_hint',
+);
 
 // Manual reconcile fallback for when realtime indexing hasn't caught up yet.
 const syncing = ref(false);
@@ -45,9 +70,43 @@ async function onSync() {
       </button>
     </header>
 
-    <!-- Loading skeletons (initial load only) -->
+    <!-- Current conversations, or the ones closed by starting a new chat. -->
     <div
-      v-if="pending && !sessions.length"
+      class="inline-flex self-start rounded-md border p-0.5 text-sm"
+      role="group"
+      :aria-label="$t('history.title')"
+    >
+      <button
+        type="button"
+        class="rounded px-3 py-1 font-medium transition"
+        :class="
+          showArchived
+            ? 'text-muted-foreground hover:text-foreground'
+            : 'bg-muted text-foreground'
+        "
+        :aria-pressed="!showArchived"
+        @click="onShow(false)"
+      >
+        {{ $t('history.filter_current') }}
+      </button>
+      <button
+        type="button"
+        class="rounded px-3 py-1 font-medium transition"
+        :class="
+          showArchived
+            ? 'bg-muted text-foreground'
+            : 'text-muted-foreground hover:text-foreground'
+        "
+        :aria-pressed="showArchived"
+        @click="onShow(true)"
+      >
+        {{ $t('history.filter_earlier') }}
+      </button>
+    </div>
+
+    <!-- Loading skeletons (initial load, and while the other list loads) -->
+    <div
+      v-if="(pending || switching) && !sessions.length"
       class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
     >
       <div
@@ -86,11 +145,14 @@ async function onSync() {
       >
         <Icon name="message-square" :size="22" />
       </div>
-      <h2 class="mt-4 text-base font-semibold">{{ $t('history.empty_title') }}</h2>
+      <h2 class="mt-4 text-base font-semibold">{{ $t(emptyTitleKey) }}</h2>
       <p class="mt-1 text-sm text-muted-foreground max-w-sm mx-auto">
-        {{ $t('history.empty_hint') }}
+        {{ $t(emptyHintKey) }}
       </p>
+      <!-- "Browse agents" answers "no conversations yet"; under Earlier
+           there is nothing to go and do. -->
       <NuxtLink
+        v-if="!showArchived"
         to="/agents"
         class="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-95 transition"
       >

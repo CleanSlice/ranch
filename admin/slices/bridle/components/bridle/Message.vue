@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, onBeforeUnmount, watch } from 'vue'
 import { BridlePartTypes, type IBridleMessageData } from '../../stores/bridle'
-import { renderMarkdown } from '../../utils/markdown'
+import BridleAvatar from './Avatar.vue'
+import BridleBubble from './Bubble.vue'
+import BridleMarkdown from './Markdown.vue'
 import ProposalCard from './ProposalCard.vue'
-import { AlertCircle, Bot, User, FileText, Info, Loader2, X } from 'lucide-vue-next'
+import { AlertCircle, FileText, Info, Loader2, X } from 'lucide-vue-next'
 import { Button } from '#theme/components/ui/button'
 import { cn } from '#theme/utils/cn'
 import { formatClock, formatDateTime } from '#common/utils/format'
@@ -64,22 +66,8 @@ const failureReason = computed(() => {
 
 // Markdown rendering applies only to assistant messages — user input stays
 // plain text so pasted content can't accidentally be rendered as HTML.
-function htmlFor(text: string): string {
-  return renderMarkdown(text)
-}
-
-function onMarkdownClick(event: MouseEvent) {
-  const target = event.target as HTMLElement | null
-  const btn = target?.closest<HTMLButtonElement>('button[data-action="copy"]')
-  if (!btn) return
-  const pre = btn.parentElement?.querySelector('pre')
-  const text = pre?.textContent ?? ''
-  if (!text) return
-  navigator.clipboard.writeText(text).then(() => {
-    btn.classList.add('copied')
-    setTimeout(() => btn.classList.remove('copied'), 1500)
-  }).catch(() => {})
-}
+// Avatar, bubble and markdown are the shared pieces the chat history uses
+// too (CLEAN-137).
 
 // ── Fullscreen image preview ─────────────────────────────────
 // Click on a chat image → opens a Teleport'd overlay with the image at
@@ -129,35 +117,15 @@ onBeforeUnmount(() => {
       isUser ? 'ml-auto flex-row-reverse' : 'mr-auto',
     )"
   >
-    <div
-      :class="cn(
-        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs',
-        isUser ? 'bg-primary text-primary-foreground' : 'bg-muted',
-      )"
-    >
-      <User v-if="isUser" class="h-4 w-4" />
-      <Bot v-else class="h-4 w-4" />
-    </div>
+    <BridleAvatar :user="isUser" />
 
     <!-- Bubble + the line under it (time, delivery state) as one column, so
          the line hugs the bubble's own edge on either side of the chat. -->
     <div :class="cn('flex min-w-0 flex-col gap-1', isUser ? 'items-end' : 'items-start')">
-      <div
-        :class="cn(
-          'min-w-0 rounded-lg px-3 py-2 text-sm space-y-2',
-          isUser ? 'bg-primary text-primary-foreground' : 'bg-muted',
-          !isUser && markdownEnabled && 'chat-md',
-          message.streaming && 'border-l-2 border-primary',
-        )"
-      >
+      <BridleBubble :user="isUser" :markdown="markdownEnabled" :streaming="message.streaming">
         <template v-for="(part, i) in message.parts" :key="i">
           <template v-if="part.type === BridlePartTypes.Text">
-            <div
-              v-if="!isUser && markdownEnabled"
-              class="min-w-0 wrap-break-word"
-              v-html="htmlFor(part.text)"
-              @click="onMarkdownClick"
-            />
+            <BridleMarkdown v-if="!isUser && markdownEnabled" :text="part.text" />
             <p v-else class="whitespace-pre-wrap wrap-break-word">{{ part.text }}</p>
           </template>
 
@@ -195,12 +163,7 @@ onBeforeUnmount(() => {
 
         <!-- Fallback: if no parts, show plain text (or markdown for assistant) -->
         <template v-if="message.parts.length === 0 && !showAgentText">
-          <div
-            v-if="!isUser && markdownEnabled"
-            class="min-w-0 wrap-break-word"
-            v-html="htmlFor(message.text)"
-            @click="onMarkdownClick"
-          />
+          <BridleMarkdown v-if="!isUser && markdownEnabled" :text="message.text" />
           <p v-else class="whitespace-pre-wrap wrap-break-word">{{ message.text }}</p>
         </template>
 
@@ -220,7 +183,7 @@ onBeforeUnmount(() => {
             class="mt-1.5 max-h-[40vh] overflow-auto rounded bg-background/20 p-2 text-[11px] leading-snug whitespace-pre-wrap wrap-break-word"
           >{{ message.agentText }}</pre>
         </div>
-      </div>
+      </BridleBubble>
 
       <div
         v-if="hasTime || delivery !== 'delivered'"

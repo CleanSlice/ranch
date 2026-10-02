@@ -12,6 +12,10 @@ export default defineNuxtConfig({
   imports: {
     dirs: [`${currentDir}/stores`],
   },
+  // The chat markdown rules are global and needed wherever a message is
+  // rendered, the chat history included, so the slice loads them itself
+  // instead of a component carrying a copy (CLEAN-137).
+  css: [`${currentDir}/assets/chat-md.css`],
   modules: ['@nuxtjs/i18n'],
   i18n: {
     langDir: 'locales',

@@ -136,7 +136,7 @@ function unbindMissing(id: string): void {
           <Skeleton class="h-9 w-full" />
           <Skeleton class="h-9 w-full" />
         </div>
-        <div v-else-if="resolved.length" class="rounded-md border bg-card">
+        <div v-else-if="resolved.length">
           <Table>
             <TableHeader>
               <TableRow>

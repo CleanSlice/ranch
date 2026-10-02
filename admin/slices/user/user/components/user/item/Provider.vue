@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { UserStatusTypes, UserRoleTypes } from '#user/domain/user.types';
-import {IconArrowLeft} from '@tabler/icons-vue';
 import { formatDate } from '#common/utils/format';
 
 const props = defineProps<{ id: string }>();
@@ -28,9 +27,7 @@ async function onRemove() {
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink to="/users" class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-      <IconArrowLeft class="size-4" /> Back to users
-    </NuxtLink>
+    <PageBreadcrumbs :items="[{ label: 'Users', to: '/users' }, { label: user?.name ?? '…' }]" />
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 

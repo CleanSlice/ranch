@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ILlmCredentialInput } from '#llm/stores/llm';
-import { IconArrowLeft } from '@tabler/icons-vue';
 
 const llmStore = useLlmStore();
 const route = useRoute();
@@ -46,12 +45,7 @@ function onCancel() {
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink
-      to="/llms"
-      class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <IconArrowLeft class="size-4" /> Back to LLMs
-    </NuxtLink>
+    <PageBreadcrumbs :items="[{ label: 'LLMs', to: '/llms' }, { label: 'New credential' }]" />
 
     <div>
       <h1 class="text-2xl font-semibold">New credential</h1>

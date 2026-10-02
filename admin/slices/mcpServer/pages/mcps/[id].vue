@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ICreateMcpServerData } from '#mcpServer/stores/mcpServer';
-import { IconArrowLeft } from '@tabler/icons-vue';
 
 definePageMeta({
   key: (route) => `mcp-${route.params.id as string}`,
@@ -40,9 +39,7 @@ function onCancel() {
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink to="/mcps" class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-      <IconArrowLeft class="size-4" /> Back to MCP servers
-    </NuxtLink>
+    <PageBreadcrumbs :items="[{ label: 'MCP servers', to: '/mcps' }, { label: mcp?.name ?? '…' }]" />
 
     <div v-if="pending && !mcp" class="text-sm text-muted-foreground">Loading…</div>
 

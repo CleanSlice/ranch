@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ICreateAgentData } from '#agent/stores/agent';
-import { IconArrowLeft } from '@tabler/icons-vue';
 
 const agentStore = useAgentStore();
 const templateStore = useTemplateStore();
@@ -59,12 +58,7 @@ function onCancel() {
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink
-      to="/agents"
-      class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <IconArrowLeft class="size-4" /> Back to agents
-    </NuxtLink>
+    <PageBreadcrumbs :items="[{ label: 'Agents', to: '/agents' }, { label: 'New agent' }]" />
 
     <div>
       <h1 class="text-2xl font-semibold">New agent</h1>

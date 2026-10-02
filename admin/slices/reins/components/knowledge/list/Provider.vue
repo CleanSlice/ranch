@@ -93,7 +93,7 @@ async function onRemove(item: IKnowledge) {
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 
-    <div v-else-if="items.length" class="rounded-md border bg-card">
+    <div v-else-if="items.length">
       <Table>
         <TableHeader>
           <TableRow>

@@ -46,7 +46,7 @@ async function onRemove() {
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading users…</div>
 
-    <div v-else-if="users?.length" class="rounded-md border bg-card">
+    <div v-else-if="users?.length">
       <Table>
         <TableHeader>
           <TableRow>

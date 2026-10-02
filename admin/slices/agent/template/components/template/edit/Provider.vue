@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ICreateTemplateData } from '#template/stores/template';
-import { IconArrowLeft } from '@tabler/icons-vue';
 
 const props = defineProps<{ id: string }>();
 
@@ -34,12 +33,7 @@ function onCancel(): void {
 
 <template>
   <div class="flex flex-col gap-6">
-    <NuxtLink
-      :to="`/templates/${id}`"
-      class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <IconArrowLeft class="size-4" /> Back to template
-    </NuxtLink>
+    <PageBreadcrumbs :items="[{ label: 'Templates', to: '/templates' }, { label: template?.name ?? '…', to: `/templates/${id}` }, { label: 'Edit' }]" />
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
 

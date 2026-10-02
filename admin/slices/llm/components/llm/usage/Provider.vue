@@ -39,7 +39,7 @@ function formatCost(n: number): string {
       />
     </div>
 
-    <div class="rounded-md border bg-card">
+    <div>
       <Table>
         <TableHeader>
           <TableRow>

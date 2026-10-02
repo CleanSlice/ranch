@@ -970,7 +970,9 @@ const elapsedLabel = computed(() => {
             v-if="!markdownRendered"
             class="whitespace-pre-wrap text-xs leading-relaxed font-mono"
           >{{ report.md }}</pre>
-          <div v-else class="text-sm leading-relaxed" v-html="renderedReportHtml" />
+          <!-- chat-md: the one markdown stylesheet (CLEAN-137); without it the
+               report's tables and lists rendered unstyled. -->
+          <div v-else class="chat-md text-sm leading-relaxed" v-html="renderedReportHtml" />
         </div>
       </CardContent>
     </Card>

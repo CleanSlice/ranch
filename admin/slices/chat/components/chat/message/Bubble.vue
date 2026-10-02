@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { renderMarkdown } from '#bridle/utils/markdown';
+import BridleAvatar from '#bridle/components/bridle/Avatar.vue';
+import BridleBubble from '#bridle/components/bridle/Bubble.vue';
+import BridleMarkdown from '#bridle/components/bridle/Markdown.vue';
 import { formatBytes } from '#bridle/utils/attachment';
-import { Bot, FileText, Paperclip, ThumbsUp, ThumbsDown } from 'lucide-vue-next';
+import { FileText, Paperclip, ThumbsUp, ThumbsDown } from 'lucide-vue-next';
 import type { IChatMessage } from '#chat/stores/chat';
 import { formatMessageTime, type IToolEvent } from '#chat/utils/transcript';
 
 // Read-only transcript message in the redesigned feed. Tool events arrive
 // pre-grouped (see groupTranscript) and render as collapsible rows attached
 // above the assistant reply they belong to.
+//
+// The avatar, the bubble and the markdown are Bridle's own components
+// (CLEAN-137): a message in the history is the same message the live chat
+// showed, so it is drawn by the same code. What this file adds is what only
+// the history has — the dated time, the rating and the copy action.
 // `rating` is the current user's 👍/👎 on this message (1 | -1 | null).
 const props = defineProps<{
   message: IChatMessage;
@@ -18,7 +25,6 @@ const emit = defineEmits<{ rate: [rating: 1 | -1] }>();
 
 const role = computed(() => props.message.role);
 const isUser = computed(() => role.value === 'user');
-const html = computed(() => renderMarkdown(props.message.text));
 const time = computed(() => formatMessageTime(props.message.ts));
 
 const summaryOpen = ref(false);
@@ -38,22 +44,6 @@ function onCopy() {
     .then(() => {
       copied.value = true;
       setTimeout(() => (copied.value = false), 1500);
-    })
-    .catch(() => {});
-}
-
-function onMarkdownClick(event: MouseEvent) {
-  const btn = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(
-    'button[data-action="copy"]',
-  );
-  if (!btn) return;
-  const text = btn.parentElement?.querySelector('pre')?.textContent ?? '';
-  if (!text) return;
-  navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      btn.classList.add('copied');
-      setTimeout(() => btn.classList.remove('copied'), 1500);
     })
     .catch(() => {});
 }
@@ -83,50 +73,41 @@ function onMarkdownClick(event: MouseEvent) {
     {{ message.text }}
   </div>
 
-  <!-- User message: dark bubble on the right, time below. Files the person
-       sent are named above the text; their contents never render here. -->
-  <div v-else-if="isUser" class="flex flex-col items-end">
-    <div
-      class="max-w-[72%] rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground"
-    >
-      <div v-if="message.attachments?.length" class="mb-1.5 flex flex-wrap gap-1.5">
-        <span
-          v-for="file in message.attachments"
-          :key="file.id"
-          :title="`${file.name} · ${formatBytes(file.size)}`"
-          class="inline-flex max-w-full items-center gap-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-xs"
-        >
-          <Paperclip class="size-3 shrink-0" />
-          <span class="truncate">{{ file.name }}</span>
-        </span>
-      </div>
-      <div v-if="message.text" class="whitespace-pre-wrap wrap-break-word">{{ message.text }}</div>
+  <!-- User message: the live chat's row, mirrored to the right. Files the
+       person sent are named above the text; their contents never render here. -->
+  <div v-else-if="isUser" class="ml-auto flex max-w-[85%] flex-row-reverse gap-3">
+    <BridleAvatar user />
+    <div class="flex min-w-0 flex-col items-end gap-1">
+      <BridleBubble user>
+        <div v-if="message.attachments?.length" class="flex flex-wrap gap-1.5">
+          <span
+            v-for="file in message.attachments"
+            :key="file.id"
+            :title="`${file.name} · ${formatBytes(file.size)}`"
+            class="inline-flex max-w-full items-center gap-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-xs"
+          >
+            <Paperclip class="size-3 shrink-0" />
+            <span class="truncate">{{ file.name }}</span>
+          </span>
+        </div>
+        <p v-if="message.text" class="whitespace-pre-wrap wrap-break-word">{{ message.text }}</p>
+      </BridleBubble>
+      <span class="px-1 text-[10px] text-muted-foreground">{{ time }}</span>
     </div>
-    <span class="mt-1 text-[11px] text-muted-foreground/60">{{ time }}</span>
   </div>
 
-  <!-- Assistant: avatar chip, attached tool rows, bordered bubble, actions row -->
-  <div v-else class="flex items-start gap-2.5">
-    <div
-      class="mt-0.5 flex size-6.5 shrink-0 items-center justify-center rounded-lg border bg-card text-muted-foreground"
-    >
-      <Bot class="size-3.5" />
-    </div>
-    <div class="flex min-w-0 max-w-[82%] flex-col gap-1.5">
+  <!-- Assistant: avatar, attached tool rows, the bubble, actions row -->
+  <div v-else class="mr-auto flex max-w-[85%] gap-3">
+    <BridleAvatar />
+    <div class="flex min-w-0 flex-col items-start gap-1">
       <ChatMessageToolEvents v-if="tools?.length" :tools="tools" />
 
-      <div
-        class="rounded-2xl rounded-tl-sm border border-border/70 bg-card px-4 py-3 text-sm leading-relaxed"
-      >
-        <div
-          class="prose prose-sm max-w-none dark:prose-invert wrap-break-word"
-          v-html="html"
-          @click="onMarkdownClick"
-        />
-      </div>
+      <BridleBubble markdown>
+        <BridleMarkdown :text="message.text" />
+      </BridleBubble>
 
-      <div class="flex items-center gap-2 pl-1">
-        <span class="text-[11px] text-muted-foreground/60">{{ time }}</span>
+      <div class="flex items-center gap-2 px-1">
+        <span class="text-[10px] text-muted-foreground">{{ time }}</span>
         <button
           type="button"
           aria-label="Helpful"

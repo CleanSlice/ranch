@@ -1,5 +1,8 @@
 export { default as BridleProvider } from './Provider.vue'
 export { default as BridleMessage } from './Message.vue'
+export { default as BridleAvatar } from './Avatar.vue'
+export { default as BridleBubble } from './Bubble.vue'
+export { default as BridleMarkdown } from './Markdown.vue'
 export { default as BridleInput } from './Input.vue'
 export { default as BridleDebugPanel } from './DebugPanel.vue'
 export { default as BridleAttachmentChip } from './AttachmentChip.vue'

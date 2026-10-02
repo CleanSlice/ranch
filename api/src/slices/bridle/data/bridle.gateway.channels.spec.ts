@@ -289,3 +289,223 @@ describe('BridleGateway — origin follows the sending socket', () => {
     expect(toAgent.map((e) => e.origin)).toEqual(['https://admin.ranch.test', undefined]);
   });
 });
+
+/**
+ * "The agent is still answering" as a rule (CLEAN-136). A reset is refused
+ * while a turn is open, so an answer to the conversation being closed cannot
+ * land in the new one. Open means: a message is with the agent and nothing
+ * that ends a turn came back, a stream is open, or a thinking turn is open —
+ * and the agent gave a sign of life within the last 75 seconds.
+ */
+describe('BridleGateway — an open turn', () => {
+  function chat() {
+    const gateway = new BridleGateway();
+    gateway.registerAgent('agent-1', 'agent-socket', () => undefined);
+    gateway.registerClient('admin', 'agent-1', 'tab-a', () => undefined, true);
+    const send = () =>
+      gateway.sendToAgent('admin', 'agent-1', 'hello', [], undefined, {
+        socketId: 'tab-a',
+      });
+    const fromAgent = (event: Event) =>
+      gateway.handleAgentEvent('agent-1', {
+        clientId: 'admin',
+        ...event,
+      } as never);
+    return { gateway, send, fromAgent };
+  }
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is closed for a conversation the hub has never seen', () => {
+    expect(new BridleGateway().isTurnOpen('agent-1', 'admin')).toBe(false);
+  });
+
+  it('is closed for a conversation nobody has spoken in', () => {
+    const { gateway } = chat();
+
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(false);
+  });
+
+  it('opens when a message is handed to the agent and closes on its answer', () => {
+    const { gateway, send, fromAgent } = chat();
+
+    send();
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(true);
+
+    fromAgent({ type: 'message', text: 'hi', messageId: 'm1' });
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(false);
+  });
+
+  it('stays open while the agent only says it is working', () => {
+    const { gateway, send, fromAgent } = chat();
+
+    send();
+    fromAgent({ type: 'typing' });
+
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(true);
+  });
+
+  it('stays open for as long as a stream is', () => {
+    const { gateway, send, fromAgent } = chat();
+
+    send();
+    fromAgent({ type: 'stream', text: 'h', messageId: 'm1' });
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(true);
+
+    fromAgent({ type: 'stream_end', text: 'hi', messageId: 'm1' });
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(false);
+  });
+
+  it('stays open through a thinking turn, past the first message of it', () => {
+    const { gateway, send, fromAgent } = chat();
+
+    send();
+    fromAgent({
+      type: 'thinking',
+      turnId: 't1',
+      step: { id: 's1', label: 'Search', state: 'active' },
+    });
+    fromAgent({ type: 'message', text: 'one moment', messageId: 'm1' });
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(true);
+
+    fromAgent({ type: 'thinking', turnId: 't1', done: true });
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(false);
+  });
+
+  it('stops waiting after 75 seconds without a sign of life', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-10-02T09:00:00Z'));
+    const { gateway, send, fromAgent } = chat();
+
+    send();
+    fromAgent({ type: 'stream', text: 'h', messageId: 'm1' });
+    jest.setSystemTime(new Date('2026-10-02T09:01:14Z'));
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(true);
+
+    jest.setSystemTime(new Date('2026-10-02T09:01:16Z'));
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(false);
+  });
+
+  it('counts the silence from the last sign of life, not from the question', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-10-02T09:00:00Z'));
+    const { gateway, send, fromAgent } = chat();
+
+    send();
+    jest.setSystemTime(new Date('2026-10-02T09:01:00Z'));
+    fromAgent({ type: 'typing' });
+    jest.setSystemTime(new Date('2026-10-02T09:02:00Z'));
+
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(true);
+  });
+});
+
+/**
+ * One operation for "this conversation was reset" (CLEAN-136): the agent
+ * forgets, the replay buffer goes, and every socket on the conversation is
+ * told — the other tab, the other device, the other console.
+ */
+describe('BridleGateway — resetting a conversation', () => {
+  function twoTabs() {
+    const gateway = new BridleGateway();
+    const toAgent: Event[] = [];
+    const tabA: Event[] = [];
+    const tabB: Event[] = [];
+    gateway.registerAgent('agent-1', 'agent-socket', collector(toAgent));
+    gateway.registerClient('admin', 'agent-1', 'tab-a', collector(tabA), true);
+    gateway.registerClient('admin', 'agent-1', 'tab-b', collector(tabB), true);
+    return { gateway, toAgent, tabA, tabB };
+  }
+
+  const answer = (gateway: BridleGateway, messageId: string) =>
+    gateway.handleAgentEvent('agent-1', {
+      type: 'message',
+      clientId: 'admin',
+      text: messageId,
+      messageId,
+    });
+
+  it('tells every socket on the conversation, once', () => {
+    const { gateway, tabA, tabB } = twoTabs();
+
+    gateway.resetConversation('agent-1', 'admin');
+
+    expect(tabA.map((e) => e.type)).toEqual(['conversation_reset']);
+    expect(tabB.map((e) => e.type)).toEqual(['conversation_reset']);
+    expect(typeof tabA[0].ts).toBe('number');
+    expect(tabA[0].seq).toBe(tabB[0].seq);
+  });
+
+  it('tells the agent to forget the conversation', () => {
+    const { gateway, toAgent } = twoTabs();
+
+    gateway.resetConversation('agent-1', 'admin');
+
+    expect(toAgent).toEqual([{ type: 'session_clear', channel: 'admin' }]);
+  });
+
+  it('replays the reset, and nothing of the closed conversation, to a browser that was away', () => {
+    const { gateway } = twoTabs();
+    answer(gateway, 'old-1');
+    answer(gateway, 'old-2');
+
+    gateway.resetConversation('agent-1', 'admin');
+
+    const missed = gateway.replaySince('admin', 'agent-1', 1) as Event[];
+    expect(missed.map((e) => e.type)).toEqual(['conversation_reset']);
+  });
+
+  it('keeps counting upward, so the new conversation is newer than the reset', () => {
+    const { gateway, tabA } = twoTabs();
+    answer(gateway, 'old-1');
+
+    gateway.resetConversation('agent-1', 'admin');
+    answer(gateway, 'new-1');
+
+    const seqs = tabA.map((e) => e.seq as number);
+    expect(tabA.map((e) => e.type)).toEqual([
+      'message',
+      'conversation_reset',
+      'message',
+    ]);
+    expect(seqs[1]).toBeGreaterThan(seqs[0]);
+    expect(seqs[2]).toBeGreaterThan(seqs[1]);
+  });
+
+  it('closes the turn that was open', () => {
+    const { gateway } = twoTabs();
+    gateway.sendToAgent('admin', 'agent-1', 'hello', [], undefined, {
+      socketId: 'tab-a',
+    });
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(true);
+
+    gateway.resetConversation('agent-1', 'admin');
+
+    expect(gateway.isTurnOpen('agent-1', 'admin')).toBe(false);
+  });
+
+  it('leaves another conversation with the same agent alone', () => {
+    const { gateway, tabA } = twoTabs();
+    const visitor: Event[] = [];
+    gateway.registerClient(
+      'share-v1',
+      'agent-1',
+      'visitor',
+      collector(visitor),
+      false,
+    );
+
+    gateway.resetConversation('agent-1', 'share-v1');
+
+    expect(visitor.map((e) => e.type)).toEqual(['conversation_reset']);
+    expect(tabA).toEqual([]);
+  });
+
+  it('is safe for a conversation nobody is connected to', () => {
+    const gateway = new BridleGateway();
+
+    expect(() => gateway.resetConversation('agent-1', 'admin')).not.toThrow();
+  });
+});

@@ -126,4 +126,81 @@ describe('ChatSyncService.syncAll', () => {
     expect(arch.channel).toBe('bridle');
     expect(arch.externalUserId).toBe('admin');
   });
+
+  /**
+   * A visitor closed a conversation with "New chat" (CLEAN-136). The route
+   * moved the index row to the archived key at once; reconciliation later
+   * meets the archived file under that same key — so the closed conversation
+   * stays ONE row, the visitor's, and is not indexed a second time.
+   */
+  describe('a conversation a share visitor closed', () => {
+    const ARCHIVED_KEY = 'bridle:share-ab12.2026-10-02T09-14-03-512Z.archived';
+    const ARCHIVED_PATH = `data/sessions/${ARCHIVED_KEY}.jsonl`;
+    const closed = jsonl(
+      { id: 'u1', type: 'user', ts: 1, data: { text: 'what are your hours?' } },
+      { id: 'a1', type: 'assistant', ts: 2, data: { text: '9 to 5' } },
+    );
+
+    it('is indexed as the visitor’s own closed conversation', async () => {
+      const files_ = fileStub([{ path: ARCHIVED_PATH, size: 80 }], {
+        [ARCHIVED_PATH]: closed,
+      });
+      const { chats, upserts } = chatsStub([]);
+
+      const svc = new ChatSyncService(
+        files_,
+        new TranscriptReaderService(files_),
+        chats,
+        agentsStub,
+      );
+      await svc.syncAll('agent-1');
+
+      expect(upserts).toHaveLength(1);
+      expect(upserts[0].sessionKey).toBe(ARCHIVED_KEY);
+      expect(upserts[0].channel).toBe('bridle');
+      expect(upserts[0].externalUserId).toBe('share-ab12');
+      expect(upserts[0].archived).toBe(true);
+      expect(upserts[0].messageCount).toBe(2);
+    });
+
+    it('is left alone when the row the route moved already describes the file', async () => {
+      const files_ = fileStub([{ path: ARCHIVED_PATH, size: 80 }], {
+        [ARCHIVED_PATH]: closed,
+      });
+      const { chats, upserts } = chatsStub([
+        { sessionKey: ARCHIVED_KEY, lastIndexedSize: 80 },
+      ]);
+
+      const svc = new ChatSyncService(
+        files_,
+        new TranscriptReaderService(files_),
+        chats,
+        agentsStub,
+      );
+      const result = await svc.syncAll('agent-1');
+
+      expect(result.skipped).toBe(1);
+      expect(upserts).toHaveLength(0);
+    });
+
+    it('refreshes that one row, under the same key, when the file is larger than what was indexed', async () => {
+      // The live row was last indexed before the final exchange was pushed.
+      const files_ = fileStub([{ path: ARCHIVED_PATH, size: 80 }], {
+        [ARCHIVED_PATH]: closed,
+      });
+      const { chats, upserts } = chatsStub([
+        { sessionKey: ARCHIVED_KEY, lastIndexedSize: 40 },
+      ]);
+
+      const svc = new ChatSyncService(
+        files_,
+        new TranscriptReaderService(files_),
+        chats,
+        agentsStub,
+      );
+      await svc.syncAll('agent-1');
+
+      expect(upserts.map((u) => u.sessionKey)).toEqual([ARCHIVED_KEY]);
+    });
+  });
 });

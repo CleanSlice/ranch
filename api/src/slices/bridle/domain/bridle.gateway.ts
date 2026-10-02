@@ -181,13 +181,23 @@ export abstract class IBridleGateway {
    */
   abstract findActiveTurn(agentId: string): IActiveTurn | null;
   /**
-   * Tell the running agent to drop its local copy of a session (file +
-   * in-memory cache) for the given bridle channel. Sent after the transcript
-   * for that channel has been archived/deleted server-side — without this,
-   * the agent's own S3 watcher would re-upload its still-intact local
-   * session file on the next local change, resurrecting the "deleted"
-   * history. Silently skipped if the agent isn't currently connected (there
-   * is then no live local file to worry about).
+   * Whether the agent is in the middle of a turn for this conversation: a
+   * message was handed over and nothing that ends a turn came back, a stream
+   * is open, or a thinking turn is open — and there was a sign of life within
+   * the last 75 s. False for a conversation the hub has never seen. A reset
+   * is refused while this holds, so an answer to the conversation being
+   * closed cannot land in the new one (CLEAN-136).
    */
-  abstract clearAgentSession(agentId: string, channel: string): void;
+  abstract isTurnOpen(agentId: string, clientId: string): boolean;
+  /**
+   * "This conversation was reset." Called after its transcript was archived
+   * or deleted: the running agent is told to drop its own copy
+   * (`session_clear` — otherwise its S3 watcher re-uploads the file and the
+   * history comes back), the replay buffer and the turn state are dropped,
+   * and one numbered `conversation_reset` frame goes to every socket on the
+   * conversation, so other tabs, devices and the other console empty with it.
+   * Sockets and the sequence survive. Safe for a conversation nobody is
+   * connected to; the agent part is skipped when no agent is connected.
+   */
+  abstract resetConversation(agentId: string, clientId: string): void;
 }

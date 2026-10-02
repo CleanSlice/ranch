@@ -71,6 +71,19 @@ export class ChatGateway extends IChatGateway {
     return this.mapper.toEntity(record);
   }
 
+  async archiveSession(
+    agentId: string,
+    sessionKey: string,
+    archivedSessionKey: string,
+  ): Promise<void> {
+    // updateMany, not update: no row is the ordinary case of a conversation
+    // that was never indexed, and must not throw.
+    await this.prisma.chatSession.updateMany({
+      where: { agentId, sessionKey },
+      data: { sessionKey: archivedSessionKey, archived: true },
+    });
+  }
+
   async recordActivity(agentId: string, a: IChatActivity): Promise<void> {
     // Atomic increment in the DB — no read-modify-write, so concurrent events
     // for the same session can't lose an increment. The NOT-filter dedups a

@@ -5,10 +5,12 @@ import {
   Delete,
   Body,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpCode,
   Inject,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
   Param,
   Query,
@@ -28,6 +30,7 @@ import {
   ApiOperation,
   ApiBadRequestResponse,
   ApiBody,
+  ApiConflictResponse,
   ApiConsumes,
   ApiForbiddenResponse,
   ApiHeader,
@@ -35,6 +38,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiQuery,
+  ApiServiceUnavailableResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
@@ -44,6 +48,7 @@ import {
   BridleSyncService,
   IBridleGateway,
   BridleAttachmentService,
+  BridleResetErrorCodes,
   MAX_ATTACHMENT_BYTES,
   buildParts,
   clientIdFromJwtPayload,
@@ -62,10 +67,12 @@ import {
   BridleHealthDto,
   BridleAgentHealthDto,
   BridleAttachmentDto,
+  ArchiveTranscriptResponseDto,
   TranscriptQueryDto,
   TranscriptResponseDto,
   TranscriptMessageDto,
 } from './dtos';
+import { IChatGateway } from '#/chat/domain';
 import { FlatResponse } from './core';
 import { BridleChatAuthGuard } from './guards/bridleChatAuth.guard';
 import type { IChatAuthRequest } from './guards/bridleChatAuth.guard';
@@ -79,6 +86,15 @@ import {
   ShareLinkErrorCodes,
   ShareLinkService,
 } from '#/agent/shareLink/domain';
+
+/**
+ * How long closing a conversation waits for the agent to push its files
+ * (CLEAN-136). The hub's default for this call is 15 s, sized for an operator
+ * pressing "Sync" in the file editor. Here a person is watching a button:
+ * past five seconds they assume it broke, and "could not start a new chat"
+ * with the conversation intact is the honest answer.
+ */
+const ARCHIVE_SYNC_TIMEOUT_MS = 5_000;
 
 /** Shape multer gives us. Mirrors the local interface in reins/source. */
 interface IUploadedFile {
@@ -161,6 +177,8 @@ export class BridleController {
     private readonly sync: BridleSyncService,
     @Inject(forwardRef(() => FileProposalService))
     private readonly proposals: FileProposalService,
+    @Inject(forwardRef(() => IChatGateway))
+    private readonly chats: IChatGateway,
   ) {}
 
   /**
@@ -679,7 +697,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      "Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).",
+      'Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat: the running agent is told to drop its own copy, and every browser that has the conversation open is told it was reset (`conversation_reset`). Nothing is kept — to keep the conversation, use `POST …/transcript/archive`. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor\'s own share headers are accepted (403 otherwise).',
     operationId: 'resetBridleTranscript',
   })
   @ApiQuery({
@@ -711,15 +729,17 @@ export class BridleController {
       );
       return;
     }
-    // Tell the live agent to drop its own local/in-memory copy too — S3FileGateway
-    // only touched the S3 mirror, and the running pod would otherwise re-upload
-    // its still-intact local session file on the next local change.
-    this.hub.clearAgentSession(agentId, channel);
+    // The agent drops its own local/in-memory copy — S3FileGateway only
+    // touched the S3 mirror, and the running pod would otherwise re-upload its
+    // still-intact local session file on the next local change — and every
+    // browser on the conversation is told, so a console that keeps its own
+    // copy empties with it (CLEAN-136).
+    this.hub.resetConversation(agentId, channel);
   }
 
   @ApiOperation({
     description:
-      "Archive the persisted chat transcript for an agent/channel — the live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`) and the live slot starts empty. Used by the embed's \"New chat\" action when the visitor wants a clean slate but we still want the prior conversation for admin/audit. No-op (returns `{}`) when there's nothing to archive. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).",
+      'Close the current conversation and start a new one ("New chat"). The live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`), its row in the chat index moves with it, the running agent is told to forget the conversation and every browser that has it open is told it was reset. Refused, with nothing changed, while a real reset cannot be guaranteed: 409 `AGENT_OFFLINE` when the agent is not connected, 409 `TURN_IN_PROGRESS` while it is still answering, 503 `SYNC_FAILED` when it did not push its files in time. Answers `{}` when there was nothing to close — the conversation is reset either way. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor\'s own share headers are accepted (403 otherwise).',
     operationId: 'archiveBridleTranscript',
   })
   @ApiQuery({
@@ -728,10 +748,17 @@ export class BridleController {
     description: 'Session channel — defaults to "admin".',
   })
   @ApiShareHeaders()
-  @ApiOkResponse({
+  @ApiOkResponse({ type: ArchiveTranscriptResponseDto })
+  @ApiConflictResponse({
     description:
-      '`{ archivedPath }` for the timestamped copy, or `{}` when there was ' +
-      'nothing to archive.',
+      '`AGENT_OFFLINE` — the agent is not connected and cannot be told to ' +
+      'forget; `TURN_IN_PROGRESS` — the agent is still answering. Nothing ' +
+      'was changed.',
+  })
+  @ApiServiceUnavailableResponse({
+    description:
+      '`SYNC_FAILED` — the agent did not push its files in time, so the ' +
+      'conversation could not be saved complete. Nothing was changed.',
   })
   @ApiForbiddenResponse({ description: SHARE_FORBIDDEN_DESCRIPTION })
   @FlatResponse()
@@ -741,10 +768,45 @@ export class BridleController {
     @Param('agentId') agentId: string,
     @Req() req: Record<string, unknown>,
     @Query('channel') channelRaw?: string,
-  ): Promise<{ archivedPath?: string }> {
+  ): Promise<ArchiveTranscriptResponseDto> {
     const channel = (channelRaw ?? 'admin').trim() || 'admin';
     await this.requireChannelAccess(req, agentId, channel);
     const livePath = `data/sessions/bridle:${channel}.jsonl`;
+
+    // Nothing below changes anything until the old conversation is safely
+    // set aside. The three refusals come first for that reason: a reset the
+    // agent cannot be told about, or one that races a running answer, would
+    // show an empty chat over a conversation that is still alive.
+    if (!this.hub.isAgentConnected(agentId)) {
+      throw new ConflictException({
+        code: BridleResetErrorCodes.AgentOffline,
+      });
+    }
+    if (this.hub.isTurnOpen(agentId, channel)) {
+      throw new ConflictException({
+        code: BridleResetErrorCodes.TurnInProgress,
+      });
+    }
+
+    // Storage trails the agent's own file by its sync delay. Without this
+    // push the closed conversation would miss its last exchange — or look
+    // empty and never be closed at all. No turn is open, so the file is
+    // quiescent and one push captures everything.
+    const pushStartedAt = Date.now();
+    try {
+      const pushed = await this.hub.syncAgent(agentId, ARCHIVE_SYNC_TIMEOUT_MS);
+      if (!pushed.agentOnline) throw new Error('agent left the hub');
+    } catch (err) {
+      this.logger.warn(
+        `Transcript archive: agent push failed for ${agentId}/${channel} after ${Date.now() - pushStartedAt}ms: ${(err as Error).message}`,
+      );
+      throw new ServiceUnavailableException({
+        code: BridleResetErrorCodes.SyncFailed,
+      });
+    }
+    this.logger.log(
+      `Transcript archive: agent pushed its files in ${Date.now() - pushStartedAt}ms (${agentId}/${channel})`,
+    );
 
     // Read current — NotFound is expected (nothing to archive yet);
     // everything else we want to see in logs so a silent {} doesn't
@@ -760,6 +822,8 @@ export class BridleController {
         this.logger.log(
           `Transcript archive: nothing to archive (${agentId}/${channel})`,
         );
+        // Nothing to keep is still a reset: the agent must forget.
+        this.hub.resetConversation(agentId, channel);
         return {};
       }
       this.logger.warn(
@@ -772,6 +836,7 @@ export class BridleController {
       this.logger.log(
         `Transcript archive: empty content (${agentId}/${channel})`,
       );
+      this.hub.resetConversation(agentId, channel);
       return {};
     }
 
@@ -794,25 +859,47 @@ export class BridleController {
     }
 
     try {
-      // Now that the archive exists, drop the live file. If this step
-      // fails, both files exist briefly — recoverable by replaying the
-      // archived copy; preferable to having neither.
+      // Now that the archive exists, drop the live file.
       await this.fileGateway.delete(agentId, livePath);
     } catch (err) {
       this.logger.warn(
-        `Transcript archive delete-live failed for ${agentId}/${channel}: ${(err as Error).message} — archive still at ${archivedPath}`,
+        `Transcript archive delete-live failed for ${agentId}/${channel}: ${(err as Error).message}`,
       );
+      // Take the copy back: the conversation is still live, and a retry
+      // would otherwise leave two closed conversations for one.
+      try {
+        await this.fileGateway.delete(agentId, archivedPath);
+      } catch (undoErr) {
+        this.logger.warn(
+          `Transcript archive: could not remove ${archivedPath} after the failed delete: ${(undoErr as Error).message}`,
+        );
+      }
       throw err;
     }
 
     this.logger.log(
       `Transcript archived for ${agentId}/${channel} → ${archivedPath} (${content.length} bytes)`,
     );
-    // Tell the live agent to drop its own local/in-memory copy too — the
-    // fileGateway calls above only touched the S3 mirror, and the running
-    // pod would otherwise re-upload its still-intact local session file on
-    // the next local change, resurrecting the history we just archived.
-    this.hub.clearAgentSession(agentId, channel);
+
+    // The index row IS the conversation's record — id, ratings, summary — so
+    // it moves with the file. Not fatal: reconciliation repairs the index,
+    // and failing here would leave the reset half done.
+    try {
+      await this.chats.archiveSession(
+        agentId,
+        `bridle:${channel}`,
+        `bridle:${channel}.${ts}.archived`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Transcript archive: index move failed for ${agentId}/${channel}: ${(err as Error).message}`,
+      );
+    }
+
+    // Last, and only now: the agent drops its own copy (it would otherwise
+    // re-upload its local session file and bring the history back) and every
+    // browser on the conversation is told it was reset.
+    this.hub.resetConversation(agentId, channel);
     return { archivedPath };
   }
 }

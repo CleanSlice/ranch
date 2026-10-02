@@ -197,6 +197,24 @@ export interface IBridleUserMessageEvent {
   seq: number;
 }
 
+/**
+ * Hub → browser: this conversation was reset (CLEAN-136). Every socket on it
+ * gets the frame, the one that asked included; a browser empties its record
+ * of the conversation and keeps its `lastSeq`. Carries no content.
+ */
+export interface IBridleConversationResetEvent {
+  type: 'conversation_reset';
+  ts: number;
+  seq: number;
+}
+
+/** Why closing a conversation was refused; the consoles map these to copy. */
+export const BridleResetErrorCodes = {
+  AgentOffline: 'AGENT_OFFLINE',
+  TurnInProgress: 'TURN_IN_PROGRESS',
+  SyncFailed: 'SYNC_FAILED',
+} as const;
+
 /** Agent → Hub: events routed to browser clients */
 export interface IBridleOutgoingEvent {
   type:

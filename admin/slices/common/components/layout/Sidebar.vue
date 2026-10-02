@@ -12,8 +12,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarTrigger,
-  useSidebar,
 } from '#theme/components/ui/sidebar';
 import {
   DropdownMenu,
@@ -54,9 +52,6 @@ async function onLogout() {
 
 const menu = useMenuStore();
 
-const { state: sidebarState } = useSidebar();
-const collapsed = computed(() => sidebarState.value === 'collapsed');
-
 const iconMap: Record<string, unknown> = {
   Bot,
   LayoutTemplate: IconTemplate,
@@ -85,35 +80,24 @@ const itemsByGroup = (group: MenuGroupTypes) =>
 
 <template>
   <Sidebar collapsible="icon" variant="inset">
-    <SidebarHeader class="gap-0">
-      <!-- The content header used to hold these (CLEAN-131). Expanded: the
-           Live stream indicator in its own line above, right-aligned; the
-           collapse toggle opposite the Ranch / Admin block. Collapsed to
-           icons: the indicator keeps its place as a bare dot and the toggle
-           drops under the logo so the rail is not the sole way back. -->
-      <div class="flex justify-end group-data-[collapsible=icon]:justify-center">
-        <AgentStatusIndicator class="-mr-1 group-data-[collapsible=icon]:mr-0" :compact="collapsed" />
-      </div>
-      <div class="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
-        <SidebarMenu class="min-w-0 flex-1">
-          <SidebarMenuItem>
-            <SidebarMenuButton as-child size="lg">
-              <NuxtLink to="/rancher">
-                <div
-                  class="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
-                >
-                  <IconTractor class="size-4 p-0" />
-                </div>
-                <div class="flex flex-col">
-                  <span class="font-semibold text-sm">Ranch</span>
-                  <span class="text-xs text-muted-foreground">Admin</span>
-                </div>
-              </NuxtLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <SidebarTrigger class="shrink-0 text-muted-foreground hover:text-foreground" />
-      </div>
+    <SidebarHeader>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton as-child size="lg">
+            <NuxtLink to="/rancher">
+              <div
+                class="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+              >
+                <IconTractor class="size-4 p-0" />
+              </div>
+              <div class="flex flex-col">
+                <span class="font-semibold text-sm">Ranch</span>
+                <span class="text-xs text-muted-foreground">Admin</span>
+              </div>
+            </NuxtLink>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
     </SidebarHeader>
 
     <SidebarContent>

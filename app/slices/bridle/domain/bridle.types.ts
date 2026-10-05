@@ -137,6 +137,14 @@ export interface IBridleMessage {
    */
   streaming?: boolean;
   /**
+   * True on a message that came from the browser's stored copy rather than
+   * from this session's frames or the server's transcript (CLEAN-136).
+   * Session-only, stripped before persisting: it is what lets the history
+   * load tell "not saved yet" from "belonged to a conversation that was
+   * closed while this browser was away".
+   */
+  cached?: boolean;
+  /**
    * Present on the bubble that carries a file change proposal card
    * (CLEAN-112); such a bubble has no text of its own.
    */
@@ -270,6 +278,26 @@ export interface IBridleChannelEvents {
   onProposal(proposal: IBridleProposalSnapshot, seq?: number): void;
   /** A proposal left `pending` — from the admin card, the editor or the agent. */
   onProposalUpdate(update: IBridleProposalUpdate, seq?: number): void;
+  /**
+   * The conversation was reset — from this view, another tab, another device
+   * or the other console (CLEAN-136). Numbered like any frame.
+   */
+  onReset(seq?: number): void;
+  /**
+   * Whether the agent runtime is on the hub. Sent on connect and on every
+   * change; state, not history, so it carries no `seq`.
+   */
+  onAgentStatus(connected: boolean): void;
+}
+
+/**
+ * One page of a conversation as the server holds it, oldest message first.
+ * `nextCursor` starts the next older page; `hasMore` says there is one.
+ */
+export interface IBridleTranscriptPage {
+  messages: IBridleMessage[];
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 // ── File change proposals (CLEAN-112) ──────────────────────────

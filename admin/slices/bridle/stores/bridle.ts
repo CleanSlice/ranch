@@ -898,6 +898,18 @@ export const useBridleStore = defineStore('bridle', {
         c.isAgentConnected = !!data?.connected
       })
 
+      // The conversation was reset somewhere else — the customer console,
+      // the share page, another tab (CLEAN-136). The hub tells every socket
+      // on it; this view empties the way its own "New chat" does after the
+      // request, minus the request. Our own reset comes back here too, and
+      // emptying an empty conversation is harmless.
+      socket.on('conversation_reset', (data: { seq?: number }) => {
+        if (!acceptHubSeq(c, data?.seq)) return
+        this.clearMessages(c.key)
+        clearDebugFromStorage(agentId)
+        saveOutbox(c.key, [])
+      })
+
       // Another view of this identity (second tab, a colleague) sent a
       // message: show the question, not only the answer. Our own sends never
       // come back — and if one did, its id is already here.

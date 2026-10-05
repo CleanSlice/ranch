@@ -19,8 +19,8 @@ import type {
 export class ChatService {
   constructor(private gateway: IChatGateway) {}
 
-  listMine(page = 1, perPage = 50): Promise<IChatListResult> {
-    return this.gateway.listMine(page, perPage);
+  listMine(page = 1, perPage = 50, archived = false): Promise<IChatListResult> {
+    return this.gateway.listMine(page, perPage, archived);
   }
 
   getMine(id: string): Promise<IChatSession | null> {

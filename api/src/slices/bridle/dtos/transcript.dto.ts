@@ -90,6 +90,17 @@ export class TranscriptQueryDto {
   cursor?: string;
 }
 
+export class ArchiveTranscriptResponseDto {
+  @ApiPropertyOptional({
+    example:
+      'data/sessions/bridle:admin.2026-10-02T09-14-03-512Z.archived.jsonl',
+    description:
+      'Where the closed conversation was set aside. Absent when there was ' +
+      'nothing to close — the conversation is reset either way.',
+  })
+  archivedPath?: string;
+}
+
 export class TranscriptResponseDto {
   @ApiProperty({ type: [TranscriptMessageDto] })
   messages: TranscriptMessageDto[];

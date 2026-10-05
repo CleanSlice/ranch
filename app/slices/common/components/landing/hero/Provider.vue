@@ -126,6 +126,7 @@ const demoAgent: IAgentData = {
   config: {},
   resources: { cpu: '500m', memory: '512Mi' },
   isPublic: true,
+  isAdmin: false,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };

@@ -148,6 +148,47 @@ function scrollToBottom() {
   });
 }
 
+// ── Earlier messages (CLEAN-136) ──────────────────────────────
+// The chat opens on the newest page of the conversation as the server holds
+// it; older pages come in at the top, one at a time, when the reader gets
+// there.
+
+const hasOlder = computed(() => {
+  const key = activeConversation.value?.key;
+  return key ? bridleStore.hasOlder(key) : false;
+});
+const loadingOlder = computed(() => {
+  const key = activeConversation.value?.key;
+  return key ? bridleStore.isLoadingOlder(key) : false;
+});
+
+/** How close to the top counts as "asking for what came before". */
+const NEAR_TOP_PX = 8;
+
+async function loadOlder() {
+  const el = scrollEl.value;
+  const conversation = activeConversation.value;
+  if (!el || !conversation || !hasOlder.value || loadingOlder.value) return;
+  // Measured before the page lands: what was added above is exactly how far
+  // the message being read has moved down.
+  const before = el.scrollHeight;
+  const added = await bridleStore.loadOlder(conversation);
+  if (!added) return;
+  await nextTick();
+  el.scrollTop += el.scrollHeight - before;
+}
+
+function onScroll() {
+  const el = scrollEl.value;
+  if (el && el.scrollTop <= NEAR_TOP_PX) void loadOlder();
+}
+
+/** Bumped by a reset; the composer is keyed on it and remounts empty. */
+const composerEpoch = computed(() => {
+  const key = activeConversation.value?.key;
+  return key ? bridleStore.epochFor(key) : 0;
+});
+
 async function onSend(text: string) {
   const conversation = activeConversation.value;
   if (!conversation) return;
@@ -301,10 +342,31 @@ onBeforeUnmount(() => {
         ref="scrollEl"
         class="flex-1 min-h-0 overflow-y-auto bg-linear-to-b from-muted/20 via-background to-background"
         :class="{ 'flex': !messages.length }"
+        @scroll.passive="onScroll"
       >
         <div class="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6"
         :class="{ 'justify-center': !messages.length }"
         >
+          <!-- Earlier pages of the conversation. A button as well as a hint:
+               a short page on a tall screen has nothing to scroll, and a
+               keyboard has no scroll at all. -->
+          <p
+            v-if="loadingOlder"
+            class="flex items-center justify-center gap-2 py-1 text-xs text-muted-foreground"
+            role="status"
+          >
+            <Icon name="loader-2" :size="12" class="animate-spin" />
+            {{ $t('chat.older_loading') }}
+          </p>
+          <button
+            v-else-if="hasOlder"
+            type="button"
+            class="mx-auto rounded-full px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            @click="loadOlder"
+          >
+            {{ $t('chat.older_hint') }}
+          </button>
+
           <!-- Conversation starter when no messages yet -->
           <div
             v-if="!messages.length"
@@ -415,8 +477,12 @@ onBeforeUnmount(() => {
            while the agent answers: a follow-up mid-turn is a normal thing to
            send, and the store gates sending on uploads alone. -->
       <BridleChatDropZone v-if="isDraggingFile" />
+      <!-- Keyed on the conversation's epoch: after "New chat" the composer
+           remounts, so text typed into the closed conversation does not
+           follow the person into the new one (CLEAN-136). -->
       <BridleChatInput
         v-else
+        :key="composerEpoch"
         :conversation="activeConversation"
         @send="onSend"
       />

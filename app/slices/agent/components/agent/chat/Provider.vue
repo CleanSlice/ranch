@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { IBridleConversation } from '#bridle/domain';
+
 const props = defineProps<{ id: string }>();
 
 const agentStore = useAgentStore();
@@ -12,6 +14,15 @@ const { pending, error, refresh } = await useAsyncData(
   () => agentStore.fetchById(props.id),
 );
 const agent = computed(() => agentStore.byId(props.id));
+
+/**
+ * The conversation this page shows — the same `{ key: agentId, agentId }` the
+ * chat below falls back to — for the header's "New chat". A plain object per
+ * agent, so the button is not handed a new descriptor on every render.
+ */
+const conversation = computed<IBridleConversation | null>(() =>
+  agent.value ? { key: agent.value.id, agentId: agent.value.id } : null,
+);
 
 const canManage = computed(() =>
   authStore.hasRole(UserRoleTypes.Owner, UserRoleTypes.Admin),
@@ -220,6 +231,10 @@ const initials = computed(() => {
             {{ agent.templateId }}
           </p>
         </div>
+
+        <!-- Anyone talking to the agent may start their conversation over
+             (CLEAN-136). The descriptor is the chat's own default below. -->
+        <BridleChatNewChat v-if="conversation" :conversation="conversation" />
 
         <!-- No `canManage` gate: any logged-in user who can open the agent may
              share it (spec clarification, 2026-09-07). -->

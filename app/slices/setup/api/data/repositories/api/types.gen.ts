@@ -887,6 +887,13 @@ export type TranscriptResponseDto = {
   proposals: Array<FileChangeProposalDto>;
 };
 
+export type ArchiveTranscriptResponseDto = {
+  /**
+   * Where the closed conversation was set aside. Absent when there was nothing to close — the conversation is reset either way.
+   */
+  archivedPath?: string;
+};
+
 export type ShareLinkDto = {
   /**
    * True while the link accepts visitors. False when the agent was never shared or the link has been revoked.
@@ -1783,6 +1790,10 @@ export type ConnectPeerDto = {
    */
   url?: string;
   /**
+   * The agent card itself, as JSON or YAML, for an agent whose card is not published at an address (CLEAN-116). Vetted exactly like an imported address, and identified by the address the card names, so importing the same agent later by URL updates this entry rather than duplicating it. Mutually exclusive with `peerAgentId` and `url`.
+   */
+  card?: string;
+  /**
    * Bearer credential the external agent expects, when it needs one. Stored write-only — no response ever returns it. On re-import: omitted keeps the stored credential, empty string clears it.
    */
   token?: string;
@@ -1790,9 +1801,13 @@ export type ConnectPeerDto = {
 
 export type PreviewPeerUrlDto = {
   /**
-   * A2A address of the agent to preview — base URL or its well-known card form.
+   * A2A address of the agent to preview — base URL or its well-known card form. Mutually exclusive with `card`.
    */
-  url: string;
+  url?: string;
+  /**
+   * The card itself, as JSON or YAML, when it is not published anywhere (CLEAN-116). Read and checked, never saved. Mutually exclusive with `url`.
+   */
+  card?: string;
   /**
    * Bearer credential for the card read, when the agent needs one. Used for this read only; nothing is stored.
    */
@@ -1901,6 +1916,10 @@ export type AgentToolCatalogDto = {
    * When the pod last called tools/list; null if it never did.
    */
   listedAt: string | null;
+  /**
+   * none — no pod runs; pending — the running pod has not listed its tools yet, so no inPod flag is set; fresh — the snapshot is from this pod.
+   */
+  listingState: "none" | "pending" | "fresh";
   groups: Array<AgentToolGroupDto>;
 };
 
@@ -1954,9 +1973,21 @@ export type ReportUsageDto = {
 
 export type StartMcpOauthDto = {
   /**
-   * Agent that will own the connection. The stored refresh token is scoped to this agent.
+   * Agent whose secret store receives the token. The stored refresh token is scoped to this agent.
    */
   agentId: string;
+  /**
+   * Whose token it will be (CLEAN-80): the chat user id the hub forwarded on the message, or a share/anon client id. Omit for an agent-wide connection shared by everyone who talks to the agent.
+   */
+  subject?: string;
+  /**
+   * Display only — shown back as "connected as …".
+   */
+  email?: string;
+  /**
+   * Where the callback page sends the person after the login — the chat they started from, as an absolute URL. Honoured only on one of the platform's own origins (API, admin, app, localhost); otherwise the page just says to return to the chat.
+   */
+  returnTo?: string;
 };
 
 export type StartMcpOauthResultDto = {
@@ -1968,6 +1999,15 @@ export type StartMcpOauthResultDto = {
 
 export type McpOauthStatusDto = {
   connected: boolean;
+  /**
+   * Which bundle answered: the subject's own, the agent-wide one, or null when none.
+   */
+  scope?: "subject" | "agent";
+  email?: string;
+  /**
+   * epoch ms of the login
+   */
+  connectedAt?: number;
 };
 
 export type RunPaddockJudgeOverrideDto = {
@@ -3690,14 +3730,22 @@ export type ArchiveBridleTranscriptErrors = {
    * Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
    */
   403: unknown;
+  /**
+   * `AGENT_OFFLINE` — the agent is not connected and cannot be told to forget; `TURN_IN_PROGRESS` — the agent is still answering. Nothing was changed.
+   */
+  409: unknown;
+  /**
+   * `SYNC_FAILED` — the agent did not push its files in time, so the conversation could not be saved complete. Nothing was changed.
+   */
+  503: unknown;
 };
 
 export type ArchiveBridleTranscriptResponses = {
-  /**
-   * `{ archivedPath }` for the timestamped copy, or `{}` when there was nothing to archive.
-   */
-  200: unknown;
+  200: ArchiveTranscriptResponseDto;
 };
+
+export type ArchiveBridleTranscriptResponse =
+  ArchiveBridleTranscriptResponses[keyof ArchiveBridleTranscriptResponses];
 
 export type RevokeAgentShareLinkData = {
   body?: never;
@@ -5532,6 +5580,7 @@ export type McpOauthStatusData = {
   };
   query: {
     agentId: string;
+    subject: string;
   };
   url: "/mcp-servers/{serverId}/oauth/status";
 };

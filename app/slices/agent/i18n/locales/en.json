@@ -48,6 +48,7 @@
     "no_match": "No agent matches “{term}”.",
     "empty": "No agents yet.",
     "switch": "Switch agent",
-    "close": "Close agent list"
+    "close": "Close agent list",
+    "admin_agent": "Ranch admin agent"
   }
 }

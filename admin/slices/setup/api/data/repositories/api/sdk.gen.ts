@@ -121,6 +121,7 @@ import type {
   GetBridleTranscriptData,
   GetBridleTranscriptResponse,
   ArchiveBridleTranscriptData,
+  ArchiveBridleTranscriptResponse,
   RevokeAgentShareLinkData,
   RevokeAgentShareLinkResponse,
   GetAgentShareLinkData,
@@ -1870,7 +1871,7 @@ export class BridleService {
   }
 
   /**
-   * Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat — UI clears, refresh shows empty. Note: the agent runtime's in-memory session may still hold context until the next pod restart. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
+   * Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat: the running agent is told to drop its own copy, and every browser that has the conversation open is told it was reset (`conversation_reset`). Nothing is kept — to keep the conversation, use `POST …/transcript/archive`. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
    */
   public static resetBridleTranscript<ThrowOnError extends boolean = false>(
     options: Options<ResetBridleTranscriptData, ThrowOnError>,
@@ -1902,13 +1903,13 @@ export class BridleService {
   }
 
   /**
-   * Archive the persisted chat transcript for an agent/channel — the live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`) and the live slot starts empty. Used by the embed's "New chat" action when the visitor wants a clean slate but we still want the prior conversation for admin/audit. No-op (returns `{}`) when there's nothing to archive. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
+   * Close the current conversation and start a new one ("New chat"). The live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`), its row in the chat index moves with it, the running agent is told to forget the conversation and every browser that has it open is told it was reset. Refused, with nothing changed, while a real reset cannot be guaranteed: 409 `AGENT_OFFLINE` when the agent is not connected, 409 `TURN_IN_PROGRESS` while it is still answering, 503 `SYNC_FAILED` when it did not push its files in time. Answers `{}` when there was nothing to close — the conversation is reset either way. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
    */
   public static archiveBridleTranscript<ThrowOnError extends boolean = false>(
     options: Options<ArchiveBridleTranscriptData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).post<
-      unknown,
+      ArchiveBridleTranscriptResponse,
       unknown,
       ThrowOnError
     >({

@@ -42,6 +42,12 @@ import {
   type IDeliveryEvent,
 } from '#bridle/utils/delivery';
 import { missedReplies } from '#bridle/utils/transcriptTail';
+import { mergeTranscript } from '#bridle/utils/transcriptMerge';
+import {
+  newChatBlock as resolveNewChatBlock,
+  newChatFailureKey,
+  type NewChatBlocks,
+} from '#bridle/utils/newChat';
 import { proposalMessageId, proposalTs } from '#bridle/utils/proposalMerge';
 import type {
   IBridleProposalSnapshot,
@@ -108,6 +114,33 @@ const CONVERSATION_STORAGE_PREFIX = 'bridle:conversation:';
  * the conversation entry is a bare message array that older builds still read.
  */
 const HUB_SEQ_STORAGE_PREFIX = 'bridle:seq:';
+
+/**
+ * How much of a conversation the stored copy keeps: the newest two transcript
+ * pages. The server holds the conversation (CLEAN-136); the copy only has to
+ * paint the first screen before the load answers and to carry what the server
+ * does not have yet. Without a bound, scrolling far back would write the
+ * whole history into localStorage on the next message.
+ */
+const STORED_COPY_MAX = 100;
+
+/** Chat identities the hub mints per connection — there is no history to load. */
+const ANONYMOUS_CLIENT_PREFIX = 'anon-';
+
+/** What the store knows about a conversation's history on the server. */
+interface IHistoryState {
+  /** The newest page was merged at least once in this page session. */
+  loaded: boolean;
+  /** Where the next older page starts; null when there is none. */
+  cursor: string | null;
+  hasMore: boolean;
+  loadingOlder: boolean;
+  /**
+   * The newest message stamp the transcript held when it was loaded. Agent
+   * content stamped at or before it is already on screen as transcript.
+   */
+  tailTs: number;
+}
 
 /**
  * Sent with attachments when the person typed nothing. The shared
@@ -281,6 +314,23 @@ export const useBridleStore = defineStore('bridle', () => {
    * resend after signing in; consumed once, never persisted.
    */
   const drafts = ref<Record<string, string>>({});
+  /**
+   * The conversation as the server holds it (CLEAN-136): whether its newest
+   * page was merged in, and where the next older one starts.
+   */
+  const history = ref<Record<string, IHistoryState>>({});
+  /** A "New chat" in flight — the single-flight latch, and the spinner. */
+  const resetting = ref<Record<string, boolean>>({});
+  /** Whether the agent runtime is on the hub; absent until the hub says. */
+  const agentOnline = ref<Record<string, boolean>>({});
+  /**
+   * Bumped by every reset of a conversation. The composer is keyed on it, so
+   * typed text goes with the conversation it was typed into, and a request
+   * that started before a reset can tell its answer is about the old one.
+   */
+  const epochs = ref<Record<string, number>>({});
+  /** History loads in flight — never two for one conversation. */
+  const historyLoading = new Set<string>();
 
   // Read side takes the bare `key` — a template already holds the descriptor
   // and passing the whole object just to look up an array buys nothing.
@@ -296,6 +346,12 @@ export const useBridleStore = defineStore('bridle', () => {
   const stagedFor = (key: string) => staged.value[key] ?? [];
   const attachmentErrorFor = (key: string) => attachmentErrors.value[key] ?? null;
   const draftFor = (key: string) => drafts.value[key] ?? '';
+  const epochFor = (key: string) => epochs.value[key] ?? 0;
+  const isResetting = (key: string) => resetting.value[key] === true;
+  /** Whether an older page exists, and whether one is on its way. */
+  const hasOlder = (key: string) => history.value[key]?.hasMore === true;
+  const isLoadingOlder = (key: string) =>
+    history.value[key]?.loadingOlder === true;
 
   function clearDraft(key: string) {
     delete drafts.value[key];
@@ -340,14 +396,18 @@ export const useBridleStore = defineStore('bridle', () => {
       // stored order, which is the order the person saw them arrive in.
       conversations.value[key] = numberLegacy(
         stored.map(({ streaming: _s, ...m }) => m),
-      ).map((m) =>
-        // A message that was still on its way when the page went away: its
-        // ack was owed to a socket that no longer exists. Say so, and let the
-        // person decide — resending is safe, the id is the same.
-        m.role === BridleRoleTypes.User && m.delivery
-          ? withDelivery(m, { type: 'pageLoad' })
-          : m,
-      );
+      )
+        .map((m) =>
+          // A message that was still on its way when the page went away: its
+          // ack was owed to a socket that no longer exists. Say so, and let
+          // the person decide — resending is safe, the id is the same.
+          m.role === BridleRoleTypes.User && m.delivery
+            ? withDelivery(m, { type: 'pageLoad' })
+            : m,
+        )
+        // From the stored copy, not from this session: the history load
+        // treats these as a cache of the last view (CLEAN-136).
+        .map((m) => ({ ...m, cached: true }));
       nextSeqs.set(key, nextSeq(conversations.value[key]));
       persist(conv);
     }
@@ -366,7 +426,9 @@ export const useBridleStore = defineStore('bridle', () => {
     if (messages && messages.length) {
       saveConversationToStorage(
         conv.key,
-        messages.map(({ streaming: _s, ...m }) => m),
+        messages
+          .slice(-STORED_COPY_MAX)
+          .map(({ streaming: _s, cached: _c, ...m }) => m),
       );
     } else {
       clearConversationFromStorage(conv.key);
@@ -640,7 +702,13 @@ export const useBridleStore = defineStore('bridle', () => {
     if (!channel) return false;
     let tail: IBridleMessage[];
     try {
-      tail = await getService().transcriptTail(conv.agentId, channel, conv.share);
+      const page = await getService().transcriptPage(
+        conv.agentId,
+        channel,
+        null,
+        conv.share,
+      );
+      tail = page.messages;
     } catch (err) {
       console.warn('[bridle] transcript read failed', err);
       return false;
@@ -671,6 +739,131 @@ export const useBridleStore = defineStore('bridle', () => {
       }
     }
     return missed.length > 0 || cards > 0;
+  }
+
+  // ── History ────────────────────────────────────────────────
+  // The server's transcript is the conversation (CLEAN-136). The console used
+  // to show only what this browser had seen: anything written in the admin
+  // console, on another device or in another browser was missing, and the one
+  // catch-up path above restores the agent's answers only.
+
+  /**
+   * Load the newest transcript page and merge it into what is on screen.
+   * Once per conversation per page session — a socket that drops and returns
+   * is filled by the hub's replay — and again only after a load that failed.
+   * A failure changes nothing: the stored copy stands in until one succeeds.
+   */
+  async function loadHistory(conv: IBridleConversation) {
+    const key = conv.key;
+    const channel = hubClientIds.get(key);
+    if (!channel || channel.startsWith(ANONYMOUS_CLIENT_PREFIX)) return;
+    if (history.value[key]?.loaded || historyLoading.has(key)) return;
+
+    historyLoading.add(key);
+    // A reset while the request is open makes its answer a page of the
+    // conversation that was just closed.
+    const epoch = epochFor(key);
+    try {
+      const page = await getService().transcriptPage(
+        conv.agentId,
+        channel,
+        null,
+        conv.share,
+      );
+      if (epochFor(key) !== epoch) return;
+
+      // Measured against the screen as it is NOW: messages may have been
+      // sent or received while the request was in flight.
+      const merged = mergeTranscript(messagesFor(key), page, Date.now());
+      conversations.value[key] = merged.messages;
+      // Session-only blocks whose turn the transcript took over are plain
+      // history now; an open one, and anything below the cut, stays.
+      const cut = merged.cutSeq;
+      if (cut !== null && thinking.value[key]) {
+        thinking.value[key] = thinking.value[key].filter(
+          (b) =>
+            b.state === BridleThinkingBlockStates.Thinking ||
+            (b.seq ?? Number.MAX_SAFE_INTEGER) > cut,
+        );
+      }
+      nextSeqs.set(key, nextSeq([...merged.messages, ...thinkingFor(key)]));
+
+      let tailTs = 0;
+      for (const m of page.messages) if (m.ts > tailTs) tailTs = m.ts;
+      history.value[key] = {
+        loaded: true,
+        cursor: page.nextCursor,
+        hasMore: page.hasMore,
+        loadingOlder: false,
+        tailTs,
+      };
+      persist(conv);
+    } catch (err) {
+      console.warn('[bridle] history load failed', err);
+    } finally {
+      historyLoading.delete(key);
+    }
+  }
+
+  /**
+   * Prepend the next older page. Returns how many messages it added so the
+   * chat can keep the reading position. Numbered below everything on screen:
+   * nothing already there changes its `seq`, its place or its render key.
+   */
+  async function loadOlder(conv: IBridleConversation): Promise<number> {
+    const key = conv.key;
+    const state = history.value[key];
+    const channel = hubClientIds.get(key);
+    if (!state || !channel) return 0;
+    if (state.loadingOlder || !state.hasMore || !state.cursor) return 0;
+
+    state.loadingOlder = true;
+    const epoch = epochFor(key);
+    try {
+      const page = await getService().transcriptPage(
+        conv.agentId,
+        channel,
+        state.cursor,
+        conv.share,
+      );
+      if (epochFor(key) !== epoch) return 0;
+
+      const list = messagesFor(key);
+      const known = new Set(list.map((m) => m.id));
+      const fresh = page.messages.filter((m) => !known.has(m.id));
+      let floor = 1;
+      for (const item of [...list, ...thinkingFor(key)]) {
+        if (typeof item.seq === 'number' && item.seq < floor) floor = item.seq;
+      }
+      const older = fresh.map((m, i) => ({
+        ...m,
+        seq: floor - fresh.length + i,
+      }));
+      conversations.value[key] = [...older, ...list];
+      state.cursor = page.nextCursor;
+      state.hasMore = page.hasMore;
+      return older.length;
+    } catch (err) {
+      console.warn('[bridle] older history load failed', err);
+      return 0;
+    } finally {
+      // Looked up again: a reset in the meantime replaced the record.
+      const current = history.value[key];
+      if (current) current.loadingOlder = false;
+    }
+  }
+
+  /**
+   * Agent content stamped at or before the transcript's newest message is
+   * already on screen as transcript. It comes back when the hub replays a
+   * turn that finished while this chat was closed — under wire ids the
+   * transcript does not share, so the id check cannot catch it. Both stamps
+   * are the runtime's clock, which is what makes them comparable. Twin of
+   * the admin store's `_isTranscriptContent`; interim for the same reason.
+   */
+  function isTranscriptContent(key: string, ts: number | null): boolean {
+    const state = history.value[key];
+    return !!state?.loaded && typeof ts === 'number' && ts <= state.tailTs;
   }
 
   function disarmWatchdog(key: string) {
@@ -794,6 +987,8 @@ export const useBridleStore = defineStore('bridle', () => {
         if (done) pending.value[key] = false;
         return;
       }
+      // A replayed frame of an answer the loaded history already shows.
+      if (isTranscriptContent(key, reply.ts)) return;
       // First visible chunk of a new bubble — seal the open segment so
       // subsequent steps continue below this message.
       freezeOpenThinking(key);
@@ -825,6 +1020,8 @@ export const useBridleStore = defineStore('bridle', () => {
       replaceMessage(conv, { ...existing, text: reply.text });
       return;
     }
+    // A replayed frame of an answer the loaded history already shows.
+    if (isTranscriptContent(key, reply.ts)) return;
     // Content lands below the open segment — seal it so the next step opens
     // a fresh segment under this message (turn stays open).
     freezeOpenThinking(key);
@@ -926,6 +1123,15 @@ export const useBridleStore = defineStore('bridle', () => {
       onUserMessage: (message) => onUserMessage(conv, message),
       onProposal: (proposal, seq) => onProposal(conv, proposal, seq),
       onProposalUpdate: (update, seq) => onProposalUpdate(conv, update, seq),
+      onReset(seq) {
+        // From this view, another tab, another device or the admin console:
+        // every screen on the conversation reaches "empty" through here.
+        if (!acceptSeq(key, seq)) return;
+        applyReset(conv);
+      },
+      onAgentStatus(connected) {
+        agentOnline.value[key] = connected;
+      },
     };
   }
 
@@ -979,6 +1185,9 @@ export const useBridleStore = defineStore('bridle', () => {
   function onWelcome(conv: IBridleConversation, welcome: IBridleWelcome) {
     const key = conv.key;
     if (welcome.clientId) hubClientIds.set(key, welcome.clientId);
+    // Now that the hub has said which conversation this is, show it as the
+    // server holds it. A no-op after the first successful load.
+    void loadHistory(conv);
     if (welcome.seq === null || welcome.seq >= lastHubSeq(key)) return;
     // The hub counts from below what we have applied: it restarted and its
     // replay buffer went with it. Adopt its numbering — or every frame from
@@ -1082,6 +1291,8 @@ export const useBridleStore = defineStore('bridle', () => {
       held.channel?.close();
       channels.delete(key);
       connection.value[key] = BridleChannelStates.Offline;
+      // Without a channel nothing says whether the agent is reachable.
+      delete agentOnline.value[key];
       pending.value[key] = false;
       closeAllTurns(key);
     }, RELEASE_GRACE_MS);
@@ -1264,6 +1475,90 @@ export const useBridleStore = defineStore('bridle', () => {
     clearConversationFromStorage(conv.key);
   }
 
+  // ── New chat (CLEAN-136) ───────────────────────────────────
+
+  /**
+   * The conversation was reset on the server: empty this browser's record of
+   * it. The ONE way a screen becomes empty — the view that asked and every
+   * other view of the conversation both come through here, so they cannot
+   * disagree about what a reset leaves behind.
+   */
+  function applyReset(conv: IBridleConversation) {
+    const key = conv.key;
+    reset(conv);
+    // The server's conversation is empty now, and known to be: nothing to
+    // load, nothing older to page to.
+    history.value[key] = {
+      loaded: true,
+      cursor: null,
+      hasMore: false,
+      loadingOlder: false,
+      tailTs: 0,
+    };
+    epochs.value[key] = epochFor(key) + 1;
+  }
+
+  /**
+   * Why "New chat" is unavailable for this conversation, or null when it is
+   * available. `hubClientIds` is a plain map, but it is written on `welcome`
+   * and the hub's `agent_status` follows at once — so the reactive
+   * `agentOnline` read below re-evaluates this right after it changes.
+   */
+  function newChatBlock(key: string): NewChatBlocks | null {
+    const list = messagesFor(key);
+    return resolveNewChatBlock({
+      resetting: isResetting(key),
+      messageCount: list.length,
+      connected: connectionFor(key) === BridleChannelStates.Connected,
+      agentOnline: agentOnline.value[key],
+      hasClientId: hubClientIds.has(key),
+      answering:
+        isPending(key) ||
+        hasOpenThinking(key) ||
+        list.some((m) => m.streaming === true),
+    });
+  }
+
+  /**
+   * Close the current conversation and start an empty one. Either it really
+   * happened on the server — then the record is emptied — or the conversation
+   * stays exactly as it is and a notice says the new chat did not start. The
+   * button's own rule (`newChatBlock`) is a convenience; the server refuses
+   * the same cases on its own and that answer is the one acted on.
+   */
+  async function startNewChat(conv: IBridleConversation) {
+    const key = conv.key;
+    const channel = hubClientIds.get(key);
+    if (!channel || isResetting(key)) return;
+
+    resetting.value[key] = true;
+    errors.value[key] = null;
+    const epoch = epochFor(key);
+    try {
+      await getService().archiveTranscript(conv.agentId, channel, conv.share);
+      // The hub's `conversation_reset` frame usually lands before this
+      // answer and has done the work; emptying twice could take a message
+      // sent in between with it.
+      if (epochFor(key) === epoch) applyReset(conv);
+    } catch (err) {
+      const response = (
+        err as { response?: { status?: number; data?: unknown } } | null
+      )?.response;
+      // A dead share link is the share page's story: its interceptor has
+      // already switched to the invalid-link state on this same 403.
+      if (conv.share && response?.status === 403) return;
+      const body = response?.data as
+        | { code?: unknown; data?: { code?: unknown } }
+        | undefined;
+      const code = body?.code ?? body?.data?.code;
+      errors.value[key] = {
+        key: newChatFailureKey(typeof code === 'string' ? code : undefined),
+      };
+    } finally {
+      delete resetting.value[key];
+    }
+  }
+
   return {
     conversations,
     messagesFor,
@@ -1296,6 +1591,15 @@ export const useBridleStore = defineStore('bridle', () => {
     clearStaged,
     dismissAttachmentError,
     fetchAttachment,
+    // history
+    hasOlder,
+    isLoadingOlder,
+    loadOlder,
+    // new chat
+    newChatBlock,
+    startNewChat,
+    isResetting,
+    epochFor,
   };
 });
 

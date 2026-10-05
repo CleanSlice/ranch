@@ -6,6 +6,8 @@ const props = defineProps<{
     status: string;
     templateId: string;
     updatedAt?: string;
+    /** The Ranch admin agent: marked, and pinned first by the rail. */
+    isAdmin?: boolean;
   };
   active: boolean;
 }>();
@@ -108,8 +110,21 @@ const updatedRelative = computed<{ key: string; count: number } | null>(() => {
     </span>
 
     <span class="min-w-0 flex-1">
-      <span class="block truncate text-sm font-medium" :title="agent.name">
-        {{ agent.name }}
+      <span class="flex items-center gap-1.5">
+        <span class="truncate text-sm font-medium" :title="agent.name">
+          {{ agent.name }}
+        </span>
+        <!-- Labelled on a wrapper with a role, so the mark is announced as
+             one image with a name rather than as a bare svg. -->
+        <span
+          v-if="agent.isAdmin"
+          class="shrink-0 text-primary"
+          role="img"
+          :title="$t('rail.admin_agent')"
+          :aria-label="$t('rail.admin_agent')"
+        >
+          <Icon name="shield" :size="13" />
+        </span>
       </span>
       <span class="mt-0.5 flex items-center gap-1.5 text-xs">
         <span class="relative flex h-1.5 w-1.5">

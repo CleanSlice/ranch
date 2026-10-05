@@ -82,6 +82,15 @@ The chat conversation record in the bridle stores follows the same rule: one
 conversation per key in the store, written to by the socket and rendered by
 key.
 
+In both consoles the server's transcript is the authority for what it holds.
+The store loads it when the chat opens and merges it *into* that one record —
+it is never a second list beside it. What the browser keeps of a conversation
+(admin: an outbox of undelivered messages; app: a stored copy of the last view)
+is only what the server does not have yet. A reset reaches the record the same
+way from every direction — the view that asked, another tab, the other
+console — through one function, so two screens cannot disagree about what
+"empty" left behind (CLEAN-136).
+
 ## Review checklist
 
 - Does the template read `data` from `useAsyncData` / `useFetch`? Render from

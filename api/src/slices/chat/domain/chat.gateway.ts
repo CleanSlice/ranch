@@ -29,6 +29,20 @@ export abstract class IChatGateway {
   ): Promise<IChatSessionData>;
 
   /**
+   * A conversation was closed (CLEAN-136): its live session file became
+   * `<sessionKey>.<ts>.archived.jsonl`. Move the row to that key and mark it
+   * archived, so the closed conversation keeps its id, counts, summary and
+   * ratings and is listed once. Recreating it from the file would orphan all
+   * of those on a row whose transcript is gone. A no-op when the conversation
+   * was never indexed; the next conversation gets a row of its own.
+   */
+  abstract archiveSession(
+    agentId: string,
+    sessionKey: string,
+    archivedSessionKey: string,
+  ): Promise<void>;
+
+  /**
    * Apply a live activity signal: create the row if new, else bump the
    * monotonic counts (+1, dedup'd by eventId) and refresh
    * lastMessageAt/preview/lastRole. Realtime is the authoritative count owner.

@@ -1994,6 +1994,19 @@ export const TranscriptResponseDtoSchema = {
   required: ["messages", "channel", "nextCursor", "hasMore", "proposals"],
 } as const;
 
+export const ArchiveTranscriptResponseDtoSchema = {
+  type: "object",
+  properties: {
+    archivedPath: {
+      type: "string",
+      example:
+        "data/sessions/bridle:admin.2026-10-02T09-14-03-512Z.archived.jsonl",
+      description:
+        "Where the closed conversation was set aside. Absent when there was nothing to close — the conversation is reset either way.",
+    },
+  },
+} as const;
+
 export const ShareLinkDtoSchema = {
   type: "object",
   properties: {
@@ -4392,6 +4405,11 @@ export const StartMcpOauthDtoSchema = {
     email: {
       type: "string",
       description: 'Display only — shown back as "connected as …".',
+    },
+    returnTo: {
+      type: "string",
+      description:
+        "Where the callback page sends the person after the login — the chat they started from, as an absolute URL. Honoured only on one of the platform's own origins (API, admin, app, localhost); otherwise the page just says to return to the chat.",
     },
   },
   required: ["agentId"],

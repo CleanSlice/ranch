@@ -1,9 +1,16 @@
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { UserRoleTypes } from '#/user/user/domain';
 import { AgentEventTool } from './agentEvent.tool';
-import type { AgentEventService, NotificationDestinationService } from './domain';
+import type {
+  AgentEventService,
+  NotificationDestinationService,
+} from './domain';
 
 /**
  * These tools are the Events page and the Notifications settings from the
@@ -19,7 +26,8 @@ const operator = () => request([UserRoleTypes.Owner]);
 const plainAgent = () => request([UserRoleTypes.Agent]);
 
 type Result = { content: { text: string }[] };
-const textOf = (r: unknown) => (r as Result).content.map((c) => c.text).join('\n');
+const textOf = (r: unknown) =>
+  (r as Result).content.map((c) => c.text).join('\n');
 const jsonOf = (r: unknown) => JSON.parse(textOf(r));
 
 const at = new Date('2026-10-06T21:14:03.000Z');
@@ -61,7 +69,13 @@ const incident = () => ({
   witnesses: ['cluster-watcher'],
   eventCount: 2,
   notifications: [
-    { kind: 'opened', status: 'failed', attempts: 7, sentAt: null, lastError: 'Slack answered 503' },
+    {
+      kind: 'opened',
+      status: 'failed',
+      attempts: 7,
+      sentAt: null,
+      lastError: 'Slack answered 503',
+    },
   ],
   webhookUrl: ADDRESS,
 });
@@ -80,7 +94,10 @@ const view = (configured = true) => ({
 function harness(configured = true) {
   const service = {
     listEvents: jest.fn(async () => ({ items: [event()], nextCursor: null })),
-    listIncidents: jest.fn(async () => ({ items: [incident()], nextCursor: 'more' })),
+    listIncidents: jest.fn(async () => ({
+      items: [incident()],
+      nextCursor: 'more',
+    })),
   };
   const destinations = {
     view: jest.fn(async () => view(configured)),
@@ -89,7 +106,9 @@ function harness(configured = true) {
     sendTest: jest.fn(async () => ({ delivered: true, error: null })),
   };
   const agents = {
-    findById: jest.fn(async (id: string) => (id === 'a1' ? { id, name: 'Support Bot' } : null)),
+    findById: jest.fn(async (id: string) =>
+      id === 'a1' ? { id, name: 'Support Bot' } : null,
+    ),
   };
   const tool = new AgentEventTool(
     service as unknown as AgentEventService,
@@ -114,9 +133,19 @@ describe('AgentEventTool — who may use it', () => {
       () => tool.listAgentEvents({}, null, plainAgent()),
       () => tool.listAgentIncidents({}, null, plainAgent()),
       () => tool.getNotificationDestination({}, null, plainAgent()),
-      () => tool.setNotificationDestination({ webhookUrl: ADDRESS }, null, plainAgent()),
+      () =>
+        tool.setNotificationDestination(
+          { webhookUrl: ADDRESS },
+          null,
+          plainAgent(),
+        ),
       () => tool.sendTestNotification({}, null, plainAgent()),
-      () => tool.removeNotificationDestination({ confirm: true }, null, plainAgent()),
+      () =>
+        tool.removeNotificationDestination(
+          { confirm: true },
+          null,
+          plainAgent(),
+        ),
     ];
 
     for (const call of calls) {
@@ -137,9 +166,9 @@ describe('AgentEventTool — who may use it', () => {
     await expect(
       tool.setNotificationDestination({ webhookUrl: ADDRESS }, null, admin()),
     ).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(tool.sendTestNotification({}, null, admin())).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      tool.sendTestNotification({}, null, admin()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     await expect(
       tool.removeNotificationDestination({ confirm: true }, null, admin()),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -192,7 +221,9 @@ describe('AgentEventTool — reading', () => {
   it('lists incidents with their state and whether the team was told', async () => {
     const { tool, service } = harness();
 
-    const result = jsonOf(await tool.listAgentIncidents({ state: 'open' }, null, operator()));
+    const result = jsonOf(
+      await tool.listAgentIncidents({ state: 'open' }, null, operator()),
+    );
 
     expect(service.listIncidents).toHaveBeenCalledWith({
       agentId: undefined,
@@ -205,14 +236,23 @@ describe('AgentEventTool — reading', () => {
       state: 'open',
       witnesses: ['cluster-watcher'],
       eventCount: 2,
-      notifications: [{ kind: 'opened', status: 'failed', attempts: 7, lastError: 'Slack answered 503' }],
+      notifications: [
+        {
+          kind: 'opened',
+          status: 'failed',
+          attempts: 7,
+          lastError: 'Slack answered 503',
+        },
+      ],
     });
   });
 
   it('says where to look when the agent id is not one it knows', async () => {
     const { tool, service } = harness();
 
-    const text = textOf(await tool.listAgentEvents({ agentId: 'nope' }, null, operator()));
+    const text = textOf(
+      await tool.listAgentEvents({ agentId: 'nope' }, null, operator()),
+    );
 
     expect(text).toContain('not found');
     expect(text).toContain('list_agents');
@@ -222,7 +262,9 @@ describe('AgentEventTool — reading', () => {
   it('refuses a date it cannot read instead of ignoring it', async () => {
     const { tool, service } = harness();
 
-    const text = textOf(await tool.listAgentIncidents({ since: 'last night' }, null, operator()));
+    const text = textOf(
+      await tool.listAgentIncidents({ since: 'last night' }, null, operator()),
+    );
 
     expect(text).toContain('ISO 8601');
     expect(service.listIncidents).not.toHaveBeenCalled();
@@ -231,7 +273,9 @@ describe('AgentEventTool — reading', () => {
   it('shows the destination without its address', async () => {
     const { tool } = harness();
 
-    const result = jsonOf(await tool.getNotificationDestination({}, null, operator()));
+    const result = jsonOf(
+      await tool.getNotificationDestination({}, null, operator()),
+    );
 
     expect(result.destination).toEqual({
       configured: true,
@@ -250,7 +294,11 @@ describe('AgentEventTool — the destination', () => {
     const { tool, destinations } = harness();
 
     const text = textOf(
-      await tool.setNotificationDestination({ webhookUrl: ADDRESS }, null, operator()),
+      await tool.setNotificationDestination(
+        { webhookUrl: ADDRESS },
+        null,
+        operator(),
+      ),
     );
 
     expect(destinations.save).toHaveBeenCalledWith(ADDRESS, 'agent:rancher');
@@ -261,11 +309,17 @@ describe('AgentEventTool — the destination', () => {
   it('passes on why an address was refused', async () => {
     const { tool, destinations } = harness();
     destinations.save.mockRejectedValueOnce(
-      new BadRequestException('The address must be a Slack incoming webhook: https://hooks.slack.com/services/…'),
+      new BadRequestException(
+        'The address must be a Slack incoming webhook: https://hooks.slack.com/services/…',
+      ),
     );
 
     const text = textOf(
-      await tool.setNotificationDestination({ webhookUrl: 'https://example.com/x' }, null, operator()),
+      await tool.setNotificationDestination(
+        { webhookUrl: 'https://example.com/x' },
+        null,
+        operator(),
+      ),
     );
 
     expect(text).toContain('must be a Slack incoming webhook');
@@ -274,7 +328,9 @@ describe('AgentEventTool — the destination', () => {
   it('sends a test and reports the outcome', async () => {
     const { tool } = harness();
 
-    expect(jsonOf(await tool.sendTestNotification({}, null, operator()))).toEqual({
+    expect(
+      jsonOf(await tool.sendTestNotification({}, null, operator())),
+    ).toEqual({
       delivered: true,
       error: null,
     });
@@ -295,7 +351,9 @@ describe('AgentEventTool — the destination', () => {
   it('refuses to remove without confirm, says what would happen, and touches nothing', async () => {
     const { tool, destinations } = harness();
 
-    const text = textOf(await tool.removeNotificationDestination({}, null, operator()));
+    const text = textOf(
+      await tool.removeNotificationDestination({}, null, operator()),
+    );
 
     expect(text).toContain('stop sending agent failure notifications');
     expect(destinations.remove).not.toHaveBeenCalled();
@@ -305,7 +363,11 @@ describe('AgentEventTool — the destination', () => {
     const { tool, destinations } = harness();
 
     const result = jsonOf(
-      await tool.removeNotificationDestination({ confirm: true }, null, operator()),
+      await tool.removeNotificationDestination(
+        { confirm: true },
+        null,
+        operator(),
+      ),
     );
 
     expect(destinations.remove).toHaveBeenCalledTimes(1);
@@ -315,7 +377,9 @@ describe('AgentEventTool — the destination', () => {
   it('reports that nothing is set before asking for a confirmation', async () => {
     const { tool, destinations } = harness(false);
 
-    const text = textOf(await tool.removeNotificationDestination({}, null, operator()));
+    const text = textOf(
+      await tool.removeNotificationDestination({}, null, operator()),
+    );
 
     expect(text).toContain('nothing to remove');
     expect(destinations.remove).not.toHaveBeenCalled();
@@ -329,10 +393,18 @@ describe('AgentEventTool — no result carries the address', () => {
       await tool.listAgentEvents({}, null, operator()),
       await tool.listAgentIncidents({}, null, operator()),
       await tool.getNotificationDestination({}, null, operator()),
-      await tool.setNotificationDestination({ webhookUrl: ADDRESS }, null, operator()),
+      await tool.setNotificationDestination(
+        { webhookUrl: ADDRESS },
+        null,
+        operator(),
+      ),
       await tool.sendTestNotification({}, null, operator()),
       await tool.removeNotificationDestination({}, null, operator()),
-      await tool.removeNotificationDestination({ confirm: true }, null, operator()),
+      await tool.removeNotificationDestination(
+        { confirm: true },
+        null,
+        operator(),
+      ),
     ];
 
     for (const result of results) {

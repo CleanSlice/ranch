@@ -48,7 +48,9 @@ export class AgentIncidentService {
    * two failures arriving together — from two senders, or on two replicas —
    * both try to open, and the unique `openKey` lets exactly one.
    */
-  async attachFailure(input: IAttachFailureInput): Promise<IAttachFailureResult> {
+  async attachFailure(
+    input: IAttachFailureInput,
+  ): Promise<IAttachFailureResult> {
     for (let round = 0; round < ATTACH_ROUNDS; round += 1) {
       const open = await this.gateway.findOpenIncident(input.agentId);
       if (open) {
@@ -141,7 +143,9 @@ export class AgentIncidentService {
 
         // Nobody but an outside sender ever saw this agent down: say so,
         // rather than claim a recovery Ranch cannot vouch for.
-        const resolution = incident.ranchWitnessed ? 'recovered' : 'unconfirmed';
+        const resolution = incident.ranchWitnessed
+          ? 'recovered'
+          : 'unconfirmed';
         const closed = await this.gateway.closeIncident(
           incident.id,
           resolution,

@@ -102,7 +102,9 @@ const limitSchema = z
   .min(1)
   .max(EVENT_PAGE_MAX)
   .optional()
-  .describe(`How many to return, newest first (default ${EVENT_PAGE_DEFAULT}).`);
+  .describe(
+    `How many to return, newest first (default ${EVENT_PAGE_DEFAULT}).`,
+  );
 
 const sinceSchema = z
   .string()
@@ -268,7 +270,9 @@ export class AgentEventTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    return ok({ destination: toToolDestination(await this.destinations.view()) });
+    return ok({
+      destination: toToolDestination(await this.destinations.view()),
+    });
   }
 
   @Tool({
@@ -286,7 +290,9 @@ export class AgentEventTool implements IConditionallyListedTool {
     parameters: z.object({
       webhookUrl: z
         .string()
-        .describe('The Slack incoming-webhook address, exactly as Slack gave it.'),
+        .describe(
+          'The Slack incoming-webhook address, exactly as Slack gave it.',
+        ),
     }),
   })
   async setNotificationDestination(
@@ -364,7 +370,9 @@ export class AgentEventTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const view = await this.destinations.view();
     if (!view.configured) {
-      return ok({ error: 'No notification destination is set — nothing to remove' });
+      return ok({
+        error: 'No notification destination is set — nothing to remove',
+      });
     }
     const refusal = confirmed(
       args,

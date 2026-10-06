@@ -18,7 +18,10 @@ export const CHANNEL_MENTION = '<!channel>';
  * sender's text exactly as it was sent and lets it do nothing else.
  */
 export function escapeSlack(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function cut(text: string, max: number): string {
@@ -75,7 +78,9 @@ export function renderOpened(
   const lines = [`🔴 ${CHANNEL_MENTION} *${headline}*`];
 
   if (payload.reason) {
-    lines.push(`*Cause:* ${escapeSlack(cut(payload.reason, REASON_SHOWN_MAX))}`);
+    lines.push(
+      `*Cause:* ${escapeSlack(cut(payload.reason, REASON_SHOWN_MAX))}`,
+    );
   }
   lines.push(`*When:* ${slackDate(payload.occurredAt)}`);
 
@@ -89,12 +94,16 @@ export function renderOpened(
       // and pick neither.
       const disagree =
         payload.ranchStatus === 'running' ? ' — the two disagree' : '';
-      lines.push(`*Ranch sees:* ${escapeSlack(payload.ranchStatus)}${disagree}`);
+      lines.push(
+        `*Ranch sees:* ${escapeSlack(payload.ranchStatus)}${disagree}`,
+      );
     }
   }
 
   if (consoleUrl && payload.agentId) {
-    lines.push(`<${agentEventsLink(consoleUrl, payload.agentId)}|Open in Ranch>`);
+    lines.push(
+      `<${agentEventsLink(consoleUrl, payload.agentId)}|Open in Ranch>`,
+    );
   }
   return message(headline, lines);
 }
@@ -129,5 +138,8 @@ export function renderClosed(
 export function renderTest(): INotificationMessage {
   const text =
     'Test notification from Ranch — agent failure notifications will arrive here.';
-  return message(text, [`✅ *Test notification from Ranch*`, 'Agent failure notifications will arrive here.']);
+  return message(text, [
+    `✅ *Test notification from Ranch*`,
+    'Agent failure notifications will arrive here.',
+  ]);
 }

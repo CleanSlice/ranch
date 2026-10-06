@@ -105,7 +105,10 @@ export class AgentEventController {
       limit: query.limit ?? EVENT_PAGE_DEFAULT,
       before: query.before,
     });
-    return { items: page.items.map(toIncidentDto), nextCursor: page.nextCursor };
+    return {
+      items: page.items.map(toIncidentDto),
+      nextCursor: page.nextCursor,
+    };
   }
 
   @Get('agent-events/destination')

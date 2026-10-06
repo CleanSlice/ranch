@@ -37,7 +37,9 @@ describe('renderOpened', () => {
 
     expect(message.text).toBe('Agent failed: Support Bot');
     // A failure mentions the whole channel, once, ahead of the headline.
-    expect(body.split('\n')[0]).toBe('🔴 <!channel> *Agent failed: Support Bot*');
+    expect(body.split('\n')[0]).toBe(
+      '🔴 <!channel> *Agent failed: Support Bot*',
+    );
     expect(body).toContain('*Cause:* CrashLoopBackOff');
     // Each reader sees their own time zone; the ISO string is the fallback.
     expect(body).toContain(
@@ -54,7 +56,9 @@ describe('renderOpened', () => {
   });
 
   it('says so when the outside sender and Ranch disagree', () => {
-    const body = bodyOf(renderOpened(opened({ ranchStatus: 'running' }), CONSOLE));
+    const body = bodyOf(
+      renderOpened(opened({ ranchStatus: 'running' }), CONSOLE),
+    );
 
     expect(body).toContain('*Ranch sees:* running — the two disagree');
   });
@@ -115,7 +119,9 @@ describe('renderOpened', () => {
   });
 
   it('cuts a very long cause so the message still fits a Slack block', () => {
-    const body = bodyOf(renderOpened(opened({ reason: 'x'.repeat(2000) }), CONSOLE));
+    const body = bodyOf(
+      renderOpened(opened({ reason: 'x'.repeat(2000) }), CONSOLE),
+    );
 
     expect(body.length).toBeLessThan(3000);
     expect(body).toContain('…');

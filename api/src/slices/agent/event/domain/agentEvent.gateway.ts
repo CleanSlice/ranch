@@ -23,15 +23,22 @@ export abstract class IAgentEventGateway {
     data: ICreateAgentEventData,
   ): Promise<IAgentEventData | null>;
   abstract findEventByDedupeKey(key: string): Promise<IAgentEventData | null>;
-  abstract countEventsByKeySince(apiKeyId: string, since: Date): Promise<number>;
+  abstract countEventsByKeySince(
+    apiKeyId: string,
+    since: Date,
+  ): Promise<number>;
   abstract oldestEventAtByKeySince(
     apiKeyId: string,
     since: Date,
   ): Promise<Date | null>;
-  abstract listEvents(filter: IEventListFilter): Promise<IPage<IAgentEventData>>;
+  abstract listEvents(
+    filter: IEventListFilter,
+  ): Promise<IPage<IAgentEventData>>;
 
   // ── Incidents ─────────────────────────────────────────────────────────
-  abstract findOpenIncident(agentId: string): Promise<IAgentIncidentData | null>;
+  abstract findOpenIncident(
+    agentId: string,
+  ): Promise<IAgentIncidentData | null>;
   // Inserts the incident and its opening message in one transaction.
   // `null` ⇒ another event opened one for this agent first.
   abstract openIncident(

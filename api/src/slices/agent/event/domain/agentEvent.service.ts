@@ -177,7 +177,8 @@ export class AgentEventService implements OnModuleInit, OnModuleDestroy {
       // A recovery report is filed with the incident it speaks about, if one
       // is open — it changes nothing there.
       if (disposition === 'evidence' && agent) {
-        incidentId = (await this.gateway.findOpenIncident(agent.id))?.id ?? null;
+        incidentId =
+          (await this.gateway.findOpenIncident(agent.id))?.id ?? null;
       }
     }
 
@@ -282,7 +283,9 @@ export class AgentEventService implements OnModuleInit, OnModuleDestroy {
    */
   private takeSlot(apiKeyId: string, now: number): number | null {
     const windowStart = now - FLOOD_WINDOW_MS;
-    const taken = (this.slots.get(apiKeyId) ?? []).filter((t) => t > windowStart);
+    const taken = (this.slots.get(apiKeyId) ?? []).filter(
+      (t) => t > windowStart,
+    );
     if (taken.length >= FLOOD_LIMIT_PER_MINUTE) {
       this.slots.set(apiKeyId, taken);
       return Math.max(1, Math.ceil((taken[0] + FLOOD_WINDOW_MS - now) / 1000));

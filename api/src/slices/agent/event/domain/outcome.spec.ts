@@ -15,7 +15,13 @@ describe('decideDisposition', () => {
   });
 
   it('a recovered report is evidence, whatever Ranch holds', () => {
-    for (const s of ['running', 'failed', 'unreachable', 'stopped', 'deploying']) {
+    for (const s of [
+      'running',
+      'failed',
+      'unreachable',
+      'stopped',
+      'deploying',
+    ]) {
       expect(outside('recovered', s)).toBe('evidence');
     }
   });

@@ -66,7 +66,10 @@ class FakeGateway extends IAgentEventGateway {
   }
 
   async createEvent(data: ICreateAgentEventData) {
-    if (data.dedupeKey && this.events.some((e) => e.dedupeKey === data.dedupeKey)) {
+    if (
+      data.dedupeKey &&
+      this.events.some((e) => e.dedupeKey === data.dedupeKey)
+    ) {
       return null;
     }
     const event = { id: randomUUID(), ...data };
@@ -190,11 +193,21 @@ class FakeGateway extends IAgentEventGateway {
     nextAttemptAt: Date,
     error: string,
   ) {
-    this.patch(id, { attempts, nextAttemptAt, lastError: error, lockedUntil: null });
+    this.patch(id, {
+      attempts,
+      nextAttemptAt,
+      lastError: error,
+      lockedUntil: null,
+    });
   }
 
   async markNotificationFailed(id: string, attempts: number, error: string) {
-    this.patch(id, { status: 'failed', attempts, lastError: error, lockedUntil: null });
+    this.patch(id, {
+      status: 'failed',
+      attempts,
+      lastError: error,
+      lockedUntil: null,
+    });
   }
 
   async markNotificationSkipped(id: string) {
@@ -250,7 +263,9 @@ class FakeGateway extends IAgentEventGateway {
   }
 
   statusOf(kind: 'opened' | 'closed'): NotificationStatusTypes[] {
-    return this.notifications.filter((n) => n.kind === kind).map((n) => n.status);
+    return this.notifications
+      .filter((n) => n.kind === kind)
+      .map((n) => n.status);
   }
 
   private incidentOf(input: IOpenIncidentInput): IAgentIncidentData {
@@ -290,7 +305,11 @@ class FakeGateway extends IAgentEventGateway {
     });
   }
 
-  private patch(id: string, patch: Partial<StoredNotification>, addAttempts = 0) {
+  private patch(
+    id: string,
+    patch: Partial<StoredNotification>,
+    addAttempts = 0,
+  ) {
     const row = this.notifications.find((n) => n.id === id)!;
     Object.assign(row, patch);
     row.attempts += addAttempts;
@@ -313,7 +332,10 @@ const API_KEY: IApiKeyData = {
 
 function harness() {
   const gateway = new FakeGateway();
-  const agents = new Map<string, { id: string; name: string; status: string }>();
+  const agents = new Map<
+    string,
+    { id: string; name: string; status: string }
+  >();
   const addAgent = (id: string, status: string, name = `Agent ${id}`) => {
     agents.set(id, { id, name, status });
     gateway.agentStatus.set(id, status);
@@ -378,7 +400,11 @@ function harness() {
   };
 }
 
-const failure = (agentId: string, at: Date, witness: 'ranch' | 'external' = 'external') => ({
+const failure = (
+  agentId: string,
+  at: Date,
+  witness: 'ranch' | 'external' = 'external',
+) => ({
   agentId,
   agentName: `Agent ${agentId}`,
   status: 'failed' as const,
@@ -490,7 +516,9 @@ describe('AgentIncidentService — closing', () => {
     h.setStatus('a1', 'running');
     await h.incidents.noteRunning('a1', minutes(6));
 
-    expect(await h.incidents.sweep(new Date(minutes(16).getTime() - 1))).toBe(0);
+    expect(await h.incidents.sweep(new Date(minutes(16).getTime() - 1))).toBe(
+      0,
+    );
     expect(h.gateway.incidents[0].open).toBe(true);
 
     expect(await h.incidents.sweep(minutes(16))).toBe(1);
@@ -519,13 +547,19 @@ describe('AgentIncidentService — closing', () => {
     expect(await h.incidents.sweep(minutes(19))).toBe(0);
     expect(await h.incidents.sweep(minutes(19.5))).toBe(1);
     // One "failed", one "back" — nothing in between.
-    expect(h.gateway.notifications.map((n) => n.kind)).toEqual(['opened', 'closed']);
+    expect(h.gateway.notifications.map((n) => n.kind)).toEqual([
+      'opened',
+      'closed',
+    ]);
   });
 
   it('closes a failure only an outside sender saw as unconfirmed, naming who reported it', async () => {
     const h = harness();
     h.addAgent('a1', 'running');
-    await h.service.acceptExternal(API_KEY, { agentId: 'a1', status: 'failed' });
+    await h.service.acceptExternal(API_KEY, {
+      agentId: 'a1',
+      status: 'failed',
+    });
 
     jest.setSystemTime(new Date(T0.getTime() + QUIET_MS));
     expect(await h.incidents.sweep(new Date())).toBe(1);
@@ -649,25 +683,31 @@ describe('AgentEventService — an event from outside', () => {
     ['stopped', 'suppressed_stopped'],
     ['deploying', 'suppressed_starting'],
     ['pending', 'suppressed_starting'],
-  ])('stores a failure for a %s agent as %s and opens nothing', async (status, outcome) => {
-    const h = harness();
-    h.addAgent('a1', status);
+  ])(
+    'stores a failure for a %s agent as %s and opens nothing',
+    async (status, outcome) => {
+      const h = harness();
+      h.addAgent('a1', status);
 
-    const { event } = await h.service.acceptExternal(API_KEY, {
-      agentId: 'a1',
-      status: 'failed',
-    });
+      const { event } = await h.service.acceptExternal(API_KEY, {
+        agentId: 'a1',
+        status: 'failed',
+      });
 
-    expect(event.outcome).toBe(outcome);
-    expect(event.ranchStatus).toBe(status);
-    expect(h.gateway.incidents).toHaveLength(0);
-    expect(h.gateway.notifications).toHaveLength(0);
-  });
+      expect(event.outcome).toBe(outcome);
+      expect(event.ranchStatus).toBe(status);
+      expect(h.gateway.incidents).toHaveLength(0);
+      expect(h.gateway.notifications).toHaveLength(0);
+    },
+  );
 
   it('files a recovery report with the open incident and changes nothing in it', async () => {
     const h = harness();
     h.addAgent('a1', 'running');
-    await h.service.acceptExternal(API_KEY, { agentId: 'a1', status: 'failed' });
+    await h.service.acceptExternal(API_KEY, {
+      agentId: 'a1',
+      status: 'failed',
+    });
     const before = { ...h.gateway.incidents[0] };
 
     const { event } = await h.service.acceptExternal(API_KEY, {
@@ -684,7 +724,11 @@ describe('AgentEventService — an event from outside', () => {
   it('stores a retry with the same eventId once', async () => {
     const h = harness();
     h.addAgent('a1', 'running');
-    const body = { agentId: 'a1', status: 'failed' as const, eventId: 'evt-42' };
+    const body = {
+      agentId: 'a1',
+      status: 'failed' as const,
+      eventId: 'evt-42',
+    };
 
     const first = await h.service.acceptExternal(API_KEY, body);
     const second = await h.service.acceptExternal(API_KEY, body);
@@ -716,7 +760,11 @@ describe('AgentEventService — an event from outside', () => {
   it('does not let one key suppress another key’s event', async () => {
     const h = harness();
     h.addAgent('a1', 'running');
-    const body = { agentId: 'a1', status: 'failed' as const, eventId: 'evt-42' };
+    const body = {
+      agentId: 'a1',
+      status: 'failed' as const,
+      eventId: 'evt-42',
+    };
 
     await h.service.acceptExternal(API_KEY, body);
     const other = await h.service.acceptExternal(
@@ -732,17 +780,29 @@ describe('AgentEventService — an event from outside', () => {
     const h = harness();
     h.addAgent('a1', 'running');
 
-    await h.service.acceptExternal(API_KEY, { agentId: 'a1', status: 'failed' });
-    await h.service.acceptExternal(API_KEY, { agentId: 'a1', status: 'failed' });
+    await h.service.acceptExternal(API_KEY, {
+      agentId: 'a1',
+      status: 'failed',
+    });
+    await h.service.acceptExternal(API_KEY, {
+      agentId: 'a1',
+      status: 'failed',
+    });
 
-    expect(h.gateway.events.map((e) => e.outcome)).toEqual(['opened', 'joined']);
+    expect(h.gateway.events.map((e) => e.outcome)).toEqual([
+      'opened',
+      'joined',
+    ]);
   });
 
   it('refuses the 61st event of a minute from one key and says when to come back', async () => {
     const h = harness();
     h.addAgent('a1', 'running');
     for (let i = 0; i < FLOOD_LIMIT_PER_MINUTE; i += 1) {
-      await h.service.acceptExternal(API_KEY, { agentId: 'a1', status: 'failed' });
+      await h.service.acceptExternal(API_KEY, {
+        agentId: 'a1',
+        status: 'failed',
+      });
     }
     jest.setSystemTime(new Date(T0.getTime() + 20_000));
 
@@ -761,7 +821,10 @@ describe('AgentEventService — an event from outside', () => {
       { agentId: 'a1', status: 'failed' },
     );
     jest.setSystemTime(new Date(T0.getTime() + 61_000));
-    await h.service.acceptExternal(API_KEY, { agentId: 'a1', status: 'failed' });
+    await h.service.acceptExternal(API_KEY, {
+      agentId: 'a1',
+      status: 'failed',
+    });
     expect(h.gateway.events).toHaveLength(FLOOD_LIMIT_PER_MINUTE + 2);
   });
 
@@ -779,7 +842,8 @@ describe('AgentEventService — an event from outside', () => {
 
     const accepted = results.filter((r) => r.status === 'fulfilled');
     const refused = results.filter(
-      (r) => r.status === 'rejected' && r.reason instanceof TooManyEventsException,
+      (r) =>
+        r.status === 'rejected' && r.reason instanceof TooManyEventsException,
     );
     expect(accepted).toHaveLength(FLOOD_LIMIT_PER_MINUTE);
     expect(refused).toHaveLength(200 - FLOOD_LIMIT_PER_MINUTE);
@@ -794,9 +858,9 @@ describe('AgentEventService — an event from outside', () => {
       await h.service.acceptExternal(API_KEY, body);
     }
 
-    await expect(h.service.acceptExternal(API_KEY, body)).rejects.toBeInstanceOf(
-      TooManyEventsException,
-    );
+    await expect(
+      h.service.acceptExternal(API_KEY, body),
+    ).rejects.toBeInstanceOf(TooManyEventsException);
     expect(h.gateway.events).toHaveLength(1);
   });
 });
@@ -839,7 +903,13 @@ describe('AgentEventService — a failure Ranch noticed itself', () => {
     h.addAgent('a1', 'running');
     h.service.onModuleInit();
 
-    for (const status of ['stopped', 'deploying', 'pending', 'running', 'deleted'] as const) {
+    for (const status of [
+      'stopped',
+      'deploying',
+      'pending',
+      'running',
+      'deleted',
+    ] as const) {
       h.statusChanges.emit({ agentId: 'a1', status, reason: null, at: T0 });
     }
     await flush();
@@ -854,9 +924,17 @@ describe('AgentEventService — a failure Ranch noticed itself', () => {
     h.addAgent('a1', 'running');
     h.service.onModuleInit();
 
-    await h.service.acceptExternal(API_KEY, { agentId: 'a1', status: 'failed' });
+    await h.service.acceptExternal(API_KEY, {
+      agentId: 'a1',
+      status: 'failed',
+    });
     h.setStatus('a1', 'failed');
-    h.statusChanges.emit({ agentId: 'a1', status: 'failed', reason: 'OOMKilled', at: T0 });
+    h.statusChanges.emit({
+      agentId: 'a1',
+      status: 'failed',
+      reason: 'OOMKilled',
+      at: T0,
+    });
     await flush();
 
     expect(h.gateway.events.map((e) => [e.witness, e.outcome])).toEqual([
@@ -871,10 +949,20 @@ describe('AgentEventService — a failure Ranch noticed itself', () => {
     const h = harness();
     h.addAgent('a1', 'failed');
     h.service.onModuleInit();
-    h.statusChanges.emit({ agentId: 'a1', status: 'failed', reason: null, at: T0 });
+    h.statusChanges.emit({
+      agentId: 'a1',
+      status: 'failed',
+      reason: null,
+      at: T0,
+    });
     await flush();
 
-    h.statusChanges.emit({ agentId: 'a1', status: 'running', reason: null, at: minutes(4) });
+    h.statusChanges.emit({
+      agentId: 'a1',
+      status: 'running',
+      reason: null,
+      at: minutes(4),
+    });
     await flush();
 
     expect(h.gateway.incidents[0].upSince).toEqual(minutes(4));
@@ -889,9 +977,19 @@ describe('AgentEventService — a failure Ranch noticed itself', () => {
       .spyOn(h.gateway, 'createEvent')
       .mockRejectedValueOnce(new Error('database is away'));
 
-    h.statusChanges.emit({ agentId: 'a1', status: 'failed', reason: null, at: T0 });
+    h.statusChanges.emit({
+      agentId: 'a1',
+      status: 'failed',
+      reason: null,
+      at: T0,
+    });
     await flush();
-    h.statusChanges.emit({ agentId: 'a1', status: 'unreachable', reason: null, at: minutes(1) });
+    h.statusChanges.emit({
+      agentId: 'a1',
+      status: 'unreachable',
+      reason: null,
+      at: minutes(1),
+    });
     await flush();
 
     expect(create).toHaveBeenCalledTimes(2);
@@ -906,11 +1004,19 @@ describe('AgentNotificationWorker — the outbox', () => {
   async function withOpenIncident() {
     const h = harness();
     h.addAgent('a1', 'running', 'Support Bot');
-    await h.gateway.saveDestination({ webhookUrl: ADDRESS, hint: 'CRET', updatedBy: 'u1' });
-    await h.service.acceptExternal(API_KEY, { agentId: 'a1', status: 'failed' });
+    await h.gateway.saveDestination({
+      webhookUrl: ADDRESS,
+      hint: 'CRET',
+      updatedBy: 'u1',
+    });
+    await h.service.acceptExternal(API_KEY, {
+      agentId: 'a1',
+      status: 'failed',
+    });
     return h;
   }
-  const row = (h: Awaited<ReturnType<typeof withOpenIncident>>) => h.gateway.notifications[0];
+  const row = (h: Awaited<ReturnType<typeof withOpenIncident>>) =>
+    h.gateway.notifications[0];
 
   it('sends a queued message once and records the delivery', async () => {
     const h = await withOpenIncident();
@@ -918,9 +1024,14 @@ describe('AgentNotificationWorker — the outbox', () => {
     expect(await h.worker.drainOutbox()).toBe(1);
     expect(await h.worker.drainOutbox()).toBe(0);
 
-    expect(h.sent).toEqual([{ address: ADDRESS, text: 'Agent failed: Support Bot' }]);
+    expect(h.sent).toEqual([
+      { address: ADDRESS, text: 'Agent failed: Support Bot' },
+    ]);
     expect(row(h)).toMatchObject({ status: 'sent', attempts: 1 });
-    expect(h.gateway.destination).toMatchObject({ lastDeliveryOk: true, lastDeliveryError: null });
+    expect(h.gateway.destination).toMatchObject({
+      lastDeliveryOk: true,
+      lastDeliveryError: null,
+    });
   });
 
   it('marks a message skipped when there is nowhere to send it', async () => {
@@ -944,7 +1055,9 @@ describe('AgentNotificationWorker — the outbox', () => {
       attempts: 1,
       lastError: 'Slack answered 503',
     });
-    expect(row(h).nextAttemptAt.getTime()).toBe(T0.getTime() + RETRY_DELAYS_MS[1]);
+    expect(row(h).nextAttemptAt.getTime()).toBe(
+      T0.getTime() + RETRY_DELAYS_MS[1],
+    );
     expect(h.gateway.destination).toMatchObject({ lastDeliveryOk: false });
 
     // Not due yet: nothing is sent again.
@@ -953,7 +1066,11 @@ describe('AgentNotificationWorker — the outbox', () => {
 
   it('does not fire the retries back to back for a message that comes due late', async () => {
     const h = await withOpenIncident();
-    const down: NotifyResultTypes = { ok: false, retryable: true, error: 'Slack answered 503' };
+    const down: NotifyResultTypes = {
+      ok: false,
+      retryable: true,
+      error: 'Slack answered 503',
+    };
     h.answerWith(down, down, down);
     // The API was away: the message is picked up twenty minutes after it was
     // queued, when five slots of the schedule are already in the past.
@@ -962,12 +1079,19 @@ describe('AgentNotificationWorker — the outbox', () => {
     expect(await h.worker.drainOutbox(() => late)).toBe(1);
 
     expect(h.sent).toHaveLength(1);
-    expect(row(h).nextAttemptAt.getTime()).toBe(late.getTime() + RETRY_DELAYS_MS[1]);
+    expect(row(h).nextAttemptAt.getTime()).toBe(
+      late.getTime() + RETRY_DELAYS_MS[1],
+    );
   });
 
   it('waits as long as the destination asks when that is later than the schedule', async () => {
     const h = await withOpenIncident();
-    h.answerWith({ ok: false, retryable: true, retryAfterMs: 90_000, error: 'Slack answered 429' });
+    h.answerWith({
+      ok: false,
+      retryable: true,
+      retryAfterMs: 90_000,
+      error: 'Slack answered 429',
+    });
 
     await h.worker.drainOutbox(() => T0);
 
@@ -976,7 +1100,11 @@ describe('AgentNotificationWorker — the outbox', () => {
 
   it('gives up at once when the address itself is the problem', async () => {
     const h = await withOpenIncident();
-    h.answerWith({ ok: false, retryable: false, error: 'Slack answered 404: no_service' });
+    h.answerWith({
+      ok: false,
+      retryable: false,
+      error: 'Slack answered 404: no_service',
+    });
 
     await h.worker.drainOutbox();
 
@@ -989,15 +1117,24 @@ describe('AgentNotificationWorker — the outbox', () => {
 
   it('marks a message not delivered after the last attempt of the schedule', async () => {
     const h = await withOpenIncident();
-    const down: NotifyResultTypes = { ok: false, retryable: true, error: 'Slack answered 503' };
+    const down: NotifyResultTypes = {
+      ok: false,
+      retryable: true,
+      error: 'Slack answered 503',
+    };
     h.answerWith(...RETRY_DELAYS_MS.map(() => down));
     const created = row(h).createdAt.getTime();
 
     for (const delay of RETRY_DELAYS_MS) {
-      expect(await h.worker.drainOutbox(() => new Date(created + delay))).toBe(1);
+      expect(await h.worker.drainOutbox(() => new Date(created + delay))).toBe(
+        1,
+      );
     }
 
-    expect(row(h)).toMatchObject({ status: 'failed', attempts: RETRY_DELAYS_MS.length });
+    expect(row(h)).toMatchObject({
+      status: 'failed',
+      attempts: RETRY_DELAYS_MS.length,
+    });
     expect(h.sent).toHaveLength(RETRY_DELAYS_MS.length);
     // The event is still there: an undelivered alarm loses nothing.
     expect(h.gateway.events).toHaveLength(1);

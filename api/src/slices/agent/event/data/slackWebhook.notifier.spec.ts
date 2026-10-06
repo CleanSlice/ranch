@@ -3,7 +3,11 @@ import { SlackWebhookNotifier } from './slackWebhook.notifier';
 const ADDRESS = 'https://hooks.slack.com/services/T000/B000/SECRETSECRET';
 const MESSAGE = { text: 'Agent failed: Support Bot', blocks: [] };
 
-function answer(status: number, body = '', headers: Record<string, string> = {}) {
+function answer(
+  status: number,
+  body = '',
+  headers: Record<string, string> = {},
+) {
   return {
     ok: status >= 200 && status < 300,
     status,
@@ -65,7 +69,9 @@ describe('SlackWebhookNotifier', () => {
   });
 
   it('passes on how long Slack asks to wait when it is rate-limiting', async () => {
-    fetchMock.mockResolvedValue(answer(429, 'rate_limited', { 'retry-after': '30' }));
+    fetchMock.mockResolvedValue(
+      answer(429, 'rate_limited', { 'retry-after': '30' }),
+    );
 
     const result = await notifier.send(ADDRESS, MESSAGE);
 
@@ -79,7 +85,9 @@ describe('SlackWebhookNotifier', () => {
 
   it('retries after a timeout, and says so in words of its own', async () => {
     fetchMock.mockRejectedValue(
-      Object.assign(new Error(`timeout calling ${ADDRESS}`), { name: 'TimeoutError' }),
+      Object.assign(new Error(`timeout calling ${ADDRESS}`), {
+        name: 'TimeoutError',
+      }),
     );
 
     const result = await notifier.send(ADDRESS, MESSAGE);
@@ -93,7 +101,9 @@ describe('SlackWebhookNotifier', () => {
 
   it('never lets the address into what it returns', async () => {
     const results: unknown[] = [];
-    fetchMock.mockRejectedValueOnce(new Error(`getaddrinfo failed for ${ADDRESS}`));
+    fetchMock.mockRejectedValueOnce(
+      new Error(`getaddrinfo failed for ${ADDRESS}`),
+    );
     results.push(await notifier.send(ADDRESS, MESSAGE));
     fetchMock.mockResolvedValueOnce(answer(404, `no such hook ${ADDRESS}`));
     results.push(await notifier.send(ADDRESS, MESSAGE));

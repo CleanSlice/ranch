@@ -61,8 +61,27 @@ function contextFor(
   } as unknown as ExecutionContext;
 }
 
+type Handler = (...args: never[]) => unknown;
+
+/**
+ * A route handler as the guards and the reflector see it: the function on
+ * the prototype, read for its metadata and never called. Taken through the
+ * property descriptor so it is plainly a value, not a method lifted off its
+ * object.
+ */
+function handlerOf(controller: { prototype: object }, name: string): Handler {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    controller.prototype,
+    name,
+  );
+  if (typeof descriptor?.value !== 'function') {
+    throw new Error(`no handler "${name}" on the controller`);
+  }
+  return descriptor.value as Handler;
+}
+
 describe('POST /agent-events — who may call it', () => {
-  const post = AgentEventIngestController.prototype.post;
+  const post = handlerOf(AgentEventIngestController, 'post');
 
   it('is guarded by an API key and the events:write scope, never by a console session', () => {
     const guards = Reflect.getMetadata('__guards__', post) as unknown[];
@@ -80,16 +99,25 @@ describe('POST /agent-events — who may call it', () => {
     const apiKeyGuard = new ApiKeyGuard(apiKeys);
     const scopesGuard = new ScopesGuard(new Reflector(), apiKeys);
 
-    const attempt = async (authorization: string | undefined, found: IApiKeyData | null) => {
+    const attempt = async (
+      authorization: string | undefined,
+      found: IApiKeyData | null,
+    ) => {
       verify.mockResolvedValue(found);
       const request = { headers: { authorization } } as Partial<Request>;
-      const context = contextFor(post as never, AgentEventIngestController as never, request);
+      const context = contextFor(
+        post as never,
+        AgentEventIngestController as never,
+        request,
+      );
       await apiKeyGuard.canActivate(context);
       return scopesGuard.canActivate(context);
     };
 
     it('refuses a request with no key', async () => {
-      await expect(attempt(undefined, null)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(attempt(undefined, null)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
     });
 
     it('refuses a wrong or revoked key', async () => {
@@ -105,17 +133,24 @@ describe('POST /agent-events — who may call it', () => {
     });
 
     it('lets a key with events:write through', async () => {
-      expect(await attempt('Bearer rk_x', key([ApiKeyScopeTypes.EventsWrite]))).toBe(true);
+      expect(
+        await attempt('Bearer rk_x', key([ApiKeyScopeTypes.EventsWrite])),
+      ).toBe(true);
     });
 
     it('lets the admin wildcard through, as everywhere', async () => {
-      expect(await attempt('Bearer rk_x', key([ApiKeyScopeTypes.Admin]))).toBe(true);
+      expect(await attempt('Bearer rk_x', key([ApiKeyScopeTypes.Admin]))).toBe(
+        true,
+      );
     });
 
     it('gives an events:write key nothing on a route that asks for another scope', () => {
       // The embed-token route's requirement, checked the way ScopesGuard does.
       expect(
-        apiKeys.hasScope(key([ApiKeyScopeTypes.EventsWrite]), ApiKeyScopeTypes.EmbedMint),
+        apiKeys.hasScope(
+          key([ApiKeyScopeTypes.EventsWrite]),
+          ApiKeyScopeTypes.EmbedMint,
+        ),
       ).toBe(false);
     });
   });
@@ -134,7 +169,8 @@ describe('POST /agent-events — what it accepts', () => {
       await pipe.transform(body, meta);
       return [];
     } catch (e) {
-      return ((e as BadRequestException).getResponse() as { message: string[] }).message;
+      return ((e as BadRequestException).getResponse() as { message: string[] })
+        .message;
     }
   };
 
@@ -143,7 +179,9 @@ describe('POST /agent-events — what it accepts', () => {
   });
 
   it('names the field that is missing', async () => {
-    expect((await messagesOf({ status: 'failed' })).join(' ')).toContain('agentId');
+    expect((await messagesOf({ status: 'failed' })).join(' ')).toContain(
+      'agentId',
+    );
     expect((await messagesOf({ agentId: 'a1' })).join(' ')).toContain('status');
   });
 
@@ -154,15 +192,29 @@ describe('POST /agent-events — what it accepts', () => {
   });
 
   it('does not take unreachable from outside — that is Ranch’s own word', async () => {
-    expect(await messagesOf({ agentId: 'a1', status: 'unreachable' })).toHaveLength(1);
+    expect(
+      await messagesOf({ agentId: 'a1', status: 'unreachable' }),
+    ).toHaveLength(1);
   });
 
   it('refuses a datetime that is not ISO 8601, and a cause that is too long', async () => {
     expect(
-      (await messagesOf({ agentId: 'a1', status: 'failed', datetime: 'yesterday' })).join(' '),
+      (
+        await messagesOf({
+          agentId: 'a1',
+          status: 'failed',
+          datetime: 'yesterday',
+        })
+      ).join(' '),
     ).toContain('datetime');
     expect(
-      (await messagesOf({ agentId: 'a1', status: 'failed', reason: 'x'.repeat(2001) })).join(' '),
+      (
+        await messagesOf({
+          agentId: 'a1',
+          status: 'failed',
+          reason: 'x'.repeat(2001),
+        })
+      ).join(' '),
     ).toContain('reason');
   });
 
@@ -189,20 +241,33 @@ describe('POST /agent-events — the answer', () => {
   const body = { agentId: 'a1', status: 'failed' } as PostAgentEventDto;
 
   it('answers a new event with its id, what it did and its incident (201 by default)', async () => {
-    const service = { acceptExternal: jest.fn(async () => ({ event, duplicate: false })) };
-    const controller = new AgentEventIngestController(service as unknown as AgentEventService);
+    const service = {
+      acceptExternal: jest.fn(async () => ({ event, duplicate: false })),
+    };
+    const controller = new AgentEventIngestController(
+      service as unknown as AgentEventService,
+    );
     const res = response();
 
     const answer = await controller.post(request, body, res);
 
-    expect(answer).toEqual({ id: 'evt-1', outcome: 'opened', incidentId: 'inc-1', duplicate: false });
+    expect(answer).toEqual({
+      id: 'evt-1',
+      outcome: 'opened',
+      incidentId: 'inc-1',
+      duplicate: false,
+    });
     expect(res.status).not.toHaveBeenCalled();
     expect(service.acceptExternal).toHaveBeenCalledWith(request.apiKey, body);
   });
 
   it('answers a retry of an event it already holds with 200 and the first id', async () => {
-    const service = { acceptExternal: jest.fn(async () => ({ event, duplicate: true })) };
-    const controller = new AgentEventIngestController(service as unknown as AgentEventService);
+    const service = {
+      acceptExternal: jest.fn(async () => ({ event, duplicate: true })),
+    };
+    const controller = new AgentEventIngestController(
+      service as unknown as AgentEventService,
+    );
     const res = response();
 
     const answer = await controller.post(request, body, res);
@@ -218,10 +283,14 @@ describe('POST /agent-events — the answer', () => {
         throw new TooManyEventsException(40);
       }),
     };
-    const controller = new AgentEventIngestController(service as unknown as AgentEventService);
+    const controller = new AgentEventIngestController(
+      service as unknown as AgentEventService,
+    );
     const res = response();
 
-    await expect(controller.post(request, body, res)).rejects.toMatchObject({ status: 429 });
+    await expect(controller.post(request, body, res)).rejects.toMatchObject({
+      status: 429,
+    });
     expect(res.setHeader).toHaveBeenCalledWith('Retry-After', '40');
   });
 
@@ -233,26 +302,45 @@ describe('POST /agent-events — the answer', () => {
         throw new Error(internal);
       }),
     };
-    const controller = new AgentEventIngestController(service as unknown as AgentEventService);
+    const controller = new AgentEventIngestController(
+      service as unknown as AgentEventService,
+    );
     // The detail belongs in the log; keep the test output quiet about it.
     const logged = jest
-      .spyOn((controller as unknown as { logger: { error: () => void } }).logger, 'error')
+      .spyOn(
+        (controller as unknown as { logger: { error: () => void } }).logger,
+        'error',
+      )
       .mockImplementation(() => undefined);
 
-    const answer = await controller.post(request, body, response()).catch((e) => e);
+    const answer = await controller
+      .post(request, body, response())
+      .catch((e) => e);
 
     expect(answer.getStatus()).toBe(500);
     expect(JSON.stringify(answer.getResponse())).not.toContain('prisma');
     expect(JSON.stringify(answer.getResponse())).not.toContain('dedupeKey');
     expect(answer.message).toBe('Could not record the event — try again');
-    expect(logged).toHaveBeenCalledWith(expect.stringContaining(internal), expect.anything());
+    expect(logged).toHaveBeenCalledWith(
+      expect.stringContaining(internal),
+      expect.anything(),
+    );
   });
 });
 
 describe('console routes — who may call them', () => {
   const rolesOf = (handler: unknown) =>
-    Reflect.getMetadata(ROLES_METADATA_KEY, handler as object) as UserRoleTypes[] | undefined;
-  const proto = AgentEventController.prototype;
+    Reflect.getMetadata(ROLES_METADATA_KEY, handler as object) as
+      | UserRoleTypes[]
+      | undefined;
+  const readHandlers = ['listEvents', 'listIncidents', 'getDestination'].map(
+    (name) => handlerOf(AgentEventController, name),
+  );
+  const ownerHandlers = [
+    'saveDestination',
+    'removeDestination',
+    'testDestination',
+  ].map((name) => handlerOf(AgentEventController, name));
 
   it('sits behind a console session and a role', () => {
     expect(Reflect.getMetadata('__guards__', AgentEventController)).toEqual([
@@ -270,17 +358,19 @@ describe('console routes — who may call them', () => {
         }),
       );
 
-    for (const handler of [proto.listEvents, proto.listIncidents, proto.getDestination]) {
+    for (const handler of readHandlers) {
       expect(as(UserRoleTypes.Owner, handler)).toBe(true);
       expect(as(UserRoleTypes.Admin, handler)).toBe(true);
       expect(() => as(UserRoleTypes.User, handler)).toThrow(ForbiddenException);
-      expect(() => as(UserRoleTypes.Agent, handler)).toThrow(ForbiddenException);
+      expect(() => as(UserRoleTypes.Agent, handler)).toThrow(
+        ForbiddenException,
+      );
     }
   });
 
   it('keeps the destination — set, remove, test — for the owner', () => {
     const guard = new RolesGuard(new Reflector());
-    for (const handler of [proto.saveDestination, proto.removeDestination, proto.testDestination]) {
+    for (const handler of ownerHandlers) {
       expect(rolesOf(handler)).toEqual([UserRoleTypes.Owner]);
       expect(() =>
         guard.canActivate(
@@ -298,17 +388,23 @@ describe('the notification destination', () => {
     let destination = stored;
     const gateway = {
       getDestination: jest.fn(async () => destination),
-      saveDestination: jest.fn(async (input: { webhookUrl: string; hint: string; updatedBy: string }) => {
-        destination = {
-          kind: 'slack',
-          ...input,
-          updatedAt: new Date('2026-10-06T10:00:00Z'),
-          lastDeliveryAt: null,
-          lastDeliveryOk: null,
-          lastDeliveryError: null,
-        };
-        return destination;
-      }),
+      saveDestination: jest.fn(
+        async (input: {
+          webhookUrl: string;
+          hint: string;
+          updatedBy: string;
+        }) => {
+          destination = {
+            kind: 'slack',
+            ...input,
+            updatedAt: new Date('2026-10-06T10:00:00Z'),
+            lastDeliveryAt: null,
+            lastDeliveryOk: null,
+            lastDeliveryError: null,
+          };
+          return destination;
+        },
+      ),
       removeDestination: jest.fn(async () => {
         destination = null;
       }),
@@ -319,10 +415,15 @@ describe('the notification destination', () => {
       gateway as unknown as IAgentEventGateway,
       notifier as unknown as INotifier,
     );
-    const controller = new AgentEventController({} as AgentEventService, destinations);
+    const controller = new AgentEventController(
+      {} as AgentEventService,
+      destinations,
+    );
     return { controller, gateway, notifier };
   }
-  const owner = { user: { sub: 'user-1', roles: [UserRoleTypes.Owner] } } as never;
+  const owner = {
+    user: { sub: 'user-1', roles: [UserRoleTypes.Owner] },
+  } as never;
 
   it('says nothing is set on a fresh install', async () => {
     const { controller } = harness();
@@ -338,7 +439,10 @@ describe('the notification destination', () => {
   it('never hands the address back — not on save, not on read', async () => {
     const { controller } = harness();
 
-    const saved = await controller.saveDestination({ webhookUrl: ADDRESS }, owner);
+    const saved = await controller.saveDestination(
+      { webhookUrl: ADDRESS },
+      owner,
+    );
     const read = await controller.getDestination();
 
     for (const answer of [saved, read]) {
@@ -359,15 +463,21 @@ describe('the notification destination', () => {
     ['not a URL', 'slack please'],
     ['plain http', 'http://hooks.slack.com/services/T/B/x'],
     ['another host', 'https://example.com/services/T/B/x'],
-    ['a host that only starts like Slack', 'https://hooks.slack.com.evil.example/services/T/B/x'],
-    ['an address inside the cluster', 'https://ranch-api.platform.svc:3000/agent-events'],
+    [
+      'a host that only starts like Slack',
+      'https://hooks.slack.com.evil.example/services/T/B/x',
+    ],
+    [
+      'an address inside the cluster',
+      'https://ranch-api.platform.svc:3000/agent-events',
+    ],
     ['Slack, but not a webhook', 'https://hooks.slack.com/triggers/T/1/x'],
   ])('refuses %s and stores nothing', async (_what, url) => {
     const { controller, gateway } = harness();
 
-    await expect(controller.saveDestination({ webhookUrl: url }, owner)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      controller.saveDestination({ webhookUrl: url }, owner),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(gateway.saveDestination).not.toHaveBeenCalled();
   });
 
@@ -375,10 +485,22 @@ describe('the notification destination', () => {
     const { controller, gateway, notifier } = harness();
     await controller.saveDestination({ webhookUrl: ADDRESS }, owner);
 
-    expect(await controller.testDestination()).toEqual({ delivered: true, error: null });
+    expect(await controller.testDestination()).toEqual({
+      delivered: true,
+      error: null,
+    });
 
-    expect(notifier.send).toHaveBeenCalledWith(ADDRESS, expect.objectContaining({ text: expect.stringContaining('Test notification') }));
-    expect(gateway.recordDelivery).toHaveBeenCalledWith(expect.any(Date), true, null);
+    expect(notifier.send).toHaveBeenCalledWith(
+      ADDRESS,
+      expect.objectContaining({
+        text: expect.stringContaining('Test notification'),
+      }),
+    );
+    expect(gateway.recordDelivery).toHaveBeenCalledWith(
+      expect.any(Date),
+      true,
+      null,
+    );
   });
 
   it('reports a failed test with what the destination answered', async () => {
@@ -399,7 +521,9 @@ describe('the notification destination', () => {
   it('refuses to test when nothing is set', async () => {
     const { controller } = harness();
 
-    await expect(controller.testDestination()).rejects.toBeInstanceOf(ConflictException);
+    await expect(controller.testDestination()).rejects.toBeInstanceOf(
+      ConflictException,
+    );
   });
 
   it('says whether messages can link to the console', async () => {
@@ -440,7 +564,13 @@ describe('GET /agent-incidents', () => {
             witnesses: ['Ranch', 'cluster-watcher'],
             eventCount: 3,
             notifications: [
-              { kind: 'opened', status: 'sent', attempts: 1, sentAt: opened, lastError: null },
+              {
+                kind: 'opened',
+                status: 'sent',
+                attempts: 1,
+                sentAt: opened,
+                lastError: null,
+              },
             ],
           },
         ],
@@ -452,7 +582,10 @@ describe('GET /agent-incidents', () => {
       {} as NotificationDestinationService,
     );
 
-    const page = await controller.listIncidents({ agentId: 'a1', state: 'open' });
+    const page = await controller.listIncidents({
+      agentId: 'a1',
+      state: 'open',
+    });
 
     expect(service.listIncidents).toHaveBeenCalledWith({
       agentId: 'a1',

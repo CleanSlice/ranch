@@ -58,7 +58,9 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.every(OUTBOX_TICK_MS, 'outbox', () => this.drainOutbox());
-    this.every(INCIDENT_SWEEP_MS, 'incident sweep', () => this.sweepIncidents());
+    this.every(INCIDENT_SWEEP_MS, 'incident sweep', () =>
+      this.sweepIncidents(),
+    );
     this.every(RETENTION_SWEEP_MS, 'retention', () => this.purge());
   }
 

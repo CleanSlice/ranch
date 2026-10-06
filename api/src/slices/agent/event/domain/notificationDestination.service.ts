@@ -59,7 +59,10 @@ export class NotificationDestinationService {
     if (!destination) {
       throw new ConflictException('No notification destination is set');
     }
-    const result = await this.notifier.send(destination.webhookUrl, renderTest());
+    const result = await this.notifier.send(
+      destination.webhookUrl,
+      renderTest(),
+    );
     const error = result.ok ? null : result.error;
     await this.gateway.recordDelivery(new Date(), result.ok, error);
     return { delivered: result.ok, error };

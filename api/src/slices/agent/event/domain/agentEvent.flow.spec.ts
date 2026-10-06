@@ -764,6 +764,41 @@ describe('AgentEventService — an event from outside', () => {
     await h.service.acceptExternal(API_KEY, { agentId: 'a1', status: 'failed' });
     expect(h.gateway.events).toHaveLength(FLOOD_LIMIT_PER_MINUTE + 2);
   });
+
+  it('holds the limit against a burst of parallel requests', async () => {
+    // A count followed by an insert lets every request of a burst read "none
+    // so far" and pass. The slot is taken before anything is awaited.
+    const h = harness();
+    h.addAgent('a1', 'running');
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 200 }, () =>
+        h.service.acceptExternal(API_KEY, { agentId: 'a1', status: 'failed' }),
+      ),
+    );
+
+    const accepted = results.filter((r) => r.status === 'fulfilled');
+    const refused = results.filter(
+      (r) => r.status === 'rejected' && r.reason instanceof TooManyEventsException,
+    );
+    expect(accepted).toHaveLength(FLOOD_LIMIT_PER_MINUTE);
+    expect(refused).toHaveLength(200 - FLOOD_LIMIT_PER_MINUTE);
+    expect(h.gateway.events).toHaveLength(FLOOD_LIMIT_PER_MINUTE);
+  });
+
+  it('counts a retried duplicate against the limit too — the limit is on what a key sends', async () => {
+    const h = harness();
+    h.addAgent('a1', 'running');
+    const body = { agentId: 'a1', status: 'failed' as const, eventId: 'same' };
+    for (let i = 0; i < FLOOD_LIMIT_PER_MINUTE; i += 1) {
+      await h.service.acceptExternal(API_KEY, body);
+    }
+
+    await expect(h.service.acceptExternal(API_KEY, body)).rejects.toBeInstanceOf(
+      TooManyEventsException,
+    );
+    expect(h.gateway.events).toHaveLength(1);
+  });
 });
 
 describe('AgentEventService — a failure Ranch noticed itself', () => {

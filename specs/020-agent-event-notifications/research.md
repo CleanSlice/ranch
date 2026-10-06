@@ -274,8 +274,16 @@ doubled at two replicas.
 **Rationale**: FR-010. An in-memory counter is per replica, so the real limit
 would be 60 times the replica count and would reset on every deploy. The
 count is one indexed query on a path that takes at most one request a second
-per sender. Two concurrent requests can both pass at 59; a limit that is
-occasionally 61 is still a limit.
+per sender.
+
+**Amended during implementation** (security review of the first commit): a
+count followed by an insert is not atomic, and a burst of parallel requests
+could all read "none so far" and all pass — far more than "occasionally 61".
+A second gate was put in front: a per-key sliding window in the process, taken
+synchronously before anything is awaited, so one replica can never accept more
+than 60 a minute from a key whatever the concurrency. The database count stays
+for what a process cannot see — the other replicas. Worst case is now the
+limit times the replica count; the usual case is the limit.
 
 **Alternatives**: `@nestjs/throttler` — a new dependency whose default store
 is in memory (same flaw).

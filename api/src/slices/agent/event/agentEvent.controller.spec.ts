@@ -224,6 +224,29 @@ describe('POST /agent-events — the answer', () => {
     await expect(controller.post(request, body, res)).rejects.toMatchObject({ status: 429 });
     expect(res.setHeader).toHaveBeenCalledWith('Retry-After', '40');
   });
+
+  it('does not hand an internal error to an outside sender', async () => {
+    const internal =
+      'Invalid `prisma.agentEvent.create()` invocation: column "AgentEvent.dedupeKey" …';
+    const service = {
+      acceptExternal: jest.fn(async () => {
+        throw new Error(internal);
+      }),
+    };
+    const controller = new AgentEventIngestController(service as unknown as AgentEventService);
+    // The detail belongs in the log; keep the test output quiet about it.
+    const logged = jest
+      .spyOn((controller as unknown as { logger: { error: () => void } }).logger, 'error')
+      .mockImplementation(() => undefined);
+
+    const answer = await controller.post(request, body, response()).catch((e) => e);
+
+    expect(answer.getStatus()).toBe(500);
+    expect(JSON.stringify(answer.getResponse())).not.toContain('prisma');
+    expect(JSON.stringify(answer.getResponse())).not.toContain('dedupeKey');
+    expect(answer.message).toBe('Could not record the event — try again');
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining(internal), expect.anything());
+  });
 });
 
 describe('console routes — who may call them', () => {

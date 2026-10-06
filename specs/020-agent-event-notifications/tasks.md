@@ -61,6 +61,11 @@ Code and specs are in for every phase. 79 of 91 tasks are closed.
 - Retries wait the schedule's gap after each failed attempt instead of
   counting from when the message was queued — a late message would otherwise
   have fired all its retries back to back (research D7, amended).
+- After the security review of the first commit: the flood limit got a
+  synchronous in-process gate in front of the database count (a burst of
+  parallel requests could pass a count-then-insert; research D8, amended), and
+  the ingest route answers an unexpected internal error with a plain "try
+  again" instead of the error's own text.
 - The link to an agent's events is `?tab=events`: the agent page addresses a
   section by `?tab=<value>`.
 - The migration SQL was produced by `prisma migrate diff` between the schema
@@ -306,8 +311,8 @@ Code and specs are in for every phase. 79 of 91 tasks are closed.
 - [X] T086 Final gates on a clean tree, with the exact commands recorded for the PR: `cd api && bun run build`; `cd api && NODE_OPTIONS=--experimental-vm-modules npx jest src/slices/agent/event src/slices/agent/agent src/slices/user/apiKey src/slices/mcp/tool-secrets.spec.ts`; `cd admin && bun test slices && npx nuxt typecheck`; `bun run locale:check`
 - [ ] T087 Pre-flight on the target install ([quickstart.md](./quickstart.md), "Statuses are steady", R1): watch three running agents for two minutes; if any flips to *unreachable* and back, do **not** set a destination there — open the replica ticket of T090 first
 - [ ] T088 Full [quickstart.md](./quickstart.md) run, Scenarios 1–9 in order, on the local stack with a real Slack test channel; record what was and was not verified
-- [ ] T089 Commit (`feat(api,admin): agent events endpoint and failure notifications (CLEAN-139)`), push, open the PR into `main` linking CLEAN-139. The description states: the gates run (T086); the twin-console check in words — `agent`, `user` and `common` were touched in `admin`, and `app` needed nothing because it has no section list, no API-key screen and no use of a time span ([contracts/console-ui.md](./contracts/console-ui.md#twin-consoles)); what the quickstart verified; the four open points from [plan.md](./plan.md)
-- [ ] T090 Follow-up tickets in CLEAN, each with its surface prefix: `[API]` API replica count vs. the per-process bridle hub (F3, R1); `[API][ADMIN]` `GET /settings` returns secret values to the console (F5); `[API]` a digest when many agents fail at once (R2); `[API][ADMIN]` Telegram as a second destination
+- [X] T089 Commit (`feat(api,admin): agent events endpoint and failure notifications (CLEAN-139)`), push, open the PR into `main` linking CLEAN-139. The description states: the gates run (T086); the twin-console check in words — `agent`, `user` and `common` were touched in `admin`, and `app` needed nothing because it has no section list, no API-key screen and no use of a time span ([contracts/console-ui.md](./contracts/console-ui.md#twin-consoles)); what the quickstart verified; the four open points from [plan.md](./plan.md)
+- [X] T090 Follow-up tickets in CLEAN, each with its surface prefix: `[API]` API replica count vs. the per-process bridle hub (F3, R1); `[API][ADMIN]` `GET /settings` returns secret values to the console (F5); `[API]` a digest when many agents fail at once (R2); `[API][ADMIN]` Telegram as a second destination
 - [ ] T091 Put the PR URL on CLEAN-139 with a closing comment (what landed, what DevOps still owes: the sender, `ADMIN_URL`, Argo CD → Slack), and move the ticket to In Testing (transition 51)
 
 ---

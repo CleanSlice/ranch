@@ -44,6 +44,10 @@ export interface IAcceptedEvent {
   duplicate: boolean;
 }
 
+// An install has a handful of sender keys; past this many the map is swept
+// for ones that went quiet.
+const SLOT_KEYS_BEFORE_PRUNE = 100;
+
 /** 429 with the delay a sender should wait before trying again. */
 export class TooManyEventsException extends HttpException {
   constructor(readonly retryAfterSeconds: number) {
@@ -68,6 +72,8 @@ export class TooManyEventsException extends HttpException {
 export class AgentEventService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentEventService.name);
   private statusSub: Subscription | null = null;
+  // When each key's recent requests arrived, oldest first (takeSlot).
+  private readonly slots = new Map<string, number[]>();
 
   constructor(
     private readonly gateway: IAgentEventGateway,
@@ -100,8 +106,21 @@ export class AgentEventService implements OnModuleInit, OnModuleDestroy {
   ): Promise<IAcceptedEvent> {
     const receivedAt = new Date();
 
-    // Counted in the database, not in memory: a per-process counter would
-    // allow the limit once per API replica and forget it on every deploy.
+    // Two gates, because each covers what the other cannot.
+    //
+    // The first is in this process and synchronous: the slot is taken before
+    // anything is awaited, so a burst of parallel requests cannot all read
+    // "59 so far" and all pass — which is exactly what a count followed by an
+    // insert allows. It bounds one replica at the limit, whatever the
+    // concurrency.
+    const wait = this.takeSlot(apiKey.id, receivedAt.getTime());
+    if (wait !== null) throw new TooManyEventsException(wait);
+
+    // The second is counted in the database: a per-process counter alone
+    // would allow the limit once per API replica and forget it on every
+    // deploy. It is not atomic across replicas — two of them can both pass at
+    // 59 — so the worst case is the limit times the replica count, and the
+    // usual case is the limit.
     const windowStart = new Date(receivedAt.getTime() - FLOOD_WINDOW_MS);
     const recent = await this.gateway.countEventsByKeySince(
       apiKey.id,
@@ -253,6 +272,31 @@ export class AgentEventService implements OnModuleInit, OnModuleDestroy {
     }
     // 'stopped' and 'deleted' need nothing here: the sweep reads the agent
     // as it is and closes the incident quietly.
+  }
+
+  /**
+   * Takes one of this key's slots in the current window, or says how many
+   * seconds until one frees up. Synchronous on purpose — see acceptExternal.
+   * A request that is later answered as a duplicate has still used a slot:
+   * the limit is on what a key sends, not on what ends up stored.
+   */
+  private takeSlot(apiKeyId: string, now: number): number | null {
+    const windowStart = now - FLOOD_WINDOW_MS;
+    const taken = (this.slots.get(apiKeyId) ?? []).filter((t) => t > windowStart);
+    if (taken.length >= FLOOD_LIMIT_PER_MINUTE) {
+      this.slots.set(apiKeyId, taken);
+      return Math.max(1, Math.ceil((taken[0] + FLOOD_WINDOW_MS - now) / 1000));
+    }
+    taken.push(now);
+    this.slots.set(apiKeyId, taken);
+    // Keys that went quiet are dropped, so the map holds only senders of the
+    // last minute — a revoked key does not stay here for the life of the pod.
+    if (this.slots.size > SLOT_KEYS_BEFORE_PRUNE) {
+      for (const [key, times] of this.slots) {
+        if (times[times.length - 1] <= windowStart) this.slots.delete(key);
+      }
+    }
+    return null;
   }
 
   /**

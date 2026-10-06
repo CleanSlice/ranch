@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  HttpException,
   HttpStatus,
+  InternalServerErrorException,
+  Logger,
   Post,
   Req,
   Res,
@@ -35,6 +38,8 @@ import { AgentEventAcceptedDto, PostAgentEventDto } from './dtos';
 @ApiTags('agent-events')
 @Controller('agent-events')
 export class AgentEventIngestController {
+  private readonly logger = new Logger(AgentEventIngestController.name);
+
   constructor(private service: AgentEventService) {}
 
   @Post()
@@ -78,7 +83,19 @@ export class AgentEventIngestController {
       if (err instanceof TooManyEventsException) {
         res.setHeader('Retry-After', String(err.retryAfterSeconds));
       }
-      throw err;
+      if (err instanceof HttpException) throw err;
+      // Anything else is ours — a database error, a bug. The caller is a
+      // machine outside the product holding one narrow key: it gets a plain
+      // "try again", and the detail (which can name tables and columns) goes
+      // to the log, not over the wire. The global interceptor would have put
+      // the error's own message in the answer.
+      this.logger.error(
+        `Could not record an event from key ${req.apiKey?.id}: ${(err as Error)?.message}`,
+        (err as Error)?.stack,
+      );
+      throw new InternalServerErrorException(
+        'Could not record the event — try again',
+      );
     }
   }
 }

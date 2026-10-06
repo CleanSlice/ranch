@@ -9,6 +9,9 @@ import { INotificationMessage } from './notifier';
 // message whose length a sender controls.
 const REASON_SHOWN_MAX = 1500;
 
+/** Slack's "notify everyone in this channel". */
+export const CHANNEL_MENTION = '<!channel>';
+
 /**
  * Slack reads `<…>` as a link or a command (`<!channel>`, `<http://x|label>`)
  * and `&` as the start of an entity. Escaping the three characters shows a
@@ -64,7 +67,12 @@ export function renderOpened(
 ): INotificationMessage {
   const name = escapeSlack(payload.agentName);
   const headline = `Agent ${payload.status}: ${name}`;
-  const lines = [`🔴 *${headline}*`];
+  // An agent going down is the one message that should reach people who are
+  // not looking: it mentions the whole channel. The mention is ours and sits
+  // outside everything a sender supplied — their text is escaped, so a
+  // `<!channel>` of their own stays plain characters. The closing message
+  // does not mention anyone: good news can wait until someone looks.
+  const lines = [`🔴 ${CHANNEL_MENTION} *${headline}*`];
 
   if (payload.reason) {
     lines.push(`*Cause:* ${escapeSlack(cut(payload.reason, REASON_SHOWN_MAX))}`);

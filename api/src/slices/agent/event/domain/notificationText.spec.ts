@@ -36,7 +36,8 @@ describe('renderOpened', () => {
     const body = bodyOf(message);
 
     expect(message.text).toBe('Agent failed: Support Bot');
-    expect(body).toContain('*Agent failed: Support Bot*');
+    // A failure mentions the whole channel, once, ahead of the headline.
+    expect(body.split('\n')[0]).toBe('🔴 <!channel> *Agent failed: Support Bot*');
     expect(body).toContain('*Cause:* CrashLoopBackOff');
     // Each reader sees their own time zone; the ISO string is the fallback.
     expect(body).toContain(
@@ -99,8 +100,10 @@ describe('renderOpened', () => {
       ),
     );
 
-    // Nothing a sender wrote survives as a Slack command or link…
-    expect(body).not.toContain('<!channel>');
+    // Nothing a sender wrote survives as a Slack command or link: the one
+    // channel mention in the message is the one Ranch put there itself…
+    expect(body.split('<!channel>')).toHaveLength(2);
+    expect(body.startsWith('🔴 <!channel> *Agent failed:')).toBe(true);
     expect(body).not.toContain('<!here>');
     expect(body).not.toContain('<@U123>');
     expect(body).not.toContain('<http://evil.example|');
@@ -138,6 +141,8 @@ describe('renderClosed', () => {
     const body = bodyOf(message);
 
     expect(message.text).toBe('Agent back: Support Bot');
+    // Good news mentions nobody.
+    expect(body).not.toContain('<!channel>');
     expect(body).toContain('Down for 16 min');
     expect(body).toContain('up and stable for 10 min');
   });

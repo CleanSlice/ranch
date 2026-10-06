@@ -149,6 +149,11 @@ the chat by a path that does not pass through Ranch:
    it is stored and never shown again — to change it, replace it.
 3. Press **Send a test** and see the message arrive.
 
+The message that an agent went down mentions the whole channel (`@channel`),
+so it reaches people who are not looking; the message that it is back
+mentions nobody. Pick a channel whose members are the people who should be
+woken.
+
 The API pod needs outbound HTTPS to `hooks.slack.com`. For messages to link
 to the agent, the API deployment needs `ADMIN_URL` set to the admin console's
 address.

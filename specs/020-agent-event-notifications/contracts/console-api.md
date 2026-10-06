@@ -120,7 +120,7 @@ console. `«…»` is sender-supplied or stored text, escaped for Slack.
 **Opened**
 
 ```text
-🔴 Agent failed: «agent name»
+🔴 @channel Agent failed: «agent name»   (mentions the whole channel, FR-037)
 Cause: «reason»                          (line omitted when there is none)
 When: <date in the reader's time zone>
 Reported by: «sender name» (via «tool»)  |  Ranch (its own watch)

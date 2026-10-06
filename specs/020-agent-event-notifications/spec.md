@@ -20,6 +20,10 @@ not notify: an outside sender cannot tell a restart from a crash. (3) The
 destination's secret is kept apart from the general settings, which hand
 secret values back to the console.
 
+**Scope update (2026-10-06, after the first real delivery to Slack)**: "так же
+желательно тегать всех в канале" — the message about a failure mentions the
+whole channel (FR-037). The message that an agent is back does not.
+
 ## Background
 
 The request has two halves. One is stated: an address DevOps can post an event
@@ -502,6 +506,10 @@ secret in it.
   a link to the agent in the admin console. When an outside sender and Ranch
   disagree about the agent, the notification MUST make that visible rather
   than pick a side.
+- **FR-037**: The notification that an incident opened MUST mention everyone
+  in the channel, so that it reaches people who are not looking. The
+  notification that it closed MUST NOT mention anyone. Text supplied by a
+  sender MUST NOT be able to add a mention of its own.
 - **FR-016**: A notification MUST NOT contain a credential, a secret or the
   contents of an agent's configuration.
 - **FR-017**: A failure the system notices on its own — an agent it marks

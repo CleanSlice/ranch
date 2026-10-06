@@ -35,12 +35,21 @@ Code and specs are in for every phase. 79 of 91 tasks are closed.
   a stopped agent's incident closed silently; an incident aged past the quiet
   period closed as `unconfirmed` with exactly one closing message.
 
+- **Real delivery to Slack** (the owner's test channel, same local stack):
+  the destination set through `PUT /agent-events/destination`, the test
+  message, an outside failure → opening message 1.5 s after the event was
+  accepted, five more failures → no further message, the aged incident →
+  "No further reports", Ranch's own watch → "Reported by: Ranch", the agent
+  back and aged → "Agent back … Down for 15 min". Sender-supplied `<…>` and
+  `&` arrived as plain characters (seen in the channel). After FR-037 was
+  added, one more failure arrived with the channel mention.
+
 **Not verified, and why**
 
-- **Slack delivery** — T042, T053, the Slack half of T046, T088. No webhook
-  address was available, so no message was ever sent to Slack: every queued
-  notification in the run ended `skipped` (no destination). What the notifier
-  does with Slack's answers is covered by specs with a mocked `fetch` only.
+- **Slack's failure answers** — delivery itself is verified (below); what the
+  notifier does with a `429`, a `404` or a timeout from Slack is covered by
+  specs with a mocked `fetch` only. T088 (the full quickstart in order on a
+  clean stack) is still owed.
 - **The screens in a browser** — T070, T078. Nothing was clicked. The dev
   server serves the pages and compiles the components; what they look like
   and how they behave is unseen.
@@ -52,6 +61,9 @@ Code and specs are in for every phase. 79 of 91 tasks are closed.
 
 **Decided while building**
 
+- FR-037, asked for after the first real delivery: the opening message
+  mentions the whole channel; the closing one mentions nobody. Unconditional —
+  there is no switch for it on the destination.
 - The incident, event-service and worker specs are one file,
   `domain/agentEvent.flow.spec.ts`, over an in-memory gateway that enforces
   the two constraints the database does. The rules are about state over time;
@@ -187,7 +199,7 @@ Code and specs are in for every phase. 79 of 91 tasks are closed.
 - [X] T039 [US2] Fill the `onOpened` seam in `api/src/slices/agent/event/domain/agentIncident.service.ts`: build the payload (agent name, status, reason, `occurredAt`, witness, sender name, tool, `ranchStatus`) and `enqueueNotification(incident.id, 'opened', payload)` in the same transaction as the incident insert; an `unmatched` or suppressed event never reaches this point
 - [X] T040 [US2] `api/src/slices/agent/event/domain/agentNotification.worker.ts`: `OnModuleInit` / `OnModuleDestroy`, a `setInterval(OUTBOX_TICK_MS)` with a `running` flag and `timer.unref()` in the style of `indexReconcile.service.ts`; one tick drains due rows; also expose `kick()` so `enqueue` can trigger a tick at once without waiting 5 s. T032 green
 - [X] T041 [US2] `api/src/slices/agent/event/agentEvent.controller.ts` (JWT, `RolesGuard`): `GET /agent-events/destination` (Owner, Admin), `PUT`, `DELETE`, `POST /agent-events/destination/test` (Owner) with DTOs in `dtos/notificationDestination.dto.ts` — the view DTO has `configured`, `kind`, `hint`, `updatedBy`, `updatedAt`, `consoleLinks`, `lastDelivery` and nothing else. Register everything in the module. T033 green
-- [ ] T042 [US2] Run [quickstart.md](./quickstart.md) Scenario 2 steps 3–4 (set the destination with `curl` and an owner token) and Scenario 6 against a real Slack test channel; confirm the first message arrives inside 60 s (SC-001) and the sender's answer did not wait for it (SC-002)
+- [X] T042 [US2] Run [quickstart.md](./quickstart.md) Scenario 2 steps 3–4 (set the destination with `curl` and an owner token) and Scenario 6 against a real Slack test channel; confirm the first message arrives inside 60 s (SC-001) and the sender's answer did not wait for it (SC-002)
 
 **Checkpoint**: an outside failure reaches the team's chat. Incidents never close yet — that is User Story 4.
 
@@ -207,7 +219,7 @@ Code and specs are in for every phase. 79 of 91 tasks are closed.
 
 - [X] T044 [US3] In `api/src/slices/agent/event/domain/agentEvent.service.ts`: `recordRanchFailure(change)` and, in `onModuleInit`, a subscription to `AgentStatusChanges.changes$()` filtered to `failed` / `unreachable`, each emission handled with its own `catch` (an error costs one event, never the stream); unsubscribe in `onModuleDestroy`. T043 green
 - [X] T045 [US3] Extend `renderOpened` in `api/src/slices/agent/event/domain/notificationText.ts` and its spec: status `unreachable` reads "Agent unreachable"; a Ranch-witness event has no "Ranch sees" line
-- [ ] T046 [US3] Run [quickstart.md](./quickstart.md) Scenario 4 steps 1–2 and step 4 (stop, start, delete → nothing in Slack, SC-010), then Scenario 9 (two API processes on one database, the same failure posted to both → one incident, one message)
+- [X] T046 [US3] Run [quickstart.md](./quickstart.md) Scenario 4 steps 1–2 and step 4 (stop, start, delete → nothing in Slack, SC-010), then Scenario 9 (two API processes on one database, the same failure posted to both → one incident, one message)
 
 **Checkpoint**: notifications work with no outside sender at all.
 
@@ -230,7 +242,7 @@ Code and specs are in for every phase. 79 of 91 tasks are closed.
 - [X] T050 [US4] In `api/src/slices/agent/event/domain/agentIncident.service.ts`: `sweep(now)` implementing the table in D5, and `noteRunning(agentId, at)`; in `agentEvent.service.ts` route `running` emissions from the port to `noteRunning` (no event stored). T047 green
 - [X] T051 [US4] Implement `renderClosed` in `api/src/slices/agent/event/domain/notificationText.ts` for both resolutions. T048 green
 - [X] T052 [US4] Add the incident sweep to `api/src/slices/agent/event/domain/agentNotification.worker.ts` on its own `setInterval(INCIDENT_SWEEP_MS)` with its own `running` flag; extend its spec for "sweep runs, an overlapping tick is skipped"
-- [ ] T053 [US4] Run [quickstart.md](./quickstart.md) Scenario 3 (exactly two messages, SC-004), Scenario 5 (`suppressed_starting`, `suppressed_stopped`), and Scenario 4 step 3 (fix the image → one "Agent back" message ten minutes after it is running, none for the restart)
+- [X] T053 [US4] Run [quickstart.md](./quickstart.md) Scenario 3 (exactly two messages, SC-004), Scenario 5 (`suppressed_starting`, `suppressed_stopped`), and Scenario 4 step 3 (fix the image → one "Agent back" message ten minutes after it is running, none for the restart)
 
 **Checkpoint**: User Stories 1–4 — the whole API behaviour — are done. Post a checkpoint comment on CLEAN-139.
 

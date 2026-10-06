@@ -11,6 +11,7 @@ import { AgentModule } from './slices/agent/agent/agent.module';
 import { AgentChannelModule } from './slices/agent/agentChannel/agentChannel.module';
 import { ShareLinkModule } from './slices/agent/shareLink/shareLink.module';
 import { PeerModule } from './slices/agent/peer/peer.module';
+import { AgentEventModule } from './slices/agent/event/agentEvent.module';
 import { ToolCatalogModule } from './slices/agent/toolCatalog/toolCatalog.module';
 import { TemplateModule } from './slices/agent/template/template.module';
 import { TemplateFileModule } from './slices/agent/templateFile/templateFile.module';
@@ -65,6 +66,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     AgentChannelModule,
     ShareLinkModule,
     PeerModule,
+    AgentEventModule,
     ToolCatalogModule,
     FileModule,
     SecretModule,

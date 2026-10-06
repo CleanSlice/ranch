@@ -120,6 +120,18 @@ Set `PUBLIC_API_URL` to the origin other agents reach this API on — every
 card URL is built from it. See `specs/013-a2a-agent-peers/` and
 `specs/014-a2a-protocol-upgrade/` for the full specifications.
 
+## Agent events and failure notifications
+
+When an agent goes down the team is told in Slack — once when the trouble
+starts, once when Ranch has seen the agent running again for ten quiet
+minutes — and the admin console keeps the record under **Events**. A failure
+is witnessed by Ranch's own watch, by an outside sender, or by both: cluster
+tooling can report one with `POST /agent-events` and an API key that carries
+only the `events:write` scope. An outside event never changes an agent's
+status. The destination is set under **Settings → Notifications**. The
+sender's guide is `docs/operations/agent-events.md`; the rules are in
+`specs/020-agent-event-notifications/`.
+
 ## Agent tools and the Tools panel
 
 The console is a window; the chat is the hands. Everything the admin console

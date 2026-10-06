@@ -124,6 +124,14 @@ const restartUnderway = computed(
           class="h-full"
         />
 
+        <!-- Keyed by agent: the table loads and watches the agent it was
+             mounted for, so another agent gets a fresh one. -->
+        <AgentEventTable
+          v-else-if="open === 'events'"
+          :key="agent.id"
+          :agent-id="agent.id"
+        />
+
         <Card v-else-if="open === 'secrets'">
           <CardHeader>
             <CardTitle>Secrets</CardTitle>

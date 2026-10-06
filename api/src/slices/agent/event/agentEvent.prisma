@@ -1,0 +1,127 @@
+import { Agent } from "../agent/agent"
+
+// One report that something happened to an agent (CLEAN-139). Written by an
+// outside sender through POST /agent-events, or by Ranch itself when its own
+// watch moves an agent to 'failed' / 'unreachable'. An event informs: it never
+// writes the agent's status.
+model AgentEvent {
+  id          String         @id @default(uuid())
+  // null when the id matched no agent, or the agent was deleted since.
+  agentId     String?
+  agent       Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  // The id exactly as the sender gave it — kept when nothing matched.
+  agentRef    String
+  // The agent's name when the event arrived; survives the agent's deletion.
+  agentName   String?
+  // 'failed' | 'unreachable' | 'recovered'. Outside senders may send
+  // 'failed' and 'recovered'; 'unreachable' is Ranch's own.
+  status      String
+  // The cause in the sender's words, shown as received.
+  reason      String?        @db.Text
+  // 'ranch' | 'external' — who saw it.
+  witness     String
+  // The API key that posted it. No relation on purpose: revoking a key
+  // deletes its row and must not touch history.
+  apiKeyId    String?
+  // The key's name at the time, or 'Ranch'.
+  senderName  String
+  // The body's `source` — detail only, never identity.
+  tool        String?
+  // What Ranch held for the agent when the event arrived.
+  ranchStatus String?
+  // 'opened' | 'joined' | 'suppressed_stopped' | 'suppressed_starting' |
+  // 'unmatched' | 'evidence' — what the event did, decided once on arrival.
+  outcome     String
+  incidentId  String?
+  incident    AgentIncident? @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  // The sender's `datetime`, else receivedAt.
+  occurredAt  DateTime
+  receivedAt  DateTime       @default(now())
+  // Makes a sender's retry one event. NULL when the sender gave neither an
+  // eventId nor a datetime — Postgres allows any number of NULLs.
+  dedupeKey   String?        @unique
+
+  @@index([receivedAt])
+  @@index([agentId, receivedAt])
+  // The flood count: this key's events of the last minute.
+  @@index([apiKeyId, receivedAt])
+  @@index([incidentId])
+}
+
+// One stretch of trouble for one agent, from the first failure until Ranch
+// has seen the agent running for ten quiet minutes. It is what the team is
+// told about: once when it opens, once when it closes.
+model AgentIncident {
+  id             String              @id @default(uuid())
+  agentId        String?
+  agent          Agent?              @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agentName      String
+  // The agent id while the incident is open, NULL once closed. Unique, so
+  // "at most one open incident per agent" is a database invariant: two
+  // senders, or two API replicas, reporting the same failure in the same
+  // second cannot open two.
+  openKey        String?             @unique
+  // The first failure's status and reason.
+  status         String
+  reason         String?             @db.Text
+  // True once any event of the incident was witnessed by Ranch itself.
+  ranchWitnessed Boolean             @default(false)
+  openedAt       DateTime
+  // receivedAt of the newest failure event; a new one restarts the quiet period.
+  lastFailureAt  DateTime
+  // When Ranch last saw the agent turn 'running'; cleared by a new failure.
+  upSince        DateTime?
+  closedAt       DateTime?
+  // 'recovered' | 'unconfirmed' | 'stopped' | 'deleted'
+  resolution     String?
+
+  events         AgentEvent[]
+  notifications  AgentNotification[]
+
+  @@index([agentId, openedAt])
+  @@index([closedAt])
+}
+
+// One message about an incident, with its delivery. An outbox: the row is
+// written with the incident, and a worker sends it, so the sender's answer
+// never waits for Slack and Slack being down loses nothing.
+model AgentNotification {
+  id            String        @id @default(uuid())
+  incidentId    String
+  incident      AgentIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  // 'opened' | 'closed'
+  kind          String
+  // What the message says, fixed when it was queued. No secret in it.
+  payload       Json
+  // 'pending' | 'sent' | 'failed' | 'skipped'
+  status        String        @default("pending")
+  attempts      Int           @default(0)
+  nextAttemptAt DateTime      @default(now())
+  // A replica's claim on the row while it sends.
+  lockedUntil   DateTime?
+  // The destination's status and answer, cut short. Never the address.
+  lastError     String?
+  sentAt        DateTime?
+  createdAt     DateTime      @default(now())
+
+  // An incident has at most one opening and one closing message.
+  @@unique([incidentId, kind])
+  @@index([status, nextAttemptAt])
+}
+
+// Where the team is told. One row per install (id = 'slack'). `webhookUrl` is
+// a secret: read only by the notifier, never returned by a route, a tool or a
+// log line. It lives here and not in Setting because GET /settings hands
+// every value back to the console.
+model AgentEventDestination {
+  id                String    @id
+  kind              String
+  webhookUrl        String
+  // Last four characters, for "which one is this".
+  hint              String
+  updatedBy         String
+  updatedAt         DateTime  @updatedAt
+  lastDeliveryAt    DateTime?
+  lastDeliveryOk    Boolean?
+  lastDeliveryError String?
+}

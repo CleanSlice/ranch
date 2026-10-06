@@ -5,6 +5,7 @@
 export enum ApiKeyScopeTypes {
   EmbedMint = 'embed:mint',
   EmbedMintAdmin = 'embed:mint-admin',
+  EventsWrite = 'events:write',
   Admin = 'admin',
 }
 

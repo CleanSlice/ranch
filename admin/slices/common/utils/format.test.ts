@@ -10,6 +10,7 @@ import {
   formatLongDate,
   formatMoney,
   formatNumber,
+  formatSpan,
   formatStamp,
   formatStampDate,
 } from './format';
@@ -121,6 +122,40 @@ describe('what a value can arrive as', () => {
     expect(formatNumber(null)).toBe('');
     expect(formatNumber(undefined)).toBe('');
     expect(formatMoney(Number.NaN)).toBe('');
+  });
+});
+
+describe('formatSpan', () => {
+  const span = (seconds: number) => formatSpan(AT, new Date(AT.getTime() + seconds * 1000));
+
+  test('uses the two largest units that say something', () => {
+    expect(span(45)).toBe('45 s');
+    expect(span(16 * 60 + 30)).toBe('16 min');
+    expect(span(2 * 3600)).toBe('2 h');
+    expect(span(2 * 3600 + 5 * 60)).toBe('2 h 5 min');
+    expect(span(3 * 86400 + 4 * 3600 + 59 * 60)).toBe('3 d 4 h');
+    expect(span(3 * 86400)).toBe('3 d');
+  });
+
+  test('changes unit exactly at the boundary', () => {
+    expect(span(59)).toBe('59 s');
+    expect(span(60)).toBe('1 min');
+    expect(span(3599)).toBe('59 min');
+    expect(span(3600)).toBe('1 h');
+    expect(span(86399)).toBe('23 h 59 min');
+    expect(span(86400)).toBe('1 d');
+  });
+
+  test('is never negative or blank', () => {
+    expect(span(0)).toBe('0 s');
+    expect(span(-30)).toBe('0 s');
+    expect(formatSpan(null, AT)).toBe('0 s');
+    expect(formatSpan(AT, 'nope')).toBe('0 s');
+  });
+
+  test('reads ISO strings and epoch milliseconds alike', () => {
+    expect(formatSpan('2026-08-21T07:00:00Z', '2026-08-21T07:16:00Z')).toBe('16 min');
+    expect(formatSpan(0, 90_000)).toBe('1 min');
   });
 });
 

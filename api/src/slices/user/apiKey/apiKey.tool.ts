@@ -30,7 +30,8 @@ const scopeSchema = z
   .nativeEnum(ApiKeyScopeTypes)
   .describe(
     'embed:mint — mint browser embed tokens; embed:mint-admin — the same ' +
-      'but keeping Owner/Admin roles (effectively admin); admin — the full API.',
+      'but keeping Owner/Admin roles (effectively admin); events:write — post ' +
+      'agent events (POST /agent-events) and nothing else; admin — the full API.',
   );
 
 /**

@@ -20,7 +20,15 @@ export abstract class IKnowledgeGateway {
   ): Promise<IKnowledgePageRows>;
   abstract findById(id: string): Promise<IKnowledgeRecord | null>;
   abstract findExistingByIds(ids: string[]): Promise<IKnowledgeRecord[]>;
-  abstract create(data: ICreateKnowledgeData): Promise<IKnowledgeRecord>;
+  /**
+   * `migrationState` is where the base is born: 'done' on its own retrieval
+   * instance, 'notStarted' on the shared pool. Only the caller knows which —
+   * it is the one that does or does not provision the instance.
+   */
+  abstract create(
+    data: ICreateKnowledgeData,
+    migrationState: MigrationStateTypes,
+  ): Promise<IKnowledgeRecord>;
   abstract update(
     id: string,
     data: IUpdateKnowledgeData,

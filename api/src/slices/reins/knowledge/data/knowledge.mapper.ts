@@ -69,15 +69,16 @@ export class KnowledgeMapper {
     };
   }
 
-  toCreate(data: ICreateKnowledgeData): Prisma.KnowledgeCreateInput {
+  toCreate(
+    data: ICreateKnowledgeData,
+    migrationState: MigrationStateTypes,
+  ): Prisma.KnowledgeCreateInput {
     return {
       id: `knowledge-${crypto.randomUUID()}`,
       name: data.name,
       description: data.description ?? null,
       workspace: 'pending',
-      // A base born after the transition has nothing to migrate — its
-      // content only ever lands in its own area.
-      migrationState: 'done',
+      migrationState,
     };
   }
 }

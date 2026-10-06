@@ -357,15 +357,32 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
   /**
    * A base marked 'done' with no instance, on an installation that provisions
    * none, can neither be written nor read: it was created while every new base
-   * was born 'done' whether or not isolation was on. Its content, if any ever
-   * got in, could only have gone to the shared pool, so that is where it is
-   * returned. A base whose instance exists is left alone — it holds content
-   * the shared pool does not.
+   * was born 'done' whether or not isolation was on. Such a base never took a
+   * document, so returning it to the shared pool moves nothing.
+   *
+   * Anything else is left exactly as it is. A base whose instance exists holds
+   * content the shared pool does not. A base in the same state that already
+   * has documents indexed got them somewhere this code cannot see; pointing it
+   * at the shared pool on a guess would have the next index run pay to ingest
+   * every one of them again, so it is reported and a person decides.
    */
   private async releaseStrandedBases(): Promise<void> {
     const bases = await this.gateway.findAll();
-    for (const k of bases) {
-      if (k.migrationState !== 'done' || k.instanceState !== 'absent') continue;
+    const stranded = bases.filter(
+      (k) => k.migrationState === 'done' && k.instanceState === 'absent',
+    );
+    if (stranded.length === 0) return;
+    const counts = await this.sources.countByKnowledgeIds(
+      stranded.map((k) => k.id),
+    );
+    for (const k of stranded) {
+      const held = counts.get(k.id) ?? NO_SOURCES;
+      if (held.indexed > 0 || held.processing > 0) {
+        this.logger.warn(
+          `Knowledge ${k.id} is marked migrated with no retrieval instance but holds ${held.indexed} indexed source(s) - left as is, needs a person`,
+        );
+        continue;
+      }
       await this.gateway.updateMigrationState(k.id, 'notStarted');
       this.logger.warn(
         `Knowledge ${k.id} was marked migrated with no retrieval instance - returned to the shared pool`,

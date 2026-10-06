@@ -7,7 +7,7 @@ import {
 } from '../../knowledge/domain/knowledge.types';
 import { KnowledgeMapper } from '../../knowledge/data/knowledge.mapper';
 import { SourceService } from '../../source/domain/source.service';
-import { ISourceData } from '../../source/domain/source.types';
+import { ISourceCounts, ISourceData } from '../../source/domain/source.types';
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IInstanceStatus } from '../../instance/domain/instance.types';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
@@ -221,7 +221,7 @@ describe('instance isolation opt-in gate', () => {
     } as unknown as IKnowledgeGateway;
     const service = new KnowledgeService(
       gateway,
-      {} as SourceService,
+      noSources(),
       {} as IInstanceGateway,
       makeConfig(false),
     );
@@ -231,6 +231,44 @@ describe('instance isolation opt-in gate', () => {
     expect(updateMigrationState.mock.calls).toEqual([
       ['k-stranded', 'notStarted'],
     ]);
+  });
+
+  test('start-up never moves a base that already holds indexed content', async () => {
+    // A base stranded by CLEAN-144 could not take a single document, so it
+    // has nothing indexed. One that does got its content somewhere, and
+    // pointing it at the shared pool on a guess would have the next index
+    // run pay to ingest all of it again.
+    const indexed: IKnowledgeRecord = {
+      ...record('k-indexed'),
+      migrationState: 'done',
+    };
+    const updateMigrationState = jest.fn(() => Promise.resolve(indexed));
+    const gateway = {
+      findAll: jest.fn(() => Promise.resolve([indexed])),
+      updateMigrationState,
+    } as unknown as IKnowledgeGateway;
+    const counts: ISourceCounts = {
+      total: 756,
+      indexed: 756,
+      failed: 0,
+      retrying: 0,
+      processing: 0,
+    };
+    const sources = {
+      countByKnowledgeIds: jest.fn(() =>
+        Promise.resolve(new Map([['k-indexed', counts]])),
+      ),
+    } as unknown as SourceService;
+    const service = new KnowledgeService(
+      gateway,
+      sources,
+      {} as IInstanceGateway,
+      makeConfig(false),
+    );
+
+    await service.reconcileInstances();
+
+    expect(updateMigrationState).not.toHaveBeenCalled();
   });
 
   test('start-up provisions a base without an instance instead of releasing it while the flag is on', async () => {

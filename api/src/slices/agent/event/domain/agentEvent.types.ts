@@ -231,6 +231,7 @@ export interface INotificationDestinationView {
 
 export interface IEventListFilter {
   agentId?: string;
+  incidentId?: string;
   since?: Date;
   limit: number;
   before?: string;

@@ -1,19 +1,24 @@
 <script setup lang="ts">
-import type { IAgentIncident } from '#agentEvent/domain';
-import {
-  TONE_CLASSES,
-  deliveryState,
-  isNotNotified,
-  statusTone,
-} from '#agentEvent/utils/eventTone';
-import { formatDateTime, formatSpan, formatStamp } from '#common/utils/format';
+import { deliveryState, isNotNotified } from '#agentEvent/utils/eventTone';
+import { compareInstants } from '#common/utils/format';
 
 /**
- * The /events page: open incidents first, then everything that was reported,
- * newest first. Content comes from the store by id; `useAsyncData` is here
- * for the loading and error state only (docs/state.md).
+ * The /events page. Two views of the same record:
+ *
+ * - **Incidents** (the default) — one row per stretch of trouble for an
+ *   agent. This is what a person opens the page for: what is down, since
+ *   when, was anybody told. A row opens into its reports.
+ * - **Event log** — every report as it arrived, newest first, including the
+ *   ones that belong to no incident (an unknown agent, an agent that was
+ *   stopped or being restarted). The audit trail.
+ *
+ * The view lives in `?view=` so it can be linked; the default carries no
+ * parameter. Content comes from the store by id; `useAsyncData` is here for
+ * the loading and error state only (docs/state.md).
  */
 const store = useAgentEventStore();
+const route = useRoute();
+const router = useRouter();
 
 const { pending, error } = useAsyncData(
   'admin-agent-events',
@@ -33,15 +38,62 @@ const { pending, error } = useAsyncData(
 onMounted(() => store.watch());
 onBeforeUnmount(() => store.unwatch());
 
-type Segment = 'all' | 'failures' | 'notNotified';
-const SEGMENTS: readonly { key: Segment; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'failures', label: 'Failures' },
-  { key: 'notNotified', label: 'Not notified' },
-];
+type View = 'incidents' | 'log';
+const view = computed<View>(() => (route.query.view === 'log' ? 'log' : 'incidents'));
+function setView(next: string | number) {
+  void router.replace({
+    query: { ...route.query, view: next === 'log' ? 'log' : undefined },
+  });
+}
 
 const query = ref('');
-const segment = ref<Segment>('all');
+const matches = (name: string | null | undefined): boolean => {
+  const needle = query.value.trim().toLowerCase();
+  return !needle || (name ?? '').toLowerCase().includes(needle);
+};
+
+// ── Incidents ───────────────────────────────────────────────────────────
+type IncidentSegment = 'open' | 'closed' | 'all';
+const incidentSegment = ref<IncidentSegment>('open');
+
+const openCount = computed(
+  () => store.openIncidentIds.filter((id) => store.incidentById(id)?.state === 'open').length,
+);
+const incidentSegments = computed<readonly { key: IncidentSegment; label: string }[]>(() => [
+  { key: 'open', label: openCount.value ? `Open ${openCount.value}` : 'Open' },
+  { key: 'closed', label: 'Closed' },
+  { key: 'all', label: 'All' },
+]);
+
+const incidentIds = computed(() => {
+  // Open incidents come from their own, complete list; the recent list is a
+  // page of everything. Together, once each, newest first.
+  const ids = [...new Set([...store.openIncidentIds, ...store.incidentIds])];
+  return ids
+    .filter((id) => {
+      const incident = store.incidentById(id);
+      if (!incident || !matches(incident.agentName)) return false;
+      if (incidentSegment.value === 'all') return true;
+      return incident.state === incidentSegment.value;
+    })
+    .sort((a, b) =>
+      compareInstants(store.incidentById(b)!.openedAt, store.incidentById(a)!.openedAt),
+    );
+});
+
+const hasMoreIncidents = computed(
+  () => incidentSegment.value !== 'open' && !!store.incidentsCursor,
+);
+
+// ── Event log ───────────────────────────────────────────────────────────
+type LogSegment = 'all' | 'failures' | 'noIncident' | 'notNotified';
+const LOG_SEGMENTS: readonly { key: LogSegment; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'failures', label: 'Failures' },
+  { key: 'noIncident', label: 'No incident' },
+  { key: 'notNotified', label: 'Not notified' },
+];
+const logSegment = ref<LogSegment>('all');
 
 // "Not notified" asks the same function the badge is drawn from, so the
 // filter and the column cannot disagree.
@@ -50,37 +102,32 @@ function notNotified(incidentId: string | null): boolean {
   return isNotNotified(deliveryState(store.incidentById(incidentId)?.notifications));
 }
 
-const ids = computed(() => {
-  const needle = query.value.trim().toLowerCase();
-  return store.latestIds.filter((id) => {
+const eventIds = computed(() =>
+  store.latestIds.filter((id) => {
     const event = store.eventById(id);
-    if (!event) return false;
-    if (needle && !(event.agentName ?? event.agentRef).toLowerCase().includes(needle)) {
-      return false;
+    if (!event || !matches(event.agentName ?? event.agentRef)) return false;
+    switch (logSegment.value) {
+      case 'failures':
+        return event.status !== 'recovered';
+      case 'noIncident':
+        // Recorded and attached to nothing: an unknown agent, or an agent
+        // that was stopped or being started when the report came.
+        return event.incidentId === null;
+      case 'notNotified':
+        return event.outcome === 'opened' && notNotified(event.incidentId);
+      default:
+        return true;
     }
-    if (segment.value === 'failures') return event.status !== 'recovered';
-    if (segment.value === 'notNotified') {
-      return event.outcome === 'opened' && notNotified(event.incidentId);
-    }
-    return true;
-  });
-});
+  }),
+);
 
-const openIncidents = computed<IAgentIncident[]>(() => {
-  const out: IAgentIncident[] = [];
-  for (const id of store.openIncidentIds) {
-    const incident = store.incidentById(id);
-    if (incident && incident.state === 'open') out.push(incident);
-  }
-  return out;
-});
+const hasMoreEvents = computed(() => !!store.nextCursor());
 
-const hasMore = computed(() => !!store.nextCursor());
 const loadingMore = ref(false);
-async function loadMore() {
+async function loadMore(what: 'incidents' | 'events') {
   loadingMore.value = true;
   try {
-    await store.fetchMore();
+    await (what === 'incidents' ? store.fetchMoreIncidents() : store.fetchMore());
   } finally {
     loadingMore.value = false;
   }
@@ -106,78 +153,86 @@ async function loadMore() {
       {{ error.message }}
     </div>
 
-    <section v-if="openIncidents.length" class="flex flex-col gap-2">
-      <h2 class="text-sm font-medium">Open incidents</h2>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Agent</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Cause</TableHead>
-            <TableHead>Since</TableHead>
-            <TableHead>Reported by</TableHead>
-            <TableHead>Notification</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow v-for="incident in openIncidents" :key="incident.id">
-            <TableCell class="align-top">
-              <NuxtLink
-                v-if="incident.agentId"
-                :to="`/agents/${incident.agentId}?tab=events`"
-                class="font-medium hover:underline"
-              >
-                {{ incident.agentName }}
-              </NuxtLink>
-              <span v-else class="font-medium">{{ incident.agentName }}</span>
-            </TableCell>
-            <TableCell class="align-top">
-              <Badge variant="outline" :class="TONE_CLASSES[statusTone(incident.status).tone]">
-                {{ statusTone(incident.status).label }}
-              </Badge>
-            </TableCell>
-            <!-- As received; clamped on screen only, whole text on hover. -->
-            <TableCell class="max-w-md align-top whitespace-normal">
-              <div
-                v-if="incident.reason"
-                class="line-clamp-3 font-mono text-xs break-words whitespace-pre-wrap"
-                :title="incident.reason"
-              >
-                {{ incident.reason }}
-              </div>
-              <span v-else class="text-muted-foreground">—</span>
-            </TableCell>
-            <TableCell class="whitespace-nowrap align-top" :title="formatDateTime(incident.openedAt)">
-              <div>{{ formatStamp(incident.openedAt) }}</div>
-              <div class="text-xs text-muted-foreground">
-                {{ formatSpan(incident.openedAt, store.refreshedAt) }}
-              </div>
-            </TableCell>
-            <TableCell class="align-top whitespace-normal">
-              {{ incident.witnesses.join(', ') }}
-            </TableCell>
-            <TableCell class="align-top">
-              <AgentEventDeliveryBadge :notifications="incident.notifications" />
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </section>
+    <Tabs :model-value="view" @update:model-value="setView">
+      <TabsList>
+        <TabsTrigger value="incidents">
+          Incidents
+          <span
+            v-if="openCount"
+            class="rounded-full bg-red-100 px-1.5 text-[11px] font-semibold text-red-700 dark:bg-red-950 dark:text-red-300"
+          >
+            {{ openCount }}
+          </span>
+        </TabsTrigger>
+        <TabsTrigger value="log">Event log</TabsTrigger>
+      </TabsList>
+    </Tabs>
 
-    <ListToolbar>
-      <ListSearch v-model="query" placeholder="Search by agent" />
-      <ListSegments v-model="segment" :options="SEGMENTS" label="Events shown" />
-    </ListToolbar>
+    <template v-if="view === 'incidents'">
+      <ListToolbar>
+        <ListSearch v-model="query" placeholder="Search by agent" />
+        <ListSegments
+          v-model="incidentSegment"
+          :options="incidentSegments"
+          label="Incidents shown"
+        />
+      </ListToolbar>
 
-    <p v-if="pending && !store.latestIds.length" class="text-sm text-muted-foreground">
-      Loading events…
-    </p>
-    <AgentEventTable v-else :ids="ids" />
+      <p v-if="pending && !incidentIds.length" class="text-sm text-muted-foreground">
+        Loading incidents…
+      </p>
+      <AgentEventIncidentList v-else-if="incidentIds.length" :ids="incidentIds" />
+      <div
+        v-else
+        class="rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground"
+      >
+        <template v-if="query.trim()">No incident matches “{{ query.trim() }}”.</template>
+        <template v-else-if="incidentSegment === 'open'">
+          No open incidents.
+          <button
+            type="button"
+            class="font-medium text-foreground underline"
+            @click="incidentSegment = 'closed'"
+          >
+            See closed ones
+          </button>
+        </template>
+        <template v-else>No incidents yet.</template>
+      </div>
 
-    <div v-if="hasMore">
-      <Button variant="outline" size="sm" :disabled="loadingMore" @click="loadMore">
-        Load more
-      </Button>
-    </div>
+      <div v-if="hasMoreIncidents">
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="loadingMore"
+          @click="loadMore('incidents')"
+        >
+          Load more
+        </Button>
+      </div>
+    </template>
+
+    <template v-else>
+      <ListToolbar>
+        <ListSearch v-model="query" placeholder="Search by agent" />
+        <ListSegments v-model="logSegment" :options="LOG_SEGMENTS" label="Events shown" />
+      </ListToolbar>
+
+      <p v-if="pending && !store.latestIds.length" class="text-sm text-muted-foreground">
+        Loading events…
+      </p>
+      <AgentEventTable v-else :ids="eventIds" />
+
+      <div v-if="hasMoreEvents">
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="loadingMore"
+          @click="loadMore('events')"
+        >
+          Load more
+        </Button>
+      </div>
+    </template>
   </div>
 </template>

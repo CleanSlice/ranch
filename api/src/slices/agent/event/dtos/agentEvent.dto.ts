@@ -21,8 +21,9 @@ import {
 
 const CURSOR_MAX_LENGTH = 200;
 
-export class ListAgentEventsQueryDto {
-  @ApiPropertyOptional({ description: 'Only this agent’s events.' })
+/** What both lists share: one agent's rows, a page size, a cursor. */
+class AgentEventPageQueryDto {
+  @ApiPropertyOptional({ description: 'Only this agent’s rows.' })
   @IsOptional()
   @IsString()
   @MaxLength(100)
@@ -45,7 +46,18 @@ export class ListAgentEventsQueryDto {
   before?: string;
 }
 
-export class ListAgentIncidentsQueryDto extends ListAgentEventsQueryDto {
+export class ListAgentEventsQueryDto extends AgentEventPageQueryDto {
+  @ApiPropertyOptional({
+    description:
+      'Only the events of this incident — its timeline, newest first.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  incidentId?: string;
+}
+
+export class ListAgentIncidentsQueryDto extends AgentEventPageQueryDto {
   @ApiPropertyOptional({ enum: ['open', 'closed'] })
   @IsOptional()
   @IsIn(['open', 'closed'])

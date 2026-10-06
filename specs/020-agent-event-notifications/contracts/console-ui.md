@@ -37,12 +37,26 @@ The gateway uses the generated SDK (`#api/data`) and `unwrapOrThrow`, as
 Sidebar: group *Main*, title "Events", via `plugins/menu.ts`. The page title
 comes from the sidebar item.
 
-- **Open incidents first**: a short block above the list — agent, status,
-  cause, since when, who reported, delivery. Empty when there are none.
-- **The list**: `ListToolbar` with `ListSearch` (agent name) and
-  `ListSegments` (*All* / *Failures* / *Not notified*); the default `Table*`
-  components, no wrapper. Columns: time, agent (link to the agent's events
-  section), status, cause, reported by, outcome, notification.
+**Redesigned 2026-10-06 after the first look at it with real data**: two flat
+tables one above the other let the raw reports — five identical "again"s, a
+burst of "unknown agent" — bury the thing the page is opened for. The page is
+now two views behind tabs, held in `?view=` (the default carries no
+parameter):
+
+- **Incidents** (default; the tab shows the open count) — one row per
+  incident: a state badge (*Failed* / *Unreachable* while open, *Recovering*
+  once Ranch has seen the agent come up, how it ended once closed), the agent,
+  the number of reports, the first cause on one line, since when and for how
+  long, who reported, whether the opening and the closing message were
+  delivered. `ListSearch` by agent and `ListSegments` *Open n* / *Closed* /
+  *All*. A row opens into its reports — the same table as below, without the
+  agent and notification columns (`GET /agent-events?incidentId=`).
+  `components/agentEvent/IncidentList.vue`.
+- **Event log** — every report as it arrived, newest first, including those
+  attached to no incident. `ListSearch` and `ListSegments` *All* / *Failures*
+  / *No incident* / *Not notified*; the default `Table*` components, no
+  wrapper. Columns: time, agent (link to the agent's events section), status,
+  cause, reported by, outcome, notification.
 - **Time**: `occurredAt` through `#common/utils/format` (`formatStamp`); when
   `receivedAt` differs from it by more than a minute, a second line "received
   …" (FR-006). Never `toLocale*String` or `Intl.*` in a component.

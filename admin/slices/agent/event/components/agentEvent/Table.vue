@@ -26,10 +26,16 @@ import {
 const props = defineProps<{
   agentId?: string;
   ids?: string[];
+  /**
+   * One incident's reports, shown under its row: the agent and whether the
+   * team was told are already said by the row above, so both columns go.
+   */
+  timeline?: boolean;
 }>();
 
 const store = useAgentEventStore();
 const owns = computed(() => props.ids === undefined && !!props.agentId);
+const showAgent = computed(() => !props.agentId && !props.timeline);
 
 const { pending, error } = useAsyncData(
   `admin-agent-events-table-${props.agentId ?? 'page'}`,
@@ -106,12 +112,12 @@ async function loadMore() {
       <TableHeader>
         <TableRow>
           <TableHead>Time</TableHead>
-          <TableHead v-if="!agentId">Agent</TableHead>
+          <TableHead v-if="showAgent">Agent</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Cause</TableHead>
           <TableHead>Reported by</TableHead>
           <TableHead>Outcome</TableHead>
-          <TableHead>Notification</TableHead>
+          <TableHead v-if="!timeline">Notification</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -128,7 +134,7 @@ async function loadMore() {
               received {{ formatStamp(event.receivedAt) }}
             </div>
           </TableCell>
-          <TableCell v-if="!agentId" class="align-top">
+          <TableCell v-if="showAgent" class="align-top">
             <NuxtLink
               v-if="event.agentId"
               :to="`/agents/${event.agentId}?tab=events`"
@@ -166,7 +172,7 @@ async function loadMore() {
           <TableCell class="align-top">
             <AgentEventOutcomeBadge :outcome="event.outcome" />
           </TableCell>
-          <TableCell class="align-top">
+          <TableCell v-if="!timeline" class="align-top">
             <AgentEventDeliveryBadge :notifications="notificationsOf(event)" />
           </TableCell>
         </TableRow>

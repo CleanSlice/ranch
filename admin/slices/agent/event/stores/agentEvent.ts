@@ -22,6 +22,8 @@ export const EVENT_REFRESH_MS = 5000;
 const PAGE_SIZE = 50;
 /** Enough closed incidents to give the rows on screen their delivery state. */
 const RECENT_INCIDENTS = 100;
+/** An incident's whole timeline in one page — the API's maximum. */
+const TIMELINE_SIZE = 200;
 /** The watcher key of the all-agents list; an agent's key is its id. */
 const LATEST = '';
 
@@ -34,6 +36,10 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
   const latest = ref<IEventView>(emptyView());
   const byAgent = ref<Record<string, IEventView>>({});
   const openIncidentIds = ref<string[]>([]);
+  // Every incident the Incidents tab has loaded, open or closed, newest first.
+  const recentIncidents = ref<IEventView>(emptyView());
+  // An expanded incident's reports, as ids into `events`.
+  const incidentEvents = ref<Record<string, string[]>>({});
   // What the server said about the destination. Never the address: the API
   // does not return it and `saveDestination` does not keep its argument.
   const destination = ref<INotificationDestination | null>(null);
@@ -52,6 +58,11 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
   const viewOf = (agentId?: string): IEventView =>
     agentId ? (byAgent.value[agentId] ?? emptyView()) : latest.value;
   const nextCursor = (agentId?: string): string | null => viewOf(agentId).nextCursor;
+  const incidentIds = computed(() => recentIncidents.value.ids);
+  const incidentsCursor = computed(() => recentIncidents.value.nextCursor);
+  /** `undefined` until the incident's reports were asked for. */
+  const incidentEventIds = (incidentId: string): string[] | undefined =>
+    incidentEvents.value[incidentId];
 
   function setView(agentId: string | undefined, view: IEventView) {
     if (agentId) byAgent.value = { ...byAgent.value, [agentId]: view };
@@ -101,7 +112,39 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
         )
       : [];
     openIncidentIds.value = [...openIds, ...kept];
+    // The all-agents answer is also the Incidents tab's own list, newest
+    // first; what "Load more" brought in below it stays.
+    if (!agentId) {
+      recentIncidents.value = refreshView(
+        recentIncidents.value,
+        recent.items.map((i) => i.id),
+        recent.nextCursor,
+      );
+    }
     refreshedAt.value = Date.now();
+  }
+
+  /** The next older page of incidents, for the Incidents tab. */
+  async function fetchMoreIncidents() {
+    const before = recentIncidents.value.nextCursor;
+    if (!before) return;
+    const page = await getService().listIncidents({ before, limit: RECENT_INCIDENTS });
+    incidents.value = upsertById(incidents.value, page.items);
+    recentIncidents.value = appendView(
+      recentIncidents.value,
+      page.items.map((i) => i.id),
+      page.nextCursor,
+    );
+  }
+
+  /** One incident's reports, newest first — what its row expands into. */
+  async function fetchIncidentEvents(incidentId: string) {
+    const page = await getService().listEvents({ incidentId, limit: TIMELINE_SIZE });
+    events.value = upsertById(events.value, page.items);
+    incidentEvents.value = {
+      ...incidentEvents.value,
+      [incidentId]: page.items.map((e) => e.id),
+    };
   }
 
   // One timer for every watcher (the page, an agent's section, both at once).
@@ -157,18 +200,25 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
     // id lists and `nextCursor()` rather than these.
     latest,
     byAgent,
+    recentIncidents,
+    incidentEvents,
     latestIds,
     byAgentIds,
     openIncidentIds,
+    incidentIds,
+    incidentsCursor,
     destination,
     refreshedAt,
     eventById,
     incidentById,
+    incidentEventIds,
     nextCursor,
     fetchLatest,
     fetchMore,
     fetchForAgent,
     fetchIncidents,
+    fetchMoreIncidents,
+    fetchIncidentEvents,
     watch,
     unwatch,
     fetchDestination,

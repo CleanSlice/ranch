@@ -95,6 +95,7 @@ export class AgentEventGateway extends IAgentEventGateway {
     const records = await this.prisma.agentEvent.findMany({
       where: {
         ...(filter.agentId && { agentId: filter.agentId }),
+        ...(filter.incidentId && { incidentId: filter.incidentId }),
         ...(filter.since && { receivedAt: { gte: filter.since } }),
         // Strictly after the cursor row in (receivedAt desc, id desc): two
         // events of the same millisecond are neither repeated nor skipped.

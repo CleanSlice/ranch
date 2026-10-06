@@ -58,6 +58,33 @@ export function statusTone(status: string): IToneLabel {
   return STATUSES[status] ?? { label: status, tone: 'muted' };
 }
 
+const RESOLUTIONS: Record<string, IToneLabel> = {
+  recovered: { label: 'Recovered', tone: 'success' },
+  // Only an outside sender ever saw it down; Ranch saw the agent running.
+  unconfirmed: { label: 'No further reports', tone: 'muted' },
+  stopped: { label: 'Agent stopped', tone: 'muted' },
+  deleted: { label: 'Agent deleted', tone: 'muted' },
+};
+
+/**
+ * Where an incident stands, in one badge: what is wrong while it is open,
+ * "Recovering" once Ranch has seen the agent come up and is waiting out the
+ * quiet period, and how it ended once it is closed.
+ */
+export function incidentTone(incident: {
+  state: string;
+  status: string;
+  upSince: string | null;
+  resolution: string | null;
+}): IToneLabel {
+  if (incident.state === 'open') {
+    if (incident.upSince) return { label: 'Recovering', tone: 'warning' };
+    return statusTone(incident.status);
+  }
+  const resolution = incident.resolution ?? '';
+  return RESOLUTIONS[resolution] ?? { label: resolution || 'Closed', tone: 'muted' };
+}
+
 export interface IDeliveryState extends IToneLabel {
   state: IIncidentNotification['status'];
   /** The delivery error, as the server recorded it. Shown on hover. */

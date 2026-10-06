@@ -12,8 +12,9 @@ never hand-written.
 
 ### `GET /agent-events` — Owner, Admin
 
-Query: `agentId?`, `limit?` (default 50, max 200), `before?` (opaque cursor
-from a previous answer).
+Query: `agentId?`, `incidentId?` (one incident's reports — its timeline),
+`limit?` (default 50, max 200), `before?` (opaque cursor from a previous
+answer).
 
 ```ts
 {

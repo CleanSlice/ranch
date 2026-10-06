@@ -5509,7 +5509,7 @@ export type ListAgentEventsData = {
   path?: never;
   query?: {
     /**
-     * Only this agent’s events.
+     * Only this agent’s rows.
      */
     agentId?: string;
     limit?: number;
@@ -5517,6 +5517,10 @@ export type ListAgentEventsData = {
      * The `nextCursor` of a previous answer — the page after it.
      */
     before?: string;
+    /**
+     * Only the events of this incident — its timeline, newest first.
+     */
+    incidentId?: string;
   };
   url: "/agent-events";
 };
@@ -5558,7 +5562,7 @@ export type ListAgentIncidentsData = {
   path?: never;
   query?: {
     /**
-     * Only this agent’s events.
+     * Only this agent’s rows.
      */
     agentId?: string;
     limit?: number;

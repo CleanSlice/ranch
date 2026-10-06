@@ -3,6 +3,7 @@ import type { IIncidentNotification } from '../domain/agentEvent.types';
 import {
   KNOWN_OUTCOMES,
   deliveryState,
+  incidentTone,
   isNotNotified,
   outcomeTone,
   statusTone,
@@ -91,6 +92,42 @@ describe('deliveryState', () => {
     const rows = [note(), note({ kind: 'closed', status: 'failed', lastError: 'boom' })];
     expect(deliveryState(rows)?.label).toBe('Notified');
     expect(deliveryState(rows, 'closed')?.label).toBe('Not delivered');
+  });
+});
+
+describe('incidentTone', () => {
+  const incident = (over: Partial<Parameters<typeof incidentTone>[0]> = {}) => ({
+    state: 'open',
+    status: 'failed',
+    upSince: null,
+    resolution: null,
+    ...over,
+  });
+
+  test('an open incident says what is wrong', () => {
+    expect(incidentTone(incident())).toEqual({ label: 'Failed', tone: 'danger' });
+    expect(incidentTone(incident({ status: 'unreachable' })).label).toBe('Unreachable');
+  });
+
+  test('an open incident whose agent came up is recovering, not closed', () => {
+    expect(incidentTone(incident({ upSince: '2026-10-06T10:05:00Z' }))).toEqual({
+      label: 'Recovering',
+      tone: 'warning',
+    });
+  });
+
+  test('a closed incident says how it ended', () => {
+    const closed = (resolution: string | null) =>
+      incidentTone(incident({ state: 'closed', resolution })).label;
+    expect(closed('recovered')).toBe('Recovered');
+    expect(closed('unconfirmed')).toBe('No further reports');
+    expect(closed('stopped')).toBe('Agent stopped');
+    expect(closed('deleted')).toBe('Agent deleted');
+  });
+
+  test('a resolution this console does not know is shown raw, never blank', () => {
+    expect(incidentTone(incident({ state: 'closed', resolution: 'merged' })).label).toBe('merged');
+    expect(incidentTone(incident({ state: 'closed', resolution: null })).label).toBe('Closed');
   });
 });
 

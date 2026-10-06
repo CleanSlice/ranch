@@ -65,13 +65,19 @@ export interface IAgentIncidentPage {
   nextCursor: string | null;
 }
 
-export interface IListAgentEventsQuery {
+/** What both lists share: one agent's rows, a cursor, a page size. */
+interface IAgentEventPageQuery {
   agentId?: string;
   before?: string;
   limit?: number;
 }
 
-export interface IListAgentIncidentsQuery extends IListAgentEventsQuery {
+export interface IListAgentEventsQuery extends IAgentEventPageQuery {
+  /** Only the events of this incident — its timeline. */
+  incidentId?: string;
+}
+
+export interface IListAgentIncidentsQuery extends IAgentEventPageQuery {
   state?: AgentIncidentStateTypes;
 }
 

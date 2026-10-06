@@ -84,6 +84,7 @@ export class AgentEventController {
   ): Promise<AgentEventPageDto> {
     return this.service.listEvents({
       agentId: query.agentId,
+      incidentId: query.incidentId,
       limit: query.limit ?? EVENT_PAGE_DEFAULT,
       before: query.before,
     });

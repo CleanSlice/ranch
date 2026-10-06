@@ -66,6 +66,13 @@ model AgentIncident {
   reason         String?             @db.Text
   // True once any event of the incident was witnessed by Ranch itself.
   ranchWitnessed Boolean             @default(false)
+  // How many reports the incident holds and who sent them, first reporter
+  // first. Kept on the row and updated as each report is attached: the list
+  // of incidents is re-read every few seconds by every open console, and
+  // counting through AgentEvent made that read grow with the history —
+  // 160 ms a request at 60 000 reports, measured.
+  eventCount     Int                 @default(0)
+  witnesses      String[]            @default([])
   openedAt       DateTime
   // receivedAt of the newest failure event; a new one restarts the quiet period.
   lastFailureAt  DateTime
@@ -79,6 +86,8 @@ model AgentIncident {
   notifications  AgentNotification[]
 
   @@index([agentId, openedAt])
+  // The all-agents list, newest first.
+  @@index([openedAt])
   @@index([closedAt])
 }
 

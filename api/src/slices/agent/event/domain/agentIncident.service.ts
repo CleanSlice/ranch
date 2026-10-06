@@ -58,6 +58,7 @@ export class AgentIncidentService {
           open.id,
           input.receivedAt,
           input.witness === 'ranch',
+          input.senderName,
         );
         if (joined) return { incidentId: open.id, outcome: 'joined' };
         // Closed between the read and the write — open a new one.

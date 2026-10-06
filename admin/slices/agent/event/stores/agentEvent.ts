@@ -20,10 +20,18 @@ const getService = createServiceGetter<AgentEventService>('$agentEventService');
 /** "Within a few seconds" (spec FR-025): a new event shows up inside 5 s. */
 export const EVENT_REFRESH_MS = 5000;
 const PAGE_SIZE = 50;
-/** Enough closed incidents to give the rows on screen their delivery state. */
-const RECENT_INCIDENTS = 100;
-/** An incident's whole timeline in one page — the API's maximum. */
-const TIMELINE_SIZE = 200;
+/** One page of incidents: the newest ones, and each "Load more" after it. */
+const RECENT_INCIDENTS = 50;
+/** One page of an incident's reports. */
+const TIMELINE_SIZE = 50;
+// Open incidents are read whole. A page is the API's maximum; there is at
+// most one open incident per agent, so one page is the normal case and the
+// cap is a thousand agents down at once.
+const OPEN_PAGE_SIZE = 200;
+const OPEN_PAGES_MAX = 5;
+
+/** The two views of the /events page. */
+export type EventPageViewTypes = 'incidents' | 'log';
 /** The watcher key of the all-agents list; an agent's key is its id. */
 const LATEST = '';
 
@@ -38,8 +46,9 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
   const openIncidentIds = ref<string[]>([]);
   // Every incident the Incidents tab has loaded, open or closed, newest first.
   const recentIncidents = ref<IEventView>(emptyView());
-  // An expanded incident's reports, as ids into `events`.
-  const incidentEvents = ref<Record<string, string[]>>({});
+  // An expanded incident's reports, as ids into `events`, with where its
+  // "Load older" continues from.
+  const incidentEvents = ref<Record<string, IEventView>>({});
   // What the server said about the destination. Never the address: the API
   // does not return it and `saveDestination` does not keep its argument.
   const destination = ref<INotificationDestination | null>(null);
@@ -62,7 +71,9 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
   const incidentsCursor = computed(() => recentIncidents.value.nextCursor);
   /** `undefined` until the incident's reports were asked for. */
   const incidentEventIds = (incidentId: string): string[] | undefined =>
-    incidentEvents.value[incidentId];
+    incidentEvents.value[incidentId]?.ids;
+  const incidentEventsCursor = (incidentId: string): string | null =>
+    incidentEvents.value[incidentId]?.nextCursor ?? null;
 
   function setView(agentId: string | undefined, view: IEventView) {
     if (agentId) byAgent.value = { ...byAgent.value, [agentId]: view };
@@ -94,17 +105,28 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
     );
   }
 
-  /** Open incidents plus the recent ones, so a row can show its delivery. */
-  async function fetchIncidents(query: { agentId?: string } = {}) {
-    const { agentId } = query;
-    const [open, recent] = await Promise.all([
-      getService().listIncidents({ agentId, state: 'open', limit: RECENT_INCIDENTS }),
-      getService().listIncidents({ agentId, limit: RECENT_INCIDENTS }),
-    ]);
-    // `open` last: both answers describe the same moment, give or take, and
-    // the open list is the one the block above the table is drawn from.
-    incidents.value = upsertById(incidents.value, [...recent.items, ...open.items]);
-    const openIds = open.items.map((i) => i.id);
+  /**
+   * Every open incident, not a first page of them: "what is down right now"
+   * must not stop at a page size. One request in practice — there is at most
+   * one open incident per agent — and the cursor is followed when there are
+   * more than a page holds.
+   */
+  async function fetchOpenIncidents(agentId?: string) {
+    const open: IAgentIncident[] = [];
+    let before: string | undefined;
+    for (let page = 0; page < OPEN_PAGES_MAX; page += 1) {
+      const res = await getService().listIncidents({
+        agentId,
+        state: 'open',
+        limit: OPEN_PAGE_SIZE,
+        before,
+      });
+      open.push(...res.items);
+      if (!res.nextCursor) break;
+      before = res.nextCursor;
+    }
+    incidents.value = upsertById(incidents.value, open);
+    const openIds = open.map((i) => i.id);
     // An agent's answer says nothing about the other agents' incidents.
     const kept = agentId
       ? openIncidentIds.value.filter(
@@ -112,8 +134,18 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
         )
       : [];
     openIncidentIds.value = [...openIds, ...kept];
-    // The all-agents answer is also the Incidents tab's own list, newest
-    // first; what "Load more" brought in below it stays.
+    refreshedAt.value = Date.now();
+  }
+
+  /**
+   * The newest incidents, open or closed: the Incidents tab's list, and what
+   * gives a row of the event log its delivery state.
+   */
+  async function fetchRecentIncidents(agentId?: string) {
+    const recent = await getService().listIncidents({ agentId, limit: RECENT_INCIDENTS });
+    incidents.value = upsertById(incidents.value, recent.items);
+    // The all-agents answer is the Incidents tab's own list, newest first;
+    // what "Load more" brought in below it stays.
     if (!agentId) {
       recentIncidents.value = refreshView(
         recentIncidents.value,
@@ -122,6 +154,14 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
       );
     }
     refreshedAt.value = Date.now();
+  }
+
+  /** Both lists — for a first load. The refresh asks only for what is shown. */
+  async function fetchIncidents(query: { agentId?: string } = {}) {
+    await Promise.all([
+      fetchOpenIncidents(query.agentId),
+      fetchRecentIncidents(query.agentId),
+    ]);
   }
 
   /** The next older page of incidents, for the Incidents tab. */
@@ -137,25 +177,60 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
     );
   }
 
-  /** One incident's reports, newest first — what its row expands into. */
+  const timelineOf = (incidentId: string): IEventView =>
+    incidentEvents.value[incidentId] ?? emptyView();
+
+  function setTimeline(incidentId: string, view: IEventView) {
+    incidentEvents.value = { ...incidentEvents.value, [incidentId]: view };
+  }
+
+  /** One incident's newest reports — what its row expands into. */
   async function fetchIncidentEvents(incidentId: string) {
     const page = await getService().listEvents({ incidentId, limit: TIMELINE_SIZE });
     events.value = upsertById(events.value, page.items);
-    incidentEvents.value = {
-      ...incidentEvents.value,
-      [incidentId]: page.items.map((e) => e.id),
-    };
+    setTimeline(
+      incidentId,
+      refreshView(timelineOf(incidentId), page.items.map((e) => e.id), page.nextCursor),
+    );
+  }
+
+  /** The next older page of an incident's reports. */
+  async function fetchMoreIncidentEvents(incidentId: string) {
+    const before = timelineOf(incidentId).nextCursor;
+    if (!before) return;
+    const page = await getService().listEvents({ incidentId, before, limit: TIMELINE_SIZE });
+    events.value = upsertById(events.value, page.items);
+    setTimeline(
+      incidentId,
+      appendView(timelineOf(incidentId), page.items.map((e) => e.id), page.nextCursor),
+    );
+  }
+
+  /** Which of the page's two views is on screen — the refresh follows it. */
+  const pageView = ref<EventPageViewTypes>('incidents');
+  function setPageView(next: EventPageViewTypes) {
+    pageView.value = next;
   }
 
   // One timer for every watcher (the page, an agent's section, both at once).
+  // Each beat asks only for what is on screen — two small requests, each an
+  // indexed read of one page:
+  //   Incidents tab → the open incidents and the newest page of incidents;
+  //   Event log tab → the newest page of events, and of incidents (for the
+  //                   delivery state of a row);
+  //   an agent's section → the same two, for that agent.
   const watchers = createWatchers({
     intervalMs: EVENT_REFRESH_MS,
     isVisible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
     tick: (keys) => {
       for (const key of keys) {
         const agentId = key === LATEST ? undefined : key;
+        const beat =
+          !agentId && pageView.value === 'incidents'
+            ? [fetchOpenIncidents(), fetchRecentIncidents()]
+            : [load(agentId), fetchRecentIncidents(agentId)];
         // A failed beat is not an error on screen: the next one tries again.
-        void Promise.all([load(agentId), fetchIncidents({ agentId })]).catch(() => {});
+        void Promise.all(beat).catch(() => {});
       }
     },
   });
@@ -212,13 +287,17 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
     eventById,
     incidentById,
     incidentEventIds,
+    incidentEventsCursor,
     nextCursor,
+    pageView,
+    setPageView,
     fetchLatest,
     fetchMore,
     fetchForAgent,
     fetchIncidents,
     fetchMoreIncidents,
     fetchIncidentEvents,
+    fetchMoreIncidentEvents,
     watch,
     unwatch,
     fetchDestination,

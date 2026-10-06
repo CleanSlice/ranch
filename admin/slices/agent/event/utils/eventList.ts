@@ -30,6 +30,17 @@ export function refreshView(
   nextCursor: string | null,
 ): IEventView {
   if (!view.loaded) return { ids: unique(pageIds), nextCursor, loaded: true };
+  // A page that shares no row with what is on screen, and has more behind
+  // it: more arrived since the last refresh than one page holds, so rows are
+  // missing between this page and the old list. Start again from this page —
+  // it is whole, and "Load more" continues right below it — rather than show
+  // a list with a hole in it that nobody can see.
+  if (view.ids.length > 0 && pageIds.length > 0 && nextCursor !== null) {
+    const known = new Set(view.ids);
+    if (!pageIds.some((id) => known.has(id))) {
+      return { ids: unique(pageIds), nextCursor, loaded: true };
+    }
+  }
   return { ids: unique([...pageIds, ...view.ids]), nextCursor: view.nextCursor, loaded: true };
 }
 

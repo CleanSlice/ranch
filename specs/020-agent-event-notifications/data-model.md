@@ -61,6 +61,8 @@ One stretch of trouble for one agent (spec: *Incident*).
 | `status` | string | the first failure's status: `failed` \| `unreachable` |
 | `reason` | string? | the first failure's reason |
 | `ranchWitnessed` | boolean | true once any event of the incident has `witness = ranch` |
+| `eventCount` | int, default 0 | how many reports the incident holds; incremented as each is attached (research D17) |
+| `witnesses` | string[] | sender names, the first reporter first, each once; a name is added by a conditional update, so two reports from a new sender arriving together add it once |
 | `openedAt` | timestamp | `occurredAt` of the opening event, never later than its `receivedAt` |
 | `lastFailureAt` | timestamp | `receivedAt` of the newest failure event; a new one resets the quiet period |
 | `upSince` | timestamp? | when Ranch last saw the agent turn `running`; cleared by a new failure |

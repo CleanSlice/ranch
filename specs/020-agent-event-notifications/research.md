@@ -404,6 +404,50 @@ than 90 days ago. Open incidents are never deleted.
 
 **Rationale**: FR-033. `deleteMany` is idempotent, so every replica may run it.
 
+### D17. What the 5-second refresh costs, and what keeps it flat
+
+**Measured** on a local Postgres, after the owner asked how heavy the constant
+re-requesting is. An open console tab makes two requests every 5 seconds
+(none while the tab is hidden): about 0.4 requests a second per viewer, each
+an indexed read of one page.
+
+| Request | 149 events | 60 149 events, one incident holding 60 011 |
+|---------|-----------|---------------------------------------------|
+| `GET /agent-events?limit=50` | 3 ms, 20 KB | 4 ms, 23 KB |
+| `GET /agent-incidents?…` **as first built** | 5 ms | **160 ms** |
+| `GET /agent-incidents?…` now | 4 ms | 4 ms |
+
+**Decision**: the number of reports and the sender names of an incident live
+on the incident row (`eventCount`, `witnesses`), updated as each report is
+attached, with a second migration that backfills them. The list of incidents
+reads no events.
+
+**Rationale**: as first built the list counted and de-duplicated senders
+through `AgentEvent` on every read — a nested `distinct` that Prisma resolves
+by loading every event of every listed incident. The poll itself was never
+the cost; a read that grows with history, repeated every 5 seconds by every
+viewer, was. A count kept on the row costs the same at ten reports and at a
+million.
+
+**Also decided here**
+
+- The refresh asks only for what the open tab shows — two requests, not
+  three — and a tab is caught up when it is opened.
+- Open incidents are read whole (the cursor is followed), so "what is down"
+  never stops at a page size; closed ones, the event log and an incident's
+  reports are paged with "Load more", each saying how much is loaded.
+- A refresh that brings a full page sharing no row with the list on screen
+  means more arrived than a page holds; the list restarts from that page
+  instead of showing a hole.
+- Search and the segments work on the rows that are loaded, and the page says
+  so. Searching the whole history by agent is the agent's own Events section,
+  which the server filters.
+
+**Alternatives**: a cheap "has anything changed" token polled instead of the
+lists — one request instead of two when idle, at the price of a version
+column on three tables; not worth it at 4 ms a request. Server push — see
+D11: no authenticated stream exists and no bus between replicas.
+
 ## Risks
 
 - **R1. Status flapping at more than one replica (F3).** Not caused by this

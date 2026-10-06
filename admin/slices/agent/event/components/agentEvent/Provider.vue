@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { deliveryState, isNotNotified } from '#agentEvent/utils/eventTone';
-import { compareInstants } from '#common/utils/format';
+import { compareInstants, formatNumber } from '#common/utils/format';
 
 /**
  * The /events page. Two views of the same record:
@@ -35,11 +35,21 @@ const { pending, error } = useAsyncData(
   { server: false },
 );
 
-onMounted(() => store.watch());
-onBeforeUnmount(() => store.unwatch());
-
 type View = 'incidents' | 'log';
 const view = computed<View>(() => (route.query.view === 'log' ? 'log' : 'incidents'));
+
+// The 5-second refresh asks only for what the open tab shows, so the store
+// is told which one that is; the tab that was not on screen is caught up the
+// moment it is opened rather than on the next beat.
+onMounted(() => {
+  store.setPageView(view.value);
+  store.watch();
+});
+onBeforeUnmount(() => store.unwatch());
+watch(view, (next) => {
+  store.setPageView(next);
+  void (next === 'log' ? store.fetchLatest() : store.fetchIncidents()).catch(() => {});
+});
 function setView(next: string | number) {
   void router.replace({
     query: { ...route.query, view: next === 'log' ? 'log' : undefined },
@@ -200,7 +210,10 @@ async function loadMore(what: 'incidents' | 'events') {
         <template v-else>No incidents yet.</template>
       </div>
 
-      <div v-if="hasMoreIncidents">
+      <div
+        v-if="hasMoreIncidents"
+        class="flex flex-wrap items-center gap-3 text-xs text-muted-foreground"
+      >
         <Button
           variant="outline"
           size="sm"
@@ -209,6 +222,12 @@ async function loadMore(what: 'incidents' | 'events') {
         >
           Load more
         </Button>
+        <!-- Search and the segments work on what is loaded: say how much
+             that is, so "nothing found" is not read as "nothing happened". -->
+        <span>
+          The latest {{ formatNumber(store.incidentIds.length) }} incidents are
+          loaded; older ones are not searched until they are.
+        </span>
       </div>
     </template>
 
@@ -223,7 +242,10 @@ async function loadMore(what: 'incidents' | 'events') {
       </p>
       <AgentEventTable v-else :ids="eventIds" />
 
-      <div v-if="hasMoreEvents">
+      <div
+        v-if="hasMoreEvents"
+        class="flex flex-wrap items-center gap-3 text-xs text-muted-foreground"
+      >
         <Button
           variant="outline"
           size="sm"
@@ -232,6 +254,11 @@ async function loadMore(what: 'incidents' | 'events') {
         >
           Load more
         </Button>
+        <span>
+          The latest {{ formatNumber(store.latestIds.length) }} events are
+          loaded; older ones are not searched until they are. One agent’s
+          whole history is on its own page.
+        </span>
       </div>
     </template>
   </div>

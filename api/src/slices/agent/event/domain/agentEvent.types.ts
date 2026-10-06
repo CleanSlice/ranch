@@ -127,6 +127,9 @@ export interface IAgentIncidentData {
   status: 'failed' | 'unreachable';
   reason: string | null;
   ranchWitnessed: boolean;
+  // Sender names, the first reporter first; and how many reports there are.
+  witnesses: string[];
+  eventCount: number;
   openedAt: Date;
   lastFailureAt: Date;
   upSince: Date | null;
@@ -136,8 +139,6 @@ export interface IAgentIncidentData {
 
 /** An incident as a list shows it. */
 export interface IAgentIncidentView extends IAgentIncidentData {
-  witnesses: string[];
-  eventCount: number;
   notifications: IAgentNotificationSummary[];
 }
 

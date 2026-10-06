@@ -2,7 +2,12 @@
 import { IconChevronRight } from '@tabler/icons-vue';
 import type { IAgentIncident } from '#agentEvent/domain';
 import { TONE_CLASSES, deliveryState, incidentTone } from '#agentEvent/utils/eventTone';
-import { formatDateTime, formatSpan, formatStamp } from '#common/utils/format';
+import {
+  formatDateTime,
+  formatNumber,
+  formatSpan,
+  formatStamp,
+} from '#common/utils/format';
 
 /**
  * Incidents, one row each: what is (or was) wrong with which agent, since
@@ -56,8 +61,18 @@ watch(expandedCounts, (now, before) => {
   }
 });
 
+const loadingOlder = ref<string | null>(null);
+async function loadOlder(id: string) {
+  loadingOlder.value = id;
+  try {
+    await store.fetchMoreIncidentEvents(id);
+  } finally {
+    loadingOlder.value = null;
+  }
+}
+
 /** "1 report" / "6 reports" — every event of the incident, from any sender. */
-const reports = (n: number) => `${n} ${n === 1 ? 'report' : 'reports'}`;
+const reports = (n: number) => `${formatNumber(n)} ${n === 1 ? 'report' : 'reports'}`;
 
 /** The message sent when the incident closed, if one was. */
 function closingDelivery(incident: IAgentIncident) {
@@ -166,11 +181,29 @@ function downFor(incident: IAgentIncident): string | null {
         >
           Loading reports…
         </p>
-        <AgentEventTable
-          v-else
-          :ids="store.incidentEventIds(incident.id)"
-          timeline
-        />
+        <template v-else>
+          <AgentEventTable :ids="store.incidentEventIds(incident.id)" timeline />
+          <!-- An incident can hold far more reports than a page: say how many
+               of them are shown, and let the rest be reached. -->
+          <div
+            v-if="store.incidentEventsCursor(incident.id)"
+            class="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              :disabled="loadingOlder === incident.id"
+              @click.stop="loadOlder(incident.id)"
+            >
+              Load older reports
+            </Button>
+            <span>
+              Showing the latest
+              {{ formatNumber(store.incidentEventIds(incident.id)?.length ?? 0) }}
+              of {{ formatNumber(incident.eventCount) }}
+            </span>
+          </div>
+        </template>
       </div>
     </div>
   </div>

@@ -138,7 +138,13 @@ export class AgentEventGateway extends IAgentEventGateway {
         const incident = await tx.agentIncident.create({
           // openKey = the agent id: the unique column that makes a second
           // open incident for this agent a P2002 instead of a second alarm.
-          data: { ...input, openKey: input.agentId },
+          data: {
+            ...input,
+            openKey: input.agentId,
+            // The report that opens it is its first.
+            eventCount: 1,
+            witnesses: [payload.senderName],
+          },
         });
         await tx.agentNotification.create({
           data: {
@@ -160,6 +166,7 @@ export class AgentEventGateway extends IAgentEventGateway {
     id: string,
     at: Date,
     ranchWitnessed: boolean,
+    senderName: string,
   ): Promise<boolean> {
     const touched = await this.prisma.agentIncident.updateMany({
       where: { id, openKey: { not: null } },
@@ -167,10 +174,30 @@ export class AgentEventGateway extends IAgentEventGateway {
         lastFailureAt: at,
         // A new failure ends whatever recovery was under way.
         upSince: null,
+        eventCount: { increment: 1 },
         ...(ranchWitnessed && { ranchWitnessed: true }),
       },
     });
-    return touched.count === 1;
+    if (touched.count !== 1) return false;
+    await this.addWitness(id, senderName);
+    return true;
+  }
+
+  async noteIncidentReport(id: string, senderName: string): Promise<void> {
+    await this.prisma.agentIncident.updateMany({
+      where: { id },
+      data: { eventCount: { increment: 1 } },
+    });
+    await this.addWitness(id, senderName);
+  }
+
+  // "Not there yet" is in the WHERE, so two reports from a new sender
+  // arriving together add its name once.
+  private async addWitness(id: string, senderName: string): Promise<void> {
+    await this.prisma.agentIncident.updateMany({
+      where: { id, NOT: { witnesses: { has: senderName } } },
+      data: { witnesses: { push: senderName } },
+    });
   }
 
   async setIncidentUpSince(agentId: string, at: Date): Promise<void> {
@@ -183,19 +210,12 @@ export class AgentEventGateway extends IAgentEventGateway {
   async listOpenIncidentsWithAgent(): Promise<IOpenIncidentWithAgent[]> {
     const records = await this.prisma.agentIncident.findMany({
       where: { openKey: { not: null } },
-      include: {
-        agent: { select: { status: true } },
-        events: {
-          orderBy: { receivedAt: 'asc' },
-          take: 1,
-          select: { senderName: true },
-        },
-      },
+      include: { agent: { select: { status: true } } },
     });
     return records.map((r) => ({
       incident: this.mapper.toIncident(r),
       agentStatus: r.agent?.status ?? null,
-      firstSenderName: r.events[0]?.senderName ?? null,
+      firstSenderName: r.witnesses[0] ?? null,
     }));
   }
 
@@ -245,19 +265,15 @@ export class AgentEventGateway extends IAgentEventGateway {
       },
       orderBy: [{ openedAt: 'desc' }, { id: 'desc' }],
       take: filter.limit + 1,
-      include: {
-        events: { select: { senderName: true }, distinct: ['senderName'] },
-        notifications: { orderBy: { createdAt: 'asc' } },
-        _count: { select: { events: true } },
-      },
+      // Nothing here reads AgentEvent: the count and the witnesses are on
+      // the row, so this costs the same at ten reports and at a million.
+      include: { notifications: { orderBy: { createdAt: 'asc' } } },
     });
     const page = records.slice(0, filter.limit);
     const last = page[page.length - 1];
     return {
       items: page.map((r) => ({
         ...this.mapper.toIncident(r),
-        witnesses: r.events.map((e) => e.senderName),
-        eventCount: r._count.events,
         notifications: r.notifications.map((n) =>
           this.mapper.toNotificationSummary(n),
         ),

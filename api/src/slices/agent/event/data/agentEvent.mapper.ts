@@ -51,6 +51,8 @@ export class AgentEventMapper {
       status: record.status as 'failed' | 'unreachable',
       reason: record.reason,
       ranchWitnessed: record.ranchWitnessed,
+      witnesses: record.witnesses,
+      eventCount: record.eventCount,
       openedAt: record.openedAt,
       lastFailureAt: record.lastFailureAt,
       upSince: record.upSince,

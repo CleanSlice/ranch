@@ -179,6 +179,9 @@ export class AgentEventService implements OnModuleInit, OnModuleDestroy {
       if (disposition === 'evidence' && agent) {
         incidentId =
           (await this.gateway.findOpenIncident(agent.id))?.id ?? null;
+        if (incidentId) {
+          await this.gateway.noteIncidentReport(incidentId, apiKey.name);
+        }
       }
     }
 

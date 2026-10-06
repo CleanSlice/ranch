@@ -45,12 +45,17 @@ export abstract class IAgentEventGateway {
     input: IOpenIncidentInput,
     payload: IOpenedNotificationPayload,
   ): Promise<IAgentIncidentData | null>;
-  // false ⇒ the incident closed in the meantime.
+  // Counts the report, adds its sender to the witnesses and restarts the
+  // quiet period. false ⇒ the incident closed in the meantime.
   abstract touchIncidentFailure(
     id: string,
     at: Date,
     ranchWitnessed: boolean,
+    senderName: string,
   ): Promise<boolean>;
+  // A report filed with an incident without changing where it stands (a
+  // `recovered` from outside): counted and its sender remembered, no more.
+  abstract noteIncidentReport(id: string, senderName: string): Promise<void>;
   abstract setIncidentUpSince(agentId: string, at: Date): Promise<void>;
   abstract listOpenIncidentsWithAgent(): Promise<IOpenIncidentWithAgent[]>;
   // Closes only if still open, and queues the closing message in the same

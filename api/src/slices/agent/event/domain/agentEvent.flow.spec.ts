@@ -109,23 +109,41 @@ class FakeGateway extends IAgentEventGateway {
     if (this.loseNextOpen) {
       // Another opener got there first: its incident now exists.
       this.loseNextOpen = false;
-      this.incidents.push(this.incidentOf(input));
+      this.incidents.push(this.incidentOf(input, 'the-other-opener'));
       return null;
     }
     if (await this.findOpenIncident(input.agentId)) return null;
-    const incident = this.incidentOf(input);
+    const incident = this.incidentOf(input, payload.senderName);
     this.incidents.push(incident);
     this.queue(incident.id, payload);
     return incident;
   }
 
-  async touchIncidentFailure(id: string, at: Date, ranchWitnessed: boolean) {
+  async touchIncidentFailure(
+    id: string,
+    at: Date,
+    ranchWitnessed: boolean,
+    senderName: string,
+  ) {
     const incident = this.incidents.find((i) => i.id === id && i.open);
     if (!incident) return false;
     incident.lastFailureAt = at;
     incident.upSince = null;
     if (ranchWitnessed) incident.ranchWitnessed = true;
+    this.count(incident, senderName);
     return true;
+  }
+
+  async noteIncidentReport(id: string, senderName: string) {
+    const incident = this.incidents.find((i) => i.id === id);
+    if (incident) this.count(incident, senderName);
+  }
+
+  private count(incident: IAgentIncidentData, senderName: string) {
+    incident.eventCount += 1;
+    if (!incident.witnesses.includes(senderName)) {
+      incident.witnesses = [...incident.witnesses, senderName];
+    }
   }
 
   async setIncidentUpSince(agentId: string, at: Date) {
@@ -139,9 +157,7 @@ class FakeGateway extends IAgentEventGateway {
       .map((incident) => ({
         incident: { ...incident },
         agentStatus: this.agentStatus.get(incident.agentId ?? '') ?? null,
-        firstSenderName:
-          this.events.find((e) => e.incidentId === incident.id)?.senderName ??
-          null,
+        firstSenderName: incident.witnesses[0] ?? null,
       }));
   }
 
@@ -268,7 +284,10 @@ class FakeGateway extends IAgentEventGateway {
       .map((n) => n.status);
   }
 
-  private incidentOf(input: IOpenIncidentInput): IAgentIncidentData {
+  private incidentOf(
+    input: IOpenIncidentInput,
+    senderName: string,
+  ): IAgentIncidentData {
     return {
       id: randomUUID(),
       agentId: input.agentId,
@@ -277,6 +296,8 @@ class FakeGateway extends IAgentEventGateway {
       status: input.status,
       reason: input.reason,
       ranchWitnessed: input.ranchWitnessed,
+      witnesses: [senderName],
+      eventCount: 1,
       openedAt: input.openedAt,
       lastFailureAt: input.lastFailureAt,
       upSince: null,
@@ -717,8 +738,52 @@ describe('AgentEventService — an event from outside', () => {
 
     expect(event.outcome).toBe('evidence');
     expect(event.incidentId).toBe(before.id);
-    expect(h.gateway.incidents[0]).toEqual(before);
+    // Counted as one more report of the incident — and nothing else moved:
+    // not the quiet period, not the state.
+    expect(h.gateway.incidents[0]).toEqual({ ...before, eventCount: 2 });
     expect(h.gateway.notifications).toHaveLength(1);
+  });
+
+  it('keeps the count of reports and who sent them on the incident itself', async () => {
+    // The list of incidents is re-read every few seconds; it must not have
+    // to count through the events to say "6 reports from A, B and Ranch".
+    const h = harness();
+    h.addAgent('a1', 'running');
+    h.service.onModuleInit();
+    const other = { ...API_KEY, id: 'key-2', name: 'second-watcher' };
+
+    await h.service.acceptExternal(API_KEY, {
+      agentId: 'a1',
+      status: 'failed',
+    });
+    await h.service.acceptExternal(API_KEY, {
+      agentId: 'a1',
+      status: 'failed',
+    });
+    await h.service.acceptExternal(other, { agentId: 'a1', status: 'failed' });
+    await h.service.recordRanchFailure({
+      agentId: 'a1',
+      status: 'failed',
+      reason: 'OOMKilled',
+      at: new Date(),
+    });
+    await h.service.acceptExternal(other, {
+      agentId: 'a1',
+      status: 'recovered',
+    });
+
+    const incident = h.gateway.incidents[0];
+    expect(incident.eventCount).toBe(5);
+    expect(incident.eventCount).toBe(
+      h.gateway.events.filter((e) => e.incidentId === incident.id).length,
+    );
+    // First reporter first; each sender once.
+    expect(incident.witnesses).toEqual([
+      'cluster-watcher',
+      'second-watcher',
+      'Ranch',
+    ]);
+    h.service.onModuleDestroy();
   });
 
   it('stores a retry with the same eventId once', async () => {

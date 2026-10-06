@@ -24,6 +24,29 @@ describe('refreshView', () => {
     expect(view.ids).toEqual(['e', 'd', 'c', 'b', 'a']);
     expect(view.nextCursor).toBe('cur-a');
   });
+
+  test('a burst bigger than a page restarts the list instead of leaving a hole', () => {
+    // On screen: c b a. More than a page arrived since — the newest page is
+    // z y x and shares nothing with the list; w…d sit unseen between them.
+    let view = refreshView(emptyView(), ['c', 'b', 'a'], 'cur-a');
+    view = refreshView(view, ['z', 'y', 'x'], 'cur-x');
+
+    // The list is the newest page, whole, and Load more continues below it.
+    expect(view).toEqual({ ids: ['z', 'y', 'x'], nextCursor: 'cur-x', loaded: true });
+    view = appendView(view, ['w', 'v', 'u'], 'cur-u');
+    expect(view.ids).toEqual(['z', 'y', 'x', 'w', 'v', 'u']);
+  });
+
+  test('a page that shares nothing but has nothing behind it is simply merged', () => {
+    // No cursor: the page is everything there is, so nothing can be missing.
+    const view = refreshView(refreshView(emptyView(), ['b', 'a'], null), ['d', 'c'], null);
+    expect(view.ids).toEqual(['d', 'c', 'b', 'a']);
+  });
+
+  test('an empty page changes nothing', () => {
+    const first = refreshView(emptyView(), ['b', 'a'], 'cur-a');
+    expect(refreshView(first, [], null)).toEqual(first);
+  });
 });
 
 describe('appendView', () => {

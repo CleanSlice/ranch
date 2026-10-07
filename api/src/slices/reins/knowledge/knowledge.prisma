@@ -17,6 +17,10 @@ model Knowledge {
   // One-time transition off the shared pool (notStarted | inProgress |
   // done | failed). Bases created after the transition are 'done' at birth.
   migrationState    String        @default("notStarted")
+  // Whether people an agent answers may open and download the documents of
+  // this base that were cited to them (closed | open). Closed for every base
+  // until its keeper decides otherwise; never per source (CLEAN-138).
+  readerAccess      String        @default("closed")
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   sources           Source[]

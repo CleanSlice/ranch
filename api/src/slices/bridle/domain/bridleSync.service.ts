@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { IBridleGateway } from './bridle.gateway';
+import { stripCitationMarkers } from './citationMarkers';
 import type {
   BridlePart,
   IBridleAttachment,
@@ -104,7 +105,11 @@ export class BridleSyncService {
           const event = data as Record<string, unknown>;
           if (event.type === 'message' || event.type === 'stream_end') {
             finish({
-              text: (event.text as string) ?? chunks.join(''),
+              // A synchronous caller gets no `sources` frame to point a
+              // marker at, so the markers go (CLEAN-138, FR-036).
+              text: stripCitationMarkers(
+                (event.text as string) ?? chunks.join(''),
+              ),
               messageId: (event.messageId as string) ?? '',
               ts: (event.ts as number) ?? Date.now(),
               timedOut: false,

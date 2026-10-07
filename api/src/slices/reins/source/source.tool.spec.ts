@@ -454,3 +454,18 @@ describe('SourceTool — deleting', () => {
     expect(textOf(result)).toContain('not found');
   });
 });
+
+describe('SourceTool — usage order (CLEAN-138)', () => {
+  it('passes sort and order through to the same page query the console uses', async () => {
+    const { tool, service } = harness();
+    await tool.listKnowledgeSources(
+      { knowledgeId: 'kb-1', sort: 'dislikes', order: 'desc' },
+      null,
+      operator(),
+    );
+    expect(service.findPage).toHaveBeenCalledWith(
+      'kb-1',
+      expect.objectContaining({ sort: 'dislikes', order: 'desc' }),
+    );
+  });
+});

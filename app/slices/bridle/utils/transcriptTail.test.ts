@@ -116,3 +116,15 @@ describe('missedReplies', () => {
     ).toEqual([]);
   });
 });
+
+describe('missedReplies — sources (CLEAN-138)', () => {
+  test('a recovered answer carries the sources the transcript holds for it', () => {
+    const sources = [{ n: 1, kind: 'web' as const, name: 'Example', url: 'https://example.com', canOpen: true }];
+    const missed = missedReplies(
+      [user('u1', 'hello')],
+      [user('t1', 'hello'), { ...agent('t2', 'See [^1].'), sources }],
+    );
+    expect(missed.length).toBe(1);
+    expect(missed[0]?.sources).toEqual(sources);
+  });
+});

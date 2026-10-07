@@ -220,3 +220,12 @@ describe('BridleSyncService.sendAndAwait', () => {
     expect(h.unregistrations).toHaveLength(1);
   });
 });
+
+describe('BridleSyncService — citation markers (CLEAN-138)', () => {
+  it('strips [^n] from the reply: a synchronous caller has no list to point at', async () => {
+    const h = makeHarness();
+    const pending = h.service.sendAndAwait(base);
+    h.emit({ type: 'stream_end', text: 'From the contract. [^1] And the site. [^2]', messageId: 'm3', ts: 9 });
+    await expect(pending).resolves.toMatchObject({ text: 'From the contract. And the site.' });
+  });
+});

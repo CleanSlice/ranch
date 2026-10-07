@@ -17,6 +17,7 @@ import {
   LightragTimeoutError,
 } from '../../lightrag/domain/lightrag.types';
 import { ISourceGateway } from '../domain/source.gateway';
+import { rankByUsage, usageByIdSource } from '../domain/sourceUsage';
 import {
   ISourceData,
   ICreateSourceData,
@@ -253,23 +254,93 @@ export class SourceGateway extends ISourceGateway {
     filter: ISourceFilter,
   ): Promise<ISourcePage> {
     const where = whereForFilter(knowledgeId, filter);
-    // Oldest first, same as findByKnowledgeId: an import appends at the end,
-    // so page 1 keeps showing the same rows while a bulk import is running.
+    const sort = filter.sort ?? 'createdAt';
+    const order = filter.order ?? 'asc';
+    const skip = (filter.page - 1) * filter.perPage;
+
+    if (sort === 'likes' || sort === 'dislikes') {
+      // Prisma orders by a relation count but not by a filtered one, and a
+      // like and a dislike are the same relation with different rows. So:
+      // the filtered base's ids in creation order, the rating groups for
+      // them, a rank in memory, then the page's rows (sourceUsage.ts).
+      const ids = (
+        await this.prisma.source.findMany({
+          where,
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        })
+      ).map((r) => r.id);
+      const usage = await this.usageFor(ids);
+      const pageIds = rankByUsage(ids, usage, sort, order).slice(
+        skip,
+        skip + filter.perPage,
+      );
+      const records = await this.prisma.source.findMany({
+        where: { id: { in: pageIds } },
+      });
+      const byId = new Map(records.map((r) => [r.id, r]));
+      return {
+        items: pageIds
+          .map((id) => byId.get(id))
+          .filter((r): r is NonNullable<typeof r> => r !== undefined)
+          .map((r) => this.mapper.toEntity(r, usage.get(r.id))),
+        total: ids.length,
+        page: filter.page,
+        perPage: filter.perPage,
+      };
+    }
+
+    // Oldest first by default, same as findByKnowledgeId: an import appends
+    // at the end, so page 1 keeps showing the same rows while a bulk import
+    // is running. "Most cited" is the one usage order the database can do.
     const [records, total] = await this.prisma.$transaction([
       this.prisma.source.findMany({
         where,
-        orderBy: { createdAt: 'asc' },
-        skip: (filter.page - 1) * filter.perPage,
+        orderBy:
+          sort === 'cited'
+            ? [{ citations: { _count: order } }, { createdAt: 'asc' }]
+            : { createdAt: order },
+        skip,
         take: filter.perPage,
       }),
       this.prisma.source.count({ where }),
     ]);
+    const usage = await this.usageFor(records.map((r) => r.id));
     return {
-      items: records.map((r) => this.mapper.toEntity(r)),
+      items: records.map((r) => this.mapper.toEntity(r, usage.get(r.id))),
       total,
       page: filter.page,
       perPage: filter.perPage,
     };
+  }
+
+  /** Citation and rating counts for these sources (CLEAN-138); two grouped queries, no stored numbers. */
+  private async usageFor(ids: string[]) {
+    if (ids.length === 0) return usageByIdSource(new Map(), []);
+    const [cited, ratings] = await Promise.all([
+      this.prisma.chatMessageSource.groupBy({
+        by: ['sourceId'],
+        where: { sourceId: { in: ids } },
+        _count: { _all: true },
+      }),
+      this.prisma.sourceRating.groupBy({
+        by: ['sourceId', 'rating'],
+        where: { sourceId: { in: ids } },
+        _count: { _all: true },
+      }),
+    ]);
+    return usageByIdSource(
+      new Map(
+        cited
+          .filter((c) => c.sourceId !== null)
+          .map((c) => [c.sourceId as string, c._count._all]),
+      ),
+      ratings.map((r) => ({
+        sourceId: r.sourceId,
+        rating: r.rating,
+        count: r._count._all,
+      })),
+    );
   }
 
   async findForExport(

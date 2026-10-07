@@ -209,6 +209,11 @@ function makeController(stubs: IStubs = {}) {
     sync as never,
     proposals as never,
     chats as never,
+    // Sources (CLEAN-138) pass the page through untouched here; the overlay
+    // has its own spec in chat/domain/chatSource.service.spec.ts.
+    { attach: async (m: unknown) => m } as never,
+    // The reader-facing source gate has its own spec (domain/sourceAccess.service.spec.ts).
+    {} as never,
   );
 
   return {

@@ -344,3 +344,29 @@ describe('mergeTranscript — which thinking blocks are history now', () => {
     expect(cutSeq).toBe(null);
   });
 });
+
+describe('mergeTranscript — sources ride with the answer (CLEAN-138)', () => {
+  test('a transcript message keeps its sources after the merge', () => {
+    const sources = [
+      { n: 1, kind: 'knowledge' as const, name: 'Contract.pdf', knowledgeName: 'Legal', canOpen: false },
+    ];
+    const { messages } = mergeTranscript(
+      [],
+      page([user('t1', 'hello', at(5)), agent('t2', 'From the contract [^1].', at(5), { sources })]),
+      NOW,
+    );
+    expect(messages.find((m) => m.id === 't2')?.sources).toEqual(sources);
+  });
+
+  test('a page message that replaces a local one brings its sources with it', () => {
+    const sources = [{ n: 1, kind: 'web' as const, name: 'Example', url: 'https://example.com', canOpen: true }];
+    const local = [user('u1', 'hello', at(5), { seq: 1 }), agent('a1', 'See the site [^1].', at(5), { seq: 2 })];
+    const { messages } = mergeTranscript(
+      local,
+      page([user('t1', 'hello', at(5)), agent('t2', 'See the site [^1].', at(5), { sources })]),
+      NOW,
+    );
+    const answer = messages.find((m) => m.role === BridleRoleTypes.Agent);
+    expect(answer?.sources).toEqual(sources);
+  });
+});

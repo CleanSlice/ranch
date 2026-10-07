@@ -20,7 +20,8 @@ import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-list
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { SourceService } from './domain/source.service';
 import { ISourceGateway } from './domain/source.gateway';
-import type { ISourceData } from './domain/source.types';
+import type { ISourceData, SourceSortTypes } from './domain/source.types';
+import { SOURCE_SORTS } from './domain/source.types';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 
@@ -103,7 +104,10 @@ export class SourceTool implements IConditionallyListedTool {
       '(indexed, pending, retrying, failed) and any index error. Takes the ' +
       'knowledge id — resolve a name with list_knowledges first. Filter by ' +
       'a name substring, a status or a type to find the rows to reindex or ' +
-      'delete. Returns `items`, `total`, `page` and `perPage`.',
+      'delete. Each row also carries `cited`, `likes` and `dislikes` — how often ' +
+      'agent answers cited it and how readers rated those citations; sort by ' +
+      'them to find what is cited most or rated worst (CLEAN-138). Returns ' +
+      '`items`, `total`, `page` and `perPage`.',
     parameters: z.object({
       knowledgeId: z
         .string()
@@ -130,6 +134,13 @@ export class SourceTool implements IConditionallyListedTool {
         .enum(SOURCE_TYPES)
         .optional()
         .describe('Only sources of this type'),
+      sort: z
+        .enum(SOURCE_SORTS)
+        .optional()
+        .describe(
+          'Order: createdAt (default), or cited / likes / dislikes — how often agent answers cited the source and how readers rated those citations (CLEAN-138). Pair with order "desc" for the most cited or the worst rated first.',
+        ),
+      order: z.enum(['asc', 'desc']).optional().describe('asc (default) or desc'),
     }),
   })
   async listKnowledgeSources(
@@ -140,6 +151,8 @@ export class SourceTool implements IConditionallyListedTool {
       search?: string;
       status?: (typeof SOURCE_INDEX_STATUSES)[number];
       type?: (typeof SOURCE_TYPES)[number];
+      sort?: SourceSortTypes;
+      order?: 'asc' | 'desc';
     },
     _context: unknown,
     httpRequest: AuthedRequest,
@@ -151,6 +164,8 @@ export class SourceTool implements IConditionallyListedTool {
       search: args.search,
       status: args.status,
       type: args.type,
+      sort: args.sort,
+      order: args.order,
     });
     return ok(page);
   }

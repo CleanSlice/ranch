@@ -64,6 +64,7 @@ export class KnowledgeMapper {
       instanceError: record.instanceError ?? null,
       instanceEndpoint: record.instanceEndpoint ?? null,
       migrationState: parseMigrationState(record.migrationState),
+      readerAccess: record.readerAccess === 'open' ? 'open' : 'closed',
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

@@ -21,6 +21,7 @@ function record(id: string): IKnowledgeRecord {
     instanceError: null,
     instanceEndpoint: null,
     migrationState: 'notStarted',
+    readerAccess: 'closed',
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };

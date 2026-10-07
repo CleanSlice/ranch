@@ -146,6 +146,7 @@ export class KnowledgeMapper {
         MIGRATION_STATES.has(o.migrationState as MigrationState)
           ? (o.migrationState as MigrationState)
           : 'done',
+      readerAccess: o.readerAccess === 'open' ? 'open' : 'closed',
       sourcesCount:
         typeof o.sourcesCount === 'number' ? o.sourcesCount : undefined,
       totalSizeBytes:
@@ -229,6 +230,10 @@ export class KnowledgeMapper {
       indexRetryAt: nullableStr(o.indexRetryAt),
       textState: readTextState(o.textState),
       textError: nullableStr(o.textError),
+      // Citation counters (CLEAN-138); an older API build sends none → 0.
+      cited: num(o.cited),
+      likes: num(o.likes),
+      dislikes: num(o.dislikes),
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
     };

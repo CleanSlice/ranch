@@ -813,6 +813,17 @@ export type BridleAttachmentDto = {
   readableByAgent: boolean;
 };
 
+export type SourceRatingDto = {
+  /**
+   * 1 = this source helped, -1 = it did not.
+   */
+  rating: 1 | -1;
+};
+
+export type SourceRatingResultDto = {
+  rating: 1 | -1;
+};
+
 export type BridleHealthDto = {
   ok: boolean;
   /**
@@ -849,6 +860,34 @@ export type TranscriptAttachmentDto = {
   kind: "image" | "text" | "binary";
 };
 
+export type SourceEntryDto = {
+  /**
+   * Citation number inside the message, 1-based and dense.
+   */
+  n: number;
+  kind: "knowledge" | "web";
+  /**
+   * The knowledge source name, or the page title (its readable address when the page had none). Shown as received.
+   */
+  name: string;
+  /**
+   * Web sources only. Always http(s).
+   */
+  url?: string;
+  /**
+   * Knowledge sources only: the base the document belongs to.
+   */
+  knowledgeName?: string | null;
+  /**
+   * Knowledge: the base allows readers to open documents (or the reader is on the platform team) and the source still exists. Web: the address is a web address. Computed when served, never stored.
+   */
+  canOpen: boolean;
+  /**
+   * Knowledge sources only: the reader’s own current rating.
+   */
+  myRating?: 1 | -1;
+};
+
 export type TranscriptMessageDto = {
   id: string;
   role: "user" | "assistant";
@@ -868,6 +907,10 @@ export type TranscriptMessageDto = {
    * User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.
    */
   agentText?: string;
+  /**
+   * Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.
+   */
+  sources?: Array<SourceEntryDto>;
 };
 
 export type TranscriptResponseDto = {
@@ -1009,6 +1052,10 @@ export type KnowledgeListItemDto = {
   instanceState: "absent" | "starting" | "ready" | "failed" | "stopping";
   instanceError: string | null;
   migrationState: "notStarted" | "inProgress" | "done" | "failed";
+  /**
+   * Whether people an agent answers may open and download the documents of this base that were cited to them. Closed until the keeper opens it; never per source.
+   */
+  readerAccess: "closed" | "open";
   createdAt: string;
   updatedAt: string;
   sourcesCount: number;
@@ -1092,6 +1139,10 @@ export type CreateKnowledgeDto = {
 export type UpdateKnowledgeDto = {
   name?: string;
   description?: string | null;
+  /**
+   * Whether people an agent answers may open and download the documents of this base that were cited to them (CLEAN-138). Per base, never per source.
+   */
+  readerAccess?: "closed" | "open";
 };
 
 export type QueryKnowledgeDto = {
@@ -1130,6 +1181,18 @@ export type SourceDto = {
   mimeType: string | null;
   content: string | null;
   sizeBytes: number | null;
+  /**
+   * How many assistant answers cited this source (CLEAN-138).
+   */
+  cited: number;
+  /**
+   * Current likes on those citations; a withdrawn rating is not counted.
+   */
+  likes: number;
+  /**
+   * Current dislikes on those citations.
+   */
+  dislikes: number;
   /**
    * True when indexStatus is "indexed". Kept for older callers.
    */
@@ -1370,6 +1433,10 @@ export type ChatMessageDto = {
    * Admin debug views only (present when `types` includes tool events): the full text the model received for a user message with attachments.
    */
   agentText?: string;
+  /**
+   * Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.
+   */
+  sources?: Array<SourceEntryDto>;
 };
 
 export type ChatMessagesResponseDto = {
@@ -3573,6 +3640,114 @@ export type GetBridleAttachmentResponses = {
   200: unknown;
 };
 
+export type OpenBridleCitedSourceData = {
+  body?: never;
+  headers?: {
+    /**
+     * Share-link token (`sl_…`) identifying a public share visitor. Send together with `X-Share-Visitor` instead of an `Authorization` bearer. Re-validated against the agent in the path on every request, so a revoked link stops working immediately.
+     */
+    "X-Share-Token"?: string;
+    /**
+     * Opaque per-browser visitor id minted by the share page. Required whenever `X-Share-Token` is sent; it selects the visitor's own `share-<visitorId>` chat channel and owns their attachments.
+     */
+    "X-Share-Visitor"?: string;
+  };
+  path: {
+    agentId: string;
+    messageId: string;
+    n: number;
+  };
+  query?: {
+    /**
+     * "inline" lets the browser render what it can (pdf, images, text); "attachment" forces a download.
+     */
+    disposition?: "inline" | "attachment";
+  };
+  url: "/api/agent/{agentId}/message/{messageId}/source/{n}/content";
+};
+
+export type OpenBridleCitedSourceErrors = {
+  /**
+   * The knowledge base does not let readers open its documents (`READER_ACCESS_CLOSED`), or Share headers were offered but rejected — revoked, unknown or foreign-agent token, or a malformed visitor id. Body is `{ code: 'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never 401: a share visitor has no account to log in to.
+   */
+  403: unknown;
+  /**
+   * No such citation for this reader — including one that belongs to someone else, which answers with the same 404 so a guessed id reveals nothing.
+   */
+  404: unknown;
+  /**
+   * The knowledge source was deleted after it was cited (`SOURCE_GONE`).
+   */
+  410: unknown;
+};
+
+export type UnrateBridleCitedSourceData = {
+  body?: never;
+  headers?: {
+    /**
+     * Share-link token (`sl_…`) identifying a public share visitor. Send together with `X-Share-Visitor` instead of an `Authorization` bearer. Re-validated against the agent in the path on every request, so a revoked link stops working immediately.
+     */
+    "X-Share-Token"?: string;
+    /**
+     * Opaque per-browser visitor id minted by the share page. Required whenever `X-Share-Token` is sent; it selects the visitor's own `share-<visitorId>` chat channel and owns their attachments.
+     */
+    "X-Share-Visitor"?: string;
+  };
+  path: {
+    agentId: string;
+    messageId: string;
+    n: number;
+  };
+  query?: never;
+  url: "/api/agent/{agentId}/message/{messageId}/source/{n}/rating";
+};
+
+export type UnrateBridleCitedSourceResponses = {
+  204: void;
+};
+
+export type UnrateBridleCitedSourceResponse =
+  UnrateBridleCitedSourceResponses[keyof UnrateBridleCitedSourceResponses];
+
+export type RateBridleCitedSourceData = {
+  body: SourceRatingDto;
+  headers?: {
+    /**
+     * Share-link token (`sl_…`) identifying a public share visitor. Send together with `X-Share-Visitor` instead of an `Authorization` bearer. Re-validated against the agent in the path on every request, so a revoked link stops working immediately.
+     */
+    "X-Share-Token"?: string;
+    /**
+     * Opaque per-browser visitor id minted by the share page. Required whenever `X-Share-Token` is sent; it selects the visitor's own `share-<visitorId>` chat channel and owns their attachments.
+     */
+    "X-Share-Visitor"?: string;
+  };
+  path: {
+    agentId: string;
+    messageId: string;
+    n: number;
+  };
+  query?: never;
+  url: "/api/agent/{agentId}/message/{messageId}/source/{n}/rating";
+};
+
+export type RateBridleCitedSourceErrors = {
+  /**
+   * No such citation for this reader.
+   */
+  404: unknown;
+  /**
+   * The knowledge source was deleted after it was cited (`SOURCE_GONE`).
+   */
+  410: unknown;
+};
+
+export type RateBridleCitedSourceResponses = {
+  200: SourceRatingResultDto;
+};
+
+export type RateBridleCitedSourceResponse =
+  RateBridleCitedSourceResponses[keyof RateBridleCitedSourceResponses];
+
 export type BridleHealthData = {
   body?: never;
   path?: never;
@@ -4133,6 +4308,11 @@ export type GetKnowledgeSourcesData = {
     search?: string;
     status?: "indexed" | "pending" | "retrying" | "failed";
     type?: "file" | "url" | "text";
+    /**
+     * Order of the page (CLEAN-138): when the source was added, or how often it was cited, liked or disliked in agent answers.
+     */
+    sort?: "createdAt" | "cited" | "likes" | "dislikes";
+    order?: "asc" | "desc";
     page?: number;
     perPage?: number;
   };

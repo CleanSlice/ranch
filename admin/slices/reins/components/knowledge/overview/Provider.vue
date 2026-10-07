@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { IKnowledge, IKnowledgeOverview, SourceType } from '#reins/stores/knowledge';
 import { errorMessageOf, formatBytes, formatDateTime } from '#reins/domain';
+import { Checkbox } from '#theme/components/ui/checkbox';
 
 const store = useKnowledgeStore();
 const current = inject<Ref<IKnowledge | null>>('knowledge-current');
@@ -100,6 +101,9 @@ watch(knowledgeId, () => {
 
 const name = ref('');
 const description = ref('');
+// Whether readers of agent answers may open the documents this base cited to
+// them (CLEAN-138). Off until the keeper decides; per base, never per source.
+const readerAccessOpen = ref(false);
 const submitting = ref(false);
 const errorMessage = ref<string | null>(null);
 const savedAt = ref<number | null>(null);
@@ -114,6 +118,7 @@ watch(
     if (!k) return;
     name.value = k.name;
     description.value = k.description ?? '';
+    readerAccessOpen.value = k.readerAccess === 'open';
   },
   { immediate: true },
 );
@@ -130,7 +135,8 @@ const dirty = computed(() => {
   if (!k) return false;
   return (
     name.value.trim() !== k.name ||
-    description.value.trim() !== (k.description ?? '')
+    description.value.trim() !== (k.description ?? '') ||
+    readerAccessOpen.value !== (k.readerAccess === 'open')
   );
 });
 
@@ -143,6 +149,7 @@ async function save(): Promise<void> {
     await store.update(k.id, {
       name: name.value.trim(),
       description: description.value.trim() || null,
+      readerAccess: readerAccessOpen.value ? 'open' : 'closed',
     });
     if (refresh) await refresh();
     savedAt.value = Date.now();
@@ -218,6 +225,26 @@ async function save(): Promise<void> {
                 placeholder="Optional"
               />
             </div>
+            <!-- Reader access (CLEAN-138): one switch for the whole base. -->
+            <label class="flex items-start gap-3" for="knowledge-reader-access">
+              <Checkbox
+                id="knowledge-reader-access"
+                :model-value="readerAccessOpen"
+                @update:model-value="(v: boolean | 'indeterminate') => (readerAccessOpen = v === true)"
+              />
+              <div class="grid gap-1">
+                <Label for="knowledge-reader-access" class="cursor-pointer">
+                  Readers may open cited documents
+                </Label>
+                <p class="text-xs text-muted-foreground">
+                  When on, people an agent answers — console users and share-link
+                  visitors — can open and download a document of this base that
+                  the answer cited to them. Only cited documents, never the whole
+                  base. Off, the sources are still named and rated, but nothing
+                  opens. The platform team can always open them.
+                </p>
+              </div>
+            </label>
             <p v-if="errorMessage" class="text-xs text-destructive">
               {{ errorMessage }}
             </p>

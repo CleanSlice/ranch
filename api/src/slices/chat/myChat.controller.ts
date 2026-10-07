@@ -30,6 +30,7 @@ import {
 } from '#/agent/file/domain';
 import {
   IChatGateway,
+  ChatSourceService,
   IChatSessionData,
   ChatSyncService,
   formatChatExport,
@@ -77,6 +78,7 @@ export class MyChatController {
     private readonly chats: IChatGateway,
     private readonly reader: TranscriptReaderService,
     private readonly sync: ChatSyncService,
+    private readonly sources: ChatSourceService,
   ) {}
 
   @ApiOperation({
@@ -145,9 +147,15 @@ export class MyChatController {
 
     // End users never get the model-facing text, only what they typed.
     const page = TranscriptReaderService.page(all, q.cursor, q.limit ?? 50);
+    // `admin` here comes from the token's roles (ownExternalId), not from
+    // anything the caller typed; it is the same test requireOwned applies.
+    const viewer = this.ownExternalId(req);
     return {
       ...page,
-      messages: TranscriptReaderService.withoutAgentText(page.messages),
+      messages: await this.sources.attach(
+        TranscriptReaderService.withoutAgentText(page.messages),
+        { clientId: viewer, isAdmin: viewer === 'admin' },
+      ),
     };
   }
 

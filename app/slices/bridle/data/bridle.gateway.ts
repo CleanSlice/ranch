@@ -11,6 +11,7 @@ import type {
   IBridleChannelEvents,
   IBridleSendAck,
   IBridleShareContext,
+  IBridleSourceDocument,
   IBridleTranscriptPage,
 } from '../domain/bridle.types';
 import { FAILED_MS, FAILURE_TIMEOUT } from '../utils/delivery';
@@ -23,7 +24,7 @@ import { BridleMapper } from './bridle.mapper';
  * no matter what the agent does. No `ui`: the console has no interactive
  * ui parts.
  */
-const CAPABILITIES = ['streaming', 'images', 'files', 'thinking', 'proposals'];
+const CAPABILITIES = ['streaming', 'images', 'files', 'thinking', 'proposals', 'sources'];
 
 /**
  * What one share-link request carries instead of the console session.
@@ -148,6 +149,11 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
     socket.on('message', (raw: unknown) =>
       events.onMessage(this.mapper.toReply(raw)),
     );
+    // What a bubble drew on (CLEAN-138): follows its stream_end / message.
+    socket.on('sources', (raw: unknown) => {
+      const frame = mapper.toSourcesFrame(raw);
+      if (frame) events.onSources(frame);
+    });
     socket.on('user_message', (raw: unknown) => {
       const message = mapper.toUserMessage(raw);
       if (message) events.onUserMessage(message);
@@ -278,6 +284,64 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
     });
   }
 
+  /**
+   * The document behind a cited knowledge source (CLEAN-138), addressed by
+   * the citation — never by the source's own id. The API decides whether
+   * this reader may have it; a refusal arrives as 403 `READER_ACCESS_CLOSED`,
+   * a deleted source as 410 `SOURCE_GONE`.
+   */
+  openCitedSource(
+    agentId: string,
+    messageId: string,
+    n: number,
+    share?: IBridleShareContext,
+  ): Promise<IBridleSourceDocument> {
+    return this.execute(async () => {
+      const headers = shareHeaders(share);
+      const res = await apiClient.instance.get(
+        `${citedSourcePath(agentId, messageId, n)}/content`,
+        { responseType: 'blob', ...(headers ? { headers } : {}) },
+      );
+      const dispo = (res.headers['content-disposition'] as string) ?? '';
+      return {
+        blob: res.data as Blob,
+        filename: dispo.match(/filename="?([^"]+)"?/)?.[1] ?? null,
+      };
+    });
+  }
+
+  rateCitedSource(
+    agentId: string,
+    messageId: string,
+    n: number,
+    rating: 1 | -1,
+    share?: IBridleShareContext,
+  ): Promise<void> {
+    return this.execute(async () => {
+      const headers = shareHeaders(share);
+      await apiClient.instance.put(
+        `${citedSourcePath(agentId, messageId, n)}/rating`,
+        { rating },
+        headers ? { headers } : undefined,
+      );
+    });
+  }
+
+  unrateCitedSource(
+    agentId: string,
+    messageId: string,
+    n: number,
+    share?: IBridleShareContext,
+  ): Promise<void> {
+    return this.execute(async () => {
+      const headers = shareHeaders(share);
+      await apiClient.instance.delete(
+        `${citedSourcePath(agentId, messageId, n)}/rating`,
+        headers ? { headers } : undefined,
+      );
+    });
+  }
+
   transcriptPage(
     agentId: string,
     channel: string,
@@ -316,4 +380,9 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
       });
     });
   }
+}
+
+/** `/api/agent/{agentId}/message/{messageId}/source/{n}` — the citation as an address (CLEAN-138). */
+function citedSourcePath(agentId: string, messageId: string, n: number): string {
+  return `/api/agent/${encodeURIComponent(agentId)}/message/${encodeURIComponent(messageId)}/source/${n}`;
 }

@@ -34,6 +34,7 @@ const base = (overrides: Partial<IKnowledgeData> = {}): IKnowledgeData => ({
   instanceError: null,
   instanceEndpoint: null,
   migrationState: 'done',
+  readerAccess: 'closed',
   createdAt: new Date('2026-09-17T09:00:00.000Z'),
   updatedAt: new Date('2026-09-17T10:00:00.000Z'),
   sourceCount: 3,
@@ -493,5 +494,68 @@ describe('KnowledgeAdminTool — deleting', () => {
     await expect(
       tool.deleteKnowledge({ id: 'kb-1', confirm: true }, null, operator()),
     ).rejects.toThrow('database is down');
+  });
+});
+
+describe('KnowledgeAdminTool — reader access (CLEAN-138)', () => {
+  it('is an operator tool: a plain agent is refused and nothing changes', async () => {
+    const { tool, service } = harness();
+    await expect(
+      tool.setKnowledgeReaderAccess(
+        { id: 'kb-1', access: 'open', confirm: true },
+        null,
+        plainAgent(),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(service.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses without the confirmation argument, names the base and touches nothing', async () => {
+    const { tool, service } = harness();
+    const result = await tool.setKnowledgeReaderAccess(
+      { id: 'kb-1', access: 'open' },
+      null,
+      operator(),
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('«Returns policy»');
+    expect(textOf(result)).toContain('confirm: true');
+    expect(service.update).not.toHaveBeenCalled();
+  });
+
+  it('opens once confirmed through the same update the console uses', async () => {
+    const { tool, service } = harness();
+    service.update.mockResolvedValueOnce(base({ readerAccess: 'open' }));
+    const result = await tool.setKnowledgeReaderAccess(
+      { id: 'kb-1', access: 'open', confirm: true },
+      null,
+      operator(),
+    );
+    expect(service.update).toHaveBeenCalledWith('kb-1', { readerAccess: 'open' });
+    expect(JSON.parse(textOf(result))).toEqual({
+      id: 'kb-1',
+      name: 'Returns policy',
+      readerAccess: 'open',
+    });
+  });
+
+  it('reports a wrong id as not found, not as a request for confirmation', async () => {
+    const { tool, service } = harness();
+    service.get.mockRejectedValueOnce(new NotFoundException('Knowledge kb-x not found'));
+    const result = await tool.setKnowledgeReaderAccess(
+      { id: 'kb-x', access: 'open' },
+      null,
+      operator(),
+    );
+    expect(textOf(result)).toContain('kb-x not found');
+    expect(textOf(result)).not.toContain('confirm: true');
+    expect(service.update).not.toHaveBeenCalled();
+  });
+
+  it('get_knowledge shows the policy', async () => {
+    const { tool, service } = harness();
+    service.getWithDerivedStatus.mockResolvedValueOnce(base({ readerAccess: 'open' }));
+    const text = textOf(await tool.getKnowledge({ id: 'kb-1' }, null, operator()));
+    expect(JSON.parse(text).readerAccess).toBe('open');
   });
 });

@@ -17,7 +17,13 @@ import {
   type IBridleThinkingEvent,
 } from '../domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
-import { IChatGateway, type IChatActivity } from '#/chat/domain';
+import {
+  ChatSourceService,
+  IChatGateway,
+  type IChatActivity,
+  type IChatSourceInput,
+  CHAT_SOURCES_MAX,
+} from '#/chat/domain';
 
 /**
  * WebSocket gateway for AGENT runtime connections.
@@ -35,6 +41,7 @@ import { IChatGateway, type IChatActivity } from '#/chat/domain';
  *   "stream_end"  { clientId, text, messageId, ts }
  *   "typing"      { clientId, ts }
  *   "thinking"    { clientId, turnId, step?, done?, ts }
+ *   "sources"     { clientId, messageId, text, sources[], ts }   (CLEAN-138)
  *   "sync_done"   { requestId, pushed, error? }
  *   "ping"        {}
  *
@@ -56,6 +63,8 @@ export class BridleAgentWsHandler
     @Inject(forwardRef(() => IAgentGateway))
     private readonly agentGateway: IAgentGateway,
     private readonly chats: IChatGateway,
+    @Inject(forwardRef(() => ChatSourceService))
+    private readonly chatSources: ChatSourceService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -170,6 +179,56 @@ export class BridleAgentWsHandler
     }
   }
 
+  /**
+   * One bubble's citations (CLEAN-138), sent by the runtime after that
+   * bubble's `stream_end` / `message`. Recorded before it is relayed, so the
+   * frame a browser receives already has a persisted twin: a rating sent a
+   * second later finds its row, and history shows the same list after the
+   * runtime has compacted its transcript. The relayed frame carries the
+   * reader-facing entries, never the runtime's ids.
+   */
+  @SubscribeMessage('sources')
+  async handleSources(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: Record<string, unknown>,
+  ) {
+    this.ensureRegistered(client);
+    const agentId = client.data?.agentId as string | undefined;
+    if (!agentId) return;
+    const event = readSourcesEvent(data);
+    if (!event) {
+      this.logger.warn(
+        `Dropping malformed sources event from agent=${agentId}: ${describeShape(data)}`,
+      );
+      return;
+    }
+    try {
+      await this.chatSources.record({ agentId, ...event });
+      const entries =
+        (
+          await this.chatSources.forMessages([event.messageId], {
+            clientId: event.clientId,
+            isAdmin: event.clientId === 'admin',
+          })
+        ).get(event.messageId) ?? [];
+      this.hub.handleAgentEvent(agentId, {
+        type: 'sources',
+        clientId: event.clientId,
+        messageId: event.messageId,
+        text: event.text,
+        sources: entries,
+        ts: event.ts,
+      });
+    } catch (e) {
+      // The bubble is already on screen as streamed; losing its list is a
+      // degraded answer, not a broken one. Logged, not thrown.
+      const message = e instanceof Error ? e.message : String(e);
+      this.logger.warn(
+        `Dropping sources event for agent=${agentId} message=${event.messageId}: ${message}`,
+      );
+    }
+  }
+
   @SubscribeMessage('typing')
   handleTyping(
     @ConnectedSocket() client: Socket,
@@ -242,4 +301,66 @@ export class BridleAgentWsHandler
     this.ensureRegistered(client);
     client.emit('pong', {});
   }
+}
+
+/** What `handleSources` needs from the wire, or null when the frame is not it. */
+export function readSourcesEvent(data: unknown): {
+  clientId: string;
+  messageId: string;
+  text: string;
+  sources: IChatSourceInput[];
+  ts: number;
+} | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, unknown>;
+  if (typeof d.clientId !== 'string' || !d.clientId) return null;
+  if (typeof d.messageId !== 'string' || !d.messageId) return null;
+  if (typeof d.text !== 'string') return null;
+  if (!Array.isArray(d.sources) || d.sources.length === 0) return null;
+  if (d.sources.length > CHAT_SOURCES_MAX) return null;
+  const sources: IChatSourceInput[] = [];
+  for (const raw of d.sources) {
+    const s = readSource(raw);
+    if (!s) return null;
+    sources.push(s);
+  }
+  return {
+    clientId: d.clientId,
+    messageId: d.messageId,
+    text: d.text,
+    sources,
+    ts: typeof d.ts === 'number' ? d.ts : Date.now(),
+  };
+}
+
+function readSource(raw: unknown): IChatSourceInput | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const s = raw as Record<string, unknown>;
+  if (s.kind === 'web') {
+    if (typeof s.url !== 'string') return null;
+    return {
+      kind: 'web',
+      url: s.url,
+      title: typeof s.title === 'string' ? s.title : null,
+    };
+  }
+  if (s.kind === 'knowledge') {
+    if (typeof s.id !== 'string' || typeof s.name !== 'string') return null;
+    return {
+      kind: 'knowledge',
+      id: s.id,
+      name: s.name,
+      knowledgeId: typeof s.knowledgeId === 'string' ? s.knowledgeId : '',
+      knowledgeName:
+        typeof s.knowledgeName === 'string' ? s.knowledgeName : null,
+    };
+  }
+  return null;
+}
+
+function describeShape(data: unknown): string {
+  if (!data || typeof data !== 'object') return typeof data;
+  const d = data as Record<string, unknown>;
+  const n = Array.isArray(d.sources) ? d.sources.length : 'none';
+  return `clientId=${typeof d.clientId} messageId=${typeof d.messageId} text=${typeof d.text} sources=${n}`;
 }

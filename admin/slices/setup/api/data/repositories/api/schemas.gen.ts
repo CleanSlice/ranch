@@ -1848,6 +1848,29 @@ export const BridleAttachmentDtoSchema = {
   ],
 } as const;
 
+export const SourceRatingDtoSchema = {
+  type: "object",
+  properties: {
+    rating: {
+      type: "number",
+      enum: [1, -1],
+      description: "1 = this source helped, -1 = it did not.",
+    },
+  },
+  required: ["rating"],
+} as const;
+
+export const SourceRatingResultDtoSchema = {
+  type: "object",
+  properties: {
+    rating: {
+      type: "number",
+      enum: [1, -1],
+    },
+  },
+  required: ["rating"],
+} as const;
+
 export const BridleHealthDtoSchema = {
   type: "object",
   properties: {
@@ -1918,6 +1941,48 @@ export const TranscriptAttachmentDtoSchema = {
   required: ["id", "name", "mimeType", "size", "kind"],
 } as const;
 
+export const SourceEntryDtoSchema = {
+  type: "object",
+  properties: {
+    n: {
+      type: "number",
+      example: 1,
+      description: "Citation number inside the message, 1-based and dense.",
+    },
+    kind: {
+      type: "string",
+      enum: ["knowledge", "web"],
+    },
+    name: {
+      type: "string",
+      example: "Contract 2025.pdf",
+      description:
+        "The knowledge source name, or the page title (its readable address when the page had none). Shown as received.",
+    },
+    url: {
+      type: "string",
+      example: "https://example.com/page",
+      description: "Web sources only. Always http(s).",
+    },
+    knowledgeName: {
+      type: "string",
+      nullable: true,
+      description: "Knowledge sources only: the base the document belongs to.",
+    },
+    canOpen: {
+      type: "boolean",
+      description:
+        "Knowledge: the base allows readers to open documents (or the reader is on the platform team) and the source still exists. Web: the address is a web address. Computed when served, never stored.",
+    },
+    myRating: {
+      type: "number",
+      enum: [1, -1],
+      description: "Knowledge sources only: the reader’s own current rating.",
+    },
+  },
+  required: ["n", "kind", "name", "canOpen"],
+} as const;
+
 export const TranscriptMessageDtoSchema = {
   type: "object",
   properties: {
@@ -1953,6 +2018,14 @@ export const TranscriptMessageDtoSchema = {
       type: "string",
       description:
         "User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.",
+    },
+    sources: {
+      description:
+        "Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/SourceEntryDto",
+      },
     },
   },
   required: ["id", "role", "text", "ts"],
@@ -2228,6 +2301,12 @@ export const KnowledgeListItemDtoSchema = {
       type: "string",
       enum: ["notStarted", "inProgress", "done", "failed"],
     },
+    readerAccess: {
+      type: "string",
+      enum: ["closed", "open"],
+      description:
+        "Whether people an agent answers may open and download the documents of this base that were cited to them. Closed until the keeper opens it; never per source.",
+    },
     createdAt: {
       format: "date-time",
       type: "string",
@@ -2260,6 +2339,7 @@ export const KnowledgeListItemDtoSchema = {
     "instanceState",
     "instanceError",
     "migrationState",
+    "readerAccess",
     "createdAt",
     "updatedAt",
     "sourcesCount",
@@ -2455,6 +2535,12 @@ export const UpdateKnowledgeDtoSchema = {
       type: "string",
       nullable: true,
     },
+    readerAccess: {
+      type: "string",
+      enum: ["closed", "open"],
+      description:
+        "Whether people an agent answers may open and download the documents of this base that were cited to them (CLEAN-138). Per base, never per source.",
+    },
   },
 } as const;
 
@@ -2561,6 +2647,19 @@ export const SourceDtoSchema = {
       type: "number",
       nullable: true,
     },
+    cited: {
+      type: "number",
+      description: "How many assistant answers cited this source (CLEAN-138).",
+    },
+    likes: {
+      type: "number",
+      description:
+        "Current likes on those citations; a withdrawn rating is not counted.",
+    },
+    dislikes: {
+      type: "number",
+      description: "Current dislikes on those citations.",
+    },
     indexed: {
       type: "boolean",
       description:
@@ -2623,6 +2722,9 @@ export const SourceDtoSchema = {
     "mimeType",
     "content",
     "sizeBytes",
+    "cited",
+    "likes",
+    "dislikes",
     "indexed",
     "indexStatus",
     "indexState",
@@ -3076,6 +3178,14 @@ export const ChatMessageDtoSchema = {
       type: "string",
       description:
         "Admin debug views only (present when `types` includes tool events): the full text the model received for a user message with attachments.",
+    },
+    sources: {
+      description:
+        "Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/SourceEntryDto",
+      },
     },
   },
   required: ["id", "role", "text", "ts"],

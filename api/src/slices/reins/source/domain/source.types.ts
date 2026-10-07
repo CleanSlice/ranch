@@ -38,6 +38,10 @@ export type SourceTextStateTypes = 'none' | 'pending' | 'ready' | 'failed';
 export interface ISourceData {
   id: string;
   knowledgeId: string;
+  // Usage in agent answers (CLEAN-138); set on listed pages, zero elsewhere.
+  cited?: number;
+  likes?: number;
+  dislikes?: number;
   type: SourceTypes;
   name: string;
   url: string | null;
@@ -76,12 +80,25 @@ export interface ISourceIndexStatePatch {
   indexRequeuedOverAt?: Date | null;
 }
 
+/** How a source page is ordered (CLEAN-138): by age, or by the numbers the chat collected. */
+export const SOURCE_SORTS = ['createdAt', 'cited', 'likes', 'dislikes'] as const;
+export type SourceSortTypes = (typeof SOURCE_SORTS)[number];
+
 export interface ISourceFilter {
   page: number;
   perPage: number;
   search?: string;
   status?: SourceIndexStatusTypes;
   type?: SourceTypes;
+  sort?: SourceSortTypes;
+  order?: 'asc' | 'desc';
+}
+
+/** How often a source was cited in answers and how those citations were rated. Counted, never stored. */
+export interface ISourceUsage {
+  cited: number;
+  likes: number;
+  dislikes: number;
 }
 
 /**
@@ -246,4 +263,24 @@ export interface IFilesImportResult {
 export interface ISourceBreakdown {
   byType: Record<SourceTypes, number>;
   totalSizeBytes: number;
+}
+
+// ── Ratings (CLEAN-138) ──────────────────────────────────────
+
+/** One reader's verdict on one source as used in one answer. */
+export interface ISourceRatingData {
+  id: string;
+  sourceId: string;
+  messageId: string;
+  authorId: string;
+  rating: 1 | -1;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IRateSourceInput {
+  sourceId: string;
+  messageId: string;
+  authorId: string;
+  rating: 1 | -1;
 }

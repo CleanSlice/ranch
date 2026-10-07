@@ -333,6 +333,62 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   }
 
   @Tool({
+    name: 'set_knowledge_reader_access',
+    topic: ToolTopics.Knowledge,
+    title: 'Let readers open cited documents',
+    template: 'Let readers open the documents of the knowledge base «name»',
+    // Widening who may read documents is not undone by flipping it back:
+    // whatever was downloaded meanwhile stays downloaded.
+    destructive: true,
+    description:
+      'Decide whether the people an agent answers — console users and ' +
+      'share-link visitors alike — may open and download the documents of ' +
+      'this knowledge base that an answer cited to them (CLEAN-138). The ' +
+      'setting is per base, never per document, and is "closed" until ' +
+      'someone opens it. Closing takes effect for every answer already ' +
+      'shown. The platform team can always open documents. ' +
+      CONFIRM_SENTENCE,
+    parameters: z.object({
+      id: z.string().describe('Knowledge base id (list_knowledges has them)'),
+      access: z
+        .enum(['open', 'closed'])
+        .describe('"open" lets readers open cited documents; "closed" does not.'),
+      confirm: z
+        .boolean()
+        .describe('Set true only after the person confirmed in the chat.'),
+    }),
+  })
+  async setKnowledgeReaderAccess(
+    args: { id: string; access: 'open' | 'closed'; confirm?: boolean },
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ): Promise<ToolResult> {
+    requireOperator(httpRequest);
+    const { id, access } = args;
+    return this.whenConfigured(id, async () => {
+      // Resolved before the confirmation check, so a wrong id is reported as
+      // "not found" instead of as a request for confirmation.
+      const base = await this.service.get(id);
+      const refusal = confirmed(
+        args,
+        access === 'open'
+          ? `let readers of agent answers open and download the documents of «${base.name}»`
+          : `stop readers of agent answers from opening the documents of «${base.name}»`,
+      );
+      if (refusal) return refusal;
+      const updated = await this.service.update(id, { readerAccess: access });
+      this.logger.log(
+        `Knowledge reader access set through MCP: id=${id} name=${base.name} access=${access}`,
+      );
+      return ok({
+        id: updated.id,
+        name: updated.name,
+        readerAccess: updated.readerAccess,
+      });
+    });
+  }
+
+  @Tool({
     name: 'index_knowledge',
     topic: ToolTopics.Knowledge,
     title: 'Start indexing',

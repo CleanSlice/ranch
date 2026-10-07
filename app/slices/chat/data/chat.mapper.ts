@@ -16,6 +16,8 @@ import type {
   IChatSession,
   IChatSyncResult,
 } from '../domain/chat.types';
+import { BridleMapper } from '#bridle/data/bridle.mapper';
+import type { IBridleSource } from '#bridle/domain';
 
 /**
  * The OpenAPI generator types several free-form nullable string fields
@@ -39,6 +41,10 @@ const KNOWN_SENTIMENTS = new Set<IChatInsights['sentiment']>([
  * chat slice that imports from `#api`.
  */
 export class ChatMapper {
+  // Sources (CLEAN-138) have one reader, the bridle mapper, in both the live
+  // frame and the history.
+  private bridle = new BridleMapper();
+
   toList(dto: ChatListResponseDto): IChatListResult {
     return {
       items: dto.items.map((s) => this.toSession(s)),
@@ -51,6 +57,7 @@ export class ChatMapper {
   toSession(dto: ChatSessionDto): IChatSession {
     return {
       id: dto.id,
+      agentId: dto.agentId,
       channel: dto.channel,
       externalUserId: dto.externalUserId,
       sessionKey: dto.sessionKey,
@@ -106,6 +113,11 @@ export class ChatMapper {
   }
 
   private toMessage(dto: ChatMessageDto): IChatMessage {
+    // Sources (CLEAN-138) are read by the bridle mapper: one shape check for
+    // the live frame and the history, so the two can never disagree.
+    const sources = (dto.sources ?? [])
+      .map((s) => this.bridle.toSource(s))
+      .filter((s): s is IBridleSource => s !== null);
     return {
       id: dto.id,
       role: this.toRole(dto.role),
@@ -122,6 +134,7 @@ export class ChatMapper {
             })),
           }
         : {}),
+      ...(sources.length ? { sources } : {}),
     };
   }
 

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ChatExportFormat, IChatMessage } from '#chat/stores/chat';
+import type { BridleService } from '#bridle/domain';
+import { openDocument } from '#bridle/stores/bridle';
 import { snippet, type INavMapItem } from '#chat/utils/transcript';
 import { useFormat } from '#common/composables/useFormat';
 
@@ -70,6 +72,47 @@ async function onRate(messageId: string, rating: 1 | -1) {
   } else {
     await chatStore.rate(props.id, messageId, rating);
     feedbackByMsg.value[messageId] = rating;
+  }
+}
+
+// ── Cited sources (CLEAN-138) ──────────────────────────────────
+// The history draws the live chat's list, so opening and rating go through
+// the same bridle service; the page's own message list is what gets patched.
+const bridle = useNuxtApp().$bridleService as BridleService;
+const sourceNotice = ref<string | null>(null);
+
+async function onOpenSource(messageId: string, n: number) {
+  const agentId = session.value?.agentId;
+  if (!agentId) return;
+  try {
+    openDocument(await bridle.openCitedSource(agentId, messageId, n));
+  } catch (err) {
+    const status = (err as { response?: { status?: number } } | null)?.response?.status;
+    sourceNotice.value =
+      status === 403
+        ? 'message.source_locked'
+        : status === 410
+          ? 'message.source_gone'
+          : 'message.source_open_failed';
+  }
+}
+
+async function onRateSource(messageId: string, n: number, rating: 1 | -1 | null) {
+  const agentId = session.value?.agentId;
+  const index = messages.value.findIndex((m) => m.id === messageId);
+  const message = messages.value[index];
+  if (!agentId || !message?.sources) return;
+  const before = message.sources;
+  const patch = (value: 1 | -1 | undefined) =>
+    before.map((s) => (s.n === n ? { ...s, myRating: value } : s));
+  messages.value[index] = { ...message, sources: patch(rating ?? undefined) };
+  try {
+    await bridle.rateCitedSource(agentId, messageId, n, rating);
+  } catch {
+    // Put the list back exactly as it was and say so.
+    const current = messages.value[index];
+    if (current) messages.value[index] = { ...current, sources: before };
+    sourceNotice.value = 'message.source_rating_failed';
   }
 }
 
@@ -182,6 +225,19 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
             {{ $t('session.no_messages') }}
           </div>
 
+          <!-- A cited source could not be opened or rated (CLEAN-138). -->
+          <div
+            v-if="sourceNotice"
+            class="mx-auto flex max-w-[85%] items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive"
+            role="status"
+            aria-live="polite"
+          >
+            <span class="flex-1">{{ $t(sourceNotice) }}</span>
+            <button type="button" class="underline underline-offset-2" @click="sourceNotice = null">
+              {{ $t('message.notice_dismiss') }}
+            </button>
+          </div>
+
           <div
             v-for="m in messages"
             :key="m.id"
@@ -192,6 +248,8 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
               :message="m"
               :rating="feedbackByMsg[m.id] ?? null"
               @rate="(r: 1 | -1) => onRate(m.id, r)"
+              @open-source="(n: number) => onOpenSource(m.id, n)"
+              @rate-source="(n: number, r: 1 | -1 | null) => onRateSource(m.id, n, r)"
             />
           </div>
         </div>

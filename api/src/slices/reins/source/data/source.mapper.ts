@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Source as PrismaSource, Prisma } from '@prisma/client';
 import {
   ISourceData,
+  ISourceUsage,
   ICreateSourceData,
   SourceIndexStatusTypes,
   SourceIndexStateTypes,
@@ -62,11 +63,15 @@ function parseIndexState(value: string): SourceIndexStateTypes {
 
 @Injectable()
 export class SourceMapper {
-  toEntity(record: PrismaSource): ISourceData {
+  toEntity(record: PrismaSource, usage?: ISourceUsage): ISourceData {
     const indexStatus = deriveIndexStatus(record);
     return {
       id: record.id,
       knowledgeId: record.knowledgeId,
+      // Counted by the page query (CLEAN-138); a row read on its own has none.
+      cited: usage?.cited ?? 0,
+      likes: usage?.likes ?? 0,
+      dislikes: usage?.dislikes ?? 0,
       type: parseSourceType(record.type),
       name: record.name,
       url: record.url ?? null,

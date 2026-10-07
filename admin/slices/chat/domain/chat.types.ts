@@ -5,6 +5,8 @@
 // The admin view is broader than the end-user one: sessions carry `agentId`,
 // the transcript exposes tool/system events, and listing supports filters.
 
+import type { IBridleSourceEntry } from '#bridle/stores/bridle';
+
 export type ChatExportFormat = 'json' | 'markdown' | 'csv';
 
 export type ChatChannel = 'bridle' | 'telegram' | 'slack' | 'internal';
@@ -72,6 +74,12 @@ export interface IChatMessage {
   text: string;
   ts: number;
   attachments?: IChatAttachment[];
+  /**
+   * Assistant turns that cited sources (CLEAN-138): the same list the live
+   * chat shows under the bubble, so one component draws both. Absent when
+   * the answer drew on nothing.
+   */
+  sources?: IBridleSourceEntry[];
 }
 
 export interface IChatListResult {

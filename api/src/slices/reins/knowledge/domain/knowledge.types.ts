@@ -15,6 +15,10 @@ export type IndexStatusTypes =
   | 'empty'
   | 'partial';
 
+/** Whether readers of an agent's answers may open the documents of a base
+ * that were cited to them. Per base, never per source (CLEAN-138). */
+export type ReaderAccessTypes = 'closed' | 'open';
+
 export type MigrationStateTypes =
   | 'notStarted'
   | 'inProgress'
@@ -36,6 +40,7 @@ export interface IKnowledgeRecord {
   instanceError: string | null;
   instanceEndpoint: string | null;
   migrationState: MigrationStateTypes;
+  readerAccess: ReaderAccessTypes;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -77,6 +82,7 @@ export interface ICreateKnowledgeData {
 export interface IUpdateKnowledgeData {
   name?: string;
   description?: string | null;
+  readerAccess?: ReaderAccessTypes;
 }
 
 /** List entry with enough context to choose a base (FR-011). */

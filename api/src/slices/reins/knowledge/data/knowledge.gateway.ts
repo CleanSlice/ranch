@@ -174,6 +174,9 @@ export class KnowledgeGateway extends IKnowledgeGateway {
         ...(data.description !== undefined && {
           description: data.description,
         }),
+        ...(data.readerAccess !== undefined && {
+          readerAccess: data.readerAccess,
+        }),
       },
     });
     return this.mapper.toEntity(record);

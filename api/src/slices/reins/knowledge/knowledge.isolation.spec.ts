@@ -42,6 +42,7 @@ function base(p: Partial<IKnowledgeData> & { id: string }): IKnowledgeData {
     instanceError: null,
     instanceEndpoint: null,
     migrationState: 'done',
+    readerAccess: 'closed',
     sourceCount: 0,
     indexedCount: 0,
     failedCount: 0,
@@ -259,6 +260,7 @@ describe('routing policy — the transition never leaks', () => {
   test('a migrated base routes reads and writes to its own instance', () => {
     const row = {
       migrationState: 'done',
+      readerAccess: 'closed',
       instanceState: 'ready',
       instanceEndpoint: K1_ENDPOINT,
     };
@@ -275,6 +277,7 @@ describe('routing policy — the transition never leaks', () => {
   test('a migrated base whose instance is down is disabled — not redirected to the shared pool', () => {
     const row = {
       migrationState: 'done',
+      readerAccess: 'closed',
       instanceState: 'failed',
       instanceEndpoint: K1_ENDPOINT,
     };
@@ -289,6 +292,7 @@ describe('routing policy — the transition never leaks', () => {
   test('an unmigrated base still reads the shared pool, but writes target its own instance once ready', () => {
     const row = {
       migrationState: 'inProgress',
+      readerAccess: 'closed',
       instanceState: 'ready',
       instanceEndpoint: K1_ENDPOINT,
     };

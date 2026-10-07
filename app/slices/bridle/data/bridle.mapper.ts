@@ -8,10 +8,13 @@ import { mergeProposals, proposalMessageId, proposalTs } from '../utils/proposal
 import {
   BridleAttachmentKinds,
   BridleRoleTypes,
+  BridleSourceKinds,
   BridleThinkingStepStates,
   type IBridleAttachment,
   type IBridleMessage,
   type IBridleReply,
+  type IBridleSource,
+  type IBridleSourcesFrame,
   type IBridleSendAck,
   type IBridleThinkingEvent,
   type IBridleThinkingStep,
@@ -34,6 +37,49 @@ export class BridleMapper {
       text: typeof o.text === 'string' ? o.text : '',
       ts: typeof o.ts === 'number' ? o.ts : null,
       ...seqOf(o),
+    };
+  }
+
+  /**
+   * A `sources` frame (CLEAN-138), or null when it names no message or no
+   * source survives the shape check — a list without a bubble to hang on
+   * has nowhere to go.
+   */
+  toSourcesFrame(raw: unknown): IBridleSourcesFrame | null {
+    const o = asRecord(raw);
+    if (typeof o.messageId !== 'string' || !o.messageId) return null;
+    const sources = Array.isArray(o.sources)
+      ? o.sources.map((s) => this.toSource(s)).filter((s): s is IBridleSource => s !== null)
+      : [];
+    if (sources.length === 0) return null;
+    return {
+      messageId: o.messageId,
+      text: typeof o.text === 'string' ? o.text : '',
+      sources,
+      ts: typeof o.ts === 'number' ? o.ts : null,
+      ...seqOf(o),
+    };
+  }
+
+  /** One source entry; the same shape arrives on the frame and in the transcript. */
+  toSource(raw: unknown): IBridleSource | null {
+    const o = asRecord(raw);
+    const n = typeof o.n === 'number' ? o.n : Number(o.n);
+    if (!Number.isInteger(n) || n < 1) return null;
+    if (o.kind !== BridleSourceKinds.Knowledge && o.kind !== BridleSourceKinds.Web) return null;
+    if (typeof o.name !== 'string') return null;
+    const url = typeof o.url === 'string' && /^https?:\/\//i.test(o.url) ? o.url : undefined;
+    return {
+      n,
+      kind: o.kind,
+      name: o.name,
+      ...(url ? { url } : {}),
+      ...(o.kind === BridleSourceKinds.Knowledge
+        ? { knowledgeName: typeof o.knowledgeName === 'string' ? o.knowledgeName : null }
+        : {}),
+      // Only a web address may be opened by the browser itself.
+      canOpen: o.kind === BridleSourceKinds.Web ? !!url : o.canOpen === true,
+      ...(o.myRating === 1 || o.myRating === -1 ? { myRating: o.myRating } : {}),
     };
   }
 
@@ -117,12 +163,17 @@ export class BridleMapper {
           }),
         )
         .filter((a) => a.id);
+      // Sources (CLEAN-138) ride on assistant messages that cited something.
+      const sources = (m.sources ?? [])
+        .map((s) => this.toSource(s))
+        .filter((s): s is IBridleSource => s !== null);
       return {
         id: m.id,
         role: m.role === 'user' ? BridleRoleTypes.User : BridleRoleTypes.Agent,
         text: m.text,
         ts: m.ts,
         ...(attachments.length ? { attachments } : {}),
+        ...(sources.length ? { sources } : {}),
       };
     });
     // Proposal cards (CLEAN-112) take their place by creation time.

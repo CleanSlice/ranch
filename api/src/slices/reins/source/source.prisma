@@ -1,4 +1,6 @@
 import { Knowledge } from "../knowledge/knowledge"
+import { SourceRating } from "./sourceRating"
+import { ChatMessageSource } from "../../chat/chatMessageSource"
 
 model Source {
   id            String    @id @default(uuid())
@@ -35,6 +37,10 @@ model Source {
   textError     String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  // Where this source was cited and how it was rated (CLEAN-138). Counted,
+  // never stored as numbers — see the knowledge console's source list.
+  citations     ChatMessageSource[]
+  ratings       SourceRating[]
 
   @@index([knowledgeId])
   @@index([knowledgeId, createdAt])

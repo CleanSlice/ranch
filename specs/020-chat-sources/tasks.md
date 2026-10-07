@@ -10,6 +10,34 @@
 
 **Organization**: grouped by user story. Ranch paths are repository-relative; runtime paths are relative to the runtime clone and prefixed `runtime:`. "R4", "R9" refer to [research.md](./research.md). Line numbers were read at the base commits above and may drift.
 
+## Status after the implementation pass (2026-10-07)
+
+Both PRs are open: ranch [#137](https://github.com/CleanSlice/ranch/pull/137),
+runtime [#23](https://github.com/CleanSlice/runtime/pull/23) (merge first).
+CLEAN-138 is In Testing. Unit-level gates are green in both repos (API 1908
+tests, admin 161, app 147, runtime 203 + the baseline telegramFile failure,
+scripts 76, locale check clean, both consoles typecheck).
+
+Still open, and why:
+
+- **Quickstart in a browser** — the browser halves of T043, T049, T058, T062,
+  T072, T079 and the whole of T082 (compatibility pass) were not walked: no
+  agent with a bound knowledge base was available in this session.
+- **T081** (LightRAG answer markers) needs a dev base; not verified.
+- **T083** (tools visible in the Rancher Tools panel) needs a running stack.
+- **ru.json** for the new app strings (T037, T057, T061, T070): `CLAUDE_API_KEY`
+  in `.env.project` answers 401, so `i18n:sync` could not run.
+- Follow-ups filed: CLEAN-146, CLEAN-147, CLEAN-148 (T088).
+
+Decided while building: the hub takes a cited source's knowledge base from the
+`Source` row and refuses to link a source outside the agent's bound bases (both
+from the security review); `SourceAccessService` lives in `bridle`, not
+`reins/source`, so the knowledge slice never depends on the chat slice; ratings
+are checked for "cited to you" in the bridle controller and the reins service
+only stores them; inline document display is limited to pdf/image/text with
+nosniff and a sandbox CSP; likes/dislikes sorting ranks the filtered base's ids
+in memory because Prisma cannot order by a filtered relation count.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: can run in parallel (different files, no dependency on an unfinished task)
@@ -203,10 +231,10 @@
 - [ ] T082 [P] Compatibility pass (quickstart §8): old client bundle vs new runtime, new client vs old runtime (`origin/main` runtime), new runtime vs old hub — note results in `quickstart.md`
 - [ ] T083 [P] Agent-tools doc check against `docs/agent-tools.md` "Review checklist": `set_knowledge_reader_access` and `list_knowledge_sources` visible in the Rancher chat Tools panel under *Knowledge*; no secret in any result
 - [X] T084 [P] Update `docs/state.md`? — no: nothing new to teach. Update `README.md` chat section with one paragraph on sources and the `sources` capability; add the `sources` frame to the Bridle SDK/embed notes if `docs/` or the embed README lists capabilities (grep `'thinking'` in `docs/` and `app/public`)
-- [ ] T085 Full gate run on a clean tree (both repos) exactly as quickstart §0; fix what fails
-- [ ] T086 Runtime PR into `main` of `CleanSlice/runtime`: `feat(runtime): cite consulted sources — registry, [^n] validation, `sources` event (CLEAN-138)`; link on CLEAN-138; note it is inert without the client capability
-- [ ] T087 Ranch PR into `main`: `feat: chat sources — citations, source list, reader access policy, source ratings (CLEAN-138)`, body with the twin-console statement (admin+app `bridle` and `chat` changed; share page reuses app bridle; `reins` admin-only), the gate commands run, the debt note (unguarded `reins` controllers; admin `fetchTranscriptPage` drops `proposals`), and the PR URL on the ticket; move CLEAN-138 to **In Testing** (transition 51)
-- [ ] T088 Follow-up tickets in CLEAN, linked from CLEAN-138: `[API] Guard the reins knowledge controllers`, `[ADMIN] fetchTranscriptPage drops proposals`, `[APP] message-level like/dislike in the live chat`
+- [X] T085 Full gate run on a clean tree (both repos) exactly as quickstart §0; fix what fails
+- [X] T086 Runtime PR into `main` of `CleanSlice/runtime`: `feat(runtime): cite consulted sources — registry, [^n] validation, `sources` event (CLEAN-138)`; link on CLEAN-138; note it is inert without the client capability
+- [X] T087 Ranch PR into `main`: `feat: chat sources — citations, source list, reader access policy, source ratings (CLEAN-138)`, body with the twin-console statement (admin+app `bridle` and `chat` changed; share page reuses app bridle; `reins` admin-only), the gate commands run, the debt note (unguarded `reins` controllers; admin `fetchTranscriptPage` drops `proposals`), and the PR URL on the ticket; move CLEAN-138 to **In Testing** (transition 51)
+- [X] T088 Follow-up tickets in CLEAN, linked from CLEAN-138: `[API] Guard the reins knowledge controllers`, `[ADMIN] fetchTranscriptPage drops proposals`, `[APP] message-level like/dislike in the live chat`
 
 ---
 

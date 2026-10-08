@@ -260,6 +260,7 @@ async function onRemove() {
              so Stop and the menu never leave the row. -->
         <UsageLine
           :agent-id="agent.id"
+          :llm-credential-id="agent.llmCredentialId"
           class="order-last basis-full md:order-none md:basis-auto md:max-w-72"
           @details="setTab('overview')"
         />

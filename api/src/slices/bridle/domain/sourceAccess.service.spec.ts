@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Readable } from 'stream';
-import { SourceAccessService } from './sourceAccess.service';
+import { SourceAccessService, contentTypeForBrowser } from './sourceAccess.service';
 import type { ChatSourceService, IChatMessageSourceData } from '#/chat/domain';
 import type { IKnowledgeGateway } from '#/reins/knowledge/domain/knowledge.gateway';
 import type { ISourceGateway } from '#/reins/source/domain/source.gateway';
@@ -139,5 +139,17 @@ describe('SourceAccessService — rating goes through the same gate', () => {
     const { service, knowledges } = harness({ access: 'closed' });
     await service.rateCited('agent-1', 'm1', 1, reader, 1);
     expect(knowledges.findExistingByIds).not.toHaveBeenCalled();
+  });
+});
+
+describe('contentTypeForBrowser', () => {
+  it('declares UTF-8 on text types that say nothing about their encoding', () => {
+    expect(contentTypeForBrowser('text/plain')).toBe('text/plain; charset=utf-8');
+    expect(contentTypeForBrowser('Text/Markdown')).toBe('text/markdown; charset=utf-8');
+  });
+
+  it('leaves an explicit charset and non-text types alone', () => {
+    expect(contentTypeForBrowser('text/plain; charset=windows-1251')).toBe('text/plain; charset=windows-1251');
+    expect(contentTypeForBrowser('application/pdf')).toBe('application/pdf');
   });
 });

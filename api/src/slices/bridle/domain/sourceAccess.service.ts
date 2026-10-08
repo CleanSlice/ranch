@@ -25,6 +25,21 @@ export const SourceAccessErrorCodes = {
 } as const;
 
 /**
+ * A stored text file carries its MIME type without a charset, and a browser
+ * shown `text/plain` alone guesses the encoding from its locale — a Cyrillic
+ * document opened in a new tab came out as mojibake. Everything this API
+ * stores as text is UTF-8, so say so.
+ */
+export function contentTypeForBrowser(contentType: string): string {
+  const [type] = contentType.split(';');
+  const bare = type.trim().toLowerCase();
+  const hasCharset = /;\s*charset=/i.test(contentType);
+  return bare.startsWith('text/') && !hasCharset
+    ? `${bare}; charset=utf-8`
+    : contentType;
+}
+
+/**
  * What a reader may do with a cited source (CLEAN-138): open the document,
  * rate it. Every path starts from the same question — "was `(messageId, n)`
  * cited to you?" — asked of the chat slice, so a source id is never an

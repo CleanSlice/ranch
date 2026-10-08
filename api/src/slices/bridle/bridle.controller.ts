@@ -55,6 +55,7 @@ import {
   IBridleGateway,
   BridleAttachmentService,
   SourceAccessService,
+  contentTypeForBrowser,
   BridleResetErrorCodes,
   MAX_ATTACHMENT_BYTES,
   buildParts,
@@ -648,7 +649,9 @@ export class BridleController {
     const inline = (query.disposition ?? 'inline') === 'inline' && inlineSafe;
     res.setHeader(
       'Content-Type',
-      inlineSafe ? content.contentType : 'application/octet-stream',
+      inlineSafe
+        ? contentTypeForBrowser(content.contentType)
+        : 'application/octet-stream',
     );
     res.setHeader(
       'Content-Disposition',

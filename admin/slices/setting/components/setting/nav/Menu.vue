@@ -16,6 +16,7 @@ const items: IMenuItem[] = [
   { title: 'MCP', description: 'Connect external agents to this Ranch as an MCP server.', to: '/settings/mcp' },
   { title: 'Storage', description: 'S3 / MinIO persistence.', to: '/settings/storage' },
   { title: 'Secrets', description: 'Where agents store user secrets.', to: '/settings/secrets' },
+  { title: 'Notifications', description: 'Where the team is told when an agent goes down.', to: '/settings/notifications' },
 ];
 </script>
 

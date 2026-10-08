@@ -7,6 +7,8 @@ export enum ApiKeyScopeTypes {
    * to every agent's chat — treat it like the `admin` scope.
    */
   EmbedMintAdmin = 'embed:mint-admin',
+  /** Post agent events via POST /agent-events. Nothing else. */
+  EventsWrite = 'events:write',
   /** Full API surface (escape hatch). */
   Admin = 'admin',
 }
@@ -14,6 +16,7 @@ export enum ApiKeyScopeTypes {
 export const ALL_API_KEY_SCOPES: ApiKeyScopeTypes[] = [
   ApiKeyScopeTypes.EmbedMint,
   ApiKeyScopeTypes.EmbedMintAdmin,
+  ApiKeyScopeTypes.EventsWrite,
   ApiKeyScopeTypes.Admin,
 ];
 

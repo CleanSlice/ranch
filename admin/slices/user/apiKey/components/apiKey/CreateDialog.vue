@@ -78,6 +78,12 @@ const SCOPE_OPTIONS: Array<{ value: ApiKeyScopeTypes; label: string; description
       'Lets /auth/embed/token keep Owner/Admin roles in minted tokens (TTL capped at 7d). A widget with such a token chats as the agent\'s admin — this key is effectively admin access to your agents. Keep it server-side only.',
   },
   {
+    value: ApiKeyScopeTypes.EventsWrite,
+    label: 'events:write',
+    description:
+      'Post agent events — report an agent failure to Ranch via POST /agent-events. Nothing else: every other route refuses this key.',
+  },
+  {
     value: ApiKeyScopeTypes.Admin,
     label: 'admin',
     description:

@@ -10,13 +10,15 @@
  *
  * `?tab=` stays the single address of the screen and keeps its whole old
  * vocabulary: the `value` strings are a shared-link contract that predates
- * every one of those redesigns, so the ten section values are byte-identical
- * (including `logs`, and `peers` as a legacy alias of `a2a`, CLEAN-95). The
- * only addition is `settings`, which opens Settings on its default section.
- * `chat` is the default and carries no parameter.
+ * every one of those redesigns, so the ten original section values are
+ * byte-identical (including `logs`, and `peers` as a legacy alias of `a2a`,
+ * CLEAN-95). The additions are `settings`, which opens Settings on its
+ * default section, and `events` (CLEAN-139), which a failure notification
+ * links to. `chat` is the default and carries no parameter.
  */
 import type { Component } from 'vue';
 import {
+  IconBellRinging,
   IconBook2,
   IconFileText,
   IconFlask,
@@ -95,6 +97,13 @@ export const SECTIONS = [
     desc: 'Pod logs, full width.',
     countKey: null,
     icon: IconFileText,
+  },
+  {
+    value: 'events',
+    title: 'Events',
+    desc: 'Failures and incidents reported for this agent.',
+    countKey: null,
+    icon: IconBellRinging,
   },
   {
     value: 'secrets',

@@ -56,6 +56,7 @@ export type UpsertSettingDto = {
 export enum ApiKeyScopeTypes {
   "EMBED:MINT" = "embed:mint",
   "EMBED:MINT_ADMIN" = "embed:mint-admin",
+  "EVENTS:WRITE" = "events:write",
   ADMIN = "admin",
 }
 
@@ -1859,6 +1860,169 @@ export type AgentDelegationDto = {
   startedAt: string;
   finishedAt: string | null;
   durationMs: number | null;
+};
+
+export type PostAgentEventDto = {
+  /**
+   * The Ranch agent's id. On the agent's pod it is the label `ranch/agent-id`; the pod is named `agent-<agentId>` in namespace `agents`.
+   */
+  agentId: string;
+  /**
+   * What happened. `failed` opens (or joins) an incident; `recovered` is stored as evidence — an incident closes when Ranch itself has seen the agent running for ten minutes.
+   */
+  status: "failed" | "recovered";
+  /**
+   * When it happened, ISO 8601 with an offset. Left out: the time Ranch received the event.
+   */
+  datetime?: string;
+  /**
+   * The cause in the sender's own words. Shown as sent.
+   */
+  reason?: string;
+  /**
+   * The tool that noticed. Detail only: who sent the event is taken from the API key, not from this field.
+   */
+  source?: string;
+  /**
+   * The sender's own id for this event. Makes a retry safe: the same eventId from the same key is stored once.
+   */
+  eventId?: string;
+};
+
+export type AgentEventAcceptedDto = {
+  id: string;
+  /**
+   * What the event did: `opened` an incident (the team is being told), `joined` one already open, was `suppressed_stopped` / `suppressed_starting` because a person stopped or is restarting the agent, was `unmatched` to any agent, or is `evidence` of a recovery.
+   */
+  outcome:
+    | "opened"
+    | "joined"
+    | "suppressed_stopped"
+    | "suppressed_starting"
+    | "unmatched"
+    | "evidence";
+  incidentId: string | null;
+  /**
+   * true when Ranch already had this event; `id` is then the first copy.
+   */
+  duplicate: boolean;
+};
+
+export type AgentEventDto = {
+  id: string;
+  /**
+   * null when the id matched no agent, or the agent is gone.
+   */
+  agentId: string | null;
+  /**
+   * The agent id exactly as the sender gave it.
+   */
+  agentRef: string;
+  agentName: string | null;
+  status: "failed" | "unreachable" | "recovered";
+  /**
+   * As received. Never translated or reformatted.
+   */
+  reason: string | null;
+  witness: "ranch" | "external";
+  /**
+   * The API key’s name at the time, or "Ranch".
+   */
+  senderName: string;
+  tool: string | null;
+  /**
+   * What Ranch held for the agent when the event arrived.
+   */
+  ranchStatus: string | null;
+  outcome:
+    | "opened"
+    | "joined"
+    | "suppressed_stopped"
+    | "suppressed_starting"
+    | "unmatched"
+    | "evidence";
+  incidentId: string | null;
+  occurredAt: string;
+  receivedAt: string;
+};
+
+export type AgentEventPageDto = {
+  items: Array<AgentEventDto>;
+  nextCursor: string | null;
+};
+
+export type AgentIncidentNotificationDto = {
+  kind: "opened" | "closed";
+  status: "pending" | "sent" | "failed" | "skipped";
+  attempts: number;
+  sentAt: string | null;
+  /**
+   * The destination’s answer. Never its address.
+   */
+  lastError: string | null;
+};
+
+export type AgentIncidentDto = {
+  id: string;
+  agentId: string | null;
+  agentName: string;
+  state: "open" | "closed";
+  status: "failed" | "unreachable";
+  reason: string | null;
+  /**
+   * Sender names, Ranch included.
+   */
+  witnesses: Array<string>;
+  ranchWitnessed: boolean;
+  eventCount: number;
+  openedAt: string;
+  lastFailureAt: string;
+  /**
+   * When Ranch last saw the agent come up. Set while the incident is still open: the agent is recovering.
+   */
+  upSince: string | null;
+  closedAt: string | null;
+  resolution: "recovered" | "unconfirmed" | "stopped" | "deleted";
+  notifications: Array<AgentIncidentNotificationDto>;
+};
+
+export type AgentIncidentPageDto = {
+  items: Array<AgentIncidentDto>;
+  nextCursor: string | null;
+};
+
+export type NotificationLastDeliveryDto = {
+  at: string;
+  ok: boolean;
+  error: string | null;
+};
+
+export type NotificationDestinationDto = {
+  configured: boolean;
+  kind: "slack";
+  /**
+   * The last four characters of the address.
+   */
+  hint: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
+  /**
+   * false when ADMIN_URL is not set on the API: messages then carry no link to the console.
+   */
+  consoleLinks: boolean;
+  lastDelivery: NotificationLastDeliveryDto | null;
+};
+
+export type SaveNotificationDestinationDto = {
+  /**
+   * A Slack incoming-webhook address (https://hooks.slack.com/services/…). A secret: it is stored and never returned.
+   */
+  webhookUrl: string;
+};
+
+export type TestDeliveryDto = {
+  delivered: boolean;
+  error: string | null;
 };
 
 export type AgentToolEntryDto = {
@@ -5339,6 +5503,140 @@ export type ListAgentDelegationsResponses = {
 
 export type ListAgentDelegationsResponse =
   ListAgentDelegationsResponses[keyof ListAgentDelegationsResponses];
+
+export type ListAgentEventsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Only this agent’s rows.
+     */
+    agentId?: string;
+    limit?: number;
+    /**
+     * The `nextCursor` of a previous answer — the page after it.
+     */
+    before?: string;
+    /**
+     * Only the events of this incident — its timeline, newest first.
+     */
+    incidentId?: string;
+  };
+  url: "/agent-events";
+};
+
+export type ListAgentEventsResponses = {
+  200: AgentEventPageDto;
+};
+
+export type ListAgentEventsResponse =
+  ListAgentEventsResponses[keyof ListAgentEventsResponses];
+
+export type PostAgentEventData = {
+  body: PostAgentEventDto;
+  path?: never;
+  query?: never;
+  url: "/agent-events";
+};
+
+export type PostAgentEventErrors = {
+  /**
+   * More than 60 events in a minute from this key. `Retry-After` says how many seconds to wait.
+   */
+  429: unknown;
+};
+
+export type PostAgentEventResponses = {
+  /**
+   * Ranch already had this event (`duplicate: true`).
+   */
+  200: AgentEventAcceptedDto;
+  201: AgentEventAcceptedDto;
+};
+
+export type PostAgentEventResponse =
+  PostAgentEventResponses[keyof PostAgentEventResponses];
+
+export type ListAgentIncidentsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Only this agent’s rows.
+     */
+    agentId?: string;
+    limit?: number;
+    /**
+     * The `nextCursor` of a previous answer — the page after it.
+     */
+    before?: string;
+    state?: "open" | "closed";
+  };
+  url: "/agent-incidents";
+};
+
+export type ListAgentIncidentsResponses = {
+  200: AgentIncidentPageDto;
+};
+
+export type ListAgentIncidentsResponse =
+  ListAgentIncidentsResponses[keyof ListAgentIncidentsResponses];
+
+export type RemoveNotificationDestinationData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agent-events/destination";
+};
+
+export type RemoveNotificationDestinationResponses = {
+  204: void;
+};
+
+export type RemoveNotificationDestinationResponse =
+  RemoveNotificationDestinationResponses[keyof RemoveNotificationDestinationResponses];
+
+export type GetNotificationDestinationData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agent-events/destination";
+};
+
+export type GetNotificationDestinationResponses = {
+  200: NotificationDestinationDto;
+};
+
+export type GetNotificationDestinationResponse =
+  GetNotificationDestinationResponses[keyof GetNotificationDestinationResponses];
+
+export type SaveNotificationDestinationData = {
+  body: SaveNotificationDestinationDto;
+  path?: never;
+  query?: never;
+  url: "/agent-events/destination";
+};
+
+export type SaveNotificationDestinationResponses = {
+  200: NotificationDestinationDto;
+};
+
+export type SaveNotificationDestinationResponse =
+  SaveNotificationDestinationResponses[keyof SaveNotificationDestinationResponses];
+
+export type TestNotificationDestinationData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agent-events/destination/test";
+};
+
+export type TestNotificationDestinationResponses = {
+  200: TestDeliveryDto;
+};
+
+export type TestNotificationDestinationResponse =
+  TestNotificationDestinationResponses[keyof TestNotificationDestinationResponses];
 
 export type GetAgentToolsData = {
   body?: never;

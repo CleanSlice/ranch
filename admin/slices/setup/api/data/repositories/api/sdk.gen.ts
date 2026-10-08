@@ -260,6 +260,20 @@ import type {
   RemoveAgentPeerResponse,
   ListAgentDelegationsData,
   ListAgentDelegationsResponse,
+  ListAgentEventsData,
+  ListAgentEventsResponse,
+  PostAgentEventData,
+  PostAgentEventResponse,
+  ListAgentIncidentsData,
+  ListAgentIncidentsResponse,
+  RemoveNotificationDestinationData,
+  RemoveNotificationDestinationResponse,
+  GetNotificationDestinationData,
+  GetNotificationDestinationResponse,
+  SaveNotificationDestinationData,
+  SaveNotificationDestinationResponse,
+  TestNotificationDestinationData,
+  TestNotificationDestinationResponse,
   GetAgentToolsData,
   GetAgentToolsResponse,
   SecretControllerDeleteData,
@@ -3394,6 +3408,128 @@ export class PeersService {
       ThrowOnError
     >({
       url: "/agents/{agentId}/delegations",
+      ...options,
+    });
+  }
+}
+
+export class AgentEventsService {
+  /**
+   * Agent events, newest first: reports from outside senders and failures Ranch noticed itself.
+   */
+  public static listAgentEvents<ThrowOnError extends boolean = false>(
+    options?: Options<ListAgentEventsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      ListAgentEventsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events",
+      ...options,
+    });
+  }
+
+  /**
+   * Report an agent event. Auth: API key with the events:write scope. Any 2xx means Ranch has it — do not retry. The event is stored and may notify the team; it never changes the agent’s status.
+   */
+  public static postAgentEvent<ThrowOnError extends boolean = false>(
+    options: Options<PostAgentEventData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      PostAgentEventResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Incidents, newest first: one per stretch of trouble for an agent, with who witnessed it and whether the team was told.
+   */
+  public static listAgentIncidents<ThrowOnError extends boolean = false>(
+    options?: Options<ListAgentIncidentsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      ListAgentIncidentsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-incidents",
+      ...options,
+    });
+  }
+
+  /**
+   * Stop notifying. Messages still waiting are marked skipped; events keep being recorded.
+   */
+  public static removeNotificationDestination<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<RemoveNotificationDestinationData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).delete<
+      RemoveNotificationDestinationResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events/destination",
+      ...options,
+    });
+  }
+
+  /**
+   * Where failure notifications go and whether the last one arrived. Never the address itself.
+   */
+  public static getNotificationDestination<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<GetNotificationDestinationData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      GetNotificationDestinationResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events/destination",
+      ...options,
+    });
+  }
+
+  /**
+   * Set the Slack incoming-webhook address notifications go to. The address is stored and never returned.
+   */
+  public static saveNotificationDestination<
+    ThrowOnError extends boolean = false,
+  >(options: Options<SaveNotificationDestinationData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).put<
+      SaveNotificationDestinationResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events/destination",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Send one clearly labelled test message to the destination and report whether it arrived.
+   */
+  public static testNotificationDestination<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<TestNotificationDestinationData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).post<
+      TestNotificationDestinationResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events/destination/test",
       ...options,
     });
   }

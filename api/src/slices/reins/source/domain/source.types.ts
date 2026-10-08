@@ -38,10 +38,10 @@ export type SourceTextStateTypes = 'none' | 'pending' | 'ready' | 'failed';
 export interface ISourceData {
   id: string;
   knowledgeId: string;
-  // Usage in agent answers (CLEAN-138); set on listed pages, zero elsewhere.
-  cited?: number;
-  likes?: number;
-  dislikes?: number;
+  // Usage in agent answers (CLEAN-138); counted on listed pages, zero elsewhere.
+  cited: number;
+  likes: number;
+  dislikes: number;
   type: SourceTypes;
   name: string;
   url: string | null;

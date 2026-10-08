@@ -128,6 +128,9 @@ describe('instance isolation opt-in gate', () => {
     const source: ISourceData = {
       id: 'src-1',
       knowledgeId: 'k1',
+      cited: 0,
+      likes: 0,
+      dislikes: 0,
       type: 'text',
       name: 'notes.txt',
       url: null,

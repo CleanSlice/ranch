@@ -22,6 +22,9 @@ function pdf(id: string, overrides: Partial<ISourceData> = {}): ISourceData {
   return {
     id,
     knowledgeId: 'k1',
+    cited: 0,
+    likes: 0,
+    dislikes: 0,
     type: 'file',
     name: `${id}.pdf`,
     url: `s3://bucket/knowledges/k1/${id}.pdf`,

@@ -18,6 +18,9 @@ function makeSource(overrides: Partial<ISourceData> = {}): ISourceData {
   return {
     id: 'src-1',
     knowledgeId: 'knowledge-1',
+    cited: 0,
+    likes: 0,
+    dislikes: 0,
     type: 'text',
     name: 'notes.txt',
     url: null,
@@ -81,6 +84,9 @@ function makePrismaStub(docIds: Record<string, string | null> = {}) {
   const row = (id: string) => ({
     id,
     knowledgeId: 'knowledge-1',
+    cited: 0,
+    likes: 0,
+    dislikes: 0,
     lightragDocId: docIds[id] ?? null,
     indexError: errors[id] ?? null,
     indexedAt: indexedAt[id] ?? null,
@@ -1117,6 +1123,9 @@ describe('SourceGateway.requestRetry (the Retry button on a row)', () => {
       Promise.resolve({
         id: 'src-1',
         knowledgeId: 'knowledge-1',
+        cited: 0,
+        likes: 0,
+        dislikes: 0,
         lightragDocId: row.lightragDocId,
         indexError: row.indexError,
         indexedAt: row.indexedAt,

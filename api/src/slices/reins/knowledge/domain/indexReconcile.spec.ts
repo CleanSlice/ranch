@@ -13,6 +13,9 @@ function makeSource(id: string): ISourceData {
   return {
     id,
     knowledgeId: 'knowledge-1',
+    cited: 0,
+    likes: 0,
+    dislikes: 0,
     type: 'file',
     name: `${id}.md`,
     url: 's3://bucket/key',

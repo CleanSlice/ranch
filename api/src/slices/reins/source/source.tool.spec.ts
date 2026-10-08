@@ -19,6 +19,9 @@ import { UserRoleTypes } from '#/user/user/domain';
 const source = (overrides: Partial<ISourceData> = {}): ISourceData => ({
   id: 'src-1',
   knowledgeId: 'kb-1',
+  cited: 0,
+  likes: 0,
+  dislikes: 0,
   type: 'url',
   name: 'Returns policy',
   url: 'https://shop.example/returns',

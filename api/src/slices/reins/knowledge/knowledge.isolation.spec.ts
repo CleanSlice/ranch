@@ -59,6 +59,9 @@ function source(
   p: Partial<ISourceData> & { id: string; knowledgeId: string },
 ): ISourceData {
   return {
+    cited: 0,
+    likes: 0,
+    dislikes: 0,
     type: 'text',
     name: p.id,
     url: null,

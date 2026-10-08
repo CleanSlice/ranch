@@ -5,6 +5,7 @@ import {
   describeCitedSourceError,
   filenameFromDisposition,
   isInlineViewable,
+  withTextCharset,
 } from './citedSourceFile'
 
 describe('filenameFromDisposition', () => {
@@ -66,5 +67,18 @@ describe('describeCitedSourceError', () => {
       'the server could not be reached',
     )
     expect(describeCitedSourceError(new Error('boom'))).toBe('the server rejected the request')
+  })
+})
+
+describe('withTextCharset', () => {
+  test('declares UTF-8 on a text blob that says nothing about its encoding', () => {
+    expect(withTextCharset(new Blob(['x'], { type: 'text/plain' })).type).toBe('text/plain;charset=utf-8')
+  })
+
+  test('leaves an explicit charset and non-text blobs alone', () => {
+    const typed = new Blob(['x'], { type: 'text/plain;charset=windows-1251' })
+    expect(withTextCharset(typed)).toBe(typed)
+    const pdf = new Blob(['x'], { type: 'application/pdf' })
+    expect(withTextCharset(pdf)).toBe(pdf)
   })
 })

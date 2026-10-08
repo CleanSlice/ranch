@@ -160,12 +160,23 @@ function statusOf(err: unknown): number | undefined {
 const VIEWABLE_TYPES = /^(application\/pdf|image\/|text\/plain|text\/markdown|text\/csv)/i;
 
 /**
+ * A blob navigated to in a new tab is decoded by the charset in its type.
+ * The one the response carried does not always survive the trip into the
+ * Blob, and a Cyrillic text shown as Latin-1 is unreadable — every text the
+ * API serves is UTF-8, so the type says so before the tab opens.
+ */
+export function withTextCharset(blob: Blob): Blob {
+  if (!/^text\//i.test(blob.type) || /charset=/i.test(blob.type)) return blob;
+  return new Blob([blob], { type: `${blob.type.split(';')[0]};charset=utf-8` });
+}
+
+/**
  * Show or save a cited document (CLEAN-138). A viewable type opens in a new
  * tab; the rest trigger a download with the name the API gave. The object
  * URL is released once the browser has had time to take it.
  */
 export function openDocument(doc: { blob: Blob; filename: string | null }): void {
-  const url = URL.createObjectURL(doc.blob);
+  const url = URL.createObjectURL(withTextCharset(doc.blob));
   if (VIEWABLE_TYPES.test(doc.blob.type)) {
     window.open(url, '_blank', 'noopener');
   } else {

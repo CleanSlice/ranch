@@ -73,3 +73,15 @@ export function isInlineViewable(mimeType: string | null | undefined): boolean {
   if (!type) return false
   return type === 'application/pdf' || type.startsWith('image/') || type.startsWith('text/')
 }
+
+/**
+ * A blob navigated to in a new tab is decoded by the charset in its type.
+ * The one the response carried does not always survive the trip into the
+ * Blob, and a Cyrillic text shown as Latin-1 is unreadable — every text the
+ * API serves is UTF-8, so the type says so before the tab opens.
+ * TWIN: app/slices/bridle/stores/bridle.ts withTextCharset.
+ */
+export function withTextCharset(blob: Blob): Blob {
+  if (!/^text\//i.test(blob.type) || /charset=/i.test(blob.type)) return blob
+  return new Blob([blob], { type: `${blob.type.split(';')[0]};charset=utf-8` })
+}

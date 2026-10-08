@@ -4,6 +4,7 @@ import {
   CitedSourceErrorCodes,
   filenameFromDisposition,
   isInlineViewable,
+  withTextCharset,
 } from './citedSourceFile'
 
 /**
@@ -81,7 +82,7 @@ export async function fetchCitedSource(
  * needs it for the click.
  */
 export function showCitedSource(file: ICitedSourceFile): void {
-  const url = URL.createObjectURL(file.blob)
+  const url = URL.createObjectURL(withTextCharset(file.blob))
   if (isInlineViewable(file.blob.type)) {
     const tab = window.open(url, '_blank')
     if (!tab) downloadFrom(url, file.filename)

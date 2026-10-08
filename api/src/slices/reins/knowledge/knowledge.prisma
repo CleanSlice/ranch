@@ -15,7 +15,8 @@ model Knowledge {
   instanceError     String?
   instanceEndpoint  String?
   // One-time transition off the shared pool (notStarted | inProgress |
-  // done | failed). Bases created after the transition are 'done' at birth.
+  // done | failed). A base created with instance isolation on is 'done' at
+  // birth; one created with it off stays 'notStarted' on the shared pool.
   migrationState    String        @default("notStarted")
   // Whether people an agent answers may open and download the documents of
   // this base that were cited to them (closed | open). Closed for every base

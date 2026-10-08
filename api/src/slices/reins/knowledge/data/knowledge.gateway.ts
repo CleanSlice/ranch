@@ -150,10 +150,13 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     return records.map((r) => this.mapper.toEntity(r));
   }
 
-  async create(data: ICreateKnowledgeData): Promise<IKnowledgeRecord> {
+  async create(
+    data: ICreateKnowledgeData,
+    migrationState: MigrationStateTypes,
+  ): Promise<IKnowledgeRecord> {
     const created = await this.prisma.$transaction(async (tx) => {
       const initial = await tx.knowledge.create({
-        data: this.mapper.toCreate(data),
+        data: this.mapper.toCreate(data, migrationState),
       });
       return tx.knowledge.update({
         where: { id: initial.id },

@@ -172,9 +172,17 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
   async create(data: ICreateKnowledgeData): Promise<IKnowledgeData> {
     const isolation = await this.knowledgeConfig.isInstanceIsolationEnabled();
     if (isolation) await this.instances.ensureCapacityForNew();
-    const created = await this.gateway.create(data);
-    // Without isolation the base lives on the shared pool; provisioning an
-    // instance for it would start paying for a transition nobody asked for.
+    // Born isolated, a base has nothing to migrate: its content only ever
+    // lands in its own area. Without isolation it lives on the shared pool
+    // like every other base, and must say so — the router sends a 'done' base
+    // to its own instance and nowhere else, so marking one that has no
+    // instance left every source failing with "Retrieval is not available".
+    const created = await this.gateway.create(
+      data,
+      isolation ? 'done' : 'notStarted',
+    );
+    // Provisioning an instance without isolation would start paying for a
+    // transition nobody asked for.
     if (isolation) await this.provisionInstance(created);
     return this.get(created.id);
   }
@@ -313,7 +321,10 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
   async reconcileInstances(): Promise<void> {
     try {
       if (!(await this.knowledgeConfig.isEnabled())) return;
-      if (!(await this.knowledgeConfig.isInstanceIsolationEnabled())) return;
+      if (!(await this.knowledgeConfig.isInstanceIsolationEnabled())) {
+        await this.releaseStrandedBases();
+        return;
+      }
       const [bases, running] = await Promise.all([
         this.gateway.findAll(),
         this.instances.list(),
@@ -340,6 +351,42 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
       }
     } catch (err) {
       this.logger.warn(`instance reconciliation failed: ${errorMessage(err)}`);
+    }
+  }
+
+  /**
+   * A base marked 'done' with no instance, on an installation that provisions
+   * none, can neither be written nor read: it was created while every new base
+   * was born 'done' whether or not isolation was on. Such a base never took a
+   * document, so returning it to the shared pool moves nothing.
+   *
+   * Anything else is left exactly as it is. A base whose instance exists holds
+   * content the shared pool does not. A base in the same state that already
+   * has documents indexed got them somewhere this code cannot see; pointing it
+   * at the shared pool on a guess would have the next index run pay to ingest
+   * every one of them again, so it is reported and a person decides.
+   */
+  private async releaseStrandedBases(): Promise<void> {
+    const bases = await this.gateway.findAll();
+    const stranded = bases.filter(
+      (k) => k.migrationState === 'done' && k.instanceState === 'absent',
+    );
+    if (stranded.length === 0) return;
+    const counts = await this.sources.countByKnowledgeIds(
+      stranded.map((k) => k.id),
+    );
+    for (const k of stranded) {
+      const held = counts.get(k.id) ?? NO_SOURCES;
+      if (held.indexed > 0 || held.processing > 0) {
+        this.logger.warn(
+          `Knowledge ${k.id} is marked migrated with no retrieval instance but holds ${held.indexed} indexed source(s) - left as is, needs a person`,
+        );
+        continue;
+      }
+      await this.gateway.updateMigrationState(k.id, 'notStarted');
+      this.logger.warn(
+        `Knowledge ${k.id} was marked migrated with no retrieval instance - returned to the shared pool`,
+      );
     }
   }
 

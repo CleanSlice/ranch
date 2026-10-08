@@ -5,7 +5,7 @@
 // retrieval against unbound bases, SC-012).
 
 import { Request } from 'express';
-import { KnowledgeTool } from './knowledge.tool';
+import { KnowledgeTool, stripRetrievalCitations } from './knowledge.tool';
 import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -451,5 +451,38 @@ describe('CLEAN-138 — a query result names the sources it drew on', () => {
     const tool = toolWith([]);
     const result = await tool.query({ query: 'q' }, null, agentRequest('agent-1'));
     expect((JSON.parse(textOf(result)) as { sources: unknown[] }).sources).toEqual([]);
+  });
+});
+
+describe('stripRetrievalCitations (CLEAN-138, R13)', () => {
+  test('drops the References footer and the [n] markers, keeps the prose', () => {
+    const raw =
+      '### Хранение\n\nХранение стоит 4 900 рублей за метр [1]. Подъём — 7 200 рублей [1][2].\n\n### ### References\n\n- [1] source-c22f45a1-d699-474f-a564-fa3a8a15e1bf\n- [2] source-other\n';
+    expect(stripRetrievalCitations(raw)).toBe(
+      '### Хранение\n\nХранение стоит 4 900 рублей за метр. Подъём — 7 200 рублей.',
+    );
+  });
+
+  test('leaves an answer without citations as it is', () => {
+    expect(stripRetrievalCitations('Plain answer.')).toBe('Plain answer.');
+  });
+
+  test('the tool result carries the stripped answer', async () => {
+    const knowledgeService = {
+      query: jest.fn(async (knowledgeId: string) => ({
+        answer: 'Fact [1].\n\n### References\n- [1] src-1',
+        knowledgeId,
+        complete: true,
+        references: [],
+      })),
+    } as unknown as KnowledgeService;
+    const tool = new KnowledgeTool(
+      knowledgeService,
+      { findById: jest.fn(async () => ({ id: 'agent-1', knowledgeIds: ['k1'], templateId: 't' })) } as unknown as IAgentGateway,
+      { findById: jest.fn(async () => null) } as unknown as ITemplateGateway,
+      { findExistingByIds: jest.fn(async (ids: string[]) => ids.map((id) => ({ id, name: id, description: null, migrationState: 'done' }))) } as unknown as IKnowledgeGateway,
+    );
+    const parsed = JSON.parse(textOf(await tool.query({ query: 'q' }, null, agentRequest('agent-1')))) as { answer: string };
+    expect(parsed.answer).toBe('Fact.');
   });
 });

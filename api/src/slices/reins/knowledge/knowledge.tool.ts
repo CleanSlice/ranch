@@ -156,6 +156,12 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
               knowledge_id: id,
               knowledge_name,
               ...r,
+              // The retrieval service writes its own "[1]" markers and a
+              // References footer into the answer. The model would copy them
+              // next to the [^n] it is asked for, so they go; `sources`
+              // below is the list it may cite from (CLEAN-138, R13).
+              answer:
+                r.answer === null ? null : stripRetrievalCitations(r.answer),
               // What the answer drew on, in the shape every source-bearing
               // tool result carries (CLEAN-138): the runtime collects these
               // so the model can cite them and the chat can list them.
@@ -238,4 +244,18 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
       this.templateGateway,
     );
   }
+}
+
+/**
+ * The retrieval service's own citation apparatus, removed from an answer
+ * before the model sees it (CLEAN-138, R13): a trailing "References" section
+ * (observed as `### ### References` followed by `- [1] source-…` lines) and
+ * the inline `[n]` markers that point into it. Nothing else is touched.
+ */
+export function stripRetrievalCitations(answer: string): string {
+  const withoutFooter = answer.replace(
+    /\n+\s*(?:#{1,6}\s*)+References\s*\n[\s\S]*$/i,
+    '',
+  );
+  return withoutFooter.replace(/ ?\[\d{1,2}\]/g, '').trimEnd();
 }

@@ -42,6 +42,8 @@ export interface ISourceData {
   cited: number;
   likes: number;
   dislikes: number;
+  /** The retrieval service's document this row stands for, once handed over. */
+  lightragDocId?: string | null;
   type: SourceTypes;
   name: string;
   url: string | null;

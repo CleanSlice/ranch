@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
+import type { IDocumentRecord } from '../../lightrag/domain/lightrag.types';
 import { IKnowledgeGateway } from '../domain/knowledge.gateway';
 import {
   IKnowledgeRecord,
@@ -235,6 +236,10 @@ export class KnowledgeGateway extends IKnowledgeGateway {
 
   async delete(id: string): Promise<void> {
     await this.prisma.knowledge.delete({ where: { id } });
+  }
+
+  listDocuments(knowledgeId: string): Promise<IDocumentRecord[]> {
+    return this.lightrag.listDocuments(knowledgeId);
   }
 
   async searchKnowledge(

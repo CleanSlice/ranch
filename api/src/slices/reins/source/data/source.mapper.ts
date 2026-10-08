@@ -72,6 +72,7 @@ export class SourceMapper {
       cited: usage?.cited ?? 0,
       likes: usage?.likes ?? 0,
       dislikes: usage?.dislikes ?? 0,
+      lightragDocId: record.lightragDocId ?? null,
       type: parseSourceType(record.type),
       name: record.name,
       url: record.url ?? null,

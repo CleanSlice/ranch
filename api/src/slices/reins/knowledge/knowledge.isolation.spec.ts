@@ -9,6 +9,7 @@ import {
   KnowledgeService,
   isNoRelevantContentAnswer,
   resolveReference,
+  resolveAdoptedReferences,
 } from './domain/knowledge.service';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { IKnowledgeData } from './domain/knowledge.types';
@@ -373,5 +374,33 @@ describe('reference resolution', () => {
     );
     expect(ref.sourceId).toBeNull();
     expect(ref.filePath).toBe('ghost.pdf');
+  });
+});
+
+describe('resolveAdoptedReferences (CLEAN-138)', () => {
+  const sources = [
+    source({ id: 'src-new', knowledgeId: 'k1', name: 'Регламент', lightragDocId: 'doc-1' }),
+  ];
+
+  test('maps a reference named after a vanished row to the row that adopted its document', () => {
+    const unresolved = resolveReference({ referenceId: '1', filePath: 'src-old' }, sources);
+    expect(unresolved.sourceId).toBeNull();
+    const [fixed] = resolveAdoptedReferences(
+      [unresolved],
+      sources,
+      [{ id: 'doc-1', filePath: 'src-old' }],
+    );
+    expect(fixed).toMatchObject({ sourceId: 'src-new', sourceName: 'Регламент' });
+  });
+
+  test('leaves resolved references alone and unknown ones unresolved', () => {
+    const resolved = resolveReference({ referenceId: '1', filePath: 'src-new' }, sources);
+    const [same, still] = resolveAdoptedReferences(
+      [resolved, { referenceId: '2', filePath: 'ghost', sourceId: null, sourceName: null }],
+      sources,
+      [{ id: 'doc-9', filePath: 'ghost' }],
+    );
+    expect(same).toBe(resolved);
+    expect(still.sourceId).toBeNull();
   });
 });

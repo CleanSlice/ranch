@@ -44,6 +44,11 @@
     "not_helpful": "Не полезно",
     "copy": "Копировать",
     "copied": "Скопировано",
-    "attached_file_detail": "Прикреплённый файл: {name} · {size}"
+    "attached_file_detail": "Прикреплённый файл: {name} · {size}",
+    "source_locked": "Этот документ недоступен для открытия",
+    "source_gone": "Этого документа больше нет в базе знаний",
+    "source_open_failed": "Не удалось открыть документ",
+    "source_rating_failed": "Не удалось сохранить оценку",
+    "notice_dismiss": "Скрыть"
   }
 }

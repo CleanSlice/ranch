@@ -834,7 +834,10 @@ describe('BridleController — closing a conversation', () => {
     expect(fileCalls.map((c) => c.op)).toEqual(['read', 'saveRaw', 'delete']);
     expect(out.archivedPath).toContain('bridle:share-visitor-7.');
     expect(chats.archiveSession).toHaveBeenCalledTimes(1);
-    expect(hub.resetConversation).toHaveBeenCalledWith(AGENT, 'share-visitor-7');
+    expect(hub.resetConversation).toHaveBeenCalledWith(
+      AGENT,
+      'share-visitor-7',
+    );
   });
 
   it('still resets when there is nothing to close, and creates no empty copy', async () => {

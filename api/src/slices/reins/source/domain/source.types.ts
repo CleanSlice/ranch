@@ -83,7 +83,12 @@ export interface ISourceIndexStatePatch {
 }
 
 /** How a source page is ordered (CLEAN-138): by age, or by the numbers the chat collected. */
-export const SOURCE_SORTS = ['createdAt', 'cited', 'likes', 'dislikes'] as const;
+export const SOURCE_SORTS = [
+  'createdAt',
+  'cited',
+  'likes',
+  'dislikes',
+] as const;
 export type SourceSortTypes = (typeof SOURCE_SORTS)[number];
 
 export interface ISourceFilter {

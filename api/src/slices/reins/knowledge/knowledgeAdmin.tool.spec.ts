@@ -531,7 +531,9 @@ describe('KnowledgeAdminTool — reader access (CLEAN-138)', () => {
       null,
       operator(),
     );
-    expect(service.update).toHaveBeenCalledWith('kb-1', { readerAccess: 'open' });
+    expect(service.update).toHaveBeenCalledWith('kb-1', {
+      readerAccess: 'open',
+    });
     expect(JSON.parse(textOf(result))).toEqual({
       id: 'kb-1',
       name: 'Returns policy',
@@ -541,7 +543,9 @@ describe('KnowledgeAdminTool — reader access (CLEAN-138)', () => {
 
   it('reports a wrong id as not found, not as a request for confirmation', async () => {
     const { tool, service } = harness();
-    service.get.mockRejectedValueOnce(new NotFoundException('Knowledge kb-x not found'));
+    service.get.mockRejectedValueOnce(
+      new NotFoundException('Knowledge kb-x not found'),
+    );
     const result = await tool.setKnowledgeReaderAccess(
       { id: 'kb-x', access: 'open' },
       null,
@@ -554,8 +558,12 @@ describe('KnowledgeAdminTool — reader access (CLEAN-138)', () => {
 
   it('get_knowledge shows the policy', async () => {
     const { tool, service } = harness();
-    service.getWithDerivedStatus.mockResolvedValueOnce(base({ readerAccess: 'open' }));
-    const text = textOf(await tool.getKnowledge({ id: 'kb-1' }, null, operator()));
+    service.getWithDerivedStatus.mockResolvedValueOnce(
+      base({ readerAccess: 'open' }),
+    );
+    const text = textOf(
+      await tool.getKnowledge({ id: 'kb-1' }, null, operator()),
+    );
     expect(JSON.parse(text).readerAccess).toBe('open');
   });
 });

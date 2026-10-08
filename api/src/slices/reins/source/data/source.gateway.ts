@@ -700,7 +700,10 @@ export class SourceGateway extends ISourceGateway {
     for (const s of sources) {
       results.push(
         outcomes.get(s.id) ??
-          (await this.recordFailure(s, 'LightRAG reported no state for this document')),
+          (await this.recordFailure(
+            s,
+            'LightRAG reported no state for this document',
+          )),
       );
     }
     return results;
@@ -826,7 +829,11 @@ export class SourceGateway extends ISourceGateway {
     if (!heldByLightrag) return false;
     await this.prisma.source.update({
       where: { id: source.id },
-      data: { indexState: 'failed', indexAttempts: 0, indexRetryAt: new Date() },
+      data: {
+        indexState: 'failed',
+        indexAttempts: 0,
+        indexRetryAt: new Date(),
+      },
     });
     return true;
   }
@@ -884,7 +891,8 @@ export class SourceGateway extends ISourceGateway {
     // A refused re-upload names the copy LightRAG really holds. That copy is
     // what a reprocess finishes, so it becomes the handle; the rejected
     // upload's own id leads nowhere.
-    const handle = this.documentNamedByRefusal(source.indexError, known) ?? stored;
+    const handle =
+      this.documentNamedByRefusal(source.indexError, known) ?? stored;
     const held = handle === null ? undefined : known.byId.get(handle);
     if (handle === null || held === undefined) {
       // Nothing to reprocess: the failure happened before LightRAG kept
@@ -1235,7 +1243,9 @@ export class SourceGateway extends ISourceGateway {
         return { kind: 'indexed', docId: storedId };
       }
       if (
-        documents.some((d) => d.status === 'pending' || d.status === 'processing')
+        documents.some(
+          (d) => d.status === 'pending' || d.status === 'processing',
+        )
       ) {
         return { kind: 'inFlight', trackId: storedId };
       }
@@ -1477,7 +1487,9 @@ export class SourceGateway extends ISourceGateway {
       indexRequeuedOverAt: null,
     });
     if (docId !== null) {
-      await this.lightrag.deleteDocumentsByTrackIds(source.knowledgeId, [docId]);
+      await this.lightrag.deleteDocumentsByTrackIds(source.knowledgeId, [
+        docId,
+      ]);
     }
   }
 
@@ -1533,7 +1545,9 @@ export class SourceGateway extends ISourceGateway {
       // the source id: LightRAG then cites the row rather than a filename,
       // and never sees a file it could only read as whitespace.
       if (source.textState === 'ready' && source.textUrl) {
-        const text = await this.s3.download(S3Repository.parseUri(source.textUrl));
+        const text = await this.s3.download(
+          S3Repository.parseUri(source.textUrl),
+        );
         const res = await this.lightrag.ingestText({
           knowledgeId,
           text: text.toString('utf8'),

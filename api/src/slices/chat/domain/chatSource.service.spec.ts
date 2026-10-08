@@ -78,7 +78,14 @@ function makeService(
   knowledge: IKnowledgeGateway,
   ratings?: ISourceRatingReader,
 ) {
-  return new ChatSourceService(gateway, sources, knowledge, agents, templates, ratings);
+  return new ChatSourceService(
+    gateway,
+    sources,
+    knowledge,
+    agents,
+    templates,
+    ratings,
+  );
 }
 
 const knowledgeSource: IChatSourceInput = {
@@ -135,7 +142,9 @@ describe('ChatSourceService.record — what the hub writes on a sources event', 
     );
     // A runtime claiming the document belongs to an open base gains nothing.
     await service.record(
-      record([{ ...knowledgeSource, knowledgeId: 'k-open', knowledgeName: 'Public' }]),
+      record([
+        { ...knowledgeSource, knowledgeId: 'k-open', knowledgeName: 'Public' },
+      ]),
     );
     expect(rows.get('m1:1')).toMatchObject({
       knowledgeId: 'k-real',
@@ -149,20 +158,21 @@ describe('ChatSourceService.record — what the hub writes on a sources event', 
 
   it('keeps the name but no id when the Source is already gone', async () => {
     const { gateway, rows } = makeGateway();
-    const service = makeService(
-      gateway,
-      makeSources([]),
-      makeKnowledge({}),
-    );
+    const service = makeService(gateway, makeSources([]), makeKnowledge({}));
     await service.record(record([knowledgeSource]));
-    expect(rows.get('m1:1')).toMatchObject({ sourceId: null, name: 'Contract 2025.pdf' });
+    expect(rows.get('m1:1')).toMatchObject({
+      sourceId: null,
+      name: 'Contract 2025.pdf',
+    });
   });
 
   it('names a web source by its address when the page had no title', async () => {
     const { gateway, rows } = makeGateway();
     const service = makeService(gateway, makeSources([]), makeKnowledge({}));
     await service.record(
-      record([{ kind: 'web', url: 'https://docs.example.com/a/b?x=1', title: null }]),
+      record([
+        { kind: 'web', url: 'https://docs.example.com/a/b?x=1', title: null },
+      ]),
     );
     expect(rows.get('m1:1')?.name).toBe('docs.example.com/a/b');
   });
@@ -177,17 +187,25 @@ describe('ChatSourceService.record — what the hub writes on a sources event', 
     }));
     await expect(service.record(record(tooMany))).rejects.toThrow(/50/);
     await expect(
-      service.record(record([{ kind: 'web', url: 'javascript:alert(1)', title: 'x' }])),
+      service.record(
+        record([{ kind: 'web', url: 'javascript:alert(1)', title: 'x' }]),
+      ),
     ).rejects.toThrow(/address/);
     await expect(
-      service.record(record([{ kind: 'web', url: 'file:///etc/passwd', title: 'x' }])),
+      service.record(
+        record([{ kind: 'web', url: 'file:///etc/passwd', title: 'x' }]),
+      ),
     ).rejects.toThrow(/address/);
     expect(rows.size).toBe(0);
   });
 
   it('is idempotent on a replayed event', async () => {
     const { gateway, rows } = makeGateway();
-    const service = makeService(gateway, makeSources(['s1']), makeKnowledge({}));
+    const service = makeService(
+      gateway,
+      makeSources(['s1']),
+      makeKnowledge({}),
+    );
     await service.record(record([knowledgeSource]));
     await service.record(record([knowledgeSource]));
     expect(rows.size).toBe(1);
@@ -197,74 +215,144 @@ describe('ChatSourceService.record — what the hub writes on a sources event', 
 describe('ChatSourceService.forMessages — what a reader is shown', () => {
   const seeded: IChatMessageSourceData[] = [
     {
-      id: 'r1', agentId: 'agent-1', clientId: 'user-1', sessionKey: 'bridle:user-1',
-      messageId: 'm1', n: 1, kind: 'knowledge', sourceId: 's1', knowledgeId: 'k1',
-      knowledgeName: 'Legal', name: 'Contract 2025.pdf', url: null, createdAt: new Date(0),
+      id: 'r1',
+      agentId: 'agent-1',
+      clientId: 'user-1',
+      sessionKey: 'bridle:user-1',
+      messageId: 'm1',
+      n: 1,
+      kind: 'knowledge',
+      sourceId: 's1',
+      knowledgeId: 'k1',
+      knowledgeName: 'Legal',
+      name: 'Contract 2025.pdf',
+      url: null,
+      createdAt: new Date(0),
     },
     {
-      id: 'r2', agentId: 'agent-1', clientId: 'user-1', sessionKey: 'bridle:user-1',
-      messageId: 'm1', n: 2, kind: 'web', sourceId: null, knowledgeId: null,
-      knowledgeName: null, name: 'Example', url: 'https://example.com/page', createdAt: new Date(0),
+      id: 'r2',
+      agentId: 'agent-1',
+      clientId: 'user-1',
+      sessionKey: 'bridle:user-1',
+      messageId: 'm1',
+      n: 2,
+      kind: 'web',
+      sourceId: null,
+      knowledgeId: null,
+      knowledgeName: null,
+      name: 'Example',
+      url: 'https://example.com/page',
+      createdAt: new Date(0),
     },
     {
-      id: 'r3', agentId: 'agent-1', clientId: 'user-1', sessionKey: 'bridle:user-1',
-      messageId: 'm2', n: 1, kind: 'knowledge', sourceId: null, knowledgeId: 'k1',
-      knowledgeName: 'Legal', name: 'Deleted.pdf', url: null, createdAt: new Date(0),
+      id: 'r3',
+      agentId: 'agent-1',
+      clientId: 'user-1',
+      sessionKey: 'bridle:user-1',
+      messageId: 'm2',
+      n: 1,
+      kind: 'knowledge',
+      sourceId: null,
+      knowledgeId: 'k1',
+      knowledgeName: 'Legal',
+      name: 'Deleted.pdf',
+      url: null,
+      createdAt: new Date(0),
     },
   ];
   const viewer = { clientId: 'user-1', isAdmin: false };
 
   it('closes knowledge documents while the base is closed and keeps web open', async () => {
     const { gateway } = makeGateway(seeded);
-    const service = makeService(gateway, makeSources(['s1']), makeKnowledge({ k1: 'closed' }));
+    const service = makeService(
+      gateway,
+      makeSources(['s1']),
+      makeKnowledge({ k1: 'closed' }),
+    );
     const byMessage = await service.forMessages(['m1'], viewer);
     expect(byMessage.get('m1')).toEqual([
-      { n: 1, kind: 'knowledge', name: 'Contract 2025.pdf', knowledgeName: 'Legal', canOpen: false },
-      { n: 2, kind: 'web', name: 'Example', url: 'https://example.com/page', canOpen: true },
+      {
+        n: 1,
+        kind: 'knowledge',
+        name: 'Contract 2025.pdf',
+        knowledgeName: 'Legal',
+        canOpen: false,
+      },
+      {
+        n: 2,
+        kind: 'web',
+        name: 'Example',
+        url: 'https://example.com/page',
+        canOpen: true,
+      },
     ]);
   });
 
   it('opens knowledge documents once the base is open — read at serve time', async () => {
     const { gateway } = makeGateway(seeded);
-    const service = makeService(gateway, makeSources(['s1']), makeKnowledge({ k1: 'open' }));
+    const service = makeService(
+      gateway,
+      makeSources(['s1']),
+      makeKnowledge({ k1: 'open' }),
+    );
     const entries = (await service.forMessages(['m1'], viewer)).get('m1')!;
     expect(entries[0].canOpen).toBe(true);
   });
 
   it('opens for the admin identity whatever the policy says', async () => {
     const { gateway } = makeGateway(seeded);
-    const service = makeService(gateway, makeSources(['s1']), makeKnowledge({ k1: 'closed' }));
-    const entries = (await service.forMessages(['m1'], { clientId: 'admin', isAdmin: true })).get('m1')!;
+    const service = makeService(
+      gateway,
+      makeSources(['s1']),
+      makeKnowledge({ k1: 'closed' }),
+    );
+    const entries = (
+      await service.forMessages(['m1'], { clientId: 'admin', isAdmin: true })
+    ).get('m1')!;
     expect(entries[0].canOpen).toBe(true);
   });
 
   it('never opens a source that no longer exists, even on an open base', async () => {
     const { gateway } = makeGateway(seeded);
-    const service = makeService(gateway, makeSources([]), makeKnowledge({ k1: 'open' }));
-    const entries = (await service.forMessages(['m2'], { clientId: 'admin', isAdmin: true })).get('m2')!;
+    const service = makeService(
+      gateway,
+      makeSources([]),
+      makeKnowledge({ k1: 'open' }),
+    );
+    const entries = (
+      await service.forMessages(['m2'], { clientId: 'admin', isAdmin: true })
+    ).get('m2')!;
     expect(entries[0]).toMatchObject({ name: 'Deleted.pdf', canOpen: false });
   });
 
   it('leaks neither the source id nor the knowledge id', async () => {
     const { gateway } = makeGateway(seeded);
-    const service = makeService(gateway, makeSources(['s1']), makeKnowledge({ k1: 'open' }));
-    const json = JSON.stringify([...(await service.forMessages(['m1'], viewer)).values()]);
+    const service = makeService(
+      gateway,
+      makeSources(['s1']),
+      makeKnowledge({ k1: 'open' }),
+    );
+    const json = JSON.stringify([
+      ...(await service.forMessages(['m1'], viewer)).values(),
+    ]);
     expect(json).not.toContain('s1');
     expect(json).not.toContain('k1');
   });
 
   it('adds the viewer’s own rating when a reader is bound', async () => {
     const { gateway } = makeGateway(seeded);
-    const ratings: ISourceRatingReader = {
-      mine: jest.fn(async () => ({ 'm1:s1': -1 as const })),
-    };
+    const mine = jest.fn(async () => ({ 'm1:s1': -1 as const }));
+    const ratings: ISourceRatingReader = { mine };
     const service = makeService(
-      gateway, makeSources(['s1']), makeKnowledge({ k1: 'closed' }), ratings,
+      gateway,
+      makeSources(['s1']),
+      makeKnowledge({ k1: 'closed' }),
+      ratings,
     );
     const entries = (await service.forMessages(['m1'], viewer)).get('m1')!;
     expect(entries[0].myRating).toBe(-1);
     expect(entries[1].myRating).toBeUndefined();
-    expect(ratings.mine).toHaveBeenCalledWith(['m1'], 'user-1');
+    expect(mine).toHaveBeenCalledWith(['m1'], 'user-1');
   });
 
   it('answers an empty map for messages without sources, cheaply', async () => {
@@ -277,24 +365,59 @@ describe('ChatSourceService.forMessages — what a reader is shown', () => {
 
 describe('ChatSourceService.isCitedTo — the precondition behind opening and rating', () => {
   const row: IChatMessageSourceData = {
-    id: 'r1', agentId: 'agent-1', clientId: 'user-1', sessionKey: 'bridle:user-1',
-    messageId: 'm1', n: 1, kind: 'knowledge', sourceId: 's1', knowledgeId: 'k1',
-    knowledgeName: 'Legal', name: 'Contract 2025.pdf', url: null, createdAt: new Date(0),
+    id: 'r1',
+    agentId: 'agent-1',
+    clientId: 'user-1',
+    sessionKey: 'bridle:user-1',
+    messageId: 'm1',
+    n: 1,
+    kind: 'knowledge',
+    sourceId: 's1',
+    knowledgeId: 'k1',
+    knowledgeName: 'Legal',
+    name: 'Contract 2025.pdf',
+    url: null,
+    createdAt: new Date(0),
   };
 
   it('returns the row for the reader it was cited to, and for the admin', async () => {
     const { gateway } = makeGateway([row]);
     const service = makeService(gateway, makeSources([]), makeKnowledge({}));
-    expect(await service.isCitedTo('agent-1', 'm1', 1, { clientId: 'user-1', isAdmin: false })).toEqual(row);
-    expect(await service.isCitedTo('agent-1', 'm1', 1, { clientId: 'admin', isAdmin: true })).toEqual(row);
+    expect(
+      await service.isCitedTo('agent-1', 'm1', 1, {
+        clientId: 'user-1',
+        isAdmin: false,
+      }),
+    ).toEqual(row);
+    expect(
+      await service.isCitedTo('agent-1', 'm1', 1, {
+        clientId: 'admin',
+        isAdmin: true,
+      }),
+    ).toEqual(row);
   });
 
   it('answers null for another reader, another agent, or a number that was never cited', async () => {
     const { gateway } = makeGateway([row]);
     const service = makeService(gateway, makeSources([]), makeKnowledge({}));
-    expect(await service.isCitedTo('agent-1', 'm1', 1, { clientId: 'user-2', isAdmin: false })).toBeNull();
-    expect(await service.isCitedTo('agent-2', 'm1', 1, { clientId: 'user-1', isAdmin: false })).toBeNull();
-    expect(await service.isCitedTo('agent-1', 'm1', 2, { clientId: 'user-1', isAdmin: false })).toBeNull();
+    expect(
+      await service.isCitedTo('agent-1', 'm1', 1, {
+        clientId: 'user-2',
+        isAdmin: false,
+      }),
+    ).toBeNull();
+    expect(
+      await service.isCitedTo('agent-2', 'm1', 1, {
+        clientId: 'user-1',
+        isAdmin: false,
+      }),
+    ).toBeNull();
+    expect(
+      await service.isCitedTo('agent-1', 'm1', 2, {
+        clientId: 'user-1',
+        isAdmin: false,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -307,9 +430,20 @@ describe('ChatSourceService.record — an agent may only link what it may read',
       makeKnowledge({ 'k-foreign': 'open' }),
     );
     await service.record(
-      record([{ kind: 'knowledge', id: 's-other', name: 'Foreign.pdf', knowledgeId: 'k-foreign', knowledgeName: 'F' }]),
+      record([
+        {
+          kind: 'knowledge',
+          id: 's-other',
+          name: 'Foreign.pdf',
+          knowledgeId: 'k-foreign',
+          knowledgeName: 'F',
+        },
+      ]),
     );
-    expect(rows.get('m1:1')).toMatchObject({ sourceId: null, name: 'Foreign.pdf' });
+    expect(rows.get('m1:1')).toMatchObject({
+      sourceId: null,
+      name: 'Foreign.pdf',
+    });
     const entries = (
       await service.forMessages(['m1'], { clientId: 'user-1', isAdmin: false })
     ).get('m1')!;

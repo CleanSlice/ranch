@@ -1,5 +1,8 @@
 import { Socket } from 'socket.io';
-import { BridleAgentWsHandler, readSourcesEvent } from './bridleAgentWs.handler';
+import {
+  BridleAgentWsHandler,
+  readSourcesEvent,
+} from './bridleAgentWs.handler';
 import type { IBridleOutgoingEvent } from '../domain';
 import type { IChatSourceEntry, IRecordSourcesInput } from '#/chat/domain';
 
@@ -22,7 +25,9 @@ function makeHandler(entries: IChatSourceEntry[] = []) {
     record: jest.fn(async (input: IRecordSourcesInput) => {
       recorded.push(input);
     }),
-    forMessages: jest.fn(async (ids: string[]) => new Map(ids.map((id) => [id, entries]))),
+    forMessages: jest.fn(
+      async (ids: string[]) => new Map(ids.map((id) => [id, entries])),
+    ),
   };
   const handler = new BridleAgentWsHandler(
     hub as never,
@@ -31,7 +36,9 @@ function makeHandler(entries: IChatSourceEntry[] = []) {
     {} as never,
     chatSources as never,
   );
-  const client = { data: { agentId: 'agent-1', send: () => undefined } } as unknown as Socket;
+  const client = {
+    data: { agentId: 'agent-1', send: () => undefined },
+  } as unknown as Socket;
   return { handler, client, routed, recorded, chatSources };
 }
 
@@ -41,7 +48,13 @@ const frame = {
   messageId: 'm1',
   text: 'Answer [^1].',
   sources: [
-    { kind: 'knowledge', id: 's1', name: 'Doc', knowledgeId: 'k1', knowledgeName: 'Legal' },
+    {
+      kind: 'knowledge',
+      id: 's1',
+      name: 'Doc',
+      knowledgeId: 'k1',
+      knowledgeName: 'Legal',
+    },
   ],
   ts: 5,
 };
@@ -49,16 +62,36 @@ const frame = {
 describe('agent socket — sources event', () => {
   it('records the citations and relays the reader-facing entries with the same ids', async () => {
     const entries: IChatSourceEntry[] = [
-      { n: 1, kind: 'knowledge', name: 'Doc', knowledgeName: 'Legal', canOpen: false },
+      {
+        n: 1,
+        kind: 'knowledge',
+        name: 'Doc',
+        knowledgeName: 'Legal',
+        canOpen: false,
+      },
     ];
     const { handler, client, routed, recorded } = makeHandler(entries);
     await handler.handleSources(client, frame);
 
     expect(recorded).toEqual([
-      { agentId: 'agent-1', clientId: 'user-1', messageId: 'm1', text: 'Answer [^1].', sources: frame.sources, ts: 5 },
+      {
+        agentId: 'agent-1',
+        clientId: 'user-1',
+        messageId: 'm1',
+        text: 'Answer [^1].',
+        sources: frame.sources,
+        ts: 5,
+      },
     ]);
     expect(routed).toEqual([
-      { type: 'sources', clientId: 'user-1', messageId: 'm1', text: 'Answer [^1].', sources: entries, ts: 5 },
+      {
+        type: 'sources',
+        clientId: 'user-1',
+        messageId: 'm1',
+        text: 'Answer [^1].',
+        sources: entries,
+        ts: 5,
+      },
     ]);
     // The runtime's ids stay behind.
     expect(JSON.stringify(routed)).not.toContain('"id":"s1"');
@@ -68,7 +101,10 @@ describe('agent socket — sources event', () => {
     const { handler, client, routed, recorded } = makeHandler();
     await handler.handleSources(client, { ...frame, sources: [] });
     await handler.handleSources(client, { ...frame, messageId: 7 });
-    await handler.handleSources(client, { ...frame, sources: [{ kind: 'web' }] });
+    await handler.handleSources(client, {
+      ...frame,
+      sources: [{ kind: 'web' }],
+    });
     expect(recorded).toHaveLength(0);
     expect(routed).toHaveLength(0);
   });
@@ -94,15 +130,44 @@ describe('readSourcesEvent', () => {
     });
     expect(read?.sources).toEqual([
       { kind: 'web', url: 'https://x.io/a', title: null },
-      { kind: 'knowledge', id: 's', name: 'n', knowledgeId: '', knowledgeName: null },
+      {
+        kind: 'knowledge',
+        id: 's',
+        name: 'n',
+        knowledgeId: '',
+        knowledgeName: null,
+      },
     ]);
     expect(typeof read?.ts).toBe('number');
   });
 
   it('refuses an unknown kind, a missing text, or more than fifty entries', () => {
-    expect(readSourcesEvent({ clientId: 'c', messageId: 'm', text: 't', sources: [{ kind: 'pdf' }] })).toBeNull();
-    expect(readSourcesEvent({ clientId: 'c', messageId: 'm', sources: [{ kind: 'web', url: 'https://x' }] })).toBeNull();
-    const many = Array.from({ length: 51 }, (_, i) => ({ kind: 'web', url: `https://x/${i}` }));
-    expect(readSourcesEvent({ clientId: 'c', messageId: 'm', text: 't', sources: many })).toBeNull();
+    expect(
+      readSourcesEvent({
+        clientId: 'c',
+        messageId: 'm',
+        text: 't',
+        sources: [{ kind: 'pdf' }],
+      }),
+    ).toBeNull();
+    expect(
+      readSourcesEvent({
+        clientId: 'c',
+        messageId: 'm',
+        sources: [{ kind: 'web', url: 'https://x' }],
+      }),
+    ).toBeNull();
+    const many = Array.from({ length: 51 }, (_, i) => ({
+      kind: 'web',
+      url: `https://x/${i}`,
+    }));
+    expect(
+      readSourcesEvent({
+        clientId: 'c',
+        messageId: 'm',
+        text: 't',
+        sources: many,
+      }),
+    ).toBeNull();
   });
 });

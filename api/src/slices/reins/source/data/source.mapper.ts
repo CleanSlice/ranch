@@ -47,7 +47,12 @@ export function deriveIndexStatus(record: {
   return record.indexRetryAt !== null ? 'retrying' : 'failed';
 }
 
-const TEXT_STATES: readonly SourceTextStateTypes[] = ['none', 'pending', 'ready', 'failed'];
+const TEXT_STATES: readonly SourceTextStateTypes[] = [
+  'none',
+  'pending',
+  'ready',
+  'failed',
+];
 
 function parseTextState(value: string): SourceTextStateTypes {
   return (TEXT_STATES as readonly string[]).includes(value)

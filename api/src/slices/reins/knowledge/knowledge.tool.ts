@@ -238,11 +238,7 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
   }
 
   private resolveAllowedIds(agentId: string): Promise<string[]> {
-    return boundKnowledgeIds(
-      agentId,
-      this.agentGateway,
-      this.templateGateway,
-    );
+    return boundKnowledgeIds(agentId, this.agentGateway, this.templateGateway);
   }
 }
 

@@ -29,12 +29,28 @@ describe('rankByUsage', () => {
   ]);
 
   it('orders by the chosen number, most first for desc', () => {
-    expect(rankByUsage(['a', 'b', 'c', 'd'], usage, 'cited', 'desc')).toEqual(['b', 'a', 'c', 'd']);
-    expect(rankByUsage(['a', 'b', 'c', 'd'], usage, 'dislikes', 'desc')).toEqual(['a', 'b', 'c', 'd']);
-    expect(rankByUsage(['a', 'b', 'c', 'd'], usage, 'likes', 'asc')).toEqual(['a', 'd', 'b', 'c']);
+    expect(rankByUsage(['a', 'b', 'c', 'd'], usage, 'cited', 'desc')).toEqual([
+      'b',
+      'a',
+      'c',
+      'd',
+    ]);
+    expect(
+      rankByUsage(['a', 'b', 'c', 'd'], usage, 'dislikes', 'desc'),
+    ).toEqual(['a', 'b', 'c', 'd']);
+    expect(rankByUsage(['a', 'b', 'c', 'd'], usage, 'likes', 'asc')).toEqual([
+      'a',
+      'd',
+      'b',
+      'c',
+    ]);
   });
 
   it('keeps creation order among equals so pages stay stable', () => {
-    expect(rankByUsage(['c', 'a', 'd'], usage, 'cited', 'desc')).toEqual(['c', 'a', 'd']);
+    expect(rankByUsage(['c', 'a', 'd'], usage, 'cited', 'desc')).toEqual([
+      'c',
+      'a',
+      'd',
+    ]);
   });
 });

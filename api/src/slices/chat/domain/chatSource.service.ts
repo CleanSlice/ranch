@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, Optional, forwardRef } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  forwardRef,
+} from '@nestjs/common';
 import { ISourceGateway } from '#/reins/source/domain/source.gateway';
 import { IKnowledgeGateway } from '#/reins/knowledge/domain/knowledge.gateway';
 import { boundKnowledgeIds } from '#/reins/knowledge/domain/boundKnowledge';
@@ -92,7 +98,10 @@ export class ChatSourceService {
         ? this.knowledges.findExistingByIds(liveKnowledgeIds)
         : Promise.resolve([]),
       this.ratings
-        ? this.ratings.mine(unique(rows.map((r) => r.messageId)), viewer.clientId)
+        ? this.ratings.mine(
+            unique(rows.map((r) => r.messageId)),
+            viewer.clientId,
+          )
         : Promise.resolve({} as Record<string, 1 | -1>),
     ]);
     const openBases = new Set(
@@ -118,7 +127,9 @@ export class ChatSourceService {
         const baseOpen =
           viewer.isAdmin || (!!liveBase && openBases.has(liveBase));
         entry.canOpen = liveBase !== undefined && baseOpen;
-        const rating = r.sourceId ? mine[`${r.messageId}:${r.sourceId}`] : undefined;
+        const rating = r.sourceId
+          ? mine[`${r.messageId}:${r.sourceId}`]
+          : undefined;
         if (rating) entry.myRating = rating;
       }
       const list = out.get(r.messageId) ?? [];

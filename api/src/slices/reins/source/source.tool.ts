@@ -140,7 +140,10 @@ export class SourceTool implements IConditionallyListedTool {
         .describe(
           'Order: createdAt (default), or cited / likes / dislikes — how often agent answers cited the source and how readers rated those citations (CLEAN-138). Pair with order "desc" for the most cited or the worst rated first.',
         ),
-      order: z.enum(['asc', 'desc']).optional().describe('asc (default) or desc'),
+      order: z
+        .enum(['asc', 'desc'])
+        .optional()
+        .describe('asc (default) or desc'),
     }),
   })
   async listKnowledgeSources(

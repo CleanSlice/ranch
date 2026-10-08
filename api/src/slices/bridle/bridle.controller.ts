@@ -621,7 +621,8 @@ export class BridleController {
       'No such citation for this reader — including one that belongs to someone else, which answers with the same 404 so a guessed id reveals nothing.',
   })
   @ApiGoneResponse({
-    description: 'The knowledge source was deleted after it was cited (`SOURCE_GONE`).',
+    description:
+      'The knowledge source was deleted after it was cited (`SOURCE_GONE`).',
   })
   @UseGuards(BridleChatAuthGuard)
   @Get(':agentId/message/:messageId/source/:n/content')
@@ -682,7 +683,10 @@ export class BridleController {
   @ApiShareHeaders()
   @ApiOkResponse({ type: SourceRatingResultDto })
   @ApiNotFoundResponse({ description: 'No such citation for this reader.' })
-  @ApiGoneResponse({ description: 'The knowledge source was deleted after it was cited (`SOURCE_GONE`).' })
+  @ApiGoneResponse({
+    description:
+      'The knowledge source was deleted after it was cited (`SOURCE_GONE`).',
+  })
   @UseGuards(BridleChatAuthGuard)
   @Put(':agentId/message/:messageId/source/:n/rating')
   async rateCitedSource(
@@ -702,7 +706,8 @@ export class BridleController {
   }
 
   @ApiOperation({
-    description: 'Withdraw the reader’s rating of a cited source (CLEAN-138). Nothing to withdraw is still 204.',
+    description:
+      'Withdraw the reader’s rating of a cited source (CLEAN-138). Nothing to withdraw is still 204.',
     operationId: 'unrateBridleCitedSource',
   })
   @ApiShareHeaders()
@@ -877,7 +882,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      'Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat: the running agent is told to drop its own copy, and every browser that has the conversation open is told it was reset (`conversation_reset`). Nothing is kept — to keep the conversation, use `POST …/transcript/archive`. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor\'s own share headers are accepted (403 otherwise).',
+      "Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat: the running agent is told to drop its own copy, and every browser that has the conversation open is told it was reset (`conversation_reset`). Nothing is kept — to keep the conversation, use `POST …/transcript/archive`. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).",
     operationId: 'resetBridleTranscript',
   })
   @ApiQuery({

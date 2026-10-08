@@ -352,7 +352,9 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
       id: z.string().describe('Knowledge base id (list_knowledges has them)'),
       access: z
         .enum(['open', 'closed'])
-        .describe('"open" lets readers open cited documents; "closed" does not.'),
+        .describe(
+          '"open" lets readers open cited documents; "closed" does not.',
+        ),
       confirm: z
         .boolean()
         .describe('Set true only after the person confirmed in the chat.'),

@@ -103,9 +103,7 @@ export function resolveAdoptedReferences(
     const match = docId
       ? sources.find((s) => s.lightragDocId === docId)
       : undefined;
-    return match
-      ? { ...ref, sourceId: match.id, sourceName: match.name }
-      : ref;
+    return match ? { ...ref, sourceId: match.id, sourceName: match.name } : ref;
   });
 }
 
@@ -443,7 +441,10 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
         const staleAfterMs = staleIndexAfterMs(sources);
         if (ageMs < staleAfterMs) {
           const ageMin = Math.round(ageMs / 60_000);
-          const leftMin = Math.max(1, Math.ceil((staleAfterMs - ageMs) / 60_000));
+          const leftMin = Math.max(
+            1,
+            Math.ceil((staleAfterMs - ageMs) / 60_000),
+          );
           throw new ConflictException(
             `Knowledge ${knowledgeId} is already being indexed (started ${ageMin} min ago). It can be restarted in ${leftMin} min if it has not finished by then.`,
           );

@@ -23,9 +23,14 @@ export class SourceDto implements Omit<ISourceData, 'textUrl'> {
   @ApiProperty({ type: String, nullable: true }) mimeType: string | null;
   @ApiProperty({ type: String, nullable: true }) content: string | null;
   @ApiProperty({ type: Number, nullable: true }) sizeBytes: number | null;
-  @ApiProperty({ description: 'How many assistant answers cited this source (CLEAN-138).' })
+  @ApiProperty({
+    description: 'How many assistant answers cited this source (CLEAN-138).',
+  })
   cited: number;
-  @ApiProperty({ description: 'Current likes on those citations; a withdrawn rating is not counted.' })
+  @ApiProperty({
+    description:
+      'Current likes on those citations; a withdrawn rating is not counted.',
+  })
   likes: number;
   @ApiProperty({ description: 'Current dislikes on those citations.' })
   dislikes: number;

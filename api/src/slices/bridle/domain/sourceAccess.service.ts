@@ -69,17 +69,25 @@ export class SourceAccessService {
     n: number,
     viewer: IChatSourceViewer,
   ): Promise<ISourceContent> {
-    const row = await this.requireKnowledgeCitation(agentId, messageId, n, viewer);
+    const row = await this.requireKnowledgeCitation(
+      agentId,
+      messageId,
+      n,
+      viewer,
+    );
     const source = await this.sources.findById(row.sourceId);
     if (!source) throw this.notFound(messageId, n);
     if (!viewer.isAdmin) {
       // Read now, not when the row was written: closing a base must close
       // every answer that cited it, including links handed out earlier.
-      const [base] = await this.knowledges.findExistingByIds([source.knowledgeId]);
+      const [base] = await this.knowledges.findExistingByIds([
+        source.knowledgeId,
+      ]);
       if (base?.readerAccess !== 'open') {
         throw new ForbiddenException({
           code: SourceAccessErrorCodes.ReaderAccessClosed,
-          message: 'This knowledge base does not let readers open its documents.',
+          message:
+            'This knowledge base does not let readers open its documents.',
         });
       }
     }
@@ -94,7 +102,12 @@ export class SourceAccessService {
     viewer: IChatSourceViewer,
     rating: 1 | -1,
   ): Promise<{ rating: 1 | -1 }> {
-    const row = await this.requireKnowledgeCitation(agentId, messageId, n, viewer);
+    const row = await this.requireKnowledgeCitation(
+      agentId,
+      messageId,
+      n,
+      viewer,
+    );
     const saved = await this.ratings.rate({
       sourceId: row.sourceId,
       messageId,
@@ -111,7 +124,12 @@ export class SourceAccessService {
     n: number,
     viewer: IChatSourceViewer,
   ): Promise<void> {
-    const row = await this.requireKnowledgeCitation(agentId, messageId, n, viewer);
+    const row = await this.requireKnowledgeCitation(
+      agentId,
+      messageId,
+      n,
+      viewer,
+    );
     await this.ratings.unrate(row.sourceId, messageId, viewer.clientId);
   }
 
@@ -138,6 +156,8 @@ export class SourceAccessService {
   }
 
   private notFound(messageId: string, n: number): NotFoundException {
-    return new NotFoundException(`Source ${n} of message ${messageId} not found`);
+    return new NotFoundException(
+      `Source ${n} of message ${messageId} not found`,
+    );
   }
 }

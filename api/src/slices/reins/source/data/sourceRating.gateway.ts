@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { SourceRating } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ISourceRatingGateway } from '../domain/sourceRating.gateway';
-import type { ISourceRatingData, IRateSourceInput } from '../domain/source.types';
+import type {
+  ISourceRatingData,
+  IRateSourceInput,
+} from '../domain/source.types';
 
 @Injectable()
 export class SourceRatingGateway extends ISourceRatingGateway {

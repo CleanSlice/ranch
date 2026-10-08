@@ -12,18 +12,30 @@ import { formatNumber } from '#common/utils/format';
 
 /**
  * The agent's usage as one muted line in the workspace header (specs/017,
- * R3): 30-day cost and top model. Clicking it opens the figures the old strip
- * spread across the row, plus the way to the full usage card. Replaces
- * `UsagePanel variant="strip"`.
+ * R3): 30-day cost and the model the agent is running. Clicking it opens the
+ * figures the old strip spread across the row, plus the way to the full usage
+ * card. Replaces `UsagePanel variant="strip"`.
  *
- * Reads the same per-agent usage the Overview card reads, under the same
- * `useAsyncData` key, so the request is shared rather than doubled.
+ * The name beside the cost is the *current* model, read from the agent's LLM
+ * credential. It used to be `topModel` — the biggest spender of the last
+ * thirty days — so an agent switched to a new model kept announcing the old
+ * one for a month (CLEAN-149). The header answers "what is this running now";
+ * the 30-day top model moved into the popover, beside the figures that share
+ * its window.
+ *
+ * Reads the same per-agent usage the Overview card reads, and loads
+ * credentials under the same `useAsyncData` key the Overview LLM card uses, so
+ * neither request is doubled.
  */
-const props = defineProps<{ agentId: string }>();
+const props = defineProps<{
+  agentId: string;
+  llmCredentialId: string | null;
+}>();
 
 const emit = defineEmits<{ details: [] }>();
 
 const usageStore = useUsageStore();
+const llmStore = useLlmStore();
 
 const {
   data: agentUsage,
@@ -43,15 +55,35 @@ const state = computed<'loading' | 'error' | 'empty' | 'ready'>(() => {
   return 'ready';
 });
 
+// Same key as the Overview LLM card: one request serves both.
+useAsyncData('admin-llms-for-agent', () => llmStore.fetchAll(), {
+  lazy: true,
+});
+
 const cost = computed(() =>
   agentUsage.value ? `${formatUsd(agentUsage.value.totals.costUsd)} / 30d` : '',
 );
-const model = computed(() => agentUsage.value?.topModel ?? null);
+
+/**
+ * What the agent is configured to run. Null while the credentials are still
+ * loading and null when none is assigned — in both cases the line shows the
+ * cost alone rather than filling the gap with the 30-day top model, which
+ * would be the very confusion this replaced.
+ */
+const currentModel = computed(
+  () =>
+    (props.llmCredentialId
+      ? llmStore.items.find((c) => c.id === props.llmCredentialId)?.model
+      : null) ?? null,
+);
+
+/** The biggest spender of the last 30 days. Popover only. */
+const topModel = computed(() => agentUsage.value?.topModel ?? null);
 
 // The whole line, for the accessible name and the hover title.
 const text = computed(() =>
   agentUsage.value
-    ? usageLineText(agentUsage.value.totals, agentUsage.value.topModel)
+    ? usageLineText(agentUsage.value.totals, currentModel.value)
     : '',
 );
 
@@ -101,7 +133,9 @@ function onDetails() {
       >
         <!-- The cost never truncates; the model name gives way first. -->
         <span class="shrink-0 font-medium text-foreground">{{ cost }}</span>
-        <span v-if="model" class="min-w-0 truncate">· {{ model }}</span>
+        <span v-if="currentModel" class="min-w-0 truncate">
+          · {{ currentModel }}
+        </span>
         <IconChevronDown class="size-3.5 shrink-0" />
       </button>
     </PopoverTrigger>
@@ -113,6 +147,28 @@ function onDetails() {
         :collision-padding="12"
         class="z-50 w-64 rounded-md border bg-popover p-3 text-sm text-popover-foreground shadow-md outline-none"
       >
+        <!-- What the header claims, spelled out and kept away from the 30-day
+             figures so the two models can never be read as one. -->
+        <div class="mb-3 border-b pb-3">
+          <p class="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Current model
+          </p>
+          <p
+            v-if="currentModel"
+            class="mt-1 truncate font-mono text-xs"
+            :title="currentModel"
+          >
+            {{ currentModel }}
+          </p>
+          <p v-else class="mt-1 text-xs text-muted-foreground">
+            {{
+              llmCredentialId
+                ? 'Loading…'
+                : 'No LLM credential assigned'
+            }}
+          </p>
+        </div>
+
         <p class="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Usage · 30d · this agent
         </p>
@@ -137,9 +193,15 @@ function onDetails() {
           <dd class="text-right font-medium tabular-nums" :title="todayTitle">
             {{ formatNumber(agentUsage.today.callCount) }} calls
           </dd>
-          <dt v-if="model" class="text-muted-foreground">Model</dt>
-          <dd v-if="model" class="truncate text-right font-mono text-xs" :title="model">
-            {{ model }}
+          <!-- Inside the 30-day block on purpose: this is the biggest
+               spender of that window, not what the agent runs today. -->
+          <dt v-if="topModel" class="text-muted-foreground">Top model</dt>
+          <dd
+            v-if="topModel"
+            class="truncate text-right font-mono text-xs"
+            :title="topModel"
+          >
+            {{ topModel }}
           </dd>
         </dl>
         <Button

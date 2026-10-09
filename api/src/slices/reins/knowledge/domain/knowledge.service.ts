@@ -82,6 +82,31 @@ export function resolveReference(
   };
 }
 
+/**
+ * Second pass for references `resolveReference` left unresolved: the file
+ * path the retrieval service reports is the name of the row that first
+ * uploaded the content; when that row failed and a later row adopted the
+ * same document, only the document id ties them together.
+ */
+export function resolveAdoptedReferences(
+  references: IKnowledgeQueryReference[],
+  sources: ISourceData[],
+  documents: ReadonlyArray<{ id: string; filePath: string | null }>,
+): IKnowledgeQueryReference[] {
+  const docIdByPath = new Map<string, string>();
+  for (const doc of documents) {
+    if (doc.filePath !== null) docIdByPath.set(doc.filePath, doc.id);
+  }
+  return references.map((ref) => {
+    if (ref.sourceId !== null) return ref;
+    const docId = docIdByPath.get(ref.filePath);
+    const match = docId
+      ? sources.find((s) => s.lightragDocId === docId)
+      : undefined;
+    return match ? { ...ref, sourceId: match.id, sourceName: match.name } : ref;
+  });
+}
+
 @Injectable()
 export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
   private readonly logger = new Logger(KnowledgeService.name);
@@ -416,7 +441,10 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
         const staleAfterMs = staleIndexAfterMs(sources);
         if (ageMs < staleAfterMs) {
           const ageMin = Math.round(ageMs / 60_000);
-          const leftMin = Math.max(1, Math.ceil((staleAfterMs - ageMs) / 60_000));
+          const leftMin = Math.max(
+            1,
+            Math.ceil((staleAfterMs - ageMs) / 60_000),
+          );
           throw new ConflictException(
             `Knowledge ${knowledgeId} is already being indexed (started ${ageMin} min ago). It can be restarted in ${leftMin} min if it has not finished by then.`,
           );
@@ -491,11 +519,29 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
         references: [],
       };
     }
+    let references = raw.references.map((r) => resolveReference(r, sources));
+    if (references.some((r) => r.sourceId === null)) {
+      // A document the retrieval service keeps under the name of a row that
+      // is gone — re-uploaded content is deduplicated and adopted by the new
+      // row, which only knows the document's id. The listing maps the name
+      // back to the id, and the id to the row (CLEAN-138).
+      try {
+        references = resolveAdoptedReferences(
+          references,
+          sources,
+          await this.gateway.listDocuments(knowledgeId),
+        );
+      } catch (err) {
+        this.logger.warn(
+          `listDocuments(${knowledgeId}) for reference resolution failed: ${errorMessage(err)}`,
+        );
+      }
+    }
     return {
       answer: raw.answer,
       knowledgeId,
       complete,
-      references: raw.references.map((r) => resolveReference(r, sources)),
+      references,
     };
   }
 

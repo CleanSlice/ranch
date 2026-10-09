@@ -4,6 +4,7 @@ import type {
   IBridleChannelAuth,
   IBridleChannelEvents,
   IBridleShareContext,
+  IBridleSourceDocument,
   IBridleTranscriptPage,
 } from './bridle.types';
 
@@ -74,6 +75,30 @@ export abstract class IBridleGateway {
     cursor?: string | null,
     share?: IBridleShareContext,
   ): Promise<IBridleTranscriptPage>;
+
+  // ── Cited sources (CLEAN-138) ──────────────────────────────
+  // Addressed by the citation (message id + number), never by the knowledge
+  // source's own id; the API decides what this reader may do with it.
+
+  abstract openCitedSource(
+    agentId: string,
+    messageId: string,
+    n: number,
+    share?: IBridleShareContext,
+  ): Promise<IBridleSourceDocument>;
+  abstract rateCitedSource(
+    agentId: string,
+    messageId: string,
+    n: number,
+    rating: 1 | -1,
+    share?: IBridleShareContext,
+  ): Promise<void>;
+  abstract unrateCitedSource(
+    agentId: string,
+    messageId: string,
+    n: number,
+    share?: IBridleShareContext,
+  ): Promise<void>;
 
   /**
    * "New chat": close the current conversation on the server — set aside,

@@ -149,6 +149,63 @@ export interface IBridleMessage {
    * (CLEAN-112); such a bubble has no text of its own.
    */
   proposal?: IBridleProposalSnapshot;
+  /**
+   * What the answer drew on (CLEAN-138), in citation order: `sources[i]` is
+   * what the `[^i+1]` chip in `text` points at. Arrives on the `sources`
+   * frame after the bubble is complete, or with the transcript; absent means
+   * the answer cited nothing. Persisted with the conversation like
+   * `attachments`.
+   */
+  sources?: IBridleSource[];
+}
+
+// ── Sources (what an answer drew on) ───────────────────────────
+// Mirrors SourceEntryDto in api/src/slices/chat/dtos/sourceEntry.dto.ts.
+
+export const BridleSourceKinds = {
+  /** An entry of one of our knowledge bases. */
+  Knowledge: 'knowledge',
+  /** A page on the open web the agent looked up. */
+  Web: 'web',
+} as const;
+export type BridleSourceKinds =
+  (typeof BridleSourceKinds)[keyof typeof BridleSourceKinds];
+
+/**
+ * One source as the reader sees it, addressed by its message and `n`. The
+ * API never sends the knowledge source's id or where it is stored; a
+ * knowledge document is opened through the citation itself.
+ */
+export interface IBridleSource {
+  /** Citation number inside the message, 1-based and dense. */
+  n: number;
+  kind: BridleSourceKinds;
+  /** Source name, or page title (readable address when it had none). Shown as received. */
+  name: string;
+  /** Web only; always http(s). */
+  url?: string;
+  /** Knowledge only: the base the document belongs to. */
+  knowledgeName?: string | null;
+  /** Knowledge: the base lets readers open documents and the source still
+   * exists. Web: the address is a web address. Decided by the API when served. */
+  canOpen: boolean;
+  /** Knowledge only: this reader's own current rating. */
+  myRating?: 1 | -1;
+}
+
+/** The bytes behind a cited knowledge document, with the name the API gave them. */
+export interface IBridleSourceDocument {
+  blob: Blob;
+  filename: string | null;
+}
+
+/** The `sources` frame: one bubble's corrected text and its list. */
+export interface IBridleSourcesFrame {
+  messageId: string;
+  text: string;
+  sources: IBridleSource[];
+  ts: number | null;
+  seq?: number;
 }
 
 // ── Thinking (live reasoning steps) ────────────────────────────
@@ -272,6 +329,8 @@ export interface IBridleChannelEvents {
   onStream(reply: IBridleReply, done: boolean): void;
   /** A complete agent message in one piece. */
   onMessage(reply: IBridleReply): void;
+  /** One bubble's sources (CLEAN-138), after its `stream_end` or `message`. */
+  onSources(frame: IBridleSourcesFrame): void;
   /** Sent from another view of the same identity. */
   onUserMessage(message: IBridleUserMessageEvent): void;
   /** An agent proposed a file change (CLEAN-112); shown read-only here. */

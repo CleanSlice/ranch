@@ -44,6 +44,8 @@ export type InstanceState =
   | 'failed'
   | 'stopping';
 export type MigrationState = 'notStarted' | 'inProgress' | 'done' | 'failed';
+/** Whether readers of agent answers may open the documents of a base that were cited to them (CLEAN-138). Per base, never per source. */
+export type ReaderAccess = 'closed' | 'open';
 
 export interface IKnowledge {
   id: string;
@@ -70,6 +72,7 @@ export interface IKnowledge {
   instanceState: InstanceState;
   instanceError: string | null;
   migrationState: MigrationState;
+  readerAccess: ReaderAccess;
   /** Present on list entries — context for choosing a base. */
   sourcesCount?: number;
   totalSizeBytes?: number;
@@ -108,9 +111,19 @@ export interface ISource {
   indexRetryAt: string | null;
   textState: SourceTextState;
   textError: string | null;
+  /** How many assistant answers cited this source (CLEAN-138). */
+  cited: number;
+  /** Current likes on those citations; a withdrawn rating is not counted. */
+  likes: number;
+  /** Current dislikes on those citations. */
+  dislikes: number;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Columns the sources list can be ordered by (CLEAN-138). */
+export type SourceSort = 'createdAt' | 'cited' | 'likes' | 'dislikes';
+export type SortOrder = 'asc' | 'desc';
 
 export interface ISourceFilter {
   page: number;
@@ -118,6 +131,9 @@ export interface ISourceFilter {
   search?: string;
   status?: SourceIndexStatus;
   type?: SourceType;
+  /** Absent means the API default: oldest first, so page 1 stays stable while an import adds rows. */
+  sort?: SourceSort;
+  order?: SortOrder;
 }
 
 export interface ISourcePage {
@@ -173,6 +189,7 @@ export interface ICreateKnowledgeInput {
 export interface IUpdateKnowledgeInput {
   name?: string;
   description?: string | null;
+  readerAccess?: ReaderAccess;
 }
 
 export interface IKnowledgeSetupStatus {

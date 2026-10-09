@@ -13,6 +13,9 @@ function makeSource(id: string): ISourceData {
   return {
     id,
     knowledgeId: 'knowledge-1',
+    cited: 0,
+    likes: 0,
+    dislikes: 0,
     type: 'file',
     name: `${id}.md`,
     url: 's3://bucket/key',
@@ -250,7 +253,9 @@ describe('IndexReconcileService: retrying what failed for a passing reason', () 
   }
 
   it('puts due rows back on an idle pipeline and nudges it', async () => {
-    const retryFailed = jest.fn(() => Promise.resolve([retried('src-1', 'reprocess')]));
+    const retryFailed = jest.fn(() =>
+      Promise.resolve([retried('src-1', 'reprocess')]),
+    );
     const restartPipeline = jest.fn(() => Promise.resolve());
     const service = makeService(
       {
@@ -297,7 +302,9 @@ describe('IndexReconcileService: retrying what failed for a passing reason', () 
       {
         findUnconfirmed: jest.fn(() => Promise.resolve([])),
         findDueForRetry: jest.fn(() => Promise.resolve([due('src-1')])),
-        retryFailed: jest.fn(() => Promise.resolve([retried('src-1', 'resent')])),
+        retryFailed: jest.fn(() =>
+          Promise.resolve([retried('src-1', 'resent')]),
+        ),
       },
       {
         getPipelineStatus: jest.fn(() => Promise.resolve(pipeline(false))),
@@ -311,7 +318,9 @@ describe('IndexReconcileService: retrying what failed for a passing reason', () 
   });
 
   it('shares the cooldown with the stall nudge on the same base', async () => {
-    const retryFailed = jest.fn(() => Promise.resolve([retried('src-2', 'reprocess')]));
+    const retryFailed = jest.fn(() =>
+      Promise.resolve([retried('src-2', 'reprocess')]),
+    );
     const restartPipeline = jest.fn(() => Promise.resolve());
     const findDueForRetry = jest
       .fn()
@@ -364,11 +373,13 @@ describe('IndexReconcileService: retrying what failed for a passing reason', () 
     expect(restartPipeline).toHaveBeenCalledWith('knowledge-2');
   });
 
-  it('lets a person\'s Retry through the cooldown', async () => {
+  it("lets a person's Retry through the cooldown", async () => {
     // Retry on a row sets the slot to now with no attempt spent; sitting on
     // it for ten minutes reads as the button doing nothing.
     const manual: ISourceData = { ...due('src-2'), indexAttempts: 0 };
-    const retryFailed = jest.fn(() => Promise.resolve([retried('src-2', 'reprocess')]));
+    const retryFailed = jest.fn(() =>
+      Promise.resolve([retried('src-2', 'reprocess')]),
+    );
     const restartPipeline = jest.fn(() => Promise.resolve());
     const findDueForRetry = jest
       .fn()

@@ -1,3 +1,4 @@
+import type { IDocumentRecord } from '../../lightrag/domain/lightrag.types';
 import {
   IKnowledgeRecord,
   ICreateKnowledgeData,
@@ -20,6 +21,8 @@ export abstract class IKnowledgeGateway {
   ): Promise<IKnowledgePageRows>;
   abstract findById(id: string): Promise<IKnowledgeRecord | null>;
   abstract findExistingByIds(ids: string[]): Promise<IKnowledgeRecord[]>;
+  /** Every document the base's retrieval service holds, with the file path it knows it by. */
+  abstract listDocuments(knowledgeId: string): Promise<IDocumentRecord[]>;
   /**
    * `migrationState` is where the base is born: 'done' on its own retrieval
    * instance, 'notStarted' on the shared pool. Only the caller knows which —

@@ -5,6 +5,7 @@ import type {
   IBridleChannelAuth,
   IBridleChannelEvents,
   IBridleShareContext,
+  IBridleSourceDocument,
   IBridleTranscriptPage,
 } from './bridle.types';
 
@@ -53,6 +54,28 @@ export class BridleService {
     share?: IBridleShareContext,
   ): Promise<IBridleTranscriptPage> {
     return this.gateway.transcriptPage(agentId, channel, cursor, share);
+  }
+
+  openCitedSource(
+    agentId: string,
+    messageId: string,
+    n: number,
+    share?: IBridleShareContext,
+  ): Promise<IBridleSourceDocument> {
+    return this.gateway.openCitedSource(agentId, messageId, n, share);
+  }
+
+  /** `null` withdraws the reader's rating. */
+  rateCitedSource(
+    agentId: string,
+    messageId: string,
+    n: number,
+    rating: 1 | -1 | null,
+    share?: IBridleShareContext,
+  ): Promise<void> {
+    return rating === null
+      ? this.gateway.unrateCitedSource(agentId, messageId, n, share)
+      : this.gateway.rateCitedSource(agentId, messageId, n, rating, share);
   }
 
   archiveTranscript(

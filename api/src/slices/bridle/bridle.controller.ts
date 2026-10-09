@@ -13,6 +13,8 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
   Param,
+  ParseIntPipe,
+  Put,
   Query,
   Req,
   Res,
@@ -25,6 +27,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
+import { pipeline } from 'stream/promises';
+import { SourceContentQueryDto } from '#/reins/source/dtos/sourceContent.query.dto';
 import {
   ApiTags,
   ApiOperation,
@@ -33,10 +37,12 @@ import {
   ApiConflictResponse,
   ApiConsumes,
   ApiForbiddenResponse,
+  ApiGoneResponse,
   ApiHeader,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiProduces,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiUnauthorizedResponse,
@@ -48,6 +54,8 @@ import {
   BridleSyncService,
   IBridleGateway,
   BridleAttachmentService,
+  SourceAccessService,
+  contentTypeForBrowser,
   BridleResetErrorCodes,
   MAX_ATTACHMENT_BYTES,
   buildParts,
@@ -71,8 +79,14 @@ import {
   TranscriptQueryDto,
   TranscriptResponseDto,
   TranscriptMessageDto,
+  SourceRatingDto,
+  SourceRatingResultDto,
 } from './dtos';
-import { IChatGateway } from '#/chat/domain';
+import {
+  ChatSourceService,
+  IChatGateway,
+  type IChatSourceViewer,
+} from '#/chat/domain';
 import { FlatResponse } from './core';
 import { BridleChatAuthGuard } from './guards/bridleChatAuth.guard';
 import type { IChatAuthRequest } from './guards/bridleChatAuth.guard';
@@ -109,6 +123,18 @@ interface IUploadedFile {
  * smuggle a header. Display-only — the stored object's key never contains any
  * part of the user-supplied name.
  */
+/** Document types a browser may render inline from this origin (CLEAN-138). */
+const INLINE_SAFE_TYPES = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+]);
+
 function sanitizeFilename(name: string): string {
   return name.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'attachment';
 }
@@ -179,6 +205,10 @@ export class BridleController {
     private readonly proposals: FileProposalService,
     @Inject(forwardRef(() => IChatGateway))
     private readonly chats: IChatGateway,
+    @Inject(forwardRef(() => ChatSourceService))
+    private readonly chatSources: ChatSourceService,
+    @Inject(forwardRef(() => SourceAccessService))
+    private readonly sourceAccess: SourceAccessService,
   ) {}
 
   /**
@@ -568,6 +598,146 @@ export class BridleController {
     res.end(stored.body);
   }
 
+  // ── Sources (CLEAN-138) ───────────────────────────────────────
+  // A reader addresses a source by the citation — message id and number —
+  // never by the knowledge source's own id. The same guard that serves
+  // attachments resolves console users, admins and share visitors; the
+  // SourceAccessService answers whether this reader may open or rate it.
+
+  @ApiOperation({
+    description:
+      'Open the document behind a cited knowledge source (CLEAN-138). Only for the reader the answer was sent to (or the platform team), only while the knowledge base lets readers open its documents, and only while the source exists. Web sources are opened by their address and have no document here.',
+    operationId: 'openBridleCitedSource',
+  })
+  @ApiShareHeaders()
+  @ApiProduces('application/octet-stream')
+  @ApiForbiddenResponse({
+    description:
+      'The knowledge base does not let readers open its documents (`READER_ACCESS_CLOSED`), or ' +
+      SHARE_FORBIDDEN_DESCRIPTION,
+  })
+  @ApiNotFoundResponse({
+    description:
+      'No such citation for this reader — including one that belongs to someone else, which answers with the same 404 so a guessed id reveals nothing.',
+  })
+  @ApiGoneResponse({
+    description:
+      'The knowledge source was deleted after it was cited (`SOURCE_GONE`).',
+  })
+  @UseGuards(BridleChatAuthGuard)
+  @Get(':agentId/message/:messageId/source/:n/content')
+  async openCitedSource(
+    @Param('agentId') agentId: string,
+    @Param('messageId') messageId: string,
+    @Param('n', ParseIntPipe) n: number,
+    @Query() query: SourceContentQueryDto,
+    @Req() req: IChatAuthRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const content = await this.sourceAccess.openCited(
+      agentId,
+      messageId,
+      n,
+      this.sourceViewer(req),
+    );
+    // A knowledge source is whatever someone uploaded. Only types a browser
+    // renders harmlessly are shown inline; an HTML or SVG document served
+    // inline from this origin would run as this origin, so everything else
+    // is a download with a type the browser will not interpret.
+    const inlineSafe = INLINE_SAFE_TYPES.has(
+      content.contentType.split(';')[0].trim().toLowerCase(),
+    );
+    const inline = (query.disposition ?? 'inline') === 'inline' && inlineSafe;
+    res.setHeader(
+      'Content-Type',
+      inlineSafe
+        ? contentTypeForBrowser(content.contentType)
+        : 'application/octet-stream',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `${inline ? 'inline' : 'attachment'}; filename="${sanitizeFilename(content.filename)}"`,
+    );
+    if (content.contentLength !== null) {
+      res.setHeader('Content-Length', content.contentLength.toString());
+    }
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+    // pipeline() tears the S3 stream down when the client aborts; once the
+    // headers are out an error can only cut the download short.
+    try {
+      await pipeline(content.body, res);
+    } catch (err) {
+      if (!res.headersSent) throw err;
+      res.destroy();
+    }
+  }
+
+  @ApiOperation({
+    description:
+      'Like or dislike a cited knowledge source (CLEAN-138): one verdict per reader, source and answer; sending the other value flips it. Web sources cannot be rated.',
+    operationId: 'rateBridleCitedSource',
+  })
+  @ApiShareHeaders()
+  @ApiOkResponse({ type: SourceRatingResultDto })
+  @ApiNotFoundResponse({ description: 'No such citation for this reader.' })
+  @ApiGoneResponse({
+    description:
+      'The knowledge source was deleted after it was cited (`SOURCE_GONE`).',
+  })
+  @UseGuards(BridleChatAuthGuard)
+  @Put(':agentId/message/:messageId/source/:n/rating')
+  async rateCitedSource(
+    @Param('agentId') agentId: string,
+    @Param('messageId') messageId: string,
+    @Param('n', ParseIntPipe) n: number,
+    @Body() body: SourceRatingDto,
+    @Req() req: IChatAuthRequest,
+  ): Promise<SourceRatingResultDto> {
+    return this.sourceAccess.rateCited(
+      agentId,
+      messageId,
+      n,
+      this.sourceViewer(req),
+      body.rating,
+    );
+  }
+
+  @ApiOperation({
+    description:
+      'Withdraw the reader’s rating of a cited source (CLEAN-138). Nothing to withdraw is still 204.',
+    operationId: 'unrateBridleCitedSource',
+  })
+  @ApiShareHeaders()
+  @ApiNoContentResponse()
+  @UseGuards(BridleChatAuthGuard)
+  @HttpCode(204)
+  @Delete(':agentId/message/:messageId/source/:n/rating')
+  async unrateCitedSource(
+    @Param('agentId') agentId: string,
+    @Param('messageId') messageId: string,
+    @Param('n', ParseIntPipe) n: number,
+    @Req() req: IChatAuthRequest,
+  ): Promise<void> {
+    await this.sourceAccess.unrateCited(
+      agentId,
+      messageId,
+      n,
+      this.sourceViewer(req),
+    );
+  }
+
+  /** The guard's identity as the chat slice wants it; `admin` only ever comes from a verified Owner/Admin token. */
+  private sourceViewer(req: IChatAuthRequest): IChatSourceViewer {
+    const auth = this.requireChatAuth(req);
+    return {
+      clientId: auth.clientId,
+      isAdmin: auth.kind === 'jwt' && auth.clientId === 'admin',
+    };
+  }
+
   @ApiOperation({
     description: 'Check overall hub status',
     operationId: 'bridleHealth',
@@ -655,8 +825,23 @@ export class BridleController {
       query.cursor,
       limit,
     );
+    // Sources (CLEAN-138) come from the hub's own citation record, not the
+    // runtime file: the record outlives the runtime compacting its
+    // transcript, and `canOpen` depends on who is asking. "Who" is the
+    // authenticated requester, never the `channel` query string — an admin
+    // identity comes only from a token that carries the role.
+    // `admin` is what clientIdFromJwtPayload yields for a verified Owner/Admin
+    // token and nothing else; an anonymous caller matches no citation row.
+    const requester = await this.resolveRequester(req, agentId);
+    const viewer: IChatSourceViewer = {
+      clientId: requester.clientId ?? '',
+      isAdmin: requester.kind === 'jwt' && requester.clientId === 'admin',
+    };
     return {
-      messages: messages as TranscriptMessageDto[],
+      messages: await this.chatSources.attach(
+        messages as TranscriptMessageDto[],
+        viewer,
+      ),
       channel,
       nextCursor,
       hasMore,
@@ -697,7 +882,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      'Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat: the running agent is told to drop its own copy, and every browser that has the conversation open is told it was reset (`conversation_reset`). Nothing is kept — to keep the conversation, use `POST …/transcript/archive`. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor\'s own share headers are accepted (403 otherwise).',
+      "Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat: the running agent is told to drop its own copy, and every browser that has the conversation open is told it was reset (`conversation_reset`). Nothing is kept — to keep the conversation, use `POST …/transcript/archive`. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).",
     operationId: 'resetBridleTranscript',
   })
   @ApiQuery({

@@ -1,3 +1,5 @@
+import type { IBridleSource } from '#bridle/domain';
+
 // Domain types for the chat slice — the clean, envelope-free shapes the app
 // works with. The data layer maps SDK DTOs onto these; nothing above the data
 // layer touches the generated `#api` types.
@@ -27,6 +29,8 @@ export interface IChatFeedback {
 // to the caller's JWT — the app never passes a user id.
 export interface IChatSession {
   id: string;
+  /** The agent that answered — what a cited document is fetched through (CLEAN-138). */
+  agentId: string;
   channel: string;
   externalUserId: string;
   sessionKey: string;
@@ -63,6 +67,11 @@ export interface IChatMessage {
   text: string;
   ts: number;
   attachments?: IChatAttachment[];
+  /**
+   * What an assistant answer drew on (CLEAN-138), the same list the live
+   * chat shows under the bubble. Absent when the answer cited nothing.
+   */
+  sources?: IBridleSource[];
 }
 
 export interface IChatListResult {

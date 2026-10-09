@@ -22,6 +22,9 @@ function pdf(id: string, overrides: Partial<ISourceData> = {}): ISourceData {
   return {
     id,
     knowledgeId: 'k1',
+    cited: 0,
+    likes: 0,
+    dislikes: 0,
     type: 'file',
     name: `${id}.pdf`,
     url: `s3://bucket/knowledges/k1/${id}.pdf`,
@@ -56,7 +59,10 @@ class SourcesStub {
   async findById(id: string): Promise<ISourceData | null> {
     return this.rows.get(id) ?? null;
   }
-  async updateTextState(id: string, patch: ISourceTextStatePatch): Promise<void> {
+  async updateTextState(
+    id: string,
+    patch: ISourceTextStatePatch,
+  ): Promise<void> {
     this.writes.push({ id, patch });
     const row = this.rows.get(id);
     if (!row) return;
@@ -64,7 +70,8 @@ class SourcesStub {
       ...row,
       textState: patch.textState,
       textUrl: patch.textUrl === undefined ? row.textUrl : patch.textUrl,
-      textError: patch.textError === undefined ? row.textError : patch.textError,
+      textError:
+        patch.textError === undefined ? row.textError : patch.textError,
     });
   }
   async findByTextState(state: SourceTextStateTypes): Promise<ISourceData[]> {
@@ -157,7 +164,11 @@ describe('TextExtractionService', () => {
       body: '--- page 1 ---\nrecognised',
     });
     expect(h.ocrCalls[0]).toEqual(
-      expect.objectContaining({ bucket: 'bucket', key: 'knowledges/k1/a.pdf', pages: 1 }),
+      expect.objectContaining({
+        bucket: 'bucket',
+        key: 'knowledges/k1/a.pdf',
+        pages: 1,
+      }),
     );
     // A fresh row has no index claim to drop.
     expect(h.sources.resets).toHaveLength(0);
@@ -265,14 +276,22 @@ describe('TextExtractionService', () => {
 
   it('opens one progress job for a batch and closes it when every PDF is done', async () => {
     const h = makeHarness({
-      rows: [pdf('a'), pdf('b'), pdf('note', { mimeType: 'text/plain', name: 'n.txt' })],
+      rows: [
+        pdf('a'),
+        pdf('b'),
+        pdf('note', { mimeType: 'text/plain', name: 'n.txt' }),
+      ],
       probe: SCAN,
     });
 
-    const jobId = await h.service.scheduleBatch('k1', [...h.sources.rows.values()]);
+    const jobId = await h.service.scheduleBatch('k1', [
+      ...h.sources.rows.values(),
+    ]);
     expect(jobId).not.toBeNull();
     const before = h.imports.get(jobId!);
-    expect(before).toEqual(expect.objectContaining({ kind: 'extraction', detected: 2 }));
+    expect(before).toEqual(
+      expect.objectContaining({ kind: 'extraction', detected: 2 }),
+    );
 
     await h.service.drain();
 
@@ -287,12 +306,15 @@ describe('TextExtractionService', () => {
       rows: [pdf('ok'), pdf('bad')],
       probe: SCAN,
       ocr: async (input) => {
-        if (input.key.endsWith('bad.pdf')) throw new Error('Textract: bad file');
+        if (input.key.endsWith('bad.pdf'))
+          throw new Error('Textract: bad file');
         return 'text';
       },
     });
 
-    const jobId = await h.service.scheduleBatch('k1', [...h.sources.rows.values()]);
+    const jobId = await h.service.scheduleBatch('k1', [
+      ...h.sources.rows.values(),
+    ]);
     await h.service.drain();
 
     const job = h.imports.get(jobId!)!;
@@ -312,7 +334,9 @@ describe('TextExtractionService', () => {
       return original(id);
     };
 
-    const jobId = await h.service.scheduleBatch('k1', [h.sources.rows.get('a')!]);
+    const jobId = await h.service.scheduleBatch('k1', [
+      h.sources.rows.get('a')!,
+    ]);
     await h.service.drain();
 
     // Without this the row read pending until the next boot and the strip
@@ -354,7 +378,9 @@ describe('TextExtractionService', () => {
       rows: [pdf('note', { mimeType: 'text/plain', name: 'n.txt' })],
       probe: SCAN,
     });
-    expect(await h.service.scheduleBatch('k1', [...h.sources.rows.values()])).toBeNull();
+    expect(
+      await h.service.scheduleBatch('k1', [...h.sources.rows.values()]),
+    ).toBeNull();
     expect(h.imports.listByKnowledge('k1')).toHaveLength(0);
   });
 
@@ -377,6 +403,8 @@ describe('TextExtractionService', () => {
     await h.service.drain();
 
     expect(peak).toBe(2);
-    expect([...h.sources.rows.values()].every((r) => r.textState === 'ready')).toBe(true);
+    expect(
+      [...h.sources.rows.values()].every((r) => r.textState === 'ready'),
+    ).toBe(true);
   });
 });

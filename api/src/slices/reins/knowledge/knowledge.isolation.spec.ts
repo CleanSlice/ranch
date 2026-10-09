@@ -9,6 +9,7 @@ import {
   KnowledgeService,
   isNoRelevantContentAnswer,
   resolveReference,
+  resolveAdoptedReferences,
 } from './domain/knowledge.service';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { IKnowledgeData } from './domain/knowledge.types';
@@ -42,6 +43,7 @@ function base(p: Partial<IKnowledgeData> & { id: string }): IKnowledgeData {
     instanceError: null,
     instanceEndpoint: null,
     migrationState: 'done',
+    readerAccess: 'closed',
     sourceCount: 0,
     indexedCount: 0,
     failedCount: 0,
@@ -58,6 +60,9 @@ function source(
   p: Partial<ISourceData> & { id: string; knowledgeId: string },
 ): ISourceData {
   return {
+    cited: 0,
+    likes: 0,
+    dislikes: 0,
     type: 'text',
     name: p.id,
     url: null,
@@ -259,6 +264,7 @@ describe('routing policy — the transition never leaks', () => {
   test('a migrated base routes reads and writes to its own instance', () => {
     const row = {
       migrationState: 'done',
+      readerAccess: 'closed',
       instanceState: 'ready',
       instanceEndpoint: K1_ENDPOINT,
     };
@@ -275,6 +281,7 @@ describe('routing policy — the transition never leaks', () => {
   test('a migrated base whose instance is down is disabled — not redirected to the shared pool', () => {
     const row = {
       migrationState: 'done',
+      readerAccess: 'closed',
       instanceState: 'failed',
       instanceEndpoint: K1_ENDPOINT,
     };
@@ -289,6 +296,7 @@ describe('routing policy — the transition never leaks', () => {
   test('an unmigrated base still reads the shared pool, but writes target its own instance once ready', () => {
     const row = {
       migrationState: 'inProgress',
+      readerAccess: 'closed',
       instanceState: 'ready',
       instanceEndpoint: K1_ENDPOINT,
     };
@@ -366,5 +374,53 @@ describe('reference resolution', () => {
     );
     expect(ref.sourceId).toBeNull();
     expect(ref.filePath).toBe('ghost.pdf');
+  });
+});
+
+describe('resolveAdoptedReferences (CLEAN-138)', () => {
+  const sources = [
+    source({
+      id: 'src-new',
+      knowledgeId: 'k1',
+      name: 'Регламент',
+      lightragDocId: 'doc-1',
+    }),
+  ];
+
+  test('maps a reference named after a vanished row to the row that adopted its document', () => {
+    const unresolved = resolveReference(
+      { referenceId: '1', filePath: 'src-old' },
+      sources,
+    );
+    expect(unresolved.sourceId).toBeNull();
+    const [fixed] = resolveAdoptedReferences([unresolved], sources, [
+      { id: 'doc-1', filePath: 'src-old' },
+    ]);
+    expect(fixed).toMatchObject({
+      sourceId: 'src-new',
+      sourceName: 'Регламент',
+    });
+  });
+
+  test('leaves resolved references alone and unknown ones unresolved', () => {
+    const resolved = resolveReference(
+      { referenceId: '1', filePath: 'src-new' },
+      sources,
+    );
+    const [same, still] = resolveAdoptedReferences(
+      [
+        resolved,
+        {
+          referenceId: '2',
+          filePath: 'ghost',
+          sourceId: null,
+          sourceName: null,
+        },
+      ],
+      sources,
+      [{ id: 'doc-9', filePath: 'ghost' }],
+    );
+    expect(same).toBe(resolved);
+    expect(still.sourceId).toBeNull();
   });
 });

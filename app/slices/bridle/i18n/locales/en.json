@@ -60,7 +60,19 @@
     "new_chat_cancel": "Cancel",
     "new_chat_failed": "Could not start a new chat. Your conversation is unchanged.",
     "new_chat_failed_agent_offline": "The agent is unavailable, so a new chat could not be started. Your conversation is unchanged.",
-    "new_chat_failed_answering": "The agent is still answering. Try again when it has finished."
+    "new_chat_failed_answering": "The agent is still answering. Try again when it has finished.",
+    "sources_title": "Sources",
+    "sources_hide": "Hide sources",
+    "sources_show": "Show sources",
+    "source_kind_knowledge": "Knowledge",
+    "source_kind_web": "Web",
+    "source_open": "Open {name}",
+    "source_locked": "Not available to open",
+    "source_gone": "This document is no longer in the knowledge base",
+    "source_helpful": "This source helped",
+    "source_not_helpful": "This source did not help",
+    "source_rating_failed": "Couldn’t save your rating",
+    "source_open_failed": "Couldn’t open this document"
   },
   "proposal": {
     "import_into": "Import into {name}",

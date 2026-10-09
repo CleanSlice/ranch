@@ -44,6 +44,11 @@
     "not_helpful": "Not helpful",
     "copy": "Copy",
     "copied": "Copied",
-    "attached_file_detail": "Attached file: {name} · {size}"
+    "attached_file_detail": "Attached file: {name} · {size}",
+    "source_locked": "This document is not available to open",
+    "source_gone": "This document is no longer in the knowledge base",
+    "source_open_failed": "Couldn’t open this document",
+    "source_rating_failed": "Couldn’t save your rating",
+    "notice_dismiss": "Dismiss"
   }
 }

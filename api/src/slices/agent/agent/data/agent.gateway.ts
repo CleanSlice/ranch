@@ -9,6 +9,7 @@ import {
   AgentStatusTypes,
   LaunchContextTypes,
 } from '../domain/agent.types';
+import { AgentStatusChanges } from '../domain/agentStatusChanges';
 import { AgentMapper } from './agent.mapper';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class AgentGateway extends IAgentGateway {
   constructor(
     private prisma: PrismaService,
     private mapper: AgentMapper,
+    private statusChanges: AgentStatusChanges,
   ) {
     super();
   }
@@ -94,22 +96,38 @@ export class AgentGateway extends IAgentGateway {
     workflowId?: string | null,
     statusReason?: string,
   ): Promise<IAgentData> {
-    const record = await this.prisma.agent.update({
-      where: { id },
-      data: {
-        status,
-        // statusReason lives and dies with 'failed'/'unreachable': every
-        // transition to any other status clears it, so a reason can never
-        // outlive the condition it describes.
-        statusReason:
-          status === 'failed' || status === 'unreachable'
-            ? (statusReason ?? null)
-            : null,
-        // `undefined` leaves the column untouched; `null` clears it (used when
-        // stopping an agent so the now-cancelled workflow id isn't kept around).
-        ...(workflowId !== undefined && { workflowId }),
-      },
+    // statusReason lives and dies with 'failed'/'unreachable': every
+    // transition to any other status clears it, so a reason can never
+    // outlive the condition it describes.
+    const reason =
+      status === 'failed' || status === 'unreachable'
+        ? (statusReason ?? null)
+        : null;
+    const data = {
+      status,
+      statusReason: reason,
+      // `undefined` leaves the column untouched; `null` clears it (used when
+      // stopping an agent so the now-cancelled workflow id isn't kept around).
+      ...(workflowId !== undefined && { workflowId }),
+    };
+
+    // A real transition is the row moving to a status it did not have. The
+    // condition lives in the WHERE, so the database decides it: two replicas
+    // writing 'failed' for the same pod event both run this, and one of them
+    // matches no row. Only the one that moved the row announces the change
+    // (CLEAN-139) — reading the status first and comparing would let both.
+    const moved = await this.prisma.agent.updateMany({
+      where: { id, NOT: { status } },
+      data,
     });
+    if (moved.count === 0) {
+      // Same status (or no such agent, which throws here as it always did):
+      // the reason and the workflow id are still written, nothing is announced.
+      const record = await this.prisma.agent.update({ where: { id }, data });
+      return this.mapper.toEntity(record);
+    }
+    this.statusChanges.emit({ agentId: id, status, reason, at: new Date() });
+    const record = await this.prisma.agent.findUniqueOrThrow({ where: { id } });
     return this.mapper.toEntity(record);
   }
 
@@ -195,5 +213,11 @@ export class AgentGateway extends IAgentGateway {
 
   async delete(id: string): Promise<void> {
     await this.prisma.agent.delete({ where: { id } });
+    this.statusChanges.emit({
+      agentId: id,
+      status: 'deleted',
+      reason: null,
+      at: new Date(),
+    });
   }
 }

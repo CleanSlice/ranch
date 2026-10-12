@@ -14,6 +14,7 @@ import {
 // The `?tab=` vocabulary is a shared-link contract
 // (specs/017-compact-agent-workspace/contracts/url-tab-contract.md): every
 // value that worked before the Settings hub keeps landing on its section.
+// `events` (CLEAN-139) is the one a failure notification links to.
 const SECTION_VALUES = [
   'overview',
   'knowledge',
@@ -21,6 +22,7 @@ const SECTION_VALUES = [
   'files',
   'channels',
   'logs',
+  'events',
   'secrets',
   'env',
   'chats',
@@ -28,7 +30,7 @@ const SECTION_VALUES = [
 ] as const;
 
 describe('SECTIONS', () => {
-  test('lists the ten sections in hub order', () => {
+  test('lists the eleven sections in hub order', () => {
     expect(SECTIONS.map((s) => s.value)).toEqual([...SECTION_VALUES]);
   });
 

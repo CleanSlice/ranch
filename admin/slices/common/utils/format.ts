@@ -112,6 +112,30 @@ export function formatStampDate(value: Instant, now: Date = new Date()): string 
   return format(date.getFullYear() === now.getFullYear() ? 'monthDay' : 'date', date);
 }
 
+/**
+ * How long between two instants, in the two largest units that say something:
+ * `45 s`, `16 min`, `2 h`, `2 h 5 min`, `3 d 4 h`. An incident's "down for".
+ * Backwards, empty or unreadable is `0 s` — a span is never negative on screen.
+ */
+export function formatSpan(from: Instant, to: Instant): string {
+  const start = toDate(from);
+  const end = toDate(to);
+  if (!start || !end) return '0 s';
+  const seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
+  if (seconds <= 0) return '0 s';
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const rest = minutes % 60;
+    return rest ? `${hours} h ${rest} min` : `${hours} h`;
+  }
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  return rest ? `${days} d ${rest} h` : `${days} d`;
+}
+
 // ----------------------------------------------------------------- numbers
 
 const numberFormat = new Intl.NumberFormat(ADMIN_LOCALE);

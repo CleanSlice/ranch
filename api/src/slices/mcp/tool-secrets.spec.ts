@@ -19,6 +19,7 @@ import { UserTool } from '#/user/user/user.tool';
 import { IntegrationTool } from '#/integration/integration.tool';
 import { ApiKeyTool, KEY_SHOWN_ONCE } from '#/user/apiKey/apiKey.tool';
 import { RancherTool } from '#/rancher/rancher.tool';
+import { AgentEventTool } from '#/agent/event/agentEvent.tool';
 
 const SENTINEL = 'SENTINEL-SECRET-7f3a';
 
@@ -93,6 +94,7 @@ const args = {
   password: SENTINEL,
   secret: SENTINEL,
   token: SENTINEL,
+  webhookUrl: SENTINEL,
   store: { API_KEY: SENTINEL },
   provider: 'anthropic',
   model: 'claude',
@@ -197,6 +199,28 @@ function cases(): Case[] {
     leakyGateway() as never,
   );
 
+  // Rows that also carry the one secret this slice has — the destination's
+  // address — in the shapes the event services return.
+  const eventRow = () => ({ ...row(), webhookUrl: SENTINEL });
+  const agentEvent = new AgentEventTool(
+    leakyGateway({
+      listEvents: jest.fn(async () => ({
+        items: [eventRow()],
+        nextCursor: null,
+      })),
+      listIncidents: jest.fn(async () => ({
+        items: [{ ...eventRow(), notifications: [eventRow()], witnesses: [] }],
+        nextCursor: null,
+      })),
+    }) as never,
+    leakyGateway({
+      view: jest.fn(async () => ({ ...eventRow(), configured: true })),
+      save: jest.fn(async () => ({ ...eventRow(), configured: true })),
+      sendTest: jest.fn(async () => ({ delivered: false, error: 'refused' })),
+    }) as never,
+    leakyGateway() as never,
+  );
+
   const call = (fn: (...a: never[]) => Promise<unknown>) => () =>
     fn(args as never, null as never, operator() as never) as Promise<Result>;
 
@@ -234,6 +258,30 @@ function cases(): Case[] {
     },
     { name: 'list_api_keys', run: call(apiKey.listApiKeys.bind(apiKey)) },
     { name: 'list_settings', run: call(rancher.listSettings.bind(rancher)) },
+    {
+      name: 'list_agent_events',
+      run: call(agentEvent.listAgentEvents.bind(agentEvent)),
+    },
+    {
+      name: 'list_agent_incidents',
+      run: call(agentEvent.listAgentIncidents.bind(agentEvent)),
+    },
+    {
+      name: 'get_notification_destination',
+      run: call(agentEvent.getNotificationDestination.bind(agentEvent)),
+    },
+    {
+      name: 'set_notification_destination',
+      run: call(agentEvent.setNotificationDestination.bind(agentEvent)),
+    },
+    {
+      name: 'send_test_notification',
+      run: call(agentEvent.sendTestNotification.bind(agentEvent)),
+    },
+    {
+      name: 'remove_notification_destination',
+      run: call(agentEvent.removeNotificationDestination.bind(agentEvent)),
+    },
   ];
 }
 

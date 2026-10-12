@@ -5,6 +5,7 @@ import { IAgentGateway } from './domain/agent.gateway';
 import { AgentStatusService } from './domain/agentStatus.service';
 import { AgentDeployService } from './domain/agentDeploy.service';
 import { DeployTracker } from './domain/deployTracker';
+import { AgentStatusChanges } from './domain/agentStatusChanges';
 import { AgentGateway } from './data/agent.gateway';
 import { AgentMapper } from './data/agent.mapper';
 import { WorkflowModule } from '#/workflow/workflow.module';
@@ -37,12 +38,13 @@ import { SkillModule } from '#/skill/skill.module';
     AgentStatusService,
     AgentDeployService,
     DeployTracker,
+    AgentStatusChanges,
     AgentAdminTool,
     {
       provide: IAgentGateway,
       useClass: AgentGateway,
     },
   ],
-  exports: [IAgentGateway, AgentDeployService],
+  exports: [IAgentGateway, AgentDeployService, AgentStatusChanges],
 })
 export class AgentModule {}

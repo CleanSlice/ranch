@@ -9,6 +9,8 @@ import { AgentPeer } from "../peer/peer"
 import { AgentDelegation } from "../peer/delegation"
 import { AgentToolListing } from "../toolCatalog/toolCatalog"
 import { FileChangeProposal } from "../file/file"
+import { AgentEvent } from "../event/agentEvent"
+import { AgentIncident } from "../event/agentEvent"
 
 model Agent {
   id              String         @id @default(uuid())
@@ -70,4 +72,8 @@ model Agent {
   // Last tools/list served to this agent's pod (CLEAN-109).
   toolListing        AgentToolListing?
   fileProposals      FileChangeProposal[]
+  // Failure reports and the incidents they group into (CLEAN-139). Both keep
+  // their rows when the agent is deleted (SetNull) — history outlives it.
+  agentEvents        AgentEvent[]
+  agentIncidents     AgentIncident[]
 }

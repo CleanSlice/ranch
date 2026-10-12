@@ -24,6 +24,7 @@ import { Button } from '#theme/components/ui/button';
 import {
   IconTractor,
   IconTemplate,
+  IconBellRinging,
   IconUsers,
   IconBrain,
   IconSparkles,
@@ -54,6 +55,7 @@ const menu = useMenuStore();
 
 const iconMap: Record<string, unknown> = {
   Bot,
+  BellRinging: IconBellRinging,
   LayoutTemplate: IconTemplate,
   Template: IconTemplate,
   Users: IconUsers,

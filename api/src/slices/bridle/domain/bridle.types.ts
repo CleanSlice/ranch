@@ -6,6 +6,10 @@ import {
   TEXT_MIME_TYPES,
   isExtractableDocument,
 } from './attachment.constants';
+import type {
+  IChatSourceEntry,
+  IChatSourceInput,
+} from '#/chat/domain/chatSource.types';
 
 // ── Part types (wire protocol) ───────────────────────────────
 
@@ -224,6 +228,7 @@ export interface IBridleOutgoingEvent {
     | 'stream_end'
     | 'typing'
     | 'thinking'
+    | 'sources'
     | 'proposal'
     | 'proposal_update'
     | 'ping';
@@ -237,6 +242,50 @@ export interface IBridleOutgoingEvent {
   turnId?: string;
   step?: IBridleThinkingStep;
   done?: boolean;
+  /** `sources` only — see IBridleSourcesEvent. On the way in these are the
+   * runtime's `IBridleSource` entries; on the way out, the reader-facing
+   * `IBridleSourceEntry` list (CLEAN-138). */
+  sources?: IBridleSource[] | IBridleSourceEntry[];
+}
+
+// ── Sources (what an answer drew on) ─────────────────────────
+
+/**
+ * One thing an answer consulted, as the runtime names it (CLEAN-138). The
+ * shape is the contract in specs/020-chat-sources/contracts/sources.md: a
+ * tool result carries a `sources` array of these, the runtime collects them,
+ * and the `sources` event hands them to the hub. The chat slice owns the
+ * citation and so the type; the hub only carries it.
+ */
+export type IBridleSource = IChatSourceInput;
+
+/**
+ * Runtime → Hub: one bubble's citations, sent once after its `stream_end` (or
+ * `message`) when the model cited at least one source. `text` is the bubble
+ * text after validation — unknown markers removed, survivors renumbered
+ * 1..k — and `sources[i]` is what `[^i+1]` points at.
+ */
+export interface IBridleSourcesEvent {
+  type: 'sources';
+  clientId: string;
+  messageId: string;
+  text: string;
+  sources: IBridleSource[];
+  ts: number;
+}
+
+/** Hub → browser and history: a source as a reader sees it, addressed by
+ * `(messageId, n)`. See IChatSourceEntry for what is and is not in it. */
+export type IBridleSourceEntry = IChatSourceEntry;
+
+/** Hub → browser: the relayed form of IBridleSourcesEvent. */
+export interface IBridleSourcesFrame {
+  type: 'sources';
+  messageId: string;
+  text: string;
+  sources: IBridleSourceEntry[];
+  ts: number;
+  seq?: number;
 }
 
 // ── Thinking (live reasoning steps) ──────────────────────────

@@ -9,6 +9,7 @@ declare module 'bun:test' {
   interface IMatchers {
     toBe(expected: unknown): void
     toEqual(expected: unknown): void
+    toContain(expected: unknown): void
     not: IMatchers
   }
 

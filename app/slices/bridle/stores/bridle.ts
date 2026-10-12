@@ -28,6 +28,7 @@ import type {
   IBridleNotice,
   IBridleReply,
   IBridleSendAck,
+  IBridleSourcesFrame,
   IBridleStagedAttachment,
   IBridleThinkingBlock,
   IBridleThinkingEvent,
@@ -149,6 +150,45 @@ interface IHistoryState {
  * console-only case would change validation for every caller.
  */
 const EMPTY_TEXT_PLACEHOLDER = ' ';
+
+/** The HTTP status behind a failed call, when the error carries one. */
+function statusOf(err: unknown): number | undefined {
+  return (err as { response?: { status?: number } } | null)?.response?.status;
+}
+
+/** Types a browser shows on its own; anything else is handed over as a download. */
+const VIEWABLE_TYPES = /^(application\/pdf|image\/|text\/plain|text\/markdown|text\/csv)/i;
+
+/**
+ * A blob navigated to in a new tab is decoded by the charset in its type.
+ * The one the response carried does not always survive the trip into the
+ * Blob, and a Cyrillic text shown as Latin-1 is unreadable — every text the
+ * API serves is UTF-8, so the type says so before the tab opens.
+ */
+export function withTextCharset(blob: Blob): Blob {
+  if (!/^text\//i.test(blob.type) || /charset=/i.test(blob.type)) return blob;
+  return new Blob([blob], { type: `${blob.type.split(';')[0]};charset=utf-8` });
+}
+
+/**
+ * Show or save a cited document (CLEAN-138). A viewable type opens in a new
+ * tab; the rest trigger a download with the name the API gave. The object
+ * URL is released once the browser has had time to take it.
+ */
+export function openDocument(doc: { blob: Blob; filename: string | null }): void {
+  const url = URL.createObjectURL(withTextCharset(doc.blob));
+  if (VIEWABLE_TYPES.test(doc.blob.type)) {
+    window.open(url, '_blank', 'noopener');
+  } else {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = doc.filename ?? 'document';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 
 function loadConversationFromStorage(key: string): IBridleMessage[] | null {
   if (typeof window === 'undefined') return null;
@@ -722,6 +762,9 @@ export const useBridleStore = defineStore('bridle', () => {
         role: BridleRoleTypes.Agent,
         text: m.text,
         ts: m.ts,
+        // A recovered answer keeps its sources (CLEAN-138): the list is
+        // part of the answer, not of the frame that was missed.
+        ...(m.sources?.length ? { sources: m.sources } : {}),
       });
     }
     // Proposal cards (CLEAN-112) have no text to match on: by id, and a
@@ -1033,6 +1076,105 @@ export const useBridleStore = defineStore('bridle', () => {
     });
   }
 
+  /**
+   * One bubble's sources (CLEAN-138). The frame follows the bubble's own
+   * final frame and carries the corrected text, so both land on the record
+   * at once — components render by id and never keep a second copy of the
+   * list (docs/state.md). A frame for a bubble that is not on screen has
+   * nowhere to go; the transcript will carry the list on the next load.
+   */
+  function onSources(conv: IBridleConversation, frame: IBridleSourcesFrame) {
+    const key = conv.key;
+    if (!acceptSeq(key, frame.seq)) return;
+    const existing = findMessage(key, frame.messageId);
+    if (!existing) return;
+    replaceMessage(conv, {
+      ...existing,
+      ...(frame.text ? { text: frame.text } : {}),
+      sources: frame.sources,
+      streaming: false,
+    });
+    persist(conv);
+  }
+
+  // ── Cited sources (CLEAN-138) ─────────────────────────────────
+  // Opening and rating address the citation, not the knowledge source; the
+  // API decides what this reader may do and the store only shows the answer.
+
+  /** Open the document behind knowledge source `n` of a bubble, in a new tab or as a download. */
+  async function openSource(
+    conv: IBridleConversation,
+    messageId: string,
+    n: number,
+  ): Promise<void> {
+    const key = conv.key;
+    try {
+      const doc = await getService().openCitedSource(
+        conv.agentId,
+        messageId,
+        n,
+        conv.share,
+      );
+      openDocument(doc);
+    } catch (err) {
+      const status = statusOf(err);
+      // The API's refusal codes map to copy; anything else is "couldn't".
+      errors.value[key] = {
+        key:
+          status === 403
+            ? 'chat.source_locked'
+            : status === 410
+              ? 'chat.source_gone'
+              : 'chat.source_open_failed',
+      };
+    }
+  }
+
+  /**
+   * Like, dislike or withdraw (`null`) the reader's verdict on knowledge
+   * source `n` of a bubble. Optimistic: the record changes first and is put
+   * back if the API refuses (docs/state.md rule 5).
+   */
+  async function rateSource(
+    conv: IBridleConversation,
+    messageId: string,
+    n: number,
+    rating: 1 | -1 | null,
+  ): Promise<void> {
+    const key = conv.key;
+    const message = findMessage(key, messageId);
+    const entry = message?.sources?.find((s) => s.n === n);
+    if (!message || !entry) return;
+    const before = entry.myRating;
+    const patched = (value: 1 | -1 | undefined): IBridleMessage => ({
+      ...message,
+      sources: message.sources!.map((s) =>
+        s.n === n
+          ? { ...s, ...(value === undefined ? { myRating: undefined } : { myRating: value }) }
+          : s,
+      ),
+    });
+    replaceMessage(conv, patched(rating ?? undefined));
+    try {
+      await getService().rateCitedSource(
+        conv.agentId,
+        messageId,
+        n,
+        rating,
+        conv.share,
+      );
+      persist(conv);
+    } catch (err) {
+      // Put the record back exactly as it was; the message under the chat
+      // says the verdict did not go through.
+      const current = findMessage(key, messageId);
+      if (current) replaceMessage(conv, { ...current, sources: patched(before).sources });
+      errors.value[key] = {
+        key: statusOf(err) === 410 ? 'chat.source_gone' : 'chat.source_rating_failed',
+      };
+    }
+  }
+
   async function onRejected(conv: IBridleConversation, code: string) {
     const key = conv.key;
     pending.value[key] = false;
@@ -1120,6 +1262,7 @@ export const useBridleStore = defineStore('bridle', () => {
       onThinking: (e) => onThinking(conv, e),
       onStream: (reply, done) => onStream(conv, reply, done),
       onMessage: (reply) => onMessage(conv, reply),
+      onSources: (frame) => onSources(conv, frame),
       onUserMessage: (message) => onUserMessage(conv, message),
       onProposal: (proposal, seq) => onProposal(conv, proposal, seq),
       onProposalUpdate: (update, seq) => onProposalUpdate(conv, update, seq),
@@ -1560,6 +1703,8 @@ export const useBridleStore = defineStore('bridle', () => {
   }
 
   return {
+    openSource,
+    rateSource,
     conversations,
     messagesFor,
     isPending,

@@ -18,6 +18,8 @@ import {
   type IUploadedAttachment,
 } from '../utils/attachment'
 import { nextSeq, numberLegacy } from '../utils/chatFlow'
+import { openCitedSource, setCitedSourceRating } from '../utils/citedSource'
+import { describeCitedSourceError } from '../utils/citedSourceFile'
 import {
   mergeProposals,
   proposalMessageId,
@@ -123,6 +125,104 @@ export interface IBridleMessageData {
    * the DEBUG toggle, never as the bubble. Absent on the live echo.
    */
   agentText?: string
+  /**
+   * What an assistant answer drew on (CLEAN-138): the list under the bubble,
+   * in citation order. Arrives on the `sources` frame after `stream_end` and
+   * rides the transcript on replay. Absent when the answer cited nothing.
+   */
+  sources?: IBridleSourceEntry[]
+}
+
+// ── Sources (what an answer drew on) ─────────────────────────
+// Mirrors SourceEntryDto in api/src/slices/chat/dtos/sourceEntry.dto.ts and
+// `IBridleSource` in app/slices/bridle/domain/bridle.types.ts.
+
+export const BridleSourceKinds = {
+  /** An entry of one of our knowledge bases. */
+  Knowledge: 'knowledge',
+  /** A page on the open web the agent looked up. */
+  Web: 'web',
+} as const
+export type BridleSourceKinds = (typeof BridleSourceKinds)[keyof typeof BridleSourceKinds]
+
+export interface IBridleSourceEntry {
+  /** Citation number inside the message, 1-based and dense. */
+  n: number
+  kind: BridleSourceKinds
+  /** Source name, or page title (readable address when it had none). Shown as received. */
+  name: string
+  /** Web only; always http(s). */
+  url?: string
+  /** Knowledge only: the base the document belongs to. */
+  knowledgeName?: string | null
+  /** Knowledge: the base lets readers open documents and the source still
+   * exists. Web: the address is a web address. Decided by the API when served. */
+  canOpen: boolean
+  /** Knowledge only: the reader's own current rating. */
+  myRating?: 1 | -1
+}
+
+/**
+ * One source entry off the wire; the same shape arrives on the `sources`
+ * frame and in the transcript. Anything malformed is dropped rather than
+ * drawn — the client addresses a source by `(messageId, n)` and nothing else.
+ */
+export function toSourceEntry(raw: unknown): IBridleSourceEntry | null {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const n = typeof o.n === 'number' ? o.n : Number(o.n)
+  if (!Number.isInteger(n) || n < 1) return null
+  if (o.kind !== BridleSourceKinds.Knowledge && o.kind !== BridleSourceKinds.Web) return null
+  if (typeof o.name !== 'string') return null
+  const url = typeof o.url === 'string' && /^https?:\/\//i.test(o.url) ? o.url : undefined
+  return {
+    n,
+    kind: o.kind,
+    name: o.name,
+    ...(url ? { url } : {}),
+    ...(o.kind === BridleSourceKinds.Knowledge
+      ? { knowledgeName: typeof o.knowledgeName === 'string' ? o.knowledgeName : null }
+      : {}),
+    // Only a web address may be opened by the browser itself.
+    canOpen: o.kind === BridleSourceKinds.Web ? !!url : o.canOpen === true,
+    ...(o.myRating === 1 || o.myRating === -1 ? { myRating: o.myRating } : {}),
+  }
+}
+
+/** Every valid entry of a wire list, in the order sent; `[]` for anything that is not a list. */
+export function toSourceEntries(raw: unknown): IBridleSourceEntry[] {
+  if (!Array.isArray(raw)) return []
+  const out: IBridleSourceEntry[] = []
+  for (let i = 0; i < raw.length; i++) {
+    const entry = toSourceEntry(raw[i])
+    if (entry) out.push(entry)
+  }
+  return out
+}
+
+/**
+ * Replace the rating of source `n` on one message of a list, immutably — the
+ * message and the entry are new objects, so anything rendering by id sees the
+ * change. Returns the rating that was there (`undefined` when there is no such
+ * message or entry) so a failed request can put it back.
+ */
+export function patchSourceRating(
+  messages: Array<{ id: string; sources?: IBridleSourceEntry[] }>,
+  messageId: string,
+  n: number,
+  rating: 1 | -1 | null,
+): 1 | -1 | null | undefined {
+  const idx = messages.findIndex(m => m.id === messageId)
+  const message = messages[idx]
+  const sIdx = message?.sources?.findIndex(s => s.n === n) ?? -1
+  const entry = message?.sources?.[sIdx]
+  if (!message || !entry) return undefined
+  const previous = entry.myRating ?? null
+  const { myRating: _dropped, ...rest } = entry
+  const next: IBridleSourceEntry = rating === null ? rest : { ...rest, myRating: rating }
+  const sources = [...message.sources!]
+  sources[sIdx] = next
+  messages[idx] = { ...message, sources }
+  return previous
 }
 
 // ── Thinking (live reasoning steps) ──────────────────────────
@@ -289,6 +389,8 @@ interface ITranscriptPageMessage {
   ts: number
   attachments?: ITranscriptAttachment[]
   agentText?: string
+  /** Assistant turns that cited sources (CLEAN-138); raw wire shape, checked in `toBridleMessage`. */
+  sources?: unknown[]
 }
 
 interface ITranscriptPage {
@@ -394,6 +496,7 @@ async function uploadAttachment(
 }
 
 function toBridleMessage(m: ITranscriptPageMessage): IBridleMessageData {
+  const sources = toSourceEntries(m.sources)
   return {
     id: m.id,
     role: m.role,
@@ -406,6 +509,8 @@ function toBridleMessage(m: ITranscriptPageMessage): IBridleMessageData {
     ts: m.ts,
     replayed: true,
     ...(m.agentText ? { agentText: m.agentText } : {}),
+    // A replayed answer keeps its sources (CLEAN-138): the list is history too.
+    ...(sources.length ? { sources } : {}),
   }
 }
 
@@ -814,11 +919,13 @@ export const useBridleStore = defineStore('bridle', {
         // What this client renders — the hub forwards the list to the agent
         // on every message; the runtime gates thinking-step emission on it.
         // No 'ui': the admin preview doesn't render interactive ui parts.
+        // 'sources' (CLEAN-138): the runtime keeps `[^n]` markers in the text
+        // and the hub sends the list on a `sources` frame after `stream_end`.
         auth: (cb) =>
           cb({
             token: useAuthStore().accessToken ?? '',
             agentId,
-            capabilities: ['streaming', 'images', 'files', 'thinking', 'proposals'],
+            capabilities: ['streaming', 'images', 'files', 'thinking', 'proposals', 'sources'],
             lastSeq: c.lastHubSeq,
           }),
       })
@@ -1110,6 +1217,32 @@ export const useBridleStore = defineStore('bridle', {
         }
       })
 
+      // One bubble's sources (CLEAN-138). The frame follows the bubble's own
+      // `stream_end` and carries the renumbered text, so both land on the
+      // record at once — components render by id and never keep a second
+      // copy of the list. A frame for a bubble that is not on screen has
+      // nowhere to go; the transcript carries the list on the next load.
+      socket.on('sources', (data: { messageId?: string; text?: string; sources?: unknown; seq?: number }) => {
+        if (!acceptHubSeq(c, data.seq)) return
+        if (typeof data.messageId !== 'string' || !data.messageId) return
+        const sources = toSourceEntries(data.sources)
+        if (sources.length === 0) return
+        const idx = c.messages.findIndex(m => m.id === data.messageId)
+        const current = c.messages[idx]
+        if (!current) return
+        const text = typeof data.text === 'string' && data.text ? data.text : current.text
+        // Only the text part is rebuilt: images and files on the bubble stay.
+        const textParts: BridlePart[] = text ? [{ type: BridlePartTypes.Text as const, text }] : []
+        const otherParts = current.parts.filter(p => p.type !== BridlePartTypes.Text)
+        c.messages[idx] = {
+          ...current,
+          text,
+          parts: [...textParts, ...otherParts],
+          sources,
+          streaming: false,
+        }
+      })
+
       // Raw on purpose: a socket is not view state, and a reactive proxy
       // around its internals only costs.
       c.socket = markRaw(socket)
@@ -1343,6 +1476,44 @@ export const useBridleStore = defineStore('bridle', {
       c.messages.splice(index, 1)
       clearSlowTimer(key, id)
       this._persistOutbox(key)
+    },
+
+    // ── Cited sources (CLEAN-138) ──────────────────────────────
+
+    /**
+     * Open the document behind source `n` of a message: a tab for what the
+     * browser renders, a download otherwise. A failure becomes the plain line
+     * under the flow, the same channel a dead turn uses; the chip and the list
+     * stay as they are.
+     */
+    async openSource(key: string, messageId: string, n: number): Promise<void> {
+      const c = this._conv(key)
+      if (!c?.apiUrl) return
+      try {
+        await openCitedSource(c.apiUrl, c.agentId, messageId, n)
+      } catch (err) {
+        console.warn('[bridle] open source failed', { messageId, n }, err)
+        c.notice = `Could not open source ${n} — ${describeCitedSourceError(err)}`
+      }
+    },
+
+    /**
+     * Rate (or un-rate, `null`) source `n` of a message. Optimistic: the entry
+     * shows the new rating at once and goes back to the old one when the
+     * server says no. Only the one entry is replaced — components render by id.
+     */
+    async rateSource(key: string, messageId: string, n: number, rating: 1 | -1 | null): Promise<void> {
+      const c = this._conv(key)
+      if (!c?.apiUrl) return
+      const previous = patchSourceRating(c.messages, messageId, n, rating)
+      if (previous === undefined) return
+      try {
+        await setCitedSourceRating(c.apiUrl, c.agentId, messageId, n, rating)
+      } catch (err) {
+        console.warn('[bridle] rate source failed', { messageId, n, rating }, err)
+        patchSourceRating(c.messages, messageId, n, previous)
+        c.notice = `Could not save the rating of source ${n} — ${describeCitedSourceError(err)}`
+      }
     },
 
     /** Mirror the not-delivered messages of this conversation into storage. */

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { patchSourceRating } from '#bridle/stores/bridle';
+import { openCitedSource, setCitedSourceRating } from '#bridle/utils/citedSource';
+import { describeCitedSourceError } from '#bridle/utils/citedSourceFile';
 import {
   groupTranscript,
   snippet,
@@ -38,6 +41,46 @@ function onJump(id: string) {
 function onExport(format: 'json' | 'markdown' | 'csv') {
   void store.exportChat(props.id, format);
 }
+
+// ── Cited sources (CLEAN-138) ──────────────────────────────────
+// The history shows the same list the live chat does, and opening or rating
+// a source goes through the same HTTP module (`#bridle/utils/citedSource`),
+// addressed by the session's agent. The rating is optimistic on the page's
+// own message list and rolled back when the server says no; a failure is one
+// plain line above the feed.
+const config = useRuntimeConfig();
+const apiUrl =
+  (config.public as { apiUrl?: string }).apiUrl ??
+  (typeof process !== 'undefined' ? process.env.API_URL : undefined) ??
+  'http://localhost:3333';
+const sourceError = ref<string | null>(null);
+
+async function onOpenSource(messageId: string, n: number) {
+  const agentId = session.value?.agentId;
+  if (!agentId) return;
+  sourceError.value = null;
+  try {
+    await openCitedSource(apiUrl, agentId, messageId, n);
+  } catch (err) {
+    console.warn('[chat] open source failed', { messageId, n }, err);
+    sourceError.value = `Could not open source ${n} — ${describeCitedSourceError(err)}`;
+  }
+}
+
+async function onRateSource(messageId: string, n: number, rating: 1 | -1 | null) {
+  const agentId = session.value?.agentId;
+  if (!agentId) return;
+  const previous = patchSourceRating(messages.value, messageId, n, rating);
+  if (previous === undefined) return;
+  sourceError.value = null;
+  try {
+    await setCitedSourceRating(apiUrl, agentId, messageId, n, rating);
+  } catch (err) {
+    console.warn('[chat] rate source failed', { messageId, n, rating }, err);
+    patchSourceRating(messages.value, messageId, n, previous);
+    sourceError.value = `Could not save the rating of source ${n} — ${describeCitedSourceError(err)}`;
+  }
+}
 </script>
 
 <template>
@@ -75,6 +118,15 @@ function onExport(format: 'json' | 'markdown' | 'csv') {
           No messages in this session.
         </div>
 
+        <!-- Opening or rating a cited source failed (CLEAN-138): said once, plainly. -->
+        <p
+          v-if="sourceError"
+          class="text-center text-xs text-muted-foreground"
+          role="status"
+        >
+          {{ sourceError }}
+        </p>
+
         <template v-for="item in grouped" :key="item.key">
           <!-- Standalone tool events (no assistant reply after them) -->
           <div v-if="item.message === null" class="pl-9">
@@ -86,6 +138,8 @@ function onExport(format: 'json' | 'markdown' | 'csv') {
               :tools="item.tools"
               :rating="feedbackByMsg[item.message.id] ?? null"
               @rate="(r: 1 | -1) => rate(item.message!.id, r)"
+              @open-source="onOpenSource"
+              @rate-source="onRateSource"
             />
           </div>
         </template>

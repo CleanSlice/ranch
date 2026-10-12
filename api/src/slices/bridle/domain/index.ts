@@ -36,3 +36,4 @@ export {
   type IChatAuth,
   type IShareChatAuthorizer,
 } from './chatIdentity';
+export * from './sourceAccess.service';

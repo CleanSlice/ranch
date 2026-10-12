@@ -13,6 +13,9 @@ function makeSource(over: Partial<ISourceData> = {}): ISourceData {
   return {
     id: 'source-1',
     knowledgeId: 'knowledge-1',
+    cited: 0,
+    likes: 0,
+    dislikes: 0,
     type: 'file',
     name: 'manual.md',
     url: 's3://bucket/key',

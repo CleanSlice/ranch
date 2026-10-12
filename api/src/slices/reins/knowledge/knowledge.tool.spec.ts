@@ -5,7 +5,7 @@
 // retrieval against unbound bases, SC-012).
 
 import { Request } from 'express';
-import { KnowledgeTool } from './knowledge.tool';
+import { KnowledgeTool, stripRetrievalCitations } from './knowledge.tool';
 import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -364,7 +364,10 @@ describe('query_knowledge when the knowledge base does not answer', () => {
   });
 
   test('keeps the plain wording for any other failure', async () => {
-    const { tool } = makeHarness(['k1'], new Error('LightRAG /query failed: 502'));
+    const { tool } = makeHarness(
+      ['k1'],
+      new Error('LightRAG /query failed: 502'),
+    );
 
     const result = await tool.query(
       { query: 'anything' },
@@ -375,5 +378,175 @@ describe('query_knowledge when the knowledge base does not answer', () => {
     expect(textOf(result)).toContain(
       'Relays could not be reached: LightRAG /query failed: 502',
     );
+  });
+});
+
+describe('CLEAN-138 — a query result names the sources it drew on', () => {
+  function toolWith(references: unknown[], boundIds = ['k1']) {
+    const knowledgeService = {
+      query: jest.fn(async (knowledgeId: string) => ({
+        answer: `content of ${knowledgeId}`,
+        knowledgeId,
+        complete: true,
+        references,
+      })),
+    } as unknown as KnowledgeService;
+    const agentGateway = {
+      findById: jest.fn(async () => ({
+        id: 'agent-1',
+        knowledgeIds: boundIds,
+        templateId: 'tpl-1',
+      })),
+    } as unknown as IAgentGateway;
+    const templateGateway = {
+      findById: jest.fn(async () => null),
+    } as unknown as ITemplateGateway;
+    const knowledgeGateway = {
+      findExistingByIds: jest.fn(async (ids: string[]) =>
+        ids.map((id) => ({
+          id,
+          name: `Base ${id}`,
+          description: null,
+          migrationState: 'done',
+        })),
+      ),
+    } as unknown as IKnowledgeGateway;
+    return new KnowledgeTool(
+      knowledgeService,
+      agentGateway,
+      templateGateway,
+      knowledgeGateway,
+    );
+  }
+
+  const refs = [
+    {
+      referenceId: '1',
+      filePath: 'src-1',
+      sourceId: 's1',
+      sourceName: 'Contract.pdf',
+    },
+    {
+      referenceId: '2',
+      filePath: 'src-1',
+      sourceId: 's1',
+      sourceName: 'Contract.pdf',
+    },
+    {
+      referenceId: '3',
+      filePath: 'orphan.txt',
+      sourceId: null,
+      sourceName: null,
+    },
+    { referenceId: '4', filePath: 'src-2', sourceId: 's2', sourceName: null },
+  ];
+
+  test('single base: one entry per distinct source, unresolved references skipped', async () => {
+    const tool = toolWith(refs);
+    const result = await tool.query(
+      { query: 'q' },
+      null,
+      agentRequest('agent-1'),
+    );
+    const parsed = JSON.parse(textOf(result)) as {
+      sources: unknown[];
+      references: unknown[];
+    };
+    expect(parsed.sources).toEqual([
+      {
+        kind: 'knowledge',
+        id: 's1',
+        name: 'Contract.pdf',
+        knowledgeId: 'k1',
+        knowledgeName: 'Base k1',
+      },
+      {
+        kind: 'knowledge',
+        id: 's2',
+        name: 'src-2',
+        knowledgeId: 'k1',
+        knowledgeName: 'Base k1',
+      },
+    ]);
+    // The references the console relies on are still there, untouched.
+    expect(parsed.references).toHaveLength(4);
+  });
+
+  test('fan-out: every block carries its own sources', async () => {
+    const tool = toolWith(refs.slice(0, 1), ['k1', 'k2']);
+    const result = await tool.query(
+      { query: 'q' },
+      null,
+      agentRequest('agent-1'),
+    );
+    const parsed = JSON.parse(textOf(result)) as {
+      results: { knowledge_id: string; sources: { knowledgeId: string }[] }[];
+    };
+    for (const block of parsed.results) {
+      expect(block.sources).toHaveLength(1);
+      expect(block.sources[0].knowledgeId).toBe(block.knowledge_id);
+    }
+  });
+
+  test('no references, no sources — an empty list, not a missing key', async () => {
+    const tool = toolWith([]);
+    const result = await tool.query(
+      { query: 'q' },
+      null,
+      agentRequest('agent-1'),
+    );
+    expect(
+      (JSON.parse(textOf(result)) as { sources: unknown[] }).sources,
+    ).toEqual([]);
+  });
+});
+
+describe('stripRetrievalCitations (CLEAN-138, R13)', () => {
+  test('drops the References footer and the [n] markers, keeps the prose', () => {
+    const raw =
+      '### Хранение\n\nХранение стоит 4 900 рублей за метр [1]. Подъём — 7 200 рублей [1][2].\n\n### ### References\n\n- [1] source-c22f45a1-d699-474f-a564-fa3a8a15e1bf\n- [2] source-other\n';
+    expect(stripRetrievalCitations(raw)).toBe(
+      '### Хранение\n\nХранение стоит 4 900 рублей за метр. Подъём — 7 200 рублей.',
+    );
+  });
+
+  test('leaves an answer without citations as it is', () => {
+    expect(stripRetrievalCitations('Plain answer.')).toBe('Plain answer.');
+  });
+
+  test('the tool result carries the stripped answer', async () => {
+    const knowledgeService = {
+      query: jest.fn(async (knowledgeId: string) => ({
+        answer: 'Fact [1].\n\n### References\n- [1] src-1',
+        knowledgeId,
+        complete: true,
+        references: [],
+      })),
+    } as unknown as KnowledgeService;
+    const tool = new KnowledgeTool(
+      knowledgeService,
+      {
+        findById: jest.fn(async () => ({
+          id: 'agent-1',
+          knowledgeIds: ['k1'],
+          templateId: 't',
+        })),
+      } as unknown as IAgentGateway,
+      { findById: jest.fn(async () => null) } as unknown as ITemplateGateway,
+      {
+        findExistingByIds: jest.fn(async (ids: string[]) =>
+          ids.map((id) => ({
+            id,
+            name: id,
+            description: null,
+            migrationState: 'done',
+          })),
+        ),
+      } as unknown as IKnowledgeGateway,
+    );
+    const parsed = JSON.parse(
+      textOf(await tool.query({ query: 'q' }, null, agentRequest('agent-1'))),
+    ) as { answer: string };
+    expect(parsed.answer).toBe('Fact.');
   });
 });

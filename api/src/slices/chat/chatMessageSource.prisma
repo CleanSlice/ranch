@@ -1,0 +1,34 @@
+import { Source } from "../reins/source/source"
+
+// One source as cited by one assistant bubble (CLEAN-138). Written by the hub
+// when the runtime's `sources` event arrives, before the frame is relayed, so
+// the first frame a browser sees already has a persisted twin. Three things
+// read it: history (sources survive the runtime compacting its transcript),
+// the knowledge console (how often a source was cited), and the reader-facing
+// document route ("was this cited in a conversation you can read?").
+//
+// No relation to ChatSession: the index row may arrive later via sync, and
+// deleting a conversation must not erase what was cited. `sourceId` goes null
+// when the Source is deleted; the row and its `name` stay so an old answer
+// still reads.
+model ChatMessageSource {
+  id            String   @id @default(uuid())
+  agentId       String
+  clientId      String                                  // Bridle identity the answer was sent to: admin | console sub | share-<visitorId>
+  sessionKey    String                                  // "bridle:<clientId>" — joins ChatSession.sessionKey when that row exists
+  messageId     String                                  // the bubble's wire messageId
+  n             Int                                     // citation number inside that bubble, 1-based, dense
+  kind          String                                  // knowledge | web
+  sourceId      String?
+  source        Source?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  knowledgeId   String?                                 // kept as a plain column so the row outlives the base
+  knowledgeName String?                                 // as it was when cited
+  name          String                                  // Source.name, or page title / readable address
+  url           String?                                 // web only, https? only
+  createdAt     DateTime @default(now())
+
+  @@unique([messageId, n])
+  @@index([sourceId])
+  @@index([agentId, sessionKey])
+  @@index([clientId])
+}

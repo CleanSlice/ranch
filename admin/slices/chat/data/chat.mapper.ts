@@ -6,6 +6,7 @@ import type {
   ChatSessionDto,
   SyncChatsResponseDto,
 } from '#api/data/repositories/api/types.gen';
+import { toSourceEntries } from '#bridle/stores/bridle';
 import type {
   IChatFeedback,
   IChatInsights,
@@ -109,6 +110,9 @@ export class ChatMapper {
   // Admin transcripts expose every role, so the DTO union already matches the
   // domain union — pass it through.
   private toMessage(dto: ChatMessageDto): IChatMessage {
+    // Sources (CLEAN-138) go through the bridle store's shape check: one check
+    // for the live frame and the history, so the two can never disagree.
+    const sources = toSourceEntries(dto.sources);
     return {
       id: dto.id,
       role: dto.role,
@@ -125,6 +129,7 @@ export class ChatMapper {
             })),
           }
         : {}),
+      ...(sources.length ? { sources } : {}),
     };
   }
 

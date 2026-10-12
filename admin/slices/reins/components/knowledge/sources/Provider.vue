@@ -9,7 +9,7 @@ import type {
   SourceIndexStatus,
   SourceType,
 } from '#reins/stores/knowledge';
-import { Download, Eye, RefreshCw, ScanText, Trash2 } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, Download, Eye, RefreshCw, ScanText, Trash2 } from 'lucide-vue-next';
 import {
   errorMessageOf,
   formatBytes,
@@ -70,16 +70,56 @@ const status = ref<SourceIndexStatus | 'all'>('all');
 const type = ref<SourceType | 'all'>('all');
 const page = ref(1);
 
+// ---- sort (CLEAN-138) -------------------------------------------------------
+
+type SourceSort = NonNullable<ISourceFilter['sort']>;
+type SortOrder = NonNullable<ISourceFilter['order']>;
+
+// The default is the API's own: oldest first, so page 1 stays stable while an
+// import keeps adding rows. It is sent as "no sort" so that stays true even if
+// the API default moves; any other choice goes on the wire explicitly.
+const DEFAULT_SORT: SourceSort = 'createdAt';
+const DEFAULT_ORDER: SortOrder = 'asc';
+const sort = ref<SourceSort>(DEFAULT_SORT);
+const order = ref<SortOrder>(DEFAULT_ORDER);
+const isDefaultSort = computed(() => sort.value === DEFAULT_SORT && order.value === DEFAULT_ORDER);
+
+/** The counter columns, in table order; "Added" is sortable too but drawn apart. */
+const SORTABLE: { key: SourceSort; label: string }[] = [
+  { key: 'cited', label: 'Cited' },
+  { key: 'likes', label: 'Likes' },
+  { key: 'dislikes', label: 'Dislikes' },
+];
+
+/**
+ * Same column again flips the direction; a new column starts with what you
+ * most likely want — the biggest counters first, the oldest rows first.
+ */
+function toggleSort(key: SourceSort): void {
+  if (sort.value === key) {
+    order.value = order.value === 'asc' ? 'desc' : 'asc';
+    return;
+  }
+  sort.value = key;
+  order.value = key === 'createdAt' ? 'asc' : 'desc';
+}
+
+function ariaSort(key: SourceSort): 'ascending' | 'descending' | 'none' {
+  if (sort.value !== key) return 'none';
+  return order.value === 'asc' ? 'ascending' : 'descending';
+}
+
 const filter = computed<ISourceFilter>(() => ({
   page: page.value,
   perPage: PER_PAGE,
   search: searchDebounced.value.trim() || undefined,
   status: status.value === 'all' ? undefined : status.value,
   type: type.value === 'all' ? undefined : type.value,
+  ...(isDefaultSort.value ? {} : { sort: sort.value, order: order.value }),
 }));
 
-// Any filter change starts from page 1 again.
-watch([searchDebounced, status, type], () => {
+// Any filter or sort change starts from page 1 again.
+watch([searchDebounced, status, type, sort, order], () => {
   page.value = 1;
 });
 
@@ -397,7 +437,45 @@ async function onAdded() {
             <TableHead class="w-20">Type</TableHead>
             <TableHead class="w-24">Size</TableHead>
             <TableHead class="w-64">Status</TableHead>
-            <TableHead class="w-28">Added</TableHead>
+            <!-- Citation counters (CLEAN-138) and the date sort on the server;
+                 the header is the control, the arrow marks the active one. -->
+            <TableHead
+              v-for="col in SORTABLE"
+              :key="col.key"
+              class="w-20 text-right"
+              :aria-sort="ariaSort(col.key)"
+            >
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 hover:text-foreground"
+                :class="sort === col.key && 'text-foreground'"
+                @click="toggleSort(col.key)"
+              >
+                {{ col.label }}
+                <component
+                  :is="order === 'asc' ? ArrowUp : ArrowDown"
+                  v-if="sort === col.key"
+                  class="size-3"
+                  aria-hidden="true"
+                />
+              </button>
+            </TableHead>
+            <TableHead class="w-28" :aria-sort="ariaSort('createdAt')">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 hover:text-foreground"
+                :class="sort === 'createdAt' && 'text-foreground'"
+                @click="toggleSort('createdAt')"
+              >
+                Added
+                <component
+                  :is="order === 'asc' ? ArrowUp : ArrowDown"
+                  v-if="sort === 'createdAt'"
+                  class="size-3"
+                  aria-hidden="true"
+                />
+              </button>
+            </TableHead>
             <TableHead class="w-28 text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -477,6 +555,9 @@ async function onAdded() {
                 </span>
               </div>
             </TableCell>
+            <TableCell class="text-right tabular-nums">{{ s.cited }}</TableCell>
+            <TableCell class="text-right tabular-nums">{{ s.likes }}</TableCell>
+            <TableCell class="text-right tabular-nums">{{ s.dislikes }}</TableCell>
             <TableCell class="text-muted-foreground">{{ formatDate(s.createdAt) }}</TableCell>
             <TableCell class="text-right">
               <!-- Icons rather than three word-buttons: the labels cost more

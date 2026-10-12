@@ -2,6 +2,7 @@
 import BridleAvatar from '#bridle/components/bridle/Avatar.vue';
 import BridleBubble from '#bridle/components/bridle/Bubble.vue';
 import BridleMarkdown from '#bridle/components/bridle/Markdown.vue';
+import BridleSources from '#bridle/components/bridle/Sources.vue';
 import { formatBytes } from '#bridle/utils/attachment';
 import { FileText, Paperclip, ThumbsUp, ThumbsDown } from 'lucide-vue-next';
 import type { IChatMessage } from '#chat/stores/chat';
@@ -21,11 +22,24 @@ const props = defineProps<{
   tools?: IToolEvent[];
   rating?: number | null;
 }>();
-const emit = defineEmits<{ rate: [rating: 1 | -1] }>();
+const emit = defineEmits<{
+  rate: [rating: 1 | -1];
+  /** Open the document behind source `n` of this message (CLEAN-138). */
+  openSource: [messageId: string, n: number];
+  /** Rate source `n` of this message; `null` takes the rating back. */
+  rateSource: [messageId: string, n: number, rating: 1 | -1 | null];
+}>();
 
 const role = computed(() => props.message.role);
 const isUser = computed(() => role.value === 'user');
 const time = computed(() => formatMessageTime(props.message.ts));
+
+// History is never streaming, so citation chips (CLEAN-138) carry their
+// numbers straight away; a chip click scrolls the list under the bubble.
+const sourcesList = ref<{ reveal: (n: number) => void } | null>(null);
+function onCite(n: number) {
+  sourcesList.value?.reveal(n);
+}
 
 const summaryOpen = ref(false);
 // Compaction stores the archive wrapped in [ARCHIVED CONTEXT …] markers — strip
@@ -103,8 +117,18 @@ function onCopy() {
       <ChatMessageToolEvents v-if="tools?.length" :tools="tools" />
 
       <BridleBubble markdown>
-        <BridleMarkdown :text="message.text" />
+        <BridleMarkdown :text="message.text" citations="numbered" @cite="onCite" />
       </BridleBubble>
+
+      <!-- What the answer drew on (CLEAN-138) — the live chat's own list. -->
+      <BridleSources
+        v-if="message.sources?.length"
+        ref="sourcesList"
+        :sources="message.sources"
+        :message-id="message.id"
+        @open="(n) => emit('openSource', message.id, n)"
+        @rate="(n, r) => emit('rateSource', message.id, n, r)"
+      />
 
       <div class="flex items-center gap-2 px-1">
         <span class="text-[10px] text-muted-foreground">{{ time }}</span>

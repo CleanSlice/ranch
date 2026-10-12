@@ -30,6 +30,7 @@ import {
 } from '#/agent/file/domain';
 import {
   IChatGateway,
+  ChatSourceService,
   ChatSyncService,
   ChatInsightService,
   formatChatExport,
@@ -77,6 +78,7 @@ export class ChatController {
     private readonly reader: TranscriptReaderService,
     private readonly sync: ChatSyncService,
     private readonly insight: ChatInsightService,
+    private readonly sources: ChatSourceService,
   ) {}
 
   @ApiOperation({
@@ -155,12 +157,17 @@ export class ChatController {
     // rides along only when the caller asked for tool events (the existing
     // debug signal), so ordinary browsing stays as small as before.
     const debug = types.includes('tool_call') || types.includes('tool_result');
-    return debug
-      ? page
-      : {
-          ...page,
-          messages: TranscriptReaderService.withoutAgentText(page.messages),
-        };
+    const messages = debug
+      ? page.messages
+      : TranscriptReaderService.withoutAgentText(page.messages);
+    // The admin reads every conversation and opens any cited document.
+    return {
+      ...page,
+      messages: await this.sources.attach(messages, {
+        clientId: 'admin',
+        isAdmin: true,
+      }),
+    };
   }
 
   @ApiOperation({

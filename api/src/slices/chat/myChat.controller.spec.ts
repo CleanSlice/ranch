@@ -82,7 +82,8 @@ const req = (sub?: string, roles: UserRoleTypes[] = []) =>
 function makeController(findById: jest.Mock, read?: jest.Mock) {
   const { chats, list, upsertFeedback, deleteFeedback } = makeChats(findById);
   const { sync, syncForExternalUser } = syncStub();
-  const ctrl = new MyChatController(chats, readerStub(read), sync);
+  const sources = { attach: async (m: unknown) => m } as never;
+  const ctrl = new MyChatController(chats, readerStub(read), sync, sources);
   return { ctrl, list, syncForExternalUser, upsertFeedback, deleteFeedback };
 }
 

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
+import type { IDocumentRecord } from '../../lightrag/domain/lightrag.types';
 import { IKnowledgeGateway } from '../domain/knowledge.gateway';
 import {
   IKnowledgeRecord,
@@ -150,10 +151,13 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     return records.map((r) => this.mapper.toEntity(r));
   }
 
-  async create(data: ICreateKnowledgeData): Promise<IKnowledgeRecord> {
+  async create(
+    data: ICreateKnowledgeData,
+    migrationState: MigrationStateTypes,
+  ): Promise<IKnowledgeRecord> {
     const created = await this.prisma.$transaction(async (tx) => {
       const initial = await tx.knowledge.create({
-        data: this.mapper.toCreate(data),
+        data: this.mapper.toCreate(data, migrationState),
       });
       return tx.knowledge.update({
         where: { id: initial.id },
@@ -173,6 +177,9 @@ export class KnowledgeGateway extends IKnowledgeGateway {
         ...(data.name !== undefined && { name: data.name }),
         ...(data.description !== undefined && {
           description: data.description,
+        }),
+        ...(data.readerAccess !== undefined && {
+          readerAccess: data.readerAccess,
         }),
       },
     });
@@ -229,6 +236,10 @@ export class KnowledgeGateway extends IKnowledgeGateway {
 
   async delete(id: string): Promise<void> {
     await this.prisma.knowledge.delete({ where: { id } });
+  }
+
+  listDocuments(knowledgeId: string): Promise<IDocumentRecord[]> {
+    return this.lightrag.listDocuments(knowledgeId);
   }
 
   async searchKnowledge(

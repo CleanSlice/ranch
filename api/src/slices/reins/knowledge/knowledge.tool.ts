@@ -9,6 +9,9 @@ import { IDynamicallyDescribedTool } from '#/mcp/interfaces/dynamic-description.
 import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { LightragTimeoutError } from '../lightrag/domain/lightrag.types';
+import type { IKnowledgeQueryReference } from './domain/knowledge.types';
+import { boundKnowledgeIds } from './domain/boundKnowledge';
+import type { IChatSourceInput } from '#/chat/domain/chatSource.types';
 
 // The batching sentence is not stylistic advice: one call spends several
 // seconds inside the knowledge service composing an answer, and the service
@@ -149,7 +152,21 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
           const knowledge_name = nameOf.get(id) ?? null;
           try {
             const r = await this.knowledgeService.query(id, query);
-            return { knowledge_id: id, knowledge_name, ...r };
+            return {
+              knowledge_id: id,
+              knowledge_name,
+              ...r,
+              // The retrieval service writes its own "[1]" markers and a
+              // References footer into the answer. The model would copy them
+              // next to the [^n] it is asked for, so they go; `sources`
+              // below is the list it may cite from (CLEAN-138, R13).
+              answer:
+                r.answer === null ? null : stripRetrievalCitations(r.answer),
+              // What the answer drew on, in the shape every source-bearing
+              // tool result carries (CLEAN-138): the runtime collects these
+              // so the model can cite them and the chat can list them.
+              sources: this.sourcesOf(id, knowledge_name, r.references),
+            };
           } catch (e) {
             const message = e instanceof Error ? e.message : 'query failed';
             // Logged here because this failure never reaches the outer catch:
@@ -179,6 +196,39 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
     }
   }
 
+  /**
+   * References → sources (CLEAN-138): one entry per distinct Source row the
+   * answer drew on. A reference that resolved to no row is a defect to log,
+   * not something to hand the model to cite — a reader could not open or
+   * rate it, and FR-005 says only what was consulted may be listed.
+   */
+  private sourcesOf(
+    knowledgeId: string,
+    knowledgeName: string | null,
+    references: IKnowledgeQueryReference[],
+  ): IChatSourceInput[] {
+    const out: IChatSourceInput[] = [];
+    const seen = new Set<string>();
+    for (const ref of references) {
+      if (!ref.sourceId) {
+        this.logger.warn(
+          `query_knowledge: reference ${ref.referenceId} (${ref.filePath}) in knowledge=${knowledgeId} resolves to no source; not citable`,
+        );
+        continue;
+      }
+      if (seen.has(ref.sourceId)) continue;
+      seen.add(ref.sourceId);
+      out.push({
+        kind: 'knowledge',
+        id: ref.sourceId,
+        name: ref.sourceName ?? ref.filePath,
+        knowledgeId,
+        knowledgeName,
+      });
+    }
+    return out;
+  }
+
   private extractAgentId(
     httpRequest: Request & { user?: IAuthTokenPayload },
   ): string | null {
@@ -187,11 +237,21 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
     return sub.slice('agent:'.length);
   }
 
-  private async resolveAllowedIds(agentId: string): Promise<string[]> {
-    const agent = await this.agentGateway.findById(agentId);
-    if (!agent) return [];
-    if (agent.knowledgeIds.length > 0) return agent.knowledgeIds;
-    const template = await this.templateGateway.findById(agent.templateId);
-    return template?.defaultKnowledgeIds ?? [];
+  private resolveAllowedIds(agentId: string): Promise<string[]> {
+    return boundKnowledgeIds(agentId, this.agentGateway, this.templateGateway);
   }
+}
+
+/**
+ * The retrieval service's own citation apparatus, removed from an answer
+ * before the model sees it (CLEAN-138, R13): a trailing "References" section
+ * (observed as `### ### References` followed by `- [1] source-…` lines) and
+ * the inline `[n]` markers that point into it. Nothing else is touched.
+ */
+export function stripRetrievalCitations(answer: string): string {
+  const withoutFooter = answer.replace(
+    /\n+\s*(?:#{1,6}\s*)+References\s*\n[\s\S]*$/i,
+    '',
+  );
+  return withoutFooter.replace(/ ?\[\d{1,2}\]/g, '').trimEnd();
 }

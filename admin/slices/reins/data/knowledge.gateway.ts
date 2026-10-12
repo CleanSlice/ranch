@@ -169,6 +169,8 @@ export class KnowledgeGateway extends BaseGateway implements IKnowledgeGateway {
           search: filter.search || undefined,
           status: filter.status,
           type: filter.type,
+          sort: filter.sort,
+          order: filter.order,
         },
       });
       return this.mapper.toSourcePage(unwrapEnvelope(res.data), filter);

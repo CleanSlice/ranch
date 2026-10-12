@@ -19,6 +19,9 @@ import { UserRoleTypes } from '#/user/user/domain';
 const source = (overrides: Partial<ISourceData> = {}): ISourceData => ({
   id: 'src-1',
   knowledgeId: 'kb-1',
+  cited: 0,
+  likes: 0,
+  dislikes: 0,
   type: 'url',
   name: 'Returns policy',
   url: 'https://shop.example/returns',
@@ -452,5 +455,20 @@ describe('SourceTool — deleting', () => {
     );
     expect(result.isError).toBeUndefined();
     expect(textOf(result)).toContain('not found');
+  });
+});
+
+describe('SourceTool — usage order (CLEAN-138)', () => {
+  it('passes sort and order through to the same page query the console uses', async () => {
+    const { tool, service } = harness();
+    await tool.listKnowledgeSources(
+      { knowledgeId: 'kb-1', sort: 'dislikes', order: 'desc' },
+      null,
+      operator(),
+    );
+    expect(service.findPage).toHaveBeenCalledWith(
+      'kb-1',
+      expect.objectContaining({ sort: 'dislikes', order: 'desc' }),
+    );
   });
 });

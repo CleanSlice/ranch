@@ -629,6 +629,8 @@ async function onConfirmReset() {
               @resend="onResend"
               @discard="onDiscard"
               @proposal-applied="handleSend"
+              @open-source="(id: string, n: number) => store.openSource(conversationKey, id, n)"
+              @rate-source="(id: string, n: number, rating: 1 | -1 | null) => store.rateSource(conversationKey, id, n, rating)"
             />
             <div
               v-else-if="item.kind === 'day'"

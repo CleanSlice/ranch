@@ -60,7 +60,19 @@
     "new_chat_cancel": "Отмена",
     "new_chat_failed": "Не удалось начать новый чат. Диалог не изменился.",
     "new_chat_failed_agent_offline": "Агент недоступен, поэтому новый чат начать не удалось. Диалог не изменился.",
-    "new_chat_failed_answering": "Агент ещё отвечает. Попробуйте снова, когда он закончит."
+    "new_chat_failed_answering": "Агент ещё отвечает. Попробуйте снова, когда он закончит.",
+    "sources_title": "Источники",
+    "sources_hide": "Скрыть источники",
+    "sources_show": "Показать источники",
+    "source_kind_knowledge": "База знаний",
+    "source_kind_web": "Веб",
+    "source_open": "Открыть {name}",
+    "source_locked": "Недоступно для открытия",
+    "source_gone": "Этого документа больше нет в базе знаний",
+    "source_helpful": "Этот источник помог",
+    "source_not_helpful": "Этот источник не помог",
+    "source_rating_failed": "Не удалось сохранить вашу оценку",
+    "source_open_failed": "Не удалось открыть этот документ"
   },
   "proposal": {
     "import_into": "Импортировать в {name}",

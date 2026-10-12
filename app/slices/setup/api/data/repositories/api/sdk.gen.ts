@@ -111,6 +111,11 @@ import type {
   UploadBridleAttachmentData,
   UploadBridleAttachmentResponse,
   GetBridleAttachmentData,
+  OpenBridleCitedSourceData,
+  UnrateBridleCitedSourceData,
+  UnrateBridleCitedSourceResponse,
+  RateBridleCitedSourceData,
+  RateBridleCitedSourceResponse,
   BridleHealthData,
   BridleHealthResponse,
   BridleAgentHealthData,
@@ -1819,6 +1824,58 @@ export class BridleService {
     >({
       url: "/api/agent/{agentId}/attachment/{attachmentId}",
       ...options,
+    });
+  }
+
+  /**
+   * Open the document behind a cited knowledge source (CLEAN-138). Only for the reader the answer was sent to (or the platform team), only while the knowledge base lets readers open its documents, and only while the source exists. Web sources are opened by their address and have no document here.
+   */
+  public static openBridleCitedSource<ThrowOnError extends boolean = false>(
+    options: Options<OpenBridleCitedSourceData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/message/{messageId}/source/{n}/content",
+      ...options,
+    });
+  }
+
+  /**
+   * Withdraw the reader’s rating of a cited source (CLEAN-138). Nothing to withdraw is still 204.
+   */
+  public static unrateBridleCitedSource<ThrowOnError extends boolean = false>(
+    options: Options<UnrateBridleCitedSourceData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      UnrateBridleCitedSourceResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/message/{messageId}/source/{n}/rating",
+      ...options,
+    });
+  }
+
+  /**
+   * Like or dislike a cited knowledge source (CLEAN-138): one verdict per reader, source and answer; sending the other value flips it. Web sources cannot be rated.
+   */
+  public static rateBridleCitedSource<ThrowOnError extends boolean = false>(
+    options: Options<RateBridleCitedSourceData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      RateBridleCitedSourceResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/api/agent/{agentId}/message/{messageId}/source/{n}/rating",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
     });
   }
 

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { SourceEntryDto } from '#/chat/dtos/sourceEntry.dto';
 import { FileChangeProposalDto } from '#/agent/file/dtos/fileChangeProposal.dto';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
@@ -56,6 +57,13 @@ export class TranscriptMessageDto {
       'meant to be rendered as the bubble.',
   })
   agentText?: string;
+
+  @ApiPropertyOptional({
+    type: [SourceEntryDto],
+    description:
+      'Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.',
+  })
+  sources?: SourceEntryDto[];
 }
 
 export class TranscriptQueryDto {

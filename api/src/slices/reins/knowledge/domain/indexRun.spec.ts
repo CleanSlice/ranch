@@ -26,6 +26,7 @@ function record(overrides: Partial<IKnowledgeRecord> = {}): IKnowledgeRecord {
     instanceError: null,
     instanceEndpoint: null,
     migrationState: 'notStarted',
+    readerAccess: 'closed',
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...overrides,

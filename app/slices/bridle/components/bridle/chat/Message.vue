@@ -2,13 +2,16 @@
 import {
   BridleDeliveryStates,
   BridleRoleTypes,
+  useBridleStore,
   type IBridleConversation,
   type IBridleMessage,
 } from '#bridle/stores/bridle';
 import { failureHintKey } from '#bridle/utils/delivery';
+import { citationNumberOf } from '#bridle/utils/citations';
 import { renderMarkdown } from '#bridle/utils/markdown';
 import { useFormat } from '#common/composables/useFormat';
 import BridleChatProposalCard from './ProposalCard.vue';
+import BridleChatSources from './Sources.vue';
 
 const props = defineProps<{
   message: IBridleMessage;
@@ -19,6 +22,9 @@ const props = defineProps<{
 const emit = defineEmits<{ resend: [id: string]; discard: [id: string] }>();
 
 const format = useFormat();
+// Opening and rating a cited source go through the store, which owns the
+// record and the error line under the chat (CLEAN-138).
+const store = useBridleStore();
 
 const isUser = computed(() => props.message.role === BridleRoleTypes.User);
 
@@ -54,9 +60,33 @@ const failureHint = computed(() => failureHintKey(props.message.failureCode));
 // Agent messages can contain markdown (lists, headings, code). User messages
 // stay plain text — they're typed by humans and we don't want to risk
 // accidentally HTML-rendering something they pasted.
+//
+// Citations (CLEAN-138): while the answer streams the model's `[^n]` numbers
+// are not final, so the chips are neutral dots; the final text is already
+// renumbered when `stream_end` lands, so chips carry their numbers from then
+// on, and the list arrives on the frame that follows.
 const renderedHtml = computed(() =>
-  isUser.value ? null : renderMarkdown(props.message.text),
+  isUser.value
+    ? null
+    : renderMarkdown(props.message.text, {
+        citations: props.message.streaming ? 'pending' : 'numbered',
+      }),
 );
+
+const sourcesList = ref<{ reveal: (n: number) => void } | null>(null);
+
+/** A chip in the text was clicked or activated from the keyboard. */
+function onBubbleClick(event: Event) {
+  const n = citationNumberOf(event.target);
+  if (n !== null) sourcesList.value?.reveal(n);
+}
+function onBubbleKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const n = citationNumberOf(event.target);
+  if (n === null) return;
+  event.preventDefault();
+  sourcesList.value?.reveal(n);
+}
 </script>
 
 <template>
@@ -89,8 +119,23 @@ const renderedHtml = computed(() =>
         <template v-if="isUser">{{ message.text }}</template>
         <!-- A file change proposal (CLEAN-112): read-only card in this console. -->
         <BridleChatProposalCard v-else-if="message.proposal" :proposal="message.proposal" />
-        <div v-else v-html="renderedHtml" />
+        <div
+          v-else
+          @click="onBubbleClick"
+          @keydown="onBubbleKeydown"
+          v-html="renderedHtml"
+        />
       </BridleChatBubble>
+
+      <!-- What the answer drew on (CLEAN-138); absent when it cited nothing. -->
+      <BridleChatSources
+        v-if="!isUser && message.sources?.length"
+        ref="sourcesList"
+        :sources="message.sources"
+        :message-id="message.id"
+        @open="(n) => store.openSource(conversation, message.id, n)"
+        @rate="(n, rating) => store.rateSource(conversation, message.id, n, rating)"
+      />
 
       <div
         class="flex flex-wrap items-center gap-x-1.5 px-1 text-[11px] text-muted-foreground"

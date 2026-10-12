@@ -4,6 +4,7 @@ import {
   IndexStatusTypes,
   InstanceStateTypes,
   MigrationStateTypes,
+  ReaderAccessTypes,
 } from '../domain/knowledge.types';
 
 // `workspace` and `instanceEndpoint` stay off the wire on purpose: the first
@@ -54,6 +55,12 @@ export class KnowledgeDto implements Omit<
   @ApiProperty({ type: String, nullable: true }) instanceError: string | null;
   @ApiProperty({ enum: ['notStarted', 'inProgress', 'done', 'failed'] })
   migrationState: MigrationStateTypes;
+  @ApiProperty({
+    enum: ['closed', 'open'],
+    description:
+      'Whether people an agent answers may open and download the documents of this base that were cited to them. Closed until the keeper opens it; never per source.',
+  })
+  readerAccess: ReaderAccessTypes;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
 }

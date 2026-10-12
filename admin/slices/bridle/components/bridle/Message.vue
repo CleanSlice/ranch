@@ -4,6 +4,7 @@ import { BridlePartTypes, type IBridleMessageData } from '../../stores/bridle'
 import BridleAvatar from './Avatar.vue'
 import BridleBubble from './Bubble.vue'
 import BridleMarkdown from './Markdown.vue'
+import BridleSources from './Sources.vue'
 import ProposalCard from './ProposalCard.vue'
 import { AlertCircle, FileText, Info, Loader2, X } from 'lucide-vue-next'
 import { Button } from '#theme/components/ui/button'
@@ -32,6 +33,10 @@ defineEmits<{
   discard: [id: string]
   /** A proposal card was applied — the provider posts the follow-up line. */
   proposalApplied: [text: string]
+  /** Open the document behind source `n` of this message (CLEAN-138). */
+  openSource: [id: string, n: number]
+  /** Rate source `n` of this message; `null` takes the rating back. */
+  rateSource: [id: string, n: number, rating: 1 | -1 | null]
 }>()
 
 const isUser = computed(() => props.message.role === 'user')
@@ -68,6 +73,19 @@ const failureReason = computed(() => {
 // plain text so pasted content can't accidentally be rendered as HTML.
 // Avatar, bubble and markdown are the shared pieces the chat history uses
 // too (CLEAN-137).
+//
+// Citations (CLEAN-138): while the answer streams the model's `[^n]` numbers
+// are not final, so the chips are neutral dots; the final text is already
+// renumbered when `stream_end` lands, so chips carry their numbers from then
+// on, and the list arrives on the frame that follows.
+const citations = computed(() => (props.message.streaming ? 'pending' : 'numbered'))
+
+const sourcesList = ref<{ reveal: (n: number) => void } | null>(null)
+
+/** A chip in the text was clicked or activated from the keyboard. */
+function onCite(n: number): void {
+  sourcesList.value?.reveal(n)
+}
 
 // ── Fullscreen image preview ─────────────────────────────────
 // Click on a chat image → opens a Teleport'd overlay with the image at
@@ -125,7 +143,12 @@ onBeforeUnmount(() => {
       <BridleBubble :user="isUser" :markdown="markdownEnabled" :streaming="message.streaming">
         <template v-for="(part, i) in message.parts" :key="i">
           <template v-if="part.type === BridlePartTypes.Text">
-            <BridleMarkdown v-if="!isUser && markdownEnabled" :text="part.text" />
+            <BridleMarkdown
+              v-if="!isUser && markdownEnabled"
+              :text="part.text"
+              :citations="citations"
+              @cite="onCite"
+            />
             <p v-else class="whitespace-pre-wrap wrap-break-word">{{ part.text }}</p>
           </template>
 
@@ -163,7 +186,12 @@ onBeforeUnmount(() => {
 
         <!-- Fallback: if no parts, show plain text (or markdown for assistant) -->
         <template v-if="message.parts.length === 0 && !showAgentText">
-          <BridleMarkdown v-if="!isUser && markdownEnabled" :text="message.text" />
+          <BridleMarkdown
+            v-if="!isUser && markdownEnabled"
+            :text="message.text"
+            :citations="citations"
+            @cite="onCite"
+          />
           <p v-else class="whitespace-pre-wrap wrap-break-word">{{ message.text }}</p>
         </template>
 
@@ -184,6 +212,16 @@ onBeforeUnmount(() => {
           >{{ message.agentText }}</pre>
         </div>
       </BridleBubble>
+
+      <!-- What the answer drew on (CLEAN-138); absent when it cited nothing. -->
+      <BridleSources
+        v-if="!isUser && message.sources?.length"
+        ref="sourcesList"
+        :sources="message.sources"
+        :message-id="message.id"
+        @open="(n) => $emit('openSource', message.id, n)"
+        @rate="(n, rating) => $emit('rateSource', message.id, n, rating)"
+      />
 
       <div
         v-if="hasTime || delivery !== 'delivered'"

@@ -24,6 +24,17 @@ export class SourceDto implements Omit<ISourceData, 'textUrl'> {
   @ApiProperty({ type: String, nullable: true }) content: string | null;
   @ApiProperty({ type: Number, nullable: true }) sizeBytes: number | null;
   @ApiProperty({
+    description: 'How many assistant answers cited this source (CLEAN-138).',
+  })
+  cited: number;
+  @ApiProperty({
+    description:
+      'Current likes on those citations; a withdrawn rating is not counted.',
+  })
+  likes: number;
+  @ApiProperty({ description: 'Current dislikes on those citations.' })
+  dislikes: number;
+  @ApiProperty({
     description: 'True when indexStatus is "indexed". Kept for older callers.',
   })
   indexed: boolean;

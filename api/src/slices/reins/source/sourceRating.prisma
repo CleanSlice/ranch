@@ -1,0 +1,19 @@
+import { Source } from "./source"
+
+// One person's verdict on one knowledge source as it was used in one answer
+// (CLEAN-138). Belongs to the Source, not to the conversation: deleting a chat
+// leaves the ratings, deleting the source takes them. Withdrawing a rating
+// deletes the row, so counting rows is counting current verdicts.
+model SourceRating {
+  id        String   @id @default(uuid())
+  sourceId  String
+  source    Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  messageId String                                      // the bubble the rating was given under
+  authorId  String                                      // same identity as ChatFeedback.authorId
+  rating    Int                                         // 1 | -1
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sourceId, messageId, authorId])
+  @@index([sourceId])
+}

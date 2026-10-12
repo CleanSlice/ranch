@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { SourceEntryDto } from './sourceEntry.dto';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { TranscriptAttachmentDto } from '#/bridle/dtos/transcript.dto';
@@ -43,6 +44,13 @@ export class ChatMessageDto {
       'the full text the model received for a user message with attachments.',
   })
   agentText?: string;
+
+  @ApiPropertyOptional({
+    type: [SourceEntryDto],
+    description:
+      'Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.',
+  })
+  sources?: SourceEntryDto[];
 }
 
 export class ChatMessagesResponseDto {

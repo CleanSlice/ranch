@@ -19,6 +19,9 @@ import { ChatModule } from '#/chat/chat.module';
 import { S3Module } from '#/aws/s3';
 import { SettingModule } from '#/setting/setting.module';
 import { ShareLinkModule } from '#/agent/shareLink/shareLink.module';
+import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
+import { SourceModule } from '#/reins/source/source.module';
+import { SourceAccessService } from './domain/sourceAccess.service';
 
 /**
  * Bridle Module — authenticated hub between browsers and agents.
@@ -67,6 +70,10 @@ import { ShareLinkModule } from '#/agent/shareLink/shareLink.module';
     forwardRef(() => FileModule),
     forwardRef(() => AgentModule),
     forwardRef(() => ChatModule),
+    // Cited sources (CLEAN-138): the document route reads the knowledge
+    // base's policy and streams the source; ratings land on the source.
+    forwardRef(() => KnowledgeModule),
+    forwardRef(() => SourceModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
@@ -83,6 +90,8 @@ import { ShareLinkModule } from '#/agent/shareLink/shareLink.module';
     // Extracted from the sync HTTP route so the A2A server (CLEAN-74) can
     // wait for an agent reply without being a controller.
     BridleSyncService,
+    // Reader-facing gate for cited sources (CLEAN-138).
+    SourceAccessService,
     // MCP tool: query_attachment. Discovered by the #mcp registry like every
     // @Tool provider; served on the same endpoint as the Ranch/Knowledge
     // built-ins and auto-attached through the Documents entry (seeder).

@@ -13,6 +13,7 @@ import type { Request, Response } from 'express';
 import {
   ApiKeyGuard,
   JwtAuthGuard,
+  PUBLIC_METADATA_KEY,
   ROLES_METADATA_KEY,
   RolesGuard,
   SCOPES_METADATA_KEY,
@@ -90,6 +91,16 @@ describe('POST /agent-events — who may call it', () => {
     expect(Reflect.getMetadata(SCOPES_METADATA_KEY, post)).toEqual([
       ApiKeyScopeTypes.EventsWrite,
     ]);
+  });
+
+  it('tells a global JwtAuthGuard to step aside, so the key check is the one that runs (CLEAN-164)', () => {
+    // An install that registers JwtAuthGuard as APP_GUARD (deny by default)
+    // would otherwise reject the rk_ key as a bad JWT before ApiKeyGuard
+    // ever sees it. The console routes carry no such exemption.
+    expect(Reflect.getMetadata(PUBLIC_METADATA_KEY, post)).toBe(true);
+    expect(
+      Reflect.getMetadata(PUBLIC_METADATA_KEY, AgentEventController),
+    ).toBeUndefined();
   });
 
   describe('through the real guards', () => {

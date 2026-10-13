@@ -19,7 +19,7 @@ import {
   ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
-import { ApiKeyGuard, Scopes, ScopesGuard } from '#/user/auth/guards';
+import { ApiKeyGuard, Public, Scopes, ScopesGuard } from '#/user/auth/guards';
 import {
   ApiKeyScopeTypes,
   IApiKeyData,
@@ -43,6 +43,12 @@ export class AgentEventIngestController {
   constructor(private service: AgentEventService) {}
 
   @Post()
+  // Authenticated by API key, not by JWT. Nothing here registers
+  // JwtAuthGuard globally, but a downstream install that does (deny by
+  // default, APP_GUARD) would reject the rk_ key as a bad JWT before
+  // ApiKeyGuard ran — CLEAN-164. @Public() drops only that JWT requirement;
+  // ApiKeyGuard and ScopesGuard still run and still reject.
+  @Public()
   @UseGuards(ApiKeyGuard, ScopesGuard)
   @Scopes(ApiKeyScopeTypes.EventsWrite)
   @ApiBearerAuth()

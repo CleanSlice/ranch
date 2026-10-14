@@ -64,6 +64,27 @@ model AgentIncident {
   // The first failure's status and reason.
   status         String
   reason         String?             @db.Text
+  // The short handle people use: "#12". A sequence, so two replicas opening
+  // at the same instant get two numbers; gaps are fine (CLEAN-165).
+  number         Int                 @unique @default(autoincrement())
+  // The destination's kind when the incident opened: 'webhook' | 'bot' |
+  // NULL (none was set). An incident finishes on the transport it started
+  // on, whatever the owner switches to later.
+  transport      String?
+  // The bot transport's root message in the channel, once posted. `slackTs`
+  // set ⇒ never post another root for this incident.
+  slackChannel   String?
+  slackTs        String?
+  // The one reaction the bot has on the root right now; swapped, never
+  // stacked.
+  slackReaction  String?
+  // Next `seq` for this incident's outbox rows — delivered in that order.
+  notificationSeq      Int           @default(0)
+  // When the last "Failed again" reply was queued: at most one a minute.
+  lastJoinedNotifiedAt DateTime?
+  // A report was swallowed by that minute rule; the sweep rewrites the root
+  // so its count catches up, then clears this.
+  rootStale      Boolean             @default(false)
   // True once any event of the incident was witnessed by Ranch itself.
   ranchWitnessed Boolean             @default(false)
   // How many reports the incident holds and who sent them, first reporter
@@ -98,8 +119,13 @@ model AgentNotification {
   id            String        @id @default(uuid())
   incidentId    String
   incident      AgentIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  // 'opened' | 'closed'
+  // 'opened' | 'joined' | 'running' | 'closed'. The webhook transport only
+  // ever queues the first and the last; the bot says something at every
+  // step (CLEAN-165).
   kind          String
+  // Position inside the incident: rows of one incident are delivered in
+  // this order, so a thread never shows "Resolved" above "Failed again".
+  seq           Int
   // What the message says, fixed when it was queued. No secret in it.
   payload       Json
   // 'pending' | 'sent' | 'failed' | 'skipped'
@@ -113,20 +139,27 @@ model AgentNotification {
   sentAt        DateTime?
   createdAt     DateTime      @default(now())
 
-  // An incident has at most one opening and one closing message.
-  @@unique([incidentId, kind])
+  // One opening and one closing per incident still hold: they are queued by
+  // the two writes that can happen once (openIncident, closeIncident).
+  @@unique([incidentId, seq])
   @@index([status, nextAttemptAt])
 }
 
-// Where the team is told. One row per install (id = 'slack'). `webhookUrl` is
-// a secret: read only by the notifier, never returned by a route, a tool or a
-// log line. It lives here and not in Setting because GET /settings hands
-// every value back to the console.
+// Where the team is told. One row per install (id = 'slack'). `webhookUrl`
+// and `botToken` are secrets: read only by the notifiers, never returned by
+// a route, a tool or a log line. They live here and not in Setting because
+// GET /settings hands every value back to the console.
 model AgentEventDestination {
   id                String    @id
+  // 'webhook' — a Slack incoming webhook, one message per event;
+  // 'bot' — a Slack bot token + channel, one message per incident with its
+  // story in the thread (CLEAN-165). Exactly one kind's fields are set.
   kind              String
-  webhookUrl        String
-  // Last four characters, for "which one is this".
+  webhookUrl        String?
+  botToken          String?
+  // Not a secret: shown back to the owner.
+  channelId         String?
+  // Last four characters of whichever secret is set, for "which one is this".
   hint              String
   updatedBy         String
   updatedAt         DateTime  @updatedAt

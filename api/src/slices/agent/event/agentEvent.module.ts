@@ -10,9 +10,10 @@ import { AgentEventService } from './domain/agentEvent.service';
 import { AgentIncidentService } from './domain/agentIncident.service';
 import { AgentNotificationWorker } from './domain/agentNotification.worker';
 import { NotificationDestinationService } from './domain/notificationDestination.service';
-import { INotifier } from './domain/notifier';
+import { INotifier, ISlackBotNotifier } from './domain/notifier';
 import { AgentEventGateway } from './data/agentEvent.gateway';
 import { AgentEventMapper } from './data/agentEvent.mapper';
+import { SlackBotNotifier } from './data/slackBot.notifier';
 import { SlackWebhookNotifier } from './data/slackWebhook.notifier';
 
 // One direction only: this module reads the agent slice (IAgentGateway to
@@ -37,6 +38,10 @@ import { SlackWebhookNotifier } from './data/slackWebhook.notifier';
     {
       provide: INotifier,
       useClass: SlackWebhookNotifier,
+    },
+    {
+      provide: ISlackBotNotifier,
+      useClass: SlackBotNotifier,
     },
   ],
   exports: [AgentEventService, NotificationDestinationService],

@@ -6,8 +6,10 @@ import {
 } from '@nestjs/common';
 import { IAgentEventGateway } from './agentEvent.gateway';
 import {
+  IAgentIncidentData,
   IAgentNotificationData,
   INCIDENT_SWEEP_MS,
+  INotificationDestination,
   NOTIFICATION_LOCK_MS,
   OUTBOX_TICK_MS,
   RETENTION_DAYS,
@@ -16,8 +18,19 @@ import {
 } from './agentEvent.types';
 import { AgentIncidentService } from './agentIncident.service';
 import { NotificationDestinationService } from './notificationDestination.service';
-import { renderClosed, renderOpened } from './notificationText';
-import { INotifier } from './notifier';
+import {
+  renderClosed,
+  renderOpened,
+  renderReply,
+  renderRoot,
+  rootStateOf,
+} from './notificationText';
+import {
+  INotifier,
+  ISlackBotCredentials,
+  ISlackBotNotifier,
+  NotifyResultTypes,
+} from './notifier';
 
 // A tick that finds a backlog (a fleet-wide failure) sends this many and
 // leaves the rest to the next one, so one tick cannot run for minutes.
@@ -31,12 +44,13 @@ const DAY_MS = 24 * 60 * 60_000;
  * - **the outbox** — sends queued messages, retrying on a schedule, so the
  *   sender's answer never waits for Slack and Slack being down loses nothing;
  * - **the incident sweep** — closes incidents whose agent has been running
- *   for ten quiet minutes (AgentIncidentService.sweep);
+ *   for ten quiet minutes (AgentIncidentService.sweep), and on the bot
+ *   transport rewrites roots whose count fell behind;
  * - **retention** — drops history older than RETENTION_DAYS.
  *
  * Every replica runs all three. Each step is safe to run twice at once: a
  * message is claimed by a conditional update, an incident is closed by one,
- * a delete is a delete.
+ * a delete is a delete, a root rewrite renders from the row.
  *
  * Ranch has no scheduler facility, so these are plain `setInterval`s in an
  * OnModuleInit service — the pattern of indexReconcile.service and
@@ -52,6 +66,7 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly gateway: IAgentEventGateway,
     private readonly notifier: INotifier,
+    private readonly bot: ISlackBotNotifier,
     private readonly destinations: NotificationDestinationService,
     private readonly incidents: AgentIncidentService,
   ) {}
@@ -105,6 +120,7 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
     try {
       const queued = await this.incidents.sweep(now);
       if (queued > 0) this.kick();
+      await this.rewriteStaleRoots(now);
       return queued;
     } finally {
       this.sweeping = false;
@@ -122,6 +138,29 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * A report swallowed by the one-reply-a-minute rule moved the count but
+   * nothing was delivered to carry the rewrite; the sweep carries it. At
+   * most one rewrite per incident per sweep, whatever the flood.
+   */
+  async rewriteStaleRoots(now: Date = new Date()): Promise<number> {
+    const stale = await this.gateway.listStaleBotIncidents();
+    if (stale.length === 0) return 0;
+    const destination = await this.gateway.getDestination();
+    const cred = destination && this.destinations.botCredentials(destination);
+    let rewritten = 0;
+    for (const incident of stale) {
+      // The flag is cleared first: a report arriving during the rewrite sets
+      // it again and the next sweep catches it.
+      await this.gateway.clearRootStale(incident.id);
+      if (!cred) continue;
+      const error = await this.rewriteRoot(cred, incident);
+      if (error) await this.gateway.recordDelivery(now, false, error);
+      else rewritten += 1;
+    }
+    return rewritten;
+  }
+
   private async deliver(
     notification: IAgentNotificationData,
     now: () => Date,
@@ -133,13 +172,158 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const message =
-      notification.payload.kind === 'opened'
-        ? renderOpened(notification.payload, this.destinations.consoleUrl())
-        : renderClosed(notification.payload);
-    const result = await this.notifier.send(destination.webhookUrl, message);
-    const at = now();
+    const incident = await this.gateway.findIncidentById(
+      notification.incidentId,
+    );
+    if (!incident) {
+      await this.gateway.markNotificationSkipped(notification.id);
+      return;
+    }
 
+    // An incident finishes on the transport it started on (FR-022). One
+    // that opened with no destination at all takes whatever is set now.
+    const transport = incident.transport ?? destination.kind;
+    const cred = this.destinations.botCredentials(destination);
+    let sideEffect: string | null = null;
+    // A bot incident whose bot is gone (the owner switched to the webhook
+    // and the token with it) has no thread to speak in: its rows are skipped
+    // rather than spoken through the other transport.
+    const result =
+      transport === 'bot'
+        ? cred
+          ? await this.deliverBot(cred, incident, notification, (error) => {
+              sideEffect = error;
+            })
+          : 'silent'
+        : await this.deliverWebhook(destination, notification);
+    if (result === 'silent') {
+      // A row the current transport has nothing to say for (a webhook
+      // asked to speak mid-incident, or a bot row with no bot any more).
+      await this.gateway.markNotificationSkipped(notification.id);
+      return;
+    }
+    await this.settle(notification, result, now);
+    // After the delivery's own record, so a lost rewrite is what the owner
+    // sees last — the reply itself went through (FR-020).
+    if (sideEffect) await this.gateway.recordDelivery(now(), false, sideEffect);
+  }
+
+  /** Today's two messages, unchanged (SC-004). */
+  private async deliverWebhook(
+    destination: INotificationDestination,
+    notification: IAgentNotificationData,
+  ): Promise<NotifyResultTypes | 'silent'> {
+    const { payload } = notification;
+    if (!destination.webhookUrl) return 'silent';
+    if (payload.kind === 'opened') {
+      return this.notifier.send(
+        destination.webhookUrl,
+        renderOpened(payload, this.destinations.consoleUrl()),
+      );
+    }
+    if (
+      payload.kind === 'closed' &&
+      (payload.resolution === 'recovered' ||
+        payload.resolution === 'unconfirmed')
+    ) {
+      return this.notifier.send(destination.webhookUrl, renderClosed(payload));
+    }
+    return 'silent';
+  }
+
+  /**
+   * The bot transport, step by step (contracts/slack-bot.md): the root once
+   * — posted by whichever delivery finds it missing, so a late root arrives
+   * already in its final state — then this row's reply in the thread, then
+   * the root rewritten and its reaction swapped from the incident as it is
+   * now. The reply is the delivery; the rewrite and the reaction are side
+   * effects whose failure is recorded, not retried (FR-020).
+   */
+  private async deliverBot(
+    cred: ISlackBotCredentials,
+    incident: IAgentIncidentData,
+    notification: IAgentNotificationData,
+    onSideEffectError: (error: string) => void,
+  ): Promise<NotifyResultTypes> {
+    let current = incident;
+    if (!current.slackTs) {
+      // The mention is for an alarm. A root that could only be posted after
+      // the incident closed (Slack was down throughout) is history, not news.
+      const root = await this.bot.post(
+        cred,
+        renderRoot(current, this.destinations.consoleUrl(), {
+          mention: notification.kind === 'opened' && current.open,
+        }),
+      );
+      if (!root.ok) return root;
+      await this.gateway.setIncidentRoot(current.id, cred.channelId, root.ts);
+      current = { ...current, slackChannel: cred.channelId, slackTs: root.ts };
+      // A retry that finds the root in place skips straight to the reply.
+    }
+
+    const reply = await this.bot.post(
+      { ...cred, channelId: current.slackChannel ?? cred.channelId },
+      renderReply(notification.payload),
+      current.slackTs!,
+    );
+    if (!reply.ok) return reply;
+
+    // Rendered from the row as it is after this row's cause took effect —
+    // not from the payload — so whichever rewrite lands last is right.
+    const fresh = (await this.gateway.findIncidentById(current.id)) ?? current;
+    const error = await this.rewriteRoot(
+      { ...cred, channelId: fresh.slackChannel ?? cred.channelId },
+      fresh,
+      // The very first delivery may legitimately keep the mention: the root
+      // was just posted with it and nothing has changed since.
+      notification.kind === 'opened' && fresh.open && !fresh.upSince,
+    );
+    if (error) onSideEffectError(error);
+    return { ok: true };
+  }
+
+  /**
+   * Rewrites the root and settles the reaction. Returns the first error, or
+   * null when both landed; the caller decides where the error goes.
+   */
+  private async rewriteRoot(
+    cred: ISlackBotCredentials,
+    incident: IAgentIncidentData,
+    keepMention = false,
+  ): Promise<string | null> {
+    if (!incident.slackTs) return 'no root message to rewrite';
+    let error: string | null = null;
+    const updated = await this.bot.update(
+      cred,
+      incident.slackTs,
+      renderRoot(incident, this.destinations.consoleUrl(), {
+        mention: keepMention,
+      }),
+    );
+    if (!updated.ok) error = updated.error;
+    const wanted = rootStateOf(incident).reaction;
+    if (wanted !== incident.slackReaction) {
+      const reacted = await this.bot.setReaction(
+        cred,
+        incident.slackTs,
+        wanted,
+        incident.slackReaction,
+      );
+      if (reacted.ok) {
+        await this.gateway.setIncidentReaction(incident.id, wanted);
+      } else {
+        error ??= reacted.error;
+      }
+    }
+    return error;
+  }
+
+  private async settle(
+    notification: IAgentNotificationData,
+    result: NotifyResultTypes,
+    now: () => Date,
+  ): Promise<void> {
+    const at = now();
     if (result.ok) {
       await this.gateway.markNotificationSent(notification.id, at);
       await this.gateway.recordDelivery(at, true, null);
@@ -178,11 +362,11 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
 
   private every(ms: number, name: string, run: () => Promise<unknown>): void {
     const timer = setInterval(() => {
-      void run().catch((err) =>
+      run().catch((err) =>
         this.logger.warn(`${name} failed: ${(err as Error).message}`),
       );
     }, ms);
-    // Nothing here should keep the process alive on its own.
+    // Never keep the process alive for a timer.
     timer.unref?.();
     this.timers.push(timer);
   }

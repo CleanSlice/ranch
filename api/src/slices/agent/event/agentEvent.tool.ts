@@ -20,6 +20,7 @@ import {
   IAgentEventData,
   IAgentIncidentView,
   INotificationDestinationView,
+  ISaveDestinationInput,
   NotificationDestinationService,
 } from './domain';
 
@@ -55,6 +56,7 @@ function toToolEvent(e: IAgentEventData) {
 function toToolIncident(i: IAgentIncidentView) {
   return {
     id: i.id,
+    number: i.number,
     agentId: i.agentId,
     agentName: i.agentName,
     state: i.open ? 'open' : 'closed',
@@ -83,6 +85,7 @@ function toToolDestination(v: INotificationDestinationView) {
     configured: v.configured,
     kind: v.kind,
     hint: v.hint,
+    channelId: v.channelId,
     updatedBy: v.updatedBy,
     updatedAt: iso(v.updatedAt),
     consoleLinks: v.consoleLinks,
@@ -259,10 +262,13 @@ export class AgentEventTool implements IConditionallyListedTool {
       'Where do agent failure notifications go, and did the last one arrive?',
     description:
       'Whether a destination for agent failure notifications is set, its ' +
-      'kind (Slack), the last four characters of its address, who set it ' +
-      'and when, whether messages can link to the console (consoleLinks is ' +
-      'false until ADMIN_URL is set on the API), and the outcome of the last ' +
-      'delivery. Never the address itself — it cannot be read back by anyone.',
+      'kind (webhook: a Slack incoming webhook; bot: a Slack bot posting one ' +
+      'message per incident with its story in the thread), the last four ' +
+      'characters of its secret, the bot’s channel id, who set it and when, ' +
+      'whether messages can link to the console (consoleLinks is false until ' +
+      'ADMIN_URL is set on the API), and the outcome of the last delivery. ' +
+      'Never the webhook address or the bot token — they cannot be read back ' +
+      'by anyone.',
   })
   async getNotificationDestination(
     _args: Record<string, never>,
@@ -278,32 +284,65 @@ export class AgentEventTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_notification_destination',
     topic: ToolTopics.Settings,
-    title: 'Set the Slack address for notifications',
-    template: 'Send agent failure notifications to the Slack webhook «address»',
+    title: 'Set where notifications go',
+    template:
+      'Send agent failure notifications to Slack through «a webhook address, or a bot token and channel»',
     description:
-      'Set where agent failure notifications go: a Slack incoming-webhook ' +
-      'address (https://hooks.slack.com/services/…) the person created in ' +
-      'Slack. It replaces the current one. The address is a secret: it is ' +
-      'stored and never shown again, so do not repeat it back. Anything that ' +
-      'is not a Slack incoming webhook is refused. Call ' +
-      'send_test_notification afterwards to prove it works.',
+      'Set where agent failure notifications go. Two kinds: `webhook` — a ' +
+      'Slack incoming-webhook address (https://hooks.slack.com/services/…), ' +
+      'one message when an incident opens and one when it closes; `bot` — a ' +
+      'Slack bot token (xoxb-…, scopes chat:write and reactions:write) plus ' +
+      'the channel id (C0…) the bot was invited to: one message per ' +
+      'incident, its story in the thread, the state as a reaction. Saving ' +
+      'replaces the current destination of either kind. The address and the ' +
+      'token are secrets: stored and never shown again, so do not repeat ' +
+      'them back. Call send_test_notification afterwards to prove it works.',
     parameters: z.object({
+      kind: z
+        .enum(['webhook', 'bot'])
+        .describe('webhook: an incoming webhook. bot: a bot token + channel.'),
       webhookUrl: z
         .string()
+        .optional()
         .describe(
-          'The Slack incoming-webhook address, exactly as Slack gave it.',
+          'kind = webhook: the incoming-webhook address, exactly as Slack gave it.',
+        ),
+      botToken: z
+        .string()
+        .optional()
+        .describe(
+          'kind = bot: the Bot User OAuth Token (xoxb-…) from OAuth & Permissions.',
+        ),
+      channelId: z
+        .string()
+        .optional()
+        .describe(
+          'kind = bot: the channel id (C0…) from the channel’s About tab, not its name.',
         ),
     }),
   })
   async setNotificationDestination(
-    args: { webhookUrl: string },
+    args: {
+      kind: 'webhook' | 'bot';
+      webhookUrl?: string;
+      botToken?: string;
+      channelId?: string;
+    },
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
     try {
+      const input: ISaveDestinationInput =
+        args.kind === 'bot'
+          ? {
+              kind: 'bot',
+              botToken: args.botToken ?? '',
+              channelId: args.channelId ?? '',
+            }
+          : { kind: 'webhook', webhookUrl: args.webhookUrl ?? '' };
       const view = await this.destinations.save(
-        args.webhookUrl,
+        input,
         httpRequest.user?.sub ?? 'unknown',
       );
       this.logger.log('Notification destination set through MCP');

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { IAgentEventGateway } from '../domain/agentEvent.gateway';
 import {
+  DestinationKindTypes,
   IAgentEventData,
   IAgentIncidentData,
   IAgentIncidentView,
@@ -11,16 +12,21 @@ import {
   ICreateAgentEventData,
   IEventListFilter,
   IIncidentListFilter,
+  IJoinedNotificationPayload,
   INotificationDestination,
+  INotificationPayload,
   IOpenedNotificationPayload,
   IOpenIncidentInput,
   IOpenIncidentWithAgent,
+  IRunningNotificationPayload,
   IncidentResolutionTypes,
   IPage,
+  SlackReactionTypes,
 } from '../domain/agentEvent.types';
 import { AgentEventMapper } from './agentEvent.mapper';
 
-// One destination per install; the row's id says which kind it is.
+// One destination per install; the row's id is fixed, its `kind` says which
+// transport it is.
 const DESTINATION_ID = 'slack';
 
 // How many times a claim is retried when another replica took the row first.
@@ -40,6 +46,8 @@ function decodeCursor(cursor: string): { at: Date; id: string } | null {
   if (!id || Number.isNaN(at.getTime())) return null;
   return { at, id };
 }
+
+type Tx = Prisma.TransactionClient;
 
 @Injectable()
 export class AgentEventGateway extends IAgentEventGateway {
@@ -129,6 +137,13 @@ export class AgentEventGateway extends IAgentEventGateway {
     return record ? this.mapper.toIncident(record) : null;
   }
 
+  async findIncidentById(id: string): Promise<IAgentIncidentData | null> {
+    const record = await this.prisma.agentIncident.findUnique({
+      where: { id },
+    });
+    return record ? this.mapper.toIncident(record) : null;
+  }
+
   async openIncident(
     input: IOpenIncidentInput,
     payload: IOpenedNotificationPayload,
@@ -146,13 +161,7 @@ export class AgentEventGateway extends IAgentEventGateway {
             witnesses: [payload.senderName],
           },
         });
-        await tx.agentNotification.create({
-          data: {
-            incidentId: incident.id,
-            kind: 'opened',
-            payload: payload as unknown as Prisma.InputJsonValue,
-          },
-        });
+        await this.queue(tx, incident.id, payload);
         return incident;
       });
       return this.mapper.toIncident(record);
@@ -167,7 +176,9 @@ export class AgentEventGateway extends IAgentEventGateway {
     at: Date,
     ranchWitnessed: boolean,
     senderName: string,
-  ): Promise<boolean> {
+    reply: Omit<IJoinedNotificationPayload, 'eventCount'> | null,
+    gapMs: number,
+  ): Promise<'joined' | 'joined_quiet' | 'closed'> {
     const touched = await this.prisma.agentIncident.updateMany({
       where: { id, openKey: { not: null } },
       data: {
@@ -178,9 +189,39 @@ export class AgentEventGateway extends IAgentEventGateway {
         ...(ranchWitnessed && { ranchWitnessed: true }),
       },
     });
-    if (touched.count !== 1) return false;
+    if (touched.count !== 1) return 'closed';
     await this.addWitness(id, senderName);
-    return true;
+    if (!reply) return 'joined';
+
+    // "Nothing queued in the last minute" is in the WHERE: two reports
+    // arriving together on two replicas queue one reply, and the other
+    // only marks the root stale.
+    const since = new Date(at.getTime() - gapMs);
+    const allowed = await this.prisma.agentIncident.updateMany({
+      where: {
+        id,
+        OR: [
+          { lastJoinedNotifiedAt: null },
+          { lastJoinedNotifiedAt: { lt: since } },
+        ],
+      },
+      data: { lastJoinedNotifiedAt: at },
+    });
+    if (allowed.count !== 1) {
+      await this.prisma.agentIncident.updateMany({
+        where: { id },
+        data: { rootStale: true },
+      });
+      return 'joined_quiet';
+    }
+    await this.prisma.$transaction(async (tx) => {
+      const { eventCount } = await tx.agentIncident.findUniqueOrThrow({
+        where: { id },
+        select: { eventCount: true },
+      });
+      await this.queue(tx, id, { ...reply, eventCount });
+    });
+    return 'joined';
   }
 
   async noteIncidentReport(id: string, senderName: string): Promise<void> {
@@ -200,7 +241,29 @@ export class AgentEventGateway extends IAgentEventGateway {
     });
   }
 
-  async setIncidentUpSince(agentId: string, at: Date): Promise<void> {
+  async setIncidentUpSince(
+    agentId: string,
+    at: Date,
+    reply: IRunningNotificationPayload | null,
+  ): Promise<void> {
+    // The first up-turn since the last failure is the one worth a reply;
+    // "upSince was null" in the WHERE decides it, once, across replicas.
+    const first = await this.prisma.agentIncident.updateMany({
+      where: { openKey: agentId, upSince: null },
+      data: { upSince: at },
+    });
+    if (first.count === 1) {
+      if (!reply) return;
+      const incident = await this.prisma.agentIncident.findUnique({
+        where: { openKey: agentId },
+        select: { id: true },
+      });
+      if (!incident) return;
+      await this.prisma.$transaction((tx) =>
+        this.queue(tx, incident.id, reply),
+      );
+      return;
+    }
     await this.prisma.agentIncident.updateMany({
       where: { openKey: agentId },
       data: { upSince: at },
@@ -233,15 +296,7 @@ export class AgentEventGateway extends IAgentEventGateway {
         data: { openKey: null, closedAt, resolution },
       });
       if (closed.count === 0) return false;
-      if (payload) {
-        await tx.agentNotification.create({
-          data: {
-            incidentId: id,
-            kind: 'closed',
-            payload: payload as unknown as Prisma.InputJsonValue,
-          },
-        });
-      }
+      if (payload) await this.queue(tx, id, payload);
       return true;
     });
   }
@@ -267,7 +322,7 @@ export class AgentEventGateway extends IAgentEventGateway {
       take: filter.limit + 1,
       // Nothing here reads AgentEvent: the count and the witnesses are on
       // the row, so this costs the same at ten reports and at a million.
-      include: { notifications: { orderBy: { createdAt: 'asc' } } },
+      include: { notifications: { orderBy: { seq: 'asc' } } },
     });
     const page = records.slice(0, filter.limit);
     const last = page[page.length - 1];
@@ -285,30 +340,106 @@ export class AgentEventGateway extends IAgentEventGateway {
     };
   }
 
+  // ── The bot's root message ────────────────────────────────────────────
+
+  async setIncidentRoot(id: string, channel: string, ts: string) {
+    await this.prisma.agentIncident.updateMany({
+      where: { id },
+      data: { slackChannel: channel, slackTs: ts },
+    });
+  }
+
+  async setIncidentReaction(id: string, name: SlackReactionTypes) {
+    await this.prisma.agentIncident.updateMany({
+      where: { id },
+      data: { slackReaction: name },
+    });
+  }
+
+  async listStaleBotIncidents(): Promise<IAgentIncidentData[]> {
+    const records = await this.prisma.agentIncident.findMany({
+      where: { rootStale: true, transport: 'bot', slackTs: { not: null } },
+    });
+    return records.map((r) => this.mapper.toIncident(r));
+  }
+
+  async clearRootStale(id: string): Promise<void> {
+    await this.prisma.agentIncident.updateMany({
+      where: { id },
+      data: { rootStale: false },
+    });
+  }
+
   // ── Notifications (the outbox) ────────────────────────────────────────
+
+  /**
+   * One row with the incident's next `seq`. The counter lives on the
+   * incident and is bumped in the same transaction as the insert, so two
+   * replicas queueing at once get two different positions.
+   */
+  private async queue(
+    tx: Tx,
+    incidentId: string,
+    payload: INotificationPayload,
+  ): Promise<void> {
+    const bumped = await tx.agentIncident.update({
+      where: { id: incidentId },
+      data: { notificationSeq: { increment: 1 } },
+      select: { notificationSeq: true },
+    });
+    await tx.agentNotification.create({
+      data: {
+        incidentId,
+        kind: payload.kind,
+        seq: bumped.notificationSeq - 1,
+        payload: payload as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
 
   async claimDueNotification(
     now: Date,
     lockedUntil: Date,
   ): Promise<IAgentNotificationData | null> {
-    const due: Prisma.AgentNotificationWhereInput = {
-      status: 'pending',
-      nextAttemptAt: { lte: now },
-      OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }],
-    };
     for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt += 1) {
-      const candidate = await this.prisma.agentNotification.findFirst({
-        where: due,
-        orderBy: { nextAttemptAt: 'asc' },
-      });
+      // Due, unclaimed, and with nothing of the same incident still waiting
+      // ahead of it (a smaller seq that is pending — whether it is in flight
+      // on another replica or waiting for its retry). Rows of one incident
+      // therefore leave in order; across incidents the outbox is free.
+      const candidates = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT n.id
+        FROM "AgentNotification" n
+        WHERE n.status = 'pending'
+          AND n."nextAttemptAt" <= ${now}
+          AND (n."lockedUntil" IS NULL OR n."lockedUntil" < ${now})
+          AND NOT EXISTS (
+            SELECT 1 FROM "AgentNotification" e
+            WHERE e."incidentId" = n."incidentId"
+              AND e.seq < n.seq
+              AND e.status = 'pending'
+          )
+        ORDER BY n."nextAttemptAt" ASC
+        LIMIT 1
+      `;
+      const candidate = candidates[0];
       if (!candidate) return null;
       // The claim repeats the condition: if another replica took the row
       // between the read and this write, nothing matches and we look again.
       const claimed = await this.prisma.agentNotification.updateMany({
-        where: { ...due, id: candidate.id },
+        where: {
+          id: candidate.id,
+          status: 'pending',
+          nextAttemptAt: { lte: now },
+          OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }],
+        },
         data: { lockedUntil },
       });
-      if (claimed.count === 1) return this.mapper.toNotification(candidate);
+      if (claimed.count === 1) {
+        const record = await this.prisma.agentNotification.findUniqueOrThrow({
+          where: { id: candidate.id },
+        });
+        return this.mapper.toNotification(record);
+      }
     }
     return null;
   }
@@ -366,12 +497,16 @@ export class AgentEventGateway extends IAgentEventGateway {
   }
 
   async saveDestination(input: {
-    webhookUrl: string;
+    kind: DestinationKindTypes;
+    webhookUrl: string | null;
+    botToken: string | null;
+    channelId: string | null;
     hint: string;
     updatedBy: string;
   }): Promise<INotificationDestination> {
-    // A new address starts with a clean delivery record: the last outcome
-    // belonged to the address it replaces.
+    // A new destination starts with a clean delivery record: the last
+    // outcome belonged to the one it replaces. Every field is written, so
+    // the other kind's secret is gone.
     const fresh = {
       ...input,
       lastDeliveryAt: null,
@@ -380,7 +515,7 @@ export class AgentEventGateway extends IAgentEventGateway {
     };
     const record = await this.prisma.agentEventDestination.upsert({
       where: { id: DESTINATION_ID },
-      create: { id: DESTINATION_ID, kind: 'slack', ...fresh },
+      create: { id: DESTINATION_ID, ...fresh },
       update: fresh,
     });
     return this.mapper.toDestination(record);

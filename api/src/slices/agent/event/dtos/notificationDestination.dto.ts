@@ -1,15 +1,69 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsString,
+  Matches,
+  MaxLength,
+  ValidateIf,
+} from 'class-validator';
+import {
+  BOT_TOKEN_MAX_LENGTH,
+  BOT_TOKEN_PATTERN,
+  CHANNEL_ID_PATTERN,
+  DESTINATION_KINDS,
+  DestinationKindTypes,
+} from '../domain/agentEvent.types';
 
+/**
+ * One body, two shapes: `kind` says which fields matter. The service checks
+ * the secret's shape once more and nulls the other kind's secret.
+ */
 export class SaveNotificationDestinationDto {
   @ApiProperty({
+    enum: DESTINATION_KINDS,
     description:
-      'A Slack incoming-webhook address (https://hooks.slack.com/services/…). A secret: it is stored and never returned.',
+      '`webhook`: a Slack incoming webhook — one message when an incident opens, one when it closes. `bot`: a Slack bot token and a channel — one message per incident, its story in the thread, the state as a reaction.',
   })
+  @IsIn(DESTINATION_KINDS)
+  kind: DestinationKindTypes;
+
+  @ApiPropertyOptional({
+    description:
+      'kind = webhook: the incoming-webhook address (https://hooks.slack.com/services/…). A secret: stored and never returned.',
+  })
+  @ValidateIf((o: SaveNotificationDestinationDto) => o.kind === 'webhook')
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'webhookUrl is required for the webhook kind' })
   @MaxLength(500)
-  webhookUrl: string;
+  webhookUrl?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'kind = bot: the Bot User OAuth Token (xoxb-…) from OAuth & Permissions. A secret: stored and never returned.',
+  })
+  @ValidateIf((o: SaveNotificationDestinationDto) => o.kind === 'bot')
+  @IsString()
+  @IsNotEmpty({ message: 'botToken is required for the bot kind' })
+  @MaxLength(BOT_TOKEN_MAX_LENGTH)
+  @Matches(BOT_TOKEN_PATTERN, {
+    message:
+      'A bot token (xoxb-…) is needed — OAuth & Permissions → Bot User OAuth Token — not a user token',
+  })
+  botToken?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'kind = bot: the channel id (C0…), from the channel’s About tab. Not a secret.',
+  })
+  @ValidateIf((o: SaveNotificationDestinationDto) => o.kind === 'bot')
+  @IsString()
+  @IsNotEmpty({ message: 'channelId is required for the bot kind' })
+  @Matches(CHANNEL_ID_PATTERN, {
+    message:
+      'The channel id must look like C0… (channel → About → Channel ID), not the channel name',
+  })
+  channelId?: string;
 }
 
 export class NotificationLastDeliveryDto {
@@ -23,20 +77,28 @@ export class NotificationLastDeliveryDto {
   error: string | null;
 }
 
-/** What may be seen of the destination. The address is not part of it. */
+/** What may be seen of the destination. No secret is part of it. */
 export class NotificationDestinationDto {
   @ApiProperty()
   configured: boolean;
 
-  @ApiProperty({ nullable: true, enum: ['slack'] })
-  kind: 'slack' | null;
+  @ApiProperty({ nullable: true, enum: DESTINATION_KINDS })
+  kind: DestinationKindTypes | null;
 
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'The last four characters of the address.',
+    description:
+      'The last four characters of the secret that is set (the webhook address or the bot token).',
   })
   hint: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The bot’s channel id; null on the webhook kind.',
+  })
+  channelId: string | null;
 
   @ApiProperty({ nullable: true, type: String })
   updatedBy: string | null;

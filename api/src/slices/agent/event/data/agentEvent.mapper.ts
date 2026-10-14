@@ -9,6 +9,8 @@ import {
   AgentEventOutcomeTypes,
   AgentEventStatusTypes,
   AgentEventWitnessTypes,
+  DestinationKindTypes,
+  SlackReactionTypes,
   IAgentEventData,
   IAgentIncidentData,
   IAgentNotificationData,
@@ -45,9 +47,17 @@ export class AgentEventMapper {
   toIncident(record: AgentIncident): IAgentIncidentData {
     return {
       id: record.id,
+      number: record.number,
       agentId: record.agentId,
       agentName: record.agentName,
       open: record.openKey !== null,
+      transport: record.transport as DestinationKindTypes | null,
+      slackChannel: record.slackChannel,
+      slackTs: record.slackTs,
+      slackReaction: record.slackReaction as SlackReactionTypes | null,
+      notificationSeq: record.notificationSeq,
+      lastJoinedNotifiedAt: record.lastJoinedNotifiedAt,
+      rootStale: record.rootStale,
       status: record.status as 'failed' | 'unreachable',
       reason: record.reason,
       ranchWitnessed: record.ranchWitnessed,
@@ -66,6 +76,7 @@ export class AgentEventMapper {
       id: record.id,
       incidentId: record.incidentId,
       kind: record.kind as NotificationKindTypes,
+      seq: record.seq,
       payload: record.payload as unknown as INotificationPayload,
       status: record.status as NotificationStatusTypes,
       attempts: record.attempts,
@@ -86,8 +97,12 @@ export class AgentEventMapper {
 
   toDestination(record: AgentEventDestination): INotificationDestination {
     return {
-      kind: 'slack',
+      // Rows written before CLEAN-165 say 'slack'; the migration rewrites
+      // them, and anything that is not the bot reads as the webhook anyway.
+      kind: record.kind === 'bot' ? 'bot' : 'webhook',
       webhookUrl: record.webhookUrl,
+      botToken: record.botToken,
+      channelId: record.channelId,
       hint: record.hint,
       updatedBy: record.updatedBy,
       updatedAt: record.updatedAt,

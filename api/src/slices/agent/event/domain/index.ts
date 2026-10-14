@@ -9,6 +9,11 @@ export { AgentIncidentService } from './agentIncident.service';
 export { AgentNotificationWorker } from './agentNotification.worker';
 export { NotificationDestinationService } from './notificationDestination.service';
 export type { ITestDeliveryResult } from './notificationDestination.service';
-export { INotifier } from './notifier';
-export type { INotificationMessage, NotifyResultTypes } from './notifier';
+export { INotifier, ISlackBotNotifier } from './notifier';
+export type {
+  INotificationMessage,
+  ISlackBotCredentials,
+  NotifyResultTypes,
+  PostResultTypes,
+} from './notifier';
 export { decideDisposition } from './outcome';

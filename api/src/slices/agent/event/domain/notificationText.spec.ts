@@ -1,4 +1,5 @@
 import {
+  IAgentIncidentData,
   IClosedNotificationPayload,
   IOpenedNotificationPayload,
 } from './agentEvent.types';
@@ -7,6 +8,9 @@ import {
   formatSpan,
   renderClosed,
   renderOpened,
+  renderReply,
+  renderRoot,
+  rootStateOf,
 } from './notificationText';
 
 const CONSOLE = 'https://admin.ranch.example';
@@ -138,7 +142,9 @@ describe('renderClosed', () => {
     resolution: 'recovered',
     openedAt: '2026-10-06T21:14:00.000Z',
     upAt: '2026-10-06T21:30:00.000Z',
+    closedAt: '2026-10-06T21:40:00.000Z',
     firstSenderName: 'cluster-watcher',
+    eventCount: 1,
     ...over,
   });
 
@@ -181,5 +187,249 @@ describe('formatSpan', () => {
 describe('escapeSlack', () => {
   it('escapes the ampersand first, so an escape is not escaped twice', () => {
     expect(escapeSlack('<&>')).toBe('&lt;&amp;&gt;');
+  });
+});
+
+// ── The bot transport (CLEAN-165) ────────────────────────────────────────
+
+const T0 = new Date('2026-10-14T13:04:00.000Z');
+const minutes = (n: number) => new Date(T0.getTime() + n * 60_000);
+
+const incident = (
+  over: Partial<IAgentIncidentData> = {},
+): IAgentIncidentData => ({
+  id: 'inc-1',
+  number: 12,
+  agentId: 'agent-1',
+  agentName: 'Test Chatbot',
+  open: true,
+  transport: 'bot',
+  slackChannel: 'C0123456789',
+  slackTs: '1.1',
+  slackReaction: null,
+  notificationSeq: 1,
+  lastJoinedNotifiedAt: null,
+  rootStale: false,
+  status: 'failed',
+  reason: 'OOMKilled',
+  ranchWitnessed: true,
+  witnesses: ['cluster-watcher'],
+  eventCount: 1,
+  openedAt: T0,
+  lastFailureAt: T0,
+  upSince: null,
+  closedAt: null,
+  resolution: null,
+  ...over,
+});
+
+describe('renderRoot', () => {
+  const headline = (i: IAgentIncidentData, mention = false) =>
+    bodyOf(renderRoot(i, CONSOLE, { mention })).split('\n')[0];
+
+  it('is one line: emoji, agent, number, state, cause — and the link below', () => {
+    const message = renderRoot(incident(), CONSOLE, { mention: false });
+    const [line, link] = bodyOf(message).split('\n');
+
+    expect(message.text).toBe('Test Chatbot — incident #12');
+    expect(line).toMatch(
+      /^🔴 \*Test Chatbot — incident #12 · down since <!date\^\d+\^\{date_short_pretty\} at \{time\}\|2026-10-14T13:04:00\.000Z> · OOMKilled\*$/,
+    );
+    expect(link).toBe(`<${CONSOLE}/agents/agent-1?tab=events|Open in Ranch>`);
+  });
+
+  it('mentions the channel only when asked — the first post, never a rewrite', () => {
+    expect(headline(incident(), true)).toContain('🔴 <!channel> *Test Chatbot');
+    expect(headline(incident(), false)).not.toContain('<!channel>');
+  });
+
+  it('counts the reports from the second one on', () => {
+    expect(headline(incident({ eventCount: 1 }))).not.toContain('reports');
+    expect(headline(incident({ eventCount: 2 }))).toContain('· 2 reports*');
+  });
+
+  it('shows "up, watching" with 🟢 once Ranch has seen the agent come up', () => {
+    const i = incident({ upSince: minutes(5) });
+
+    expect(headline(i)).toMatch(
+      /^🟢 \*Test Chatbot — incident #12 · up, watching since <!date\^/,
+    );
+    expect(rootStateOf(i).reaction).toBe('large_green_circle');
+  });
+
+  it('reads as down again when a failure follows the up-turn', () => {
+    const i = incident({ upSince: minutes(5), lastFailureAt: minutes(6) });
+
+    expect(headline(i)).toContain(
+      '🔴 *Test Chatbot — incident #12 · down since',
+    );
+    expect(rootStateOf(i).reaction).toBe('red_circle');
+  });
+
+  it.each([
+    [
+      'recovered',
+      { upSince: minutes(5), closedAt: minutes(15) },
+      '✅',
+      'white_check_mark',
+      /· resolved <!date\^\d+\^[^>]+\|2026-10-14T13:19:00\.000Z> · downtime 5 min/,
+    ],
+    [
+      'unconfirmed',
+      { closedAt: minutes(10) },
+      '🟢',
+      'large_green_circle',
+      /· quiet since <!date\^\d+\^[^>]+\|2026-10-14T13:04:00\.000Z>, unconfirmed/,
+    ],
+    [
+      'stopped',
+      { closedAt: minutes(3) },
+      '⏹',
+      'black_square_for_stop',
+      /· stopped by owner <!date\^/,
+    ],
+    [
+      'deleted',
+      { closedAt: minutes(3) },
+      '⏹',
+      'black_square_for_stop',
+      /· deleted <!date\^/,
+    ],
+  ] as const)(
+    'closes as %s with its own emoji, reaction and clause',
+    (resolution, over, emoji, reaction, clause) => {
+      const i = incident({
+        open: false,
+        resolution,
+        eventCount: 2,
+        ...over,
+      });
+      const line = headline(i);
+
+      expect(line.startsWith(`${emoji} *Test Chatbot — incident #12`)).toBe(
+        true,
+      );
+      expect(line).toMatch(clause);
+      // The cause belongs to the open state; a closed root ends with the count.
+      expect(line).not.toContain('OOMKilled');
+      expect(line).toContain('· 2 reports*');
+      expect(rootStateOf(i).reaction).toBe(reaction);
+    },
+  );
+
+  it('cuts a long cause to one line and shows it as sent, with Slack syntax disarmed', () => {
+    const reason = `<!channel> ${'x'.repeat(200)}`;
+    const line = headline(incident({ reason }));
+
+    expect(line).not.toContain('<!channel>');
+    expect(line).toContain('&lt;!channel&gt; ');
+    expect(line).toContain('…');
+    expect(line.length).toBeLessThan(250);
+  });
+
+  it('carries no link when the API does not know the console address', () => {
+    const body = bodyOf(renderRoot(incident(), null, { mention: false }));
+
+    expect(body.split('\n')).toHaveLength(1);
+    expect(body).not.toContain('Open in Ranch');
+  });
+});
+
+describe('renderReply', () => {
+  const closedPayload = (
+    over: Partial<IClosedNotificationPayload> = {},
+  ): IClosedNotificationPayload => ({
+    kind: 'closed',
+    agentId: 'agent-1',
+    agentName: 'Test Chatbot',
+    resolution: 'recovered',
+    openedAt: T0.toISOString(),
+    upAt: minutes(5).toISOString(),
+    closedAt: minutes(15).toISOString(),
+    firstSenderName: 'cluster-watcher',
+    eventCount: 2,
+    ...over,
+  });
+
+  it('tells the opening failure with its cause, reporter and what Ranch saw', () => {
+    const message = renderReply(
+      opened({ agentName: 'Test Chatbot', ranchStatus: 'running' }),
+    );
+    const lines = bodyOf(message).split('\n');
+
+    expect(message.text).toBe('Failed: Test Chatbot');
+    expect(lines[0]).toMatch(/^🔴 \*Failed\* — <!date\^/);
+    expect(lines[1]).toBe('*Cause:* CrashLoopBackOff');
+    expect(lines[2]).toBe(
+      '*Reported by:* cluster-watcher (via kubernetes-event-exporter)',
+    );
+    expect(lines[3]).toBe('*Ranch sees:* running — the two disagree');
+  });
+
+  it('tells a later report as "Failed again" with the running count', () => {
+    const message = renderReply({
+      ...opened({
+        agentName: 'Test Chatbot',
+        witness: 'ranch',
+        senderName: 'Ranch',
+        tool: null,
+      }),
+      kind: 'joined',
+      eventCount: 3,
+    });
+    const lines = bodyOf(message).split('\n');
+
+    expect(message.text).toBe('Failed again: Test Chatbot');
+    expect(lines[0]).toMatch(/^🔴 \*Failed again\* — <!date\^/);
+    expect(lines[2]).toBe(
+      '*Reported by:* Ranch (its own watch) · 3 reports so far',
+    );
+  });
+
+  it('tells the up-turn and what closes the incident', () => {
+    const message = renderReply({
+      kind: 'running',
+      agentId: 'agent-1',
+      agentName: 'Test Chatbot',
+      at: minutes(5).toISOString(),
+    });
+
+    expect(message.text).toBe('Running again: Test Chatbot');
+    expect(bodyOf(message)).toContain('🟢 *Running again* — <!date^');
+    expect(bodyOf(message)).toContain('closes after 10 min');
+  });
+
+  it.each([
+    ['recovered', 'Resolved: Test Chatbot', '✅ *Resolved*', 'Down for 5 min'],
+    [
+      'unconfirmed',
+      'No further reports: Test Chatbot',
+      '🟢 *No further reports*',
+      'cluster-watcher reported a failure at',
+    ],
+    [
+      'stopped',
+      'Stopped: Test Chatbot',
+      '⏹ *Stopped by owner*',
+      'nobody was paged',
+    ],
+    ['deleted', 'Deleted: Test Chatbot', '⏹ *Deleted*', 'nobody was paged'],
+  ] as const)('tells a %s close', (resolution, text, head, detail) => {
+    const message = renderReply(closedPayload({ resolution }));
+
+    expect(message.text).toBe(text);
+    expect(bodyOf(message)).toContain(head);
+    expect(bodyOf(message)).toContain(detail);
+  });
+
+  it('never mentions the channel, whatever the sender wrote', () => {
+    const message = renderReply(
+      opened({ reason: '<!channel> <!here> everyone look' }),
+    );
+
+    expect(bodyOf(message)).not.toMatch(/<!(channel|here)>/);
+    expect(bodyOf(message)).toContain(
+      '&lt;!channel&gt; &lt;!here&gt; everyone look',
+    );
   });
 });

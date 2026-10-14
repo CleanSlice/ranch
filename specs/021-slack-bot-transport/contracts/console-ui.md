@@ -32,8 +32,10 @@ Buttons as today: Save / Replace / Remove (confirm) / Send test. The
 
 ### Bot guide (`destination/BotGuide.vue`)
 
-Replaces `SenderGuide` when the bot kind is selected. Four numbered steps,
-as the owner did them on 2026-10-14:
+Shown under the bot's fields while the bot kind is selected. (`SenderGuide`
+is about the senders — DevOps posting events — and stays on the page
+whatever the transport; the first draft of this contract had it replaced,
+which was wrong.) Four numbered steps, as the owner did them on 2026-10-14:
 
 1. api.slack.com/apps → your app → OAuth & Permissions → Bot Token Scopes:
    add `chat:write` and `reactions:write`.

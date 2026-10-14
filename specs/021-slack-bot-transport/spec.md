@@ -247,8 +247,12 @@ incident: two messages, the same text as before this feature.
 - **The agent is renamed mid-incident**: the root keeps the name it opened
   with, as the console does today.
 - **The destination is switched from bot to webhook while an incident is
-  open**: the open incident finishes on the bot (its root exists there);
-  only incidents opened after the switch use the webhook.
+  open**: switching discards the token (FR-006), so the bot can no longer
+  write to the open incident's thread; its remaining updates are marked
+  skipped (they are never spoken through the webhook), and only incidents
+  opened after the switch use the webhook. *(Settled at implementation:
+  the first draft said "finishes on the bot", which the discarded token
+  makes impossible.)*
 - **Times**: every time in the message is shown in the reader's own timezone
   by Slack, as today's messages do.
 

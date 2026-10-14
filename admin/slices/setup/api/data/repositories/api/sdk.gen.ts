@@ -3556,7 +3556,7 @@ export class AgentEventsService {
   }
 
   /**
-   * Set the Slack incoming-webhook address notifications go to. The address is stored and never returned.
+   * Set where notifications go: a Slack incoming webhook (kind = webhook, webhookUrl) or a Slack bot (kind = bot, botToken + channelId). The secret is stored and never returned; saving one kind discards the other.
    */
   public static saveNotificationDestination<
     ThrowOnError extends boolean = false,

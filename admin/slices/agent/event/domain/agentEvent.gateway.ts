@@ -4,6 +4,7 @@ import type {
   IListAgentEventsQuery,
   IListAgentIncidentsQuery,
   INotificationDestination,
+  ISaveDestination,
   ITestDelivery,
 } from './agentEvent.types';
 
@@ -16,7 +17,7 @@ export abstract class IAgentEventGateway {
   abstract listEvents(query?: IListAgentEventsQuery): Promise<IAgentEventPage>;
   abstract listIncidents(query?: IListAgentIncidentsQuery): Promise<IAgentIncidentPage>;
   abstract getDestination(): Promise<INotificationDestination>;
-  abstract saveDestination(webhookUrl: string): Promise<INotificationDestination>;
+  abstract saveDestination(input: ISaveDestination): Promise<INotificationDestination>;
   abstract removeDestination(): Promise<void>;
   abstract sendTest(): Promise<ITestDelivery>;
 }

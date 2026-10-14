@@ -39,6 +39,7 @@ import {
 
 export const toIncidentDto = (i: IAgentIncidentView): AgentIncidentDto => ({
   id: i.id,
+  number: i.number,
   agentId: i.agentId,
   agentName: i.agentName,
   state: i.open ? 'open' : 'closed',

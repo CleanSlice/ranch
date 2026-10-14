@@ -5,6 +5,7 @@ import type {
   IListAgentEventsQuery,
   IListAgentIncidentsQuery,
   INotificationDestination,
+  ISaveDestination,
   ITestDelivery,
 } from './agentEvent.types';
 
@@ -27,8 +28,8 @@ export class AgentEventService {
     return this.gateway.getDestination();
   }
 
-  saveDestination(webhookUrl: string): Promise<INotificationDestination> {
-    return this.gateway.saveDestination(webhookUrl);
+  saveDestination(input: ISaveDestination): Promise<INotificationDestination> {
+    return this.gateway.saveDestination(input);
   }
 
   removeDestination(): Promise<void> {

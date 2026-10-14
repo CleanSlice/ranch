@@ -82,7 +82,7 @@ const incidentIds = computed(() => {
   return ids
     .filter((id) => {
       const incident = store.incidentById(id);
-      if (!incident || !matches(incident.agentName)) return false;
+      if (!incident || !matches(`#${incident.number} ${incident.agentName}`)) return false;
       if (incidentSegment.value === 'all') return true;
       return incident.state === incidentSegment.value;
     })
@@ -180,7 +180,7 @@ async function loadMore(what: 'incidents' | 'events') {
 
     <template v-if="view === 'incidents'">
       <ListToolbar>
-        <ListSearch v-model="query" placeholder="Search by agent" />
+        <ListSearch v-model="query" placeholder="Search by agent or #number" />
         <ListSegments
           v-model="incidentSegment"
           :options="incidentSegments"

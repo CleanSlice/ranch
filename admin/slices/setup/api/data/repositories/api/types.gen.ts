@@ -2031,6 +2031,10 @@ export type AgentIncidentNotificationDto = {
 
 export type AgentIncidentDto = {
   id: string;
+  /**
+   * The short handle people use: "#12". Unique per install, in opening order.
+   */
+  number: number;
   agentId: string | null;
   agentName: string;
   state: "open" | "closed";
@@ -2066,11 +2070,15 @@ export type NotificationLastDeliveryDto = {
 
 export type NotificationDestinationDto = {
   configured: boolean;
-  kind: "slack";
+  kind: "webhook" | "bot";
   /**
-   * The last four characters of the address.
+   * The last four characters of the secret that is set (the webhook address or the bot token).
    */
   hint: string | null;
+  /**
+   * The bot’s channel id; null on the webhook kind.
+   */
+  channelId: string | null;
   updatedBy: string | null;
   updatedAt: string | null;
   /**
@@ -2082,9 +2090,21 @@ export type NotificationDestinationDto = {
 
 export type SaveNotificationDestinationDto = {
   /**
-   * A Slack incoming-webhook address (https://hooks.slack.com/services/…). A secret: it is stored and never returned.
+   * `webhook`: a Slack incoming webhook — one message when an incident opens, one when it closes. `bot`: a Slack bot token and a channel — one message per incident, its story in the thread, the state as a reaction.
    */
-  webhookUrl: string;
+  kind: "webhook" | "bot";
+  /**
+   * kind = webhook: the incoming-webhook address (https://hooks.slack.com/services/…). A secret: stored and never returned.
+   */
+  webhookUrl?: string;
+  /**
+   * kind = bot: the Bot User OAuth Token (xoxb-…) from OAuth & Permissions. A secret: stored and never returned.
+   */
+  botToken?: string;
+  /**
+   * kind = bot: the channel id (C0…), from the channel’s About tab. Not a secret.
+   */
+  channelId?: string;
 };
 
 export type TestDeliveryDto = {

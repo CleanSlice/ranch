@@ -364,6 +364,16 @@ export const SETTING_CATALOG: ISettingDefinition[] = [
       '(env PUBLIC_API_URL); unset falls back to integrations.ranch_api_url.',
     restartRequired: false,
   },
+  {
+    group: 'infrastructure',
+    name: 'environment',
+    valueType: 'string',
+    description:
+      'Short name of this installation — dev, staging, prod-eu — shown as a ' +
+      '[label] at the start of every agent failure notification so a reader ' +
+      'knows where the agent fell (env RANCH_ENVIRONMENT); empty means no label.',
+    restartRequired: false,
+  },
 ];
 
 export const settingKey = (group: string, name: string): string =>

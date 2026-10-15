@@ -25,6 +25,7 @@ import {
   IApiKeyData,
 } from '#/user/apiKey/domain/apiKey.types';
 import { UserRoleTypes } from '#/user/user/domain';
+import { IInfraConfigGateway } from '#/setting/domain/infraConfig.gateway';
 import { AgentEventController } from './agentEvent.controller';
 import { AgentEventIngestController } from './agentEvent.ingest.controller';
 import {
@@ -434,6 +435,7 @@ describe('the notification destination', () => {
       gateway as unknown as IAgentEventGateway,
       notifier as unknown as INotifier,
       bot as unknown as ISlackBotNotifier,
+      { getEnvironment: async () => null } as unknown as IInfraConfigGateway,
     );
     const controller = new AgentEventController(
       {} as AgentEventService,
@@ -742,6 +744,7 @@ describe('the bot destination', () => {
       gateway as unknown as IAgentEventGateway,
       notifier as unknown as INotifier,
       bot as unknown as ISlackBotNotifier,
+      { getEnvironment: async () => null } as unknown as IInfraConfigGateway,
     );
     const controller = new AgentEventController(
       {} as AgentEventService,

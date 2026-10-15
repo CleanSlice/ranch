@@ -60,6 +60,16 @@ export function agentEventsLink(consoleUrl: string, agentId: string): string {
   return `${consoleUrl}/agents/${encodeURIComponent(agentId)}?tab=events`;
 }
 
+/**
+ * "[dev-mazda] " at the start of a channel-level message, so a reader knows
+ * which installation it came from (CLEAN-167). Escaped like any text that
+ * is not ours; empty when no environment is set.
+ */
+function envLabel(environment: string | null | undefined): string {
+  const trimmed = environment?.trim();
+  return trimmed ? `[${escapeSlack(trimmed)}] ` : '';
+}
+
 function message(text: string, lines: string[]): INotificationMessage {
   return {
     text,
@@ -72,9 +82,10 @@ function message(text: string, lines: string[]): INotificationMessage {
 export function renderOpened(
   payload: IOpenedNotificationPayload,
   consoleUrl: string | null,
+  environment: string | null = null,
 ): INotificationMessage {
   const name = escapeSlack(payload.agentName);
-  const headline = `Agent ${payload.status}: ${name}`;
+  const headline = `${envLabel(environment)}Agent ${payload.status}: ${name}`;
   // An agent going down is the one message that should reach people who are
   // not looking: it mentions the whole channel. The mention is ours and sits
   // outside everything a sender supplied — their text is escaped, so a
@@ -115,15 +126,17 @@ export function renderOpened(
 
 export function renderClosed(
   payload: IClosedNotificationPayload,
+  environment: string | null = null,
 ): INotificationMessage {
   const name = escapeSlack(payload.agentName);
+  const label = envLabel(environment);
   const stable = formatSpan(QUIET_MS);
 
   if (payload.resolution === 'recovered') {
     const down = formatSpan(
       new Date(payload.upAt).getTime() - new Date(payload.openedAt).getTime(),
     );
-    const headline = `Agent back: ${name}`;
+    const headline = `${label}Agent back: ${name}`;
     return message(headline, [
       `🟢 *${headline}*`,
       `Down for ${down} (${slackDate(payload.openedAt)} → ${slackDate(payload.upAt)}), up and stable for ${stable}.`,
@@ -133,7 +146,7 @@ export function renderClosed(
   const who = payload.firstSenderName
     ? escapeSlack(payload.firstSenderName)
     : 'An outside sender';
-  const headline = `No further reports: ${name}`;
+  const headline = `${label}No further reports: ${name}`;
   return message(headline, [
     `🟢 *${headline}*`,
     `${who} reported a failure at ${slackDate(payload.openedAt)}. Ranch saw the agent running throughout, and nothing more has been reported for ${stable}.`,
@@ -213,11 +226,15 @@ export function rootStateOf(incident: IAgentIncidentData): IRootState {
 export function renderRoot(
   incident: IAgentIncidentData,
   consoleUrl: string | null,
-  options: { mention: boolean },
+  options: { mention: boolean; environment?: string | null },
 ): INotificationMessage {
   const state = rootStateOf(incident);
+  const label = envLabel(options.environment);
   const name = escapeSlack(incident.agentName);
-  const parts = [`${name} — incident #${incident.number}`, state.clause];
+  const parts = [
+    `${label}${name} — incident #${incident.number}`,
+    state.clause,
+  ];
   if (incident.reason && incident.open) {
     parts.push(escapeSlack(cut(incident.reason, ROOT_REASON_MAX)));
   }
@@ -230,7 +247,10 @@ export function renderRoot(
       `<${agentEventsLink(consoleUrl, incident.agentId)}|Open in Ranch>`,
     );
   }
-  return message(`${incident.agentName} — incident #${incident.number}`, lines);
+  return message(
+    `${label}${incident.agentName} — incident #${incident.number}`,
+    lines,
+  );
 }
 
 function reportedBy(payload: {
@@ -321,11 +341,13 @@ export function renderReply(
   }
 }
 
-export function renderTest(): INotificationMessage {
-  const text =
-    'Test notification from Ranch — agent failure notifications will arrive here.';
+export function renderTest(
+  environment: string | null = null,
+): INotificationMessage {
+  const label = envLabel(environment);
+  const text = `${label}Test notification from Ranch — agent failure notifications will arrive here.`;
   return message(text, [
-    `✅ *Test notification from Ranch*`,
+    `✅ *${label}Test notification from Ranch*`,
     'Agent failure notifications will arrive here.',
   ]);
 }

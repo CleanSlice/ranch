@@ -100,6 +100,14 @@ export class NotificationDestinationDto {
   })
   channelId: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'The installation’s label at the start of every message ([dev], [prod-eu]): the infrastructure.environment setting, else RANCH_ENVIRONMENT on the API; null when neither is set.',
+  })
+  environment: string | null;
+
   @ApiProperty({ nullable: true, type: String })
   updatedBy: string | null;
 

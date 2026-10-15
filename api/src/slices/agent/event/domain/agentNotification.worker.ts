@@ -148,13 +148,14 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
     if (stale.length === 0) return 0;
     const destination = await this.gateway.getDestination();
     const cred = destination && this.destinations.botCredentials(destination);
+    const environment = await this.destinations.environment();
     let rewritten = 0;
     for (const incident of stale) {
       // The flag is cleared first: a report arriving during the rewrite sets
       // it again and the next sweep catches it.
       await this.gateway.clearRootStale(incident.id);
       if (!cred) continue;
-      const error = await this.rewriteRoot(cred, incident);
+      const error = await this.rewriteRoot(cred, incident, environment);
       if (error) await this.gateway.recordDelivery(now, false, error);
       else rewritten += 1;
     }
@@ -184,6 +185,7 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
     // that opened with no destination at all takes whatever is set now.
     const transport = incident.transport ?? destination.kind;
     const cred = this.destinations.botCredentials(destination);
+    const environment = await this.destinations.environment();
     let sideEffect: string | null = null;
     // A bot incident whose bot is gone (the owner switched to the webhook
     // and the token with it) has no thread to speak in: its rows are skipped
@@ -191,11 +193,17 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
     const result =
       transport === 'bot'
         ? cred
-          ? await this.deliverBot(cred, incident, notification, (error) => {
-              sideEffect = error;
-            })
+          ? await this.deliverBot(
+              cred,
+              incident,
+              notification,
+              environment,
+              (error) => {
+                sideEffect = error;
+              },
+            )
           : 'silent'
-        : await this.deliverWebhook(destination, notification);
+        : await this.deliverWebhook(destination, notification, environment);
     if (result === 'silent') {
       // A row the current transport has nothing to say for (a webhook
       // asked to speak mid-incident, or a bot row with no bot any more).
@@ -212,13 +220,14 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
   private async deliverWebhook(
     destination: INotificationDestination,
     notification: IAgentNotificationData,
+    environment: string | null,
   ): Promise<NotifyResultTypes | 'silent'> {
     const { payload } = notification;
     if (!destination.webhookUrl) return 'silent';
     if (payload.kind === 'opened') {
       return this.notifier.send(
         destination.webhookUrl,
-        renderOpened(payload, this.destinations.consoleUrl()),
+        renderOpened(payload, this.destinations.consoleUrl(), environment),
       );
     }
     if (
@@ -226,7 +235,10 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
       (payload.resolution === 'recovered' ||
         payload.resolution === 'unconfirmed')
     ) {
-      return this.notifier.send(destination.webhookUrl, renderClosed(payload));
+      return this.notifier.send(
+        destination.webhookUrl,
+        renderClosed(payload, environment),
+      );
     }
     return 'silent';
   }
@@ -243,6 +255,7 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
     cred: ISlackBotCredentials,
     incident: IAgentIncidentData,
     notification: IAgentNotificationData,
+    environment: string | null,
     onSideEffectError: (error: string) => void,
   ): Promise<NotifyResultTypes> {
     let current = incident;
@@ -253,6 +266,7 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
         cred,
         renderRoot(current, this.destinations.consoleUrl(), {
           mention: notification.kind === 'opened' && current.open,
+          environment,
         }),
       );
       if (!root.ok) return root;
@@ -274,6 +288,7 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
     const error = await this.rewriteRoot(
       { ...cred, channelId: fresh.slackChannel ?? cred.channelId },
       fresh,
+      environment,
       // The very first delivery may legitimately keep the mention: the root
       // was just posted with it and nothing has changed since.
       notification.kind === 'opened' && fresh.open && !fresh.upSince,
@@ -289,6 +304,7 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
   private async rewriteRoot(
     cred: ISlackBotCredentials,
     incident: IAgentIncidentData,
+    environment: string | null,
     keepMention = false,
   ): Promise<string | null> {
     if (!incident.slackTs) return 'no root message to rewrite';
@@ -298,6 +314,7 @@ export class AgentNotificationWorker implements OnModuleInit, OnModuleDestroy {
       incident.slackTs,
       renderRoot(incident, this.destinations.consoleUrl(), {
         mention: keepMention,
+        environment,
       }),
     );
     if (!updated.ok) error = updated.error;

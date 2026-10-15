@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '#/user/auth/auth.module';
 import { ApiKeyModule } from '#/user/apiKey/apiKey.module';
 import { AgentModule } from '#/agent/agent/agent.module';
+import { SettingModule } from '#/setting/setting.module';
 import { AgentEventIngestController } from './agentEvent.ingest.controller';
 import { AgentEventController } from './agentEvent.controller';
 import { AgentEventTool } from './agentEvent.tool';
@@ -22,7 +23,8 @@ import { SlackWebhookNotifier } from './data/slackWebhook.notifier';
 // gains no new cycle. AuthModule brings the JWT and API-key guards;
 // ApiKeyModule the service ScopesGuard asks about scopes.
 @Module({
-  imports: [AuthModule, ApiKeyModule, AgentModule],
+  // SettingModule: the environment label on every message (CLEAN-167).
+  imports: [AuthModule, ApiKeyModule, AgentModule, SettingModule],
   controllers: [AgentEventIngestController, AgentEventController],
   providers: [
     AgentEventMapper,

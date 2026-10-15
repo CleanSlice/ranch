@@ -119,3 +119,28 @@ describe('InfraConfigGateway.getApiPublicUrl', () => {
     );
   });
 });
+
+describe('InfraConfigGateway.getEnvironment', () => {
+  it('prefers the setting, then RANCH_ENVIRONMENT, trimmed', async () => {
+    const both = makeHarness({
+      settings: { 'infrastructure/environment': { value: ' staging ' } },
+      env: { RANCH_ENVIRONMENT: 'dev' },
+    });
+    expect(await both.gateway.getEnvironment()).toBe('staging');
+
+    const envOnly = makeHarness({ env: { RANCH_ENVIRONMENT: ' dev-mazda ' } });
+    expect(await envOnly.gateway.getEnvironment()).toBe('dev-mazda');
+  });
+
+  it('is null when neither is set — no label, nothing changes for an old install', async () => {
+    expect(await makeHarness({}).gateway.getEnvironment()).toBeNull();
+    expect(
+      await makeHarness({
+        env: { RANCH_ENVIRONMENT: '' },
+      }).gateway.getEnvironment(),
+    ).toBeNull();
+    expect(
+      await makeHarness({ findByKeyThrows: true }).gateway.getEnvironment(),
+    ).toBeNull();
+  });
+});

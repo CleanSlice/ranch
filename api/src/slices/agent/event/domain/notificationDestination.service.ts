@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
 } from '@nestjs/common';
+import { IInfraConfigGateway } from '#/setting/domain/infraConfig.gateway';
 import { IAgentEventGateway } from './agentEvent.gateway';
 import {
   BOT_TOKEN_MAX_LENGTH,
@@ -36,10 +37,24 @@ export class NotificationDestinationService {
     private readonly gateway: IAgentEventGateway,
     private readonly notifier: INotifier,
     private readonly bot: ISlackBotNotifier,
+    private readonly infra: IInfraConfigGateway,
   ) {}
 
   async view(): Promise<INotificationDestinationView> {
     return this.toView(await this.gateway.getDestination());
+  }
+
+  /**
+   * The installation's label for every message — the `environment` setting,
+   * else RANCH_ENVIRONMENT — or null for none (CLEAN-167). A settings
+   * outage must not stop a notification: it then goes out unlabelled.
+   */
+  async environment(): Promise<string | null> {
+    try {
+      return await this.infra.getEnvironment();
+    } catch {
+      return null;
+    }
   }
 
   /** The kind in force right now; null when nothing is set. */
@@ -94,9 +109,10 @@ export class NotificationDestinationService {
       throw new ConflictException('No notification destination is set');
     }
     const cred = this.botCredentials(destination);
+    const test = renderTest(await this.environment());
     const result = cred
-      ? await this.bot.post(cred, renderTest())
-      : await this.notifier.send(destination.webhookUrl ?? '', renderTest());
+      ? await this.bot.post(cred, test)
+      : await this.notifier.send(destination.webhookUrl ?? '', test);
     const error = result.ok ? null : result.error;
     await this.gateway.recordDelivery(new Date(), result.ok, error);
     return { delivered: result.ok, error };
@@ -176,16 +192,18 @@ export class NotificationDestinationService {
     return channelId;
   }
 
-  private toView(
+  private async toView(
     destination: INotificationDestination | null,
-  ): INotificationDestinationView {
+  ): Promise<INotificationDestinationView> {
     const consoleLinks = this.consoleUrl() !== null;
+    const environment = await this.environment();
     if (!destination) {
       return {
         configured: false,
         kind: null,
         hint: null,
         channelId: null,
+        environment,
         updatedBy: null,
         updatedAt: null,
         consoleLinks,
@@ -197,6 +215,7 @@ export class NotificationDestinationService {
       kind: destination.kind,
       hint: destination.hint,
       channelId: destination.kind === 'bot' ? destination.channelId : null,
+      environment,
       updatedBy: destination.updatedBy,
       updatedAt: destination.updatedAt,
       consoleLinks,

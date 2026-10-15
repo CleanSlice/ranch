@@ -4633,6 +4633,12 @@ export const NotificationDestinationDtoSchema = {
       nullable: true,
       description: "The bot’s channel id; null on the webhook kind.",
     },
+    environment: {
+      type: "string",
+      nullable: true,
+      description:
+        "The installation’s label at the start of every message ([dev], [prod-eu]): the infrastructure.environment setting, else RANCH_ENVIRONMENT on the API; null when neither is set.",
+    },
     updatedBy: {
       type: "string",
       nullable: true,
@@ -4661,6 +4667,7 @@ export const NotificationDestinationDtoSchema = {
     "kind",
     "hint",
     "channelId",
+    "environment",
     "updatedBy",
     "updatedAt",
     "consoleLinks",

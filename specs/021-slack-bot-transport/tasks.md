@@ -12,39 +12,60 @@
 
 **Organization**: by user story. Paths are repository-relative. "D4", "F2" refer to [research.md](./research.md). `EVENT = api/src/slices/agent/event`, `ADMIN = admin/slices/agent/event`.
 
-## Status after the implementation pass (2026-10-14)
+## Status after the live proof (2026-10-15)
 
-51 of 55 tasks are closed. Three commits on the branch: the API, the
-console, the docs.
+54 of 55 tasks are closed; T055 (merge) is the reviewer's.
 
 **Verified**
 
 - `api`: `bun run build`; the whole jest suite — 152 suites, 2130 tests —
-  with 223 in `agent/event` + `tool-secrets` (bot notifier error map with a
-  mocked `fetch`, the root for every state, the four replies, the flow on
-  the bot: idempotent root, one reply a minute, stale-root sweep, ordered
-  delivery, late root in its final state, lost rewrite recorded, bot gone →
-  skipped; the webhook's two messages unchanged). `eslint --quiet` and
+  with 223 in `agent/event` + `tool-secrets`. `eslint --quiet` and
   Prettier (LF) on every changed file.
 - `admin`: `bun test slices` (195), `npx nuxt typecheck`, `bun run
   locale:check`; the five changed/new components compiled by the dev server.
-- The four Slack calls themselves, with the owner's bot and channel, on
-  2026-10-14 before the code was written (three live mockups).
+- **Against the local Postgres that still held the CLEAN-139 stress data
+  (261 incidents, 60 000 events):** the migration applied with
+  `migrate deploy`, `migrate diff --exit-code` → 0; numbers 1…261 distinct
+  and strictly increasing with `openedAt`; `seq` 0/1 on the 14 existing
+  rows; `kind: slack → webhook`; `transport = webhook` on the 5 notified
+  incidents, NULL on the rest; the sequence at 262.
+- **Through the code, with the owner's bot and channel**, two API processes
+  on that database (the Slack side read in the channel; the Ranch side read
+  in the tables):
+  - Settings through the API: `PUT` bot → view with kind, hint, channel,
+    no token; test delivered; `xoxp-`, a channel name and a missing field
+    refused with the contract's words.
+  - #262: opened (root with `@channel`, 🔴 reaction, "Failed" reply) → six
+    reports inside a minute → one "Failed again" reply, count 7 on the
+    root, `rootStale` cleared by the sweep → Ranch's own drift sweep
+    reported the pod-less agent → a third reply "Reported by: Ranch" →
+    aged past the quiet period with the agent running → closed
+    `recovered`, "Resolved" reply, ✅ reaction, root rewritten.
+  - #263: the same failure posted four times in parallel at both processes
+    → one incident, one root, one "Failed again"; aged → `unconfirmed`, 🟢.
+  - #264: agent stopped → `stopped`, "Stopped by owner" reply, ⏹, no new
+    channel message.
+  - Switch to the webhook: the orphaned bot incident #265 had its remaining
+    rows `skipped`; #266, opened by Ranch's own watch on the webhook, got
+    exactly `opened` and `closed` (sent) — the CLEAN-139 messages.
+  - Every delivery `ok`; the destination's last error stayed empty.
 
 **Not verified, and why**
 
-- **T002 / T027 / T053 — anything against a real database or the live
-  bot through the code.** Docker was down for the whole pass; the
-  migration's SQL is the `migrate diff` of the schema plus hand-written
-  backfills and has not been applied anywhere; the ordered claim's
-  `NOT EXISTS` has not run on Postgres. The quickstart is owed in full
-  before the PR leaves draft.
-- **The screens in a browser** — compiled, not clicked.
+- **"Running again" through the code.** Without a cluster nothing moves an
+  agent to `running` through the gateway (the sweep reads the status, the
+  reply needs the transition), so that reply and the 🟢 "up, watching"
+  rewrite are covered by the flow spec only.
+- **The outage ordering (quickstart Scenario 4 step 1)** — blocking
+  `slack.com` needs an admin hosts-file edit; the ordered claim ran on
+  Postgres through every incident above, the out-of-order case is in the
+  flow spec.
+- **Screens in a browser** — compiled, not clicked.
 
 ## Phase 1: Setup
 
 - [x] T001 Confirm the branch sits on `origin/main` `3baeec9d` and the worktree is clean (`git status`, `git log -1 origin/main`); re-fetch over HTTPS if stale
-- [ ] T002 Local database for the migration and the live proof: `cd api && docker compose up -d postgres-local && npx prisma migrate deploy` (memory note: the container is shared across worktrees; `now()` in psql is Kyiv time)
+- [x] T002 Local database for the migration and the live proof: `cd api && docker compose up -d postgres-local && npx prisma migrate deploy` (memory note: the container is shared across worktrees; `now()` in psql is Kyiv time)
 
 ## Phase 2: Foundational — schema, types, ports
 
@@ -102,7 +123,7 @@ console, the docs.
 - [x] T024 [US2] `EVENT/domain/notificationText.ts`: `renderReply(payload)` per kind
 - [x] T025 [US2] `EVENT/domain/agentIncident.service.ts`: `attachFailure` builds the `joined` payload (with `eventCount` after the touch) and passes `JOINED_REPLY_GAP_MS`; `noteRunning` builds the `running` payload
 - [x] T026 [US2] `EVENT/domain/agentNotification.worker.ts`: `sweepIncidents` also calls `rewriteStaleRoots()` — for every `listStaleBotIncidents()` row: `renderRoot` + `update`, `clearRootStale`; failures recorded, never thrown
-- [ ] T027 [US2] `EVENT/data/agentEvent.gateway.ts`: the ordered-claim `NOT EXISTS` proven with a jest-less check against the local database (two rows, later `seq` due earlier → the earlier is claimed first); note the SQL in a code comment
+- [x] T027 [US2] `EVENT/data/agentEvent.gateway.ts`: the ordered-claim `NOT EXISTS` proven with a jest-less check against the local database (two rows, later `seq` due earlier → the earlier is claimed first); note the SQL in a code comment
 - [x] T028 [US2] Run T022–T023 green; `bun run build`
 
 **Checkpoint**: the thread tells the story in order and stays calm under a flood.
@@ -159,7 +180,7 @@ console, the docs.
 
 - [x] T051 [P] `docs/operations/agent-events.md`: a "Slack bot" section — what the owner sees, the four setup steps, the one-per-minute rule, the endings; the webhook section kept
 - [x] T052 [P] `specs/021-slack-bot-transport/contracts/console-api.md` and `slack-bot.md` re-read against the code; fix any drift in the docs, not by bending the code
-- [ ] T053 Live proof per [quickstart.md](./quickstart.md) against the owner's bot (`SLACK_BOT_OAUTH`, `SLACK_CHANNEL_ID` from `.env.project`, never printed): Scenarios 1, 2, 3, 4 (step 1 by blocking `slack.com`), 5; two API processes for Scenario 4 step 3; record what was run and what was not in the PR
+- [x] T053 Live proof per [quickstart.md](./quickstart.md) against the owner's bot (`SLACK_BOT_OAUTH`, `SLACK_CHANNEL_ID` from `.env.project`, never printed): Scenarios 1, 2, 3, 4 (step 1 by blocking `slack.com`), 5; two API processes for Scenario 4 step 3; record what was run and what was not in the PR
 - [x] T054 Gates on the final tree: `cd api && bun run build && NODE_OPTIONS=--experimental-vm-modules npx jest src/slices/agent/event src/slices/mcp/tool-secrets.spec.ts`; `cd admin && bun test slices && npx nuxt typecheck`; `bun run locale:check`; `npx eslint --quiet` + Prettier (`--end-of-line auto`) on changed files
 - [ ] T055 Commit(s) with `CLEAN-165`, PR into `main` with: verified / not verified, the twin-console statement (`app` has no `agent/event`: 0 matches), the migration note (backfills, `kind: slack → webhook`), the Slack-side steps for the owner; PR link on CLEAN-165, status In Testing
 

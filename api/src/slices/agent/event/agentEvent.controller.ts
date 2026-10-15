@@ -39,6 +39,7 @@ import {
 
 export const toIncidentDto = (i: IAgentIncidentView): AgentIncidentDto => ({
   id: i.id,
+  number: i.number,
   agentId: i.agentId,
   agentName: i.agentName,
   state: i.open ? 'open' : 'closed',
@@ -127,7 +128,7 @@ export class AgentEventController {
   @Roles(UserRoleTypes.Owner)
   @ApiOperation({
     summary:
-      'Set the Slack incoming-webhook address notifications go to. The address is stored and never returned.',
+      'Set where notifications go: a Slack incoming webhook (kind = webhook, webhookUrl) or a Slack bot (kind = bot, botToken + channelId). The secret is stored and never returned; saving one kind discards the other.',
     operationId: 'saveNotificationDestination',
   })
   @ApiOkResponse({ type: NotificationDestinationDto })
@@ -135,7 +136,15 @@ export class AgentEventController {
     @Body() dto: SaveNotificationDestinationDto,
     @Req() req: Request & { user: IAuthTokenPayload },
   ): Promise<NotificationDestinationDto> {
-    return this.destinations.save(dto.webhookUrl, req.user.sub);
+    const input =
+      dto.kind === 'bot'
+        ? {
+            kind: 'bot' as const,
+            botToken: dto.botToken ?? '',
+            channelId: dto.channelId ?? '',
+          }
+        : { kind: 'webhook' as const, webhookUrl: dto.webhookUrl ?? '' };
+    return this.destinations.save(input, req.user.sub);
   }
 
   @Delete('agent-events/destination')

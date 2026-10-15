@@ -5,10 +5,15 @@ import {
 } from '@nestjs/common';
 import { IAgentEventGateway } from './agentEvent.gateway';
 import {
+  BOT_TOKEN_MAX_LENGTH,
+  BOT_TOKEN_PATTERN,
+  CHANNEL_ID_PATTERN,
+  DestinationKindTypes,
   INotificationDestination,
   INotificationDestinationView,
+  ISaveDestinationInput,
 } from './agentEvent.types';
-import { INotifier } from './notifier';
+import { INotifier, ISlackBotNotifier } from './notifier';
 import { renderTest } from './notificationText';
 
 const SLACK_HOST = 'hooks.slack.com';
@@ -21,32 +26,61 @@ export interface ITestDeliveryResult {
 }
 
 /**
- * Where the team is told. The address is a secret: it goes in through
- * `save`, is read back only by the notifier, and every answer this service
- * gives about it is a view without it.
+ * Where the team is told. The secret — a webhook address or a bot token —
+ * goes in through `save`, is read back only by the notifiers, and every
+ * answer this service gives about it is a view without it.
  */
 @Injectable()
 export class NotificationDestinationService {
   constructor(
     private readonly gateway: IAgentEventGateway,
     private readonly notifier: INotifier,
+    private readonly bot: ISlackBotNotifier,
   ) {}
 
   async view(): Promise<INotificationDestinationView> {
     return this.toView(await this.gateway.getDestination());
   }
 
+  /** The kind in force right now; null when nothing is set. */
+  async kind(): Promise<DestinationKindTypes | null> {
+    return (await this.gateway.getDestination())?.kind ?? null;
+  }
+
   async save(
-    rawUrl: string,
+    input: ISaveDestinationInput,
     userId: string,
   ): Promise<INotificationDestinationView> {
-    const webhookUrl = this.validate(rawUrl);
-    const saved = await this.gateway.saveDestination({
+    const saved =
+      input.kind === 'bot'
+        ? await this.saveBot(input.botToken, input.channelId, userId)
+        : await this.saveWebhook(input.webhookUrl, userId);
+    return this.toView(saved);
+  }
+
+  private async saveWebhook(rawUrl: string, userId: string) {
+    const webhookUrl = this.validateWebhook(rawUrl);
+    return this.gateway.saveDestination({
+      kind: 'webhook',
       webhookUrl,
+      botToken: null,
+      channelId: null,
       hint: webhookUrl.slice(-HINT_LENGTH),
       updatedBy: userId,
     });
-    return this.toView(saved);
+  }
+
+  private async saveBot(rawToken: string, rawChannel: string, userId: string) {
+    const botToken = this.validateToken(rawToken);
+    const channelId = this.validateChannel(rawChannel);
+    return this.gateway.saveDestination({
+      kind: 'bot',
+      webhookUrl: null,
+      botToken,
+      channelId,
+      hint: botToken.slice(-HINT_LENGTH),
+      updatedBy: userId,
+    });
   }
 
   async remove(): Promise<void> {
@@ -59,13 +93,27 @@ export class NotificationDestinationService {
     if (!destination) {
       throw new ConflictException('No notification destination is set');
     }
-    const result = await this.notifier.send(
-      destination.webhookUrl,
-      renderTest(),
-    );
+    const cred = this.botCredentials(destination);
+    const result = cred
+      ? await this.bot.post(cred, renderTest())
+      : await this.notifier.send(destination.webhookUrl ?? '', renderTest());
     const error = result.ok ? null : result.error;
     await this.gateway.recordDelivery(new Date(), result.ok, error);
     return { delivered: result.ok, error };
+  }
+
+  /** The bot's credentials when the destination is the bot, else null. */
+  botCredentials(
+    destination: INotificationDestination,
+  ): { token: string; channelId: string } | null {
+    if (
+      destination.kind !== 'bot' ||
+      !destination.botToken ||
+      !destination.channelId
+    ) {
+      return null;
+    }
+    return { token: destination.botToken, channelId: destination.channelId };
   }
 
   /**
@@ -84,7 +132,7 @@ export class NotificationDestinationService {
    * is saved here, so an open field would let an owner — or anyone holding an
    * owner's session — aim it at an address inside the cluster.
    */
-  private validate(rawUrl: string): string {
+  private validateWebhook(rawUrl: string): string {
     let url: URL;
     try {
       url = new URL(rawUrl.trim());
@@ -103,6 +151,31 @@ export class NotificationDestinationService {
     return url.toString();
   }
 
+  private validateToken(raw: string): string {
+    const token = raw.trim();
+    if (token.startsWith('xoxp-')) {
+      throw new BadRequestException(
+        'A bot token (xoxb-…) is needed, not a user token (xoxp-…): OAuth & Permissions → Bot User OAuth Token',
+      );
+    }
+    if (token.length > BOT_TOKEN_MAX_LENGTH || !BOT_TOKEN_PATTERN.test(token)) {
+      throw new BadRequestException(
+        'The bot token must look like xoxb-… (OAuth & Permissions → Bot User OAuth Token)',
+      );
+    }
+    return token;
+  }
+
+  private validateChannel(raw: string): string {
+    const channelId = raw.trim();
+    if (!CHANNEL_ID_PATTERN.test(channelId)) {
+      throw new BadRequestException(
+        'The channel id must look like C0… (channel → About → Channel ID), not the channel name',
+      );
+    }
+    return channelId;
+  }
+
   private toView(
     destination: INotificationDestination | null,
   ): INotificationDestinationView {
@@ -112,6 +185,7 @@ export class NotificationDestinationService {
         configured: false,
         kind: null,
         hint: null,
+        channelId: null,
         updatedBy: null,
         updatedAt: null,
         consoleLinks,
@@ -122,6 +196,7 @@ export class NotificationDestinationService {
       configured: true,
       kind: destination.kind,
       hint: destination.hint,
+      channelId: destination.kind === 'bot' ? destination.channelId : null,
       updatedBy: destination.updatedBy,
       updatedAt: destination.updatedAt,
       consoleLinks,

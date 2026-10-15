@@ -112,6 +112,9 @@ function downFor(incident: IAgentIncident): string | null {
 
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span class="font-mono text-xs tabular-nums text-muted-foreground">
+              #{{ incident.number }}
+            </span>
             <Badge variant="outline" :class="TONE_CLASSES[incidentTone(incident).tone]">
               {{ incidentTone(incident).label }}
             </Badge>

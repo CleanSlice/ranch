@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { IconAlertTriangle } from '@tabler/icons-vue';
+import type { DestinationKindTypes } from '#agentEvent/domain';
 import { formatStamp } from '#common/utils/format';
 
 /**
  * Where the team is told when an agent goes down. Not a `SettingForm`: the
- * address is not a settings row. It is a secret the API takes and never hands
- * back, so this form can show that one is set — its last four characters, who
- * set it, when — and can replace or remove it, but never display it again.
+ * secret — a webhook address or a bot token — is not a settings row. The API
+ * takes it and never hands it back, so this form can show that one is set
+ * (its last four characters, who set it, when), can replace or remove it,
+ * but never display it again.
+ *
+ * Two kinds (CLEAN-165): the incoming webhook of CLEAN-139, and a bot that
+ * keeps one message per incident with its story in the thread.
  */
 const props = defineProps<{
   /** Saving, replacing and removing are the owner's; an admin reads. */
@@ -16,29 +21,90 @@ const props = defineProps<{
 const store = useAgentEventStore();
 const destination = computed(() => store.destination);
 
+const KINDS: readonly {
+  key: DestinationKindTypes;
+  label: string;
+  detail: string;
+}[] = [
+  {
+    key: 'webhook',
+    label: 'Incoming webhook',
+    detail: 'One message when an incident opens, one when it closes.',
+  },
+  {
+    key: 'bot',
+    label: 'Slack bot',
+    detail:
+      'One message per incident; its story in the thread; the state as a reaction. Needs a bot token and a channel.',
+  },
+];
+
+// The choice starts on what is configured, or on the bot for a fresh
+// install — it is the one that reads well.
+const kind = ref<DestinationKindTypes>(destination.value?.kind ?? 'bot');
+watch(
+  () => destination.value?.kind,
+  (configured) => {
+    if (configured) kind.value = configured;
+  },
+);
+
 const address = ref('');
+const token = ref('');
+const channel = ref('');
 const replacing = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const confirmRemoveOpen = ref(false);
 const removing = ref(false);
 
-const showField = computed(
+const showFields = computed(
   () => props.canEdit && (!destination.value?.configured || replacing.value),
 );
+const switching = computed(
+  () =>
+    destination.value?.configured === true &&
+    destination.value.kind !== null &&
+    destination.value.kind !== kind.value,
+);
+const otherKindLabel = computed(
+  () => KINDS.find((k) => k.key === destination.value?.kind)?.label ?? '',
+);
+const canSave = computed(() =>
+  kind.value === 'bot'
+    ? token.value.trim() !== '' && channel.value.trim() !== ''
+    : address.value.trim() !== '',
+);
+const configuredLabel = computed(
+  () => KINDS.find((k) => k.key === destination.value?.kind)?.label ?? 'Slack',
+);
+
+function clear() {
+  // Nothing of a secret is kept on this side once it is sent — or dropped.
+  address.value = '';
+  token.value = '';
+  channel.value = '';
+}
 
 async function save() {
-  const value = address.value.trim();
-  if (!value) return;
+  if (!canSave.value) return;
   saving.value = true;
   error.value = null;
   try {
-    await store.saveDestination(value);
-    // The address is not kept anywhere on this side once it is sent.
-    address.value = '';
+    await store.saveDestination(
+      kind.value === 'bot'
+        ? {
+            kind: 'bot',
+            botToken: token.value.trim(),
+            channelId: channel.value.trim(),
+          }
+        : { kind: 'webhook', webhookUrl: address.value.trim() },
+    );
+    clear();
     replacing.value = false;
   } catch (err) {
-    // The server says why it refused — "must be a Slack incoming webhook".
+    // The server says why it refused — "must be a Slack incoming webhook",
+    // "a bot token (xoxb-…) is needed".
     error.value = (err as Error).message;
   } finally {
     saving.value = false;
@@ -47,8 +113,9 @@ async function save() {
 
 function cancelReplace() {
   replacing.value = false;
-  address.value = '';
   error.value = null;
+  clear();
+  if (destination.value?.kind) kind.value = destination.value.kind;
 }
 
 async function remove() {
@@ -70,9 +137,8 @@ async function remove() {
     <CardHeader>
       <CardTitle>Notifications</CardTitle>
       <CardDescription>
-        One message in Slack when an agent goes down, and one when Ranch has
-        seen it running again for ten quiet minutes. Events are recorded
-        whether or not a destination is set.
+        Slack is told when an agent goes down and when Ranch has seen it running again for ten quiet
+        minutes. Events are recorded whether or not a destination is set.
       </CardDescription>
     </CardHeader>
     <CardContent class="grid max-w-xl gap-4">
@@ -82,17 +148,19 @@ async function remove() {
       >
         <div>
           <div class="font-medium">
-            Slack · ends in <code>{{ destination.hint }}</code>
+            {{ configuredLabel }} · ends in <code>{{ destination.hint }}</code>
+            <template v-if="destination.channelId">
+              · channel <code>{{ destination.channelId }}</code>
+            </template>
           </div>
           <div v-if="destination.updatedAt" class="text-xs text-muted-foreground">
-            Set {{ formatStamp(destination.updatedAt) }}. The address is stored
-            and cannot be shown again.
+            Set {{ formatStamp(destination.updatedAt) }}. The
+            {{ destination.kind === 'bot' ? 'token' : 'address' }} is stored and cannot be shown
+            again.
           </div>
         </div>
         <div v-if="canEdit && !replacing" class="flex gap-2">
-          <Button variant="outline" size="sm" @click="replacing = true">
-            Replace
-          </Button>
+          <Button variant="outline" size="sm" @click="replacing = true"> Replace </Button>
           <Button
             variant="outline"
             size="sm"
@@ -104,35 +172,70 @@ async function remove() {
         </div>
       </div>
       <p v-else-if="destination" class="text-sm text-muted-foreground">
-        No destination is set. Nobody outside this console is told when an
-        agent goes down.
+        No destination is set. Nobody outside this console is told when an agent goes down.
       </p>
 
-      <form v-if="showField" class="grid gap-2" @submit.prevent="save">
-        <Label for="notification-destination-address">
-          Slack webhook address
-        </Label>
-        <Input
-          id="notification-destination-address"
-          v-model="address"
-          type="password"
-          autocomplete="off"
-          placeholder="https://hooks.slack.com/services/…"
-        />
-        <p class="text-xs text-muted-foreground">
-          In Slack: create an app from scratch, turn on
-          <span class="font-medium">Incoming Webhooks</span>, add a webhook to
-          the workspace and pick the channel.
-          <a
-            class="underline"
-            href="https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/"
-            target="_blank"
-            rel="noopener"
-            >Slack’s guide</a
-          >. Only a Slack incoming webhook is accepted.
-        </p>
+      <form v-if="showFields" class="grid gap-4" @submit.prevent="save">
+        <fieldset class="grid gap-2">
+          <legend class="mb-1 text-sm font-medium">How Slack is told</legend>
+          <RadioGroup v-model="kind" class="grid gap-2">
+            <label
+              v-for="option in KINDS"
+              :key="option.key"
+              :for="`notification-kind-${option.key}`"
+              class="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 has-[[data-state=checked]]:border-primary"
+            >
+              <RadioGroupItem
+                :id="`notification-kind-${option.key}`"
+                :value="option.key"
+                class="mt-0.5"
+              />
+              <span class="grid gap-0.5 text-sm">
+                <span class="font-medium">{{ option.label }}</span>
+                <span class="text-xs text-muted-foreground">{{ option.detail }}</span>
+              </span>
+            </label>
+          </RadioGroup>
+          <p v-if="switching" class="text-xs text-amber-700 dark:text-amber-400">
+            Saving replaces the {{ otherKindLabel }} destination.
+          </p>
+        </fieldset>
+
+        <template v-if="kind === 'webhook'">
+          <div class="grid gap-2">
+            <Label for="notification-destination-address"> Slack webhook address </Label>
+            <Input
+              id="notification-destination-address"
+              v-model="address"
+              type="password"
+              autocomplete="off"
+              placeholder="https://hooks.slack.com/services/…"
+            />
+            <p class="text-xs text-muted-foreground">
+              In Slack: create an app from scratch, turn on
+              <span class="font-medium">Incoming Webhooks</span>, add a webhook to the workspace and
+              pick the channel.
+              <a
+                class="underline"
+                href="https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/"
+                target="_blank"
+                rel="noopener"
+                >Slack’s guide</a
+              >. Only a Slack incoming webhook is accepted.
+            </p>
+          </div>
+        </template>
+        <template v-else>
+          <AgentEventDestinationBotForm
+            v-model:token="token"
+            v-model:channel="channel"
+            :current-channel="destination?.channelId"
+          />
+          <AgentEventDestinationBotGuide />
+        </template>
+
         <div class="flex gap-2">
-          <Button type="submit" :disabled="saving || !address.trim()">
+          <Button type="submit" :disabled="saving || !canSave">
             {{ saving ? 'Saving…' : 'Save' }}
           </Button>
           <Button
@@ -173,7 +276,7 @@ async function remove() {
     <ConfirmDialog
       v-model:open="confirmRemoveOpen"
       title="Stop sending notifications?"
-      description="Nobody outside this console will be told when an agent goes down. Events keep being recorded. The address cannot be recovered — you would paste it in again."
+      description="Nobody outside this console will be told when an agent goes down. Events keep being recorded. The secret cannot be recovered — you would paste it in again."
       confirm-label="Remove destination"
       :busy="removing"
       @confirm="remove"

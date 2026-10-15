@@ -164,6 +164,12 @@ export class AgentIncidentDto {
   @ApiProperty()
   id: string;
 
+  @ApiProperty({
+    description:
+      'The short handle people use: "#12". Unique per install, in opening order.',
+  })
+  number: number;
+
   @ApiProperty({ nullable: true, type: String })
   agentId: string | null;
 

@@ -51,6 +51,7 @@ export class AgentEventMapper {
   toIncident(dto: AgentIncidentDto): IAgentIncident {
     return {
       id: dto.id,
+      number: dto.number,
       agentId: dto.agentId ?? null,
       agentName: dto.agentName,
       state: dto.state,
@@ -84,8 +85,9 @@ export class AgentEventMapper {
   toDestination(dto: NotificationDestinationDto): INotificationDestination {
     return {
       configured: dto.configured === true,
-      kind: dto.kind,
+      kind: dto.kind === 'bot' || dto.kind === 'webhook' ? dto.kind : null,
       hint: dto.hint ?? null,
+      channelId: dto.channelId ?? null,
       updatedBy: dto.updatedBy ?? null,
       updatedAt: dto.updatedAt ?? null,
       consoleLinks: dto.consoleLinks === true,

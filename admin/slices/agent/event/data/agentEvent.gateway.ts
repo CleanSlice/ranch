@@ -14,6 +14,7 @@ import type {
   IListAgentEventsQuery,
   IListAgentIncidentsQuery,
   INotificationDestination,
+  ISaveDestination,
   ITestDelivery,
 } from '../domain/agentEvent.types';
 import { AgentEventMapper } from './agentEvent.mapper';
@@ -73,10 +74,10 @@ export class AgentEventGateway extends BaseGateway implements IAgentEventGateway
     });
   }
 
-  saveDestination(webhookUrl: string): Promise<INotificationDestination> {
+  saveDestination(input: ISaveDestination): Promise<INotificationDestination> {
     return this.execute(async () => {
       const res = await AgentEventsService.saveNotificationDestination({
-        body: { webhookUrl },
+        body: input,
       });
       return this.destinationOrThrow(res, 'Saving the notification destination');
     });

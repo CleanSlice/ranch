@@ -2,7 +2,10 @@
 export type AgentEventStatusTypes = 'failed' | 'unreachable' | 'recovered';
 export type AgentEventWitnessTypes = 'ranch' | 'external';
 export type AgentIncidentStateTypes = 'open' | 'closed';
-export type IncidentNotificationKindTypes = 'opened' | 'closed';
+/** The webhook queues the first and the last; the bot says something at every step. */
+export type IncidentNotificationKindTypes = 'opened' | 'joined' | 'running' | 'closed';
+/** How the team is told: an incoming webhook, or a bot with a thread per incident. */
+export type DestinationKindTypes = 'webhook' | 'bot';
 export type IncidentNotificationStatusTypes = 'pending' | 'sent' | 'failed' | 'skipped';
 
 /**
@@ -39,6 +42,8 @@ export interface IIncidentNotification {
 
 export interface IAgentIncident {
   id: string;
+  /** The short handle people use: "#12". Unique per install, in opening order. */
+  number: number;
   agentId: string | null;
   agentName: string;
   state: AgentIncidentStateTypes;
@@ -88,19 +93,26 @@ export interface INotificationLastDelivery {
 }
 
 /**
- * Where the team is told. The address itself never comes back from the API —
- * only `hint`, its last characters — so nothing here can leak it.
+ * Where the team is told. The secret — the webhook address or the bot token —
+ * never comes back from the API, only `hint`, its last characters, so nothing
+ * here can leak it. The bot's channel id is not a secret.
  */
 export interface INotificationDestination {
   configured: boolean;
-  kind: string;
+  kind: DestinationKindTypes | null;
   hint: string | null;
+  channelId: string | null;
   updatedBy: string | null;
   updatedAt: string | null;
   /** `false` while `ADMIN_URL` is unset on the API: messages carry no link. */
   consoleLinks: boolean;
   lastDelivery: INotificationLastDelivery | null;
 }
+
+/** What the owner hands in. Not kept on this side once it is sent. */
+export type ISaveDestination =
+  | { kind: 'webhook'; webhookUrl: string }
+  | { kind: 'bot'; botToken: string; channelId: string };
 
 export interface ITestDelivery {
   delivered: boolean;

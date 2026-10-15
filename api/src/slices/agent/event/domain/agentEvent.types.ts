@@ -21,8 +21,43 @@ export type IncidentResolutionTypes =
   | 'stopped'
   | 'deleted';
 
-export type NotificationKindTypes = 'opened' | 'closed';
+/**
+ * What an outbox row says. The webhook transport only ever queues `opened`
+ * and `closed`; the bot transport (CLEAN-165) says something at every step.
+ */
+export type NotificationKindTypes = 'opened' | 'joined' | 'running' | 'closed';
 export type NotificationStatusTypes = 'pending' | 'sent' | 'failed' | 'skipped';
+
+/**
+ * How the team is told. `webhook`: a Slack incoming webhook — a new message
+ * per event, nothing else possible. `bot`: a Slack bot token and a channel —
+ * one message per incident, its story in the thread, the state as a reaction.
+ */
+export type DestinationKindTypes = 'webhook' | 'bot';
+export const DESTINATION_KINDS = ['webhook', 'bot'] as const;
+
+/** The one reaction the bot keeps on an incident's root; swapped, never stacked. */
+export type SlackReactionTypes =
+  | 'red_circle'
+  | 'large_green_circle'
+  | 'white_check_mark'
+  | 'black_square_for_stop';
+
+// Slack posts about one message a second per channel, and a crash loop
+// reports every 10–20 s: a minute between "Failed again" replies keeps a loop
+// to a handful of replies per incident and still shows that it is going on.
+// Reports inside the minute only move the count on the root.
+export const JOINED_REPLY_GAP_MS = 60_000;
+
+// The root is one line; the full cause is in the thread reply.
+export const ROOT_REASON_MAX = 80;
+
+// A bot *user* token. A user token (xoxp-) carries a person's permissions,
+// not the bot's, and is refused with a message saying which one is needed.
+export const BOT_TOKEN_PATTERN = /^xoxb-[A-Za-z0-9-]+$/;
+export const BOT_TOKEN_MAX_LENGTH = 300;
+// Slack's public (C…) and private (G…) channel ids.
+export const CHANNEL_ID_PATTERN = /^[CG][A-Z0-9]{8,}$/;
 
 /** The name Ranch's own events carry as their sender. */
 export const RANCH_SENDER_NAME = 'Ranch';
@@ -121,9 +156,26 @@ export interface IAgentNotificationSummary {
 
 export interface IAgentIncidentData {
   id: string;
+  // The short handle: "#12". Unique per install, in opening order.
+  number: number;
   agentId: string | null;
   agentName: string;
   open: boolean;
+  // The destination's kind when the incident opened; null ⇒ none was set.
+  // An incident finishes on the transport it started on.
+  transport: DestinationKindTypes | null;
+  // The bot transport's root message, once posted; `slackTs` set ⇒ never
+  // post another root for this incident.
+  slackChannel: string | null;
+  slackTs: string | null;
+  // The one reaction the bot has on the root right now.
+  slackReaction: SlackReactionTypes | null;
+  // Next `seq` for this incident's outbox rows.
+  notificationSeq: number;
+  // When the last "Failed again" reply was queued (at most one a minute).
+  lastJoinedNotifiedAt: Date | null;
+  // A report was swallowed by the minute rule; the sweep rewrites the root.
+  rootStale: boolean;
   status: 'failed' | 'unreachable';
   reason: string | null;
   ranchWitnessed: boolean;
@@ -159,6 +211,7 @@ export interface IOpenIncidentInput {
   ranchWitnessed: boolean;
   openedAt: Date;
   lastFailureAt: Date;
+  transport: DestinationKindTypes | null;
 }
 
 /**
@@ -179,26 +232,59 @@ export interface IOpenedNotificationPayload {
   ranchStatus: string | null;
 }
 
+/** A later report joined the incident (bot transport only). */
+export interface IJoinedNotificationPayload {
+  kind: 'joined';
+  agentId: string | null;
+  agentName: string;
+  status: 'failed' | 'unreachable';
+  reason: string | null;
+  occurredAt: string;
+  witness: AgentEventWitnessTypes;
+  senderName: string;
+  tool: string | null;
+  ranchStatus: string | null;
+  // The count after this report was attached.
+  eventCount: number;
+}
+
+/** Ranch saw the agent turn running; the quiet period starts (bot only). */
+export interface IRunningNotificationPayload {
+  kind: 'running';
+  agentId: string | null;
+  agentName: string;
+  at: string;
+}
+
 export interface IClosedNotificationPayload {
   kind: 'closed';
   agentId: string | null;
   agentName: string;
-  resolution: 'recovered' | 'unconfirmed';
+  // The webhook transport only ever receives 'recovered' | 'unconfirmed';
+  // the bot is told about 'stopped' | 'deleted' too (reply + rewrite, no
+  // channel-level message).
+  resolution: IncidentResolutionTypes;
   openedAt: string;
   // When the agent was last seen to come up (recovered) or last reported
-  // failed (unconfirmed).
+  // failed (unconfirmed); the closing moment for stopped / deleted.
   upAt: string;
+  closedAt: string;
   firstSenderName: string | null;
+  eventCount: number;
 }
 
 export type INotificationPayload =
   | IOpenedNotificationPayload
+  | IJoinedNotificationPayload
+  | IRunningNotificationPayload
   | IClosedNotificationPayload;
 
 export interface IAgentNotificationData {
   id: string;
   incidentId: string;
   kind: NotificationKindTypes;
+  // Position inside the incident; delivered in this order.
+  seq: number;
   payload: INotificationPayload;
   status: NotificationStatusTypes;
   attempts: number;
@@ -206,10 +292,15 @@ export interface IAgentNotificationData {
   createdAt: Date;
 }
 
-/** The stored destination. `webhookUrl` is a secret — never leaves the API. */
+/**
+ * The stored destination. `webhookUrl` and `botToken` are secrets — they
+ * never leave the API. Exactly one kind's fields are set.
+ */
 export interface INotificationDestination {
-  kind: 'slack';
-  webhookUrl: string;
+  kind: DestinationKindTypes;
+  webhookUrl: string | null;
+  botToken: string | null;
+  channelId: string | null;
   hint: string;
   updatedBy: string;
   updatedAt: Date;
@@ -218,11 +309,18 @@ export interface INotificationDestination {
   lastDeliveryError: string | null;
 }
 
-/** What a route, a tool or a page may see of it. No address. */
+/** What the owner hands in. The service validates per kind. */
+export type ISaveDestinationInput =
+  | { kind: 'webhook'; webhookUrl: string }
+  | { kind: 'bot'; botToken: string; channelId: string };
+
+/** What a route, a tool or a page may see of it. No secret. */
 export interface INotificationDestinationView {
   configured: boolean;
-  kind: 'slack' | null;
+  kind: DestinationKindTypes | null;
   hint: string | null;
+  // The bot's channel; not a secret. null on the webhook kind.
+  channelId: string | null;
   updatedBy: string | null;
   updatedAt: Date | null;
   // false ⇒ ADMIN_URL is not set on the API; messages carry no link.

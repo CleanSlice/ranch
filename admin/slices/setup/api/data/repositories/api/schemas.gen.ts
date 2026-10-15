@@ -4487,6 +4487,11 @@ export const AgentIncidentDtoSchema = {
     id: {
       type: "string",
     },
+    number: {
+      type: "number",
+      description:
+        'The short handle people use: "#12". Unique per install, in opening order.',
+    },
     agentId: {
       type: "string",
       nullable: true,
@@ -4553,6 +4558,7 @@ export const AgentIncidentDtoSchema = {
   },
   required: [
     "id",
+    "number",
     "agentId",
     "agentName",
     "state",
@@ -4614,12 +4620,18 @@ export const NotificationDestinationDtoSchema = {
     kind: {
       type: "string",
       nullable: true,
-      enum: ["slack"],
+      enum: ["webhook", "bot"],
     },
     hint: {
       type: "string",
       nullable: true,
-      description: "The last four characters of the address.",
+      description:
+        "The last four characters of the secret that is set (the webhook address or the bot token).",
+    },
+    channelId: {
+      type: "string",
+      nullable: true,
+      description: "The bot’s channel id; null on the webhook kind.",
     },
     updatedBy: {
       type: "string",
@@ -4648,6 +4660,7 @@ export const NotificationDestinationDtoSchema = {
     "configured",
     "kind",
     "hint",
+    "channelId",
     "updatedBy",
     "updatedAt",
     "consoleLinks",
@@ -4658,13 +4671,28 @@ export const NotificationDestinationDtoSchema = {
 export const SaveNotificationDestinationDtoSchema = {
   type: "object",
   properties: {
+    kind: {
+      type: "string",
+      enum: ["webhook", "bot"],
+      description: `\`webhook\`: a Slack incoming webhook — one message when an incident opens, one when it closes. \`bot\`: a Slack bot token and a channel — one message per incident, its story in the thread, the state as a reaction.`,
+    },
     webhookUrl: {
       type: "string",
       description:
-        "A Slack incoming-webhook address (https://hooks.slack.com/services/…). A secret: it is stored and never returned.",
+        "kind = webhook: the incoming-webhook address (https://hooks.slack.com/services/…). A secret: stored and never returned.",
+    },
+    botToken: {
+      type: "string",
+      description:
+        "kind = bot: the Bot User OAuth Token (xoxb-…) from OAuth & Permissions. A secret: stored and never returned.",
+    },
+    channelId: {
+      type: "string",
+      description:
+        "kind = bot: the channel id (C0…), from the channel’s About tab. Not a secret.",
     },
   },
-  required: ["webhookUrl"],
+  required: ["kind"],
 } as const;
 
 export const TestDeliveryDtoSchema = {

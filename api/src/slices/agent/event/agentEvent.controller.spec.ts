@@ -34,8 +34,9 @@ import {
   INotifier,
   NotificationDestinationService,
   TooManyEventsException,
+  ISlackBotNotifier,
 } from './domain';
-import { PostAgentEventDto } from './dtos';
+import { PostAgentEventDto, SaveNotificationDestinationDto } from './dtos';
 
 const ADDRESS = 'https://hooks.slack.com/services/T000/B000/SECRETSECRET';
 
@@ -401,12 +402,14 @@ describe('the notification destination', () => {
       getDestination: jest.fn(async () => destination),
       saveDestination: jest.fn(
         async (input: {
-          webhookUrl: string;
+          kind: 'webhook' | 'bot';
+          webhookUrl: string | null;
+          botToken: string | null;
+          channelId: string | null;
           hint: string;
           updatedBy: string;
         }) => {
           destination = {
-            kind: 'slack',
             ...input,
             updatedAt: new Date('2026-10-06T10:00:00Z'),
             lastDeliveryAt: null,
@@ -422,15 +425,21 @@ describe('the notification destination', () => {
       recordDelivery: jest.fn(async () => undefined),
     };
     const notifier = { send: jest.fn(async () => ({ ok: true })) };
+    const bot = {
+      post: jest.fn(async () => ({ ok: true, ts: '1.1' })),
+      update: jest.fn(async () => ({ ok: true })),
+      setReaction: jest.fn(async () => ({ ok: true })),
+    };
     const destinations = new NotificationDestinationService(
       gateway as unknown as IAgentEventGateway,
       notifier as unknown as INotifier,
+      bot as unknown as ISlackBotNotifier,
     );
     const controller = new AgentEventController(
       {} as AgentEventService,
       destinations,
     );
-    return { controller, gateway, notifier };
+    return { controller, gateway, notifier, bot };
   }
   const owner = {
     user: { sub: 'user-1', roles: [UserRoleTypes.Owner] },
@@ -451,7 +460,7 @@ describe('the notification destination', () => {
     const { controller } = harness();
 
     const saved = await controller.saveDestination(
-      { webhookUrl: ADDRESS },
+      { kind: 'webhook', webhookUrl: ADDRESS },
       owner,
     );
     const read = await controller.getDestination();
@@ -464,7 +473,7 @@ describe('the notification destination', () => {
     }
     expect(saved).toMatchObject({
       configured: true,
-      kind: 'slack',
+      kind: 'webhook',
       hint: 'CRET',
       updatedBy: 'user-1',
     });
@@ -487,14 +496,17 @@ describe('the notification destination', () => {
     const { controller, gateway } = harness();
 
     await expect(
-      controller.saveDestination({ webhookUrl: url }, owner),
+      controller.saveDestination({ kind: 'webhook', webhookUrl: url }, owner),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(gateway.saveDestination).not.toHaveBeenCalled();
   });
 
   it('sends a test, reports the outcome and records it', async () => {
     const { controller, gateway, notifier } = harness();
-    await controller.saveDestination({ webhookUrl: ADDRESS }, owner);
+    await controller.saveDestination(
+      { kind: 'webhook', webhookUrl: ADDRESS },
+      owner,
+    );
 
     expect(await controller.testDestination()).toEqual({
       delivered: true,
@@ -516,7 +528,10 @@ describe('the notification destination', () => {
 
   it('reports a failed test with what the destination answered', async () => {
     const { controller, notifier } = harness();
-    await controller.saveDestination({ webhookUrl: ADDRESS }, owner);
+    await controller.saveDestination(
+      { kind: 'webhook', webhookUrl: ADDRESS },
+      owner,
+    );
     notifier.send.mockResolvedValueOnce({
       ok: false,
       retryable: false,
@@ -611,5 +626,249 @@ describe('GET /agent-incidents', () => {
       eventCount: 3,
     });
     expect(page.items[0]).not.toHaveProperty('open');
+  });
+});
+
+// ── The bot kind (CLEAN-165) ─────────────────────────────────────────────
+
+describe('PUT /agent-events/destination — what it accepts', () => {
+  const pipe = new ValidationPipe({
+    transform: true,
+    whitelist: true,
+    forbidNonWhitelisted: false,
+  });
+  const meta: ArgumentMetadata = {
+    type: 'body',
+    metatype: SaveNotificationDestinationDto,
+  };
+  const messagesOf = async (body: unknown): Promise<string> => {
+    try {
+      await pipe.transform(body, meta);
+      return '';
+    } catch (e) {
+      return (
+        (e as BadRequestException).getResponse() as { message: string[] }
+      ).message.join(' ');
+    }
+  };
+
+  it('takes a webhook body and a bot body', async () => {
+    expect(await messagesOf({ kind: 'webhook', webhookUrl: ADDRESS })).toBe('');
+    expect(
+      await messagesOf({
+        kind: 'bot',
+        botToken: 'xoxb-1234-5678-abcDEF',
+        channelId: 'C0123456789',
+      }),
+    ).toBe('');
+  });
+
+  it('wants the kind, and only that kind’s fields', async () => {
+    expect(await messagesOf({ webhookUrl: ADDRESS })).toContain('kind');
+    expect(await messagesOf({ kind: 'webhook' })).toContain('webhookUrl');
+    expect(
+      await messagesOf({ kind: 'bot', channelId: 'C0123456789' }),
+    ).toContain('botToken');
+    expect(await messagesOf({ kind: 'bot', botToken: 'xoxb-1' })).toContain(
+      'channelId',
+    );
+    // A webhook body is not asked for the bot's fields.
+    expect(
+      await messagesOf({ kind: 'webhook', webhookUrl: ADDRESS }),
+    ).not.toContain('botToken');
+  });
+
+  it('refuses a user token and says which token is needed', async () => {
+    const message = await messagesOf({
+      kind: 'bot',
+      botToken: 'xoxp-1234-5678',
+      channelId: 'C0123456789',
+    });
+
+    expect(message).toContain('bot token (xoxb-…) is needed');
+  });
+
+  it('refuses a channel name where the id belongs', async () => {
+    const message = await messagesOf({
+      kind: 'bot',
+      botToken: 'xoxb-1234-5678',
+      channelId: '#alerts',
+    });
+
+    expect(message).toContain('channel id');
+    expect(message).toContain('About');
+  });
+});
+
+describe('the bot destination', () => {
+  const TOKEN = 'xoxb-1234-5678-SECRETSECRET';
+  const CHANNEL = 'C0123456789';
+
+  function harness() {
+    let destination: INotificationDestination | null = null;
+    const gateway = {
+      getDestination: jest.fn(async () => destination),
+      saveDestination: jest.fn(
+        async (input: {
+          kind: 'webhook' | 'bot';
+          webhookUrl: string | null;
+          botToken: string | null;
+          channelId: string | null;
+          hint: string;
+          updatedBy: string;
+        }) => {
+          destination = {
+            ...input,
+            updatedAt: new Date('2026-10-14T10:00:00Z'),
+            lastDeliveryAt: null,
+            lastDeliveryOk: null,
+            lastDeliveryError: null,
+          };
+          return destination;
+        },
+      ),
+      removeDestination: jest.fn(async () => {
+        destination = null;
+      }),
+      recordDelivery: jest.fn(async () => undefined),
+    };
+    const notifier = { send: jest.fn(async () => ({ ok: true })) };
+    const bot = {
+      post: jest.fn(async () => ({ ok: true, ts: '1.1' })),
+      update: jest.fn(async () => ({ ok: true })),
+      setReaction: jest.fn(async () => ({ ok: true })),
+    };
+    const destinations = new NotificationDestinationService(
+      gateway as unknown as IAgentEventGateway,
+      notifier as unknown as INotifier,
+      bot as unknown as ISlackBotNotifier,
+    );
+    const controller = new AgentEventController(
+      {} as AgentEventService,
+      destinations,
+    );
+    return { controller, gateway, notifier, bot };
+  }
+  const owner = {
+    user: { sub: 'user-1', roles: [UserRoleTypes.Owner] },
+  } as never;
+
+  it('saves the token and the channel, hands back the kind, the channel and a hint — never the token', async () => {
+    const { controller, gateway } = harness();
+
+    const saved = await controller.saveDestination(
+      { kind: 'bot', botToken: TOKEN, channelId: CHANNEL },
+      owner,
+    );
+    const read = await controller.getDestination();
+
+    for (const answer of [saved, read]) {
+      const text = JSON.stringify(answer);
+      expect(text).not.toContain('SECRETSECRET');
+      expect(text).not.toContain('xoxb');
+      expect(text).not.toContain('botToken');
+    }
+    expect(saved).toMatchObject({
+      configured: true,
+      kind: 'bot',
+      hint: 'CRET',
+      channelId: CHANNEL,
+      updatedBy: 'user-1',
+    });
+    expect(gateway.saveDestination).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'bot', webhookUrl: null }),
+    );
+  });
+
+  it('drops the webhook address when the owner switches to the bot, and the token when switching back', async () => {
+    const { controller, gateway } = harness();
+
+    await controller.saveDestination(
+      { kind: 'webhook', webhookUrl: ADDRESS },
+      owner,
+    );
+    await controller.saveDestination(
+      { kind: 'bot', botToken: TOKEN, channelId: CHANNEL },
+      owner,
+    );
+    expect(gateway.saveDestination).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: 'bot', webhookUrl: null }),
+    );
+
+    await controller.saveDestination(
+      { kind: 'webhook', webhookUrl: ADDRESS },
+      owner,
+    );
+    expect(gateway.saveDestination).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        kind: 'webhook',
+        botToken: null,
+        channelId: null,
+      }),
+    );
+    expect(await controller.getDestination()).toMatchObject({
+      kind: 'webhook',
+      channelId: null,
+    });
+  });
+
+  it.each([
+    ['a user token', 'xoxp-1234-5678', CHANNEL, 'bot token (xoxb-…) is needed'],
+    ['a webhook address', ADDRESS, CHANNEL, 'xoxb-'],
+    ['a channel name', TOKEN, '#alerts', 'channel id'],
+  ])(
+    'refuses %s and stores nothing',
+    async (_what, botToken, channelId, words) => {
+      const { controller, gateway } = harness();
+
+      await expect(
+        controller.saveDestination({ kind: 'bot', botToken, channelId }, owner),
+      ).rejects.toMatchObject({ message: expect.stringContaining(words) });
+      expect(gateway.saveDestination).not.toHaveBeenCalled();
+    },
+  );
+
+  it('sends the test through the bot: a plain post, no thread, and records the outcome', async () => {
+    const { controller, gateway, bot, notifier } = harness();
+    await controller.saveDestination(
+      { kind: 'bot', botToken: TOKEN, channelId: CHANNEL },
+      owner,
+    );
+
+    expect(await controller.testDestination()).toEqual({
+      delivered: true,
+      error: null,
+    });
+
+    expect(notifier.send).not.toHaveBeenCalled();
+    expect(bot.post).toHaveBeenCalledWith(
+      { token: TOKEN, channelId: CHANNEL },
+      expect.objectContaining({
+        text: expect.stringContaining('Test notification'),
+      }),
+    );
+    expect(gateway.recordDelivery).toHaveBeenCalledWith(
+      expect.any(Date),
+      true,
+      null,
+    );
+  });
+
+  it('reports a failed test in the words the owner needs', async () => {
+    const { controller, bot } = harness();
+    await controller.saveDestination(
+      { kind: 'bot', botToken: TOKEN, channelId: CHANNEL },
+      owner,
+    );
+    bot.post.mockResolvedValueOnce({
+      ok: false,
+      retryable: false,
+      error: 'The bot is not in the channel — invite it (/invite @<the bot>)',
+    } as never);
+
+    expect(await controller.testDestination()).toEqual({
+      delivered: false,
+      error: 'The bot is not in the channel — invite it (/invite @<the bot>)',
+    });
   });
 });

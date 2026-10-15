@@ -201,7 +201,11 @@ function cases(): Case[] {
 
   // Rows that also carry the one secret this slice has — the destination's
   // address — in the shapes the event services return.
-  const eventRow = () => ({ ...row(), webhookUrl: SENTINEL });
+  const eventRow = () => ({
+    ...row(),
+    webhookUrl: SENTINEL,
+    botToken: SENTINEL,
+  });
   const agentEvent = new AgentEventTool(
     leakyGateway({
       listEvents: jest.fn(async () => ({

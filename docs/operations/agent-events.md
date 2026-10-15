@@ -139,24 +139,78 @@ the chat by a path that does not pass through Ranch:
 
 ## For the owner: where the team is told
 
-**Settings → Notifications** in the admin console.
+**Settings → Notifications** in the admin console. Two ways to be told; the
+page lets the owner pick one. Saving one replaces the other.
+
+### Slack bot — one message per incident (recommended)
+
+The channel shows one line per incident, rewritten as the incident moves;
+every event is a reply in that line's thread; the bot's reaction on the
+line shows the state at a glance.
+
+```text
+🔴 @channel Test Chatbot — incident #12 · down since 4:04 PM · OOMKilled
+🔴 Test Chatbot — incident #12 · down since 4:04 PM · OOMKilled · 2 reports
+🟢 Test Chatbot — incident #12 · up, watching since 4:09 PM · OOMKilled · 2 reports
+✅ Test Chatbot — incident #12 · resolved 4:19 PM · downtime 5 min · 2 reports
+```
+
+Other endings: `⏹ stopped by owner` / `⏹ deleted` (nobody is paged), and
+`🟢 quiet since …, unconfirmed` when only an outside sender ever saw the
+agent down. The thread holds, in order: *Failed* (cause, who reported, what
+Ranch saw), *Failed again* (at most one a minute — reports inside the minute
+only move the count on the line), *Running again*, and how it ended. The
+`@channel` mention is in the first version of the line and nowhere else.
+
+Setting it up, in Slack and then on the page:
+
+1. <https://api.slack.com/apps> → your app → **OAuth & Permissions** →
+   **Bot Token Scopes**: add `chat:write` and `reactions:write`.
+2. **Reinstall to Workspace**; copy the **Bot User OAuth Token** (`xoxb-…`).
+   A user token (`xoxp-…`) is refused.
+3. In the alerts channel: `/invite @<the app>`. A reinstall with new scopes
+   needs this again.
+4. Channel → its name in the header → **About** → **Channel ID** (`C0…`).
+5. On the page: pick **Slack bot**, paste the token and the channel id,
+   save. The token is a secret: stored and never shown again — to change
+   it, replace it. The channel id is shown back.
+6. Press **Send a test** and see the message arrive. A failed test says why
+   in plain words: not in the channel, no channel with this id, token not
+   valid.
+
+The API pod needs outbound HTTPS to `slack.com`.
+
+### Incoming webhook — a message per event
+
+The way before CLEAN-165, still available: one message when an incident
+opens (with `@channel`), one when it closes, nothing in between and nothing
+that changes.
 
 1. In Slack: <https://api.slack.com/apps> → **Create New App** → **From
    scratch** → **Incoming Webhooks** → **Activate** → **Add New Webhook to
    Workspace** → pick the channel.
-2. Paste the address (`https://hooks.slack.com/services/…`) into the page and
-   save. Only a Slack incoming webhook is accepted. The address is a secret:
-   it is stored and never shown again — to change it, replace it.
+2. On the page: pick **Incoming webhook**, paste the address
+   (`https://hooks.slack.com/services/…`), save. Only a Slack incoming
+   webhook is accepted. The address is a secret: stored and never shown
+   again — to change it, replace it.
 3. Press **Send a test** and see the message arrive.
 
-The message that an agent went down mentions the whole channel (`@channel`),
-so it reaches people who are not looking; the message that it is back
-mentions nobody. Pick a channel whose members are the people who should be
-woken.
+The API pod needs outbound HTTPS to `hooks.slack.com`.
 
-The API pod needs outbound HTTPS to `hooks.slack.com`. For messages to link
-to the agent, the API deployment needs `ADMIN_URL` set to the admin console's
-address.
+### Either way
+
+The message that an agent went down mentions the whole channel (`@channel`),
+so it reaches people who are not looking; nothing later mentions anyone.
+Pick a channel whose members are the people who should be woken.
+
+For messages to link to the agent, the API deployment needs `ADMIN_URL` set
+to the admin console's address.
+
+An incident finishes on the transport it started on. Switching from the bot
+to the webhook discards the token, so an incident that is open at that
+moment can no longer be written to its thread: its remaining updates are
+marked *skipped* in the console, and incidents that open afterwards use the
+webhook.
 
 With no destination set, events are still recorded and shown in the console;
 the Events page says that nobody outside it is being notified.

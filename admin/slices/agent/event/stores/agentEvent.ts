@@ -4,6 +4,7 @@ import type {
   IAgentEvent,
   IAgentIncident,
   INotificationDestination,
+  ISaveDestination,
   ITestDelivery,
 } from '#agentEvent/domain';
 import {
@@ -250,8 +251,9 @@ export const useAgentEventStore = defineStore('agentEvent', () => {
     return destination.value;
   }
 
-  async function saveDestination(webhookUrl: string) {
-    destination.value = await getService().saveDestination(webhookUrl);
+  // The input is handed on and not kept: the secret in it belongs to the API.
+  async function saveDestination(input: ISaveDestination) {
+    destination.value = await getService().saveDestination(input);
     return destination.value;
   }
 

@@ -55,6 +55,7 @@ const event = (over: Record<string, unknown> = {}) => ({
 
 const incident = () => ({
   id: 'inc-1',
+  number: 12,
   agentId: 'a1',
   agentName: 'Support Bot',
   open: true,
@@ -82,7 +83,8 @@ const incident = () => ({
 
 const view = (configured = true) => ({
   configured,
-  kind: configured ? 'slack' : null,
+  kind: configured ? 'webhook' : null,
+  channelId: null as string | null,
   hint: configured ? 'CRET' : null,
   updatedBy: configured ? 'user-1' : null,
   updatedAt: configured ? at : null,
@@ -135,7 +137,7 @@ describe('AgentEventTool — who may use it', () => {
       () => tool.getNotificationDestination({}, null, plainAgent()),
       () =>
         tool.setNotificationDestination(
-          { webhookUrl: ADDRESS },
+          { kind: 'webhook', webhookUrl: ADDRESS },
           null,
           plainAgent(),
         ),
@@ -164,7 +166,11 @@ describe('AgentEventTool — who may use it', () => {
     const admin = () => request([UserRoleTypes.Admin]);
 
     await expect(
-      tool.setNotificationDestination({ webhookUrl: ADDRESS }, null, admin()),
+      tool.setNotificationDestination(
+        { kind: 'webhook', webhookUrl: ADDRESS },
+        null,
+        admin(),
+      ),
     ).rejects.toBeInstanceOf(ForbiddenException);
     await expect(
       tool.sendTestNotification({}, null, admin()),
@@ -279,8 +285,9 @@ describe('AgentEventTool — reading', () => {
 
     expect(result.destination).toEqual({
       configured: true,
-      kind: 'slack',
+      kind: 'webhook',
       hint: 'CRET',
+      channelId: null,
       updatedBy: 'user-1',
       updatedAt: at.toISOString(),
       consoleLinks: true,
@@ -295,13 +302,16 @@ describe('AgentEventTool — the destination', () => {
 
     const text = textOf(
       await tool.setNotificationDestination(
-        { webhookUrl: ADDRESS },
+        { kind: 'webhook', webhookUrl: ADDRESS },
         null,
         operator(),
       ),
     );
 
-    expect(destinations.save).toHaveBeenCalledWith(ADDRESS, 'agent:rancher');
+    expect(destinations.save).toHaveBeenCalledWith(
+      { kind: 'webhook', webhookUrl: ADDRESS },
+      'agent:rancher',
+    );
     expect(text).not.toContain('SECRETSECRET');
     expect(text).toContain('send_test_notification');
   });
@@ -316,7 +326,7 @@ describe('AgentEventTool — the destination', () => {
 
     const text = textOf(
       await tool.setNotificationDestination(
-        { webhookUrl: 'https://example.com/x' },
+        { kind: 'webhook', webhookUrl: 'https://example.com/x' },
         null,
         operator(),
       ),
@@ -394,7 +404,7 @@ describe('AgentEventTool — no result carries the address', () => {
       await tool.listAgentIncidents({}, null, operator()),
       await tool.getNotificationDestination({}, null, operator()),
       await tool.setNotificationDestination(
-        { webhookUrl: ADDRESS },
+        { kind: 'webhook', webhookUrl: ADDRESS },
         null,
         operator(),
       ),
@@ -411,5 +421,61 @@ describe('AgentEventTool — no result carries the address', () => {
       expect(textOf(result)).not.toContain('SECRETSECRET');
       expect(textOf(result)).not.toContain('webhookUrl');
     }
+  });
+});
+
+// ── The bot kind (CLEAN-165) ─────────────────────────────────────────────
+
+describe('AgentEventTool — the bot destination', () => {
+  it('saves a bot token and channel as the calling agent and never repeats the token', async () => {
+    const { tool, destinations } = harness();
+
+    const text = textOf(
+      await tool.setNotificationDestination(
+        {
+          kind: 'bot',
+          botToken: 'xoxb-1234-SECRETSECRET',
+          channelId: 'C0123456789',
+        },
+        null,
+        operator(),
+      ),
+    );
+
+    expect(destinations.save).toHaveBeenCalledWith(
+      {
+        kind: 'bot',
+        botToken: 'xoxb-1234-SECRETSECRET',
+        channelId: 'C0123456789',
+      },
+      'agent:rancher',
+    );
+    expect(text).not.toContain('SECRETSECRET');
+    expect(text).not.toContain('xoxb');
+    expect(text).toContain('send_test_notification');
+  });
+
+  it('shows the kind and the channel of a bot destination, and the incident number', async () => {
+    const { tool, destinations, service } = harness();
+    destinations.view.mockResolvedValueOnce({
+      ...view(),
+      kind: 'bot',
+      channelId: 'C0123456789',
+      hint: 'CRET',
+    });
+
+    const destination = jsonOf(
+      await tool.getNotificationDestination({}, null, operator()),
+    ).destination as { kind: string; channelId: string };
+    expect(destination).toMatchObject({
+      kind: 'bot',
+      channelId: 'C0123456789',
+    });
+
+    const incidents = jsonOf(
+      await tool.listAgentIncidents({}, null, operator()),
+    ).incidents as { number: number }[];
+    expect(service.listIncidents).toHaveBeenCalled();
+    expect(incidents[0].number).toBe(12);
   });
 });

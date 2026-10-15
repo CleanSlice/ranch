@@ -10,6 +10,7 @@ import {
   TooManyEventsException,
 } from './agentEvent.service';
 import {
+  DestinationKindTypes,
   FLOOD_LIMIT_PER_MINUTE,
   IAgentEventData,
   IAgentIncidentData,
@@ -17,20 +18,30 @@ import {
   IAgentNotificationData,
   IClosedNotificationPayload,
   ICreateAgentEventData,
+  IJoinedNotificationPayload,
   INotificationDestination,
+  INotificationPayload,
   IOpenedNotificationPayload,
   IOpenIncidentInput,
   IOpenIncidentWithAgent,
+  IRunningNotificationPayload,
   IncidentResolutionTypes,
   IPage,
+  NotificationKindTypes,
   NotificationStatusTypes,
   QUIET_MS,
   RETRY_DELAYS_MS,
+  SlackReactionTypes,
 } from './agentEvent.types';
 import { AgentIncidentService } from './agentIncident.service';
 import { AgentNotificationWorker } from './agentNotification.worker';
 import { NotificationDestinationService } from './notificationDestination.service';
-import { INotifier, NotifyResultTypes } from './notifier';
+import {
+  INotifier,
+  ISlackBotNotifier,
+  NotifyResultTypes,
+  PostResultTypes,
+} from './notifier';
 
 /**
  * The rules of this feature are about state over time — one open incident
@@ -102,6 +113,10 @@ class FakeGateway extends IAgentEventGateway {
     return this.incidents.find((i) => i.open && i.agentId === agentId) ?? null;
   }
 
+  async findIncidentById(id: string) {
+    return this.incidents.find((i) => i.id === id) ?? null;
+  }
+
   async openIncident(
     input: IOpenIncidentInput,
     payload: IOpenedNotificationPayload,
@@ -124,14 +139,24 @@ class FakeGateway extends IAgentEventGateway {
     at: Date,
     ranchWitnessed: boolean,
     senderName: string,
-  ) {
+    reply: Omit<IJoinedNotificationPayload, 'eventCount'> | null,
+    gapMs: number,
+  ): Promise<'joined' | 'joined_quiet' | 'closed'> {
     const incident = this.incidents.find((i) => i.id === id && i.open);
-    if (!incident) return false;
+    if (!incident) return 'closed';
     incident.lastFailureAt = at;
     incident.upSince = null;
     if (ranchWitnessed) incident.ranchWitnessed = true;
     this.count(incident, senderName);
-    return true;
+    if (!reply) return 'joined';
+    const last = incident.lastJoinedNotifiedAt;
+    if (last && at.getTime() - last.getTime() < gapMs) {
+      incident.rootStale = true;
+      return 'joined_quiet';
+    }
+    incident.lastJoinedNotifiedAt = at;
+    this.queue(id, { ...reply, eventCount: incident.eventCount });
+    return 'joined';
   }
 
   async noteIncidentReport(id: string, senderName: string) {
@@ -146,9 +171,16 @@ class FakeGateway extends IAgentEventGateway {
     }
   }
 
-  async setIncidentUpSince(agentId: string, at: Date) {
+  async setIncidentUpSince(
+    agentId: string,
+    at: Date,
+    reply: IRunningNotificationPayload | null,
+  ) {
     const incident = await this.findOpenIncident(agentId);
-    if (incident) incident.upSince = at;
+    if (!incident) return;
+    const first = incident.upSince === null;
+    incident.upSince = at;
+    if (first && reply) this.queue(incident.id, reply);
   }
 
   async listOpenIncidentsWithAgent(): Promise<IOpenIncidentWithAgent[]> {
@@ -185,13 +217,44 @@ class FakeGateway extends IAgentEventGateway {
     return { items: [], nextCursor: null };
   }
 
+  async setIncidentRoot(id: string, channel: string, ts: string) {
+    const incident = this.incidents.find((i) => i.id === id);
+    if (incident) {
+      incident.slackChannel = channel;
+      incident.slackTs = ts;
+    }
+  }
+
+  async setIncidentReaction(id: string, name: SlackReactionTypes) {
+    const incident = this.incidents.find((i) => i.id === id);
+    if (incident) incident.slackReaction = name;
+  }
+
+  async listStaleBotIncidents() {
+    return this.incidents
+      .filter((i) => i.rootStale && i.transport === 'bot' && i.slackTs)
+      .map((i) => ({ ...i }));
+  }
+
+  async clearRootStale(id: string) {
+    const incident = this.incidents.find((i) => i.id === id);
+    if (incident) incident.rootStale = false;
+  }
+
   async claimDueNotification(now: Date, lockedUntil: Date) {
     const due = this.notifications
       .filter(
         (n) =>
           n.status === 'pending' &&
           n.nextAttemptAt <= now &&
-          (n.lockedUntil === null || n.lockedUntil < now),
+          (n.lockedUntil === null || n.lockedUntil < now) &&
+          // Nothing of the same incident still waiting ahead of it.
+          !this.notifications.some(
+            (e) =>
+              e.incidentId === n.incidentId &&
+              e.seq < n.seq &&
+              e.status === 'pending',
+          ),
       )
       .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime())[0];
     if (!due) return null;
@@ -235,12 +298,14 @@ class FakeGateway extends IAgentEventGateway {
   }
 
   async saveDestination(input: {
-    webhookUrl: string;
+    kind: DestinationKindTypes;
+    webhookUrl: string | null;
+    botToken: string | null;
+    channelId: string | null;
     hint: string;
     updatedBy: string;
   }) {
     this.destination = {
-      kind: 'slack',
       ...input,
       updatedAt: this.at(),
       lastDeliveryAt: null,
@@ -278,11 +343,21 @@ class FakeGateway extends IAgentEventGateway {
     return before - this.incidents.length;
   }
 
-  statusOf(kind: 'opened' | 'closed'): NotificationStatusTypes[] {
+  statusOf(kind: NotificationKindTypes): NotificationStatusTypes[] {
     return this.notifications
       .filter((n) => n.kind === kind)
       .map((n) => n.status);
   }
+
+  /** The kinds queued for one incident, in delivery order. */
+  kindsOf(incidentId: string): NotificationKindTypes[] {
+    return this.notifications
+      .filter((n) => n.incidentId === incidentId)
+      .sort((a, b) => a.seq - b.seq)
+      .map((n) => n.kind);
+  }
+
+  private nextNumber = 1;
 
   private incidentOf(
     input: IOpenIncidentInput,
@@ -290,9 +365,17 @@ class FakeGateway extends IAgentEventGateway {
   ): IAgentIncidentData {
     return {
       id: randomUUID(),
+      number: this.nextNumber++,
       agentId: input.agentId,
       agentName: input.agentName,
       open: true,
+      transport: input.transport,
+      slackChannel: null,
+      slackTs: null,
+      slackReaction: null,
+      notificationSeq: 0,
+      lastJoinedNotifiedAt: null,
+      rootStale: false,
       status: input.status,
       reason: input.reason,
       ranchWitnessed: input.ranchWitnessed,
@@ -306,15 +389,16 @@ class FakeGateway extends IAgentEventGateway {
     };
   }
 
-  private queue(
-    incidentId: string,
-    payload: IOpenedNotificationPayload | IClosedNotificationPayload,
-  ) {
+  private queue(incidentId: string, payload: INotificationPayload) {
     const createdAt = this.at();
+    const incident = this.incidents.find((i) => i.id === incidentId)!;
+    const seq = incident.notificationSeq;
+    incident.notificationSeq += 1;
     this.notifications.push({
       id: randomUUID(),
       incidentId,
       kind: payload.kind,
+      seq,
       payload,
       status: 'pending',
       attempts: 0,
@@ -386,11 +470,90 @@ function harness() {
     nextResults = results;
   };
 
-  const incidents = new AgentIncidentService(gateway);
-  const destinations = new NotificationDestinationService(gateway, notifier);
+  // The bot transport: every call recorded, answers scripted, a fresh ts
+  // for every post so a thread reply can be told from a root.
+  type BotCall = {
+    method: 'post' | 'update' | 'setReaction';
+    ts?: string;
+    threadTs?: string;
+    text: string;
+    body: string;
+    name?: string;
+    previous?: string | null;
+  };
+  const botCalls: BotCall[] = [];
+  let nextBotResults: (PostResultTypes | NotifyResultTypes)[] = [];
+  let nextTs = 1;
+  const bodyOf = (message: { blocks: unknown[] }) =>
+    JSON.stringify(message.blocks);
+  const bot: ISlackBotNotifier = {
+    post: jest.fn(
+      async (
+        _cred: unknown,
+        message: { text: string; blocks: unknown[] },
+        threadTs?: string,
+      ) => {
+        botCalls.push({
+          method: 'post',
+          threadTs,
+          text: message.text,
+          body: bodyOf(message),
+        });
+        const scripted = nextBotResults.shift();
+        if (scripted) return scripted as PostResultTypes;
+        return { ok: true as const, ts: `ts-${nextTs++}` };
+      },
+    ),
+    update: jest.fn(
+      async (
+        _cred: unknown,
+        ts: string,
+        message: { text: string; blocks: unknown[] },
+      ) => {
+        botCalls.push({
+          method: 'update',
+          ts,
+          text: message.text,
+          body: bodyOf(message),
+        });
+        return (nextBotResults.shift() ?? { ok: true }) as NotifyResultTypes;
+      },
+    ),
+    setReaction: jest.fn(
+      async (
+        _cred: unknown,
+        ts: string,
+        name: string,
+        previous: string | null,
+      ) => {
+        botCalls.push({
+          method: 'setReaction',
+          ts,
+          name,
+          previous,
+          text: '',
+          body: '',
+        });
+        return (nextBotResults.shift() ?? { ok: true }) as NotifyResultTypes;
+      },
+    ),
+  };
+  const botAnswerWith = (
+    ...results: (PostResultTypes | NotifyResultTypes)[]
+  ) => {
+    nextBotResults = results;
+  };
+
+  const destinations = new NotificationDestinationService(
+    gateway,
+    notifier,
+    bot,
+  );
+  const incidents = new AgentIncidentService(gateway, destinations);
   const worker = new AgentNotificationWorker(
     gateway,
     notifier,
+    bot,
     destinations,
     incidents,
   );
@@ -418,6 +581,10 @@ function harness() {
     answerWith,
     kick,
     notifier,
+    destinations,
+    bot,
+    botCalls,
+    botAnswerWith,
   };
 }
 
@@ -1070,7 +1237,10 @@ describe('AgentNotificationWorker — the outbox', () => {
     const h = harness();
     h.addAgent('a1', 'running', 'Support Bot');
     await h.gateway.saveDestination({
+      kind: 'webhook',
       webhookUrl: ADDRESS,
+      botToken: null,
+      channelId: null,
       hint: 'CRET',
       updatedBy: 'u1',
     });
@@ -1237,5 +1407,297 @@ describe('AgentNotificationWorker — the outbox', () => {
 
     expect(h.gateway.events).toHaveLength(0);
     expect(h.gateway.incidents).toHaveLength(1);
+  });
+});
+
+// ── The bot transport (CLEAN-165) ────────────────────────────────────────
+
+describe('the bot transport — one root, the story in its thread', () => {
+  const BOT = {
+    kind: 'bot' as const,
+    webhookUrl: null,
+    botToken: 'xoxb-SECRETSECRET',
+    channelId: 'C0123456789',
+    hint: 'CRET',
+    updatedBy: 'u1',
+  };
+  const WEBHOOK = {
+    kind: 'webhook' as const,
+    webhookUrl: 'https://hooks.slack.com/services/T000/B000/SECRETSECRET',
+    botToken: null,
+    channelId: null,
+    hint: 'CRET',
+    updatedBy: 'u1',
+  };
+  const seconds = (n: number) => new Date(T0.getTime() + n * 1000);
+
+  type H = ReturnType<typeof harness>;
+  const posts = (h: H) => h.botCalls.filter((c) => c.method === 'post');
+  const roots = (h: H) => posts(h).filter((c) => !c.threadTs);
+  const replies = (h: H) => posts(h).filter((c) => c.threadTs);
+  const updates = (h: H) => h.botCalls.filter((c) => c.method === 'update');
+  const reactions = (h: H) =>
+    h.botCalls.filter((c) => c.method === 'setReaction').map((c) => c.name);
+  const last = <T>(list: T[]) => list[list.length - 1];
+
+  async function onBot(witness: 'ranch' | 'external' = 'ranch') {
+    const h = harness();
+    h.addAgent('a1', 'running', 'Agent a1');
+    await h.gateway.saveDestination(BOT);
+    await h.incidents.attachFailure(failure('a1', T0, witness));
+    return h;
+  }
+
+  it('opens on the transport in force and remembers it on the incident', async () => {
+    const h = await onBot();
+
+    const incident = h.gateway.incidents[0];
+    expect(incident.transport).toBe('bot');
+    expect(incident.number).toBe(1);
+    expect(h.gateway.kindsOf(incident.id)).toEqual(['opened']);
+  });
+
+  it('posts the root once with the mention, the first reply in its thread, and the red reaction', async () => {
+    const h = await onBot();
+
+    await h.worker.drainOutbox(() => minutes(1));
+
+    expect(roots(h)).toHaveLength(1);
+    expect(roots(h)[0].body).toContain('<!channel>');
+    expect(roots(h)[0].body).toContain('incident #1 · down since');
+    expect(replies(h).map((r) => [r.text, r.threadTs])).toEqual([
+      ['Failed: Agent a1', 'ts-1'],
+    ]);
+    expect(reactions(h)).toEqual(['red_circle']);
+    // The rewrite that rides on the first delivery keeps the mention: the
+    // root was just posted with it and nothing has changed since.
+    expect(updates(h)).toHaveLength(1);
+    expect(updates(h)[0].body).toContain('<!channel>');
+
+    const incident = h.gateway.incidents[0];
+    expect(incident.slackTs).toBe('ts-1');
+    expect(incident.slackChannel).toBe('C0123456789');
+    expect(incident.slackReaction).toBe('red_circle');
+    expect(h.gateway.statusOf('opened')).toEqual(['sent']);
+    expect(h.gateway.destination?.lastDeliveryOk).toBe(true);
+  });
+
+  it('never posts a second root: a retry after the reply failed goes straight to the reply', async () => {
+    const h = await onBot();
+    h.botAnswerWith(
+      { ok: true as const, ts: 'ts-root' },
+      { ok: false, retryable: true, error: 'could not reach Slack' },
+    );
+
+    await h.worker.drainOutbox(() => minutes(1));
+    expect(roots(h)).toHaveLength(1);
+    expect(h.gateway.statusOf('opened')).toEqual(['pending']);
+    expect(h.gateway.incidents[0].slackTs).toBe('ts-root');
+
+    await h.worker.drainOutbox(() => minutes(2));
+
+    expect(roots(h)).toHaveLength(1);
+    // The failed attempt and the one that landed: both into the same thread.
+    expect(replies(h).map((r) => r.threadTs)).toEqual(['ts-root', 'ts-root']);
+    expect(h.gateway.statusOf('opened')).toEqual(['sent']);
+  });
+
+  it('queues "Failed again" at most once a minute and marks the root stale in between', async () => {
+    const h = await onBot();
+    const id = h.gateway.incidents[0].id;
+
+    await h.incidents.attachFailure(failure('a1', seconds(10)));
+    expect(h.gateway.kindsOf(id)).toEqual(['opened', 'joined']);
+
+    await h.incidents.attachFailure(failure('a1', seconds(20)));
+    await h.incidents.attachFailure(failure('a1', seconds(20)));
+    expect(h.gateway.kindsOf(id)).toEqual(['opened', 'joined']);
+    expect(h.gateway.incidents[0].rootStale).toBe(true);
+    expect(h.gateway.incidents[0].eventCount).toBe(4);
+
+    await h.incidents.attachFailure(failure('a1', seconds(71)));
+    expect(h.gateway.kindsOf(id)).toEqual(['opened', 'joined', 'joined']);
+    const lastJoined = last(h.gateway.notifications);
+    expect(lastJoined.payload).toMatchObject({ kind: 'joined', eventCount: 5 });
+  });
+
+  it('rewrites a stale root on the sweep so its count catches up, then clears the flag', async () => {
+    const h = await onBot();
+    await h.worker.drainOutbox(() => minutes(1));
+    await h.incidents.attachFailure(failure('a1', seconds(70)));
+    await h.incidents.attachFailure(failure('a1', seconds(80)));
+    expect(h.gateway.incidents[0].rootStale).toBe(true);
+    const before = updates(h).length;
+
+    expect(await h.worker.rewriteStaleRoots(minutes(2))).toBe(1);
+
+    expect(updates(h)).toHaveLength(before + 1);
+    expect(last(updates(h)).body).toContain('· 3 reports');
+    expect(last(updates(h)).body).not.toContain('<!channel>');
+    expect(h.gateway.incidents[0].rootStale).toBe(false);
+  });
+
+  it('says "Running again" once per up-turn, swaps the reaction and rewrites the root', async () => {
+    const h = await onBot();
+    const id = h.gateway.incidents[0].id;
+    await h.worker.drainOutbox(() => minutes(1));
+
+    await h.incidents.noteRunning('a1', minutes(4));
+    await h.incidents.noteRunning('a1', minutes(5));
+    expect(h.gateway.kindsOf(id)).toEqual(['opened', 'running']);
+
+    await h.worker.drainOutbox(() => minutes(6));
+
+    expect(last(replies(h)).text).toBe('Running again: Agent a1');
+    expect(last(updates(h)).body).toContain('🟢');
+    expect(last(updates(h)).body).toContain('up, watching since');
+    expect(last(reactions(h))).toBe('large_green_circle');
+    expect(h.gateway.incidents[0].slackReaction).toBe('large_green_circle');
+  });
+
+  it('closes as resolved: a reply, the root rewritten, ✅ — and no new channel message', async () => {
+    const h = await onBot();
+    await h.worker.drainOutbox(() => minutes(1));
+    await h.incidents.noteRunning('a1', minutes(4));
+    await h.worker.drainOutbox(() => minutes(5));
+
+    expect(await h.worker.sweepIncidents(minutes(16))).toBe(1);
+    await h.worker.drainOutbox(() => minutes(16));
+
+    expect(roots(h)).toHaveLength(1);
+    expect(last(replies(h)).text).toBe('Resolved: Agent a1');
+    expect(last(updates(h)).body).toContain('✅');
+    expect(last(updates(h)).body).toContain('· resolved');
+    expect(last(updates(h)).body).toContain('downtime 4 min');
+    expect(last(reactions(h))).toBe('white_check_mark');
+    expect(h.gateway.statusOf('closed')).toEqual(['sent']);
+  });
+
+  it('tells the thread when a person stopped the agent, and pages nobody', async () => {
+    const h = await onBot();
+    const id = h.gateway.incidents[0].id;
+    await h.worker.drainOutbox(() => minutes(1));
+
+    h.setStatus('a1', 'stopped');
+    await h.worker.sweepIncidents(minutes(2));
+    expect(h.gateway.kindsOf(id)).toEqual(['opened', 'closed']);
+    await h.worker.drainOutbox(() => minutes(2));
+
+    expect(roots(h)).toHaveLength(1);
+    expect(last(replies(h)).text).toBe('Stopped: Agent a1');
+    expect(last(updates(h)).body).toContain('⏹');
+    expect(last(updates(h)).body).toContain('stopped by owner');
+    expect(last(reactions(h))).toBe('black_square_for_stop');
+  });
+
+  it('records a lost rewrite on the destination and still counts the reply as sent', async () => {
+    const h = await onBot();
+    await h.worker.drainOutbox(() => minutes(1));
+    await h.incidents.noteRunning('a1', minutes(4));
+    h.botAnswerWith(
+      { ok: true as const, ts: 'ts-reply' },
+      {
+        ok: false,
+        retryable: false,
+        error: 'Could not update the incident message: message_not_found',
+      },
+    );
+
+    await h.worker.drainOutbox(() => minutes(5));
+
+    expect(h.gateway.statusOf('running')).toEqual(['sent']);
+    expect(h.gateway.destination?.lastDeliveryOk).toBe(false);
+    expect(h.gateway.destination?.lastDeliveryError).toContain(
+      'Could not update the incident message',
+    );
+  });
+
+  it('delivers the rows of one incident in order even when a later one is due first', async () => {
+    const h = await onBot();
+    await h.incidents.attachFailure(failure('a1', seconds(10)));
+    const [opened, joined] = h.gateway.notifications;
+    opened.nextAttemptAt = minutes(1);
+    joined.nextAttemptAt = T0;
+
+    await h.worker.drainOutbox(() => minutes(2));
+
+    expect(posts(h).map((p) => p.text)).toEqual([
+      'Agent a1 — incident #1',
+      'Failed: Agent a1',
+      'Failed again: Agent a1',
+    ]);
+  });
+
+  it('posts a late root already in its final state, without the mention, and the replies follow in order', async () => {
+    const h = await onBot();
+    h.botAnswerWith({
+      ok: false,
+      retryable: true,
+      error: 'could not reach Slack',
+    });
+    await h.worker.drainOutbox(() => seconds(30));
+    expect(h.gateway.incidents[0].slackTs).toBeNull();
+
+    await h.incidents.noteRunning('a1', minutes(4));
+    expect(await h.worker.sweepIncidents(minutes(16))).toBe(1);
+    await h.worker.drainOutbox(() => minutes(17));
+
+    // One attempt that Slack refused, then the one that landed.
+    expect(roots(h)).toHaveLength(2);
+    expect(last(roots(h)).body).toContain('✅');
+    expect(last(roots(h)).body).toContain('· resolved');
+    expect(last(roots(h)).body).not.toContain('<!channel>');
+    expect(replies(h).map((r) => r.text)).toEqual([
+      'Failed: Agent a1',
+      'Running again: Agent a1',
+      'Resolved: Agent a1',
+    ]);
+    expect(h.gateway.notifications.map((n) => n.status)).toEqual([
+      'sent',
+      'sent',
+      'sent',
+    ]);
+  });
+
+  it('skips the rest of a bot incident once the owner has moved to the webhook', async () => {
+    const h = await onBot();
+    await h.worker.drainOutbox(() => minutes(1));
+    await h.gateway.saveDestination(WEBHOOK);
+    await h.incidents.noteRunning('a1', minutes(4));
+    expect(await h.worker.sweepIncidents(minutes(16))).toBe(1);
+
+    await h.worker.drainOutbox(() => minutes(16));
+
+    expect(h.gateway.statusOf('closed')).toEqual(['skipped']);
+    expect(h.sent).toHaveLength(0);
+    expect(roots(h)).toHaveLength(1);
+  });
+
+  it('keeps the webhook to its two messages: joins and up-turns say nothing, a stop stays silent', async () => {
+    const h = harness();
+    h.addAgent('a1', 'running', 'Agent a1');
+    await h.gateway.saveDestination(WEBHOOK);
+    await h.incidents.attachFailure(failure('a1', T0));
+    await h.incidents.attachFailure(failure('a1', seconds(10)));
+    await h.incidents.attachFailure(failure('a1', seconds(80)));
+    await h.incidents.noteRunning('a1', minutes(4));
+    const first = h.gateway.incidents[0].id;
+    expect(h.gateway.kindsOf(first)).toEqual(['opened']);
+
+    expect(await h.worker.sweepIncidents(minutes(16))).toBe(1);
+    expect(h.gateway.kindsOf(first)).toEqual(['opened', 'closed']);
+    await h.worker.drainOutbox(() => minutes(16));
+    expect(h.sent.map((s) => s.text)).toEqual([
+      'Agent failed: Agent a1',
+      'No further reports: Agent a1',
+    ]);
+    expect(h.botCalls).toHaveLength(0);
+
+    await h.incidents.attachFailure(failure('a1', minutes(20)));
+    h.setStatus('a1', 'stopped');
+    expect(await h.worker.sweepIncidents(minutes(21))).toBe(0);
+    const second = h.gateway.incidents[1];
+    expect(second.open).toBe(false);
+    expect(h.gateway.kindsOf(second.id)).toEqual(['opened']);
   });
 });

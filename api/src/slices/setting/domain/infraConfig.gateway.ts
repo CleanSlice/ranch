@@ -40,6 +40,14 @@ export abstract class IInfraConfigGateway {
   abstract getConfiguredApiPublicUrl(): Promise<string | null>;
 
   /**
+   * The installation's short name — dev, staging, prod-eu — for the label
+   * at the start of a notification (CLEAN-167): the `environment` setting,
+   * else `RANCH_ENVIRONMENT`, trimmed; null when neither is set, which
+   * means "no label".
+   */
+  abstract getEnvironment(): Promise<string | null>;
+
+  /**
    * Drop the in-memory cache. Useful when settings are upserted via the
    * settings controller and we want subsequent reads to see fresh values.
    */

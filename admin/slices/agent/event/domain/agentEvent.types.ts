@@ -102,6 +102,8 @@ export interface INotificationDestination {
   kind: DestinationKindTypes | null;
   hint: string | null;
   channelId: string | null;
+  /** The installation's label on every message ([dev], [prod-eu]); null when none is set. */
+  environment: string | null;
   updatedBy: string | null;
   updatedAt: string | null;
   /** `false` while `ADMIN_URL` is unset on the API: messages carry no link. */

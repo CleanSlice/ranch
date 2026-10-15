@@ -10,6 +10,7 @@ import {
   renderOpened,
   renderReply,
   renderRoot,
+  renderTest,
   rootStateOf,
 } from './notificationText';
 
@@ -432,4 +433,63 @@ describe('renderReply', () => {
       '&lt;!channel&gt; &lt;!here&gt; everyone look',
     );
   });
+});
+
+describe('the environment label (CLEAN-167)', () => {
+  it('opens every channel-level message when an environment is set, escaped', () => {
+    const env = 'dev <mazda> & co';
+    const shown = '[dev &lt;mazda&gt; &amp; co] ';
+
+    expect(bodyOf(renderOpened(opened(), CONSOLE, env)).split('\n')[0]).toBe(
+      `🔴 <!channel> *${shown}Agent failed: Support Bot*`,
+    );
+    expect(renderOpened(opened(), CONSOLE, env).text).toBe(
+      `${shown}Agent failed: Support Bot`,
+    );
+    expect(bodyOf(renderClosed(closedFor(), env)).split('\n')[0]).toBe(
+      `🟢 *${shown}Agent back: Support Bot*`,
+    );
+    expect(
+      bodyOf(
+        renderRoot(incident(), CONSOLE, { mention: true, environment: env }),
+      ).split('\n')[0],
+    ).toMatch(
+      new RegExp(
+        `^🔴 <!channel> \\*${shown.replace(/[[\]]/g, '\\$&')}Test Chatbot — incident #12`,
+      ),
+    );
+    expect(bodyOf(renderTest(env)).split('\n')[0]).toBe(
+      `✅ *${shown}Test notification from Ranch*`,
+    );
+  });
+
+  it('is absent when no environment is set, or it is blank', () => {
+    for (const env of [null, undefined, '', '   ']) {
+      expect(
+        bodyOf(renderOpened(opened(), CONSOLE, env as never)),
+      ).not.toContain('[');
+      expect(
+        bodyOf(
+          renderRoot(incident(), CONSOLE, { mention: false, environment: env }),
+        ),
+      ).not.toMatch(/^\S+ \*\[/);
+      expect(bodyOf(renderTest(env as never))).not.toContain('[');
+    }
+  });
+
+  it('never reaches a thread reply — the root already carries it', () => {
+    expect(bodyOf(renderReply(opened()))).not.toContain('[');
+  });
+});
+
+const closedFor = (): IClosedNotificationPayload => ({
+  kind: 'closed',
+  agentId: 'agent-1',
+  agentName: 'Support Bot',
+  resolution: 'recovered',
+  openedAt: '2026-10-06T21:14:00.000Z',
+  upAt: '2026-10-06T21:30:00.000Z',
+  closedAt: '2026-10-06T21:40:00.000Z',
+  firstSenderName: 'cluster-watcher',
+  eventCount: 1,
 });

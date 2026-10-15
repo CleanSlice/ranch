@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { AgentStatusChanges, IAgentGateway } from '#/agent/agent/domain';
+import { IInfraConfigGateway } from '#/setting/domain/infraConfig.gateway';
 import {
   ApiKeyScopeTypes,
   IApiKeyData,
@@ -544,10 +545,19 @@ function harness() {
     nextBotResults = results;
   };
 
+  // The installation's label; null until a test sets one.
+  let environment: string | null = null;
+  const setEnvironment = (value: string | null) => {
+    environment = value;
+  };
+  const infra = {
+    getEnvironment: jest.fn(async () => environment),
+  } as unknown as IInfraConfigGateway;
   const destinations = new NotificationDestinationService(
     gateway,
     notifier,
     bot,
+    infra,
   );
   const incidents = new AgentIncidentService(gateway, destinations);
   const worker = new AgentNotificationWorker(
@@ -585,6 +595,7 @@ function harness() {
     bot,
     botCalls,
     botAnswerWith,
+    setEnvironment,
   };
 }
 
@@ -1699,5 +1710,58 @@ describe('the bot transport — one root, the story in its thread', () => {
     const second = h.gateway.incidents[1];
     expect(second.open).toBe(false);
     expect(h.gateway.kindsOf(second.id)).toEqual(['opened']);
+  });
+});
+
+describe('the environment label (CLEAN-167)', () => {
+  const BOT = {
+    kind: 'bot' as const,
+    webhookUrl: null,
+    botToken: 'xoxb-SECRETSECRET',
+    channelId: 'C0123456789',
+    hint: 'CRET',
+    updatedBy: 'u1',
+  };
+
+  it('labels the root and its rewrites, never the thread', async () => {
+    const h = harness();
+    h.setEnvironment('dev-mazda');
+    h.addAgent('a1', 'running', 'Agent a1');
+    await h.gateway.saveDestination(BOT);
+    await h.incidents.attachFailure(failure('a1', T0, 'ranch'));
+    await h.worker.drainOutbox(() => minutes(1));
+    await h.incidents.noteRunning('a1', minutes(4));
+    await h.worker.drainOutbox(() => minutes(5));
+
+    const posts = h.botCalls.filter((c) => c.method === 'post');
+    const roots = posts.filter((c) => !c.threadTs);
+    const replies = posts.filter((c) => c.threadTs);
+    const updates = h.botCalls.filter((c) => c.method === 'update');
+    expect(roots[0].body).toContain('*[dev-mazda] Agent a1 — incident #1');
+    expect(roots[0].text).toBe('[dev-mazda] Agent a1 — incident #1');
+    for (const u of updates) expect(u.body).toContain('[dev-mazda] Agent a1');
+    for (const r of replies) expect(r.body).not.toContain('[dev-mazda]');
+  });
+
+  it('labels the webhook messages the same way, and nothing when unset', async () => {
+    const h = harness();
+    h.addAgent('a1', 'running', 'Agent a1');
+    await h.gateway.saveDestination({
+      kind: 'webhook',
+      webhookUrl: 'https://hooks.slack.com/services/T/B/x',
+      botToken: null,
+      channelId: null,
+      hint: 'x',
+      updatedBy: 'u1',
+    });
+    await h.incidents.attachFailure(failure('a1', T0));
+    await h.worker.drainOutbox(() => minutes(1));
+    expect(h.sent[0].text).toBe('Agent failed: Agent a1');
+
+    h.setEnvironment('prod-eu');
+    await h.incidents.attachFailure(failure('a2', T0));
+    h.addAgent('a2', 'running', 'Agent a2');
+    await h.worker.drainOutbox(() => minutes(2));
+    expect(h.sent[1].text).toBe('[prod-eu] Agent failed: Agent a2');
   });
 });

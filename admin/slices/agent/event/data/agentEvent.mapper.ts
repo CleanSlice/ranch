@@ -88,6 +88,7 @@ export class AgentEventMapper {
       kind: dto.kind === 'bot' || dto.kind === 'webhook' ? dto.kind : null,
       hint: dto.hint ?? null,
       channelId: dto.channelId ?? null,
+      environment: dto.environment ?? null,
       updatedBy: dto.updatedBy ?? null,
       updatedAt: dto.updatedAt ?? null,
       consoleLinks: dto.consoleLinks === true,

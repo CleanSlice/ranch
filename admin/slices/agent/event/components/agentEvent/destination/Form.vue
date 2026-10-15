@@ -254,6 +254,20 @@ async function remove() {
         Only an owner can set, replace or remove the destination.
       </p>
 
+      <p v-if="destination" class="text-xs text-muted-foreground">
+        <template v-if="destination.environment">
+          Messages start with
+          <code>[{{ destination.environment }}]</code> — this installation’s
+          name, from <code>RANCH_ENVIRONMENT</code> on the API.
+        </template>
+        <template v-else>
+          Messages carry no installation name. Set
+          <code>RANCH_ENVIRONMENT</code> on the API (dev, staging, prod-eu)
+          and they start with <code>[that name]</code>, so a reader knows
+          where the agent fell.
+        </template>
+      </p>
+
       <p
         v-if="error"
         class="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"

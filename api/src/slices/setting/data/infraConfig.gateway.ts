@@ -74,6 +74,14 @@ const KEYS = {
     default: '',
     parse: (s: string) => s,
   } as KeySpec<string>,
+  // The installation's short name for notification labels (CLEAN-167).
+  // Empty default: an install that never set it shows no label.
+  environment: {
+    setting: 'environment',
+    env: 'RANCH_ENVIRONMENT',
+    default: '',
+    parse: (s: string) => s.trim(),
+  } as KeySpec<string>,
 };
 
 type KeyName = keyof typeof KEYS;
@@ -137,6 +145,11 @@ export class InfraConfigGateway
   async getConfiguredApiPublicUrl(): Promise<string | null> {
     const configured = await this.resolve('api_public_url');
     return configured ? configured.replace(TRAILING_SLASHES, '') : null;
+  }
+
+  async getEnvironment(): Promise<string | null> {
+    const configured = await this.resolve('environment');
+    return configured ? configured : null;
   }
 
   async getApiPublicUrl(): Promise<string> {

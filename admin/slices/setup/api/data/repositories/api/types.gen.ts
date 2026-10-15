@@ -2079,6 +2079,10 @@ export type NotificationDestinationDto = {
    * The bot’s channel id; null on the webhook kind.
    */
   channelId: string | null;
+  /**
+   * The installation’s label at the start of every message ([dev], [prod-eu]): the infrastructure.environment setting, else RANCH_ENVIRONMENT on the API; null when neither is set.
+   */
+  environment: string | null;
   updatedBy: string | null;
   updatedAt: string | null;
   /**

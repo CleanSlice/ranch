@@ -206,6 +206,23 @@ Pick a channel whose members are the people who should be woken.
 For messages to link to the agent, the API deployment needs `ADMIN_URL` set
 to the admin console's address.
 
+**Which installation.** Set `RANCH_ENVIRONMENT` on the API deployment to the
+installation's short name — `dev`, `staging`, `prod-eu` — and every
+channel-level message starts with it in brackets:
+
+```text
+🔴 @channel [dev-mazda] Test Chatbot — incident #12 · down since 4:04 PM · OOMKilled
+🔴 [dev-mazda] Agent failed: Test Chatbot
+✅ [dev-mazda] Test notification from Ranch
+```
+
+Thread replies carry no label; they live inside the root. Unset, nothing is
+shown — an install that never set it looks as it did. The owner can override
+the variable with the `infrastructure.environment` setting; Settings →
+Notifications shows which label is in force. One channel per installation is
+still the cleaner setup; the label is for the cases where two installations
+share a channel, or a screenshot leaves it.
+
 An incident finishes on the transport it started on. Switching from the bot
 to the webhook discards the token, so an incident that is open at that
 moment can no longer be written to its thread: its remaining updates are

@@ -321,6 +321,9 @@ export interface INotificationDestinationView {
   hint: string | null;
   // The bot's channel; not a secret. null on the webhook kind.
   channelId: string | null;
+  // The installation's label on every message — infrastructure.environment
+  // or RANCH_ENVIRONMENT — null when none is set (CLEAN-167).
+  environment: string | null;
   updatedBy: string | null;
   updatedAt: Date | null;
   // false ⇒ ADMIN_URL is not set on the API; messages carry no link.

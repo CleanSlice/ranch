@@ -436,6 +436,7 @@ describe('the notification destination', () => {
       notifier as unknown as INotifier,
       bot as unknown as ISlackBotNotifier,
       { getEnvironment: async () => null } as unknown as IInfraConfigGateway,
+      { liveCount: async () => 1 } as never,
     );
     const controller = new AgentEventController(
       {} as AgentEventService,
@@ -745,6 +746,7 @@ describe('the bot destination', () => {
       notifier as unknown as INotifier,
       bot as unknown as ISlackBotNotifier,
       { getEnvironment: async () => null } as unknown as IInfraConfigGateway,
+      { liveCount: async () => 1 } as never,
     );
     const controller = new AgentEventController(
       {} as AgentEventService,

@@ -558,6 +558,7 @@ function harness() {
     notifier,
     bot,
     infra,
+    { liveCount: async () => 1 } as never,
   );
   const incidents = new AgentIncidentService(gateway, destinations);
   const worker = new AgentNotificationWorker(

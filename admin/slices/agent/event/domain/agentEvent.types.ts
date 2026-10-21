@@ -104,6 +104,8 @@ export interface INotificationDestination {
   channelId: string | null;
   /** The installation's label on every message ([dev], [prod-eu]); null when none is set. */
   environment: string | null;
+  /** Copies of the API alive now. Above one, agents are seen by only one of them. */
+  apiReplicas: number;
   updatedBy: string | null;
   updatedAt: string | null;
   /** `false` while `ADMIN_URL` is unset on the API: messages carry no link. */

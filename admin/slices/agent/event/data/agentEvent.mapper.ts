@@ -89,6 +89,7 @@ export class AgentEventMapper {
       hint: dto.hint ?? null,
       channelId: dto.channelId ?? null,
       environment: dto.environment ?? null,
+      apiReplicas: dto.apiReplicas ?? 1,
       updatedBy: dto.updatedBy ?? null,
       updatedAt: dto.updatedAt ?? null,
       consoleLinks: dto.consoleLinks === true,

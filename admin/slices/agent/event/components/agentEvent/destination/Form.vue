@@ -276,6 +276,20 @@ async function remove() {
       </p>
 
       <p
+        v-if="destination && destination.apiReplicas > 1"
+        class="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+      >
+        <IconAlertTriangle class="mt-0.5 size-4 shrink-0" />
+        <span>
+          The Ranch API is running as {{ destination.apiReplicas }} copies.
+          Each copy sees only the agents connected to it, so "unreachable" is
+          not reported while this lasts, and a chat may land on a copy
+          without the agent and answer "Agent is not connected". Run
+          <code>ranch-api</code> as one replica.
+        </span>
+      </p>
+
+      <p
         v-if="destination?.configured && !destination.consoleLinks"
         class="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
       >

@@ -87,6 +87,7 @@ function toToolDestination(v: INotificationDestinationView) {
     hint: v.hint,
     channelId: v.channelId,
     environment: v.environment,
+    apiReplicas: v.apiReplicas,
     updatedBy: v.updatedBy,
     updatedAt: iso(v.updatedAt),
     consoleLinks: v.consoleLinks,

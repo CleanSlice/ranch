@@ -4,6 +4,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { IInfraConfigGateway } from '#/setting/domain/infraConfig.gateway';
+import { ApiInstanceService } from '#/setting/domain/apiInstance.service';
 import { IAgentEventGateway } from './agentEvent.gateway';
 import {
   BOT_TOKEN_MAX_LENGTH,
@@ -38,6 +39,7 @@ export class NotificationDestinationService {
     private readonly notifier: INotifier,
     private readonly bot: ISlackBotNotifier,
     private readonly infra: IInfraConfigGateway,
+    private readonly apiInstances: ApiInstanceService,
   ) {}
 
   async view(): Promise<INotificationDestinationView> {
@@ -197,6 +199,7 @@ export class NotificationDestinationService {
   ): Promise<INotificationDestinationView> {
     const consoleLinks = this.consoleUrl() !== null;
     const environment = await this.environment();
+    const apiReplicas = await this.apiInstances.liveCount();
     if (!destination) {
       return {
         configured: false,
@@ -204,6 +207,7 @@ export class NotificationDestinationService {
         hint: null,
         channelId: null,
         environment,
+        apiReplicas,
         updatedBy: null,
         updatedAt: null,
         consoleLinks,
@@ -216,6 +220,7 @@ export class NotificationDestinationService {
       hint: destination.hint,
       channelId: destination.kind === 'bot' ? destination.channelId : null,
       environment,
+      apiReplicas,
       updatedBy: destination.updatedBy,
       updatedAt: destination.updatedAt,
       consoleLinks,

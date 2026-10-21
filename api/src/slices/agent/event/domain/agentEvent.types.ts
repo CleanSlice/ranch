@@ -324,6 +324,10 @@ export interface INotificationDestinationView {
   // The installation's label on every message — infrastructure.environment
   // or RANCH_ENVIRONMENT — null when none is set (CLEAN-167).
   environment: string | null;
+  // Copies of the API alive right now. More than one means agents are seen
+  // by only one of them: unreachable detection is paused and chats may miss
+  // the agent's socket (CLEAN-140).
+  apiReplicas: number;
   updatedBy: string | null;
   updatedAt: Date | null;
   // false ⇒ ADMIN_URL is not set on the API; messages carry no link.

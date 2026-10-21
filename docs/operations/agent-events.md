@@ -232,9 +232,22 @@ webhook.
 With no destination set, events are still recorded and shown in the console;
 the Events page says that nobody outside it is being notified.
 
-## Before switching notifications on
+## One copy of the API
 
-Watch a few running agents in the console for two minutes. None may flip to
-*unreachable* and back. If any does, the API is running as more than one
-replica while the hub that tracks agent connections is per process — fix that
-first, or every flip becomes an incident.
+The hub that knows which agents are connected lives in memory, per API
+process, and so do chat routing and MCP sessions. With two copies of the API
+behind one Service, the copy that does not hold an agent's socket sees "pod
+running, hub absent" and after a minute writes *unreachable*; the other
+writes *running* back; every flip was an incident and a Slack message, two
+minutes apart, for days (CLEAN-140). The manifests therefore run `ranch-api`
+as one replica with no HPA. Scale the agents, not the API.
+
+Should it ever run as more than one copy anyway — a rolling update also
+overlaps two pods for a minute — the API notices: every copy registers
+itself in Postgres with a heartbeat, and while more than one is alive the
+sweep does not write *unreachable* at all and says so in the log every five
+minutes (`copies of the API are alive`). Settings → Notifications and the
+agent's `get_notification_destination` show the count with a warning. A pod
+that vanished is still a failure — that is Kubernetes' word, not the hub's.
+Chats may still answer "Agent is not connected" on the copy without the
+socket, so the warning is one to act on, not to live with.

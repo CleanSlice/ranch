@@ -6,7 +6,12 @@ metadata:
   labels:
     app: ranch-api
 spec:
-  replicas: 2
+  # One copy on purpose (CLEAN-140): the bridle hub that knows which agents
+  # are connected, chat routing and MCP sessions all live in memory, per
+  # process. A second copy sees agents as unreachable, answers chats with
+  # "Agent is not connected" and loses MCP sessions. Scale the agents, not
+  # the API. No HPA for the same reason.
+  replicas: 1
   selector:
     matchLabels:
       app: ranch-api

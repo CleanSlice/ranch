@@ -108,6 +108,13 @@ export class NotificationDestinationDto {
   })
   environment: string | null;
 
+  @ApiProperty({
+    description:
+      'Copies of the API alive right now. More than one means agents are seen by only one of them: unreachable detection is paused and chats may miss the agent’s socket. Run ranch-api as one replica.',
+    example: 1,
+  })
+  apiReplicas: number;
+
   @ApiProperty({ nullable: true, type: String })
   updatedBy: string | null;
 

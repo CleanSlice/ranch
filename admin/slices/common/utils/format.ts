@@ -113,6 +113,25 @@ export function formatStampDate(value: Instant, now: Date = new Date()): string 
 }
 
 /**
+ * The heading over a day's worth of rows: `Aug 21` this year, `Aug 21, 2026`
+ * before that. Never a clock — the rows under it carry their own.
+ */
+export function formatDay(value: Instant, now: Date = new Date()): string {
+  const date = toDate(value);
+  if (!date) return '';
+  return format(date.getFullYear() === now.getFullYear() ? 'monthDay' : 'date', date);
+}
+
+/** `2026-08-21` in the viewer's own day — the key rows are grouped under. */
+export function dayKey(value: Instant): string {
+  const date = toDate(value);
+  if (!date) return '';
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/**
  * How long between two instants, in the two largest units that say something:
  * `45 s`, `16 min`, `2 h`, `2 h 5 min`, `3 d 4 h`. An incident's "down for".
  * Backwards, empty or unreadable is `0 s` — a span is never negative on screen.

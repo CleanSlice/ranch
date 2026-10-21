@@ -1,8 +1,24 @@
 <script setup lang="ts">
+import {
+  IconArchive,
+  IconBrandSlack,
+  IconBrandTelegram,
+  IconChevronRight,
+  IconLink,
+  IconMessage,
+  IconMessageOff,
+  IconRefresh,
+  IconRobot,
+  IconSearch,
+  IconShield,
+} from '@tabler/icons-vue';
+import type { Component } from 'vue';
 import type { ChatChannel, IChatSession } from '#chat/stores/chat';
+import { chatCountLabel, chatUser, groupByDay, isConversation } from '#chat/utils/chatList';
+import { formatClock } from '#common/utils/format';
 
 // When `agentId` is set, the list is scoped to that agent (used inside the
-// agent-detail "Chats" tab): the agent filter and the agent column are hidden.
+// agent-detail "Chats" tab): the agent filter and the agent name are hidden.
 // Without it (global /chats page) both render, with names resolved from the
 // agent store.
 const props = defineProps<{ agentId?: string }>();
@@ -25,12 +41,18 @@ const includeInternal = ref(false);
 const page = ref(1);
 const perPage = 50;
 
-const query = computed(() => ({
+// Everything but the channel and the page: the segment counts are taken
+// against this, so each segment says how many it would show.
+const baseQuery = computed(() => ({
   agentId: props.agentId ?? (agentFilter.value === AGENT_ALL ? undefined : agentFilter.value),
-  channel: channel.value === 'all' ? undefined : channel.value,
   search: search.value.trim() || undefined,
   archived: archived.value || undefined,
   includeInternal: includeInternal.value || undefined,
+}));
+
+const query = computed(() => ({
+  ...baseQuery.value,
+  channel: channel.value === 'all' ? undefined : channel.value,
   page: page.value,
   perPage,
 }));
@@ -41,7 +63,25 @@ const { data, pending, refresh } = await useAsyncData(
   { watch: [query] },
 );
 
-// Agents are only needed to render the filter options and the Agent column.
+// One count per segment: a page of one row is the cheapest way to ask the
+// server for a total under the same filters.
+const { data: counts } = await useAsyncData(
+  `chat-list-counts-${props.agentId ?? 'all'}`,
+  async () => {
+    const totals = await Promise.all(
+      CHANNELS.map((c) =>
+        store.list({ ...baseQuery.value, channel: c === 'all' ? undefined : c, perPage: 1 }),
+      ),
+    );
+    return Object.fromEntries(CHANNELS.map((c, i) => [c, totals[i].total])) as Record<
+      string,
+      number
+    >;
+  },
+  { watch: [baseQuery] },
+);
+
+// Agents are only needed to render the filter options and the agent name.
 await useAsyncData('chat-list-agents', () => agentStore.fetchAll(), {
   immediate: showAgent.value,
 });
@@ -58,6 +98,7 @@ function agentName(id: string): string {
 const total = computed(() => data.value?.total ?? 0);
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / perPage)));
 const rows = computed<IChatSession[]>(() => data.value?.items ?? []);
+const groups = computed(() => groupByDay(rows.value));
 
 const syncing = ref(false);
 const syncNote = ref('');
@@ -75,37 +116,61 @@ async function onSync() {
   }
 }
 
-const channelVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
-  bridle: 'default',
-  telegram: 'secondary',
-  slack: 'secondary',
-  internal: 'outline',
+const channelTile: Record<string, { icon: Component; class: string }> = {
+  bridle: { icon: IconMessage, class: 'bg-primary text-primary-foreground' },
+  telegram: { icon: IconBrandTelegram, class: 'bg-blue-100 text-blue-700' },
+  slack: { icon: IconBrandSlack, class: 'bg-purple-100 text-purple-800' },
+  internal: { icon: IconRobot, class: 'bg-muted text-muted-foreground' },
 };
-
-function who(s: IChatSession): string {
-  return s.title || s.externalUserId || '—';
+function tile(c: string) {
+  return channelTile[c] ?? { icon: IconMessage, class: 'bg-muted text-muted-foreground' };
 }
+
+const userIcon: Partial<Record<string, Component>> = {
+  admin: IconShield,
+  share: IconLink,
+  internal: IconRobot,
+};
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
     <!-- Filters -->
-    <div class="flex flex-wrap items-center gap-2">
-      <Input v-model="search" placeholder="Search title, preview, user…" class="max-w-xs" />
-      <div class="flex gap-1">
-        <Button
+    <div class="flex flex-wrap items-center gap-2.5">
+      <label class="relative flex min-w-0 flex-[1_1_240px] items-center md:max-w-sm">
+        <span class="sr-only">Search chats</span>
+        <IconSearch class="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
+        <Input
+          v-model="search"
+          type="search"
+          placeholder="Search agent, user, message…"
+          class="h-10 pl-9"
+        />
+      </label>
+
+      <div role="group" aria-label="Channel" class="flex flex-none gap-0.5 rounded-xl bg-muted p-[3px]">
+        <button
           v-for="c in CHANNELS"
           :key="c"
-          size="sm"
-          :variant="channel === c ? 'default' : 'outline'"
-          class="capitalize"
+          type="button"
+          :aria-pressed="channel === c"
+          class="inline-flex h-8 items-center gap-1.5 rounded-[9px] px-3 text-[13px] capitalize transition-colors"
+          :class="
+            channel === c
+              ? 'bg-background font-semibold text-foreground shadow-sm'
+              : 'font-medium text-muted-foreground hover:bg-background/60 hover:text-foreground'
+          "
           @click="channel = c"
         >
           {{ c }}
-        </Button>
+          <span v-if="counts" class="text-[11px] font-semibold text-muted-foreground">
+            {{ counts[c] ?? 0 }}
+          </span>
+        </button>
       </div>
+
       <Select v-if="showAgent" v-model="agentFilter">
-        <SelectTrigger class="h-8 w-48" aria-label="Filter by agent">
+        <SelectTrigger class="h-10 w-52" aria-label="Filter by agent">
           <SelectValue placeholder="All agents" />
         </SelectTrigger>
         <SelectContent>
@@ -115,69 +180,99 @@ function who(s: IChatSession): string {
           </SelectItem>
         </SelectContent>
       </Select>
-      <label class="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Checkbox v-model="archived" /> Archived
+
+      <label class="flex min-h-8 cursor-pointer items-center gap-2 text-[13px] text-muted-foreground">
+        <Switch v-model="archived" /> Archived
       </label>
-      <label class="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Checkbox v-model="includeInternal" /> Internal
+      <label class="flex min-h-8 cursor-pointer items-center gap-2 text-[13px] text-muted-foreground">
+        <Switch v-model="includeInternal" /> Internal
       </label>
+
       <div class="ml-auto flex items-center gap-2">
         <span v-if="syncNote" class="text-xs text-muted-foreground">{{ syncNote }}</span>
-        <Button size="sm" variant="outline" :disabled="syncing" @click="onSync">
+        <Button variant="outline" :disabled="syncing" @click="onSync">
+          <IconRefresh class="size-4" :class="syncing && 'animate-spin'" />
           {{ syncing ? 'Syncing…' : 'Sync' }}
         </Button>
       </div>
     </div>
 
-    <!-- Table -->
+    <!-- Rows, a group per day -->
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
-    <div v-else-if="rows.length">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Channel</TableHead>
-            <TableHead v-if="showAgent">Agent</TableHead>
-            <TableHead>User</TableHead>
-            <TableHead>Last message</TableHead>
-            <TableHead class="text-right">Msgs</TableHead>
-            <TableHead class="text-right">Last activity</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow
-            v-for="s in rows"
-            :key="s.id"
-            class="cursor-pointer"
-            @click="navigateTo(`/chats/${s.id}`)"
+
+    <Card v-else-if="rows.length" class="gap-0 overflow-hidden py-0">
+      <template v-for="g in groups" :key="g.key">
+        <ChatListDayHeading :at="g.at" :count="g.sessions.length" />
+        <NuxtLink
+          v-for="s in g.sessions"
+          :key="s.id"
+          :to="`/chats/${s.id}`"
+          class="group flex items-start gap-3.5 border-b px-5 py-3.5 text-foreground transition-colors last:border-b-0 hover:bg-muted/40"
+        >
+          <span
+            :title="s.channel"
+            class="flex size-10 flex-none items-center justify-center rounded-xl"
+            :class="tile(s.channel).class"
           >
-            <TableCell>
-              <Badge :variant="channelVariant[s.channel] ?? 'outline'" class="capitalize">
-                {{ s.channel }}
+            <component :is="tile(s.channel).icon" class="size-5" />
+          </span>
+
+          <div class="flex min-w-0 flex-1 flex-col gap-1">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <template v-if="showAgent">
+                <span class="text-[14.5px] font-semibold leading-tight">{{ agentName(s.agentId) }}</span>
+                <span aria-hidden="true" class="text-muted-foreground/60">·</span>
+              </template>
+              <Badge variant="secondary" class="gap-1 font-medium" :title="chatUser(s).fullId">
+                <component :is="userIcon[chatUser(s).kind]" v-if="userIcon[chatUser(s).kind]" />
+                {{ chatUser(s).label }}
               </Badge>
-              <Badge v-if="s.archived" variant="outline" class="ml-1">archived</Badge>
-            </TableCell>
-            <TableCell v-if="showAgent" @click.stop>
-              <NuxtLink
-                :to="`/agents/${s.agentId}`"
-                class="text-sm font-medium hover:underline"
+              <span
+                v-if="chatUser(s).id"
+                class="font-mono text-[12.5px] text-muted-foreground"
+                :title="chatUser(s).fullId"
               >
-                {{ agentName(s.agentId) }}
-              </NuxtLink>
-            </TableCell>
-            <TableCell class="font-medium">{{ who(s) }}</TableCell>
-            <TableCell class="max-w-md truncate text-muted-foreground">
-              {{ s.preview || '—' }}
-            </TableCell>
-            <TableCell class="text-right tabular-nums">{{ s.messageCount }}</TableCell>
-            <TableCell class="text-right text-muted-foreground">
-              <DateTimeAgo :date="s.lastMessageAt" />
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </div>
-    <div v-else class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
-      No chats yet. Run <span class="font-medium">Sync</span> to index existing sessions.
+                {{ chatUser(s).id }}
+              </span>
+              <Badge v-if="s.archived" variant="outline" class="gap-1 font-medium text-muted-foreground">
+                <IconArchive />
+                archived
+              </Badge>
+            </div>
+            <p class="truncate text-[13.5px] text-muted-foreground">{{ s.preview || '—' }}</p>
+          </div>
+
+          <div class="flex flex-none items-center gap-3 pt-0.5">
+            <span
+              class="inline-flex h-6 items-center gap-1 rounded-full px-2 text-xs font-semibold tabular-nums"
+              :class="isConversation(s) ? 'bg-indigo-100 text-indigo-700' : 'bg-muted text-muted-foreground'"
+              :title="`${s.messageCount} messages`"
+            >
+              <IconMessage class="size-3.5" />
+              {{ s.messageCount }}
+            </span>
+            <span class="w-11 text-right text-[12.5px] tabular-nums text-muted-foreground">
+              {{ formatClock(s.lastMessageAt) }}
+            </span>
+            <IconChevronRight
+              class="size-4 text-muted-foreground opacity-40 transition-all group-hover:translate-x-0.5 group-hover:opacity-100"
+            />
+          </div>
+        </NuxtLink>
+      </template>
+    </Card>
+
+    <div
+      v-else
+      class="flex flex-col items-center gap-2.5 rounded-xl border border-dashed px-6 py-14 text-center"
+    >
+      <span class="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+        <IconMessageOff class="size-5" />
+      </span>
+      <span class="text-[15px] font-semibold">No chats here</span>
+      <span class="text-[13px] text-muted-foreground">
+        Try another channel or agent, or run <span class="font-medium text-foreground">Sync</span> to index existing sessions.
+      </span>
     </div>
 
     <!-- Pagination -->

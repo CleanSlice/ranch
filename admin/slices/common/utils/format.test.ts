@@ -3,7 +3,9 @@ import { describe, expect, test } from 'bun:test';
 import {
   compareInstants,
   compareText,
+  dayKey,
   formatClock,
+  formatDay,
   formatClockSeconds,
   formatDate,
   formatDateTime,
@@ -54,6 +56,19 @@ describe('one format per kind of value', () => {
     expect(formatStampDate(AT, NOW_SAME_DAY)).toBe('00:46');
     expect(formatStampDate(AT, NOW_SAME_YEAR)).toBe('Aug 21');
     expect(formatStampDate(AT, NOW_NEXT_YEAR)).toBe('Aug 21, 2026');
+  });
+
+  test('day heading: never a clock, the year only when it is not this one', () => {
+    expect(formatDay(AT, NOW_SAME_DAY)).toBe('Aug 21');
+    expect(formatDay(AT, NOW_SAME_YEAR)).toBe('Aug 21');
+    expect(formatDay(AT, NOW_NEXT_YEAR)).toBe('Aug 21, 2026');
+    expect(formatDay(null)).toBe('');
+  });
+
+  test('day key: the local day, zero-padded, empty for nothing', () => {
+    expect(dayKey(AT)).toBe('2026-08-21');
+    expect(dayKey(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05');
+    expect(dayKey(undefined)).toBe('');
   });
 
   test('count', () => {

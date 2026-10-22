@@ -71,6 +71,7 @@ interface ITestBed {
     agentEvents$: jest.Mock;
   };
   deployTracker: { mark: jest.Mock; clear: jest.Mock; isStale: jest.Mock };
+  apiInstances: { liveCount: jest.Mock };
 }
 
 function createTestBed(
@@ -105,6 +106,7 @@ function createTestBed(
     isFromBeforeDeploy: jest.fn().mockReturnValue(false),
   };
   const agentDeployService = { deploy: jest.fn() };
+  const apiInstances = { liveCount: jest.fn().mockResolvedValue(1) };
 
   const service = new AgentStatusService(
     agentGateway as never,
@@ -112,8 +114,16 @@ function createTestBed(
     agentDeployService as never,
     deployTracker as never,
     bridleGateway as never,
+    apiInstances as never,
   );
-  return { service, agentGateway, podGateway, bridleGateway, deployTracker };
+  return {
+    service,
+    agentGateway,
+    podGateway,
+    bridleGateway,
+    deployTracker,
+    apiInstances,
+  };
 }
 
 function sweep(service: AgentStatusService): Promise<string[]> {
@@ -152,6 +162,58 @@ describe('AgentStatusService bridle connectivity', () => {
     expect(status).toBe('unreachable');
     expect(reason).toContain('bridle hub');
     expect(reason).toContain('/settings/bridle');
+  });
+
+  test('with another copy of the API alive, the hub is not trusted: no unreachable, no window (CLEAN-140)', async () => {
+    const bed = createTestBed([makeAgent()], [makePod()]);
+    bed.apiInstances.liveCount.mockResolvedValue(2);
+    const warn = jest
+      .spyOn(
+        (bed.service as unknown as { logger: { warn: jest.Mock } }).logger,
+        'warn',
+      )
+      .mockImplementation(() => undefined);
+
+    await sweep(bed.service);
+    now += 61_000;
+    await sweep(bed.service);
+    now += 61_000;
+    await sweep(bed.service);
+    expect(bed.agentGateway.updateStatus).not.toHaveBeenCalled();
+    // Said once, not once per sweep.
+    const replicaWarnings = warn.mock.calls.filter(([m]) =>
+      String(m).includes('copies of the API'),
+    );
+    expect(replicaWarnings).toHaveLength(1);
+    expect(String(replicaWarnings[0][0])).toContain('2 copies');
+
+    // Alone again: the window starts from scratch, it does not fire at once
+    // on account of the minutes the agent spent on the other copy.
+    bed.apiInstances.liveCount.mockResolvedValue(1);
+    await sweep(bed.service);
+    expect(bed.agentGateway.updateStatus).not.toHaveBeenCalled();
+    now += 61_000;
+    await sweep(bed.service);
+    expect(bed.agentGateway.updateStatus).toHaveBeenCalledTimes(1);
+    expect(bed.agentGateway.updateStatus.mock.calls[0][1]).toBe('unreachable');
+  });
+
+  test('with another copy alive, a vanished pod is still a failure (shared truth)', async () => {
+    const bed = createTestBed([makeAgent()], []);
+    bed.apiInstances.liveCount.mockResolvedValue(2);
+    jest
+      .spyOn(
+        (bed.service as unknown as { logger: { warn: jest.Mock } }).logger,
+        'warn',
+      )
+      .mockImplementation(() => undefined);
+
+    await sweep(bed.service);
+    expect(bed.agentGateway.updateStatus).toHaveBeenCalledTimes(1);
+    expect(bed.agentGateway.updateStatus.mock.calls[0][1]).toBe('failed');
+    expect(bed.agentGateway.updateStatus.mock.calls[0][3]).toBe(
+      'agent pod disappeared',
+    );
   });
 
   test('does not demote while still inside the grace window', async () => {

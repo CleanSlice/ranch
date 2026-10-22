@@ -2083,6 +2083,10 @@ export type NotificationDestinationDto = {
    * The installation’s label at the start of every message ([dev], [prod-eu]): the infrastructure.environment setting, else RANCH_ENVIRONMENT on the API; null when neither is set.
    */
   environment: string | null;
+  /**
+   * Copies of the API alive right now. More than one means agents are seen by only one of them: unreachable detection is paused and chats may miss the agent’s socket. Run ranch-api as one replica.
+   */
+  apiReplicas: number;
   updatedBy: string | null;
   updatedAt: string | null;
   /**

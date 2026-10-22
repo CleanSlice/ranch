@@ -29,6 +29,7 @@ import {
   PodEventTypes,
 } from '#/agent/pod/domain/pod.types';
 import { IBridleGateway } from '#/bridle/domain';
+import { ApiInstanceService } from '#/setting/domain/apiInstance.service';
 
 export interface IAgentStatus {
   agent: IAgentData;
@@ -80,6 +81,11 @@ const BRIDLE_GRACE_MS = 60_000;
 const BRIDLE_UNREACHABLE_REASON =
   'pod is running but the runtime never connected to the bridle hub — check integrations/bridle_url and bridle_api_key (/settings/bridle), then restart the agent';
 
+// How often the sweep repeats that it is holding back because several
+// copies of the API are alive (CLEAN-140). Once per sweep would be every
+// 30 s for as long as the deployment stays scaled out.
+const REPLICA_WARN_EVERY_MS = 5 * 60_000;
+
 @Injectable()
 export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentStatusService.name);
@@ -90,6 +96,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
   // First-observed timestamps of "running pod, no hub connection" per agent.
   // In-memory on purpose: resets on API restart, which IS the restart grace.
   private readonly bridleDownSince = new Map<string, number>();
+  private lastReplicaWarnAt = 0;
   // Ids of agents whose DB status was just written. The drift sweep changes
   // rows with no pod or hub event behind it (startup timeout → 'failed',
   // 'unreachable'), so without this the SSE stream stayed silent and every
@@ -105,6 +112,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     // AuthService access; same dependency cycle, same workaround.
     @Inject(forwardRef(() => IBridleGateway))
     private readonly bridleGateway: IBridleGateway,
+    private readonly apiInstances: ApiInstanceService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -378,6 +386,13 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
         this.podGateway.list(),
       ]);
       const podByAgent = new Map(pods.map((p) => [p.agentId, p]));
+      // The hub is per process: with another copy of the API alive, "absent
+      // from the hub" says nothing about the agent — its socket may be on the
+      // other copy. Pod-side verdicts (no pod, pod Failed) are shared truth
+      // and go on as usual (CLEAN-140).
+      const liveApis = await this.apiInstances.liveCount();
+      const hubIsWholeTruth = liveApis <= 1;
+      if (!hubIsWholeTruth) this.warnAboutReplicas(liveApis);
 
       const driftFailedIds: string[] = [];
       let podReconcileCount = 0;
@@ -492,6 +507,13 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
           pod.phase === 'Running' &&
           pod.ready
         ) {
+          if (!hubIsWholeTruth) {
+            // No window either: it would count minutes in which the agent
+            // was happily connected to the other copy, and fire the moment
+            // this one is alone.
+            this.bridleDownSince.delete(agent.id);
+            continue;
+          }
           const downSince = this.bridleDownSince.get(agent.id);
           if (downSince === undefined) {
             this.bridleDownSince.set(agent.id, Date.now());
@@ -527,6 +549,15 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.driftRunning = false;
     }
+  }
+
+  private warnAboutReplicas(liveApis: number): void {
+    const now = Date.now();
+    if (now - this.lastReplicaWarnAt < REPLICA_WARN_EVERY_MS) return;
+    this.lastReplicaWarnAt = now;
+    this.logger.warn(
+      `Drift: ${liveApis} copies of the API are alive and the bridle hub is per process — not marking any agent unreachable, and chats may land on a copy without the agent's socket. Run ranch-api as one replica (CLEAN-140)`,
+    );
   }
 
   // Re-deploys agents that drift detection just marked `failed` because their

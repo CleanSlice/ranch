@@ -247,10 +247,7 @@ export function renderRoot(
       `<${agentEventsLink(consoleUrl, incident.agentId)}|Open in Ranch>`,
     );
   }
-  return message(
-    `${label}${incident.agentName} — incident #${incident.number}`,
-    lines,
-  );
+  return message(`${label}${name} — incident #${incident.number}`, lines);
 }
 
 function reportedBy(payload: {
@@ -286,7 +283,7 @@ export function renderReply(
         );
       }
       lines.push(...reportedBy(payload));
-      return message(`Failed: ${payload.agentName}`, lines);
+      return message(`Failed: ${name}`, lines);
     }
     case 'joined': {
       const lines = [`🔴 *Failed again* — ${slackDate(payload.occurredAt)}`];
@@ -297,10 +294,10 @@ export function renderReply(
       }
       const [by, ...rest] = reportedBy(payload);
       lines.push(`${by} · ${payload.eventCount} reports so far`, ...rest);
-      return message(`Failed again: ${payload.agentName}`, lines);
+      return message(`Failed again: ${name}`, lines);
     }
     case 'running':
-      return message(`Running again: ${payload.agentName}`, [
+      return message(`Running again: ${name}`, [
         `🟢 *Running again* — ${slackDate(payload.at)}`,
         `Seen by Ranch. The incident closes after ${formatSpan(QUIET_MS)} without a further failure.`,
       ]);
@@ -312,18 +309,18 @@ export function renderReply(
             new Date(payload.upAt).getTime() -
               new Date(payload.openedAt).getTime(),
           );
-          return message(`Resolved: ${payload.agentName}`, [
+          return message(`Resolved: ${name}`, [
             `✅ *Resolved* — ${at}`,
             `Down for ${down} (${slackDate(payload.openedAt)} → ${slackDate(payload.upAt)}), up and stable for ${formatSpan(QUIET_MS)}.`,
           ]);
         }
         case 'stopped':
-          return message(`Stopped: ${payload.agentName}`, [
+          return message(`Stopped: ${name}`, [
             `⏹ *Stopped by owner* — ${at}`,
             'Incident closed; nobody was paged.',
           ]);
         case 'deleted':
-          return message(`Deleted: ${payload.agentName}`, [
+          return message(`Deleted: ${name}`, [
             `⏹ *Deleted* — ${at}`,
             `${name} was deleted; incident closed, nobody was paged.`,
           ]);
@@ -331,7 +328,7 @@ export function renderReply(
           const who = payload.firstSenderName
             ? escapeSlack(payload.firstSenderName)
             : 'An outside sender';
-          return message(`No further reports: ${payload.agentName}`, [
+          return message(`No further reports: ${name}`, [
             `🟢 *No further reports* — ${at}`,
             `${who} reported a failure at ${slackDate(payload.openedAt)}. Ranch saw the agent running throughout, and nothing more has been reported for ${formatSpan(QUIET_MS)}.`,
           ]);

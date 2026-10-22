@@ -4639,6 +4639,12 @@ export const NotificationDestinationDtoSchema = {
       description:
         "The installation’s label at the start of every message ([dev], [prod-eu]): the infrastructure.environment setting, else RANCH_ENVIRONMENT on the API; null when neither is set.",
     },
+    apiReplicas: {
+      type: "number",
+      description:
+        "Copies of the API alive right now. More than one means agents are seen by only one of them: unreachable detection is paused and chats may miss the agent’s socket. Run ranch-api as one replica.",
+      example: 1,
+    },
     updatedBy: {
       type: "string",
       nullable: true,
@@ -4668,6 +4674,7 @@ export const NotificationDestinationDtoSchema = {
     "hint",
     "channelId",
     "environment",
+    "apiReplicas",
     "updatedBy",
     "updatedAt",
     "consoleLinks",

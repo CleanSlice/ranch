@@ -433,6 +433,18 @@ describe('renderReply', () => {
       '&lt;!channel&gt; &lt;!here&gt; everyone look',
     );
   });
+  it('keeps an agent name that looks like a mention out of the fallback text too', () => {
+    const name = '<!channel> Bot & Co';
+    const reply = renderReply(opened({ agentName: name }));
+    const root = renderRoot(incident({ agentName: name }), CONSOLE, {
+      mention: false,
+    });
+
+    for (const text of [reply.text, root.text]) {
+      expect(text).not.toContain('<!channel>');
+      expect(text).toContain('&lt;!channel&gt; Bot &amp; Co');
+    }
+  });
 });
 
 describe('the environment label (CLEAN-167)', () => {

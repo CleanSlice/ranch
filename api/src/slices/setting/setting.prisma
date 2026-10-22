@@ -9,3 +9,16 @@ model Setting {
 
   @@unique([group, name])
 }
+
+// One row per live API process (CLEAN-140). The bridle hub that knows which
+// agents are connected is in-memory, per process, so more than one live
+// row means the drift sweep cannot trust "absent from the hub" and the
+// chat may land on a copy that does not hold the agent's socket. Each
+// process upserts its row every 10 s; a row is live while `lastSeenAt` is
+// under 30 s old, and rows older than an hour are pruned.
+model ApiInstance {
+  id         String   @id
+  hostname   String
+  startedAt  DateTime @default(now())
+  lastSeenAt DateTime
+}

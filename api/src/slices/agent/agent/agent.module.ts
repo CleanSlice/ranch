@@ -18,9 +18,11 @@ import { McpServerModule } from '#/mcpServer/mcpServer.module';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.module';
 import { SkillModule } from '#/skill/skill.module';
+import { SettingModule } from '#/setting/setting.module';
 
 @Module({
   imports: [
+    SettingModule,
     WorkflowModule,
     TemplateModule,
     PodModule,

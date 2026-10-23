@@ -2,7 +2,7 @@
 # In CI: docker build -f app/Dockerfile .
 
 # Stage 1: build API just to generate swagger-spec.json
-FROM oven/bun:1 AS api-swagger
+FROM oven/bun:1.4.4 AS api-swagger
 WORKDIR /build
 COPY package.json bun.lock ./
 COPY api/package.json ./api/
@@ -17,7 +17,7 @@ RUN bunx prisma-import --force \
  && bun run generate:swagger
 
 # Stage 2: build Nuxt app, consuming the generated swagger from stage 1
-FROM oven/bun:1 AS app-builder
+FROM oven/bun:1.4.4 AS app-builder
 WORKDIR /build
 COPY package.json bun.lock ./
 COPY api/package.json ./api/

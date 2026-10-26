@@ -97,20 +97,17 @@ const THINKING_STALE_MS = 75_000;
  */
 const RELEASE_GRACE_MS = 3000;
 
+/** Hub handshake rejections the console can recover from by renewing. */
+const RENEWABLE_CODES = new Set(['TOKEN_EXPIRED', 'INVALID_TOKEN']);
 /**
- * Hub handshake rejections the console can recover from by renewing.
- * `MISSING_TOKEN` and `ORIGIN_NOT_ALLOWED` are in the set because a console
- * conversation only ever reaches them when the handshake carried no token
- * at all, i.e. the session is gone (CLEAN-178): the hub then treats the
- * console like an anonymous embed and checks the origin, which is never the
- * problem the person has.
+ * Hub rejections of a handshake that carried no token at all. For a person
+ * who was signed in they mean the session is gone (CLEAN-178): the hub took
+ * the console for an anonymous embed and checked the origin, which is never
+ * the problem they have. For an anonymous visitor (the landing-page preview
+ * of a public agent) they are what they say: the agent is not public, or
+ * this origin is not on its list.
  */
-const RENEWABLE_CODES = new Set([
-  'TOKEN_EXPIRED',
-  'INVALID_TOKEN',
-  'MISSING_TOKEN',
-  'ORIGIN_NOT_ALLOWED',
-]);
+const TOKENLESS_CODES = new Set(['MISSING_TOKEN', 'ORIGIN_NOT_ALLOWED']);
 /** Hub rejections that mean the share link itself is dead. */
 const SHARE_DEAD_CODES = new Set(['SHARE_LINK_INVALID', 'SHARE_VISITOR_INVALID']);
 
@@ -1201,11 +1198,14 @@ export const useBridleStore = defineStore('bridle', () => {
       return;
     }
 
-    if (RENEWABLE_CODES.has(code)) {
+    const auth = useAuthStore();
+    if (
+      RENEWABLE_CODES.has(code) ||
+      (TOKENLESS_CODES.has(code) && auth.user)
+    ) {
       // One refresh + reconnect covers a token that expired while the tab was
       // asleep; if the session itself is gone, say so — the session-ended
       // dialog replaces the "Reconnecting…" limbo (CLEAN-72).
-      const auth = useAuthStore();
       if (!authRetried.has(key) && (await auth.refresh())) {
         authRetried.add(key);
         channels.get(key)?.channel?.reconnect();
@@ -1414,14 +1414,18 @@ export const useBridleStore = defineStore('bridle', () => {
     if (!conv.share) await useAuthStore().ensureFresh();
     // Released and closed while that was in flight.
     if (channels.get(key) !== hold) return;
-    // A console conversation never opens a socket without a token: the hub
-    // would take it for an anonymous embed, check the origin and answer
-    // ORIGIN_NOT_ALLOWED, which hides the real state — the session is gone.
-    // Say that instead; the session-ended dialog takes over (CLEAN-178).
-    if (!conv.share && !useAuthStore().accessToken) {
+    // A signed-in person's conversation never opens a socket without a token:
+    // the hub would take it for an anonymous embed, check the origin and
+    // answer ORIGIN_NOT_ALLOWED, which hides the real state — the session is
+    // gone. Say that instead; the session-ended dialog takes over (CLEAN-178).
+    // `user` is the tell: it survives dropToken() precisely so the dialog can
+    // name the person. An anonymous visitor (the landing-page preview of a
+    // public agent) has no user and takes the hub's public path on purpose.
+    const auth = useAuthStore();
+    if (!conv.share && !auth.accessToken && auth.user) {
       channels.delete(key);
       connection.value[key] = BridleChannelStates.Offline;
-      useAuthStore().endSession('TOKEN_MISSING');
+      auth.endSession('TOKEN_MISSING');
       return;
     }
 

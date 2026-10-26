@@ -907,10 +907,11 @@ export const useBridleStore = defineStore('bridle', {
       await auth.ensureFresh()
       // Someone else connected while the refresh was in flight.
       if (c.socket) return
-      // Never open the handshake without a token either: the hub would take
-      // the console for an anonymous embed and answer ORIGIN_NOT_ALLOWED,
-      // hiding the real state — the session is gone (CLEAN-178).
-      if (!auth.accessToken) {
+      // Never open the handshake without a token for a signed-in person: the
+      // hub would take the console for an anonymous embed and answer
+      // ORIGIN_NOT_ALLOWED, hiding the real state — the session is gone
+      // (CLEAN-178). `user` survives dropToken() so the dialog can name them.
+      if (!auth.accessToken && auth.user) {
         auth.endSession('TOKEN_MISSING')
         return
       }
@@ -948,16 +949,14 @@ export const useBridleStore = defineStore('bridle', {
       // replaces the "Chat reconnecting…" limbo.
       socket.on('bridle_error', async (e: { code?: string; agentId?: string; origin?: string }) => {
         const code = e?.code
-        // MISSING_TOKEN and ORIGIN_NOT_ALLOWED only reach a console socket
-        // when the handshake carried no token, i.e. the session is gone;
-        // they take the same renew-once-then-end path (CLEAN-178).
-        if (
-          code !== 'TOKEN_EXPIRED' &&
-          code !== 'INVALID_TOKEN' &&
-          code !== 'MISSING_TOKEN' &&
-          code !== 'ORIGIN_NOT_ALLOWED'
-        )
-          return
+        // MISSING_TOKEN and ORIGIN_NOT_ALLOWED reach a signed-in person's
+        // socket only when the handshake carried no token, i.e. the session
+        // is gone; they take the same renew-once-then-end path (CLEAN-178).
+        const renewable = code === 'TOKEN_EXPIRED' || code === 'INVALID_TOKEN'
+        const tokenless =
+          (code === 'MISSING_TOKEN' || code === 'ORIGIN_NOT_ALLOWED') &&
+          !!useAuthStore().user
+        if (!renewable && !tokenless) return
         if (!c.authRetried && (await useAuthStore().refresh())) {
           c.authRetried = true
           // The server's disconnect may land after the refresh round trip

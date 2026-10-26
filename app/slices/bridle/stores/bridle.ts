@@ -97,8 +97,20 @@ const THINKING_STALE_MS = 75_000;
  */
 const RELEASE_GRACE_MS = 3000;
 
-/** Hub handshake rejections the console can recover from by renewing. */
-const RENEWABLE_CODES = new Set(['TOKEN_EXPIRED', 'INVALID_TOKEN']);
+/**
+ * Hub handshake rejections the console can recover from by renewing.
+ * `MISSING_TOKEN` and `ORIGIN_NOT_ALLOWED` are in the set because a console
+ * conversation only ever reaches them when the handshake carried no token
+ * at all, i.e. the session is gone (CLEAN-178): the hub then treats the
+ * console like an anonymous embed and checks the origin, which is never the
+ * problem the person has.
+ */
+const RENEWABLE_CODES = new Set([
+  'TOKEN_EXPIRED',
+  'INVALID_TOKEN',
+  'MISSING_TOKEN',
+  'ORIGIN_NOT_ALLOWED',
+]);
 /** Hub rejections that mean the share link itself is dead. */
 const SHARE_DEAD_CODES = new Set(['SHARE_LINK_INVALID', 'SHARE_VISITOR_INVALID']);
 
@@ -1402,6 +1414,16 @@ export const useBridleStore = defineStore('bridle', () => {
     if (!conv.share) await useAuthStore().ensureFresh();
     // Released and closed while that was in flight.
     if (channels.get(key) !== hold) return;
+    // A console conversation never opens a socket without a token: the hub
+    // would take it for an anonymous embed, check the origin and answer
+    // ORIGIN_NOT_ALLOWED, which hides the real state — the session is gone.
+    // Say that instead; the session-ended dialog takes over (CLEAN-178).
+    if (!conv.share && !useAuthStore().accessToken) {
+      channels.delete(key);
+      connection.value[key] = BridleChannelStates.Offline;
+      useAuthStore().endSession('TOKEN_MISSING');
+      return;
+    }
 
     hold.channel = getService().openChannel(
       conv.agentId,

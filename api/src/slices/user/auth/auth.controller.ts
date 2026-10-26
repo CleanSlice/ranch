@@ -31,7 +31,7 @@ import { ApiKeyScopeTypes, IApiKeyData } from '../apiKey/domain';
 import { ApiKeyService } from '../apiKey/domain/apiKey.service';
 import { SessionService } from '../session/domain/session.service';
 import { SESSION_COOKIE_NAME } from '../session/domain/session.types';
-import { ApiKeyGuard, JwtAuthGuard, Scopes, ScopesGuard } from './guards';
+import { ApiKeyGuard, JwtAuthGuard, Public, Scopes, ScopesGuard } from './guards';
 
 export const TOKEN_UNAUTHORIZED_DESCRIPTION =
   'Missing, expired or invalid bearer. Body is `{ code: ' +
@@ -58,6 +58,7 @@ export class AuthController {
     private sessions: SessionService,
   ) {}
 
+  @Public()
   @Post('login')
   @HttpCode(200)
   @ApiOperation({
@@ -77,6 +78,7 @@ export class AuthController {
     return this.applySession(res, result);
   }
 
+  @Public()
   @Post('register')
   @HttpCode(200)
   @ApiOperation({
@@ -97,6 +99,7 @@ export class AuthController {
     return this.applySession(res, result);
   }
 
+  @Public()
   @Post('refresh')
   @HttpCode(200)
   @ApiOperation({
@@ -112,6 +115,7 @@ export class AuthController {
     return this.applySession(res, result);
   }
 
+  @Public()
   @Post('logout')
   @HttpCode(200)
   @ApiOperation({
@@ -138,6 +142,7 @@ export class AuthController {
     return this.authService.me(req.user.sub);
   }
 
+  @Public()
   @Post('embed/token')
   @HttpCode(200)
   @UseGuards(ApiKeyGuard, ScopesGuard)

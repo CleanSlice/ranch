@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Public } from '#/user/auth/guards';
 import {
   ApiBadRequestResponse,
   ApiNotFoundResponse,
@@ -20,6 +21,9 @@ import { ShareResolveRequestDto, ShareResolvedDto } from './dtos';
 export class ShareController {
   constructor(private readonly shareLinks: ShareLinkService) {}
 
+  // Share-link visitors hold a link, not an account: the token in the body is
+  // the credential and an unknown or revoked one is a 404.
+  @Public()
   @Post('resolve')
   @HttpCode(200)
   @ApiOperation({

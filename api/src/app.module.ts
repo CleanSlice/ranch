@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 
 // Setup slices
@@ -112,6 +113,18 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
         enableJsonResponse: true,
       },
     }),
+  ],
+  providers: [
+    // Deny by default (CLEAN-175). Until this existed, JwtAuthGuard was only
+    // ever attached per controller with @UseGuards, and 18 of 43 controllers
+    // never attached it, so /settings, /llms, /knowledges and the rest
+    // answered anonymous callers in full over the public ingress. @Public()
+    // is the only way back out; publicRoutes.spec.ts pins every use. The
+    // guard short-circuits on that metadata before reading the header, and it
+    // is the only guard that consults it: @Public() on a route that also
+    // carries ApiKeyGuard, BridleApiKeyGuard or a peer guard drops the JWT
+    // requirement alone; those guards still run and still reject.
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })
 export class AppModule {}

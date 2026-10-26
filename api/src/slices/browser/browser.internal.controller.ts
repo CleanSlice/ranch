@@ -7,6 +7,7 @@ import {
   SetStatusDto,
 } from './dtos';
 import { BridleApiKeyGuard } from '../bridle/guards/bridleApiKey.guard';
+import { Public } from '#/user/auth/guards';
 import { OpenSessionDto } from './dtos/openSession.dto';
 import { IsString, IsNotEmpty } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
@@ -47,6 +48,10 @@ class InternalSetStatusDto extends SetStatusDto {
  * runtime is the security boundary, not the API.
  */
 @ApiTags('browser')
+// Machine surface: the agent runtime authenticates with the shared bridle key
+// and holds no user token. @Public() only lifts the global JWT requirement;
+// BridleApiKeyGuard below still authenticates every route.
+@Public()
 @Controller('browser/internal/sessions')
 @UseGuards(BridleApiKeyGuard)
 export class BrowserInternalController {

@@ -23,7 +23,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as archiver from 'archiver';
 import { Request, Response } from 'express';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
-import { JwtAuthGuard } from '#/user/auth/guards';
+import { JwtAuthGuard, Public } from '#/user/auth/guards';
 import { IntegrationService } from './domain/integration.service';
 import {
   ExtensionImportStateDto,
@@ -81,6 +81,7 @@ export class IntegrationExtensionController {
     return { token, exp: decoded?.exp ?? 0 };
   }
 
+  @Public()
   @Post('import-state')
   @ApiOperation({
     summary:
@@ -113,6 +114,7 @@ export class IntegrationExtensionController {
     };
   }
 
+  @Public()
   @Get('download')
   @ApiOperation({
     summary:

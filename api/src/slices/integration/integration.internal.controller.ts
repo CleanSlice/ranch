@@ -11,6 +11,7 @@ import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
+import { Public } from '#/user/auth/guards';
 import { IntegrationService } from './domain/integration.service';
 import { LoginInstructionDto, ResolvedSecretsDto } from './dtos';
 
@@ -89,6 +90,10 @@ class RequestLoginBodyDto {
  * expose them on the public router.
  */
 @ApiTags('integrations-internal')
+// Machine surface: the agent runtime authenticates with the shared bridle key
+// and holds no user token. @Public() only lifts the global JWT requirement;
+// BridleApiKeyGuard below still authenticates every route.
+@Public()
 @Controller('integrations/internal')
 @UseGuards(BridleApiKeyGuard)
 export class IntegrationInternalController {

@@ -48,6 +48,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
+import { Public } from '#/user/auth/guards';
 import { FileProposalService } from '#/agent/file/domain/fileProposal.service';
 import type { FileChangeProposalDto } from '#/agent/file/dtos';
 import {
@@ -187,6 +188,13 @@ const SHARE_FORBIDDEN_DESCRIPTION =
   '401: a share visitor has no account to log in to.';
 
 @ApiTags('bridle')
+// The embedded widget, served to visitors on customer sites. Every route here
+// resolves its own identity (console JWT, embed JWT, share headers, or the
+// anonymous fallback) through resolveRequester and BridleChatAuthGuard, so
+// the global JWT guard would only turn anonymous visitors away. @Public()
+// preserves the per-route rules; transcript access is decided per channel in
+// requireChannelAccess (CLEAN-175).
+@Public()
 @Controller('api/agent')
 export class BridleController {
   private readonly logger = new Logger(BridleController.name);

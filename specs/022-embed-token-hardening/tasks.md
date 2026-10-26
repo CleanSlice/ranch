@@ -146,7 +146,7 @@ changes (twin-console check recorded in quickstart.md).
 - [X] T037 [P] Update `api/src/slices/user/auth/guards/public.decorator.ts` doc comment: it is now the only way out of the global guard and the allowlist test pins every use
 - [X] T038 [P] Add a short "Authentication surface" note to `README.md` (or the API section of it): credential required by default, `@Public()` + `publicRoutes.spec.ts`, embed tokens are chat-only, transcript ownership rule; link CLEAN-175
 - [X] T039 Re-run the full gate: `cd api && npx jest` and `bun run build`; `git status` clean of generated console files
-- [ ] T040 Open the PR into `main` titled `fix(api): embed tokens open only the chat, credential required by default, transcripts for their owner (CLEAN-175)`; body lists the commands run, the twin-console statement from quickstart.md, the two fork follow-ups (A2A and OAuth `start`/`status` exemptions), and links CLEAN-141 and CLEAN-176; put the PR URL on CLEAN-175 and move it to In Review
+- [X] T040 Open the PR into `main` titled `fix(api): embed tokens open only the chat, credential required by default, transcripts for their owner (CLEAN-175)`; body lists the commands run, the twin-console statement from quickstart.md, the two fork follow-ups (A2A and OAuth `start`/`status` exemptions), and links CLEAN-141 and CLEAN-176; put the PR URL on CLEAN-175 and move it to In Review
 - [ ] T041 After deploy to dev-mazda through the fork catch-up: run the handoff's section 8 script (R1, R3, R5 parts) and record the result on CLEAN-175; then revoke the demo `embed:mint` key and mint a new one for the demo
 
 ---

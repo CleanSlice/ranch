@@ -116,7 +116,12 @@ export default defineNuxtPlugin({
           return Promise.reject(error);
         }
 
-        // `TOKEN_MISSING` (or a 401 with no code): nothing to renew.
+        // `TOKEN_MISSING` (or a 401 with no code): nothing to renew. Only a
+        // person who is signed in has a session to end; for an anonymous
+        // visitor (the landing page, /login itself) the 401 is the call's own
+        // answer, and logging them out of nothing just bounced the landing
+        // page to /login in a loop once every route needed a token.
+        if (!useAuthStore().user) return Promise.reject(error);
         await nuxtApp.runWithContext(() => {
           void useAuthStore().logout();
           if (nuxtApp.$router.currentRoute.value.path !== '/login') {

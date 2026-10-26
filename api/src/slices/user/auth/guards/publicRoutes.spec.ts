@@ -32,6 +32,10 @@ const EXPECTED_PUBLIC_ROUTES: Record<string, number> = {
   'slices/setup/init/init.controller.ts': 2,
   // kubelet sends no Authorization header on liveness and readiness.
   'slices/setup/health/health.controller.ts': 1,
+  // The login, register and landing pages ask whether registration is open
+  // before anyone is signed in; the route serves that one key and nothing
+  // else from the group.
+  'slices/setting/setting.controller.ts': 1,
   // Narrow-scope extension token verified by hand, plus the extension zip.
   'slices/integration/integration.extension.controller.ts': 2,
   'slices/browser/browser.extension.controller.ts': 1,

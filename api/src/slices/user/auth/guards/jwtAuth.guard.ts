@@ -11,6 +11,7 @@ import {
   AuthErrorCodes,
   classifyJwtError,
   IAuthTokenPayload,
+  isEmbedToken,
   unauthorized,
 } from '../domain/auth.types';
 import { PUBLIC_METADATA_KEY } from './public.decorator';
@@ -26,7 +27,15 @@ import { PUBLIC_METADATA_KEY } from './public.decorator';
  * service tokens (no session) keep passing and ordinary requests cost no
  * database work. Revocation lands at the next refresh (research R3).
  *
- * Routes tagged with @Public() bypass this check entirely.
+ * Embed tokens (`typ: 'embed'`, minted for the browser widget through
+ * `POST /auth/embed/token`) verify like any other JWT but are refused here
+ * with `TOKEN_INVALID`, whatever roles they carry: a token rendered into a
+ * customer page is read by every visitor of that page, so it must open the
+ * chat and nothing else (CLEAN-175). The chat surface verifies tokens on its
+ * own and keeps accepting them.
+ *
+ * Registered as the global APP_GUARD (app.module.ts). Routes tagged with
+ * @Public() bypass this check entirely; publicRoutes.spec.ts pins that set.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -52,8 +61,9 @@ export class JwtAuthGuard implements CanActivate {
     if (scheme?.toLowerCase() !== 'bearer' || !token) {
       throw unauthorized(AuthErrorCodes.TokenMissing);
     }
+    let payload: IAuthTokenPayload;
     try {
-      req.user = this.jwt.verify<IAuthTokenPayload>(token);
+      payload = this.jwt.verify<IAuthTokenPayload>(token);
     } catch (err) {
       const code = classifyJwtError(err);
       // Never the token itself; the subject is enough to trace a report.
@@ -62,6 +72,15 @@ export class JwtAuthGuard implements CanActivate {
       );
       throw unauthorized(code);
     }
+    if (isEmbedToken(payload)) {
+      // Same status an anonymous caller gets, and nothing stored on the
+      // request: an embed token proves a chat identity, not a platform one.
+      this.logger.warn(
+        `Rejected embed token outside chat sub=${payload.sub} ${req.method} ${req.url}`,
+      );
+      throw unauthorized(AuthErrorCodes.TokenInvalid);
+    }
+    req.user = payload;
     return true;
   }
 

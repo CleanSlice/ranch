@@ -236,6 +236,12 @@ export class AuthService {
    * verbatim, but the TTL falls under the same cap as admin embed tokens —
    * the long-lived credential must stay the server-side key, never the
    * browser JWT.
+   *
+   * Every token minted here carries `typ: 'embed'`. It is a chat-only
+   * credential: `JwtAuthGuard` and `A2aCardGuard` refuse it, the bridle
+   * controller, `BridleChatAuthGuard` and the `/ws/client` handshake accept
+   * it (CLEAN-175). Roles still decide the chat identity, so an admin embed
+   * token lands in the `admin` conversation and nowhere else.
    */
   async mintEmbedToken(claims: {
     sub: string;
@@ -265,6 +271,7 @@ export class AuthService {
       sub: claims.sub,
       email: claims.email ?? '',
       roles,
+      typ: 'embed',
     };
     const token = await this.jwt.signAsync(payload, { expiresIn });
     const decoded = this.jwt.decode(token);

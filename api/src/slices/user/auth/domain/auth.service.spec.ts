@@ -294,3 +294,27 @@ describe('AuthService — mintEmbedToken (CLEAN-175)', () => {
     expect(signed[1]).toMatchObject({ roles: ['Owner'], typ: 'embed' });
   });
 });
+
+describe('AuthService — mintEmbedToken refuses a sub that names a console user (CLEAN-175)', () => {
+  // Console users chat on a channel named by their user id. A minted sub equal
+  // to one would make the embed token the owner of that transcript.
+  it('throws 400 when the sub is an existing user id', async () => {
+    const user = await makeUser({ id: 'user-1' });
+    const { service, signed } = makeDeps({ users: [user] });
+
+    await expect(service.mintEmbedToken({ sub: 'user-1' })).rejects.toMatchObject({
+      status: 400,
+      message: 'sub must not be an existing user id',
+    });
+    expect(signed).toHaveLength(0);
+  });
+
+  it('signs normally when no user has that id', async () => {
+    const user = await makeUser({ id: 'user-1' });
+    const { service, signed } = makeDeps({ users: [user] });
+
+    await service.mintEmbedToken({ sub: 'wslid-A1234567' });
+
+    expect(signed).toHaveLength(1);
+  });
+});

@@ -267,6 +267,17 @@ export class AuthService {
         `expiresIn exceeds the ${ADMIN_EMBED_MAX_TTL} maximum for admin embed tokens`,
       );
     }
+    // Console users chat on a channel named by their user id, and the channel
+    // owner is whoever presents a token with that sub (requireChannelAccess).
+    // A minted sub equal to a user id would hand that user's transcript to the
+    // embed visitor, so the shape check in the DTO is not enough here.
+    const collides = await this.prisma.user.findUnique({
+      where: { id: claims.sub },
+      select: { id: true },
+    });
+    if (collides) {
+      throw new BadRequestException('sub must not be an existing user id');
+    }
     const payload: IAuthTokenPayload = {
       sub: claims.sub,
       email: claims.email ?? '',

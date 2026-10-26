@@ -130,10 +130,9 @@ export class AgentController {
   }
 
   @Get()
-  @Public()
   @ApiOperation({
     summary:
-      'List all agents. Public — landing/chat pages render without auth. Mutations and details still require login.',
+      'List all agents, with their full configuration. Requires a console token; the login-free landing page reads GET /agents/public instead (CLEAN-177).',
   })
   @ApiOkResponse({ type: AgentDto, isArray: true })
   findAll() {
@@ -152,9 +151,9 @@ export class AgentController {
   }
 
   @Get('status')
-  @Public()
   @ApiOperation({
-    summary: 'Snapshot of all agents joined with live pod status. Public.',
+    summary:
+      'Snapshot of all agents joined with live pod status. Requires a console token (CLEAN-177); the SSE stream below stays open because EventSource cannot send one.',
   })
   @ApiOkResponse({ type: AgentStatusDto, isArray: true })
   status() {
@@ -191,10 +190,9 @@ export class AgentController {
   }
 
   @Get(':id')
-  @Public()
   @ApiOperation({
     summary:
-      'Get agent by ID. Public — chat needs agent metadata (name, status) to render.',
+      'Get agent by ID, with its full configuration and allowed origins. Requires a console token (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this.',
   })
   @ApiOkResponse({ type: AgentDto })
   async findById(@Param('id') id: string) {

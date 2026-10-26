@@ -18,8 +18,11 @@ import * as path from 'path';
  * fork; keep the two lists in step so a catch-up merge carries no surprise.
  */
 const EXPECTED_PUBLIC_ROUTES: Record<string, number> = {
-  // Landing and chat pages render before login (agent card, status stream).
-  'slices/agent/agent/agent.controller.ts': 5,
+  // The login-free landing page lists agents flagged public, and the status
+  // stream is an EventSource, which cannot send an Authorization header. The
+  // list, the detail and the status snapshot used to be public too; nothing
+  // anonymous read them, and they return the full configuration (CLEAN-177).
+  'slices/agent/agent/agent.controller.ts': 2,
   // Credential exchange (login, register) and the API-key-guarded embed mint,
   // plus refresh and logout: both authenticate by the httpOnly session cookie
   // and run precisely when the access token is gone (CLEAN-72).

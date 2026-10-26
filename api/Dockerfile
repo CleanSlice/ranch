@@ -1,7 +1,7 @@
 # Build context = monorepo root (bun workspace).
 # In CI: docker build -f api/Dockerfile .
 
-FROM oven/bun:1 AS builder
+FROM oven/bun:1.4.4 AS builder
 WORKDIR /build
 
 # Workspace install — drives api/ deps via the root bun.lock.

@@ -1,7 +1,7 @@
 # Build context = monorepo root (bun workspace + need access to api/ for swagger).
 # In CI: docker build -f admin/Dockerfile .
 
-FROM oven/bun:1 AS api-swagger
+FROM oven/bun:1.4.4 AS api-swagger
 WORKDIR /build
 COPY package.json bun.lock ./
 COPY api/package.json ./api/
@@ -15,7 +15,7 @@ RUN bunx prisma-import --force \
  && bun run build \
  && bun run generate:swagger
 
-FROM oven/bun:1 AS admin-builder
+FROM oven/bun:1.4.4 AS admin-builder
 WORKDIR /build
 COPY package.json bun.lock ./
 COPY api/package.json ./api/

@@ -713,14 +713,18 @@ describe('BridleController — transcripts on a share channel', () => {
     expect(fileCalls).toHaveLength(0);
   });
 
-  it('leaves non-share channels exactly as unauthenticated as they were', async () => {
+  it('no longer leaves the admin channel open to an anonymous reader (CLEAN-175)', async () => {
+    // Until CLEAN-175 this case pinned the opposite: non-share channels were
+    // readable by name. The share service is still not consulted for them.
     const { controller, fileCalls, shareCalls } = makeController();
 
-    await controller.transcript(AGENT, request({}), {
-      channel: 'admin',
-    } as never);
-
-    expect(fileCalls[0].path).toContain('bridle:admin.jsonl');
+    await expect(
+      controller.transcript(AGENT, request({}), { channel: 'admin' } as never),
+    ).rejects.toMatchObject({
+      status: 403,
+      response: { code: 'CHANNEL_FORBIDDEN' },
+    });
+    expect(fileCalls).toHaveLength(0);
     expect(shareCalls).toHaveLength(0);
   });
 });
@@ -901,5 +905,104 @@ describe('BridleController — closing a conversation', () => {
     await controller.resetTranscript(AGENT, BEARER, 'admin');
 
     expect(hub.resetConversation).toHaveBeenCalledWith(AGENT, 'admin');
+  });
+});
+
+describe('BridleController — transcripts on a jwt channel (CLEAN-175)', () => {
+  // A channel named by a JWT sub (an embed visitor such as wslid-…, or a
+  // console user's id) belongs to the holder of a token with that sub, or to
+  // an admin. Everyone else gets one 403 whether or not the channel exists,
+  // and nothing is read before the decision.
+  const OWN = 'wslid-A1234567';
+  const OTHER = 'wslid-B9999999';
+  const BEARER = request({ authorization: 'Bearer embed-token' });
+  const asVisitor = { verify: () => ({ sub: OWN, roles: [], typ: 'embed' }) };
+
+  it('lets the owner read, reset and archive their own channel', async () => {
+    const { controller, fileCalls } = makeController(asVisitor);
+
+    const out = await controller.transcript(AGENT, BEARER, {
+      channel: OWN,
+    } as never);
+    expect(out.channel).toBe(OWN);
+    expect(fileCalls[0].path).toContain(`bridle:${OWN}.jsonl`);
+
+    await controller.resetTranscript(AGENT, BEARER, OWN);
+    await expect(
+      controller.archiveTranscript(AGENT, BEARER, OWN),
+    ).resolves.toEqual({});
+  });
+
+  it('refuses another visitor with CHANNEL_FORBIDDEN on all three routes', async () => {
+    const { controller, fileCalls } = makeController(asVisitor);
+    const forbidden = { status: 403, response: { code: 'CHANNEL_FORBIDDEN' } };
+
+    await expect(
+      controller.transcript(AGENT, BEARER, { channel: OTHER } as never),
+    ).rejects.toMatchObject(forbidden);
+    await expect(
+      controller.resetTranscript(AGENT, BEARER, OTHER),
+    ).rejects.toMatchObject(forbidden);
+    await expect(
+      controller.archiveTranscript(AGENT, BEARER, OTHER),
+    ).rejects.toMatchObject(forbidden);
+    expect(fileCalls).toHaveLength(0);
+  });
+
+  it('refuses an anonymous reader, and does not read first', async () => {
+    const { controller, fileCalls } = makeController();
+
+    await expect(
+      controller.transcript(AGENT, request({}), { channel: OWN } as never),
+    ).rejects.toMatchObject({
+      status: 403,
+      response: { code: 'CHANNEL_FORBIDDEN' },
+    });
+    expect(fileCalls).toHaveLength(0);
+  });
+
+  it('answers the same 403 for a channel nobody has talked on', async () => {
+    const { controller, fileCalls } = makeController();
+
+    await expect(
+      controller.transcript(AGENT, request({}), {
+        channel: 'wslid-NOBODY',
+      } as never),
+    ).rejects.toMatchObject({
+      status: 403,
+      response: { code: 'CHANNEL_FORBIDDEN' },
+    });
+    expect(fileCalls).toHaveLength(0);
+  });
+
+  it('refuses a share visitor on a jwt channel', async () => {
+    const { controller } = makeController();
+
+    await expect(
+      controller.transcript(AGENT, request(SHARE_HEADERS), {
+        channel: OWN,
+      } as never),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('lets an admin read any channel from the console', async () => {
+    const { controller, fileCalls } = makeController({
+      verify: () => ({ sub: 'user-1', roles: ['Admin'] }),
+    });
+
+    await controller.transcript(AGENT, BEARER, { channel: OWN } as never);
+    expect(fileCalls[0].path).toContain(`bridle:${OWN}.jsonl`);
+  });
+
+  it('keeps anonymous channels open as before', async () => {
+    const { controller, fileCalls } = makeController();
+
+    await controller.transcript(AGENT, request({}), {
+      channel: 'anon-x',
+    } as never);
+    await controller.transcript(AGENT, request({}), {
+      channel: 'http-y',
+    } as never);
+    expect(fileCalls).toHaveLength(2);
   });
 });

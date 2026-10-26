@@ -11,6 +11,12 @@ export interface IAgentData {
   config: Record<string, unknown>;
   resources: { cpu: string; memory: string };
   isPublic: boolean;
+  /**
+   * Page origins the hub lets an anonymous visitor chat from. The landing
+   * page previews only agents that list its own origin (CLEAN-179); the
+   * admin console is where the list is edited.
+   */
+  allowedOrigins: string[];
   /** The Ranch admin agent — the one that manages the install. Pinned first
    *  in the rail, as in the admin console (CLEAN-136). */
   isAdmin: boolean;

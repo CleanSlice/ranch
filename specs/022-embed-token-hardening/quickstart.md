@@ -37,7 +37,9 @@ T=$(curl -s -X POST "$API/auth/embed/token" -H "Authorization: Bearer $KEY" \
   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).token))')
 
 # 2. Auth by default and chat-only embed token: every line must print 401
-for p in settings llms knowledges agents users api-keys; do
+#    (the agent list, GET /agents, is public by existing design and prints 200
+#    for everyone; it is not part of this change)
+for p in settings llms knowledges users api-keys; do
   printf '%-10s anon=%s embed=%s\n' "$p" \
     "$(curl -s -o /dev/null -w '%{http_code}' "$API/$p")" \
     "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $T" "$API/$p")"

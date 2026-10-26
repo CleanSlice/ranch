@@ -54,6 +54,15 @@ Mazda fork (`E:/code/coso/mazda-ai-ranch`, `fix/CLEAN-173-bun-lockfile-frozen`
   request (`admin/slices/setup/api/plugins/apiBaseUrl.ts:52`, app equivalent),
   so no console change. `GET /agents/:id` and the SSE status stream are already
   `@Public()`.
+- **Known gap, out of scope** (found by the manual check on 2026-10-26):
+  `GET /agents` (list), `GET /agents/public`, `GET /agents/status`, the status
+  stream and `GET /agents/:id` are `@Public()` by design since the first
+  commits ("landing/chat pages render without auth", "chat needs agent
+  metadata to render") and identical in the fork. The list and detail return
+  the full `AgentDto` (configuration, resources, `allowedOrigins`) to anyone,
+  which specs/010 research R5 already flagged. Narrowing them means a slimmer
+  public DTO for the landing page and the widget, so it is a follow-up ticket,
+  not part of CLEAN-175.
 
 ## R1. Embed tokens are chat-only
 

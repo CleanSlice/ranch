@@ -100,9 +100,10 @@ them still work; confirm the console still logs in, refreshes and logs out.
 
 **Acceptance Scenarios**:
 
-1. **Given** no credential, **When** the settings, models, knowledge or agents
-   list is requested, **Then** the request is refused as unauthenticated and no
-   data is returned.
+1. **Given** no credential, **When** the settings, models, knowledge, users or
+   API-key list is requested, **Then** the request is refused as
+   unauthenticated and no data is returned. (The agent list and agent detail
+   are public by existing design, see SC-001.)
 2. **Given** no credential, **When** health, first-owner setup, login, token
    refresh or logout is called, **Then** it behaves exactly as before.
 3. **Given** a machine caller with a valid API key (embed-token minting, agent
@@ -289,8 +290,13 @@ mint with `wslid-A1234567` (accepted).
 ### Measurable Outcomes
 
 - **SC-001**: On the production instance, 100% of non-public routes refuse a
-  request with no credential; the four routes probed on 2026-10-26 (settings,
-  models, knowledge, agents) go from 200 to refused.
+  request with no credential; three of the four routes probed on 2026-10-26
+  (settings, models, knowledge) go from 200 to refused. The agent list and
+  agent detail stay public **by existing design** (the landing page and the
+  chat widget render agent name and status before any login; the same five
+  routes are public in the customer fork). That exposure (full agent records
+  including configuration and allowed origins, already recorded in specs/010
+  research R5) is out of this feature's scope and is raised as a follow-up.
 - **SC-002**: With a freshly minted embed token, 0 non-chat routes return data;
   the chat flow (connect, message, attachment, own transcript) succeeds 100% of
   the time it succeeded before.

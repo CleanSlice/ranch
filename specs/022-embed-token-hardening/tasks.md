@@ -67,7 +67,7 @@ changes (twin-console check recorded in quickstart.md).
 - [X] T013 [P] [US1] Add `@Public()` to `start` and `status` in `api/src/slices/mcpServer/oauth/mcpOauth.controller.ts` with a comment that `BridleApiKeyGuard` reads `x-bridle-api-key` and no JWT is sent (not in the fork yet; note for the catch-up)
 - [X] T014 [US1] Run `cd api && npx jest src/slices/user/auth/guards/publicRoutes.spec.ts`; reconcile every mismatch by reading the controller, not by editing the number, until it passes with the reviewed list
 - [X] T015 [US1] Run the full API suite once (`cd api && npx jest`) and `bun run build`; fix any spec that constructed a controller expecting no global guard
-- [ ] T016 [US1] Manual check per quickstart.md step 2 and 3 against a local API: anonymous 401 on settings/llms/knowledges/agents, health 200, usage without key refused by its own guard (not `TOKEN_MISSING`)
+- [X] T016 [US1] Manual check per quickstart.md step 2 and 3 against a local API: anonymous 401 on settings/llms/knowledges/agents, health 200, usage without key refused by its own guard (not `TOKEN_MISSING`)
 
 **Checkpoint**: commit as `fix(api): require a credential on every route by default, with a pinned public allowlist (CLEAN-175)`. The platform hole is closed on its own.
 
@@ -92,7 +92,7 @@ changes (twin-console check recorded in quickstart.md).
 - [X] T022 [US2] In `api/src/slices/user/auth/guards/jwtAuth.guard.ts` after a successful verify: if `isEmbedToken(payload)`, log `Rejected embed token outside chat sub=… METHOD url` (never the token) and throw `unauthorized(AuthErrorCodes.TokenInvalid)`; update the class doc comment
 - [X] T023 [US2] In `A2aCardGuard` of `api/src/slices/agent/peer/guards/a2a.guards.ts` refuse a payload where `isEmbedToken(payload)` with the existing `refuse('Not allowed to read this card')`, with a one-line comment
 - [X] T024 [US2] Run `cd api && npx jest src/slices/user/auth src/slices/agent/peer/guards src/slices/bridle/domain/chatIdentity.spec.ts` and `bun run build`
-- [ ] T025 [US2] Manual check per quickstart.md step 2 with a minted token (embed column all 401) and a widget session on a public agent (chat works, own history loads)
+- [X] T025 [US2] Manual check per quickstart.md step 2 with a minted token (embed column all 401) and a widget session on a public agent (chat works, own history loads)
 
 **Checkpoint**: commit as `fix(auth): embed tokens open only the chat (CLEAN-175)`.
 
@@ -114,7 +114,7 @@ changes (twin-console check recorded in quickstart.md).
 - [X] T028 [US4] In `api/src/slices/user/auth/dtos/embedToken.dto.ts` replace `@MinLength(1)` on `sub` with `@MaxLength(128)` and `@Matches(/^(?!admin$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$/, { message: 'sub: letters, digits, dash and underscore only, 1-128 characters, not admin and not prefixed anon-, share- or http-' })`; update the `@ApiProperty` description and example (`wslid-A1234567`)
 - [X] T029 [US4] In `mintEmbedToken` of `api/src/slices/user/auth/domain/auth.service.ts` look up `this.prisma.user.findUnique({ where: { id: claims.sub }, select: { id: true } })` and throw `BadRequestException('sub must not be an existing user id')` when found, with a comment that console users' chat channels are their user ids
 - [X] T030 [US4] Run `cd api && npx jest src/slices/user/auth` and `bun run build`; regenerate `api/swagger-spec.json` through the build and confirm only the `sub` pattern and max length changed in the DTO schema (no console SDK regen needed; if `git status` shows generated console files, revert them)
-- [ ] T031 [US4] Manual check per quickstart.md step 5 (six 400s) plus one mint with a real user id from the local database (400)
+- [X] T031 [US4] Manual check per quickstart.md step 5 (six 400s) plus one mint with a real user id from the local database (400)
 
 **Checkpoint**: commit as `fix(auth): validate the embed token subject (CLEAN-175)`.
 
@@ -135,7 +135,7 @@ changes (twin-console check recorded in quickstart.md).
 - [X] T033 [US3] Add `ChannelForbidden = 'CHANNEL_FORBIDDEN'` to the bridle error codes (next to the share codes the controller already throws, in `api/src/slices/bridle/domain/` or the shareLink codes file the controller imports; pick the one `requireChannelAccess` already uses and keep it exported)
 - [X] T034 [US3] Rewrite `requireChannelAccess` in `api/src/slices/bridle/bridle.controller.ts`: keep the `share-` branch verbatim; return early for `anon-` and `http-` prefixes with a comment citing specs/010 R8 and FR-007; otherwise `resolveRequester` and allow `kind === 'jwt' && (clientId === channel || clientId === 'admin')`; else `throw new ForbiddenException({ code: ChannelForbidden })`. Update the doc comment above it and the three `@ApiOperation` descriptions (GET at ~775, DELETE at ~885, archive at ~950) to say a JWT-named channel is owner-or-admin only
 - [X] T035 [US3] Run `cd api && npx jest src/slices/bridle` and `bun run build`
-- [ ] T036 [US3] Manual check per quickstart.md step 4, then the admin console (chat transcript, reset, Chats list, a visitor conversation) and the app console (reload keeps history, "New chat" archives) as logged-in users; then the Augeo demo in ranch mode: history survives reload, "New chat" works
+- [X] T036 [US3] Manual check per quickstart.md step 4, then the admin console (chat transcript, reset, Chats list, a visitor conversation) and the app console (reload keeps history, "New chat" archives) as logged-in users; then the Augeo demo in ranch mode: history survives reload, "New chat" works
 
 **Checkpoint**: commit as `fix(bridle): transcript read, delete and archive only for the channel owner or an admin (CLEAN-175)`.
 

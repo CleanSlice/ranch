@@ -29,7 +29,7 @@ changes (twin-console check recorded in quickstart.md).
 
 **Purpose**: a worktree that can run the API specs.
 
-- [ ] T001 Run `cd api && bun install && npx prisma generate`, then `npx jest src/slices/user/auth/guards src/slices/bridle/bridle.controller.spec.ts src/slices/bridle/domain/chatIdentity.spec.ts src/slices/agent/peer/guards/a2a.guards.spec.ts` and confirm green before any change (baseline; record failures that pre-exist)
+- [X] T001 Run `cd api && bun install && npx prisma generate`, then `npx jest src/slices/user/auth/guards src/slices/bridle/bridle.controller.spec.ts src/slices/bridle/domain/chatIdentity.spec.ts src/slices/agent/peer/guards/a2a.guards.spec.ts` and confirm green before any change (baseline; record failures that pre-exist)
 
 ---
 
@@ -37,7 +37,7 @@ changes (twin-console check recorded in quickstart.md).
 
 **Purpose**: the one shared piece every story reads: the embed marker on the token payload.
 
-- [ ] T002 Add `typ?: 'embed'` to `IAuthTokenPayload` and export `isEmbedToken(payload: unknown): boolean` (true only when `payload.typ === 'embed'`) in `api/src/slices/user/auth/domain/auth.types.ts`, with a doc comment saying the chat verifiers accept it and the platform verifiers refuse it
+- [X] T002 Add `typ?: 'embed'` to `IAuthTokenPayload` and export `isEmbedToken(payload: unknown): boolean` (true only when `payload.typ === 'embed'`) in `api/src/slices/user/auth/domain/auth.types.ts`, with a doc comment saying the chat verifiers accept it and the platform verifiers refuse it
 
 **Checkpoint**: typecheck passes (`cd api && bun run build`); nothing behaves differently yet.
 
@@ -51,22 +51,22 @@ changes (twin-console check recorded in quickstart.md).
 
 ### Tests for User Story 1
 
-- [ ] T003 [US1] Create `api/src/slices/user/auth/guards/publicRoutes.spec.ts` in the fork's shape (recursive scan of `*.controller.ts` under `api/src`, count of lines matching `^[ \t]*@Public\(\)[ \t]*$`, `toEqual` against `EXPECTED_PUBLIC_ROUTES`, plus the "finds more than 30 controllers" guard). Fill `EXPECTED_PUBLIC_ROUTES` with the research R0 list and a one-line reason per entry. Run it: it must fail now (only 4 files carry `@Public()`)
+- [X] T003 [US1] Create `api/src/slices/user/auth/guards/publicRoutes.spec.ts` in the fork's shape (recursive scan of `*.controller.ts` under `api/src`, count of lines matching `^[ \t]*@Public\(\)[ \t]*$`, `toEqual` against `EXPECTED_PUBLIC_ROUTES`, plus the "finds more than 30 controllers" guard). Fill `EXPECTED_PUBLIC_ROUTES` with the research R0 list and a one-line reason per entry. Run it: it must fail now (only 4 files carry `@Public()`)
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] Register `{ provide: APP_GUARD, useClass: JwtAuthGuard }` in the `providers` of `api/src/app.module.ts` with the fork's comment explaining deny-by-default and that `@Public()` drops only the JWT requirement
-- [ ] T005 [P] [US1] Add `@Public()` to `login`, `register`, `refresh`, `logout` and `embed/token` in `api/src/slices/user/auth/auth.controller.ts` (`me` stays guarded)
-- [ ] T006 [P] [US1] Add `@Public()` to `status` and `init` in `api/src/slices/setup/init/init.controller.ts` and to the single route in `api/src/slices/setup/health/health.controller.ts`
-- [ ] T007 [P] [US1] Add `@Public()` to `import-state` and `download` in `api/src/slices/integration/integration.extension.controller.ts` and to `import-state` in `api/src/slices/browser/browser.extension.controller.ts` (the `token` routes stay behind `JwtAuthGuard`)
-- [ ] T008 [P] [US1] Add class-level `@Public()` to `api/src/slices/integration/integration.internal.controller.ts` and `api/src/slices/browser/browser.internal.controller.ts` with a comment that `BridleApiKeyGuard` still authenticates every route
-- [ ] T009 [P] [US1] Add `@Public()` to `POST agents/:agentId/usage` in `api/src/slices/usage/usage.controller.ts` (the GET routes stay JWT-only)
-- [ ] T010 [P] [US1] Add class-level `@Public()` to `api/src/slices/bridle/bridle.controller.ts` with a comment that the controller resolves JWT, share and anonymous identities itself and that transcript access is decided per channel (US3)
-- [ ] T011 [P] [US1] Add `@Public()` to `resolve` in `api/src/slices/agent/shareLink/share.controller.ts`
-- [ ] T012 [P] [US1] Add `@Public()` to both routes in `api/src/slices/agent/peer/a2a.controller.ts` with a comment that the `ap_` credential rides in `Authorization: Bearer` and the global guard would otherwise reject it before `A2aCardGuard`/`A2aPeerGuard` run (not in the fork yet; note for the catch-up)
-- [ ] T013 [P] [US1] Add `@Public()` to `start` and `status` in `api/src/slices/mcpServer/oauth/mcpOauth.controller.ts` with a comment that `BridleApiKeyGuard` reads `x-bridle-api-key` and no JWT is sent (not in the fork yet; note for the catch-up)
-- [ ] T014 [US1] Run `cd api && npx jest src/slices/user/auth/guards/publicRoutes.spec.ts`; reconcile every mismatch by reading the controller, not by editing the number, until it passes with the reviewed list
-- [ ] T015 [US1] Run the full API suite once (`cd api && npx jest`) and `bun run build`; fix any spec that constructed a controller expecting no global guard
+- [X] T004 [US1] Register `{ provide: APP_GUARD, useClass: JwtAuthGuard }` in the `providers` of `api/src/app.module.ts` with the fork's comment explaining deny-by-default and that `@Public()` drops only the JWT requirement
+- [X] T005 [P] [US1] Add `@Public()` to `login`, `register`, `refresh`, `logout` and `embed/token` in `api/src/slices/user/auth/auth.controller.ts` (`me` stays guarded)
+- [X] T006 [P] [US1] Add `@Public()` to `status` and `init` in `api/src/slices/setup/init/init.controller.ts` and to the single route in `api/src/slices/setup/health/health.controller.ts`
+- [X] T007 [P] [US1] Add `@Public()` to `import-state` and `download` in `api/src/slices/integration/integration.extension.controller.ts` and to `import-state` in `api/src/slices/browser/browser.extension.controller.ts` (the `token` routes stay behind `JwtAuthGuard`)
+- [X] T008 [P] [US1] Add class-level `@Public()` to `api/src/slices/integration/integration.internal.controller.ts` and `api/src/slices/browser/browser.internal.controller.ts` with a comment that `BridleApiKeyGuard` still authenticates every route
+- [X] T009 [P] [US1] Add `@Public()` to `POST agents/:agentId/usage` in `api/src/slices/usage/usage.controller.ts` (the GET routes stay JWT-only)
+- [X] T010 [P] [US1] Add class-level `@Public()` to `api/src/slices/bridle/bridle.controller.ts` with a comment that the controller resolves JWT, share and anonymous identities itself and that transcript access is decided per channel (US3)
+- [X] T011 [P] [US1] Add `@Public()` to `resolve` in `api/src/slices/agent/shareLink/share.controller.ts`
+- [X] T012 [P] [US1] Add `@Public()` to both routes in `api/src/slices/agent/peer/a2a.controller.ts` with a comment that the `ap_` credential rides in `Authorization: Bearer` and the global guard would otherwise reject it before `A2aCardGuard`/`A2aPeerGuard` run (not in the fork yet; note for the catch-up)
+- [X] T013 [P] [US1] Add `@Public()` to `start` and `status` in `api/src/slices/mcpServer/oauth/mcpOauth.controller.ts` with a comment that `BridleApiKeyGuard` reads `x-bridle-api-key` and no JWT is sent (not in the fork yet; note for the catch-up)
+- [X] T014 [US1] Run `cd api && npx jest src/slices/user/auth/guards/publicRoutes.spec.ts`; reconcile every mismatch by reading the controller, not by editing the number, until it passes with the reviewed list
+- [X] T015 [US1] Run the full API suite once (`cd api && npx jest`) and `bun run build`; fix any spec that constructed a controller expecting no global guard
 - [ ] T016 [US1] Manual check per quickstart.md step 2 and 3 against a local API: anonymous 401 on settings/llms/knowledges/agents, health 200, usage without key refused by its own guard (not `TOKEN_MISSING`)
 
 **Checkpoint**: commit as `fix(api): require a credential on every route by default, with a pinned public allowlist (CLEAN-175)`. The platform hole is closed on its own.
@@ -81,17 +81,17 @@ changes (twin-console check recorded in quickstart.md).
 
 ### Tests for User Story 2
 
-- [ ] T017 [P] [US2] In `api/src/slices/user/auth/guards/jwtAuth.guard.spec.ts` add: a verified payload with `typ: 'embed'` (roles `[]` and roles `['Owner']`) is refused with 401 `TOKEN_INVALID` and `req.user` stays unset; a payload without `typ` passes as before
-- [ ] T018 [P] [US2] In `api/src/slices/user/auth/domain/auth.service.spec.ts` add a `mintEmbedToken` block: the signed payload carries `typ: 'embed'`, `sub`, `email`, `roles`; `Owner`/`Admin` stripped without `allowAdminRoles`; kept with it; TTL cap unchanged
-- [ ] T019 [P] [US2] In `api/src/slices/agent/peer/guards/a2a.guards.spec.ts` add: `A2aCardGuard` refuses a verified Owner JWT that carries `typ: 'embed'`
-- [ ] T020 [P] [US2] In `api/src/slices/bridle/domain/chatIdentity.spec.ts` add: `clientIdFromJwtPayload` maps `{ typ: 'embed', roles: ['Owner'] }` to `admin` and `{ typ: 'embed', sub: 'wslid-A1' }` to `wslid-A1` (the chat keeps accepting embed tokens)
+- [X] T017 [P] [US2] In `api/src/slices/user/auth/guards/jwtAuth.guard.spec.ts` add: a verified payload with `typ: 'embed'` (roles `[]` and roles `['Owner']`) is refused with 401 `TOKEN_INVALID` and `req.user` stays unset; a payload without `typ` passes as before
+- [X] T018 [P] [US2] In `api/src/slices/user/auth/domain/auth.service.spec.ts` add a `mintEmbedToken` block: the signed payload carries `typ: 'embed'`, `sub`, `email`, `roles`; `Owner`/`Admin` stripped without `allowAdminRoles`; kept with it; TTL cap unchanged
+- [X] T019 [P] [US2] In `api/src/slices/agent/peer/guards/a2a.guards.spec.ts` add: `A2aCardGuard` refuses a verified Owner JWT that carries `typ: 'embed'`
+- [X] T020 [P] [US2] In `api/src/slices/bridle/domain/chatIdentity.spec.ts` add: `clientIdFromJwtPayload` maps `{ typ: 'embed', roles: ['Owner'] }` to `admin` and `{ typ: 'embed', sub: 'wslid-A1' }` to `wslid-A1` (the chat keeps accepting embed tokens)
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] In `mintEmbedToken` of `api/src/slices/user/auth/domain/auth.service.ts` add `typ: 'embed'` to the payload and extend the doc comment: chat-only credential, refused by `JwtAuthGuard` and `A2aCardGuard`
-- [ ] T022 [US2] In `api/src/slices/user/auth/guards/jwtAuth.guard.ts` after a successful verify: if `isEmbedToken(payload)`, log `Rejected embed token outside chat sub=… METHOD url` (never the token) and throw `unauthorized(AuthErrorCodes.TokenInvalid)`; update the class doc comment
-- [ ] T023 [US2] In `A2aCardGuard` of `api/src/slices/agent/peer/guards/a2a.guards.ts` refuse a payload where `isEmbedToken(payload)` with the existing `refuse('Not allowed to read this card')`, with a one-line comment
-- [ ] T024 [US2] Run `cd api && npx jest src/slices/user/auth src/slices/agent/peer/guards src/slices/bridle/domain/chatIdentity.spec.ts` and `bun run build`
+- [X] T021 [US2] In `mintEmbedToken` of `api/src/slices/user/auth/domain/auth.service.ts` add `typ: 'embed'` to the payload and extend the doc comment: chat-only credential, refused by `JwtAuthGuard` and `A2aCardGuard`
+- [X] T022 [US2] In `api/src/slices/user/auth/guards/jwtAuth.guard.ts` after a successful verify: if `isEmbedToken(payload)`, log `Rejected embed token outside chat sub=… METHOD url` (never the token) and throw `unauthorized(AuthErrorCodes.TokenInvalid)`; update the class doc comment
+- [X] T023 [US2] In `A2aCardGuard` of `api/src/slices/agent/peer/guards/a2a.guards.ts` refuse a payload where `isEmbedToken(payload)` with the existing `refuse('Not allowed to read this card')`, with a one-line comment
+- [X] T024 [US2] Run `cd api && npx jest src/slices/user/auth src/slices/agent/peer/guards src/slices/bridle/domain/chatIdentity.spec.ts` and `bun run build`
 - [ ] T025 [US2] Manual check per quickstart.md step 2 with a minted token (embed column all 401) and a widget session on a public agent (chat works, own history loads)
 
 **Checkpoint**: commit as `fix(auth): embed tokens open only the chat (CLEAN-175)`.
@@ -106,14 +106,14 @@ changes (twin-console check recorded in quickstart.md).
 
 ### Tests for User Story 4
 
-- [ ] T026 [P] [US4] Create `api/src/slices/user/auth/dtos/embedToken.dto.spec.ts` using `class-validator`'s `validate` on a plain `EmbedTokenDto`: the eight rejected values above fail on `sub`; `wslid-A1234567`, `user_42` and a 128-char value pass
-- [ ] T027 [P] [US4] In `api/src/slices/user/auth/domain/auth.service.spec.ts` add: `mintEmbedToken` throws `BadRequestException` with message `sub must not be an existing user id` when the Prisma stub returns a user for that id, and signs normally when it returns null
+- [X] T026 [P] [US4] Create `api/src/slices/user/auth/dtos/embedToken.dto.spec.ts` using `class-validator`'s `validate` on a plain `EmbedTokenDto`: the eight rejected values above fail on `sub`; `wslid-A1234567`, `user_42` and a 128-char value pass
+- [X] T027 [P] [US4] In `api/src/slices/user/auth/domain/auth.service.spec.ts` add: `mintEmbedToken` throws `BadRequestException` with message `sub must not be an existing user id` when the Prisma stub returns a user for that id, and signs normally when it returns null
 
 ### Implementation for User Story 4
 
-- [ ] T028 [US4] In `api/src/slices/user/auth/dtos/embedToken.dto.ts` replace `@MinLength(1)` on `sub` with `@MaxLength(128)` and `@Matches(/^(?!admin$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$/, { message: 'sub: letters, digits, dash and underscore only, 1-128 characters, not admin and not prefixed anon-, share- or http-' })`; update the `@ApiProperty` description and example (`wslid-A1234567`)
-- [ ] T029 [US4] In `mintEmbedToken` of `api/src/slices/user/auth/domain/auth.service.ts` look up `this.prisma.user.findUnique({ where: { id: claims.sub }, select: { id: true } })` and throw `BadRequestException('sub must not be an existing user id')` when found, with a comment that console users' chat channels are their user ids
-- [ ] T030 [US4] Run `cd api && npx jest src/slices/user/auth` and `bun run build`; regenerate `api/swagger-spec.json` through the build and confirm only the `sub` pattern and max length changed in the DTO schema (no console SDK regen needed; if `git status` shows generated console files, revert them)
+- [X] T028 [US4] In `api/src/slices/user/auth/dtos/embedToken.dto.ts` replace `@MinLength(1)` on `sub` with `@MaxLength(128)` and `@Matches(/^(?!admin$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$/, { message: 'sub: letters, digits, dash and underscore only, 1-128 characters, not admin and not prefixed anon-, share- or http-' })`; update the `@ApiProperty` description and example (`wslid-A1234567`)
+- [X] T029 [US4] In `mintEmbedToken` of `api/src/slices/user/auth/domain/auth.service.ts` look up `this.prisma.user.findUnique({ where: { id: claims.sub }, select: { id: true } })` and throw `BadRequestException('sub must not be an existing user id')` when found, with a comment that console users' chat channels are their user ids
+- [X] T030 [US4] Run `cd api && npx jest src/slices/user/auth` and `bun run build`; regenerate `api/swagger-spec.json` through the build and confirm only the `sub` pattern and max length changed in the DTO schema (no console SDK regen needed; if `git status` shows generated console files, revert them)
 - [ ] T031 [US4] Manual check per quickstart.md step 5 (six 400s) plus one mint with a real user id from the local database (400)
 
 **Checkpoint**: commit as `fix(auth): validate the embed token subject (CLEAN-175)`.
@@ -128,13 +128,13 @@ changes (twin-console check recorded in quickstart.md).
 
 ### Tests for User Story 3
 
-- [ ] T032 [US3] In `api/src/slices/bridle/bridle.controller.spec.ts` add a `describe('BridleController — transcripts on a jwt channel')` block, reusing the existing request/controller helpers: owner token on own channel 200 for `transcript`, `deleteTranscript` and `archiveTranscript`; foreign token 403 `CHANNEL_FORBIDDEN`; no credential 403; a channel with no file and no credential 403 (and `fileCalls` empty, proving the check runs before the read); admin token on a `wslid-…` channel 200; `anon-x` with no credential 200; the existing share block still green
+- [X] T032 [US3] In `api/src/slices/bridle/bridle.controller.spec.ts` add a `describe('BridleController — transcripts on a jwt channel')` block, reusing the existing request/controller helpers: owner token on own channel 200 for `transcript`, `deleteTranscript` and `archiveTranscript`; foreign token 403 `CHANNEL_FORBIDDEN`; no credential 403; a channel with no file and no credential 403 (and `fileCalls` empty, proving the check runs before the read); admin token on a `wslid-…` channel 200; `anon-x` with no credential 200; the existing share block still green
 
 ### Implementation for User Story 3
 
-- [ ] T033 [US3] Add `ChannelForbidden = 'CHANNEL_FORBIDDEN'` to the bridle error codes (next to the share codes the controller already throws, in `api/src/slices/bridle/domain/` or the shareLink codes file the controller imports; pick the one `requireChannelAccess` already uses and keep it exported)
-- [ ] T034 [US3] Rewrite `requireChannelAccess` in `api/src/slices/bridle/bridle.controller.ts`: keep the `share-` branch verbatim; return early for `anon-` and `http-` prefixes with a comment citing specs/010 R8 and FR-007; otherwise `resolveRequester` and allow `kind === 'jwt' && (clientId === channel || clientId === 'admin')`; else `throw new ForbiddenException({ code: ChannelForbidden })`. Update the doc comment above it and the three `@ApiOperation` descriptions (GET at ~775, DELETE at ~885, archive at ~950) to say a JWT-named channel is owner-or-admin only
-- [ ] T035 [US3] Run `cd api && npx jest src/slices/bridle` and `bun run build`
+- [X] T033 [US3] Add `ChannelForbidden = 'CHANNEL_FORBIDDEN'` to the bridle error codes (next to the share codes the controller already throws, in `api/src/slices/bridle/domain/` or the shareLink codes file the controller imports; pick the one `requireChannelAccess` already uses and keep it exported)
+- [X] T034 [US3] Rewrite `requireChannelAccess` in `api/src/slices/bridle/bridle.controller.ts`: keep the `share-` branch verbatim; return early for `anon-` and `http-` prefixes with a comment citing specs/010 R8 and FR-007; otherwise `resolveRequester` and allow `kind === 'jwt' && (clientId === channel || clientId === 'admin')`; else `throw new ForbiddenException({ code: ChannelForbidden })`. Update the doc comment above it and the three `@ApiOperation` descriptions (GET at ~775, DELETE at ~885, archive at ~950) to say a JWT-named channel is owner-or-admin only
+- [X] T035 [US3] Run `cd api && npx jest src/slices/bridle` and `bun run build`
 - [ ] T036 [US3] Manual check per quickstart.md step 4, then the admin console (chat transcript, reset, Chats list, a visitor conversation) and the app console (reload keeps history, "New chat" archives) as logged-in users; then the Augeo demo in ranch mode: history survives reload, "New chat" works
 
 **Checkpoint**: commit as `fix(bridle): transcript read, delete and archive only for the channel owner or an admin (CLEAN-175)`.
@@ -143,9 +143,9 @@ changes (twin-console check recorded in quickstart.md).
 
 ## Phase 7: Polish & Cross-Cutting
 
-- [ ] T037 [P] Update `api/src/slices/user/auth/guards/public.decorator.ts` doc comment: it is now the only way out of the global guard and the allowlist test pins every use
-- [ ] T038 [P] Add a short "Authentication surface" note to `README.md` (or the API section of it): credential required by default, `@Public()` + `publicRoutes.spec.ts`, embed tokens are chat-only, transcript ownership rule; link CLEAN-175
-- [ ] T039 Re-run the full gate: `cd api && npx jest` and `bun run build`; `git status` clean of generated console files
+- [X] T037 [P] Update `api/src/slices/user/auth/guards/public.decorator.ts` doc comment: it is now the only way out of the global guard and the allowlist test pins every use
+- [X] T038 [P] Add a short "Authentication surface" note to `README.md` (or the API section of it): credential required by default, `@Public()` + `publicRoutes.spec.ts`, embed tokens are chat-only, transcript ownership rule; link CLEAN-175
+- [X] T039 Re-run the full gate: `cd api && npx jest` and `bun run build`; `git status` clean of generated console files
 - [ ] T040 Open the PR into `main` titled `fix(api): embed tokens open only the chat, credential required by default, transcripts for their owner (CLEAN-175)`; body lists the commands run, the twin-console statement from quickstart.md, the two fork follow-ups (A2A and OAuth `start`/`status` exemptions), and links CLEAN-141 and CLEAN-176; put the PR URL on CLEAN-175 and move it to In Review
 - [ ] T041 After deploy to dev-mazda through the fork catch-up: run the handoff's section 8 script (R1, R3, R5 parts) and record the result on CLEAN-175; then revoke the demo `embed:mint` key and mint a new one for the demo
 

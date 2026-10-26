@@ -30,7 +30,10 @@ import { UserDto } from '../user/dtos';
 import { ApiKeyScopeTypes, IApiKeyData } from '../apiKey/domain';
 import { ApiKeyService } from '../apiKey/domain/apiKey.service';
 import { SessionService } from '../session/domain/session.service';
-import { SESSION_COOKIE_NAME } from '../session/domain/session.types';
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_HINT_COOKIE_NAME,
+} from '../session/domain/session.types';
 import { ApiKeyGuard, JwtAuthGuard, Public, Scopes, ScopesGuard } from './guards';
 
 export const TOKEN_UNAUTHORIZED_DESCRIPTION =
@@ -128,6 +131,10 @@ export class AuthController {
   ): Promise<LogoutResultDto> {
     const revoked = await this.authService.logout(sessionCookieOf(req));
     res.clearCookie(SESSION_COOKIE_NAME, this.sessions.clearCookieOptions());
+    res.clearCookie(
+      SESSION_HINT_COOKIE_NAME,
+      this.sessions.clearHintCookieOptions(),
+    );
     return { revoked };
   }
 
@@ -173,6 +180,13 @@ export class AuthController {
       SESSION_COOKIE_NAME,
       result.cookie.value,
       this.sessions.cookieOptions(result.cookie.maxAgeSeconds),
+    );
+    // Readable twin of the cookie above: "a session exists", nothing more
+    // (CLEAN-178). The consoles skip the boot /auth/refresh without it.
+    res.cookie(
+      SESSION_HINT_COOKIE_NAME,
+      '1',
+      this.sessions.hintCookieOptions(result.cookie.maxAgeSeconds),
     );
     return {
       accessToken: result.accessToken,

@@ -13,6 +13,19 @@ const ADMIN_ROLES = ['Owner', 'Admin'] as const;
 const REFRESH_BUFFER_MS = 60_000;
 /** Retry cadence when `/auth/refresh` could not be reached at all. */
 const NETWORK_RETRY_MS = 30_000;
+/**
+ * Name of the readable cookie the API sets next to the httpOnly session
+ * cookie (`SESSION_HINT_COOKIE_NAME` on the server). Present means "a session
+ * may exist"; absent means "do not bother asking /auth/refresh" (CLEAN-178).
+ */
+const SESSION_HINT_COOKIE = 'ranch_session_hint';
+
+function hasSessionHint(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.cookie
+    .split(';')
+    .some((part) => part.trim().startsWith(`${SESSION_HINT_COOKIE}=`));
+}
 
 // Module scope on purpose: one timer and one in-flight refresh for the whole
 // tab, shared by the timer, the visibility hook, the 401 interceptor and the
@@ -189,7 +202,10 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function hydrate() {
     if (isHydrated.value) return;
-    if (import.meta.client) await refresh();
+    // The session cookie is httpOnly and scoped to /auth; the readable hint
+    // the API sets next to it is the only sign a refresh is worth asking for
+    // (CLEAN-178). Without it, skip the round trip and its 401.
+    if (import.meta.client && hasSessionHint()) await refresh();
     isHydrated.value = true;
   }
 

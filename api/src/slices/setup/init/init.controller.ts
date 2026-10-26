@@ -14,7 +14,10 @@ import { CreateOwnerDto, InitStatusDto } from './dtos';
 import { AuthDto } from '#/user/auth/dtos';
 import { userAgentOf } from '#/user/auth/auth.controller';
 import { SessionService } from '#/user/session/domain/session.service';
-import { SESSION_COOKIE_NAME } from '#/user/session/domain/session.types';
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_HINT_COOKIE_NAME,
+} from '#/user/session/domain/session.types';
 import { Public } from '#/user/auth/guards';
 
 @ApiTags('setup')
@@ -56,6 +59,13 @@ export class InitController {
       SESSION_COOKIE_NAME,
       result.cookie.value,
       this.sessions.cookieOptions(result.cookie.maxAgeSeconds),
+    );
+    // Same pair as /auth/login: the readable hint lets the console skip the
+    // boot /auth/refresh when there is no session (CLEAN-178).
+    res.cookie(
+      SESSION_HINT_COOKIE_NAME,
+      '1',
+      this.sessions.hintCookieOptions(result.cookie.maxAgeSeconds),
     );
     return {
       accessToken: result.accessToken,

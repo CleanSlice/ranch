@@ -9,6 +9,7 @@ import {
   ISessionData,
   ISessionIssue,
   SESSION_COOKIE_PATH,
+  SESSION_HINT_COOKIE_PATH,
   SESSION_SECRET_BYTES,
   SESSION_SECRET_PREFIX,
 } from './session.types';
@@ -133,6 +134,26 @@ export class SessionService {
 
   clearCookieOptions(): ISessionCookieOptions {
     return { ...this.cookieOptions(0), maxAge: 0 };
+  }
+
+  /**
+   * Options for the readable `ranch_session_hint` cookie (CLEAN-178): same
+   * lifetime and `secure` as the session cookie, but readable by the page
+   * and sent on every path so the console can see it on boot. It carries no
+   * secret; its only job is to spare anonymous visitors a /auth/refresh 401.
+   */
+  hintCookieOptions(maxAgeSeconds: number): ISessionCookieOptions {
+    return {
+      httpOnly: false,
+      sameSite: 'lax',
+      path: SESSION_HINT_COOKIE_PATH,
+      secure: this.config().cookieSecure,
+      maxAge: maxAgeSeconds * 1000,
+    };
+  }
+
+  clearHintCookieOptions(): ISessionCookieOptions {
+    return { ...this.hintCookieOptions(0), maxAge: 0 };
   }
 
   private mint(): string {

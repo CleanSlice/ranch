@@ -25,6 +25,20 @@ let refreshInFlight: Promise<boolean> | null = null;
 let refreshGeneration = 0;
 
 /**
+ * Name of the readable cookie the API sets next to the httpOnly session
+ * cookie (`SESSION_HINT_COOKIE_NAME` on the server). Present means "a session
+ * may exist"; absent means "do not bother asking /auth/refresh".
+ */
+const SESSION_HINT_COOKIE = 'ranch_session_hint';
+
+function hasSessionHint(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.cookie
+    .split(';')
+    .some((part) => part.trim().startsWith(`${SESSION_HINT_COOKIE}=`));
+}
+
+/**
  * "Could not reach the API" as opposed to "the API answered". The gateway
  * maps failures through `AuthErrorMapper`, which stamps `statusCode: 0` on a
  * network error; a raw axios error (no mapper) simply has no `response`.
@@ -217,6 +231,15 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function init(): Promise<void> {
     if (isHydrated.value) return;
+    // The session cookie is httpOnly and scoped to /auth, so the only way
+    // to know whether /auth/refresh is worth asking is the readable hint the
+    // API sets next to it (CLEAN-178). No hint, no session: skip the round
+    // trip instead of collecting a 401 on every anonymous page view. A stale
+    // hint (cookies cleared one by one) costs one 401, as before.
+    if (!hasSessionHint()) {
+      isHydrated.value = true;
+      return;
+    }
     try {
       await refresh();
     } finally {

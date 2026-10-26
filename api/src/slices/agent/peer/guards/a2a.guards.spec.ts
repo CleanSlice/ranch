@@ -220,3 +220,20 @@ describe('A2aPeerGuard', () => {
     expect(peers.findByToken).not.toHaveBeenCalled();
   });
 });
+
+describe('A2aCardGuard — embed tokens (CLEAN-175)', () => {
+  it('refuses an admin embed token: a browser credential never reads a card', async () => {
+    const { cardGuard } = makeHarness({
+      verify: () => ({
+        sub: 'kiosk',
+        email: '',
+        roles: [UserRoleTypes.Owner],
+        typ: 'embed',
+      }),
+    });
+
+    await expect(
+      cardGuard.canActivate(contextFor(request('Bearer embed.jwt.token'))),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+});

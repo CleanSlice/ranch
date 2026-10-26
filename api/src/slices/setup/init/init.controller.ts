@@ -15,6 +15,7 @@ import { AuthDto } from '#/user/auth/dtos';
 import { userAgentOf } from '#/user/auth/auth.controller';
 import { SessionService } from '#/user/session/domain/session.service';
 import { SESSION_COOKIE_NAME } from '#/user/session/domain/session.types';
+import { Public } from '#/user/auth/guards';
 
 @ApiTags('setup')
 @Controller('setup')
@@ -24,6 +25,7 @@ export class InitController {
     private sessions: SessionService,
   ) {}
 
+  @Public()
   @Get('status')
   @ApiOperation({
     summary: 'Check whether the system needs initial owner setup',
@@ -32,6 +34,7 @@ export class InitController {
     return this.initService.getStatus();
   }
 
+  @Public()
   @Post('init')
   @HttpCode(201)
   @ApiOperation({

@@ -43,6 +43,9 @@ export class McpOauthController {
 
   constructor(private readonly service: McpOauthService) {}
 
+  // Called with the bridle key (x-bridle-api-key), never a user JWT, so the
+  // global guard must step aside; BridleApiKeyGuard still authenticates.
+  @Public()
   @Post('start')
   @UseGuards(BridleApiKeyGuard)
   @ApiHeader({ name: 'x-bridle-api-key', required: true })
@@ -124,6 +127,8 @@ export class McpOauthController {
     res.send(renderCallbackPage({ heading, sub, nonce, returnTo }));
   }
 
+  // Same credential as start.
+  @Public()
   @Get('status')
   @UseGuards(BridleApiKeyGuard)
   @ApiHeader({ name: 'x-bridle-api-key', required: true })

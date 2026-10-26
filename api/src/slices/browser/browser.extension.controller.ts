@@ -24,7 +24,7 @@ import {
   IssueExtensionTokenResponseDto,
 } from './dtos';
 import { IAuthTokenPayload } from '../user/auth/domain/auth.types';
-import { JwtAuthGuard } from '../user/auth/guards';
+import { JwtAuthGuard, Public } from '../user/auth/guards';
 
 interface IExtensionTokenPayload {
   /** Ranch user that minted the token (audit/replay). */
@@ -87,6 +87,7 @@ export class BrowserExtensionController {
     return { token, exp: decoded?.exp ?? 0 };
   }
 
+  @Public()
   @Post('import-state')
   @ApiOperation({
     summary:

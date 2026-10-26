@@ -13,6 +13,24 @@ export interface IAuthTokenPayload {
    * guard requires it — revocation lands at the next refresh (research R3).
    */
   sid?: string;
+  /**
+   * `'embed'` on browser embed tokens minted through `POST /auth/embed/token`
+   * (CLEAN-175). The chat verifiers (`BridleChatAuthGuard`, the bridle
+   * controller, the `/ws/client` handshake) accept such a token; every
+   * platform-side verifier (`JwtAuthGuard`, `A2aCardGuard`) refuses it, so a
+   * token rendered into a customer page is worth exactly one thing: chatting
+   * as that visitor. Absent on console, agent service and extension tokens.
+   */
+  typ?: 'embed';
+}
+
+/** True for a verified payload that `mintEmbedToken` produced. */
+export function isEmbedToken(payload: unknown): boolean {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    (payload as { typ?: unknown }).typ === 'embed'
+  );
 }
 
 export interface IAuthResult {

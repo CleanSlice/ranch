@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
+import { isEmbedToken } from '#/user/auth/domain/auth.types';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { hasAtLeastRole, UserRoleTypes } from '#/user/user/domain';
 import { IPeerGateway } from '../domain/peer.gateway';
@@ -87,6 +88,10 @@ export class A2aCardGuard implements CanActivate {
     } catch {
       refuse('Invalid credential');
     }
+
+    // A browser embed token opens the chat and nothing else, even when it
+    // carries an admin role (CLEAN-175).
+    if (isEmbedToken(payload)) refuse('Not allowed to read this card');
 
     // Agent service tokens are deliberately not accepted here: an agent reads
     // a peer's card with the credential issued for that connection, which is

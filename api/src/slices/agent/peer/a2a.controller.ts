@@ -25,6 +25,7 @@ import {
 } from './domain/a2a.types';
 import { A2aCardGuard, A2aPeerGuard } from './guards/a2a.guards';
 import type { IA2aRequest } from './guards/a2a.guards';
+import { Public } from '#/user/auth/guards';
 
 /**
  * The public A2A surface of every Ranch agent (CLEAN-74).
@@ -49,6 +50,11 @@ export class A2aController {
   /** Discovery. The path is the spec's, prefixed per agent because one host
    *  serves many agents and the domain root cannot name one of them. */
   @RawResponse()
+  // The ap_ peer credential rides in Authorization: Bearer, which the global
+  // JWT guard would reject as a bad JWT before A2aCardGuard runs. @Public()
+  // lifts only that; the card guard still demands a peer credential or an
+  // admin console JWT.
+  @Public()
   @UseGuards(A2aCardGuard)
   @Get(':agentId/.well-known/agent-card.json')
   async card(@Param('agentId') agentId: string): Promise<IA2aAgentCard> {
@@ -61,6 +67,8 @@ export class A2aController {
    * while credential failures stay real HTTP 401s from the guard.
    */
   @RawResponse()
+  // Same as the card route: peer credential only, checked by A2aPeerGuard.
+  @Public()
   @UseGuards(A2aPeerGuard)
   @HttpCode(200)
   @Post(':agentId')

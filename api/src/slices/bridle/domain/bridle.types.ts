@@ -219,6 +219,16 @@ export const BridleResetErrorCodes = {
   SyncFailed: 'SYNC_FAILED',
 } as const;
 
+/**
+ * 403 on the transcript routes for a channel named by a JWT sub: the caller
+ * is not that sub and not an admin. One code whether or not the channel
+ * exists, so the routes cannot be used to probe who has talked to an agent
+ * (CLEAN-175). Share channels keep their own `SHARE_LINK_INVALID`.
+ */
+export const BridleChannelErrorCodes = {
+  ChannelForbidden: 'CHANNEL_FORBIDDEN',
+} as const;
+
 /** Agent → Hub: events routed to browser clients */
 export interface IBridleOutgoingEvent {
   type:

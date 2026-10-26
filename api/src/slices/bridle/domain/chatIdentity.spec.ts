@@ -126,3 +126,20 @@ describe('headerValue', () => {
     expect(headerValue(undefined)).toBeUndefined();
   });
 });
+
+describe('clientIdFromJwtPayload — embed tokens (CLEAN-175)', () => {
+  // The chat is the one surface an embed token opens, so the identity rule
+  // must not change when the claim is present: admins still share the admin
+  // conversation, everyone else gets their sub.
+  it('maps an admin embed token to the shared admin identity', () => {
+    expect(
+      clientIdFromJwtPayload({ sub: 'kiosk', roles: ['Owner'], typ: 'embed' }),
+    ).toEqual({ clientId: 'admin', isAdmin: true });
+  });
+
+  it('maps a visitor embed token to its sub', () => {
+    expect(
+      clientIdFromJwtPayload({ sub: 'wslid-A1', roles: [], typ: 'embed' }),
+    ).toEqual({ clientId: 'wslid-A1', isAdmin: false });
+  });
+});

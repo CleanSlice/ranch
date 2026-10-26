@@ -24,6 +24,7 @@ import {
 } from './domain/usage.types';
 import { ReportUsageDto } from './dtos';
 import { BridleApiKeyGuard } from '#/bridle/guards/bridleApiKey.guard';
+import { Public } from '#/user/auth/guards';
 import { IFileGateway } from '#/agent/file/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { ILlmGateway } from '#/llm/domain';
@@ -48,6 +49,8 @@ export class UsageController {
     private llmGateway: ILlmGateway,
   ) {}
 
+  // Posted by the runtime with the bridle key, never a user token.
+  @Public()
   @Post('agents/:agentId/usage')
   @HttpCode(204)
   @UseGuards(BridleApiKeyGuard)

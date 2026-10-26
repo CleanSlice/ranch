@@ -48,6 +48,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
+import { Public } from '#/user/auth/guards';
 import { FileProposalService } from '#/agent/file/domain/fileProposal.service';
 import type { FileChangeProposalDto } from '#/agent/file/dtos';
 import {
@@ -57,6 +58,7 @@ import {
   SourceAccessService,
   contentTypeForBrowser,
   BridleResetErrorCodes,
+  BridleChannelErrorCodes,
   MAX_ATTACHMENT_BYTES,
   buildParts,
   clientIdFromJwtPayload,
@@ -186,7 +188,23 @@ const SHARE_FORBIDDEN_DESCRIPTION =
   "'SHARE_LINK_INVALID' }` or `{ code: 'SHARE_VISITOR_INVALID' }`. Never " +
   '401: a share visitor has no account to log in to.';
 
+/**
+ * Channel namespaces the hub mints for visitors with no credential: `anon-`
+ * on the websocket handshake, `http-` on the fire-and-forget route. Random,
+ * so they stay readable by name (CLEAN-175 FR-007).
+ */
+const OPEN_CHANNEL_PREFIXES = ['anon-', 'http-'] as const;
+/** The chat identity `clientIdFromJwtPayload` gives every Owner and Admin. */
+const ADMIN_CLIENT_ID = 'admin';
+
 @ApiTags('bridle')
+// The embedded widget, served to visitors on customer sites. Every route here
+// resolves its own identity (console JWT, embed JWT, share headers, or the
+// anonymous fallback) through resolveRequester and BridleChatAuthGuard, so
+// the global JWT guard would only turn anonymous visitors away. @Public()
+// preserves the per-route rules; transcript access is decided per channel in
+// requireChannelAccess (CLEAN-175).
+@Public()
 @Controller('api/agent')
 export class BridleController {
   private readonly logger = new Logger(BridleController.name);
@@ -302,30 +320,52 @@ export class BridleController {
   }
 
   /**
-   * Gate the transcript routes on a share channel.
+   * Gate the transcript routes (read, reset, archive) on who owns the channel.
    *
-   * `channel` is caller-chosen and these three routes are unauthenticated, so
-   * once share conversations started living in `bridle:share-<visitorId>.jsonl`
-   * anyone could read — or delete — a visitor's chat, attachment ids included,
-   * just by naming the channel. A `share-` channel is therefore readable only
-   * by a console user or by that very visitor; everyone else gets the same 403
-   * whether or not the channel exists.
+   * `channel` is caller-chosen and the controller is public, so the name
+   * alone must never open a conversation. Three namespaces, three rules:
    *
-   * Non-share channels keep today's (unauthenticated) behaviour — the broader
-   * hardening of this endpoint is tracked separately (research.md R8).
+   *   - `share-<visitorId>`: that very visitor (share headers) or any console
+   *     user; everyone else gets `SHARE_LINK_INVALID`, the same 403 whether or
+   *     not the channel exists.
+   *   - `anon-…` and `http-…`: minted by the hub itself for visitors who hold
+   *     no credential at all, random and unguessable, so they stay open as
+   *     before (specs/010 research R8, CLEAN-175 FR-007). Closing them would
+   *     cost the anonymous widget its history on reload.
+   *   - anything else is a JWT sub: an embed visitor (`wslid-…`) or a console
+   *     user's id. Only a JWT whose chat identity is that sub, or an admin
+   *     (chat identity `admin`, see `clientIdFromJwtPayload`), may touch it.
+   *     Everyone else gets `CHANNEL_FORBIDDEN`, again the same 403 for an
+   *     existing and a missing channel, and nothing is read first. A WSLID is
+   *     a known identifier, so without this any visitor could read and erase
+   *     another visitor's conversation (CLEAN-175).
    */
   private async requireChannelAccess(
     req: Record<string, unknown>,
     agentId: string,
     channel: string,
   ): Promise<void> {
-    if (!channel.startsWith(SHARE_CLIENT_PREFIX)) return;
+    if (channel.startsWith(SHARE_CLIENT_PREFIX)) {
+      const requester = await this.resolveRequester(req, agentId);
+      if (requester.kind === 'jwt') return;
+      if (requester.kind === 'share' && requester.clientId === channel) return;
+      throw new ForbiddenException({ code: ShareLinkErrorCodes.LinkInvalid });
+    }
+
+    if (OPEN_CHANNEL_PREFIXES.some((prefix) => channel.startsWith(prefix))) {
+      return;
+    }
 
     const requester = await this.resolveRequester(req, agentId);
-    if (requester.kind === 'jwt') return;
-    if (requester.kind === 'share' && requester.clientId === channel) return;
-
-    throw new ForbiddenException({ code: ShareLinkErrorCodes.LinkInvalid });
+    if (
+      requester.kind === 'jwt' &&
+      (requester.clientId === channel || requester.clientId === ADMIN_CLIENT_ID)
+    ) {
+      return;
+    }
+    throw new ForbiddenException({
+      code: BridleChannelErrorCodes.ChannelForbidden,
+    });
   }
 
   @ApiOperation({
@@ -772,7 +812,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      "Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).",
+      "Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 `SHARE_LINK_INVALID` otherwise). A channel named by a JWT subject (an embed visitor, or a console user's id) is restricted to the bearer with that subject or to an admin (403 `CHANNEL_FORBIDDEN` otherwise, whether or not the channel exists). Anonymous `anon-…` and `http-…` channels stay open.",
     operationId: 'getBridleTranscript',
   })
   @ApiShareHeaders()
@@ -882,7 +922,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      "Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat: the running agent is told to drop its own copy, and every browser that has the conversation open is told it was reset (`conversation_reset`). Nothing is kept — to keep the conversation, use `POST …/transcript/archive`. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).",
+      "Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat: the running agent is told to drop its own copy, and every browser that has the conversation open is told it was reset (`conversation_reset`). Nothing is kept — to keep the conversation, use `POST …/transcript/archive`. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 `SHARE_LINK_INVALID` otherwise). A channel named by a JWT subject (an embed visitor, or a console user's id) is restricted to the bearer with that subject or to an admin (403 `CHANNEL_FORBIDDEN` otherwise, whether or not the channel exists). Anonymous `anon-…` and `http-…` channels stay open.",
     operationId: 'resetBridleTranscript',
   })
   @ApiQuery({
@@ -924,7 +964,7 @@ export class BridleController {
 
   @ApiOperation({
     description:
-      'Close the current conversation and start a new one ("New chat"). The live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`), its row in the chat index moves with it, the running agent is told to forget the conversation and every browser that has it open is told it was reset. Refused, with nothing changed, while a real reset cannot be guaranteed: 409 `AGENT_OFFLINE` when the agent is not connected, 409 `TURN_IN_PROGRESS` while it is still answering, 503 `SYNC_FAILED` when it did not push its files in time. Answers `{}` when there was nothing to close — the conversation is reset either way. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor\'s own share headers are accepted (403 otherwise).',
+      'Close the current conversation and start a new one ("New chat"). The live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`), its row in the chat index moves with it, the running agent is told to forget the conversation and every browser that has it open is told it was reset. Refused, with nothing changed, while a real reset cannot be guaranteed: 409 `AGENT_OFFLINE` when the agent is not connected, 409 `TURN_IN_PROGRESS` while it is still answering, 503 `SYNC_FAILED` when it did not push its files in time. Answers `{}` when there was nothing to close — the conversation is reset either way. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor\'s own share headers are accepted (403 `SHARE_LINK_INVALID` otherwise). A channel named by a JWT subject (an embed visitor, or a console user\'s id) is restricted to the bearer with that subject or to an admin (403 `CHANNEL_FORBIDDEN` otherwise, whether or not the channel exists). Anonymous `anon-…` and `http-…` channels stay open.',
     operationId: 'archiveBridleTranscript',
   })
   @ApiQuery({

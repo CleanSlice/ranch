@@ -52,7 +52,7 @@
                 {{ $t('hero.stat_agents') }}
               </dt>
               <dd class="text-2xl font-semibold">
-                {{ format.number(agentStore.publicAgents.length) }}
+                {{ format.number(available.length) }}
               </dd>
             </div>
             <div>
@@ -84,7 +84,22 @@
               :subtitle="featured.templateId"
             />
           </div>
-          <LandingHeroAgentCard v-else :agent="demoAgent" />
+          <div
+            v-else
+            class="relative h-[520px] rounded-2xl border bg-card shadow-xl overflow-hidden flex items-center justify-center p-8 text-center"
+          >
+            <div
+              class="absolute -top-24 -right-24 w-64 h-64 rounded-full bg-primary/10 blur-3xl pointer-events-none"
+            />
+            <div class="max-w-sm">
+              <div class="font-semibold text-lg">
+                {{ $t('hero.no_agent_title') }}
+              </div>
+              <p class="mt-3 text-sm text-muted-foreground">
+                {{ $t('hero.no_agent_lede', { origin }) }}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -104,30 +119,28 @@ const UPTIME = 0.999;
 
 await useAsyncData('landing-agents', () => agentStore.fetchPublic());
 
+/** The page's own origin, the same on the server and in the browser. */
+const origin = useRequestURL().origin;
+
+/**
+ * Only the agents the hub would actually let an anonymous visitor talk to
+ * from this page: public, and this origin on their allowed list. Previewing
+ * any other agent ends in ORIGIN_NOT_ALLOWED in the middle of the landing
+ * page, and a made-up demo card is not an honest substitute (CLEAN-179).
+ */
+const available = computed<IAgentData[]>(() =>
+  agentStore.publicAgents.filter((a) => a.allowedOrigins.includes(origin)),
+);
+
 const featured = computed<IAgentData | null>(
-  () => agentStore.publicAgents[0] ?? null,
+  () => available.value[0] ?? null,
 );
 
 const runningCount = computed(
-  () =>
-    agentStore.publicAgents.filter((a) => a.status === 'running').length,
+  () => available.value.filter((a) => a.status === 'running').length,
 );
 
 const canDeployAgent = computed(() =>
   authStore.hasRole(UserRoleTypes.Owner, UserRoleTypes.Admin),
 );
-
-const demoAgent: IAgentData = {
-  id: 'demo',
-  name: 'Scout',
-  status: 'running',
-  templateId: 'ranch/scout:latest',
-  workflowId: null,
-  config: {},
-  resources: { cpu: '500m', memory: '512Mi' },
-  isPublic: true,
-  isAdmin: false,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
 </script>

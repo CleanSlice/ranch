@@ -26,14 +26,9 @@
     "cta_sign_in": "Sign in to deploy",
     "stat_agents": "Agents",
     "stat_running": "Running",
-    "stat_uptime": "Uptime"
-  },
-  "demo": {
-    "agent_greeting": "Hi! I'm ready to help you ship.",
-    "user_request": "Deploy a new worker to staging.",
-    "agent_working": "Submitting workflow…",
-    "cpu": "CPU",
-    "memory": "Memory"
+    "stat_uptime": "Uptime",
+    "no_agent_title": "No public agent on this page yet",
+    "no_agent_lede": "This page can only show agents that are public and allow {origin}. An owner sets both on the agent in the admin console."
   },
   "landing": {
     "what_eyebrow": "What Ranch does",

@@ -52,20 +52,6 @@ function makeController(
       secure: false,
       maxAge: 0,
     }),
-    hintCookieOptions: (maxAgeSeconds: number) => ({
-      httpOnly: false,
-      sameSite: 'lax',
-      path: '/',
-      secure: false,
-      maxAge: maxAgeSeconds * 1000,
-    }),
-    clearHintCookieOptions: () => ({
-      httpOnly: false,
-      sameSite: 'lax',
-      path: '/',
-      secure: false,
-      maxAge: 0,
-    }),
   } as unknown as SessionService;
   const controller = new AuthController(
     authService,
@@ -132,19 +118,6 @@ describe('AuthController — login', () => {
           httpOnly: true,
           sameSite: 'lax',
           path: '/auth',
-          secure: false,
-          maxAge: 604_800_000,
-        },
-      ],
-      // The readable hint next to it (CLEAN-178): no secret, same lifetime,
-      // every path, so the console can see it on boot.
-      [
-        'ranch_session_hint',
-        '1',
-        {
-          httpOnly: false,
-          sameSite: 'lax',
-          path: '/',
           secure: false,
           maxAge: 604_800_000,
         },
@@ -217,16 +190,6 @@ describe('AuthController — logout', () => {
           maxAge: 0,
         },
       ],
-      [
-        'ranch_session_hint',
-        {
-          httpOnly: false,
-          sameSite: 'lax',
-          path: '/',
-          secure: false,
-          maxAge: 0,
-        },
-      ],
     ]);
   });
 
@@ -237,10 +200,6 @@ describe('AuthController — logout', () => {
     const dto = await controller.logout(makeReq(), res);
 
     expect(dto).toEqual({ revoked: false });
-    // Both cookies, session and hint, go regardless of what matched.
-    expect(cleared.map(([name]) => name)).toEqual([
-      'ranch_session',
-      'ranch_session_hint',
-    ]);
+    expect(cleared).toHaveLength(1);
   });
 });

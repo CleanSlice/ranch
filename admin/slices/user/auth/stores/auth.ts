@@ -14,17 +14,30 @@ const REFRESH_BUFFER_MS = 60_000;
 /** Retry cadence when `/auth/refresh` could not be reached at all. */
 const NETWORK_RETRY_MS = 30_000;
 /**
- * Name of the readable cookie the API sets next to the httpOnly session
- * cookie (`SESSION_HINT_COOKIE_NAME` on the server). Present means "a session
- * may exist"; absent means "do not bother asking /auth/refresh" (CLEAN-178).
+ * The console's own note that a session was established in this browser
+ * (CLEAN-178, corrected in CLEAN-182). It lives in localStorage on the
+ * console's origin, never in a cookie: the session cookie is httpOnly and the
+ * API's host is not the console's host, so nothing the API sets is readable
+ * here. Present means "/auth/refresh is worth asking on boot"; absent means
+ * "nobody signed in here, skip the round trip and its 401".
  */
-const SESSION_HINT_COOKIE = 'ranch_session_hint';
+const SESSION_MARKER_KEY = 'ranch.session';
 
-function hasSessionHint(): boolean {
-  if (typeof document === 'undefined') return false;
-  return document.cookie
-    .split(';')
-    .some((part) => part.trim().startsWith(`${SESSION_HINT_COOKIE}=`));
+function hasSessionMarker(): boolean {
+  try {
+    return localStorage.getItem(SESSION_MARKER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setSessionMarker(present: boolean): void {
+  try {
+    if (present) localStorage.setItem(SESSION_MARKER_KEY, '1');
+    else localStorage.removeItem(SESSION_MARKER_KEY);
+  } catch {
+    // Storage blocked: boot simply tries the refresh, as before CLEAN-178.
+  }
 }
 
 // Module scope on purpose: one timer and one in-flight refresh for the whole
@@ -93,6 +106,9 @@ export const useAuthStore = defineStore('auth', () => {
     clearRefreshTimer();
     accessToken.value = null;
     expiresAt.value = null;
+    // Every caller is "the token is not coming back": failed refresh, logout,
+    // session ended. The next boot should not ask again.
+    setSessionMarker(false);
   }
 
   /** Adopt a login / refresh result and schedule the next renewal. */
@@ -102,6 +118,7 @@ export const useAuthStore = defineStore('auth', () => {
     expiresAt.value = Date.now() + session.expiresIn * 1000;
     sessionEnded.value = false;
     sessionEndedCode.value = null;
+    setSessionMarker(true);
     scheduleRefresh();
   }
 
@@ -202,10 +219,10 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function hydrate() {
     if (isHydrated.value) return;
-    // The session cookie is httpOnly and scoped to /auth; the readable hint
-    // the API sets next to it is the only sign a refresh is worth asking for
-    // (CLEAN-178). Without it, skip the round trip and its 401.
-    if (import.meta.client && hasSessionHint()) await refresh();
+    // The session cookie is httpOnly, so the console cannot see it; its own
+    // localStorage note says whether a session was ever established here
+    // (CLEAN-178, CLEAN-182). Without it, skip the round trip and its 401.
+    if (import.meta.client && hasSessionMarker()) await refresh();
     isHydrated.value = true;
   }
 

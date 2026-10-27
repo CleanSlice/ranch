@@ -318,10 +318,12 @@ Signing in to either console establishes two credentials with different jobs:
 - a short-lived **access token** — the JWT the console attaches as
   `Authorization: Bearer` (`JWT_EXPIRES_IN`, 15 minutes), kept in memory only.
 
-Next to the session cookie the API sets a readable `ranch_session_hint=1` on
-`Path=/` with the same lifetime, cleared on logout. It holds no secret; it only
-tells a console on boot that `/auth/refresh` is worth asking, so an anonymous
-visit makes no refresh call and collects no 401 (CLEAN-178).
+Each console also keeps a note of its own in `localStorage` (`ranch.session`),
+set when a session is applied and cleared when the token is dropped for good.
+It holds no secret; it only tells the console on boot that `/auth/refresh` is
+worth asking, so an anonymous visit makes no refresh call and collects no 401
+(CLEAN-178). It has to live on the console's origin: the API's host is not the
+console's host, so a cookie the API sets is not readable there (CLEAN-182).
 
 `POST /auth/refresh` (no body, cookie in) renews the access token from the
 session alone — it works after the token has expired — and slides the

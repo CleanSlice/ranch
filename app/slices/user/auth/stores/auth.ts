@@ -25,17 +25,32 @@ let refreshInFlight: Promise<boolean> | null = null;
 let refreshGeneration = 0;
 
 /**
- * Name of the readable cookie the API sets next to the httpOnly session
- * cookie (`SESSION_HINT_COOKIE_NAME` on the server). Present means "a session
- * may exist"; absent means "do not bother asking /auth/refresh".
+ * The console's own note that a session was established in this browser
+ * (CLEAN-178, corrected in CLEAN-182). It lives in localStorage on the
+ * console's origin, never in a cookie: the session cookie is httpOnly and the
+ * API's host is not the console's host, so nothing the API sets is readable
+ * here. Present means "/auth/refresh is worth asking on boot"; absent means
+ * "nobody signed in here, skip the round trip and its 401". Clearing site
+ * data removes it together with the cookie; a stale note costs one 401.
  */
-const SESSION_HINT_COOKIE = 'ranch_session_hint';
+const SESSION_MARKER_KEY = 'ranch.session';
 
-function hasSessionHint(): boolean {
-  if (typeof document === 'undefined') return false;
-  return document.cookie
-    .split(';')
-    .some((part) => part.trim().startsWith(`${SESSION_HINT_COOKIE}=`));
+function hasSessionMarker(): boolean {
+  try {
+    return localStorage.getItem(SESSION_MARKER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setSessionMarker(present: boolean): void {
+  try {
+    if (present) localStorage.setItem(SESSION_MARKER_KEY, '1');
+    else localStorage.removeItem(SESSION_MARKER_KEY);
+  } catch {
+    // Storage blocked (private mode, disabled site data): boot will simply
+    // try the refresh, which is the pre-CLEAN-178 behaviour.
+  }
 }
 
 /**
@@ -103,6 +118,9 @@ export const useAuthStore = defineStore('auth', () => {
     clearRefreshTimer();
     accessToken.value = null;
     expiresAt.value = null;
+    // Every caller of this is "the token is not coming back": failed refresh,
+    // logout, session ended. The next boot should not ask again.
+    setSessionMarker(false);
   }
 
   function applySession(session: IAuthSession) {
@@ -111,6 +129,7 @@ export const useAuthStore = defineStore('auth', () => {
     expiresAt.value = Date.now() + session.expiresIn * 1000;
     sessionEnded.value = false;
     sessionEndedCode.value = null;
+    setSessionMarker(true);
     scheduleRefresh();
   }
 
@@ -231,12 +250,11 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function init(): Promise<void> {
     if (isHydrated.value) return;
-    // The session cookie is httpOnly and scoped to /auth, so the only way
-    // to know whether /auth/refresh is worth asking is the readable hint the
-    // API sets next to it (CLEAN-178). No hint, no session: skip the round
-    // trip instead of collecting a 401 on every anonymous page view. A stale
-    // hint (cookies cleared one by one) costs one 401, as before.
-    if (!hasSessionHint()) {
+    // The session cookie is httpOnly, so the console cannot see it; its own
+    // localStorage note says whether a session was ever established here
+    // (CLEAN-178, CLEAN-182). No note, no session: skip the round trip
+    // instead of collecting a 401 on every anonymous page view.
+    if (!hasSessionMarker()) {
       isHydrated.value = true;
       return;
     }

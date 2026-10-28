@@ -1,4 +1,4 @@
-export type QueryModeTypes = 'hybrid' | 'local' | 'global' | 'naive';
+export type QueryModeTypes = 'hybrid' | 'local' | 'global' | 'naive' | 'mix';
 
 // The instance IS the workspace: each call names the base it belongs to and
 // the client resolves that base's endpoint. The old `workspace` body field
@@ -32,6 +32,39 @@ export interface IQueryInput {
   query: string;
   mode?: QueryModeTypes;
   topK?: number;
+}
+
+/**
+ * The retrieval-only call (CLEAN-184): what LightRAG *found*, never what its
+ * model wrote. The agent composes the answer from these itself.
+ */
+export interface IRetrieveContextInput {
+  knowledgeId: string;
+  query: string;
+  /** Defaults to the client's CONTEXT_QUERY_MODE. */
+  mode?: QueryModeTypes;
+}
+
+/** One stored chunk, verbatim. `filePath` is what the references carry too. */
+export interface IContextChunk {
+  text: string;
+  filePath: string;
+  chunkId: string | null;
+}
+
+/** One graph relation as LightRAG stored it at ingest time. */
+export interface IContextRelation {
+  source: string;
+  target: string;
+  description: string;
+}
+
+export interface IContextResult {
+  chunks: IContextChunk[];
+  relations: IContextRelation[];
+  references: IQueryReference[];
+  /** Which endpoint served it: the structured route, or the text-context fallback. */
+  via: 'query_data' | 'only_need_context';
 }
 
 // Ingest endpoints only enqueue: they return a track id and LightRAG builds

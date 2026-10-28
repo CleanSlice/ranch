@@ -20,8 +20,12 @@ export class KnowledgeQueryResultDto implements IKnowledgeQueryResult {
   })
   answer: string | null;
 
-  @ApiPropertyOptional({ enum: ['no_relevant_content'] })
-  reason?: 'no_relevant_content';
+  @ApiPropertyOptional({
+    enum: ['no_relevant_content', 'partial_refusal'],
+    description:
+      'no_relevant_content: the base holds nothing relevant. partial_refusal: the retrieval model declined in its own words; the documents may still hold it.',
+  })
+  reason?: 'no_relevant_content' | 'partial_refusal';
 
   @ApiProperty() knowledgeId: string;
 

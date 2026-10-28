@@ -18,6 +18,7 @@ import {
   IKnowledgePage,
   IKnowledgeQueryReference,
   IKnowledgeQueryResult,
+  IKnowledgeContextResult,
   IGetGraphLabelsParams,
   IGraphLabelsResult,
   QueryModeTypes,
@@ -29,6 +30,7 @@ import { SourceService } from '../../source/domain/source.service';
 import { ISourceCounts, ISourceData } from '../../source/domain/source.types';
 import { staleIndexAfterMs } from '../../source/domain/indexBudget';
 import { deriveIndexStatus } from './knowledge.status';
+import { MAX_FACTS, MAX_FACT_CHARS } from './knowledgeContext';
 import { summarizeFailures } from './failureSummary';
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
@@ -59,6 +61,31 @@ export function isNoRelevantContentAnswer(answer: string): boolean {
     trimmed.includes('[no-context]') ||
     trimmed.startsWith("Sorry, I'm not able to provide an answer")
   );
+}
+
+/**
+ * The retrieval model declining in its own words rather than with the canned
+ * answer above: "I do not have sufficient information in the provided
+ * context…" and its relatives. The agent path no longer receives generated
+ * text, so these reach only the console, which marks them as what they are
+ * instead of showing them as the base's answer (CLEAN-184). The list grows
+ * from sentences actually seen — each line names where — not from guesses.
+ */
+const PARTIAL_REFUSAL_MARKERS: readonly RegExp[] = [
+  // production, Mazda3 AFS 2026-10 and CX-30 2026-10-28
+  /do(?:es)? not have (?:sufficient|enough|complete) information/i,
+  // production, 2025 CX-30, 2026-10-28
+  /(?:do not|don['’]t) have access to/i,
+  // the ticket's root-cause note
+  /not able to provide a complete/i,
+  /does not (?:provide|contain) (?:a complete|enough information)/i,
+  /insufficient information in the provided/i,
+  // LightRAG's own literal when its model returns nothing (1.4.16, 1.5.6)
+  /No relevant context found for the query/i,
+];
+
+export function isPartialRefusal(answer: string): boolean {
+  return PARTIAL_REFUSAL_MARKERS.some((marker) => marker.test(answer));
 }
 
 /**
@@ -519,6 +546,15 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
         references: [],
       };
     }
+    if (isPartialRefusal(raw.answer)) {
+      return {
+        answer: null,
+        reason: 'partial_refusal',
+        knowledgeId,
+        complete,
+        references: [],
+      };
+    }
     let references = raw.references.map((r) => resolveReference(r, sources));
     if (references.some((r) => r.sourceId === null)) {
       // A document the retrieval service keeps under the name of a row that
@@ -543,6 +579,87 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
       complete,
       references,
     };
+  }
+
+  /**
+   * The agent's lookup (CLEAN-184): what the retrieval service *found*,
+   * each chunk bound to its Source row, never a sentence its model wrote.
+   * Keeps every guard `query` has — readability, the empty-isolated-base
+   * veto, the `complete` flag, reference resolution — and applies the
+   * resolution per chunk. The console keeps `query`, which wants an answer.
+   */
+  async retrieveContext(
+    knowledgeId: string,
+    query: string,
+  ): Promise<IKnowledgeContextResult> {
+    const k = await this.get(knowledgeId);
+    this.requireReadable(k);
+    const complete = k.migrationState === 'done';
+    const nothing = (): IKnowledgeContextResult => ({
+      knowledgeId,
+      complete,
+      reason: 'no_relevant_content',
+      passages: [],
+      facts: [],
+      references: [],
+      via: null,
+    });
+
+    // Same veto as query(): an isolated base with nothing indexed is not
+    // asked, and the shared pool is left to answer for pre-migration bases.
+    const sources = await this.sources.findByKnowledge(knowledgeId);
+    const hasIndexed = sources.some((s) => s.indexState === 'indexed');
+    if (complete && !hasIndexed) return nothing();
+
+    const raw = await this.gateway.retrieveKnowledgeContext(knowledgeId, query);
+
+    // The same chunk can come back through two search modes; it travels once.
+    const seenText = new Set<string>();
+    const chunks = raw.chunks.filter((c) =>
+      seenText.has(c.text) ? false : (seenText.add(c.text), true),
+    );
+
+    // One reference per distinct document, resolved the way query() resolves
+    // them: by source id, name or url, then through the document listing
+    // for a row that adopted a renamed document (CLEAN-138).
+    const paths = [...new Set(chunks.map((c) => c.filePath))];
+    let references = paths.map((filePath, i) =>
+      resolveReference({ referenceId: String(i + 1), filePath }, sources),
+    );
+    if (references.some((r) => r.sourceId === null)) {
+      try {
+        references = resolveAdoptedReferences(
+          references,
+          sources,
+          await this.gateway.listDocuments(knowledgeId),
+        );
+      } catch (err) {
+        this.logger.warn(
+          `listDocuments(${knowledgeId}) for passage resolution failed: ${errorMessage(err)}`,
+        );
+      }
+    }
+    const byPath = new Map(references.map((r) => [r.filePath, r]));
+
+    const passages = chunks.map((c) => {
+      const ref = byPath.get(c.filePath);
+      return {
+        text: c.text,
+        filePath: c.filePath,
+        sourceId: ref?.sourceId ?? null,
+        sourceName: ref?.sourceName ?? null,
+      };
+    });
+    const facts = raw.relations.slice(0, MAX_FACTS).map((r) => {
+      const line = `${r.source} — ${r.target}: ${r.description}`.trim();
+      return line.length > MAX_FACT_CHARS
+        ? `${line.slice(0, MAX_FACT_CHARS - 1)}…`
+        : line;
+    });
+    if (passages.length === 0 && facts.length === 0) {
+      return { ...nothing(), via: raw.via };
+    }
+    return { knowledgeId, complete, passages, facts, references, via: raw.via };
   }
 
   async getGraphLabels(

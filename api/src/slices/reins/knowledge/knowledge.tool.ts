@@ -9,36 +9,45 @@ import { IDynamicallyDescribedTool } from '#/mcp/interfaces/dynamic-description.
 import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { LightragTimeoutError } from '../lightrag/domain/lightrag.types';
-import type { IKnowledgeQueryReference } from './domain/knowledge.types';
 import { boundKnowledgeIds } from './domain/boundKnowledge';
-import type { IChatSourceInput } from '#/chat/domain/chatSource.types';
+import {
+  fitContextToBudget,
+  IContextBlock,
+  MIN_BUDGET_PER_BASE,
+  TOOL_RESULT_BUDGET_CHARS,
+} from './domain/knowledgeContext';
 
-// The batching sentence is not stylistic advice: one call spends several
-// seconds inside the knowledge service composing an answer, and the service
-// serves them concurrently. Measured on a ten-question request, asking one at
-// a time took 198s of retrieval where the same ten issued together took 35s.
-// Without saying so, models ask sequentially and the user waits for the sum.
+// The result is what the retrieval service found, verbatim, not an answer
+// its model wrote (CLEAN-184): a refusal written by another model used to
+// reach the agent as if the documents had said "no". The batching sentence
+// stays: lookups run concurrently, and models that are not told so ask one
+// at a time and make the user wait for the sum.
 const BASE_DESCRIPTION =
-  'Search your bound knowledge bases for factual information. MUST be called FIRST, before drafting any response, when the user asks about a topic that could plausibly be covered by your bound knowledge bases (see the list below). Do NOT hedge with phrases like "isn\'t explicitly detailed" or "based on what I know" before calling this tool - drafting an answer first and then querying is a bug, it wastes the user\'s time and produces a confusing two-phase response. When the request contains several independent questions, issue all of those calls in the same turn rather than one after another: they are answered concurrently, so batching turns minutes of waiting into seconds. Prefer this over web_search for anything that could be in user-uploaded content. Returns matched content with citations. The knowledge_id parameter is optional and rarely worth setting: bases are not searched separately, so one call covers everything bound to you.';
+  'Search your bound knowledge bases and get back the matching document fragments verbatim, each with the document it came from. You compose the answer from those fragments yourself; nothing in the result was written by another model. MUST be called FIRST, before drafting any response, when the user asks about a topic that could plausibly be covered by your bound knowledge bases (see the list below). Do NOT hedge with phrases like "isn\'t explicitly detailed" or "based on what I know" before calling this tool - drafting an answer first and then querying is a bug. When the request contains several independent questions, issue all of those calls in the same turn rather than one after another: they run concurrently. Prefer this over web_search for anything that could be in user-uploaded content.\n\n' +
+  'Reading the result: `passages` are exact excerpts (tables and lists come through as text); when a passage answers the question directly, answer with confidence and cite its source - do not add "I cannot guarantee" or "check the spec sheet". `truncated: true` means more matches existed than fit; ask a narrower question if you need them. A lookup that returns no passages or `no_relevant_content` only means that phrasing matched nothing; it never contradicts a passage another lookup returned. `facts` are short graph relations, secondary to passages.\n\n' +
+  'Phrasing lookups: the documents are spec sheets, order forms and manuals - search in their vocabulary. Use the official feature name ("Adaptive Front-Lighting System (AFS)", not "adaptive headlights"), the exact trim names, and the model year. If a lookup in the visitor\'s words brings nothing from the document that should hold the answer, run one more lookup in spec-sheet terms before concluding anything. The knowledge_id parameter is optional and rarely worth setting: one call covers everything bound to you.';
 
 interface ToolResult {
   content: { type: 'text'; text: string }[];
   isError?: boolean;
 }
 
-const ok = (value: unknown): ToolResult => ({
-  content: [
-    {
-      type: 'text',
-      text: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
-    },
-  ],
+/**
+ * Compact on purpose: indentation and newlines in pretty-printed JSON are
+ * budget spent on nothing, and the budget is measured on this very string.
+ */
+const okCompact = (value: unknown): ToolResult => ({
+  content: [{ type: 'text', text: JSON.stringify(value) }],
 });
 
 const err = (message: string): ToolResult => ({
   content: [{ type: 'text', text: message }],
   isError: true,
 });
+
+type ContextBlockOrError =
+  | IContextBlock
+  | { knowledge_id: string; knowledge_name: string | null; error: string };
 
 @Injectable()
 export class KnowledgeTool implements IDynamicallyDescribedTool {
@@ -133,7 +142,7 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
       const nameOf = new Map(bases.map((b) => [b.id, b.name]));
 
       // Bases still on the shared pool answer from one index: fanning out
-      // over them would return N copies of the same answer and pay for N
+      // over them would return N copies of the same passages and pay for N
       // retrievals — the exact defect the pre-isolation code collapsed. So
       // fan out only across bases with their own instance, and ask the
       // shared-pool group once through its first id.
@@ -144,29 +153,52 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
       const sharedPool = targetIds.filter((id) => doneOf.get(id) !== true);
       const queryIds = [...migrated, ...sharedPool.slice(0, 1)];
 
+      // The whole result must stay inside the runtime's window; with several
+      // bases each gets a share, never less than a readable minimum.
+      const budgetPerBase = Math.max(
+        MIN_BUDGET_PER_BASE,
+        Math.floor(TOOL_RESULT_BUDGET_CHARS / queryIds.length),
+      );
+
       // One retrieval per bound base against that base's own instance; each
       // block names the base it came from (FR-006). A base that cannot be
       // reached is named rather than silently narrowing the answer.
-      const results = await Promise.all(
+      const results: ContextBlockOrError[] = await Promise.all(
         queryIds.map(async (id) => {
           const knowledge_name = nameOf.get(id) ?? null;
+          const startedAt = Date.now();
           try {
-            const r = await this.knowledgeService.query(id, query);
-            return {
+            const r = await this.knowledgeService.retrieveContext(id, query);
+            for (const p of r.passages) {
+              if (p.sourceId === null) {
+                this.logger.warn(
+                  `query_knowledge: passage from ${p.filePath} in knowledge=${id} resolves to no source; shown unattributed, not citable`,
+                );
+              }
+            }
+            const raw: IContextBlock = {
               knowledge_id: id,
               knowledge_name,
-              ...r,
-              // The retrieval service writes its own "[1]" markers and a
-              // References footer into the answer. The model would copy them
-              // next to the [^n] it is asked for, so they go; `sources`
-              // below is the list it may cite from (CLEAN-138, R13).
-              answer:
-                r.answer === null ? null : stripRetrievalCitations(r.answer),
-              // What the answer drew on, in the shape every source-bearing
-              // tool result carries (CLEAN-138): the runtime collects these
-              // so the model can cite them and the chat can list them.
-              sources: this.sourcesOf(id, knowledge_name, r.references),
+              complete: r.complete,
+              ...(r.reason ? { reason: r.reason } : {}),
+              passages: r.passages.map((p) => ({
+                source: p.sourceName ?? p.filePath,
+                source_id: p.sourceId,
+                text: p.text,
+              })),
+              ...(r.facts.length > 0 ? { facts: r.facts } : {}),
+              truncated: false,
+              // Filled by the fitting from the passages that are kept: the
+              // shape every source-bearing tool result carries (CLEAN-138),
+              // which the runtime collects so the model can cite them and the
+              // chat can list them.
+              sources: [],
             };
+            const fitted = fitContextToBudget(raw, query, budgetPerBase);
+            this.logger.log(
+              `query_knowledge knowledge=${id} via=${r.via ?? 'none'} chunks=${r.passages.length} kept=${fitted.kept} omitted=${fitted.omitted} cut=${fitted.cut} chars=${JSON.stringify(fitted.block).length} ms=${Date.now() - startedAt}`,
+            );
+            return fitted.block;
           } catch (e) {
             const message = e instanceof Error ? e.message : 'query failed';
             // Logged here because this failure never reaches the outer catch:
@@ -186,7 +218,7 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
           }
         }),
       );
-      return ok(queryIds.length === 1 ? results[0] : { results });
+      return okCompact(queryIds.length === 1 ? results[0] : { results });
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Knowledge query failed';
       this.logger.warn(
@@ -194,39 +226,6 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
       );
       return err(message);
     }
-  }
-
-  /**
-   * References → sources (CLEAN-138): one entry per distinct Source row the
-   * answer drew on. A reference that resolved to no row is a defect to log,
-   * not something to hand the model to cite — a reader could not open or
-   * rate it, and FR-005 says only what was consulted may be listed.
-   */
-  private sourcesOf(
-    knowledgeId: string,
-    knowledgeName: string | null,
-    references: IKnowledgeQueryReference[],
-  ): IChatSourceInput[] {
-    const out: IChatSourceInput[] = [];
-    const seen = new Set<string>();
-    for (const ref of references) {
-      if (!ref.sourceId) {
-        this.logger.warn(
-          `query_knowledge: reference ${ref.referenceId} (${ref.filePath}) in knowledge=${knowledgeId} resolves to no source; not citable`,
-        );
-        continue;
-      }
-      if (seen.has(ref.sourceId)) continue;
-      seen.add(ref.sourceId);
-      out.push({
-        kind: 'knowledge',
-        id: ref.sourceId,
-        name: ref.sourceName ?? ref.filePath,
-        knowledgeId,
-        knowledgeName,
-      });
-    }
-    return out;
   }
 
   private extractAgentId(
@@ -240,18 +239,4 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
   private resolveAllowedIds(agentId: string): Promise<string[]> {
     return boundKnowledgeIds(agentId, this.agentGateway, this.templateGateway);
   }
-}
-
-/**
- * The retrieval service's own citation apparatus, removed from an answer
- * before the model sees it (CLEAN-138, R13): a trailing "References" section
- * (observed as `### ### References` followed by `- [1] source-…` lines) and
- * the inline `[n]` markers that point into it. Nothing else is touched.
- */
-export function stripRetrievalCitations(answer: string): string {
-  const withoutFooter = answer.replace(
-    /\n+\s*(?:#{1,6}\s*)+References\s*\n[\s\S]*$/i,
-    '',
-  );
-  return withoutFooter.replace(/ ?\[\d{1,2}\]/g, '').trimEnd();
 }

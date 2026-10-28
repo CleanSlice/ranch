@@ -29,7 +29,7 @@ export enum UserRoleTypes {
 
 export type EmbedTokenDto = {
   /**
-   * Subject — used as clientId for routing inside the bridle hub.
+   * Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.
    */
   sub: string;
   email?: string;
@@ -1164,7 +1164,10 @@ export type KnowledgeQueryResultDto = {
    * null when the base holds nothing relevant — see reason. Never a generated answer assembled from another base.
    */
   answer: string | null;
-  reason?: "no_relevant_content";
+  /**
+   * no_relevant_content: the base holds nothing relevant. partial_refusal: the retrieval model declined in its own words; the documents may still hold it.
+   */
+  reason?: "no_relevant_content" | "partial_refusal";
   knowledgeId: string;
   /**
    * false while this base is still being re-processed into its own area — answers may be incomplete.
@@ -2731,6 +2734,17 @@ export type SettingControllerFindAllData = {
 };
 
 export type SettingControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type SettingControllerFindPublicAuthGroupData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/settings/auth";
+};
+
+export type SettingControllerFindPublicAuthGroupResponses = {
   200: unknown;
 };
 

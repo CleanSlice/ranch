@@ -1,4 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ILightragClient } from '../domain/lightrag.client';
 import {
   IIngestTextInput,
@@ -8,6 +12,11 @@ import {
   IQueryInput,
   IQueryResult,
   IQueryReference,
+  IRetrieveContextInput,
+  IContextResult,
+  IContextChunk,
+  IContextRelation,
+  QueryModeTypes,
   ILightragHealth,
   IGetGraphInput,
   ILightragGraph,
@@ -42,6 +51,35 @@ const WRITE_TIMEOUT_MS = 120_000;
 // Deleting a large document recomputes the descriptions of every entity it
 // touched; minutes are normal.
 const DELETE_TIMEOUT_MS = 300_000;
+
+/**
+ * Retrieval without generation (CLEAN-184). The 50 s above paid for the
+ * model writing an answer; what is left is the keyword step in graph modes
+ * plus the vector and graph reads — the same class of work as the 30 s
+ * status reads, measured at 0.7–6 s on the reference base. Stays under the
+ * MCP client's 60 s so the tool answers in words, not with a transport error.
+ */
+const CONTEXT_TIMEOUT_MS = 30_000;
+
+/**
+ * `naive`: vector top-k over the chunks, no keyword-extraction model call,
+ * no graph walk. Measured 2026-10-28 on the Mazda base against LightRAG
+ * 1.4.16: 0.7–1.5 s, where `mix` took 3–6 s and 21.7 s on the hub question
+ * "what is Mazda" (the fork had already moved off `hybrid` for the same
+ * reason), and no mode retrieved more of the right document for the natural
+ * question (specs/023-knowledge-context-retrieval/research.md, F11, F13,
+ * D2). Graph modes stay reachable through `mode`.
+ */
+export const CONTEXT_QUERY_MODE: QueryModeTypes = 'naive';
+
+/**
+ * Twelve ~4 600-character chunks are about twice the tool's budget: enough
+ * that the fitting decides by relevance rather than the server by count,
+ * not so many that the instance ships 50 000 characters that are thrown
+ * away. Twenty entities and relations: the tool keeps at most eight facts.
+ */
+const CONTEXT_CHUNK_TOP_K = 12;
+const CONTEXT_TOP_K = 20;
 
 export interface LightragRequestConfig {
   url: string;
@@ -78,8 +116,11 @@ interface ResolvedRequestConfig {
 
 @Injectable()
 export class LightragHttpClient extends ILightragClient {
+  private readonly logger = new Logger(LightragHttpClient.name);
   private readonly resolveConfig: LightragConfigResolver;
   private readonly fetchImpl: FetchImpl;
+  /** `${baseUrl} ${via}` pairs already announced in the log, once each. */
+  private readonly contextPathsSeen = new Set<string>();
 
   constructor(options: LightragHttpClientOptions) {
     super();
@@ -255,6 +296,96 @@ export class LightragHttpClient extends ILightragClient {
       const body: unknown = await res.json();
       return extractQueryResult(body);
     });
+  }
+
+  /**
+   * What LightRAG found, not what its model wrote (CLEAN-184). `POST
+   * /query/data` returns the chunks, relations and references as data; a
+   * deployment older than that route answers 404, and the same content is
+   * then read out of `POST /query` with `only_need_context`, whose response
+   * is the context template with fenced JSON blocks. Nothing a model wrote
+   * at query time is forwarded on either path.
+   */
+  async retrieveContext(input: IRetrieveContextInput): Promise<IContextResult> {
+    const cfg = await this.requireEnabled({
+      knowledgeId: input.knowledgeId,
+      intent: 'read',
+    });
+    const request = {
+      query: input.query,
+      mode: input.mode ?? CONTEXT_QUERY_MODE,
+      top_k: CONTEXT_TOP_K,
+      chunk_top_k: CONTEXT_CHUNK_TOP_K,
+      include_references: true,
+    };
+    const headers = this.headers(cfg.apiKey, {
+      'content-type': 'application/json',
+    });
+
+    const structured = await this.bounded(
+      '/query/data',
+      CONTEXT_TIMEOUT_MS,
+      async (signal) => {
+        const res = await this.fetchImpl(`${cfg.baseUrl}/query/data`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(request),
+          signal,
+        });
+        if (res.status === 404) return null;
+        await this.ensureOk(res, '/query/data');
+        const body: unknown = await res.json();
+        return extractContextData(body);
+      },
+    );
+    if (structured !== null) {
+      this.noteContextPath(cfg.baseUrl, 'query_data', structured.dropped);
+      return structured.result;
+    }
+
+    const parsed = await this.bounded(
+      '/query',
+      CONTEXT_TIMEOUT_MS,
+      async (signal) => {
+        const res = await this.fetchImpl(`${cfg.baseUrl}/query`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ ...request, only_need_context: true }),
+          signal,
+        });
+        await this.ensureOk(res, '/query');
+        const body: unknown = await res.json();
+        const text =
+          isRecord(body) && typeof body.response === 'string'
+            ? body.response
+            : '';
+        return parseContextText(text);
+      },
+    );
+    this.noteContextPath(cfg.baseUrl, 'only_need_context', parsed.dropped);
+    return parsed.result;
+  }
+
+  /**
+   * One log line per deployment and path, so a maintainer can see whether a
+   * base is served by the structured route or by the text fallback; and a
+   * warning whenever the server handed back chunks it did not label.
+   */
+  private noteContextPath(
+    baseUrl: string,
+    via: IContextResult['via'],
+    dropped: number,
+  ): void {
+    const key = `${baseUrl} ${via}`;
+    if (!this.contextPathsSeen.has(key)) {
+      this.contextPathsSeen.add(key);
+      this.logger.log(`context via ${via} for ${baseUrl}`);
+    }
+    if (dropped > 0) {
+      this.logger.warn(
+        `context via ${via} for ${baseUrl}: ${dropped} chunk(s) without content or file_path dropped`,
+      );
+    }
   }
 
   async deleteDocumentsByTrackIds(
@@ -517,6 +648,164 @@ export class LightragHttpClient extends ILightragClient {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+interface IParsedContext {
+  result: IContextResult;
+  /** Chunk items the server returned without `content` or `file_path`. */
+  dropped: number;
+}
+
+const EMPTY_CONTEXT = (via: IContextResult['via']): IContextResult => ({
+  chunks: [],
+  relations: [],
+  references: [],
+  via,
+});
+
+/** `POST /query/data`: `{ status, message, data: { entities, relationships, chunks, references }, metadata }`. */
+function extractContextData(body: unknown): IParsedContext {
+  if (!isRecord(body) || !isRecord(body.data)) {
+    // `status: "failure"` with `failure_reason: "no_results"` is LightRAG's
+    // way of saying nothing matched — an empty result, not an error.
+    return { result: EMPTY_CONTEXT('query_data'), dropped: 0 };
+  }
+  const data = body.data;
+  const { chunks, dropped } = toChunks(asArray(data.chunks));
+  const relations = asArray(data.relationships)
+    .map((r) => toRelation(r, 'src_id', 'tgt_id'))
+    .filter((r): r is IContextRelation => r !== null);
+  const references = asArray(data.references)
+    .map(toReference)
+    .filter((r): r is IQueryReference => r !== null);
+  return {
+    result: { chunks, relations, references, via: 'query_data' },
+    dropped,
+  };
+}
+
+/**
+ * `POST /query` with `only_need_context`: the context template — headings,
+ * then fenced JSON arrays for entities, relations and chunks, then a plain
+ * fence of `[n] file_path` reference lines. The chunks block is the one that
+ * matters; without it the response is something else (a canned refusal, a
+ * changed template) and the caller must hear about it rather than receive
+ * an empty result that reads as "nothing relevant".
+ */
+function parseContextText(text: string): IParsedContext {
+  const chunksRaw = fencedJsonUnder(text, 'Document Chunks');
+  if (chunksRaw === null) {
+    throw new LightragClientError(
+      'LightRAG /query only_need_context: no parseable "Document Chunks" block in the context',
+      200,
+      '/query',
+    );
+  }
+  const relationsRaw =
+    fencedJsonUnder(text, 'Knowledge Graph Data (Relationship)') ?? [];
+  const { chunks, dropped } = toChunks(chunksRaw);
+  const relations = relationsRaw
+    .map((r) => toRelation(r, 'entity1', 'entity2'))
+    .filter((r): r is IContextRelation => r !== null);
+  return {
+    result: {
+      chunks,
+      relations,
+      references: referenceLinesUnder(text, 'Reference Document List'),
+      via: 'only_need_context',
+    },
+    dropped,
+  };
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function toChunks(items: unknown[]): {
+  chunks: IContextChunk[];
+  dropped: number;
+} {
+  const chunks: IContextChunk[] = [];
+  let dropped = 0;
+  for (const item of items) {
+    if (
+      !isRecord(item) ||
+      typeof item.content !== 'string' ||
+      typeof item.file_path !== 'string'
+    ) {
+      dropped += 1;
+      continue;
+    }
+    chunks.push({
+      text: item.content,
+      filePath: item.file_path,
+      chunkId: typeof item.chunk_id === 'string' ? item.chunk_id : null,
+    });
+  }
+  return { chunks, dropped };
+}
+
+function toRelation(
+  value: unknown,
+  sourceKey: string,
+  targetKey: string,
+): IContextRelation | null {
+  if (!isRecord(value)) return null;
+  const source = value[sourceKey];
+  const target = value[targetKey];
+  if (typeof source !== 'string' || typeof target !== 'string') return null;
+  return {
+    source,
+    target,
+    description: typeof value.description === 'string' ? value.description : '',
+  };
+}
+
+/**
+ * Offset of the first line that starts (after any `-` ruling and spaces)
+ * with `heading`; -1 when absent. Line-anchored on purpose: the "Document
+ * Chunks" heading itself mentions the "Reference Document List".
+ */
+function headingOffset(text: string, heading: string): number {
+  let offset = 0;
+  for (const line of text.split('\n')) {
+    if (line.replace(/^[-\s]+/, '').startsWith(heading)) return offset;
+    offset += line.length + 1;
+  }
+  return -1;
+}
+
+function fencedJsonUnder(text: string, heading: string): unknown[] | null {
+  const at = headingOffset(text, heading);
+  if (at < 0) return null;
+  const open = text.indexOf('```json', at);
+  if (open < 0) return null;
+  const start = open + '```json'.length;
+  const close = text.indexOf('```', start);
+  if (close < 0) return null;
+  try {
+    const parsed: unknown = JSON.parse(text.slice(start, close));
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function referenceLinesUnder(text: string, heading: string): IQueryReference[] {
+  const at = headingOffset(text, heading);
+  if (at < 0) return [];
+  const open = text.indexOf('```', at);
+  if (open < 0) return [];
+  const start = open + 3;
+  const close = text.indexOf('```', start);
+  if (close < 0) return [];
+  const out: IQueryReference[] = [];
+  for (const line of text.slice(start, close).split('\n')) {
+    const match = /^\s*\[(\d+)\]\s+(.+?)\s*$/.exec(line);
+    if (match) out.push({ referenceId: match[1], filePath: match[2] });
+  }
+  return out;
 }
 
 function toReference(value: unknown): IQueryReference | null {

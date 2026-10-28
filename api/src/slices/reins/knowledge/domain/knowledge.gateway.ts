@@ -13,6 +13,7 @@ import {
   IGetGraphParams,
   IGraphData,
 } from './knowledge.types';
+import type { IContextResult } from '../../lightrag/domain/lightrag.types';
 
 export abstract class IKnowledgeGateway {
   abstract findAll(): Promise<IKnowledgeRecord[]>;
@@ -56,6 +57,13 @@ export abstract class IKnowledgeGateway {
     mode?: QueryModeTypes,
     topK?: number,
   ): Promise<IRawKnowledgeSearchResult>;
+
+  /** Retrieval without generation, for the agent path (CLEAN-184). */
+  abstract retrieveKnowledgeContext(
+    knowledgeId: string,
+    query: string,
+    mode?: QueryModeTypes,
+  ): Promise<IContextResult>;
 
   abstract getGraphLabels(knowledgeId: string): Promise<string[]>;
   abstract getGraph(

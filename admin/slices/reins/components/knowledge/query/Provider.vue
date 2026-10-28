@@ -72,7 +72,15 @@ async function run() {
         </div>
 
         <div
-          v-if="result.answer === null"
+          v-if="result.answer === null && result.reason === 'partial_refusal'"
+          class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground"
+        >
+          The retrieval model could not answer from this base. The documents may
+          still hold it — try the agent, which reads the passages directly, or a
+          narrower question.
+        </div>
+        <div
+          v-else-if="result.answer === null"
           class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground"
         >
           This base has no content relevant to that question.

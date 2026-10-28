@@ -5,6 +5,8 @@ import {
   IIngestResult,
   IQueryInput,
   IQueryResult,
+  IRetrieveContextInput,
+  IContextResult,
   ILightragHealth,
   IGetGraphInput,
   ILightragGraph,
@@ -19,6 +21,12 @@ export abstract class ILightragClient {
   abstract ingestUrl(input: IIngestUrlInput): Promise<IIngestResult>;
   abstract ingestFile(input: IIngestFileInput): Promise<IIngestResult>;
   abstract query(input: IQueryInput): Promise<IQueryResult>;
+  /**
+   * Retrieval without generation: the matched chunks, graph relations and
+   * references, in the service's order (CLEAN-184). `query` above stays for
+   * the console, which wants a written answer.
+   */
+  abstract retrieveContext(input: IRetrieveContextInput): Promise<IContextResult>;
   abstract deleteDocumentsByTrackIds(
     knowledgeId: string,
     trackIds: string[],

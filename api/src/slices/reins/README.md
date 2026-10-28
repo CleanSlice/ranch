@@ -40,6 +40,33 @@ for N), and the admin knowledge list warns as soon as a second base appears.
 A design note weighing the alternatives lives in
 `docs/superpowers/specs/2026-08-24-knowledge-isolation-design.md`.
 
+## The agent reads passages; the console reads an answer
+
+Two different calls into LightRAG, on purpose (CLEAN-184). The console's
+Query tab asks `POST /query` and shows the answer LightRAG's own model
+wrote; when that model declines in its own words ("I do not have sufficient
+information in the provided context…") the API reports
+`reason: partial_refusal` instead of handing the sentence over as the
+base's answer. The agent's `query_knowledge` asks `POST /query/data`
+(falling back to `/query` with `only_need_context` on a deployment that
+predates the route) and receives the matched chunks **verbatim**, each
+bound to its Source row, plus the `sources` list the chat cites from. The
+agent composes the answer itself; no refusal from another model can reach
+it any more — one such refusal, read as evidence, is what produced a wrong
+hedged answer on a Mazda base while the right table sat in the same result
+set.
+
+The result is kept under 12 000 characters of compact JSON per call
+(`knowledge/domain/knowledgeContext.ts`): the runtime cuts a tool result at
+16 000 as one string, and an MCP result is one string to it, so a cut
+would land mid-JSON. Chunks on the reference base run ~4 600 characters,
+so the best match travels whole and the rest as excerpts around the query
+terms, with `truncated` and `omitted_passages` saying what was left out.
+Mode `naive` by measurement: `mix` took twenty seconds on a hub question
+over the Mazda graph where `naive` took under one, and no mode retrieved
+more of the right document — the numbers and the alternatives are in
+`specs/023-knowledge-context-retrieval/research.md`.
+
 ## Indexing costs about an hour per megabyte
 
 Ingest is not chunk-and-embed. Every chunk goes through the LLM twice: once to

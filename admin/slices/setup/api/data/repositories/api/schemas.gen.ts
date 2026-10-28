@@ -69,8 +69,10 @@ export const EmbedTokenDtoSchema = {
     sub: {
       type: "string",
       description:
-        "Subject — used as clientId for routing inside the bridle hub.",
-      example: "user-123",
+        "Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.",
+      example: "wslid-A1234567",
+      pattern: "^(?!admin$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$",
+      maxLength: 128,
     },
     email: {
       type: "string",
@@ -2595,7 +2597,9 @@ export const KnowledgeQueryResultDtoSchema = {
     },
     reason: {
       type: "string",
-      enum: ["no_relevant_content"],
+      enum: ["no_relevant_content", "partial_refusal"],
+      description:
+        "no_relevant_content: the base holds nothing relevant. partial_refusal: the retrieval model declined in its own words; the documents may still hold it.",
     },
     knowledgeId: {
       type: "string",

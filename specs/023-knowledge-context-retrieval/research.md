@@ -340,6 +340,53 @@ the 2026 CX-30 documents…") rendered twice — once as its own bubble, once
 glued to the final answer — which is the chat-rendering hypothesis from the
 brief and belongs to the `chat`/`bridle` twins, not here.
 
+### F15. "Before" measurement on `mai-dev` (T003, run 2026-10-28, old path still deployed)
+
+Agent `agent-014db660-3744-42c8-a3c1-4d5fa17743d5`, bound to the dev base
+"Mazda" (750 files + 1 URL, 216.2 MB). Driven over
+`POST /api/agent/:id/message/sync` as the console user, with
+`DELETE /api/agent/:id/transcript?channel=<user>` before every run so each
+is a fresh conversation. The anonymous embed channel is accepted by the API
+but gated by the agent itself ("Access denied. Send this code to the bot
+owner…", 0.1 s) — not usable for this. **Time is question → complete
+reply**; first-token time needs the socket and was not taken. Three runs
+per question; the "after" run must use the same method.
+
+| question | run 1 | run 2 | run 3 | correct | direct (no hedge) |
+|---|---|---|---|---|---|
+| Q1 AFS trims, 2026 Mazda3 hatchback | 24.5 s | 6.6 s | 5.0 s | 3/3 | **2/3** |
+| Q2 curb weight, 2026 Mazda3 hatchback | 30.9 s | 4.5 s | 4.4 s | 3/3 | 3/3 |
+| Q3 fuel tank, 2026 Mazda3 | 10.2 s | 2.4 s | 2.2 s | 3/3 | 3/3 |
+
+Read run 1 as the uncached figure: LightRAG caches its model's answer per
+query, so runs 2 and 3 of the same wording come back in a few seconds with
+near-identical text. Medians (6.6 / 4.5 / 2.4 s) therefore flatter the old
+path; the honest "before" for a first-time question is 10–31 s.
+
+**The production symptom reproduced, Q1 run 1** (24.5 s): "The knowledge
+base returned information about the 2026 Mazda3's Adaptive Front-Lighting
+System (AFS) availability, but I should note that the source documents
+don't show the complete trim-level breakdown … I cannot confirm the
+specific trim levels (2.5 S Premium, 2.5 Turbo Premium Plus, etc.) that you
+listed, since those details aren't present in the knowledge base results.
+… you'd want to verify against the official 26MY spec sheet or order form
+directly." The trims it "cannot confirm" are the right answer; it names
+them while refusing to stand behind them. Runs 2 and 3 answered directly:
+"standard on the top trims: 2.5 S Premium (FWD), 2.5 Turbo Premium Plus
+(AWD); not available on 2.5 S, Select Sport, Preferred, Carbon Edition."
+
+**Q2 run 1** (30.9 s) answered the three non-turbo weights correctly but
+said the turbo row "did not come back in the material I can read right
+now" and sent the visitor to the spec deck for it — the deck's row reads
+`FWD 3,117 / AWD 3,274 / Turbo 3,417`, i.e. the figure sat in the same
+table. Its reply also begins with two of the agent's intermediate
+sentences glued to the answer ("Let me search specifically for the 26MY
+Mazda3 spec deck… Let me pull the complete Turbo weight row…") — the same
+rendering symptom as in F14, now visible in the sync route's text. The
+sheet-free questions do reach the deck through the old path (Q2/Q3
+3/3 correct); what the old path adds is the hesitation and the
+first-time latency.
+
 ## Decisions
 
 ### D1. Endpoint: `POST /query/data`, falling back to `POST /query` + `only_need_context` on 404

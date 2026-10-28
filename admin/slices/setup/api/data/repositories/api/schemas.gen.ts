@@ -2021,6 +2021,12 @@ export const TranscriptMessageDtoSchema = {
       description:
         "User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.",
     },
+    interim: {
+      type: "boolean",
+      example: true,
+      description:
+        "Assistant bubbles only: the model went on to call tools in the same response, so this is narration between steps, not the answer. Render it inside the thinking timeline, not as a reply.",
+    },
     sources: {
       description:
         "Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.",

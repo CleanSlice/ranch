@@ -97,6 +97,30 @@ describe('TranscriptReaderService — bubbles of one turn', () => {
     ]);
   });
 
+  it('carries the interim mark of a narration bubble, and only that (CLEAN-189)', async () => {
+    const messages = await read([
+      question,
+      {
+        id: 'turn-1',
+        type: 'assistant',
+        ts: 5000,
+        data: {
+          text: 'Проверю:Ха! Работает!',
+          messages: [
+            { id: 'wire-1', text: 'Проверю:', ts: 2000, interim: true },
+            { id: 'wire-2', text: 'Ха! Работает!', ts: 4000, interim: 'yes' },
+          ],
+        },
+      },
+    ]);
+
+    expect(messages.map((m) => [m.id, m.interim])).toEqual([
+      ['q1', undefined],
+      ['wire-1', true],
+      ['wire-2', undefined],
+    ]);
+  });
+
   it('keeps the order of the file for messages written in the same millisecond', async () => {
     const messages = await read([
       { id: 'a', type: 'user', ts: 1000, data: { text: 'first' } },

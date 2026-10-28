@@ -69,8 +69,10 @@ export const EmbedTokenDtoSchema = {
     sub: {
       type: "string",
       description:
-        "Subject — used as clientId for routing inside the bridle hub.",
-      example: "user-123",
+        "Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.",
+      example: "wslid-A1234567",
+      pattern: "^(?!admin$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$",
+      maxLength: 128,
     },
     email: {
       type: "string",
@@ -111,7 +113,7 @@ export const UpsertSettingDtoSchema = {
 
 export const ApiKeyScopeTypesSchema = {
   type: "string",
-  enum: ["embed:mint", "embed:mint-admin", "admin"],
+  enum: ["embed:mint", "embed:mint-admin", "events:write", "admin"],
 } as const;
 
 export const CreateApiKeyDtoSchema = {
@@ -2019,6 +2021,12 @@ export const TranscriptMessageDtoSchema = {
       description:
         "User messages with attachments only: the full text the model received (typed text plus the inlined attachment blocks). For inspection; not meant to be rendered as the bubble.",
     },
+    interim: {
+      type: "boolean",
+      example: true,
+      description:
+        "Assistant bubbles only: the model went on to call tools in the same response, so this is narration between steps, not the answer. Render it inside the thinking timeline, not as a reply.",
+    },
     sources: {
       description:
         "Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.",
@@ -2595,7 +2603,9 @@ export const KnowledgeQueryResultDtoSchema = {
     },
     reason: {
       type: "string",
-      enum: ["no_relevant_content"],
+      enum: ["no_relevant_content", "partial_refusal"],
+      description:
+        "no_relevant_content: the base holds nothing relevant. partial_refusal: the retrieval model declined in its own words; the documents may still hold it.",
     },
     knowledgeId: {
       type: "string",
@@ -4270,6 +4280,457 @@ export const AgentDelegationDtoSchema = {
     "finishedAt",
     "durationMs",
   ],
+} as const;
+
+export const PostAgentEventDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+      description:
+        "The Ranch agent's id. On the agent's pod it is the label `ranch/agent-id`; the pod is named `agent-<agentId>` in namespace `agents`.",
+      example: "3f6c1e0a-7b1d-4c58-9a51-0d8a2c6f4e11",
+    },
+    status: {
+      type: "string",
+      enum: ["failed", "recovered"],
+      description:
+        "What happened. `failed` opens (or joins) an incident; `recovered` is stored as evidence — an incident closes when Ranch itself has seen the agent running for ten minutes.",
+      example: "failed",
+    },
+    datetime: {
+      type: "string",
+      description:
+        "When it happened, ISO 8601 with an offset. Left out: the time Ranch received the event.",
+      example: "2026-10-06T21:14:03Z",
+    },
+    reason: {
+      type: "string",
+      description: "The cause in the sender's own words. Shown as sent.",
+      example: "CrashLoopBackOff: back-off 5m0s restarting failed container",
+      maxLength: 2000,
+    },
+    source: {
+      type: "string",
+      description:
+        "The tool that noticed. Detail only: who sent the event is taken from the API key, not from this field.",
+      example: "kubernetes-event-exporter",
+      maxLength: 100,
+    },
+    eventId: {
+      type: "string",
+      description:
+        "The sender's own id for this event. Makes a retry safe: the same eventId from the same key is stored once.",
+      maxLength: 200,
+    },
+  },
+  required: ["agentId", "status"],
+} as const;
+
+export const AgentEventAcceptedDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    outcome: {
+      type: "string",
+      enum: [
+        "opened",
+        "joined",
+        "suppressed_stopped",
+        "suppressed_starting",
+        "unmatched",
+        "evidence",
+      ],
+      description:
+        "What the event did: `opened` an incident (the team is being told), `joined` one already open, was `suppressed_stopped` / `suppressed_starting` because a person stopped or is restarting the agent, was `unmatched` to any agent, or is `evidence` of a recovery.",
+    },
+    incidentId: {
+      type: "string",
+      nullable: true,
+    },
+    duplicate: {
+      type: "boolean",
+      description:
+        "true when Ranch already had this event; `id` is then the first copy.",
+    },
+  },
+  required: ["id", "outcome", "incidentId", "duplicate"],
+} as const;
+
+export const AgentEventDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    agentId: {
+      type: "string",
+      nullable: true,
+      description: "null when the id matched no agent, or the agent is gone.",
+    },
+    agentRef: {
+      type: "string",
+      description: "The agent id exactly as the sender gave it.",
+    },
+    agentName: {
+      type: "string",
+      nullable: true,
+    },
+    status: {
+      type: "string",
+      enum: ["failed", "unreachable", "recovered"],
+    },
+    reason: {
+      type: "string",
+      nullable: true,
+      description: "As received. Never translated or reformatted.",
+    },
+    witness: {
+      type: "string",
+      enum: ["ranch", "external"],
+    },
+    senderName: {
+      type: "string",
+      description: 'The API key’s name at the time, or "Ranch".',
+    },
+    tool: {
+      type: "string",
+      nullable: true,
+    },
+    ranchStatus: {
+      type: "string",
+      nullable: true,
+      description: "What Ranch held for the agent when the event arrived.",
+    },
+    outcome: {
+      type: "string",
+      enum: [
+        "opened",
+        "joined",
+        "suppressed_stopped",
+        "suppressed_starting",
+        "unmatched",
+        "evidence",
+      ],
+    },
+    incidentId: {
+      type: "string",
+      nullable: true,
+    },
+    occurredAt: {
+      format: "date-time",
+      type: "string",
+    },
+    receivedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "agentId",
+    "agentRef",
+    "agentName",
+    "status",
+    "reason",
+    "witness",
+    "senderName",
+    "tool",
+    "ranchStatus",
+    "outcome",
+    "incidentId",
+    "occurredAt",
+    "receivedAt",
+  ],
+} as const;
+
+export const AgentEventPageDtoSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentEventDto",
+      },
+    },
+    nextCursor: {
+      type: "string",
+      nullable: true,
+    },
+  },
+  required: ["items", "nextCursor"],
+} as const;
+
+export const AgentIncidentNotificationDtoSchema = {
+  type: "object",
+  properties: {
+    kind: {
+      type: "string",
+      enum: ["opened", "closed"],
+    },
+    status: {
+      type: "string",
+      enum: ["pending", "sent", "failed", "skipped"],
+    },
+    attempts: {
+      type: "number",
+    },
+    sentAt: {
+      format: "date-time",
+      type: "string",
+      nullable: true,
+    },
+    lastError: {
+      type: "string",
+      nullable: true,
+      description: "The destination’s answer. Never its address.",
+    },
+  },
+  required: ["kind", "status", "attempts", "sentAt", "lastError"],
+} as const;
+
+export const AgentIncidentDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    number: {
+      type: "number",
+      description:
+        'The short handle people use: "#12". Unique per install, in opening order.',
+    },
+    agentId: {
+      type: "string",
+      nullable: true,
+    },
+    agentName: {
+      type: "string",
+    },
+    state: {
+      type: "string",
+      enum: ["open", "closed"],
+    },
+    status: {
+      type: "string",
+      enum: ["failed", "unreachable"],
+    },
+    reason: {
+      type: "string",
+      nullable: true,
+    },
+    witnesses: {
+      description: "Sender names, Ranch included.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    ranchWitnessed: {
+      type: "boolean",
+    },
+    eventCount: {
+      type: "number",
+    },
+    openedAt: {
+      format: "date-time",
+      type: "string",
+    },
+    lastFailureAt: {
+      format: "date-time",
+      type: "string",
+    },
+    upSince: {
+      format: "date-time",
+      type: "string",
+      nullable: true,
+      description:
+        "When Ranch last saw the agent come up. Set while the incident is still open: the agent is recovering.",
+    },
+    closedAt: {
+      format: "date-time",
+      type: "string",
+      nullable: true,
+    },
+    resolution: {
+      type: "string",
+      nullable: true,
+      enum: ["recovered", "unconfirmed", "stopped", "deleted"],
+    },
+    notifications: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentIncidentNotificationDto",
+      },
+    },
+  },
+  required: [
+    "id",
+    "number",
+    "agentId",
+    "agentName",
+    "state",
+    "status",
+    "reason",
+    "witnesses",
+    "ranchWitnessed",
+    "eventCount",
+    "openedAt",
+    "lastFailureAt",
+    "upSince",
+    "closedAt",
+    "resolution",
+    "notifications",
+  ],
+} as const;
+
+export const AgentIncidentPageDtoSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentIncidentDto",
+      },
+    },
+    nextCursor: {
+      type: "string",
+      nullable: true,
+    },
+  },
+  required: ["items", "nextCursor"],
+} as const;
+
+export const NotificationLastDeliveryDtoSchema = {
+  type: "object",
+  properties: {
+    at: {
+      format: "date-time",
+      type: "string",
+    },
+    ok: {
+      type: "boolean",
+    },
+    error: {
+      type: "string",
+      nullable: true,
+    },
+  },
+  required: ["at", "ok", "error"],
+} as const;
+
+export const NotificationDestinationDtoSchema = {
+  type: "object",
+  properties: {
+    configured: {
+      type: "boolean",
+    },
+    kind: {
+      type: "string",
+      nullable: true,
+      enum: ["webhook", "bot"],
+    },
+    hint: {
+      type: "string",
+      nullable: true,
+      description:
+        "The last four characters of the secret that is set (the webhook address or the bot token).",
+    },
+    channelId: {
+      type: "string",
+      nullable: true,
+      description: "The bot’s channel id; null on the webhook kind.",
+    },
+    environment: {
+      type: "string",
+      nullable: true,
+      description:
+        "The installation’s label at the start of every message ([dev], [prod-eu]): the infrastructure.environment setting, else RANCH_ENVIRONMENT on the API; null when neither is set.",
+    },
+    apiReplicas: {
+      type: "number",
+      description:
+        "Copies of the API alive right now. More than one means agents are seen by only one of them: unreachable detection is paused and chats may miss the agent’s socket. Run ranch-api as one replica.",
+      example: 1,
+    },
+    updatedBy: {
+      type: "string",
+      nullable: true,
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+      nullable: true,
+    },
+    consoleLinks: {
+      type: "boolean",
+      description:
+        "false when ADMIN_URL is not set on the API: messages then carry no link to the console.",
+    },
+    lastDelivery: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/NotificationLastDeliveryDto",
+        },
+      ],
+    },
+  },
+  required: [
+    "configured",
+    "kind",
+    "hint",
+    "channelId",
+    "environment",
+    "apiReplicas",
+    "updatedBy",
+    "updatedAt",
+    "consoleLinks",
+    "lastDelivery",
+  ],
+} as const;
+
+export const SaveNotificationDestinationDtoSchema = {
+  type: "object",
+  properties: {
+    kind: {
+      type: "string",
+      enum: ["webhook", "bot"],
+      description: `\`webhook\`: a Slack incoming webhook — one message when an incident opens, one when it closes. \`bot\`: a Slack bot token and a channel — one message per incident, its story in the thread, the state as a reaction.`,
+    },
+    webhookUrl: {
+      type: "string",
+      description:
+        "kind = webhook: the incoming-webhook address (https://hooks.slack.com/services/…). A secret: stored and never returned.",
+    },
+    botToken: {
+      type: "string",
+      description:
+        "kind = bot: the Bot User OAuth Token (xoxb-…) from OAuth & Permissions. A secret: stored and never returned.",
+    },
+    channelId: {
+      type: "string",
+      description:
+        "kind = bot: the channel id (C0…), from the channel’s About tab. Not a secret.",
+    },
+  },
+  required: ["kind"],
+} as const;
+
+export const TestDeliveryDtoSchema = {
+  type: "object",
+  properties: {
+    delivered: {
+      type: "boolean",
+    },
+    error: {
+      type: "string",
+      nullable: true,
+    },
+  },
+  required: ["delivered", "error"],
 } as const;
 
 export const AgentToolEntryDtoSchema = {

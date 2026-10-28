@@ -37,6 +37,7 @@ export class BridleMapper {
       text: typeof o.text === 'string' ? o.text : '',
       ts: typeof o.ts === 'number' ? o.ts : null,
       ...seqOf(o),
+      ...(o.interim === true ? { interim: true as const } : {}),
     };
   }
 
@@ -174,6 +175,9 @@ export class BridleMapper {
         ts: m.ts,
         ...(attachments.length ? { attachments } : {}),
         ...(sources.length ? { sources } : {}),
+        // Narration before a tool call (CLEAN-189): the store folds it into
+        // the thinking timeline rather than showing a bubble.
+        ...(m.interim === true ? { interim: true as const } : {}),
       };
     });
     // Proposal cards (CLEAN-112) take their place by creation time.

@@ -68,7 +68,7 @@ interface IShareSocketAuth {
  *   "welcome"       { clientId }
  *   "message"       { text, messageId, ts }
  *   "stream"        { text, messageId, ts }
- *   "stream_end"    { text, messageId, ts }
+ *   "stream_end"    { text, messageId, ts, interim? }   // interim: narration before a tool call, not the answer (CLEAN-189)
  *   "typing"        { ts }
  *   "pong"          { ts }
  *   "bridle_error"  { code, agentId?, origin? }  // emitted just before a rejected handshake disconnects, so the SDK can show a reason

@@ -256,6 +256,13 @@ export interface IBridleOutgoingEvent {
    * runtime's `IBridleSource` entries; on the way out, the reader-facing
    * `IBridleSourceEntry` list (CLEAN-138). */
   sources?: IBridleSource[] | IBridleSourceEntry[];
+  /**
+   * `stream_end` only (CLEAN-189): the model went on to call tools in the
+   * same response, so this bubble is narration between steps ("Let me check
+   * the spec deck…"), not the answer. A console folds it into the thinking
+   * timeline; the synchronous route keeps waiting for the real reply.
+   */
+  interim?: boolean;
 }
 
 // ── Sources (what an answer drew on) ─────────────────────────

@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
-import type { IDocumentRecord } from '../../lightrag/domain/lightrag.types';
+import type {
+  IContextResult,
+  IDocumentRecord,
+} from '../../lightrag/domain/lightrag.types';
 import { IKnowledgeGateway } from '../domain/knowledge.gateway';
 import {
   IKnowledgeRecord,
@@ -254,6 +257,14 @@ export class KnowledgeGateway extends IKnowledgeGateway {
       mode,
       topK,
     });
+  }
+
+  async retrieveKnowledgeContext(
+    knowledgeId: string,
+    query: string,
+    mode?: QueryModeTypes,
+  ): Promise<IContextResult> {
+    return this.lightrag.retrieveContext({ knowledgeId, query, mode });
   }
 
   getGraphLabels(knowledgeId: string): Promise<string[]> {

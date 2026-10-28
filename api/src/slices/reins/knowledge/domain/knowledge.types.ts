@@ -145,12 +145,47 @@ export interface IKnowledgeQueryResult {
   /** null when the base holds nothing relevant — never a generated answer
    * assembled from no context (FR-003). */
   answer: string | null;
-  reason?: 'no_relevant_content';
+  /**
+   * Why `answer` is null: the base holds nothing relevant, or the retrieval
+   * model declined in its own words and that must not pass as the base's
+   * answer (CLEAN-184).
+   */
+  reason?: 'no_relevant_content' | 'partial_refusal';
   knowledgeId: string;
   /** false while the base's content is still being re-processed into its
    * own area (FR-036). */
   complete: boolean;
   references: IKnowledgeQueryReference[];
+}
+
+/**
+ * One verbatim fragment of an indexed document, bound to the Source row it
+ * came from (CLEAN-184). `sourceId` null means the row could not be
+ * resolved — the passage is still shown, and logged, never dropped.
+ */
+export interface IKnowledgePassage {
+  text: string;
+  /** As the retrieval service reported it; kept for logging and the unresolved case. */
+  filePath: string;
+  sourceId: string | null;
+  sourceName: string | null;
+}
+
+/**
+ * What the agent's lookup returns for one base: the passages to answer
+ * from, optional short graph facts, and the consulted-sources list the
+ * tool turns into `sources` (CLEAN-138). Mirrors IKnowledgeQueryResult for
+ * `complete` and `reason` so the tool treats both the same way.
+ */
+export interface IKnowledgeContextResult {
+  knowledgeId: string;
+  complete: boolean;
+  reason?: 'no_relevant_content';
+  passages: IKnowledgePassage[];
+  facts: string[];
+  references: IKnowledgeQueryReference[];
+  /** Which endpoint served it; null when the service was not called. */
+  via: 'query_data' | 'only_need_context' | null;
 }
 
 /** What the retrieval client returns before attribution is resolved. */

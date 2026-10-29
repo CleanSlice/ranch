@@ -541,7 +541,7 @@ watch(
 
 <template>
   <div class="flex flex-col gap-3">
-    <AgentFileImportDialog v-model:open="importOpen" :agent-id="id" @applied="onImported" />
+    <AgentFileImportDialog v-model:open="importOpen" :agent-id="id" :folder="activeFolder" @applied="onImported" />
     <AgentFileNewFileDialog
       v-model:open="newFileOpen"
       :agent-id="id"

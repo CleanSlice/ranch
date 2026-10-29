@@ -447,6 +447,10 @@ export type FileLimitsDto = {
   importMaxEntries: number;
   importMaxFileBytes: number;
   importPlanListRows: number;
+  /**
+   * Selected-files import: plain files per import.
+   */
+  importMaxFiles: number;
   diffCompareMaxBytes: number;
   diffInlineMaxLines: number;
   diffInlineMaxBytes: number;
@@ -622,6 +626,39 @@ export type ImportPlanDto = {
   entries: Array<ImportPlanEntryDto>;
   more: number;
   warnings: Array<string>;
+};
+
+export type ImportResolveRequestDto = {
+  /**
+   * Names of the dropped files, as the browser reports them.
+   */
+  names: Array<string>;
+  /**
+   * Relative folder for names that match nothing; empty = root.
+   */
+  targetFolder?: string;
+};
+
+export type ImportResolveRowDto = {
+  name: string;
+  match: "unique" | "none" | "ambiguous";
+  /**
+   * unique → the matched path; none → <targetFolder>/<name>; ambiguous → null.
+   */
+  path: string | null;
+  /**
+   * ambiguous only: the matching paths, sorted.
+   */
+  candidates: Array<string>;
+  /**
+   * unique only: size of the matched file.
+   */
+  size: number | null;
+};
+
+export type ImportResolveResponseDto = {
+  targetFolder: string;
+  rows: Array<ImportResolveRowDto>;
 };
 
 export type ImportApplyDto = {
@@ -3509,6 +3546,64 @@ export type StageAgentImportResponses = {
 
 export type StageAgentImportResponse =
   StageAgentImportResponses[keyof StageAgentImportResponses];
+
+export type ResolveAgentImportFilesData = {
+  body: ImportResolveRequestDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/import/resolve";
+};
+
+export type ResolveAgentImportFilesErrors = {
+  /**
+   * A name holds a separator or control character, two names are equal, too many names, or the target folder is not a relative workspace path.
+   */
+  400: unknown;
+};
+
+export type ResolveAgentImportFilesResponses = {
+  200: ImportResolveResponseDto;
+};
+
+export type ResolveAgentImportFilesResponse =
+  ResolveAgentImportFilesResponses[keyof ResolveAgentImportFilesResponses];
+
+export type StageAgentImportFilesData = {
+  body: {
+    files: Array<Blob | File>;
+    targets: string;
+    targetFolder?: string;
+  };
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/import/stage-files";
+};
+
+export type StageAgentImportFilesErrors = {
+  /**
+   * Duplicate name, a target outside the resolved set, an unsafe path, or no files.
+   */
+  400: unknown;
+  /**
+   * An import for this agent is already running.
+   */
+  409: unknown;
+  /**
+   * A file over the per-file limit, or too many files.
+   */
+  413: unknown;
+};
+
+export type StageAgentImportFilesResponses = {
+  200: ImportPlanDto;
+};
+
+export type StageAgentImportFilesResponse =
+  StageAgentImportFilesResponses[keyof StageAgentImportFilesResponses];
 
 export type PlanAgentImportData = {
   body?: never;

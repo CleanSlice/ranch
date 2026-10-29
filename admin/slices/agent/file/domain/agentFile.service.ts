@@ -9,8 +9,10 @@ import type {
   IImportApplyOptions,
   IImportApplyOutcome,
   IImportPlan,
+  IImportTarget,
   IOpenLink,
   IProposalApplyOutcome,
+  IResolveRow,
   ISaveOptions,
   ISyncOutcome,
   ImportMode,
@@ -85,6 +87,24 @@ export class AgentFileService {
     includeSessions: boolean,
   ): Promise<IImportPlan> {
     return this.gateway.planImport(agentId, importId, mode, includeSessions);
+  }
+
+  resolveImportFiles(
+    agentId: string,
+    names: string[],
+    targetFolder: string,
+  ): Promise<{ targetFolder: string; rows: IResolveRow[] }> {
+    return this.gateway.resolveImportFiles(agentId, names, targetFolder);
+  }
+
+  stageImportFiles(
+    agentId: string,
+    files: File[],
+    targets: IImportTarget[],
+    targetFolder: string,
+    onProgress?: (percent: number) => void,
+  ): Promise<IImportPlan> {
+    return this.gateway.stageImportFiles(agentId, files, targets, targetFolder, onProgress);
   }
 
   applyImport(

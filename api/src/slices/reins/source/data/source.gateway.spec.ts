@@ -420,6 +420,57 @@ describe('SourceGateway.indexSources', () => {
     expect(outcomes[0].status).toBe('indexed');
   });
 
+  it('sends a CSV as rows that carry the document name, under the source id (CLEAN-195)', async () => {
+    const prisma = makePrismaStub({ 'src-1': null });
+    const lightrag = makeLightragStub([processed()]);
+    const s3 = makeS3Stub({
+      'k/deck - Specifications.csv':
+        'Category,Specification,Sedan\nWeights and Capacities,Fuel Tank Capacity (gallons),FWD 13.2 / AWD 12.7\n',
+    });
+    const gateway = makeGateway(prisma, lightrag, s3);
+
+    const run = gateway.indexSources([
+      makeSource({
+        type: 'file',
+        name: '26my-mazda3-spec-deck - Specifications.csv',
+        url: 's3://b/k/deck - Specifications.csv',
+        mimeType: 'text/csv',
+      }),
+    ]);
+    await jest.advanceTimersByTimeAsync(POLL_MS * 2);
+    const outcomes = await run;
+
+    expect(lightrag.ingestFile).not.toHaveBeenCalled();
+    expect(lightrag.ingestText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: '26my-mazda3-spec-deck - Specifications | Category: Weights and Capacities | Specification: Fuel Tank Capacity (gallons) | Sedan: FWD 13.2 / AWD 12.7',
+        fileSource: 'src-1',
+      }),
+    );
+    expect(outcomes[0].status).toBe('indexed');
+  });
+
+  it('uploads a CSV that is not a table as the file it is', async () => {
+    const prisma = makePrismaStub({ 'src-1': null });
+    const lightrag = makeLightragStub([processed()]);
+    const s3 = makeS3Stub({ 'k/notes.csv': 'just one line of prose' });
+    const gateway = makeGateway(prisma, lightrag, s3);
+
+    const run = gateway.indexSources([
+      makeSource({
+        type: 'file',
+        name: 'notes.csv',
+        url: 's3://b/k/notes.csv',
+        mimeType: 'text/csv',
+      }),
+    ]);
+    await jest.advanceTimersByTimeAsync(POLL_MS * 2);
+    await run;
+
+    expect(lightrag.ingestText).not.toHaveBeenCalled();
+    expect(lightrag.ingestFile).toHaveBeenCalledTimes(1);
+  });
+
   it('waits for a PDF whose text is still being extracted instead of uploading it', async () => {
     const prisma = makePrismaStub({ 'src-1': null });
     const lightrag = makeLightragStub([processed()]);

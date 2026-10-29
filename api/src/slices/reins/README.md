@@ -239,6 +239,15 @@ run waits on `pending`, reports `failed` with the reason, and never writes
 those columns itself. Boot re-queues `pending` rows, since the queue lives in
 the API process.
 
+A CSV goes in as text too, one line per row, each line prefixed with the
+document's name and its column labels (`domain/tabularText.ts`, CLEAN-195):
+a row like "Fuel Tank Capacity (gallons),,FWD 13.2 / AWD 12.7" names no model
+or year, those live in the file name only, so a question that names them
+never landed on the chunk while the retrieval service chunks by tokens and a
+header at the top of the file is lost after the first chunk. A CSV that does
+not parse as a table (one column, header only) is uploaded as the file it is.
+Sources indexed before this change keep their old chunks until a Reindex.
+
 Settings (`knowledge` group, env fallback in brackets): `ocr_enabled`
 (`REINS_OCR_ENABLED`, default on) and `ocr_max_pages` (`REINS_OCR_MAX_PAGES`,
 default 500; Textract bills per page). The Textract client is built from the

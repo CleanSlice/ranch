@@ -39,6 +39,7 @@ import {
 } from '../domain/source.types';
 import { indexBudgetMs, pollIntervalMs } from '../domain/indexBudget';
 import { classifyIndexFailure, nextRetryAt } from '../domain/indexFailure';
+import { isTabularSource, tabularRowsText } from '../domain/tabularText';
 import { SourceMapper } from './source.mapper';
 
 // LightRAG processes ingested documents in a background pipeline. How long one
@@ -1557,6 +1558,21 @@ export class SourceGateway extends ISourceGateway {
       }
       const location = S3Repository.parseUri(source.url);
       const buffer = await this.s3.download(location);
+      // A table's rows name no document, so a question that names one never
+      // lands on them. Each row goes in with the document's name and its
+      // column labels, under the source id like any text ingest (CLEAN-195).
+      // A file that does not parse as a table takes the upload path below.
+      if (isTabularSource(source)) {
+        const text = tabularRowsText(source.name, buffer.toString('utf8'));
+        if (text !== null) {
+          const res = await this.lightrag.ingestText({
+            knowledgeId,
+            text,
+            fileSource: source.id,
+          });
+          return res.docId;
+        }
+      }
       const res = await this.lightrag.ingestFile({
         knowledgeId,
         filename: source.name,

@@ -38,7 +38,7 @@ import {
  *   "register"    {}
  *   "message"     { clientId, text, messageId, ts }
  *   "stream"      { clientId, text, messageId, ts }
- *   "stream_end"  { clientId, text, messageId, ts }
+ *   "stream_end"  { clientId, text, messageId, ts, interim? }   // interim: narration before a tool call (CLEAN-189)
  *   "typing"      { clientId, ts }
  *   "thinking"    { clientId, turnId, step?, done?, ts }
  *   "sources"     { clientId, messageId, text, sources[], ts }   (CLEAN-138)

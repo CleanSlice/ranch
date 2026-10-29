@@ -40,6 +40,12 @@ export interface TranscriptMessage {
    * this on demand; ordinary rendering ignores it.
    */
   agentText?: string;
+  /**
+   * `assistant` bubbles only (CLEAN-189): the model went on to call tools in
+   * the same response, so this is narration between steps, not the answer.
+   * A console replays it inside the thinking timeline, not as a reply.
+   */
+  interim?: true;
 }
 
 export interface ReadTranscriptOptions {
@@ -90,9 +96,10 @@ const ATTACHMENT_KINDS = new Set(['image', 'text', 'binary']);
  */
 function sanitizeBubbles(
   raw: unknown,
-): Array<Pick<TranscriptMessage, 'id' | 'text' | 'ts'>> {
+): Array<Pick<TranscriptMessage, 'id' | 'text' | 'ts' | 'interim'>> {
   if (!Array.isArray(raw)) return [];
-  const out: Array<Pick<TranscriptMessage, 'id' | 'text' | 'ts'>> = [];
+  const out: Array<Pick<TranscriptMessage, 'id' | 'text' | 'ts' | 'interim'>> =
+    [];
   for (const entry of raw) {
     const b = entry as Record<string, unknown>;
     if (
@@ -105,7 +112,12 @@ function sanitizeBubbles(
     ) {
       return [];
     }
-    out.push({ id: b.id, text: b.text, ts: b.ts });
+    out.push({
+      id: b.id,
+      text: b.text,
+      ts: b.ts,
+      ...(b.interim === true ? { interim: true as const } : {}),
+    });
   }
   return out;
 }

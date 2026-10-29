@@ -18,6 +18,7 @@ import {
   type IUploadedAttachment,
 } from '../utils/attachment'
 import { nextSeq, numberLegacy } from '../utils/chatFlow'
+import { INTERIM_TURN, foldReplayedInterim, interimStep, isReplayBlock, trailingBlock } from '../utils/interim'
 import { openCitedSource, setCitedSourceRating } from '../utils/citedSource'
 import { describeCitedSourceError } from '../utils/citedSourceFile'
 import {
@@ -119,6 +120,12 @@ export interface IBridleMessageData {
   /** Came from the transcript, not from this session's live traffic. */
   replayed?: true
   streaming?: boolean
+  /**
+   * Narration the agent wrote before calling a tool (CLEAN-189). Only on a
+   * replayed message, and only until the transcript load folds it into a
+   * thinking block — the flow never shows it as a bubble.
+   */
+  interim?: true
   /**
    * Replayed user turns with attachments only: the full text the model
    * received (typed text + inlined attachment blocks). Shown on demand under
@@ -391,6 +398,8 @@ interface ITranscriptPageMessage {
   agentText?: string
   /** Assistant turns that cited sources (CLEAN-138); raw wire shape, checked in `toBridleMessage`. */
   sources?: unknown[]
+  /** Narration before a tool call, not an answer (CLEAN-189). */
+  interim?: boolean
 }
 
 interface ITranscriptPage {
@@ -511,6 +520,7 @@ function toBridleMessage(m: ITranscriptPageMessage): IBridleMessageData {
     ...(m.agentText ? { agentText: m.agentText } : {}),
     // A replayed answer keeps its sources (CLEAN-138): the list is history too.
     ...(sources.length ? { sources } : {}),
+    ...(m.interim === true ? { interim: true as const } : {}),
   }
 }
 
@@ -1109,6 +1119,15 @@ export const useBridleStore = defineStore('bridle', {
         // below the newest message (segments seal when content lands).
         let block = turnBlocks[turnBlocks.length - 1]
         if (!block || block.status === 'done') {
+          // Narration folded in before any step named the turn (CLEAN-189):
+          // that block is this turn's — the steps continue in it.
+          const orphan = trailingBlock(c.messages, c.thinkingBlocks)
+          if (orphan && orphan.turnId === INTERIM_TURN && orphan.status === 'thinking') {
+            orphan.turnId = e.turnId
+            block = orphan
+          }
+        }
+        if (!block || block.status === 'done') {
           // A replayed step of a turn the transcript already shows.
           if (this._isTranscriptContent(key, e.ts)) return
           // Linear conversation: a new turn's first step closes other turns.
@@ -1210,13 +1229,30 @@ export const useBridleStore = defineStore('bridle', {
         })
       })
 
-      socket.on('stream_end', (data: { text?: string; parts?: BridlePart[]; messageId?: string; ts?: number; seq?: number }) => {
+      socket.on('stream_end', (data: { text?: string; parts?: BridlePart[]; messageId?: string; ts?: number; seq?: number; interim?: boolean }) => {
         if (!acceptHubSeq(c, data.seq)) return
         c.isTyping = false
         const text = data.text ?? ''
         const parts = data.parts ?? (text ? [{ type: BridlePartTypes.Text as const, text }] : [])
         const idx = c.messages.findIndex(m => m.id === data.messageId)
         const current = c.messages[idx]
+        if (data.interim === true) {
+          // Narration before a tool call (CLEAN-189): not a reply. The bubble
+          // leaves the flow and its text joins the thinking timeline.
+          if (current) {
+            c.messages.splice(idx, 1)
+          } else if (!hasVisibleContent(text, parts) || this._isTranscriptContent(key, data.ts)) {
+            return
+          }
+          this._foldInterim(key, {
+            id: data.messageId ?? crypto.randomUUID(),
+            // The final frame's text is the checked one; the streamed bubble
+            // only stands in when the frame carries none.
+            text: text || (current?.text ?? ''),
+            ts: data.ts ?? Date.now(),
+          })
+          return
+        }
         if (current) {
           c.messages[idx] = { ...current, text, parts, streaming: false }
         } else {
@@ -1747,6 +1783,37 @@ export const useBridleStore = defineStore('bridle', {
       }
     },
 
+    /**
+     * A live narration bubble joins the thinking timeline (CLEAN-189). Its
+     * first chunk sealed the open segment; with the bubble gone that segment
+     * is the tail of the flow again, so it reopens and takes the step. With
+     * no segment yet the step opens one under a placeholder turn — the
+     * turn's first thinking step adopts it (see the `thinking` handler).
+     */
+    _foldInterim(key: string, bubble: { id: string; text: string; ts: number }) {
+      const c = this._conv(key)
+      if (!c) return
+      let block = trailingBlock(c.messages, c.thinkingBlocks)
+      if (block) {
+        block.status = 'thinking'
+      } else {
+        c.thinkingBlocks.push({
+          turnId: INTERIM_TURN,
+          seg: 0,
+          steps: [],
+          status: 'thinking',
+          ts: bubble.ts,
+          seq: c.nextSeq++,
+        })
+        // Re-read through the reactive list: the pushed literal is raw.
+        block = c.thinkingBlocks[c.thinkingBlocks.length - 1]!
+      }
+      block.steps.push(interimStep(bubble))
+      // The agent is still working — keep the shimmer alive and the watchdog fed.
+      c.isTyping = true
+      this._armThinkingWatchdog(key)
+    },
+
     /** Terminal paths (watchdog, deliberate disconnect): seal segments AND
      * close their turns so straggler steps can't resurrect a zombie segment. */
     _closeAllTurns(key: string) {
@@ -1983,8 +2050,10 @@ export const useBridleStore = defineStore('bridle', {
         (max, m) => (!keptIds.has(m.id) && typeof m.seq === 'number' ? Math.max(max, m.seq) : max),
         Number.NEGATIVE_INFINITY,
       )
+      // Blocks a previous load built from replayed bubbles are rebuilt from
+      // this page (CLEAN-189), so they go whatever their place.
       const blocks = c.thinkingBlocks.filter(
-        b => b.status === 'thinking' || (b.seq ?? 0) > cutSeq,
+        b => !isReplayBlock(b) && (b.status === 'thinking' || (b.seq ?? 0) > cutSeq),
       )
 
       // Transcript first, in the order returned, numbered from 1 — then the
@@ -1997,8 +2066,11 @@ export const useBridleStore = defineStore('bridle', {
       const replayed = page
         ? mergeProposals(source.map(toBridleMessage), pageProposals, (p) => proposalBubble(p, true))
         : []
-      const transcript = numberLegacy(replayed)
-      let seq = nextSeq(transcript)
+      // Narration the agent wrote before its tool calls replays inside the
+      // thinking timeline, not as bubbles (CLEAN-189).
+      const folded = foldReplayedInterim(numberLegacy(replayed))
+      const transcript = folded.messages
+      let seq = nextSeq([...transcript, ...folded.blocks])
       const order = (s?: number) => s ?? Number.MAX_SAFE_INTEGER
       // A live proposal bubble the page also carries is the same card twice.
       const transcriptIds = new Set(transcript.map(m => m.id))
@@ -2015,7 +2087,7 @@ export const useBridleStore = defineStore('bridle', {
       }
 
       c.messages = messages
-      c.thinkingBlocks = blocks
+      c.thinkingBlocks = [...folded.blocks, ...blocks]
       c.nextSeq = seq
       if (page) {
         c.transcriptTailTs = tailTs
@@ -2143,11 +2215,14 @@ export const useBridleStore = defineStore('bridle', {
           ...m,
           seq: floor - olderItems.length + i,
         }))
-        c.messages = [...olderMessages, ...c.messages]
+        // Narration replays inside the timeline here too (CLEAN-189).
+        const folded = foldReplayedInterim(olderMessages)
+        c.messages = [...folded.messages, ...c.messages]
+        if (folded.blocks.length) c.thinkingBlocks = [...folded.blocks, ...c.thinkingBlocks]
         c.transcriptCursor = page.nextCursor
         c.hasMoreOlder = page.hasMore
         this._hydrateAttachments(apiUrl, agentId, channel, fresh)
-        return olderMessages.length
+        return folded.messages.length
       } catch (err) {
         console.warn('[bridle] failed to load older transcript', err)
         return 0

@@ -909,6 +909,10 @@ export type TranscriptMessageDto = {
    */
   agentText?: string;
   /**
+   * Assistant bubbles only: the model went on to call tools in the same response, so this is narration between steps, not the answer. Render it inside the thinking timeline, not as a reply.
+   */
+  interim?: boolean;
+  /**
    * Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.
    */
   sources?: Array<SourceEntryDto>;

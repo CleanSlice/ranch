@@ -103,6 +103,13 @@ export class BridleSyncService {
         socketId,
         (data: unknown) => {
           const event = data as Record<string, unknown>;
+          // Narration the model wrote before calling a tool ("Let me check
+          // the spec deck…") is not the answer: drop what streamed in and
+          // keep waiting for the bubble that is (CLEAN-189).
+          if (event.type === 'stream_end' && event.interim === true) {
+            chunks.length = 0;
+            return;
+          }
           if (event.type === 'message' || event.type === 'stream_end') {
             finish({
               // A synchronous caller gets no `sources` frame to point a

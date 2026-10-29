@@ -17,6 +17,7 @@ import type {
   AuthControllerMeData,
   AuthControllerEmbedTokenData,
   SettingControllerFindAllData,
+  SettingControllerFindPublicAuthGroupData,
   SettingControllerFindByGroupData,
   SettingControllerRemoveData,
   SettingControllerFindByKeyData,
@@ -265,6 +266,20 @@ import type {
   RemoveAgentPeerResponse,
   ListAgentDelegationsData,
   ListAgentDelegationsResponse,
+  ListAgentEventsData,
+  ListAgentEventsResponse,
+  PostAgentEventData,
+  PostAgentEventResponse,
+  ListAgentIncidentsData,
+  ListAgentIncidentsResponse,
+  RemoveNotificationDestinationData,
+  RemoveNotificationDestinationResponse,
+  GetNotificationDestinationData,
+  GetNotificationDestinationResponse,
+  SaveNotificationDestinationData,
+  SaveNotificationDestinationResponse,
+  TestNotificationDestinationData,
+  TestNotificationDestinationResponse,
   GetAgentToolsData,
   GetAgentToolsResponse,
   SecretControllerDeleteData,
@@ -551,6 +566,22 @@ export class SettingsService {
       ThrowOnError
     >({
       url: "/settings",
+      ...options,
+    });
+  }
+
+  /**
+   * The auth settings a page may read before login (registration_enabled only). Public; the rest of the group, like every other group, needs a token.
+   */
+  public static settingControllerFindPublicAuthGroup<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<SettingControllerFindPublicAuthGroupData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/settings/auth",
       ...options,
     });
   }
@@ -1014,7 +1045,7 @@ export class TemplatesService {
 
 export class AgentsService {
   /**
-   * List all agents. Public — landing/chat pages render without auth. Mutations and details still require login.
+   * List all agents, with their full configuration. Requires a console token; the login-free landing page reads GET /agents/public instead (CLEAN-177).
    */
   public static agentControllerFindAll<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerFindAllData, ThrowOnError>,
@@ -1066,7 +1097,7 @@ export class AgentsService {
   }
 
   /**
-   * Snapshot of all agents joined with live pod status. Public.
+   * Snapshot of all agents joined with live pod status. Requires a console token (CLEAN-177); the SSE stream below stays open because EventSource cannot send one.
    */
   public static agentControllerStatus<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerStatusData, ThrowOnError>,
@@ -1130,7 +1161,7 @@ export class AgentsService {
   }
 
   /**
-   * Get agent by ID. Public — chat needs agent metadata (name, status) to render.
+   * Get agent by ID, with its full configuration and allowed origins. Requires a console token (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this.
    */
   public static agentControllerFindById<ThrowOnError extends boolean = false>(
     options: Options<AgentControllerFindByIdData, ThrowOnError>,
@@ -1928,7 +1959,7 @@ export class BridleService {
   }
 
   /**
-   * Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat: the running agent is told to drop its own copy, and every browser that has the conversation open is told it was reset (`conversation_reset`). Nothing is kept — to keep the conversation, use `POST …/transcript/archive`. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
+   * Delete the persisted chat transcript for an agent/channel. Used to start a fresh chat: the running agent is told to drop its own copy, and every browser that has the conversation open is told it was reset (`conversation_reset`). Nothing is kept — to keep the conversation, use `POST …/transcript/archive`. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 `SHARE_LINK_INVALID` otherwise). A channel named by a JWT subject (an embed visitor, or a console user's id) is restricted to the bearer with that subject or to an admin (403 `CHANNEL_FORBIDDEN` otherwise, whether or not the channel exists). Anonymous `anon-…` and `http-…` channels stay open.
    */
   public static resetBridleTranscript<ThrowOnError extends boolean = false>(
     options: Options<ResetBridleTranscriptData, ThrowOnError>,
@@ -1944,7 +1975,7 @@ export class BridleService {
   }
 
   /**
-   * Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
+   * Replay the persisted chat transcript for an agent (read from the agent runtime's data/sessions/bridle:<channel>.jsonl). Paginated tail-first: omit `cursor` for the latest `limit` messages; pass the returned `nextCursor` to fetch older pages. Live updates still arrive via /ws/client. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 `SHARE_LINK_INVALID` otherwise). A channel named by a JWT subject (an embed visitor, or a console user's id) is restricted to the bearer with that subject or to an admin (403 `CHANNEL_FORBIDDEN` otherwise, whether or not the channel exists). Anonymous `anon-…` and `http-…` channels stay open.
    */
   public static getBridleTranscript<ThrowOnError extends boolean = false>(
     options: Options<GetBridleTranscriptData, ThrowOnError>,
@@ -1960,7 +1991,7 @@ export class BridleService {
   }
 
   /**
-   * Close the current conversation and start a new one ("New chat"). The live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`), its row in the chat index moves with it, the running agent is told to forget the conversation and every browser that has it open is told it was reset. Refused, with nothing changed, while a real reset cannot be guaranteed: 409 `AGENT_OFFLINE` when the agent is not connected, 409 `TURN_IN_PROGRESS` while it is still answering, 503 `SYNC_FAILED` when it did not push its files in time. Answers `{}` when there was nothing to close — the conversation is reset either way. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 otherwise).
+   * Close the current conversation and start a new one ("New chat"). The live JSONL is moved to a timestamped sibling (`bridle:<channel>.<iso-ts>.archived.jsonl`), its row in the chat index moves with it, the running agent is told to forget the conversation and every browser that has it open is told it was reset. Refused, with nothing changed, while a real reset cannot be guaranteed: 409 `AGENT_OFFLINE` when the agent is not connected, 409 `TURN_IN_PROGRESS` while it is still answering, 503 `SYNC_FAILED` when it did not push its files in time. Answers `{}` when there was nothing to close — the conversation is reset either way. A `share-<visitorId>` channel is restricted: only a bearer token or that visitor's own share headers are accepted (403 `SHARE_LINK_INVALID` otherwise). A channel named by a JWT subject (an embed visitor, or a console user's id) is restricted to the bearer with that subject or to an admin (403 `CHANNEL_FORBIDDEN` otherwise, whether or not the channel exists). Anonymous `anon-…` and `http-…` channels stay open.
    */
   public static archiveBridleTranscript<ThrowOnError extends boolean = false>(
     options: Options<ArchiveBridleTranscriptData, ThrowOnError>,
@@ -3451,6 +3482,128 @@ export class PeersService {
       ThrowOnError
     >({
       url: "/agents/{agentId}/delegations",
+      ...options,
+    });
+  }
+}
+
+export class AgentEventsService {
+  /**
+   * Agent events, newest first: reports from outside senders and failures Ranch noticed itself.
+   */
+  public static listAgentEvents<ThrowOnError extends boolean = false>(
+    options?: Options<ListAgentEventsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      ListAgentEventsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events",
+      ...options,
+    });
+  }
+
+  /**
+   * Report an agent event. Auth: API key with the events:write scope. Any 2xx means Ranch has it — do not retry. The event is stored and may notify the team; it never changes the agent’s status.
+   */
+  public static postAgentEvent<ThrowOnError extends boolean = false>(
+    options: Options<PostAgentEventData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      PostAgentEventResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Incidents, newest first: one per stretch of trouble for an agent, with who witnessed it and whether the team was told.
+   */
+  public static listAgentIncidents<ThrowOnError extends boolean = false>(
+    options?: Options<ListAgentIncidentsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      ListAgentIncidentsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-incidents",
+      ...options,
+    });
+  }
+
+  /**
+   * Stop notifying. Messages still waiting are marked skipped; events keep being recorded.
+   */
+  public static removeNotificationDestination<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<RemoveNotificationDestinationData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).delete<
+      RemoveNotificationDestinationResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events/destination",
+      ...options,
+    });
+  }
+
+  /**
+   * Where failure notifications go and whether the last one arrived. Never the address itself.
+   */
+  public static getNotificationDestination<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<GetNotificationDestinationData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      GetNotificationDestinationResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events/destination",
+      ...options,
+    });
+  }
+
+  /**
+   * Set where notifications go: a Slack incoming webhook (kind = webhook, webhookUrl) or a Slack bot (kind = bot, botToken + channelId). The secret is stored and never returned; saving one kind discards the other.
+   */
+  public static saveNotificationDestination<
+    ThrowOnError extends boolean = false,
+  >(options: Options<SaveNotificationDestinationData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).put<
+      SaveNotificationDestinationResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events/destination",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Send one clearly labelled test message to the destination and report whether it arrived.
+   */
+  public static testNotificationDestination<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<TestNotificationDestinationData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).post<
+      TestNotificationDestinationResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-events/destination/test",
       ...options,
     });
   }

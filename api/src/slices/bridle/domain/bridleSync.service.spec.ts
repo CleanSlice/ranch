@@ -94,6 +94,34 @@ describe('BridleSyncService.sendAndAwait', () => {
     });
   });
 
+  it('keeps waiting past an interim bubble and answers with the final one (CLEAN-189)', async () => {
+    const h = makeHarness();
+
+    const pending = h.service.sendAndAwait(base);
+    h.emit({ type: 'stream', text: 'Let me check the spec deck.' });
+    h.emit({
+      type: 'stream_end',
+      text: 'Let me check the spec deck.',
+      messageId: 'm-interim',
+      ts: 3,
+      interim: true,
+    });
+    h.emit({ type: 'stream', text: 'Eight trims.' });
+    h.emit({
+      type: 'stream_end',
+      text: 'Eight trims.',
+      messageId: 'm-final',
+      ts: 9,
+    });
+
+    await expect(pending).resolves.toMatchObject({
+      text: 'Eight trims.',
+      messageId: 'm-final',
+      timedOut: false,
+    });
+    expect(h.unregistrations).toHaveLength(1);
+  });
+
   it('accumulates stream chunks and resolves on stream_end', async () => {
     const h = makeHarness();
 

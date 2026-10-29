@@ -157,6 +157,13 @@ export interface IBridleMessage {
    * `attachments`.
    */
   sources?: IBridleSource[];
+  /**
+   * Narration the agent wrote before calling a tool (CLEAN-189). Only on a
+   * message straight from the transcript, and only until the history load
+   * folds it into a thinking block — the flow never shows it as a bubble,
+   * and nothing with it is ever persisted.
+   */
+  interim?: true;
 }
 
 // ── Sources (what an answer drew on) ───────────────────────────
@@ -440,6 +447,12 @@ export interface IBridleReply {
    * replayed frame that was already applied can be told apart and dropped.
    */
   seq?: number;
+  /**
+   * `stream_end` only (CLEAN-189): the agent went on to call tools in the
+   * same response, so this bubble is narration between steps, not the
+   * answer. The store folds it into the thinking timeline.
+   */
+  interim?: true;
 }
 
 /**

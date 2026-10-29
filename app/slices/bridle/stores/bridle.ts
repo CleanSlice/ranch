@@ -37,6 +37,13 @@ import type {
 } from '#bridle/domain';
 import { nextSeq, numberLegacy } from '#bridle/utils/chatFlow';
 import {
+  INTERIM_TURN,
+  foldReplayedInterim,
+  interimStep,
+  isReplayBlock,
+  trailingBlock,
+} from '#bridle/utils/interim';
+import {
   FAILURE_OFFLINE,
   SLOW_MS,
   nextDelivery,
@@ -827,18 +834,24 @@ export const useBridleStore = defineStore('bridle', () => {
       // Measured against the screen as it is NOW: messages may have been
       // sent or received while the request was in flight.
       const merged = mergeTranscript(messagesFor(key), page, Date.now());
-      conversations.value[key] = merged.messages;
+      // Narration the agent wrote before its tool calls replays inside the
+      // thinking timeline, not as bubbles (CLEAN-189).
+      const folded = foldReplayedInterim(merged.messages);
+      conversations.value[key] = folded.messages;
       // Session-only blocks whose turn the transcript took over are plain
-      // history now; an open one, and anything below the cut, stays.
+      // history now; an open one, and anything below the cut, stays. Blocks
+      // a previous load built from replayed bubbles are rebuilt from this
+      // page, so they go whatever their place.
       const cut = merged.cutSeq;
-      if (cut !== null && thinking.value[key]) {
-        thinking.value[key] = thinking.value[key].filter(
-          (b) =>
+      const session = thinkingFor(key).filter(
+        (b) =>
+          !isReplayBlock(b) &&
+          (cut === null ||
             b.state === BridleThinkingBlockStates.Thinking ||
-            (b.seq ?? Number.MAX_SAFE_INTEGER) > cut,
-        );
-      }
-      nextSeqs.set(key, nextSeq([...merged.messages, ...thinkingFor(key)]));
+            (b.seq ?? Number.MAX_SAFE_INTEGER) > cut),
+      );
+      thinking.value[key] = [...folded.blocks, ...session];
+      nextSeqs.set(key, nextSeq([...folded.messages, ...thinkingFor(key)]));
 
       let tailTs = 0;
       for (const m of page.messages) if (m.ts > tailTs) tailTs = m.ts;
@@ -891,10 +904,15 @@ export const useBridleStore = defineStore('bridle', () => {
         ...m,
         seq: floor - fresh.length + i,
       }));
-      conversations.value[key] = [...older, ...list];
+      // Narration replays inside the timeline here too (CLEAN-189).
+      const folded = foldReplayedInterim(older);
+      conversations.value[key] = [...folded.messages, ...list];
+      if (folded.blocks.length) {
+        thinking.value[key] = [...folded.blocks, ...thinkingFor(key)];
+      }
       state.cursor = page.nextCursor;
       state.hasMore = page.hasMore;
-      return older.length;
+      return folded.messages.length;
     } catch (err) {
       console.warn('[bridle] older history load failed', err);
       return 0;
@@ -942,6 +960,40 @@ export const useBridleStore = defineStore('bridle', () => {
     }
   }
 
+  /**
+   * A live narration bubble joins the thinking timeline (CLEAN-189). Its
+   * first chunk sealed the open segment; with the bubble gone that segment is
+   * the tail of the flow again, so it reopens and takes the step. With no
+   * segment yet the step opens one under a placeholder turn — the turn's
+   * first thinking step adopts it (see `onThinking`).
+   */
+  function foldInterim(
+    conv: IBridleConversation,
+    bubble: { id: string; text: string; ts: number },
+  ) {
+    const key = conv.key;
+    if (!thinking.value[key]) thinking.value[key] = [];
+    const blocks = thinking.value[key];
+    let block = trailingBlock(messagesFor(key), blocks);
+    if (block) {
+      block.state = BridleThinkingBlockStates.Thinking;
+    } else {
+      block = {
+        turnId: INTERIM_TURN,
+        seg: 0,
+        steps: [],
+        state: BridleThinkingBlockStates.Thinking,
+        ts: bubble.ts,
+        seq: takeSeq(key),
+      };
+      blocks.push(block);
+    }
+    block.steps.push(interimStep(bubble));
+    // The agent is still working — keep the shimmer alive and the watchdog fed.
+    pending.value[key] = true;
+    armWatchdog(conv);
+  }
+
   /** Terminal paths (watchdog, hub rejection, the channel closing): seal
    *  segments AND close their turns so a straggler step cannot resurrect a
    *  zombie segment. A socket that merely dropped is NOT one of them. */
@@ -984,6 +1036,19 @@ export const useBridleStore = defineStore('bridle', () => {
     // New step: continue the trailing open segment, or open a fresh one
     // below the newest message (segments seal when content lands).
     let block = turnBlocks[turnBlocks.length - 1];
+    if (!block || block.state === BridleThinkingBlockStates.Done) {
+      // Narration folded in before any step named the turn (CLEAN-189): that
+      // block is this turn's — the steps continue in it.
+      const orphan = trailingBlock(messagesFor(key), blocks);
+      if (
+        orphan &&
+        orphan.turnId === INTERIM_TURN &&
+        orphan.state === BridleThinkingBlockStates.Thinking
+      ) {
+        orphan.turnId = e.turnId;
+        block = orphan;
+      }
+    }
     if (!block || block.state === BridleThinkingBlockStates.Done) {
       // Linear conversation: a new turn's first step closes other turns.
       for (const b of blocks) {
@@ -1029,6 +1094,25 @@ export const useBridleStore = defineStore('bridle', () => {
     const index = reply.messageId
       ? list.findIndex((m) => m.id === reply.messageId)
       : -1;
+    if (done && reply.interim) {
+      // Narration before a tool call (CLEAN-189): not a reply. The bubble
+      // leaves the flow and its text joins the thinking timeline.
+      const shown = index !== -1 ? list[index] : undefined;
+      if (shown) {
+        list.splice(index, 1);
+        persist(conv);
+      } else if (!reply.text.trim() || isTranscriptContent(key, reply.ts)) {
+        return;
+      }
+      foldInterim(conv, {
+        id: reply.messageId || `a-${Date.now()}`,
+        // The final frame's text is the checked one; the streamed bubble only
+        // stands in when the frame carries none.
+        text: reply.text || (shown?.text ?? ''),
+        ts: reply.ts ?? Date.now(),
+      });
+      return;
+    }
     if (index !== -1) {
       const current = list[index];
       list[index] = { ...current, text: reply.text, streaming: !done };

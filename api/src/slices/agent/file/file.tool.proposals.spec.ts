@@ -441,6 +441,158 @@ describe('import_agent_files', () => {
   });
 });
 
+describe('import_agent_files — selected files (CLEAN-192)', () => {
+  const workspace = [
+    { path: 'SOUL.md', size: 10, etag: 'aaa' },
+    { path: 'skills/a/SKILL.md', size: 20, etag: 'bbb' },
+    { path: 'skills/b/SKILL.md', size: 30, etag: 'ccc' },
+  ];
+  const plain = (id: string, name: string, body = 'new') => ({
+    id,
+    name,
+    mimeType: 'text/markdown',
+    size: body.length,
+    body: Buffer.from(body),
+  });
+  function filesHarness() {
+    const h = harness();
+    (h.files as unknown as Record<string, jest.Mock>).listWithEtags = jest
+      .fn()
+      .mockResolvedValue(workspace);
+    return h;
+  }
+
+  it('routes a plain attachment to the files path and proposes a merge set without writing', async () => {
+    const h = filesHarness();
+    h.attachments.fetch.mockResolvedValue(plain('att-2', 'SOUL.md'));
+    const res = parse(
+      await h.tool.importAgentFiles(
+        { agentId: 'agent-a', attachmentId: 'att-2' },
+        undefined,
+        operator(),
+      ),
+    );
+    expect(h.files.putStage).toHaveBeenCalledWith(
+      'agent-a',
+      expect.any(String),
+      expect.any(Buffer),
+      expect.objectContaining({
+        kind: 'files',
+        expected: { 'SOUL.md': 'aaa' },
+      }),
+    );
+    expect(h.archive.plan).toHaveBeenCalledWith(
+      'agent-a',
+      expect.arrayContaining([expect.objectContaining({ path: 'SOUL.md' })]),
+      { mode: 'merge', includeSessions: false },
+      expect.objectContaining({ wrapperStripped: null }),
+    );
+    expect(h.proposals.proposeImport).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'merge', includeSessions: false }),
+    );
+    expect(res.status).toBe('pending');
+    expect(res.targets).toEqual(['SOUL.md']);
+    expect(
+      (h.files as unknown as Record<string, unknown>).putObjectRaw,
+    ).toBeUndefined();
+  });
+
+  it('refuses two attachments with the same name before staging', async () => {
+    const h = filesHarness();
+    h.attachments.fetch
+      .mockResolvedValueOnce(plain('a1', 'SKILL.md'))
+      .mockResolvedValueOnce(plain('a2', 'SKILL.md'));
+    const res = await h.tool.importAgentFiles(
+      { agentId: 'agent-a', attachmentIds: ['a1', 'a2'] },
+      undefined,
+      operator(),
+    );
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain('duplicate name');
+    expect(h.files.putStage).not.toHaveBeenCalled();
+  });
+
+  it('asks instead of guessing when a name is ambiguous, and proceeds with targets', async () => {
+    const h = filesHarness();
+    h.attachments.fetch.mockResolvedValue(plain('a1', 'SKILL.md'));
+    const ask = parse(
+      await h.tool.importAgentFiles(
+        { agentId: 'agent-a', attachmentIds: ['a1'], targetFolder: 'docs' },
+        undefined,
+        operator(),
+      ),
+    );
+    expect(ask.status).toBe('needs_choice');
+    expect(ask.needsChoice).toEqual([
+      {
+        name: 'SKILL.md',
+        candidates: ['skills/a/SKILL.md', 'skills/b/SKILL.md'],
+        addAsNew: 'docs/SKILL.md',
+      },
+    ]);
+    expect(h.proposals.proposeImport).not.toHaveBeenCalled();
+    expect(h.files.putStage).not.toHaveBeenCalled();
+
+    const bad = await h.tool.importAgentFiles(
+      {
+        agentId: 'agent-a',
+        attachmentIds: ['a1'],
+        targets: [{ name: 'SKILL.md', path: 'skills/other/SKILL.md' }],
+      },
+      undefined,
+      operator(),
+    );
+    expect(bad.isError).toBe(true);
+    expect(textOf(bad)).toContain('cannot go to');
+
+    const good = parse(
+      await h.tool.importAgentFiles(
+        {
+          agentId: 'agent-a',
+          attachmentIds: ['a1'],
+          targets: [{ name: 'SKILL.md', path: 'skills/b/SKILL.md' }],
+        },
+        undefined,
+        operator(),
+      ),
+    );
+    expect(good.status).toBe('pending');
+    expect(good.targets).toEqual(['skills/b/SKILL.md']);
+  });
+
+  it('refuses replace on the selected-files path', async () => {
+    const h = filesHarness();
+    h.attachments.fetch.mockResolvedValue(plain('a1', 'SOUL.md'));
+    const res = await h.tool.importAgentFiles(
+      { agentId: 'agent-a', attachmentIds: ['a1'], mode: 'replace' },
+      undefined,
+      operator(),
+    );
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain('never remove');
+    expect(h.files.putStage).not.toHaveBeenCalled();
+  });
+
+  it('still treats a zip attachment as an archive', async () => {
+    const h = filesHarness();
+    const res = parse(
+      await h.tool.importAgentFiles(
+        { agentId: 'agent-a', attachmentId: 'att-1' },
+        undefined,
+        operator(),
+      ),
+    );
+    expect(res.status).toBe('pending');
+    expect(h.files.putStage).toHaveBeenCalledWith(
+      'agent-a',
+      expect.any(String),
+      expect.any(Buffer),
+      expect.objectContaining({ source: 'attachment' }),
+    );
+    expect(h.files.putStage.mock.calls[0][3].kind).toBeUndefined();
+  });
+});
+
 describe('isPrivateAddress', () => {
   it('flags loopback, private and link-local ranges', () => {
     for (const ip of [

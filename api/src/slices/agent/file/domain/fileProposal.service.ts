@@ -332,8 +332,15 @@ export class FileProposalService {
         reason: 'The staged archive expired — ask the agent to import it again',
       });
     }
-    const { entries, wrapperStripped } = await this.archive.validate(stage.zip);
-    const mode = row.mode ?? 'merge';
+    // A files stage (CLEAN-192) holds paths the person chose: no wrapper
+    // stripping, merge only, and every row guarded by the ETag it was
+    // previewed against — the same rules the Files-tab dialog gets.
+    const filesStage = stage.meta.kind === 'files';
+    const { entries, wrapperStripped } = await this.archive.validate(
+      stage.zip,
+      { stripWrapper: !filesStage },
+    );
+    const mode = filesStage ? 'merge' : (row.mode ?? 'merge');
     const plan = await this.archive.plan(
       row.agentId,
       entries,
@@ -344,7 +351,12 @@ export class FileProposalService {
       throw new ProposalNeedsRemoveConfirmError(row, plan.counts.remove);
     }
 
-    const result = await this.archive.apply(row.agentId, entries, plan);
+    const result = await this.archive.apply(
+      row.agentId,
+      entries,
+      plan,
+      filesStage ? stage.meta.expected : undefined,
+    );
     result.restartRequired = await this.isRunning(row.agentId);
     await this.files.deleteStage(row.agentId, importId).catch(() => undefined);
     return this.settle(row.id, 'applied', {

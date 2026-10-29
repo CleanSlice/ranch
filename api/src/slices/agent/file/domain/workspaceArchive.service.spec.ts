@@ -356,4 +356,77 @@ describe('WorkspaceArchiveService.apply', () => {
     expect(deletes).toEqual([]);
     expect(result.written).toBe(0);
   });
+
+  // ── CLEAN-192: files stage guard ───────────────────────────────
+
+  it('refuses a row whose ETag moved since the preview and writes the rest', async () => {
+    const { gateway, puts } = fakeGateway(stored);
+    const service = new WorkspaceArchiveService(gateway);
+    const files = [
+      entry('workspace/old.txt', 'newer'),
+      entry('memory/a.md', 'a'),
+    ];
+    const plan = await service.plan('a1', files, {
+      mode: 'merge',
+      includeSessions: false,
+    });
+    const result = await service.apply('a1', files, plan, {
+      'workspace/old.txt': 'someone-else-wrote-this',
+      'memory/a.md': null,
+    });
+    expect(puts).toEqual(['memory/a.md']);
+    expect(result.written).toBe(1);
+    expect(result.failed).toEqual([
+      { path: 'workspace/old.txt', reason: 'changed since previewed' },
+    ]);
+  });
+
+  it('refuses a row planned as new that exists by now', async () => {
+    const { gateway, puts } = fakeGateway(stored);
+    const service = new WorkspaceArchiveService(gateway);
+    const files = [entry('workspace/old.txt', 'newer')];
+    const plan = await service.plan('a1', files, {
+      mode: 'merge',
+      includeSessions: false,
+    });
+    const result = await service.apply('a1', files, plan, {
+      'workspace/old.txt': null,
+    });
+    expect(puts).toEqual([]);
+    expect(result.failed[0].reason).toBe('changed since previewed');
+  });
+
+  it('writes when the guard matches, and ignores paths the guard does not name', async () => {
+    const { gateway, puts } = fakeGateway(stored);
+    const service = new WorkspaceArchiveService(gateway);
+    const files = [
+      entry('workspace/old.txt', 'newer'),
+      entry('memory/a.md', 'a'),
+    ];
+    const plan = await service.plan('a1', files, {
+      mode: 'merge',
+      includeSessions: false,
+    });
+    const result = await service.apply('a1', files, plan, {
+      'workspace/old.txt': md5('old'),
+    });
+    expect(puts.sort()).toEqual(['memory/a.md', 'workspace/old.txt']);
+    expect(result.failed).toEqual([]);
+  });
+});
+
+describe('WorkspaceArchiveService.validate without wrapper stripping (CLEAN-192)', () => {
+  const service = new WorkspaceArchiveService(fakeGateway().gateway);
+
+  it('keeps a shared custom folder when told not to strip', async () => {
+    const zip = await zipOf({ 'notes/a.md': 'a', 'notes/b.md': 'b' });
+    const stripped = await service.validate(zip);
+    expect(stripped.wrapperStripped).toBe('notes');
+    const kept = await service.validate(zip, { stripWrapper: false });
+    expect(kept.wrapperStripped).toBeNull();
+    expect(kept.entries.map((e) => e.path).sort()).toEqual([
+      'notes/a.md',
+      'notes/b.md',
+    ]);
+  });
 });

@@ -4,6 +4,8 @@ export * from './file.types';
 export * from './fileKind';
 export * from './fileProposal.types';
 export * from './import.types';
+export * from './importPath';
+export * from './selectedFiles';
 export * from './jsonCheck';
 export * from './workspaceArchive.service';
 export * from './openLink.service';

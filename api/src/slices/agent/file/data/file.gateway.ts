@@ -940,6 +940,16 @@ export class S3FileGateway extends IFileGateway {
     return `${STAGE_PREFIX}${agentId}/${importId}.zip`;
   }
 
+  /**
+   * Sidecar for a files stage (CLEAN-192): the per-path ETags the plan was
+   * built against. S3 user metadata is capped at 2 KB, which twenty paths
+   * with ETags can exceed, so they live in a small object next to the zip.
+   * Same prefix, so the TTL sweep removes both.
+   */
+  private stageSidecarKey(agentId: string, importId: string): string {
+    return `${STAGE_PREFIX}${agentId}/${importId}.json`;
+  }
+
   async putStage(
     agentId: string,
     importId: string,
@@ -947,6 +957,7 @@ export class S3FileGateway extends IFileGateway {
     meta: IImportStageMeta,
   ): Promise<void> {
     const { client, bucket } = await this.connect();
+    const kind = meta.kind ?? 'archive';
     await client.send(
       new PutObjectCommand({
         Bucket: bucket,
@@ -959,9 +970,20 @@ export class S3FileGateway extends IFileGateway {
           size: String(meta.size),
           entries: String(meta.entries),
           createdat: meta.createdAt.toISOString(),
+          kind,
         },
       }),
     );
+    if (meta.expected) {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: this.stageSidecarKey(agentId, importId),
+          Body: JSON.stringify({ expected: meta.expected }),
+          ContentType: 'application/json',
+        }),
+      );
+    }
   }
 
   async getStage(
@@ -986,6 +1008,11 @@ export class S3FileGateway extends IFileGateway {
     );
     const m = res.Metadata ?? {};
     const source = m.source;
+    const kind: IImportStageMeta['kind'] = m.kind === 'files' ? 'files' : 'archive';
+    let expected: IImportStageMeta['expected'];
+    if (kind === 'files') {
+      expected = await this.readStageSidecar(agentId, importId);
+    }
     return {
       zip,
       meta: {
@@ -996,22 +1023,48 @@ export class S3FileGateway extends IFileGateway {
         createdAt: m.createdat
           ? new Date(m.createdat)
           : (res.LastModified ?? new Date(0)),
+        kind,
+        ...(expected ? { expected } : {}),
       },
     };
   }
 
-  async deleteStage(agentId: string, importId: string): Promise<void> {
+  private async readStageSidecar(
+    agentId: string,
+    importId: string,
+  ): Promise<Record<string, string | null> | undefined> {
     const { client, bucket } = await this.connect();
     try {
-      await client.send(
-        new DeleteObjectCommand({
+      const res = await client.send(
+        new GetObjectCommand({
           Bucket: bucket,
-          Key: this.stageKey(agentId, importId),
+          Key: this.stageSidecarKey(agentId, importId),
         }),
       );
+      const text = (await res.Body?.transformToString()) ?? '';
+      const parsed = JSON.parse(text) as { expected?: unknown };
+      if (parsed.expected && typeof parsed.expected === 'object') {
+        return parsed.expected as Record<string, string | null>;
+      }
+      return undefined;
     } catch (err) {
-      if (this.isNotFound(err)) return;
+      if (this.isNotFound(err)) return undefined;
       throw err;
+    }
+  }
+
+  async deleteStage(agentId: string, importId: string): Promise<void> {
+    const { client, bucket } = await this.connect();
+    for (const key of [
+      this.stageKey(agentId, importId),
+      this.stageSidecarKey(agentId, importId),
+    ]) {
+      try {
+        await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+      } catch (err) {
+        if (this.isNotFound(err)) continue;
+        throw err;
+      }
     }
   }
 

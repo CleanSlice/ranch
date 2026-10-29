@@ -245,7 +245,7 @@ describe('FileImportController — selected files', () => {
     );
     expect(plan.mode).toBe('merge');
     expect(plan.counts.add).toBe(2);
-    const putStage = files.putStage as unknown as jest.Mock;
+    const putStage = (files as unknown as Record<string, jest.Mock>).putStage;
     expect(putStage).toHaveBeenCalledTimes(1);
     const [agentId, importId, zip, meta] = putStage.mock.calls[0] as [
       string,
@@ -306,13 +306,12 @@ describe('FileImportController — selected files', () => {
     await expect(
       controller.plan('a1', 'imp', { mode: 'replace' }),
     ).rejects.toThrow(/never remove/);
-    const validate = archives.validate as unknown as jest.Mock;
-    expect(validate).toHaveBeenLastCalledWith(expect.anything(), {
+    const mocks = archives as unknown as Record<string, jest.Mock>;
+    expect(mocks.validate).toHaveBeenLastCalledWith(expect.anything(), {
       stripWrapper: false,
     });
     await controller.apply('a1', 'imp', { mode: 'merge' }, operator());
-    const apply = archives.apply as unknown as jest.Mock;
-    expect(apply.mock.calls[0][3]).toEqual({
+    expect(mocks.apply.mock.calls[0][3]).toEqual({
       'SOUL.md': 'aaa',
       'notes.md': null,
     });
@@ -322,11 +321,10 @@ describe('FileImportController — selected files', () => {
     const { controller, archives, release } = buildFiles({ kind: 'archive' });
     release();
     await controller.apply('a1', 'imp', { mode: 'merge' }, operator());
-    const validate = archives.validate as unknown as jest.Mock;
-    expect(validate).toHaveBeenLastCalledWith(expect.anything(), {
+    const mocks = archives as unknown as Record<string, jest.Mock>;
+    expect(mocks.validate).toHaveBeenLastCalledWith(expect.anything(), {
       stripWrapper: true,
     });
-    const apply = archives.apply as unknown as jest.Mock;
-    expect(apply.mock.calls[0][3]).toBeUndefined();
+    expect(mocks.apply.mock.calls[0][3]).toBeUndefined();
   });
 });

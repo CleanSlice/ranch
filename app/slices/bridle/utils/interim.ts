@@ -26,35 +26,26 @@ export const INTERIM_TURN = 'interim';
 /** Prefix of the `turnId` of a block rebuilt from replayed bubbles. */
 const REPLAY_TURN_PREFIX = 'replay:';
 
-/** How much of the narration the step row shows; the rest opens on click. */
-export const INTERIM_LABEL_MAX = 140;
-
 /** A block the history load built — it is rebuilt on every load. */
 export function isReplayBlock(block: { turnId: string }): boolean {
   return block.turnId.startsWith(REPLAY_TURN_PREFIX);
 }
 
 /**
- * One narration bubble as a step of the timeline. The row shows the first
- * line, cut at INTERIM_LABEL_MAX; when that is not the whole text, the whole
- * text opens under the row like any step's detail. Server text, shown as
- * received — never translated or reformatted (docs/i18n.md).
+ * One narration bubble as a step of the timeline: the whole text is the row,
+ * line breaks folded into spaces, and nothing opens under it. A cut row with
+ * the full text as its detail showed the same sentence twice (CLEAN-196).
+ * Server text, shown as received — never translated or reformatted
+ * (docs/i18n.md).
  */
 export function interimStep(bubble: {
   id: string;
   text: string;
 }): IBridleThinkingStep {
-  const text = bubble.text.trim();
-  const firstLine = (text.split('\n')[0] ?? '').trim();
-  const label =
-    firstLine.length > INTERIM_LABEL_MAX
-      ? `${firstLine.slice(0, INTERIM_LABEL_MAX - 1).trimEnd()}…`
-      : firstLine;
   return {
     id: bubble.id,
-    label,
+    label: bubble.text.trim().replace(/\s*\n\s*/g, ' '),
     state: BridleThinkingStepStates.Done,
-    ...(label === text ? {} : { detail: text }),
   };
 }
 

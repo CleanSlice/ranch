@@ -7,7 +7,6 @@ import {
   type IBridleMessage,
 } from '../domain/bridle.types';
 import {
-  INTERIM_LABEL_MAX,
   foldReplayedInterim,
   interimStep,
   isReplayBlock,
@@ -41,21 +40,30 @@ describe('interimStep — a narration bubble as a timeline step', () => {
     });
   });
 
-  test('a longer narration shows its first line and opens to the whole text', () => {
-    const text = 'Two things to look up.\n\nFirst the trims, then the engines.';
-    const step = interimStep({ id: 'w2', text });
+  test('a multi-line narration is one row with the lines joined, nothing to open', () => {
+    const step = interimStep({
+      id: 'w2',
+      text: 'Two things to look up.\n\nFirst the trims, then the engines.',
+    });
 
-    expect(step.label).toBe('Two things to look up.');
-    expect(step.detail).toBe(text);
+    expect(step).toEqual({
+      id: 'w2',
+      label: 'Two things to look up. First the trims, then the engines.',
+      state: BridleThinkingStepStates.Done,
+    });
   });
 
-  test('a long first line is cut for the row; the whole text stays in the detail', () => {
-    const text = 'x'.repeat(INTERIM_LABEL_MAX + 20);
+  test('a long narration is shown whole, never cut and never repeated as a detail (CLEAN-196)', () => {
+    // Seen 2026-10-29: a 160-character sentence showed as a cut row with a
+    // chevron and the same sentence again underneath.
+    const text = `I already searched for this specific figure a moment ago, and the answer hasn't changed — but let me do one more focused pass on the fuel-tank line to be sure.`;
     const step = interimStep({ id: 'w3', text });
 
-    expect(step.label.length).toBe(INTERIM_LABEL_MAX);
-    expect(step.label.endsWith('…')).toBe(true);
-    expect(step.detail).toBe(text);
+    expect(step).toEqual({
+      id: 'w3',
+      label: text,
+      state: BridleThinkingStepStates.Done,
+    });
   });
 });
 

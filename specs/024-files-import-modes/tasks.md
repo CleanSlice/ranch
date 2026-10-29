@@ -123,7 +123,7 @@
 - [X] T033 Run every gate and keep the output for the PR: `cd api && NODE_OPTIONS=--experimental-vm-modules npx jest src/slices/agent/file && bun run build`; `cd admin && bun test slices && npx nuxt typecheck` (revert SDK noise); `cd app && bun run build:api` clean
 - [ ] T034 Run quickstart Scenarios 1–4 on a local stack (see the memory notes on the local DB run and the single API process) and fix what fails
 - [X] T035 Re-read `specs/024-files-import-modes/spec.md` FR-001…FR-014 against the code and tick each one in a short table in the PR description; confirm no literal limit lives outside `api/src/slices/agent/file/domain/file.limits.ts` (grep for `20` and `25 * MB` in `admin/slices/agent/file`)
-- [ ] T036 Commit in logical groups with Conventional Commits + ticket (`feat(api): selected-files import rule, routes and tool (CLEAN-192)`, `feat(admin): import dialog modes (CLEAN-192)`), push over HTTPS with the `GIT_CONFIG_GLOBAL` recipe from the memory notes, open the PR into `main` with: the twin-console sentence ("Files tab is admin-only; `app/slices/agent` has no `file`, checked"), the commands run, the FR table; put the PR URL on CLEAN-192 and move it to **In Testing** (transition 51)
+- [X] T036 Commit in logical groups with Conventional Commits + ticket (`feat(api): selected-files import rule, routes and tool (CLEAN-192)`, `feat(admin): import dialog modes (CLEAN-192)`), push over HTTPS with the `GIT_CONFIG_GLOBAL` recipe from the memory notes, open the PR into `main` with: the twin-console sentence ("Files tab is admin-only; `app/slices/agent` has no `file`, checked"), the commands run, the FR table; put the PR URL on CLEAN-192 and move it to **In Testing** (transition 51)
 
 ---
 

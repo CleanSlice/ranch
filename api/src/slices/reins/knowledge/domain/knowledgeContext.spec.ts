@@ -8,7 +8,9 @@ import {
   fitContextToBudget,
   FIRST_PASSAGE_MAX_CHARS,
   IContextBlock,
+  nameTokens,
   PASSAGE_MAX_CHARS,
+  rankBySourceAffinity,
   TOOL_RESULT_BUDGET_CHARS,
 } from './knowledgeContext';
 
@@ -50,6 +52,106 @@ const BEFORE = /^…\[\+\d+ chars before\]\n/;
 const AFTER = /\n…\[\+\d+ chars after\]$/;
 const bodyOf = (text: string): string =>
   text.replace(BEFORE, '').replace(AFTER, '');
+
+// CLEAN-194: the passage whose source spells the model and the year the
+// person asked about goes first, so the budget keeps it. Seen on mai-dev,
+// 2026-10-29: "2026 Mazda3 fuel tank" came back led by a 2023 order guide
+// and a test-results file, and the 26MY spec deck chunk was among the ones
+// dropped at the budget.
+describe('rankBySourceAffinity', () => {
+  const named = (sources: string[]) =>
+    sources.map((source, i) => ({ source, source_id: `s${i}`, text: `t${i}` }));
+  const order = (sources: string[], query: string) =>
+    rankBySourceAffinity(named(sources), query).map((p) => p.source);
+
+  test('the source naming the model and the year outranks older guides and test files', () => {
+    expect(
+      order(
+        [
+          'Genius_Test_Results_RAG.md',
+          '2023 Mazda3 Order Guide 2022-10-20.md',
+          '2021 Mazda6 Order Guide 2020-11-16 (1).md',
+          '26my-mazda3-spec-deck-final-effective-06122026 - Specifications.csv',
+        ],
+        'What is the fuel tank capacity of the 2026 Mazda3?',
+      ),
+    ).toEqual([
+      '26my-mazda3-spec-deck-final-effective-06122026 - Specifications.csv',
+      '2023 Mazda3 Order Guide 2022-10-20.md',
+      'Genius_Test_Results_RAG.md',
+      '2021 Mazda6 Order Guide 2020-11-16 (1).md',
+    ]);
+  });
+
+  test('a year is matched in both spellings, and CX-30 as file names spell it', () => {
+    expect(nameTokens('26MY CX-30 trims', true)).toEqual(
+      new Set(['26my', '2026', 'cx30', 'trims']),
+    );
+    expect(
+      order(
+        ['2023 CX-30 Order Guide.md', '26my-cx-30-spec-deck-final.md'],
+        'What trims does the 2026 Mazda CX-30 come in?',
+      ),
+    ).toEqual(['26my-cx-30-spec-deck-final.md', '2023 CX-30 Order Guide.md']);
+    expect(
+      order(
+        ['2026_CX30_sch_maint.md', 'cx-30-26my-order-form.md'],
+        '26MY CX-30 order form',
+      ),
+    ).toEqual(['cx-30-26my-order-form.md', '2026_CX30_sch_maint.md']);
+  });
+
+  test('a question that names no model or year keeps the retrieval order', () => {
+    const sources = ['b-second.md', 'a-first.md', 'c-third.md'];
+    expect(order(sources, 'How does the warranty work?')).toEqual(sources);
+  });
+
+  test('ties keep the retrieval order', () => {
+    expect(
+      order(
+        ['2023 Mazda3 Order Guide.md', '2022 Mazda3 Order Guide.md'],
+        'Mazda3 wheels',
+      ),
+    ).toEqual(['2023 Mazda3 Order Guide.md', '2022 Mazda3 Order Guide.md']);
+  });
+});
+
+describe('fitContextToBudget ranks before it fits (CLEAN-194)', () => {
+  test('the best-ranked source travels whole even when retrieval put it last', () => {
+    const b: IContextBlock = {
+      ...block([chunk(1), chunk(2), chunk(3)]),
+      passages: [
+        {
+          source: 'Genius_Test_Results_RAG.md',
+          source_id: 's1',
+          text: chunk(1),
+        },
+        {
+          source: '2023 Mazda3 Order Guide 2022-10-20.md',
+          source_id: 's2',
+          text: chunk(2),
+        },
+        {
+          source:
+            '26my-mazda3-spec-deck-final-effective-06122026 - Specifications.csv',
+          source_id: 's3',
+          text: chunk(3),
+        },
+      ],
+    };
+    const { block: out } = fitContextToBudget(
+      b,
+      'What is the fuel tank capacity of the 2026 Mazda3?',
+      TOOL_RESULT_BUDGET_CHARS,
+    );
+    expect(out.passages[0].source).toBe(
+      '26my-mazda3-spec-deck-final-effective-06122026 - Specifications.csv',
+    );
+    expect(out.passages[0].text).toBe(chunk(3));
+    expect(out.passages[0].cut).toBeUndefined();
+    expect(out.sources[0]).toMatchObject({ kind: 'knowledge', id: 's3' });
+  });
+});
 
 describe('excerptAround', () => {
   test('returns a short text whole, unmarked', () => {

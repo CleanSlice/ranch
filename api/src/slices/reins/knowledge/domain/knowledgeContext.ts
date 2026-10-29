@@ -130,6 +130,71 @@ export function queryTerms(query: string): string[] {
   return [...seen];
 }
 
+/**
+ * A model year is spelled two ways in document names — "26my-mazda3-spec-deck"
+ * where the person says "2026 Mazda3" — so a year token in the question
+ * counts in both spellings. Only the question side is expanded: expanding
+ * both would count one match twice.
+ */
+function yearSpellings(token: string): string[] {
+  const full = /^(?:19|20)(\d{2})$/.exec(token);
+  if (full) return [token, `${full[1]}my`];
+  const my = /^(\d{2})my$/.exec(token);
+  if (my) return [token, `20${my[1]}`];
+  return [token];
+}
+
+/**
+ * The tokens of a text as document names spell them: lower-cased, a hyphen
+ * between a letter and a digit dropped ("CX-30" → "cx30", "MX-5" → "mx5"),
+ * split on everything else, three or more characters, no stopwords.
+ */
+export function nameTokens(text: string, expandYears = false): Set<string> {
+  const joined = text.toLowerCase().replace(/(\p{L})-(\p{N})/gu, '$1$2');
+  const out = new Set<string>();
+  for (const raw of joined.split(/[^\p{L}\p{N}]+/u)) {
+    if (raw.length < 3 || STOPWORDS.has(raw)) continue;
+    for (const t of expandYears ? yearSpellings(raw) : [raw]) out.add(t);
+  }
+  return out;
+}
+
+/**
+ * How many of the question's tokens the source name carries (CLEAN-194).
+ * On the reference base a retrieval for "2026 Mazda3 fuel tank" came back
+ * led by a 2023 order guide and a test-results file while the
+ * "26my-mazda3-spec-deck … Specifications.csv" chunk sat among the passages
+ * the budget dropped. The name that spells the model and the year the
+ * person asked about goes first; nothing is excluded, and a question that
+ * names no model or year leaves the retrieval order as it was.
+ */
+export function sourceAffinity(
+  source: string,
+  questionTokens: Set<string>,
+): number {
+  let score = 0;
+  for (const token of nameTokens(source)) {
+    if (questionTokens.has(token)) score += 1;
+  }
+  return score;
+}
+
+/** Passages by descending source affinity; retrieval order within a tie. */
+export function rankBySourceAffinity<T extends { source: string }>(
+  passages: T[],
+  query: string,
+): T[] {
+  const question = nameTokens(query, true);
+  return passages
+    .map((passage, index) => ({
+      passage,
+      index,
+      score: sourceAffinity(passage.source, question),
+    }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.passage);
+}
+
 /** How far a window edge may move to land on a line boundary. */
 const SNAP_CHARS = 160;
 const beforeMark = (n: number): string => `…[+${n} chars before]\n`;
@@ -207,11 +272,11 @@ const sizeOf = (value: unknown): number => JSON.stringify(value).length;
 
 /**
  * Fits one base's block into `budgetChars` of serialized JSON (the string
- * the runtime measures). Passages are deduplicated by full text first; the
- * best match travels whole up to FIRST_PASSAGE_MAX_CHARS, every further one
- * as an excerpt around the query terms; they are added in the order received
- * until the next would not fit, and the rest are counted, not silently
- * dropped. Facts come only when every passage fit — "yield to passages when
+ * the runtime measures). Passages are deduplicated by full text first and
+ * ranked by source affinity (CLEAN-194); the best-ranked travels whole up to
+ * FIRST_PASSAGE_MAX_CHARS, every further one as an excerpt around the query
+ * terms; they are added in that order until the next would not fit, and the
+ * rest are counted, not silently dropped. Facts come only when every passage fit — "yield to passages when
  * the budget is tight" — and only while they fit themselves.
  */
 export function fitContextToBudget(
@@ -222,8 +287,11 @@ export function fitContextToBudget(
   const terms = queryTerms(query);
 
   const seen = new Set<string>();
-  const unique = block.passages.filter((p) =>
-    seen.has(p.text) ? false : (seen.add(p.text), true),
+  const unique = rankBySourceAffinity(
+    block.passages.filter((p) =>
+      seen.has(p.text) ? false : (seen.add(p.text), true),
+    ),
+    query,
   );
 
   // `sources` mirror the passages the agent actually receives (CLEAN-138:

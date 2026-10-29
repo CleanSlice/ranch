@@ -340,6 +340,155 @@ the 2026 CX-30 documents…") rendered twice — once as its own bubble, once
 glued to the final answer — which is the chat-rendering hypothesis from the
 brief and belongs to the `chat`/`bridle` twins, not here.
 
+Fourth example, documented by a colleague the same day: asked for 2026
+CX-30 trims the agent said it lacked complete information; asked which
+documents it has, it listed them (the 26MY CX-30 Spec Deck among them);
+asked whether it had looked there, it admitted it "ran queries but leaned
+on the Price Bulletin … I hadn't queried the 26MY CX-30 Spec Deck directly
+before saying the detail wasn't there — so I declared a gap that didn't
+exist", then proposed at length that someone edit its own SOUL and skills
+("retry before you hedge", "query the owning document by name before any
+gap statement", a paddock scenario). Two layers in that: the retrieval
+summaries saying "not fully detailed" that it took as authoritative gaps —
+gone on the passages path, where there is no summary to take — and the
+agent's own process rules, which live in its template on the Mazda
+installation, not in this repository. The description's "one more lookup
+in spec-sheet terms before concluding anything" is this ticket's share of
+the second layer; whether a prompt/skill change and a paddock regression
+scenario are still needed is decided after the "after" run (quickstart Q6
+is this exact case).
+
+### F15. "Before" measurement on `mai-dev` (T003, run 2026-10-28, old path still deployed)
+
+Agent `agent-014db660-3744-42c8-a3c1-4d5fa17743d5`, bound to the dev base
+"Mazda" (750 files + 1 URL, 216.2 MB). Driven over
+`POST /api/agent/:id/message/sync` as the console user, with
+`DELETE /api/agent/:id/transcript?channel=<user>` before every run so each
+is a fresh conversation. The anonymous embed channel is accepted by the API
+but gated by the agent itself ("Access denied. Send this code to the bot
+owner…", 0.1 s) — not usable for this. **Time is question → complete
+reply**; first-token time needs the socket and was not taken. Three runs
+per question; the "after" run must use the same method.
+
+| question | run 1 | run 2 | run 3 | correct | direct (no hedge) |
+|---|---|---|---|---|---|
+| Q1 AFS trims, 2026 Mazda3 hatchback | 24.5 s | 6.6 s | 5.0 s | 3/3 | **2/3** |
+| Q2 curb weight, 2026 Mazda3 hatchback | 30.9 s | 4.5 s | 4.4 s | 3/3 | 3/3 |
+| Q3 fuel tank, 2026 Mazda3 | 10.2 s | 2.4 s | 2.2 s | 3/3 | 3/3 |
+
+Read run 1 as the uncached figure: LightRAG caches its model's answer per
+query, so runs 2 and 3 of the same wording come back in a few seconds with
+near-identical text. Medians (6.6 / 4.5 / 2.4 s) therefore flatter the old
+path; the honest "before" for a first-time question is 10–31 s.
+
+**The production symptom reproduced, Q1 run 1** (24.5 s): "The knowledge
+base returned information about the 2026 Mazda3's Adaptive Front-Lighting
+System (AFS) availability, but I should note that the source documents
+don't show the complete trim-level breakdown … I cannot confirm the
+specific trim levels (2.5 S Premium, 2.5 Turbo Premium Plus, etc.) that you
+listed, since those details aren't present in the knowledge base results.
+… you'd want to verify against the official 26MY spec sheet or order form
+directly." The trims it "cannot confirm" are the right answer; it names
+them while refusing to stand behind them. Runs 2 and 3 answered directly:
+"standard on the top trims: 2.5 S Premium (FWD), 2.5 Turbo Premium Plus
+(AWD); not available on 2.5 S, Select Sport, Preferred, Carbon Edition."
+
+**Q2 run 1** (30.9 s) answered the three non-turbo weights correctly but
+said the turbo row "did not come back in the material I can read right
+now" and sent the visitor to the spec deck for it — the deck's row reads
+`FWD 3,117 / AWD 3,274 / Turbo 3,417`, i.e. the figure sat in the same
+table. Its reply also begins with two of the agent's intermediate
+sentences glued to the answer ("Let me search specifically for the 26MY
+Mazda3 spec deck… Let me pull the complete Turbo weight row…") — the same
+rendering symptom as in F14, now visible in the sync route's text. The
+sheet-free questions do reach the deck through the old path (Q2/Q3
+3/3 correct); what the old path adds is the hesitation and the
+first-time latency.
+
+### F16. "After" measurement on `mai-dev` (T035–T037, run 2026-10-28 17:06–17:11 UTC)
+
+Same agent, same base, same method as F15. Deployed: fork `dev` merge of
+`catch-up-upstream-18` at 16:44 UTC → image `api-20261028-164624` → pod
+16:56 UTC; the agent pod was restarted at 17:05 UTC so it re-read the tool
+description (`tools/list` in the API log), since the runtime reads it once
+at boot.
+
+| question | runs (s) | correct | direct |
+|---|---|---|---|
+| Q1 AFS trims | **4.2** / 3.3 / 3.2 / 3.3 / 3.2 | 5/5 | **5/5** |
+| Q2 curb weight | 4.4 / 3.9 / 4.1 | 3/3 | 3/3 (turbo row still called missing, see below) |
+| Q3 fuel tank | 2.4 / 2.3 / 2.2 | 3/3 | 3/3 |
+| Q4 ground clearance | 3.3 | 1/1 | sync reply was an intermediate sentence (below) |
+| Q5 manual-transmission trims | 21.9 (contaminated), re-run 6.1 | **0/1 — wrong** | confident |
+| Q6 CX-30 2026 trims | 13.8 (intermediate hedge), re-run 6.0 | 1/1 | 1/1 |
+
+**The lookups themselves** (API log, `query_knowledge knowledge=… via=…`):
+six calls between 17:06:57 and 17:07:25, every one `via=query_data`,
+`chunks=12`, `kept` 3–6, `omitted` 6–9, `cut` 2–4, serialized 9 736–11 985
+characters, **236–345 ms** each. Against the old path's seconds of
+generation per lookup, the retrieval step is now a rounding error in the
+answer time; what remains is the agent's own model.
+
+**Q1, the production case**: first run after the restart — the only one
+that made fresh lookups — answered in 4.2 s, directly: "standard on the
+top two trims: 2.5 S Premium (FWD), 2.5 Turbo Premium Plus (AWD); not
+offered on 2.5 S, Select Sport, Preferred, Carbon Edition". Before: 24.5 s
+and "I cannot confirm the specific trim levels … verify against the
+official 26MY spec sheet" (F15). SC-001's five direct runs hold, with the
+caveat below on how independent runs 2–5 are.
+
+**Two findings about the method, both real and both outside this ticket's
+code:**
+
+1. *The agent's memory survives the transcript reset.* Only six lookups
+   were logged for fourteen questions; runs 2–5 of Q1–Q3 came back in ~3 s
+   with identical text and no `query_knowledge` call; Q4's reply opened
+   with "From an earlier read of the 26MY Mazda3 Spec Deck"; the Q5/Q6
+   re-run made no lookup at all and still produced the full CX-30 list.
+   `DELETE /transcript` clears the conversation, not what the agent has
+   kept in its own memory. So the F15 "warm runs" were this, not only
+   LightRAG's cache, and in both tables only the first run of a question is
+   a measurement of the retrieval path. Independent runs need a fresh agent
+   (or a memory wipe), not a fresh channel.
+2. *`POST /message/sync` returns on the first assistant message.* Q4's
+   reply was "…5.5 inches… Let me confirm the sedan figure before answering
+   both." and Q6's first reply, at 13.8 s, was a hedge ("found passages
+   from the 2023 CX-30 Order Guide and test results … cannot provide a
+   definitive list") — while the log shows two more lookups three seconds
+   apart right after (17:07:22, 17:07:25): the agent did what the
+   description asks, re-queried, and its *final* answer was the full
+   eight-trim CX-30 line-up citing the 26MY CX-30 Spec Deck (seen in the
+   re-run, where it came straight from memory). The sync route handed the
+   caller the intermediate text as "the reply". That is the same defect
+   as the doubled opening sentence in F14/F15 (intermediate assistant text
+   treated as a message), seen from the API side; it also means Q5's 21.9 s
+   run was asked while Q4's turn was still going and inherited its
+   context. Its own ticket, `bridle`.
+
+**The one bad answer, Q5**: confident and wrong — the manual is on the
+"base 2.5 S", it said, citing the PIB's curb-weight label "Hatchback 2.5 S
+FWD MT" and the order form; the deck's trim walk and feature table put the
+SKYACTIV-MT on the **2.5 S Premium** hatchback only (deck lines 685–700;
+feature row `- - - Std - -`). The passages it got were the PIB and order
+form chunks, not the deck's trim walk — the wording gap of F13 again
+("manual transmission" against a deck that says "SKYACTIV-MT"), plus an
+inference from a label. Not a refusal, not a relay of someone else's
+sentence: a retrieval miss the agent reasoned past. Goes to CLEAN-185 as
+the second concrete case, with the Q6 first-attempt hedge as the third.
+
+**Q2's turbo row**: still "isn't in the material I can read for this model
+year" — the PIB's curb-weight table (no turbo) ranks above the deck's
+Chassis row `FWD 3,117 / AWD 3,274 / Turbo 3,417`, and with four passages
+per call the deck's row did not make the cut. Same bucket.
+
+**Net**: the defect in the ticket's title is gone — no sentence written by
+the retrieval model can reach the agent, and on the production question the
+agent answers directly in a fifth of the time. What the agent now shows
+instead is what retrieval actually returned, which on this base is the
+answer sheets and older model-year documents more often than the 26MY
+deck. That is CLEAN-185, and it is now visible rather than disguised as
+"the documents don't say".
+
 ## Decisions
 
 ### D1. Endpoint: `POST /query/data`, falling back to `POST /query` + `only_need_context` on 404

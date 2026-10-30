@@ -127,7 +127,7 @@ what will be written, not only that something will be.
 |---|---|
 | `list_agent_files`, `read_agent_file` | `IFileGateway.list` / `readRange` (same slices as the console) |
 | `write_agent_file`, `create_agent_file` | `FileProposalService.propose` → `apply` (confirm by proposal) |
-| `import_agent_files` | `WorkspaceArchiveService` + `FileProposalService.proposeImport` → `apply`; an archive comes as a chat attachment or an https link — the local file picker stays in the console, as its description says |
+| `import_agent_files` | `WorkspaceArchiveService` + `FileProposalService.proposeImport` → `apply`; an archive comes as a chat attachment or an https link — the local file picker stays in the console, as its description says. Plain attachments (`attachmentIds`, CLEAN-192) go through `resolveSelectedFiles`: matched by exact file name, replaced on a unique match, added to `targetFolder` on none, and an ambiguous name comes back as `needs_choice` for the agent to ask about before anything is staged |
 
 ## Secrets
 

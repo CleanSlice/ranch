@@ -11,7 +11,10 @@ import type {
   IImportApplyOptions,
   IImportApplyOutcome,
   IImportPlan,
+  IImportTarget,
+  IResolveRow,
   ISaveOptions,
+  ImportDialogMode,
   ImportMode,
 } from '#agentFile/domain';
 
@@ -435,6 +438,36 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     return getService().planImport(agentId, importId, mode, includeSessions);
   }
 
+  // ── Selected files (CLEAN-192) ──────────────────────────────────
+
+  /**
+   * Which tab the Import dialog opens on. Not persisted: a reload is a new
+   * console session and starts on the familiar whole-workspace import.
+   */
+  const importMode = ref<ImportDialogMode>('workspace');
+
+  function setImportMode(mode: ImportDialogMode): void {
+    importMode.value = mode;
+  }
+
+  function resolveImportFiles(
+    agentId: string,
+    names: string[],
+    targetFolder: string,
+  ): Promise<{ targetFolder: string; rows: IResolveRow[] }> {
+    return getService().resolveImportFiles(agentId, names, targetFolder);
+  }
+
+  function stageImportFiles(
+    agentId: string,
+    files: File[],
+    targets: IImportTarget[],
+    targetFolder: string,
+    onProgress?: (percent: number) => void,
+  ): Promise<IImportPlan> {
+    return getService().stageImportFiles(agentId, files, targets, targetFolder, onProgress);
+  }
+
   /** Apply a staged archive; on success the list is refetched and a restart is pending. */
   async function applyImport(
     agentId: string,
@@ -520,6 +553,10 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     stageImport,
     planImport,
     applyImport,
+    importMode,
+    setImportMode,
+    resolveImportFiles,
+    stageImportFiles,
     downloadZip,
     isPendingRestart,
     markPendingRestart,

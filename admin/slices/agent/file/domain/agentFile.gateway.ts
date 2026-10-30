@@ -8,8 +8,10 @@ import type {
   IImportApplyOptions,
   IImportApplyOutcome,
   IImportPlan,
+  IImportTarget,
   IOpenLink,
   IProposalApplyOutcome,
+  IResolveRow,
   ISaveOptions,
   ISyncOutcome,
   ImportMode,
@@ -77,6 +79,22 @@ export abstract class IAgentFileGateway {
     importId: string,
     options: IImportApplyOptions,
   ): Promise<IImportApplyOutcome>;
+
+  // ── Selected files (CLEAN-192) ────────────────────────────────
+  /** Match names against the workspace; no upload, nothing written. */
+  abstract resolveImportFiles(
+    agentId: string,
+    names: string[],
+    targetFolder: string,
+  ): Promise<{ targetFolder: string; rows: IResolveRow[] }>;
+  /** Upload the files with their chosen targets; returns the merge plan. */
+  abstract stageImportFiles(
+    agentId: string,
+    files: File[],
+    targets: IImportTarget[],
+    targetFolder: string,
+    onProgress?: (percent: number) => void,
+  ): Promise<IImportPlan>;
 
   // ── Change proposals (CLEAN-112) ──────────────────────────────
   abstract listProposals(

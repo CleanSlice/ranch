@@ -380,6 +380,67 @@ describe('FileProposalService.apply', () => {
 });
 
 describe('FileProposalService import proposals', () => {
+  it('applies a files stage without wrapper stripping, in merge mode, with the ETag guard (CLEAN-192)', async () => {
+    const ctx = build({}, null);
+    const plan = {
+      importId: 'imp2',
+      mode: 'merge' as const,
+      includeSessions: false,
+      wrapperStripped: null,
+      counts: { add: 1, change: 1, unchanged: 0, remove: 0, skip: 0 },
+      totalBytes: 20,
+      entries: [
+        { path: 'notes/a.md', action: 'add' as const, size: 10 },
+        { path: 'notes/b.md', action: 'change' as const, size: 10 },
+      ],
+      more: 0,
+      warnings: [],
+    };
+    const row = await ctx.service.proposeImport({
+      agentId: 'a1',
+      chatAgentId: 'rancher',
+      importId: 'imp2',
+      plan,
+      mode: 'merge',
+      includeSessions: false,
+    });
+    const expected = { 'notes/a.md': null, 'notes/b.md': 'etag-b' };
+    (
+      ctx.service as unknown as { files: { getStage: () => Promise<unknown> } }
+    ).files.getStage = async () => ({
+      zip: Buffer.alloc(0),
+      meta: { agentId: 'a1', kind: 'files', expected },
+    });
+    ctx.archive.validate.mockResolvedValue({
+      entries: [],
+      wrapperStripped: null,
+    });
+    ctx.archive.plan.mockResolvedValue(plan);
+    ctx.archive.apply.mockResolvedValue({
+      importId: 'imp2',
+      mode: 'merge',
+      written: 1,
+      removed: 0,
+      skipped: 0,
+      failed: [{ path: 'notes/b.md', reason: 'changed since previewed' }],
+      restartRequired: false,
+    });
+    const applied = await ctx.service.apply(row.id, {
+      actor: 'u1',
+      via: 'card',
+    });
+    expect(ctx.archive.validate).toHaveBeenCalledWith(expect.anything(), {
+      stripWrapper: false,
+    });
+    expect(ctx.archive.plan.mock.calls[0][2]).toEqual({
+      mode: 'merge',
+      includeSessions: false,
+    });
+    expect(ctx.archive.apply.mock.calls[0][3]).toEqual(expected);
+    expect(applied.status).toBe('applied');
+    expect((applied.result as { failed: unknown[] }).failed).toHaveLength(1);
+  });
+
   it('lists counts and capped rows, never a diff, and needs confirmRemove for replace removals', async () => {
     const ctx = build({}, null);
     const plan = {

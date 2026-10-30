@@ -9,9 +9,11 @@ import type {
   IImportPlanEntry,
   IImportResult,
   IProposalSetSummary,
+  IResolveRow,
   ISyncResult,
   ImportAction,
   ProposalStatus,
+  ResolveMatch,
 } from '../domain/agentFile.types';
 
 function str(value: unknown): string {
@@ -79,6 +81,7 @@ export class AgentFileMapper {
       importMaxEntries: num(o.importMaxEntries),
       importMaxFileBytes: num(o.importMaxFileBytes),
       importPlanListRows: num(o.importPlanListRows),
+      importMaxFiles: num(o.importMaxFiles),
       diffCompareMaxBytes: num(o.diffCompareMaxBytes),
       diffInlineMaxLines: num(o.diffInlineMaxLines),
       diffInlineMaxBytes: num(o.diffInlineMaxBytes),
@@ -214,6 +217,33 @@ export class AgentFileMapper {
       createdAt: str(o.createdAt),
       reason: nullableStr(o.reason),
     };
+  }
+
+  /** Rows of `resolveAgentImportFiles` (CLEAN-192); an unreadable row is dropped. */
+  toResolveRows(raw: unknown): { targetFolder: string; rows: IResolveRow[] } {
+    const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const matches: ResolveMatch[] = ['unique', 'none', 'ambiguous'];
+    const rows = Array.isArray(o.rows)
+      ? o.rows
+          .map((r): IResolveRow | null => {
+            if (!r || typeof r !== 'object') return null;
+            const row = r as Record<string, unknown>;
+            if (typeof row.name !== 'string' || !matches.includes(row.match as ResolveMatch)) {
+              return null;
+            }
+            return {
+              name: row.name,
+              match: row.match as ResolveMatch,
+              path: typeof row.path === 'string' ? row.path : null,
+              candidates: Array.isArray(row.candidates)
+                ? row.candidates.filter((c): c is string => typeof c === 'string')
+                : [],
+              size: typeof row.size === 'number' ? row.size : null,
+            };
+          })
+          .filter((r): r is IResolveRow => r !== null)
+      : [];
+    return { targetFolder: str(o.targetFolder), rows };
   }
 
   private toImportEntry(raw: unknown): IImportPlanEntry | null {

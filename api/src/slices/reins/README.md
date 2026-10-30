@@ -67,6 +67,19 @@ over the Mazda graph where `naive` took under one, and no mode retrieved
 more of the right document — the numbers and the alternatives are in
 `specs/023-knowledge-context-retrieval/research.md`.
 
+`query_knowledge` searches contents, so "what documents, models or years
+do you have" had no tool behind it: an agent either recited the coverage
+its prompt hard-codes or, on a production base, followed a skill that
+called the REST source list through the `http` tool with
+`${RANCH_API_TOKEN}` placeholders the tool never expands, and narrated the
+errors to the visitor (CLEAN-198). `list_knowledge_documents`
+(`knowledge/knowledgeDocuments.tool.ts`) is the agent's view of the source
+list: names only, bound bases only, with a `coverage` summary read off the
+names — documents per year (`2026`, `26MY`, `my26`) and per product code
+(`CX-5`, `Mazda3`), the first year in a name winning over the dates that
+trail it. The operator keeps `list_knowledge_sources`, which takes any
+base and shows ids and index state.
+
 ## Indexing costs about an hour per megabyte
 
 Ingest is not chunk-and-embed. Every chunk goes through the LLM twice: once to

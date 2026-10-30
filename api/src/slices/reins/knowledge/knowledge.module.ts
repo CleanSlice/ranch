@@ -15,6 +15,7 @@ import { KnowledgeGateway } from './data/knowledge.gateway';
 import { KnowledgeMapper } from './data/knowledge.mapper';
 import { KnowledgeTool } from './knowledge.tool';
 import { KnowledgeAdminTool } from './knowledgeAdmin.tool';
+import { KnowledgeDocumentsTool } from './knowledgeDocuments.tool';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { KnowledgeAdminTool } from './knowledgeAdmin.tool';
     { provide: IKnowledgeGateway, useClass: KnowledgeGateway },
     KnowledgeTool,
     KnowledgeAdminTool,
+    KnowledgeDocumentsTool,
   ],
   exports: [IKnowledgeGateway, KnowledgeService],
 })

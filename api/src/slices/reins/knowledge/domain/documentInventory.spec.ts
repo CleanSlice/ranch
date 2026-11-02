@@ -1,6 +1,7 @@
 import {
   documentSubjects,
   documentYear,
+  matchesDocumentName,
   MAX_SUBJECTS,
   summarizeDocumentNames,
 } from './documentInventory';
@@ -39,11 +40,42 @@ describe('documentSubjects', () => {
     ]);
   });
 
-  it('ignores years, MY codes, drivetrains and part numbers', () => {
+  it('ignores years, MY codes, drivetrains, part numbers and revision marks', () => {
     const found = documentSubjects(
-      '2021 Mazda3 2.5 Turbo 7.8.2020 PT-L10-PF22CJ0P 2WD AWD 26MY.md',
+      '2021 Mazda3 2.5 Turbo 7.8.2020 PT-L10-PF22CJ0P 2WD AWD 26MY v2 D3.md',
     );
-    expect([...found.keys()]).toEqual(['mazda3', 'l10']);
+    expect([...found.keys()]).toEqual(['mazda3']);
+  });
+});
+
+// Production, 2026-11-02: asked for the 2026 CX-5 tire-pressure procedure,
+// the agent searched the names for "CX-5 owner", got nothing back for
+// "2026_CX5_OM.md", and told the person the only CX-5 manual was the 2023
+// one. Names abbreviate and drop hyphens; the search must not care.
+describe('matchesDocumentName', () => {
+  it.each([
+    ['2026_CX5_OM.md', '2026 CX-5'],
+    ['2026_CX5_OM.md', '26MY cx5'],
+    ['26MY CX-5 Price Bulletin FINAL.md', '2026 CX-5 price'],
+    ['2025-cx-5-owners-manual-2.md', 'CX-5 owner'],
+    ['2026CX-5-2026_How to connect to your in car hot spot.md', '2026 CX-5'],
+    ['2021 CX-9 Order Guide 2020-08-21 (1) - Colors.csv', 'cx-9 colors'],
+  ])('%s is found by "%s"', (name, search) => {
+    expect(matchesDocumentName(name, search)).toBe(true);
+  });
+
+  it.each([
+    ['2026 CX-50 Spec Deck.md', 'CX-5'],
+    ['2026_CX5_OM.md', 'CX-5 owner'],
+    ['2025_CX5_OM.md', '2026 CX-5'],
+    // Three letters must match a whole token, not a prefix.
+    ['Audio_Settings_Guide.md', 'set'],
+  ])('%s is not found by "%s"', (name, search) => {
+    expect(matchesDocumentName(name, search)).toBe(false);
+  });
+
+  it('matches everything for an empty search', () => {
+    expect(matchesDocumentName('anything.md', '  ')).toBe(true);
   });
 });
 
@@ -67,8 +99,7 @@ describe('summarizeDocumentNames', () => {
           documents: 4,
           years: { '2025': 1, '2026': 2, undated: 1 },
         },
-        // Equal counts keep first-seen order: V2 appears in the list before Mazda6.
-        { subject: 'V2', documents: 1, years: { undated: 1 } },
+        // "CR-V_V2" carries no code: a single letter and a digit is a revision mark.
         { subject: 'Mazda6', documents: 1, years: { '2021': 1 } },
       ],
       undated: 2,

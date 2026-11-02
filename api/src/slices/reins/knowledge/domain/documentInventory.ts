@@ -46,11 +46,13 @@ const MY_CODE = /^(?:(?:19|20)?(\d{2})my|my(\d{2}))$/;
 /** A year glued to letters: "2026cx" in "2026CX-5-2026_How to…". */
 const LEADING_YEAR = /^((?:19|20)\d{2})[a-z]/;
 /**
- * A product code: letters, then one to three digits, then at most two
- * letters ("cx5", "cx30", "mazda3", "mx5", "i6"). A part number such as
- * "pf22cj0p" fails on the trailing letters; "2wd" fails on the leading digit.
+ * A product code: two to eight letters, then one to three digits, then at
+ * most two letters ("cx5", "cx30", "mazda3", "mx5", "nx350"). A part number
+ * such as "pf22cj0p" fails on the trailing letters; "2wd" fails on the
+ * leading digit; a revision mark such as "v2", "d3" or "m26" fails on the
+ * single letter — on the reference base those outnumbered real model lines.
  */
-const PRODUCT_CODE = /^[a-z]{1,8}\d{1,3}[a-z]{0,2}$/;
+const PRODUCT_CODE = /^[a-z]{2,8}\d{1,3}[a-z]{0,2}$/;
 
 /**
  * The name split the way `nameTokens` splits it (CLEAN-194): a hyphen
@@ -62,15 +64,63 @@ function tokens(name: string): Array<{ raw: string; key: string }> {
   const out: Array<{ raw: string; key: string }> = [];
   for (const raw of name.split(/[^\p{L}\p{N}-]+/u)) {
     for (const part of splitHyphens(raw)) {
-      if (part) {
-        out.push({ raw: part, key: part.toLowerCase().replace(/-/g, '') });
+      if (!part) continue;
+      const key = part.toLowerCase().replace(/-/g, '');
+      // "2026CX-5" is a year glued to a code: both must be findable.
+      const glued = LEADING_YEAR.exec(key);
+      if (glued) {
+        out.push({ raw: part.slice(0, 4), key: glued[1] });
+        out.push({ raw: part.slice(4), key: key.slice(4) });
+      } else {
+        out.push({ raw: part, key });
       }
     }
   }
   return out;
 }
 
-/** "CX-5" stays whole, "2020-09-16" and "Soft-Top" split. */
+/**
+ * Whether a document name answers a search (CLEAN-198). The console's
+ * substring search missed "2026_CX5_OM.md" for "2026 CX-5" and for
+ * "CX-5 owner", so the agent told a visitor there was no 2026 CX-5 Owner's
+ * Manual while one sat in the base. Every search word must match a name
+ * token: case and hyphens are ignored ("CX-5" is "cx5"), a year matches any
+ * of its spellings ("2026" matches "26MY"), and a word of four or more
+ * letters may be a prefix ("owner" matches "owners"). A token with digits
+ * matches exactly, so "CX-5" never matches "CX-50".
+ */
+export function matchesDocumentName(name: string, search: string): boolean {
+  const needles = tokens(search).map((t) => t.key);
+  if (needles.length === 0) return true;
+  const keys = tokens(name).map((t) => t.key);
+  return needles.every((needle) =>
+    keys.some((key) => tokenMatches(needle, key)),
+  );
+}
+
+function tokenMatches(needle: string, key: string): boolean {
+  const year = canonicalYear(needle);
+  if (year) return canonicalYear(key) === year;
+  if (key === needle) return true;
+  return /^[a-z]{4,}$/.test(needle) && key.startsWith(needle);
+}
+
+/** "2026", "26my", "2026my", "my26" → "2026"; anything else → null. */
+function canonicalYear(key: string): string | null {
+  if (FULL_YEAR.test(key)) return key;
+  const my = MY_CODE.exec(key);
+  if (my) return `20${my[1] ?? my[2]}`;
+  return null;
+}
+
+/**
+ * Letters a product code may have before its hyphen: "CX-5", "MX-5",
+ * "BT-50". A longer word before a hyphenated number is a word with a copy
+ * index ("owners-manual-2", "safety-feature-chart-1"), not a code.
+ */
+const CODE_PREFIX_LETTERS = 3;
+
+/** "CX-5" stays whole; "2020-09-16", "Soft-Top" and "manual-2" split. */
 function splitHyphens(raw: string): string[] {
   const parts: string[] = [];
   let current = '';
@@ -80,9 +130,13 @@ function splitHyphens(raw: string): string[] {
       current += ch;
       continue;
     }
-    const prev = raw[i - 1] ?? '';
+    const letters = /\p{L}+$/u.exec(raw.slice(0, i))?.[0] ?? '';
     const next = raw[i + 1] ?? '';
-    if (/\p{L}/u.test(prev) && /\p{N}/u.test(next)) {
+    if (
+      letters.length > 0 &&
+      letters.length <= CODE_PREFIX_LETTERS &&
+      /\p{N}/u.test(next)
+    ) {
       current += ch;
     } else {
       parts.push(current);

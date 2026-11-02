@@ -12,6 +12,7 @@ import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { boundKnowledgeIds } from './domain/boundKnowledge';
 import {
   IDocumentInventory,
+  matchesDocumentName,
   summarizeDocumentNames,
 } from './domain/documentInventory';
 
@@ -23,7 +24,7 @@ const MAX_PER_PAGE = 200;
 
 const DESCRIPTION =
   'List the documents of your bound knowledge bases by NAME, with a summary of what the base covers: how many documents carry each year (2026, 26MY) and each product code (CX-5, Mazda3) in their names. Call this when the person asks what documents, models or years you have, whether a document exists ("is there a 2026 CX-50 Spec Deck?"), or which years a model is covered for. It reads names only: to find out what a document says, call query_knowledge. ' +
-  'Returns, per knowledge base, `documents` (one page of `{name, type}`, oldest first), `total`, `page`, `per_page`, and `coverage` computed over the whole base, not the page: `years` (documents per year named in the title), `subjects` (product codes found in the names, most frequent first, each with its own years), and `undated` (documents whose name spells no year). `search` is a case-insensitive substring of the name; page through with `page` when `total` exceeds the page. Never list ids or storage paths to the person — only names.';
+  'Returns, per knowledge base, `documents` (one page of `{name, type}`, oldest first), `total`, `page`, `per_page`, and `coverage` computed over the whole base, not the page: `years` (documents per year named in the title), `subjects` (product codes found in the names, most frequent first, each with its own years), and `undated` (documents whose name spells no year). `search` is a few words that must all appear in the name, matched loosely: case and hyphens are ignored ("CX-5" finds "CX5"), a year matches its MY code ("2026" finds "26MY"), and a word may be a prefix ("owner" finds "owners"). Search by model and year rather than by document type — names abbreviate ("OM" is an Owner\'s Manual, "PIB" a Product Information Bulletin) — then read the types off the names. Page through with `page` when `total` exceeds the page. Never list ids or storage paths to the person — only names.';
 
 interface IDocumentRow {
   name: string;
@@ -90,7 +91,7 @@ export class KnowledgeDocumentsTool implements IConditionallyListedTool {
         .string()
         .optional()
         .describe(
-          'Case-insensitive substring of the document name, e.g. "CX-50" or "Spec Deck". Omit for every document.',
+          'Words that must all appear in the document name, e.g. "2026 CX-50" or "CX-5 owner". Case and hyphens are ignored, a year matches its MY code, a word may be a prefix. Omit for every document.',
         ),
       knowledge_id: z
         .string()
@@ -156,27 +157,26 @@ export class KnowledgeDocumentsTool implements IConditionallyListedTool {
       targetIds.map(async (id) => {
         const knowledge_name = nameOf.get(id) ?? null;
         try {
-          const [listed, all] = await Promise.all([
-            this.sources.findPage(id, {
-              page,
-              perPage,
-              search,
-              sort: 'createdAt',
-              order: 'asc',
-            }),
-            this.sources.findByKnowledge(id),
-          ]);
+          // One read of the base serves both the page and the coverage. The
+          // search runs here rather than in the database because the
+          // console's substring match cannot see that "2026_CX5_OM.md" is
+          // the 2026 CX-5 Owner's Manual; `matchesDocumentName` can.
+          const all = await this.sources.findByKnowledge(id);
+          const matching = search
+            ? all.filter((s) => matchesDocumentName(s.name, search))
+            : all;
+          const start = (page - 1) * perPage;
           const block: IDocumentsBlock = {
             knowledge_id: id,
             knowledge_name,
-            documents: listed.items.map(toRow),
-            total: listed.total,
-            page: listed.page,
-            per_page: listed.perPage,
+            documents: matching.slice(start, start + perPage).map(toRow),
+            total: matching.length,
+            page,
+            per_page: perPage,
             coverage: summarizeDocumentNames(all.map((s) => s.name)),
           };
           this.logger.log(
-            `list_knowledge_documents agent=${agentId} knowledge=${id} search=${JSON.stringify(search ?? '')} page=${page} listed=${listed.items.length}/${listed.total} base=${all.length}`,
+            `list_knowledge_documents agent=${agentId} knowledge=${id} search=${JSON.stringify(search ?? '')} page=${page} listed=${block.documents.length}/${matching.length} base=${all.length}`,
           );
           return block;
         } catch (e) {

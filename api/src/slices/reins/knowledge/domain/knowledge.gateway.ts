@@ -58,11 +58,15 @@ export abstract class IKnowledgeGateway {
     topK?: number,
   ): Promise<IRawKnowledgeSearchResult>;
 
-  /** Retrieval without generation, for the agent path (CLEAN-184). */
+  /**
+   * Retrieval without generation, for the agent path (CLEAN-184). With
+   * `docIds` the retrieval is limited to those documents (CLEAN-203).
+   */
   abstract retrieveKnowledgeContext(
     knowledgeId: string,
     query: string,
     mode?: QueryModeTypes,
+    docIds?: string[],
   ): Promise<IContextResult>;
 
   abstract getGraphLabels(knowledgeId: string): Promise<string[]>;

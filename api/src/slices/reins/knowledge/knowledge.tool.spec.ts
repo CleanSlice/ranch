@@ -728,3 +728,101 @@ describe('CLEAN-138 — a result names the sources it drew on', () => {
     ).toEqual([]);
   });
 });
+
+// CLEAN-203: the agent names the document that owns the fact and the lookup
+// reads that document only. The name travels to the service as given; a
+// name no base knows is an error that names the next step, not an empty
+// answer the model would read as "the documents do not say".
+describe('query_knowledge — the document filter', () => {
+  const callsOf = (tool: KnowledgeTool) =>
+    (tool as unknown as { knowledgeService: { retrieveContext: jest.Mock } })
+      .knowledgeService.retrieveContext.mock.calls as unknown[][];
+
+  test('passes the names through, trimmed, one or several', async () => {
+    const { tool } = toolAnswering(
+      (id) =>
+        context(id, [passage(K1_FACT)], {
+          documents: ['26MY CX-30 Spec Deck - Equipment & Features.csv'],
+        }),
+      ['k1'],
+    );
+
+    await tool.query(
+      { query: 'q', document: ' 26MY CX-30 Equipment & Features ' },
+      null,
+      agentRequest('agent-1'),
+    );
+    await tool.query(
+      { query: 'q', document: ['Spec Deck', '', 'Order Form'] },
+      null,
+      agentRequest('agent-1'),
+    );
+    await tool.query({ query: 'q' }, null, agentRequest('agent-1'));
+
+    const calls = callsOf(tool);
+    expect(calls[0][2]).toEqual({
+      documents: ['26MY CX-30 Equipment & Features'],
+    });
+    expect(calls[1][2]).toEqual({ documents: ['Spec Deck', 'Order Form'] });
+    expect(calls[2][2]).toEqual({});
+  });
+
+  test('names the documents the filter resolved to in the block', async () => {
+    const { tool } = toolAnswering(
+      (id) =>
+        context(id, [passage(K1_FACT)], {
+          documents: ['26MY CX-30 Spec Deck - Equipment & Features.csv'],
+        }),
+      ['k1'],
+    );
+    const block = blockOf(
+      await tool.query(
+        { query: 'q', document: 'CX-30 Equipment' },
+        null,
+        agentRequest('agent-1'),
+      ),
+    ) as { documents?: string[] };
+    expect(block.documents).toEqual([
+      '26MY CX-30 Spec Deck - Equipment & Features.csv',
+    ]);
+  });
+
+  test('a name no bound base knows is an error pointing at the listing', async () => {
+    const { tool } = toolAnswering(
+      (id) => context(id, [], { reason: 'document_not_found' }),
+      ['k1', 'k2'],
+    );
+    const result = await tool.query(
+      { query: 'q', document: 'No Such Deck' },
+      null,
+      agentRequest('agent-1'),
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('"No Such Deck"');
+    expect(textOf(result)).toContain('list_knowledge_documents');
+    expect(textOf(result)).not.toContain(K2_SECRET);
+  });
+
+  test('a base that knows the document answers even when another does not', async () => {
+    const { tool } = toolAnswering(
+      (id) =>
+        id === 'k1'
+          ? context(id, [passage(K1_FACT)], { documents: ['relays.txt'] })
+          : context(id, [], { reason: 'document_not_found' }),
+      ['k1', 'k2'],
+    );
+    const parsed = JSON.parse(
+      textOf(
+        await tool.query(
+          { query: 'q', document: 'relays' },
+          null,
+          agentRequest('agent-1'),
+        ),
+      ),
+    ) as { results: Array<{ knowledge_id: string; reason?: string }> };
+    expect(parsed.results.map((r) => [r.knowledge_id, r.reason])).toEqual([
+      ['k1', undefined],
+      ['k2', 'document_not_found'],
+    ]);
+  });
+});

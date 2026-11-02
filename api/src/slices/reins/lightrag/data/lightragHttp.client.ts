@@ -317,6 +317,10 @@ export class LightragHttpClient extends ILightragClient {
       top_k: CONTEXT_TOP_K,
       chunk_top_k: CONTEXT_CHUNK_TOP_K,
       include_references: true,
+      // LightRAG's `ids` filter keeps retrieval to these documents
+      // (CLEAN-203). Absent when no filter was asked for, so an unfiltered
+      // request is byte for byte what it was.
+      ...(input.docIds && input.docIds.length > 0 ? { ids: input.docIds } : {}),
     };
     const headers = this.headers(cfg.apiKey, {
       'content-type': 'application/json',

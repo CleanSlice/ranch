@@ -43,6 +43,12 @@ export interface IRetrieveContextInput {
   query: string;
   /** Defaults to the client's CONTEXT_QUERY_MODE. */
   mode?: QueryModeTypes;
+  /**
+   * Retrieval limited to these LightRAG document ids (CLEAN-203): the
+   * agent names the document that owns the fact and the grid row it needs
+   * no longer has to out-rank every other deck in the base.
+   */
+  docIds?: string[];
 }
 
 /** One stored chunk, verbatim. `filePath` is what the references carry too. */

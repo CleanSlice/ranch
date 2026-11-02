@@ -19,6 +19,7 @@ import {
   IKnowledgeQueryReference,
   IKnowledgeQueryResult,
   IKnowledgeContextResult,
+  IRetrieveContextOptions,
   IGetGraphLabelsParams,
   IGraphLabelsResult,
   QueryModeTypes,
@@ -32,6 +33,19 @@ import { staleIndexAfterMs } from '../../source/domain/indexBudget';
 import { deriveIndexStatus } from './knowledge.status';
 import { MAX_FACTS, MAX_FACT_CHARS } from './knowledgeContext';
 import { summarizeFailures } from './failureSummary';
+import { matchesDocumentName } from './documentInventory';
+
+/**
+ * Whether a source is the document an agent named (CLEAN-203): the exact
+ * name first, then the loose match `list_knowledge_documents` uses, so a
+ * name copied from that listing — or typed with other hyphens and an MY
+ * code — still lands on the same row.
+ */
+function sameDocument(sourceName: string, wanted: string): boolean {
+  const a = sourceName.trim().toLowerCase();
+  const b = wanted.trim().toLowerCase();
+  return a === b || matchesDocumentName(sourceName, wanted);
+}
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
 
@@ -591,6 +605,7 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
   async retrieveContext(
     knowledgeId: string,
     query: string,
+    opts: IRetrieveContextOptions = {},
   ): Promise<IKnowledgeContextResult> {
     const k = await this.get(knowledgeId);
     this.requireReadable(k);
@@ -611,7 +626,33 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
     const hasIndexed = sources.some((s) => s.indexState === 'indexed');
     if (complete && !hasIndexed) return nothing();
 
-    const raw = await this.gateway.retrieveKnowledgeContext(knowledgeId, query);
+    // A document filter (CLEAN-203): the agent names the document that owns
+    // the fact — the "Equipment & Features" sheet of a spec deck — and the
+    // retrieval runs over that document alone, so a grid row no longer has
+    // to out-rank every other deck in the base. Names match the way
+    // list_knowledge_documents matches them, so the name the agent just
+    // listed is the name it passes back. Nothing matching is said so,
+    // rather than silently widening to the whole base.
+    const only = opts.documents?.length
+      ? sources.filter(
+          (s) =>
+            s.lightragDocId &&
+            opts.documents!.some((d) => sameDocument(s.name, d)),
+        )
+      : null;
+    if (only && only.length === 0) {
+      return { ...nothing(), reason: 'document_not_found' };
+    }
+    const docIds = only
+      ? only.map((s) => s.lightragDocId as string)
+      : undefined;
+
+    const raw = await this.gateway.retrieveKnowledgeContext(
+      knowledgeId,
+      query,
+      undefined,
+      docIds,
+    );
 
     // The same chunk can come back through two search modes; it travels once.
     const seenText = new Set<string>();
@@ -641,7 +682,7 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
     }
     const byPath = new Map(references.map((r) => [r.filePath, r]));
 
-    const passages = chunks.map((c) => {
+    const resolved = chunks.map((c) => {
       const ref = byPath.get(c.filePath);
       return {
         text: c.text,
@@ -650,6 +691,18 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
         sourceName: ref?.sourceName ?? null,
       };
     });
+    // Belt and braces for the filter: a retrieval service that ignored
+    // `ids` must not pass another document's rows off as the named one's.
+    const onlyIds = only ? new Set(only.map((s) => s.id)) : null;
+    const passages = onlyIds
+      ? resolved.filter((p) => p.sourceId !== null && onlyIds.has(p.sourceId))
+      : resolved;
+    if (onlyIds) {
+      references = references.filter(
+        (r) => r.sourceId !== null && onlyIds.has(r.sourceId),
+      );
+    }
+    const documents = only ? { documents: only.map((s) => s.name) } : {};
     const facts = raw.relations.slice(0, MAX_FACTS).map((r) => {
       const line = `${r.source} — ${r.target}: ${r.description}`.trim();
       return line.length > MAX_FACT_CHARS
@@ -657,9 +710,17 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
         : line;
     });
     if (passages.length === 0 && facts.length === 0) {
-      return { ...nothing(), via: raw.via };
+      return { ...nothing(), via: raw.via, ...documents };
     }
-    return { knowledgeId, complete, passages, facts, references, via: raw.via };
+    return {
+      knowledgeId,
+      complete,
+      passages,
+      facts,
+      references,
+      via: raw.via,
+      ...documents,
+    };
   }
 
   async getGraphLabels(

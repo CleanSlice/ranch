@@ -177,10 +177,22 @@ export interface IKnowledgePassage {
  * tool turns into `sources` (CLEAN-138). Mirrors IKnowledgeQueryResult for
  * `complete` and `reason` so the tool treats both the same way.
  */
+/** How `retrieveContext` may be narrowed (CLEAN-203). */
+export interface IRetrieveContextOptions {
+  /**
+   * Document names (as `list_knowledge_documents` lists them, matched the
+   * same way) the retrieval is limited to. Empty or absent: the whole base.
+   */
+  documents?: string[];
+}
+
 export interface IKnowledgeContextResult {
   knowledgeId: string;
   complete: boolean;
-  reason?: 'no_relevant_content';
+  /** `document_not_found`: a `documents` filter matched nothing in this base (CLEAN-203). */
+  reason?: 'no_relevant_content' | 'document_not_found';
+  /** The document names a `documents` filter resolved to, when one was given (CLEAN-203). */
+  documents?: string[];
   passages: IKnowledgePassage[];
   facts: string[];
   references: IKnowledgeQueryReference[];

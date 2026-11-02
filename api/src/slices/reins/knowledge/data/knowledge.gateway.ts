@@ -263,8 +263,9 @@ export class KnowledgeGateway extends IKnowledgeGateway {
     knowledgeId: string,
     query: string,
     mode?: QueryModeTypes,
+    docIds?: string[],
   ): Promise<IContextResult> {
-    return this.lightrag.retrieveContext({ knowledgeId, query, mode });
+    return this.lightrag.retrieveContext({ knowledgeId, query, mode, docIds });
   }
 
   getGraphLabels(knowledgeId: string): Promise<string[]> {

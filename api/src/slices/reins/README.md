@@ -80,6 +80,21 @@ names — documents per year (`2026`, `26MY`, `my26`) and per product code
 trail it. The operator keeps `list_knowledge_sources`, which takes any
 base and shows ids and index state.
 
+The two tools meet in `query_knowledge`'s `document` parameter (CLEAN-203).
+A "which trim has X" answer lives in one row of a spec deck's "Equipment &
+Features" sheet, and that row has to out-rank every other deck in the base
+to be retrieved at all: on the Mazda base a search in the visitor's words
+brought back older order guides, a search in the document's title words
+brought back nothing, and the agent spent eight searches (the
+`tools.callsPerTurn` cap, CLEAN-202) before answering with a caveat. With
+`document` set to the sheet's name — matched the way
+`list_knowledge_documents` matches it — the service hands LightRAG the
+document's id as `ids`, the retrieval runs over that document alone, and
+whatever comes back from any other document is dropped anyway
+(`knowledge.service.ts`, `retrieveContext`), so a server that ignored `ids`
+cannot pass another deck's rows off as the named one's. A name no bound
+base knows is an error that names the listing, never an empty answer.
+
 ## Indexing costs about an hour per megabyte
 
 Ingest is not chunk-and-embed. Every chunk goes through the LLM twice: once to

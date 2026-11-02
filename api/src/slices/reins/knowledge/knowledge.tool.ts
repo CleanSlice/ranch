@@ -25,7 +25,7 @@ import {
 const BASE_DESCRIPTION =
   'Search your bound knowledge bases and get back the matching document fragments verbatim, each with the document it came from. You compose the answer from those fragments yourself; nothing in the result was written by another model. MUST be called FIRST, before drafting any response, when the user asks about a topic that could plausibly be covered by your bound knowledge bases (see the list below). Do NOT hedge with phrases like "isn\'t explicitly detailed" or "based on what I know" before calling this tool - drafting an answer first and then querying is a bug. When the request contains several independent questions, issue all of those calls in the same turn rather than one after another: they run concurrently. Prefer this over web_search for anything that could be in user-uploaded content.\n\n' +
   'Reading the result: `passages` are exact excerpts (tables and lists come through as text); when a passage answers the question directly, answer with confidence and cite its source - do not add "I cannot guarantee" or "check the spec sheet". `truncated: true` means more matches existed than fit; ask a narrower question if you need them. A lookup that returns no passages or `no_relevant_content` only means that phrasing matched nothing; it never contradicts a passage another lookup returned. `facts` are short graph relations, secondary to passages.\n\n' +
-  'Phrasing lookups: the documents are spec sheets, order forms and manuals - search in their vocabulary. Use the official feature name ("Adaptive Front-Lighting System (AFS)", not "adaptive headlights"), the exact trim names, and the model year. If a lookup in the visitor\'s words brings nothing from the document that should hold the answer, run one more lookup in spec-sheet terms before concluding anything. The knowledge_id parameter is optional and rarely worth setting: one call covers everything bound to you.';
+  'Phrasing lookups: the documents are spec sheets, order forms and manuals - search in their vocabulary. Use the official feature name ("Adaptive Front-Lighting System (AFS)", not "adaptive headlights"), the exact trim names, and the model year. If a lookup in the visitor\'s words brings nothing from the document that should hold the answer, run one more lookup in spec-sheet terms before concluding anything. When you know which document owns the fact — a spec deck\'s "Equipment & Features" sheet for a "which trim has X" question — pass its name (as list_knowledge_documents shows it) in `document`: the lookup then reads that document only and the row cannot be out-ranked by other decks. The knowledge_id parameter is optional and rarely worth setting: one call covers everything bound to you.';
 
 interface ToolResult {
   content: { type: 'text'; text: string }[];
@@ -108,10 +108,20 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
           'Optional. Omit to search all knowledge bases bound to this agent. Provide only when you already know the specific knowledge base id.',
         ),
       query: z.string().describe('Natural-language search query.'),
+      document: z
+        .union([z.string(), z.array(z.string())])
+        .optional()
+        .describe(
+          'Optional. The name of the document (or a few names) to search in, as list_knowledge_documents shows it — for a "which trim has X" question, the "Equipment & Features" sheet of that year\'s Spec Deck. The lookup then reads that document only, so the row you need cannot be out-ranked by other decks. A name that matches nothing returns an error naming the next step. Omit for a search across everything.',
+        ),
     }),
   })
   async query(
-    { knowledge_id, query }: { knowledge_id?: string; query: string },
+    {
+      knowledge_id,
+      query,
+      document,
+    }: { knowledge_id?: string; query: string; document?: string | string[] },
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ): Promise<ToolResult> {
@@ -134,6 +144,16 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
     }
 
     const targetIds = knowledge_id ? [knowledge_id] : allowedIds;
+    // One name or several; blank entries are not a filter (CLEAN-203).
+    const documents = (
+      document === undefined
+        ? []
+        : Array.isArray(document)
+          ? document
+          : [document]
+    )
+      .map((d) => d.trim())
+      .filter((d) => d.length > 0);
 
     try {
       // Names resolve from the caller's bound set only — the tool never
@@ -168,7 +188,11 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
           const knowledge_name = nameOf.get(id) ?? null;
           const startedAt = Date.now();
           try {
-            const r = await this.knowledgeService.retrieveContext(id, query);
+            const r = await this.knowledgeService.retrieveContext(
+              id,
+              query,
+              documents.length > 0 ? { documents } : {},
+            );
             for (const p of r.passages) {
               if (p.sourceId === null) {
                 this.logger.warn(
@@ -181,6 +205,7 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
               knowledge_name,
               complete: r.complete,
               ...(r.reason ? { reason: r.reason } : {}),
+              ...(r.documents ? { documents: r.documents } : {}),
               passages: r.passages.map((p) => ({
                 source: p.sourceName ?? p.filePath,
                 source_id: p.sourceId,
@@ -218,6 +243,16 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
           }
         }),
       );
+      // A filter that named no document in any base is a wrong name, not an
+      // empty base: say so and point at the listing (CLEAN-203).
+      if (
+        documents.length > 0 &&
+        results.every((r) => 'reason' in r && r.reason === 'document_not_found')
+      ) {
+        return err(
+          `No document named ${documents.map((d) => `"${d}"`).join(', ')} in your knowledge bases. Call list_knowledge_documents to see the names, then pass one exactly as it is listed.`,
+        );
+      }
       return okCompact(queryIds.length === 1 ? results[0] : { results });
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Knowledge query failed';

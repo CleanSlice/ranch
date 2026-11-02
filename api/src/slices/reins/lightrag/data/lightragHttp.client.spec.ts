@@ -227,7 +227,8 @@ describe('LightragHttpClient.retrieveContext: passages, not prose (CLEAN-184)', 
   ): Record<string, unknown> {
     const init = fetchImpl.mock.calls[call][1];
     const body = init?.body;
-    if (typeof body !== 'string') throw new Error('request body is not a string');
+    if (typeof body !== 'string')
+      throw new Error('request body is not a string');
     return JSON.parse(body) as Record<string, unknown>;
   }
 
@@ -290,6 +291,31 @@ describe('LightragHttpClient.retrieveContext: passages, not prose (CLEAN-184)', 
       references: [],
       via: 'query_data',
     });
+  });
+
+  it('limits retrieval to the named documents with `ids`, and sends no `ids` otherwise (CLEAN-203)', async () => {
+    const fetchImpl: FetchMock = jest.fn((_url: string) =>
+      Promise.resolve(jsonResponse(DATA_BODY)),
+    );
+    const client = makeClient(fetchImpl);
+
+    await client.retrieveContext({
+      knowledgeId: 'k1',
+      query: 'AFS row',
+      docIds: ['insert_1', 'insert_2'],
+    });
+    await client.retrieveContext({ knowledgeId: 'k1', query: 'AFS row' });
+    await client.retrieveContext({
+      knowledgeId: 'k1',
+      query: 'AFS row',
+      docIds: [],
+    });
+
+    expect(sentBody(fetchImpl, 0)).toMatchObject({
+      ids: ['insert_1', 'insert_2'],
+    });
+    expect(sentBody(fetchImpl, 1)).not.toHaveProperty('ids');
+    expect(sentBody(fetchImpl, 2)).not.toHaveProperty('ids');
   });
 
   it('falls back to /query with only_need_context when /query/data is missing (404)', async () => {

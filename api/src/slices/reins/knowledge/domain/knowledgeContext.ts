@@ -52,7 +52,9 @@ export interface IContextBlock {
   knowledge_id: string;
   knowledge_name: string | null;
   complete: boolean;
-  reason?: 'no_relevant_content';
+  reason?: 'no_relevant_content' | 'document_not_found';
+  /** The documents a `document` filter resolved to in this base (CLEAN-203). */
+  documents?: string[];
   passages: IContextPassageOut[];
   facts?: string[];
   truncated: boolean;

@@ -197,7 +197,8 @@ export interface IKnowledgeContextResult {
   facts: string[];
   references: IKnowledgeQueryReference[];
   /** Which endpoint served it; null when the service was not called. */
-  via: 'query_data' | 'only_need_context' | null;
+  /** `document_scan`: a filtered call LightRAG answered empty, read from the document's own text (CLEAN-203). */
+  via: 'query_data' | 'only_need_context' | 'document_scan' | null;
 }
 
 /** What the retrieval client returns before attribution is resolved. */

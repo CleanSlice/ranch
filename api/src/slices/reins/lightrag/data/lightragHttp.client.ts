@@ -311,16 +311,39 @@ export class LightragHttpClient extends ILightragClient {
       knowledgeId: input.knowledgeId,
       intent: 'read',
     });
+    // The id a Source stores is a LightRAG *track* id (`upload_…`,
+    // `insert_…`); the `ids` filter wants LightRAG's own document ids, which
+    // only the track status knows (CLEAN-203). Sending track ids matched
+    // nothing and read as "the manual has no such section". A `doc-…` id
+    // passes through as it is.
+    let ids: string[] | undefined;
+    if (input.docIds && input.docIds.length > 0) {
+      const resolved = await Promise.all(
+        input.docIds.map((id) =>
+          id.startsWith('doc-')
+            ? Promise.resolve([id])
+            : this.resolveDocIdsByTrackId(cfg, id),
+        ),
+      );
+      ids = [...new Set(resolved.flat())];
+      if (ids.length === 0) {
+        // The caller asked for these documents and no others: nothing LightRAG
+        // knows under them is an empty result, never a silently widened one.
+        this.logger.warn(
+          `context for ${cfg.baseUrl}: none of ${input.docIds.length} document id(s) resolved to a LightRAG document; returning nothing`,
+        );
+        return { chunks: [], relations: [], references: [], via: 'query_data' };
+      }
+    }
     const request = {
       query: input.query,
       mode: input.mode ?? CONTEXT_QUERY_MODE,
       top_k: CONTEXT_TOP_K,
       chunk_top_k: CONTEXT_CHUNK_TOP_K,
       include_references: true,
-      // LightRAG's `ids` filter keeps retrieval to these documents
-      // (CLEAN-203). Absent when no filter was asked for, so an unfiltered
-      // request is byte for byte what it was.
-      ...(input.docIds && input.docIds.length > 0 ? { ids: input.docIds } : {}),
+      // Absent when no filter was asked for, so an unfiltered request is
+      // byte for byte what it was.
+      ...(ids ? { ids } : {}),
     };
     const headers = this.headers(cfg.apiKey, {
       'content-type': 'application/json',

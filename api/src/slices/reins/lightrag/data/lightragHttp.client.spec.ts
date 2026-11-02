@@ -293,17 +293,71 @@ describe('LightragHttpClient.retrieveContext: passages, not prose (CLEAN-184)', 
     });
   });
 
-  it('limits retrieval to the named documents with `ids`, and sends no `ids` otherwise (CLEAN-203)', async () => {
-    const fetchImpl: FetchMock = jest.fn((_url: string) =>
-      Promise.resolve(jsonResponse(DATA_BODY)),
-    );
+  // CLEAN-203. A Source stores LightRAG's track id; the `ids` filter wants
+  // the document id behind it. Sending the track id matched nothing, and the
+  // agent told a person the 2026 manual had no tire-pressure section.
+  it('resolves a track id to the document ids LightRAG filters on, and passes a doc id through', async () => {
+    const fetchImpl: FetchMock = jest.fn((url: string) => {
+      if (url.endsWith('/documents/track_status/insert_1')) {
+        return Promise.resolve(
+          jsonResponse({
+            documents: [{ id: 'doc-aaa', status: 'processed' }],
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse(DATA_BODY));
+    });
     const client = makeClient(fetchImpl);
 
     await client.retrieveContext({
       knowledgeId: 'k1',
       query: 'AFS row',
-      docIds: ['insert_1', 'insert_2'],
+      docIds: ['insert_1', 'doc-bbb'],
     });
+
+    const urls = fetchImpl.mock.calls.map((c) => c[0]);
+    expect(urls.filter((u) => u.includes('/documents/track_status/'))).toEqual([
+      'http://lightrag:9621/documents/track_status/insert_1',
+    ]);
+    const data = urls.findIndex((u) => u.endsWith('/query/data'));
+    expect(sentBody(fetchImpl, data)).toMatchObject({
+      ids: ['doc-aaa', 'doc-bbb'],
+    });
+  });
+
+  it('returns nothing, without asking LightRAG, when no named document resolves', async () => {
+    const fetchImpl: FetchMock = jest.fn((url: string) =>
+      Promise.resolve(
+        url.includes('/documents/track_status/')
+          ? new Response('not found', { status: 404 })
+          : jsonResponse(DATA_BODY),
+      ),
+    );
+    const client = makeClient(fetchImpl);
+
+    const result = await client.retrieveContext({
+      knowledgeId: 'k1',
+      query: 'AFS row',
+      docIds: ['upload_gone'],
+    });
+
+    expect(result).toEqual({
+      chunks: [],
+      relations: [],
+      references: [],
+      via: 'query_data',
+    });
+    expect(fetchImpl.mock.calls.some((c) => c[0].endsWith('/query/data'))).toBe(
+      false,
+    );
+  });
+
+  it('sends no `ids` and looks up no track status when no filter was asked for', async () => {
+    const fetchImpl: FetchMock = jest.fn((_url: string) =>
+      Promise.resolve(jsonResponse(DATA_BODY)),
+    );
+    const client = makeClient(fetchImpl);
+
     await client.retrieveContext({ knowledgeId: 'k1', query: 'AFS row' });
     await client.retrieveContext({
       knowledgeId: 'k1',
@@ -311,11 +365,12 @@ describe('LightragHttpClient.retrieveContext: passages, not prose (CLEAN-184)', 
       docIds: [],
     });
 
-    expect(sentBody(fetchImpl, 0)).toMatchObject({
-      ids: ['insert_1', 'insert_2'],
-    });
+    expect(fetchImpl.mock.calls.map((c) => c[0])).toEqual([
+      'http://lightrag:9621/query/data',
+      'http://lightrag:9621/query/data',
+    ]);
+    expect(sentBody(fetchImpl, 0)).not.toHaveProperty('ids');
     expect(sentBody(fetchImpl, 1)).not.toHaveProperty('ids');
-    expect(sentBody(fetchImpl, 2)).not.toHaveProperty('ids');
   });
 
   it('falls back to /query with only_need_context when /query/data is missing (404)', async () => {

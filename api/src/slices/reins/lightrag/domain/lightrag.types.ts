@@ -44,9 +44,11 @@ export interface IRetrieveContextInput {
   /** Defaults to the client's CONTEXT_QUERY_MODE. */
   mode?: QueryModeTypes;
   /**
-   * Retrieval limited to these LightRAG document ids (CLEAN-203): the
-   * agent names the document that owns the fact and the grid row it needs
-   * no longer has to out-rank every other deck in the base.
+   * Retrieval limited to these documents (CLEAN-203): the agent names the
+   * document that owns the fact and the grid row it needs no longer has to
+   * out-rank every other deck in the base. Each entry is what a Source
+   * stores — a LightRAG track id (`upload_…`, `insert_…`), resolved to the
+   * document ids LightRAG filters on — or a `doc-…` id used as it is.
    */
   docIds?: string[];
 }

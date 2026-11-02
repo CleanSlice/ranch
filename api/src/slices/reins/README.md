@@ -95,6 +95,22 @@ whatever comes back from any other document is dropped anyway
 cannot pass another deck's rows off as the named one's. A name no bound
 base knows is an error that names the listing, never an empty answer.
 
+Two things the filter still met on the Mazda base. The id a Source stores
+is LightRAG's *track* id (`upload_…`, `insert_…`); the `ids` filter wants
+the document id behind it, which `/documents/track_status` resolves — the
+client does that before filtering, and a track id that resolves to
+nothing yields an empty result rather than an unfiltered one. And even
+inside one document LightRAG applies its similarity threshold: "power
+liftgate" against a 16 KB equipment sheet returned no chunk while the row
+sat in the sheet, where a query shaped like the row returned three. So a
+filtered call the service answered empty falls back to the document's own
+text (`knowledge/domain/documentScan.ts`): the stored file is read — text,
+`.csv`, `.md`, `.txt`; never a PDF or a workbook — and the lines carrying
+the query's words become the passages, a CSV's header line first so the
+cells keep their trim names, cut to the tool's budget. The result says
+`via: document_scan`. Nothing changes for an unfiltered call or for a
+filtered one LightRAG did answer.
+
 ## Indexing costs about an hour per megabyte
 
 Ingest is not chunk-and-embed. Every chunk goes through the LLM twice: once to

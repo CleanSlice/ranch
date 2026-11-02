@@ -19,6 +19,7 @@ import {
   IKnowledgeQueryReference,
   IKnowledgeQueryResult,
   IKnowledgeContextResult,
+  IKnowledgePassage,
   IRetrieveContextOptions,
   IGetGraphLabelsParams,
   IGraphLabelsResult,
@@ -34,6 +35,7 @@ import { deriveIndexStatus } from './knowledge.status';
 import { MAX_FACTS, MAX_FACT_CHARS } from './knowledgeContext';
 import { summarizeFailures } from './failureSummary';
 import { matchesDocumentName } from './documentInventory';
+import { scanDocumentLines } from './documentScan';
 
 /**
  * Whether a source is the document an agent named (CLEAN-203): the exact
@@ -45,6 +47,37 @@ function sameDocument(sourceName: string, wanted: string): boolean {
   const a = sourceName.trim().toLowerCase();
   const b = wanted.trim().toLowerCase();
   return a === b || matchesDocumentName(sourceName, wanted);
+}
+
+/**
+ * Bytes of one document a scan reads at most (CLEAN-203): the largest
+ * owner's manual on the reference base is 1.1 MB; a scan past that is a
+ * workbook or a binary that should not have been scanned.
+ */
+const SCAN_MAX_BYTES = 4_000_000;
+
+/** A document whose stored body is lines of text, not a container format. */
+function isTextLike(source: ISourceData): boolean {
+  if (source.type === 'text') return true;
+  if (source.type !== 'file') return false;
+  if (source.mimeType && source.mimeType.startsWith('text/')) return true;
+  return /\.(csv|md|txt|markdown|json)$/i.test(source.name);
+}
+
+/** The stream as UTF-8, cut at `max` bytes. */
+async function readAll(
+  body: NodeJS.ReadableStream,
+  max: number,
+): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of body) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    chunks.push(buf);
+    size += buf.length;
+    if (size >= max) break;
+  }
+  return Buffer.concat(chunks).toString('utf8').slice(0, max);
 }
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
@@ -694,7 +727,7 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
     // Belt and braces for the filter: a retrieval service that ignored
     // `ids` must not pass another document's rows off as the named one's.
     const onlyIds = only ? new Set(only.map((s) => s.id)) : null;
-    const passages = onlyIds
+    let passages = onlyIds
       ? resolved.filter((p) => p.sourceId !== null && onlyIds.has(p.sourceId))
       : resolved;
     if (onlyIds) {
@@ -703,6 +736,33 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
       );
     }
     const documents = only ? { documents: only.map((s) => s.name) } : {};
+    let via: IKnowledgeContextResult['via'] = raw.via;
+
+    // A filtered call the retrieval service answered empty (CLEAN-203): on
+    // the Mazda base "power liftgate" against a 16 KB equipment sheet falls
+    // under the similarity threshold while the row is right there. The
+    // document is named, so its own text is read and the lines carrying the
+    // query's words are the passages — what a person does with the sheet
+    // open. Text-like documents only; a PDF or a workbook has no lines to
+    // scan, and stays empty.
+    if (only && passages.length === 0) {
+      const scanned = await this.scanDocuments(only, query);
+      if (scanned.length > 0) {
+        passages = scanned;
+        references = only
+          .filter((s) => scanned.some((p) => p.sourceId === s.id))
+          .map((s, i) => ({
+            referenceId: String(i + 1),
+            filePath: s.name,
+            sourceId: s.id,
+            sourceName: s.name,
+          }));
+        via = 'document_scan';
+        this.logger.log(
+          `retrieveContext knowledge=${knowledgeId}: LightRAG returned nothing for the named document(s); ${scanned.length} line(s) read from their text instead`,
+        );
+      }
+    }
     const facts = raw.relations.slice(0, MAX_FACTS).map((r) => {
       const line = `${r.source} — ${r.target}: ${r.description}`.trim();
       return line.length > MAX_FACT_CHARS
@@ -710,7 +770,7 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
         : line;
     });
     if (passages.length === 0 && facts.length === 0) {
-      return { ...nothing(), via: raw.via, ...documents };
+      return { ...nothing(), via, ...documents };
     }
     return {
       knowledgeId,
@@ -718,7 +778,7 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
       passages,
       facts,
       references,
-      via: raw.via,
+      via,
       ...documents,
     };
   }
@@ -752,6 +812,44 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
     const k = await this.get(knowledgeId);
     this.requireReadable(k);
     return this.gateway.getGraph(knowledgeId, params);
+  }
+
+  /**
+   * The lines of the named documents that carry the query's words
+   * (CLEAN-203), read from the stored files. Only text-like documents are
+   * read: a `.csv`, `.md`, `.txt` or a text source has lines; a PDF or a
+   * workbook does not and is skipped. One document that cannot be read is
+   * logged and skipped, never a failure of the whole lookup.
+   */
+  private async scanDocuments(
+    sources: ISourceData[],
+    query: string,
+  ): Promise<IKnowledgePassage[]> {
+    const out: IKnowledgePassage[] = [];
+    for (const source of sources) {
+      if (!isTextLike(source)) continue;
+      let text: string;
+      try {
+        text = await readAll(
+          (await this.sources.readContent(source.knowledgeId, source.id)).body,
+          SCAN_MAX_BYTES,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `retrieveContext: could not read ${source.name} for a document scan: ${errorMessage(err)}`,
+        );
+        continue;
+      }
+      for (const line of scanDocumentLines(text, query)) {
+        out.push({
+          text: line.text,
+          filePath: source.name,
+          sourceId: source.id,
+          sourceName: source.name,
+        });
+      }
+    }
+    return out;
   }
 
   /**

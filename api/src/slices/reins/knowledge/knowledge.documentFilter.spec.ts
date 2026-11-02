@@ -5,6 +5,7 @@
 // not pass another deck's rows off as the named one's.
 
 import { Logger } from '@nestjs/common';
+import { Readable } from 'node:stream';
 import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { IInstanceGateway } from '../instance/domain/instance.gateway';
@@ -42,6 +43,7 @@ interface Harness {
 function makeHarness(
   sources: ISourceData[],
   chunks: Array<{ text: string; filePath: string }>,
+  texts: Record<string, string> = {},
 ): Harness {
   const retrieve = jest.fn(
     async (): Promise<IContextResult> => ({
@@ -63,6 +65,15 @@ function makeHarness(
   } as unknown as IKnowledgeGateway;
   const sourceService = {
     findByKnowledge: jest.fn(async () => sources),
+    readContent: jest.fn(async (_knowledgeId: string, sourceId: string) => {
+      const s = sources.find((x) => x.id === sourceId);
+      return {
+        filename: s?.name ?? sourceId,
+        contentType: 'text/csv',
+        contentLength: null,
+        body: Readable.from([Buffer.from(texts[s?.name ?? ''] ?? '', 'utf8')]),
+      };
+    }),
     countByKnowledgeIds: jest.fn(
       async (ids: string[]) =>
         new Map(
@@ -159,6 +170,81 @@ describe('KnowledgeService.retrieveContext — the document filter (CLEAN-203)',
 
     expect(result.reason).toBe('document_not_found');
     expect(retrieve).not.toHaveBeenCalled();
+  });
+
+  // Production, 2026-11-02: "power liftgate" against the named 16 KB
+  // equipment sheet came back empty from LightRAG (similarity threshold)
+  // while the row sat in the sheet. The document's own text is the fallback.
+  it('reads the named document itself when the retrieval service returns nothing for it', async () => {
+    const SHEET_TEXT = [
+      'Category,Feature,2.5 S,2.5 S Premium,2.5 Turbo Premium Plus',
+      'Exterior Features,Power rear liftgate,-,Std,Std',
+      'Interior Features,Power windows,Std,Std,Std',
+    ].join('\n');
+    const { service, retrieve } = makeHarness(sources, [], {
+      [HATCHBACK_SHEET]: SHEET_TEXT,
+    });
+
+    const result = await service.retrieveContext('k1', 'power liftgate', {
+      documents: [HATCHBACK_SHEET],
+    });
+
+    expect(retrieve).toHaveBeenCalledTimes(1);
+    expect(result.via).toBe('document_scan');
+    expect(result.passages.map((p) => p.text)).toEqual([
+      'Category,Feature,2.5 S,2.5 S Premium,2.5 Turbo Premium Plus',
+      'Exterior Features,Power rear liftgate,-,Std,Std',
+      'Interior Features,Power windows,Std,Std,Std',
+    ]);
+    expect(
+      result.passages.every((p) => p.sourceId === `src-${HATCHBACK_SHEET}`),
+    ).toBe(true);
+    expect(result.references.map((r) => r.sourceName)).toEqual([
+      HATCHBACK_SHEET,
+    ]);
+    expect(result.documents).toEqual([HATCHBACK_SHEET]);
+  });
+
+  it('does not scan when the retrieval service did return passages, nor without a filter', async () => {
+    const { service, retrieve } = makeHarness(sources, chunks, {
+      [HATCHBACK_SHEET]: 'Exterior Features,Power rear liftgate,-,Std,Std',
+    });
+    const sourceService = (
+      service as unknown as { sources: { readContent: jest.Mock } }
+    ).sources;
+
+    const filtered = await service.retrieveContext('k1', 'AFS', {
+      documents: [HATCHBACK_SHEET],
+    });
+    const unfiltered = await service.retrieveContext('k1', 'liftgate');
+
+    expect(filtered.via).toBe('query_data');
+    expect(unfiltered.via).toBe('query_data');
+    expect(unfiltered.passages).toHaveLength(2);
+    expect(sourceService.readContent).not.toHaveBeenCalled();
+    expect(retrieve).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips a document that is not text, and stays empty when nothing is scannable', async () => {
+    const pdf = {
+      ...source('26MY CX-30 Spec Deck.pdf', 'upload_pdf'),
+      mimeType: 'application/pdf',
+    } as ISourceData;
+    const { service } = makeHarness([pdf], [], {
+      '26MY CX-30 Spec Deck.pdf': 'binary soup liftgate',
+    });
+    const sourceService = (
+      service as unknown as { sources: { readContent: jest.Mock } }
+    ).sources;
+
+    const result = await service.retrieveContext('k1', 'liftgate', {
+      documents: ['26MY CX-30 Spec Deck'],
+    });
+
+    expect(sourceService.readContent).not.toHaveBeenCalled();
+    expect(result.passages).toEqual([]);
+    expect(result.reason).toBe('no_relevant_content');
+    expect(result.documents).toEqual(['26MY CX-30 Spec Deck.pdf']);
   });
 
   it('leaves the unfiltered path as it was', async () => {

@@ -38,10 +38,10 @@ websockify --web="${NOVNC_DIR:-/usr/share/novnc}" \
            >/tmp/websockify.log 2>&1 &
 ws=$!
 
-/usr/src/.nvm/versions/node/v24.15.0/bin/node /usr/src/vnc/auth-proxy.mjs &
+/usr/src/.nvm/versions/node/*/bin/node /usr/src/vnc/auth-proxy.mjs &
 proxy=$!
 
-dumb-init -- /usr/src/.nvm/versions/node/v24.15.0/bin/node build/index.js "$@" &
+dumb-init -- /usr/src/.nvm/versions/node/*/bin/node build/index.js "$@" &
 node=$!
 
 _forward_term() {

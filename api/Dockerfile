@@ -26,7 +26,9 @@ WORKDIR /build
 COPY runtime ./runtime
 RUN cd runtime && bun install --frozen-lockfile --ignore-scripts
 
-FROM oven/bun:1-slim
+# Pinned, not oven/bun:1-slim: Bun 1.4.3 and earlier carry the vulnerable Brotli
+# decoder (CVE-2026-111497), and a floating tag lets a rebuild land back on one.
+FROM oven/bun:1.4.4-slim
 WORKDIR /usr/src/app
 COPY --from=builder /build/api/dist ./dist
 # Workspace deps are hoisted to /build/node_modules; api/node_modules

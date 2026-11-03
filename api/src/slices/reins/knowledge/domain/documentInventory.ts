@@ -62,7 +62,8 @@ const PRODUCT_CODE = /^[a-z]{2,8}\d{1,3}[a-z]{0,2}$/;
  */
 function tokens(name: string): Array<{ raw: string; key: string }> {
   const out: Array<{ raw: string; key: string }> = [];
-  for (const raw of name.split(/[^\p{L}\p{N}-]+/u)) {
+  // Apostrophes go first, so "Owner's" is one word rather than "owner" + "s".
+  for (const raw of name.replace(/['’]/g, '').split(/[^\p{L}\p{N}-]+/u)) {
     for (const part of splitHyphens(raw)) {
       if (!part) continue;
       const key = part.toLowerCase().replace(/-/g, '');
@@ -88,20 +89,36 @@ function tokens(name: string): Array<{ raw: string; key: string }> {
  * of its spellings ("2026" matches "26MY"), and a word of four or more
  * letters may be a prefix ("owner" matches "owners"). A token with digits
  * matches exactly, so "CX-5" never matches "CX-50".
+ *
+ * Two misses the chat showed (CLEAN-206). A year the name does not spell is
+ * not a conflict: "2026 CX-5 Focal Point" finds the undated Focal Point sheet,
+ * while a name that spells another year still does not match. And the
+ * abbreviation a manual's file carries counts: "Owner's Manual" finds
+ * "2026_CX5_OM.md".
  */
 export function matchesDocumentName(name: string, search: string): boolean {
   const needles = tokens(search).map((t) => t.key);
   if (needles.length === 0) return true;
   const keys = tokens(name).map((t) => t.key);
-  return needles.every((needle) =>
-    keys.some((key) => tokenMatches(needle, key)),
+  const undated = documentYear(name) === null;
+  return needles.every(
+    (needle) =>
+      (undated && canonicalYear(needle) !== null) ||
+      keys.some((key) => tokenMatches(needle, key)),
   );
 }
+
+/** Word → abbreviation a document name may carry instead (CLEAN-206). */
+const ABBREVIATIONS: Array<{ word: RegExp; key: string }> = [
+  { word: /^(owners?|manuals?)$/, key: 'om' },
+];
 
 function tokenMatches(needle: string, key: string): boolean {
   const year = canonicalYear(needle);
   if (year) return canonicalYear(key) === year;
   if (key === needle) return true;
+  if (ABBREVIATIONS.some((a) => a.key === key && a.word.test(needle)))
+    return true;
   return /^[a-z]{4,}$/.test(needle) && key.startsWith(needle);
 }
 

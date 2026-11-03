@@ -60,14 +60,23 @@ describe('matchesDocumentName', () => {
     ['2025-cx-5-owners-manual-2.md', 'CX-5 owner'],
     ['2026CX-5-2026_How to connect to your in car hot spot.md', '2026 CX-5'],
     ['2021 CX-9 Order Guide 2020-08-21 (1) - Colors.csv', 'cx-9 colors'],
+    // CLEAN-206: the abbreviation a manual's file carries, and an apostrophe.
+    ['2026_CX5_OM.md', 'CX-5 owner'],
+    ['2026_CX5_OM.md', "2026 CX-5 Owner's Manual"],
+    // CLEAN-206: a sheet with no year in its name is still the 2026 CX-5's.
+    [
+      'Mazda_CX-5_Focal Point_Copy_Final for Design Layout_12.10.25.md',
+      '2026 CX-5 Focal Point',
+    ],
   ])('%s is found by "%s"', (name, search) => {
     expect(matchesDocumentName(name, search)).toBe(true);
   });
 
   it.each([
     ['2026 CX-50 Spec Deck.md', 'CX-5'],
-    ['2026_CX5_OM.md', 'CX-5 owner'],
     ['2025_CX5_OM.md', '2026 CX-5'],
+    // A name that spells another year is not the year asked for.
+    ['2025 CX-5 Focal Point.md', '2026 CX-5 Focal Point'],
     // Three letters must match a whole token, not a prefix.
     ['Audio_Settings_Guide.md', 'set'],
   ])('%s is not found by "%s"', (name, search) => {

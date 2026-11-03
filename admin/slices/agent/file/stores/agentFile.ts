@@ -118,9 +118,13 @@ export const useAgentFileStore = defineStore('agentFile', () => {
 
   // ── Limits and list ─────────────────────────────────────────────
 
+  // Limits carry per-agent values since CLEAN-208 (`curated` comes from the
+  // agent's own agent.config.json), so the cache is good for one agent only.
+  let limitsFor: string | null = null;
   async function fetchLimits(agentId: string): Promise<IFileLimits> {
-    if (limits.value) return limits.value;
+    if (limits.value && limitsFor === agentId) return limits.value;
     limits.value = await getService().limits(agentId);
+    limitsFor = agentId;
     return limits.value;
   }
 

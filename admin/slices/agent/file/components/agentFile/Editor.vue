@@ -38,6 +38,23 @@ const readOnly = computed(
 );
 const isJson = computed(() => languageFor(props.path) === 'json');
 
+// A curated root file (SOUL.md, USER.md, MEMORY.md, HEARTBEAT.md) is bounded
+// by the runtime to memory.limits in agent.config.json (CLEAN-208). The budget
+// is shown while editing, and a draft over it cannot be saved: the API would
+// refuse it, and a file that slipped through would only be cut in the prompt.
+const curatedLimit = computed<number | null>(() => {
+  if (props.path.includes('/')) return null;
+  return store.limits?.curated?.[props.path] ?? null;
+});
+const draftChars = computed(() => {
+  const d = draft.value;
+  if (d) return d.content.length;
+  return loaded.value?.content.length ?? 0;
+});
+const overLimit = computed(
+  () => curatedLimit.value !== null && draftChars.value > curatedLimit.value,
+);
+
 const host = ref<HTMLDivElement | null>(null);
 const monacoRef = shallowRef<typeof Monaco | null>(null);
 const editor = shallowRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -287,12 +304,26 @@ onBeforeUnmount(() => {
       <p v-else-if="readOnlyReason" class="min-w-0 flex-1 truncate text-muted-foreground">
         Read only — {{ readOnlyReason }}
       </p>
+      <p
+        v-else-if="overLimit"
+        class="min-w-0 flex-1 truncate text-destructive"
+        :title="`This agent's limit for ${path} is ${curatedLimit} characters (memory.limits in agent.config.json). The runtime cuts anything over it, so saving is refused. Shorten the file or raise the limit.`"
+      >
+        Over this agent's limit — {{ draftChars.toLocaleString() }} / {{ curatedLimit?.toLocaleString() }} characters. Shorten it or raise memory.limits in agent.config.json.
+      </p>
       <p v-else-if="dirty" class="min-w-0 flex-1 truncate text-amber-700 dark:text-amber-300">
         ● Unsaved changes · applies on next restart
       </p>
       <p v-else class="min-w-0 flex-1 truncate text-muted-foreground">Saved</p>
 
       <span class="text-muted-foreground">Ln {{ cursor.line }}, Col {{ cursor.column }}</span>
+      <span
+        v-if="curatedLimit !== null"
+        :class="overLimit ? 'text-destructive' : 'text-muted-foreground'"
+        :title="`Limit for ${path}: ${curatedLimit} characters (memory.limits in agent.config.json)`"
+      >
+        {{ draftChars.toLocaleString() }} / {{ curatedLimit.toLocaleString() }} chars
+      </span>
       <span class="text-muted-foreground">{{ languageLabel(path) }}</span>
       <span
         v-if="isJson && jsonValid !== null"
@@ -313,8 +344,14 @@ onBeforeUnmount(() => {
       </Button>
       <Button
         size="sm"
-        :disabled="readOnly || !dirty || saving || (isJson && jsonValid === false)"
-        :title="isJson && jsonValid === false ? 'Fix the JSON before saving' : 'Save (Ctrl/⌘+S)'"
+        :disabled="readOnly || !dirty || saving || overLimit || (isJson && jsonValid === false)"
+        :title="
+          overLimit
+            ? `Over this agent's ${curatedLimit}-character limit for ${path}`
+            : isJson && jsonValid === false
+              ? 'Fix the JSON before saving'
+              : 'Save (Ctrl/⌘+S)'
+        "
         @click="emit('save')"
       >
         <IconDeviceFloppy class="size-4" :class="saving && 'animate-pulse'" />

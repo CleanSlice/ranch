@@ -20,9 +20,16 @@ export abstract class IFileGateway {
     limit: number,
   ): Promise<IFileChunk>;
   /**
+   * Character limits of the curated root files for this agent, read from its
+   * agent.config.json (`memory.limits`), runtime defaults where unset
+   * (CLEAN-208). Every write path refuses a curated file over its limit.
+   */
+  abstract curatedLimits(agentId: string): Promise<Record<string, number>>;
+  /**
    * Save a text file of any recognised text kind (CLEAN-112). `.json` must
    * parse. `options.createOnly` → 409 if present; `options.ifUnmodifiedSince`
-   * → 412 if the object changed after that instant.
+   * → 412 if the object changed after that instant. A curated root file over
+   * its limit is refused (400) before anything is written (CLEAN-208).
    */
   abstract save(
     agentId: string,

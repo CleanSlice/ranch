@@ -1,4 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { SKILL_GROUPS, SkillGroup } from '../domain/skill.groups';
+
+export class SkillTemplateRefDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty({ example: 'Product Advisor' })
+  name: string;
+}
 
 export class SkillDto {
   @ApiProperty()
@@ -23,8 +32,34 @@ export class SkillDto {
   })
   files: { path: string; content: string }[];
 
+  @ApiProperty({ description: 'Number of sibling files besides SKILL.md' })
+  filesCount: number;
+
   @ApiPropertyOptional({ description: 'Origin URL if imported' })
   source: string | null;
+
+  @ApiPropertyOptional({
+    enum: SKILL_GROUPS,
+    enumName: 'SkillGroup',
+    nullable: true,
+    description: 'Library group on the admin Skills page',
+  })
+  group: SkillGroup | null;
+
+  @ApiProperty({
+    description:
+      'Shared display order of the Skills page. Changes nothing for agents or templates.',
+  })
+  sortOrder: number;
+
+  @ApiProperty({ description: 'ceil(body.length / 4), shown as "≈ N tokens"' })
+  tokenEstimate: number;
+
+  @ApiProperty({
+    type: [SkillTemplateRefDto],
+    description: 'Templates that ship this skill (read-only here)',
+  })
+  templates: SkillTemplateRefDto[];
 
   @ApiProperty()
   createdAt: Date;

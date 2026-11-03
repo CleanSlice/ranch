@@ -2,15 +2,29 @@ import type { ISkillGateway } from './skill.gateway';
 import type {
   IImportFromGithubInput,
   IImportFromUrlInput,
+  INameAvailability,
   ISkillData,
   ISkillDependentAgent,
   ISkillInput,
+  ISkillOrder,
   ISkillSearchHit,
 } from './skill.types';
 
 /** Domain service for skills. The store layers list/loading/error + caching. */
 export class SkillService {
   constructor(private gateway: ISkillGateway) {}
+
+  fetchOrder(): Promise<ISkillOrder> {
+    return this.gateway.fetchOrder();
+  }
+
+  saveOrder(order: ISkillOrder): Promise<ISkillOrder> {
+    return this.gateway.saveOrder(order);
+  }
+
+  isNameAvailable(name: string, excludeId?: string): Promise<INameAvailability> {
+    return this.gateway.isNameAvailable(name, excludeId);
+  }
 
   findAll(): Promise<ISkillData[]> {
     return this.gateway.findAll();

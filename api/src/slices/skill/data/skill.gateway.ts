@@ -6,8 +6,10 @@ import {
   ICreateSkillData,
   IUpdateSkillData,
   ISkillDependentAgent,
+  ISkillOrderItem,
 } from '../domain/skill.types';
-import { SkillMapper } from './skill.mapper';
+import { estimateTokens } from '../domain/tokens';
+import { SkillMapper, SKILL_INCLUDE } from './skill.mapper';
 
 @Injectable()
 export class SkillGateway extends ISkillGateway {
@@ -20,18 +22,27 @@ export class SkillGateway extends ISkillGateway {
 
   async findAll(): Promise<ISkillData[]> {
     const records = await this.prisma.skill.findMany({
-      orderBy: [{ name: 'asc' }],
+      // The admin's library order; name breaks ties left by the migration
+      // default (0) or a deleted neighbour.
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      include: SKILL_INCLUDE,
     });
     return records.map((r) => this.mapper.toEntity(r));
   }
 
   async findById(id: string): Promise<ISkillData | null> {
-    const record = await this.prisma.skill.findUnique({ where: { id } });
+    const record = await this.prisma.skill.findUnique({
+      where: { id },
+      include: SKILL_INCLUDE,
+    });
     return record ? this.mapper.toEntity(record) : null;
   }
 
   async findByName(name: string): Promise<ISkillData | null> {
-    const record = await this.prisma.skill.findUnique({ where: { name } });
+    const record = await this.prisma.skill.findUnique({
+      where: { name },
+      include: SKILL_INCLUDE,
+    });
     return record ? this.mapper.toEntity(record) : null;
   }
 
@@ -39,13 +50,23 @@ export class SkillGateway extends ISkillGateway {
     if (ids.length === 0) return [];
     const records = await this.prisma.skill.findMany({
       where: { id: { in: ids } },
+      include: SKILL_INCLUDE,
     });
     return records.map((r) => this.mapper.toEntity(r));
   }
 
   async create(data: ICreateSkillData): Promise<ISkillData> {
-    const record = await this.prisma.skill.create({
-      data: this.mapper.toCreate(data),
+    // Last position in the library, decided inside the insert's transaction
+    // so two imports in the same second cannot land on the same number.
+    const record = await this.prisma.$transaction(async (tx) => {
+      const last = await tx.skill.aggregate({ _max: { sortOrder: true } });
+      return tx.skill.create({
+        data: {
+          ...this.mapper.toCreate(data),
+          sortOrder: (last._max.sortOrder ?? 0) + 1,
+        },
+        include: SKILL_INCLUDE,
+      });
     });
     return this.mapper.toEntity(record);
   }
@@ -57,9 +78,41 @@ export class SkillGateway extends ISkillGateway {
       data: {
         ...rest,
         ...(files !== undefined ? { files: files as unknown as object } : {}),
+        ...(typeof rest.body === 'string'
+          ? { tokenEstimate: estimateTokens(rest.body) }
+          : {}),
       },
+      include: SKILL_INCLUDE,
     });
     return this.mapper.toEntity(record);
+  }
+
+  async readOrder(): Promise<ISkillOrderItem[]> {
+    return this.prisma.skill.findMany({
+      select: { id: true, sortOrder: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async writeOrder(
+    items: ISkillOrderItem[],
+    guard: (current: ISkillOrderItem[]) => void,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      // Row locks: a second save waits here, then sees the first one's
+      // positions and fails the guard instead of overwriting them.
+      const current = await tx.$queryRaw<ISkillOrderItem[]>`
+        SELECT "id", "sortOrder" FROM "Skill" ORDER BY "id" FOR UPDATE`;
+      guard(current);
+      const ids = items.map((i) => i.id);
+      const orders = items.map((i) => i.sortOrder);
+      // One statement, and not `tx.skill.update`, so Prisma's @updatedAt does
+      // not stamp every skill as edited because somebody dragged a row.
+      await tx.$executeRaw`
+        UPDATE "Skill" AS s SET "sortOrder" = v.ord
+        FROM unnest(${ids}::text[], ${orders}::int[]) AS v(id, ord)
+        WHERE s."id" = v.id`;
+    });
   }
 
   async delete(id: string): Promise<void> {

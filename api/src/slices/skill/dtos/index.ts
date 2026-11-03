@@ -5,3 +5,6 @@ export { SearchSkillsDto } from './searchSkills.dto';
 export { ImportSkillDto, ImportSkillUrlDto } from './importSkill.dto';
 export { SkillSearchResultDto } from './skillSearchResult.dto';
 export { SkillAgentDto } from './skillAgent.dto';
+export { SkillOrderDto, SkillOrderItemDto } from './skillOrder.dto';
+export { SaveSkillOrderDto } from './saveSkillOrder.dto';
+export { NameAvailableDto, NameAvailableQueryDto } from './nameAvailable.dto';

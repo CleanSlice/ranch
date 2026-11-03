@@ -4,6 +4,7 @@ import { SkillTool } from './skill.tool';
 import type { ISkillGateway } from './domain';
 import type { ISkillData } from './domain';
 import type { GithubSearch } from './data/github.search';
+import type { SkillOrderService } from './domain/skillOrder.service';
 import { UserRoleTypes } from '#/user/user/domain';
 
 /**
@@ -20,7 +21,12 @@ const skill = (overrides: Partial<ISkillData> = {}): ISkillData => ({
   description: 'Ships things',
   body: '# DevOps\n\nDo the deploys.',
   files: [{ path: 'references/ci.md', content: 'ci notes' }],
+  filesCount: 1,
   source: null,
+  group: null,
+  sortOrder: 1,
+  tokenEstimate: 8,
+  templates: [],
   createdAt: new Date('2026-09-17T10:00:00.000Z'),
   updatedAt: new Date('2026-09-17T10:00:00.000Z'),
   ...overrides,
@@ -43,6 +49,7 @@ const plainAgent = () => request([UserRoleTypes.Agent]);
 
 interface Harness {
   tool: SkillTool;
+  order: { reorderByNames: jest.Mock };
   skills: jest.Mocked<
     Pick<
       ISkillGateway,
@@ -104,11 +111,22 @@ function harness(): Harness {
     }),
   } as unknown as Harness['github'];
 
+  const order = {
+    reorderByNames: jest.fn().mockResolvedValue({
+      order: [
+        { name: 'devops', position: 1 },
+        { name: 'pdf', position: 2 },
+      ],
+      unknown: [],
+    }),
+  };
+
   const tool = new SkillTool(
     skills as unknown as ISkillGateway,
     github as unknown as GithubSearch,
+    order as unknown as SkillOrderService,
   );
-  return { tool, skills, github };
+  return { tool, skills, github, order };
 }
 
 const textOf = (result: { content: { text: string }[] }) =>

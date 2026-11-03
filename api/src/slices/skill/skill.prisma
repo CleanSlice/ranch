@@ -8,9 +8,21 @@ model Skill {
   body        String   // SKILL.md content
   files       Json     @default("[]")  // sibling files: [{ path: "references/x.md", content: "…" }]
   source      String?  // origin URL when imported (e.g. github.com/owner/repo/path)
+  // Library group for the admin Skills page (CLEAN-205): one of SKILL_GROUPS
+  // in domain/skill.groups.ts, or null. A string, not an enum, so renaming a
+  // group never needs a migration.
+  group       String?
+  // Shared display order of the admin Skills page, one row per position. It
+  // decides nothing for agents or templates. Written only by the batch order
+  // save (raw SQL, so `updatedAt` stays an edit time, not a reorder time).
+  sortOrder   Int      @default(0)
+  // ceil(length(body) / 4): what the library summary adds up. Recomputed by
+  // the gateway on every body write; there is no tokenizer in the API.
+  tokenEstimate Int    @default(0)
   templates   Template[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([name])
+  @@index([sortOrder])
 }

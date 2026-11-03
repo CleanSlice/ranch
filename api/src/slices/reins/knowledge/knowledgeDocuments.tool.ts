@@ -12,7 +12,7 @@ import { IKnowledgeGateway } from './domain/knowledge.gateway';
 import { boundKnowledgeIds } from './domain/boundKnowledge';
 import {
   IDocumentInventory,
-  matchesDocumentName,
+  selectDocumentsByName,
   summarizeDocumentNames,
 } from './domain/documentInventory';
 
@@ -163,7 +163,7 @@ export class KnowledgeDocumentsTool implements IConditionallyListedTool {
           // the 2026 CX-5 Owner's Manual; `matchesDocumentName` can.
           const all = await this.sources.findByKnowledge(id);
           const matching = search
-            ? all.filter((s) => matchesDocumentName(s.name, search))
+            ? selectDocumentsByName(all, search, (s) => s.name)
             : all;
           const start = (page - 1) * perPage;
           const block: IDocumentsBlock = {

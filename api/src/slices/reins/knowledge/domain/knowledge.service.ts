@@ -34,20 +34,8 @@ import { staleIndexAfterMs } from '../../source/domain/indexBudget';
 import { deriveIndexStatus } from './knowledge.status';
 import { MAX_FACTS, MAX_FACT_CHARS } from './knowledgeContext';
 import { summarizeFailures } from './failureSummary';
-import { matchesDocumentName } from './documentInventory';
+import { selectDocumentsByName } from './documentInventory';
 import { scanDocumentLines } from './documentScan';
-
-/**
- * Whether a source is the document an agent named (CLEAN-203): the exact
- * name first, then the loose match `list_knowledge_documents` uses, so a
- * name copied from that listing — or typed with other hyphens and an MY
- * code — still lands on the same row.
- */
-function sameDocument(sourceName: string, wanted: string): boolean {
-  const a = sourceName.trim().toLowerCase();
-  const b = wanted.trim().toLowerCase();
-  return a === b || matchesDocumentName(sourceName, wanted);
-}
 
 /**
  * Bytes of one document a scan reads at most (CLEAN-203): the largest
@@ -666,12 +654,20 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
     // list_knowledge_documents matches them, so the name the agent just
     // listed is the name it passes back. Nothing matching is said so,
     // rather than silently widening to the whole base.
+    // Each name picks its documents the way list_knowledge_documents does,
+    // with the year rule of selectDocumentsByName (CLEAN-206).
     const only = opts.documents?.length
-      ? sources.filter(
-          (s) =>
-            s.lightragDocId &&
-            opts.documents!.some((d) => sameDocument(s.name, d)),
-        )
+      ? [
+          ...new Set(
+            opts.documents.flatMap((d) =>
+              selectDocumentsByName(
+                sources.filter((s) => s.lightragDocId),
+                d,
+                (s) => s.name,
+              ),
+            ),
+          ),
+        ]
       : null;
     if (only && only.length === 0) {
       return { ...nothing(), reason: 'document_not_found' };

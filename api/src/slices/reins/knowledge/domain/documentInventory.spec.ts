@@ -3,6 +3,7 @@ import {
   documentYear,
   matchesDocumentName,
   MAX_SUBJECTS,
+  selectDocumentsByName,
   summarizeDocumentNames,
 } from './documentInventory';
 
@@ -139,5 +140,55 @@ describe('summarizeDocumentNames', () => {
       subjects: [],
       undated: 0,
     });
+  });
+});
+
+describe('selectDocumentsByName', () => {
+  const pick = (names: string[], search: string) =>
+    selectDocumentsByName(names, search, (n) => n);
+
+  it('prefers the dated document of the year asked over an undated sheet', () => {
+    const names = [
+      'Mazda_CX-5_Focal Point_Copy_Final for Design Layout_12.10.25.md',
+      '2026 CX-5 Focal Point.md',
+    ];
+    expect(pick(names, '2026 CX-5 Focal Point')).toEqual([
+      '2026 CX-5 Focal Point.md',
+    ]);
+  });
+
+  it('falls back to the undated sheet when no dated document of that year matches', () => {
+    const names = [
+      'Mazda_CX-5_Focal Point_Copy_Final for Design Layout_12.10.25.md',
+    ];
+    expect(pick(names, '2026 CX-5 Focal Point')).toEqual(names);
+  });
+
+  it('keeps the dated documents of a different year out, even with an undated match', () => {
+    const names = ['2025 CX-5 Focal Point.md'];
+    expect(pick(names, '2026 CX-5 Focal Point')).toEqual([]);
+  });
+
+  it('returns every match when the search names no year', () => {
+    const names = [
+      '2025 CX-5 Focal Point.md',
+      '2026 CX-5 Focal Point.md',
+      'CX-5 Focal Point undated.md',
+    ];
+    expect(pick(names, 'CX-5 Focal Point')).toEqual(names);
+  });
+
+  it('accepts an exact name even when the search words would not match it', () => {
+    const names = ['Audio_Settings_Guide.md'];
+    expect(pick(names, 'Audio_Settings_Guide.md')).toEqual(names);
+  });
+
+  it('documents the known cost: an undated sheet can answer a search for another year', () => {
+    // No 2025 Focal Point is on hand, so the undated 2026 sheet is returned
+    // for a 2025 question. The name is shown so the agent can say which it is.
+    const names = [
+      'Mazda_CX-5_Focal Point_Copy_Final for Design Layout_12.10.25.md',
+    ];
+    expect(pick(names, '2025 CX-5 Focal Point')).toEqual(names);
   });
 });

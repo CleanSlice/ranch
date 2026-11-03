@@ -108,6 +108,33 @@ export function matchesDocumentName(name: string, search: string): boolean {
   );
 }
 
+/**
+ * The documents a search names (CLEAN-206). An exact name counts as a match
+ * too. When the search spells a year and a document dated that year matches,
+ * documents that spell no year are left out: "2026 CX-5 Focal Point" prefers
+ * the dated 2026 sheet. Undated ones are the fallback when nothing dated
+ * matches. An undated name cannot say which year it is, so a search for
+ * another year can still reach one that has no dated match; the result shows
+ * the name, so the agent sees what it is.
+ */
+export function selectDocumentsByName<T>(
+  items: T[],
+  search: string,
+  nameOf: (item: T) => string,
+): T[] {
+  const wanted = search.trim().toLowerCase();
+  const matched = items.filter((item) => {
+    const name = nameOf(item);
+    return (
+      name.trim().toLowerCase() === wanted || matchesDocumentName(name, search)
+    );
+  });
+  const wantsYear = tokens(search).some((t) => canonicalYear(t.key) !== null);
+  if (!wantsYear) return matched;
+  const dated = matched.filter((item) => documentYear(nameOf(item)) !== null);
+  return dated.length > 0 ? dated : matched;
+}
+
 /** Word → abbreviation a document name may carry instead (CLEAN-206). */
 const ABBREVIATIONS: Array<{ word: RegExp; key: string }> = [
   { word: /^(owners?|manuals?)$/, key: 'om' },

@@ -129,6 +129,14 @@ what will be written, not only that something will be.
 | `write_agent_file`, `create_agent_file` | `FileProposalService.propose` → `apply` (confirm by proposal) |
 | `import_agent_files` | `WorkspaceArchiveService` + `FileProposalService.proposeImport` → `apply`; an archive comes as a chat attachment or an https link — the local file picker stays in the console, as its description says. Plain attachments (`attachmentIds`, CLEAN-192) go through `resolveSelectedFiles`: matched by exact file name, replaced on a unique match, added to `targetFolder` on none, and an ambiguous name comes back as `needs_choice` for the agent to ask about before anything is staged |
 
+The Skills library (CLEAN-205) follows the same rule for its two new
+capabilities: the group a skill belongs to travels through `create_skill` and
+`update_skill` (`group`, same enum as the DTOs), and the shared display order
+has `reorder_skills` (topic `skills`, operator-only), which calls the
+`SkillOrderService` the console's `PATCH /skills/order` uses — a concurrent
+console save surfaces as the same 409 and the tool says "try again". The order
+is the library's only; it never changes what agents or templates receive.
+
 ## Secrets
 
 Parameters may carry secrets. Results never do. Strip `apiKey`, `authValue`,

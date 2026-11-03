@@ -13,8 +13,9 @@ import {
 } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAuthTokenPayload } from '#/user/auth/domain';
-import { ISkillGateway } from './domain';
-import type { ISkillFile } from './domain';
+import { ISkillGateway, SKILL_GROUPS } from './domain';
+import type { ISkillFile, SkillGroup } from './domain';
+import { SkillOrderService } from './domain/skillOrder.service';
 import { GithubSearch } from './data/github.search';
 import { deriveSlug } from './skill.controller';
 
@@ -50,6 +51,7 @@ export class SkillTool implements IConditionallyListedTool {
   constructor(
     private readonly skills: ISkillGateway,
     private readonly github: GithubSearch,
+    private readonly order: SkillOrderService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
@@ -141,10 +143,22 @@ export class SkillTool implements IConditionallyListedTool {
         .string()
         .optional()
         .describe('One line on when an agent should reach for it'),
+      group: z
+        .enum(SKILL_GROUPS)
+        .optional()
+        .describe(
+          'Library group on the admin Skills page: api, routing, spec-lookup, answer-format or runtime',
+        ),
     }),
   })
   async createSkill(
-    args: { name: string; title: string; body: string; description?: string },
+    args: {
+      name: string;
+      title: string;
+      body: string;
+      description?: string;
+      group?: SkillGroup;
+    },
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
@@ -154,6 +168,47 @@ export class SkillTool implements IConditionallyListedTool {
       `Skill created through MCP: ${created.name} (${created.id})`,
     );
     return ok(created);
+  }
+
+  @Tool({
+    name: 'reorder_skills',
+    topic: ToolTopics.Skills,
+    title: 'Reorder the skills library',
+    template: 'Put the skills «names» first in the library',
+    description:
+      'Change the display order of the admin Skills page: the named skills ' +
+      'move to the front in the order given, every other skill keeps its ' +
+      'place after them. This is the library order only — it does not change ' +
+      'which skills agents or templates receive. Returns the new order as ' +
+      'name and position. Unknown names come back in `unknown`; call ' +
+      'list_skills to see the slugs.',
+    parameters: z.object({
+      names: z
+        .array(z.string())
+        .min(1)
+        .describe('Skill slugs, first to last'),
+    }),
+  })
+  async reorderSkills(
+    args: { names: string[] },
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ): Promise<ToolResult> {
+    requireOperator(httpRequest);
+    try {
+      const result = await this.order.reorderByNames(args.names);
+      this.logger.log(`Skills reordered through MCP: ${args.names.join(', ')}`);
+      return ok(result);
+    } catch (error) {
+      // The console saved in between: say so rather than surface a 409 the
+      // model cannot do anything with except try again.
+      if ((error as { status?: number }).status === 409) {
+        return ok({
+          error: 'The order changed while reordering — try again',
+        });
+      }
+      throw error;
+    }
   }
 
   @Tool({

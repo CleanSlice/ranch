@@ -14,7 +14,7 @@ import { AgentDeployService } from '#/agent/agent/domain/agentDeploy.service';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { ITemplateFileGateway } from '#/agent/templateFile/domain';
 import { ILlmGateway } from '#/llm/domain';
-import { ISkillGateway } from '#/skill/domain';
+import { ISkillGateway, SKILL_GROUPS, type SkillGroup } from '#/skill/domain';
 import {
   ISettingGateway,
   describeSettingCatalog,
@@ -555,6 +555,13 @@ export class RancherTool {
         .string()
         .optional()
         .describe('Full SKILL.md markdown body — replaces existing content.'),
+      group: z
+        .enum(SKILL_GROUPS)
+        .nullable()
+        .optional()
+        .describe(
+          'Library group on the admin Skills page (api, routing, spec-lookup, answer-format, runtime); null clears it.',
+        ),
     }),
   })
   async updateSkill(
@@ -566,6 +573,7 @@ export class RancherTool {
       title?: string;
       description?: string;
       body?: string;
+      group?: SkillGroup | null;
     },
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },

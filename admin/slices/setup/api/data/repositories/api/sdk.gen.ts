@@ -183,6 +183,12 @@ import type {
   DeleteKnowledgeSourceResponse,
   SkillControllerFindAllData,
   SkillControllerCreateData,
+  GetSkillOrderData,
+  GetSkillOrderResponse,
+  SaveSkillOrderData,
+  SaveSkillOrderResponse,
+  SkillNameAvailableData,
+  SkillNameAvailableResponse,
   SkillControllerListSourcesData,
   SkillControllerSearchData,
   SkillControllerImportFromUrlData,
@@ -2617,7 +2623,7 @@ export class KnowledgeSourcesService {
 
 export class SkillsService {
   /**
-   * List all skills
+   * List all skills, in the library order (sortOrder, then name)
    */
   public static skillControllerFindAll<ThrowOnError extends boolean = false>(
     options?: Options<SkillControllerFindAllData, ThrowOnError>,
@@ -2633,7 +2639,7 @@ export class SkillsService {
   }
 
   /**
-   * Create a new skill
+   * Create a new skill (409 SKILL_EXISTS when the name is taken)
    */
   public static skillControllerCreate<ThrowOnError extends boolean = false>(
     options: Options<SkillControllerCreateData, ThrowOnError>,
@@ -2649,6 +2655,58 @@ export class SkillsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * The shared display order of the Skills page with its version (CLEAN-205)
+   */
+  public static getSkillOrder<ThrowOnError extends boolean = false>(
+    options?: Options<GetSkillOrderData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetSkillOrderResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/order",
+      ...options,
+    });
+  }
+
+  /**
+   * Replace the whole display order atomically. 409 ORDER_CHANGED when the version is stale. Agents and templates are not affected.
+   */
+  public static saveSkillOrder<ThrowOnError extends boolean = false>(
+    options: Options<SaveSkillOrderData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).patch<
+      SaveSkillOrderResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/order",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Whether a slug is free (the New / Edit skill form asks as you type)
+   */
+  public static skillNameAvailable<ThrowOnError extends boolean = false>(
+    options: Options<SkillNameAvailableData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      SkillNameAvailableResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/name-available",
+      ...options,
     });
   }
 
@@ -2757,7 +2815,7 @@ export class SkillsService {
   }
 
   /**
-   * Update a skill
+   * Update a skill (409 SKILL_EXISTS when a new name is taken)
    */
   public static skillControllerUpdate<ThrowOnError extends boolean = false>(
     options: Options<SkillControllerUpdateData, ThrowOnError>,

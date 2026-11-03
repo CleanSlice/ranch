@@ -1347,6 +1347,42 @@ export type AddFromArchiveResultDto = {
   jobId: string;
 };
 
+export type SkillOrderItemDto = {
+  id: string;
+  /**
+   * 1-based position in the library
+   */
+  sortOrder: number;
+};
+
+export type SkillOrderDto = {
+  /**
+   * Hash of every position. Send it back with PATCH /skills/order; a save against an older version is refused with 409 ORDER_CHANGED.
+   */
+  version: string;
+  items: Array<SkillOrderItemDto>;
+};
+
+export type SaveSkillOrderDto = {
+  /**
+   * The version GET /skills/order returned
+   */
+  version: string;
+  /**
+   * Every skill exactly once with its new position. Order only — agents and templates are not affected.
+   */
+  items: Array<SkillOrderItemDto>;
+};
+
+export type NameAvailableDto = {
+  name: string;
+  available: boolean;
+  /**
+   * The skill that holds the name, if any
+   */
+  existingId?: string;
+};
+
 export type ImportSkillUrlDto = {
   /**
    * GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.
@@ -1378,6 +1414,17 @@ export type ImportSkillDto = {
   overwrite?: boolean;
 };
 
+/**
+ * Library group on the admin Skills page; null clears it
+ */
+export enum SkillGroup {
+  API = "api",
+  ROUTING = "routing",
+  SPEC_LOOKUP = "spec-lookup",
+  ANSWER_FORMAT = "answer-format",
+  RUNTIME = "runtime",
+}
+
 export type CreateSkillDto = {
   /**
    * Unique slug — lowercase letters, digits, dashes
@@ -1389,6 +1436,10 @@ export type CreateSkillDto = {
    */
   body: string;
   description?: string;
+  /**
+   * Library group on the admin Skills page; null clears it
+   */
+  group?: SkillGroup | null;
 };
 
 export type UpdateSkillDto = {
@@ -1402,6 +1453,10 @@ export type UpdateSkillDto = {
    */
   body?: string;
   description?: string;
+  /**
+   * Library group on the admin Skills page; null clears it
+   */
+  group?: SkillGroup | null;
 };
 
 export type ChatSessionDto = {
@@ -4817,6 +4872,57 @@ export type SkillControllerCreateData = {
 export type SkillControllerCreateResponses = {
   201: unknown;
 };
+
+export type GetSkillOrderData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/skills/order";
+};
+
+export type GetSkillOrderResponses = {
+  200: SkillOrderDto;
+};
+
+export type GetSkillOrderResponse =
+  GetSkillOrderResponses[keyof GetSkillOrderResponses];
+
+export type SaveSkillOrderData = {
+  body: SaveSkillOrderDto;
+  path?: never;
+  query?: never;
+  url: "/skills/order";
+};
+
+export type SaveSkillOrderResponses = {
+  200: SkillOrderDto;
+};
+
+export type SaveSkillOrderResponse =
+  SaveSkillOrderResponses[keyof SaveSkillOrderResponses];
+
+export type SkillNameAvailableData = {
+  body?: never;
+  path?: never;
+  query: {
+    /**
+     * Slug to check
+     */
+    name: string;
+    /**
+     * A skill whose own name does not count as taken (Edit skill)
+     */
+    excludeId?: string;
+  };
+  url: "/skills/name-available";
+};
+
+export type SkillNameAvailableResponses = {
+  200: NameAvailableDto;
+};
+
+export type SkillNameAvailableResponse =
+  SkillNameAvailableResponses[keyof SkillNameAvailableResponses];
 
 export type SkillControllerListSourcesData = {
   body?: never;

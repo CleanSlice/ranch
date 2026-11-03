@@ -3015,6 +3015,77 @@ export const AddFromArchiveResultDtoSchema = {
   required: ["detected", "started", "jobId"],
 } as const;
 
+export const SkillOrderItemDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      example: "skill-…",
+    },
+    sortOrder: {
+      type: "number",
+      example: 3,
+      description: "1-based position in the library",
+    },
+  },
+  required: ["id", "sortOrder"],
+} as const;
+
+export const SkillOrderDtoSchema = {
+  type: "object",
+  properties: {
+    version: {
+      type: "string",
+      description:
+        "Hash of every position. Send it back with PATCH /skills/order; a save against an older version is refused with 409 ORDER_CHANGED.",
+    },
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/SkillOrderItemDto",
+      },
+    },
+  },
+  required: ["version", "items"],
+} as const;
+
+export const SaveSkillOrderDtoSchema = {
+  type: "object",
+  properties: {
+    version: {
+      type: "string",
+      description: "The version GET /skills/order returned",
+    },
+    items: {
+      description:
+        "Every skill exactly once with its new position. Order only — agents and templates are not affected.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/SkillOrderItemDto",
+      },
+    },
+  },
+  required: ["version", "items"],
+} as const;
+
+export const NameAvailableDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "devops",
+    },
+    available: {
+      type: "boolean",
+    },
+    existingId: {
+      type: "string",
+      description: "The skill that holds the name, if any",
+    },
+  },
+  required: ["name", "available"],
+} as const;
+
 export const ImportSkillUrlDtoSchema = {
   type: "object",
   properties: {
@@ -3064,6 +3135,12 @@ export const ImportSkillDtoSchema = {
   required: ["repo", "path"],
 } as const;
 
+export const SkillGroupSchema = {
+  type: "string",
+  enum: ["api", "routing", "spec-lookup", "answer-format", "runtime"],
+  description: "Library group on the admin Skills page; null clears it",
+} as const;
+
 export const CreateSkillDtoSchema = {
   type: "object",
   properties: {
@@ -3082,6 +3159,15 @@ export const CreateSkillDtoSchema = {
     },
     description: {
       type: "string",
+    },
+    group: {
+      nullable: true,
+      description: "Library group on the admin Skills page; null clears it",
+      allOf: [
+        {
+          $ref: "#/components/schemas/SkillGroup",
+        },
+      ],
     },
   },
   required: ["name", "title", "body"],
@@ -3105,6 +3191,15 @@ export const UpdateSkillDtoSchema = {
     },
     description: {
       type: "string",
+    },
+    group: {
+      nullable: true,
+      description: "Library group on the admin Skills page; null clears it",
+      allOf: [
+        {
+          $ref: "#/components/schemas/SkillGroup",
+        },
+      ],
     },
   },
 } as const;

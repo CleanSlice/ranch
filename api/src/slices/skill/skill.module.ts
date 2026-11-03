@@ -5,6 +5,7 @@ import { SkillGateway } from './data/skill.gateway';
 import { SkillMapper } from './data/skill.mapper';
 import { GithubSearch } from './data/github.search';
 import { SkillTool } from './skill.tool';
+import { SkillOrderService } from './domain/skillOrder.service';
 import { SettingModule } from '#/setting/setting.module';
 
 @Module({
@@ -14,11 +15,12 @@ import { SettingModule } from '#/setting/setting.module';
     SkillMapper,
     GithubSearch,
     SkillTool,
+    SkillOrderService,
     {
       provide: ISkillGateway,
       useClass: SkillGateway,
     },
   ],
-  exports: [ISkillGateway],
+  exports: [ISkillGateway, SkillOrderService],
 })
 export class SkillModule {}

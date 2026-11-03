@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, Matches } from 'class-validator';
+import { IsString, IsOptional, Matches, IsIn } from 'class-validator';
+import { SKILL_GROUPS, SkillGroup } from '../domain/skill.groups';
 
 export class CreateSkillDto {
   @ApiProperty({
@@ -25,4 +26,14 @@ export class CreateSkillDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({
+    enum: SKILL_GROUPS,
+    enumName: 'SkillGroup',
+    nullable: true,
+    description: 'Library group on the admin Skills page; null clears it',
+  })
+  @IsOptional()
+  @IsIn([...SKILL_GROUPS])
+  group?: SkillGroup | null;
 }

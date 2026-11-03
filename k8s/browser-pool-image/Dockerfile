@@ -26,7 +26,7 @@ RUN apt-get update \
 # serves the noVNC client, and bridges `/websockify` to local x11vnc.
 WORKDIR /usr/src/vnc
 COPY package.json ./
-RUN /usr/src/.nvm/versions/node/v24.15.0/bin/npm install --omit=dev --no-audit --no-fund
+RUN /usr/src/.nvm/versions/node/*/bin/npm install --omit=dev --no-audit --no-fund
 COPY auth-proxy.mjs ./
 
 # Override entrypoint so Xvfb listens, x11vnc + websockify + auth-proxy

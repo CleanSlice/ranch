@@ -43,39 +43,84 @@ describe('SkillOrderService.version', () => {
   const { service } = harness([]);
 
   it('does not depend on the row order of the query', () => {
-    const a = service.version(items([['a', 1], ['b', 2]]));
-    const b = service.version(items([['b', 2], ['a', 1]]));
+    const a = service.version(
+      items([
+        ['a', 1],
+        ['b', 2],
+      ]),
+    );
+    const b = service.version(
+      items([
+        ['b', 2],
+        ['a', 1],
+      ]),
+    );
     expect(a).toBe(b);
   });
 
   it('changes when a position changes', () => {
-    const a = service.version(items([['a', 1], ['b', 2]]));
-    const b = service.version(items([['a', 2], ['b', 1]]));
+    const a = service.version(
+      items([
+        ['a', 1],
+        ['b', 2],
+      ]),
+    );
+    const b = service.version(
+      items([
+        ['a', 2],
+        ['b', 1],
+      ]),
+    );
     expect(a).not.toBe(b);
   });
 
   it('changes when a skill appears or disappears', () => {
-    const a = service.version(items([['a', 1], ['b', 2]]));
+    const a = service.version(
+      items([
+        ['a', 1],
+        ['b', 2],
+      ]),
+    );
     const b = service.version(items([['a', 1]]));
     expect(a).not.toBe(b);
   });
 });
 
 describe('SkillOrderService.save', () => {
-  const current = items([['a', 1], ['b', 2], ['c', 3]]);
+  const current = items([
+    ['a', 1],
+    ['b', 2],
+    ['c', 3],
+  ]);
 
   it('writes a full permutation against the current version', async () => {
     const { service, skills } = harness(current);
-    const next = items([['b', 1], ['a', 2], ['c', 3]]);
+    const next = items([
+      ['b', 1],
+      ['a', 2],
+      ['c', 3],
+    ]);
     await service.save(service.version(current), next);
     expect(skills.writeOrder).toHaveBeenCalledWith(next, expect.any(Function));
   });
 
   it('refuses a save against a version that has moved on (409 ORDER_CHANGED)', async () => {
     const { service, skills } = harness(current);
-    const stale = service.version(items([['a', 1], ['b', 2]]));
+    const stale = service.version(
+      items([
+        ['a', 1],
+        ['b', 2],
+      ]),
+    );
     await expect(
-      service.save(stale, items([['b', 1], ['a', 2], ['c', 3]])),
+      service.save(
+        stale,
+        items([
+          ['b', 1],
+          ['a', 2],
+          ['c', 3],
+        ]),
+      ),
     ).rejects.toMatchObject({
       constructor: ConflictException,
       response: { code: 'ORDER_CHANGED' },
@@ -87,30 +132,58 @@ describe('SkillOrderService.save', () => {
   it('refuses a list that misses a skill', async () => {
     const { service } = harness(current);
     await expect(
-      service.save(service.version(current), items([['a', 1], ['b', 2]])),
+      service.save(
+        service.version(current),
+        items([
+          ['a', 1],
+          ['b', 2],
+        ]),
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('refuses repeated ids and repeated positions before touching the DB', async () => {
     const { service, skills } = harness(current);
     await expect(
-      service.save('v', items([['a', 1], ['a', 2], ['c', 3]])),
+      service.save(
+        'v',
+        items([
+          ['a', 1],
+          ['a', 2],
+          ['c', 3],
+        ]),
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      service.save('v', items([['a', 1], ['b', 1], ['c', 3]])),
+      service.save(
+        'v',
+        items([
+          ['a', 1],
+          ['b', 1],
+          ['c', 3],
+        ]),
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(skills.writeOrder).not.toHaveBeenCalled();
   });
 });
 
 describe('SkillOrderService.reorderByNames', () => {
-  const current = items([['a', 1], ['b', 2], ['c', 3]]);
+  const current = items([
+    ['a', 1],
+    ['b', 2],
+    ['c', 3],
+  ]);
 
   it('moves the named skills to the front and keeps the rest in order', async () => {
     const { service, skills } = harness(current);
     const result = await service.reorderByNames(['mazda-year']);
     expect(skills.writeOrder).toHaveBeenCalledWith(
-      items([['b', 1], ['a', 2], ['c', 3]]),
+      items([
+        ['b', 1],
+        ['a', 2],
+        ['c', 3],
+      ]),
       expect.any(Function),
     );
     expect(result.order.map((o) => o.name)).toEqual([
@@ -126,7 +199,11 @@ describe('SkillOrderService.reorderByNames', () => {
     const result = await service.reorderByNames(['nope', 'runtime-tools']);
     expect(result.unknown).toEqual(['nope']);
     expect(skills.writeOrder).toHaveBeenCalledWith(
-      items([['c', 1], ['a', 2], ['b', 3]]),
+      items([
+        ['c', 1],
+        ['a', 2],
+        ['b', 3],
+      ]),
       expect.any(Function),
     );
   });

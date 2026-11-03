@@ -74,7 +74,8 @@ export class SkillController {
   @Get('name-available')
   @ApiOperation({
     operationId: 'skillNameAvailable',
-    summary: 'Whether a slug is free (the New / Edit skill form asks as you type)',
+    summary:
+      'Whether a slug is free (the New / Edit skill form asks as you type)',
   })
   @ApiOkResponse({ type: NameAvailableDto })
   async nameAvailable(

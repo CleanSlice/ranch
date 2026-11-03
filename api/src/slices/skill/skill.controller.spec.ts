@@ -42,20 +42,24 @@ function harness() {
 describe('GET /skills/name-available', () => {
   it('is available when no skill holds the name', async () => {
     const { controller } = harness();
-    await expect(controller.nameAvailable({ name: 'devops' })).resolves.toEqual({
-      name: 'devops',
-      available: true,
-    });
+    await expect(controller.nameAvailable({ name: 'devops' })).resolves.toEqual(
+      {
+        name: 'devops',
+        available: true,
+      },
+    );
   });
 
   it('is taken, naming the holder', async () => {
     const { controller, gateway } = harness();
     gateway.findByName.mockResolvedValue(skill());
-    await expect(controller.nameAvailable({ name: 'devops' })).resolves.toEqual({
-      name: 'devops',
-      available: false,
-      existingId: 'skill-1',
-    });
+    await expect(controller.nameAvailable({ name: 'devops' })).resolves.toEqual(
+      {
+        name: 'devops',
+        available: false,
+        existingId: 'skill-1',
+      },
+    );
   });
 
   it('is available for the skill that holds it (Edit keeps its own name)', async () => {

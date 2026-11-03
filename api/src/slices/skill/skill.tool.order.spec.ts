@@ -13,7 +13,9 @@ import { UserRoleTypes } from '#/user/user/domain';
  * cover `reorder_skills` and the `group` argument of `create_skill`.
  */
 const request = (roles: UserRoleTypes[]): Request =>
-  ({ user: { sub: 'agent:agent-ops', email: '', roles } }) as unknown as Request;
+  ({
+    user: { sub: 'agent:agent-ops', email: '', roles },
+  }) as unknown as Request;
 const operator = () => request([UserRoleTypes.Owner]);
 const plainAgent = () => request([UserRoleTypes.Agent]);
 
@@ -21,8 +23,9 @@ function harness() {
   const skills = {
     create: jest
       .fn()
-      .mockImplementation(async (data: Partial<ISkillData>) =>
-        ({ id: 'skill-new', ...data }) as ISkillData,
+      .mockImplementation(
+        async (data: Partial<ISkillData>) =>
+          ({ id: 'skill-new', ...data }) as ISkillData,
       ),
   };
   const order = {
@@ -66,7 +69,9 @@ describe('reorder_skills', () => {
 
   it('tells the model to retry when the console saved in between', async () => {
     const { tool, order } = harness();
-    order.reorderByNames.mockRejectedValue(new ConflictException(ORDER_CHANGED));
+    order.reorderByNames.mockRejectedValue(
+      new ConflictException(ORDER_CHANGED),
+    );
     const text = textOf(
       await tool.reorderSkills({ names: ['alm-api'] }, null, operator()),
     );

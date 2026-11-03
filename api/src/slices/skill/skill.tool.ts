@@ -183,10 +183,7 @@ export class SkillTool implements IConditionallyListedTool {
       'name and position. Unknown names come back in `unknown`; call ' +
       'list_skills to see the slugs.',
     parameters: z.object({
-      names: z
-        .array(z.string())
-        .min(1)
-        .describe('Skill slugs, first to last'),
+      names: z.array(z.string()).min(1).describe('Skill slugs, first to last'),
     }),
   })
   async reorderSkills(

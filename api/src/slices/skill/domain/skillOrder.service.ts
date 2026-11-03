@@ -73,7 +73,10 @@ export class SkillOrderService {
    */
   async reorderByNames(
     names: string[],
-  ): Promise<{ order: { name: string; position: number }[]; unknown: string[] }> {
+  ): Promise<{
+    order: { name: string; position: number }[];
+    unknown: string[];
+  }> {
     const [skills, current] = await Promise.all([
       this.skills.findAll(),
       this.read(),
@@ -82,7 +85,9 @@ export class SkillOrderService {
     const unknown = names.filter((n) => !byName.has(n));
     const front = names.filter((n) => byName.has(n)).map((n) => byName.get(n)!);
     const frontSet = new Set(front);
-    const rest = current.items.map((i) => i.id).filter((id) => !frontSet.has(id));
+    const rest = current.items
+      .map((i) => i.id)
+      .filter((id) => !frontSet.has(id));
     const ordered = [...new Set([...front, ...rest])];
     const items = ordered.map((id, index) => ({ id, sortOrder: index + 1 }));
     if (front.length > 0) await this.save(current.version, items);

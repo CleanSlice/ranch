@@ -29,6 +29,12 @@ export class TemplateMapper {
       version: record.version,
       skillIds: (record.skills ?? []).map((s) => s.id),
       mcpServerIds: (record.mcpServers ?? []).map((m) => m.id),
+      // Anything but an array of names reads as "every tool" (CLEAN-209).
+      toolAllowlist: Array.isArray(record.toolAllowlist)
+        ? (record.toolAllowlist as unknown[]).filter(
+            (n): n is string => typeof n === 'string',
+          )
+        : null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

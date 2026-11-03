@@ -97,10 +97,24 @@ watch(
   { immediate: true },
 );
 
+// The tool allowlist (CLEAN-209): null is "every tool", a list limits the
+// template's agents to those names. Counted as one change either way.
+const draftTools = ref<string[] | null>(null);
+watch(
+  () => template.value?.toolAllowlist,
+  (names) => (draftTools.value = names === null || names === undefined ? null : [...names]),
+  { immediate: true },
+);
+function sameTools(a: string[] | null | undefined, b: string[] | null): boolean {
+  const left = a ?? null;
+  if (left === null || b === null) return left === b;
+  return sameSet(left, b);
+}
 const diff = computed(() => {
   const s = draftDiff(template.value?.skillIds ?? [], draftSkills.value);
   const m = draftDiff(template.value?.mcpServerIds ?? [], draftMcps.value);
-  return { added: s.added + m.added, removed: s.removed + m.removed };
+  const t = sameTools(template.value?.toolAllowlist, draftTools.value) ? 0 : 1;
+  return { added: s.added + m.added + t, removed: s.removed + m.removed };
 });
 const dirty = computed(() => diff.value.added + diff.value.removed > 0);
 
@@ -119,6 +133,9 @@ async function onSave() {
     if (!sameSet(t.mcpServerIds, draftMcps.value)) {
       await templateStore.setMcps(t.id, draftMcps.value);
     }
+    if (!sameTools(t.toolAllowlist, draftTools.value)) {
+      await templateStore.setTools(t.id, draftTools.value);
+    }
   } catch (err) {
     const e = err as { message?: string; response?: { data?: { message?: string } } };
     saveError.value = e?.response?.data?.message ?? e?.message ?? 'Save failed';
@@ -130,6 +147,7 @@ async function onSave() {
 function onDiscard() {
   draftSkills.value = [...(template.value?.skillIds ?? [])];
   draftMcps.value = [...(template.value?.mcpServerIds ?? [])];
+  draftTools.value = template.value?.toolAllowlist ? [...template.value.toolAllowlist] : null;
   saveError.value = null;
 }
 
@@ -146,7 +164,7 @@ onBeforeRouteLeave(async () => {
 
 // -------------------------------------------------------------------- tabs
 
-type TabId = 'overview' | 'skills' | 'mcp' | 'knowledge' | 'files' | 'evaluations';
+type TabId = 'overview' | 'skills' | 'mcp' | 'tools' | 'knowledge' | 'files' | 'evaluations';
 const TAB_IDS: TabId[] = ['overview', 'skills', 'mcp', 'knowledge', 'files', 'evaluations'];
 
 const tab = computed<TabId>(() => {
@@ -165,6 +183,7 @@ const tabs = computed<{ id: TabId; label: string; count: number | null | undefin
   { id: 'overview', label: 'Overview', count: undefined },
   { id: 'skills', label: 'Skills', count: draftSkills.value.length },
   { id: 'mcp', label: 'MCP servers', count: draftMcps.value.length },
+  { id: 'tools', label: 'Tools', count: draftTools.value === null ? null : draftTools.value.length },
   { id: 'knowledge', label: 'Knowledge', count: template.value?.defaultKnowledgeIds.length ?? 0 },
   { id: 'files', label: 'Files', count: filesStatus.value === 'success' ? fileNodes.value.length : null },
   {
@@ -449,6 +468,8 @@ async function onRemove() {
       <TemplateSkillsProvider v-else-if="tab === 'skills'" v-model:selected="draftSkills" />
 
       <TemplateMcpsProvider v-else-if="tab === 'mcp'" v-model:selected="draftMcps" />
+
+      <TemplateToolsProvider v-else-if="tab === 'tools'" v-model:selected="draftTools" />
 
       <div v-else-if="tab === 'knowledge'" class="flex flex-col gap-3">
         <div

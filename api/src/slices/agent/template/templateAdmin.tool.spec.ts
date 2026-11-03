@@ -30,6 +30,7 @@ const templateRow = (
   version: null,
   skillIds: [],
   mcpServerIds: [],
+  toolAllowlist: null,
   createdAt: new Date('2026-09-17T10:00:00.000Z'),
   updatedAt: new Date('2026-09-17T10:00:00.000Z'),
   ...overrides,
@@ -49,6 +50,7 @@ interface Harness {
     findById: jest.Mock;
     create: jest.Mock;
     setMcps: jest.Mock;
+    setToolAllowlist: jest.Mock;
     countAgents: jest.Mock;
     delete: jest.Mock;
   };
@@ -68,6 +70,11 @@ function harness(): Harness {
       .fn()
       .mockImplementation(async (id, mcpServerIds) =>
         templateRow({ id, mcpServerIds }),
+      ),
+    setToolAllowlist: jest
+      .fn()
+      .mockImplementation(async (id, toolAllowlist) =>
+        templateRow({ id, toolAllowlist }),
       ),
     countAgents: jest.fn().mockResolvedValue(0),
     delete: jest.fn().mockResolvedValue(undefined),
@@ -228,6 +235,58 @@ describe('set_template_mcps', () => {
     expect(text).toContain('not found');
     expect(text).toContain('list_templates');
     expect(templates.setMcps).not.toHaveBeenCalled();
+  });
+});
+
+describe('set_template_tools (CLEAN-209)', () => {
+  it('replaces the tool list and reminds that agents need a restart', async () => {
+    const { tool, templates } = harness();
+    const text = textOf(
+      await tool.setTemplateTools(
+        {
+          id: 'tpl-1',
+          toolNames: ['query_knowledge', 'list_knowledge_documents'],
+        },
+        null,
+        operator(),
+      ),
+    );
+    expect(templates.setToolAllowlist).toHaveBeenCalledWith('tpl-1', [
+      'query_knowledge',
+      'list_knowledge_documents',
+    ]);
+    expect(text).toContain('2 tools only');
+    expect(text).toContain('restart_template_agents with templateId=tpl-1');
+  });
+
+  it('null restores every tool', async () => {
+    const { tool, templates } = harness();
+    const text = textOf(
+      await tool.setTemplateTools(
+        { id: 'tpl-1', toolNames: null },
+        null,
+        operator(),
+      ),
+    );
+    expect(templates.setToolAllowlist).toHaveBeenCalledWith('tpl-1', null);
+    expect(text).toContain('every tool again');
+  });
+
+  it('refuses a plain agent and an unknown template without writing', async () => {
+    const { tool, templates } = harness();
+    await expect(
+      tool.setTemplateTools({ id: 'tpl-1', toolNames: [] }, null, plainAgent()),
+    ).rejects.toThrow();
+    templates.findById.mockResolvedValue(null);
+    const text = textOf(
+      await tool.setTemplateTools(
+        { id: 'nope', toolNames: [] },
+        null,
+        operator(),
+      ),
+    );
+    expect(text).toContain('not found');
+    expect(templates.setToolAllowlist).not.toHaveBeenCalled();
   });
 });
 

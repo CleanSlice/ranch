@@ -200,6 +200,50 @@ export class TemplateAdminTool implements IConditionallyListedTool {
   }
 
   @Tool({
+    name: 'set_template_tools',
+    topic: ToolTopics.Templates,
+    title: 'Limit the tools a template hands its agents',
+    template: 'Give the template «name» only the tools «tool list»',
+    description:
+      'Limit the Documents MCP tools agents of a template may list and call ' +
+      '(CLEAN-209). The list is exhaustive and replaces any prior list; ' +
+      'toolNames: null restores every tool, which is the default every ' +
+      'template starts with. get_template shows the current toolAllowlist. ' +
+      'A pod reads the list when it connects, so running agents of the ' +
+      'template see the change after restart_template_agents.',
+    parameters: z.object({
+      id: z.string(),
+      toolNames: z
+        .array(z.string())
+        .nullable()
+        .describe(
+          'FULL desired list of tool names (replaces, not appends); null = every tool',
+        ),
+    }),
+  })
+  async setTemplateTools(
+    { id, toolNames }: { id: string; toolNames: string[] | null },
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ): Promise<ToolResult> {
+    requireOperator(httpRequest);
+    const template = await this.templates.findById(id);
+    if (!template) return NOT_FOUND(id);
+    const updated = await this.templates.setToolAllowlist(id, toolNames);
+    const scope =
+      toolNames === null
+        ? 'every tool again'
+        : `${toolNames.length} tool${toolNames.length === 1 ? '' : 's'} only`;
+    return ok({
+      template: updated,
+      message:
+        `Template «${updated.name}» now hands its agents ${scope}. A pod ` +
+        'reads the list when it connects, so running agents of this ' +
+        `template keep the old one until restart_template_agents with templateId=${id}.`,
+    });
+  }
+
+  @Tool({
     name: 'restart_template_agents',
     topic: ToolTopics.Templates,
     title: 'Restart every agent of a template',

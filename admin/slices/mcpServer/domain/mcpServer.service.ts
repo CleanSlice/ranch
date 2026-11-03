@@ -2,6 +2,7 @@ import type { IMcpServerGateway } from './mcpServer.gateway';
 import type {
   ICreateMcpServerData,
   IMcpServerData,
+  IMcpToolSummary,
   IUpdateMcpServerData,
 } from './mcpServer.types';
 
@@ -11,6 +12,10 @@ export class McpServerService {
 
   findAll(): Promise<IMcpServerData[]> {
     return this.gateway.findAll();
+  }
+
+  listTools(): Promise<IMcpToolSummary[]> {
+    return this.gateway.listTools();
   }
 
   findById(id: string): Promise<IMcpServerData | null> {

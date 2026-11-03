@@ -2,6 +2,7 @@ import { createServiceGetter } from '#common/composables/createServiceGetter';
 import type {
   ICreateMcpServerData,
   IMcpServerData,
+  IMcpToolSummary,
   IUpdateMcpServerData,
   McpServerService,
 } from '#mcpServer/domain';
@@ -27,6 +28,14 @@ export const useMcpServerStore = defineStore('mcpServer', () => {
     return items.value;
   }
 
+  // The built-in server's tool catalogue (CLEAN-209): reference data for a
+  // template's tool allowlist, loaded once and kept here like the servers.
+  const tools = ref<IMcpToolSummary[]>([]);
+  async function fetchTools() {
+    tools.value = await getService().listTools();
+    return tools.value;
+  }
+
   function fetchById(id: string) {
     return getService().findById(id);
   }
@@ -48,5 +57,5 @@ export const useMcpServerStore = defineStore('mcpServer', () => {
     items.value = items.value.filter((m) => m.id !== id);
   }
 
-  return { items, fetchAll, fetchById, create, update, remove };
+  return { items, fetchAll, fetchById, create, update, remove, tools, fetchTools };
 });

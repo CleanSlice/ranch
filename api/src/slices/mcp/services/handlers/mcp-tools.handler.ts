@@ -68,7 +68,10 @@ export class McpToolsHandler extends McpHandlerBase {
       // A pod lists once at boot: what it was told here is what it believes
       // it has. Hand the names to the recorder, if one is wired, so the
       // console can later tell a tool the pod has from one it lacks.
-      this.recordListing(httpRequest, listed.map((t) => t.name));
+      this.recordListing(
+        httpRequest,
+        listed.map((t) => t.name),
+      );
 
       return {
         tools: listed.map((tool) => ({
@@ -110,6 +113,20 @@ export class McpToolsHandler extends McpHandlerBase {
             );
           }
 
+          // The caller's template may limit which tools its agents get
+          // (CLEAN-209); a name outside the list is refused like a hidden one.
+          const allowed = await this.catalog.allowedNamesFor(httpRequest);
+          if (allowed && !allowed.has(request.params.name)) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Tool "${request.params.name}" is not available to this caller.`,
+                },
+              ],
+              isError: true,
+            };
+          }
           // A pod lists tools once at connect and caches them, so a caller
           // can hold a name that stopped applying to it since. Refuse here
           // rather than run it: for ask_agent that is the difference between

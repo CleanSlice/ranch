@@ -41,6 +41,10 @@ export class TemplateService {
     return this.gateway.setMcps(id, mcpServerIds);
   }
 
+  setTools(id: string, toolNames: string[] | null): Promise<ITemplateData> {
+    return this.gateway.setTools(id, toolNames);
+  }
+
   restartAgents(templateId: string): Promise<IRestartAgentsResult> {
     return this.gateway.restartAgents(templateId);
   }

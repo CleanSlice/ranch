@@ -18,5 +18,7 @@ export abstract class ITemplateGateway {
   abstract remove(id: string): Promise<void>;
   abstract setSkills(id: string, skillIds: string[]): Promise<ITemplateData>;
   abstract setMcps(id: string, mcpServerIds: string[]): Promise<ITemplateData>;
+  /** Limit the Documents MCP tools the template's agents get; null = every tool (CLEAN-209). */
+  abstract setTools(id: string, toolNames: string[] | null): Promise<ITemplateData>;
   abstract restartAgents(templateId: string): Promise<IRestartAgentsResult>;
 }

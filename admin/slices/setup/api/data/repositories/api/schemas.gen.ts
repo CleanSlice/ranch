@@ -331,6 +331,23 @@ export const SetTemplateMcpsDtoSchema = {
   required: ["mcpServerIds"],
 } as const;
 
+export const SetTemplateToolsDtoSchema = {
+  type: "object",
+  properties: {
+    toolNames: {
+      nullable: true,
+      description:
+        "Full list of Documents MCP tool names agents of this template may list and call; replaces any prior list. `null` restores every tool (the default).",
+      example: ["query_knowledge", "list_knowledge_documents"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["toolNames"],
+} as const;
+
 export const AgentDtoSchema = {
   type: "object",
   properties: {
@@ -2255,6 +2272,31 @@ export const ShareResolvedDtoSchema = {
     },
   },
   required: ["agentId", "agentName", "agentStatus"],
+} as const;
+
+export const McpToolSummaryDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "query_knowledge",
+    },
+    topic: {
+      type: "string",
+      example: "knowledge",
+      nullable: true,
+    },
+    title: {
+      type: "string",
+      example: "Ask the knowledge bases",
+      nullable: true,
+    },
+    description: {
+      type: "string",
+      example: "Search your bound knowledge bases for factual information.",
+    },
+  },
+  required: ["name", "topic", "title", "description"],
 } as const;
 
 export const CreateMcpServerDtoSchema = {

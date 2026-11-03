@@ -28,6 +28,14 @@ export class TemplateDto {
   })
   skillIds: string[];
 
+  @ApiProperty({
+    type: [String],
+    nullable: true,
+    description:
+      'Documents MCP tool names agents of this template may list and call; null means every tool (CLEAN-209).',
+  })
+  toolAllowlist: string[] | null;
+
   @ApiProperty()
   createdAt: Date;
 

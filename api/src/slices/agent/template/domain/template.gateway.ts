@@ -17,6 +17,11 @@ export abstract class ITemplateGateway {
   ): Promise<ITemplateData>;
   abstract setSkills(id: string, skillIds: string[]): Promise<ITemplateData>;
   abstract setMcps(id: string, mcpServerIds: string[]): Promise<ITemplateData>;
+  /** Limit the Documents MCP tools the template's agents get; null = every tool (CLEAN-209). */
+  abstract setToolAllowlist(
+    id: string,
+    toolNames: string[] | null,
+  ): Promise<ITemplateData>;
   abstract touch(id: string): Promise<ITemplateData>;
   abstract countAgents(id: string): Promise<number>;
   abstract delete(id: string): Promise<void>;

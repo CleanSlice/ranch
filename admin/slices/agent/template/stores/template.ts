@@ -67,6 +67,10 @@ export const useTemplateStore = defineStore('template', () => {
     return upsert(await getService().setMcps(id, mcpServerIds));
   }
 
+  async function setTools(id: string, toolNames: string[] | null) {
+    return upsert(await getService().setTools(id, toolNames));
+  }
+
   // Restart every agent using this template. The endpoint lives on the agent
   // controller (to avoid TemplateModule ↔ AgentModule circular deps) — the
   // service wraps it so UI components don't need to import AgentsService.
@@ -84,6 +88,7 @@ export const useTemplateStore = defineStore('template', () => {
     remove,
     setSkills,
     setMcps,
+    setTools,
     restartAgents,
   };
 });

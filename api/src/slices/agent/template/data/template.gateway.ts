@@ -139,6 +139,22 @@ export class TemplateGateway extends ITemplateGateway {
     return this.mapper.toEntity(record);
   }
 
+  async setToolAllowlist(
+    id: string,
+    toolNames: string[] | null,
+  ): Promise<ITemplateData> {
+    const record = await this.prisma.template.update({
+      where: { id },
+      // null clears the column, which the mapper reads as "every tool".
+      data: { toolAllowlist: toolNames === null ? Prisma.DbNull : toolNames },
+      include: {
+        skills: { select: { id: true } },
+        mcpServers: { select: { id: true } },
+      },
+    });
+    return this.mapper.toEntity(record);
+  }
+
   async touch(id: string): Promise<ITemplateData> {
     const record = await this.prisma.template.update({
       where: { id },

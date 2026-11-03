@@ -10,9 +10,16 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { IMcpServerGateway } from './domain';
 import { CreateMcpServerDto, UpdateMcpServerDto } from './dtos';
+import { McpToolSummaryDto } from './dtos/mcpToolSummary.dto';
+import { McpRegistryService } from '#/mcp/services/mcp-registry.service';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
 
@@ -21,13 +28,40 @@ import { UserRoleTypes } from '#/user/user/domain';
 @Controller('mcp-servers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class McpServerController {
-  constructor(private gateway: IMcpServerGateway) {}
+  constructor(
+    private gateway: IMcpServerGateway,
+    private registry: McpRegistryService,
+  ) {}
 
   @Get()
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({ summary: 'List all MCP servers registered in this Ranch.' })
   findAll() {
     return this.gateway.findAll();
+  }
+
+  // Before `:id`, or Express reads "tools" as an id.
+  @Get('tools')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ApiOperation({
+    summary:
+      'The tools the built-in Documents MCP server offers — name, topic, title, description — for a template tool allowlist (CLEAN-209). The static catalogue: per-caller gating is not applied here.',
+  })
+  @ApiOkResponse({ type: [McpToolSummaryDto] })
+  listTools(): McpToolSummaryDto[] {
+    return this.registry
+      .getTools()
+      .map((t) => ({
+        name: t.metadata.name,
+        topic: t.metadata.topic ?? null,
+        title: t.metadata.title ?? null,
+        description: t.metadata.description ?? '',
+      }))
+      .sort(
+        (a, b) =>
+          (a.topic ?? '').localeCompare(b.topic ?? '') ||
+          a.name.localeCompare(b.name),
+      );
   }
 
   @Get(':id')

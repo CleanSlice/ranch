@@ -13,6 +13,8 @@ export interface ITemplateData {
   version: string | null;
   skillIds: string[];
   mcpServerIds: string[];
+  /** Documents MCP tool names the template's agents get; null = every tool (CLEAN-209). */
+  toolAllowlist: string[] | null;
   createdAt: Date;
   updatedAt: Date;
 }

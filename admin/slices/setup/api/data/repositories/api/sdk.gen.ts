@@ -91,6 +91,10 @@ import type {
   ReadAgentFileRawData,
   StageAgentImportData,
   StageAgentImportResponse,
+  ResolveAgentImportFilesData,
+  ResolveAgentImportFilesResponse,
+  StageAgentImportFilesData,
+  StageAgentImportFilesResponse,
   PlanAgentImportData,
   PlanAgentImportResponse,
   ApplyAgentImportData,
@@ -1635,6 +1639,47 @@ export class FilesService {
     >({
       ...formDataBodySerializer,
       url: "/agents/{agentId}/files/import/stage",
+      ...options,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Match selected file names against the workspace: unique / none / ambiguous per name. No upload, nothing written.
+   */
+  public static resolveAgentImportFiles<ThrowOnError extends boolean = false>(
+    options: Options<ResolveAgentImportFilesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ResolveAgentImportFilesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/import/resolve",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Upload selected plain files with their resolved targets. Stages them once (kind: files) and returns the merge plan — nothing is written. Apply with applyAgentImport in merge mode.
+   */
+  public static stageAgentImportFiles<ThrowOnError extends boolean = false>(
+    options: Options<StageAgentImportFilesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      StageAgentImportFilesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/agents/{agentId}/files/import/stage-files",
       ...options,
       headers: {
         "Content-Type": null,

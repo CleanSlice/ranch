@@ -45,6 +45,7 @@ export interface IFileLimits {
   importMaxEntries: number;
   importMaxFileBytes: number;
   importPlanListRows: number;
+  importMaxFiles: number;
   diffCompareMaxBytes: number;
   diffInlineMaxLines: number;
   diffInlineMaxBytes: number;
@@ -155,6 +156,28 @@ export interface IImportApplyOptions {
 export type IImportApplyOutcome =
   | { status: 'done'; result: IImportResult }
   | { status: 'conflict'; remove: number };
+
+// ── Selected files (CLEAN-192) ──────────────────────────────────
+
+/** Which import the dialog is on; remembered for the console session. */
+export type ImportDialogMode = 'workspace' | 'files';
+
+export type ResolveMatch = 'unique' | 'none' | 'ambiguous';
+
+/** One dropped file name matched against the workspace by the API. */
+export interface IResolveRow {
+  name: string;
+  match: ResolveMatch;
+  /** unique → matched path; none → `<folder>/<name>`; ambiguous → null until chosen. */
+  path: string | null;
+  candidates: string[];
+  size: number | null;
+}
+
+export interface IImportTarget {
+  name: string;
+  path: string;
+}
 
 /** Applying a proposal: done (any final state), or a replace needs the removal ack. */
 export type IProposalApplyOutcome =

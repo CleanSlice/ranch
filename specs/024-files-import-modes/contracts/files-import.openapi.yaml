@@ -1,0 +1,159 @@
+# Contract delta for CLEAN-192 — selected-files import.
+# Base: specs/017-advanced-file-management/contracts/files.openapi.yaml.
+# The real spec is generated (`cd api && bun run generate:swagger`); this file
+# states what the generated one must contain. Unchanged routes are omitted.
+
+openapi: 3.1.0
+info:
+  title: Ranch files — selected-files import (delta)
+  version: CLEAN-192
+
+paths:
+  /agents/{agentId}/files/limits:
+    get:
+      operationId: getAgentFileLimits
+      description: Unchanged route; the response gains `importMaxFiles`.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileLimits'
+
+  /agents/{agentId}/files/import/resolve:
+    post:
+      operationId: resolveAgentImportFiles
+      summary: >-
+        Match selected file names against the workspace. No upload, nothing
+        written. One row per name: unique / none / ambiguous.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportResolveRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResolveResponse'
+        '400':
+          description: >-
+            A name holds a path separator or control character, two names are
+            equal, more names than `importMaxFiles`, or the target folder is
+            not a relative workspace path. The message names the offender.
+        '404':
+          description: Agent not found.
+
+  /agents/{agentId}/files/import/stage-files:
+    post:
+      operationId: stageAgentImportFiles
+      summary: >-
+        Upload selected plain files with their resolved targets. Stages them
+        once (kind: files) and returns the merge plan — nothing is written to
+        the workspace. Apply with the existing `applyAgentImport` in merge mode.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files, targets]
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Up to `importMaxFiles`, each up to `importMaxFileBytes`.
+                targets:
+                  type: string
+                  description: JSON array of ImportTarget, one per uploaded file name.
+                targetFolder:
+                  type: string
+                  description: Relative folder for `none` rows; empty = root.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportPlan'
+        '400':
+          description: >-
+            Duplicate name, a target whose path is neither the unique match,
+            a candidate nor `<targetFolder>/<name>`, an unsafe path, or no files.
+        '409':
+          description: An import for this agent is already running.
+        '413':
+          description: A file over `importMaxFileBytes`, or more than `importMaxFiles`.
+
+  /agents/{agentId}/files/import/{importId}/apply:
+    post:
+      operationId: applyAgentImport
+      description: >-
+        Unchanged route. For a stage of kind `files`: `mode` must be `merge`
+        (400 otherwise); rows whose ETag moved since the stage are refused
+        individually with reason `changed since previewed`.
+
+components:
+  schemas:
+    FileLimits:
+      description: Existing schema plus one field.
+      properties:
+        importMaxFiles:
+          type: integer
+          example: 20
+
+    ImportResolveRequest:
+      type: object
+      required: [names]
+      properties:
+        names:
+          type: array
+          items: { type: string }
+          example: ['SOUL.md', 'SKILL.md', 'notes.txt']
+        targetFolder:
+          type: string
+          example: 'skills/research'
+
+    ImportResolveRow:
+      type: object
+      required: [name, match, path, candidates, size]
+      properties:
+        name: { type: string, example: 'SKILL.md' }
+        match:
+          type: string
+          enum: [unique, none, ambiguous]
+        path:
+          type: [string, 'null']
+          description: unique → matched path; none → `<targetFolder>/<name>`; ambiguous → null.
+        candidates:
+          type: array
+          items: { type: string }
+          example: ['skills/research/SKILL.md', 'skills/writer/SKILL.md']
+        size:
+          type: [integer, 'null']
+          description: Size of the matched file for `unique`, else null.
+
+    ImportResolveResponse:
+      type: object
+      required: [targetFolder, rows]
+      properties:
+        targetFolder: { type: string, example: '' }
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/ImportResolveRow' }
+
+    ImportTarget:
+      type: object
+      required: [name, path]
+      properties:
+        name: { type: string }
+        path: { type: string, example: 'skills/research/SKILL.md' }
+
+    ImportPlan:
+      description: >-
+        Existing schema, unchanged. For a files stage: mode `merge`,
+        includeSessions false, wrapperStripped null, one entry per file with
+        action add / change / unchanged, more 0.

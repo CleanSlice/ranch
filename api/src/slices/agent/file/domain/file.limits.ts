@@ -48,6 +48,11 @@ export const IMPORT_MAX_UNCOMPRESSED_BYTES = envNumber(
 );
 /** Import plan: entries listed inline; the rest is a count. */
 export const IMPORT_PLAN_LIST_ROWS = envNumber('IMPORT_PLAN_LIST_ROWS', 500);
+/**
+ * Selected-files import (CLEAN-192): plain files per import. Twenty keeps
+ * the target table on one screen; anything larger belongs in an archive.
+ */
+export const IMPORT_MAX_FILES = envNumber('IMPORT_MAX_FILES', 20);
 /** Staged archives older than this are swept, minutes. */
 export const IMPORT_STAGE_TTL_MIN = envNumber('IMPORT_STAGE_TTL_MIN', 60);
 
@@ -77,6 +82,7 @@ export interface IFileLimits {
   importMaxEntries: number;
   importMaxFileBytes: number;
   importPlanListRows: number;
+  importMaxFiles: number;
   diffCompareMaxBytes: number;
   diffInlineMaxLines: number;
   diffInlineMaxBytes: number;
@@ -95,6 +101,7 @@ export function fileLimits(textExtensions: readonly string[]): IFileLimits {
     importMaxEntries: IMPORT_MAX_ENTRIES,
     importMaxFileBytes: IMPORT_MAX_FILE_BYTES,
     importPlanListRows: IMPORT_PLAN_LIST_ROWS,
+    importMaxFiles: IMPORT_MAX_FILES,
     diffCompareMaxBytes: DIFF_COMPARE_MAX_BYTES,
     diffInlineMaxLines: DIFF_INLINE_MAX_LINES,
     diffInlineMaxBytes: DIFF_INLINE_MAX_BYTES,

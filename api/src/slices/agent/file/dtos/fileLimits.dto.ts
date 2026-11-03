@@ -29,6 +29,12 @@ export class FileLimitsDto {
   @ApiProperty({ example: 500 })
   importPlanListRows!: number;
 
+  @ApiProperty({
+    example: 20,
+    description: 'Selected-files import: plain files per import.',
+  })
+  importMaxFiles!: number;
+
   @ApiProperty({ example: 1048576 })
   diffCompareMaxBytes!: number;
 

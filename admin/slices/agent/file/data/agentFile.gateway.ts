@@ -15,8 +15,10 @@ import {
   type IImportApplyOptions,
   type IImportApplyOutcome,
   type IImportPlan,
+  type IImportTarget,
   type IOpenLink,
   type IProposalApplyOutcome,
+  type IResolveRow,
   type ISaveOptions,
   type ISyncOutcome,
   type ImportMode,
@@ -198,49 +200,100 @@ export class AgentFileGateway extends BaseGateway implements IAgentFileGateway {
     onProgress?: (percent: number) => void,
   ): Promise<IImportPlan> {
     return this.execute(async () => {
-      const runtime = useRuntimeConfig();
-      const url = `${String(runtime.public.apiUrl).replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}/files/import/stage`;
-      await ensureFreshToken();
-      const headers = authedXhrHeaders();
-      const body = await new Promise<unknown>((resolve, reject) => {
-        const form = new FormData();
-        form.append('archive', archive);
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', url);
-        for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable && e.total > 0 && onProgress) {
-            onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)));
-          }
-        };
-        xhr.onerror = () => reject(new Error('Upload failed'));
-        xhr.onload = () => {
-          let parsed: unknown = null;
-          try {
-            parsed = JSON.parse(xhr.responseText);
-          } catch {
-            parsed = null;
-          }
-          if (xhr.status < 200 || xhr.status >= 300) {
-            const msg = (parsed as { message?: string | string[] } | null)?.message;
-            const text = Array.isArray(msg) ? msg.join('; ') : msg;
-            reject(
-              new Error(
-                text ||
-                  (xhr.status === 413
-                    ? 'Archive is over the size limit'
-                    : `Upload failed (${xhr.status})`),
-              ),
-            );
-            return;
-          }
-          resolve(parsed);
-        };
-        xhr.send(form);
-      });
+      const form = new FormData();
+      form.append('archive', archive);
+      const body = await this.uploadForm(
+        `/agents/${encodeURIComponent(agentId)}/files/import/stage`,
+        form,
+        'Archive is over the size limit',
+        onProgress,
+      );
       const plan = this.mapper.toImportPlan(unwrapEnvelope(body));
       if (!plan) throw new Error('Import preview returned an unreadable response');
       return plan;
+    });
+  }
+
+  // ── Selected files (CLEAN-192) ──────────────────────────────
+
+  resolveImportFiles(
+    agentId: string,
+    names: string[],
+    targetFolder: string,
+  ): Promise<{ targetFolder: string; rows: IResolveRow[] }> {
+    return this.execute(async () => {
+      const res = await FilesService.resolveAgentImportFiles({
+        path: { agentId },
+        body: { names, targetFolder },
+      });
+      if ((res as SdkFailure).error !== undefined) {
+        throw new Error(errorMessage(res, 'Could not match the files against the workspace'));
+      }
+      return this.mapper.toResolveRows(unwrapEnvelope(res.data));
+    });
+  }
+
+  stageImportFiles(
+    agentId: string,
+    files: File[],
+    targets: IImportTarget[],
+    targetFolder: string,
+    onProgress?: (percent: number) => void,
+  ): Promise<IImportPlan> {
+    return this.execute(async () => {
+      const form = new FormData();
+      for (const f of files) form.append('files', f, f.name);
+      form.append('targets', JSON.stringify(targets));
+      form.append('targetFolder', targetFolder);
+      const body = await this.uploadForm(
+        `/agents/${encodeURIComponent(agentId)}/files/import/stage-files`,
+        form,
+        'A file is over the size limit',
+        onProgress,
+      );
+      const plan = this.mapper.toImportPlan(unwrapEnvelope(body));
+      if (!plan) throw new Error('Import preview returned an unreadable response');
+      return plan;
+    });
+  }
+
+  /** One XHR multipart POST with upload progress; rejects with the API message. */
+  private async uploadForm(
+    path: string,
+    form: FormData,
+    tooLarge: string,
+    onProgress?: (percent: number) => void,
+  ): Promise<unknown> {
+    const runtime = useRuntimeConfig();
+    const url = `${String(runtime.public.apiUrl).replace(/\/$/, '')}${path}`;
+    await ensureFreshToken();
+    const headers = authedXhrHeaders();
+    return new Promise<unknown>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
+      for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0 && onProgress) {
+          onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Upload failed'));
+      xhr.onload = () => {
+        let parsed: unknown = null;
+        try {
+          parsed = JSON.parse(xhr.responseText);
+        } catch {
+          parsed = null;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const msg = (parsed as { message?: string | string[] } | null)?.message;
+          const text = Array.isArray(msg) ? msg.join('; ') : msg;
+          reject(new Error(text || (xhr.status === 413 ? tooLarge : `Upload failed (${xhr.status})`)));
+          return;
+        }
+        resolve(parsed);
+      };
+      xhr.send(form);
     });
   }
 

@@ -17,12 +17,11 @@ import {
   IImportResult,
   ImportMode,
 } from './import.types';
-/**
- * Prefixes the runtime owns at run time (chat transcripts, session state).
- * An import skips them unless the operator opts in — restoring a session
- * file from another agent is almost never what "load these files" means.
- */
-export const RUNTIME_OWNED_PREFIXES = ['sessions/', 'data/sessions/'];
+import { isRuntimeOwned, safeEntryPath } from './importPath';
+
+// The runtime-owned list moved to importPath.ts (CLEAN-192) so the
+// selected-files resolver shares it; re-exported for existing importers.
+export { RUNTIME_OWNED_PREFIXES } from './importPath';
 
 /** Top-level folders of a workspace — never mistaken for a wrapper. */
 const WORKSPACE_FOLDERS = new Set([
@@ -45,6 +44,20 @@ interface PlanOptions {
   includeSessions: boolean;
 }
 
+interface ValidateOptions {
+  /**
+   * Default true: a single wrapping folder is the workspace root. A files
+   * stage (CLEAN-192) passes false — its paths were chosen on purpose and
+   * three files under one custom folder are not a wrapped archive.
+   */
+  stripWrapper?: boolean;
+}
+
+/** Path → ETag it was planned against (`null` = did not exist). */
+export type ApplyGuard = Record<string, string | null>;
+
+export const CHANGED_SINCE_PREVIEWED = 'changed since previewed';
+
 /**
  * Validates, plans and applies a workspace archive (CLEAN-112, research R4).
  * Memory based: nothing is extracted to disk. The API is the authority for
@@ -59,7 +72,10 @@ export class WorkspaceArchiveService {
    * archive as a whole — the message names it — so the plan is computed only
    * over entries that are safe to write.
    */
-  async validate(zip: Buffer): Promise<ValidatedArchive> {
+  async validate(
+    zip: Buffer,
+    opts: ValidateOptions = {},
+  ): Promise<ValidatedArchive> {
     if (zip.length > IMPORT_MAX_ARCHIVE_BYTES) {
       throw new BadRequestException(
         `archive: exceeds ${IMPORT_MAX_ARCHIVE_BYTES} bytes (${zip.length})`,
@@ -110,7 +126,7 @@ export class WorkspaceArchiveService {
         );
       }
 
-      raw.push({ path: this.safeEntryPath(file.path), file });
+      raw.push({ path: safeEntryPath(file.path), file });
     }
 
     if (raw.length === 0) {
@@ -119,7 +135,10 @@ export class WorkspaceArchiveService {
 
     // A single wrapping folder (what "Download" of another agent produces
     // once unpacked and re-zipped from a desktop) is the workspace root.
-    const wrapperStripped = this.wrapperOf(raw.map((r) => r.path));
+    const wrapperStripped =
+      opts.stripWrapper === false
+        ? null
+        : this.wrapperOf(raw.map((r) => r.path));
     if (wrapperStripped) {
       for (const r of raw) r.path = r.path.slice(wrapperStripped.length + 1);
     }
@@ -260,11 +279,16 @@ export class WorkspaceArchiveService {
    * result names what did not land, and a re-run of the plan shows it again
    * as add/change (FR-016). The plan passed in must be the full one — this
    * re-derives the action per entry rather than trusting the capped rows.
+   *
+   * `guard` (CLEAN-192 files stage): a row whose current ETag differs from
+   * the one it was previewed against is refused, not written — the operator
+   * confirmed what they saw, not what someone wrote meanwhile.
    */
   async apply(
     agentId: string,
     entries: IArchiveEntry[],
     plan: IImportPlan,
+    guard?: ApplyGuard,
   ): Promise<IImportResult> {
     const full = await this.plan(agentId, entries, {
       mode: plan.mode,
@@ -272,7 +296,7 @@ export class WorkspaceArchiveService {
     });
     // Uncapped classification for every entry: recompute the action map
     // from the same rules as `plan()` but without the row cap.
-    const actions = await this.actionsFor(agentId, entries, {
+    const { actions, existing } = await this.actionsFor(agentId, entries, {
       mode: plan.mode,
       includeSessions: plan.includeSessions,
     });
@@ -281,9 +305,18 @@ export class WorkspaceArchiveService {
     let written = 0;
     let removed = 0;
 
+    const currentEtag = new Map(existing.map((e) => [e.path, e.etag]));
     const toWrite = entries.filter((e) => {
       const a = actions.get(e.path);
-      return a === 'add' || a === 'change';
+      if (a !== 'add' && a !== 'change') return false;
+      if (guard && e.path in guard) {
+        const now = currentEtag.get(e.path) ?? null;
+        if (now !== guard[e.path]) {
+          failed.push({ path: e.path, reason: CHANGED_SINCE_PREVIEWED });
+          return false;
+        }
+      }
+      return true;
     });
 
     let cursor = 0;
@@ -331,7 +364,10 @@ export class WorkspaceArchiveService {
     agentId: string,
     entries: IArchiveEntry[],
     opts: PlanOptions,
-  ): Promise<Map<string, IImportPlanEntry['action']>> {
+  ): Promise<{
+    actions: Map<string, IImportPlanEntry['action']>;
+    existing: Array<{ path: string; size: number; etag: string }>;
+  }> {
     const existing = await this.files.listWithEtags(agentId);
     const byPath = new Map(existing.map((e) => [e.path, e]));
     const inArchive = new Set(entries.map((e) => e.path));
@@ -355,34 +391,11 @@ export class WorkspaceArchiveService {
         out.set(current.path, 'remove');
       }
     }
-    return out;
+    return { actions: out, existing };
   }
 
   private isRuntimeOwned(path: string): boolean {
-    return RUNTIME_OWNED_PREFIXES.some((p) => path.startsWith(p));
-  }
-
-  /** Normalise separators and refuse anything that could leave the workspace. */
-  private safeEntryPath(entryPath: string): string {
-    const norm = entryPath.replace(/\\/g, '/');
-    if (norm.includes('\0')) {
-      throw new BadRequestException(`archive: invalid path (${entryPath})`);
-    }
-    if (/^[A-Za-z]:/.test(norm) || norm.startsWith('/')) {
-      throw new BadRequestException(
-        `archive: absolute path not allowed (${entryPath})`,
-      );
-    }
-    const segments = norm.split('/');
-    if (segments.some((s) => s === '..' || s === '.')) {
-      throw new BadRequestException(
-        `archive: path traversal not allowed (${entryPath})`,
-      );
-    }
-    if (segments.some((s) => s === '')) {
-      throw new BadRequestException(`archive: invalid path (${entryPath})`);
-    }
-    return norm;
+    return isRuntimeOwned(path);
   }
 
   /**

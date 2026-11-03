@@ -61,6 +61,13 @@ export interface IImportResult {
   restartRequired: boolean;
 }
 
+/**
+ * `archive`: a zip the operator or the agent handed over (CLEAN-112).
+ * `files`: plain files the API packed itself (CLEAN-192) — loaded without
+ * wrapper stripping, applied in merge mode only, guarded by `expected`.
+ */
+export type ImportStageKind = 'archive' | 'files';
+
 /** S3 metadata on a staged archive (`imports/<agentId>/<importId>.zip`). */
 export interface IImportStageMeta {
   agentId: string;
@@ -68,4 +75,34 @@ export interface IImportStageMeta {
   size: number;
   entries: number;
   createdAt: Date;
+  /** Absent on stages written before CLEAN-192 → `archive`. */
+  kind?: ImportStageKind;
+  /**
+   * `files` only: path → ETag the plan was built against (`null` = did not
+   * exist). Stored in a sidecar object next to the zip; `apply` refuses a
+   * row whose ETag moved ("changed since previewed").
+   */
+  expected?: Record<string, string | null>;
+}
+
+// ── Selected files (CLEAN-192) ────────────────────────────────────
+
+export type ResolveMatch = 'unique' | 'none' | 'ambiguous';
+
+/** One dropped file name matched against the workspace. */
+export interface IResolveRow {
+  name: string;
+  match: ResolveMatch;
+  /** `unique`: the matched path; `none`: `<targetFolder>/<name>`; `ambiguous`: null. */
+  path: string | null;
+  /** `ambiguous` only: the matching paths, sorted. */
+  candidates: string[];
+  /** `unique` only: size of the matched file. */
+  size: number | null;
+}
+
+/** The chosen destination for one dropped file. */
+export interface IImportTarget {
+  name: string;
+  path: string;
 }

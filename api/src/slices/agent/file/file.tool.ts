@@ -18,6 +18,8 @@ import {
   FileProposalService,
   IFileGateway,
   IMPORT_MAX_ARCHIVE_BYTES,
+  IMPORT_MAX_FILES,
+  IMPORT_MAX_FILE_BYTES,
   MAX_EDIT_BYTES,
   MAX_RANGE_BYTES,
   ProposalNeedsRemoveConfirmError,
@@ -25,13 +27,35 @@ import {
   RANGE_BYTES,
   SyncGuardService,
   WorkspaceArchiveService,
+  buildFilesZip,
+  expectedEtags,
+  isZipSignature,
+  joinFolder,
+  normaliseTargetFolder,
+  resolveSelectedFiles,
+  toArchiveEntries,
+  validateTargets,
 } from './domain';
-import type { IFileChangeProposal } from './domain';
+import type { IFileChangeProposal, IImportTarget } from './domain';
 import { randomUUID } from 'crypto';
 import { lookup } from 'dns/promises';
 import { request as httpsRequest } from 'https';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
+
+type StoredAttachment = NonNullable<
+  Awaited<ReturnType<IBridleAttachmentGateway['fetch']>>
+>;
+
+/** A zip by content, name or declared type — anything else is a plain file. */
+function looksLikeZip(stored: StoredAttachment): boolean {
+  return (
+    isZipSignature(stored.body) ||
+    /\.zip$/i.test(stored.name ?? '') ||
+    stored.mimeType === 'application/zip' ||
+    stored.mimeType === 'application/x-zip-compressed'
+  );
+}
 
 const CONFIRM_BY_PROPOSAL =
   'The first call only proposes: the person sees a card with the change ' +
@@ -303,8 +327,8 @@ export class FileTool implements IConditionallyListedTool {
   @Tool({
     name: 'import_agent_files',
     topic: ToolTopics.AgentWorkspace,
-    title: 'Import a workspace archive',
-    template: 'Import the archive «attachment or link» into the agent «name»',
+    title: 'Import files into a workspace',
+    template: 'Import «attachment(s) or link» into the agent «name»',
     destructive: true,
     description:
       'Imports a zip with the workspace layout (root files, data/, memory/, ' +
@@ -316,16 +340,39 @@ export class FileTool implements IConditionallyListedTool {
       'Chat attachments are limited to 10 MB; larger archives go through ' +
       'the Import button in the Files tab (a local file picker stays in the ' +
       'console) or a link. ' +
+      'Plain files work too: give `attachmentIds` (one or more non-zip ' +
+      'attachments). Each is matched by its exact file name anywhere in the ' +
+      'workspace: one match → it replaces that file; none → it is added in ' +
+      '`targetFolder` (root by default); several → the result lists the ' +
+      'candidates under `needsChoice` and you must ask the person, then ' +
+      'call again with `targets: [{ name, path }]`. Selected files never ' +
+      'delete anything. ' +
       CONFIRM_BY_PROPOSAL,
     parameters: z.object({
       agentId: z.string(),
       attachmentId: z
         .string()
         .optional()
-        .describe('Id of a zip the person attached in this chat.'),
+        .describe(
+          'Id of an attachment in this chat: a zip (workspace archive) or one plain file.',
+        ),
+      attachmentIds: z
+        .array(z.string())
+        .optional()
+        .describe('Ids of plain (non-zip) attachments to import as selected files.'),
       url: z.string().optional().describe('https link to a zip.'),
       mode: z.enum(['merge', 'replace']).optional(),
       includeSessions: z.boolean().optional(),
+      targetFolder: z
+        .string()
+        .optional()
+        .describe('Selected files: folder for names that match nothing; empty = root.'),
+      targets: z
+        .array(z.object({ name: z.string(), path: z.string() }))
+        .optional()
+        .describe(
+          'Selected files: the chosen path per file name, after the person settled an ambiguous name.',
+        ),
       confirm: z.boolean().optional(),
       proposalId: z.string().optional(),
       confirmRemove: z
@@ -338,9 +385,12 @@ export class FileTool implements IConditionallyListedTool {
     args: {
       agentId: string;
       attachmentId?: string;
+      attachmentIds?: string[];
       url?: string;
       mode?: 'merge' | 'replace';
       includeSessions?: boolean;
+      targetFolder?: string;
+      targets?: IImportTarget[];
       confirm?: boolean;
       proposalId?: string;
       confirmRemove?: boolean;
@@ -362,6 +412,17 @@ export class FileTool implements IConditionallyListedTool {
       );
     }
 
+    // Selected files (CLEAN-192): explicit ids, or one attachment that is
+    // not a zip. Same rule as the Files-tab dialog, same services.
+    if (args.attachmentIds?.length) {
+      return this.importSelectedFiles(
+        agent.name,
+        args,
+        chatAgentId,
+        args.attachmentIds,
+      );
+    }
+
     let zip: Buffer;
     let source: 'attachment' | 'url';
     try {
@@ -376,6 +437,15 @@ export class FileTool implements IConditionallyListedTool {
           return err(
             `Attachment ${args.attachmentId} was not found in this chat.`,
           );
+        if (!looksLikeZip(stored)) {
+          return this.importSelectedFiles(
+            agent.name,
+            args,
+            chatAgentId,
+            [args.attachmentId],
+            [stored],
+          );
+        }
         zip = stored.body;
         source = 'attachment';
       } else if (args.url) {
@@ -432,6 +502,130 @@ export class FileTool implements IConditionallyListedTool {
       });
     } catch (e) {
       return err(this.messageOf(e, 'The archive was refused'));
+    }
+  }
+
+  /**
+   * Plain attachments → resolve by name → (ask on ambiguity) → stage as a
+   * files stage → the same set proposal and card as an archive import.
+   */
+  private async importSelectedFiles(
+    agentName: string,
+    args: {
+      agentId: string;
+      mode?: 'merge' | 'replace';
+      targetFolder?: string;
+      targets?: IImportTarget[];
+    },
+    chatAgentId: string,
+    attachmentIds: string[],
+    prefetched: StoredAttachment[] = [],
+  ) {
+    if (args.mode === 'replace') {
+      return err(
+        'Selected files never remove anything; use a workspace archive for replace.',
+      );
+    }
+    if (attachmentIds.length > IMPORT_MAX_FILES) {
+      return err(
+        `Too many files (${attachmentIds.length}); the limit is ${IMPORT_MAX_FILES}. Use a workspace archive instead.`,
+      );
+    }
+
+    const stored: StoredAttachment[] = [...prefetched];
+    try {
+      for (const id of attachmentIds.slice(prefetched.length)) {
+        const s = await this.attachments.fetch(chatAgentId, id);
+        if (!s) return err(`Attachment ${id} was not found in this chat.`);
+        stored.push(s);
+      }
+    } catch (e) {
+      return err(this.messageOf(e, 'Could not fetch the attachments'));
+    }
+    for (const s of stored) {
+      if (s.body.length > IMPORT_MAX_FILE_BYTES) {
+        return err(
+          `${s.name} is over the per-file limit (${IMPORT_MAX_FILE_BYTES} bytes).`,
+        );
+      }
+    }
+
+    try {
+      const targetFolder = normaliseTargetFolder(args.targetFolder);
+      const existing = await this.files.listWithEtags(args.agentId);
+      const names = stored.map((s) => s.name);
+      const rows = resolveSelectedFiles(names, targetFolder, existing);
+
+      const chosen = new Map(
+        (args.targets ?? []).map((t) => [t.name, t.path] as const),
+      );
+      const needsChoice = rows
+        .filter((r) => r.match === 'ambiguous' && !chosen.has(r.name))
+        .map((r) => ({
+          name: r.name,
+          candidates: r.candidates,
+          addAsNew: joinFolder(targetFolder, r.name),
+        }));
+      if (needsChoice.length > 0) {
+        return ok({
+          ok: true,
+          status: 'needs_choice',
+          agentId: args.agentId,
+          agentName,
+          targetFolder,
+          needsChoice,
+          next:
+            'Ask the person which file each name should replace (or whether to add it as new in the target folder), then call again with `targets: [{ name, path }]` for those names.',
+        });
+      }
+
+      const targets: IImportTarget[] = rows.map((r) => ({
+        name: r.name,
+        path: chosen.get(r.name) ?? (r.path as string),
+      }));
+      const paths = validateTargets(targets, rows, targetFolder);
+      const entries = toArchiveEntries(
+        stored.map((s) => ({ name: s.name, bytes: s.body })),
+        paths,
+      );
+      const zip = await buildFilesZip(entries);
+      const importId = randomUUID();
+      await this.files.putStage(args.agentId, importId, zip, {
+        agentId: args.agentId,
+        source: 'attachment',
+        size: zip.length,
+        entries: entries.length,
+        createdAt: new Date(),
+        kind: 'files',
+        expected: expectedEtags(entries, existing),
+      });
+      const plan = await this.archive.plan(
+        args.agentId,
+        entries,
+        { mode: 'merge', includeSessions: false },
+        { importId, wrapperStripped: null },
+      );
+      const row = await this.proposals.proposeImport({
+        agentId: args.agentId,
+        chatAgentId,
+        importId,
+        plan,
+        mode: 'merge',
+        includeSessions: false,
+      });
+      return ok({
+        ...this.pendingResult(row, agentName),
+        plan: {
+          mode: 'merge',
+          counts: plan.counts,
+          totalBytes: plan.totalBytes,
+          warnings: plan.warnings,
+          sample: plan.entries.slice(0, 20),
+        },
+        targets: entries.map((e) => e.path),
+      });
+    } catch (e) {
+      return err(this.messageOf(e, 'The files were refused'));
     }
   }
 

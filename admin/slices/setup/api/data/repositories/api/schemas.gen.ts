@@ -988,6 +988,11 @@ export const FileLimitsDtoSchema = {
       type: "number",
       example: 500,
     },
+    importMaxFiles: {
+      type: "number",
+      example: 20,
+      description: "Selected-files import: plain files per import.",
+    },
     diffCompareMaxBytes: {
       type: "number",
       example: 1048576,
@@ -1022,6 +1027,7 @@ export const FileLimitsDtoSchema = {
     "importMaxEntries",
     "importMaxFileBytes",
     "importPlanListRows",
+    "importMaxFiles",
     "diffCompareMaxBytes",
     "diffInlineMaxLines",
     "diffInlineMaxBytes",
@@ -1400,6 +1406,78 @@ export const ImportPlanDtoSchema = {
     "more",
     "warnings",
   ],
+} as const;
+
+export const ImportResolveRequestDtoSchema = {
+  type: "object",
+  properties: {
+    names: {
+      example: ["SOUL.md", "SKILL.md", "notes.txt"],
+      description: "Names of the dropped files, as the browser reports them.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    targetFolder: {
+      type: "string",
+      example: "skills/research",
+      description:
+        "Relative folder for names that match nothing; empty = root.",
+    },
+  },
+  required: ["names"],
+} as const;
+
+export const ImportResolveRowDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "SKILL.md",
+    },
+    match: {
+      type: "string",
+      enum: ["unique", "none", "ambiguous"],
+    },
+    path: {
+      type: "string",
+      nullable: true,
+      description:
+        "unique → the matched path; none → <targetFolder>/<name>; ambiguous → null.",
+    },
+    candidates: {
+      example: ["skills/research/SKILL.md", "skills/writer/SKILL.md"],
+      description: "ambiguous only: the matching paths, sorted.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    size: {
+      type: "number",
+      nullable: true,
+      description: "unique only: size of the matched file.",
+    },
+  },
+  required: ["name", "match", "path", "candidates", "size"],
+} as const;
+
+export const ImportResolveResponseDtoSchema = {
+  type: "object",
+  properties: {
+    targetFolder: {
+      type: "string",
+      example: "",
+    },
+    rows: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ImportResolveRowDto",
+      },
+    },
+  },
+  required: ["targetFolder", "rows"],
 } as const;
 
 export const ImportApplyDtoSchema = {

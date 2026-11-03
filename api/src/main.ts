@@ -4,11 +4,13 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as fs from 'fs';
 
 import { json, urlencoded, type Request } from 'express';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import * as cookieParser from 'cookie-parser';
 
 import { AppModule } from './app.module';
 import { ErrorHandlingInterceptor } from './slices/setup/error/error-handling.interceptor';
 import { ResponseInterceptor } from './slices/setup/error/response.interceptor';
+import { trustLoadBalancer } from './slices/setup/proxy/trust-proxy';
 import { IAgentGateway } from '#/agent/agent/domain';
 
 // Bun exits the process on unhandled rejection/exception by default. The
@@ -28,7 +30,10 @@ process.on('uncaughtException', (err) => {
 });
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Behind the load balancer, read the client address from X-Forwarded-For
+  // so per-IP limits count real clients, not the balancer (CLEAN-201).
+  trustLoadBalancer(app);
 
   // Express defaults to a ~100KB json body — smaller than the 1 MiB file
   // cap in the file gateways, so large SOUL.md saves died with 413 before

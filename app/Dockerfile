@@ -32,7 +32,9 @@ ARG RANCH_VERSION=dev
 RUN API_URL=${API_URL} RANCH_VERSION=${RANCH_VERSION} bun run build
 
 # Stage 3: runtime
-FROM node:22-alpine
+# Pinned, not node:22-alpine: Node below 22.23.4 carries the vulnerable Brotli
+# decoder (CVE-2026-111497), and a floating tag lets a rebuild land back on one.
+FROM node:22.23.4-alpine
 WORKDIR /usr/src/app
 COPY --from=app-builder /build/app/.output ./.output
 ARG RANCH_VERSION=dev

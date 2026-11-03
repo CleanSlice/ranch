@@ -1,0 +1,133 @@
+# Build and publish ghcr.io/cleanslice/browser-pool, then optionally restart the
+# StatefulSet that runs it.
+#
+# Why this exists:
+#   browser-pool was the one image in this repo that nothing built. build-images.yaml
+#   covers api, admin and app; this one was built by hand once, when the directory was
+#   added (e046bb57, 2026-05-25), and never again — which is how its Dockerfile came to
+#   hardcode a Node path from a base image that had moved on three times by the time
+#   CLEAN-204 went looking. A rebuild had become impossible without first fixing the
+#   repo, and nobody noticed because nobody rebuilt.
+#
+#   The README documents the `docker buildx build --push` incantation, but a documented
+#   command on someone's laptop is how you end up five months stale. This makes it a
+#   button.
+#
+# Scope: upstream only. Mazda builds its own browser-pool image through CodeBuild
+# (terragrunt/.../codebuild/ranch-images), pushes it to ECR under an immutable
+# timestamp tag and rolls it out by rewriting the Helm values that ArgoCD watches —
+# none of which this workflow touches.
+#
+# Required repo secrets:
+#   GHCR_PAT        — GitHub PAT with write:packages (the same one build-images.yaml uses)
+#   KUBECONFIG_B64  — base64 of the ranch cluster kubeconfig, only needed when
+#                     `restart` is left on
+#
+# The pod picks up the new image because the StatefulSet sets imagePullPolicy: Always
+# (k8s/deploy/50-browser-pool.yaml), so the tag is re-resolved on every container start.
+
+name: Ops - build browser-pool
+
+on:
+  workflow_dispatch:
+    inputs:
+      restart:
+        description: "Restart the browser-pool StatefulSet after pushing"
+        required: false
+        type: boolean
+        default: true
+      extra_tag:
+        description: "Extra tag to publish besides :latest (empty = the commit sha)"
+        required: false
+        type: string
+        default: ""
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_USER: dmitriyzhuk
+  IMAGE: ghcr.io/cleanslice/browser-pool
+  NS: platform
+  STS: browser-pool
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the second tag
+        id: tags
+        run: |
+          EXTRA="${{ inputs.extra_tag }}"
+          if [ -z "$EXTRA" ]; then EXTRA="${GITHUB_SHA::7}"; fi
+          # A tag may only carry [A-Za-z0-9_.-]; reject anything else rather than let
+          # the push fail halfway through.
+          if ! printf '%s' "$EXTRA" | grep -qE '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'; then
+            echo "::error::invalid tag '$EXTRA'"; exit 1
+          fi
+          echo "extra=$EXTRA" >> "$GITHUB_OUTPUT"
+          echo "publishing $IMAGE:latest and $IMAGE:$EXTRA"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ secrets.GHCR_PAT }}
+
+      # The base is ghcr.io/browserless/chromium:latest and deliberately floating:
+      # collecting the vendor's fixes is the point of rebuilding. Hence --pull, so a
+      # warm buildx cache cannot hand back the base this image was already stale on.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: k8s/browser-pool-image
+          platforms: linux/amd64
+          push: true
+          pull: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.tags.outputs.extra }}
+          cache-from: type=gha,scope=browser-pool
+          cache-to: type=gha,mode=max,scope=browser-pool
+
+      # What Node the vendor's base actually carried this time. The auth-proxy runs on
+      # it, and CVE-2026-111497 (the Brotli decoder) is why anyone cares: the fix lines
+      # are 22.23.4 / 24.22.1 / 26.12.1, so read it rather than assume.
+      - name: Report the Node version inside the pushed image
+        run: |
+          docker pull "$IMAGE:latest"
+          echo "::notice::browser-pool now runs $(docker run --rm --entrypoint sh "$IMAGE:latest" -c '/usr/src/.nvm/versions/node/*/bin/node --version')"
+          docker run --rm --entrypoint sh "$IMAGE:latest" -c 'ls -d /usr/src/.nvm/versions/node/*/bin/node'
+
+  restart:
+    needs: build
+    if: ${{ inputs.restart }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Roll the StatefulSet
+        run: |
+          kubectl -n "$NS" rollout restart statefulset/"$STS"
+          if ! kubectl -n "$NS" rollout status statefulset/"$STS" --timeout=10m; then
+            echo "::group::pods"
+            kubectl -n "$NS" get pods -l app="$STS" -o wide || true
+            echo "::endgroup::"
+            echo "::group::recent namespace events"
+            kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -30 || true
+            echo "::endgroup::"
+            exit 1
+          fi
+
+      # imageID is the digest the container actually runs, which is the only honest
+      # confirmation that Always re-resolved the tag rather than reusing a cached layer.
+      - name: Report the running digest
+        run: |
+          kubectl -n "$NS" get pods -l app="$STS" \
+            -o custom-columns=NAME:.metadata.name,STATUS:.status.phase,IMAGE:.status.containerStatuses[0].imageID

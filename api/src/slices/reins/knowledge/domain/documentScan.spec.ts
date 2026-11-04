@@ -1,4 +1,8 @@
-import { scanDocumentLines } from './documentScan';
+import {
+  scanDocumentLines,
+  queryPhrases,
+  scanDocumentPhrases,
+} from './documentScan';
 
 // CLEAN-203: the 26MY CX-30 equipment sheet, as the base stores it. The
 // row the person needs carries "liftgate"; similarity search missed it for
@@ -55,5 +59,83 @@ describe('scanDocumentLines', () => {
     const [line] = scanDocumentLines(long, 'liftgate');
     expect(line.text.length).toBe(1_200);
     expect(line.text.endsWith('…')).toBe(true);
+  });
+});
+
+describe('queryPhrases / scanDocumentPhrases (CLEAN-211)', () => {
+  it('pairs adjacent words of the query in order; a stopword breaks the pair', () => {
+    expect(
+      queryPhrases('Did the 2026 CX-70 PHEV have unresponsive driver support?'),
+    ).toEqual([
+      '2026 cx70',
+      'cx70 phev',
+      'unresponsive driver',
+      'driver support',
+    ]);
+    expect(queryPhrases('the and for')).toEqual([]);
+  });
+
+  it('leads with the lines carrying a phrase verbatim and carries the paragraph under a heading once', () => {
+    const text = [
+      '###### **How to Use the Driver Attention Alert (DAA)**',
+      '',
+      'The DAA operates when the system detects driver fatigue.',
+      '###### **Unresponsive Driver Support**',
+      '',
+      'If the specific conditions are met during the CTS operation, the Unresponsive Driver Support decelerates the vehicle.',
+      'Do not intentionally activate the Unresponsive Driver Support.',
+    ].join('\n');
+    const lines = scanDocumentPhrases(
+      text,
+      'driver monitoring unresponsive driver',
+    );
+    expect(lines.map((l) => l.phrase)).toEqual([
+      'unresponsive driver',
+      'unresponsive driver',
+    ]);
+    expect(lines[0].text).toBe(
+      '###### **Unresponsive Driver Support**\nIf the specific conditions are met during the CTS operation, the Unresponsive Driver Support decelerates the vehicle.',
+    );
+    // Line 6 travelled under its heading and is not returned again on its own.
+    expect(lines.map((l) => [l.line, l.end])).toEqual([
+      [4, 6],
+      [7, 7],
+    ]);
+  });
+
+  it('takes each phrase in turn, at most PHRASE_LINES_PER_PHRASE lines each', () => {
+    const text = [
+      ...Array.from({ length: 5 }, (_, i) => `power liftgate row ${i + 1}`),
+      ...Array.from({ length: 5 }, (_, i) => `rear camera row ${i + 1}`),
+    ].join('\n');
+    const lines = scanDocumentPhrases(text, 'power liftgate rear camera');
+    expect(lines.map((l) => `${l.phrase}#${l.line}`)).toEqual([
+      'power liftgate#1',
+      'rear camera#6',
+      'power liftgate#2',
+      'rear camera#7',
+      'power liftgate#3',
+      'rear camera#8',
+    ]);
+  });
+
+  it('a pair carried by a large share of the lines is a name of the document, not a phrase of the question', () => {
+    const text = [
+      ...Array.from(
+        { length: 2_500 },
+        (_, i) => `2026 CX-70 Owner's Manual page ${i + 1}`,
+      ),
+      'Unresponsive Driver Support decelerates the vehicle.',
+    ].join('\n');
+    const lines = scanDocumentPhrases(text, '2026 CX-70 unresponsive driver');
+    expect(lines.map((l) => l.phrase)).toEqual(['unresponsive driver']);
+  });
+
+  it('stops at its budget', () => {
+    const text = Array.from(
+      { length: 3 },
+      () => `power liftgate ${'x'.repeat(100)}`,
+    ).join('\n');
+    expect(scanDocumentPhrases(text, 'power liftgate', 250)).toHaveLength(2);
   });
 });

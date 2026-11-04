@@ -11,6 +11,7 @@ import {
 import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
 import { agentsLabel } from '#template/utils/templateFormat';
 import { draftDiff, sameSet } from '#template/utils/templateList';
+import { templateTabFromQuery, type TemplateTabId } from '#template/utils/templateTabs';
 import TemplateTile from '../Tile.vue';
 import TemplateItemOverview from './Overview.vue';
 import TemplateItemUnsavedBar from './UnsavedBar.vue';
@@ -164,12 +165,11 @@ onBeforeRouteLeave(async () => {
 
 // -------------------------------------------------------------------- tabs
 
-type TabId = 'overview' | 'skills' | 'mcp' | 'tools' | 'knowledge' | 'files' | 'evaluations';
-const TAB_IDS: TabId[] = ['overview', 'skills', 'mcp', 'knowledge', 'files', 'evaluations'];
+type TabId = TemplateTabId;
 
 const tab = computed<TabId>(() => {
   const q = route.query.tab;
-  return typeof q === 'string' && (TAB_IDS as string[]).includes(q) ? (q as TabId) : 'overview';
+  return templateTabFromQuery(q);
 });
 
 function selectTab(next: TabId) {
@@ -183,7 +183,8 @@ const tabs = computed<{ id: TabId; label: string; count: number | null | undefin
   { id: 'overview', label: 'Overview', count: undefined },
   { id: 'skills', label: 'Skills', count: draftSkills.value.length },
   { id: 'mcp', label: 'MCP servers', count: draftMcps.value.length },
-  { id: 'tools', label: 'Tools', count: draftTools.value === null ? null : draftTools.value.length },
+  // Every tool (null) shows no count: the badge's null means "not known yet".
+  { id: 'tools', label: 'Tools', count: draftTools.value === null ? undefined : draftTools.value.length },
   { id: 'knowledge', label: 'Knowledge', count: template.value?.defaultKnowledgeIds.length ?? 0 },
   { id: 'files', label: 'Files', count: filesStatus.value === 'success' ? fileNodes.value.length : null },
   {

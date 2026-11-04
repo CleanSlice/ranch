@@ -35,7 +35,7 @@ import { deriveIndexStatus } from './knowledge.status';
 import { MAX_FACTS, MAX_FACT_CHARS } from './knowledgeContext';
 import { summarizeFailures } from './failureSummary';
 import { selectDocumentsByName } from './documentInventory';
-import { scanDocumentLines } from './documentScan';
+import { scanDocumentLines, scanDocumentPhrases } from './documentScan';
 
 /**
  * Bytes of one document a scan reads at most (CLEAN-203): the largest
@@ -741,22 +741,46 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
     // query's words are the passages — what a person does with the sheet
     // open. Text-like documents only; a PDF or a workbook has no lines to
     // scan, and stays empty.
-    if (only && passages.length === 0) {
-      const scanned = await this.scanDocuments(only, query);
-      if (scanned.length > 0) {
-        passages = scanned;
-        references = only
-          .filter((s) => scanned.some((p) => p.sourceId === s.id))
-          .map((s, i) => ({
-            referenceId: String(i + 1),
+    const retrieved = passages.length > 0;
+    const scan = only ? await this.scanDocuments(only, query) : null;
+    if (scan && !retrieved && scan.words.length > 0) {
+      passages = scan.words;
+      via = 'document_scan';
+      this.logger.log(
+        `retrieveContext knowledge=${knowledgeId}: LightRAG returned nothing for the named document(s); ${scan.words.length} line(s) read from their text instead`,
+      );
+    }
+    // A phrase of the question the named document carries word for word
+    // leads the passages whatever similarity ranked (CLEAN-211): against the
+    // CX-70 PHEV owner's manual "… unresponsive driver" came back as Driver
+    // Attention Alert paragraphs and never the "Unresponsive Driver Support"
+    // section, and the agent told the person the term does not exist.
+    if (scan && scan.phrases.length > 0) {
+      const lead = new Set(scan.phrases.map((p) => p.text));
+      passages = [
+        ...scan.phrases,
+        ...passages.filter((p) => !lead.has(p.text)),
+      ];
+      if (!retrieved) via = 'document_scan';
+      this.logger.log(
+        `retrieveContext knowledge=${knowledgeId}: ${scan.phrases.length} line(s) of the named document(s) carry a phrase of the query and lead the passages`,
+      );
+    }
+    // Every named document that now has passages is referenced, whether the
+    // retrieval service or its own text supplied them.
+    if (only) {
+      for (const s of only) {
+        if (
+          passages.some((p) => p.sourceId === s.id) &&
+          !references.some((r) => r.sourceId === s.id)
+        ) {
+          references.push({
+            referenceId: String(references.length + 1),
             filePath: s.name,
             sourceId: s.id,
             sourceName: s.name,
-          }));
-        via = 'document_scan';
-        this.logger.log(
-          `retrieveContext knowledge=${knowledgeId}: LightRAG returned nothing for the named document(s); ${scanned.length} line(s) read from their text instead`,
-        );
+          });
+        }
       }
     }
     const facts = raw.relations.slice(0, MAX_FACTS).map((r) => {
@@ -820,8 +844,9 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
   private async scanDocuments(
     sources: ISourceData[],
     query: string,
-  ): Promise<IKnowledgePassage[]> {
-    const out: IKnowledgePassage[] = [];
+  ): Promise<{ words: IKnowledgePassage[]; phrases: IKnowledgePassage[] }> {
+    const words: IKnowledgePassage[] = [];
+    const phrases: IKnowledgePassage[] = [];
     for (const source of sources) {
       if (!isTextLike(source)) continue;
       let text: string;
@@ -836,16 +861,18 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
         );
         continue;
       }
-      for (const line of scanDocumentLines(text, query)) {
-        out.push({
-          text: line.text,
-          filePath: source.name,
-          sourceId: source.id,
-          sourceName: source.name,
-        });
-      }
+      const passage = (t: string): IKnowledgePassage => ({
+        text: t,
+        filePath: source.name,
+        sourceId: source.id,
+        sourceName: source.name,
+      });
+      for (const line of scanDocumentLines(text, query))
+        words.push(passage(line.text));
+      for (const line of scanDocumentPhrases(text, query))
+        phrases.push(passage(line.text));
     }
-    return out;
+    return { words, phrases };
   }
 
   /**

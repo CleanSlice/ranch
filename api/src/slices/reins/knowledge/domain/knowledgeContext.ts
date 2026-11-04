@@ -79,7 +79,7 @@ export interface IExcerpt {
  * Short list on purpose: a term that slips through costs one wasted hit,
  * a term wrongly dropped costs the window.
  */
-const STOPWORDS = new Set([
+export const STOPWORDS = new Set([
   'the',
   'and',
   'for',

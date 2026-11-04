@@ -205,7 +205,7 @@ describe('KnowledgeService.retrieveContext — the document filter (CLEAN-203)',
     expect(result.documents).toEqual([HATCHBACK_SHEET]);
   });
 
-  it('does not scan when the retrieval service did return passages, nor without a filter', async () => {
+  it('keeps the retrieval passages when the named document carries no phrase of the query, and never reads a document without a filter', async () => {
     const { service, retrieve } = makeHarness(sources, chunks, {
       [HATCHBACK_SHEET]: 'Exterior Features,Power rear liftgate,-,Std,Std',
     });
@@ -216,13 +216,53 @@ describe('KnowledgeService.retrieveContext — the document filter (CLEAN-203)',
     const filtered = await service.retrieveContext('k1', 'AFS', {
       documents: [HATCHBACK_SHEET],
     });
+    expect(sourceService.readContent).toHaveBeenCalledTimes(1);
     const unfiltered = await service.retrieveContext('k1', 'liftgate');
 
     expect(filtered.via).toBe('query_data');
+    expect(filtered.passages.map((p) => p.text)).toEqual([AFS_ROW]);
     expect(unfiltered.via).toBe('query_data');
     expect(unfiltered.passages).toHaveLength(2);
-    expect(sourceService.readContent).not.toHaveBeenCalled();
+    expect(sourceService.readContent).toHaveBeenCalledTimes(1);
     expect(retrieve).toHaveBeenCalledTimes(2);
+  });
+
+  it('a phrase the named document carries verbatim leads the passages even when the retrieval service returned other rows (CLEAN-211)', async () => {
+    const OM = '2026_CX70_PHEV_OM.md';
+    const DAA_TEXT =
+      'The DAA operates when all of the following conditions are met and the system detects driver fatigue.';
+    const UDS_TEXT =
+      'If the specific conditions are met during the CTS operation, the Unresponsive Driver Support is a function that decelerates the vehicle and makes an emergency call.';
+    const OM_TEXT = [
+      '###### **How to Use the Driver Attention Alert (DAA)**',
+      '',
+      DAA_TEXT,
+      '',
+      '###### **Unresponsive Driver Support**',
+      '',
+      UDS_TEXT,
+    ].join('\n');
+    const omSources = [...sources, source(OM, 'insert_om')];
+    const { service } = makeHarness(
+      omSources,
+      [{ text: DAA_TEXT, filePath: OM }],
+      { [OM]: OM_TEXT },
+    );
+
+    const result = await service.retrieveContext(
+      'k1',
+      'CX-70 PHEV driver attention alert unresponsive driver',
+      { documents: [OM] },
+    );
+
+    expect(result.via).toBe('query_data');
+    expect(result.passages.map((p) => p.text)).toEqual([
+      `###### **How to Use the Driver Attention Alert (DAA)**\n${DAA_TEXT}`,
+      `###### **Unresponsive Driver Support**\n${UDS_TEXT}`,
+      DAA_TEXT,
+    ]);
+    expect(result.passages.every((p) => p.sourceId === `src-${OM}`)).toBe(true);
+    expect(result.references.map((r) => r.sourceName)).toEqual([OM]);
   });
 
   it('skips a document that is not text, and stays empty when nothing is scannable', async () => {

@@ -22,6 +22,21 @@ Flow: Jira issue → In Progress → branch from `origin/main` → work + commen
 
 Do not commit, push, or open a PR without a `CLEAN-` id. Do not use Linear in this repo.
 
+**Merge and rollout:** the one who opened the PR merges it — Claude included —
+once CI is green: `gh pr merge <n> --merge` with the `GITHUB_TOKEN` of that
+repo's `.env.project`. Check the account first (`gh api user`): CleanSlice
+repos merge as the DREAM account; the Mazda fork (`connectsolutions/mazda-ai-ranch`,
+PRs into `dev`, reached through `chore/catch-up-upstream-N` merges) as the coso
+account the device's git config sets for that path. Never cross them. A merge
+is not the end of the task. After a merge into `main` here, watch the GitHub
+Actions run for that push (`Release Platform` tags `v<root package.json version>`)
+and report its conclusion. After a merge into the fork's `dev`, CodeBuild
+rebuilds the images and rewrites `tag:` in `helm/*/values.dev.yaml` of
+`connectsolutions/mazda-ai-gitops`, then ArgoCD syncs: allow about 15 minutes,
+poll the gitops `main` for the new `chore(images)` commit, give the rollout a
+few minutes more, and only then re-test on dev. A check before that runs
+against the old image and proves nothing.
+
 **i18n (`app` console):** read `docs/i18n.md` before adding any user-visible
 string. `en.json` per slice is the source, `bun run i18n:sync` generates `ru`,
 templates use the injected `$t`, and copy decided in script travels as a key.

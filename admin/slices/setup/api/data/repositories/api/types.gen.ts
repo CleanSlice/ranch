@@ -456,6 +456,12 @@ export type FileLimitsDto = {
   diffInlineMaxBytes: number;
   proposalListRows: number;
   textExtensions: Array<string>;
+  /**
+   * Character limits of the curated root files, from this agent's agent.config.json (memory.limits; runtime defaults where unset). A save over the limit is refused with 400 naming the limit.
+   */
+  curated: {
+    [key: string]: number;
+  };
 };
 
 export type FileChunkDto = {

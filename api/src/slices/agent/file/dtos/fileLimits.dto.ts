@@ -49,4 +49,18 @@ export class FileLimitsDto {
 
   @ApiProperty({ type: [String], example: ['.md', '.json', '.py'] })
   textExtensions!: string[];
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'number' },
+    example: {
+      'SOUL.md': 32000,
+      'USER.md': 1375,
+      'MEMORY.md': 2200,
+      'HEARTBEAT.md': 1000,
+    },
+    description:
+      "Character limits of the curated root files, from this agent's agent.config.json (memory.limits; runtime defaults where unset). A save over the limit is refused with 400 naming the limit.",
+  })
+  curated!: Record<string, number>;
 }

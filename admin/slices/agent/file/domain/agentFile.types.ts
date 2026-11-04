@@ -51,6 +51,8 @@ export interface IFileLimits {
   diffInlineMaxBytes: number;
   proposalListRows: number;
   textExtensions: string[];
+  /** Character limits of the curated root files (SOUL.md, USER.md, MEMORY.md, HEARTBEAT.md) for this agent (CLEAN-208). */
+  curated: Record<string, number>;
 }
 
 export interface ISaveOptions {

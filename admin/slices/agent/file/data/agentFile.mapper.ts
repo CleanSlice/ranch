@@ -89,6 +89,12 @@ export class AgentFileMapper {
       textExtensions: Array.isArray(o.textExtensions)
         ? o.textExtensions.filter((e): e is string => typeof e === 'string')
         : [],
+      // An older API build sends none → no curated limits shown (CLEAN-208).
+      curated: Object.fromEntries(
+        Object.entries(
+          (o.curated && typeof o.curated === 'object' ? o.curated : {}) as Record<string, unknown>,
+        ).filter((e): e is [string, number] => typeof e[1] === 'number'),
+      ),
     };
   }
 

@@ -1016,6 +1016,20 @@ export const FileLimitsDtoSchema = {
         type: "string",
       },
     },
+    curated: {
+      type: "object",
+      additionalProperties: {
+        type: "number",
+      },
+      example: {
+        "SOUL.md": 32000,
+        "USER.md": 1375,
+        "MEMORY.md": 2200,
+        "HEARTBEAT.md": 1000,
+      },
+      description:
+        "Character limits of the curated root files, from this agent's agent.config.json (memory.limits; runtime defaults where unset). A save over the limit is refused with 400 naming the limit.",
+    },
   },
   required: [
     "maxEditBytes",
@@ -1033,6 +1047,7 @@ export const FileLimitsDtoSchema = {
     "diffInlineMaxBytes",
     "proposalListRows",
     "textExtensions",
+    "curated",
   ],
 } as const;
 

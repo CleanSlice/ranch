@@ -85,7 +85,10 @@ export class FileController {
   @ApiOkResponse({ type: FileLimitsDto })
   async limits(@Param('agentId') agentId: string): Promise<FileLimitsDto> {
     await this.assertAgent(agentId);
-    return fileLimits(TEXT_EXTENSIONS);
+    return fileLimits(
+      TEXT_EXTENSIONS,
+      await this.fileGateway.curatedLimits(agentId),
+    );
   }
 
   @Get('content')

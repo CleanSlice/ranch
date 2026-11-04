@@ -31,6 +31,11 @@ import {
   MAX_RANGE_BYTES,
   RANGE_BYTES,
 } from '../domain/file.limits';
+import {
+  CURATED_FILE_LIMIT_KEYS,
+  curatedLimitsFrom,
+  curatedOverLimit,
+} from '../domain/file.limits';
 import { IImportStageMeta } from '../domain/import.types';
 import {
   FileKind,
@@ -407,6 +412,7 @@ export class S3FileGateway extends IFileGateway {
     // Any text kind may be written (CLEAN-112). A path whose extension says
     // nothing is judged by the bytes being saved; a known-binary extension
     // is refused outright.
+    await this.assertCuratedFits(agentId, path, content.length);
     const guess = kindFromPath(path);
     const kind: FileKind =
       guess === 'unknown' ? sniffKind(Buffer.from(content, 'utf-8')) : guess;
@@ -448,7 +454,34 @@ export class S3FileGateway extends IFileGateway {
     await this.putObject(agentId, path, content);
   }
 
+  async curatedLimits(agentId: string): Promise<Record<string, number>> {
+    try {
+      const { content } = await this.read(agentId, 'agent.config.json');
+      return curatedLimitsFrom(JSON.parse(content));
+    } catch {
+      // No config yet, unreadable, or not JSON: the runtime falls back to its
+      // defaults in the same cases, so the limits say the same thing.
+      return curatedLimitsFrom(null);
+    }
+  }
+
+  /** Refuse a curated root file over its limit before any byte is written (CLEAN-208). */
+  private async assertCuratedFits(
+    agentId: string,
+    path: string,
+    chars: number,
+  ): Promise<void> {
+    if (!(path in CURATED_FILE_LIMIT_KEYS)) return;
+    const refusal = curatedOverLimit(
+      path,
+      chars,
+      await this.curatedLimits(agentId),
+    );
+    if (refusal) throw new BadRequestException(refusal);
+  }
+
   async saveRaw(agentId: string, path: string, content: string): Promise<void> {
+    await this.assertCuratedFits(agentId, path, content.length);
     this.assertSafePath(path);
     const bytes = Buffer.byteLength(content, 'utf-8');
     if (bytes > MAX_BYTES) {
@@ -924,6 +957,15 @@ export class S3FileGateway extends IFileGateway {
     contentType?: string,
   ): Promise<void> {
     this.assertSafePath(path);
+    // An import lands here with bytes; a curated file is judged by its
+    // characters, as the runtime counts them (CLEAN-208).
+    if (path in CURATED_FILE_LIMIT_KEYS) {
+      await this.assertCuratedFits(
+        agentId,
+        path,
+        bytes.toString('utf-8').length,
+      );
+    }
     const { client, bucket } = await this.connect();
     await client.send(
       new PutObjectCommand({
@@ -1008,7 +1050,8 @@ export class S3FileGateway extends IFileGateway {
     );
     const m = res.Metadata ?? {};
     const source = m.source;
-    const kind: IImportStageMeta['kind'] = m.kind === 'files' ? 'files' : 'archive';
+    const kind: IImportStageMeta['kind'] =
+      m.kind === 'files' ? 'files' : 'archive';
     let expected: IImportStageMeta['expected'];
     if (kind === 'files') {
       expected = await this.readStageSidecar(agentId, importId);
@@ -1060,7 +1103,9 @@ export class S3FileGateway extends IFileGateway {
       this.stageSidecarKey(agentId, importId),
     ]) {
       try {
-        await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+        await client.send(
+          new DeleteObjectCommand({ Bucket: bucket, Key: key }),
+        );
       } catch (err) {
         if (this.isNotFound(err)) continue;
         throw err;

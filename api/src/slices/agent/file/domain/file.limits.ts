@@ -88,10 +88,78 @@ export interface IFileLimits {
   diffInlineMaxBytes: number;
   proposalListRows: number;
   textExtensions: string[];
+  /** Character limits of the curated root files for this agent (CLEAN-208): `{ 'SOUL.md': 32000, … }`. */
+  curated: Record<string, number>;
 }
 
-export function fileLimits(textExtensions: readonly string[]): IFileLimits {
+/**
+ * The runtime bounds four curated root files to `memory.limits` in
+ * agent.config.json — in characters, the way its memory slice counts them:
+ * SOUL.md → soul, USER.md → user, MEMORY.md → memory, HEARTBEAT.md →
+ * heartbeat. A longer file only gets cut to the limit in the agent's prompt,
+ * so every write path refuses it here and names the limit (CLEAN-208). The
+ * defaults mirror the runtime's DEFAULT_MEMORY_LIMITS.
+ */
+export const CURATED_FILE_LIMIT_KEYS: Readonly<Record<string, string>> = {
+  'SOUL.md': 'soul',
+  'USER.md': 'user',
+  'MEMORY.md': 'memory',
+  'HEARTBEAT.md': 'heartbeat',
+};
+
+export const DEFAULT_CURATED_LIMITS: Readonly<Record<string, number>> = {
+  soul: 12000,
+  user: 1375,
+  memory: 2200,
+  heartbeat: 1000,
+};
+
+/**
+ * Per-file character limits read off a parsed agent.config.json; the
+ * runtime's defaults fill whatever the config does not set. `null` (no config
+ * yet) yields the defaults alone.
+ */
+export function curatedLimitsFrom(config: unknown): Record<string, number> {
+  const limits =
+    (config as { memory?: { limits?: Record<string, unknown> } } | null)?.memory
+      ?.limits ?? {};
+  const out: Record<string, number> = {};
+  for (const [file, key] of Object.entries(CURATED_FILE_LIMIT_KEYS)) {
+    const raw = limits[key];
+    out[file] =
+      typeof raw === 'number' && Number.isFinite(raw) && raw > 0
+        ? Math.floor(raw)
+        : DEFAULT_CURATED_LIMITS[key];
+  }
+  return out;
+}
+
+/**
+ * The refusal for a curated root file over its limit; `null` when the path
+ * is not a curated file or the content fits. The message names the limit and
+ * where it lives, so a person at the console and an agent asked through chat
+ * both know what to do.
+ */
+export function curatedOverLimit(
+  path: string,
+  chars: number,
+  limits: Record<string, number>,
+): string | null {
+  const limit = limits[path];
+  if (limit === undefined || chars <= limit) return null;
+  const key = CURATED_FILE_LIMIT_KEYS[path];
+  return (
+    `${path} is ${chars} characters; this agent's limit is ${limit} ` +
+    `(memory.limits.${key} in agent.config.json). Shorten the file or raise the limit, then save again.`
+  );
+}
+
+export function fileLimits(
+  textExtensions: readonly string[],
+  curated: Record<string, number> = curatedLimitsFrom(null),
+): IFileLimits {
   return {
+    curated: { ...curated },
     maxEditBytes: MAX_EDIT_BYTES,
     maxViewBytes: MAX_VIEW_BYTES,
     rangeBytes: RANGE_BYTES,

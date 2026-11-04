@@ -960,7 +960,11 @@ export class S3FileGateway extends IFileGateway {
     // An import lands here with bytes; a curated file is judged by its
     // characters, as the runtime counts them (CLEAN-208).
     if (path in CURATED_FILE_LIMIT_KEYS) {
-      await this.assertCuratedFits(agentId, path, bytes.toString('utf-8').length);
+      await this.assertCuratedFits(
+        agentId,
+        path,
+        bytes.toString('utf-8').length,
+      );
     }
     const { client, bucket } = await this.connect();
     await client.send(
@@ -1046,7 +1050,8 @@ export class S3FileGateway extends IFileGateway {
     );
     const m = res.Metadata ?? {};
     const source = m.source;
-    const kind: IImportStageMeta['kind'] = m.kind === 'files' ? 'files' : 'archive';
+    const kind: IImportStageMeta['kind'] =
+      m.kind === 'files' ? 'files' : 'archive';
     let expected: IImportStageMeta['expected'];
     if (kind === 'files') {
       expected = await this.readStageSidecar(agentId, importId);
@@ -1098,7 +1103,9 @@ export class S3FileGateway extends IFileGateway {
       this.stageSidecarKey(agentId, importId),
     ]) {
       try {
-        await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+        await client.send(
+          new DeleteObjectCommand({ Bucket: bucket, Key: key }),
+        );
       } catch (err) {
         if (this.isNotFound(err)) continue;
         throw err;

@@ -4,6 +4,7 @@ import { IconDeviceFloppy, IconArrowBackUp } from '@tabler/icons-vue';
 import type * as Monaco from 'monaco-editor';
 import { languageFor, languageLabel, monacoTheme, useMonaco } from '#agentFile/composables/useMonaco';
 import { useAgentFileStore } from '#agentFile/stores/agentFile';
+import { formatNumber } from '#common/utils/format';
 
 /**
  * Monaco-backed editor for one workspace file (CLEAN-112, US1).
@@ -309,7 +310,7 @@ onBeforeUnmount(() => {
         class="min-w-0 flex-1 truncate text-destructive"
         :title="`This agent's limit for ${path} is ${curatedLimit} characters (memory.limits in agent.config.json). The runtime cuts anything over it, so saving is refused. Shorten the file or raise the limit.`"
       >
-        Over this agent's limit — {{ draftChars.toLocaleString() }} / {{ curatedLimit?.toLocaleString() }} characters. Shorten it or raise memory.limits in agent.config.json.
+        Over this agent's limit — {{ formatNumber(draftChars) }} / {{ formatNumber(curatedLimit) }} characters. Shorten it or raise memory.limits in agent.config.json.
       </p>
       <p v-else-if="dirty" class="min-w-0 flex-1 truncate text-amber-700 dark:text-amber-300">
         ● Unsaved changes · applies on next restart
@@ -322,7 +323,7 @@ onBeforeUnmount(() => {
         :class="overLimit ? 'text-destructive' : 'text-muted-foreground'"
         :title="`Limit for ${path}: ${curatedLimit} characters (memory.limits in agent.config.json)`"
       >
-        {{ draftChars.toLocaleString() }} / {{ curatedLimit.toLocaleString() }} chars
+        {{ formatNumber(draftChars) }} / {{ formatNumber(curatedLimit) }} chars
       </span>
       <span class="text-muted-foreground">{{ languageLabel(path) }}</span>
       <span

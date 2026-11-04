@@ -121,15 +121,15 @@ export const DEFAULT_CURATED_LIMITS: Readonly<Record<string, number>> = {
  */
 export function curatedLimitsFrom(config: unknown): Record<string, number> {
   const limits =
-    (config as { memory?: { limits?: Record<string, unknown> } } | null)
-      ?.memory?.limits ?? {};
+    (config as { memory?: { limits?: Record<string, unknown> } } | null)?.memory
+      ?.limits ?? {};
   const out: Record<string, number> = {};
   for (const [file, key] of Object.entries(CURATED_FILE_LIMIT_KEYS)) {
     const raw = limits[key];
     out[file] =
       typeof raw === 'number' && Number.isFinite(raw) && raw > 0
         ? Math.floor(raw)
-        : DEFAULT_CURATED_LIMITS[key]!;
+        : DEFAULT_CURATED_LIMITS[key];
   }
   return out;
 }

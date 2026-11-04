@@ -10,7 +10,9 @@ import {
 
 describe('curatedLimitsFrom', () => {
   it('reads memory.limits by file name and fills the rest with the runtime defaults', () => {
-    const limits = curatedLimitsFrom({ memory: { limits: { soul: 32000, user: 2000 } } });
+    const limits = curatedLimitsFrom({
+      memory: { limits: { soul: 32000, user: 2000 } },
+    });
     expect(limits).toEqual({
       'SOUL.md': 32000,
       'USER.md': 2000,
@@ -20,14 +22,18 @@ describe('curatedLimitsFrom', () => {
   });
 
   it('is the defaults alone without a config, and ignores values that are not positive numbers', () => {
-    expect(curatedLimitsFrom(null)['SOUL.md']).toBe(DEFAULT_CURATED_LIMITS.soul);
-    expect(curatedLimitsFrom({ memory: { limits: { soul: '40000' } } })['SOUL.md']).toBe(
+    expect(curatedLimitsFrom(null)['SOUL.md']).toBe(
       DEFAULT_CURATED_LIMITS.soul,
     );
-    expect(curatedLimitsFrom({ memory: { limits: { soul: -5 } } })['SOUL.md']).toBe(
-      DEFAULT_CURATED_LIMITS.soul,
-    );
-    expect(curatedLimitsFrom({ memory: { limits: { soul: 31999.9 } } })['SOUL.md']).toBe(31999);
+    expect(
+      curatedLimitsFrom({ memory: { limits: { soul: '40000' } } })['SOUL.md'],
+    ).toBe(DEFAULT_CURATED_LIMITS.soul);
+    expect(
+      curatedLimitsFrom({ memory: { limits: { soul: -5 } } })['SOUL.md'],
+    ).toBe(DEFAULT_CURATED_LIMITS.soul);
+    expect(
+      curatedLimitsFrom({ memory: { limits: { soul: 31999.9 } } })['SOUL.md'],
+    ).toBe(31999);
   });
 });
 
@@ -50,7 +56,11 @@ describe('curatedOverLimit', () => {
 
 describe('fileLimits', () => {
   it('carries the curated limits it is given, and the defaults when given none', () => {
-    expect(fileLimits(['.md'], { 'SOUL.md': 48000 }).curated).toEqual({ 'SOUL.md': 48000 });
-    expect(fileLimits(['.md']).curated['SOUL.md']).toBe(DEFAULT_CURATED_LIMITS.soul);
+    expect(fileLimits(['.md'], { 'SOUL.md': 48000 }).curated).toEqual({
+      'SOUL.md': 48000,
+    });
+    expect(fileLimits(['.md']).curated['SOUL.md']).toBe(
+      DEFAULT_CURATED_LIMITS.soul,
+    );
   });
 });

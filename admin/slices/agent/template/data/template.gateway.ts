@@ -84,6 +84,16 @@ export class TemplateGateway extends BaseGateway implements ITemplateGateway {
     });
   }
 
+  setTools(id: string, toolNames: string[] | null): Promise<ITemplateData> {
+    return this.execute(async () => {
+      const res = await TemplatesService.templateControllerSetTools({
+        path: { id },
+        body: { toolNames },
+      });
+      return this.entityOrThrow(res, 'Set tools');
+    });
+  }
+
   restartAgents(templateId: string): Promise<IRestartAgentsResult> {
     return this.execute(async () => {
       const res = await AgentsService.restartByTemplate({

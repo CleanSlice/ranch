@@ -15,6 +15,8 @@ export interface ITemplateData {
   defaultKnowledgeIds: string[];
   skillIds: string[];
   mcpServerIds: string[];
+  /** Documents MCP tool names agents of this template get; null = every tool (CLEAN-209). */
+  toolAllowlist: string[] | null;
   version?: string;
   createdAt: string;
   updatedAt: string;

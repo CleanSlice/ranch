@@ -16,6 +16,10 @@ model Template {
   defaultResources    Json              @default("{\"cpu\": \"2000m\", \"memory\": \"2Gi\"}")
   paddockConfig       Json              @default("{}")
   defaultKnowledgeIds String[]          @default([])
+  // The Documents MCP tool names agents of this template may list and call
+  // (CLEAN-209). NULL — the default, and what every existing template keeps —
+  // means every tool; an array limits the pod to those names.
+  toolAllowlist       Json?
   sourceUrl           String?
   sourceType          String?
   manifestJson        Json?

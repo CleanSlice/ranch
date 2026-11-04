@@ -5,6 +5,7 @@ import { IMcpServerGateway } from '../domain/mcpServer.gateway';
 import type {
   ICreateMcpServerData,
   IMcpServerData,
+  IMcpToolSummary,
   IUpdateMcpServerData,
 } from '../domain/mcpServer.types';
 import { McpServerMapper } from './mcpServer.mapper';
@@ -16,6 +17,22 @@ export class McpServerGateway extends BaseGateway implements IMcpServerGateway {
     return this.execute(async () => {
       const res = await McpServersService.mcpServerControllerFindAll();
       return this.mapper.toList(unwrapEnvelope(res.data));
+    });
+  }
+
+  listTools(): Promise<IMcpToolSummary[]> {
+    return this.execute(async () => {
+      const res = await McpServersService.mcpServerControllerListTools();
+      const raw = unwrapEnvelope(res.data);
+      return (Array.isArray(raw) ? raw : [])
+        .map((o) => o as Record<string, unknown>)
+        .filter((o) => typeof o.name === 'string')
+        .map((o) => ({
+          name: o.name as string,
+          topic: typeof o.topic === 'string' ? o.topic : null,
+          title: typeof o.title === 'string' ? o.title : null,
+          description: typeof o.description === 'string' ? o.description : '',
+        }));
     });
   }
 

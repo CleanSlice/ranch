@@ -40,6 +40,7 @@ import type {
   TemplateControllerUpdateData,
   TemplateControllerSetSkillsData,
   TemplateControllerSetMcpsData,
+  TemplateControllerSetToolsData,
   AgentControllerFindAllData,
   AgentControllerFindAllResponse,
   AgentControllerCreateData,
@@ -144,6 +145,8 @@ import type {
   ResolveShareLinkResponse,
   McpServerControllerFindAllData,
   McpServerControllerCreateData,
+  McpServerControllerListToolsData,
+  McpServerControllerListToolsResponse,
   McpServerControllerRemoveData,
   McpServerControllerFindByIdData,
   McpServerControllerUpdateData,
@@ -946,6 +949,26 @@ export class TemplatesService {
       ThrowOnError
     >({
       url: "/templates/{id}/mcps",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Limit the Documents MCP tools agents of this template may list and call (CLEAN-209). `toolNames: null` restores every tool (the default). A pod reads the list when it connects, so running agents see it after a restart.
+   */
+  public static templateControllerSetTools<
+    ThrowOnError extends boolean = false,
+  >(options: Options<TemplateControllerSetToolsData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/templates/{id}/tools",
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -2180,6 +2203,22 @@ export class McpServersService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * The tools the built-in Documents MCP server offers — name, topic, title, description — for a template tool allowlist (CLEAN-209). The static catalogue: per-caller gating is not applied here.
+   */
+  public static mcpServerControllerListTools<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<McpServerControllerListToolsData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      McpServerControllerListToolsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/tools",
+      ...options,
     });
   }
 

@@ -145,6 +145,13 @@ export type SetTemplateMcpsDto = {
   mcpServerIds: Array<string>;
 };
 
+export type SetTemplateToolsDto = {
+  /**
+   * Full list of Documents MCP tool names agents of this template may list and call; replaces any prior list. `null` restores every tool (the default).
+   */
+  toolNames: Array<string> | null;
+};
+
 export type AgentDto = {
   id: string;
   name: string;
@@ -1032,6 +1039,13 @@ export type ShareResolvedDto = {
    * The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.
    */
   agentStatus: string;
+};
+
+export type McpToolSummaryDto = {
+  name: string;
+  topic: string | null;
+  title: string | null;
+  description: string;
 };
 
 export type CreateMcpServerDto = {
@@ -3107,6 +3121,19 @@ export type TemplateControllerSetMcpsResponses = {
   200: unknown;
 };
 
+export type TemplateControllerSetToolsData = {
+  body: SetTemplateToolsDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/templates/{id}/tools";
+};
+
+export type TemplateControllerSetToolsResponses = {
+  200: unknown;
+};
+
 export type AgentControllerFindAllData = {
   body?: never;
   path?: never;
@@ -4454,6 +4481,20 @@ export type McpServerControllerCreateData = {
 export type McpServerControllerCreateResponses = {
   201: unknown;
 };
+
+export type McpServerControllerListToolsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/mcp-servers/tools";
+};
+
+export type McpServerControllerListToolsResponses = {
+  200: Array<McpToolSummaryDto>;
+};
+
+export type McpServerControllerListToolsResponse =
+  McpServerControllerListToolsResponses[keyof McpServerControllerListToolsResponses];
 
 export type McpServerControllerRemoveData = {
   body?: never;

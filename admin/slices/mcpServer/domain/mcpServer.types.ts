@@ -15,6 +15,14 @@ export const ALWAYS_ON_MCP_IDS: readonly string[] = ['mcp-cleanslice', 'mcp-docu
 /** Attached by the resolver only when the agent or template has knowledge bases. */
 export const KNOWLEDGE_MCP_ID = 'mcp-knowledge';
 
+/** One tool of the built-in Documents MCP server, for a template tool allowlist (CLEAN-209). */
+export interface IMcpToolSummary {
+  name: string;
+  topic: string | null;
+  title: string | null;
+  description: string;
+}
+
 export interface IMcpServerData {
   id: string;
   name: string;

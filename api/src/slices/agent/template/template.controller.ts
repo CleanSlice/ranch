@@ -15,6 +15,7 @@ import {
   CreateTemplateDto,
   SetTemplateMcpsDto,
   SetTemplateSkillsDto,
+  SetTemplateToolsDto,
   UpdateTemplateDto,
 } from './dtos';
 
@@ -69,6 +70,17 @@ export class TemplateController {
     const template = await this.templateGateway.findById(id);
     if (!template) throw new NotFoundException('Template not found');
     return this.templateGateway.setMcps(id, dto.mcpServerIds);
+  }
+
+  @Put(':id/tools')
+  @ApiOperation({
+    summary:
+      'Limit the Documents MCP tools agents of this template may list and call (CLEAN-209). `toolNames: null` restores every tool (the default). A pod reads the list when it connects, so running agents see it after a restart.',
+  })
+  async setTools(@Param('id') id: string, @Body() dto: SetTemplateToolsDto) {
+    const template = await this.templateGateway.findById(id);
+    if (!template) throw new NotFoundException('Template not found');
+    return this.templateGateway.setToolAllowlist(id, dto.toolNames);
   }
 
   @Delete(':id')

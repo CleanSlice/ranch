@@ -43,6 +43,8 @@ export class TemplateMapper {
       defaultKnowledgeIds: strList(o.defaultKnowledgeIds),
       skillIds: strList(o.skillIds),
       mcpServerIds: strList(o.mcpServerIds),
+      // An older API build sends none → every tool (CLEAN-209).
+      toolAllowlist: Array.isArray(o.toolAllowlist) ? strList(o.toolAllowlist) : null,
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
     };

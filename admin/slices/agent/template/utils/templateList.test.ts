@@ -18,6 +18,7 @@ const t = (
   defaultKnowledgeIds: [],
   skillIds: [],
   mcpServerIds: [],
+  toolAllowlist: null,
   createdAt,
   updatedAt: createdAt,
 });

@@ -24,7 +24,9 @@ function makeHarness(tools: FakeTool[]) {
     providerClass: t.name as unknown as symbol,
     methodName: 'run',
   }));
-  const registry = { getTools: () => discovered } as unknown as McpRegistryService;
+  const registry = {
+    getTools: () => discovered,
+  } as unknown as McpRegistryService;
   const moduleRef = {
     registerRequestByContextId: jest.fn(),
     resolve: jest.fn(async (token: unknown) => {
@@ -42,9 +44,44 @@ const operator = () =>
 const plain = () =>
   ({ user: { sub: 'agent:a1', roles: ['agent'] } }) as unknown as Request;
 
+describe('ToolCatalogService caller tool policy (CLEAN-209)', () => {
+  const twoTools = () =>
+    makeHarness([
+      { name: 'query_knowledge', instance: { run: jest.fn() } },
+      { name: 'delete_agent', instance: { run: jest.fn() } },
+    ]);
+
+  it('lists every tool when no policy is registered (moduleRef.get missing or throwing)', async () => {
+    const { service } = twoTools();
+    expect(await service.listFor(plain())).toHaveLength(2);
+    expect(await service.allowedNamesFor(plain())).toBeNull();
+  });
+
+  it('keeps only the names the policy allows, and tells the handler the same', async () => {
+    const { service, moduleRef } = twoTools();
+    (moduleRef as unknown as { get: jest.Mock }).get = jest.fn(() => ({
+      allowedToolsFor: async () => new Set(['query_knowledge']),
+    }));
+    const listed = await service.listFor(plain());
+    expect(listed.map((t) => t.name)).toEqual(['query_knowledge']);
+    const allowed = await service.allowedNamesFor(plain());
+    expect(allowed?.has('delete_agent')).toBe(false);
+  });
+
+  it('a policy answering null changes nothing', async () => {
+    const { service, moduleRef } = twoTools();
+    (moduleRef as unknown as { get: jest.Mock }).get = jest.fn(() => ({
+      allowedToolsFor: async () => null,
+    }));
+    expect(await service.listFor(plain())).toHaveLength(2);
+  });
+});
+
 describe('ToolCatalogService.listFor', () => {
   it('lists a tool with no opinion, with its static description, schema and metadata', async () => {
-    const { service } = makeHarness([{ name: 'plain', instance: { run: jest.fn() } }]);
+    const { service } = makeHarness([
+      { name: 'plain', instance: { run: jest.fn() } },
+    ]);
     const result = await service.listFor(plain());
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('plain');
@@ -55,7 +92,9 @@ describe('ToolCatalogService.listFor', () => {
 
   it('omits a tool whose listing hook says no and asks it with the request', async () => {
     const isListedForRequest = jest.fn(async (req: Request) =>
-      (req as unknown as { user: { roles: string[] } }).user.roles.includes('owner'),
+      (req as unknown as { user: { roles: string[] } }).user.roles.includes(
+        'owner',
+      ),
     );
     const { service } = makeHarness([
       { name: 'delete_user', instance: { run: jest.fn(), isListedForRequest } },

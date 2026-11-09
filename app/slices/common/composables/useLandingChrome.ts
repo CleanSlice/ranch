@@ -7,27 +7,15 @@
  * DotGothic16 for the few dot-matrix accents. The console keeps its own.
  */
 export function useLandingChrome() {
-  useBrandFonts();
   useHead({ bodyAttrs: { class: 'landing-body' } });
 }
 
-/** The brand typefaces alone — the console loads these over its own theme. */
-export function useBrandFonts() {
-  const href =
-    'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Unbounded:wght@600;700&family=DotGothic16&display=swap';
-  useHead({
-    link: [
-      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-      // Loaded as a print stylesheet and promoted once it arrives, so the
-      // font CSS never blocks the first paint; the faces still swap in
-      // (display=swap). Measured in CLEAN-215: the blocking stylesheet was
-      // part of a 0.3 s LCP regression on the landing.
-      { rel: 'stylesheet', href, media: 'print', onload: "this.media='all'" },
-    ],
-    noscript: [{ innerHTML: `<link rel="stylesheet" href="${href}">` }],
-  });
-}
+// The brand typefaces (Geist, Geist Mono, Unbounded, DotGothic16) are
+// self-hosted @font-face rules in assets/css/fonts.css, loaded with the
+// slice's CSS for every page. They used to come from Google Fonts through
+// useHead; a <link> whose media attribute is toggled on load is re-applied
+// by unhead on every head update, so a language switch silently turned the
+// fonts off again (CLEAN-215).
 
 /**
  * Entrance animations are one-shot: once played, the element is frozen in

@@ -123,7 +123,6 @@ import { UserRoleTypes } from '#auth/domain/auth.types';
 // brand typefaces; the landing and the gate paint themselves from the same
 // values through their own tokens.
 useHead({ htmlAttrs: { class: 'dark' } });
-useBrandFonts();
 
 const route = useRoute();
 const authStore = useAuthStore();

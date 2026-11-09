@@ -116,6 +116,8 @@ plus a `reducedMotion` flag from `useFxTokens()` that `GlowingEffect`/`CardSpotl
 
 **Rationale**: the brief sets "Performance not worse than before" as the gate; fonts are the one external dependency the redesign introduces.
 
+**Amended 2026-11-09**: step 1 (print-media link promoted on load) was landed and then reverted — unhead re-applies the `media` attribute on every head update, so a language switch turned the fonts off until a reload. Step 2 is what ships: the latin / cyrillic woff2 subsets of Geist 400–600, Geist Mono 400–500, Unbounded 600–700 and DotGothic16 (30 files, 721 KB on disk, ~150 KB fetched per page by `unicode-range`) live in `app/public/fonts/`, declared in `app/slices/common/assets/css/fonts.css` with `font-display: swap`; no request leaves the origin and nothing in `<head>` is toggled. Regenerate with a script that reads Google's CSS for those families with a woff2 user agent and writes the files and the `@font-face` rules (the one used sits in the CLEAN-215 session scratchpad as `fetch-fonts.mjs`; it is 40 lines and easy to recreate).
+
 ## R11 — FR-010: horizon under the Stage at 1440×900
 
 **Decision**: `e2e/horizon.mjs` renders `/` at 1440×900 twice with a CSS override injected:

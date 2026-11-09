@@ -382,9 +382,13 @@ const centredCard = computed(() => cards.value[centred.value] ?? null);
   perspective-origin: 50% 32%;
   outline: none;
   cursor: grab;
+  /* The copper glow under the reel is an ellipse whose bottom edge (centre
+     62% + radius 40% = 102%, transparent from 70% of the radius = 90%) stays
+     inside the pane, so it fades out above the footer row instead of being
+     cut by it. The earlier 74% + 46% reached 120% and showed as a hard line. */
   background:
     linear-gradient(90deg, rgba(9, 7, 13, 0.92), transparent 18%, transparent 82%, rgba(9, 7, 13, 0.92)),
-    radial-gradient(60% 46% at 50% 74%, rgba(245, 161, 107, 0.12), transparent 70%);
+    radial-gradient(60% 40% at 50% 62%, rgba(245, 161, 107, 0.12), transparent 70%);
 }
 .agent-drum:active {
   cursor: grabbing;

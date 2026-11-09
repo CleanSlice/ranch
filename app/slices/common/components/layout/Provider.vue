@@ -11,18 +11,23 @@
         <nav
           class="hidden md:flex items-center gap-0.5 rounded-full border bg-card/60 p-0.5 text-sm"
         >
+          <!-- Active state by path prefix, not router-link-active: /agents/:id
+               is its own page, not a child route of /agents, so the router
+               never marked the Agents link active inside an agent. -->
           <NuxtLink
             to="/agents"
-            class="rounded-full px-3.5 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
-            active-class="bg-muted text-foreground font-medium"
+            class="rounded-full px-3.5 py-1.5 transition-colors hover:text-foreground"
+            :class="navActive('/agents') ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'"
+            :aria-current="navActive('/agents') ? 'page' : undefined"
           >
             {{ $t('nav.agents') }}
           </NuxtLink>
           <NuxtLink
             v-if="authStore.isAuthenticated"
             to="/chats"
-            class="rounded-full px-3.5 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
-            active-class="bg-muted text-foreground font-medium"
+            class="rounded-full px-3.5 py-1.5 transition-colors hover:text-foreground"
+            :class="navActive('/chats') ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'"
+            :aria-current="navActive('/chats') ? 'page' : undefined"
           >
             {{ $t('nav.history') }}
           </NuxtLink>
@@ -149,6 +154,14 @@ const roleKey = computed(() => {
 
 async function onLocaleChange(event: Event) {
   await setLocale((event.target as HTMLSelectElement).value as typeof locale.value);
+}
+
+// A header link is active for its page and everything under it
+// (/agents, /agents/create, /agents/:id), which is what a person reads the
+// tab as. The router's own active class would not fire on /agents/:id.
+function navActive(prefix: string): boolean {
+  const p = route.path;
+  return p === prefix || p.startsWith(`${prefix}/`);
 }
 
 // Pages that own the full content area (no container padding, no footer).

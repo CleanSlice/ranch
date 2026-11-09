@@ -358,6 +358,8 @@ function onSelect(id: string) {
 .agent-workspace__map {
   background:
     radial-gradient(50% 50% at 50% 50%, rgba(201, 161, 228, 0.07), transparent 70%),
-    radial-gradient(60% 50% at 50% 80%, rgba(245, 161, 107, 0.1), transparent 70%);
+    /* Ellipse kept inside the pane (62% + 40% · 70% = 90%), so the copper
+       floor fades out above the footer row instead of being cut by it. */
+    radial-gradient(60% 40% at 50% 62%, rgba(245, 161, 107, 0.1), transparent 70%);
 }
 </style>

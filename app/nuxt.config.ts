@@ -47,7 +47,9 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      link: [{ rel: 'icon', type: 'image/png', href: '/favicon.png' }],
+      // The orbit mark as a .ico (owner's file, CLEAN-215); one 256px entry,
+      // which every browser scales down itself.
+      link: [{ rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' }],
     },
   },
   routeRules: {

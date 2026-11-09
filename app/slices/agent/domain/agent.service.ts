@@ -41,6 +41,14 @@ export class AgentService {
     return this.gateway.restart(id);
   }
 
+  stop(id: string): Promise<IAgentData | null> {
+    return this.gateway.stop(id);
+  }
+
+  start(id: string): Promise<IAgentData | null> {
+    return this.gateway.start(id);
+  }
+
   getCapacity(): Promise<IClusterCapacityData | null> {
     return this.gateway.getCapacity();
   }

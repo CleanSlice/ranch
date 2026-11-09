@@ -109,7 +109,7 @@ watch(draft, () => nextTick(autoResize));
   >
     <div class="mx-auto w-full max-w-3xl px-4 py-3">
       <div
-        class="group flex flex-col gap-2 rounded-2xl border bg-background px-2 py-1.5 shadow-sm transition focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20"
+        class="group flex flex-col gap-2 rounded-2xl border bg-card px-2 py-1.5 shadow-sm transition focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20"
         :class="disabled && 'opacity-60'"
       >
         <!-- Staged files sit inside the compose box so it reads as one block -->
@@ -164,7 +164,7 @@ watch(draft, () => nextTick(autoResize));
           <button
             type="submit"
             :disabled="!canSend"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition hover:opacity-90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:opacity-90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
             :aria-label="$t('chat.send')"
           >
             <Icon

@@ -159,6 +159,34 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  // Same optimistic shape as restart: the rail, the orbit and the open chat
+  // all read the one record, so they flip together and roll back together.
+  async function stop(id: string) {
+    const rollback = patch(id, { status: 'stopped' });
+    try {
+      const updated = await getService().stop(id);
+      if (updated) upsert(updated);
+      void fetchCapacity();
+      return updated;
+    } catch (err) {
+      rollback();
+      throw err;
+    }
+  }
+
+  async function start(id: string) {
+    const rollback = patch(id, { status: 'deploying' });
+    try {
+      const updated = await getService().start(id);
+      if (updated) upsert(updated);
+      void fetchCapacity();
+      return updated;
+    } catch (err) {
+      rollback();
+      throw err;
+    }
+  }
+
   return {
     agents,
     publicAgents,
@@ -176,5 +204,7 @@ export const useAgentStore = defineStore('agent', () => {
     update,
     remove,
     restart,
+    stop,
+    start,
   };
 });

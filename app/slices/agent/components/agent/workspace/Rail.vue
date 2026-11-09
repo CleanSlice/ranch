@@ -42,10 +42,11 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
       />
       <input
         v-model="search"
+        data-agent-search
         type="search"
         :placeholder="$t('rail.search')"
         :aria-label="$t('rail.search')"
-        class="w-full rounded-md border bg-transparent py-1.5 pl-8 pr-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        class="w-full rounded-full border bg-card/60 py-2 pl-8 pr-3 text-sm transition-colors placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/25"
       />
     </div>
 
@@ -94,8 +95,8 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
         class="px-1 pb-2 text-xs"
         :class="
           capacity.freeAgentSlots === 0
-            ? 'font-medium text-amber-600'
-            : 'text-muted-foreground'
+            ? 'font-medium text-amber-600 dark:text-amber-400'
+            : 'font-mono text-[11px] text-muted-foreground'
         "
       >
         {{
@@ -109,7 +110,7 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
 
       <NuxtLink
         to="/agents/create"
-        class="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-95"
+        class="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-95"
       >
         <Icon name="plus" :size="13" />
         {{ $t('list.create') }}

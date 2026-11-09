@@ -27,6 +27,18 @@
     "reason": "A key cap: the label printed on the keys, the same in every language."
   },
   {
+    "file": "app/slices/agent/components/agent/workspace/Provider.vue",
+    "rule": "L5",
+    "match": "⌘K",
+    "reason": "A key cap: the label printed on the key, the same in every language."
+  },
+  {
+    "file": "app/slices/agent/components/agent/workspace/Sheet.vue",
+    "rule": "L5",
+    "match": "CPU ·",
+    "reason": "CPU is a unit abbreviation, the same in every language; the number beside it is formatted by the server."
+  },
+  {
     "file": "app/slices/common/components/landing/hero/Stage.vue",
     "rule": "L5",
     "match": "CPU",

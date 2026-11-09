@@ -50,5 +50,39 @@
     "switch": "Сменить агента",
     "close": "Закрыть список агентов",
     "admin_agent": "Админ-агент Ranch"
+  },
+  "orbit": {
+    "map_label": "Карта агентов",
+    "view_label": "Вид",
+    "view_orbit": "Орбита",
+    "view_list": "Список",
+    "view_drum": "Барабан"
+  },
+  "sheet": {
+    "label": "Лист агента",
+    "fold": "Свернуть лист",
+    "unfold": "Развернуть лист",
+    "class_admin": "АДМИН · АГЕНТ",
+    "class_agent": "АГЕНТ",
+    "template": "Шаблон",
+    "resources": "Ресурсы",
+    "access": "Доступ",
+    "access_public": "Публичный",
+    "access_private": "Приватный",
+    "origins": "нет доменов | {count} домен | {count} домена | {count} доменов",
+    "age": "Создан",
+    "updated": "обновлён {when}",
+    "start": "Запустить",
+    "starting": "Запуск…",
+    "stop": "Остановить",
+    "stopping": "Остановка…",
+    "start_failed": "Не удалось запустить",
+    "stop_failed": "Не удалось остановить"
+  },
+  "drum": {
+    "label": "Барабан агентов",
+    "hint": "← → или колесо — крутить · Enter — открыть",
+    "open": "Открыть",
+    "open_now": "Открыт"
   }
 }

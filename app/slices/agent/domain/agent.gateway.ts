@@ -20,5 +20,7 @@ export abstract class IAgentGateway {
   ): Promise<IAgentData | null>;
   abstract remove(id: string): Promise<void>;
   abstract restart(id: string): Promise<IAgentData | null>;
+  abstract stop(id: string): Promise<IAgentData | null>;
+  abstract start(id: string): Promise<IAgentData | null>;
   abstract getCapacity(): Promise<IClusterCapacityData | null>;
 }

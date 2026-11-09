@@ -373,7 +373,7 @@ onBeforeUnmount(() => {
             class="mt-8 flex flex-col items-center text-center"
           >
             <div
-              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br from-primary/20 to-primary/5 text-base font-semibold text-primary"
+              class="flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-linear-to-br from-primary/25 to-primary/5 text-lg font-semibold text-primary shadow-[0_0_0_8px_rgba(245,161,107,0.06)]"
             >
               {{ agentInitial }}
             </div>

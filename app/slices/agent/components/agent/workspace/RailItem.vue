@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { relativeTime } from '#agent/utils/relativeTime';
 const props = defineProps<{
   agent: {
     id: string;
@@ -76,35 +77,19 @@ const statusMeta = computed(() => {
   }
 });
 
-// Returns the bucket and its number; the template turns that into words. The
-// unit suffix is part of the message ("{count}m ago"), so a language that
-// writes it differently — or reorders it — only edits the locale file.
-const updatedRelative = computed<{ key: string; count: number } | null>(() => {
-  if (!props.agent.updatedAt) return null;
-  const ts = Date.parse(props.agent.updatedAt);
-  if (Number.isNaN(ts)) return null;
-  const diff = Date.now() - ts;
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diff < minute) return { key: 'relative_time.just_now', count: 0 };
-  if (diff < hour)
-    return { key: 'relative_time.minutes', count: Math.floor(diff / minute) };
-  if (diff < day)
-    return { key: 'relative_time.hours', count: Math.floor(diff / hour) };
-  return { key: 'relative_time.days', count: Math.floor(diff / day) };
-});
+const updatedRelative = computed(() => relativeTime(props.agent.updatedAt));
 </script>
 
 <template>
   <button
     type="button"
-    class="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition hover:bg-muted"
-    :class="active && 'bg-muted'"
+    class="group relative flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition hover:bg-muted/60"
+    :class="active && 'bg-muted shadow-[inset_2px_0_0_0_var(--primary)]'"
     :aria-current="active ? 'true' : undefined"
   >
     <span
-      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"
+      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-linear-to-br from-[#4a3356] to-[#251b2b] text-xs font-semibold text-foreground shadow-sm transition group-hover:border-primary/30"
+      :class="active && 'border-primary/40'"
     >
       {{ initials }}
     </span>

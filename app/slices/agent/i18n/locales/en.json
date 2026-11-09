@@ -50,5 +50,39 @@
     "switch": "Switch agent",
     "close": "Close agent list",
     "admin_agent": "Ranch admin agent"
+  },
+  "orbit": {
+    "map_label": "Agent map",
+    "view_label": "View",
+    "view_orbit": "Orbit",
+    "view_list": "List",
+    "view_drum": "Drum"
+  },
+  "sheet": {
+    "label": "Agent sheet",
+    "fold": "Fold the sheet",
+    "unfold": "Unfold the sheet",
+    "class_admin": "ADMIN · AGENT",
+    "class_agent": "AGENT",
+    "template": "Template",
+    "resources": "Resources",
+    "access": "Access",
+    "access_public": "Public",
+    "access_private": "Private",
+    "origins": "{count} origin | {count} origins",
+    "age": "Created",
+    "updated": "updated {when}",
+    "start": "Start",
+    "starting": "Starting…",
+    "stop": "Stop",
+    "stopping": "Stopping…",
+    "start_failed": "Start failed",
+    "stop_failed": "Stop failed"
+  },
+  "drum": {
+    "label": "Agent drum",
+    "hint": "← → or the wheel turn it · Enter opens",
+    "open": "Open",
+    "open_now": "Open now"
   }
 }

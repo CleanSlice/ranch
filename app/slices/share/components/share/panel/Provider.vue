@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
          not a call to action. -->
     <button
       type="button"
-      class="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60 transition"
+      class="inline-flex items-center gap-1.5 rounded-full border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60 transition"
       aria-haspopup="dialog"
       :aria-expanded="open"
       @click="toggle"
@@ -211,7 +211,7 @@ onBeforeUnmount(() => {
 
     <div
       v-if="open"
-      class="absolute right-4 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-md border bg-card p-3 shadow-md z-30"
+      class="absolute right-4 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover p-3 shadow-lg z-30"
       role="dialog"
       :aria-label="$t('share.panel.title')"
     >

@@ -28,7 +28,7 @@ Header anchors: Platform → `#platform`, How it works → `#how`, Infrastructur
 
 - `h1` is two `span.land-hero__line` lines, each a `.land-enter` with delay; at 1440 px neither line wraps. No blur reveal on the h1.
 - `Atmosphere`: `<picture>` with mobile sources `< 768`, desktop `srcset` 1600/2560, `fetchpriority="high"`, `width/height` set, preload links in `useHead`. Video rules in the table below. Parallax `translate3d(0, scrollY*0.08, 0) scale(1.04)` on both `img` and `video`, capped at `scrollY 1200`, rAF-throttled, off under reduced motion.
-- FR-010 fix (A or B, owner's pick) is applied in `Atmosphere.vue` / `landing.css` and recorded here once chosen.
+- FR-010 fix: **variant A** (owner's pick, 2026-11-09) — in `Atmosphere.vue` the desktop scene is 126 % tall shifted up 26 % (was 114 % / −14 %) and the horizon glow sits at 50 % (was 58 %), so the lit horizon reads above the Stage panel at 1440×900.
 
 | Condition | Video |
 |---|---|

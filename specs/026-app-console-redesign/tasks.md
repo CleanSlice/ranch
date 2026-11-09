@@ -75,7 +75,7 @@ Large task: one comment per checkpoint marked **(Jira)** below — what landed, 
 ### FR-010 horizon
 
 - [X] T021 [US1] With `cd app && bun run dev` running, `node E2E/horizon.mjs --out SHOTS/horizon`; post `A-raise-1440.png`, `B-overlap-1440.png` and the two 390 shots on CLEAN-215 with one sentence each **(Jira: horizon variants, waiting for the pick)**
-- [ ] T022 [US1] ⏸ Wait for the owner's pick; apply the chosen rule in `app/slices/common/components/landing/hero/Atmosphere.vue` (variant A: the `@media (min-width: 768px)` height/top block and `.land-atmo__glow` top) or `app/slices/common/assets/css/landing.css` (variant B: `.land-hero__stage` offset and hero min-height); record the choice in `specs/026-app-console-redesign/contracts/landing-ui.md` (Hero bullet)
+- [X] T022 [US1] ⏸ Wait for the owner's pick; apply the chosen rule in `app/slices/common/components/landing/hero/Atmosphere.vue` (variant A: the `@media (min-width: 768px)` height/top block and `.land-atmo__glow` top) or `app/slices/common/assets/css/landing.css` (variant B: `.land-hero__stage` offset and hero min-height); record the choice in `specs/026-app-console-redesign/contracts/landing-ui.md` (Hero bullet)
 
 ### Commit
 

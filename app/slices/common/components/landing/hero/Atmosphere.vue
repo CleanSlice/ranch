@@ -173,8 +173,11 @@ onBeforeUnmount(() => {
 @media (min-width: 768px) {
   .land-atmo__img,
   .land-atmo__video {
-    height: 114%;
-    top: -14%;
+    /* 126% / -26% (was 114% / -14%): on 1440×900 the lit horizon sat behind
+       the Stage panel; raising the scene ~110 px keeps it in view above the
+       panel. Owner's pick, variant A of FR-010 (CLEAN-215). */
+    height: 126%;
+    top: -26%;
   }
 }
 @media (max-width: 767px) {
@@ -202,7 +205,7 @@ onBeforeUnmount(() => {
 .land-atmo__glow {
   position: absolute;
   left: 50%;
-  top: 58%;
+  top: 50%; /* follows the raised horizon (FR-010 variant A) */
   width: min(90vw, 1100px);
   height: 34vh;
   border-radius: 999px;

@@ -57,6 +57,12 @@
     "reason": "A technology name in a decorative mono label (aria-hidden mock UI of the landing); product names are not translated."
   },
   {
+    "file": "app/slices/user/auth/layouts/auth.vue",
+    "rule": "L5",
+    "match": "jwt · socket.io",
+    "reason": "A technology name in a decorative mono label (aria-hidden mock UI of the landing); product names are not translated."
+  },
+  {
     "file": "app/slices/common/components/landing/capabilities/Provider.vue",
     "rule": "L5",
     "match": "socket.io · jwt",

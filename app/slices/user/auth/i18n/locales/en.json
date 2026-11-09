@@ -41,15 +41,22 @@
     "session_ended_body": "Sign in to continue where you left off.",
     "session_ended_submit": "Sign in"
   },
-  "promo": {
-    "badge": "Live on Kubernetes",
-    "title": "Deploy AI agents.",
-    "title_accent": "Talk to them in real time.",
-    "lede": "Ranch spins up containerized AI workers on a managed cluster and gives you a streaming chat to drive them. No DevOps required.",
-    "feature_deploy": "One-click agent deploy on Argo Workflows",
-    "feature_streaming": "Token-by-token streaming chat over WebSocket",
-    "feature_state": "Persistent agent state synced to S3",
-    "footer": "Built on CleanSlice · {year}",
-    "back_to_landing": "Back to landing"
+  "gate": {
+    "story_region": "About signing in",
+    "eyebrow": "Session",
+    "login_title": "Connect to your agents.",
+    "login_lede": "One sign-in: chat, statuses and logs of every agent in the cluster.",
+    "register_title": "Your first agent, a few minutes from now.",
+    "register_lede": "An account opens the console: agent templates, deployment to k3s and the live chat.",
+    "kicker": "Connecting to RANCH",
+    "switch_label": "Sign in or create an account",
+    "node_you": "You",
+    "node_you_sub": "email · password",
+    "node_hub": "RANCH hub",
+    "node_hub_sub": "jwt · socket.io",
+    "node_agents": "Your agents",
+    "node_agents_sub": "k3s · argo workflows",
+    "back": "Back to the landing",
+    "footer": "© {year} Ranch · built on CleanSlice"
   }
 }

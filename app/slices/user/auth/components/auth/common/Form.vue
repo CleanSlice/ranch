@@ -19,7 +19,32 @@ const props = defineProps<{
   hideFooter?: boolean;
   /** Replace the idle submit label with another i18n key; the pending label is unchanged. */
   submitLabelKey?: string;
+  /**
+   * `console` is the shadcn look the session-ended dialog needs; `gate` is
+   * the sign-in page's panel (landing design language: pill fields, dark
+   * pill button).
+   */
+  variant?: 'console' | 'gate';
 }>();
+
+// The gate's route visualization follows what happens here. Outside the
+// gate the setter is a no-op (see useGateStage).
+const { set: setStage } = useGateStage();
+watch(
+  () => props.submitting,
+  (busy) => {
+    if (busy) setStage('connecting');
+  },
+);
+watch(
+  () => props.failed || !!props.errorMessage,
+  (bad) => {
+    if (bad) setStage('failed');
+  },
+);
+function onFieldFocus() {
+  if (!props.submitting) setStage('filling');
+}
 
 const emit = defineEmits<{
   submit: [values: { name?: string; email: string; password: string }];
@@ -117,15 +142,42 @@ const failureKey = computed(
     (props.mode === 'login' ? 'account.login_failed' : 'account.register_failed'),
 );
 
+const gate = computed(() => props.variant === 'gate');
+
 const inputClass = (field: 'name' | 'email' | 'password') =>
-  [
-    'w-full rounded-md border bg-background pl-10 pr-3 py-2.5 text-sm transition',
-    'placeholder:text-muted-foreground/60',
-    'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary',
-    touched[field] && errors[field]
-      ? 'border-destructive/60 focus:border-destructive focus:ring-destructive/30'
-      : 'border-input',
-  ].join(' ');
+  gate.value
+    ? [
+        'w-full h-12 rounded-2xl border bg-white pl-11 pr-3 text-[0.95rem] text-[#1a1421] transition',
+        'placeholder:text-[#8a7f94]',
+        'focus:outline-none focus:ring-2 focus:ring-[#f5a16b]/45 focus:border-[#d77b61]',
+        touched[field] && errors[field]
+          ? 'border-[#d6453d]/60 focus:border-[#d6453d] focus:ring-[#d6453d]/25'
+          : 'border-[#1a1421]/15',
+      ].join(' ')
+    : [
+        'w-full rounded-md border bg-background pl-10 pr-3 py-2.5 text-sm transition',
+        'placeholder:text-muted-foreground/60',
+        'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary',
+        touched[field] && errors[field]
+          ? 'border-destructive/60 focus:border-destructive focus:ring-destructive/30'
+          : 'border-input',
+      ].join(' ');
+
+const labelClass = computed(() =>
+  gate.value
+    ? 'mb-1.5 block text-[0.8rem] font-medium text-[#3b3344]'
+    : 'mb-1.5 block text-xs font-medium text-foreground/80',
+);
+const iconClass = computed(() =>
+  gate.value
+    ? 'pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#8a7f94]'
+    : 'pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground',
+);
+const submitClass = computed(() =>
+  gate.value
+    ? 'group relative flex w-full h-12 items-center justify-center gap-2 rounded-full bg-[#1a1421] text-[#f8f5fa] px-5 text-[0.95rem] font-semibold transition hover:bg-[#2a2033] hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5a16b]'
+    : 'group relative flex w-full items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium shadow-sm hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed transition',
+);
 
 function showError(field: 'name' | 'email' | 'password') {
   return touched[field] && !!errors[field];
@@ -134,16 +186,16 @@ function showError(field: 'name' | 'email' | 'password') {
 
 <template>
   <div>
-    <div v-if="!hideHeading" class="mb-8">
-      <h1 class="text-2xl font-bold tracking-tight">{{ $t(titleKey) }}</h1>
-      <p class="mt-1.5 text-sm text-muted-foreground">{{ $t(subtitleKey) }}</p>
+    <div v-if="!hideHeading" :class="gate ? 'mb-6' : 'mb-8'">
+      <h1 :class="gate ? 'text-[1.65rem] font-semibold tracking-[-0.02em] text-[#1a1421]' : 'text-2xl font-bold tracking-tight'">{{ $t(titleKey) }}</h1>
+      <p :class="gate ? 'mt-1.5 text-sm text-[#6e6478]' : 'mt-1.5 text-sm text-muted-foreground'">{{ $t(subtitleKey) }}</p>
     </div>
 
     <form class="space-y-4" novalidate @submit.prevent="onSubmit">
       <div v-if="mode === 'register'">
         <label
           for="auth-name"
-          class="mb-1.5 block text-xs font-medium text-foreground/80"
+          :class="labelClass"
         >
           {{ $t('account.name_label') }}
         </label>
@@ -151,7 +203,7 @@ function showError(field: 'name' | 'email' | 'password') {
           <Icon
             name="user"
             :size="16"
-            class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            :class="iconClass"
           />
           <input
             id="auth-name"
@@ -161,6 +213,8 @@ function showError(field: 'name' | 'email' | 'password') {
             :placeholder="$t('account.name_placeholder')"
             :aria-invalid="showError('name')"
             :class="inputClass('name')"
+            @focus="onFieldFocus"
+            @input="onFieldFocus"
             @blur="onBlur('name')"
           />
         </div>
@@ -176,7 +230,7 @@ function showError(field: 'name' | 'email' | 'password') {
       <div>
         <label
           for="auth-email"
-          class="mb-1.5 block text-xs font-medium text-foreground/80"
+          :class="labelClass"
         >
           {{ $t('account.email_label') }}
         </label>
@@ -184,7 +238,7 @@ function showError(field: 'name' | 'email' | 'password') {
           <Icon
             name="mail"
             :size="16"
-            class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            :class="iconClass"
           />
           <input
             id="auth-email"
@@ -194,6 +248,8 @@ function showError(field: 'name' | 'email' | 'password') {
             :placeholder="$t('account.email_placeholder')"
             :aria-invalid="showError('email')"
             :class="inputClass('email')"
+            @focus="onFieldFocus"
+            @input="onFieldFocus"
             @blur="onBlur('email')"
           />
         </div>
@@ -210,13 +266,13 @@ function showError(field: 'name' | 'email' | 'password') {
         <div class="mb-1.5 flex items-center justify-between">
           <label
             for="auth-password"
-            class="block text-xs font-medium text-foreground/80"
+            :class="[labelClass, 'mb-0']"
           >
             {{ $t('account.password_label') }}
           </label>
           <span
             v-if="mode === 'register'"
-            class="text-xs text-muted-foreground"
+:class="gate ? 'font-mono text-[0.68rem] text-[#8a7f94]' : 'text-xs text-muted-foreground'"
           >
             {{ $t('account.password_hint') }}
           </span>
@@ -225,7 +281,7 @@ function showError(field: 'name' | 'email' | 'password') {
           <Icon
             name="lock"
             :size="16"
-            class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            :class="iconClass"
           />
           <input
             id="auth-password"
@@ -235,11 +291,13 @@ function showError(field: 'name' | 'email' | 'password') {
             placeholder="••••••••"
             :aria-invalid="showError('password')"
             :class="[inputClass('password'), 'pr-10']"
+            @focus="onFieldFocus"
+            @input="onFieldFocus"
             @blur="onBlur('password')"
           />
           <button
             type="button"
-            class="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition"
+            :class="gate ? 'absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 text-[#8a7f94] hover:text-[#1a1421] hover:bg-[#1a1421]/5 transition' : 'absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition'"
             :aria-label="
               $t(showPassword ? 'account.password_hide' : 'account.password_show')
             "
@@ -277,7 +335,7 @@ function showError(field: 'name' | 'email' | 'password') {
       <button
         type="submit"
         :disabled="submitting"
-        class="group relative flex w-full items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium shadow-sm hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed transition"
+        :class="submitClass"
       >
         <Icon
           v-if="submitting"
@@ -295,11 +353,11 @@ function showError(field: 'name' | 'email' | 'password') {
       </button>
     </form>
 
-    <div v-if="!hideFooter" class="mt-6 text-center text-sm text-muted-foreground">
+    <div v-if="!hideFooter" :class="gate ? 'mt-6 text-center text-sm text-[#6e6478]' : 'mt-6 text-center text-sm text-muted-foreground'">
       <template v-if="mode === 'login'">
         <span v-if="registrationEnabled">
           {{ $t('account.new_here') }}
-          <NuxtLink to="/register" class="font-medium text-foreground hover:text-primary transition">
+          <NuxtLink to="/register" :class="gate ? 'font-semibold text-[#1a1421] hover:text-[#d77b61] transition' : 'font-medium text-foreground hover:text-primary transition'">
             {{ $t('account.create_account') }}
           </NuxtLink>
         </span>
@@ -309,7 +367,7 @@ function showError(field: 'name' | 'email' | 'password') {
       </template>
       <template v-else>
         {{ $t('account.have_account') }}
-        <NuxtLink to="/login" class="font-medium text-foreground hover:text-primary transition">
+        <NuxtLink to="/login" :class="gate ? 'font-semibold text-[#1a1421] hover:text-[#d77b61] transition' : 'font-medium text-foreground hover:text-primary transition'">
           {{ $t('account.sign_in') }}
         </NuxtLink>
       </template>

@@ -147,6 +147,44 @@ export class AgentAdminTool implements IConditionallyListedTool {
   }
 
   @Tool({
+    name: 'pin_agent',
+    topic: ToolTopics.Agents,
+    title: 'Pin or unpin an agent',
+    template: 'Pin the agent «name»',
+    description:
+      'Pin an agent so both consoles keep it at the top of every agent ' +
+      'list (right after the Ranch admin agent), or unpin it with ' +
+      'pinned=false. One installation-wide flag; it changes nothing about ' +
+      'the pod, the status or access, and is undone by the same call. ' +
+      'Takes the agent id — resolve a name with list_agents first.',
+    parameters: z.object({
+      id: z.string().describe('Agent id — pick from list_agents'),
+      pinned: z
+        .boolean()
+        .describe('true to pin, false to unpin'),
+    }),
+  })
+  async pinAgent(
+    { id, pinned }: { id: string; pinned: boolean },
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ) {
+    requireOperator(httpRequest);
+    const agent = await this.agents.findById(id);
+    if (!agent) return notFound(id);
+    // Not destructive, so no confirm (docs/agent-tools.md): reversible with
+    // the same call and the pod never notices (CLEAN-216).
+    const after = await this.agents.update(id, { pinned });
+    return ok({
+      ok: true,
+      agent: { id: after.id, name: after.name, pinned: after.pinned },
+      message: after.pinned
+        ? `Agent «${after.name}» is pinned — it stays at the top of every agent list.`
+        : `Agent «${after.name}» is unpinned — back to its ordinary place in the lists.`,
+    });
+  }
+
+  @Tool({
     name: 'delete_agent',
     topic: ToolTopics.Agents,
     title: 'Delete an agent',

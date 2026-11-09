@@ -1,6 +1,9 @@
 <template>
-  <section class="land-cta" :aria-label="$t('final.region')">
+  <section ref="fxRoot" class="land-cta" :aria-label="$t('final.region')">
     <div class="land-cta__scene" aria-hidden="true">
+      <!-- A handful of dim meteors across the closing scene; none under reduced
+           motion, paused while the section is off screen (effects #8). -->
+      <Meteors v-if="!fx.reducedMotion" :count="fx.meteorCount" />
       <img
         class="land-cta__img"
         src="/landing/scene-calm-1200.webp"
@@ -31,17 +34,17 @@
       <p class="land-eyebrow" data-reveal>
         <span class="land-num">05</span>{{ $t('final.eyebrow') }}
       </p>
-      <h2 class="land-h2 land-cta__title" data-reveal style="--reveal-delay: 80ms">{{ $t('final.title') }}</h2>
+      <h2 class="land-h2 land-cta__title land-reveal--blur" data-reveal style="--reveal-delay: 80ms">{{ $t('final.title') }}</h2>
       <p class="land-lede land-cta__lede" data-reveal style="--reveal-delay: 160ms">{{ $t('final.lede') }}</p>
       <div class="land-cta__actions" data-reveal style="--reveal-delay: 240ms">
         <NuxtLink v-if="authStore.isAuthenticated" to="/agents" class="land-btn land-btn--accent land-cta__btn">
           {{ $t('final.cta_console') }}
           <Icon name="arrow-right" :size="18" class="land-arrow" />
         </NuxtLink>
-        <NuxtLink v-else :to="startRoute" class="land-btn land-btn--accent land-cta__btn">
+        <ShimmerButton v-else :as="NuxtLink" :to="startRoute" class="land-btn land-btn--accent land-cta__btn" background="var(--land-orange)" shimmer-color="rgba(255, 255, 255, 0.45)">
           {{ $t('final.cta_start') }}
           <Icon name="arrow-right" :size="18" class="land-arrow" />
-        </NuxtLink>
+        </ShimmerButton>
         <NuxtLink to="/agents" class="land-btn land-btn--ghost land-cta__btn">
           {{ $t('final.cta_agents') }}
         </NuxtLink>
@@ -51,6 +54,15 @@
 </template>
 
 <script setup lang="ts">
+import { NuxtLink } from '#components';
+
+// Effect settings from the landing tokens; the meteors hold while the section
+// is off screen or the tab is hidden.
+const fx = useFxTokens();
+const fxRoot = ref<HTMLElement | null>(null);
+// 30 %, not the default 5 %: the technology row sits right above, and the
+// meteors should not start while that loop is still the one in view.
+useFxPause(fxRoot, { threshold: 0.3 });
 const authStore = useAuthStore();
 const { variant: brand } = useBrandVariant();
 const { enabled: registrationEnabled, refresh: refreshRegistration } =

@@ -228,15 +228,21 @@ body.landing-body {
    the class on animationend). A finished filter animation keeps its element
    on a composited layer that Chromium paints over the fixed navigation and
    its open mobile menu; a static element has no such layer. */
-.land-enter--done {
-  animation: none;
-  opacity: 1;
-}
 .land-enter--down {
   animation-name: land-enter-down;
 }
 .land-enter--stage {
   animation-name: land-enter-stage;
+}
+/* Declared after the variants and with two classes, so it really wins:
+   with a single class the variant's animation-name overrode
+   `animation: none`, so the finished keyframe stayed applied and the
+   element kept its composited layer. */
+.land-enter.land-enter--done {
+  animation: none;
+  opacity: 1;
+  filter: none;
+  transform: none;
 }
 
 /* ── Atmosphere cycles (12–25 s) ───────────────────────────────────── */
@@ -313,8 +319,8 @@ body.landing-body {
 .landing {
   --land-fx-from: var(--land-copper);
   --land-fx-to: var(--land-lavender);
-  --land-fx-glow-width: 1.5;
-  --land-fx-glow-spread: 28;
+  --land-fx-glow-width: 2;
+  --land-fx-glow-spread: 56;
   --land-fx-spot-size: 320;
   --land-fx-spot-color: rgba(245, 161, 107, 0.12);
   --land-fx-beam-duration: 6;

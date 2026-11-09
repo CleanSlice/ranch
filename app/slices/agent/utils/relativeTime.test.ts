@@ -9,9 +9,9 @@ const DAY = 24 * HOUR;
 
 describe('relativeTime', () => {
   test('nothing, or a timestamp that does not parse, gives null', () => {
-    expect(relativeTime(null, NOW)).toBeNull();
-    expect(relativeTime(undefined, NOW)).toBeNull();
-    expect(relativeTime('not a date', NOW)).toBeNull();
+    expect(relativeTime(null, NOW)).toBe(null);
+    expect(relativeTime(undefined, NOW)).toBe(null);
+    expect(relativeTime('not a date', NOW)).toBe(null);
   });
 
   test('under a minute is "just now"', () => {

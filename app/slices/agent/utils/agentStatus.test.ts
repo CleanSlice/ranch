@@ -23,7 +23,7 @@ describe('agentStatusMeta', () => {
 
   test('a status without wording is neutral and keeps no key, so the raw text is shown', () => {
     const unknown = agentStatusMeta('unreachable');
-    expect(unknown.labelKey).toBeNull();
+    expect(unknown.labelKey).toBe(null);
     expect(unknown.color).toBe('#7e7488');
     expect(unknown.pulse).toBe(false);
     expect(unknown.alarm).toBe(false);

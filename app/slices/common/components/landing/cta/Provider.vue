@@ -9,7 +9,7 @@
       <img
         class="land-cta__img"
         src="/landing/cta-scene-1200.webp"
-        srcset="/landing/cta-scene-800.webp 800w, /landing/cta-scene-1200.webp 1200w, /landing/cta-scene-1920.webp 1920w, /landing/cta-scene-2880.webp 2880w"
+        srcset="/landing/cta-scene-800.webp 800w, /landing/cta-scene-1200.webp 1200w, /landing/cta-scene-1920.webp 1920w, /landing/cta-scene-2880.webp 2880w, /landing/cta-scene-3552.webp 3552w"
         sizes="100vw"
         alt=""
         loading="lazy"

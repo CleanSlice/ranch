@@ -1,7 +1,10 @@
 <template>
-  <div class="land-stage">
+  <div ref="fxRoot" class="land-stage">
     <div class="land-stage__glow" aria-hidden="true" />
     <div class="land-stage__panel">
+      <!-- The hero's one looping effect: a slow copper light around the panel
+           edge, so the eye is led to the demo (effects contract #1). -->
+      <BorderBeam :duration="fx.borderBeamSeconds" :border-width="1.25" :size="220" />
       <!-- Agent + controls -->
       <aside class="land-stage__side">
         <div class="land-stage__side-head">
@@ -199,6 +202,12 @@ const props = defineProps<{
 }>();
 
 const { t, te } = useI18n();
+
+// Effect settings from the landing tokens; the border beam pauses while the
+// hero is off screen or the tab is hidden.
+const fx = useFxTokens();
+const fxRoot = ref<HTMLElement | null>(null);
+useFxPause(fxRoot);
 
 type Tab = 'chat' | 'runtime' | 'workflow';
 const tabs: Tab[] = ['chat', 'runtime', 'workflow'];

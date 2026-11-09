@@ -1,121 +1,91 @@
 <template>
-  <section class="relative overflow-hidden">
-    <div
-      class="absolute inset-0 -z-10 bg-gradient-to-br from-primary/10 via-transparent to-transparent"
-    />
-    <div class="container mx-auto px-4 pt-16 pb-24">
-      <div class="grid lg:grid-cols-2 gap-12 items-center">
-        <div>
-          <div
-            class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-muted-foreground mb-6"
-          >
-            <span class="w-2 h-2 rounded-full bg-green-500" />
-            {{ $t('hero.badge') }}
-          </div>
-          <h1
-            class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]"
-          >
-            {{ $t('hero.title') }}
-            <br />
-            <span class="text-primary">{{ $t('hero.title_accent') }}</span>
-          </h1>
-          <p class="mt-6 text-lg text-muted-foreground max-w-xl">
-            {{ $t('hero.lede') }}
-          </p>
+  <section class="land-hero" :aria-label="$t('hero.region')">
+    <LandingHeroAtmosphere />
+    <LandingHeroConstellation />
 
-          <div class="mt-8 flex flex-wrap gap-3">
-            <NuxtLink
-              to="/agents"
-              class="inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground px-5 py-3 text-sm font-medium hover:opacity-90 transition"
-            >
-              {{ $t('hero.cta_dashboard') }}
-            </NuxtLink>
-            <NuxtLink
-              v-if="canDeployAgent"
-              to="/agents/create"
-              class="inline-flex items-center justify-center rounded-md border px-5 py-3 text-sm font-medium hover:bg-accent transition"
-            >
-              {{ $t('hero.cta_deploy') }}
-            </NuxtLink>
-            <NuxtLink
-              v-else-if="!authStore.isAuthenticated"
-              to="/login"
-              class="inline-flex items-center justify-center rounded-md border px-5 py-3 text-sm font-medium hover:bg-accent transition"
-            >
-              {{ $t('hero.cta_sign_in') }}
-            </NuxtLink>
-          </div>
+    <div class="land-hero__inner land-wrap">
+      <div class="land-hero__copy">
+        <p
+          class="land-eyebrow land-hero__eyebrow land-enter"
+          style="--enter-delay: 100ms; --enter-dur: 700ms"
+        >
+          <span class="land-hero__pulse" aria-hidden="true" />
+          {{ $t('hero.eyebrow') }}
+        </p>
 
-          <dl class="mt-10 grid grid-cols-3 gap-6 max-w-md">
-            <div>
-              <dt class="text-xs text-muted-foreground">
-                {{ $t('hero.stat_agents') }}
-              </dt>
-              <dd class="text-2xl font-semibold">
-                {{ format.number(available.length) }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted-foreground">
-                {{ $t('hero.stat_running') }}
-              </dt>
-              <dd class="text-2xl font-semibold">{{ format.number(runningCount) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs text-muted-foreground">
-                {{ $t('hero.stat_uptime') }}
-              </dt>
-              <dd class="text-2xl font-semibold">{{ format.percent(UPTIME) }}</dd>
-            </div>
-          </dl>
-        </div>
+        <h1 class="land-hero__title">
+          <span class="land-hero__line land-enter" style="--enter-delay: 160ms; --enter-dur: 850ms">
+            {{ $t('hero.title_line1') }}
+          </span>
+          <span class="land-hero__line land-enter" style="--enter-delay: 280ms; --enter-dur: 850ms">
+            {{ $t('hero.title_line2') }}
+          </span>
+        </h1>
 
-        <div class="lg:pl-8">
-          <div
-            v-if="featured"
-            class="relative h-[520px] rounded-2xl border bg-card shadow-xl overflow-hidden"
+        <p class="land-lede land-hero__lede land-enter" style="--enter-delay: 380ms">
+          {{ $t('hero.lede') }}
+        </p>
+
+        <div class="land-hero__cta land-enter" style="--enter-delay: 500ms">
+          <NuxtLink
+            v-if="authStore.isAuthenticated"
+            to="/agents"
+            class="land-btn land-btn--primary"
           >
-            <div
-              class="absolute -top-24 -right-24 w-64 h-64 rounded-full bg-primary/10 blur-3xl pointer-events-none"
-            />
-            <BridleChatProvider
-              :agent-id="featured.id"
-              :title="featured.name"
-              :subtitle="featured.templateId"
-            />
-          </div>
-          <div
-            v-else
-            class="relative h-[520px] rounded-2xl border bg-card shadow-xl overflow-hidden flex items-center justify-center p-8 text-center"
-          >
-            <div
-              class="absolute -top-24 -right-24 w-64 h-64 rounded-full bg-primary/10 blur-3xl pointer-events-none"
-            />
-            <div class="max-w-sm">
-              <div class="font-semibold text-lg">
-                {{ $t('hero.no_agent_title') }}
-              </div>
-              <p class="mt-3 text-sm text-muted-foreground">
-                {{ $t('hero.no_agent_lede', { origin }) }}
-              </p>
-            </div>
-          </div>
+            {{ $t('hero.cta_console') }}
+            <Icon name="arrow-right" :size="16" class="land-arrow" />
+          </NuxtLink>
+          <NuxtLink v-else :to="startRoute" class="land-btn land-btn--primary">
+            {{ $t('hero.cta_start') }}
+            <Icon name="arrow-right" :size="16" class="land-arrow" />
+          </NuxtLink>
+          <a href="#platform" class="land-btn land-btn--ghost" @click="scrollTo('platform', $event)">
+            {{ $t('hero.cta_platform') }}
+          </a>
         </div>
       </div>
+
+      <div class="land-hero__stage land-enter land-enter--stage" style="--enter-delay: 620ms; --enter-dur: 1000ms">
+        <LandingHeroStage :agent="featured" :origin="origin" />
+      </div>
+
+      <ol class="land-hero__strip land-enter" style="--enter-delay: 800ms">
+        <li v-for="(step, i) in strip" :key="step">
+          <span class="land-num" aria-hidden="true">{{ String(i + 1).padStart(2, '0') }}</span>
+          {{ $t(step) }}
+        </li>
+      </ol>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import type { IAgentData } from '#agent/stores/agent';
-import { useFormat } from '#common/composables/useFormat';
 
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
-const format = useFormat();
 
-/** The uptime shown on the landing page, as a ratio. */
-const UPTIME = 0.999;
+// Only the hero image is worth preloading; everything below the fold lazy-loads.
+useHead({
+  link: [
+    {
+      rel: 'preload',
+      as: 'image',
+      href: '/landing/hero-desktop-1600.webp',
+      imagesrcset: '/landing/hero-desktop-1600.webp 1600w, /landing/hero-desktop-2560.webp 2560w',
+      imagesizes: '100vw',
+      media: '(min-width: 768px)',
+    },
+    {
+      rel: 'preload',
+      as: 'image',
+      href: '/landing/hero-mobile-720.webp',
+      imagesrcset: '/landing/hero-mobile-720.webp 720w, /landing/hero-mobile-1080.webp 1080w',
+      imagesizes: '100vw',
+      media: '(max-width: 767px)',
+    },
+  ],
+});
 
 await useAsyncData('landing-agents', () => agentStore.fetchPublic());
 
@@ -131,16 +101,154 @@ const origin = useRequestURL().origin;
 const available = computed<IAgentData[]>(() =>
   agentStore.publicAgents.filter((a) => a.allowedOrigins.includes(origin)),
 );
+const featured = computed<IAgentData | null>(() => available.value[0] ?? null);
 
-const featured = computed<IAgentData | null>(
-  () => available.value[0] ?? null,
-);
+const { enabled: registrationEnabled, refresh: refreshRegistration } =
+  useRegistrationEnabled();
+if (!authStore.isAuthenticated) {
+  await useAsyncData('landing-registration-enabled', () => refreshRegistration());
+}
+const startRoute = computed(() => (registrationEnabled.value ? '/register' : '/login'));
 
-const runningCount = computed(
-  () => available.value.filter((a) => a.status === 'running').length,
-);
+const strip = ['hero.strip_configure', 'hero.strip_deploy', 'hero.strip_interact'];
 
-const canDeployAgent = computed(() =>
-  authStore.hasRole(UserRoleTypes.Owner, UserRoleTypes.Admin),
-);
+function scrollTo(id: string, event: MouseEvent) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  event.preventDefault();
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+  history.replaceState(null, '', `#${id}`);
+}
 </script>
+
+<style scoped>
+.land-hero {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  isolation: isolate;
+}
+.land-hero__inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: clamp(6.5rem, 14vh, 9.5rem);
+  padding-bottom: 2.5rem;
+  gap: clamp(2.5rem, 6vh, 4.5rem);
+}
+.land-hero__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.5rem;
+  max-width: 74rem;
+}
+.land-hero__eyebrow {
+  height: 2rem;
+  padding: 0 0.9rem 0 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(19, 14, 25, 0.45);
+  backdrop-filter: blur(10px);
+  margin: 0;
+}
+.land-hero__pulse {
+  position: relative;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--land-orange);
+  box-shadow: 0 0 10px rgba(245, 161, 107, 0.9);
+}
+.land-hero__pulse::after {
+  content: '';
+  position: absolute;
+  inset: -0.3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 161, 107, 0.6);
+  animation: land-pulse-ring 2.6s ease-out infinite;
+}
+.land-hero__title {
+  margin: 0;
+  font-size: clamp(2.5rem, 1rem + 4.9vw, 4.4rem);
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+  color: #fbf8fd;
+  text-wrap: balance;
+}
+.land-hero__line {
+  display: block;
+}
+.land-hero__lede {
+  text-align: center;
+  max-width: 38rem;
+}
+.land-hero__cta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+@media (max-width: 480px) {
+  .land-hero__cta {
+    flex-direction: column;
+    width: 100%;
+  }
+  .land-hero__cta .land-btn {
+    width: 100%;
+  }
+}
+.land-hero__stage {
+  width: 100%;
+  max-width: 1120px;
+}
+.land-hero__strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem 1.75rem;
+  font-family: var(--land-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--land-text-3);
+}
+.land-hero__strip li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.land-hero__strip li + li::before {
+  content: '';
+  width: 2.5rem;
+  height: 1px;
+  background: var(--land-border-2);
+  margin-right: 1rem;
+}
+@media (max-width: 640px) {
+  .land-hero__strip {
+    gap: 0.6rem 1.25rem;
+  }
+  .land-hero__strip li + li::before {
+    display: none;
+  }
+}
+.land-hero__strip .land-num {
+  font-family: var(--land-pixel);
+  font-size: 0.85rem;
+  letter-spacing: 0;
+  color: var(--land-orange);
+}
+</style>

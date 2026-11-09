@@ -1,0 +1,306 @@
+/* ── RANCH landing design system ─────────────────────────────────────────
+   Scoped to `.landing` so the console pages keep the shadcn theme untouched.
+   Tokens follow the brand identity (deep plum surfaces, copper light,
+   lavender depth). Motion lives here too: every keyframe is decorative and
+   is switched off under prefers-reduced-motion. */
+
+.landing {
+  --land-bg: #09070d;
+  --land-bg-2: #130e19;
+  --land-surface: #1a1421;
+  --land-surface-2: #251b2b;
+  --land-text: #f8f5fa;
+  --land-text-2: #a9a0b2;
+  --land-text-3: #7e7488;
+  --land-orange: #f5a16b;
+  --land-copper: #d77b61;
+  --land-lavender: #c9a1e4;
+  --land-border: rgba(255, 255, 255, 0.1);
+  --land-border-2: rgba(255, 255, 255, 0.16);
+  --land-glass: rgba(19, 14, 25, 0.62);
+  --land-panel: #fbf9fc;
+  --land-panel-2: #f4f1f7;
+  --land-panel-text: #1a1421;
+  --land-panel-text-2: #6e6478;
+  --land-panel-border: rgba(26, 20, 33, 0.09);
+  --land-ok: #2fa66b;
+  --land-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --land-font: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --land-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --land-pixel: 'DotGothic16', 'Geist Mono', monospace;
+  --land-max: 1280px;
+
+  background: var(--land-bg);
+  color: var(--land-text);
+  font-family: var(--land-font);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+/* The page behind the landing: overscroll and the moment before hydration
+   stay dark instead of flashing the console's white. */
+body.landing-body {
+  background: #09070d;
+}
+
+.landing ::selection {
+  background: rgba(245, 161, 107, 0.35);
+}
+
+/* Section rhythm */
+.land-wrap {
+  width: min(100% - 2rem, var(--land-max));
+  margin-inline: auto;
+}
+@media (min-width: 768px) {
+  .land-wrap {
+    width: min(100% - 4rem, var(--land-max));
+  }
+}
+
+/* Type scale */
+.land-h2 {
+  font-size: clamp(2rem, 1.2rem + 3.2vw, 3.5rem);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+  text-wrap: balance;
+  margin: 0;
+}
+.land-lede {
+  font-size: clamp(1rem, 0.95rem + 0.3vw, 1.125rem);
+  line-height: 1.55;
+  color: var(--land-text-2);
+  max-width: 36rem;
+  margin: 0;
+}
+.land-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-family: var(--land-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--land-text-2);
+}
+.land-eyebrow .land-num {
+  font-family: var(--land-pixel);
+  letter-spacing: 0;
+  color: var(--land-orange);
+  font-size: 0.85rem;
+}
+
+/* Controls */
+.land-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  height: 3rem;
+  padding: 0 1.4rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    transform 0.35s var(--land-ease),
+    background-color 0.35s var(--land-ease),
+    border-color 0.35s var(--land-ease),
+    box-shadow 0.35s var(--land-ease);
+}
+.land-btn:hover {
+  transform: translateY(-2px);
+}
+.land-btn:focus-visible {
+  outline: 2px solid var(--land-orange);
+  outline-offset: 3px;
+}
+.land-btn .land-arrow {
+  transition: transform 0.35s var(--land-ease);
+}
+.land-btn:hover .land-arrow {
+  transform: translateX(3px);
+}
+.land-btn--primary {
+  background: var(--land-text);
+  color: #120c18;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.land-btn--primary:hover {
+  background: #fff;
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.4),
+    0 0 0 6px rgba(245, 161, 107, 0.12);
+}
+.land-btn--ghost {
+  background: rgba(19, 14, 25, 0.35);
+  color: var(--land-text);
+  border: 1px solid var(--land-border-2);
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+}
+.land-btn--ghost:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(19, 14, 25, 0.55);
+}
+.land-btn--accent {
+  background: var(--land-orange);
+  color: #120c18;
+  box-shadow: 0 10px 40px rgba(245, 161, 107, 0.25);
+}
+.land-btn--accent:hover {
+  background: #f9b386;
+}
+
+/* Glass pill (navigation) */
+.land-glass {
+  background: var(--land-glass);
+  border: 1px solid var(--land-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+/* Surface levels: 2 dark levels + 1 light product panel */
+.land-card {
+  background: linear-gradient(180deg, rgba(37, 27, 43, 0.6), rgba(19, 14, 25, 0.9));
+  border: 1px solid var(--land-border);
+  border-radius: 1.25rem;
+}
+
+/* ── Scroll reveal ──────────────────────────────────────────────────── */
+.landing [data-reveal] {
+  opacity: 0;
+  transform: translateY(22px);
+  filter: blur(6px);
+  transition:
+    opacity 0.9s var(--land-ease),
+    transform 0.9s var(--land-ease),
+    filter 0.9s var(--land-ease);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.landing [data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+/* ── Entrance (hero) ────────────────────────────────────────────────── */
+@keyframes land-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes land-enter-down {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes land-enter-stage {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.land-enter {
+  opacity: 0;
+  animation: land-enter var(--enter-dur, 800ms) var(--land-ease) forwards;
+  animation-delay: var(--enter-delay, 0ms);
+}
+/* Once an entrance has played, the animation is dropped (landing.vue adds
+   the class on animationend). A finished filter animation keeps its element
+   on a composited layer that Chromium paints over the fixed navigation and
+   its open mobile menu; a static element has no such layer. */
+.land-enter--done {
+  animation: none;
+  opacity: 1;
+}
+.land-enter--down {
+  animation-name: land-enter-down;
+}
+.land-enter--stage {
+  animation-name: land-enter-stage;
+}
+
+/* ── Atmosphere cycles (12–25 s) ───────────────────────────────────── */
+@keyframes land-glow-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translate(-50%, 0) scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: translate(-50%, -6px) scale(1.06);
+  }
+}
+@keyframes land-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+@keyframes land-node-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes land-dash {
+  to {
+    stroke-dashoffset: -40;
+  }
+}
+@keyframes land-pulse-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing [data-reveal] {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+  .landing .land-enter {
+    opacity: 1;
+    animation: none;
+  }
+  .landing *,
+  .landing *::before,
+  .landing *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

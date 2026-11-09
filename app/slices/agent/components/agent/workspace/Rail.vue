@@ -63,7 +63,7 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
 
     <div v-else-if="filtered.length" class="min-h-0 flex-1 overflow-y-auto">
       <ul class="flex flex-col gap-0.5">
-        <li v-for="agent in filtered" :key="agent.id">
+        <li v-for="agent in filtered" :key="agent.id" :data-agent-id="agent.id">
           <AgentWorkspaceRailItem
             :agent="agent"
             :active="agent.id === activeId"

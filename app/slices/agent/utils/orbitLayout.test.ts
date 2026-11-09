@@ -133,6 +133,31 @@ describe('orbitLayout', () => {
     expect(names(nodes)).toEqual(['admin', 'r1', 'r2', 'deploying', 'pending']);
   });
 
+  test('a pinned agent is first on its ring, after the admin agent (CLEAN-216)', () => {
+    const { nodes } = orbitLayout([
+      agent('r1'),
+      { ...agent('fav'), pinned: true },
+      agent('admin', 'running', SMALL, true),
+      agent('big', 'running', SMALL),
+    ]);
+    expect(names(nodes)).toEqual(['admin', 'fav', 'r1', 'big']);
+  });
+
+  test('a pin does not move an agent to another ring', () => {
+    const { nodes } = orbitLayout([
+      agent('big', 'running', BIG),
+      { ...agent('fav'), pinned: true },
+      { ...agent('off', 'stopped'), pinned: true },
+      agent('idle2', 'stopped'),
+    ]);
+    const ringOf = (name: string) => nodes.find((n) => n.agent.name === name)?.ring;
+    expect(ringOf('big')).toBe(0);
+    expect(ringOf('fav')).toBe(1);
+    expect(ringOf('off')).toBe(2);
+    // On its own ring the pinned one still leads.
+    expect(names(nodes.filter((n) => n.ring === 2))).toEqual(['off', 'idle2']);
+  });
+
   test('on the idle ring what failed comes before what was stopped', () => {
     const { nodes } = orbitLayout([agent('s', 'stopped'), agent('f', 'failed'), agent('odd', 'weird')]);
     expect(names(nodes)).toEqual(['f', 's', 'odd']);

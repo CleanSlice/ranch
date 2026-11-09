@@ -20,6 +20,10 @@ export interface IAgentData {
   /** The Ranch admin agent — the one that manages the install. Pinned first
    *  in the rail, as in the admin console (CLEAN-136). */
   isAdmin: boolean;
+  /** Installation-wide pin (CLEAN-216): every list in both consoles puts
+   *  pinned agents ahead of the rest, after the admin agent. Owner/Admin
+   *  toggle it; it changes nothing about the pod, the status or access. */
+  pinned: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,9 +42,11 @@ export interface IAgentCreateInput {
   isAdmin?: boolean;
 }
 
-/** Payload to update an agent — every create field optional, plus debug. */
+/** Payload to update an agent — every create field optional, plus debug and
+ *  the pin. */
 export interface IAgentUpdateInput extends Partial<IAgentCreateInput> {
   debugEnabled?: boolean;
+  pinned?: boolean;
 }
 
 /** Cluster headroom for new agents — the headline numbers only; per-node

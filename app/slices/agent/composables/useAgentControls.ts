@@ -1,12 +1,14 @@
 import type { Ref } from 'vue';
 import type { IAgentData } from '#agent/domain';
 
-export type AgentControlAction = 'restart' | 'stop' | 'start';
+export type AgentControlAction = 'restart' | 'stop' | 'start' | 'pin';
 
 /**
- * Restart / stop / start for the agent sheet. The optimistic status flip and
- * its rollback live in the store, on the one record the orbit node, the rail
- * row and the chat overlay all read — so every surface moves together.
+ * Restart / stop / start / pin for the agent sheet. The optimistic status
+ * flip and its rollback live in the store, on the one record the orbit node,
+ * the rail row and the chat overlay all read — so every surface moves
+ * together. The pin (CLEAN-216) follows the same road: patched at once, so
+ * the lists reorder on the click, and rolled back if the server says no.
  */
 export function useAgentControls(agent: Ref<IAgentData | null | undefined>) {
   const agentStore = useAgentStore();
@@ -35,6 +37,7 @@ export function useAgentControls(agent: Ref<IAgentData | null | undefined>) {
     try {
       if (action === 'restart') await agentStore.restart(id);
       else if (action === 'stop') await agentStore.stop(id);
+      else if (action === 'pin') await togglePinned(id, !agent.value.pinned);
       else await agentStore.start(id);
     } catch (err) {
       // A 401 the api plugin could not recover from is the session-ended
@@ -51,6 +54,20 @@ export function useAgentControls(agent: Ref<IAgentData | null | undefined>) {
     }
   }
 
+  // The pin is not a status, so it has no store action of its own: the record
+  // is patched here and the general update carries the flag (docs/state.md:
+  // optimistic changes go through patch() and keep the rollback). Rolls back
+  // on any failure and rethrows so `run` shows it like the other actions.
+  async function togglePinned(id: string, next: boolean) {
+    const rollback = agentStore.patch(id, { pinned: next });
+    try {
+      await agentStore.update(id, { pinned: next });
+    } catch (err) {
+      rollback();
+      throw err;
+    }
+  }
+
   return {
     busy,
     failed,
@@ -59,6 +76,7 @@ export function useAgentControls(agent: Ref<IAgentData | null | undefined>) {
     restart: () => run('restart'),
     stop: () => run('stop'),
     start: () => run('start'),
+    togglePin: () => run('pin'),
     dismiss: () => {
       failed.value = null;
     },

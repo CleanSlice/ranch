@@ -45,6 +45,7 @@ export class AgentMapper {
         ? o.allowedOrigins.filter((v): v is string => typeof v === 'string')
         : [],
       isAdmin: o.isAdmin === true,
+      pinned: o.pinned === true,
       createdAt: typeof o.createdAt === 'string' ? o.createdAt : '',
       updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : '',
     };

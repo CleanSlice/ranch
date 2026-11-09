@@ -26,6 +26,10 @@ export type OrbitBand = 'heavy' | 'light' | 'idle';
 export interface IOrbitAgent {
   status: string;
   isAdmin: boolean;
+  /** Pinned by an operator (CLEAN-216): first on its ring, after the admin
+   *  agent. A pin does not move an agent between rings: the ring says what
+   *  it holds, the pin only who is looked for first. */
+  pinned?: boolean;
   resources?: { cpu?: string; memory?: string } | null;
 }
 
@@ -140,7 +144,8 @@ const BAND_ORDER: OrbitBand[] = ['heavy', 'light', 'idle'];
  * hub outwards. A band with more agents than its ring holds spills onto a
  * ring of its own behind it, so the order of the bands never changes.
  *
- * Inside a ring: the admin agent first, then the heavier allocations, then
+ * Inside a ring: the admin agent first, then pinned agents (CLEAN-216), then
+ * the heavier allocations, then
  * by status, then the order the server gave, so two agents keep their places
  * between polls. The innermost ring starts at twelve o'clock and every ring
  * spreads its nodes evenly; each further ring is turned so its nodes stand in
@@ -164,6 +169,9 @@ export function orbitLayout<T extends IOrbitAgent>(
     const rank = band === 'idle' ? IDLE_RANK : ACTIVE;
     members.sort((a, c) => {
       if (a.agent.isAdmin !== c.agent.isAdmin) return a.agent.isAdmin ? -1 : 1;
+      const pa = a.agent.pinned ? 0 : 1;
+      const pc = c.agent.pinned ? 0 : 1;
+      if (pa !== pc) return pa - pc;
       if (a.weight !== c.weight) return c.weight - a.weight;
       const ra = rank[a.agent.status] ?? 9;
       const rc = rank[c.agent.status] ?? 9;

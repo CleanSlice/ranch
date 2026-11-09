@@ -67,6 +67,8 @@ const failedKey = computed(() => {
       return 'sheet.stop_failed';
     case 'start':
       return 'sheet.start_failed';
+    case 'pin':
+      return 'sheet.pin_failed';
     default:
       return null;
   }
@@ -96,6 +98,17 @@ const failedKey = computed(() => {
             <template v-else-if="pending">{{ $t('chat.loading') }}</template>
             <template v-else>{{ $t('chat.not_found') }}</template>
           </h1>
+          <!-- The pin state, announced as one image with a name (CLEAN-216). -->
+          <span
+            v-if="agent?.pinned"
+            class="shrink-0 text-primary"
+            role="img"
+            :title="$t('sheet.pinned')"
+            :aria-label="$t('sheet.pinned')"
+            data-pinned
+          >
+            <Icon name="pin" :size="13" />
+          </span>
           <span
             v-if="agent"
             class="inline-flex shrink-0 items-center gap-1.5 rounded-full border bg-card px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
@@ -171,6 +184,24 @@ const failedKey = computed(() => {
               :class="controls.busy.value === 'stop' ? 'animate-spin' : undefined"
             />
             <span class="sr-only">{{ $t(controls.busy.value === 'stop' ? 'sheet.stopping' : 'sheet.stop') }}</span>
+          </button>
+          <!-- Pin / unpin (CLEAN-216): optimistic, the lists reorder on the
+               click; a failure rolls back and lands in the line below. -->
+          <button
+            type="button"
+            class="agent-sheet__btn"
+            :title="$t(agent.pinned ? 'sheet.unpin' : 'sheet.pin')"
+            :aria-pressed="agent.pinned"
+            :disabled="controls.busy.value !== null"
+            data-pin-toggle
+            @click="controls.togglePin()"
+          >
+            <Icon
+              :name="controls.busy.value === 'pin' ? 'loader-2' : agent.pinned ? 'pin-off' : 'pin'"
+              :size="13"
+              :class="controls.busy.value === 'pin' ? 'animate-spin' : undefined"
+            />
+            <span class="sr-only">{{ $t(agent.pinned ? 'sheet.unpin' : 'sheet.pin') }}</span>
           </button>
         </template>
 

@@ -321,6 +321,7 @@ function onKeydown(event: KeyboardEvent) {
       <button
         type="button"
         data-orbit-node
+        :data-agent-id="node.agent.id"
         :data-active="node.active ? 'true' : 'false'"
         class="agent-orbit__node absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[14px] border bg-linear-to-br from-[#4a3356] to-[#1a1421] text-[11px] font-semibold text-foreground outline-none transition-[opacity,box-shadow,width,height] duration-300 focus-visible:ring-2 focus-visible:ring-primary/60"
         :class="[
@@ -338,8 +339,9 @@ function onKeydown(event: KeyboardEvent) {
           '--node-delay': `${Math.min(index, 24) * 28}ms`,
         }"
         :aria-current="node.active ? 'true' : undefined"
-        :aria-label="`${node.agent.name} — ${node.meta.labelKey ? $t(node.meta.labelKey) : node.agent.status}`"
+        :aria-label="`${node.agent.name} — ${node.meta.labelKey ? $t(node.meta.labelKey) : node.agent.status}${node.agent.pinned ? ` · ${$t('sheet.pinned')}` : ''}`"
         :title="node.agent.name"
+        :data-pinned="node.agent.pinned ? '' : undefined"
         @click="emit('select', node.id)"
       >
         {{ node.initials }}
@@ -348,6 +350,16 @@ function onKeydown(event: KeyboardEvent) {
           class="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-[#09070d] bg-primary"
           aria-hidden="true"
         />
+        <!-- The pin badge sits top-left so it never fights the admin dot
+             (top-right) or the pulse (bottom-right); the aria-label above
+             carries the word (CLEAN-216). -->
+        <span
+          v-if="node.agent.pinned"
+          class="absolute -left-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full border border-[#09070d] bg-card text-primary"
+          aria-hidden="true"
+        >
+          <Icon name="pin" :size="9" />
+        </span>
         <span
           v-if="node.meta.pulse"
           class="absolute -bottom-1 -right-1 h-2.5 w-2.5 animate-ping rounded-full opacity-70"

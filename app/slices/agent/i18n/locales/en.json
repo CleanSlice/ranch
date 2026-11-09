@@ -78,7 +78,11 @@
     "stop": "Stop",
     "stopping": "Stopping…",
     "start_failed": "Start failed",
-    "stop_failed": "Stop failed"
+    "stop_failed": "Stop failed",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "pinned": "Pinned",
+    "pin_failed": "Pin failed"
   },
   "create_stub": {
     "badge": "In progress",

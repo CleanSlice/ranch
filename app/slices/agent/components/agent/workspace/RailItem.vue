@@ -7,8 +7,10 @@ const props = defineProps<{
     status: string;
     templateId: string;
     updatedAt?: string;
-    /** The Ranch admin agent: marked, and pinned first by the rail. */
+    /** The Ranch admin agent: marked, and first in the rail. */
     isAdmin?: boolean;
+    /** Pinned by an Owner/Admin: marked, and ahead of the rest (CLEAN-216). */
+    pinned?: boolean;
   };
   active: boolean;
 }>();
@@ -101,6 +103,16 @@ const updatedRelative = computed(() => relativeTime(props.agent.updatedAt));
         </span>
         <!-- Labelled on a wrapper with a role, so the mark is announced as
              one image with a name rather than as a bare svg. -->
+        <span
+          v-if="agent.pinned"
+          class="shrink-0 text-primary"
+          role="img"
+          :title="$t('sheet.pinned')"
+          :aria-label="$t('sheet.pinned')"
+          data-pinned
+        >
+          <Icon name="pin" :size="12" />
+        </span>
         <span
           v-if="agent.isAdmin"
           class="shrink-0 text-primary"

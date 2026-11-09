@@ -5,22 +5,15 @@
         <p class="land-eyebrow" data-reveal>
           <span class="land-num">04</span>{{ $t('runtime.eyebrow') }}
         </p>
-        <h2 class="land-h2" data-reveal style="--reveal-delay: 80ms">{{ $t('runtime.title') }}</h2>
+        <h2 class="land-h2 land-reveal--blur" data-reveal style="--reveal-delay: 80ms">{{ $t('runtime.title') }}</h2>
         <p class="land-lede" data-reveal style="--reveal-delay: 160ms">{{ $t('runtime.lede') }}</p>
       </header>
 
-      <div class="land-rt__board" data-reveal style="--reveal-delay: 200ms">
-        <!-- Routes between stations (desktop: horizontal; mobile: vertical) -->
-        <svg class="land-rt__routes land-rt__routes--h" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true">
-          <line x1="0" y1="20" x2="1200" y2="20" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-          <line x1="0" y1="20" x2="1200" y2="20" stroke="url(#land-rt-grad)" stroke-width="1.5" stroke-dasharray="6 14" class="land-rt__flow" />
-          <defs>
-            <linearGradient id="land-rt-grad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stop-color="#C9A1E4" />
-              <stop offset="1" stop-color="#F5A16B" />
-            </linearGradient>
-          </defs>
-        </svg>
+      <div ref="boardEl" class="land-rt__board" data-reveal style="--reveal-delay: 200ms">
+        <!-- The light passes the four stations in step with the highlighted one:
+             three beams end to end between the ports, paused off screen, static
+             under reduced motion (effects #4). Desktop only, like the ports. -->
+        <AnimatedBeam v-for="i in 3" :key="i" class="land-rt__beam" :container-ref="boardEl" :from-ref="ports[i - 1]" :to-ref="ports[i]" :duration="hop" :delay="(i - 1) * hop" :static="fx.reducedMotion" :path-opacity="0.25" />
 
         <ol class="land-rt__stations">
           <li
@@ -29,7 +22,7 @@
             class="land-rt__station"
             :class="{ 'is-active': active === i, 'is-done': active > i }"
           >
-            <span class="land-rt__port" aria-hidden="true"><span /></span>
+            <span :ref="(el) => setPort(el, i)" class="land-rt__port" aria-hidden="true"><span /></span>
             <div class="land-rt__card">
               <div class="land-rt__card-head">
                 <span class="land-rt__icon"><Icon :name="station.icon" :size="16" /></span>
@@ -64,6 +57,15 @@ const stations = [
 // The light travels the pipeline only while the board is on screen, and not
 // at all under reduced motion (the final station stays lit instead).
 const rootEl = ref<HTMLElement | null>(null);
+const boardEl = ref<HTMLElement | null>(null);
+const ports = ref<(HTMLElement | null)[]>([]);
+function setPort(el: unknown, i: number) {
+  ports.value[i] = (el as HTMLElement | null) ?? null;
+}
+const fx = useFxTokens();
+// One hop of the light = one station; the whole pipeline takes --land-fx-beam-duration.
+const hop = computed(() => fx.beamSeconds / (stations.length - 1));
+useFxPause(rootEl);
 const active = ref(stations.length - 1);
 let timer: ReturnType<typeof setInterval> | null = null;
 let io: IntersectionObserver | null = null;
@@ -77,7 +79,7 @@ onMounted(() => {
         active.value = 0;
         timer = setInterval(() => {
           active.value = (active.value + 1) % (stations.length + 1);
-        }, 1600);
+        }, Math.round(hop.value * 1000));
       } else if (timer) {
         clearInterval(timer);
         timer = null;
@@ -119,22 +121,13 @@ onBeforeUnmount(() => {
     padding: 3rem 2rem 2rem;
   }
 }
-.land-rt__routes {
-  position: absolute;
-  left: 2rem;
-  right: 2rem;
-  top: calc(3rem + 0.625rem - 20px);
-  height: 40px;
-  width: calc(100% - 4rem);
+.land-rt__beam {
   display: none;
 }
 @media (min-width: 1024px) {
-  .land-rt__routes--h {
+  .land-rt__beam {
     display: block;
   }
-}
-.land-rt__flow {
-  animation: land-dash 2.4s linear infinite;
 }
 .land-rt__stations {
   list-style: none;

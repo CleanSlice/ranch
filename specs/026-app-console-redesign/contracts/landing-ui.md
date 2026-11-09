@@ -38,7 +38,7 @@ Header anchors: Platform → `#platform`, How it works → `#how`, Infrastructur
 | `effectiveType` matches `2g` / `3g` | never requested |
 | otherwise | requested after `load` + idle (`requestIdleCallback` timeout 2 000 ms, Safari fallback 300 ms), `muted loop playsinline`, fades in 1.2 s on `playing`, paused when the hero is < 5 % visible |
 
-Sources: `hero-loop-1080.webm` (`av01.0.08M.10`) then `hero-loop-1080.mp4`.
+Sources: `hero-loop-1440.webm` / `.mp4` when the viewport is at least ~1700 device pixels wide (1920 at 1x, 1024 at 2x), else `hero-loop-1080.webm` / `.mp4`; AV1 webm first (`av01.0.08M.10`), H.264 mp4 second. Chosen once when the video mounts. Files re-rendered 2026-11-09 from the 4K Veo master (clean star field, no streaks): 1080 0.48 / 1.04 MB, 1440 0.68 / 1.69 MB.
 
 ## Stage
 

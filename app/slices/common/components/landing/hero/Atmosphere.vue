@@ -37,8 +37,11 @@
       tabindex="-1"
       @playing="videoPlaying = true"
     >
-      <source src="/landing/hero-loop-1080.webm" type='video/webm; codecs="av01.0.08M.10"' />
-      <source src="/landing/hero-loop-1080.mp4" type="video/mp4" />
+      <!-- 1440 for screens that would show more than ~1700 device pixels across
+           (1920 at 1x, 1024 at 2x), 1080 otherwise; chosen once, when the
+           video mounts after load. -->
+      <source :src="`/landing/hero-loop-${hd ? 1440 : 1080}.webm`" type='video/webm; codecs="av01.0.08M.10"' />
+      <source :src="`/landing/hero-loop-${hd ? 1440 : 1080}.mp4`" type="video/mp4" />
     </video>
     <div class="land-atmo__veil" />
     <div class="land-atmo__vignette" />
@@ -62,6 +65,8 @@
 const imgEl = ref<HTMLImageElement | null>(null);
 const videoEl = ref<HTMLVideoElement | null>(null);
 const videoOn = ref(false);
+/** 1440 loop for wide or dense screens (see the template note). */
+const hd = ref(false);
 const videoPlaying = ref(false);
 
 let raf = 0;
@@ -91,6 +96,7 @@ function wantsVideo() {
 }
 
 async function startVideo() {
+  hd.value = Math.min(window.innerWidth * (window.devicePixelRatio || 1), 3840) >= 1700;
   videoOn.value = true;
   await nextTick();
   const video = videoEl.value;

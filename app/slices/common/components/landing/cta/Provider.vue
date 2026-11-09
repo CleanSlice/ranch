@@ -8,20 +8,20 @@
       </div>
       <img
         class="land-cta__img"
-        src="/landing/scene-calm-1200.webp"
-        srcset="/landing/scene-calm-1200.webp 1200w, /landing/scene-calm-1920.webp 1920w"
+        src="/landing/cta-scene-1200.webp"
+        srcset="/landing/cta-scene-800.webp 800w, /landing/cta-scene-1200.webp 1200w, /landing/cta-scene-1920.webp 1920w, /landing/cta-scene-2880.webp 2880w"
         sizes="100vw"
         alt=""
         loading="lazy"
         decoding="async"
-        width="1200"
-        height="600"
+        width="3552"
+        height="1792"
       />
       <div class="land-cta__veil" />
       <div class="land-cta__mark" :class="{ 'land-cta__mark--orbit': brand === 'orbit' }">
         <img
           v-if="brand === 'orbit'"
-          src="/landing/brand/orbit-mark.webp"
+          src="/landing/brand/orbit-mark-cta.webp"
           width="640"
           height="557"
           alt=""

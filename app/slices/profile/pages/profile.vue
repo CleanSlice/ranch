@@ -60,7 +60,7 @@ async function onLogout() {
 <template>
   <div
     v-if="user"
-    class="profile-page mx-auto grid w-full max-w-[1180px] items-start gap-x-14 gap-y-8 pb-10 lg:grid-cols-[400px_minmax(0,1fr)]"
+    class="profile-page mx-auto grid w-full [overflow-x:clip] max-w-[1180px] items-start gap-x-14 gap-y-8 pb-10 lg:grid-cols-[400px_minmax(0,1fr)]"
     data-profile
   >
     <ProfilePass

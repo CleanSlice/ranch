@@ -82,10 +82,11 @@ async function open(browser, { width = 1440, height = 900, reduced = false, user
   await sleep(1200);
   return { context, page };
 }
-async function toProfile(page) {
+async function toProfile(page, { settle = true } = {}) {
   await page.goto(`${APP}/profile`, { waitUntil: 'networkidle' });
   await page.locator('[data-profile]').waitFor({ timeout: 15000 });
-  await sleep(600);
+  // The pass drops and swings for up to 3.5 s; measure it at rest.
+  await sleep(settle ? 3900 : 0);
 }
 const capStates = (page) =>
   page.evaluate(() =>
@@ -187,6 +188,8 @@ console.log('-- owner');
     Array.from(document.querySelectorAll('[data-profile] *')).filter((el) => getComputedStyle(el).animationIterationCount === 'infinite').length,
   );
   check(infinite === 0, 'nothing on the page animates endlessly');
+  // Clicking around nudges the pass; measure it once it hangs still.
+  await page.waitForFunction(() => document.querySelector("[data-profile-rig]").style.transform === "", null, { timeout: 8000 });
   const columns = await page.evaluate(() => {
     const pass = document.querySelector('[data-profile-pass]').getBoundingClientRect();
     const acc = document.querySelector('[data-account-email]').getBoundingClientRect();
@@ -222,6 +225,141 @@ console.log('-- owner');
   await context.close();
 }
 
+// ── Drop and swing on the lanyard ────────────────────────────────────────
+console.log('-- drop and swing');
+{
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1,
+    recordVideo: { dir: SHOTS, size: { width: 1440, height: 900 } },
+  });
+  const page = await context.newPage();
+  await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
+  await page.locator('input[type="email"], input[name="email"]').first().fill(LOGIN);
+  await page.locator('input[type="password"]').first().fill(PASS);
+  await Promise.all([
+    page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 20000 }),
+    page.locator('button[type="submit"]').first().click(),
+  ]);
+  await page.waitForLoadState('networkidle').catch(() => undefined);
+  await page.locator('[data-profile-pill]').waitFor({ timeout: 15000 });
+  await sleep(1200);
+
+  // Sample the rig from inside the page for 4.2 s, from the moment it mounts.
+  await page.evaluate(() => {
+    window.__swing = [];
+    const started = performance.now();
+    const tick = () => {
+      const rig = document.querySelector('[data-profile-rig]');
+      if (rig) {
+        const m = new DOMMatrixReadOnly(getComputedStyle(rig).transform);
+        window.__swing.push({
+          t: Math.round(performance.now() - started),
+          deg: (Math.atan2(m.b, m.a) * 180) / Math.PI,
+          y: m.f,
+          inline: rig.style.transform,
+          willChange: rig.style.willChange,
+          width: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          top: Math.round(document.querySelector('[data-account-email]')?.getBoundingClientRect().top ?? -1),
+        });
+      }
+      if (performance.now() - started < 4600) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.locator('[data-profile-pill]').click();
+  await page.locator('[data-profile]').waitFor({ timeout: 15000 });
+  await sleep(4400);
+  const samples = await page.evaluate(() => window.__swing);
+  const t0 = samples[0]?.t ?? 0;
+  const rel = samples.map((s) => ({ ...s, t: s.t - t0 }));
+  const first = rel[0];
+  check(Boolean(first) && first.y < -300, `starts above the header (y ${first ? Math.round(first.y) : 'n/a'} px)`);
+  const maxDeg = Math.max(...rel.map((s) => Math.abs(s.deg)));
+  check(maxDeg > 5 && maxDeg <= 7.05, `swings, never past 7 degrees (max ${maxDeg.toFixed(2)})`);
+  const maxDown = Math.max(...rel.map((s) => s.y));
+  check(maxDown >= 8 && maxDown <= 14.5, `the lanyard gives on the catch (${maxDown.toFixed(1)} px past rest)`);
+  // Swings: sign changes of the angle after the catch.
+  let swings = 0;
+  let side = 0;
+  for (const smp of rel) {
+    if (Math.abs(smp.deg) < 0.3) continue;
+    const now = Math.sign(smp.deg);
+    if (side && now !== side) swings += 1;
+    side = now;
+  }
+  check(swings >= 3 && swings <= 5, `about four swings before rest (${swings} crossings)`);
+  const restAt = rel.find((s, i) => rel.slice(i).every((x) => x.inline === ''))?.t;
+  check(restAt !== undefined && restAt < 3480, `at rest on its own, with no transform left, after ${restAt} ms (limit 3500)`);
+  check(rel[rel.length - 1].willChange === "" && rel[0].willChange === "transform", "will-change is set while it moves and removed at rest");
+  check(rel.every((s) => s.width <= 0), 'no sideways scroll at any moment of the swing');
+  const tops = new Set(rel.map((s) => s.top));
+  check(tops.size === 1, `the layout never moves (account card top: ${[...tops].join(', ')})`);
+  const lanyardTop = await page.evaluate(() => {
+    const header = document.querySelector('header').getBoundingClientRect().bottom;
+    const lanyard = document.querySelector('.profile-pass__lanyard').getBoundingClientRect().top;
+    return Math.round(lanyard - header);
+  });
+  check(lanyardTop === 0, `the lanyard starts at the header's lower edge (gap ${lanyardTop} px)`);
+
+  console.log('-- pointer nudge');
+  const box = await page.locator('[data-profile-rig]').boundingBox();
+  const yMid = box.y + box.height * 0.6;
+  await page.mouse.move(box.x - 60, yMid);
+  await sleep(60);
+  await page.mouse.move(box.x + box.width + 60, yMid, { steps: 3 });
+  await sleep(180);
+  const pushed = await page.evaluate(() => {
+    const m = new DOMMatrixReadOnly(getComputedStyle(document.querySelector('[data-profile-rig]')).transform);
+    return (Math.atan2(m.b, m.a) * 180) / Math.PI;
+  });
+  check(Math.abs(pushed) > 0.2 && Math.abs(pushed) <= 3.05, `a fast pointer pass nudges it, within 3 degrees (${pushed.toFixed(2)})`);
+  await sleep(3600);
+  check((await page.locator('[data-profile-rig]').evaluate((el) => el.style.transform)) === '', 'and it settles again');
+
+  const video = page.video();
+  await context.close();
+  if (video) {
+    const { renameSync } = await import('node:fs');
+    renameSync(await video.path(), resolve(SHOTS, 'profile-drop.webm'));
+    console.log('  video specs/028-app-profile/e2e/shots/profile-drop.webm');
+  }
+}
+
+// ── The same drop on a phone, for the record ─────────────────────────────
+{
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 1,
+    hasTouch: true,
+    recordVideo: { dir: SHOTS, size: { width: 390, height: 844 } },
+  });
+  const page = await context.newPage();
+  await page.goto(`${APP}/login`, { waitUntil: "networkidle" });
+  await page.locator("input[type=email], input[name=email]").first().fill(LOGIN);
+  await page.locator("input[type=password]").first().fill(PASS);
+  await Promise.all([
+    page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 20000 }),
+    page.locator("button[type=submit]").first().click(),
+  ]);
+  await page.waitForLoadState("networkidle").catch(() => undefined);
+  await sleep(1500);
+  await page.locator("[data-profile-pill]").click();
+  await page.locator("[data-profile]").waitFor({ timeout: 15000 });
+  await sleep(300);
+  const moving = await page.locator("[data-profile-rig]").evaluate((el) => el.style.transform !== "");
+  check(moving, "390: the drop plays on a touch device too");
+  await sleep(3800);
+  check((await page.locator("[data-profile-rig]").evaluate((el) => el.style.transform)) === "", "390: at rest after 3.5 s");
+  await noHorizontalScroll(page, "drop 390");
+  const video = page.video();
+  await context.close();
+  if (video) {
+    const { renameSync } = await import("node:fs");
+    renameSync(await video.path(), resolve(SHOTS, "profile-drop-390.webm"));
+  }
+}
+
 // ── Widths ───────────────────────────────────────────────────────────────
 console.log('-- widths');
 for (const width of [1024, 768, 390, 360]) {
@@ -249,6 +387,13 @@ console.log('-- reduced motion');
   await sleep(400);
   const t = await page.locator('[data-profile-pass]').evaluate((el) => getComputedStyle(el).transform);
   check(t === 'none', `the pass stays flat (transform: ${t})`);
+  {
+    const { context: c2, page: p2 } = await open(browser, { reduced: true });
+    await toProfile(p2, { settle: false });
+    const rigNow = await p2.locator('[data-profile-rig]').evaluate((el) => getComputedStyle(el).transform);
+    check(rigNow === 'none', `no drop under reduced motion: the pass is in place at once (${rigNow})`);
+    await c2.close();
+  }
   await shot(page, 'profile-1440-reduced');
   await context.close();
 }

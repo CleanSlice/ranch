@@ -55,6 +55,13 @@ function onLeave() {
   for (const name of ['--rx', '--ry', '--fx', '--fy']) el.style.removeProperty(name);
 }
 
+// The drop, the swing and the pointer nudge live in their own composable;
+// this component keeps the tilt.
+const root = ref<HTMLElement | null>(null);
+const rig = ref<HTMLElement | null>(null);
+const hanger = ref<HTMLElement | null>(null);
+usePassSwing({ root, rig, hanger });
+
 onMounted(() => {
   const el = card.value;
   if (!el) return;
@@ -73,11 +80,18 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- -mt-6 cancels the layout's top padding: the lanyard starts at the
+       header's lower edge, where it is pinned. -->
   <section
-    class="profile-pass mx-auto flex w-full max-w-[400px] flex-col items-center"
+    ref="root"
+    class="profile-pass mx-auto -mt-6 w-full max-w-[400px]"
     :aria-label="$t('profile.pass_label', { name })"
   >
+    <!-- The rig turns around the top of the lanyard; the hanger (clip and
+         card) turns around the clip. -->
+    <div ref="rig" class="profile-pass__rig flex flex-col items-center" data-profile-rig>
     <div class="profile-pass__lanyard" aria-hidden="true" />
+    <div ref="hanger" class="profile-pass__hanger flex w-full flex-col items-center">
     <div class="profile-pass__clip" aria-hidden="true" />
 
     <div
@@ -151,15 +165,44 @@ onUnmounted(() => {
         </div>
       </template>
     </div>
+    </div>
+    </div>
   </section>
 </template>
 
 <style scoped>
 /* Colours are the mock-up's (profile-a-propusk.html): plum card, lavender
    structure, copper for the role line only. */
+/* Whatever rises above the section's top edge is behind the header: the
+   header is translucent, so the pass is cut there instead of showing through
+   it while it drops. Sides and bottom stay open for the swing and the shadow. */
+.profile-pass {
+  clip-path: inset(0 -260px -260px -260px);
+}
+.profile-pass__rig {
+  transform-origin: 50% 0;
+}
+.profile-pass__hanger {
+  transform-origin: 50% 0;
+}
+/* The lanyard carries on above the header edge, so the 16 px it gives when
+   it catches the pass never opens a gap at the top. */
+.profile-pass__lanyard::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: 100%;
+  height: 80px;
+  background: inherit;
+  border-inline: inherit;
+}
 .profile-pass__lanyard {
+  position: relative;
+  /* 62 px of lanyard as on the mock-up, plus the 24 px of layout padding it
+     now crosses to reach the header. */
+  height: 86px;
   width: 30px;
-  height: 62px;
   background: repeating-linear-gradient(180deg, #2a2033 0, #2a2033 7px, #332740 7px, #332740 8px);
   border-inline: 1px solid rgba(201, 161, 228, 0.35);
 }
@@ -186,7 +229,6 @@ onUnmounted(() => {
 .profile-pass__card--tilt {
   transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
   transition: transform 220ms ease-out;
-  will-change: transform;
 }
 .profile-pass__foil {
   position: absolute;

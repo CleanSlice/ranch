@@ -11,7 +11,9 @@
 
       <div class="land-cap__grid">
         <!-- Featured: live conversations -->
-        <article class="land-card land-cap__cell land-cap__cell--featured" data-reveal>
+        <article class="land-card land-cap__cell land-cap__cell--featured relative land-fx-once" data-reveal>
+          <CardSpotlight class="absolute! inset-0 z-0" :gradient-size="fx.spotSize" :gradient-opacity="0.6" :disabled="fx.reducedMotion || fx.noHover" />
+          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" class="land-fx--pointer" />
           <div class="land-cap__motif land-cap__motif--chat" aria-hidden="true">
             <span class="land-cap__chat-head">
               <span class="land-cap__av land-cap__av--sm">A</span>
@@ -37,7 +39,8 @@
         </article>
 
         <!-- Templates -->
-        <article class="land-card land-cap__cell land-cap__cell--wide" data-reveal style="--reveal-delay: 100ms">
+        <article class="land-card land-cap__cell land-cap__cell--wide relative land-fx-once" data-reveal style="--reveal-delay: 100ms">
+          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" class="land-fx--pointer" />
           <div class="land-cap__text">
             <span class="land-cap__icon"><Icon name="package" :size="18" /></span>
             <h3>{{ $t('capabilities.templates_title') }}</h3>
@@ -51,7 +54,8 @@
         </article>
 
         <!-- Lifecycle -->
-        <article class="land-card land-cap__cell land-cap__cell--wide" data-reveal style="--reveal-delay: 180ms">
+        <article class="land-card land-cap__cell land-cap__cell--wide relative land-fx-once" data-reveal style="--reveal-delay: 180ms">
+          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" class="land-fx--pointer" />
           <div class="land-cap__text">
             <span class="land-cap__icon"><Icon name="activity" :size="18" /></span>
             <h3>{{ $t('capabilities.lifecycle_title') }}</h3>
@@ -66,7 +70,8 @@
         </article>
 
         <!-- Workflow -->
-        <article class="land-card land-cap__cell" data-reveal style="--reveal-delay: 240ms">
+        <article class="land-card land-cap__cell relative land-fx-once" data-reveal style="--reveal-delay: 240ms">
+          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" class="land-fx--pointer" />
           <div class="land-cap__text">
             <span class="land-cap__icon"><Icon name="workflow" :size="18" /></span>
             <h3>{{ $t('capabilities.workflow_title') }}</h3>
@@ -75,7 +80,8 @@
         </article>
 
         <!-- Logs -->
-        <article class="land-card land-cap__cell" data-reveal style="--reveal-delay: 300ms">
+        <article class="land-card land-cap__cell relative land-fx-once" data-reveal style="--reveal-delay: 300ms">
+          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" class="land-fx--pointer" />
           <div class="land-cap__text">
             <span class="land-cap__icon"><Icon name="scroll-text" :size="18" /></span>
             <h3>{{ $t('capabilities.logs_title') }}</h3>
@@ -89,7 +95,8 @@
         </article>
 
         <!-- Multi-agent -->
-        <article class="land-card land-cap__cell" data-reveal style="--reveal-delay: 360ms">
+        <article class="land-card land-cap__cell relative land-fx-once" data-reveal style="--reveal-delay: 360ms">
+          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" class="land-fx--pointer" />
           <div class="land-cap__text">
             <span class="land-cap__icon"><Icon name="users" :size="18" /></span>
             <h3>{{ $t('capabilities.fleet_title') }}</h3>
@@ -106,6 +113,13 @@
     </div>
   </section>
 </template>
+
+<script setup lang="ts">
+// Effect settings from the landing tokens: glow width / spread, spotlight
+// size, and whether the pointer effects run at all (off under reduced motion
+// and on devices without hover, where the cards glow once as they reveal).
+const fx = useFxTokens();
+</script>
 
 <style scoped>
 .land-cap {

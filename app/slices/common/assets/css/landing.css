@@ -304,3 +304,79 @@ body.landing-body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ── Effects layer (CLEAN-215) ───────────────────────────────────────────
+   Colour, speed and size of every decorative effect, so they are tuned here
+   and not in a component. Components read colours as var(), numbers through
+   useFxTokens(). Every loop is paused off screen and in hidden tabs through
+   data-fx-paused (useFxPause), and goes static under reduced motion. */
+.landing {
+  --land-fx-from: var(--land-copper);
+  --land-fx-to: var(--land-lavender);
+  --land-fx-glow-width: 1.25;
+  --land-fx-glow-spread: 28;
+  --land-fx-spot-size: 320;
+  --land-fx-spot-color: rgba(245, 161, 107, 0.12);
+  --land-fx-beam-duration: 6;
+  --land-fx-border-beam-duration: 10;
+  --land-fx-shimmer-duration: 6s;
+  --land-fx-marquee-duration: 40s;
+  --land-fx-meteor-count: 6;
+  --land-fx-reveal-blur: 12px;
+}
+
+/* A section whose root is off screen or whose tab is hidden: every CSS loop
+   under it holds where it is (SMIL beams are paused by the composable). */
+[data-fx-paused] *,
+[data-fx-paused] *::before,
+[data-fx-paused] *::after {
+  animation-play-state: paused !important;
+}
+
+/* Section headings sharpen from a blur as they reveal; the hero headline
+   never carries this class, it has to be readable on first paint. */
+.landing [data-reveal].land-reveal--blur {
+  filter: blur(var(--land-fx-reveal-blur));
+  transition-property: opacity, transform, filter;
+}
+.landing [data-reveal].land-reveal--blur.is-in {
+  filter: blur(0);
+}
+
+/* Devices without hover: pointer effects are hidden, and a card glows once
+   as it reveals instead. */
+@media (hover: none) {
+  .landing .land-fx--pointer {
+    display: none !important;
+  }
+  .landing .land-fx-once.is-in {
+    animation: land-fx-once 1.6s var(--land-ease) 1;
+  }
+}
+@keyframes land-fx-once {
+  0% {
+    box-shadow: 0 0 0 0 rgba(215, 123, 97, 0);
+  }
+  35% {
+    box-shadow: 0 0 0 1.5px rgba(215, 123, 97, 0.65);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(215, 123, 97, 0);
+  }
+}
+
+/* Reduced motion: nothing loops, nothing sweeps, nothing blurs. */
+@media (prefers-reduced-motion: reduce) {
+  .landing .land-fx,
+  .landing .land-fx *,
+  .landing .land-fx::before,
+  .landing .land-fx::after,
+  .landing .land-fx *::before,
+  .landing .land-fx *::after,
+  .landing [class*='animate-'] {
+    animation: none !important;
+  }
+  .landing [data-reveal].land-reveal--blur {
+    filter: none;
+  }
+}

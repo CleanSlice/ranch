@@ -70,15 +70,34 @@
         </span>
 
         <div v-if="authStore.isAuthenticated" class="flex items-center gap-3 text-sm">
-          <span class="hidden sm:inline text-muted-foreground" :title="authStore.user?.email ?? ''">
-            {{ authStore.user?.name ?? authStore.user?.email }}
-          </span>
-          <span
-            v-if="authStore.role"
-            class="hidden sm:inline rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-primary"
+          <!-- Name and role are one link to the profile (CLEAN-217). On the
+               profile itself it carries the copper border and aria-current.
+               On a phone the name gives way to the personal sign, so the
+               page stays reachable where the name was hidden before. -->
+          <NuxtLink
+            to="/profile"
+            class="flex min-h-11 items-center gap-2.5 rounded-full border py-1 pl-3.5 pr-1.5 max-sm:min-w-11 max-sm:justify-center max-sm:px-1.5 transition-colors hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            :class="
+              navActive('/profile')
+                ? 'border-primary/45 bg-primary/10 text-foreground'
+                : 'border-transparent text-muted-foreground'
+            "
+            :aria-current="navActive('/profile') ? 'page' : undefined"
+            :aria-label="$t('profile.title')"
+            :title="authStore.user?.email ?? ''"
+            data-profile-pill
           >
-            {{ roleKey ? $t(roleKey) : authStore.role }}
-          </span>
+            <ProfileSign class="sm:hidden" :initials="userInitials" :size="28" />
+            <span class="hidden sm:inline">
+              {{ authStore.user?.name || authStore.user?.email }}
+            </span>
+            <span
+              v-if="authStore.role"
+              class="hidden sm:inline rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-primary"
+            >
+              {{ roleKey ? $t(roleKey) : authStore.role }}
+            </span>
+          </NuxtLink>
           <button
             type="button"
             class="text-muted-foreground hover:text-foreground transition-colors"
@@ -139,6 +158,7 @@
 
 <script setup lang="ts">
 import { UserRoleTypes } from '#auth/domain/auth.types';
+import { agentInitials } from '#agent/utils/agentStatus';
 
 // The console is the dark RANCH theme (`.dark` in default.css) set in the
 // brand typefaces; the landing and the gate paint themselves from the same
@@ -157,6 +177,14 @@ const roleKey = computed(() => {
   const role = authStore.role;
   return role && KNOWN_ROLES.has(role) ? `role.${role.toLowerCase()}` : null;
 });
+
+// Initials for the header pill's sign, by the rule agents use.
+const userInitials = computed(() =>
+  agentInitials(
+    authStore.user?.name?.trim() || undefined,
+    authStore.user?.email ?? '?',
+  ),
+);
 
 async function onLocaleChange(event: Event) {
   await setLocale((event.target as HTMLSelectElement).value as typeof locale.value);

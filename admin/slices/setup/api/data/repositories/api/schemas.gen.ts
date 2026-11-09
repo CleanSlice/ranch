@@ -431,6 +431,11 @@ export const AgentDtoSchema = {
       description:
         "When true, the agent is visible on the public landing page to unauthenticated visitors.",
     },
+    pinned: {
+      type: "boolean",
+      description:
+        "When true, the agent is kept at the top of every agent list in both consoles. Installation-wide, not per user.",
+    },
     allowedOrigins: {
       description:
         "Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.",
@@ -474,6 +479,7 @@ export const AgentDtoSchema = {
     "resources",
     "debugEnabled",
     "isPublic",
+    "pinned",
     "allowedOrigins",
     "knowledgeIds",
     "isAdmin",
@@ -932,6 +938,11 @@ export const UpdateAgentDtoSchema = {
       type: "boolean",
       description:
         "Enable debug mode — emits the prompt-debug event stream and verbose pod logs (LOG_LEVEL=debug). The verbose-log half applies on the next agent restart; the prompt-debug stream flips live.",
+    },
+    pinned: {
+      type: "boolean",
+      description:
+        "Pin or unpin the agent. Pinned agents are kept at the top of every agent list in both consoles. Installation-wide; changes nothing about the pod, the status or access.",
     },
   },
 } as const;

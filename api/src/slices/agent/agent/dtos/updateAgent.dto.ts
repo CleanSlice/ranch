@@ -12,4 +12,14 @@ export class UpdateAgentDto extends PartialType(CreateAgentDto) {
   @IsOptional()
   @IsBoolean()
   debugEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Pin or unpin the agent. Pinned agents are kept at the top of every ' +
+      'agent list in both consoles. Installation-wide; changes nothing about ' +
+      'the pod, the status or access.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  pinned?: boolean;
 }

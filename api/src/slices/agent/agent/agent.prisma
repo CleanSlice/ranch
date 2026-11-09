@@ -50,6 +50,9 @@ model Agent {
   allowedOrigins  String[]       @default([])
   knowledgeIds    String[]       @default([])
   isAdmin         Boolean        @default(false)
+  // Installation-wide pin (CLEAN-216): both consoles keep a pinned agent at
+  // the top of every agent list. Decides nothing for the pod or for access.
+  pinned          Boolean        @default(false)
   // When the running pod last received this agent's peer list over MCP, and
   // the hash of the peer row ids it received. armed = stored hash equals the
   // hash of the current peer set; recorded by AskAgentTool (CLEAN-95).

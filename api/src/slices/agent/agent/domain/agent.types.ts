@@ -34,6 +34,8 @@ export interface IAgentData {
   allowedOrigins: string[];
   knowledgeIds: string[];
   isAdmin: boolean;
+  /** Installation-wide: both consoles list a pinned agent first (CLEAN-216). */
+  pinned: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -63,4 +65,5 @@ export interface IUpdateAgentData {
   allowedOrigins?: string[];
   knowledgeIds?: string[];
   debugEnabled?: boolean;
+  pinned?: boolean;
 }

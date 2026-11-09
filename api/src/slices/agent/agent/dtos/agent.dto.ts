@@ -98,6 +98,12 @@ export class AgentDto {
   isPublic: boolean;
 
   @ApiProperty({
+    description:
+      'When true, the agent is kept at the top of every agent list in both consoles. Installation-wide, not per user.',
+  })
+  pinned: boolean;
+
+  @ApiProperty({
     type: [String],
     description:
       'Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.',

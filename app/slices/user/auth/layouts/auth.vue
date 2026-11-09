@@ -1,7 +1,6 @@
 <template>
   <div class="landing gate" @animationend="onLandingAnimationEnd">
     <LandingHeroAtmosphere />
-    <LandingHeroConstellation />
 
     <header class="gate__bar land-wrap">
       <NuxtLink

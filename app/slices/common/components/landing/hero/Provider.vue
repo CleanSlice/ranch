@@ -1,7 +1,6 @@
 <template>
   <section class="land-hero" :aria-label="$t('hero.region')">
     <LandingHeroAtmosphere />
-    <LandingHeroConstellation />
 
     <div class="land-hero__inner land-wrap">
       <div class="land-hero__copy">

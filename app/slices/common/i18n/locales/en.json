@@ -13,6 +13,9 @@
   "locale": {
     "label": "Language"
   },
+  "stack": {
+    "caption": "Built on"
+  },
   "footer": {
     "note": "© {year} Ranch — built on CleanSlice."
   },

@@ -13,6 +13,9 @@
   "locale": {
     "label": "Язык"
   },
+  "stack": {
+    "caption": "Создано на базе"
+  },
   "footer": {
     "note": "© {year} Ranch — создано на CleanSlice."
   },

@@ -4,6 +4,7 @@
     <LandingStepsProvider />
     <LandingCapabilitiesProvider />
     <LandingRuntimeProvider />
+    <LandingStackProvider />
     <LandingCtaProvider />
   </div>
 </template>

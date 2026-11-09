@@ -39,6 +39,10 @@ export default defineNuxtConfig({
       // more than one hostname (CLEAN-110). Same variable the admin console
       // reads, so one value configures both (CLEAN-111).
       appUrl: process.env.APP_URL || '',
+      // Which approved RANCH logo the landing shows: `orbit` (the copper
+      // R-bubble lockup, the default) or `agent-hub` (the SVG arch mark). Set
+      // NUXT_PUBLIC_BRAND_VARIANT; `?brand=agent-hub` previews the other one.
+      brandVariant: process.env.NUXT_PUBLIC_BRAND_VARIANT || 'orbit',
     },
   },
   app: {

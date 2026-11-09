@@ -3,29 +3,26 @@
     <header
       class="sticky top-0 z-40 shrink-0 backdrop-blur bg-background/80 border-b"
     >
-      <div class="container mx-auto flex items-center h-14 px-4 gap-6">
-        <NuxtLink to="/" class="flex items-center gap-2 font-bold text-lg">
-          <span
-            class="w-7 h-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center"
-          >
-            <Icon name="tractor" :size="18" />
-          </span>
-          {{ $t('app_name') }}
+      <div class="container mx-auto flex items-center h-14 px-4 gap-5">
+        <NuxtLink to="/" class="flex items-center" :aria-label="$t('app_name')">
+          <LandingBrandLogo variant="full" :size="28" :label="null" />
         </NuxtLink>
 
-        <nav class="hidden md:flex items-center gap-5 text-sm">
+        <nav
+          class="hidden md:flex items-center gap-0.5 rounded-full border bg-card/60 p-0.5 text-sm"
+        >
           <NuxtLink
             to="/agents"
-            class="text-muted-foreground hover:text-foreground transition-colors"
-            active-class="text-foreground font-medium"
+            class="rounded-full px-3.5 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
+            active-class="bg-muted text-foreground font-medium"
           >
             {{ $t('nav.agents') }}
           </NuxtLink>
           <NuxtLink
             v-if="authStore.isAuthenticated"
             to="/chats"
-            class="text-muted-foreground hover:text-foreground transition-colors"
-            active-class="text-foreground font-medium"
+            class="rounded-full px-3.5 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
+            active-class="bg-muted text-foreground font-medium"
           >
             {{ $t('nav.history') }}
           </NuxtLink>
@@ -39,7 +36,7 @@
         <select
           :value="locale"
           :aria-label="$t('locale.label')"
-          class="rounded-md border bg-transparent px-1.5 py-1 text-xs uppercase text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          class="rounded-full border bg-card/60 px-2 py-1 font-mono text-xs uppercase text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           @change="onLocaleChange"
         >
           <option
@@ -57,7 +54,7 @@
           </span>
           <span
             v-if="authStore.role"
-            class="hidden sm:inline rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+            class="hidden sm:inline rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-primary"
           >
             {{ roleKey ? $t(roleKey) : authStore.role }}
           </span>
@@ -76,7 +73,7 @@
           <NuxtLink
             v-if="registrationEnabled"
             to="/register"
-            class="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:opacity-90 transition"
+            class="rounded-full bg-primary text-primary-foreground px-3.5 py-1.5 text-xs font-semibold hover:opacity-90 transition"
           >
             {{ $t('auth.sign_up') }}
           </NuxtLink>
@@ -121,6 +118,12 @@
 
 <script setup lang="ts">
 import { UserRoleTypes } from '#auth/domain/auth.types';
+
+// The console is the dark RANCH theme (`.dark` in default.css) set in the
+// brand typefaces; the landing and the gate paint themselves from the same
+// values through their own tokens.
+useHead({ htmlAttrs: { class: 'dark' } });
+useBrandFonts();
 
 const route = useRoute();
 const authStore = useAuthStore();

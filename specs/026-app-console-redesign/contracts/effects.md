@@ -6,8 +6,7 @@ Seven primitives under `app/slices/setup/theme/components/ui/<slug>/`, one compo
 
 | Component | Props kept | Props bound to tokens at the call site | Rendering | Pausable by |
 |---|---|---|---|---|
-| `GlowingEffect` | `blur`, `inactiveZone`, `proximity`, `spread`, `glow`, `disabled`, `movementDuration`, `borderWidth` | `borderWidth` ← `--land-fx-glow-width`, `spread` ← `--land-fx-glow-spread`, gradient ← `--land-fx-from/to` (replaces the four-colour default) | DOM, conic mask, `--start` angle tweened by rAF (no `motion-v`) | `disabled` (reduced motion, `hover: none`) |
-| `CardSpotlight` | `gradientSize`, `gradientColor`, `gradientOpacity`, `slotClass` | `gradientSize` ← `--land-fx-spot-size`, `gradientColor` ← `--land-fx-spot-color` | DOM, radial gradient at pointer | off under reduced motion / `hover: none` |
+| *(grid spotlight, no component)* `useGridSpotlight(gridRef, fx)` | — | radius ← `--land-fx-spot-size` (×1.6 border, ×2 glow), colours ← `--land-fx-from`, `--land-fx-spot-color` | one `pointermove` on the bento grid writes `--mx`/`--my` into every `[data-spot]` card; each card's `::before` (border, masked ring) and `::after` (inner glow) are radial gradients at that point, wider than a card, so one light runs across the neighbours | `--spot-on` 0 on `pointerleave`; `display: none` under reduced motion and `hover: none` |
 | `AnimatedBeam` | `containerRef`, `fromRef`, `toRef`, `curvature`, `reverse`, `pathColor/Width/Opacity`, `gradientStartColor`, `gradientStopColor`, `duration`, `delay`, offsets | colours ← `--land-fx-from/to`, `duration` ← `--land-fx-beam-duration` | SVG path + SMIL `<animate>` on the gradient | `svg.pauseAnimations()` via `useFxPause`; `animation: none` + static gradient under reduced motion |
 | `BorderBeam` | `size`, `duration`, `anchor`, `borderWidth`, `colorFrom`, `colorTo`, `delay` | `duration` ← `--land-fx-border-beam-duration` (s), colours ← tokens | CSS `offset-path` keyframe | `animation-play-state` |
 | `ShimmerButton` | `shimmerColor`, `shimmerSize`, `shimmerDuration`, `borderRadius`, `background` | `shimmerDuration` ← `--land-fx-shimmer-duration`; `background` = the existing white pill; `shimmerColor` = `rgba(215,123,97,.35)` | CSS keyframes | `animation-play-state` |
@@ -21,7 +20,7 @@ Every component imports `cn` from `#theme/utils`. No component imports `motion-v
 | # | Section | Effect | Rule |
 |---|---|---|---|
 | 1 | Hero `Stage` panel | `BorderBeam` | the hero's only loop; 8–12 s cycle |
-| 2 | Capabilities bento | `GlowingEffect` on every card (`proximity 64`, `inactiveZone 0.4`), `CardSpotlight` on the big chat card only | pointer-reactive, no loop; 1–1.5 px, no fill |
+| 2 | Capabilities bento | one shared pointer light over the grid (`useGridSpotlight`): border ring + inner glow on every card from the same pointer position | pointer-reactive, no loop; the owner asked for one light shared by all cards (2026-11-09) in place of a per-card glow and a single spotlight |
 | 3 | Steps | one `AnimatedBeam` Configure → Deploy → Chat | runs once on `is-in`, then `--land-fx-beam-duration` cycle while in view |
 | 4 | Runtime pipeline | `AnimatedBeam` 1 → 4 replacing the dotted line; current-stage highlight synced to the beam's `duration` | loop while in view |
 | 5 | Section headings (Steps, Capabilities, Runtime, CTA) | `.land-reveal--blur` | reveal only; never the hero h1 |
@@ -33,7 +32,7 @@ Rule of one: when Steps is in view its beam loops, Runtime's is paused by the ob
 
 ## Motion / input matrix
 
-| Condition | Loops (BorderBeam, AnimatedBeam, Marquee, Meteors, Shimmer) | Pointer (GlowingEffect, CardSpotlight) | Reveal blur |
+| Condition | Loops (BorderBeam, AnimatedBeam, Marquee, Meteors, Shimmer) | Pointer (grid spotlight) | Reveal blur |
 |---|---|---|---|
 | default | run while section ≥ 5 % visible and tab visible | follow pointer | on |
 | section off-screen or `document.hidden` | paused (`data-fx-paused`) | n/a | n/a |

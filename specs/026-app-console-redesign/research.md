@@ -41,6 +41,8 @@ Not copied: `blur-reveal` (uses `motion-v`'s `<Motion>`; the spec wants blur fol
 
 **Alternatives**: `bun add motion-v @vueuse/core @inspira-ui/plugins` as the docs say (budget and three dependencies for one tween); Inspira's Nuxt registry/CLI (none exists; copying is the documented path).
 
+**Amended 2026-11-09 after review**: `GlowingEffect` and `CardSpotlight` were landed, then replaced and deleted. The owner wanted the light to be one source shared by all cards (the pattern on nuxt.com's feature grid), not a highlight per card. That is a grid-level trick, not a component: `useGridSpotlight` writes the pointer position into every card as `--mx`/`--my` from one listener, and the cards' `::before`/`::after` draw radial gradients wider than a card. Five Inspira-derived components remain.
+
 ## R3 — Where the components live and how they register
 
 **Decision**: `app/slices/setup/theme/components/ui/<slug>/<PascalName>.vue` with an `index.ts` re-export, beside `ui/badge`. `shadcn-nuxt` (`componentDir: './slices/setup/theme/components/ui'`, `prefix: ''`) calls `addComponentsDir` for that folder, so every `.vue` under it registers by file name: `<GlowingEffect>`, `<CardSpotlight>`, `<AnimatedBeam>`, `<BorderBeam>`, `<ShimmerButton>`, `<Marquee>`, `<Meteors>`. The theme's own `components:` entry ignores `**/ui/**`, so there is no double registration. Verified at implementation by `grep -E "GlowingEffect|Meteors" app/.nuxt/components.d.ts` after `nuxt prepare`.

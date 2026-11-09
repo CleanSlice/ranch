@@ -10,8 +10,6 @@
  * without a reload.
  */
 export interface FxTokens {
-  glowWidth: number;
-  glowSpread: number;
   spotSize: number;
   beamSeconds: number;
   borderBeamSeconds: number;
@@ -21,8 +19,6 @@ export interface FxTokens {
 }
 
 const DEFAULTS: FxTokens = {
-  glowWidth: 1.25,
-  glowSpread: 28,
   spotSize: 320,
   beamSeconds: 6,
   borderBeamSeconds: 10,
@@ -45,8 +41,6 @@ export function useFxTokens() {
       const value = Number.parseFloat(css.getPropertyValue(name));
       return Number.isFinite(value) ? value : fallback;
     };
-    fx.glowWidth = num('--land-fx-glow-width', DEFAULTS.glowWidth);
-    fx.glowSpread = num('--land-fx-glow-spread', DEFAULTS.glowSpread);
     fx.spotSize = num('--land-fx-spot-size', DEFAULTS.spotSize);
     fx.beamSeconds = num('--land-fx-beam-duration', DEFAULTS.beamSeconds);
     fx.borderBeamSeconds = num('--land-fx-border-beam-duration', DEFAULTS.borderBeamSeconds);

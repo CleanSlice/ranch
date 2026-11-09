@@ -9,11 +9,9 @@
         <p class="land-lede" data-reveal style="--reveal-delay: 160ms">{{ $t('capabilities.lede') }}</p>
       </header>
 
-      <div class="land-cap__grid">
+      <div ref="gridEl" class="land-cap__grid">
         <!-- Featured: live conversations -->
-        <article class="land-card land-cap__cell land-cap__cell--featured relative land-fx-once" data-reveal>
-          <CardSpotlight class="absolute! inset-0 z-0" :gradient-size="fx.spotSize" :gradient-opacity="0.6" :disabled="fx.reducedMotion || fx.noHover" />
-          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" color-from="var(--land-orange)" class="land-fx--pointer" />
+        <article class="land-card land-cap__cell land-cap__cell--featured relative land-fx-once" data-spot data-reveal>
           <div class="land-cap__motif land-cap__motif--chat" aria-hidden="true">
             <span class="land-cap__chat-head">
               <span class="land-cap__av land-cap__av--sm">A</span>
@@ -39,9 +37,7 @@
         </article>
 
         <!-- Templates -->
-        <article class="land-card land-cap__cell land-cap__cell--wide relative land-fx-once" data-reveal style="--reveal-delay: 100ms">
-          <CardSpotlight class="absolute! inset-0 z-0" :gradient-size="fx.spotSize" :gradient-opacity="0.45" :disabled="fx.reducedMotion || fx.noHover" />
-          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" color-from="var(--land-orange)" class="land-fx--pointer" />
+        <article class="land-card land-cap__cell land-cap__cell--wide relative land-fx-once" data-spot data-reveal style="--reveal-delay: 100ms">
           <div class="land-cap__text">
             <span class="land-cap__icon"><Icon name="package" :size="18" /></span>
             <h3>{{ $t('capabilities.templates_title') }}</h3>
@@ -55,9 +51,7 @@
         </article>
 
         <!-- Lifecycle -->
-        <article class="land-card land-cap__cell land-cap__cell--wide relative land-fx-once" data-reveal style="--reveal-delay: 180ms">
-          <CardSpotlight class="absolute! inset-0 z-0" :gradient-size="fx.spotSize" :gradient-opacity="0.45" :disabled="fx.reducedMotion || fx.noHover" />
-          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" color-from="var(--land-orange)" class="land-fx--pointer" />
+        <article class="land-card land-cap__cell land-cap__cell--wide relative land-fx-once" data-spot data-reveal style="--reveal-delay: 180ms">
           <div class="land-cap__text">
             <span class="land-cap__icon"><Icon name="activity" :size="18" /></span>
             <h3>{{ $t('capabilities.lifecycle_title') }}</h3>
@@ -72,9 +66,7 @@
         </article>
 
         <!-- Workflow -->
-        <article class="land-card land-cap__cell relative land-fx-once" data-reveal style="--reveal-delay: 240ms">
-          <CardSpotlight class="absolute! inset-0 z-0" :gradient-size="fx.spotSize" :gradient-opacity="0.45" :disabled="fx.reducedMotion || fx.noHover" />
-          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" color-from="var(--land-orange)" class="land-fx--pointer" />
+        <article class="land-card land-cap__cell relative land-fx-once" data-spot data-reveal style="--reveal-delay: 240ms">
           <div class="land-cap__text">
             <span class="land-cap__icon"><Icon name="workflow" :size="18" /></span>
             <h3>{{ $t('capabilities.workflow_title') }}</h3>
@@ -83,9 +75,7 @@
         </article>
 
         <!-- Logs -->
-        <article class="land-card land-cap__cell relative land-fx-once" data-reveal style="--reveal-delay: 300ms">
-          <CardSpotlight class="absolute! inset-0 z-0" :gradient-size="fx.spotSize" :gradient-opacity="0.45" :disabled="fx.reducedMotion || fx.noHover" />
-          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" color-from="var(--land-orange)" class="land-fx--pointer" />
+        <article class="land-card land-cap__cell relative land-fx-once" data-spot data-reveal style="--reveal-delay: 300ms">
           <div class="land-cap__text">
             <span class="land-cap__icon"><Icon name="scroll-text" :size="18" /></span>
             <h3>{{ $t('capabilities.logs_title') }}</h3>
@@ -99,9 +89,7 @@
         </article>
 
         <!-- Multi-agent -->
-        <article class="land-card land-cap__cell relative land-fx-once" data-reveal style="--reveal-delay: 360ms">
-          <CardSpotlight class="absolute! inset-0 z-0" :gradient-size="fx.spotSize" :gradient-opacity="0.45" :disabled="fx.reducedMotion || fx.noHover" />
-          <GlowingEffect :proximity="64" :inactive-zone="0.4" :border-width="fx.glowWidth" :spread="fx.glowSpread" :disabled="fx.reducedMotion || fx.noHover" color-from="var(--land-orange)" class="land-fx--pointer" />
+        <article class="land-card land-cap__cell relative land-fx-once" data-spot data-reveal style="--reveal-delay: 360ms">
           <div class="land-cap__text">
             <span class="land-cap__icon"><Icon name="users" :size="18" /></span>
             <h3>{{ $t('capabilities.fleet_title') }}</h3>
@@ -120,10 +108,12 @@
 </template>
 
 <script setup lang="ts">
-// Effect settings from the landing tokens: glow width / spread, spotlight
-// size, and whether the pointer effects run at all (off under reduced motion
-// and on devices without hover, where the cards glow once as they reveal).
+// One lamp over the whole bento: the pointer position reaches every card as
+// --mx / --my and the cards' ::before / ::after paint the shared light (see
+// useGridSpotlight). Off under reduced motion and on devices without hover.
 const fx = useFxTokens();
+const gridEl = ref<HTMLElement | null>(null);
+useGridSpotlight(gridEl, fx);
 </script>
 
 <style scoped>
@@ -420,5 +410,49 @@ const fx = useFxTokens();
 .land-cap__av.is-more {
   background: rgba(245, 161, 107, 0.15);
   color: var(--land-orange);
+}
+
+/* Shared pointer light (useGridSpotlight): ::before is the border, ::after the
+   inner glow, both radial gradients at the pointer with a radius wider than
+   a card so the light runs across the neighbours as one source. */
+.land-cap__grid {
+  --spot-on: 0;
+}
+.land-cap__cell {
+  --mx: -9999px;
+  --my: -9999px;
+}
+.land-cap__cell::before,
+.land-cap__cell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--spot-on, 0);
+  transition: opacity 0.35s var(--land-ease);
+}
+.land-cap__cell::before {
+  padding: 1px;
+  background: radial-gradient(calc(var(--land-fx-spot-size, 320) * 1.6px) circle at var(--mx) var(--my), var(--land-fx-from), transparent 60%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  z-index: 2;
+}
+.land-cap__cell::after {
+  background: radial-gradient(calc(var(--land-fx-spot-size, 320) * 2px) circle at var(--mx) var(--my), var(--land-fx-spot-color), transparent 55%);
+  z-index: 0;
+}
+.land-cap__cell > * {
+  position: relative;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: reduce), (hover: none) {
+  .land-cap__cell::before,
+  .land-cap__cell::after {
+    display: none;
+  }
 }
 </style>

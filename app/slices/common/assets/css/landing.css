@@ -319,8 +319,6 @@ body.landing-body {
 .landing {
   --land-fx-from: var(--land-copper);
   --land-fx-to: var(--land-lavender);
-  --land-fx-glow-width: 2;
-  --land-fx-glow-spread: 56;
   --land-fx-spot-size: 320;
   --land-fx-spot-color: rgba(245, 161, 107, 0.12);
   --land-fx-beam-duration: 6;

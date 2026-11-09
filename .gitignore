@@ -44,3 +44,6 @@ specs/026-app-console-redesign/measurements/*.tmp.json
 
 # graft cache dropped next to source files by the indexer
 **/graft/.cache/
+# CLEAN-216: browser-check screenshots
+specs/027-pin-agents/e2e/shots/*
+!specs/027-pin-agents/e2e/shots/.gitkeep

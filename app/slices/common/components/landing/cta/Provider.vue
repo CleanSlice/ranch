@@ -3,7 +3,9 @@
     <div class="land-cta__scene" aria-hidden="true">
       <!-- A handful of dim meteors across the closing scene; none under reduced
            motion, paused while the section is off screen (effects #8). -->
-      <Meteors v-if="!fx.reducedMotion" :count="fx.meteorCount" />
+      <div v-if="!fx.reducedMotion" class="land-cta__meteors">
+        <Meteors :count="fx.meteorCount" />
+      </div>
       <img
         class="land-cta__img"
         src="/landing/scene-calm-1200.webp"
@@ -86,6 +88,15 @@ const startRoute = computed(() => (registrationEnabled.value ? '/register' : '/l
   inset: 0;
   z-index: -1;
   pointer-events: none;
+}
+/* The meteor layer fades out well before the section edges, so a streak never
+   ends in a hard cut against the border or the scene image. */
+.land-cta__meteors {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  mask-image: radial-gradient(ellipse 70% 70% at 50% 45%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 45%, #000 40%, transparent 100%);
 }
 .land-cta__img {
   position: absolute;

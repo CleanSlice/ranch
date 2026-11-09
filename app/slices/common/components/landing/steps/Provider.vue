@@ -152,7 +152,9 @@ useFxPause(fxRoot);
     padding: 3.5rem 0 0;
   }
   .land-steps__step--mid {
-    padding-top: 2.4rem;
+    /* Still raised above its neighbours, but 0.6rem clear of the 2.4rem
+       marker so the card never touches the digit. */
+    padding-top: 3rem;
   }
 }
 .land-steps__marker {

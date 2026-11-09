@@ -358,6 +358,6 @@ function onSelect(id: string) {
 .agent-workspace__map {
   background:
     radial-gradient(50% 50% at 50% 50%, rgba(201, 161, 228, 0.07), transparent 70%),
-    radial-gradient(60% 60% at 50% 100%, rgba(245, 161, 107, 0.1), transparent 70%);
+    radial-gradient(60% 50% at 50% 80%, rgba(245, 161, 107, 0.1), transparent 70%);
 }
 </style>

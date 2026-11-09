@@ -263,7 +263,7 @@ const centredCard = computed(() => cards.value[centred.value] ?? null);
       v-if="items.length"
       class="agent-drum__reel absolute left-1/2 top-1/2"
       :class="reduceMotion && 'agent-drum__reel--still'"
-      :style="{ transform: `translateZ(${-RADIUS}px)` }"
+      :style="{ transform: `rotateX(var(--drum-tilt)) translateZ(${-RADIUS}px)` }"
     >
       <button
         v-for="card in cards"
@@ -374,13 +374,17 @@ const centredCard = computed(() => cards.value[centred.value] ?? null);
 
 <style scoped>
 .agent-drum {
-  perspective: 1300px;
-  perspective-origin: 50% 50%;
+  /* Seen from slightly above: the reel is tilted back by --drum-tilt and the
+     vanishing point sits above centre, so the cylinder reads as a drum rather
+     than a flat fan of cards. */
+  --drum-tilt: 12deg;
+  perspective: 1200px;
+  perspective-origin: 50% 32%;
   outline: none;
   cursor: grab;
   background:
     linear-gradient(90deg, rgba(9, 7, 13, 0.92), transparent 18%, transparent 82%, rgba(9, 7, 13, 0.92)),
-    radial-gradient(60% 50% at 50% 100%, rgba(245, 161, 107, 0.12), transparent 70%);
+    radial-gradient(60% 46% at 50% 74%, rgba(245, 161, 107, 0.12), transparent 70%);
 }
 .agent-drum:active {
   cursor: grabbing;

@@ -1,0 +1,435 @@
+{
+  "label": "P0",
+  "url": "http://localhost:3000/",
+  "runs": 3,
+  "at": "2026-11-09T16:51:13.558Z",
+  "commit": "9d474bdd",
+  "desktop": {
+    "performance": 92,
+    "lcpMs": 1738,
+    "lcpElement": "div.container > div.grid > div > h1.text-4xl",
+    "cls": 0,
+    "tbtMs": 0,
+    "fcpMs": 971,
+    "jsTransferBytes": 644407,
+    "jsGzipBytes": 386104,
+    "jsFiles": [
+      {
+        "file": "CD9hzEqQ.js",
+        "gzip": 52027
+      },
+      {
+        "file": "DK3Fl9T5.js",
+        "gzip": 154
+      },
+      {
+        "file": "CcTVVpJ7.js",
+        "gzip": 3659
+      },
+      {
+        "file": "B4b-2GOK.js",
+        "gzip": 32765
+      },
+      {
+        "file": "C_cSr8y_.js",
+        "gzip": 9419
+      },
+      {
+        "file": "Bb9DYaCJ.js",
+        "gzip": 18758
+      },
+      {
+        "file": "BUs5XvI5.js",
+        "gzip": 3902
+      },
+      {
+        "file": "2ewiYOMH.js",
+        "gzip": 4171
+      },
+      {
+        "file": "Cu4K7G6E.js",
+        "gzip": 3723
+      },
+      {
+        "file": "k9dcdd-T.js",
+        "gzip": 3197
+      },
+      {
+        "file": "BxDtnnMy.js",
+        "gzip": 2916
+      },
+      {
+        "file": "DNk3HC4v.js",
+        "gzip": 2875
+      },
+      {
+        "file": "CGX23kW7.js",
+        "gzip": 3134
+      },
+      {
+        "file": "DlQgcujz.js",
+        "gzip": 99
+      },
+      {
+        "file": "D14PnvgW.js",
+        "gzip": 929
+      },
+      {
+        "file": "dbS_SuU_.js",
+        "gzip": 230
+      },
+      {
+        "file": "BY78LN3T.js",
+        "gzip": 15865
+      },
+      {
+        "file": "BVJQxNN8.js",
+        "gzip": 1150
+      },
+      {
+        "file": "CzBA9uJK.js",
+        "gzip": 894
+      },
+      {
+        "file": "nUrD_cxh2.js",
+        "gzip": 2198
+      },
+      {
+        "file": "xYJa2JRz.js",
+        "gzip": 967
+      },
+      {
+        "file": "Ccgt2tWm.js",
+        "gzip": 9084
+      },
+      {
+        "file": "CpbUjknh.js",
+        "gzip": 31104
+      },
+      {
+        "file": "CiiMR5gd.js",
+        "gzip": 687
+      },
+      {
+        "file": "BO9E17wg.js",
+        "gzip": 155706
+      },
+      {
+        "file": "BDNMzG2s.js",
+        "gzip": 99
+      },
+      {
+        "file": "D9YwaOgQ2.js",
+        "gzip": 170
+      },
+      {
+        "file": "FQ3XNo_l2.js",
+        "gzip": 1081
+      },
+      {
+        "file": "DKy_UBMB2.js",
+        "gzip": 191
+      },
+      {
+        "file": "C_GLwZIF2.js",
+        "gzip": 566
+      },
+      {
+        "file": "DfcGkBsz.js",
+        "gzip": 886
+      },
+      {
+        "file": "BO3c3dEm.js",
+        "gzip": 1917
+      },
+      {
+        "file": "B1GGDcNc.js",
+        "gzip": 920
+      },
+      {
+        "file": "Br9UVaSn2.js",
+        "gzip": 1525
+      },
+      {
+        "file": "DIG0AFdq2.js",
+        "gzip": 1501
+      },
+      {
+        "file": "D8ewXnpU2.js",
+        "gzip": 254
+      },
+      {
+        "file": "BXhiwSLX2.js",
+        "gzip": 813
+      },
+      {
+        "file": "mM58t4mQ.js",
+        "gzip": 1280
+      },
+      {
+        "file": "DoOwHnsk.js",
+        "gzip": 2531
+      },
+      {
+        "file": "Bp_pOcN9.js",
+        "gzip": 1271
+      },
+      {
+        "file": "HH57Byjk2.js",
+        "gzip": 2037
+      },
+      {
+        "file": "BLqc1kPe2.js",
+        "gzip": 2574
+      },
+      {
+        "file": "Dmo5ZcaW2.js",
+        "gzip": 2722
+      },
+      {
+        "file": "CSuqPU6d.js",
+        "gzip": 961
+      },
+      {
+        "file": "DtF_h_hR.js",
+        "gzip": 254
+      },
+      {
+        "file": "CYr8Vn822.js",
+        "gzip": 647
+      },
+      {
+        "file": "CNs_Ozdc2.js",
+        "gzip": 47
+      },
+      {
+        "file": "DRGdCKKs2.js",
+        "gzip": 1069
+      },
+      {
+        "file": "Boo_lhuA2.js",
+        "gzip": 1175
+      }
+    ],
+    "lighthouse": "12.8.2",
+    "scores": [
+      92,
+      92,
+      92
+    ]
+  },
+  "mobile": {
+    "performance": 63,
+    "lcpMs": 9166,
+    "lcpElement": "div.container > div.grid > div > p.mt-6",
+    "cls": 0,
+    "tbtMs": 32,
+    "fcpMs": 4827,
+    "jsTransferBytes": 644407,
+    "jsGzipBytes": 386104,
+    "jsFiles": [
+      {
+        "file": "CD9hzEqQ.js",
+        "gzip": 52027
+      },
+      {
+        "file": "DK3Fl9T5.js",
+        "gzip": 154
+      },
+      {
+        "file": "CcTVVpJ7.js",
+        "gzip": 3659
+      },
+      {
+        "file": "B4b-2GOK.js",
+        "gzip": 32765
+      },
+      {
+        "file": "C_cSr8y_.js",
+        "gzip": 9419
+      },
+      {
+        "file": "Bb9DYaCJ.js",
+        "gzip": 18758
+      },
+      {
+        "file": "BUs5XvI5.js",
+        "gzip": 3902
+      },
+      {
+        "file": "2ewiYOMH.js",
+        "gzip": 4171
+      },
+      {
+        "file": "Cu4K7G6E.js",
+        "gzip": 3723
+      },
+      {
+        "file": "k9dcdd-T.js",
+        "gzip": 3197
+      },
+      {
+        "file": "BxDtnnMy.js",
+        "gzip": 2916
+      },
+      {
+        "file": "DNk3HC4v.js",
+        "gzip": 2875
+      },
+      {
+        "file": "CGX23kW7.js",
+        "gzip": 3134
+      },
+      {
+        "file": "DlQgcujz.js",
+        "gzip": 99
+      },
+      {
+        "file": "D14PnvgW.js",
+        "gzip": 929
+      },
+      {
+        "file": "dbS_SuU_.js",
+        "gzip": 230
+      },
+      {
+        "file": "BY78LN3T.js",
+        "gzip": 15865
+      },
+      {
+        "file": "BVJQxNN8.js",
+        "gzip": 1150
+      },
+      {
+        "file": "CzBA9uJK.js",
+        "gzip": 894
+      },
+      {
+        "file": "nUrD_cxh2.js",
+        "gzip": 2198
+      },
+      {
+        "file": "xYJa2JRz.js",
+        "gzip": 967
+      },
+      {
+        "file": "Ccgt2tWm.js",
+        "gzip": 9084
+      },
+      {
+        "file": "CpbUjknh.js",
+        "gzip": 31104
+      },
+      {
+        "file": "CiiMR5gd.js",
+        "gzip": 687
+      },
+      {
+        "file": "BO9E17wg.js",
+        "gzip": 155706
+      },
+      {
+        "file": "BDNMzG2s.js",
+        "gzip": 99
+      },
+      {
+        "file": "D9YwaOgQ2.js",
+        "gzip": 170
+      },
+      {
+        "file": "FQ3XNo_l2.js",
+        "gzip": 1081
+      },
+      {
+        "file": "DKy_UBMB2.js",
+        "gzip": 191
+      },
+      {
+        "file": "C_GLwZIF2.js",
+        "gzip": 566
+      },
+      {
+        "file": "DfcGkBsz.js",
+        "gzip": 886
+      },
+      {
+        "file": "BO3c3dEm.js",
+        "gzip": 1917
+      },
+      {
+        "file": "B1GGDcNc.js",
+        "gzip": 920
+      },
+      {
+        "file": "Br9UVaSn2.js",
+        "gzip": 1525
+      },
+      {
+        "file": "DIG0AFdq2.js",
+        "gzip": 1501
+      },
+      {
+        "file": "D8ewXnpU2.js",
+        "gzip": 254
+      },
+      {
+        "file": "BXhiwSLX2.js",
+        "gzip": 813
+      },
+      {
+        "file": "mM58t4mQ.js",
+        "gzip": 1280
+      },
+      {
+        "file": "DoOwHnsk.js",
+        "gzip": 2531
+      },
+      {
+        "file": "Bp_pOcN9.js",
+        "gzip": 1271
+      },
+      {
+        "file": "HH57Byjk2.js",
+        "gzip": 2037
+      },
+      {
+        "file": "BLqc1kPe2.js",
+        "gzip": 2574
+      },
+      {
+        "file": "Dmo5ZcaW2.js",
+        "gzip": 2722
+      },
+      {
+        "file": "CYr8Vn822.js",
+        "gzip": 647
+      },
+      {
+        "file": "CNs_Ozdc2.js",
+        "gzip": 47
+      },
+      {
+        "file": "DRGdCKKs2.js",
+        "gzip": 1069
+      },
+      {
+        "file": "CSuqPU6d.js",
+        "gzip": 961
+      },
+      {
+        "file": "DtF_h_hR.js",
+        "gzip": 254
+      },
+      {
+        "file": "Boo_lhuA2.js",
+        "gzip": 1175
+      }
+    ],
+    "lighthouse": "12.8.2",
+    "scores": [
+      63,
+      63,
+      63
+    ]
+  }
+}

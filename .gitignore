@@ -47,3 +47,6 @@ specs/026-app-console-redesign/measurements/*.tmp.json
 # CLEAN-216: browser-check screenshots
 specs/027-pin-agents/e2e/shots/*
 !specs/027-pin-agents/e2e/shots/.gitkeep
+# CLEAN-217: browser-check screenshots
+specs/028-app-profile/e2e/shots/*
+!specs/028-app-profile/e2e/shots/.gitkeep

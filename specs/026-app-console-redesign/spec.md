@@ -163,7 +163,7 @@ As the visitor moves the pointer over the Capabilities bento, a thin copper-to-l
 - **FR-014**: /login and /register MUST share one gate layout: the hero scene, a route "You → RANCH hub → Your agents" on the left, and a light panel on the right with a Log in / Create account switch over the two real routes.
 - **FR-015**: The route MUST reflect four stages driven only by the form's own state: idle (first node lit), filling (light runs to the hub), connecting (hub lit), failed (hub red). Success navigates to the console. The gate MUST never claim a server event the form did not see.
 - **FR-016**: Below 768 px the route MUST compress to one line above the panel and "Back to home" MUST become an icon button with an accessible label.
-- **FR-017**: The Session ended dialog MUST keep using the shared form without the gate variant and MUST look as it does on main.
+- **FR-017**: The Session ended dialog MUST keep using the shared form without the gate variant: same markup, same classes, same layout as on main. It renders in the console's theme like every other console surface, so with the console going dark (FR-004) the dialog is dark too; that theme change is the only visual difference allowed.
 - **FR-018**: With registration disabled, /register MUST show the closed-registration message in the gate layout and offer Log in.
 
 **Agent console**
@@ -215,7 +215,7 @@ As the visitor moves the pointer over the Capabilities bento, a thin copper-to-l
 - **SC-004**: With reduced motion enabled, a 30-second recording of the landing, the gate and the console shows zero moving elements apart from the user's own scrolling.
 - **SC-005**: Every agent node, the hub, the drum, the view switch, the search, the sheet actions and the gate form are operable with the keyboard alone and announced with name and state by a screen reader; the Orbit and Drum pass an automated accessibility audit with no critical issues.
 - **SC-006**: A Stop or Start pressed in the sheet is reflected in the node, the row and the chat overlay in the same frame, and after a forced server refusal all three show the previous status again within one second along with the server's message.
-- **SC-007**: The Session ended dialog on this branch is pixel-identical to main at 1440 and 390.
+- **SC-007**: The Session ended dialog on this branch has the same markup, classes and layout as on main at 1440 and 390 (the form's console branch is byte-identical in the diff; the screenshots differ only by the console's dark theme).
 - **SC-008**: Sign-in and registration with a live API succeed in both languages, including the registration-closed case, with the route showing filling, connecting and failed states as described.
 - **SC-009**: Typecheck, build, unit tests and the translation check all pass for the app, and the PR names the commands run; the orbit layout calculation has unit tests covering ordering, ring capacities and label side.
 - **SC-010**: A first-time visitor can find and reach Log in or Get started from the landing within 10 seconds on desktop and on a phone, and every header anchor scrolls to its section.

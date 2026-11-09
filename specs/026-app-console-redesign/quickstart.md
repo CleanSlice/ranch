@@ -76,7 +76,7 @@ node specs/026-app-console-redesign/e2e/shots.mjs --touch --out shots/touch     
 node specs/026-app-console-redesign/e2e/shots.mjs --only session-ended --out shots/P2
 ```
 
-Expected: no horizontal scroll at any width (the script asserts `scrollWidth === clientWidth`); the reduced set shows no travelling light, no meteors, the Stage in its finished state, no video element; the touch set has no glow following the pointer; `shots/P2` Session-ended PNGs are byte-identical (or pixel-diff 0) to `shots/P0`.
+Expected: no horizontal scroll at any width (the script asserts `scrollWidth === clientWidth`); the reduced set shows no travelling light, no meteors, the Stage in its finished state, no video element; the touch set has no glow following the pointer; `shots/P2` Session-ended PNGs show the same dialog, fields and layout as `shots/P0`, differing only by the console's dark theme (FR-017).
 
 ## 6. Console behaviour
 

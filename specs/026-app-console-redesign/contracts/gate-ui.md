@@ -43,4 +43,4 @@ Stage reporting (gate only, no-op elsewhere): field `focus`/`input` → `filling
 
 - `/login` → success → the same redirect as `main` (last agent or `/agents`).
 - 401 handling, token refresh, `auth.global` middleware: untouched.
-- Session-ended dialog: `AuthForm` without `variant`, pixel-identical to `main` at 1440 and 390 (screenshot compare in quickstart).
+- Session-ended dialog: `AuthForm` without `variant`; markup, classes and layout identical to `main` (the `console` branch of `Form.vue` is byte-for-byte the old code). It inherits the console's theme, so it is dark now like the rest of the console; a screenshot against `main` shows only that colour change (quickstart §5).

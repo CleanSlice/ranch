@@ -1,5 +1,5 @@
 <template>
-  <section id="how" class="land-steps">
+  <section id="how" ref="fxRoot" class="land-steps">
     <div class="land-wrap">
       <header class="land-steps__head">
         <p class="land-eyebrow" data-reveal>
@@ -9,12 +9,16 @@
         <p class="land-lede" data-reveal style="--reveal-delay: 160ms">{{ $t('steps.lede') }}</p>
       </header>
 
-      <div class="land-steps__track">
+      <div ref="trackEl" class="land-steps__track">
         <div class="land-steps__line" aria-hidden="true" />
+        <!-- One light runs Configure → Deploy → Chat along the markers; paused while
+             the section is off screen, static under reduced motion (effects #3). -->
+        <AnimatedBeam :container-ref="trackEl" :from-ref="m1" :to-ref="m2" :duration="fx.beamSeconds" :static="fx.reducedMotion" :path-opacity="0" />
+        <AnimatedBeam :container-ref="trackEl" :from-ref="m2" :to-ref="m3" :duration="fx.beamSeconds" :delay="fx.beamSeconds / 2" :static="fx.reducedMotion" :path-opacity="0" />
 
         <!-- 01 Configure -->
         <article class="land-steps__step" data-reveal>
-          <div class="land-steps__marker"><span class="land-num">01</span></div>
+          <div ref="m1" class="land-steps__marker"><span class="land-num">01</span></div>
           <div class="land-steps__ui land-steps__ui--form" aria-hidden="true">
             <div class="land-steps__row">
               <span class="land-steps__label">{{ $t('steps.ui_template') }}</span>
@@ -44,7 +48,7 @@
 
         <!-- 02 Deploy -->
         <article class="land-steps__step land-steps__step--mid" data-reveal style="--reveal-delay: 140ms">
-          <div class="land-steps__marker"><span class="land-num">02</span></div>
+          <div ref="m2" class="land-steps__marker"><span class="land-num">02</span></div>
           <div class="land-steps__ui land-steps__ui--flow" aria-hidden="true">
             <div class="land-steps__flow">
               <span class="land-steps__node is-done"><Icon name="check" :size="11" />{{ $t('steps.ui_flow_argo') }}</span>
@@ -66,7 +70,7 @@
 
         <!-- 03 Interact -->
         <article class="land-steps__step" data-reveal style="--reveal-delay: 280ms">
-          <div class="land-steps__marker"><span class="land-num">03</span></div>
+          <div ref="m3" class="land-steps__marker"><span class="land-num">03</span></div>
           <div class="land-steps__ui land-steps__ui--chat" aria-hidden="true">
             <span class="land-steps__bubble land-steps__bubble--me">{{ $t('steps.ui_msg_user') }}</span>
             <span class="land-steps__bubble">{{ $t('steps.ui_msg_agent') }}</span>
@@ -79,6 +83,18 @@
     </div>
   </section>
 </template>
+
+<script setup lang="ts">
+// The beams need the track and the three markers as elements; the section root
+// is what useFxPause watches so the light only runs while the steps are on screen.
+const fx = useFxTokens();
+const fxRoot = ref<HTMLElement | null>(null);
+const trackEl = ref<HTMLElement | null>(null);
+const m1 = ref<HTMLElement | null>(null);
+const m2 = ref<HTMLElement | null>(null);
+const m3 = ref<HTMLElement | null>(null);
+useFxPause(fxRoot);
+</script>
 
 <style scoped>
 .land-steps {

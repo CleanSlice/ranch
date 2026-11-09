@@ -187,7 +187,7 @@ function showError(field: 'name' | 'email' | 'password') {
 <template>
   <div>
     <div v-if="!hideHeading" :class="gate ? 'mb-6' : 'mb-8'">
-      <h1 :class="gate ? 'text-[1.65rem] font-semibold tracking-[-0.02em] text-[#1a1421]' : 'text-2xl font-bold tracking-tight'">{{ $t(titleKey) }}</h1>
+      <h1 :class="gate ? 'font-[family-name:var(--land-display)] text-[1.35rem] font-bold tracking-[-0.02em] text-[#1a1421]' : 'text-2xl font-bold tracking-tight'">{{ $t(titleKey) }}</h1>
       <p :class="gate ? 'mt-1.5 text-sm text-[#6e6478]' : 'mt-1.5 text-sm text-muted-foreground'">{{ $t(subtitleKey) }}</p>
     </div>
 

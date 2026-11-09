@@ -193,10 +193,13 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMq));
 }
 .gate__title {
   margin: 0;
-  font-size: clamp(2rem, 1.2rem + 3.4vw, 3.5rem);
-  line-height: 1.02;
-  letter-spacing: -0.035em;
-  font-weight: 600;
+  /* The landing's display face (Unbounded), a step smaller than the Geist
+     size because it runs wider. */
+  font-family: var(--land-display);
+  font-size: clamp(1.6rem, 0.9rem + 2.4vw, 2.6rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 700;
   color: #fbf8fd;
   text-wrap: balance;
 }

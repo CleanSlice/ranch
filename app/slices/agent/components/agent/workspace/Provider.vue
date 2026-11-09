@@ -11,45 +11,15 @@ const canCreate = computed(() =>
   authStore.hasRole(UserRoleTypes.Owner, UserRoleTypes.Admin),
 );
 
-// One list request for the whole workspace, shared with the resolver page by
-// its key so landing here does not re-fetch what it already read.
-//
-// The request gives `pending` and `refresh`; the map and the rail render the
-// store's collection (docs/state.md), the same records the open chat reads
-// by id.
-const { pending, refresh } = await useAsyncData('agents', () =>
-  agentStore.fetchAll(),
-);
-const { agents } = storeToRefs(agentStore);
-
-// The map shows every agent's runtime state, so it has to keep up with
-// agents other people start and stop. The app console has no status stream
-// of its own (admin's SSE feed is public, but porting the client is a
-// separate piece of work — see research R3), so this polls at the same
-// cadence the cards screen already polled capacity at. The open agent keeps
-// its own 3s poll while it is transitioning.
-let listTimer: ReturnType<typeof setInterval> | null = null;
-let capacityTimer: ReturnType<typeof setInterval> | null = null;
-
-onMounted(() => {
-  listTimer = setInterval(() => void refresh(), 30_000);
-  if (!canCreate.value) return;
-  void agentStore.fetchCapacity();
-  // Who can ask whom, for the lines on the map: an operator read, on the
-  // same cadence as capacity.
-  void agentStore.fetchLinks();
-  capacityTimer = setInterval(() => {
-    void agentStore.fetchCapacity();
-    void agentStore.fetchLinks();
-  }, 30_000);
-});
-onUnmounted(() => {
-  if (listTimer) clearInterval(listTimer);
-  if (capacityTimer) clearInterval(capacityTimer);
-});
-
-const capacity = computed(() => agentStore.capacity);
-const links = computed(() => agentStore.links);
+// The list, its 30 s refresh and (for operators) cluster capacity and the
+// agent-to-agent connections come from
+// one composable the profile page shares (CLEAN-217): same request key, same
+// cadence, same role gate as before the move. The request gives `pending`;
+// the map and the rail render the store's collection (docs/state.md), the
+// same records the open chat reads by id.
+const fleet = useAgentFleet();
+await fleet.ready;
+const { pending, agents, capacity, links } = fleet;
 
 // The open agent, for the sheet: the same store record the chat below
 // fetches by id and the map node reads, so a restart flips all three

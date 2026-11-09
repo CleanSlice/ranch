@@ -7,7 +7,7 @@
 // Full-page PNGs named <page>-<width>[-reduced|-touch].png. Every shot asserts
 // there is no horizontal scroll; the process exits 1 if any shot failed.
 import { resolve } from 'node:path';
-import { APP, API, arg, ensureDir, launch, login, newPage, noHorizontalScroll, pickAgentId, settle, sleep } from './lib.mjs';
+import { APP, API, arg, ensureDir, launch, login, newPage, noHorizontalScroll, pickAgentId, revealAll, settle, sleep } from './lib.mjs';
 
 const out = ensureDir(resolve(String(arg('out', 'specs/026-app-console-redesign/shots/latest'))));
 const only = String(arg('only', 'landing,login,register,agents')).split(',').map((s) => s.trim()).filter(Boolean);
@@ -37,6 +37,7 @@ for (const w of widths) {
     const page = await newPage(browser, { width: w, height: heightFor(w), reduced, touch });
     await page.goto(APP + '/', { waitUntil: 'domcontentloaded' });
     await settle(page, { reduced });
+    await revealAll(page, { reduced });
     await shot(page, 'landing', w, true);
     if (reduced) {
       const videos = await page.locator('video').count();

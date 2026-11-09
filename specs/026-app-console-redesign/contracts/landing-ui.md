@@ -7,7 +7,7 @@ Holds `app/slices/common/pages/index.vue`, `layouts/landing.vue` and `components
 | # | Component | `id` (header anchor) | i18n namespace |
 |---|---|---|---|
 | — | `LandingHeaderProvider` | — | `landing_nav.*`, `nav.*` |
-| 1 | `LandingHeroProvider` (+ `Atmosphere`, `Constellation`, `Stage`) | `top` | `hero.*`, `stage.*` |
+| 1 | `LandingHeroProvider` (+ `Atmosphere`, `Constellation`, `Stage`) | — (the logo links to `/`) | `hero.*`, `stage.*` |
 | 2 | `LandingStepsProvider` | `how` | `steps.*` |
 | 3 | `LandingCapabilitiesProvider` | `platform` | `capabilities.*` |
 | 4 | `LandingRuntimeProvider` | `infrastructure` | `runtime.*` |

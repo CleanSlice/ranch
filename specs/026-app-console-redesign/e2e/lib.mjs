@@ -140,6 +140,22 @@ export async function settle(page, { reduced = false } = {}) {
   await sleep(reduced ? 300 : 1800);
 }
 
+/**
+ * Scrolls through the whole page so every `[data-reveal]` section has entered
+ * the viewport once (the landing reveals on scroll), then returns to the top.
+ * Without this a full-page screenshot shows the hero and darkness below it.
+ */
+export async function revealAll(page, { reduced = false } = {}) {
+  const total = await page.evaluate(() => document.documentElement.scrollHeight);
+  const step = await page.evaluate(() => Math.max(300, Math.floor(window.innerHeight * 0.7)));
+  for (let y = 0; y < total; y += step) {
+    await page.evaluate((top) => window.scrollTo(0, top), y);
+    await sleep(reduced ? 40 : 120);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await sleep(reduced ? 200 : 900);
+}
+
 /** FAILs when the page scrolls sideways. Returns true when fine. */
 export async function noHorizontalScroll(page, label) {
   const { sw, cw } = await page.evaluate(() => ({

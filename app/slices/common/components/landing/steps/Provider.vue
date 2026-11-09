@@ -5,7 +5,7 @@
         <p class="land-eyebrow" data-reveal>
           <span class="land-num">02</span>{{ $t('steps.eyebrow') }}
         </p>
-        <h2 class="land-h2" data-reveal style="--reveal-delay: 80ms">{{ $t('steps.title') }}</h2>
+        <h2 class="land-h2 land-reveal--blur" data-reveal style="--reveal-delay: 80ms">{{ $t('steps.title') }}</h2>
         <p class="land-lede" data-reveal style="--reveal-delay: 160ms">{{ $t('steps.lede') }}</p>
       </header>
 

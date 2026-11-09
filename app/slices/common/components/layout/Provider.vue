@@ -33,20 +33,30 @@
         <!-- Browser language decides the first render (detectBrowserLanguage);
              this lets the user override it. setLocale writes the same cookie,
              so the choice survives a reload. -->
-        <select
-          :value="locale"
-          :aria-label="$t('locale.label')"
-          class="rounded-full border bg-card/60 px-2 py-1 font-mono text-xs uppercase text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          @change="onLocaleChange"
-        >
-          <option
-            v-for="option in locales"
-            :key="option.code"
-            :value="option.code"
+        <!-- appearance-none drops the browser arrow; the chevron is ours, so it
+             sits at the same size and weight as the rest of the header. -->
+        <span class="relative inline-flex items-center">
+          <select
+            :value="locale"
+            :aria-label="$t('locale.label')"
+            class="appearance-none rounded-full border bg-card/60 py-1 pl-3 pr-7 font-mono text-xs uppercase text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            @change="onLocaleChange"
           >
-            {{ option.code.toUpperCase() }}
-          </option>
-        </select>
+            <option
+              v-for="option in locales"
+              :key="option.code"
+              :value="option.code"
+            >
+              {{ option.code.toUpperCase() }}
+            </option>
+          </select>
+          <Icon
+            name="chevron-down"
+            :size="12"
+            class="pointer-events-none absolute right-2.5 text-muted-foreground"
+            aria-hidden="true"
+          />
+        </span>
 
         <div v-if="authStore.isAuthenticated" class="flex items-center gap-3 text-sm">
           <span class="hidden sm:inline text-muted-foreground" :title="authStore.user?.email ?? ''">

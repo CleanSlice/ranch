@@ -123,7 +123,7 @@ const failedKey = computed(() => {
 
       <button
         type="button"
-        class="shrink-0 rounded-full border bg-background p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground transition hover:bg-muted hover:text-foreground"
         :aria-expanded="open"
         :aria-label="$t(open ? 'sheet.fold' : 'sheet.unfold')"
         @click="toggle"
@@ -220,8 +220,15 @@ const failedKey = computed(() => {
 
         <!-- No role gate: whoever can open the agent may share it and start
              their conversation over (spec clarification, 2026-09-07). -->
-        <SharePanelProvider :agent-id="agent.id" />
-        <BridleChatNewChat v-if="conversation" :conversation="conversation" />
+        <!-- Both popovers are `absolute right-4 top-full` and anchor to the nearest
+             positioned ancestor; without these wrappers that was the whole sheet,
+             so the panel opened at the sheet's far right instead of under its button. -->
+        <span class="relative inline-flex">
+          <SharePanelProvider :agent-id="agent.id" />
+        </span>
+        <span v-if="conversation" class="relative inline-flex">
+          <BridleChatNewChat :conversation="conversation" />
+        </span>
       </div>
 
       <p

@@ -14,7 +14,7 @@ export function useLandingChrome() {
 /** The brand typefaces alone — the console loads these over its own theme. */
 export function useBrandFonts() {
   const href =
-    'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=DotGothic16&display=swap';
+    'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Unbounded:wght@600;700&family=DotGothic16&display=swap';
   useHead({
     link: [
       { rel: 'preconnect', href: 'https://fonts.googleapis.com' },

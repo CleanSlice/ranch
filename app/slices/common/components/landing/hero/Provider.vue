@@ -181,10 +181,13 @@ function scrollTo(id: string, event: MouseEvent) {
 }
 .land-hero__title {
   margin: 0;
-  font-size: clamp(2.5rem, 1rem + 4.9vw, 4.4rem);
-  line-height: 0.98;
-  letter-spacing: -0.035em;
-  font-weight: 600;
+  /* Unbounded is about a third wider than Geist, so the size comes down to
+     keep the second line on one row at 1440 (FR-007). */
+  font-family: var(--land-display);
+  font-size: clamp(1.9rem, 0.75rem + 3.5vw, 3.3rem);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+  font-weight: 700;
   color: #fbf8fd;
   text-wrap: balance;
 }

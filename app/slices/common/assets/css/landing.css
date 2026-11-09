@@ -28,6 +28,8 @@
   --land-font: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
   --land-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
   --land-pixel: 'DotGothic16', 'Geist Mono', monospace;
+  /* Display face for the hero headline only: wide, loud, native Cyrillic. */
+  --land-display: 'Unbounded', var(--land-font);
   --land-max: 1280px;
 
   background: var(--land-bg);

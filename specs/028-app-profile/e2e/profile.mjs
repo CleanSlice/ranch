@@ -300,6 +300,17 @@ console.log('-- drop and swing');
     const lanyard = document.querySelector('.profile-pass__lanyard').getBoundingClientRect().top;
     return Math.round(lanyard - header);
   });
+  // Nothing between the pass and the window may cut it sideways: an overflow
+  // clip on the page root once sliced its left edge during the swing and on hover.
+  const cutters = await page.evaluate(() => {
+    const out = [];
+    for (let el = document.querySelector("[data-profile-rig]").parentElement; el && el !== document.documentElement; el = el.parentElement) {
+      const ox = getComputedStyle(el).overflowX;
+      if (ox !== "visible") out.push(`${el.tagName.toLowerCase()}.${String(el.className).split(" ")[0]}:${ox}`);
+    }
+    return out;
+  });
+  check(cutters.length === 0, `no ancestor clips the pass sideways${cutters.length ? ` (${cutters.join(", ")})` : ""}`);
   check(lanyardTop === 0, `the lanyard starts at the header's lower edge (gap ${lanyardTop} px)`);
 
   console.log('-- pointer nudge');

@@ -50,6 +50,12 @@ const running = computed(
   () => agents.value.filter((a) => a.status === 'running').length,
 );
 
+// While it swings, the pass reaches past its column. Nothing inside the
+// page may cut it (an overflow clip on the page root sliced its left edge),
+// so the sideways overflow is clipped at the viewport instead: no cut inside
+// the window, no horizontal scrollbar on a phone.
+useHead({ htmlAttrs: { class: 'profile-open' } });
+
 // The same two lines the header's Log out runs.
 async function onLogout() {
   authStore.logout();
@@ -60,7 +66,7 @@ async function onLogout() {
 <template>
   <div
     v-if="user"
-    class="profile-page mx-auto grid w-full [overflow-x:clip] max-w-[1180px] items-start gap-x-14 gap-y-8 pb-10 lg:grid-cols-[400px_minmax(0,1fr)]"
+    class="profile-page mx-auto grid w-full max-w-[1180px] items-start gap-x-14 gap-y-8 pb-10 lg:grid-cols-[400px_minmax(0,1fr)]"
     data-profile
   >
     <ProfilePass
@@ -93,3 +99,9 @@ async function onLogout() {
     </div>
   </div>
 </template>
+
+<style>
+html.profile-open {
+  overflow-x: clip;
+}
+</style>

@@ -30,20 +30,24 @@ export function usePassSwing(els: {
   rig: Ref<HTMLElement | null>;
   hanger: Ref<HTMLElement | null>;
 }) {
-  /** Free fall from behind the header, constant acceleration. */
-  const FALL_S = 0.42;
+  /** Free fall from behind the header, constant acceleration. Short: a
+   *  pass this size dropping its own height takes about a quarter second. */
+  const FALL_S = 0.28;
   /** The lanyard taking the weight: about 12 px past rest, then back. The
    *  pass arrives much faster than this; the rest of that speed is the
    *  lanyard going taut, which is not drawn. */
-  const CATCH = { omega: 18, damping: 0.35 };
-  const CATCH_VELOCITY = 340; // px/s
-  /** The pendulum: -7° → about +4.5° → -2.8° → +1.7° → rest. */
+  const CATCH = { omega: 26, damping: 0.4 };
+  const CATCH_VELOCITY = 520; // px/s
+  /** The pendulum: -7° → about +3.7° → -1.9° → +1° → rest, in about 1.8 s.
+   *  The brief started from a 0.95 s period and 0.12 damping; on the live
+   *  page that read as weak gravity and went on too long (owner review), so
+   *  the period is shorter and the swings die faster. */
   const SWING_START_DEG = -7;
-  const SWING_OMEGA = (2 * Math.PI) / 0.95;
-  const SWING_DAMPING = 0.14;
+  const SWING_OMEGA = (2 * Math.PI) / 0.72;
+  const SWING_DAMPING = 0.2;
   /** After four swings the damping is raised so the tail dies instead of
    *  trembling for another two seconds (and the entry fits in 3.5 s). */
-  const SWING_TAIL_FROM_S = 1.6;
+  const SWING_TAIL_FROM_S = 0.9;
   const SWING_TAIL_DAMPING = 0.9;
   /** The card chasing the lanyard's angle, never more than 2° behind. */
   const CARD = { omega: 10, damping: 0.5 };

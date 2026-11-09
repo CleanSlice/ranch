@@ -7,6 +7,7 @@
 // `replace: true` keeps `/agents` out of the history stack — Back from an
 // agent should leave the agents area, not bounce through the resolver.
 import { compareInstants } from '#common/utils/format';
+import { railOrder } from '#agent/utils/railOrder';
 
 const agentStore = useAgentStore();
 
@@ -21,9 +22,11 @@ const landing = computed(() => {
   const list = agents.value;
   if (!list.length) return null;
   // The Ranch admin agent is the one an operator almost always wants: it is
-  // the agent that can act on the rest of the install.
-  const rancher = list.find((a) => a.isAdmin);
-  if (rancher) return rancher;
+  // the agent that can act on the rest of the install. Without one, the
+  // first pinned agent (CLEAN-216) — the operator said which one matters —
+  // else the most recently touched.
+  const first = railOrder(list)[0];
+  if (first && (first.isAdmin || first.pinned)) return first;
   return [...list].sort((a, b) => compareInstants(b.updatedAt, a.updatedAt))[0];
 });
 

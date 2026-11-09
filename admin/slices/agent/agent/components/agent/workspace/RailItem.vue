@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { IconShield } from '@tabler/icons-vue';
+import { IconPin, IconShield } from '@tabler/icons-vue';
 import type { IRailEntry } from '#agent/composables/useAgentRailEntries';
 
 defineProps<{ entry: IRailEntry }>();
@@ -29,6 +29,14 @@ defineProps<{ entry: IRailEntry }>();
         >
           {{ entry.name }}
         </span>
+        <IconPin
+          v-if="entry.pinned"
+          class="size-3.5 shrink-0 text-primary"
+          role="img"
+          aria-label="Pinned"
+          title="Pinned: kept at the top of the list in both consoles"
+          data-pinned
+        />
         <IconShield
           v-if="entry.isAdmin"
           class="size-3.5 shrink-0 text-primary"

@@ -86,6 +86,10 @@ export interface IAgentData {
   knowledgeIds: string[];
   isAdmin: boolean;
   debugEnabled: boolean;
+  /** Installation-wide pin (CLEAN-216): the rail lists pinned agents right
+   *  after Rancher. Toggled from the header; the app console shows the same
+   *  flag. Changes nothing about the pod, the status or access. */
+  pinned: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -112,4 +116,5 @@ export interface IUpdateAgentData {
   allowedOrigins?: string[];
   knowledgeIds?: string[];
   debugEnabled?: boolean;
+  pinned?: boolean;
 }

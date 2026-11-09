@@ -62,10 +62,13 @@ body.landing-body {
 
 /* Type scale */
 .land-h2 {
-  font-size: clamp(2rem, 1.2rem + 3.2vw, 3.5rem);
-  line-height: 1.02;
-  letter-spacing: -0.03em;
-  font-weight: 600;
+  /* Same display face as the hero headline (owner's call, 2026-11-09); a
+     step smaller than before because Unbounded runs about a third wider. */
+  font-family: var(--land-display);
+  font-size: clamp(1.6rem, 0.9rem + 2.4vw, 2.6rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 700;
   text-wrap: balance;
   margin: 0;
 }

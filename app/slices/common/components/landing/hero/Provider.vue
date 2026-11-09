@@ -38,10 +38,12 @@
             {{ $t('hero.cta_console') }}
             <Icon name="arrow-right" :size="16" class="land-arrow" />
           </NuxtLink>
-          <NuxtLink v-else :to="startRoute" class="land-btn land-btn--primary">
+          <!-- A faint light sweeps the rim of the primary pill every few seconds;
+               it stays a NuxtLink with the same classes (effects #6). -->
+          <ShimmerButton v-else :as="NuxtLink" :to="startRoute" class="land-btn land-btn--primary" background="var(--land-text)">
             {{ $t('hero.cta_start') }}
             <Icon name="arrow-right" :size="16" class="land-arrow" />
-          </NuxtLink>
+          </ShimmerButton>
           <a href="#platform" class="land-btn land-btn--ghost" @click="scrollTo('platform', $event)">
             {{ $t('hero.cta_platform') }}
           </a>
@@ -64,6 +66,7 @@
 
 <script setup lang="ts">
 import type { IAgentData } from '#agent/stores/agent';
+import { NuxtLink } from '#components';
 
 const agentStore = useAgentStore();
 const authStore = useAuthStore();

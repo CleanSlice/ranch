@@ -84,5 +84,20 @@
     "hint": "← → or the wheel turn it · Enter opens",
     "open": "Open",
     "open_now": "Open now"
+  },
+  "create_stub": {
+    "badge": "In progress",
+    "title": "Creating an agent from here is on its way",
+    "lede": "The form that picks a template, sets resources and submits the deployment is being built. Until it lands, agents are created from the admin console.",
+    "steps_label": "What the form will walk you through",
+    "template_title": "Template",
+    "template_body": "The image and the defaults a new agent starts from: tools, skills, the model.",
+    "resources_title": "Resources and access",
+    "resources_body": "CPU and memory for the pod, private or public, and the origins a public agent may be embedded on.",
+    "deploy_title": "Deploy",
+    "deploy_body": "Ranch submits the Argo Workflow; the agent appears on the orbit and lights up as it comes online.",
+    "next": "Next step",
+    "back": "Back to agents",
+    "note": "Nothing on this page talks to the API yet."
   }
 }

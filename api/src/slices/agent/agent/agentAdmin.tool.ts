@@ -159,9 +159,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
       'Takes the agent id — resolve a name with list_agents first.',
     parameters: z.object({
       id: z.string().describe('Agent id — pick from list_agents'),
-      pinned: z
-        .boolean()
-        .describe('true to pin, false to unpin'),
+      pinned: z.boolean().describe('true to pin, false to unpin'),
     }),
   })
   async pinAgent(

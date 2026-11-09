@@ -21,9 +21,11 @@
       <div class="land-cta__mark" :class="{ 'land-cta__mark--orbit': brand === 'orbit' }">
         <img
           v-if="brand === 'orbit'"
-          src="/landing/brand/orbit-mark-cta.webp"
+          src="/landing/brand/orbit-mark-cta-1280.webp"
+          srcset="/landing/brand/orbit-mark-cta-1280.webp 1280w, /landing/brand/orbit-mark-cta-1920.webp 1920w, /landing/brand/orbit-mark-cta-2560.webp 2560w"
+          sizes="640px"
           width="640"
-          height="557"
+          height="541"
           alt=""
           loading="lazy"
           decoding="async"

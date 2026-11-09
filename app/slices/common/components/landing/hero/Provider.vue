@@ -14,15 +14,18 @@
         </p>
 
         <h1 class="land-hero__title">
-          <span class="land-hero__line land-enter" style="--enter-delay: 160ms; --enter-dur: 850ms">
+          <!-- No entrance animation on the headline or the lede: they are the
+               page's largest text and must be on screen at first paint, not
+               fade in behind the brand mark (LCP stays the hero, FR-007). -->
+          <span class="land-hero__line">
             {{ $t('hero.title_line1') }}
           </span>
-          <span class="land-hero__line land-enter" style="--enter-delay: 280ms; --enter-dur: 850ms">
+          <span class="land-hero__line">
             {{ $t('hero.title_line2') }}
           </span>
         </h1>
 
-        <p class="land-lede land-hero__lede land-enter" style="--enter-delay: 380ms">
+        <p class="land-lede land-hero__lede">
           {{ $t('hero.lede') }}
         </p>
 

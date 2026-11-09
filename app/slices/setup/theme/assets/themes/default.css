@@ -1,4 +1,7 @@
 :root {
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: oklch(0.145 0 0 / 22%);
+  --scrollbar-thumb-hover: oklch(0.145 0 0 / 38%);
   --radius: 0.75rem;
   --font-sans: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -39,6 +42,9 @@
    the charts. The landing and the sign-in gate carry the same values as
    `--land-*` tokens; the console reads them through these shadcn names. */
 .dark {
+  --scrollbar-track: oklch(0.17 0.025 310);
+  --scrollbar-thumb: oklch(0.79 0.12 55 / 38%);
+  --scrollbar-thumb-hover: oklch(0.79 0.12 55 / 65%);
   --background: oklch(0.135 0.018 305);
   --foreground: oklch(0.97 0.006 320);
   --card: oklch(0.17 0.025 310);

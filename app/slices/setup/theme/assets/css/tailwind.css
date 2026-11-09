@@ -142,3 +142,37 @@
 @utility shimmer-duration-* {
   --shimmer-duration: calc(--value(integer) * 1ms);
 }
+
+/* ── Scrollbars (CLEAN-215) ─────────────────────────────────────────────
+   Thin, rounded, in the palette: the thumb and track colours come from
+   --scrollbar-* set per theme (default.css for the console, landing.css for
+   the landing and the gate). Chromium / Safari take the pseudo-elements;
+   Firefox the standard properties - never both on one element, Chromium
+   switches to the standard scrollbar as soon as scrollbar-width is set. */
+@supports selector(::-webkit-scrollbar) {
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: var(--scrollbar-track, transparent);
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb, rgba(127, 127, 127, 0.4));
+    border-radius: 999px;
+    border: 3px solid var(--scrollbar-track, transparent);
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover, rgba(127, 127, 127, 0.6));
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb, rgba(127, 127, 127, 0.4)) var(--scrollbar-track, transparent);
+  }
+}

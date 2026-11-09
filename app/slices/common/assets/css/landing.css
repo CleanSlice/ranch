@@ -44,6 +44,13 @@
 body.landing-body {
   background: #09070d;
 }
+/* The page scrollbar belongs to <html>; :has() reaches it from the body class. */
+html:has(body.landing-body),
+.landing {
+  --scrollbar-track: #130e19;
+  --scrollbar-thumb: rgba(215, 123, 97, 0.45);
+  --scrollbar-thumb-hover: rgba(245, 161, 107, 0.75);
+}
 
 .landing ::selection {
   background: rgba(245, 161, 107, 0.35);

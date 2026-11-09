@@ -470,7 +470,7 @@ const centredCard = computed(() => cards.value[centred.value] ?? null);
      of a drum does when you look down on it. A positive angle drops them,
      which is the same drum seen from underneath (it shipped that way first).
      The vanishing point sits above centre for the same reason. */
-  --drum-tilt: -12deg;
+  --drum-tilt: -8deg;
   perspective: 1200px;
   perspective-origin: 50% 32%;
   outline: none;

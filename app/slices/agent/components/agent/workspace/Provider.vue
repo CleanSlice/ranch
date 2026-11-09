@@ -299,7 +299,7 @@ function onSelect(id: string) {
          whole width beside the rail and on a phone. -->
     <div
       class="flex min-h-0 min-w-0 flex-1 flex-col"
-      :class="view !== 'list' && 'lg:w-[460px] lg:flex-none lg:border-l xl:w-[520px]'"
+      :class="view !== 'list' && 'lg:w-[500px] lg:flex-none lg:border-l xl:w-[600px] 2xl:w-[720px]'"
     >
       <!-- Narrow screens: the list is one tap away rather than a column. -->
       <div class="shrink-0 border-b px-3 py-2 lg:hidden">

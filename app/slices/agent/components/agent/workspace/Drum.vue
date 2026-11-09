@@ -1,3 +1,9 @@
+<script lang="ts">
+// Shared by every instance of the drum on purpose: opening an agent replaces
+// the page, and with it this component. See `choose` below.
+const drumFocus = { keep: false };
+</script>
+
 <script setup lang="ts">
 import type { IAgentData } from '#agent/domain';
 import { railOrder } from '#agent/utils/railOrder';
@@ -51,8 +57,37 @@ const RADIUS = (CARD_W / 2 + 10) / Math.tan((STEP_DEG / 2) * (Math.PI / 180));
 const position = ref(0);
 /** Where it is heading. Integer once the drum has settled. */
 const target = ref(0);
-const last = computed(() => Math.max(0, items.value.length - 1));
-const centred = computed(() => Math.round(position.value));
+const count = computed(() => items.value.length);
+const last = computed(() => Math.max(0, count.value - 1));
+
+/**
+ * The drum is a loop: past the last card comes the first, in either
+ * direction, so nobody has to wind it all the way back. `position` and
+ * `target` are then free-running numbers and a card's place is taken modulo
+ * the number of cards.
+ *
+ * Only from seven cards up. The drum shows the front card and three steps to
+ * each side; with fewer than seven a card leaving on one side would have to
+ * reappear on the other while still in view, which reads as a jump. A short
+ * drum keeps its two ends.
+ */
+const LOOP_FROM = 7;
+const loops = computed(() => count.value >= LOOP_FROM);
+function mod(value: number, n: number) {
+  return ((value % n) + n) % n;
+}
+/** Signed shortest way round the loop, in cards: -n/2 … n/2. */
+function wrap(delta: number) {
+  const n = count.value;
+  if (!loops.value || n === 0) return delta;
+  return mod(delta + n / 2, n) - n / 2;
+}
+/** The card in front, as an index into `items`. */
+const centred = computed(() => {
+  const nearest = Math.round(position.value);
+  if (!count.value) return 0;
+  return loops.value ? mod(nearest, count.value) : nearest;
+});
 
 let frame: number | null = null;
 let settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -73,7 +108,9 @@ function tick() {
 function animate() {
   if (frame === null) frame = requestAnimationFrame(tick);
 }
+/** A looping drum turns freely; a short one stops at its ends. */
 function clamp(value: number) {
+  if (loops.value) return value;
   return Math.min(last.value, Math.max(0, value));
 }
 /** Land on the nearest card once the input has paused. */
@@ -84,8 +121,15 @@ function settle(delay = 110) {
     animate();
   }, delay);
 }
+/** Turn by a number of cards from where the drum is heading. */
+function turnBy(cards: number) {
+  target.value = clamp(Math.round(target.value) + cards);
+  animate();
+}
+/** Bring one card to the front, the short way round. */
 function turnTo(index: number) {
-  target.value = clamp(index);
+  const from = Math.round(target.value);
+  target.value = clamp(from + wrap(index - from));
   animate();
 }
 
@@ -111,6 +155,10 @@ function onPointerDown(event: PointerEvent) {
   dragStartTarget = target.value;
   dragged = false;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  // The drum is one control: wherever it is pressed, the listbox itself
+  // holds the focus, never a card. A focused card travels round the back
+  // with the reel and takes the arrow keys with it.
+  (event.currentTarget as HTMLElement).focus({ preventScroll: true });
 }
 function onPointerMove(event: PointerEvent) {
   if (dragStartX === null) return;
@@ -129,9 +177,31 @@ function onCardClick(index: number) {
   if (dragged) return;
   if (index === centred.value) {
     const agent = items.value[index];
-    if (agent) emit('select', agent.id);
+    if (agent) choose(agent.id);
   } else {
     turnTo(index);
+  }
+}
+
+/**
+ * Opening an agent from the drum must not cost the drum its focus: the
+ * arrows should go on turning it. Opening one changes the route, and the
+ * page under the new route is a new component instance, so this drum is
+ * unmounted and a fresh one mounted with nothing focused. The intent is
+ * therefore kept outside the instance (`keepFocus`, module scope) and the
+ * next drum to mount, or this one if it survives, takes the focus back.
+ */
+const rootEl = ref<HTMLElement | null>(null);
+function choose(id: string) {
+  drumFocus.keep = true;
+  emit('select', id);
+  // Same agent, no navigation: nothing will remount, restore here.
+  void nextTick(restoreFocus);
+}
+function restoreFocus() {
+  if (!drumFocus.keep || !rootEl.value) return;
+  if (document.activeElement !== rootEl.value) {
+    rootEl.value.focus({ preventScroll: true });
   }
 }
 
@@ -139,17 +209,17 @@ function onKeydown(event: KeyboardEvent) {
   switch (event.key) {
     case 'ArrowRight':
     case 'ArrowDown':
-      turnTo(target.value + 1);
+      turnBy(1);
       break;
     case 'ArrowLeft':
     case 'ArrowUp':
-      turnTo(target.value - 1);
+      turnBy(-1);
       break;
     case 'PageDown':
-      turnTo(target.value + 5);
+      turnBy(5);
       break;
     case 'PageUp':
-      turnTo(target.value - 5);
+      turnBy(-5);
       break;
     case 'Home':
       turnTo(0);
@@ -160,7 +230,7 @@ function onKeydown(event: KeyboardEvent) {
     case 'Enter':
     case ' ': {
       const agent = items.value[centred.value];
-      if (agent) emit('select', agent.id);
+      if (agent) choose(agent.id);
       break;
     }
     default:
@@ -174,11 +244,21 @@ function onKeydown(event: KeyboardEvent) {
 function centreActive() {
   const index = items.value.findIndex((a) => a.id === props.activeId);
   if (index >= 0) {
-    target.value = index;
-    position.value = index;
+    // The turn of the loop the drum is already on, so a card that is in
+    // front stays put instead of spinning a whole number of laps.
+    const from = Math.round(position.value);
+    const at = from + wrap(index - from);
+    target.value = at;
+    position.value = at;
   }
 }
-watch(() => props.activeId, centreActive);
+watch(
+  () => props.activeId,
+  () => {
+    centreActive();
+    void nextTick(restoreFocus);
+  },
+);
 watch(
   () => items.value.length,
   () => {
@@ -190,11 +270,17 @@ watch(
 watch(
   () => props.search,
   () => {
-    target.value = 0;
-    animate();
+    turnTo(0);
   },
 );
-onMounted(centreActive);
+onMounted(() => {
+  centreActive();
+  // A drum mounted because an agent was just opened from the previous one
+  // takes the focus over, then forgets the request: a later visit to the
+  // page by any other road must not grab the keyboard.
+  restoreFocus();
+  drumFocus.keep = false;
+});
 onBeforeUnmount(() => {
   if (frame !== null) cancelAnimationFrame(frame);
   if (settleTimer) clearTimeout(settleTimer);
@@ -204,7 +290,9 @@ onBeforeUnmount(() => {
 
 const cards = computed(() =>
   items.value.map((agent, index) => {
-    const angle = (index - position.value) * STEP_DEG;
+    // On a looping drum the angle is the short way round from the front, so
+    // the card after the last one is the first, not one 630° away.
+    const angle = wrap(index - position.value) * STEP_DEG;
     const rad = (angle * Math.PI) / 180;
     const visible = Math.abs(angle) < 92;
     const depth = Math.max(0, Math.cos(rad));
@@ -230,6 +318,7 @@ const centredCard = computed(() => cards.value[centred.value] ?? null);
 
 <template>
   <div
+    ref="rootEl"
     class="agent-drum relative flex h-full w-full select-none items-center justify-center overflow-hidden"
     role="listbox"
     tabindex="0"
@@ -287,6 +376,7 @@ const centredCard = computed(() => cards.value[centred.value] ?? null);
         :aria-selected="card.centre"
         :aria-hidden="!card.visible"
         :aria-current="card.agent.id === activeId ? 'true' : undefined"
+        @mousedown.prevent
         @click="onCardClick(card.index)"
       >
         <span class="flex items-start justify-between">
@@ -374,10 +464,13 @@ const centredCard = computed(() => cards.value[centred.value] ?? null);
 
 <style scoped>
 .agent-drum {
-  /* Seen from slightly above: the reel is tilted back by --drum-tilt and the
-     vanishing point sits above centre, so the cylinder reads as a drum rather
-     than a flat fan of cards. */
-  --drum-tilt: 12deg;
+  /* Seen from slightly above. The reel turns around the X axis by
+     --drum-tilt, and the sign matters: a negative angle lifts the far side
+     of the ring, so the cards going round the back rise the way the far rim
+     of a drum does when you look down on it. A positive angle drops them,
+     which is the same drum seen from underneath (it shipped that way first).
+     The vanishing point sits above centre for the same reason. */
+  --drum-tilt: -12deg;
   perspective: 1200px;
   perspective-origin: 50% 32%;
   outline: none;

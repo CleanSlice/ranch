@@ -13,15 +13,19 @@ export function useLandingChrome() {
 
 /** The brand typefaces alone — the console loads these over its own theme. */
 export function useBrandFonts() {
+  const href =
+    'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=DotGothic16&display=swap';
   useHead({
     link: [
       { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
       { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-      {
-        rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=DotGothic16&display=swap',
-      },
+      // Loaded as a print stylesheet and promoted once it arrives, so the
+      // font CSS never blocks the first paint; the faces still swap in
+      // (display=swap). Measured in CLEAN-215: the blocking stylesheet was
+      // part of a 0.3 s LCP regression on the landing.
+      { rel: 'stylesheet', href, media: 'print', onload: "this.media='all'" },
     ],
+    noscript: [{ innerHTML: `<link rel="stylesheet" href="${href}">` }],
   });
 }
 

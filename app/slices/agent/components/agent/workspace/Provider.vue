@@ -35,7 +35,13 @@ onMounted(() => {
   listTimer = setInterval(() => void refresh(), 30_000);
   if (!canCreate.value) return;
   void agentStore.fetchCapacity();
-  capacityTimer = setInterval(() => void agentStore.fetchCapacity(), 30_000);
+  // Who can ask whom, for the lines on the map: an operator read, on the
+  // same cadence as capacity.
+  void agentStore.fetchLinks();
+  capacityTimer = setInterval(() => {
+    void agentStore.fetchCapacity();
+    void agentStore.fetchLinks();
+  }, 30_000);
 });
 onUnmounted(() => {
   if (listTimer) clearInterval(listTimer);
@@ -43,6 +49,7 @@ onUnmounted(() => {
 });
 
 const capacity = computed(() => agentStore.capacity);
+const links = computed(() => agentStore.links);
 
 // The open agent, for the sheet: the same store record the chat below
 // fetches by id and the map node reads, so a restart flips all three
@@ -215,6 +222,7 @@ function onSelect(id: string) {
       <div class="min-h-0 flex-1">
         <AgentWorkspaceOrbit
           :agents="agents"
+          :links="links"
           :active-id="id"
           :pending="pending"
           :search="search"

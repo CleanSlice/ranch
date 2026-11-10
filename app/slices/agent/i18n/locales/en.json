@@ -55,7 +55,9 @@
     "map_label": "Agent map",
     "view_label": "View",
     "view_orbit": "Orbit",
-    "view_list": "List"
+    "view_list": "List",
+    "legend": "closer to the hub: more CPU and memory · outer ring: no pod",
+    "legend_links": "closer to the hub: more CPU and memory · outer ring: no pod · lines: agents that can ask each other"
   },
   "sheet": {
     "label": "Agent sheet",

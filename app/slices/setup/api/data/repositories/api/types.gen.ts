@@ -1936,6 +1936,17 @@ export type AgentDelegationDto = {
   durationMs: number | null;
 };
 
+export type AgentLinkDto = {
+  /**
+   * The agent that holds the card: the one that can ask.
+   */
+  agentId: string;
+  /**
+   * The agent whose card is held: the one that can be asked.
+   */
+  peerAgentId: string;
+};
+
 export type PostAgentEventDto = {
   /**
    * The Ranch agent's id. On the agent's pod it is the label `ranch/agent-id`; the pod is named `agent-<agentId>` in namespace `agents`.
@@ -5729,6 +5740,27 @@ export type ListAgentDelegationsResponses = {
 
 export type ListAgentDelegationsResponse =
   ListAgentDelegationsResponses[keyof ListAgentDelegationsResponses];
+
+export type ListAgentLinksData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agent-links";
+};
+
+export type ListAgentLinksErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+};
+
+export type ListAgentLinksResponses = {
+  200: Array<AgentLinkDto>;
+};
+
+export type ListAgentLinksResponse =
+  ListAgentLinksResponses[keyof ListAgentLinksResponses];
 
 export type ListAgentEventsData = {
   body?: never;

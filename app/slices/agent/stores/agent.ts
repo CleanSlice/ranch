@@ -3,6 +3,7 @@ import type {
   AgentService,
   IAgentCreateInput,
   IAgentData,
+  IAgentLinkData,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from '#agent/domain';
@@ -27,6 +28,9 @@ export const useAgentStore = defineStore('agent', () => {
   // different audience and a different query, not a view of `agents`.
   const publicAgents = ref<IAgentData[]>([]);
   const capacity = ref<IClusterCapacityData | null>(null);
+  // Agent-to-agent connections for the orbit map. Not part of an agent record:
+  // a link belongs to a pair, so it lives beside the agents, once.
+  const links = ref<IAgentLinkData[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
 
@@ -76,6 +80,18 @@ export const useAgentStore = defineStore('agent', () => {
       capacity.value = null;
     }
     return capacity.value;
+  }
+
+  // Same silent degradation as capacity: a regular user is refused (403) and
+  // simply sees a map without connections. A failed refresh keeps the links
+  // already drawn rather than blinking them off.
+  async function fetchLinks() {
+    try {
+      links.value = await getService().getLinks();
+    } catch {
+      // Keep what we have.
+    }
+    return links.value;
   }
 
   async function fetchAll() {
@@ -194,12 +210,14 @@ export const useAgentStore = defineStore('agent', () => {
     upsert,
     patch,
     capacity,
+    links,
     loading,
     error,
     fetchAll,
     fetchPublic,
     fetchById,
     fetchCapacity,
+    fetchLinks,
     create,
     update,
     remove,

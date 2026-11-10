@@ -179,10 +179,10 @@ const failedKey = computed(() => {
         <!-- Both popovers are `absolute right-4 top-full` and anchor to the nearest
              positioned ancestor; without these wrappers that was the whole sheet,
              so the panel opened at the sheet's far right instead of under its button. -->
-        <span class="relative inline-flex">
+        <span class="agent-sheet__tool relative inline-flex" :title="$t('share.panel.share')">
           <SharePanelProvider :agent-id="agent.id" />
         </span>
-        <span v-if="conversation" class="relative inline-flex">
+        <span v-if="conversation" class="agent-sheet__tool relative inline-flex">
           <BridleChatNewChat :conversation="conversation" />
         </span>
       </div>
@@ -296,5 +296,18 @@ const failedKey = computed(() => {
   height: 32px;
   padding: 0;
   justify-content: center;
+}
+/* Share and New chat keep their own trigger buttons (they own the popovers).
+   In the fold line they are drawn as icons like the rest: the label stays in
+   the DOM for screen readers and only its glyphs are hidden. Scoped to the
+   trigger (aria-haspopup), so the buttons inside the popovers keep their
+   text. */
+.agent-sheet__tool :deep(button[aria-haspopup='dialog']) {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  font-size: 0;
 }
 </style>

@@ -41,3 +41,6 @@ export-1a/
 # CLEAN-215: browser-check output (screenshots, raw lighthouse runs); the medians in measurements/*.json are committed
 specs/026-app-console-redesign/shots/
 specs/026-app-console-redesign/measurements/*.tmp.json
+
+# graft cache dropped next to source files by the indexer
+**/graft/.cache/

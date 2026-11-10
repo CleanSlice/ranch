@@ -5,6 +5,7 @@ import type {
 import type {
   IAgentCreateInput,
   IAgentData,
+  IAgentLinkData,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from '../domain/agent.types';
@@ -79,5 +80,18 @@ export class AgentMapper {
 
   toUpdateDto(input: IAgentUpdateInput): UpdateAgentDto {
     return { ...input };
+  }
+
+  /** Pairs with both ids present; anything else is dropped. */
+  toLinks(raw: unknown): IAgentLinkData[] {
+    if (!Array.isArray(raw)) return [];
+    const out: IAgentLinkData[] = [];
+    for (const item of raw) {
+      const o = item as Record<string, unknown> | null;
+      if (o && typeof o.agentId === 'string' && typeof o.peerAgentId === 'string') {
+        out.push({ agentId: o.agentId, peerAgentId: o.peerAgentId });
+      }
+    }
+    return out;
   }
 }

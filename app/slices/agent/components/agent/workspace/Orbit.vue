@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { IAgentData } from '#agent/domain';
-import { orbitLayout } from '#agent/utils/orbitLayout';
+import { orbitLayout, orbitLinks } from '#agent/utils/orbitLayout';
 import { agentInitials, agentStatusMeta } from '#agent/utils/agentStatus';
 
 /**
- * The orbit map: every agent is a node on a ring around the RANCH hub, the
- * live ones on the inner ring. Status is the node's colour, so the whole
- * fleet reads at a glance; the selected agent is the lit node.
+ * The orbit map: every agent is a node on a ring around the RANCH hub, and
+ * where it sits means something. Distance is weight: agents holding a pod are
+ * close, the ones given more CPU and memory closest, and agents holding
+ * nothing (stopped, failed) are on the outer ring. Status is the node's
+ * colour; the selected agent is the lit node. Agents that can ask one
+ * another are joined by a curved line, the way neurons are drawn.
  *
  * Nodes are real buttons, so the keyboard works the way it does anywhere
  * else: Tab reaches the map, arrows walk the ring, Enter opens the agent.
@@ -19,6 +22,9 @@ const props = defineProps<{
   pending: boolean;
   /** Dims every node that does not match; empty shows all. */
   search: string;
+  /** Agent-to-agent connections. Empty for everyone but operators, and the
+   *  map is complete without them. */
+  links?: ReadonlyArray<{ agentId: string; peerAgentId: string }>;
 }>();
 
 const emit = defineEmits<{ select: [id: string] }>();
@@ -47,10 +53,13 @@ const LABEL_GAP = 7;
 // of the outer ring need room on the sides, less above and below.
 const geometry = computed(() => {
   const { w, h } = size.value;
+  // The map sits a little above the middle and stops short of the bottom:
+  // the last line of the pane is the legend, and the lowest node's label
+  // must not run into it. The sides keep room for an outer label in full.
   const cx = w / 2;
-  const cy = h / 2;
-  const rx = Math.max(120, w / 2 - 110);
-  const ry = Math.max(100, h / 2 - 64);
+  const cy = h / 2 - 12;
+  const rx = Math.max(120, w / 2 - 132);
+  const ry = Math.max(100, h / 2 - 82);
   return { cx, cy, rx, ry };
 });
 
@@ -75,16 +84,35 @@ interface PlacedNode {
   labelAlign: 'left' | 'right' | 'center';
 }
 
+// A label points away from the hub unless a node of the next ring stands
+// within this angle of it: then the label would run under that node, so it
+// turns to the hub side, where the gap between the rings is free.
+const LABEL_BLOCK_RAD = 0.24;
+
 const nodes = computed<PlacedNode[]>(() => {
   const { cx, cy, rx, ry } = geometry.value;
-  return layout.value.nodes.map((node) => {
+  const placed = layout.value.nodes;
+  return placed.map((node) => {
+    let blocked = false;
+    for (const other of placed) {
+      // Not for the innermost ring: its hub side is where every spoke and
+      // connection converges, a label there is unreadable.
+      if (node.ring === 0 || other.ring !== node.ring + 1) continue;
+      let d = Math.abs(other.angle - node.angle) % (2 * Math.PI);
+      if (d > Math.PI) d = 2 * Math.PI - d;
+      if (d < LABEL_BLOCK_RAD) {
+        blocked = true;
+        break;
+      }
+    }
+    const side = blocked ? -1 : 1;
     const x = cx + node.x * rx;
     const y = cy + node.y * ry;
     const active = node.agent.id === props.activeId;
     const half = (active ? NODE_ACTIVE : NODE) / 2;
     // Labels point away from the hub; the ring gaps are sized for them.
-    const dx = Math.cos(node.angle);
-    const dy = Math.sin(node.angle);
+    const dx = Math.cos(node.angle) * side;
+    const dy = Math.sin(node.angle) * side;
     const ax = x + dx * (half + LABEL_GAP);
     const ay = y + dy * (half + LABEL_GAP);
     let labelAlign: PlacedNode['labelAlign'] = 'center';
@@ -118,6 +146,46 @@ const nodes = computed<PlacedNode[]>(() => {
 const rings = computed(() => {
   const { cx, cy, rx, ry } = geometry.value;
   return layout.value.radii.map((r, i) => ({ i, cx, cy, rx: rx * r, ry: ry * r }));
+});
+
+// Connections as curves that bend towards the hub: a straight line between
+// two nodes of the same ring would run along the ring and hide in it, and a
+// bundle of straight lines through the middle would cover the hub. The curve
+// of the open agent is lit and carries a travelling pulse, so "who does this
+// one talk to" reads at once; the pulse is dropped under reduced motion.
+const LINK_BEND = 0.35;
+const reduceMotion =
+  typeof window !== 'undefined' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const linkPaths = computed(() => {
+  const { cx, cy } = geometry.value;
+  const byId = new Map<string, PlacedNode>();
+  for (const node of nodes.value) byId.set(node.id, node);
+  const out: Array<{
+    key: string;
+    d: string;
+    lit: boolean;
+    mutual: boolean;
+    dim: boolean;
+  }> = [];
+  for (const link of orbitLinks(props.links ?? [], new Set(byId.keys()))) {
+    const a = byId.get(link.from);
+    const b = byId.get(link.to);
+    if (!a || !b) continue;
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const qx = mx + (cx - mx) * LINK_BEND;
+    const qy = my + (cy - my) * LINK_BEND;
+    out.push({
+      key: `${link.from}|${link.to}`,
+      d: `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${qx.toFixed(1)} ${qy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`,
+      lit: a.active || b.active,
+      mutual: link.mutual,
+      dim: !(a.match && b.match),
+    });
+  }
+  return out;
 });
 
 const hasSearchMiss = computed(
@@ -190,9 +258,28 @@ function onKeydown(event: KeyboardEvent) {
         :x2="node.x"
         :y2="node.y"
         :stroke="node.active ? '#f5a16b' : node.meta.color"
-        :stroke-opacity="node.active ? 0.7 : node.match ? 0.28 : 0.08"
+        :stroke-opacity="node.active ? 0.7 : node.match ? 0.16 : 0.06"
         stroke-width="1"
       />
+      <!-- Agent-to-agent connections, above the spokes so they read as the
+           structure of the map and the spokes as its background. -->
+      <g v-if="linkPaths.length" data-orbit-links>
+        <template v-for="link in linkPaths" :key="link.key">
+          <path
+            :d="link.d"
+            fill="none"
+            :stroke="link.lit ? '#f5a16b' : '#c9a1e4'"
+            :stroke-opacity="link.dim ? 0.08 : link.lit ? 0.9 : 0.45"
+            :stroke-width="link.mutual ? 1.8 : 1.2"
+            stroke-linecap="round"
+            data-orbit-link
+            :data-lit="link.lit ? '' : undefined"
+          />
+          <circle v-if="link.lit && !reduceMotion && !link.dim" r="2.6" fill="#f5a16b">
+            <animateMotion :path="link.d" dur="2.6s" repeatCount="indefinite" />
+          </circle>
+        </template>
+      </g>
       <circle
         :cx="geometry.cx"
         :cy="geometry.cy"
@@ -299,6 +386,15 @@ function onKeydown(event: KeyboardEvent) {
       class="absolute inset-x-0 bottom-3 text-center text-xs text-muted-foreground"
     >
       {{ $t('rail.no_match', { term: search }) }}
+    </p>
+    <!-- What the layout means, said once, in words: a map nobody can read
+         is decoration. -->
+    <p
+      v-else-if="nodes.length"
+      class="pointer-events-none absolute inset-x-0 bottom-2 px-4 text-center font-mono text-[10.5px] leading-snug text-muted-foreground"
+      data-orbit-legend
+    >
+      {{ $t(linkPaths.length ? 'orbit.legend_links' : 'orbit.legend') }}
     </p>
     <p
       v-else-if="!pending && !nodes.length"

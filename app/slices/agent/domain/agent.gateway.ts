@@ -1,6 +1,7 @@
 import type {
   IAgentCreateInput,
   IAgentData,
+  IAgentLinkData,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from './agent.types';
@@ -23,4 +24,5 @@ export abstract class IAgentGateway {
   abstract stop(id: string): Promise<IAgentData | null>;
   abstract start(id: string): Promise<IAgentData | null>;
   abstract getCapacity(): Promise<IClusterCapacityData | null>;
+  abstract getLinks(): Promise<IAgentLinkData[]>;
 }

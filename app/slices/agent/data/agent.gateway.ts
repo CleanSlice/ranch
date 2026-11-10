@@ -1,10 +1,11 @@
-import { AgentsService } from '#api';
+import { AgentsService, PeersService } from '#api';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IAgentGateway } from '../domain/agent.gateway';
 import type {
   IAgentCreateInput,
   IAgentData,
+  IAgentLinkData,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from '../domain/agent.types';
@@ -117,6 +118,13 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
     return this.execute(async () => {
       const res = await AgentsService.getClusterCapacity();
       return this.mapper.toCapacity(unwrapEnvelope(res.data));
+    });
+  }
+
+  getLinks(): Promise<IAgentLinkData[]> {
+    return this.execute(async () => {
+      const res = await PeersService.listAgentLinks();
+      return this.mapper.toLinks(unwrapEnvelope(res.data));
     });
   }
 }

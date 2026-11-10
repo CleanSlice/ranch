@@ -131,13 +131,26 @@ check((await page.getByRole('button', { name: RE.start }).count()) > 0, 'sheet n
 await page.getByRole('button', { name: RE.start }).first().click();
 check(await waitLabel(page, target.name, RE.deploying), 'Start flips the node to deploying');
 
-console.log('-- sheet fold persists');
+console.log('-- sheet: folded by default, actions in the fold line, open state persists');
+check((await page.getByRole('button', { name: RE.unfold }).count()) > 0, 'sheet starts folded');
+check((await page.locator('.agent-sheet dl').count()) === 0, 'no detail rows while folded');
+check((await page.locator('.agent-sheet__tools button').count()) >= 3, 'restart / stop-start / share / new chat are in the fold line');
+check((await page.getByRole('button', { name: RE.stop }).count()) + (await page.getByRole('button', { name: RE.start }).count()) > 0, 'the lifecycle button is reachable while folded');
+await page.getByRole('button', { name: RE.unfold }).first().click();
+await sleep(200);
+check((await page.locator('.agent-sheet dl').count()) === 1, 'unfolding shows the detail rows');
+await page.reload({ waitUntil: 'networkidle' });
+await sleep(1200);
+check((await page.getByRole('button', { name: RE.fold }).count()) > 0, 'an opened sheet stays open after a reload');
 await page.getByRole('button', { name: RE.fold }).first().click();
 await sleep(200);
 await page.reload({ waitUntil: 'networkidle' });
 await sleep(1200);
-check((await page.getByRole('button', { name: RE.unfold }).count()) > 0, 'sheet stays folded after a reload');
-await page.getByRole('button', { name: RE.unfold }).first().click();
+check((await page.getByRole('button', { name: RE.unfold }).count()) > 0, 'and a folded one stays folded');
+
+console.log('-- orbit: the layout means something');
+check((await page.locator('[data-orbit-legend]').count()) === 1, 'the map says what its layout means');
+check((await page.getByRole('tab').count()) === 2, 'two views: orbit and list');
 
 console.log('-- below lg');
 await page.setViewportSize({ width: 1000, height: 800 });

@@ -4282,6 +4282,23 @@ export const AgentDelegationDtoSchema = {
   ],
 } as const;
 
+export const AgentLinkDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+      description: "The agent that holds the card: the one that can ask.",
+      example: "agent-3f2a",
+    },
+    peerAgentId: {
+      type: "string",
+      description: "The agent whose card is held: the one that can be asked.",
+      example: "agent-9c1e",
+    },
+  },
+  required: ["agentId", "peerAgentId"],
+} as const;
+
 export const PostAgentEventDtoSchema = {
   type: "object",
   properties: {

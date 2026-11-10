@@ -50,3 +50,10 @@ export interface IClusterCapacityData {
   usedAgentSlots: number;
   totalAgentSlots: number;
 }
+
+/** One internal agent-to-agent connection: `agentId` can ask `peerAgentId`.
+ *  Read for the orbit map, which draws it; operators only (CLEAN-215). */
+export interface IAgentLinkData {
+  agentId: string;
+  peerAgentId: string;
+}

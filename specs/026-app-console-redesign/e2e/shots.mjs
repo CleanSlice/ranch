@@ -2,7 +2,7 @@
 //
 //   node specs/026-app-console-redesign/e2e/shots.mjs --out <dir>
 //     [--only landing,login,register,agents,session-ended] [--widths 1440,390]
-//     [--reduced] [--touch] [--view orbit|drum|list]
+//     [--reduced] [--touch] [--view orbit|list]
 //
 // Full-page PNGs named <page>-<width>[-reduced|-touch].png. Every shot asserts
 // there is no horizontal scroll; the process exits 1 if any shot failed.

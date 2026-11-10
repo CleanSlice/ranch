@@ -1,6 +1,6 @@
 // Accessibility pass for the console and the gate (CLEAN-215, SC-005): every
 // focusable control has an accessible name, no focusable element sits under
-// aria-hidden, the orbit nodes / drum / view tabs / search / sheet buttons and
+// aria-hidden, the orbit nodes / view tabs / search / sheet buttons and
 // the gate form are reachable by Tab. Read-only; needs the app, the API and
 // the seeded login.
 //
@@ -13,9 +13,8 @@ const check = (ok, msg) => {
   if (!ok) fails += 1;
 };
 
-// Only what the Tab key can land on. Elements with tabindex="-1" (the drum's
-// cards, focused through the listbox's aria-activedescendant) are not in the
-// tab order, so an aria-hidden one round the back is correct, not a defect.
+// Only what the Tab key can land on: an element with tabindex="-1" is not
+// in the tab order, so one that is aria-hidden is correct, not a defect.
 const FOCUSABLE =
   'a[href]:not([tabindex="-1"]), button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -102,16 +101,6 @@ await tabReaches(page, 'input[type="search"]', 'the search');
 await tabReaches(page, '[data-orbit-node]', 'an orbit node');
 await tabReaches(page, 'button[aria-expanded]', 'the sheet fold button', 80);
 check((await page.locator('[data-orbit-node][aria-current="true"]').count()) === 1, 'the open agent is marked aria-current on its node');
-
-console.log('-- console (drum)');
-await page.evaluate(() => localStorage.setItem('agent:view', 'drum'));
-await page.reload({ waitUntil: 'networkidle' });
-await sleep(1200);
-await audit(page, 'agents / drum');
-const listbox = page.locator('[role="listbox"]').first();
-check(((await listbox.getAttribute('aria-label')) || '').length > 0, 'drum listbox has a name');
-check(!!(await listbox.getAttribute('aria-activedescendant')), 'drum names its active card');
-check((await page.locator('[role="listbox"] [role="option"][aria-selected="true"]').count()) === 1, 'exactly one option is selected');
 
 await browser.close();
 console.log(fails ? `${fails} check(s) FAILED` : 'All a11y checks ok.');

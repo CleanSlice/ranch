@@ -17,7 +17,9 @@ const props = defineProps<{
 
 const SHEET_KEY = 'agent:sheetOpen';
 
-const open = ref(true);
+// Folded by default: the chat is what the page is for, and the actions are in
+// the fold line anyway. Opening it is remembered per browser.
+const open = ref(false);
 onMounted(() => {
   let saved: string | null = null;
   try {
@@ -26,9 +28,7 @@ onMounted(() => {
     // Private mode — the default stands.
   }
   if (saved === '1') open.value = true;
-  else if (saved === '0') open.value = false;
-  // No preference yet: a phone starts folded, the chat needs every row.
-  else if (window.matchMedia('(max-width: 1023px)').matches) open.value = false;
+  else open.value = false;
 });
 function toggle() {
   open.value = !open.value;
@@ -75,11 +75,12 @@ const failedKey = computed(() => {
 
 <template>
   <section
-    class="agent-sheet shrink-0 border-b bg-card/60"
+    class="agent-sheet @container shrink-0 border-b bg-card/60"
     :aria-label="$t('sheet.label')"
   >
-    <!-- The fold line: identity, status, and the toggle. Always visible. -->
-    <div class="flex items-center gap-3 px-4 py-2.5">
+    <!-- The fold line: identity, status, the actions and the toggle. Always
+         visible. -->
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
       <div
         class="flex shrink-0 items-center justify-center rounded-[14px] border bg-linear-to-br from-[#4a3356] to-[#251b2b] font-semibold text-foreground transition-[width,height] duration-300"
         :class="open ? 'h-12 w-12 text-base' : 'h-9 w-9 text-xs'"
@@ -121,6 +122,71 @@ const failedKey = computed(() => {
         </p>
       </div>
 
+      <!-- Actions sit in the fold line, by the toggle, so they are one click away
+           whether the sheet is open or not (owner review). `relative` anchors the
+           share and new-chat popovers. In a narrow column the row drops under
+           the name. -->
+      <div v-if="agent" class="agent-sheet__tools relative flex shrink-0 flex-wrap items-center justify-end gap-1.5 @max-[520px]:order-last @max-[520px]:basis-full @max-[520px]:justify-start">
+        <template v-if="canManage">
+          <button
+            type="button"
+            class="agent-sheet__btn"
+            :title="$t('chat.restart')"
+            :disabled="controls.transitioning.value"
+            @click="controls.restart()"
+          >
+            <Icon
+              :name="controls.transitioning.value ? 'loader-2' : 'refresh-cw'"
+              :size="13"
+              :class="controls.transitioning.value ? 'animate-spin' : undefined"
+            />
+            <span class="sr-only">{{ $t(controls.transitioning.value ? 'chat.restarting' : 'chat.restart') }}</span>
+          </button>
+          <button
+            v-if="controls.canStart.value"
+            type="button"
+            class="agent-sheet__btn"
+            :title="$t('sheet.start')"
+            :disabled="controls.busy.value !== null"
+            @click="controls.start()"
+          >
+            <Icon
+              :name="controls.busy.value === 'start' ? 'loader-2' : 'play'"
+              :size="13"
+              :class="controls.busy.value === 'start' ? 'animate-spin' : undefined"
+            />
+            <span class="sr-only">{{ $t(controls.busy.value === 'start' ? 'sheet.starting' : 'sheet.start') }}</span>
+          </button>
+          <button
+            v-else
+            type="button"
+            class="agent-sheet__btn"
+            :title="$t('sheet.stop')"
+            :disabled="controls.busy.value !== null"
+            @click="controls.stop()"
+          >
+            <Icon
+              :name="controls.busy.value === 'stop' ? 'loader-2' : 'square'"
+              :size="13"
+              :class="controls.busy.value === 'stop' ? 'animate-spin' : undefined"
+            />
+            <span class="sr-only">{{ $t(controls.busy.value === 'stop' ? 'sheet.stopping' : 'sheet.stop') }}</span>
+          </button>
+        </template>
+
+        <!-- No role gate: whoever can open the agent may share it and start
+             their conversation over (spec clarification, 2026-09-07). -->
+        <!-- Both popovers are `absolute right-4 top-full` and anchor to the nearest
+             positioned ancestor; without these wrappers that was the whole sheet,
+             so the panel opened at the sheet's far right instead of under its button. -->
+        <span class="relative inline-flex">
+          <SharePanelProvider :agent-id="agent.id" />
+        </span>
+        <span v-if="conversation" class="relative inline-flex">
+          <BridleChatNewChat :conversation="conversation" />
+        </span>
+      </div>
+
       <button
         type="button"
         class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground transition hover:bg-muted hover:text-foreground"
@@ -136,6 +202,14 @@ const failedKey = computed(() => {
         />
       </button>
     </div>
+
+    <p
+      v-if="failedKey"
+      class="px-4 pb-2 text-xs text-rose-700 dark:text-rose-400"
+      role="alert"
+    >
+      {{ $t(failedKey) }}<template v-if="controls.failed.value?.message">: {{ controls.failed.value.message }}</template>
+    </p>
 
     <div v-if="open && agent" class="px-4 pb-3">
       <dl class="agent-sheet__rows text-[12.5px]">
@@ -172,72 +246,6 @@ const failedKey = computed(() => {
         </div>
       </dl>
 
-      <!-- `relative` anchors the share and new-chat popovers to this block. -->
-      <div class="relative mt-3 flex flex-wrap gap-2">
-        <template v-if="canManage">
-          <button
-            type="button"
-            class="agent-sheet__btn"
-            :disabled="controls.transitioning.value"
-            @click="controls.restart()"
-          >
-            <Icon
-              :name="controls.transitioning.value ? 'loader-2' : 'refresh-cw'"
-              :size="13"
-              :class="controls.transitioning.value ? 'animate-spin' : undefined"
-            />
-            {{ $t(controls.transitioning.value ? 'chat.restarting' : 'chat.restart') }}
-          </button>
-          <button
-            v-if="controls.canStart.value"
-            type="button"
-            class="agent-sheet__btn"
-            :disabled="controls.busy.value !== null"
-            @click="controls.start()"
-          >
-            <Icon
-              :name="controls.busy.value === 'start' ? 'loader-2' : 'play'"
-              :size="13"
-              :class="controls.busy.value === 'start' ? 'animate-spin' : undefined"
-            />
-            {{ $t(controls.busy.value === 'start' ? 'sheet.starting' : 'sheet.start') }}
-          </button>
-          <button
-            v-else
-            type="button"
-            class="agent-sheet__btn"
-            :disabled="controls.busy.value !== null"
-            @click="controls.stop()"
-          >
-            <Icon
-              :name="controls.busy.value === 'stop' ? 'loader-2' : 'square'"
-              :size="13"
-              :class="controls.busy.value === 'stop' ? 'animate-spin' : undefined"
-            />
-            {{ $t(controls.busy.value === 'stop' ? 'sheet.stopping' : 'sheet.stop') }}
-          </button>
-        </template>
-
-        <!-- No role gate: whoever can open the agent may share it and start
-             their conversation over (spec clarification, 2026-09-07). -->
-        <!-- Both popovers are `absolute right-4 top-full` and anchor to the nearest
-             positioned ancestor; without these wrappers that was the whole sheet,
-             so the panel opened at the sheet's far right instead of under its button. -->
-        <span class="relative inline-flex">
-          <SharePanelProvider :agent-id="agent.id" />
-        </span>
-        <span v-if="conversation" class="relative inline-flex">
-          <BridleChatNewChat :conversation="conversation" />
-        </span>
-      </div>
-
-      <p
-        v-if="failedKey"
-        class="mt-2 text-xs text-rose-700 dark:text-rose-400"
-        role="alert"
-      >
-        {{ $t(failedKey) }}<template v-if="controls.failed.value?.message">: {{ controls.failed.value.message }}</template>
-      </p>
     </div>
   </section>
 </template>
@@ -282,5 +290,11 @@ const failedKey = computed(() => {
 }
 .agent-sheet__btn:disabled {
   opacity: 0.6;
+}
+.agent-sheet__tools .agent-sheet__btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
 }
 </style>

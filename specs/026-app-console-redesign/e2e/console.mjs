@@ -19,7 +19,6 @@ const RE = {
   fold: /Свернуть лист|Fold the sheet/,
   unfold: /Развернуть лист|Unfold the sheet/,
   switchAgent: /Сменить агента|Switch agent/,
-  drumTab: /Барабан|Drum/,
 };
 
 let fails = 0;
@@ -59,7 +58,7 @@ page.on('requestfailed', (r) => {
   if (/\/(stop|start|restart)$/.test(r.url())) console.log(`     ✕ ${r.url()} ${r.failure()?.errorText ?? ''}`);
 });
 await login(page);
-// Set once, after login, so later reload checks (sheet fold, drum view) see
+// Set once, after login, so later reload checks (sheet fold) see
 // what the console itself wrote and not a value re-injected on every load.
 await page.evaluate(() => {
   localStorage.setItem('agent:view', 'orbit');
@@ -147,32 +146,6 @@ check((await page.getByRole('button', { name: RE.switchAgent }).count()) > 0, '"
 check(!(await page.locator('[role="tablist"]').first().isVisible().catch(() => false)), 'view switch hidden');
 await page.setViewportSize({ width: 1440, height: 900 });
 await sleep(400);
-
-console.log('-- drum');
-await page.getByRole('tab', { name: RE.drumTab }).click();
-await sleep(600);
-const listbox = page.locator('[role="listbox"]').first();
-check((await listbox.count()) === 1, 'drum is a listbox');
-const active0 = await listbox.getAttribute('aria-activedescendant');
-const box = await listbox.boundingBox();
-await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-await page.mouse.wheel(0, 300);
-await sleep(400);
-const active1 = await listbox.getAttribute('aria-activedescendant');
-check(!!active0 && active1 !== active0, `wheel turns the drum (${active0} → ${active1})`);
-await listbox.focus();
-await page.keyboard.press('ArrowRight');
-await sleep(400);
-const active2 = await listbox.getAttribute('aria-activedescendant');
-check(active2 !== active1, `ArrowRight turns one card (${active1} → ${active2})`);
-const urlBefore = page.url();
-await page.keyboard.press('Enter');
-await page.waitForURL((u) => u.toString() !== urlBefore, { timeout: 8000 }).catch(() => undefined);
-const centredAgentId = (active2 ?? '').replace(/^agent-drum-/, '');
-check(page.url() !== urlBefore && page.url().endsWith(`/agents/${centredAgentId}`), `Enter opens the centred card (${centredAgentId})`);
-await page.reload({ waitUntil: 'networkidle' });
-await sleep(1000);
-check((await page.getByRole('tab', { name: RE.drumTab }).getAttribute('aria-selected')) === 'true', 'Drum view survives a reload');
 
 await browser.close();
 console.log(fails ? `${fails} check(s) FAILED` : 'All console checks ok.');

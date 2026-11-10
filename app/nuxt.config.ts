@@ -47,6 +47,20 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
+      // The console, the landing and the gate are all dark. This is an SPA
+      // (`ssr: false`): the shell the server sends is painted before any of
+      // our JavaScript runs, and without the class it was painted in the
+      // light theme, white, and then flipped to dark when the layout mounted.
+      // The class puts the dark tokens in force from the first byte; the
+      // inline background covers the moment before the stylesheets arrive.
+      htmlAttrs: {
+        class: 'dark',
+        style: 'background-color:#0c0910;color-scheme:dark',
+      },
+      meta: [
+        { name: 'color-scheme', content: 'dark' },
+        { name: 'theme-color', content: '#0c0910' },
+      ],
       // The orbit mark as a .ico (owner's file, CLEAN-215); one 256px entry,
       // which every browser scales down itself.
       link: [{ rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' }],

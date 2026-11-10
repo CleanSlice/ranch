@@ -60,8 +60,10 @@ watch(
 
 /* ── Map or list ───────────────────────────────────────────────────────── */
 
-type View = 'orbit' | 'drum' | 'list';
-const VIEWS: View[] = ['orbit', 'drum', 'list'];
+// Two views: the orbit map and the plain list. A third, the drum, was
+// removed after review; a browser that still remembers it gets the map.
+type View = 'orbit' | 'list';
+const VIEWS: View[] = ['orbit', 'list'];
 const VIEW_KEY = 'agent:view';
 const view = ref<View>('orbit');
 onMounted(() => {
@@ -141,7 +143,7 @@ function onSelect(id: string) {
        this route as flush (no container, no footer), so the workspace owns
        the remaining height. -->
   <div class="agent-workspace flex h-[calc(100vh-3.5rem-1px)] min-h-0">
-    <!-- Desktop, orbit or drum: the map owns the width; the cockpit is a
+    <!-- Desktop, orbit: the map owns the width; the cockpit is a
          column on the right. -->
     <section
       v-if="view !== 'list'"
@@ -212,15 +214,6 @@ function onSelect(id: string) {
 
       <div class="min-h-0 flex-1">
         <AgentWorkspaceOrbit
-          v-if="view === 'orbit'"
-          :agents="agents"
-          :active-id="id"
-          :pending="pending"
-          :search="search"
-          @select="onSelect"
-        />
-        <AgentWorkspaceDrum
-          v-else
           :agents="agents"
           :active-id="id"
           :pending="pending"

@@ -80,10 +80,16 @@ await touch.goto(APP + '/', { waitUntil: 'domcontentloaded' });
 await settle(touch);
 await touch.locator('#platform').scrollIntoViewIfNeeded();
 await sleep(800);
+// The bento light is a shared pointer lamp drawn by the ::before and ::after of
+// each card (review round 3 replaced the per-card glow layers). Without a
+// pointer that hovers there is nothing to follow, so both are not rendered.
 const pointerFx = await touch.evaluate(() =>
-  Array.from(document.querySelectorAll('.land-fx--pointer')).map((el) => getComputedStyle(el).display),
+  Array.from(document.querySelectorAll('.land-cap__cell')).flatMap((el) => [
+    getComputedStyle(el, '::before').display,
+    getComputedStyle(el, '::after').display,
+  ]),
 );
-check(pointerFx.length > 0 && pointerFx.every((d) => d === 'none'), `pointer effects hidden under hover:none (${pointerFx.length} glow layers, displays: ${[...new Set(pointerFx)].join(',')})`);
+check(pointerFx.length > 0 && pointerFx.every((d) => d === 'none'), `pointer lamp not rendered under hover:none (${pointerFx.length / 2} cards, displays: ${[...new Set(pointerFx)].join(',')})`);
 check((await touch.locator('#platform article.land-fx-once.is-in').count()) > 0, 'cards carry the one-shot highlight class once revealed');
 await touch.context().close();
 

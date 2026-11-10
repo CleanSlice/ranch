@@ -37,7 +37,7 @@ export function useAgentControls(agent: Ref<IAgentData | null | undefined>) {
     try {
       if (action === 'restart') await agentStore.restart(id);
       else if (action === 'stop') await agentStore.stop(id);
-      else if (action === 'pin') await togglePinned(id, !agent.value.pinned);
+      else if (action === 'pin') await agentStore.setPinned(id, !agent.value.pinned);
       else await agentStore.start(id);
     } catch (err) {
       // A 401 the api plugin could not recover from is the session-ended
@@ -51,20 +51,6 @@ export function useAgentControls(agent: Ref<IAgentData | null | undefined>) {
       };
     } finally {
       busy.value = null;
-    }
-  }
-
-  // The pin is not a status, so it has no store action of its own: the record
-  // is patched here and the general update carries the flag (docs/state.md:
-  // optimistic changes go through patch() and keep the rollback). Rolls back
-  // on any failure and rethrows so `run` shows it like the other actions.
-  async function togglePinned(id: string, next: boolean) {
-    const rollback = agentStore.patch(id, { pinned: next });
-    try {
-      await agentStore.update(id, { pinned: next });
-    } catch (err) {
-      rollback();
-      throw err;
     }
   }
 

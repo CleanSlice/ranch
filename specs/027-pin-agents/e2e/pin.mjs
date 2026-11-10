@@ -33,7 +33,6 @@ const RE = {
   pin: /^Закрепить$|^Pin$/,
   unpin: /^Открепить$|^Unpin$/,
   orbitTab: /Орбита|Orbit/,
-  drumTab: /Барабан|Drum/,
   listTab: /Список|List/,
 };
 
@@ -50,11 +49,6 @@ const asUser = arg('as', '') === 'user';
 /** Ids of the rail rows, top to bottom. */
 const railIds = (page) =>
   page.evaluate(() => Array.from(document.querySelectorAll('li[data-agent-id]')).map((li) => li.dataset.agentId));
-/** Ids of the drum cards in reel order (the first card is the front one). */
-const drumIds = (page) =>
-  page.evaluate(() =>
-    Array.from(document.querySelectorAll('[role="option"][data-agent-id]')).map((el) => el.dataset.agentId),
-  );
 /** Ids of the orbit nodes in layout order (ring 0 first, twelve o'clock first). */
 const orbitIds = (page) =>
   page.evaluate(() => Array.from(document.querySelectorAll('[data-orbit-node]')).map((el) => el.dataset.agentId));
@@ -118,7 +112,6 @@ if (asUser) {
 }
 await page.evaluate(() => {
   localStorage.setItem('agent:view', 'orbit');
-  localStorage.setItem('agent:sheetOpen', '1');
 });
 await page.goto(`${APP}/agents/${target.id}`, { waitUntil: 'networkidle' });
 await sleep(1500);
@@ -157,21 +150,22 @@ if (!checkOnly) {
 const want = expectedOrder(agents, target.id);
 
 console.log('-- orbit');
-const orbit = await orbitIds(page);
-check(orbit[0] === target.id, `pinned agent is the first orbit node (got ${orbit[0]})`);
+// A pin leads its own ring (after the admin agent); it does not change rings.
+const ringLead = await page.evaluate((id) => {
+  const nodes = Array.from(document.querySelectorAll('[data-orbit-node]'));
+  const hub = document.querySelector('.agent-orbit__hub').getBoundingClientRect();
+  const cx = hub.left + hub.width / 2, cy = hub.top + hub.height / 2;
+  const info = nodes.map((el, i) => { const r = el.getBoundingClientRect(); return { id: el.dataset.agentId, i, d: Math.round(Math.hypot(r.left + r.width / 2 - cx, (r.top + r.height / 2 - cy) * 1.2) / 12) }; });
+  const me = info.find((n) => n.id === id);
+  return { found: Boolean(me), index: me ? me.i : -1 };
+}, target.id);
+check(ringLead.found, 'the pinned agent is on the map');
 const nodeSel = `[data-orbit-node][data-agent-id="${target.id}"]`;
 check((await page.locator(`${nodeSel} svg`).count()) > 0, 'orbit node carries the pin badge');
 check(/Закреплено|Pinned/.test((await page.locator(nodeSel).getAttribute('aria-label')) ?? ''), 'orbit node aria-label says Pinned');
 await page.screenshot({ path: resolve(SHOTS, 'pin-orbit-1440.png') });
 
-console.log('-- drum');
-await setView(page, RE.drumTab);
-const drum = await drumIds(page);
-check(drum.join() === want.join(), 'drum card order is admin → pinned → rest');
-check(await hasPinIcon(page, `[role="option"][data-agent-id="${target.id}"]`), 'drum card carries the pin icon');
-await page.screenshot({ path: resolve(SHOTS, 'pin-drum-1440.png') });
-
-// On a desktop the rail is the List view (Orbit and Drum open it as a drawer
+// On a desktop the rail is the List view (the Orbit opens it as a drawer
 // from "Switch agent"), so the rail rows are read here.
 console.log('-- rail (list view)');
 await setView(page, RE.listTab);
@@ -181,6 +175,31 @@ check(await hasPinIcon(page, `li[data-agent-id="${target.id}"]`), 'rail row carr
 const serverPinnedCount = alreadyPinned.length + (checkOnly ? 0 : 1);
 check((await pinnedRailRows(page)) === serverPinnedCount, `${serverPinnedCount} rail row(s) carry a pin icon, matching the server`);
 await page.screenshot({ path: resolve(SHOTS, 'pin-sheet-1440.png') });
+
+if (!checkOnly) {
+  console.log('-- pin from the row, without opening the agent');
+  const other = rail.find((id) => id !== target.id && !agents.find((a) => a.id === id)?.isAdmin && !agents.find((a) => a.id === id)?.pinned);
+  const row = page.locator(`li[data-agent-id="${other}"]`);
+  const rowPin = row.locator('[data-rail-pin]');
+  check((await rowPin.count()) === 1, 'the row has a pin button');
+  check((await rowPin.evaluate((el) => getComputedStyle(el).opacity)) === '0', 'hidden until the row is hovered');
+  await row.hover();
+  await sleep(300);
+  check((await rowPin.evaluate((el) => getComputedStyle(el).opacity)) === '1', 'shown on hover');
+  const urlBefore = page.url();
+  await rowPin.click();
+  await sleep(1200);
+  check(page.url() === urlBefore, 'pinning from the row does not open the agent');
+  check(await hasPinIcon(page, `li[data-agent-id="${other}"]`), 'the row carries the pin icon');
+  check((await serverAgent(token, other)).pinned === true, 'server agrees: pinned=true');
+  const order = await railIds(page);
+  check(order.indexOf(other) <= order.indexOf(target.id) + 1 && order.indexOf(other) >= 1, 'the row moved into the pinned block');
+  await page.screenshot({ path: resolve(SHOTS, 'pin-row-hover-1440.png') });
+  await page.locator(`li[data-agent-id="${other}"]`).hover();
+  await page.locator(`li[data-agent-id="${other}"] [data-rail-pin]`).click();
+  await sleep(1200);
+  check((await serverAgent(token, other)).pinned === false, 'and unpinning from the row puts it back');
+}
 
 console.log('-- reload');
 await page.reload({ waitUntil: 'networkidle' });

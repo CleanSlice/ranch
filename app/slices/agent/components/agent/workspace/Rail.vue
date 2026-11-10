@@ -29,6 +29,23 @@ const filtered = computed(() => {
   );
 });
 
+// Pin from the row. The store patches the record at once and rolls it back
+// if the server refuses; there is no place in a list row for an error line,
+// so a refusal simply puts the row back where it was.
+const agentStore = useAgentStore();
+const pinning = ref<string | null>(null);
+async function togglePin(agent: IAgentData) {
+  if (pinning.value) return;
+  pinning.value = agent.id;
+  try {
+    await agentStore.setPinned(agent.id, !agent.pinned);
+  } catch {
+    // Rolled back by the store.
+  } finally {
+    pinning.value = null;
+  }
+}
+
 const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
 </script>
 
@@ -63,12 +80,33 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
 
     <div v-else-if="filtered.length" class="min-h-0 flex-1 overflow-y-auto">
       <ul class="flex flex-col gap-0.5">
-        <li v-for="agent in filtered" :key="agent.id" :data-agent-id="agent.id">
+        <li
+          v-for="agent in filtered"
+          :key="agent.id"
+          class="agent-rail__row group relative"
+          :data-agent-id="agent.id"
+        >
           <AgentWorkspaceRailItem
             :agent="agent"
             :active="agent.id === activeId"
             @click="$emit('select', agent.id)"
           />
+          <!-- Pin without opening the agent (owner review): shown on hover
+               and on keyboard focus, for those who may manage agents. A
+               sibling of the row button, not a child. -->
+          <button
+            v-if="canCreate"
+            type="button"
+            class="agent-rail__pin absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-transparent text-muted-foreground opacity-0 transition hover:border-primary/40 hover:bg-background/70 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 group-hover:opacity-100 disabled:opacity-40"
+            :aria-pressed="agent.pinned"
+            :aria-label="`${$t(agent.pinned ? 'sheet.unpin' : 'sheet.pin')}: ${agent.name}`"
+            :title="$t(agent.pinned ? 'sheet.unpin' : 'sheet.pin')"
+            :disabled="pinning === agent.id"
+            data-rail-pin
+            @click.stop="togglePin(agent)"
+          >
+            <Icon :name="agent.pinned ? 'pin-off' : 'pin'" :size="14" />
+          </button>
         </li>
       </ul>
     </div>

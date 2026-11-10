@@ -154,6 +154,20 @@ export const useAgentStore = defineStore('agent', () => {
     return updated;
   }
 
+  // Pin / unpin (CLEAN-216). The pin is not a status, so it has no endpoint
+  // of its own: the record is patched at once, so every list reorders on the
+  // click, the general update carries the flag, and a refusal rolls it back
+  // and rethrows for the caller to show.
+  async function setPinned(id: string, pinned: boolean) {
+    const rollback = patch(id, { pinned });
+    try {
+      return await update(id, { pinned });
+    } catch (err) {
+      rollback();
+      throw err;
+    }
+  }
+
   async function remove(id: string) {
     await getService().remove(id);
     agents.value = agents.value.filter((a) => a.id !== id);
@@ -220,6 +234,7 @@ export const useAgentStore = defineStore('agent', () => {
     fetchLinks,
     create,
     update,
+    setPinned,
     remove,
     restart,
     stop,

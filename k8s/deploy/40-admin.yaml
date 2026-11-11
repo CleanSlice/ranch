@@ -27,6 +27,15 @@ spec:
               value: "3002"
             - name: NUXT_PUBLIC_API_URL
               value: "https://api.ranch.cleanslice.org"
+            # Error tracking (CLEAN-218). The destination lives in the cluster,
+            # never in this file: without the secret or the key, reporting is
+            # off. See docs/operations/error-tracking.md.
+            - name: NUXT_PUBLIC_SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-error-tracking
+                  key: ADMIN_SENTRY_DSN
+                  optional: true
           resources:
             requests:
               cpu: 100m

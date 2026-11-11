@@ -22,6 +22,16 @@ spec:
           image: ghcr.io/cleanslice/ranch-admin:latest
           ports:
             - containerPort: 3001
+          env:
+            # Error tracking (CLEAN-218). The destination lives in the cluster,
+            # never in this file: without the secret or the key, reporting is
+            # off. See docs/operations/error-tracking.md.
+            - name: NUXT_PUBLIC_SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-error-tracking
+                  key: ADMIN_SENTRY_DSN
+                  optional: true
           readinessProbe:
             tcpSocket:
               port: 3001

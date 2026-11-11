@@ -53,6 +53,7 @@
     "@nestjs/swagger": "^11",
     "@nestjs/websockets": "^11.1.19",
     "@prisma/client": "^6.0.0",
+    "@sentry/bun": "^10.56.0",
     "@types/archiver": "^7.0.0",
     "@types/diff": "^8.0.0",
     "@types/unzipper": "^0.10.11",

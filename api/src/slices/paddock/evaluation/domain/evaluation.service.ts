@@ -21,6 +21,7 @@ import {
 } from './';
 import { IPaddockScenarioData } from '../../scenario/domain';
 import { RanchAgentEnvelope } from '../data/ranchAgentEnvelope';
+import { captureBackgroundError } from '#/setup/sentry';
 
 // Stable execution order for paddock. Logical "easy → hard" progression
 // keyed by category, with difficulty + name as deterministic tie-breakers.
@@ -400,6 +401,7 @@ export class PaddockEvaluationService {
       this.logger.error(
         `Evaluation ${evaluationId} failed: ${(err as Error).message}`,
       );
+      captureBackgroundError(err, 'paddock.evaluation');
       try {
         await this.evaluationGateway.update(evaluationId, {
           status: 'failed',

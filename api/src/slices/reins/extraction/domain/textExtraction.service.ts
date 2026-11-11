@@ -16,6 +16,7 @@ import {
 } from './textExtraction.gateway';
 import { IExtractionOutcome } from './textExtraction.types';
 import { hasUsableTextLayer } from './pdfTextProbe';
+import { captureBackgroundError } from '#/setup/sentry';
 
 /**
  * Two at a time per process. Each worker holds one PDF in memory (download
@@ -145,11 +146,12 @@ export class TextExtractionService implements OnModuleInit {
       this.queued.delete(sourceId);
       this.active += 1;
       void this.run(sourceId)
-        .catch((err) =>
+        .catch((err) => {
           this.logger.error(
             `extraction of ${sourceId} crashed: ${errorMessage(err)}`,
-          ),
-        )
+          );
+          captureBackgroundError(err, 'reins.extraction');
+        })
         .finally(() => {
           this.active -= 1;
           this.pump();
@@ -167,6 +169,7 @@ export class TextExtractionService implements OnModuleInit {
       // batch strip must still reach its end.
       const reason = errorMessage(err);
       this.logger.error(`extraction of ${sourceId} crashed: ${reason}`);
+      captureBackgroundError(err, 'reins.extraction');
       outcome = { sourceId, state: 'failed', reason };
       try {
         await this.sources.updateTextState(sourceId, {

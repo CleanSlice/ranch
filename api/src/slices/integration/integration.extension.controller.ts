@@ -31,6 +31,7 @@ import {
   IssueIntegrationExtensionTokenDto,
   IssueIntegrationExtensionTokenResponseDto,
 } from './dtos';
+import { captureBackgroundError } from '#/setup/sentry';
 
 interface IIntegrationExtensionTokenPayload {
   /** Ranch user that minted the token (audit/replay). Owns the imported cookies. */
@@ -141,6 +142,7 @@ export class IntegrationExtensionController {
     const archive = archiver('zip', { zlib: { level: 6 } });
     archive.on('error', (err) => {
       this.logger.error(`archive failed: ${err.message}`);
+      captureBackgroundError(err, 'integration.extension-archive');
       // Already wrote headers — best we can do is end the response.
       if (!res.headersSent) res.status(500);
       res.end();

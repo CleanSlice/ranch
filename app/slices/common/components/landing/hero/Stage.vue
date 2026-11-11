@@ -316,6 +316,10 @@ onBeforeUnmount(() => {
 @media (min-width: 900px) {
   .land-stage__panel {
     grid-template-columns: 280px minmax(0, 1fr);
+    /* The row is the panel's height and no more. An implicit `auto` row
+       grows with its content, so a chat with real history pushed the column
+       past 480px and the panel cut off the composer. */
+    grid-template-rows: minmax(0, 1fr);
     height: 480px;
   }
 }
@@ -556,6 +560,7 @@ onBeforeUnmount(() => {
 .land-stage__main {
   position: relative;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -565,9 +570,17 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 380px;
 }
+/* One column, no panel height to fill: the chat gets a height of its own,
+   or a long conversation would make the card as tall as its history. */
+.land-stage__view--chat {
+  height: 460px;
+}
 @media (min-width: 900px) {
   .land-stage__view {
     min-height: 0;
+  }
+  .land-stage__view--chat {
+    height: 100%;
   }
 }
 .land-stage__view-head {

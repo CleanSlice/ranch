@@ -256,7 +256,27 @@ const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>`]+/gi;
 // The SDK cuts a long message and appends `...` before this code sees it. A
 // cut-off tail that looks like an address or an assignment may be the first
 // half of a secret whose closing `@` or `&` is gone, so it is masked whole.
-const TRUNCATED_TAIL = /(?:\S*[:/@=]\S*|sk-\S*)\.\.\.$/;
+// Done by hand rather than with a pattern: an unanchored pattern over a long
+// run with no spaces backtracks, and this runs on the request path.
+const TRUNCATION_MARK = '...';
+const RISKY_TAIL = /[:/@=]/;
+
+function scrubTruncatedTail(text: string): string {
+  if (!text.endsWith(TRUNCATION_MARK)) return text;
+  const end = text.length - TRUNCATION_MARK.length;
+  let start = end;
+  while (start > 0 && text.charCodeAt(start - 1) > 32) start -= 1;
+  const tail = text.slice(start, end);
+  if (!tail.startsWith('sk-') && !RISKY_TAIL.test(tail)) return text;
+  return `${text.slice(0, start)}${FILTERED}${TRUNCATION_MARK}`;
+}
+
+/**
+ * Text longer than this is cut before any pattern runs over it, so the cost
+ * of masking is bounded whatever an error message holds. The SDK keeps 250
+ * characters of a message anyway; this is the ceiling for everything else.
+ */
+const MAX_TEXT_LENGTH = 2048;
 const AUTH_SCHEME = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
 const KEY_VALUE =
   /\b(password|passwd|token|secret|api[_-]?key|access_token|refresh_token|auth_token|authorization|jwt)(["']?\s*[:=]\s*["']?)([^\s"'&,;}]+)/gi;
@@ -279,8 +299,11 @@ function scrubUserInfo(url: string): string {
 }
 
 export function scrubText(text: string): string {
-  return text
-    .replace(TRUNCATED_TAIL, `${FILTERED}...`)
+  const bounded =
+    text.length > MAX_TEXT_LENGTH
+      ? `${text.slice(0, MAX_TEXT_LENGTH)}${TRUNCATION_MARK}`
+      : text;
+  return scrubTruncatedTail(bounded)
     .replace(URL_IN_TEXT, (url) => scrubUrl(scrubUserInfo(url)))
     .replace(AUTH_SCHEME, `$1 ${FILTERED}`)
     .replace(KEY_VALUE, `$1$2${FILTERED}`)

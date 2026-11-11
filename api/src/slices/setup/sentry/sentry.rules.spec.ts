@@ -380,6 +380,27 @@ describe('scrubText', () => {
   });
 });
 
+describe('scrubText stays cheap on hostile input', () => {
+  // Each of these would make a backtracking pattern crawl.
+  it.each([
+    ['a long run with no spaces, cut off', `${'a'.repeat(200_000)}...`],
+    ['a long run of separators, cut off', `${':/@='.repeat(50_000)}...`],
+    ['a long run that could start an email', 'a.b-c_d'.repeat(30_000)],
+    ['a long run of URL characters', `https://${'x/'.repeat(100_000)}`],
+  ])('%s', (_name, input) => {
+    const started = Date.now();
+    const out = scrubText(input);
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(out.length).toBeLessThanOrEqual(2048 + 3);
+  });
+
+  it('cuts an over-long text and masks the tail it cut', () => {
+    const secret = `postgresql://ranch:${'p'.repeat(3000)}@db/ranch`;
+    const out = scrubText(`connect ${secret}`);
+    expect(out).toBe('connect [Filtered]...');
+  });
+});
+
 describe('scrubEvent on the error text itself', () => {
   it('masks every exception in the chain and the event message', () => {
     const event = scrubEvent({

@@ -1,0 +1,167 @@
+# Manually-triggered ops helper: turns error tracking on or off for the Ranch
+# production (CLEAN-218, docs/operations/error-tracking.md).
+#
+# Why a workflow and not a manifest: the reporting destinations (DSNs) are
+# kept out of the repository on purpose — the Mazda fork merges this repo, and
+# a DSN in a file would send their failures to our tracker. They live in the
+# cluster secret `ranch-error-tracking`, and this is the one place that writes
+# it. The values come from repository secrets and are never printed.
+#
+# Why it also patches the deployments: the cluster runs the k8s/deploy
+# bootstrap manifests and ArgoCD does not sync (see ops-set-user-role.yaml),
+# and the release workflow only restarts deployments. So the reference to the
+# secret that the manifests carry never reaches the cluster on its own. The
+# patch adds exactly what the manifests declare — an optional secretKeyRef —
+# and is a no-op once it is there.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   KUBECONFIG_B64     — already present
+#   API_SENTRY_DSN     — DSN of the tracker's Ranch Api project
+#   ADMIN_SENTRY_DSN   — DSN of the tracker's Ranch Admin project
+#   APP_SENTRY_DSN     — DSN of the tracker's Ranch App project
+# A missing one leaves that project off; `enable` needs at least one.
+#
+# Reporting starts only on an image released after CLEAN-218 was merged. On
+# an older image the variable is simply ignored; the report step prints the
+# version each deployment runs.
+
+name: Ops - error tracking (prod)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "status = look only; enable = write the secret and restart; disable = delete it and restart"
+        required: true
+        type: choice
+        options:
+          - status
+          - enable
+          - disable
+        default: status
+
+concurrency:
+  group: ops-error-tracking
+  cancel-in-progress: false
+
+env:
+  NS: platform
+  SECRET: ranch-error-tracking
+
+jobs:
+  error-tracking:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      # The DSNs reach the runner only as environment variables of this one
+      # step, go to kubectl through files in a private temp dir, and are never
+      # echoed. A DSN that does not look like one is refused before anything
+      # in the cluster changes.
+      - name: Write the secret
+        if: inputs.action == 'enable'
+        env:
+          API_SENTRY_DSN: ${{ secrets.API_SENTRY_DSN }}
+          ADMIN_SENTRY_DSN: ${{ secrets.ADMIN_SENTRY_DSN }}
+          APP_SENTRY_DSN: ${{ secrets.APP_SENTRY_DSN }}
+        run: |
+          set -euo pipefail
+          dir="$(mktemp -d)"
+          chmod 700 "$dir"
+          trap 'rm -rf "$dir"' EXIT
+
+          args=()
+          for key in API_SENTRY_DSN ADMIN_SENTRY_DSN APP_SENTRY_DSN; do
+            value="${!key:-}"
+            if [ -z "$value" ]; then
+              echo "::warning::repository secret $key is not set — that project stays off"
+              continue
+            fi
+            if ! printf '%s' "$value" | grep -qE '^https?://[0-9A-Za-z]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+$'; then
+              echo "::error::repository secret $key does not look like a DSN (scheme://key@host/project)"
+              exit 1
+            fi
+            printf '%s' "$value" > "$dir/$key"
+            args+=("--from-file=$key=$dir/$key")
+            echo "$key: set"
+          done
+
+          if [ "${#args[@]}" -eq 0 ]; then
+            echo "::error::none of API_SENTRY_DSN, ADMIN_SENTRY_DSN, APP_SENTRY_DSN is set in the repository secrets"
+            exit 1
+          fi
+
+          kubectl -n "$NS" create secret generic "$SECRET" "${args[@]}" \
+            --dry-run=client -o yaml | kubectl apply -f - > /dev/null
+          echo "secret $SECRET written"
+
+      - name: Delete the secret
+        if: inputs.action == 'disable'
+        run: |
+          kubectl -n "$NS" delete secret "$SECRET" --ignore-not-found
+          echo "secret $SECRET is gone — the reference on the deployments is optional and stays"
+
+      # Adds the optional reference the manifests declare. Strategic merge
+      # keys containers and env entries by name, so an entry that is already
+      # there is left as it is.
+      - name: Make sure the deployments reference the secret
+        if: inputs.action == 'enable'
+        run: |
+          set -euo pipefail
+          reference() {
+            deploy="$1"; variable="$2"; key="$3"
+            if ! kubectl -n "$NS" get deploy "$deploy" > /dev/null 2>&1; then
+              echo "::warning::deployment $deploy not found — skipped"
+              return 0
+            fi
+            container="$(kubectl -n "$NS" get deploy "$deploy" -o jsonpath='{.spec.template.spec.containers[0].name}')"
+            kubectl -n "$NS" patch deploy "$deploy" --type strategic -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"$container\",\"env\":[{\"name\":\"$variable\",\"valueFrom\":{\"secretKeyRef\":{\"name\":\"$SECRET\",\"key\":\"$key\",\"optional\":true}}}]}]}}}}"
+          }
+          reference ranch-api   SENTRY_DSN             API_SENTRY_DSN
+          reference ranch-admin NUXT_PUBLIC_SENTRY_DSN ADMIN_SENTRY_DSN
+          reference ranch-app   NUXT_PUBLIC_SENTRY_DSN APP_SENTRY_DSN
+
+      # A pod reads the secret once, when it starts.
+      - name: Restart the deployments
+        if: inputs.action != 'status'
+        run: |
+          set -euo pipefail
+          for deploy in ranch-api ranch-admin ranch-app; do
+            if ! kubectl -n "$NS" get deploy "$deploy" > /dev/null 2>&1; then continue; fi
+            kubectl -n "$NS" rollout restart deploy/"$deploy"
+          done
+          for deploy in ranch-api ranch-admin ranch-app; do
+            if ! kubectl -n "$NS" get deploy "$deploy" > /dev/null 2>&1; then continue; fi
+            kubectl -n "$NS" rollout status deploy/"$deploy" --timeout=10m
+          done
+
+      # Names and states only. Secret values are never read back.
+      - name: Report
+        if: always()
+        run: |
+          echo "== secret $SECRET"
+          if kubectl -n "$NS" get secret "$SECRET" > /dev/null 2>&1; then
+            kubectl -n "$NS" get secret "$SECRET" -o go-template='{{range $k, $v := .data}}{{$k}}: present{{"\n"}}{{end}}'
+          else
+            echo "absent — reporting is off"
+          fi
+
+          for pair in ranch-api:SENTRY_DSN ranch-admin:NUXT_PUBLIC_SENTRY_DSN ranch-app:NUXT_PUBLIC_SENTRY_DSN; do
+            deploy="${pair%%:*}"; variable="${pair##*:}"
+            echo "== $deploy"
+            if ! kubectl -n "$NS" get deploy "$deploy" > /dev/null 2>&1; then
+              echo "not found"
+              continue
+            fi
+            image="$(kubectl -n "$NS" get deploy "$deploy" -o jsonpath='{.spec.template.spec.containers[0].image}')"
+            ref="$(kubectl -n "$NS" get deploy "$deploy" -o jsonpath="{.spec.template.spec.containers[0].env[?(@.name=='$variable')].valueFrom.secretKeyRef.key}")"
+            echo "image: $image"
+            echo "reference: ${ref:-none — run with action=enable}"
+            kubectl -n "$NS" get deploy "$deploy" -o jsonpath='ready: {.status.readyReplicas}/{.spec.replicas}{"\n"}'
+            version="$(kubectl -n "$NS" exec deploy/"$deploy" -- printenv RANCH_VERSION 2>/dev/null || true)"
+            echo "running version: ${version:-unknown}"
+          done

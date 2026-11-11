@@ -58,6 +58,21 @@ Each project needs a DSN from its own tracker project. They go into one
 secret in the `platform` namespace; the manifests reference its keys as
 optional, so a cluster without it starts normally.
 
+**The usual way, for the Ranch production**: the **Ops - error tracking
+(prod)** workflow (`.github/workflows/ops-error-tracking.yaml`).
+
+1. Once, add three repository secrets under Settings → Secrets and variables
+   → Actions: `API_SENTRY_DSN`, `ADMIN_SENTRY_DSN`, `APP_SENTRY_DSN`.
+2. Actions → *Ops - error tracking (prod)* → Run workflow → `enable`.
+
+It writes the cluster secret from those three, adds the reference to the
+deployments if the cluster does not have it yet, restarts them, and prints
+which keys are present and which version each deployment runs — never a
+value. `status` only looks; `disable` deletes the secret and restarts. To
+change a DSN, change the repository secret and run `enable` again.
+
+**By hand**, for a cluster the workflow does not reach:
+
 ```bash
 kubectl -n platform create secret generic ranch-error-tracking \
   --from-literal=API_SENTRY_DSN='<dsn of the api project>' \

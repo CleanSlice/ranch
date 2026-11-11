@@ -105,7 +105,9 @@
               <span>{{ $t('stage.chat_title') }}</span>
               <span class="land-stage__mono">socket.io · jwt · streaming</span>
             </header>
-            <div v-if="agent" class="land-stage__chat">
+            <!-- `light`: the page is dark from its first byte, this panel is
+                 not, and the chat takes its colours from the theme tokens. -->
+            <div v-if="agent" class="land-stage__chat light">
               <BridleChatProvider :agent-id="agent.id" :title="agent.name" :show-header="false" />
             </div>
             <div v-else class="land-stage__empty">
@@ -588,6 +590,8 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .land-stage__chat {
+  color-scheme: light;
+  color: var(--foreground);
   flex: 1;
   min-height: 0;
   display: flex;

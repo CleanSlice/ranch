@@ -1,4 +1,8 @@
-:root {
+/* `.light` puts the light tokens back for one island inside the dark page:
+   the landing's agent card is a light panel, and the chat in it reads these
+   names (CLEAN-215). */
+:root,
+.light {
   --scrollbar-track: transparent;
   --scrollbar-thumb: oklch(0.145 0 0 / 22%);
   --scrollbar-thumb-hover: oklch(0.145 0 0 / 38%);

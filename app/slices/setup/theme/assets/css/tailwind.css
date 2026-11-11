@@ -1,7 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+/* Dark everywhere under `.dark`, except inside a `.light` island (see
+   themes/default.css). */
+@custom-variant dark (&:is(.dark *):not(.light, .light *));
 
 @layer base {
   button:not(:disabled),

@@ -3,7 +3,13 @@
     <header
       class="sticky top-0 z-40 shrink-0 backdrop-blur bg-background/80 border-b"
     >
-      <div class="container mx-auto flex items-center h-14 px-4 gap-5">
+      <!-- Inside an agent the page runs edge to edge, so the header does
+           too; a centred header over a full-width console reads as two
+           different pages. -->
+      <div
+        class="flex items-center h-14 px-4 gap-5"
+        :class="isFlush ? 'w-full' : 'container mx-auto'"
+      >
         <NuxtLink to="/" class="flex items-center" :aria-label="$t('app_name')">
           <LandingBrandLogo variant="full" :size="28" :label="null" />
         </NuxtLink>

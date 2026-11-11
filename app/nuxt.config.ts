@@ -26,6 +26,9 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       ranchVersion: rootRanchVersion(),
+      // Which error-tracking project this console reports to (CLEAN-218).
+      // The destination itself is `sentryDsn`, in the `setup/sentry` slice.
+      sentryProject: 'app',
       // Prod (k8s) sets NUXT_PUBLIC_API_URL, which Nuxt's runtimeConfig env
       // override picks up automatically. Local `ranch dev` only sets plain
       // API_URL (see app/.env) — without this fallback, apiUrl stays ''

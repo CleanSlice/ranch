@@ -3,6 +3,7 @@ import type {
   AgentService,
   IAgentCreateInput,
   IAgentData,
+  IAgentLinkData,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from '#agent/domain';
@@ -27,6 +28,9 @@ export const useAgentStore = defineStore('agent', () => {
   // different audience and a different query, not a view of `agents`.
   const publicAgents = ref<IAgentData[]>([]);
   const capacity = ref<IClusterCapacityData | null>(null);
+  // Agent-to-agent connections for the orbit map. Not part of an agent record:
+  // a link belongs to a pair, so it lives beside the agents, once.
+  const links = ref<IAgentLinkData[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
 
@@ -76,6 +80,18 @@ export const useAgentStore = defineStore('agent', () => {
       capacity.value = null;
     }
     return capacity.value;
+  }
+
+  // Same silent degradation as capacity: a regular user is refused (403) and
+  // simply sees a map without connections. A failed refresh keeps the links
+  // already drawn rather than blinking them off.
+  async function fetchLinks() {
+    try {
+      links.value = await getService().getLinks();
+    } catch {
+      // Keep what we have.
+    }
+    return links.value;
   }
 
   async function fetchAll() {
@@ -138,6 +154,20 @@ export const useAgentStore = defineStore('agent', () => {
     return updated;
   }
 
+  // Pin / unpin (CLEAN-216). The pin is not a status, so it has no endpoint
+  // of its own: the record is patched at once, so every list reorders on the
+  // click, the general update carries the flag, and a refusal rolls it back
+  // and rethrows for the caller to show.
+  async function setPinned(id: string, pinned: boolean) {
+    const rollback = patch(id, { pinned });
+    try {
+      return await update(id, { pinned });
+    } catch (err) {
+      rollback();
+      throw err;
+    }
+  }
+
   async function remove(id: string) {
     await getService().remove(id);
     agents.value = agents.value.filter((a) => a.id !== id);
@@ -159,6 +189,34 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  // Same optimistic shape as restart: the rail, the orbit and the open chat
+  // all read the one record, so they flip together and roll back together.
+  async function stop(id: string) {
+    const rollback = patch(id, { status: 'stopped' });
+    try {
+      const updated = await getService().stop(id);
+      if (updated) upsert(updated);
+      void fetchCapacity();
+      return updated;
+    } catch (err) {
+      rollback();
+      throw err;
+    }
+  }
+
+  async function start(id: string) {
+    const rollback = patch(id, { status: 'deploying' });
+    try {
+      const updated = await getService().start(id);
+      if (updated) upsert(updated);
+      void fetchCapacity();
+      return updated;
+    } catch (err) {
+      rollback();
+      throw err;
+    }
+  }
+
   return {
     agents,
     publicAgents,
@@ -166,15 +224,20 @@ export const useAgentStore = defineStore('agent', () => {
     upsert,
     patch,
     capacity,
+    links,
     loading,
     error,
     fetchAll,
     fetchPublic,
     fetchById,
     fetchCapacity,
+    fetchLinks,
     create,
     update,
+    setPinned,
     remove,
     restart,
+    stop,
+    start,
   };
 });

@@ -4,6 +4,8 @@ import {
   IconDotsVertical,
   IconLoader2,
   IconPencil,
+  IconPin,
+  IconPinnedOff,
   IconPlayerPlay,
   IconPlayerStop,
   IconRefresh,
@@ -21,6 +23,7 @@ import {
 } from '#theme/components/ui/dropdown-menu';
 import { useToolCatalogStore } from '#toolCatalog/stores/toolCatalog';
 import { agentInitials } from '#agent/composables/useAgentRailEntries';
+import { useAgentPin } from '#agent/composables/useAgentPin';
 import { useAgentSectionCounts } from '#agent/composables/useAgentSectionCounts';
 import { useAgentTab } from '#agent/composables/useAgentTab';
 import { useRelativeTime } from '#common/composables/useRelativeTime';
@@ -74,6 +77,15 @@ const {
   chatOverlay,
 } = useAgentLifecycle(props.id, agent, refresh);
 
+// Pin / unpin (CLEAN-216): its own composable so the optimistic patch and
+// rollback stay out of this already long header.
+const {
+  pinned,
+  toggling: pinToggling,
+  error: pinError,
+  toggle: togglePin,
+} = useAgentPin(props.id, agent);
+
 const { tab, setTab } = useAgentTab();
 
 // Settings reopens on the section the operator left it on, not on the first
@@ -121,7 +133,9 @@ const runtimeOffline = computed(
     agentStatusStore.bridleConnected[props.id] === false,
 );
 
-const lifecycleError = computed(() => restartError.value || toggleError.value);
+const lifecycleError = computed(
+  () => restartError.value || toggleError.value || pinError.value,
+);
 
 // "restarted 2m ago" (CLEAN-59), now in the status dot's tooltip (specs/017):
 // the colour alone can't tell the operator a restart actually happened — launchContext is historical ("why the LAST
@@ -239,6 +253,14 @@ async function onRemove() {
           class="size-4 shrink-0 text-primary"
           title="This agent has the ranch_* admin tools and a service token"
         />
+        <IconPin
+          v-if="agent.pinned"
+          class="size-4 shrink-0 text-primary"
+          role="img"
+          aria-label="Pinned"
+          title="Pinned: kept at the top of the list in both consoles"
+          data-pinned
+        />
         <span
           v-if="runtimeOffline"
           class="shrink-0 text-xs text-orange-600 dark:text-orange-400"
@@ -289,6 +311,27 @@ async function onRemove() {
                   ? 'Stop'
                   : 'Start'
             }}
+          </Button>
+          <!-- Pin / unpin (CLEAN-216): one click, reversible, so it earns a
+               place on the row rather than in the menu. -->
+          <Button
+            variant="outline"
+            size="sm"
+            class="size-8 p-0"
+            :aria-pressed="pinned"
+            :disabled="pinToggling"
+            :title="
+              pinned
+                ? 'Unpin: back to its ordinary place in the list'
+                : 'Pin: keep this agent at the top of the list in both consoles'
+            "
+            data-pin-toggle
+            @click="togglePin"
+          >
+            <span class="sr-only">{{ pinned ? 'Unpin' : 'Pin' }}</span>
+            <IconLoader2 v-if="pinToggling" class="size-4 animate-spin" />
+            <IconPinnedOff v-else-if="pinned" class="size-4" />
+            <IconPin v-else class="size-4" />
           </Button>
           <!-- Everything but Stop/Start lives in the menu (specs/017, R6):
                Restart, Tools, Edit, Share as a submenu of rows, and Delete

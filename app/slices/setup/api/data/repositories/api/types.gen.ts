@@ -201,6 +201,10 @@ export type AgentDto = {
    */
   isPublic: boolean;
   /**
+   * When true, the agent is kept at the top of every agent list in both consoles. Installation-wide, not per user.
+   */
+  pinned: boolean;
+  /**
    * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
    */
   allowedOrigins: Array<string>;
@@ -421,6 +425,10 @@ export type UpdateAgentDto = {
    * Enable debug mode — emits the prompt-debug event stream and verbose pod logs (LOG_LEVEL=debug). The verbose-log half applies on the next agent restart; the prompt-debug stream flips live.
    */
   debugEnabled?: boolean;
+  /**
+   * Pin or unpin the agent. Pinned agents are kept at the top of every agent list in both consoles. Installation-wide; changes nothing about the pod, the status or access.
+   */
+  pinned?: boolean;
 };
 
 export type FileNodeDto = {
@@ -1934,6 +1942,17 @@ export type AgentDelegationDto = {
   startedAt: string;
   finishedAt: string | null;
   durationMs: number | null;
+};
+
+export type AgentLinkDto = {
+  /**
+   * The agent that holds the card: the one that can ask.
+   */
+  agentId: string;
+  /**
+   * The agent whose card is held: the one that can be asked.
+   */
+  peerAgentId: string;
 };
 
 export type PostAgentEventDto = {
@@ -5729,6 +5748,27 @@ export type ListAgentDelegationsResponses = {
 
 export type ListAgentDelegationsResponse =
   ListAgentDelegationsResponses[keyof ListAgentDelegationsResponses];
+
+export type ListAgentLinksData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agent-links";
+};
+
+export type ListAgentLinksErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+};
+
+export type ListAgentLinksResponses = {
+  200: Array<AgentLinkDto>;
+};
+
+export type ListAgentLinksResponse =
+  ListAgentLinksResponses[keyof ListAgentLinksResponses];
 
 export type ListAgentEventsData = {
   body?: never;

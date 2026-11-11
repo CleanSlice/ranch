@@ -115,7 +115,7 @@ onBeforeUnmount(() => close(false));
     <button
       ref="trigger"
       type="button"
-      class="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-60"
+      class="inline-flex items-center gap-1.5 rounded-full border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-60"
       aria-haspopup="dialog"
       :aria-expanded="open"
       :aria-describedby="hintId"
@@ -137,7 +137,7 @@ onBeforeUnmount(() => close(false));
 
     <div
       v-if="open"
-      class="absolute right-4 top-full z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-md border bg-card p-3 shadow-md"
+      class="absolute right-4 top-full z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover p-3 shadow-lg"
       role="dialog"
       aria-modal="true"
       :aria-label="$t('chat.new_chat')"

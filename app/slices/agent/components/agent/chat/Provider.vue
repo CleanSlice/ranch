@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import type { IBridleConversation } from '#bridle/domain';
 
-const props = defineProps<{ id: string }>();
+const props = defineProps<{
+  id: string;
+  /**
+   * Inside the workspace the sheet above carries identity and actions, so
+   * the header strip and the restart banner stay out; the restart overlay
+   * still reacts to the store's status, whichever surface flipped it.
+   */
+  compact?: boolean;
+}>();
 
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
@@ -186,14 +194,15 @@ const initials = computed(() => {
     <!-- Compact header strip: agent identity, status, actions. The "back to
          agents" link is gone with the card grid it pointed at — the rail on
          the left is where you switch agents now. -->
-    <header class="shrink-0 border-b bg-card">
+    <header v-if="!compact" class="shrink-0 border-b bg-card/60 backdrop-blur">
       <!-- `relative` anchors the share popover to the header strip. -->
       <div
-        class="relative mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3"
+        class="relative mx-auto flex w-full max-w-3xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3"
       >
+        <div class="flex min-w-0 flex-1 items-center gap-3">
         <div
           v-if="agent"
-          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-linear-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary"
+          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-linear-to-br from-[#4a3356] to-[#251b2b] text-sm font-semibold text-foreground"
         >
           {{ initials }}
         </div>
@@ -207,7 +216,7 @@ const initials = computed(() => {
             </h1>
             <span
               v-if="agent"
-              class="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+              class="inline-flex items-center gap-1.5 rounded-full border bg-card px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
             >
               <span class="relative flex h-1.5 w-1.5">
                 <span
@@ -225,13 +234,17 @@ const initials = computed(() => {
           </div>
           <p
             v-if="agent"
-            class="mt-0.5 truncate text-xs text-muted-foreground"
+            class="mt-0.5 truncate font-mono text-[11px] text-muted-foreground"
             :title="agent.templateId"
           >
             {{ agent.templateId }}
           </p>
         </div>
+        </div>
 
+        <!-- Actions: one row that scrolls sideways on a phone instead of
+             wrapping the title out of the way. -->
+        <div class="flex shrink-0 items-center gap-2 max-sm:w-full max-sm:overflow-x-auto max-sm:pb-0.5 [&>*]:shrink-0">
         <!-- Anyone talking to the agent may start their conversation over
              (CLEAN-136). The descriptor is the chat's own default below. -->
         <BridleChatNewChat v-if="conversation" :conversation="conversation" />
@@ -243,7 +256,7 @@ const initials = computed(() => {
         <button
           v-if="agent && canManage"
           type="button"
-          class="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60 transition"
+          class="inline-flex items-center gap-1.5 rounded-full border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60 transition"
           :disabled="isTransitioning"
           @click="onRestart"
         >
@@ -254,11 +267,12 @@ const initials = computed(() => {
           />
           {{ $t(isTransitioning ? 'chat.restarting' : 'chat.restart') }}
         </button>
+        </div>
       </div>
     </header>
 
     <div
-      v-if="restartFailed"
+      v-if="restartFailed && !compact"
       class="shrink-0 border-b bg-rose-500/10"
     >
       <p
@@ -269,7 +283,7 @@ const initials = computed(() => {
     </div>
 
     <!-- Chat — expands to fill remaining height -->
-    <div class="relative flex-1 min-h-0 overflow-hidden">
+    <div class="relative flex-1 min-h-0 overflow-hidden bg-[radial-gradient(60%_40%_at_50%_0%,rgba(245,161,107,0.07),transparent_70%)]">
       <div v-if="pending && !agent" class="flex h-full items-center justify-center">
         <Icon name="loader-2" :size="20" class="animate-spin text-muted-foreground" />
       </div>

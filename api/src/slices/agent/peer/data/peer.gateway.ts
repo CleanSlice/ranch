@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import {
+  IAgentLink,
   IAgentPeerData,
   ICreatePeerInput,
   IPeerGateway,
@@ -26,6 +27,26 @@ export class PeerGateway extends IPeerGateway {
       orderBy: { createdAt: 'asc' },
     });
     return records.map((record) => this.mapper.toEntity(record));
+  }
+
+  async listInternalLinks(): Promise<IAgentLink[]> {
+    // Only the two ids are selected: the pair credential never leaves the
+    // table for this read.
+    const records = await this.prisma.agentPeer.findMany({
+      where: { origin: PeerOrigins.Internal, peerAgentId: { not: null } },
+      select: { agentId: true, peerAgentId: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const links: IAgentLink[] = [];
+    for (const record of records) {
+      if (record.peerAgentId) {
+        links.push({
+          agentId: record.agentId,
+          peerAgentId: record.peerAgentId,
+        });
+      }
+    }
+    return links;
   }
 
   async findById(id: string): Promise<IAgentPeerData | null> {

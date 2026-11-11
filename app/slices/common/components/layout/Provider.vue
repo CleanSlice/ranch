@@ -3,29 +3,37 @@
     <header
       class="sticky top-0 z-40 shrink-0 backdrop-blur bg-background/80 border-b"
     >
-      <div class="container mx-auto flex items-center h-14 px-4 gap-6">
-        <NuxtLink to="/" class="flex items-center gap-2 font-bold text-lg">
-          <span
-            class="w-7 h-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center"
-          >
-            <Icon name="tractor" :size="18" />
-          </span>
-          {{ $t('app_name') }}
+      <!-- Inside an agent the page runs edge to edge, so the header does
+           too; a centred header over a full-width console reads as two
+           different pages. -->
+      <div
+        class="flex items-center h-14 px-4 gap-5"
+        :class="isFlush ? 'w-full' : 'container mx-auto'"
+      >
+        <NuxtLink to="/" class="flex items-center" :aria-label="$t('app_name')">
+          <LandingBrandLogo variant="full" :size="28" :label="null" />
         </NuxtLink>
 
-        <nav class="hidden md:flex items-center gap-5 text-sm">
+        <nav
+          class="hidden md:flex items-center gap-0.5 rounded-full border bg-card/60 p-0.5 text-sm"
+        >
+          <!-- Active state by path prefix, not router-link-active: /agents/:id
+               is its own page, not a child route of /agents, so the router
+               never marked the Agents link active inside an agent. -->
           <NuxtLink
             to="/agents"
-            class="text-muted-foreground hover:text-foreground transition-colors"
-            active-class="text-foreground font-medium"
+            class="rounded-full px-3.5 py-1.5 transition-colors hover:text-foreground"
+            :class="navActive('/agents') ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'"
+            :aria-current="navActive('/agents') ? 'page' : undefined"
           >
             {{ $t('nav.agents') }}
           </NuxtLink>
           <NuxtLink
             v-if="authStore.isAuthenticated"
             to="/chats"
-            class="text-muted-foreground hover:text-foreground transition-colors"
-            active-class="text-foreground font-medium"
+            class="rounded-full px-3.5 py-1.5 transition-colors hover:text-foreground"
+            :class="navActive('/chats') ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'"
+            :aria-current="navActive('/chats') ? 'page' : undefined"
           >
             {{ $t('nav.history') }}
           </NuxtLink>
@@ -36,31 +44,60 @@
         <!-- Browser language decides the first render (detectBrowserLanguage);
              this lets the user override it. setLocale writes the same cookie,
              so the choice survives a reload. -->
-        <select
-          :value="locale"
-          :aria-label="$t('locale.label')"
-          class="rounded-md border bg-transparent px-1.5 py-1 text-xs uppercase text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          @change="onLocaleChange"
-        >
-          <option
-            v-for="option in locales"
-            :key="option.code"
-            :value="option.code"
+        <!-- appearance-none drops the browser arrow; the chevron is ours, so it
+             sits at the same size and weight as the rest of the header. -->
+        <span class="relative inline-flex items-center">
+          <select
+            :value="locale"
+            :aria-label="$t('locale.label')"
+            class="appearance-none rounded-full border bg-card/60 py-1 pl-3 pr-7 font-mono text-xs uppercase text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            @change="onLocaleChange"
           >
-            {{ option.code.toUpperCase() }}
-          </option>
-        </select>
+            <option
+              v-for="option in locales"
+              :key="option.code"
+              :value="option.code"
+            >
+              {{ option.code.toUpperCase() }}
+            </option>
+          </select>
+          <Icon
+            name="chevron-down"
+            :size="12"
+            class="pointer-events-none absolute right-2.5 text-muted-foreground"
+            aria-hidden="true"
+          />
+        </span>
 
         <div v-if="authStore.isAuthenticated" class="flex items-center gap-3 text-sm">
-          <span class="hidden sm:inline text-muted-foreground" :title="authStore.user?.email ?? ''">
-            {{ authStore.user?.name ?? authStore.user?.email }}
-          </span>
-          <span
-            v-if="authStore.role"
-            class="hidden sm:inline rounded bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+          <!-- Name and role are one link to the profile (CLEAN-217). On the
+               profile itself it carries the copper border and aria-current.
+               On a phone the name gives way to the personal sign, so the
+               page stays reachable where the name was hidden before. -->
+          <NuxtLink
+            to="/profile"
+            class="flex min-h-11 items-center gap-2.5 rounded-full border py-1 pl-3.5 pr-1.5 max-sm:min-w-11 max-sm:justify-center max-sm:px-1.5 transition-colors hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            :class="
+              navActive('/profile')
+                ? 'border-primary/45 bg-primary/10 text-foreground'
+                : 'border-transparent text-muted-foreground'
+            "
+            :aria-current="navActive('/profile') ? 'page' : undefined"
+            :aria-label="$t('profile.title')"
+            :title="authStore.user?.email ?? ''"
+            data-profile-pill
           >
-            {{ roleKey ? $t(roleKey) : authStore.role }}
-          </span>
+            <ProfileSign class="sm:hidden" :initials="userInitials" :size="28" />
+            <span class="hidden sm:inline">
+              {{ authStore.user?.name || authStore.user?.email }}
+            </span>
+            <span
+              v-if="authStore.role"
+              class="hidden sm:inline rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-primary"
+            >
+              {{ roleKey ? $t(roleKey) : authStore.role }}
+            </span>
+          </NuxtLink>
           <button
             type="button"
             class="text-muted-foreground hover:text-foreground transition-colors"
@@ -76,7 +113,7 @@
           <NuxtLink
             v-if="registrationEnabled"
             to="/register"
-            class="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:opacity-90 transition"
+            class="rounded-full bg-primary text-primary-foreground px-3.5 py-1.5 text-xs font-semibold hover:opacity-90 transition"
           >
             {{ $t('auth.sign_up') }}
           </NuxtLink>
@@ -121,6 +158,12 @@
 
 <script setup lang="ts">
 import { UserRoleTypes } from '#auth/domain/auth.types';
+import { agentInitials } from '#agent/utils/agentStatus';
+
+// The console is the dark RANCH theme (`.dark` in default.css) set in the
+// brand typefaces; the landing and the gate paint themselves from the same
+// values through their own tokens.
+useHead({ htmlAttrs: { class: 'dark' } });
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -135,8 +178,24 @@ const roleKey = computed(() => {
   return role && KNOWN_ROLES.has(role) ? `role.${role.toLowerCase()}` : null;
 });
 
+// Initials for the header pill's sign, by the rule agents use.
+const userInitials = computed(() =>
+  agentInitials(
+    authStore.user?.name?.trim() || undefined,
+    authStore.user?.email ?? '?',
+  ),
+);
+
 async function onLocaleChange(event: Event) {
   await setLocale((event.target as HTMLSelectElement).value as typeof locale.value);
+}
+
+// A header link is active for its page and everything under it
+// (/agents, /agents/create, /agents/:id), which is what a person reads the
+// tab as. The router's own active class would not fire on /agents/:id.
+function navActive(prefix: string): boolean {
+  const p = route.path;
+  return p === prefix || p.startsWith(`${prefix}/`);
 }
 
 // Pages that own the full content area (no container padding, no footer).

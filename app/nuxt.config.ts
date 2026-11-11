@@ -39,11 +39,31 @@ export default defineNuxtConfig({
       // more than one hostname (CLEAN-110). Same variable the admin console
       // reads, so one value configures both (CLEAN-111).
       appUrl: process.env.APP_URL || '',
+      // Which approved RANCH logo the landing shows: `orbit` (the copper
+      // R-bubble lockup, the default) or `agent-hub` (the SVG arch mark). Set
+      // NUXT_PUBLIC_BRAND_VARIANT; `?brand=agent-hub` previews the other one.
+      brandVariant: process.env.NUXT_PUBLIC_BRAND_VARIANT || 'orbit',
     },
   },
   app: {
     head: {
-      link: [{ rel: 'icon', type: 'image/png', href: '/favicon.png' }],
+      // The console, the landing and the gate are all dark. This is an SPA
+      // (`ssr: false`): the shell the server sends is painted before any of
+      // our JavaScript runs, and without the class it was painted in the
+      // light theme, white, and then flipped to dark when the layout mounted.
+      // The class puts the dark tokens in force from the first byte; the
+      // inline background covers the moment before the stylesheets arrive.
+      htmlAttrs: {
+        class: 'dark',
+        style: 'background-color:#0c0910;color-scheme:dark',
+      },
+      meta: [
+        { name: 'color-scheme', content: 'dark' },
+        { name: 'theme-color', content: '#0c0910' },
+      ],
+      // The orbit mark as a .ico (owner's file, CLEAN-215); one 256px entry,
+      // which every browser scales down itself.
+      link: [{ rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' }],
     },
   },
   routeRules: {

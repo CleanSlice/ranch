@@ -24,6 +24,7 @@ import { PeerAdminTool } from './peerAdmin.tool';
 import { PeerSelfTool } from './peerSelf.tool';
 import { A2aController } from './a2a.controller';
 import { PeerController } from './peer.controller';
+import { PeerLinkController } from './peerLink.controller';
 
 /**
  * Agents talking to agents (CLEAN-74): agent cards, peer connections, the A2A
@@ -43,7 +44,7 @@ import { PeerController } from './peer.controller';
     forwardRef(() => BridleModule),
     SettingModule,
   ],
-  controllers: [A2aController, PeerController],
+  controllers: [A2aController, PeerController, PeerLinkController],
   providers: [
     PeerMapper,
     DelegationMapper,

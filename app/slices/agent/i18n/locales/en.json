@@ -50,5 +50,53 @@
     "switch": "Switch agent",
     "close": "Close agent list",
     "admin_agent": "Ranch admin agent"
+  },
+  "orbit": {
+    "map_label": "Agent map",
+    "view_label": "View",
+    "view_orbit": "Orbit",
+    "view_list": "List",
+    "legend": "closer to the hub: more CPU and memory · outer ring: no pod",
+    "legend_links": "closer to the hub: more CPU and memory · outer ring: no pod · lines: agents that can ask each other"
+  },
+  "sheet": {
+    "label": "Agent sheet",
+    "fold": "Fold the sheet",
+    "unfold": "Unfold the sheet",
+    "class_admin": "ADMIN · AGENT",
+    "class_agent": "AGENT",
+    "template": "Template",
+    "resources": "Resources",
+    "access": "Access",
+    "access_public": "Public",
+    "access_private": "Private",
+    "origins": "{count} origin | {count} origins",
+    "age": "Created",
+    "updated": "updated {when}",
+    "start": "Start",
+    "starting": "Starting…",
+    "stop": "Stop",
+    "stopping": "Stopping…",
+    "start_failed": "Start failed",
+    "stop_failed": "Stop failed",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "pinned": "Pinned",
+    "pin_failed": "Pin failed"
+  },
+  "create_stub": {
+    "badge": "In progress",
+    "title": "Creating an agent from here is on its way",
+    "lede": "The form that picks a template, sets resources and submits the deployment is being built. Until it lands, agents are created from the admin console.",
+    "steps_label": "What the form will walk you through",
+    "template_title": "Template",
+    "template_body": "The image and the defaults a new agent starts from: tools, skills, the model.",
+    "resources_title": "Resources and access",
+    "resources_body": "CPU and memory for the pod, private or public, and the origins a public agent may be embedded on.",
+    "deploy_title": "Deploy",
+    "deploy_body": "Ranch submits the Argo Workflow; the agent appears on the orbit and lights up as it comes online.",
+    "next": "Next step",
+    "back": "Back to agents",
+    "note": "Nothing on this page talks to the API yet."
   }
 }

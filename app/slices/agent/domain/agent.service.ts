@@ -2,6 +2,7 @@ import type { IAgentGateway } from './agent.gateway';
 import type {
   IAgentCreateInput,
   IAgentData,
+  IAgentLinkData,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from './agent.types';
@@ -41,7 +42,19 @@ export class AgentService {
     return this.gateway.restart(id);
   }
 
+  stop(id: string): Promise<IAgentData | null> {
+    return this.gateway.stop(id);
+  }
+
+  start(id: string): Promise<IAgentData | null> {
+    return this.gateway.start(id);
+  }
+
   getCapacity(): Promise<IClusterCapacityData | null> {
     return this.gateway.getCapacity();
+  }
+
+  getLinks(): Promise<IAgentLinkData[]> {
+    return this.gateway.getLinks();
   }
 }

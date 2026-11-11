@@ -29,6 +29,23 @@ const filtered = computed(() => {
   );
 });
 
+// Pin from the row. The store patches the record at once and rolls it back
+// if the server refuses; there is no place in a list row for an error line,
+// so a refusal simply puts the row back where it was.
+const agentStore = useAgentStore();
+const pinning = ref<string | null>(null);
+async function togglePin(agent: IAgentData) {
+  if (pinning.value) return;
+  pinning.value = agent.id;
+  try {
+    await agentStore.setPinned(agent.id, !agent.pinned);
+  } catch {
+    // Rolled back by the store.
+  } finally {
+    pinning.value = null;
+  }
+}
+
 const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
 </script>
 
@@ -42,10 +59,11 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
       />
       <input
         v-model="search"
+        data-agent-search
         type="search"
         :placeholder="$t('rail.search')"
         :aria-label="$t('rail.search')"
-        class="w-full rounded-md border bg-transparent py-1.5 pl-8 pr-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        class="w-full rounded-full border bg-card/60 py-2 pl-8 pr-3 text-sm transition-colors placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/25"
       />
     </div>
 
@@ -62,12 +80,33 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
 
     <div v-else-if="filtered.length" class="min-h-0 flex-1 overflow-y-auto">
       <ul class="flex flex-col gap-0.5">
-        <li v-for="agent in filtered" :key="agent.id">
+        <li
+          v-for="agent in filtered"
+          :key="agent.id"
+          class="agent-rail__row group relative"
+          :data-agent-id="agent.id"
+        >
           <AgentWorkspaceRailItem
             :agent="agent"
             :active="agent.id === activeId"
             @click="$emit('select', agent.id)"
           />
+          <!-- Pin without opening the agent (owner review): shown on hover
+               and on keyboard focus, for those who may manage agents. A
+               sibling of the row button, not a child. -->
+          <button
+            v-if="canCreate"
+            type="button"
+            class="agent-rail__pin absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-transparent text-muted-foreground opacity-0 transition hover:border-primary/40 hover:bg-background/70 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 group-hover:opacity-100 disabled:opacity-40"
+            :aria-pressed="agent.pinned"
+            :aria-label="`${$t(agent.pinned ? 'sheet.unpin' : 'sheet.pin')}: ${agent.name}`"
+            :title="$t(agent.pinned ? 'sheet.unpin' : 'sheet.pin')"
+            :disabled="pinning === agent.id"
+            data-rail-pin
+            @click.stop="togglePin(agent)"
+          >
+            <Icon :name="agent.pinned ? 'pin-off' : 'pin'" :size="14" />
+          </button>
         </li>
       </ul>
     </div>
@@ -94,8 +133,8 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
         class="px-1 pb-2 text-xs"
         :class="
           capacity.freeAgentSlots === 0
-            ? 'font-medium text-amber-600'
-            : 'text-muted-foreground'
+            ? 'font-medium text-amber-600 dark:text-amber-400'
+            : 'font-mono text-[11px] text-muted-foreground'
         "
       >
         {{
@@ -109,7 +148,7 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
 
       <NuxtLink
         to="/agents/create"
-        class="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-95"
+        class="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-95"
       >
         <Icon name="plus" :size="13" />
         {{ $t('list.create') }}

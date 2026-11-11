@@ -61,7 +61,7 @@ const clusterFull = computed(() => props.capacity?.freeAgentSlots === 0);
 
     <div v-else-if="entries.length" class="min-h-0 flex-1 overflow-y-auto">
       <ul class="flex flex-col gap-0.5">
-        <li v-for="entry in entries" :key="entry.id">
+        <li v-for="entry in entries" :key="entry.id" :data-agent-id="entry.id">
           <AgentWorkspaceRailItem
             :entry="entry"
             @click="$emit('select', entry.id)"

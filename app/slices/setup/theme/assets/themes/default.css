@@ -1,5 +1,14 @@
-:root {
-  --radius: 0.625rem;
+/* `.light` puts the light tokens back for one island inside the dark page:
+   the landing's agent card is a light panel, and the chat in it reads these
+   names (CLEAN-215). */
+:root,
+.light {
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: oklch(0.145 0 0 / 22%);
+  --scrollbar-thumb-hover: oklch(0.145 0 0 / 38%);
+  --radius: 0.75rem;
+  --font-sans: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -33,36 +42,42 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/* RANCH console: deep plum surfaces, copper as the one accent, lavender in
+   the charts. The landing and the sign-in gate carry the same values as
+   `--land-*` tokens; the console reads them through these shadcn names. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --scrollbar-track: oklch(0.17 0.025 310);
+  --scrollbar-thumb: oklch(0.79 0.12 55 / 38%);
+  --scrollbar-thumb-hover: oklch(0.79 0.12 55 / 65%);
+  --background: oklch(0.135 0.018 305);
+  --foreground: oklch(0.97 0.006 320);
+  --card: oklch(0.17 0.025 310);
+  --card-foreground: oklch(0.97 0.006 320);
+  --popover: oklch(0.205 0.028 312);
+  --popover-foreground: oklch(0.97 0.006 320);
+  --primary: oklch(0.79 0.12 55);
+  --primary-foreground: oklch(0.15 0.02 310);
+  --secondary: oklch(0.255 0.032 315);
+  --secondary-foreground: oklch(0.97 0.006 320);
+  --muted: oklch(0.255 0.032 315);
+  --muted-foreground: oklch(0.72 0.018 310);
+  --accent: oklch(0.255 0.032 315);
+  --accent-foreground: oklch(0.97 0.006 320);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.79 0.12 55 / 60%);
+  --chart-1: oklch(0.79 0.12 55);
+  --chart-2: oklch(0.76 0.1 310);
+  --chart-3: oklch(0.69 0.13 160);
+  --chart-4: oklch(0.72 0.14 30);
+  --chart-5: oklch(0.85 0.08 80);
+  --sidebar: oklch(0.17 0.025 310);
+  --sidebar-foreground: oklch(0.97 0.006 320);
+  --sidebar-primary: oklch(0.79 0.12 55);
+  --sidebar-primary-foreground: oklch(0.15 0.02 310);
+  --sidebar-accent: oklch(0.255 0.032 315);
+  --sidebar-accent-foreground: oklch(0.97 0.006 320);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: oklch(0.79 0.12 55 / 60%);
 }

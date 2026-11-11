@@ -85,6 +85,7 @@ export class AgentGateway extends IAgentGateway {
         ...(data.debugEnabled !== undefined && {
           debugEnabled: data.debugEnabled,
         }),
+        ...(data.pinned !== undefined && { pinned: data.pinned }),
       },
     });
     return this.mapper.toEntity(record);

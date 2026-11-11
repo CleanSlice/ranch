@@ -83,7 +83,7 @@ const plainAgent = () => request([UserRoleTypes.Agent]);
 
 interface Harness {
   tool: AgentAdminTool;
-  agents: { findById: jest.Mock; delete: jest.Mock };
+  agents: { findById: jest.Mock; delete: jest.Mock; update: jest.Mock };
   deploy: { stopAgent: jest.Mock; deploy: jest.Mock };
   status: { getCapacity: jest.Mock };
   pods: { list: jest.Mock; getMetrics: jest.Mock; delete: jest.Mock };
@@ -96,6 +96,11 @@ function harness(): Harness {
   const agents = {
     findById: jest.fn().mockResolvedValue(agent()),
     delete: jest.fn().mockResolvedValue(undefined),
+    update: jest
+      .fn()
+      .mockImplementation((_id: string, data: { pinned?: boolean }) =>
+        Promise.resolve(agent({ pinned: data.pinned === true })),
+      ),
   };
   const deploy = {
     stopAgent: jest.fn().mockResolvedValue(undefined),
@@ -243,6 +248,54 @@ describe('AgentAdminTool — start_agent', () => {
     expect(text).toContain('not found');
     expect(text).toContain('list_agents');
     expect(deploy.deploy).not.toHaveBeenCalled();
+  });
+});
+
+describe('AgentAdminTool — pin_agent', () => {
+  // Reversible and harmless, so no confirm step; what matters is that the
+  // flag goes through the same gateway update the console uses, that the
+  // result carries only id / name / pinned, and that nobody but an operator
+  // can reach it (CLEAN-216).
+  it('pins through the gateway update and says so', async () => {
+    const { tool, agents } = harness();
+    const text = textOf(
+      await tool.pinAgent({ id: 'agent-a', pinned: true }, null, operator()),
+    );
+    expect(agents.update).toHaveBeenCalledWith('agent-a', { pinned: true });
+    expect(text).toContain('"pinned": true');
+    expect(text).toContain('is pinned');
+    // Only the three fields a model needs; no config, no credential id.
+    expect(text).not.toContain('llmCredentialId');
+    expect(text).not.toContain('"config"');
+  });
+
+  it('unpins with the same call', async () => {
+    const { tool, agents } = harness();
+    const text = textOf(
+      await tool.pinAgent({ id: 'agent-a', pinned: false }, null, operator()),
+    );
+    expect(agents.update).toHaveBeenCalledWith('agent-a', { pinned: false });
+    expect(text).toContain('"pinned": false');
+    expect(text).toContain('is unpinned');
+  });
+
+  it('names the next move when the agent does not exist', async () => {
+    const { tool, agents } = harness();
+    agents.findById.mockResolvedValue(null);
+    const text = textOf(
+      await tool.pinAgent({ id: 'nope', pinned: true }, null, operator()),
+    );
+    expect(text).toContain('not found');
+    expect(text).toContain('list_agents');
+    expect(agents.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses a caller that is not a Ranch operator and writes nothing', async () => {
+    const { tool, agents } = harness();
+    await expect(
+      tool.pinAgent({ id: 'agent-a', pinned: true }, null, plainAgent()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(agents.update).not.toHaveBeenCalled();
   });
 });
 

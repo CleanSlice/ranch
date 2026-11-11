@@ -29,6 +29,12 @@ export interface IPeersServedState {
   hash: string;
 }
 
+/** A directed internal connection: `agentId` can ask `peerAgentId`. */
+export interface IAgentLink {
+  agentId: string;
+  peerAgentId: string;
+}
+
 /**
  * Persistence for directed peer connections (CLEAN-74).
  *
@@ -39,6 +45,8 @@ export interface IPeersServedState {
 export abstract class IPeerGateway {
   /** Peers of this caller, oldest first. Never the connections pointing AT it. */
   abstract listByAgent(agentId: string): Promise<IAgentPeerData[]>;
+  /** Every internal connection of the installation as a directed pair. */
+  abstract listInternalLinks(): Promise<IAgentLink[]>;
   abstract findById(id: string): Promise<IAgentPeerData | null>;
   abstract findByPair(
     agentId: string,

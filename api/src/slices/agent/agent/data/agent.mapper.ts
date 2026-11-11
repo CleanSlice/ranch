@@ -25,6 +25,7 @@ export class AgentMapper {
       allowedOrigins: record.allowedOrigins,
       knowledgeIds: record.knowledgeIds,
       isAdmin: record.isAdmin,
+      pinned: record.pinned,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

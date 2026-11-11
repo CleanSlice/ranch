@@ -30,6 +30,7 @@ function makeAgent(overrides: Partial<IAgentData> = {}): IAgentData {
     allowedOrigins: [],
     knowledgeIds: [],
     isAdmin: false,
+    pinned: false,
     createdAt: new Date(BASE_NOW - 120 * 60_000),
     updatedAt: new Date(BASE_NOW - 60 * 60_000),
     ...overrides,

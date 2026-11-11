@@ -29,7 +29,7 @@ export class AgentDto {
     nullable: true,
     type: String,
     description:
-      "Human-readable reason accompanying status='failed' or 'unreachable' (e.g. \"startup did not produce a running agent within 5 minutes\", \"ImagePullBackOff\", \"pod is running but the runtime never connected to the bridle hub…\"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.",
+      'Human-readable reason accompanying status=\'failed\' or \'unreachable\' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during \'deploying\' when bridle integration settings are empty. Null otherwise.',
   })
   statusReason: string | null;
 
@@ -96,6 +96,12 @@ export class AgentDto {
       'When true, the agent is visible on the public landing page to unauthenticated visitors.',
   })
   isPublic: boolean;
+
+  @ApiProperty({
+    description:
+      'When true, the agent is kept at the top of every agent list in both consoles. Installation-wide, not per user.',
+  })
+  pinned: boolean;
 
   @ApiProperty({
     type: [String],

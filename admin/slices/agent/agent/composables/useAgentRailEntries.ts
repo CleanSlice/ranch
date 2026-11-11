@@ -1,5 +1,6 @@
 import type { Ref } from 'vue';
 import type { AgentStatusTypes, IAgentData } from '#agent/domain';
+import { railOrder } from '#agent/utils/railOrder';
 
 export interface IRailStatusTone {
   dot: string;
@@ -16,6 +17,8 @@ export interface IRailEntry {
   tone: IRailStatusTone;
   createdAt: string;
   isAdmin: boolean;
+  /** Pinned by an operator: marked, and listed right after Rancher (CLEAN-216). */
+  pinned: boolean;
   isActive: boolean;
 }
 
@@ -71,8 +74,9 @@ export function agentInitials(name: string, id: string): string {
 
 /**
  * The rail's view model: the agent store's records, filtered by the search
- * term. The Ranch admin agent (Rancher) is pinned first — it is the agent an
- * operator reaches for most — and the rest keep the list's own order.
+ * term, in rail order (`utils/railOrder`): the Ranch admin agent (Rancher)
+ * first — it is the agent an operator reaches for most — then the pinned
+ * agents (CLEAN-216), and the rest keep the list's own order.
  *
  * A row shows the record's own `status` / `statusReason` — exactly what the
  * open agent's header shows (docs/state.md). It used to derive a status of its
@@ -91,12 +95,11 @@ export function useAgentRailEntries(
 ) {
   return computed<IRailEntry[]>(() => {
     const term = search.value.trim().toLowerCase();
-    return (agents.value ?? [])
-      .filter((a) => !term || a.name.toLowerCase().includes(term))
-      // Stable sort: admin agents float to the top, everything else keeps
-      // its relative order.
-      .sort((a, b) => Number(b.isAdmin) - Number(a.isAdmin))
-      .map((a) => ({
+    return railOrder(
+      (agents.value ?? []).filter(
+        (a) => !term || a.name.toLowerCase().includes(term),
+      ),
+    ).map((a) => ({
         id: a.id,
         name: a.name,
         initials: agentInitials(a.name, a.id),
@@ -105,6 +108,7 @@ export function useAgentRailEntries(
         tone: TONE[a.status],
         createdAt: a.createdAt,
         isAdmin: a.isAdmin,
+        pinned: a.pinned,
         isActive: a.id === activeId.value,
       }));
   });

@@ -94,6 +94,30 @@ describe('AgentGateway.updateStatus', () => {
   });
 });
 
+describe('AgentGateway.update', () => {
+  // The pin (CLEAN-216) rides on the general update: present → written as
+  // given, absent → the column is not touched. Pinned by a test because the
+  // spread-per-field style makes a forgotten field silently a no-op.
+  it('writes pinned when it is in the payload', async () => {
+    const { gateway, agent } = harness(1);
+    agent.update.mockResolvedValue({ id: 'agent-1', pinned: true });
+    const out = await gateway.update('agent-1', { pinned: true });
+    expect(agent.update).toHaveBeenCalledWith({
+      where: { id: 'agent-1' },
+      data: { pinned: true },
+    });
+    expect(out).toEqual({ id: 'agent-1', pinned: true });
+  });
+
+  it('leaves pinned alone when the payload does not mention it', async () => {
+    const { gateway, agent } = harness(1);
+    await gateway.update('agent-1', { name: 'Renamed' });
+    const data = agent.update.mock.calls[0][0].data;
+    expect(data).toEqual({ name: 'Renamed' });
+    expect('pinned' in data).toBe(false);
+  });
+});
+
 describe('AgentGateway.delete', () => {
   it('announces the agent going away', async () => {
     const { gateway, agent, seen } = harness(1);

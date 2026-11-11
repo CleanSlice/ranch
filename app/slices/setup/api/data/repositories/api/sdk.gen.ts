@@ -266,6 +266,8 @@ import type {
   RemoveAgentPeerResponse,
   ListAgentDelegationsData,
   ListAgentDelegationsResponse,
+  ListAgentLinksData,
+  ListAgentLinksResponse,
   ListAgentEventsData,
   ListAgentEventsResponse,
   PostAgentEventData,
@@ -3482,6 +3484,22 @@ export class PeersService {
       ThrowOnError
     >({
       url: "/agents/{agentId}/delegations",
+      ...options,
+    });
+  }
+
+  /**
+   * Internal agent-to-agent connections of the whole installation as directed pairs of agent ids. No card, no credential.
+   */
+  public static listAgentLinks<ThrowOnError extends boolean = false>(
+    options?: Options<ListAgentLinksData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      ListAgentLinksResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-links",
       ...options,
     });
   }

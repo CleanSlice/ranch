@@ -80,6 +80,7 @@ export class AgentMapper {
       knowledgeIds: strList(o.knowledgeIds),
       isAdmin: o.isAdmin === true,
       debugEnabled: o.debugEnabled === true,
+      pinned: o.pinned === true,
       createdAt: typeof o.createdAt === 'string' ? o.createdAt : '',
       updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : '',
     };

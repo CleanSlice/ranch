@@ -1,0 +1,52 @@
+{
+  "profile": {
+    "title": "Profile",
+    "pass": "Pass",
+    "pass_label": "Pass of {name}",
+    "sign_label": "Personal sign of {name}",
+    "registry": "Registry no.",
+    "account": "Account",
+    "status_active": "Active",
+    "status_invited": "Invited",
+    "status_disabled": "Disabled",
+    "fleet": "Installation fleet",
+    "poll": "polled every 30 s",
+    "agents": "agents | agent | agents",
+    "running": "running",
+    "slots_free": "slots free | slot free | slots free",
+    "slots_used": "cluster slots: {used} of {total} in use",
+    "scale_label": "Cluster slots: {used} in use, {free} free, {total} in total",
+    "back": "back of the pass",
+    "name": "Name",
+    "email": "Email",
+    "id": "ID",
+    "role": "Role",
+    "copy_id": "Copy ID",
+    "copied": "Copied",
+    "version": "Console version",
+    "can": "What you can do",
+    "session": "This browser: signed in",
+    "to_agents": "Go to agents",
+    "cap": {
+      "create": "Create agents",
+      "control": "Start, stop and restart agents",
+      "slots": "See free cluster slots",
+      "share": "Share an agent by link and start conversations",
+      "users": "Assign roles and delete users"
+    },
+    "cap_roles": {
+      "operators": "owner, admin",
+      "all": "all roles",
+      "owner_admin_console": "owner only, in the admin console"
+    },
+    "cap_lock": {
+      "needs_admin": "needs the admin role",
+      "owner_only": "owner only"
+    },
+    "cap_state": {
+      "yes": "Available",
+      "elsewhere": "Available in the admin console",
+      "locked": "Not available"
+    }
+  }
+}

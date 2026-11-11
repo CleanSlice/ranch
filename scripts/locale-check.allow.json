@@ -25,5 +25,173 @@
     "rule": "L5",
     "match": "Shift+Enter",
     "reason": "A key cap: the label printed on the keys, the same in every language."
+  },
+  {
+    "file": "app/slices/agent/components/agent/workspace/Provider.vue",
+    "rule": "L5",
+    "match": "⌘K",
+    "reason": "A key cap: the label printed on the key, the same in every language."
+  },
+  {
+    "file": "app/slices/agent/components/agent/workspace/Sheet.vue",
+    "rule": "L5",
+    "match": "CPU ·",
+    "reason": "CPU is a unit abbreviation, the same in every language; the number beside it is formatted by the server."
+  },
+  {
+    "file": "app/slices/common/components/landing/hero/Stage.vue",
+    "rule": "L5",
+    "match": "CPU",
+    "reason": "CPU is a unit abbreviation, the same in every language; the number beside it is formatted by the server."
+  },
+  {
+    "file": "app/slices/common/components/landing/hero/Stage.vue",
+    "rule": "L5",
+    "match": "socket.io · jwt · streaming",
+    "reason": "A technology name in a decorative mono label (aria-hidden mock UI of the landing); product names are not translated."
+  },
+  {
+    "file": "app/slices/common/components/landing/hero/Stage.vue",
+    "rule": "L5",
+    "match": "k3s · argo workflows",
+    "reason": "A technology name in a decorative mono label (aria-hidden mock UI of the landing); product names are not translated."
+  },
+  {
+    "file": "app/slices/user/auth/layouts/auth.vue",
+    "rule": "L5",
+    "match": "jwt · socket.io",
+    "reason": "A technology name in a decorative mono label (aria-hidden mock UI of the landing); product names are not translated."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "socket.io · jwt",
+    "reason": "A technology name in a decorative mono label (aria-hidden mock UI of the landing); product names are not translated."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "agent-7f2c",
+    "reason": "A mock agent identifier in a decorative illustration (aria-hidden); identifiers are not copy."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "A",
+    "reason": "A single-letter mock avatar initial in a decorative illustration (aria-hidden)."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "B",
+    "reason": "A single-letter mock avatar initial in a decorative illustration (aria-hidden)."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "C",
+    "reason": "A single-letter mock avatar initial in a decorative illustration (aria-hidden)."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "ranch/agent-base",
+    "reason": "A container image reference in a decorative mock UI (aria-hidden); an identifier, not copy."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "ranch/agent-research",
+    "reason": "A container image reference in a decorative mock UI (aria-hidden); an identifier, not copy."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "custom/image",
+    "reason": "A container image reference in a decorative mock UI (aria-hidden); an identifier, not copy."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": ":tag",
+    "reason": "A container image reference in a decorative mock UI (aria-hidden); an identifier, not copy."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "500m · 1Gi",
+    "reason": "A Kubernetes resource value (CPU / memory) in a decorative mock UI (aria-hidden); a unit, the same in every language."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "1 · 2Gi",
+    "reason": "A Kubernetes resource value (CPU / memory) in a decorative mock UI (aria-hidden); a unit, the same in every language."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "[bridle] channel open",
+    "reason": "Mock terminal output in a decorative illustration (aria-hidden). Logs are shown as received and never translated (CLAUDE.md)."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "[agent] memory restored from s3",
+    "reason": "Mock terminal output in a decorative illustration (aria-hidden). Logs are shown as received and never translated (CLAUDE.md)."
+  },
+  {
+    "file": "app/slices/common/components/landing/capabilities/Provider.vue",
+    "rule": "L5",
+    "match": "[agent] ready · listening",
+    "reason": "Mock terminal output in a decorative illustration (aria-hidden). Logs are shown as received and never translated (CLAUDE.md)."
+  },
+  {
+    "file": "app/slices/common/components/landing/footer/Provider.vue",
+    "rule": "L5",
+    "match": "v",
+    "reason": "The v before the version number, a convention that is the same in every language."
+  },
+  {
+    "file": "app/slices/common/components/landing/steps/Provider.vue",
+    "rule": "L5",
+    "match": "ranch/agent-base:1.4",
+    "reason": "A container image reference in a decorative mock UI (aria-hidden); an identifier, not copy."
+  },
+  {
+    "file": "app/slices/common/components/landing/steps/Provider.vue",
+    "rule": "L5",
+    "match": "500m CPU",
+    "reason": "A Kubernetes resource value (CPU / memory) in a decorative mock UI (aria-hidden); a unit, the same in every language."
+  },
+  {
+    "file": "app/slices/common/components/landing/steps/Provider.vue",
+    "rule": "L5",
+    "match": "1Gi",
+    "reason": "A Kubernetes resource value (CPU / memory) in a decorative mock UI (aria-hidden); a unit, the same in every language."
+  },
+  {
+    "file": "app/slices/common/components/landing/steps/Provider.vue",
+    "rule": "L5",
+    "match": "2Gi",
+    "reason": "A Kubernetes resource value (CPU / memory) in a decorative mock UI (aria-hidden); a unit, the same in every language."
+  },
+  {
+    "file": "app/slices/common/components/landing/steps/Provider.vue",
+    "rule": "L5",
+    "match": "workflow/agent-7f2c ·",
+    "reason": "Mock terminal output in a decorative illustration (aria-hidden). Logs are shown as received and never translated (CLAUDE.md)."
+  },
+  {
+    "file": "app/slices/common/components/landing/steps/Provider.vue",
+    "rule": "L5",
+    "match": "Running",
+    "reason": "Mock terminal output in a decorative illustration (aria-hidden). Logs are shown as received and never translated (CLAUDE.md)."
+  },
+  {
+    "file": "app/slices/common/components/landing/steps/Provider.vue",
+    "rule": "L5",
+    "match": "pod/agent-7f2c-main · ContainerCreating",
+    "reason": "Mock terminal output in a decorative illustration (aria-hidden). Logs are shown as received and never translated (CLAUDE.md)."
   }
 ]

@@ -41,6 +41,7 @@ async function onSubmit(values: { email: string; password: string }) {
 <template>
   <AuthCommonForm
     mode="login"
+    variant="gate"
     :submitting="submitting"
     :error-message="errorMessage"
     :error-key="errorKey"

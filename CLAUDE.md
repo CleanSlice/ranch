@@ -63,6 +63,16 @@ a day apart without meeting — CLEAN-111 went back and collapsed them. A fix th
 lands in one console and leaves the other behind is half a fix, and the missing
 half is the one the user clicks.
 
+**Error tracking (`api` + `admin` + `app`):** read
+`docs/operations/error-tracking.md` before changing what is reported. The rules
+live in `sentry.rules.ts`, which exists three times, byte for byte — edit the
+copy in `api/src/slices/setup/sentry/`, copy it to both consoles in the same
+commit. `admin/slices/setup/sentry` and `app/slices/setup/sentry` are the same
+directory, file for file. `bun run test:scripts` enforces both, and fails on a
+real DSN anywhere in the repo: destinations live in a cluster secret, so a
+fork that merges this code reports nowhere. Never print a DSN into a file, a
+ticket or a PR.
+
 **Agent tools (`api`):** read `docs/agent-tools.md` before adding or changing
 any admin-console capability. The console is a window, the chat is the hands:
 a module is not done until the Ranch agent has a tool for what the console

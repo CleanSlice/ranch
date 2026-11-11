@@ -8,6 +8,7 @@ import { IFileGateway, TranscriptReaderService } from '#/agent/file/domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { IChatGateway } from './chat.gateway';
 import { IChatReconcileInput, IChatSyncResult } from './chat.types';
+import { captureBackgroundError } from '#/setup/sentry';
 
 const SESSIONS_PREFIX = 'data/sessions/';
 const PREVIEW_MAX = 200;
@@ -38,11 +39,12 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     if (!Number.isFinite(sec) || sec <= 0) return;
     this.logger.log(`chat reconcile interval enabled: every ${sec}s`);
     this.timer = setInterval(() => {
-      void this.syncAll().catch((err) =>
+      void this.syncAll().catch((err) => {
         this.logger.error(
           `scheduled reconcile failed: ${(err as Error).message}`,
-        ),
-      );
+        );
+        captureBackgroundError(err, 'chat.sync');
+      });
     }, sec * 1000);
   }
 

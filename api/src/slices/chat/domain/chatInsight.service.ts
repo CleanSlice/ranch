@@ -18,6 +18,7 @@ import {
   IChatInsights,
   IChatSessionData,
 } from './chat.types';
+import { captureBackgroundError } from '#/setup/sentry';
 
 const ANTHROPIC_DEFAULT_MODEL = 'claude-sonnet-4-6';
 const TRANSCRIPT_CAP = 12_000; // chars — tail-truncate long chats (v1)
@@ -58,9 +59,10 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
     if (!Number.isFinite(sec) || sec <= 0) return;
     this.logger.log(`chat insight batch enabled: every ${sec}s`);
     this.timer = setInterval(() => {
-      void this.runBatch().catch((err) =>
-        this.logger.error(`insight batch failed: ${(err as Error).message}`),
-      );
+      void this.runBatch().catch((err) => {
+        this.logger.error(`insight batch failed: ${(err as Error).message}`);
+        captureBackgroundError(err, 'chat.insight');
+      });
     }, sec * 1000);
   }
 

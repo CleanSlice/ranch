@@ -8,6 +8,7 @@ import { AuthService } from '#/user/auth/domain';
 import { ISkillGateway } from '#/skill/domain';
 import { IPodGateway } from '#/agent/pod/domain';
 import { DeployTracker } from './deployTracker';
+import { captureBackgroundError } from '#/setup/sentry';
 
 @Injectable()
 export class AgentDeployService {
@@ -224,6 +225,9 @@ export class AgentDeployService {
       this.logger.error(
         `Workflow submit failed for agent ${agentId}: ${(err as Error).message}`,
       );
+      // The reason shown to users below is generic on purpose, so this is
+      // the only place the real one reaches the team.
+      captureBackgroundError(err, 'agent.deploy');
       // Generic on purpose: statusReason is served on public agent endpoints,
       // and raw submit errors can carry internal detail (Argo endpoints,
       // auth specifics). The full message is in the server log above.

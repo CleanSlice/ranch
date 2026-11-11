@@ -33,6 +33,7 @@ import {
   displayNameForEntry,
   listIngestableEntries,
 } from '../data/archive.extractor';
+import { captureBackgroundError } from '#/setup/sentry';
 
 export interface IAddFromSitemapResult {
   added: number;
@@ -373,6 +374,7 @@ export class SourceService {
       this.logger.error(
         `archive import crashed for ${knowledgeId}: ${crashed}`,
       );
+      captureBackgroundError(err, 'reins.archive-import');
     } finally {
       await this.safeUnlink(zipPath);
       if (crashed === null) {

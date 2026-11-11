@@ -55,6 +55,15 @@ spec:
             # works either way — see ChatInsightService).
             - name: CHAT_INSIGHT_INTERVAL_SEC
               value: "900"
+            # Error tracking (CLEAN-218). The destination lives in the cluster,
+            # never in this file: without the secret or the key, reporting is
+            # off. See docs/operations/error-tracking.md.
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-error-tracking
+                  key: API_SENTRY_DSN
+                  optional: true
           volumeMounts:
             - name: paddock-work
               mountPath: /usr/src/app/runtime/.paddock

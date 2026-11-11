@@ -1,5 +1,6 @@
 // setup/domain/service/errorHandler.ts
 import { ErrorEntity } from "#error";
+import { captureSentryException } from "#app-sentry";
 import { handleAppError } from "../utils/error-handle";
 import { useAppError } from "../composable/useError";
 import { ErrorCodes } from "./error.types";
@@ -54,4 +55,7 @@ export async function handleError(err: unknown) {
     console.error(`[DEV] No Error Entity: ${err}`);
   }
 
+  // Error tracking (CLEAN-218). Whether this is sent is decided by the rules
+  // in `setup/sentry`; off in dev and wherever no destination is set.
+  captureSentryException(err);
 }

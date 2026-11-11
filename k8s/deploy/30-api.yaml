@@ -70,6 +70,15 @@ spec:
             # callback redirect_uri (CLEAN-75) and agent card URLs (CLEAN-74).
             - name: PUBLIC_API_URL
               value: "https://api.ranch.cleanslice.org"
+            # Error tracking (CLEAN-218). The destination lives in the cluster,
+            # never in this file: without the secret or the key, reporting is
+            # off. See docs/operations/error-tracking.md.
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: ranch-error-tracking
+                  key: API_SENTRY_DSN
+                  optional: true
             - name: SESSION_IDLE_DAYS
               value: "7"
             - name: SESSION_ABSOLUTE_DAYS

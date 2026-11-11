@@ -5,6 +5,7 @@ import { IKnowledgeRecord } from '../../knowledge/domain/knowledge.types';
 import { SourceService } from '../../source/domain/source.service';
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
+import { captureBackgroundError } from '#/setup/sentry';
 
 const INSTANCE_READY_TIMEOUT_MS = 5 * 60 * 1000;
 const INSTANCE_POLL_INTERVAL_MS = 5_000;
@@ -73,6 +74,7 @@ export class MigrationService implements OnApplicationBootstrap {
           this.logger.error(
             `transition failed for ${base.id} (${base.name}): ${errorMessage(err)}`,
           );
+          captureBackgroundError(err, 'reins.migration');
           await this.knowledgeGateway.updateMigrationState(base.id, 'failed');
         }
       }
@@ -89,6 +91,7 @@ export class MigrationService implements OnApplicationBootstrap {
       }
     } catch (err) {
       this.logger.error(`transition run crashed: ${errorMessage(err)}`);
+      captureBackgroundError(err, 'reins.migration');
     }
   }
 

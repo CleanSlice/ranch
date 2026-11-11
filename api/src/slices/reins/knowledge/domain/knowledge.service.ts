@@ -69,6 +69,7 @@ async function readAll(
 }
 import { IInstanceGateway } from '../../instance/domain/instance.gateway';
 import { IKnowledgeConfigGateway } from '../../config/domain/knowledgeConfig.gateway';
+import { captureBackgroundError } from '#/setup/sentry';
 
 const LABELS_DEFAULT_LIMIT = 50;
 const LABELS_MAX_LIMIT = 200;
@@ -391,6 +392,7 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
     } catch (err) {
       const message = errorMessage(err);
       this.logger.error(`provision failed for ${k.id}: ${message}`);
+      captureBackgroundError(err, 'reins.provision');
       await this.gateway.updateInstanceState(k.id, {
         instanceState: 'failed',
         instanceError: message,
@@ -938,6 +940,7 @@ export class KnowledgeService implements OnModuleInit, OnApplicationBootstrap {
       this.logger.error(
         `Indexing failed for knowledge ${knowledgeId}: ${errorMessage(err)}`,
       );
+      captureBackgroundError(err, 'reins.indexing');
       await this.gateway.updateIndexState(knowledgeId, {
         indexStatus: 'failed',
         indexError: errorMessage(err),

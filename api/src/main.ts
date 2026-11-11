@@ -1,4 +1,4 @@
-import { NestFactory, Reflector } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory, Reflector } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as fs from 'fs';
@@ -11,7 +11,16 @@ import { AppModule } from './app.module';
 import { ErrorHandlingInterceptor } from './slices/setup/error/error-handling.interceptor';
 import { ResponseInterceptor } from './slices/setup/error/response.interceptor';
 import { trustLoadBalancer } from './slices/setup/proxy/trust-proxy';
+import {
+  SentryExceptionFilter,
+  captureProcessError,
+  initSentry,
+} from './slices/setup/sentry';
 import { IAgentGateway } from '#/agent/agent/domain';
+
+// Error tracking (CLEAN-218). On only in a built image with SENTRY_DSN set;
+// everywhere else this returns at once and the SDK is never loaded.
+initSentry();
 
 // Bun exits the process on unhandled rejection/exception by default. The
 // @kubernetes/client-node Watch (KubePodGateway) leaks a DOMException
@@ -24,9 +33,11 @@ process.on('unhandledRejection', (reason) => {
     '[unhandledRejection]',
     reason instanceof Error ? (reason.stack ?? reason) : reason,
   );
+  captureProcessError(reason, 'unhandledRejection');
 });
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException]', err.stack ?? err);
+  captureProcessError(err, 'uncaughtException');
 });
 
 async function bootstrap() {
@@ -44,6 +55,12 @@ async function bootstrap() {
   // The console session cookie (`ranch_session`, Path=/auth) is read only by
   // /auth/refresh and /auth/logout (CLEAN-72).
   app.use(cookieParser());
+
+  // Reports a failed request, then answers exactly as Nest would have. A
+  // filter, because guards and pipes throw before any interceptor runs.
+  app.useGlobalFilters(
+    new SentryExceptionFilter(app.get(HttpAdapterHost).httpAdapter),
+  );
 
   app.useGlobalInterceptors(new ErrorHandlingInterceptor());
 

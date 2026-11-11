@@ -26,6 +26,9 @@ export class ErrorHandlingInterceptor implements NestInterceptor {
                 message: error.message || 'Internal server error',
               },
               HttpStatus.INTERNAL_SERVER_ERROR,
+              // The body stays as it was; the original travels along so the
+              // error tracker reports the real stack (CLEAN-218).
+              { cause: error },
             ),
         );
       }),

@@ -101,6 +101,8 @@ export class AgentEventIngestController {
       );
       throw new InternalServerErrorException(
         'Could not record the event — try again',
+        // Not in the answer; lets the error tracker report the real stack.
+        { cause: err },
       );
     }
   }

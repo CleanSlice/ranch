@@ -6,7 +6,7 @@ type ErrorResponseBody = ErrorDetailResponse & PlatformStatusResponse;
 
 export class ErrorMapper {
   toErrorEntity(error: unknown): ErrorEntity {
-    const fetchError = error as { response?: { status?: number; _data?: ErrorResponseBody; data?: ErrorResponseBody }; statusCode?: number; data?: ErrorResponseBody };
+    const fetchError = error as { code?: string; response?: { status?: number; _data?: ErrorResponseBody; data?: ErrorResponseBody }; statusCode?: number; data?: ErrorResponseBody };
     const status = fetchError.response?.status ?? fetchError.statusCode ?? 500;
     // `_data` is ofetch's parsed body; `response.data` is axios's. The admin uses
     // the axios client, so read both (ofetch first for compatibility).
@@ -41,6 +41,15 @@ export class ErrorMapper {
       statusCode: status,
       name,
       isToast: true,
+      // A request that never got an answer — the user is offline, or it was
+      // cancelled — has no status, so `status` above falls back to 500. The
+      // code marks it as the user's network, and error tracking leaves it
+      // out instead of counting a server failure (CLEAN-218).
+      code:
+        !fetchError.response &&
+        (fetchError.code === ErrorCodes.ERR_NETWORK || fetchError.code === "ERR_CANCELED")
+          ? fetchError.code
+          : undefined,
     });
   }
 

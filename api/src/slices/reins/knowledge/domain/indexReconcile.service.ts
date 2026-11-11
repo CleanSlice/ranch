@@ -10,6 +10,7 @@ import {
   ISourceRetryOutcome,
 } from '../../source/domain/source.types';
 import { ILightragClient } from '../../lightrag/domain/lightrag.client';
+import { captureBackgroundError } from '#/setup/sentry';
 
 const DEFAULT_INTERVAL_SEC = 60;
 
@@ -99,9 +100,10 @@ export class IndexReconcileService implements OnModuleInit, OnModuleDestroy {
     }
     this.logger.log(`index reconcile enabled: every ${sec}s`);
     this.timer = setInterval(() => {
-      void this.reconcile().catch((err) =>
-        this.logger.error(`scheduled reconcile failed: ${errorMessage(err)}`),
-      );
+      void this.reconcile().catch((err) => {
+        this.logger.error(`scheduled reconcile failed: ${errorMessage(err)}`);
+        captureBackgroundError(err, 'reins.index-reconcile');
+      });
     }, sec * 1000);
     // Nothing here should keep the process alive on its own.
     this.timer.unref?.();

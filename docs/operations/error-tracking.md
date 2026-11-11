@@ -43,6 +43,10 @@ error adds `statusCode` and `errorCode`.
 - Cookies are deleted. Passwords, tokens, authorization headers, API keys,
   session ids, emails and phone numbers are replaced with `[Filtered]`
   wherever they appear, including in query strings.
+- The text of the error itself is masked too: a password inside a database
+  URL, a token in a link, a `Bearer …` value, a `key=value` credential, a
+  provider key, an email address. A secret with no such shape cannot be
+  recognised, so do not put one into an error message.
 - The user is an opaque id. No email, name or network address.
 - Console log breadcrumbs are dropped.
 - More than 20 events a minute from one process or tab are dropped, so one

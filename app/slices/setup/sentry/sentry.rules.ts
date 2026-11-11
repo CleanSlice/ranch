@@ -52,6 +52,8 @@ export interface SentryEventLike {
   extra?: Record<string, unknown>;
   contexts?: Record<string, unknown>;
   tags?: Record<string, unknown>;
+  message?: unknown;
+  exception?: { values?: { value?: unknown }[] };
 }
 
 export interface SentryHintLike {
@@ -60,6 +62,7 @@ export interface SentryHintLike {
 
 export interface SentryBreadcrumbLike {
   category?: string;
+  message?: unknown;
   data?: Record<string, unknown>;
 }
 
@@ -246,6 +249,29 @@ export function scrubUrl(url: string): string {
   return `${base}?${scrubQuery(beforeHash.slice(queryAt + 1))}${hash}`;
 }
 
+// An error's own message is free text, and in Ranch it can quote what the
+// failing code held: a database URL with its password, a share link with its
+// token, an upstream answer echoing a header, a person's email.
+const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>`]+/gi;
+const URL_USERINFO = /^([a-z][a-z0-9+.-]*:\/\/)[^/?#@\s]+@/i;
+const AUTH_SCHEME = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
+const KEY_VALUE =
+  /\b(password|passwd|token|secret|api[_-]?key|access_token|refresh_token|auth_token|authorization|jwt)(["']?\s*[:=]\s*["']?)([^\s"'&,;}]+)/gi;
+const PROVIDER_KEY = /\bsk-[A-Za-z0-9_-]{8,}/g;
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
+
+/** Mask credentials and addresses of people inside free text. */
+export function scrubText(text: string): string {
+  return text
+    .replace(URL_IN_TEXT, (url) =>
+      scrubUrl(url.replace(URL_USERINFO, `$1${FILTERED}@`)),
+    )
+    .replace(AUTH_SCHEME, `$1 ${FILTERED}`)
+    .replace(KEY_VALUE, `$1$2${FILTERED}`)
+    .replace(PROVIDER_KEY, FILTERED)
+    .replace(EMAIL, FILTERED);
+}
+
 /** Remove private data from an event. Mutates and returns it. */
 export function scrubEvent<T extends SentryEventLike>(event: T): T {
   const request = event.request;
@@ -271,6 +297,15 @@ export function scrubEvent<T extends SentryEventLike>(event: T): T {
 
   if (event.extra) event.extra = scrubObject(event.extra);
   if (event.contexts) event.contexts = scrubObject(event.contexts);
+
+  if (typeof event.message === 'string') {
+    event.message = scrubText(event.message);
+  }
+  for (const exception of event.exception?.values ?? []) {
+    if (typeof exception.value === 'string') {
+      exception.value = scrubText(exception.value);
+    }
+  }
   return event;
 }
 
@@ -282,6 +317,9 @@ export function scrubBreadcrumb<T extends SentryBreadcrumbLike>(
     // Console breadcrumbs carry whatever the code logged, which in the API
     // includes agent traffic.
     if (crumb.category === 'console') return null;
+    if (typeof crumb.message === 'string') {
+      crumb.message = scrubText(crumb.message);
+    }
     const data = crumb.data;
     if (data) {
       for (const key of ['url', 'from', 'to']) {

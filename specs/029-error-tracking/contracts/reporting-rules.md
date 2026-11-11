@@ -14,6 +14,7 @@ declares the few event fields it reads (`SentryEventLike`) itself.
 | `decide(err, project)` | `Decision` | report or drop, with labels |
 | `scrubEvent(event)` | the event | remove private data |
 | `scrubUrl(url)` | `string` | filter sensitive query parameters |
+| `scrubText(text)` | `string` | mask credentials and emails inside free text |
 | `scrubBreadcrumb(crumb)` | the crumb or `null` | drop or clean one breadcrumb |
 | `createBeforeSend(project, now?)` | `(event, hint) => event \| null` | the single gate: decide, label, rate-limit, scrub |
 | `buildInitOptions(config)` | SDK options | everything `init` needs except the SDK itself |
@@ -57,6 +58,15 @@ For rule 6 the decision carries tags `statusCode` and, when present,
 - Filters the same keys in the query string of `request.url`, keeping the rest
   of the address.
 - Reduces `user` to `{ id }`, and removes a user that has no id.
+- Runs the event `message` and every `exception.values[].value` through
+  `scrubText`. An error's own message is free text and can quote what the
+  failing code held. `scrubText` masks: the user-info part of any URL
+  (`postgresql://user:pass@host` → `postgresql://[Filtered]@host`), sensitive
+  query parameters of any URL, `Bearer …` / `Basic …` credentials,
+  `password=…` / `token: …` / `"apiKey":"…"` style assignments, provider keys
+  of the `sk-…` shape, and email addresses. Added after the security review
+  of the first push; it cannot recognise a secret that has no such shape,
+  which is one more reason bodies are never attached.
 - Cuts nesting deeper than eight levels to `[Filtered]` rather than walk it.
 - Inside `createBeforeSend`, any failure drops the event: it is never sent
   unscrubbed.
@@ -65,6 +75,7 @@ For rule 6 the decision carries tags `statusCode` and, when present,
 
 - Category `console` → `null`.
 - A breadcrumb carrying a URL → same query filtering as above.
+- A breadcrumb `message` → `scrubText`.
 
 ## `createBeforeSend`
 

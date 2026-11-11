@@ -9,6 +9,7 @@ import {
   resolveDsn,
   scrubBreadcrumb,
   scrubEvent,
+  scrubText,
   scrubUrl,
   type ReportingConfig,
   type SentryEventLike,
@@ -297,7 +298,92 @@ describe('scrubEvent on what Ranch actually carries', () => {
   });
 });
 
+describe('scrubText', () => {
+  it.each([
+    [
+      'a database URL with its password',
+      "Can't reach database server at postgresql://ranch:s3cretPw@db.internal:5432/ranch",
+      "Can't reach database server at postgresql://[Filtered]@db.internal:5432/ranch",
+    ],
+    [
+      'a link with a token in its query',
+      'GET https://ranch.test/share?token=tok_1&agent=a1 failed with 502',
+      'GET https://ranch.test/share?token=[Filtered]&agent=a1 failed with 502',
+    ],
+    [
+      'an echoed bearer header',
+      'upstream said: Authorization: Bearer eyJhbGciOi.abc.def',
+      'upstream said: Authorization: [Filtered] [Filtered]',
+    ],
+    [
+      'a bare bearer token',
+      'rejected Bearer eyJhbGciOi.abc.def by gateway',
+      'rejected Bearer [Filtered] by gateway',
+    ],
+    [
+      'a key in a JSON-ish dump',
+      'bad config {"apiKey":"abc123","model":"fable"}',
+      'bad config {"apiKey":"[Filtered]","model":"fable"}',
+    ],
+    [
+      'a provider key on its own',
+      'provider rejected sk-ant-api03-AbCdEf123456',
+      'provider rejected [Filtered]',
+    ],
+    [
+      'an email',
+      'no user ann.lee@ranch.test in workspace',
+      'no user [Filtered] in workspace',
+    ],
+    [
+      'a password assignment',
+      'login failed for password=hunter2 on attempt 3',
+      'login failed for password=[Filtered] on attempt 3',
+    ],
+  ])('masks %s', (_name, input, expected) => {
+    expect(scrubText(input)).toBe(expected);
+  });
+
+  it.each([
+    'Cannot read properties of undefined (reading "id")',
+    'Unexpected token } in JSON at position 12',
+    'Workflow submit failed for agent a-42: 503 Service Unavailable',
+    'GET https://api.ranch.test/agents/a-42 failed with 500',
+  ])('leaves an ordinary message alone: %s', (message) => {
+    expect(scrubText(message)).toBe(message);
+  });
+});
+
+describe('scrubEvent on the error text itself', () => {
+  it('masks every exception in the chain and the event message', () => {
+    const event = scrubEvent({
+      message: 'failed for ann@ranch.test',
+      exception: {
+        values: [
+          { value: 'connect postgresql://ranch:pw@db/ranch refused' },
+          { value: 'deploy failed: token=abc123' },
+          { value: 42 },
+          {},
+        ],
+      },
+    });
+    expect(event.message).toBe('failed for [Filtered]');
+    expect(event.exception?.values).toEqual([
+      { value: 'connect postgresql://[Filtered]@db/ranch refused' },
+      { value: 'deploy failed: token=[Filtered]' },
+      { value: 42 },
+      {},
+    ]);
+  });
+});
+
 describe('scrubBreadcrumb', () => {
+  it('masks a breadcrumb message', () => {
+    expect(
+      scrubBreadcrumb({ category: 'ui.input', message: 'a@b.co typed' }),
+    ).toEqual({ category: 'ui.input', message: '[Filtered] typed' });
+  });
+
   it('drops console breadcrumbs', () => {
     expect(scrubBreadcrumb({ category: 'console' })).toBeNull();
   });

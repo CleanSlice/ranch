@@ -67,6 +67,14 @@ kubectl -n platform create secret generic ranch-error-tracking \
 kubectl -n platform rollout restart deploy/ranch-api deploy/ranch-admin deploy/ranch-app
 ```
 
+The deployments must already carry the reference to that secret. The repo
+holds two sets of manifests and both have it: `k8s/platform/*`, which ArgoCD
+syncs from `main`, and `k8s/deploy/*`, which is applied by hand. The release
+workflow only restarts the deployments, it does not apply manifests — so if
+the cluster runs the `k8s/deploy` set, apply `30-api.yaml` and `40-admin.yaml`
+once before the restart. `kubectl -n platform get deploy ranch-api -o yaml |
+grep -A4 SENTRY_DSN` shows whether the reference is there.
+
 Type the values into the command, or read them from a file outside the
 repository. Do not put them in a manifest, a ticket or a pull request.
 

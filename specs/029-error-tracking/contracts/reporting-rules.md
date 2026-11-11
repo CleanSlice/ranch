@@ -64,8 +64,11 @@ For rule 6 the decision carries tags `statusCode` and, when present,
   (`postgresql://user:pass@host` → `postgresql://[Filtered]@host`), sensitive
   query parameters of any URL, `Bearer …` / `Basic …` credentials,
   `password=…` / `token: …` / `"apiKey":"…"` style assignments, provider keys
-  of the `sk-…` shape, and email addresses. Added after the security review
-  of the first push; it cannot recognise a secret that has no such shape,
+  of the `sk-…` shape, and email addresses. The user-info is everything up to
+  the last `@`, since a password may hold `/`, `#`, `?` or `@`. The SDK cuts a
+  long message and appends `...` before the rules see it, so a cut-off tail
+  that looks like an address or an assignment is masked whole. Added after
+  the security review of the first pushes; it cannot recognise a secret that has no such shape,
   which is one more reason bodies are never attached.
 - Cuts nesting deeper than eight levels to `[Filtered]` rather than walk it.
 - Inside `createBeforeSend`, any failure drops the event: it is never sent

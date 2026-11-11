@@ -253,7 +253,10 @@ export function scrubUrl(url: string): string {
 // failing code held: a database URL with its password, a share link with its
 // token, an upstream answer echoing a header, a person's email.
 const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>`]+/gi;
-const URL_USERINFO = /^([a-z][a-z0-9+.-]*:\/\/)[^/?#@\s]+@/i;
+// The SDK cuts a long message and appends `...` before this code sees it. A
+// cut-off tail that looks like an address or an assignment may be the first
+// half of a secret whose closing `@` or `&` is gone, so it is masked whole.
+const TRUNCATED_TAIL = /(?:\S*[:/@=]\S*|sk-\S*)\.\.\.$/;
 const AUTH_SCHEME = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
 const KEY_VALUE =
   /\b(password|passwd|token|secret|api[_-]?key|access_token|refresh_token|auth_token|authorization|jwt)(["']?\s*[:=]\s*["']?)([^\s"'&,;}]+)/gi;
@@ -261,11 +264,24 @@ const PROVIDER_KEY = /\bsk-[A-Za-z0-9_-]{8,}/g;
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 
 /** Mask credentials and addresses of people inside free text. */
+/**
+ * Mask the user-info of a URL. Everything between `://` and the LAST `@` goes:
+ * a password may itself hold `/`, `#`, `?` or `@`, so stopping at the first
+ * of those would leave its tail behind. A URL with an `@` further on loses
+ * more than it had to, which is the safe side.
+ */
+function scrubUserInfo(url: string): string {
+  const start = url.indexOf('://') + 3;
+  const at = url.lastIndexOf('@');
+  return at >= start
+    ? `${url.slice(0, start)}${FILTERED}${url.slice(at)}`
+    : url;
+}
+
 export function scrubText(text: string): string {
   return text
-    .replace(URL_IN_TEXT, (url) =>
-      scrubUrl(url.replace(URL_USERINFO, `$1${FILTERED}@`)),
-    )
+    .replace(TRUNCATED_TAIL, `${FILTERED}...`)
+    .replace(URL_IN_TEXT, (url) => scrubUrl(scrubUserInfo(url)))
     .replace(AUTH_SCHEME, `$1 ${FILTERED}`)
     .replace(KEY_VALUE, `$1$2${FILTERED}`)
     .replace(PROVIDER_KEY, FILTERED)

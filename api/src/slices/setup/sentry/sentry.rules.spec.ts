@@ -340,6 +340,31 @@ describe('scrubText', () => {
       'login failed for password=hunter2 on attempt 3',
       'login failed for password=[Filtered] on attempt 3',
     ],
+    [
+      'a password holding / # ? and @',
+      'connect postgresql://ranch:p/a#s?s@w0rd@db.internal:5432/ranch refused',
+      'connect postgresql://[Filtered]@db.internal:5432/ranch refused',
+    ],
+    [
+      'a URL the SDK cut before its @',
+      "Can't reach database server at postgresql://ranch:s3cr...",
+      "Can't reach database server at [Filtered]...",
+    ],
+    [
+      'an assignment the SDK cut',
+      'deploy failed with token=abc12...',
+      'deploy failed with [Filtered]...',
+    ],
+    [
+      'an email the SDK cut before its domain ended',
+      'no such user ann.lee@ranch...',
+      'no such user [Filtered]...',
+    ],
+    [
+      'a provider key the SDK cut',
+      'provider rejected sk-ant-ap...',
+      'provider rejected [Filtered]...',
+    ],
   ])('masks %s', (_name, input, expected) => {
     expect(scrubText(input)).toBe(expected);
   });
@@ -349,6 +374,7 @@ describe('scrubText', () => {
     'Unexpected token } in JSON at position 12',
     'Workflow submit failed for agent a-42: 503 Service Unavailable',
     'GET https://api.ranch.test/agents/a-42 failed with 500',
+    'The agent stopped answering and the deploy was rolled back...',
   ])('leaves an ordinary message alone: %s', (message) => {
     expect(scrubText(message)).toBe(message);
   });

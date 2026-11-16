@@ -22,9 +22,24 @@ save of its visibility settings requires limits. It can still be renamed or
 otherwise edited in the meantime.
 
 Set them in the admin console: an agent → **Visibility & embed**. Or ask the
-Ranch agent: "what are the limits on Support?", "set 30 per minute on
-Support". Loosening or removing a limit through the chat asks for
-confirmation; tightening does not.
+Ranch agent, which has a tool for each thing that card and the load view do:
+
+| Ask | Tool | What it does |
+|-----|------|--------------|
+| "Which agents are at their limit right now?", "which public agents have no limits?" | `list_agent_limits` | Every agent by name: public or not, limits on or off and their values, at its limit right now, public without limits |
+| "What are the limits on Support, and how busy is it?" | `get_agent_limits` | One agent's limits and load: usage per window, in progress, refusals in the last hour by window and when the latest was, traffic that is not counted, the minutes of the last hour that saw traffic, 30-day peaks |
+| "Set 30 per minute on Support" | `set_agent_limits` | Replaces the three limits; all empty switches them off |
+| "Make Support public for https://shop.example.com with 30 per minute", "make Support private" | `set_agent_visibility` | The public flag, the allowed origins and, if named, the limits, in one save |
+
+Through the chat, loosening or removing a limit asks for confirmation, and so
+does making a private agent public; tightening a limit and making an agent
+private do not. Going public without a limit is refused, as in the console.
+`set_agent_visibility` restarts nothing: when the public flag or the origins
+changed it says a restart is suggested, the way the console shows "restart
+pending" after the same save.
+
+These tools belong to the Ranch admin agent, whose token carries Owner. An
+Admin has the same capabilities in the console, not through the tools.
 
 ## What counts
 

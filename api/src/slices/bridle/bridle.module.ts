@@ -19,6 +19,7 @@ import { ChatModule } from '#/chat/chat.module';
 import { S3Module } from '#/aws/s3';
 import { SettingModule } from '#/setting/setting.module';
 import { ShareLinkModule } from '#/agent/shareLink/shareLink.module';
+import { AgentLimitModule } from '#/agent/limit/agentLimit.module';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { SourceModule } from '#/reins/source/source.module';
 import { SourceAccessService } from './domain/sourceAccess.service';
@@ -67,6 +68,9 @@ import { SourceAccessService } from './domain/sourceAccess.service';
     // import: ShareLinkModule reaches AgentModule, which already forwardRef's
     // BridleModule, so the cycle closes on that lazy link (research.md R5).
     ShareLinkModule,
+    // Request limits (CLEAN-224): the hub asks the limiter before it forwards
+    // a request. Plain import for the same reason as ShareLinkModule above.
+    AgentLimitModule,
     forwardRef(() => FileModule),
     forwardRef(() => AgentModule),
     forwardRef(() => ChatModule),

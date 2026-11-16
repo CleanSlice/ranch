@@ -49,11 +49,15 @@ function makeHandler(
       text: string,
       parts: BridlePart[],
       attachments?: IBridleAttachment[],
+      options?: { source?: string },
     ) => {
       sent.push({ clientId, agentId, text, parts, attachments });
+      sources.push(options?.source);
       return { status: 'accepted', messageId: 'm1', ts: 1 };
     },
   };
+  /** Who each message was sent as, for the request limits (CLEAN-224). */
+  const sources: Array<string | undefined> = [];
   const attachments = { expand } as BridleAttachmentService;
 
   const handler = new BridleClientWsHandler(
@@ -77,8 +81,68 @@ function makeHandler(
     },
   } as unknown as Socket;
 
-  return { handler, client, sent, emitted, disconnected: () => disconnected };
+  return {
+    handler,
+    client,
+    sent,
+    sources,
+    emitted,
+    disconnected: () => disconnected,
+  };
 }
+
+describe('BridleClientWsHandler — request limits (CLEAN-224)', () => {
+  const passThrough: BridleAttachmentService['expand'] = async (
+    _agentId,
+    text,
+  ) => ({ text, parts: [], attachments: [] });
+
+  it('sends an ordinary socket as a visitor', async () => {
+    const { handler, client, sources } = makeHandler(passThrough);
+    client.data = { clientId: 'u1', agentId: 'agent-1', isAdmin: false };
+
+    await handler.handleMessage(client, { text: 'hi' });
+
+    expect(sources).toEqual(['visitor']);
+  });
+
+  it('sends a socket that connected as an Owner or Admin as an operator', async () => {
+    const { handler, client, sources } = makeHandler(passThrough);
+    client.data = { clientId: 'admin', agentId: 'agent-1', isAdmin: true };
+
+    await handler.handleMessage(client, { text: 'hi' });
+
+    expect(sources).toEqual(['operator']);
+  });
+
+  it('does not take the word of a socket that only carries the admin channel name', async () => {
+    // `isAdmin` is written at handshake from a verified token. A socket that
+    // somehow has the shared channel name but no such flag is a visitor.
+    const { handler, client, sources } = makeHandler(passThrough);
+    client.data = { clientId: 'admin', agentId: 'agent-1' };
+
+    await handler.handleMessage(client, { text: 'hi' });
+
+    expect(sources).toEqual(['visitor']);
+  });
+
+  it('hands the hub refusal back as the acknowledgement', async () => {
+    const hubRefusal = {
+      status: 'rejected',
+      code: 'RATE_LIMITED',
+      retryAfterMs: 42_000,
+      window: 'minute',
+    };
+    const { handler, client } = makeHandler(passThrough);
+    (
+      handler as unknown as { hub: { sendToAgent: () => unknown } }
+    ).hub.sendToAgent = () => hubRefusal;
+
+    await expect(
+      handler.handleMessage(client, { text: 'hi', clientMessageId: 'c1' }),
+    ).resolves.toEqual(hubRefusal);
+  });
+});
 
 describe('BridleClientWsHandler — attachments over the socket', () => {
   it('sends the expanded text and parts to the agent', async () => {
@@ -205,6 +269,8 @@ interface IConnectOptions {
   verify?: () => Record<string, unknown>;
   /** Stands in for `ShareLinkService.authorizeChat`; the default admits nobody. */
   authorizeChat?: AuthorizeChat;
+  /** What the hub says about the agent's request limits at connect (CLEAN-224). */
+  limit?: Record<string, unknown>;
 }
 
 function makeConnection(options: IConnectOptions) {
@@ -236,6 +302,7 @@ function makeConnection(options: IConnectOptions) {
     isAgentConnected: () => true,
     currentSeq: () => 0,
     replaySince: () => [],
+    agentLimitEvent: () => options.limit ?? null,
   };
   const shareLinks = {
     authorizeChat: options.authorizeChat ?? rejectEveryShare,
@@ -658,5 +725,58 @@ describe('BridleClientWsHandler — share-link handshake', () => {
       },
     ]);
     expect(disconnected()).toBe(1);
+  });
+});
+
+describe('BridleClientWsHandler — limit state at connect (CLEAN-224)', () => {
+  const FULL = {
+    type: 'agent_limit',
+    agentId: 'agent-1',
+    limited: true,
+    retryAfterMs: 1_800_000,
+    window: 'hour',
+  };
+
+  it('tells a chat that opens while an hour or day limit is full, after welcome', async () => {
+    const { handler, client, emitted } = makeConnection({
+      auth: { agentId: 'agent-1' },
+      origin: 'https://embed.test',
+      agent: PUBLIC_AGENT,
+      limit: FULL,
+    });
+
+    await handler.handleConnection(client);
+
+    const events = emitted.map((e) => e.event);
+    expect(events).toContain('agent_limit');
+    expect(events.indexOf('agent_limit')).toBeGreaterThan(
+      events.indexOf('welcome'),
+    );
+    expect(emitted.find((e) => e.event === 'agent_limit')?.payload).toEqual(
+      FULL,
+    );
+  });
+
+  it('tells an operator too, so their chat can say visitors are waiting', async () => {
+    const { handler, client, emitted } = makeConnection({
+      auth: { agentId: 'agent-1', token: 'signed' },
+      verify: () => ({ sub: 'u2', roles: ['Owner'] }),
+      limit: FULL,
+    });
+
+    await handler.handleConnection(client);
+
+    expect(emitted.map((e) => e.event)).toContain('agent_limit');
+  });
+
+  it('says nothing when no limit is full', async () => {
+    const { handler, client, emitted } = makeConnection({
+      auth: { agentId: 'agent-1', token: 'signed' },
+      verify: () => ({ sub: 'u1', roles: ['User'] }),
+    });
+
+    await handler.handleConnection(client);
+
+    expect(emitted.map((e) => e.event)).not.toContain('agent_limit');
   });
 });

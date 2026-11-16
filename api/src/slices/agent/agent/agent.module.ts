@@ -14,6 +14,7 @@ import { PodModule } from '#/agent/pod/pod.module';
 import { FileModule } from '#/agent/file/file.module';
 import { AuthModule } from '#/user/auth/auth.module';
 import { BridleModule } from '#/bridle/bridle.module';
+import { AgentLimitModule } from '#/agent/limit/agentLimit.module';
 import { McpServerModule } from '#/mcpServer/mcpServer.module';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.module';
@@ -29,6 +30,9 @@ import { SettingModule } from '#/setting/setting.module';
     forwardRef(() => FileModule),
     AuthModule,
     forwardRef(() => BridleModule),
+    // Request limits (CLEAN-224): the agent routes apply "a public agent has
+    // at least one limit" in the same save that changes visibility.
+    forwardRef(() => AgentLimitModule),
     McpServerModule,
     forwardRef(() => KnowledgeModule),
     KnowledgeConfigModule,

@@ -164,12 +164,45 @@ export type BridleSendAck =
       status: 'rejected';
       code: 'AGENT_OFFLINE' | 'ATTACHMENT_FAILED' | 'SHARE_REJECTED' | 'EMPTY';
       message?: string;
-    };
+    }
+  | BridleRateLimited;
+
+/**
+ * The agent's request limit is full (CLEAN-224). Not an error: the message
+ * was not forwarded and nothing was counted, and the chat tells the person
+ * when to try again. A duration, not a time of day — a visitor's clock can be
+ * wrong, and nothing compares it with the hub's.
+ */
+export interface BridleRateLimited {
+  status: 'rejected';
+  code: 'RATE_LIMITED';
+  /** Milliseconds until a request will be accepted. Always > 0. */
+  retryAfterMs: number;
+  /** The window that set the wait. */
+  window: 'minute' | 'hour' | 'day';
+}
 
 /** The subset of {@link BridleSendAck} the hub itself can produce. */
 export type BridleSendResult =
   | Extract<BridleSendAck, { status: 'accepted' }>
-  | { status: 'rejected'; code: 'AGENT_OFFLINE' };
+  | { status: 'rejected'; code: 'AGENT_OFFLINE' }
+  | BridleRateLimited;
+
+/**
+ * Hub → browser, to every socket of the agent: an hour or day limit is full
+ * (so a chat can say so before the person sends), or room was made earlier
+ * than announced. Never sent for a minute window, and never when a window
+ * frees by time passing — the browser counts down by itself.
+ */
+export type IBridleAgentLimitEvent =
+  | {
+      type: 'agent_limit';
+      agentId: string;
+      limited: true;
+      retryAfterMs: number;
+      window: 'hour' | 'day';
+    }
+  | { type: 'agent_limit'; agentId: string; limited: false };
 
 export interface IBridleSendOptions {
   /** Id minted by the browser; becomes the message id end to end. */
@@ -180,6 +213,18 @@ export interface IBridleSendOptions {
   /** The caller renders the outcome itself, so no synthetic "Agent is not
    * connected" reply is sent on its behalf. */
   withAck?: boolean;
+  /**
+   * Who is sending, from what the caller verified (CLEAN-224). Only a
+   * `visitor` can be refused by the agent's request limits or counted toward
+   * them. Absent means `visitor`: a caller that forgets to say is limited,
+   * never exempt.
+   */
+  source?: 'visitor' | 'operator' | 'peer';
+  /**
+   * The caller answers a limit refusal itself (the HTTP routes answer 429),
+   * so no sentence about it is put into the conversation on its behalf.
+   */
+  silentRefusal?: boolean;
   /** What the person typed, without the attachment blocks inlined for the
    * model — that is what the other open views should show. */
   displayText?: string;

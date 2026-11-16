@@ -9,8 +9,10 @@ import {
   Param,
   Query,
   Req,
+  Inject,
   NotFoundException,
   Logger,
+  forwardRef,
   Sse,
   UseGuards,
   MessageEvent,
@@ -22,6 +24,14 @@ import {
   ApiOkResponse,
 } from '@nestjs/swagger';
 import { Request } from 'express';
+import {
+  AgentLimitService,
+  IAgentLimits,
+  ILimitChange,
+  ILimitChangeResult,
+  resolveLimitChange,
+} from '#/agent/limit/domain';
+import { limitRuleToHttp } from '#/agent/limit/agentLimit.controller';
 import { Observable, map } from 'rxjs';
 import { IAgentGateway } from './domain';
 import { AgentStatusTypes } from './domain/agent.types';
@@ -61,6 +71,12 @@ const PHASE_TO_STATUS: Record<IWorkflowStatus['phase'], AgentStatusTypes> = {
   Error: 'failed',
 };
 
+/** The console user behind a request, recorded as who changed the limits. */
+function subOf(req: Request): string | null {
+  const sub = (req as Request & { user?: IAuthTokenPayload }).user?.sub;
+  return typeof sub === 'string' && sub ? sub : null;
+}
+
 @ApiTags('agents')
 @ApiBearerAuth()
 @Controller('agents')
@@ -77,6 +93,8 @@ export class AgentController {
     private fileGateway: IFileGateway,
     private agentDeployService: AgentDeployService,
     private mcpResolver: AgentMcpResolver,
+    @Inject(forwardRef(() => AgentLimitService))
+    private agentLimits: AgentLimitService,
   ) {}
 
   private deploy(agentId: string): Promise<void> {
@@ -302,17 +320,67 @@ export class AgentController {
   @Post()
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({ summary: 'Create and deploy a new agent. Admin or Owner.' })
-  async create(@Body() dto: CreateAgentDto) {
+  async create(@Body() dto: CreateAgentDto, @Req() req: Request) {
+    // Limits are not an agent column (see agentLimit.prisma), so they are
+    // taken out of the payload and saved next to it. Checked BEFORE anything
+    // is created: an agent born public needs its limit in the same request.
+    const { limits, ...data } = dto;
+    const change = this.resolveLimits(
+      { isPublic: false, limits: null },
+      { isPublic: dto.isPublic, limits },
+    );
     // Full sequence (seed → skills → promote-before-deploy → deploy) lives in
     // AgentDeployService.createAgent, shared with the rancher create_agent tool.
-    return this.agentDeployService.createAgent(dto, { isAdmin: dto.isAdmin });
+    const agent = await this.agentDeployService.createAgent(data, {
+      isAdmin: dto.isAdmin,
+    });
+    if (agent && change.limitsTouched) {
+      await this.agentLimits.setLimits(agent.id, change.limits, subOf(req));
+    }
+    return agent;
+  }
+
+  /** The visibility rule, as the 400 the console maps to a sentence by `code`. */
+  private resolveLimits(
+    current: { isPublic: boolean; limits: IAgentLimits | null },
+    change: ILimitChange,
+  ): ILimitChangeResult {
+    try {
+      return resolveLimitChange(current, change);
+    } catch (err) {
+      return limitRuleToHttp(err);
+    }
   }
 
   @Put(':id')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({ summary: 'Update agent configuration. Admin or Owner.' })
-  async update(@Param('id') id: string, @Body() dto: UpdateAgentDto) {
-    const agent = await this.agentGateway.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateAgentDto,
+    @Req() req: Request,
+  ) {
+    const { limits, ...data } = dto;
+    // "A public agent has at least one limit" is a rule on this save, checked
+    // only when the save touches visibility or limits — so an agent that was
+    // public before limits existed can still be renamed (CLEAN-224). Limits
+    // are written first: in either direction the agent is then never public
+    // without one, not even between the two writes.
+    if (dto.isPublic !== undefined || limits !== undefined) {
+      const current = await this.agentGateway.findById(id);
+      if (!current) throw new NotFoundException(`Agent ${id} not found`);
+      const change = this.resolveLimits(
+        {
+          isPublic: current.isPublic,
+          limits: this.agentLimits.getLimits(id),
+        },
+        { isPublic: dto.isPublic, limits },
+      );
+      if (change.limitsTouched) {
+        await this.agentLimits.setLimits(id, change.limits, subOf(req));
+      }
+    }
+    const agent = await this.agentGateway.update(id, data);
     // Debug mode has a live half: when `debugEnabled` is in the payload, push
     // a control event over the bridle WS so a running agent flips its
     // prompt-debug stream immediately — the LOG_LEVEL=debug half still needs

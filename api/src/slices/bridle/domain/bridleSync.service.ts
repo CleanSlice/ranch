@@ -28,6 +28,11 @@ export interface ISendAndAwaitInput {
   /** The console login behind the call, forwarded to the agent (CLEAN-80). */
   user?: IBridleUserIdentity;
   timeoutMs?: number;
+  /**
+   * Who is asking, for the agent's request limits (CLEAN-224). Absent means
+   * `visitor` — the one that can be refused.
+   */
+  source?: 'visitor' | 'operator' | 'peer';
 }
 
 export interface ISendAndAwaitResult {
@@ -36,6 +41,12 @@ export interface ISendAndAwaitResult {
   ts: number;
   /** True when the wait ran out. `text` then holds whatever had streamed in. */
   timedOut: boolean;
+  /**
+   * Set when the agent's request limit was full: the message was never
+   * handed over, so there is nothing to wait for and the call returns at
+   * once. The caller says so in its own terms (the HTTP route answers 429).
+   */
+  rateLimited?: { retryAfterMs: number; window: 'minute' | 'hour' | 'day' };
 }
 
 /**
@@ -133,9 +144,25 @@ export class BridleSyncService {
 
       // `socketId` makes this call's own capabilities travel with the message
       // now that a conversation can hold several sockets at once.
-      this.hub.sendToAgent(clientId, agentId, text, parts, attachments, {
-        socketId,
-      });
+      const sent = this.hub.sendToAgent(
+        clientId,
+        agentId,
+        text,
+        parts,
+        attachments,
+        { socketId, source: input.source ?? 'visitor', silentRefusal: true },
+      );
+      // Refused for a limit: do not hold the call open for an answer that
+      // will never come (CLEAN-224).
+      if (sent.status === 'rejected' && sent.code === 'RATE_LIMITED') {
+        finish({
+          text: '',
+          messageId: '',
+          ts: Date.now(),
+          timedOut: false,
+          rateLimited: { retryAfterMs: sent.retryAfterMs, window: sent.window },
+        });
+      }
     });
   }
 }

@@ -151,6 +151,10 @@ export class A2aServerService {
         // stream one into a void.
         capabilities: [],
         timeoutMs: this.timeoutMs,
+        // Agent-to-agent traffic has its own chain limit and is never refused
+        // by the request limits meant for people: refusing mid-task would
+        // break the calling agent's answer (CLEAN-224).
+        source: 'peer',
       });
 
       if (reply.timedOut) {

@@ -73,6 +73,7 @@ interface IShareSocketAuth {
  *   "pong"          { ts }
  *   "bridle_error"  { code, agentId?, origin? }  // emitted just before a rejected handshake disconnects, so the SDK can show a reason
  *   "message_error" { message }                  // a message that could not be delivered; the socket stays up
+ *   "agent_limit"   { agentId, limited, retryAfterMs?, window? }  // an hour/day request limit of the agent is full, or room was made early (CLEAN-224)
  */
 @WebSocketGateway({ namespace: '/ws/client', cors: { origin: '*' } })
 export class BridleClientWsHandler
@@ -336,6 +337,12 @@ export class BridleClientWsHandler
       agentId,
       connected: this.hub.isAgentConnected(agentId),
     });
+    // An hour or day limit that is already full is said now, so nobody writes
+    // a long message only to be refused (CLEAN-224). Every socket gets it: a
+    // limited person shows the notice, an operator the line that visitors are
+    // being asked to wait.
+    const limit = this.hub.agentLimitEvent(agentId);
+    if (limit) client.emit('agent_limit', limit);
 
     this.logger.log(
       `Browser connected: clientId=${clientId} agentId=${agentId} admin=${isAdmin}`,
@@ -452,6 +459,10 @@ export class BridleClientWsHandler
       {
         socketId: client.id,
         displayText: text,
+        // Read back from the handshake, where it came out of a verified JWT:
+        // an Owner or Admin must reach an agent that is at its limit, to test
+        // it and to fix it. Everyone else is a visitor (CLEAN-224).
+        source: client.data?.isAdmin === true ? 'operator' : 'visitor',
         ...(clientMessageId ? { clientMessageId, withAck: true } : {}),
       },
     );

@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { AgentLimitService } from '#/agent/limit/domain';
+import { limitFallbackLine } from '../domain/limitLine';
 import { Observable, Subject } from 'rxjs';
 import {
   IBridleGateway,
@@ -19,6 +21,7 @@ import type {
   BridleSendResult,
   IBridleUserIdentity,
   IBridleMcpConnectedEvent,
+  IBridleAgentLimitEvent,
 } from '../domain/bridle.types';
 import { randomUUID } from 'crypto';
 
@@ -110,6 +113,51 @@ export class BridleGateway extends IBridleGateway {
    * landed can ask for what it missed instead of never seeing it.
    */
   private channels = new Map<string, IClientChannel>();
+
+  /**
+   * The limiter is optional so the hub can still be built bare (unit tests,
+   * the reference package): without one, nothing is ever refused for a limit.
+   * The hub hands itself to the limiter rather than the other way round, so
+   * the limit slice never has to import this module.
+   */
+  constructor(@Optional() private readonly limiter?: AgentLimitService) {
+    super();
+    limiter?.attachHub({
+      inFlight: (agentId) => this.openTurns(agentId),
+      broadcast: (agentId, state) => {
+        const event: IBridleAgentLimitEvent = {
+          type: 'agent_limit',
+          agentId,
+          ...state,
+        };
+        for (const client of this.sockets()) {
+          if (client.agentId === agentId) client.send(event);
+        }
+      },
+    });
+  }
+
+  agentLimitEvent(agentId: string): IBridleAgentLimitEvent | null {
+    const state = this.limiter?.stateFor(agentId);
+    return state?.limited ? { type: 'agent_limit', agentId, ...state } : null;
+  }
+
+  limitRemaining(
+    agentId: string,
+  ): { remaining: number; resetSec: number } | null {
+    return this.limiter?.remainingFor(agentId) ?? null;
+  }
+
+  /** Conversations of this agent with a turn open right now. */
+  private openTurns(agentId: string): number {
+    const suffix = `\u0000${agentId}`;
+    let open = 0;
+    for (const key of this.channels.keys()) {
+      if (!key.endsWith(suffix)) continue;
+      if (this.isTurnOpen(agentId, key.slice(0, -suffix.length))) open++;
+    }
+    return open;
+  }
 
   private clientKey(clientId: string, agentId: string): string {
     return `${clientId}\u0000${agentId}`;
@@ -373,6 +421,37 @@ export class BridleGateway extends IBridleGateway {
         });
       }
       return { status: 'rejected', code: 'AGENT_OFFLINE' };
+    }
+
+    // The one place every relayed request passes, whichever way it arrived
+    // (CLEAN-224). Asked here, after the two checks above, on purpose: a
+    // repeat of an accepted message and a message to an offline agent are not
+    // requests the agent takes, so neither uses up allowance.
+    const decision = this.limiter?.check(
+      agentId,
+      options.source ?? 'visitor',
+      now,
+    );
+    if (decision && !decision.admitted) {
+      // Same split as for an offline agent: a caller that renders the outcome
+      // itself gets only the result; everyone else gets a sentence in the
+      // conversation, which also ends their "agent is typing" state.
+      if (!options.withAck && !options.silentRefusal) {
+        const line = limitFallbackLine(decision.retryAfterMs);
+        this.sendToClient(clientId, agentId, {
+          type: 'message',
+          text: line,
+          parts: [{ type: 'text', text: line }],
+          messageId: randomUUID(),
+          ts: now,
+        });
+      }
+      return {
+        status: 'rejected',
+        code: 'RATE_LIMITED',
+        retryAfterMs: decision.retryAfterMs,
+        window: decision.window,
+      };
     }
 
     // The browser's own id travels end to end when it sent one, so the bubble

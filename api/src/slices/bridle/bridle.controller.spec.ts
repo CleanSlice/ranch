@@ -41,11 +41,17 @@ interface IStubs {
   liveContent?: string;
   deleteLiveFails?: boolean;
   indexMoveFails?: boolean;
+  /** The agent's request limit is full (CLEAN-224): the hub refuses the send. */
+  rateLimited?: { retryAfterMs: number; window: 'minute' | 'hour' | 'day' };
+  /** Room left in the tightest limit window; undefined = the agent has no limits. */
+  limitRemaining?: { remaining: number; resetSec: number };
 }
 
 function makeController(stubs: IStubs = {}) {
   const registered: IRegistered[] = [];
   const sent: Array<{ clientId: string; agentId: string; text: string }> = [];
+  /** The options each send carried, refused ones included. */
+  const sendOptions: Array<Record<string, unknown>> = [];
   /** The order the archive route did things in, across hub, files and index. */
   const order: string[] = [];
 
@@ -79,9 +85,20 @@ function makeController(stubs: IStubs = {}) {
       text: string,
       _parts: BridlePart[],
       _attachments?: IBridleAttachment[],
+      options?: Record<string, unknown>,
     ) => {
+      sendOptions.push(options ?? {});
+      if (stubs.rateLimited) {
+        return {
+          status: 'rejected',
+          code: 'RATE_LIMITED',
+          ...stubs.rateLimited,
+        };
+      }
       sent.push({ clientId, agentId, text });
+      return { status: 'accepted', messageId: 'sent-1', ts: 1 };
     },
+    limitRemaining: () => stubs.limitRemaining ?? null,
   };
 
   const jwt = {
@@ -166,12 +183,30 @@ function makeController(stubs: IStubs = {}) {
   // controller resolved — that question outlived the refactor.
   const sync = {
     sendAndAwait: jest.fn(
-      async (input: { clientId: string; agentId: string; text: string }) => {
+      async (input: {
+        clientId: string;
+        agentId: string;
+        text: string;
+        source?: string;
+      }) => {
         registered.push({
           clientId: input.clientId,
           agentId: input.agentId,
           socketId: 'sync-stub',
         });
+        // The real service refuses its own way and returns at once
+        // (bridleSync.service.spec.ts); here only what the controller does
+        // with that outcome is under test.
+        sendOptions.push({ source: input.source, silentRefusal: true });
+        if (stubs.rateLimited) {
+          return {
+            text: '',
+            messageId: '',
+            ts: 1,
+            timedOut: false,
+            rateLimited: stubs.rateLimited,
+          };
+        }
         sent.push({
           clientId: input.clientId,
           agentId: input.agentId,
@@ -216,13 +251,38 @@ function makeController(stubs: IStubs = {}) {
     {} as never,
   );
 
+  // The two message routes take the response object since CLEAN-224 (they set
+  // `Retry-After` and the pacing headers on it). Most tests here are about
+  // identity and never look at headers, so they may leave it out.
+  const noHeaders = { setHeader: () => undefined } as never;
+  const real = {
+    sendMessage: controller.sendMessage.bind(controller),
+    sendMessageSync: controller.sendMessageSync.bind(controller),
+  };
+  type MessageBody = Parameters<BridleController['sendMessage']>[2];
+  const lenient = Object.assign(controller, {
+    sendMessage: (
+      agentId: string,
+      req: Record<string, unknown>,
+      body: MessageBody,
+      res: never = noHeaders,
+    ) => real.sendMessage(agentId, req, body, res),
+    sendMessageSync: (
+      agentId: string,
+      req: Record<string, unknown>,
+      body: MessageBody,
+      res: never = noHeaders,
+    ) => real.sendMessageSync(agentId, req, body, res),
+  });
+
   return {
-    controller,
+    controller: lenient,
     hub,
     chats,
     order,
     registered,
     sent,
+    sendOptions,
     shareCalls,
     expandCalls,
     fetchCalls,
@@ -1004,5 +1064,197 @@ describe('BridleController — transcripts on a jwt channel (CLEAN-175)', () => 
       channel: 'http-y',
     } as never);
     expect(fileCalls).toHaveLength(2);
+  });
+});
+
+/**
+ * Request limits on the HTTP path (CLEAN-224). An integration must be able to
+ * tell "the agent is at its limit" from every other failure, learn how long
+ * to wait, and never be left hanging on the synchronous route.
+ */
+describe('BridleController — request limits', () => {
+  /** The response object the routes set headers on. */
+  function response() {
+    const headers: Record<string, string> = {};
+    return {
+      headers,
+      res: {
+        setHeader: (name: string, value: string) => {
+          headers[name] = value;
+        },
+      } as never,
+    };
+  }
+  const FULL = {
+    rateLimited: { retryAfterMs: 41_200, window: 'minute' as const },
+  };
+  const ownerToken = () => ({ sub: 'user-1', roles: ['Owner'] });
+  const userToken = () => ({ sub: 'user-9', roles: ['User'] });
+  const WITH_TOKEN = { authorization: 'Bearer jwt-token' };
+
+  it('answers 429 with the wait on the fire-and-forget route', async () => {
+    const { controller, sent } = makeController(FULL);
+    const { res, headers } = response();
+
+    const refusal = controller.sendMessage(
+      AGENT,
+      request({}),
+      { text: 'hi' } as never,
+      res,
+    );
+
+    await expect(refusal).rejects.toMatchObject({ status: 429 });
+    await refusal.catch((err: { getResponse: () => unknown }) => {
+      expect(err.getResponse()).toEqual({
+        code: 'RATE_LIMITED',
+        message: 'This agent has reached its message limit.',
+        // Rounded up: never shorter than the real wait.
+        retryAfterSec: 42,
+        window: 'minute',
+      });
+    });
+    expect(headers['Retry-After']).toBe('42');
+    expect(sent).toEqual([]);
+  });
+
+  it('answers 429 at once on the synchronous route, without waiting for an agent', async () => {
+    const { controller, registered } = makeController({
+      rateLimited: { retryAfterMs: 3 * 60 * 60_000, window: 'day' },
+    });
+    const { res, headers } = response();
+
+    const started = Date.now();
+    await expect(
+      controller.sendMessageSync(
+        AGENT,
+        request({}),
+        { text: 'hi' } as never,
+        res,
+      ),
+    ).rejects.toMatchObject({ status: 429 });
+
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(headers['Retry-After']).toBe('10800');
+    // It registered to hear the reply and must not leave that behind.
+    expect(registered).toHaveLength(1);
+  });
+
+  it('renders the refusal itself: the hub adds no sentence to the conversation', async () => {
+    const { controller, sendOptions } = makeController(FULL);
+    const { res } = response();
+
+    await controller
+      .sendMessage(AGENT, request({}), { text: 'hi' } as never, res)
+      .catch(() => undefined);
+    await controller
+      .sendMessageSync(AGENT, request({}), { text: 'hi' } as never, res)
+      .catch(() => undefined);
+
+    expect(sendOptions).toHaveLength(2);
+    for (const options of sendOptions) {
+      expect(options.silentRefusal).toBe(true);
+    }
+  });
+
+  it('sends an Owner or Admin as an operator, and everyone else as a visitor', async () => {
+    const asOwner = makeController({ verify: ownerToken });
+    await asOwner.controller.sendMessage(
+      AGENT,
+      request(WITH_TOKEN),
+      { text: 'hi' } as never,
+      response().res,
+    );
+    expect(asOwner.sendOptions[0].source).toBe('operator');
+
+    const asUser = makeController({ verify: userToken });
+    await asUser.controller.sendMessage(
+      AGENT,
+      request(WITH_TOKEN),
+      { text: 'hi' } as never,
+      response().res,
+    );
+    expect(asUser.sendOptions[0].source).toBe('visitor');
+
+    const anonymous = makeController();
+    await anonymous.controller.sendMessage(
+      AGENT,
+      request({}),
+      { text: 'hi' } as never,
+      response().res,
+    );
+    expect(anonymous.sendOptions[0].source).toBe('visitor');
+
+    const share = makeController();
+    await share.controller.sendMessageSync(
+      AGENT,
+      request(SHARE_HEADERS),
+      { text: 'hi' } as never,
+      response().res,
+    );
+    expect(share.sendOptions[0].source).toBe('visitor');
+  });
+
+  it('tells a caller with a credential how much of the tightest window is left', async () => {
+    const { controller } = makeController({
+      verify: userToken,
+      limitRemaining: { remaining: 17, resetSec: 38 },
+    });
+
+    const one = response();
+    await controller.sendMessage(
+      AGENT,
+      request(WITH_TOKEN),
+      { text: 'hi' } as never,
+      one.res,
+    );
+    expect(one.headers).toEqual({
+      'X-RateLimit-Remaining': '17',
+      'X-RateLimit-Reset': '38',
+    });
+
+    const two = response();
+    await controller.sendMessageSync(
+      AGENT,
+      request(WITH_TOKEN),
+      { text: 'hi' } as never,
+      two.res,
+    );
+    expect(two.headers['X-RateLimit-Remaining']).toBe('17');
+  });
+
+  it('tells an anonymous or share caller nothing about the limit or the load', async () => {
+    const { controller } = makeController({
+      limitRemaining: { remaining: 17, resetSec: 38 },
+    });
+
+    const anonymous = response();
+    await controller.sendMessage(
+      AGENT,
+      request({}),
+      { text: 'hi' } as never,
+      anonymous.res,
+    );
+    expect(anonymous.headers).toEqual({});
+
+    const share = response();
+    await controller.sendMessageSync(
+      AGENT,
+      request(SHARE_HEADERS),
+      { text: 'hi' } as never,
+      share.res,
+    );
+    expect(share.headers).toEqual({});
+  });
+
+  it('adds no header when the agent has no limits', async () => {
+    const { controller } = makeController({ verify: userToken });
+    const { res, headers } = response();
+    await controller.sendMessage(
+      AGENT,
+      request(WITH_TOKEN),
+      { text: 'hi' } as never,
+      res,
+    );
+    expect(headers).toEqual({});
   });
 });

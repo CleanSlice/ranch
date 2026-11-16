@@ -8,6 +8,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { SetAgentLimitsDto } from '#/agent/limit/dtos';
 
 class AgentResourcesDto {
   @ApiProperty({ example: '500m' })
@@ -62,6 +63,21 @@ export class CreateAgentDto {
   @IsArray()
   @IsString({ each: true })
   allowedOrigins?: string[];
+
+  @ApiPropertyOptional({
+    type: SetAgentLimitsDto,
+    nullable: true,
+    description:
+      'Request limits, saved together with the rest (CLEAN-224). A public ' +
+      'agent needs at least one: making an agent public without limits, or ' +
+      'removing the last limit from a public one, is refused with ' +
+      'PUBLIC_AGENT_NEEDS_LIMITS. Null switches limits off; absent leaves ' +
+      'them as they are.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SetAgentLimitsDto)
+  limits?: SetAgentLimitsDto | null;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()

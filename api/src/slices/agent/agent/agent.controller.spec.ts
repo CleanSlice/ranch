@@ -55,6 +55,7 @@ function build(opts: { resolved?: IMcpServerData[]; agent?: unknown } = {}) {
     stub,
     stub,
     mcpResolver as never,
+    stub,
   );
   return { controller, mcpResolver, agentGateway };
 }
@@ -131,5 +132,225 @@ describe('AgentController.getMcps', () => {
     const { controller } = build({ resolved: [] });
 
     expect(await controller.getMcps('ag-1', asOwner)).toEqual([]);
+  });
+});
+
+/**
+ * Visibility and limits in one save (CLEAN-224). The rule itself is pinned in
+ * agent/limit/domain/agentLimit.rules.spec.ts; here: that the routes apply
+ * it, in the right order, and never hand `limits` to the agent table.
+ */
+function buildForLimits(
+  opts: {
+    agent?: { isPublic: boolean } | null;
+    limits?: Record<string, number | null> | null;
+  } = {},
+) {
+  const order: string[] = [];
+  const agentGateway = {
+    findById: jest.fn(() =>
+      Promise.resolve(
+        opts.agent === null
+          ? null
+          : { id: 'ag-1', isPublic: false, ...opts.agent },
+      ),
+    ),
+    update: jest.fn((id: string, data: Record<string, unknown>) => {
+      order.push('agent');
+      return Promise.resolve({ id, ...data });
+    }),
+  };
+  const agentLimits = {
+    getLimits: jest.fn(() => opts.limits ?? null),
+    setLimits: jest.fn(() => {
+      order.push('limits');
+      return Promise.resolve();
+    }),
+  };
+  const deploy = {
+    createAgent: jest.fn((data: Record<string, unknown>) => {
+      order.push('agent');
+      return Promise.resolve({ id: 'ag-new', ...data });
+    }),
+  };
+  const stub = {} as never;
+  const controller = new AgentController(
+    agentGateway as never,
+    stub,
+    stub,
+    stub,
+    stub,
+    stub,
+    deploy as never,
+    stub,
+    agentLimits as never,
+  );
+  return { controller, agentGateway, agentLimits, deploy, order };
+}
+
+const codeOf = async (run: Promise<unknown>): Promise<unknown> => {
+  try {
+    await run;
+    return null;
+  } catch (err) {
+    const body = (err as { getResponse?: () => unknown }).getResponse?.();
+    return (body as { code?: string } | undefined)?.code ?? 'OTHER';
+  }
+};
+
+describe('AgentController — visibility and request limits', () => {
+  const owner = {
+    user: { sub: 'user-1', roles: ['Owner'] },
+  } as unknown as Request;
+  const LIMITS = { perMinute: 3, perHour: null, perDay: null };
+
+  it('refuses to make an agent public with no limit, and changes nothing', async () => {
+    const { controller, agentGateway, agentLimits } = buildForLimits();
+
+    expect(
+      await codeOf(controller.update('ag-1', { isPublic: true }, owner)),
+    ).toBe('PUBLIC_AGENT_NEEDS_LIMITS');
+    expect(agentGateway.update).not.toHaveBeenCalled();
+    expect(agentLimits.setLimits).not.toHaveBeenCalled();
+  });
+
+  it('makes it public in one save when the limit comes with it, limits first', async () => {
+    const { controller, agentGateway, agentLimits, order } = buildForLimits();
+
+    await controller.update(
+      'ag-1',
+      {
+        isPublic: true,
+        allowedOrigins: ['https://x.test'],
+        limits: { perMinute: 3 },
+      },
+      owner,
+    );
+
+    expect(order).toEqual(['limits', 'agent']);
+    expect(agentLimits.setLimits).toHaveBeenCalledWith(
+      'ag-1',
+      LIMITS,
+      'user-1',
+    );
+    // Limits are not an agent column: they never reach the agent table.
+    expect(agentGateway.update).toHaveBeenCalledWith('ag-1', {
+      isPublic: true,
+      allowedOrigins: ['https://x.test'],
+    });
+  });
+
+  it('refuses to switch limits off on a public agent', async () => {
+    const { controller, agentGateway } = buildForLimits({
+      agent: { isPublic: true },
+      limits: LIMITS,
+    });
+
+    expect(
+      await codeOf(controller.update('ag-1', { limits: null }, owner)),
+    ).toBe('PUBLIC_AGENT_NEEDS_LIMITS');
+    expect(agentGateway.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps limits when a public agent becomes private', async () => {
+    const { controller, agentLimits, agentGateway } = buildForLimits({
+      agent: { isPublic: true },
+      limits: LIMITS,
+    });
+
+    await controller.update('ag-1', { isPublic: false }, owner);
+
+    expect(agentLimits.setLimits).not.toHaveBeenCalled();
+    expect(agentGateway.update).toHaveBeenCalledWith('ag-1', {
+      isPublic: false,
+    });
+  });
+
+  it('lets an agent that was public before limits existed be renamed', async () => {
+    const { controller, agentGateway } = buildForLimits({
+      agent: { isPublic: true },
+      limits: null,
+    });
+
+    await controller.update('ag-1', { name: 'New name' }, owner);
+
+    expect(agentGateway.update).toHaveBeenCalledWith('ag-1', {
+      name: 'New name',
+    });
+    // The rule was not even consulted: the save touched neither field.
+    expect(agentGateway.findById).not.toHaveBeenCalled();
+  });
+
+  it('answers with the code for a value out of range or windows that contradict', async () => {
+    const { controller } = buildForLimits();
+    expect(
+      await codeOf(
+        controller.update('ag-1', { limits: { perMinute: 0 } }, owner),
+      ),
+    ).toBe('LIMIT_OUT_OF_RANGE');
+    expect(
+      await codeOf(
+        controller.update(
+          'ag-1',
+          { limits: { perMinute: 9, perHour: 2 } },
+          owner,
+        ),
+      ),
+    ).toBe('LIMIT_WINDOWS_CONTRADICT');
+  });
+
+  it('answers 404 for an agent that does not exist', async () => {
+    const { controller } = buildForLimits({ agent: null });
+    await expect(
+      controller.update(
+        'nope',
+        { isPublic: true, limits: { perMinute: 1 } },
+        owner,
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('refuses to create a public agent with no limit, before anything is created', async () => {
+    const { controller, deploy } = buildForLimits();
+
+    expect(
+      await codeOf(
+        controller.create(
+          { name: 'a', templateId: 't', isPublic: true } as never,
+          owner,
+        ),
+      ),
+    ).toBe('PUBLIC_AGENT_NEEDS_LIMITS');
+    expect(deploy.createAgent).not.toHaveBeenCalled();
+  });
+
+  it('creates a public agent with its limits, and keeps them out of the agent row', async () => {
+    const { controller, deploy, agentLimits } = buildForLimits();
+
+    await controller.create(
+      {
+        name: 'a',
+        templateId: 't',
+        isPublic: true,
+        limits: { perMinute: 3 },
+      } as never,
+      owner,
+    );
+
+    expect(deploy.createAgent).toHaveBeenCalledWith(
+      { name: 'a', templateId: 't', isPublic: true },
+      { isAdmin: undefined },
+    );
+    expect(agentLimits.setLimits).toHaveBeenCalledWith(
+      'ag-new',
+      LIMITS,
+      'user-1',
+    );
+  });
+
+  it('creates a private agent without touching limits', async () => {
+    const { controller, agentLimits } = buildForLimits();
+    await controller.create({ name: 'a', templateId: 't' } as never, owner);
+    expect(agentLimits.setLimits).not.toHaveBeenCalled();
   });
 });

@@ -12,6 +12,7 @@ import type {
   BridleSendResult,
   IBridleUserIdentity,
   IBridleMcpConnectedEvent,
+  IBridleAgentLimitEvent,
 } from './bridle.types';
 
 export interface ISyncAgentResult {
@@ -41,6 +42,19 @@ export abstract class IBridleGateway {
     attachments?: IBridleAttachment[],
     options?: IBridleSendOptions,
   ): BridleSendResult;
+  /**
+   * What a chat that connects now must be told about the agent's request
+   * limits (CLEAN-224): the `agent_limit` event when an hour or day window is
+   * full, null otherwise.
+   */
+  abstract agentLimitEvent(agentId: string): IBridleAgentLimitEvent | null;
+  /**
+   * Room left in the agent's tightest limit window, for a caller that paces
+   * itself. Null when the agent has no limits.
+   */
+  abstract limitRemaining(
+    agentId: string,
+  ): { remaining: number; resetSec: number } | null;
   /** Send an event to every socket open on this conversation (clientId +
    * agentId), numbered and kept for replay like the agent's own events. */
   abstract sendToClient(clientId: string, agentId: string, data: unknown): void;

@@ -85,7 +85,7 @@ function describeLoosening(
 /**
  * Origins as the embed check compares them (`allowedOrigins.includes(origin)`
  * in the hub's handshake and in CORS). Tidied the way the console's
- * "Visibility & embed" form does — outer spaces and one trailing slash go,
+ * Access block of the agent Overview does — outer spaces and one trailing slash go,
  * empty entries are skipped — and then held to what an origin is: http or
  * https, a host, an optional port, nothing after it. Stored as a browser
  * sends it (lower-case host, default port left out), because anything else

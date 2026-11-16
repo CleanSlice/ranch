@@ -76,7 +76,7 @@ async function bootstrap() {
 
   // CORS is resolved per-request so the public Bridle widget routes
   // (`/api/agent/:agentId/...`) honour the SAME `allowedOrigins` the operator
-  // configures on the agent in "Visibility & embed" — the exact list the
+  // configures on the agent in the Access block of its Overview — the exact list the
   // /ws/client handshake already enforces (see bridleClientWs.handler.ts).
   // Without this, the widget's socket connects (WS reads allowedOrigins) but
   // its HTTP transcript/message calls fall back to the static CORS_ORIGIN

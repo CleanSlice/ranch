@@ -144,11 +144,24 @@ them — switching limits off included — lets more through and waits for the
 person, with the refusal naming the exact change ("raise the limit per hour
 from 100 to 200"). The tool is `destructive: true` so the boot check
 guarantees the parameter, and `loosenedWindows` decides whether a call needs it.
+Visibility follows the same direction: making a private agent public opens it
+to anonymous visitors and waits for the person; making it private does not.
+
+Audience: these four are narrower than their routes. The routes admit Owner
+and Admin; the tools go through `requireOperator`, which admits only a token
+carrying Owner — the Ranch admin agent. A console Admin uses the console.
 
 | Tool (topic `agents`, operator-only) | Backing |
 |---|---|
-| `get_agent_limits` | `AgentLimitService.snapshot` (what `GET /agents/:id/load` shows, minus the minute-by-minute chart): limits, `needsLimits`, the three windows, requests in progress, refusals in the last hour, 30-day peaks. Counts only — nothing about who sent a request |
+| `list_agent_limits` | `AgentLimitService.summary` over `IAgentGateway.findAll`, as `GET /agent-limits` does, joined with each agent's name, `isPublic` and limit values: `enabled`, `atLimit`, `needsLimits` per agent, plus `atLimitNow` and `publicWithoutLimits` as lists of names. No usage figures |
+| `get_agent_limits` | `AgentLimitService.snapshot` (what `GET /agents/:id/load` shows): limits, `needsLimits`, the three windows, requests in progress, refusals in the last hour — total, by window, and when the latest was — operator and agent-to-agent traffic as `notCountedLastHour`, 30-day peaks, and the last hour as `lastHour.activeMinutes`: only the minutes that saw traffic, not sixty rows. Counts only — nothing about who sent a request |
 | `set_agent_limits` | `resolveLimitChange` → `AgentLimitService.setLimits`, as `PUT /agents/:id/limits` does; the three refusal codes come back as `{ error, code }` with the sentence to relay. A public agent cannot be left without a limit, confirmed or not |
+| `set_agent_visibility` | The one save of the "Visibility & embed" card, as `PUT /agents/:id` does it: `resolveLimitChange` → `AgentLimitService.setLimits` (only when the call names a limit) → `IAgentGateway.update` with `isPublic` and, when given, `allowedOrigins`. Origins are tidied like the form (trim, trailing slash) and must be scheme + host + optional port, else `ORIGIN_INVALID`. Going public without a limit is refused with `PUBLIC_AGENT_NEEDS_LIMITS`, confirmed or not. `confirm` when a private agent becomes public or a limit is raised or removed. It restarts nothing: the result carries `restartSuggested` when the flag or the origins changed, as the console marks a pending restart, and points at `restart_agent` |
+
+`set_agent_visibility` is a tool of its own rather than two more fields on
+`update_agent`: that one takes an id only, has no `confirm`, and lives in
+`rancher/`, away from the rule and from `loosenedWindows`. Folding visibility
+in would have made renaming an agent a destructive call.
 
 ## Secrets
 

@@ -6,7 +6,11 @@ import type { ToolMetadata } from '#/mcp/decorators';
 import { toolMetadataProblems } from '#/mcp/services/mcp-registry.service';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import { UserRoleTypes } from '#/user/user/domain';
-import { AgentLimitTool, loosenedWindows } from './agentLimit.tool';
+import {
+  AgentLimitTool,
+  loosenedWindows,
+  normalizeOrigins,
+} from './agentLimit.tool';
 import type {
   AgentLimitService,
   IAgentLimits,
@@ -69,13 +73,28 @@ const request = (roles: UserRoleTypes[]): Request =>
 const operator = () => request([UserRoleTypes.Owner]);
 const plainAgent = () => request([UserRoleTypes.Agent]);
 
-const PUBLIC_AGENT = { id: 'agent-a', name: 'Support Bot', isPublic: true };
-const PRIVATE_AGENT = { id: 'agent-b', name: 'Back Office', isPublic: false };
+const PUBLIC_AGENT = {
+  id: 'agent-a',
+  name: 'Support Bot',
+  isPublic: true,
+  allowedOrigins: ['https://shop.example.com'],
+};
+const PRIVATE_AGENT = {
+  id: 'agent-b',
+  name: 'Back Office',
+  isPublic: false,
+  allowedOrigins: [] as string[],
+};
 
 interface Harness {
   tool: AgentLimitTool;
-  service: { getLimits: jest.Mock; setLimits: jest.Mock; snapshot: jest.Mock };
-  agents: { findById: jest.Mock; findAll: jest.Mock };
+  service: {
+    getLimits: jest.Mock;
+    setLimits: jest.Mock;
+    snapshot: jest.Mock;
+    summary: jest.Mock;
+  };
+  agents: { findById: jest.Mock; findAll: jest.Mock; update: jest.Mock };
 }
 
 /** `current` is what the agent has before the call; a save replaces it. */
@@ -91,6 +110,14 @@ function harness(
       return Promise.resolve();
     }),
     snapshot: jest.fn().mockResolvedValue(snapshot()),
+    summary: jest.fn((list: { id: string; isPublic: boolean }[]) =>
+      list.map((a) => ({
+        agentId: a.id,
+        enabled: a.id === agent.id && stored !== null,
+        atLimit: false,
+        needsLimits: a.isPublic && !(a.id === agent.id && stored !== null),
+      })),
+    ),
   };
   const all = [PUBLIC_AGENT, PRIVATE_AGENT];
   const agents = {
@@ -98,6 +125,17 @@ function harness(
       Promise.resolve(id === agent.id ? agent : null),
     ),
     findAll: jest.fn().mockResolvedValue(all),
+    // The record as the gateway hands it back — with columns no tool result
+    // may carry, so a careless spread shows up in the leak test.
+    update: jest.fn((id: string, data: Record<string, unknown>) =>
+      Promise.resolve({
+        ...agent,
+        ...data,
+        id,
+        config: { apiKey: 'sk-sentinel' },
+        updatedByUserId: 'user-42',
+      }),
+    ),
   };
   const tool = new AgentLimitTool(
     service as unknown as AgentLimitService,
@@ -124,30 +162,47 @@ function keysOf(value: unknown, into = new Set<string>()): Set<string> {
   return into;
 }
 
-const metadataOf = (method: 'getAgentLimits' | 'setAgentLimits') =>
+type ToolMethod =
+  | 'listAgentLimits'
+  | 'getAgentLimits'
+  | 'setAgentLimits'
+  | 'setAgentVisibility';
+
+const metadataOf = (method: ToolMethod) =>
   Reflect.getMetadata(
     MCP_TOOL_METADATA_KEY,
     AgentLimitTool.prototype[method],
   ) as ToolMetadata;
 
 describe('AgentLimitTool — what the Tools panel needs', () => {
-  it('gives both tools a topic, a title and a template the API will boot', () => {
-    const get = metadataOf('getAgentLimits');
-    const set = metadataOf('setAgentLimits');
-    expect(get.name).toBe('get_agent_limits');
-    expect(set.name).toBe('set_agent_limits');
-    for (const metadata of [get, set]) {
+  it('gives every tool a topic, a title and a template the API will boot', () => {
+    const names: Record<ToolMethod, string> = {
+      listAgentLimits: 'list_agent_limits',
+      getAgentLimits: 'get_agent_limits',
+      setAgentLimits: 'set_agent_limits',
+      setAgentVisibility: 'set_agent_visibility',
+    };
+    for (const method of Object.keys(names) as ToolMethod[]) {
+      const metadata = metadataOf(method);
+      expect(metadata.name).toBe(names[method]);
       expect(metadata.topic).toBe(ToolTopics.Agents);
       expect(metadata.title.length).toBeGreaterThan(0);
-      expect(metadata.template).toContain('«');
+      expect(metadata.title.length).toBeLessThanOrEqual(60);
+      expect(metadata.template.length).toBeLessThanOrEqual(200);
       expect(toolMetadataProblems(metadata)).toEqual([]);
     }
+    expect(metadataOf('getAgentLimits').template).toContain('«');
+    expect(metadataOf('setAgentLimits').template).toContain('«');
+    expect(metadataOf('setAgentVisibility').template).toContain('«');
   });
 
-  it('marks only the write as needing a confirmation parameter', () => {
+  it('marks only the writes as needing a confirmation parameter', () => {
+    expect(metadataOf('listAgentLimits').destructive).toBeFalsy();
     expect(metadataOf('getAgentLimits').destructive).toBeFalsy();
-    expect(metadataOf('setAgentLimits').destructive).toBe(true);
-    expect(metadataOf('setAgentLimits').description).toContain('confirm');
+    for (const method of ['setAgentLimits', 'setAgentVisibility'] as const) {
+      expect(metadataOf(method).destructive).toBe(true);
+      expect(metadataOf(method).description).toContain('confirm');
+    }
   });
 });
 
@@ -174,9 +229,123 @@ describe('AgentLimitTool — who may use it', () => {
         plainAgent(),
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(tool.listAgentLimits({}, null, plainAgent())).rejects.toThrow(
+      ForbiddenException,
+    );
+    await expect(
+      tool.setAgentVisibility(
+        { agent: 'agent-b', isPublic: true, perMinute: 1, confirm: true },
+        null,
+        plainAgent(),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(agents.findById).not.toHaveBeenCalled();
+    expect(agents.findAll).not.toHaveBeenCalled();
+    expect(agents.update).not.toHaveBeenCalled();
+    expect(service.summary).not.toHaveBeenCalled();
     expect(service.snapshot).not.toHaveBeenCalled();
     expect(service.setLimits).not.toHaveBeenCalled();
+  });
+
+  it('does not take the console Admin role for the operator', async () => {
+    // The routes admit Admin; the tools are the Ranch admin agent's, whose
+    // token carries Owner. Widening that is a decision, not a side effect.
+    const { tool } = harness();
+    const admin = request([UserRoleTypes.Admin]);
+    await expect(tool.isListedForRequest(admin)).resolves.toBe(false);
+    await expect(tool.listAgentLimits({}, null, admin)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+});
+
+describe('AgentLimitTool — the summary across agents', () => {
+  const LEGACY_AGENT = {
+    id: 'agent-c',
+    name: 'Old Landing',
+    isPublic: true,
+    allowedOrigins: [] as string[],
+  };
+
+  function listHarness() {
+    const h = harness();
+    const all = [PUBLIC_AGENT, PRIVATE_AGENT, LEGACY_AGENT];
+    h.agents.findAll.mockResolvedValue(all);
+    h.service.getLimits.mockImplementation((id: string) =>
+      id === 'agent-a' ? limits({ perHour: null }) : null,
+    );
+    h.service.summary.mockReturnValue([
+      { agentId: 'agent-a', enabled: true, atLimit: true, needsLimits: false },
+      {
+        agentId: 'agent-b',
+        enabled: false,
+        atLimit: false,
+        needsLimits: false,
+      },
+      { agentId: 'agent-c', enabled: false, atLimit: false, needsLimits: true },
+    ]);
+    return { ...h, all };
+  }
+
+  it('names every agent with its four flags and its limit values', async () => {
+    const { tool, service, all } = listHarness();
+    const result = jsonOf(await tool.listAgentLimits({}, null, operator()));
+    expect(service.summary).toHaveBeenCalledWith(all);
+    expect(result.agents).toEqual([
+      {
+        agentId: 'agent-a',
+        agentName: 'Support Bot',
+        isPublic: true,
+        enabled: true,
+        limits: { perMinute: 10, perHour: null, perDay: 1000 },
+        atLimit: true,
+        needsLimits: false,
+      },
+      {
+        agentId: 'agent-b',
+        agentName: 'Back Office',
+        isPublic: false,
+        enabled: false,
+        limits: null,
+        atLimit: false,
+        needsLimits: false,
+      },
+      {
+        agentId: 'agent-c',
+        agentName: 'Old Landing',
+        isPublic: true,
+        enabled: false,
+        limits: null,
+        atLimit: false,
+        needsLimits: true,
+      },
+    ]);
+  });
+
+  it('answers "who is at the limit" and "who is public without one" by name', async () => {
+    const { tool } = listHarness();
+    const result = jsonOf(await tool.listAgentLimits({}, null, operator()));
+    expect(result.total).toBe(3);
+    expect(result.atLimitNow).toEqual(['Support Bot']);
+    expect(result.publicWithoutLimits).toEqual(['Old Landing']);
+  });
+
+  it('carries nothing but names, flags and limit values', async () => {
+    const { tool, agents } = listHarness();
+    agents.findAll.mockResolvedValue([
+      {
+        ...PUBLIC_AGENT,
+        config: { apiKey: 'sk-sentinel' },
+        llmCredentialId: 'cred-1',
+      },
+    ]);
+    const result = await tool.listAgentLimits({}, null, operator());
+    const keys = keysOf(jsonOf(result));
+    for (const forbidden of ['config', 'apiKey', 'llmCredentialId', 'sub']) {
+      expect(keys.has(forbidden)).toBe(false);
+    }
+    expect(textOf(result)).not.toContain('sk-sentinel');
+    expect(textOf(result)).not.toContain('agent:agent-ops');
   });
 });
 
@@ -201,8 +370,63 @@ describe('AgentLimitTool — reading', () => {
       ],
       inProgress: 3,
       refusedLastHour: 7,
+      refusedLastHourByWindow: { minute: 6, hour: 1, day: 0 },
+      lastRefusedAt: '2026-11-16T10:00:12.000Z',
+      notCountedLastHour: 4,
+      lastHour: {
+        since: '2026-11-16T10:00Z',
+        activeMinutes: [
+          { minute: '2026-11-16T10:00Z', accepted: 10, refused: 2, exempt: 1 },
+        ],
+      },
       peaksLast30Days: { minute: 9, hour: 88, day: 640 },
     });
+  });
+
+  it('lists only the minutes of the last hour that saw traffic, oldest first', async () => {
+    const { tool, service } = harness();
+    const start = Date.UTC(2026, 10, 16, 9, 1);
+    const quiet = (i: number) => ({
+      minute: start + i * 60_000,
+      accepted: 0,
+      refused: 0,
+      refusedByMinute: 0,
+      refusedByHour: 0,
+      refusedByDay: 0,
+      exempt: 0,
+    });
+    const series = Array.from({ length: 60 }, (_, i) => quiet(i));
+    series[5] = { ...quiet(5), accepted: 3 };
+    series[40] = { ...quiet(40), refused: 2, refusedByHour: 2 };
+    series[59] = { ...quiet(59), exempt: 1 };
+    service.snapshot.mockResolvedValue(
+      snapshot({
+        series,
+        refused: {
+          lastHour: 2,
+          lastAt: null,
+          byWindow: { minute: 0, hour: 2, day: 0 },
+        },
+      }),
+    );
+    const result = jsonOf(
+      await tool.getAgentLimits({ agent: 'agent-b' }, null, operator()),
+    );
+    expect(result.lastRefusedAt).toBe(null);
+    expect(result.lastHour).toEqual({
+      since: '2026-11-16T09:01Z',
+      activeMinutes: [
+        { minute: '2026-11-16T09:06Z', accepted: 3, refused: 0, exempt: 0 },
+        { minute: '2026-11-16T09:41Z', accepted: 0, refused: 2, exempt: 0 },
+        { minute: '2026-11-16T10:00Z', accepted: 0, refused: 0, exempt: 1 },
+      ],
+    });
+  });
+
+  it('says what the uncounted traffic is', () => {
+    const description = metadataOf('getAgentLimits').description;
+    expect(description).toContain('notCountedLastHour');
+    expect(description).toContain('activeMinutes');
   });
 
   it('says limits are off, and that a public agent needs them', async () => {
@@ -511,6 +735,388 @@ describe('AgentLimitTool — when the person has to say yes', () => {
     );
     expect(result.enabled).toBe(false);
     expect(result.limits).toBe(null);
+  });
+});
+
+describe('AgentLimitTool — visibility, under the rule the route applies', () => {
+  it('will not make an agent public without a limit, confirmed or not', async () => {
+    const { tool, service, agents } = harness(null);
+    for (const confirm of [undefined, true]) {
+      const result = jsonOf(
+        await tool.setAgentVisibility(
+          { agent: 'agent-b', isPublic: true, confirm },
+          null,
+          operator(),
+        ),
+      );
+      expect(result.code).toBe('PUBLIC_AGENT_NEEDS_LIMITS');
+      expect(String(result.error)).toContain('at least one request limit');
+      expect(result.isPublic).toBe(false);
+    }
+    expect(service.setLimits).not.toHaveBeenCalled();
+    expect(agents.update).not.toHaveBeenCalled();
+  });
+
+  it('makes an agent public with its limits in one call, limits first', async () => {
+    const { tool, service, agents } = harness(null);
+    const result = jsonOf(
+      await tool.setAgentVisibility(
+        {
+          agent: 'back office',
+          isPublic: true,
+          allowedOrigins: [' https://shop.example.com/ '],
+          perMinute: 30,
+          confirm: true,
+        },
+        null,
+        operator(),
+      ),
+    );
+    // By name: the id lookup misses, the exact name is found.
+    expect(service.setLimits).toHaveBeenCalledWith(
+      'agent-b',
+      { perMinute: 30, perHour: null, perDay: null },
+      'agent:agent-ops',
+    );
+    expect(agents.update).toHaveBeenCalledWith('agent-b', {
+      isPublic: true,
+      allowedOrigins: ['https://shop.example.com'],
+    });
+    expect(service.setLimits.mock.invocationCallOrder[0]).toBeLessThan(
+      agents.update.mock.invocationCallOrder[0],
+    );
+    expect(result).toEqual({
+      ok: true,
+      agentId: 'agent-b',
+      agentName: 'Back Office',
+      isPublic: true,
+      allowedOrigins: ['https://shop.example.com'],
+      enabled: true,
+      limits: { perMinute: 30, perHour: null, perDay: null },
+      restartSuggested: true,
+      message: expect.stringContaining('restart_agent') as unknown,
+    });
+    expect(String(result.message)).toContain('Nothing was restarted');
+  });
+
+  it('makes a private agent that already has limits public without touching them', async () => {
+    const { tool, service, agents } = harness(limits());
+    const result = jsonOf(
+      await tool.setAgentVisibility(
+        { agent: 'agent-b', isPublic: true, confirm: true },
+        null,
+        operator(),
+      ),
+    );
+    expect(service.setLimits).not.toHaveBeenCalled();
+    expect(agents.update).toHaveBeenCalledWith('agent-b', { isPublic: true });
+    expect(result.limits).toEqual(limits());
+    // Public with nowhere to embed it from is worth a sentence.
+    expect(String(result.message)).toContain('No allowed origin');
+  });
+
+  it('makes an agent private and keeps its limits', async () => {
+    const { tool, service, agents } = harness(limits(), PUBLIC_AGENT);
+    const result = jsonOf(
+      await tool.setAgentVisibility(
+        { agent: 'agent-a', isPublic: false },
+        null,
+        operator(),
+      ),
+    );
+    expect(service.setLimits).not.toHaveBeenCalled();
+    expect(agents.update).toHaveBeenCalledWith('agent-a', { isPublic: false });
+    expect(result.isPublic).toBe(false);
+    expect(result.enabled).toBe(true);
+    expect(result.limits).toEqual(limits());
+    expect(result.allowedOrigins).toEqual(['https://shop.example.com']);
+    expect(result.restartSuggested).toBe(true);
+  });
+
+  it('suggests no restart when neither the flag nor the origins changed', async () => {
+    const { tool, service, agents } = harness(limits(), PUBLIC_AGENT);
+    const result = jsonOf(
+      await tool.setAgentVisibility(
+        {
+          agent: 'agent-a',
+          isPublic: true,
+          allowedOrigins: ['https://shop.example.com/'],
+          perMinute: 5,
+          perHour: 100,
+          perDay: 1000,
+        },
+        null,
+        operator(),
+      ),
+    );
+    expect(service.setLimits).toHaveBeenCalledTimes(1);
+    expect(agents.update).toHaveBeenCalledTimes(1);
+    expect(result.restartSuggested).toBe(false);
+    expect(String(result.message)).not.toContain('restart_agent');
+  });
+
+  it('lets a legacy public agent keep going without limits when nothing asks for them', async () => {
+    // The route's rule is on becoming public or touching limits; neither here.
+    const { tool, agents } = harness(null, PUBLIC_AGENT);
+    const result = jsonOf(
+      await tool.setAgentVisibility(
+        {
+          agent: 'agent-a',
+          isPublic: true,
+          allowedOrigins: ['https://new.example.com'],
+        },
+        null,
+        operator(),
+      ),
+    );
+    expect(agents.update).toHaveBeenCalledWith('agent-a', {
+      isPublic: true,
+      allowedOrigins: ['https://new.example.com'],
+    });
+    expect(String(result.message)).toContain('set_agent_limits');
+  });
+
+  it('refuses limits the route would refuse, and writes nothing', async () => {
+    const { tool, service, agents } = harness(null);
+    const result = jsonOf(
+      await tool.setAgentVisibility(
+        {
+          agent: 'agent-b',
+          isPublic: true,
+          perMinute: 50,
+          perHour: 20,
+          confirm: true,
+        },
+        null,
+        operator(),
+      ),
+    );
+    expect(result.code).toBe('LIMIT_WINDOWS_CONTRADICT');
+    expect(service.setLimits).not.toHaveBeenCalled();
+    expect(agents.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses an origin that is not scheme, host and optional port', async () => {
+    const { tool, service, agents } = harness(null);
+    for (const bad of [
+      'shop.example.com',
+      'https://shop.example.com/embed',
+      'https://shop.example.com/?a=1',
+      'ftp://shop.example.com',
+      'https://*.example.com',
+      'https://user@shop.example.com',
+    ]) {
+      const result = jsonOf(
+        await tool.setAgentVisibility(
+          {
+            agent: 'agent-b',
+            isPublic: true,
+            allowedOrigins: ['https://ok.example.com', bad],
+            perMinute: 30,
+            confirm: true,
+          },
+          null,
+          operator(),
+        ),
+      );
+      expect(result.code).toBe('ORIGIN_INVALID');
+      expect(String(result.error)).toContain(bad);
+    }
+    expect(service.setLimits).not.toHaveBeenCalled();
+    expect(agents.update).not.toHaveBeenCalled();
+  });
+
+  it('does not save for an agent that does not exist', async () => {
+    const { tool, service, agents } = harness();
+    const text = textOf(
+      await tool.setAgentVisibility(
+        { agent: 'agent-x', isPublic: true, perMinute: 5, confirm: true },
+        null,
+        operator(),
+      ),
+    );
+    expect(text).toContain('Agent agent-x not found');
+    expect(text).toContain('list_agents');
+    expect(service.setLimits).not.toHaveBeenCalled();
+    expect(agents.update).not.toHaveBeenCalled();
+  });
+
+  it('asks for the id when two agents share the name', async () => {
+    const { tool, service, agents } = harness();
+    agents.findById.mockResolvedValue(null);
+    agents.findAll.mockResolvedValue([
+      PUBLIC_AGENT,
+      { ...PRIVATE_AGENT, name: 'Support Bot' },
+    ]);
+    const text = textOf(
+      await tool.setAgentVisibility(
+        { agent: 'Support Bot', isPublic: false },
+        null,
+        operator(),
+      ),
+    );
+    expect(text).toContain('agent-a');
+    expect(text).toContain('agent-b');
+    expect(service.setLimits).not.toHaveBeenCalled();
+    expect(agents.update).not.toHaveBeenCalled();
+  });
+
+  it('returns the visibility and the limits, not the agent record', async () => {
+    const { tool } = harness(null);
+    const result = await tool.setAgentVisibility(
+      { agent: 'agent-b', isPublic: true, perMinute: 30, confirm: true },
+      null,
+      operator(),
+    );
+    const keys = keysOf(jsonOf(result));
+    for (const forbidden of [
+      'config',
+      'apiKey',
+      'updatedByUserId',
+      'userId',
+      'sub',
+      'token',
+    ]) {
+      expect(keys.has(forbidden)).toBe(false);
+    }
+    expect(textOf(result)).not.toContain('sk-sentinel');
+    expect(textOf(result)).not.toContain('user-42');
+    expect(textOf(result)).not.toContain('agent:agent-ops');
+  });
+});
+
+describe('AgentLimitTool — when a change of visibility needs a yes', () => {
+  it('asks before making a private agent public, naming it, and writes nothing', async () => {
+    const { tool, service, agents } = harness(null);
+    for (const confirm of [undefined, false]) {
+      const result = await tool.setAgentVisibility(
+        { agent: 'agent-b', isPublic: true, perMinute: 30, confirm },
+        null,
+        operator(),
+      );
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('confirm: true');
+      expect(textOf(result)).toContain('«Back Office»');
+      expect(textOf(result)).toContain('public');
+    }
+    expect(service.setLimits).not.toHaveBeenCalled();
+    expect(agents.update).not.toHaveBeenCalled();
+  });
+
+  it('makes a public agent private without asking', async () => {
+    const { tool, agents } = harness(limits(), PUBLIC_AGENT);
+    const result = await tool.setAgentVisibility(
+      { agent: 'agent-a', isPublic: false },
+      null,
+      operator(),
+    );
+    expect(result.isError).toBeUndefined();
+    expect(agents.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('tightens the limits of a public agent without asking', async () => {
+    const { tool, service } = harness(limits(), PUBLIC_AGENT);
+    const result = await tool.setAgentVisibility(
+      {
+        agent: 'agent-a',
+        isPublic: true,
+        perMinute: 5,
+        perHour: 100,
+        perDay: 1000,
+      },
+      null,
+      operator(),
+    );
+    expect(result.isError).toBeUndefined();
+    expect(service.setLimits).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks before loosening a limit along the way, naming the change', async () => {
+    const { tool, service, agents } = harness(limits(), PUBLIC_AGENT);
+    const result = await tool.setAgentVisibility(
+      {
+        agent: 'agent-a',
+        isPublic: true,
+        perMinute: 10,
+        perHour: 200,
+        perDay: 1000,
+      },
+      null,
+      operator(),
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('from 100 to 200');
+    expect(service.setLimits).not.toHaveBeenCalled();
+    expect(agents.update).not.toHaveBeenCalled();
+  });
+
+  it('asks before removing the limits of an agent it makes private', async () => {
+    const { tool, service, agents } = harness(limits(), PUBLIC_AGENT);
+    const args = {
+      agent: 'agent-a',
+      isPublic: false,
+      perMinute: null,
+      perHour: null,
+      perDay: null,
+    };
+    const asked = await tool.setAgentVisibility(args, null, operator());
+    expect(asked.isError).toBe(true);
+    expect(textOf(asked)).toContain('switch request limits off');
+    expect(agents.update).not.toHaveBeenCalled();
+
+    const done = jsonOf(
+      await tool.setAgentVisibility(
+        { ...args, confirm: true },
+        null,
+        operator(),
+      ),
+    );
+    expect(service.setLimits).toHaveBeenCalledWith(
+      'agent-a',
+      null,
+      'agent:agent-ops',
+    );
+    expect(done.isPublic).toBe(false);
+    expect(done.enabled).toBe(false);
+  });
+
+  it('names both halves when a call goes public and loosens at once', async () => {
+    const { tool } = harness(limits());
+    const result = await tool.setAgentVisibility(
+      { agent: 'agent-b', isPublic: true, perMinute: 10, perHour: 100 },
+      null,
+      operator(),
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('public');
+    expect(textOf(result)).toContain('remove the limit per day');
+  });
+});
+
+describe('normalizeOrigins — what the embed check will compare against', () => {
+  it('trims, drops a trailing slash, empty entries and repeats', () => {
+    expect(
+      normalizeOrigins([
+        ' https://shop.example.com/ ',
+        '',
+        'https://shop.example.com',
+        'http://localhost:5173',
+      ]),
+    ).toEqual({
+      origins: ['https://shop.example.com', 'http://localhost:5173'],
+    });
+  });
+
+  it('stores an origin the way a browser sends it', () => {
+    expect(
+      normalizeOrigins(['HTTPS://Shop.Example.com:443', 'http://a.test:8080']),
+    ).toEqual({ origins: ['https://shop.example.com', 'http://a.test:8080'] });
+  });
+
+  it('names the entry it cannot take', () => {
+    expect(normalizeOrigins(['https://ok.test', 'nope'])).toEqual({
+      invalid: 'nope',
+    });
   });
 });
 

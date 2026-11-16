@@ -36,7 +36,7 @@ description: "Task list for the agent Overview redesign (CLEAN-228)"
 - [X] T001 Prepare the worktree: `bun install` at the root, `cd api && bun run generate && bun run build`, `cd admin && npx nuxt prepare`, `cd app && npx nuxt prepare`; confirm `cd admin && bun test slices` and `npx nuxt typecheck` are green before any change
 - [ ] T002 [P] Create `specs/031-agent-overview-redesign/e2e/` with `shots/.gitkeep` and `lib.mjs` that re-exports everything from `specs/030-agent-request-limits/e2e/lib.mjs` and adds helpers used here: `openSettings(page, agentId, tab)`, `hook(page, name)`, `noSidewaysScroll(page)`, `requestBodies(page, urlPart)` (captures PUT bodies for assertions)
 - [ ] T003 [P] Extend `specs/030-agent-request-limits/e2e/seed.mjs`: an active LLM credential, two knowledge bases, and 30 days of usage rows (two models, some days with none) for `limits-off`; keep it idempotent; export the new ids from `specs/030-agent-request-limits/e2e/lib.mjs`
-- [ ] T004 Decide the model "None" question (research R5): with the local API up, send `PUT /agents/:id` with `llmCredentialId: null` and read the agent back. If it is cleared, fix `data/agent.mapper.ts:165` to pass `null` and note it in the PR; if not, record the finding on CLEAN-228, do not offer "None" in the Model row, and say so in the PR
+- [X] T004 Decide the model "None" question (research R5): with the local API up, send `PUT /agents/:id` with `llmCredentialId: null` and read the agent back. If it is cleared, fix `data/agent.mapper.ts:165` to pass `null` and note it in the PR; if not, record the finding on CLEAN-228, do not offer "None" in the Model row, and say so in the PR
 
 ---
 
@@ -46,20 +46,20 @@ description: "Task list for the agent Overview redesign (CLEAN-228)"
 
 ### Tests first
 
-- [ ] T005 [P] Write `utils/agentDraft.test.ts` per `data-model.md` "Draft": `value` and `changed` for every editable field; a field set back to its saved value stops being changed; `saved` moving under an untouched field is followed, under a touched field is not; `count`; `needsRestartOffer` only for cpu / memory; `payload()` carries changed fields only; description becomes `config` built from the CURRENT saved config with the key set or removed; limits become an object or `null` and are present only when a limit changed; `touchesLimitPath`; origins compared as an ordered list, knowledge ids as a set; `discard()`
-- [ ] T006 [P] Extend `utils/agentLimitForm.test.ts`: `PUBLIC_AGENT_NEEDS_LIMITS` is placed both in the limit block and by the landing-page switch; the other two codes stay by their fields
+- [X] T005 [P] Write `utils/agentDraft.test.ts` per `data-model.md` "Draft": `value` and `changed` for every editable field; a field set back to its saved value stops being changed; `saved` moving under an untouched field is followed, under a touched field is not; `count`; `needsRestartOffer` only for cpu / memory; `payload()` carries changed fields only; description becomes `config` built from the CURRENT saved config with the key set or removed; limits become an object or `null` and are present only when a limit changed; `touchesLimitPath`; origins compared as an ordered list, knowledge ids as a set; `discard()`
+- [X] T006 [P] Extend `utils/agentLimitForm.test.ts`: `PUBLIC_AGENT_NEEDS_LIMITS` is placed both in the limit block and by the landing-page switch; the other two codes stay by their fields
 
 ### Implementation
 
-- [ ] T007 Implement `utils/agentDraft.ts` (pure) until T005 passes
-- [ ] T008 Extend `utils/agentLimitForm.ts` until T006 passes
-- [ ] T009 Write `composables/useAgentDraft.ts`: binds `agentDraft` to the agent record (`useAgentStore().byId`) and the limit record (`useAgentLimitStore().byAgent`), exposes `value`, `changed`, `set`, `discard`, `count`, `needsRestartOffer`, `errors`, and `save({ restart })` — through `agentLimitStore.save(id, limits, send)` when `touchesLimitPath`, else `agentStore.update`; on success clears the draft, applies the restart rules of research R4 (`markPendingRestart`, or restart at once for "Save and restart"); on a refusal keeps the draft and records the code; provide/inject key exported
-- [ ] T010 Write `composables/useUnsavedGuard.ts` (research R6): `onBeforeRouteLeave`, `onBeforeRouteUpdate`, `beforeunload`, and an exported `confirmLeave()` built on `useConfirmStore().ask`; make `composables/useAgentTab.ts` `setTab` await a registered guard before replacing the query
-- [ ] T011 [P] Add `data-confirm-dialog`, `data-confirm-accept`, `data-confirm-cancel` to `admin/slices/common/components/confirm/Dialog.vue`
-- [ ] T012 Write `components/agent/overview/SaveBar.vue` per the contract (count, restart note, Discard, Save with the kept hook `data-visibility-save`, "Save and restart"; `role="status"`; sticky above the bottom edge) and `components/agent/overview/Row.vue` (label with optional small hint + control; stacks on narrow screens)
-- [ ] T013 Wire the draft into `components/agent/overview/Tab.vue`: provide it, mount `SaveBar`, register the guard; move `components/agent/visibility/Provider.vue` onto the draft (its own Save button and local form state removed, its fields read and write the draft) so there is one save on the page from here on
+- [X] T007 Implement `utils/agentDraft.ts` (pure) until T005 passes
+- [X] T008 Extend `utils/agentLimitForm.ts` until T006 passes
+- [X] T009 Write `composables/useAgentDraft.ts`: binds `agentDraft` to the agent record (`useAgentStore().byId`) and the limit record (`useAgentLimitStore().byAgent`), exposes `value`, `changed`, `set`, `discard`, `count`, `needsRestartOffer`, `errors`, and `save({ restart })` — through `agentLimitStore.save(id, limits, send)` when `touchesLimitPath`, else `agentStore.update`; on success clears the draft, applies the restart rules of research R4 (`markPendingRestart`, or restart at once for "Save and restart"); on a refusal keeps the draft and records the code; provide/inject key exported
+- [X] T010 Write `composables/useUnsavedGuard.ts` (research R6): `onBeforeRouteLeave`, `onBeforeRouteUpdate`, `beforeunload`, and an exported `confirmLeave()` built on `useConfirmStore().ask`; make `composables/useAgentTab.ts` `setTab` await a registered guard before replacing the query
+- [X] T011 [P] Add `data-confirm-dialog`, `data-confirm-accept`, `data-confirm-cancel` to `admin/slices/common/components/confirm/Dialog.vue`
+- [X] T012 Write `components/agent/overview/SaveBar.vue` per the contract (count, restart note, Discard, Save with the kept hook `data-visibility-save`, "Save and restart"; `role="status"`; sticky above the bottom edge) and `components/agent/overview/Row.vue` (label with optional small hint + control; stacks on narrow screens)
+- [X] T013 Wire the draft into `components/agent/overview/Tab.vue`: provide it, mount `SaveBar`, register the guard; move `components/agent/visibility/Provider.vue` onto the draft (its own Save button and local form state removed, its fields read and write the draft) so there is one save on the page from here on
 - [ ] T014 Adjust `specs/030-agent-request-limits/e2e/settings.mjs` and `operator.mjs` for the save bar (research R13): wait for `[data-limit-input]` instead of a visible Save; assert the operator's link brings the limit block into view; then run both against the local stack and compare assertion counts with the last run (28 and 13)
-- [ ] T015 Gate: `cd admin && bun test slices && npx nuxt typecheck`; `bun run locale:check`
+- [X] T015 Gate: `cd admin && bun test slices && npx nuxt typecheck`; `bun run locale:check`
 
 **Checkpoint**: one draft and one save bar exist; nothing looks different yet except the visibility card's Save moved to the bar. Comment on CLEAN-228.
 

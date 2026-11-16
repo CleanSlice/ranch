@@ -356,7 +356,6 @@ async function onRemove() {
               :api-url="apiUrl"
               :is-public="agent.isPublic"
               :allowed-origins="agent.allowedOrigins"
-              @saved="(updated) => agentStore.upsert(updated)"
             />
           </section>
 

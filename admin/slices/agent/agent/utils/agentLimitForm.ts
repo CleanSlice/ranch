@@ -188,6 +188,61 @@ export function placeRefusal(
 }
 
 /**
+ * Where the Overview page shows a refusal (CLEAN-228): the limit places above,
+ * plus the landing-page switch.
+ */
+export type RefusalPlace = LimitProblemPlace | 'public';
+
+export interface IPlacedRefusal {
+  code: string;
+  place: RefusalPlace;
+  text: string;
+}
+
+/**
+ * `placeRefusal` for a page with one save for every block: the same sentence
+ * can belong in two places. "A public agent needs a limit" is said in the
+ * limit block AND by the landing-page switch — either one fixes it, and the
+ * operator may be looking at the other. The two limit rules stay by their
+ * field. Empty for a code that is not about limits.
+ */
+export function placeRefusalByField(
+  code: string | null,
+  message: string,
+  values: ILimitFormValues,
+  isPublic: boolean,
+): IPlacedRefusal[] {
+  const placed = placeRefusal(code, message, values, isPublic);
+  if (!placed) return [];
+  if (placed.code !== AgentLimitRefusalCodes.PublicAgentNeedsLimits) return [placed];
+  return [
+    { code: placed.code, place: 'limits', text: placed.text },
+    { code: placed.code, place: 'public', text: placed.text },
+  ];
+}
+
+/**
+ * What a limit field holds in the page draft: `null` for an empty field, the
+ * number for digits — in range or not, the save refuses it by its field — and
+ * `NaN` for anything else, which the draft counts as a change it cannot send.
+ */
+export function limitTextToNumber(text: string): number | null {
+  const trimmed = String(text ?? '').trim();
+  if (!trimmed) return null;
+  return DIGITS.test(trimmed) ? Number(trimmed) : Number.NaN;
+}
+
+/** The draft's three numbers as the text `findLimitProblem` reads. */
+export function limitNumbersToForm(limits: IAgentLimits): ILimitFormValues {
+  const text = (value: number | null) => (value === null ? '' : String(value));
+  return {
+    minute: text(limits.perMinute),
+    hour: text(limits.perHour),
+    day: text(limits.perDay),
+  };
+}
+
+/**
  * How long until a full window has room again: `42 s`, `12 min 5 s`,
  * `2 h 5 min`. Never empty and never negative.
  */

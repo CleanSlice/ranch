@@ -1,24 +1,13 @@
 <script setup lang="ts">
-import type { IAgentData } from '#agent/stores/agent'
 import type { LimitWindowTypes } from '#agent/domain/agentLimit.types'
 import {
-  LIMIT_FIELDS,
-  findLimitProblem,
-  formToLimits,
-  isLimitFormEmpty,
-  limitsToForm,
-  placeRefusal,
-  type ILimitFormValues,
-  type ILimitProblem,
-} from '#agent/utils/agentLimitForm'
+  provideAgentDraft,
+  useOptionalAgentDraft,
+  type IDraftError,
+} from '#agent/composables/useAgentDraft'
+import { LIMIT_FIELDS, limitTextToNumber } from '#agent/utils/agentLimitForm'
 import { formatNumber } from '#common/utils/format'
-import {
-  IconAlertTriangle,
-  IconCheck,
-  IconCopy,
-  IconLoader2,
-  IconX,
-} from '@tabler/icons-vue'
+import { IconAlertTriangle, IconCheck, IconCopy } from '@tabler/icons-vue'
 
 const props = defineProps<{
   agentId: string
@@ -27,24 +16,30 @@ const props = defineProps<{
   allowedOrigins: string[]
 }>()
 
-const emit = defineEmits<{
-  saved: [agent: IAgentData]
-}>()
-
-const agentStore = useAgentStore()
 const limitStore = useAgentLimitStore()
 const shareStore = useShareStore()
+
+// ── The page's draft (CLEAN-228) ─────────────────────────────────────
+// The switch, the origins and the three limits are fields of the Overview
+// page's one draft: they are read from it and written to it, and the page's
+// save bar saves them with everything else. This card has no Save of its own.
+//
+// Mounted somewhere that provides no draft (the Edit page, until it is
+// retired), the card makes one for itself and shows the bar inside.
+const pageDraft = useOptionalAgentDraft()
+const standalone = pageDraft === null
+const draft = pageDraft ?? provideAgentDraft(() => props.agentId)
+const { errors, saving, limitsKnown } = draft
 
 // ── What is saved ────────────────────────────────────────────────────
 // The public flag and the origins are the agent record's (props, fed by the
 // agent store); the limits, the 30-day peaks and the "public without limits"
 // flag are the limit store's record for this agent (docs/state.md). Nothing
-// here keeps a copy of either — the form below is the only local state, and it
-// holds what is being typed, not what is saved.
+// here keeps a copy of either — the only local state below is the TEXT being
+// typed into a field, kept while it still says what the draft holds.
 const limitEntry = computed(() => limitStore.byAgent[props.agentId])
 // `undefined`: not read yet. `null`: read, and limits are off.
 const savedLimits = computed(() => limitEntry.value?.limits)
-const limitsKnown = computed(() => savedLimits.value !== undefined)
 const peaks = computed(() => limitEntry.value?.load?.peaks ?? null)
 
 // Public before limits existed (spec case 8): it keeps working uncapped, and
@@ -71,14 +66,13 @@ async function loadLimits() {
   }
 }
 
-// ── The form ─────────────────────────────────────────────────────────
-// One Save for the switch, the origins and the limits (FR-010): a private
-// agent goes public, limits included, in one request.
-
-interface IVisibilityForm extends ILimitFormValues {
-  isPublic: boolean
-  originsText: string
-}
+// ── The fields ───────────────────────────────────────────────────────
+// A text field cannot be driven by the draft's value alone: "20 " and "20"
+// are the same limit, and a line break at the end of the origins is the same
+// list — re-rendering the parsed value would eat what is being typed. So each
+// field remembers its own text, and shows it for as long as it still parses to
+// what the draft holds. After a discard, a save or a change from elsewhere it
+// no longer does, and the field shows the draft again.
 
 function parseOrigins(text: string): string[] {
   return text
@@ -87,123 +81,56 @@ function parseOrigins(text: string): string[] {
     .filter(Boolean)
 }
 
-const baseline = computed<IVisibilityForm>(() => ({
-  isPublic: props.isPublic,
-  originsText: props.allowedOrigins.join('\n'),
-  ...limitsToForm(savedLimits.value),
-}))
+const typedOrigins = ref<string | null>(null)
 
-const form = reactive<IVisibilityForm>({ ...baseline.value })
-
-function differsFrom(saved: IVisibilityForm): boolean {
-  return (
-    form.isPublic !== saved.isPublic ||
-    parseOrigins(form.originsText).join('\n') !==
-      parseOrigins(saved.originsText).join('\n') ||
-    form.minute.trim() !== saved.minute ||
-    form.hour.trim() !== saved.hour ||
-    form.day.trim() !== saved.day
-  )
-}
-
-const dirty = computed(() => differsFrom(baseline.value))
-
-function resetForm() {
-  Object.assign(form, baseline.value)
-  problem.value = null
-  saveError.value = null
-}
-
-// What is saved changed under the form (the first read landing, a save from
-// the Ranch agent, another tab). Follow it — unless something is being typed:
-// an edit in progress is never overwritten by a poll.
-watch(baseline, (next, previous) => {
-  if (!differsFrom(previous)) Object.assign(form, next)
+const originsText = computed(() => {
+  const held = draft.value('allowedOrigins').join('\n')
+  if (
+    typedOrigins.value !== null &&
+    parseOrigins(typedOrigins.value).join('\n') === held
+  ) {
+    return typedOrigins.value
+  }
+  return held
 })
 
-const submitting = ref(false)
-const justSaved = ref(false)
-let justSavedTimer: ReturnType<typeof setTimeout> | null = null
-// A refused save, placed next to the field it concerns.
-const problem = ref<ILimitProblem | null>(null)
-// Any other failure of a save (network, a rejected origin, …).
-const saveError = ref<string | null>(null)
-
-// The sentence belongs to what was sent; once the fields change it is stale.
-watch(
-  () => [form.isPublic, form.minute, form.hour, form.day, form.originsText],
-  () => {
-    problem.value = null
-    saveError.value = null
-  },
-)
-
-async function onSave() {
-  if (submitting.value || !limitsKnown.value) return
-  problem.value = null
-  saveError.value = null
-  const values: ILimitFormValues = {
-    minute: form.minute,
-    hour: form.hour,
-    day: form.day,
-  }
-  // Text that is not a limit, or two limits that contradict each other,
-  // cannot be sent as numbers at all: said at once. Whether a PUBLIC agent
-  // may be saved without limits is the server's rule and the server's answer
-  // (`isPublic: false` here skips that check) — its refusal comes back below.
-  const unsendable = findLimitProblem(values, false)
-  if (unsendable) {
-    problem.value = unsendable
-    return
-  }
-
-  const limits = formToLimits(values)
-  const isPublic = form.isPublic
-  const allowedOrigins = parseOrigins(form.originsText)
-  // Origins and the public flag reach the running pod on its next start;
-  // limits take effect on the next request (FR-018) and need none.
-  const needsRestart =
-    isPublic !== props.isPublic ||
-    allowedOrigins.join('\n') !== props.allowedOrigins.join('\n')
-
-  submitting.value = true
-  let updated: IAgentData | null = null
-  // One `PUT /agents/:id` carries all three. It goes through the limit
-  // store's `save`, so the limits record moves optimistically with it and
-  // moves back if the server refuses; the agent record is only ever written
-  // from the server's answer (`agentStore.update` upserts it).
-  const result = await limitStore.save(props.agentId, limits, async () => {
-    updated = await agentStore.update(props.agentId, {
-      isPublic,
-      allowedOrigins,
-      limits,
-    })
-  })
-  submitting.value = false
-
-  if (!result.ok) {
-    const placed = placeRefusal(result.code, result.message, values, isPublic)
-    if (placed) problem.value = placed
-    else saveError.value = result.message
-    return
-  }
-
-  if (needsRestart) agentStore.markPendingRestart(props.agentId)
-  if (updated) emit('saved', updated)
-  // The load snapshot carries `needsLimits` and the windows' ceilings; bring
-  // it in line now rather than on the next poll.
-  void limitStore.fetchLoad(props.agentId).catch(() => undefined)
-  await nextTick()
-  Object.assign(form, baseline.value)
-  justSaved.value = true
-  if (justSavedTimer) clearTimeout(justSavedTimer)
-  justSavedTimer = setTimeout(() => {
-    justSaved.value = false
-  }, 2500)
+function setOriginsText(value: string | number) {
+  typedOrigins.value = String(value ?? '')
+  draft.set('allowedOrigins', parseOrigins(typedOrigins.value))
 }
 
-function setLimitText(window: LimitWindowTypes, value: string | number) {
-  form[window] = String(value ?? '')
+const typedLimits = reactive<Record<LimitWindowTypes, string | null>>({
+  minute: null,
+  hour: null,
+  day: null,
+})
+
+function limitText(field: (typeof LIMIT_FIELDS)[number]): string {
+  const held = draft.value(field.key)
+  const typed = typedLimits[field.window]
+  // `Object.is`: text that is not a number is held as NaN, and stays shown.
+  if (typed !== null && Object.is(limitTextToNumber(typed), held)) return typed
+  return held === null || Number.isNaN(held) ? '' : String(held)
+}
+
+function setLimitText(
+  field: (typeof LIMIT_FIELDS)[number],
+  value: string | number,
+) {
+  typedLimits[field.window] = String(value ?? '')
+  draft.set(field.key, limitTextToNumber(typedLimits[field.window] ?? ''))
+}
+
+const limitsEmpty = computed(
+  () =>
+    draft.value('perMinute') === null &&
+    draft.value('perHour') === null &&
+    draft.value('perDay') === null,
+)
+
+// A refused save, by the field it concerns (`draft.errors`).
+function limitError(field: (typeof LIMIT_FIELDS)[number]): IDraftError | null {
+  return errors.value[field.key] ?? null
 }
 
 function peakOf(window: LimitWindowTypes): number {
@@ -217,13 +144,13 @@ const PEAK_TITLES: Record<LimitWindowTypes, string> = {
 }
 
 // A private agent is not closed to someone holding its share link (FR-007):
-// warn while the form says "private, no limits" and a link is active. Read
+// warn while the draft says "private, no limits" and a link is active. Read
 // from the share store — the same record the header's Share menu shows.
 const shareActive = computed(
   () => shareStore.linkFor(props.agentId)?.active === true,
 )
 const showShareWarning = computed(
-  () => !form.isPublic && shareActive.value && isLimitFormEmpty(form),
+  () => !draft.value('isPublic') && shareActive.value && limitsEmpty.value,
 )
 
 onMounted(() => {
@@ -243,10 +170,6 @@ function scrollIfLinkedTo() {
   })
 }
 watch(() => route.hash, scrollIfLinkedTo)
-
-onBeforeUnmount(() => {
-  if (justSavedTimer) clearTimeout(justSavedTimer)
-})
 
 const SDK_URL = 'https://bridle.cleanslice.org/sdk/latest.js'
 
@@ -330,14 +253,24 @@ async function copy(key: string, value: string) {
         </p>
       </div>
 
-      <form class="grid gap-4" novalidate @submit.prevent="onSave">
+      <!-- No Save here: these fields are part of the page's draft, saved by
+           the page's bar. Enter in a field saves the page, as it used to. -->
+      <form class="grid gap-4" novalidate @submit.prevent="draft.save()">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <Label :for="`visibility-public-${agentId}`">Public</Label>
             <p class="mt-1 text-xs text-muted-foreground">
-              {{ form.isPublic
+              {{ draft.value('isPublic')
                 ? 'Listed on the landing page; visitors on an allowed origin chat with no token. A public agent needs at least one request limit.'
                 : 'Hidden from the landing page; a token is required from any origin.' }}
+            </p>
+            <p
+              v-if="errors.isPublic"
+              class="mt-1 text-xs text-destructive"
+              role="alert"
+              data-field-error="isPublic"
+            >
+              {{ errors.isPublic.text }}
             </p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
@@ -353,9 +286,11 @@ async function copy(key: string, value: string) {
             </Badge>
             <Switch
               :id="`visibility-public-${agentId}`"
-              v-model="form.isPublic"
-              :disabled="submitting"
+              :model-value="draft.value('isPublic')"
+              :disabled="saving"
+              :data-changed="draft.changed('isPublic') ? '' : undefined"
               data-visibility-public
+              @update:model-value="(v: boolean) => draft.set('isPublic', v)"
             />
           </div>
         </div>
@@ -364,11 +299,13 @@ async function copy(key: string, value: string) {
           <Label :for="`visibility-origins-${agentId}`">Allowed origins</Label>
           <Textarea
             :id="`visibility-origins-${agentId}`"
-            v-model="form.originsText"
+            :model-value="originsText"
             rows="3"
             placeholder="https://example.com&#10;http://localhost:5173"
-            :disabled="submitting"
+            :disabled="saving"
+            :data-changed="draft.changed('allowedOrigins') ? '' : undefined"
             data-visibility-origins
+            @update:model-value="setOriginsText"
           />
           <p class="text-xs text-muted-foreground">
             One origin per line (scheme + host + optional port, no path). Browser sites
@@ -381,7 +318,7 @@ async function copy(key: string, value: string) {
           <legend class="text-sm font-medium leading-none">
             Request limits
             <span class="ml-1 text-xs font-normal text-muted-foreground">
-              {{ form.isPublic ? 'at least one is required while the agent is public' : 'optional' }}
+              {{ draft.value('isPublic') ? 'at least one is required while the agent is public' : 'optional' }}
             </span>
           </legend>
           <p class="text-xs text-muted-foreground">
@@ -404,12 +341,13 @@ async function copy(key: string, value: string) {
                 inputmode="numeric"
                 autocomplete="off"
                 placeholder="Not limited"
-                :model-value="form[field.window]"
-                :disabled="submitting || !limitsKnown"
-                :aria-invalid="problem?.place === field.window ? 'true' : undefined"
-                :aria-describedby="problem?.place === field.window ? `limit-${field.window}-${agentId}-error` : undefined"
+                :model-value="limitText(field)"
+                :disabled="saving || !limitsKnown"
+                :aria-invalid="limitError(field) ? 'true' : undefined"
+                :aria-describedby="limitError(field) ? `limit-${field.window}-${agentId}-error` : undefined"
+                :data-changed="draft.changed(field.key) ? '' : undefined"
                 :data-limit-input="field.window"
-                @update:model-value="(v: string | number) => setLimitText(field.window, v)"
+                @update:model-value="(v: string | number) => setLimitText(field, v)"
               />
               <p
                 v-if="peakOf(field.window) > 0"
@@ -420,26 +358,26 @@ async function copy(key: string, value: string) {
                 highest seen: {{ formatNumber(peakOf(field.window)) }}
               </p>
               <p
-                v-if="problem?.place === field.window"
+                v-if="limitError(field)"
                 :id="`limit-${field.window}-${agentId}-error`"
                 class="text-xs text-destructive"
                 role="alert"
                 data-limits-error
-                :data-limits-error-code="problem.code"
+                :data-limits-error-code="limitError(field)?.code ?? ''"
               >
-                {{ problem.text }}
+                {{ limitError(field)?.text }}
               </p>
             </div>
           </div>
 
           <p
-            v-if="problem?.place === 'limits'"
+            v-if="errors.limits"
             class="text-xs text-destructive"
             role="alert"
             data-limits-error
-            :data-limits-error-code="problem.code"
+            :data-limits-error-code="errors.limits.code ?? ''"
           >
-            {{ problem.text }}
+            {{ errors.limits.text }}
           </p>
 
           <p v-if="limitsLoadError" class="text-xs text-destructive">
@@ -468,47 +406,10 @@ async function copy(key: string, value: string) {
           </div>
         </fieldset>
 
-        <p
-          v-if="saveError"
-          class="text-xs text-destructive"
-          role="alert"
-          data-visibility-error
-        >
-          {{ saveError }}
-        </p>
-
-        <div class="flex items-center gap-2">
-          <Button
-            type="submit"
-            size="sm"
-            :disabled="submitting || !dirty || !limitsKnown"
-            data-visibility-save
-          >
-            <IconLoader2 v-if="submitting" class="size-4 animate-spin" />
-            <IconCheck v-else class="size-4" />
-            {{ submitting ? 'Saving…' : 'Save' }}
-          </Button>
-          <Button
-            v-if="dirty"
-            type="button"
-            variant="ghost"
-            size="sm"
-            :disabled="submitting"
-            @click="resetForm"
-          >
-            <IconX class="size-4" />
-            Cancel
-          </Button>
-          <span
-            v-if="justSaved && !dirty"
-            class="text-xs text-muted-foreground"
-            role="status"
-            data-visibility-saved-note
-          >
-            Saved
-          </span>
-        </div>
       </form>
+
+      <!-- Only where no page provides the draft and its bar (the Edit page). -->
+      <AgentOverviewSaveBar v-if="standalone" />
 
       <div class="grid gap-3">
         <div>

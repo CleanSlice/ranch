@@ -15,6 +15,15 @@ export class AgentChannelGateway
   fetchForAgent(agentId: string): Promise<IAgentChannel[]> {
     return this.execute(async () => {
       const res = await AgentsService.getAgentChannels({ path: { id: agentId } });
+      // The generated client answers a failed request with `{ error }` rather
+      // than throwing. Unchecked, "could not be read" became an empty list —
+      // and the section list showed it as a count of 0 (CLEAN-228, FR-006).
+      if (res.error !== undefined && res.error !== null) {
+        const message = (res.error as { message?: string }).message;
+        throw new Error(
+          typeof message === 'string' && message ? message : 'Failed to load channels',
+        );
+      }
       const dto = unwrapEnvelope<AgentChannelDto[]>(res.data);
       return dto ? this.mapper.toList(dto) : [];
     });

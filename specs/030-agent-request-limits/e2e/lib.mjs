@@ -51,6 +51,44 @@ export const AGENTS = {
   share: 'agent-limits-share',
 };
 
+/**
+ * What seed.mjs adds for the Overview checks (CLEAN-228): two active LLM
+ * credentials with dummy keys, two knowledge bases, 30 days of usage for
+ * `limits-off` (which is also bound to the primary credential), and one
+ * stopped agent. The stopped agent is deliberately NOT in AGENTS: no fake
+ * runtime connects for it, so it stays stopped.
+ */
+export const FIXTURES = {
+  llm: {
+    primary: {
+      id: 'llm-limits-e2e-primary',
+      provider: 'claude',
+      model: 'claude-sonnet-4-6',
+      fallbackModel: 'claude-haiku-4-5',
+      label: 'limits-e2e primary',
+    },
+    second: {
+      id: 'llm-limits-e2e-second',
+      provider: 'claude',
+      model: 'claude-haiku-4-5',
+      fallbackModel: null,
+      label: 'limits-e2e second',
+    },
+  },
+  knowledge: [
+    { id: 'knowledge-limits-e2e-handbook', name: 'limits-e2e handbook' },
+    { id: 'knowledge-limits-e2e-pricing', name: 'limits-e2e pricing' },
+  ],
+  usage: {
+    agentId: 'agent-limits-off',
+    models: ['claude-sonnet-4-6', 'claude-haiku-4-5'],
+    days: 30,
+    /** Days ago (UTC) with no usage row at all; two of them fall in the last seven. */
+    emptyDaysAgo: [2, 5, 11, 12, 19, 26],
+  },
+  stopped: { id: 'agent-limits-stopped', name: 'limits-stopped' },
+};
+
 /** `KEY=value` lines of a dotenv file; values are never printed. */
 export function readEnv(file) {
   const out = {};

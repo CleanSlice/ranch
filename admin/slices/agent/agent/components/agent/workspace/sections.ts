@@ -2,9 +2,11 @@
  * The agent workspace's tab model (specs/017-compact-agent-workspace, R1).
  *
  * The header shows two tabs, Chat and Settings. Settings is a vertical list
- * of section cards on the left, one per SECTION below, with the selected
+ * of one-line rows on the left, one per SECTION below and grouped under three
+ * headings (specs/031-agent-overview-redesign, R1), with the selected
  * section's content beside it — switching sections never leaves the screen.
- * That replaced a hub you fell into and climbed back out of, which replaced
+ * That replaced a list of cards, which replaced
+ * a hub you fell into and climbed back out of, which replaced
  * the eleven-tab bar of specs/006, which replaced a right-hand navigator,
  * which replaced an accordion.
  *
@@ -48,13 +50,28 @@ export interface ISection {
   desc: string;
   countKey: SectionCountKey | null;
   icon: Component;
+  /** The heading the row sits under; `null` only for Overview, on top. */
+  group: SectionGroup | null;
 }
+
+/**
+ * The headings of the section list, in order (specs/031, R1). A group is one
+ * unbroken run of SECTIONS, so the list is read top to bottom as: what the
+ * agent is given, what it holds, what it did.
+ */
+export const SECTION_GROUPS = [
+  { value: 'configure', title: 'Configure' },
+  { value: 'data', title: 'Data' },
+  { value: 'observe', title: 'Observe' },
+] as const;
+
+export type SectionGroup = (typeof SECTION_GROUPS)[number]['value'];
 
 /** What the header renders. */
 export const WORKSPACE_TABS = ['chat', 'settings'] as const;
 export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 
-/** The Settings hub, in card order. */
+/** The Settings list, in row order: Overview, then group by group. */
 export const SECTIONS = [
   {
     value: 'overview',
@@ -62,6 +79,7 @@ export const SECTIONS = [
     desc: 'Usage, runtime, visibility & embed.',
     countKey: null,
     icon: IconLayoutDashboard,
+    group: null,
   },
   {
     value: 'knowledge',
@@ -69,6 +87,7 @@ export const SECTIONS = [
     desc: 'Knowledge bases the agent can query.',
     countKey: 'knowledge',
     icon: IconBook2,
+    group: 'configure',
   },
   {
     value: 'a2a',
@@ -76,13 +95,7 @@ export const SECTIONS = [
     desc: 'Agent-to-agent: card, peers & delegations.',
     countKey: 'a2a',
     icon: IconUsers,
-  },
-  {
-    value: 'files',
-    title: 'Files',
-    desc: 'Browse and edit S3-stored agent data.',
-    countKey: 'files',
-    icon: IconFolder,
+    group: 'configure',
   },
   {
     value: 'channels',
@@ -90,20 +103,7 @@ export const SECTIONS = [
     desc: 'Messaging platforms (Telegram, …) the agent talks on.',
     countKey: 'channels',
     icon: IconMessageCircle,
-  },
-  {
-    value: 'logs',
-    title: 'Logs',
-    desc: 'Pod logs, full width.',
-    countKey: null,
-    icon: IconFileText,
-  },
-  {
-    value: 'events',
-    title: 'Events',
-    desc: 'Failures and incidents reported for this agent.',
-    countKey: null,
-    icon: IconBellRinging,
+    group: 'configure',
   },
   {
     value: 'secrets',
@@ -111,6 +111,7 @@ export const SECTIONS = [
     desc: 'User-scoped secrets the runtime stores.',
     countKey: 'secrets',
     icon: IconKey,
+    group: 'configure',
   },
   {
     value: 'env',
@@ -118,6 +119,15 @@ export const SECTIONS = [
     desc: 'Env vars injected at deploy time.',
     countKey: null,
     icon: IconVariable,
+    group: 'configure',
+  },
+  {
+    value: 'files',
+    title: 'Files',
+    desc: 'Browse and edit S3-stored agent data.',
+    countKey: 'files',
+    icon: IconFolder,
+    group: 'data',
   },
   {
     value: 'chats',
@@ -125,6 +135,23 @@ export const SECTIONS = [
     desc: 'Conversation history across channels.',
     countKey: null,
     icon: IconMessages,
+    group: 'data',
+  },
+  {
+    value: 'logs',
+    title: 'Logs',
+    desc: 'Pod logs, full width.',
+    countKey: null,
+    icon: IconFileText,
+    group: 'observe',
+  },
+  {
+    value: 'events',
+    title: 'Events',
+    desc: 'Failures and incidents reported for this agent.',
+    countKey: null,
+    icon: IconBellRinging,
+    group: 'observe',
   },
   {
     value: 'paddock',
@@ -132,6 +159,7 @@ export const SECTIONS = [
     desc: 'Run evaluations & manage scenarios.',
     countKey: null,
     icon: IconFlask,
+    group: 'observe',
   },
 ] as const satisfies ReadonlyArray<ISection>;
 

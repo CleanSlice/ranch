@@ -4,9 +4,12 @@ import {
   formToLimits,
   formatRoomIn,
   isLimitFormEmpty,
+  limitNumbersToForm,
+  limitTextToNumber,
   limitsToForm,
   parseLimitField,
   placeRefusal,
+  placeRefusalByField,
 } from './agentLimitForm';
 
 const form = (minute = '', hour = '', day = '') => ({ minute, hour, day });
@@ -118,6 +121,72 @@ describe('limit fields — a refusal from the server', () => {
   test('is not a limit problem when the code is something else, or absent', () => {
     expect(placeRefusal('AGENT_NOT_FOUND', 'nope', form(), true)).toBe(null);
     expect(placeRefusal(null, 'Network down', form(), true)).toBe(null);
+  });
+});
+
+describe('limit fields — a refusal placed for the whole page', () => {
+  const needsLimits =
+    'A public agent needs at least one limit. Fill in a limit, or keep the agent private.';
+
+  test('"public needs limits" goes in the limit block AND by the landing-page switch', () => {
+    const placed = placeRefusalByField('PUBLIC_AGENT_NEEDS_LIMITS', 'server text', form(), true);
+    expect(placed).toEqual([
+      { code: 'PUBLIC_AGENT_NEEDS_LIMITS', place: 'limits', text: needsLimits },
+      { code: 'PUBLIC_AGENT_NEEDS_LIMITS', place: 'public', text: needsLimits },
+    ]);
+  });
+
+  test('… also when the form looks fine here and only the server saw it', () => {
+    const placed = placeRefusalByField('PUBLIC_AGENT_NEEDS_LIMITS', 'server text', form('20'), false);
+    expect(placed.length).toBe(2);
+    expect(placed[0]?.place).toBe('limits');
+    expect(placed[1]?.place).toBe('public');
+  });
+
+  test('a value out of range stays by its field', () => {
+    const placed = placeRefusalByField('LIMIT_OUT_OF_RANGE', 'server text', form('20', '0'), true);
+    expect(placed.length).toBe(1);
+    expect(placed[0]?.place).toBe('hour');
+    expect(placed[0]?.code).toBe('LIMIT_OUT_OF_RANGE');
+  });
+
+  test('a contradiction stays by the longer field', () => {
+    const placed = placeRefusalByField('LIMIT_WINDOWS_CONTRADICT', 'server text', form('500', '', '100'), true);
+    expect(placed.length).toBe(1);
+    expect(placed[0]?.place).toBe('day');
+  });
+
+  test('a code that is not about limits is placed nowhere', () => {
+    expect(placeRefusalByField('AGENT_NOT_FOUND', 'nope', form(), true)).toEqual([]);
+    expect(placeRefusalByField(null, 'Network down', form(), true)).toEqual([]);
+  });
+});
+
+describe('limit fields — numbers held by the page draft', () => {
+  test('text becomes a number, an empty field null', () => {
+    expect(limitTextToNumber('')).toBe(null);
+    expect(limitTextToNumber('  ')).toBe(null);
+    expect(limitTextToNumber(' 30 ')).toBe(30);
+  });
+
+  test('digits out of range stay a number, for the save to refuse by the field', () => {
+    expect(limitTextToNumber('0')).toBe(0);
+    expect(limitTextToNumber('1000001')).toBe(1000001);
+  });
+
+  test('anything else is NaN — a change that cannot be sent', () => {
+    expect(Number.isNaN(limitTextToNumber('ten'))).toBe(true);
+    expect(Number.isNaN(limitTextToNumber('1.5'))).toBe(true);
+    expect(Number.isNaN(limitTextToNumber('-3'))).toBe(true);
+  });
+
+  test('numbers go back to the text the checks read', () => {
+    expect(limitNumbersToForm({ perMinute: 20, perHour: null, perDay: 0 })).toEqual(
+      form('20', '', '0'),
+    );
+    const unreadable = limitNumbersToForm({ perMinute: Number.NaN, perHour: null, perDay: null });
+    expect(findLimitProblem(unreadable, false)?.code).toBe('LIMIT_OUT_OF_RANGE');
+    expect(findLimitProblem(unreadable, false)?.place).toBe('minute');
   });
 });
 

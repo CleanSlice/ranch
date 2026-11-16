@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import type { IAgentLoadMinute } from '#agent/domain/agentLimit.types';
+import { chartTop, isLimitAboveScale } from '#agent/utils/limitPreview';
 import { formatClock, formatNumber } from '#common/utils/format';
 
 // The last hour, one bar per minute: accepted with refused stacked on top,
 // and a line at the per-minute limit when there is one.
+//
+// The line follows `previewLimit` — the number being typed in the Request
+// limit block, before any save (CLEAN-228) — and the minutes that accepted
+// more than it are marked. Without that prop it is the saved limit.
 //
 // Drawn as plain elements rather than through the `@unovis/vue` wrappers in
 // `#theme/components/ui/chart`: unovis owns its SVG and gives no way to put
@@ -14,30 +19,58 @@ const props = defineProps<{
   series: IAgentLoadMinute[];
   /** `null`: the minute window is not limited, so no line is drawn. */
   perMinuteLimit: number | null;
+  /** The limit to draw instead of the saved one: what is typed right now.
+   *  `null`: nothing typed, no line. Left out: the saved limit is drawn. */
+  previewLimit?: number | null;
 }>();
 
-// One scale for bars and line: the tallest minute, or the limit when it is
-// higher — so the line is always inside the plot and a quiet hour does not
-// look like a busy one.
-const scaleMax = computed(() => {
-  let max = 1;
+// The limit the line and the marks are about. Text that is not a number is
+// held as NaN by the page's draft: there is nothing to draw for it.
+const limit = computed<number | null>(() => {
+  const value =
+    props.previewLimit !== undefined ? props.previewLimit : props.perMinuteLimit;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+});
+
+// The tallest stack of the hour: what the scale has to hold.
+const peak = computed(() => {
+  let max = 0;
   for (let i = 0; i < props.series.length; i += 1) {
     const total = props.series[i]!.accepted + props.series[i]!.refused;
     if (total > max) max = total;
   }
-  if (props.perMinuteLimit !== null && props.perMinuteLimit > max) {
-    max = props.perMinuteLimit;
-  }
   return max;
 });
+
+// One scale for bars and line, by the rule of `chartTop`: the traffic stays
+// readable whatever the limit. A limit far above the hour's traffic is not
+// allowed to flatten the bars — it is pinned to the top edge and labelled as
+// above the scale instead. Rounded up so the axis reads as a whole number.
+const scaleMax = computed(() => Math.ceil(chartTop(peak.value, limit.value)));
+
+const limitAboveScale = computed(() =>
+  isLimitAboveScale(peak.value, limit.value),
+);
 
 function pct(value: number): string {
   return `${Math.min(100, (value / scaleMax.value) * 100)}%`;
 }
 
-const limitBottom = computed(() =>
-  props.perMinuteLimit === null ? null : pct(props.perMinuteLimit),
-);
+const limitBottom = computed(() => {
+  if (limit.value === null) return null;
+  return limitAboveScale.value ? '100%' : pct(limit.value);
+});
+
+const limitLabel = computed(() => {
+  if (limit.value === null) return '';
+  return limitAboveScale.value
+    ? `limit ${formatNumber(limit.value)} is above this scale`
+    : `limit ${formatNumber(limit.value)}`;
+});
+
+function isOver(m: IAgentLoadMinute): boolean {
+  return limit.value !== null && m.accepted > limit.value;
+}
 
 const hasTraffic = computed(() =>
   props.series.some((m) => m.accepted > 0 || m.refused > 0 || m.exempt > 0),
@@ -66,6 +99,7 @@ function describe(m: IAgentLoadMinute): string {
     `${formatNumber(m.refused)} refused`,
   ];
   if (m.exempt > 0) parts.push(`${formatNumber(m.exempt)} not counted`);
+  if (isOver(m)) parts.push(`over the limit of ${formatNumber(limit.value)}`);
   return `${formatClock(m.minute)} — ${parts.join(', ')}`;
 }
 
@@ -88,7 +122,7 @@ const tableRows = computed(() =>
   <figure
     class="grid gap-2"
     data-load-chart
-    :data-limit="perMinuteLimit ?? ''"
+    :data-limit="limit ?? ''"
     :data-scale-max="scaleMax"
   >
     <figcaption class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs">
@@ -104,9 +138,9 @@ const tableRows = computed(() =>
           <span class="load-refused size-2.5 rounded-xs" aria-hidden="true" />
           Refused ({{ formatNumber(totals.refused) }})
         </span>
-        <span v-if="perMinuteLimit !== null" class="flex items-center gap-1.5">
+        <span v-if="limit !== null" class="flex items-center gap-1.5">
           <span class="w-4 border-t border-dashed border-foreground/70" aria-hidden="true" />
-          Limit per minute ({{ formatNumber(perMinuteLimit) }})
+          Limit per minute ({{ formatNumber(limit) }})
         </span>
       </span>
     </figcaption>
@@ -143,6 +177,7 @@ const tableRows = computed(() =>
             :data-accepted="m.accepted"
             :data-refused="m.refused"
             :data-exempt="m.exempt"
+            :data-over="isOver(m) ? '' : undefined"
             @mouseenter="activeIndex = i"
           >
             <div
@@ -150,20 +185,34 @@ const tableRows = computed(() =>
               class="load-refused w-full rounded-t-xs"
               :style="{ height: pct(m.refused), minHeight: '2px' }"
             />
+            <!-- A minute above the limit being looked at: the alarm colour,
+                 and it is said in the bar's title, in the readout and in the
+                 sentence under the chart — never by the colour alone. -->
             <div
               v-if="m.accepted > 0"
-              class="w-full bg-primary"
-              :class="m.refused > 0 ? '' : 'rounded-t-xs'"
+              class="w-full"
+              :class="[
+                isOver(m) ? 'bg-destructive' : 'bg-primary',
+                m.refused > 0 ? '' : 'rounded-t-xs',
+              ]"
               :style="{ height: pct(m.accepted), minHeight: '2px' }"
             />
           </div>
 
           <div
             v-if="limitBottom !== null"
-            class="pointer-events-none absolute inset-x-0 border-t border-dashed border-foreground/70"
+            class="pointer-events-none absolute inset-x-0 border-t-[1.5px] border-dashed border-foreground/70"
             :style="{ bottom: limitBottom }"
             data-load-chart-limit
-          />
+            :data-limit-above-scale="limitAboveScale ? '' : undefined"
+          >
+            <span
+              class="absolute right-0 bg-background px-1 text-[11px] font-semibold leading-4 tabular-nums"
+              :class="limitAboveScale ? 'top-0.5' : '-top-[18px]'"
+            >
+              {{ limitLabel }}
+            </span>
+          </div>
         </div>
 
         <div
@@ -177,7 +226,11 @@ const tableRows = computed(() =>
       </div>
     </div>
 
-    <table class="sr-only">
+    <!-- The wrapper is what hides it: a table sizes itself to its content
+         whatever width `sr-only` gives it, and on a phone that widened the
+         page into a sideways scroll. -->
+    <div class="sr-only">
+    <table>
       <caption>Requests per minute over the last hour, minutes with traffic only</caption>
       <thead>
         <tr>
@@ -196,6 +249,7 @@ const tableRows = computed(() =>
         </tr>
       </tbody>
     </table>
+    </div>
   </figure>
 </template>
 

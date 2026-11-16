@@ -3,7 +3,6 @@ import {
   IconAlertTriangle,
   IconDotsVertical,
   IconLoader2,
-  IconPencil,
   IconPin,
   IconPinnedOff,
   IconPlayerPlay,
@@ -23,6 +22,7 @@ import {
 } from '#theme/components/ui/dropdown-menu';
 import { useToolCatalogStore } from '#toolCatalog/stores/toolCatalog';
 import { agentInitials } from '#agent/composables/useAgentRailEntries';
+import { provideAgentDelete } from '#agent/composables/useAgentDelete';
 import { useAgentPin } from '#agent/composables/useAgentPin';
 import { useAgentSectionCounts } from '#agent/composables/useAgentSectionCounts';
 import { useAgentTab } from '#agent/composables/useAgentTab';
@@ -178,22 +178,24 @@ const toolCatalogStore = useToolCatalogStore();
 // Delete sits last in the menu, behind a separator: it is the one action
 // there you cannot undo, and it should not sit one mis-click away from the
 // ones you reach for most.
+//
+// One confirmation for both ways in (CLEAN-228): this menu and the Delete
+// block on Overview, which asks for it through `provideAgentDelete`. It is
+// the dialog the Edit page had — a backup first if wanted, the opt-in wipe of
+// stored files — not the plain "are you sure" this menu used to open.
 const confirmRemoveOpen = ref(false);
-const removing = ref(false);
-const removeError = ref<string | null>(null);
+provideAgentDelete(() => {
+  confirmRemoveOpen.value = true;
+});
 
-async function onRemove() {
-  if (!agent.value || removing.value) return;
-  removing.value = true;
-  removeError.value = null;
-  try {
-    await agentStore.remove(agent.value.id);
-    emit('deleted');
-  } catch (err) {
-    removeError.value = (err as Error).message || 'Delete failed';
-  } finally {
-    removing.value = false;
-  }
+// The dialog has deleted the agent and the store has dropped the record.
+// One tick first, so the sections of the deleted agent unmount — Overview
+// would otherwise ask whether to discard edits to something that is gone.
+const deleted = ref(false);
+async function onDeleted() {
+  deleted.value = true;
+  await nextTick();
+  emit('deleted');
 }
 </script>
 
@@ -287,7 +289,7 @@ async function onRemove() {
           v-if="limitEntry?.needsLimits"
           type="button"
           class="shrink-0 text-xs text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
-          title="Public with no request limits — set them in Visibility &amp; embed"
+          title="Public with no request limits — set them in the Request limit block on Overview"
           data-header-needs-limits
           @click="setTab('overview')"
         >
@@ -359,7 +361,7 @@ async function onRemove() {
             <IconPin v-else class="size-4" />
           </Button>
           <!-- Everything but Stop/Start lives in the menu (specs/017, R6):
-               Restart, Tools, Edit, Share as a submenu of rows, and Delete
+               Restart, Tools, Share as a submenu of rows, and Delete
                last, separated — the one action here you cannot undo. -->
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
@@ -386,17 +388,10 @@ async function onRemove() {
                 <IconTool class="size-4" />
                 Tools
               </DropdownMenuItem>
-              <DropdownMenuItem as-child class="cursor-pointer">
-                <NuxtLink :to="`/agents/${agent.id}/edit`">
-                  <IconPencil class="size-4" />
-                  Edit
-                </NuxtLink>
-              </DropdownMenuItem>
               <ShareMenuSub :agent-id="agent.id" />
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 class="cursor-pointer text-destructive focus:text-destructive"
-                :disabled="removing"
                 @select="confirmRemoveOpen = true"
               >
                 <IconTrash class="size-4" />
@@ -407,11 +402,8 @@ async function onRemove() {
         </div>
       </div>
 
-      <p
-        v-if="lifecycleError || removeError"
-        class="shrink-0 text-xs text-destructive"
-      >
-        {{ lifecycleError || removeError }}
+      <p v-if="lifecycleError" class="shrink-0 text-xs text-destructive">
+        {{ lifecycleError }}
       </p>
 
       <div class="min-h-0 flex-1">
@@ -430,18 +422,18 @@ async function onRemove() {
         />
       </div>
 
-      <ConfirmDialog
+      <AgentDeleteDialog
         v-model:open="confirmRemoveOpen"
-        title="Delete agent"
-        :description="`Permanently delete agent “${agent.name}”? This cannot be undone.`"
-        confirm-label="Delete agent"
-        :busy="removing"
-        @confirm="onRemove"
+        :agent-id="agent.id"
+        :agent-name="agent.name"
+        @deleted="onDeleted"
       />
     </template>
 
+    <!-- `!deleted`: a delete drops the store record before the navigation
+         away lands — that gap is not a "not found". -->
     <div
-      v-else
+      v-else-if="!deleted"
       class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground"
     >
       Agent not found.

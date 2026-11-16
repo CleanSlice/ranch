@@ -21,8 +21,15 @@ marked "public without limits" in the agent list and on its page, and the next
 save of its visibility settings requires limits. It can still be renamed or
 otherwise edited in the meantime.
 
-Set them in the admin console: an agent → **Visibility & embed**. Or ask the
-Ranch agent, which has a tool for each thing that card and the load view do:
+Set them in the admin console: an agent → Settings → Overview → the
+**Request limit** block. The block has an on/off switch (off is "all three
+fields empty"), shows the agent's last hour under the fields so a number can be
+chosen against real traffic, and is saved with the rest of Overview by the one
+save bar at the bottom of the page. Whether the agent is public is the
+landing-page switch in the **Access** block of the same page.
+
+Or ask the Ranch agent, which has a tool for each thing those blocks and the
+load view do:
 
 | Ask | Tool | What it does |
 |-----|------|--------------|

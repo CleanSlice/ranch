@@ -78,7 +78,19 @@ try {
   await chatOn(page).ready();
   const day = await until(() => readNotice(page), { timeout: 8000 });
   check(day?.window === 'day', `the notice names the day window (${day?.window})`);
-  check(WORDS.retryAfter.test(day?.text ?? ''), `it says "Try again after …" ("${day?.text}")`);
+  // The seed fills this window 21 hours back, so it frees about three hours
+  // from now. Run after nine in the evening that is past midnight, and the
+  // sentence is the other one the notice has: "Try again tomorrow after …".
+  // Which of the two is right is worked out here, not taken from the page.
+  const freesAt = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const pastMidnight = freesAt.getDate() !== new Date().getDate();
+  const dayText = day?.text ?? '';
+  check(
+    pastMidnight
+      ? WORDS.tomorrow.test(dayText) && /after|после/i.test(dayText)
+      : WORDS.retryAfter.test(dayText) && !WORDS.tomorrow.test(dayText),
+    `it says "${pastMidnight ? 'Try again tomorrow after …' : 'Try again after …'}" ("${dayText}")`,
+  );
   check(/\d{1,2}:\d{2}/.test(day?.time ?? ''), `with a time of day (${day?.time})`);
   await sleep(2500);
   check((await readNotice(page))?.time === day?.time, 'which does not tick');

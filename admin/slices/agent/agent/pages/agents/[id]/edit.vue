@@ -1,12 +1,22 @@
 <script setup lang="ts">
+// The separate Edit page for an existing agent is retired (CLEAN-228, research
+// R12): everything it changed is edited in place on the agent's Overview. The
+// address is kept so old links and bookmarks land where the editing is now —
+// replaced, not pushed, so Back does not bounce through here again.
 definePageMeta({
-  key: (route) => `agent-edit-${route.params.id as string}`,
+  middleware: [
+    (to) =>
+      navigateTo(
+        {
+          path: `/agents/${encodeURIComponent(String(to.params.id))}`,
+          query: { tab: 'overview' },
+        },
+        { replace: true },
+      ),
+  ],
 });
-
-const route = useRoute();
-const id = route.params.id as string;
 </script>
 
 <template>
-  <AgentEditProvider :id="id" />
+  <div />
 </template>

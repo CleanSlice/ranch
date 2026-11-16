@@ -18,7 +18,7 @@ const dotClass = computed(() => {
 
 const pulseClass = computed(() =>
   store.connectionState === 'connected' && alertCount.value === 0
-    ? 'animate-ping bg-emerald-500/60'
+    ? 'motion-safe:animate-ping bg-emerald-500/60'
     : '',
 );
 

@@ -20,6 +20,31 @@ export function formatCount(n: number) {
   return String(n);
 }
 
+/**
+ * A count in short form with three significant digits: `52`, `3.2k`, `107k`,
+ * `1.39M`, `133M`. Closer than `formatCount` (one decimal, so `1.0k` for
+ * 1,049) — for figures a reader compares with each other, like the Usage
+ * block's days (CLEAN-228).
+ */
+export function formatCompact(n: number): string {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '';
+  if (Math.abs(n) < 1000) return String(Math.round(n));
+  const units = ['k', 'M', 'B'];
+  let value = n / 1000;
+  for (let unit = 0; unit < units.length; unit += 1) {
+    const size = Math.abs(value);
+    const digits = size >= 100 ? 0 : size >= 10 ? 1 : 2;
+    const rounded = Number(value.toFixed(digits));
+    // 999,950 rounds to 1000k: say 1M instead.
+    if (Math.abs(rounded) >= 1000 && unit < units.length - 1) {
+      value = rounded / 1000;
+      continue;
+    }
+    return `${rounded}${units[unit]}`;
+  }
+  return String(Math.round(n));
+}
+
 export function formatUsd(n: number) {
   if (n <= 0) return '$0';
   if (n < 0.01) return '<$0.01';

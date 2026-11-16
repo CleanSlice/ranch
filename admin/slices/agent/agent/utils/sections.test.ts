@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   DEFAULT_SECTION,
   DEFAULT_TAB,
+  SECTION_GROUPS,
   SECTIONS,
   WORKSPACE_TABS,
   sectionOf,
@@ -9,6 +10,7 @@ import {
   toAgentTab,
   workspaceTabOf,
   type AgentTab,
+  type SectionGroup,
 } from '#agent/components/agent/workspace/sections';
 
 // The `?tab=` vocabulary is a shared-link contract
@@ -19,19 +21,69 @@ const SECTION_VALUES = [
   'overview',
   'knowledge',
   'a2a',
-  'files',
   'channels',
-  'logs',
-  'events',
   'secrets',
   'env',
+  'files',
   'chats',
+  'logs',
+  'events',
   'paddock',
 ] as const;
+
+// The list is grouped (specs/031-agent-overview-redesign, FR-002): Overview
+// alone on top, then one heading per group.
+const SECTION_GROUP_OF: Record<
+  (typeof SECTION_VALUES)[number],
+  SectionGroup | null
+> = {
+    overview: null,
+    knowledge: 'configure',
+    a2a: 'configure',
+    channels: 'configure',
+    secrets: 'configure',
+    env: 'configure',
+    files: 'data',
+    chats: 'data',
+    logs: 'observe',
+    events: 'observe',
+    paddock: 'observe',
+  };
 
 describe('SECTIONS', () => {
   test('lists the eleven sections in hub order', () => {
     expect(SECTIONS.map((s) => s.value)).toEqual([...SECTION_VALUES]);
+  });
+
+  test('every section sits in its group, and only overview has none', () => {
+    for (let i = 0; i < SECTIONS.length; i += 1) {
+      const s = SECTIONS[i]!;
+      expect(s.group).toBe(SECTION_GROUP_OF[s.value]);
+      expect(s.group === null).toBe(s.value === 'overview');
+    }
+  });
+
+  test('a group is one unbroken run, in the order of its heading', () => {
+    const runs: string[] = [];
+    for (let i = 0; i < SECTIONS.length; i += 1) {
+      const g = SECTIONS[i]!.group;
+      if (g === null) continue;
+      if (runs[runs.length - 1] !== g) runs.push(g);
+    }
+    expect(runs).toEqual(SECTION_GROUPS.map((g) => g.value));
+  });
+
+  test('the three group headings are Configure, Data, Observe', () => {
+    expect(SECTION_GROUPS.map((g) => g.value)).toEqual([
+      'configure',
+      'data',
+      'observe',
+    ]);
+    expect(SECTION_GROUPS.map((g) => g.title)).toEqual([
+      'Configure',
+      'Data',
+      'Observe',
+    ]);
   });
 
   test('every section carries a title, a description and an icon', () => {
@@ -47,7 +99,7 @@ describe('SECTIONS', () => {
     const countable = SECTIONS.filter((s) => s.countKey !== null).map(
       (s) => s.value,
     );
-    expect(countable).toEqual(['knowledge', 'a2a', 'files', 'channels', 'secrets']);
+    expect(countable).toEqual(['knowledge', 'a2a', 'channels', 'secrets', 'files']);
   });
 
   test('the workspace has exactly two tabs and chat is the default', () => {

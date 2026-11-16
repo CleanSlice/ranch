@@ -7,8 +7,8 @@ import type {
 import { formatRoomIn } from '#agent/utils/agentLimitForm';
 import { formatNumber, formatStamp } from '#common/utils/format';
 
-// Renders the snapshot it is handed; `load/Provider.vue` reads it from the
-// limit store by agent id (docs/state.md) and keeps it fresh.
+// Renders the snapshot it is handed; `overview/LimitCard.vue` reads it from
+// the limit store by agent id (docs/state.md) and keeps it fresh.
 const props = defineProps<{ load: IAgentLoad }>();
 
 const WINDOW_LABELS: Record<LimitWindowTypes, string> = {
@@ -60,7 +60,7 @@ const lastRefusedAt = computed(() => formatStamp(props.load.refused.lastAt));
       each counts on its own. What you see is the share of one copy.
     </p>
 
-    <div class="grid gap-4 sm:grid-cols-3">
+    <div class="grid gap-4 @[460px]:grid-cols-3">
       <div
         v-for="w in load.windows"
         :key="w.window"
@@ -119,7 +119,7 @@ const lastRefusedAt = computed(() => formatStamp(props.load.refused.lastAt));
       </div>
     </div>
 
-    <dl class="grid gap-3 text-sm sm:grid-cols-3">
+    <dl class="grid gap-3 text-sm @[460px]:grid-cols-3">
       <div>
         <dt class="text-xs text-muted-foreground">In progress right now</dt>
         <dd class="mt-0.5">

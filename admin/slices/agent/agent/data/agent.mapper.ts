@@ -45,7 +45,8 @@ function strList(value: unknown): string[] {
  * (no response DTO), so `toEntity` reads defensively and drops anything without
  * a string `id`. Input payloads are structurally the wire DTOs except
  * `llmCredentialId`, which the domain models as `string | null` but the DTO as
- * `string | undefined` — coerce null → undefined so "no credential" round-trips.
+ * `string | undefined`: on create null → undefined (no credential is the
+ * default), on update null is sent as it is — see `toUpdateDto`.
  */
 export class AgentMapper {
   toEntity(raw: unknown): IAgentData | null {
@@ -161,8 +162,16 @@ export class AgentMapper {
     return { ...input, llmCredentialId: input.llmCredentialId ?? undefined };
   }
 
+  /**
+   * `llmCredentialId: null` goes out as `null` — that is how a credential is
+   * cleared (CLEAN-228). The API accepts it: `@IsOptional()` lets `null` past
+   * `@IsString()`, and the gateway writes any value that is not `undefined`
+   * into the nullable column. It used to be turned into `undefined` here, so
+   * "None" was dropped from the body and nothing changed. The generated DTO
+   * still types the field as a plain string, hence the cast.
+   */
   toUpdateDto(input: IUpdateAgentData): UpdateAgentDto {
-    return { ...input, llmCredentialId: input.llmCredentialId ?? undefined };
+    return { ...input } as UpdateAgentDto;
   }
 
   // ── internals ──────────────────────────────────────────────────────────

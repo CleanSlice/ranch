@@ -158,7 +158,8 @@ async function onToggleDebug() {
 // entry is the store's, set by the hub's `agent_limit` event and removed when
 // room is made or the wait passes; it changes nothing about sending.
 const visitorLimit = computed(() => store.visitorLimits[props.agentId] ?? null)
-// The agent's "Visibility & embed" card, where its limits are set.
+// The Request limit block of the agent's Overview, where its limits are set
+// (it keeps the anchor of the card it replaced).
 const limitsHref = computed(
   () => `/agents/${encodeURIComponent(props.agentId)}?tab=overview#visibility-embed`,
 )

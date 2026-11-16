@@ -3,6 +3,9 @@ import type { ICreateAgentData } from '#agent/stores/agent';
 import type { ITemplateData } from '#template/stores/template';
 import type { IKnowledge } from '#reins/stores/knowledge';
 
+// The form for CREATING an agent. An existing agent is edited in place on its
+// Overview (CLEAN-228); the Edit page that also used this form is retired, and
+// its edit-only props went with it.
 const props = defineProps<{
   templates: ITemplateData[];
   llms: { id: string; provider: string; model: string; label: string | null; status: string }[];
@@ -11,10 +14,6 @@ const props = defineProps<{
   initialValues?: ICreateAgentData;
   submitLabel?: string;
   submitting?: boolean;
-  disableTemplate?: boolean;
-  // When true the form renders no Save/Cancel row — the host page drives
-  // submission via a button with `form="agent-form"` (see agentEdit).
-  hideActions?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -111,8 +110,8 @@ function onSubmit() {
       memory: form.resources.memory.trim() || '512Mi',
     },
     // Visibility is not this form's (CLEAN-224): an agent is created
-    // private, and public / origins / limits are saved together by the
-    // "Visibility & embed" card.
+    // private, and public / origins / limits are saved together on its
+    // Overview (Access and Request limit).
     knowledgeIds: [...form.knowledgeIds],
   });
 }
@@ -150,7 +149,7 @@ function onSubmit() {
 
         <div class="grid gap-2">
           <Label for="template">Template</Label>
-          <Select v-model="form.templateId" :disabled="disableTemplate">
+          <Select v-model="form.templateId">
             <SelectTrigger id="template">
               <SelectValue placeholder="Choose a template" />
             </SelectTrigger>
@@ -161,8 +160,8 @@ function onSubmit() {
             </SelectContent>
           </Select>
           <p v-if="errors.templateId" class="text-xs text-destructive">{{ errors.templateId }}</p>
-          <p v-if="disableTemplate" class="text-xs text-muted-foreground">
-            Template can't be changed after creation.
+          <p class="text-xs text-muted-foreground">
+            The template can't be changed after creation.
           </p>
         </div>
 
@@ -275,14 +274,14 @@ function onSubmit() {
              limits a public agent must have are one save, in one place. -->
         <p class="text-sm text-muted-foreground" data-visibility-hint>
           Whether the agent is public, its allowed origins and its request
-          limits are set together in the
-          <span class="font-medium text-foreground">Visibility &amp; embed</span>
-          card — on the agent's Overview, and on its Edit page.
+          limits are set together on the agent's Overview, in
+          <span class="font-medium text-foreground">Access</span> and
+          <span class="font-medium text-foreground">Request limit</span>.
         </p>
       </CardContent>
     </Card>
 
-    <div v-if="!hideActions" class="flex items-center gap-3">
+    <div class="flex items-center gap-3">
       <Button type="submit" :disabled="submitting">
         {{ submitting ? 'Saving…' : (submitLabel ?? 'Create agent') }}
       </Button>

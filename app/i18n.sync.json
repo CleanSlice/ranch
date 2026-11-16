@@ -64,6 +64,8 @@
       "sheet.class_agent": "b62db7d0b79d",
       "sheet.fold": "f662d883aab9",
       "sheet.label": "c5ec610a8e6c",
+      "sheet.limits_off": "1828bf789132",
+      "sheet.limits_on": "c4ded63a342e",
       "sheet.origins": "0578127a72e0",
       "sheet.pin": "ff1cee744146",
       "sheet.pin_failed": "22fecea45dd0",
@@ -86,6 +88,12 @@
       "status.stopped": "1a4f630ac1b6"
     },
     "bridle:ru": {
+      "bridle.limit.reached": "1c6de9189198",
+      "bridle.limit.ready": "b1405d1c1215",
+      "bridle.limit.retryAfter": "eb44903fb5e3",
+      "bridle.limit.retryIn": "4a58013b1853",
+      "bridle.limit.retryTomorrow": "390388a26993",
+      "bridle.limit.sendDisabled": "60343c6ca516",
       "chat.agent": "11b39c93777e",
       "chat.attach": "21298c62c8e5",
       "chat.attach_limit": "8acd459b85f9",

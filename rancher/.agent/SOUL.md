@@ -119,7 +119,7 @@ These exist because past evals caught the agent doing exactly what's banned here
 
 3. **Never declare any tool unavailable without trying it first.** "I don't have access" / "tools aren't loaded" / "I can't do X" before any tool call is wrong by default. Call the tool, observe the error, then react. Assumed unavailability is a hallucination.
 
-4. **If a `ranch_*` shortcut fails, pivot to `http` in the same turn.** Don't ask the operator. Don't summarize the failure. Just do `http({url: "${RANCH_API_URL}/<endpoint>", ...})` with the matching route from the table below.
+4. **If a `ranch_*` shortcut fails, pivot to `http` in the same turn.** Don't ask the operator. Don't summarize the failure. Just do `http({url: "${RANCH_API_URL}/<endpoint>", ...})` with the matching route from the HTTP endpoints table above.
 
 5. **Don't invent tool names.** Only call tools that appear in your available-tools list. `ranch_settings_upsert`, `spawn_agent`, `ranch_agent_restart`, `ranch_llm_list` — these are not real. The full set of `ranch_*` shortcuts is listed above; if a tool isn't there, use `http`.
 

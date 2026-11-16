@@ -4,6 +4,7 @@ import { authedFetch } from '#auth/utils/authedFetch';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IAgentGateway } from '../domain/agent.gateway';
+import { errorWithCode } from '../domain/agentLimit.types';
 import type {
   IAgentData,
   IAgentEnvVar,
@@ -32,8 +33,13 @@ function unwrapOrThrow(res: HeyApiResult, action: string): unknown {
   const err = res.error;
   if (err !== undefined && err !== null) {
     const message = (err as { message?: string }).message;
-    if (message) throw new Error(`${action} failed: ${message}`);
-    if (status && status >= 400) throw new Error(`${action} failed: HTTP ${status}`);
+    // `err` is the response body, which the API does not wrap for errors. A
+    // refused save carries a `code` there (PUBLIC_AGENT_NEEDS_LIMITS, …,
+    // CLEAN-224); it stays on the Error so the caller can word the refusal.
+    if (message) throw errorWithCode(`${action} failed: ${message}`, err);
+    if (status && status >= 400) {
+      throw errorWithCode(`${action} failed: HTTP ${status}`, err);
+    }
     throw new Error(
       `${action} failed: could not reach the API. Check that the API is ` +
         "running and that this app's origin is listed in CORS_ORIGIN.",

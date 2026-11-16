@@ -31,6 +31,11 @@ export const useAgentStore = defineStore('agent', () => {
   // Agent-to-agent connections for the orbit map. Not part of an agent record:
   // a link belongs to a pair, so it lives beside the agents, once.
   const links = ref<IAgentLinkData[]>([]);
+  // Whether an agent has request limits, by agent id (CLEAN-224). Beside the
+  // records, not in them: it comes from its own endpoint, and `upsert` replaces
+  // a record whole — a status poll would wipe a field it does not carry. An
+  // id that is absent has not been answered yet; the sheet then says nothing.
+  const limitsEnabled = ref<Record<string, boolean>>({});
   const loading = ref(false);
   const error = ref<string | null>(null);
 
@@ -92,6 +97,23 @@ export const useAgentStore = defineStore('agent', () => {
       // Keep what we have.
     }
     return links.value;
+  }
+
+  // Undefined until the API has answered for this agent.
+  function limitsEnabledFor(id: string): boolean | undefined {
+    return limitsEnabled.value[id];
+  }
+
+  // Same silent degradation as capacity and links: no answer leaves what we
+  // have — a failed refresh must not flip "limits on" to nothing on screen.
+  async function fetchLimitsEnabled(id: string) {
+    try {
+      const enabled = await getService().getLimitsEnabled(id);
+      if (enabled !== null) limitsEnabled.value[id] = enabled;
+    } catch {
+      // Keep what we have.
+    }
+    return limitsEnabled.value[id];
   }
 
   async function fetchAll() {
@@ -232,6 +254,9 @@ export const useAgentStore = defineStore('agent', () => {
     fetchById,
     fetchCapacity,
     fetchLinks,
+    limitsEnabled,
+    limitsEnabledFor,
+    fetchLimitsEnabled,
     create,
     update,
     setPinned,

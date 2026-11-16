@@ -5,11 +5,13 @@ import type {
   IBridleProposalUpdate,
 } from '../domain/bridle.types';
 import { mergeProposals, proposalMessageId, proposalTs } from '../utils/proposalMerge';
+import { toAgentLimitEvent, toRateLimitedAck } from '../utils/limit';
 import {
   BridleAttachmentKinds,
   BridleRoleTypes,
   BridleSourceKinds,
   BridleThinkingStepStates,
+  type IBridleAgentLimitEvent,
   type IBridleAttachment,
   type IBridleMessage,
   type IBridleReply,
@@ -119,6 +121,10 @@ export class BridleMapper {
         ...(o.duplicate === true ? { duplicate: true as const } : {}),
       };
     }
+    // The agent's request limit is full (CLEAN-224): a refusal with a wait,
+    // which the store turns into the notice instead of "not delivered".
+    const limited = toRateLimitedAck(o);
+    if (limited) return limited;
     return {
       status: 'rejected',
       code: typeof o.code === 'string' && o.code ? o.code : 'UNKNOWN',
@@ -126,6 +132,11 @@ export class BridleMapper {
         ? { message: o.message }
         : {}),
     };
+  }
+
+  /** An `agent_limit` frame (CLEAN-224), or null when it cannot be read. */
+  toAgentLimit(raw: unknown): IBridleAgentLimitEvent | null {
+    return toAgentLimitEvent(asRecord(raw));
   }
 
   /** A `user_message` echo, or null when it names no message to match by. */

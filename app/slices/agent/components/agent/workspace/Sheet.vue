@@ -59,6 +59,22 @@ const created = computed(() => {
 });
 const updated = computed(() => relativeTime(props.agent?.updatedAt));
 
+// Request limits (CLEAN-224): this console says only whether the agent has
+// them. Asked when the rows are on screen, and again when the agent's
+// visibility changes — making an agent public is when limits get set. The
+// answer is held in the agent store by id and read from there.
+const agentStore = useAgentStore();
+const limitsEnabled = computed(() =>
+  props.agent ? agentStore.limitsEnabledFor(props.agent.id) : undefined,
+);
+watch(
+  () => (open.value && props.agent ? `${props.agent.id}:${props.agent.isPublic}` : null),
+  (shown) => {
+    if (shown && props.agent) void agentStore.fetchLimitsEnabled(props.agent.id);
+  },
+  { immediate: true },
+);
+
 const failedKey = computed(() => {
   switch (controls.failed.value?.action) {
     case 'restart':
@@ -258,10 +274,18 @@ const failedKey = computed(() => {
         </div>
         <div>
           <dt>{{ $t('sheet.access') }}</dt>
-          <dd class="font-mono text-[11.5px]">
+          <!-- `data-limits-enabled` is a hook for browser checks; absent until
+               the API has answered. -->
+          <dd
+            class="font-mono text-[11.5px]"
+            :data-limits-enabled="limitsEnabled === undefined ? undefined : String(limitsEnabled)"
+          >
             {{ $t(agent.isPublic ? 'sheet.access_public' : 'sheet.access_private') }}
             <template v-if="agent.allowedOrigins.length">
               · {{ $t('sheet.origins', { count: agent.allowedOrigins.length }, agent.allowedOrigins.length) }}
+            </template>
+            <template v-if="limitsEnabled !== undefined">
+              · {{ $t(limitsEnabled ? 'sheet.limits_on' : 'sheet.limits_off') }}
             </template>
           </dd>
         </div>

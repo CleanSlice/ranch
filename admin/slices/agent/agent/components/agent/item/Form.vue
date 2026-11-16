@@ -52,8 +52,6 @@ const form = reactive<
     description: string;
     llmCredentialId: string;
     resources: { cpu: string; memory: string };
-    isPublic: boolean;
-    allowedOriginsText: string;
     knowledgeIds: string[];
   }
 >({
@@ -68,8 +66,6 @@ const form = reactive<
     cpu: props.initialValues?.resources?.cpu ?? firstTemplate?.defaultResources.cpu ?? '500m',
     memory: props.initialValues?.resources?.memory ?? firstTemplate?.defaultResources.memory ?? '512Mi',
   },
-  isPublic: props.initialValues?.isPublic ?? false,
-  allowedOriginsText: (props.initialValues?.allowedOrigins ?? []).join('\n'),
   knowledgeIds: [...(props.initialValues?.knowledgeIds ?? [])],
 });
 
@@ -89,13 +85,6 @@ function validate() {
   errors.name = form.name.trim() ? undefined : 'Name is required';
   errors.templateId = form.templateId ? undefined : 'Template is required';
   return !errors.name && !errors.templateId;
-}
-
-function parseOrigins(text: string): string[] {
-  return text
-    .split(/[\n,]/)
-    .map((s) => s.trim().replace(/\/$/, ''))
-    .filter(Boolean);
 }
 
 function onSubmit() {
@@ -121,8 +110,9 @@ function onSubmit() {
       cpu: form.resources.cpu.trim() || '500m',
       memory: form.resources.memory.trim() || '512Mi',
     },
-    isPublic: form.isPublic,
-    allowedOrigins: form.isPublic ? parseOrigins(form.allowedOriginsText) : [],
+    // Visibility is not this form's (CLEAN-224): an agent is created
+    // private, and public / origins / limits are saved together by the
+    // "Visibility & embed" card.
     knowledgeIds: [...form.knowledgeIds],
   });
 }
@@ -276,37 +266,19 @@ function onSubmit() {
       <CardHeader>
         <CardTitle>Visibility</CardTitle>
         <CardDescription>
-          Public agents appear on the marketing landing page to unauthenticated visitors.
+          A new agent starts private.
         </CardDescription>
       </CardHeader>
-      <CardContent class="grid max-w-xl gap-4">
-        <label for="isPublic" class="flex items-start gap-3 text-sm">
-          <Checkbox
-            id="isPublic"
-            :model-value="form.isPublic"
-            @update:model-value="(v: boolean | 'indeterminate') => (form.isPublic = v === true)"
-          />
-          <span>
-            <span class="font-medium">Show on landing page</span>
-            <span class="block text-xs text-muted-foreground">
-              When off, the agent stays hidden from `/` and the public agent list.
-            </span>
-          </span>
-        </label>
-
-        <div v-if="form.isPublic" class="grid gap-2">
-          <Label for="allowedOrigins">Allowed origins</Label>
-          <Textarea
-            id="allowedOrigins"
-            v-model="form.allowedOriginsText"
-            rows="4"
-            placeholder="https://bridle.cleanslice.org&#10;http://localhost:5173"
-          />
-          <p class="text-xs text-muted-foreground">
-            One origin per line (scheme + host + optional port, no path). Browser sites at these origins
-            can open chat WebSockets without a JWT. Leave empty to require a token even when public.
-          </p>
-        </div>
+      <CardContent class="max-w-xl">
+        <!-- The checkbox that lived here could make an agent public with no
+             request limits. Public / private, the allowed origins and the
+             limits a public agent must have are one save, in one place. -->
+        <p class="text-sm text-muted-foreground" data-visibility-hint>
+          Whether the agent is public, its allowed origins and its request
+          limits are set together in the
+          <span class="font-medium text-foreground">Visibility &amp; embed</span>
+          card — on the agent's Overview, and on its Edit page.
+        </p>
       </CardContent>
     </Card>
 

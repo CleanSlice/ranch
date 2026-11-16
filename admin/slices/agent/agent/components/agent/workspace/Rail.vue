@@ -21,7 +21,15 @@ const search = ref('');
 
 const agentsRef = computed(() => props.agents);
 const activeIdRef = computed(() => props.activeId);
-const entries = useAgentRailEntries(agentsRef, activeIdRef, search);
+// "At limit" and "public without limits" (CLEAN-224) come from the limit
+// store, which the workspace keeps fresh with the 15 s summary poll.
+const { byAgent: limitsByAgent } = storeToRefs(useAgentLimitStore());
+const entries = useAgentRailEntries(
+  agentsRef,
+  activeIdRef,
+  search,
+  limitsByAgent,
+);
 
 const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
 
@@ -61,7 +69,13 @@ const clusterFull = computed(() => props.capacity?.freeAgentSlots === 0);
 
     <div v-else-if="entries.length" class="min-h-0 flex-1 overflow-y-auto">
       <ul class="flex flex-col gap-0.5">
-        <li v-for="entry in entries" :key="entry.id" :data-agent-id="entry.id">
+        <li
+          v-for="entry in entries"
+          :key="entry.id"
+          :data-agent-id="entry.id"
+          :data-agent-at-limit="entry.atLimit || undefined"
+          :data-agent-needs-limits="entry.needsLimits || undefined"
+        >
           <AgentWorkspaceRailItem
             :entry="entry"
             @click="$emit('select', entry.id)"

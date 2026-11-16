@@ -151,6 +151,18 @@ async function onToggleDebug() {
   }
 }
 
+// ── Visitors are being asked to wait (CLEAN-224) ─────────────────────
+// Operators are not limited, so this chat keeps working when the agent is at
+// its message limit — which is exactly when an operator testing it would
+// conclude that it is fine for everybody. One quiet line says otherwise. The
+// entry is the store's, set by the hub's `agent_limit` event and removed when
+// room is made or the wait passes; it changes nothing about sending.
+const visitorLimit = computed(() => store.visitorLimits[props.agentId] ?? null)
+// The agent's "Visibility & embed" card, where its limits are set.
+const limitsHref = computed(
+  () => `/agents/${encodeURIComponent(props.agentId)}?tab=overview#visibility-embed`,
+)
+
 const inspectedMessageId = ref<string | null>(null)
 const inspectedDebug = computed(() =>
   inspectedMessageId.value ? store.getDebugForMessage(conversationKey, inspectedMessageId.value) : null,
@@ -752,6 +764,22 @@ async function onConfirmReset() {
           pick them up.
         </p>
       </div>
+      <!-- Informational only: neutral, not an error, and Send is untouched. -->
+      <p
+        v-if="visitorLimit"
+        class="rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
+        role="status"
+        data-visitor-limit-line
+        :data-limit-window="visitorLimit.window"
+      >
+        Visitors are being asked to wait — this agent is at its message limit.
+        Your messages are not limited.
+        <NuxtLink
+          :to="limitsHref"
+          class="font-medium text-foreground underline hover:no-underline"
+          data-visitor-limit-link
+        >Limits</NuxtLink>
+      </p>
       <!-- The composer is replaced, not covered: the dashed block takes its
            place while a file is overhead. The draft and staged files live in
            the component and the store, so the swap cannot lose them. -->

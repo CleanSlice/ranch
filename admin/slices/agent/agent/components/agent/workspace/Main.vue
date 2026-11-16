@@ -133,6 +133,11 @@ const runtimeOffline = computed(
     agentStatusStore.bridleConnected[props.id] === false,
 );
 
+// What the limit store knows about this agent — kept fresh by the workspace's
+// summary poll, and by the load poll while Overview is open.
+const limitStore = useAgentLimitStore();
+const limitEntry = computed(() => limitStore.byAgent[props.id]);
+
 const lifecycleError = computed(
   () => restartError.value || toggleError.value || pinError.value,
 );
@@ -268,6 +273,26 @@ async function onRemove() {
         >
           runtime offline
         </span>
+        <!-- Request limits (CLEAN-224): the same two facts the rail row
+             marks, from the same store record, as words and not a colour. -->
+        <span
+          v-if="limitEntry?.atLimit"
+          class="shrink-0 text-xs text-rose-700 dark:text-rose-400"
+          title="A request limit is full: visitors are being asked to wait"
+          data-header-at-limit
+        >
+          at limit
+        </span>
+        <button
+          v-if="limitEntry?.needsLimits"
+          type="button"
+          class="shrink-0 text-xs text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
+          title="Public with no request limits — set them in Visibility &amp; embed"
+          data-header-needs-limits
+          @click="setTab('overview')"
+        >
+          public without limits
+        </button>
 
         <AgentWorkspaceTabs
           class="ml-2"

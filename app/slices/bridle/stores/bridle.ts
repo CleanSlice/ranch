@@ -1,4 +1,5 @@
 import { createServiceGetter } from '#common/composables/createServiceGetter';
+import { UserRoleTypes } from '#auth/domain';
 import { BridleRoleTypes, BridleAttachmentStates } from '#bridle/domain';
 import {
   BINARY_MIME_TYPES,
@@ -18,14 +19,18 @@ import {
   BridleThinkingStepStates,
 } from '#bridle/domain';
 import type {
+  BridleLimitWindows,
   BridleService,
+  IBridleAgentLimitEvent,
   IBridleAttachment,
   IBridleAttachmentError,
   IBridleChannel,
   IBridleChannelEvents,
   IBridleConversation,
+  IBridleLimit,
   IBridleMessage,
   IBridleNotice,
+  IBridleRateLimitedAck,
   IBridleReply,
   IBridleSendAck,
   IBridleSourcesFrame,
@@ -49,6 +54,14 @@ import {
   nextDelivery,
   type IDeliveryEvent,
 } from '#bridle/utils/delivery';
+import {
+  LIMIT_RECHECK_MS,
+  isLimitActive,
+  isRateLimitedAck,
+  limitFrom,
+  limitRemainingMs,
+  restoredDraft,
+} from '#bridle/utils/limit';
 import { missedReplies } from '#bridle/utils/transcriptTail';
 import { mergeTranscript } from '#bridle/utils/transcriptMerge';
 import {
@@ -82,6 +95,7 @@ export type {
   IBridleNotice,
   IBridleStagedAttachment,
   IBridleConversation,
+  IBridleLimit,
   IBridleShareContext,
   IBridleThinkingBlock,
   IBridleThinkingStep,
@@ -140,6 +154,9 @@ const HUB_SEQ_STORAGE_PREFIX = 'bridle:seq:';
  * whole history into localStorage on the next message.
  */
 const STORED_COPY_MAX = 100;
+
+/** The longest delay a browser timer takes; a longer one fires at once. */
+const MAX_TIMER_MS = 2_147_483_647;
 
 /** Chat identities the hub mints per connection — there is no history to load. */
 const ANONYMOUS_CLIENT_PREFIX = 'anon-';
@@ -387,6 +404,35 @@ export const useBridleStore = defineStore('bridle', () => {
   const epochs = ref<Record<string, number>>({});
   /** History loads in flight — never two for one conversation. */
   const historyLoading = new Set<string>();
+  /**
+   * A full request limit, by AGENT id — not by conversation: the allowance is
+   * the agent's, so every view of it in this browser waits together
+   * (CLEAN-224). Written by a `RATE_LIMITED` ack and by the hub's
+   * `agent_limit` event; an entry goes when its `until` passes or the hub
+   * says room was made. Session-only: after a reload the hub announces a full
+   * hour or day window again, and a full minute one is found by sending.
+   */
+  const limits = ref<Record<string, IBridleLimit>>({});
+  /** Removes a limit when its wait is over, keyed by agent id. */
+  const limitTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** A reconnected chat waiting for the hub to repeat a limit, by agent id. */
+  const limitRechecks = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
+   * The staged files of a message on its way, by message id. They leave the
+   * composer at send but are not let go until the hub has answered: a send
+   * the limit refuses puts them back, previews and all.
+   */
+  const heldStaged = new Map<string, IBridleStagedAttachment[]>();
+  /**
+   * Whether an answer was already awaited when a message went out, by message
+   * id, and in what order the messages went. A refused send must leave the
+   * "thinking" line exactly as it found it — the limit is about the next
+   * message, not the one in progress.
+   */
+  const awaitedBefore = new Map<string, { awaited: boolean; order: number }>();
+  let sendOrder = 0;
+  /** Why a message being resent had failed, so a refused resend can say it again. */
+  const resendCodes = new Map<string, string>();
 
   // Read side takes the bare `key` — a template already holds the descriptor
   // and passing the whole object just to look up an array buys nothing.
@@ -411,6 +457,114 @@ export const useBridleStore = defineStore('bridle', () => {
 
   function clearDraft(key: string) {
     delete drafts.value[key];
+  }
+
+  // ── Request limit (CLEAN-224) ───────────────────────────────
+
+  /** The agent's full limit, or null. Reactive: the notice renders from it. */
+  const limitFor = (agentId: string): IBridleLimit | null =>
+    limits.value[agentId] ?? null;
+
+  /**
+   * Whether a send to this conversation's agent would be refused right now.
+   * Every send entry point asks this first, so nothing reaches the socket —
+   * and nothing more is counted — while the notice is up.
+   */
+  function isLimited(conv: IBridleConversation): boolean {
+    return isLimitActive(limits.value[conv.agentId], performance.now());
+  }
+
+  /**
+   * Owners and Admins are never refused by the hub, but they receive
+   * `agent_limit` like every socket of the agent. Blocking them on it would
+   * stop exactly the people the limit does not apply to. A share visitor is a
+   * visitor whoever is signed in to this browser.
+   */
+  function isLimitExempt(conv: IBridleConversation): boolean {
+    if (conv.share) return false;
+    return useAuthStore().hasRole(UserRoleTypes.Owner, UserRoleTypes.Admin);
+  }
+
+  function cancelLimitRecheck(agentId: string) {
+    const timer = limitRechecks.get(agentId);
+    if (timer) clearTimeout(timer);
+    limitRechecks.delete(agentId);
+  }
+
+  function clearLimit(agentId: string) {
+    const timer = limitTimers.get(agentId);
+    if (timer) clearTimeout(timer);
+    limitTimers.delete(agentId);
+    cancelLimitRecheck(agentId);
+    delete limits.value[agentId];
+  }
+
+  /**
+   * Remove the entry when its wait is over. Measured on the same monotonic
+   * clock as `until`: a timer that fires early (clamped, or throttled and
+   * caught up) re-arms itself instead of opening the composer too soon.
+   */
+  function armLimitExpiry(agentId: string) {
+    const current = limitTimers.get(agentId);
+    if (current) clearTimeout(current);
+    const limit = limits.value[agentId];
+    if (!limit) return;
+    limitTimers.set(
+      agentId,
+      setTimeout(
+        () => {
+          limitTimers.delete(agentId);
+          const live = limits.value[agentId];
+          if (!live) return;
+          if (isLimitActive(live, performance.now())) armLimitExpiry(agentId);
+          else clearLimit(agentId);
+        },
+        Math.min(limitRemainingMs(limit, performance.now()), MAX_TIMER_MS),
+      ),
+    );
+  }
+
+  /** A refusal or an announcement: the newest wait replaces the one before. */
+  function setLimit(
+    agentId: string,
+    retryAfterMs: number,
+    window: BridleLimitWindows,
+  ) {
+    cancelLimitRecheck(agentId);
+    limits.value[agentId] = limitFrom(performance.now(), retryAfterMs, window);
+    armLimitExpiry(agentId);
+  }
+
+  function onAgentLimit(conv: IBridleConversation, event: IBridleAgentLimitEvent) {
+    const agentId = conv.agentId;
+    if (!event.limited) {
+      clearLimit(agentId);
+      return;
+    }
+    // An exempt person is not told to wait on an announcement. One who WAS
+    // refused all the same is evidently not exempt for the hub, and follows
+    // the announcements like everyone else.
+    if (isLimitExempt(conv) && !limits.value[agentId]) return;
+    setLimit(agentId, event.retryAfterMs, event.window);
+  }
+
+  /**
+   * The socket is back (`welcome`). The hub repeats a full hour or day window
+   * right after it; if it stays silent, the limit was raised or removed while
+   * the connection was down and nobody was there to hear `limited: false`.
+   * A minute window is never announced, so its entry is left to run out.
+   */
+  function recheckLimit(agentId: string) {
+    const limit = limits.value[agentId];
+    if (!limit || limit.window === 'minute') return;
+    cancelLimitRecheck(agentId);
+    limitRechecks.set(
+      agentId,
+      setTimeout(() => {
+        limitRechecks.delete(agentId);
+        clearLimit(agentId);
+      }, LIMIT_RECHECK_MS),
+    );
   }
 
   const isUploading = (key: string) =>
@@ -1371,6 +1525,7 @@ export const useBridleStore = defineStore('bridle', () => {
       onAgentStatus(connected) {
         agentOnline.value[key] = connected;
       },
+      onAgentLimit: (event) => onAgentLimit(conv, event),
     };
   }
 
@@ -1424,6 +1579,9 @@ export const useBridleStore = defineStore('bridle', () => {
   function onWelcome(conv: IBridleConversation, welcome: IBridleWelcome) {
     const key = conv.key;
     if (welcome.clientId) hubClientIds.set(key, welcome.clientId);
+    // A limit held from before the socket dropped is confirmed by the hub's
+    // announcement, which follows this frame — or it is gone (CLEAN-224).
+    recheckLimit(conv.agentId);
     // Now that the hub has said which conversation this is, show it as the
     // server holds it. A no-op after the first successful load.
     void loadHistory(conv);
@@ -1563,6 +1721,14 @@ export const useBridleStore = defineStore('bridle', () => {
     if (!trimmed && !ready.length) return;
     // Refuse rather than silently dropping the file the message is about.
     if (isUploading(key) || hasFailedAttachment(key)) return;
+    // The agent's limit is full (CLEAN-224): nothing goes to the socket, so
+    // nothing more is counted. The composer does not offer the send while the
+    // notice is up; if a caller gets here anyway, the text it has already let
+    // go of returns to the field, and the staged files never left.
+    if (isLimited(conv)) {
+      if (trimmed) drafts.value[key] = restoredDraft(trimmed, draftFor(key));
+      return;
+    }
 
     const attachments: IBridleAttachment[] = ready.map((a) => ({
       id: a.remoteId as string,
@@ -1587,10 +1753,34 @@ export const useBridleStore = defineStore('bridle', () => {
     appendMessage(conv, withDelivery(message, { type: 'sent' }));
 
     // Clear the compose area before the round trip so the person can start
-    // typing the next message while the agent thinks.
-    clearStaged(conv);
+    // typing the next message while the agent thinks. The files are held, not
+    // let go, until the hub has answered (see `heldStaged`).
+    holdStaged(conv, message.id);
     errors.value[key] = null;
     transmit(conv, message.id);
+  }
+
+  /** Take the staged files out of the composer and keep them for `id`. */
+  function holdStaged(conv: IBridleConversation, id: string) {
+    const sent = staged.value[conv.key] ?? [];
+    staged.value[conv.key] = [];
+    attachmentErrors.value[conv.key] = null;
+    if (sent.length) heldStaged.set(id, sent);
+  }
+
+  /** The hub has the message, or it failed for good: the files are done with. */
+  function dropHeld(id: string) {
+    const held = heldStaged.get(id);
+    if (!held) return;
+    for (const entry of held) revoke(entry);
+    heldStaged.delete(id);
+  }
+
+  /** Everything remembered about one send, once its verdict is in. */
+  function forgetSend(id: string) {
+    dropHeld(id);
+    awaitedBefore.delete(id);
+    resendCodes.delete(id);
   }
 
   /**
@@ -1612,6 +1802,12 @@ export const useBridleStore = defineStore('bridle', () => {
       return;
     }
 
+    // What the "thinking" line showed before this send claimed it, so a send
+    // the limit refuses can put it back (CLEAN-224).
+    awaitedBefore.set(id, {
+      awaited: isPending(key) || hasOpenThinking(key),
+      order: ++sendOrder,
+    });
     pending.value[key] = true;
     armWatchdog(conv);
     slowTimers.set(
@@ -1655,11 +1851,84 @@ export const useBridleStore = defineStore('bridle', () => {
     const timer = slowTimers.get(id);
     if (timer) clearTimeout(timer);
     slowTimers.delete(id);
+    forgetSend(id);
     applyDelivery(conv, id, event, patch);
+  }
+
+  /**
+   * The agent's request limit refused the send (CLEAN-224). This is not a
+   * failed delivery and must not look like one: the message leaves the
+   * conversation — it was never "sent" — its text and files go back into the
+   * composer, no red strip and no "Not delivered" line appear, and the
+   * limit is recorded so the notice can say when to try again.
+   *
+   * A RESEND that is refused is the one exception to "back to the composer":
+   * that bubble was already in the conversation as not delivered before the
+   * person pressed Resend, and the field may hold something else by now. It
+   * returns to the state it was in.
+   */
+  function onRateLimited(
+    conv: IBridleConversation,
+    id: string,
+    ack: IBridleRateLimitedAck,
+  ) {
+    const key = conv.key;
+    const timer = slowTimers.get(id);
+    if (timer) clearTimeout(timer);
+    slowTimers.delete(id);
+
+    setLimit(conv.agentId, ack.retryAfterMs, ack.window);
+
+    const message = findMessage(key, id);
+    const resentAfter = resendCodes.get(id);
+    if (message && resentAfter !== undefined) {
+      replaceMessage(
+        conv,
+        withDelivery(message, { type: 'ackRejected', code: resentAfter }),
+      );
+    } else if (message) {
+      removeMessage(conv, id);
+      if (message.text) {
+        drafts.value[key] = restoredDraft(message.text, draftFor(key));
+      }
+      const held = heldStaged.get(id);
+      if (held?.length) {
+        // Ahead of anything staged since: the order the person attached in.
+        staged.value[key] = [...held, ...stagedFor(key)];
+        heldStaged.delete(id);
+      }
+    }
+
+    // The "thinking" line goes back to what it showed before this send. Other
+    // sends that went out after this one took their reading while this one
+    // was claiming the line, so they inherit its answer.
+    const before = awaitedBefore.get(id);
+    const awaited = before?.awaited === true;
+    if (before) {
+      for (const [otherId, other] of awaitedBefore) {
+        if (other.order > before.order) {
+          awaitedBefore.set(otherId, { awaited, order: other.order });
+        }
+      }
+    }
+    forgetSend(id);
+    const inFlight = messagesFor(key).some(
+      (m) =>
+        m.delivery === BridleDeliveryStates.Sending ||
+        m.delivery === BridleDeliveryStates.Slow,
+    );
+    if (!awaited && !inFlight && !hasOpenThinking(key)) {
+      pending.value[key] = false;
+      disarmWatchdog(key);
+    }
   }
 
   function onAck(conv: IBridleConversation, id: string, ack: IBridleSendAck) {
     const key = conv.key;
+    if (isRateLimitedAck(ack)) {
+      onRateLimited(conv, id, ack);
+      return;
+    }
     if (ack.status === 'accepted') {
       // The hub's clock from here on, so the time under the bubble is the
       // same live and after a replay. Display only — order stays with `seq`.
@@ -1684,7 +1953,10 @@ export const useBridleStore = defineStore('bridle', () => {
   function resend(conv: IBridleConversation, id: string) {
     const message = findMessage(conv.key, id);
     if (message?.delivery !== BridleDeliveryStates.Failed) return;
+    // Same gate as a first send (CLEAN-224): the bubble stays as it is.
+    if (isLimited(conv)) return;
     errors.value[conv.key] = null;
+    resendCodes.set(id, message.failureCode ?? 'UNKNOWN');
     applyDelivery(conv, id, { type: 'resend' });
     transmit(conv, id);
   }
@@ -1714,6 +1986,7 @@ export const useBridleStore = defineStore('bridle', () => {
       const timer = slowTimers.get(m.id);
       if (timer) clearTimeout(timer);
       slowTimers.delete(m.id);
+      forgetSend(m.id);
     }
     delete conversations.value[conv.key];
     delete pending.value[conv.key];
@@ -1827,6 +2100,10 @@ export const useBridleStore = defineStore('bridle', () => {
     resend,
     discard,
     reset,
+    // request limit (CLEAN-224)
+    limits,
+    limitFor,
+    isLimited,
     // live channel
     acquire,
     release,

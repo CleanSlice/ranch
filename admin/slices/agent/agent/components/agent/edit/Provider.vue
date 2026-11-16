@@ -84,8 +84,10 @@ async function onSubmit(values: ICreateAgentData) {
       llmCredentialId: values.llmCredentialId ?? null,
       config: values.config,
       resources: values.resources,
-      isPublic: values.isPublic,
-      allowedOrigins: values.allowedOrigins,
+      // No `isPublic` / `allowedOrigins`: they are the "Visibility & embed"
+      // card's, saved there together with the limits (CLEAN-224). Leaving
+      // them out also keeps this save clear of the "public needs limits"
+      // rule, so a legacy public agent can still be renamed.
       knowledgeIds: values.knowledgeIds ?? [],
       debugEnabled: pendingDebug.value,
     };
@@ -337,8 +339,6 @@ async function onRemove() {
                 llmCredentialId: agent.llmCredentialId,
                 config: agent.config,
                 resources: agent.resources,
-                isPublic: agent.isPublic,
-                allowedOrigins: agent.allowedOrigins,
                 knowledgeIds: agent.knowledgeIds,
               }"
               :submitting="submitting"

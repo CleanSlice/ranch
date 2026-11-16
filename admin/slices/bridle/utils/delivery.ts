@@ -38,6 +38,43 @@ export type DeliveryEvent =
   | { type: 'pageLoad' }
   | { type: 'resend' }
 
+/**
+ * Why a message was not delivered, by the code on its state: the hub's ack
+ * codes plus the two this console sets itself (`OFFLINE`, `TIMEOUT`).
+ *
+ * `RATE_LIMITED` (CLEAN-224) should never reach this console — operators are
+ * not limited — but a hub that sent it anyway must produce a sentence, not a
+ * blank. It is named here rather than left to the fallback so the reason says
+ * what actually happened.
+ */
+export const DeliveryFailureCodes = {
+  AgentOffline: 'AGENT_OFFLINE',
+  Offline: 'OFFLINE',
+  Timeout: 'TIMEOUT',
+  AttachmentFailed: 'ATTACHMENT_FAILED',
+  RateLimited: 'RATE_LIMITED',
+} as const
+
+const FAILURE_REASONS: Record<string, string> = {
+  [DeliveryFailureCodes.AgentOffline]: 'the agent is offline',
+  [DeliveryFailureCodes.Offline]: 'the chat is not connected',
+  [DeliveryFailureCodes.Timeout]: 'no confirmation from the server',
+  [DeliveryFailureCodes.AttachmentFailed]: 'an attachment could not be read',
+  [DeliveryFailureCodes.RateLimited]: 'the agent is at its message limit',
+}
+
+/**
+ * Short, plain reason next to "Not delivered" — one per failure code. A code
+ * this console does not know (a newer hub, a typo, nothing at all) gets the
+ * general sentence; it never throws and never returns an empty string.
+ */
+export function deliveryFailureReason(code: string | null | undefined): string {
+  if (typeof code === 'string' && Object.prototype.hasOwnProperty.call(FAILURE_REASONS, code)) {
+    return FAILURE_REASONS[code]!
+  }
+  return 'the server rejected it'
+}
+
 function isPending(state: IDeliveryState): boolean {
   return state.delivery === 'sending' || state.delivery === 'slow'
 }

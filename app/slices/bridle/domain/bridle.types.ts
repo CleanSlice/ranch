@@ -92,10 +92,51 @@ export enum BridleDeliveryStates {
  * hub had already accepted (it was not forwarded twice). `code` is one of the
  * hub's (`AGENT_OFFLINE`, `ATTACHMENT_FAILED`, `SHARE_REJECTED`, `EMPTY`) or
  * the client's own `TIMEOUT` / `OFFLINE`.
+ *
+ * `RATE_LIMITED` (CLEAN-224) is a refusal of its own kind: the agent's request
+ * limit is full, the message was not forwarded and nothing was echoed to the
+ * person's other views. It says how long to wait and which window set the
+ * wait — see specs/030-agent-request-limits/contracts/bridle-protocol.md.
  */
 export type IBridleSendAck =
   | { status: 'accepted'; messageId: string; ts: number; duplicate?: true }
+  | IBridleRateLimitedAck
   | { status: 'rejected'; code: string; message?: string };
+
+/** The windows a request limit is counted in. */
+export type BridleLimitWindows = 'minute' | 'hour' | 'day';
+
+/** The hub's code for a send refused by the agent's request limit. */
+export const BRIDLE_RATE_LIMITED = 'RATE_LIMITED';
+
+export interface IBridleRateLimitedAck {
+  status: 'rejected';
+  code: typeof BRIDLE_RATE_LIMITED;
+  /** Milliseconds until a request will be accepted. Always > 0. */
+  retryAfterMs: number;
+  window: BridleLimitWindows;
+}
+
+/**
+ * `agent_limit` (CLEAN-224): a limit of the agent is full and will stay so
+ * for a while, or room was made earlier than announced. Sent to every socket
+ * of the agent — on connect, when an hour or day window fills, when limits
+ * change. Never for a minute window, never when a window frees by time
+ * passing: the client counts down by itself. State, not history — no `seq`.
+ */
+export type IBridleAgentLimitEvent =
+  | { limited: true; retryAfterMs: number; window: BridleLimitWindows }
+  | { limited: false };
+
+/**
+ * A full request limit of one agent, as this browser holds it. `until` is on
+ * the `performance.now()` scale, so a wrong wall clock or a tab that slept in
+ * the background cannot stretch or shrink the wait.
+ */
+export interface IBridleLimit {
+  until: number;
+  window: BridleLimitWindows;
+}
 
 export interface IBridleMessage {
   /**
@@ -354,6 +395,11 @@ export interface IBridleChannelEvents {
    * change; state, not history, so it carries no `seq`.
    */
   onAgentStatus(connected: boolean): void;
+  /**
+   * The agent's request limit filled, or room was made early (CLEAN-224).
+   * State like `agent_status`: sent on connect and on change, no `seq`.
+   */
+  onAgentLimit(event: IBridleAgentLimitEvent): void;
 }
 
 /**

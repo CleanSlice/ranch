@@ -190,15 +190,24 @@ export const NOTICE = '[data-limit-notice]';
 
 /** What the notice shows right now, or null when it is not on screen. */
 export async function readNotice(page) {
-  const notice = page.locator(NOTICE).first();
-  if (!(await notice.count())) return null;
-  if (!(await notice.isVisible().catch(() => false))) return null;
-  return {
-    state: await notice.getAttribute('data-limit-state'),
-    window: await notice.getAttribute('data-limit-window'),
-    time: (await notice.locator('[data-limit-time]').first().textContent().catch(() => ''))?.trim() ?? '',
-    text: ((await notice.textContent()) ?? '').replace(/\s+/g, ' ').trim(),
-  };
+  // One snapshot inside the page: the notice can leave between two separate
+  // questions, and the `ready` state lasts only two seconds.
+  return page.evaluate((selector) => {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const box = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    if (box.width === 0 || box.height === 0 || style.visibility === 'hidden' || style.display === 'none') {
+      return null;
+    }
+    const time = el.querySelector('[data-limit-time]');
+    return {
+      state: el.getAttribute('data-limit-state'),
+      window: el.getAttribute('data-limit-window'),
+      time: (time?.textContent ?? '').trim(),
+      text: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
+    };
+  }, NOTICE);
 }
 
 /** `0:42` → 42, `12:05` → 725; NaN for anything that is not a countdown. */
@@ -210,3 +219,101 @@ export function countdownSeconds(time) {
 export async function shot(page, name) {
   await page.screenshot({ path: resolve(SHOTS, `${name}.png`) });
 }
+
+/**
+ * A fresh context + page in a given console language. The app console keeps
+ * its language in the `i18n_redirected` cookie, so that is what picks it —
+ * not the browser locale, which only formats what the format module asks for.
+ */
+export async function openPage(browser, { lang = 'en', width = 1280, height = 860 } = {}) {
+  const context = await browser.newContext({
+    viewport: { width, height },
+    deviceScaleFactor: 1,
+    locale: lang === 'ru' ? 'ru-RU' : 'en-GB',
+  });
+  await context.addCookies([{ name: 'i18n_redirected', value: lang, url: APP }]);
+  const page = await context.newPage();
+  page.on('pageerror', (e) => console.log('  [pageerror]', String(e).slice(0, 200)));
+  return page;
+}
+
+/**
+ * The chat on a page, by what a person sees: a text field, a send button and
+ * message bubbles. `root` narrows it when the page has more than the chat
+ * (the landing page's Stage).
+ */
+export function chatOn(page, root = 'body') {
+  const scope = page.locator(root).first();
+  const field = scope.locator('textarea').first();
+  const sendButton = scope.locator('button[type="submit"]').first();
+  const bubbles = (role) => scope.locator(`[data-message-id][data-role="${role}"]`);
+  // The app console calls the agent's side `agent`, the admin console `assistant`.
+  const answers = () =>
+    scope.locator('[data-message-id][data-role="agent"], [data-message-id][data-role="assistant"]');
+  return {
+    scope,
+    field,
+    sendButton,
+    ready: () => field.waitFor({ state: 'visible', timeout: 20000 }),
+    type: (text) => field.fill(text),
+    draft: () => field.inputValue(),
+    // The app console's composer is a form with a submit button; the admin
+    // console's sends on Enter. Either way: what a person would do.
+    send: async () => ((await hasButton()) ? sendButton.click({ force: true }) : field.press('Enter')),
+    enter: () => field.press('Enter'),
+    userCount: () => bubbles('user').count(),
+    agentCount: () => answers().count(),
+    /** Type, send, and wait until the agent's answer to it has arrived. */
+    async say(text) {
+      const before = await answers().count();
+      await field.fill(text);
+      if (await hasButton()) await sendButton.click();
+      else await field.press('Enter');
+      return until(async () => (await answers().count()) > before, { timeout: 15000 });
+    },
+    sendDisabled: async () =>
+      (await hasButton()) &&
+      ((await sendButton.getAttribute('aria-disabled')) === 'true' || (await sendButton.isDisabled())),
+  };
+  async function hasButton() {
+    return (await sendButton.count()) > 0;
+  }
+}
+
+/** Opens the landing page's chat panel (the Stage tab) and returns its chat. */
+export async function landingChat(page) {
+  await page.goto(APP + '/', { waitUntil: 'networkidle' });
+  await page.locator('#land-tab-chat').first().click();
+  const chat = chatOn(page, '#land-panel-chat');
+  await chat.ready();
+  return chat;
+}
+
+/** Makes sure the minute window of an agent is empty before a scenario starts. */
+export async function minuteRoom(agentId) {
+  return until(
+    async () => {
+      const load = await api(`/agents/${agentId}/load`);
+      return load.status === 200 && load.body.windows[0].used === 0;
+    },
+    { timeout: 65000, every: 1000 },
+  );
+}
+
+/** Fills whatever is left of an agent's allowance, without a browser. */
+export async function fillUp(agentId, tries = 12) {
+  for (let i = 0; i < tries; i++) {
+    const res = await sendAnonymous(agentId);
+    if (res.status === 429) return true;
+  }
+  return false;
+}
+
+/** Sentences the notice may show, in either console language. */
+export const WORDS = {
+  reached: /reached its message limit|достигнут лимит сообщений/i,
+  retryIn: /try again in|попробуйте через/i,
+  retryAfter: /try again after|попробуйте после/i,
+  tomorrow: /tomorrow|завтра/i,
+  ready: /you can send|можно отправ/i,
+};

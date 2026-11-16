@@ -18,6 +18,7 @@ const { template, effective, resolved, pending } = useAgentKnowledges(
 <template>
   <div class="flex flex-col gap-6">
     <AgentOverviewUsageCard :agent-id="agent.id" />
+    <AgentLoadProvider :agent-id="agent.id" />
     <AgentOverviewLlmCard :agent-id="agent.id" :llm-credential-id="agent.llmCredentialId" />
     <AgentOverviewKnowledgeCard
       :source="effective.source"

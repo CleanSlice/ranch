@@ -31,6 +31,20 @@
   "managedFiles": ["SOUL.md"],
   "syncSkills": true,
 
+  "_comment_memory": "soul: the full SOUL.md is ~14.5k chars, above the 12000 default, so the prompt copy was cut (CLEAN-230). ownerBlock: Rancher lives in the web console; the Telegram Bot Owner block only overflowed MEMORY.md. dailyNotes stay on: the operator is the only user.",
+  "memory": {
+    "ownerBlock": false,
+    "limits": {
+      "soul": 20000,
+      "memory": 4000
+    }
+  },
+
+  "_comment_skills": "ranch-sessions is the social-media browser-session skill; it comes back on every start as an example skill and is not Rancher work.",
+  "skills": {
+    "exclude": ["ranch-sessions"]
+  },
+
   "tools": {
     "spawnAgent": {
       "timeoutMin": 5,

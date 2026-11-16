@@ -40,6 +40,7 @@ import type {
   TemplateControllerUpdateData,
   TemplateControllerSetSkillsData,
   TemplateControllerSetMcpsData,
+  TemplateControllerSetToolsData,
   AgentControllerFindAllData,
   AgentControllerFindAllResponse,
   AgentControllerCreateData,
@@ -91,6 +92,10 @@ import type {
   ReadAgentFileRawData,
   StageAgentImportData,
   StageAgentImportResponse,
+  ResolveAgentImportFilesData,
+  ResolveAgentImportFilesResponse,
+  StageAgentImportFilesData,
+  StageAgentImportFilesResponse,
   PlanAgentImportData,
   PlanAgentImportResponse,
   ApplyAgentImportData,
@@ -138,8 +143,20 @@ import type {
   RegenerateAgentShareLinkResponse,
   ResolveShareLinkData,
   ResolveShareLinkResponse,
+  ListAgentLimitsData,
+  ListAgentLimitsResponse,
+  GetAgentLimitsData,
+  GetAgentLimitsResponse,
+  SetAgentLimitsData,
+  SetAgentLimitsResponse,
+  GetAgentLimitsEnabledData,
+  GetAgentLimitsEnabledResponse,
+  GetAgentLoadData,
+  GetAgentLoadResponse,
   McpServerControllerFindAllData,
   McpServerControllerCreateData,
+  McpServerControllerListToolsData,
+  McpServerControllerListToolsResponse,
   McpServerControllerRemoveData,
   McpServerControllerFindByIdData,
   McpServerControllerUpdateData,
@@ -179,6 +196,12 @@ import type {
   DeleteKnowledgeSourceResponse,
   SkillControllerFindAllData,
   SkillControllerCreateData,
+  GetSkillOrderData,
+  GetSkillOrderResponse,
+  SaveSkillOrderData,
+  SaveSkillOrderResponse,
+  SkillNameAvailableData,
+  SkillNameAvailableResponse,
   SkillControllerListSourcesData,
   SkillControllerSearchData,
   SkillControllerImportFromUrlData,
@@ -947,6 +970,26 @@ export class TemplatesService {
   }
 
   /**
+   * Limit the Documents MCP tools agents of this template may list and call (CLEAN-209). `toolNames: null` restores every tool (the default). A pod reads the list when it connects, so running agents see it after a restart.
+   */
+  public static templateControllerSetTools<
+    ThrowOnError extends boolean = false,
+  >(options: Options<TemplateControllerSetToolsData, ThrowOnError>) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/templates/{id}/tools",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
    * Preview template install — parse manifest and report what would happen, no DB or S3 writes.
    */
   public static previewTemplateInstall<ThrowOnError extends boolean = false>(
@@ -1646,6 +1689,47 @@ export class FilesService {
   }
 
   /**
+   * Match selected file names against the workspace: unique / none / ambiguous per name. No upload, nothing written.
+   */
+  public static resolveAgentImportFiles<ThrowOnError extends boolean = false>(
+    options: Options<ResolveAgentImportFilesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ResolveAgentImportFilesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/files/import/resolve",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Upload selected plain files with their resolved targets. Stages them once (kind: files) and returns the merge plan — nothing is written. Apply with applyAgentImport in merge mode.
+   */
+  public static stageAgentImportFiles<ThrowOnError extends boolean = false>(
+    options: Options<StageAgentImportFilesData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      StageAgentImportFilesResponse,
+      unknown,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/agents/{agentId}/files/import/stage-files",
+      ...options,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
    * Re-plan a staged archive with a mode and the sessions option.
    */
   public static planAgentImport<ThrowOnError extends boolean = false>(
@@ -2097,6 +2181,92 @@ export class ShareService {
   }
 }
 
+export class AgentLimitsService {
+  /**
+   * One line per agent: whether it has limits, whether one is full right now, and whether it is public without any. Admin or Owner.
+   */
+  public static listAgentLimits<ThrowOnError extends boolean = false>(
+    options?: Options<ListAgentLimitsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      ListAgentLimitsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-limits",
+      ...options,
+    });
+  }
+
+  /**
+   * The request limits of one agent. Admin or Owner.
+   */
+  public static getAgentLimits<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentLimitsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentLimitsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/limits",
+      ...options,
+    });
+  }
+
+  /**
+   * Set the request limits of one agent; all three empty switches them off. Takes effect on the next request and keeps what was used so far. A public agent must keep at least one limit. Admin or Owner.
+   */
+  public static setAgentLimits<ThrowOnError extends boolean = false>(
+    options: Options<SetAgentLimitsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SetAgentLimitsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/limits",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Whether this agent has request limits. Any signed-in user; the values themselves are not disclosed here.
+   */
+  public static getAgentLimitsEnabled<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentLimitsEnabledData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentLimitsEnabledResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/limits/enabled",
+      ...options,
+    });
+  }
+
+  /**
+   * How busy the agent is right now: usage against each limit, requests in progress, the last hour minute by minute, refusals, and the highest load of the last 30 days. Meant to be polled. Admin or Owner.
+   */
+  public static getAgentLoad<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentLoadData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentLoadResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/load",
+      ...options,
+    });
+  }
+}
+
 export class McpServersService {
   /**
    * List all MCP servers registered in this Ranch.
@@ -2131,6 +2301,22 @@ export class McpServersService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * The tools the built-in Documents MCP server offers — name, topic, title, description — for a template tool allowlist (CLEAN-209). The static catalogue: per-caller gating is not applied here.
+   */
+  public static mcpServerControllerListTools<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<McpServerControllerListToolsData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).get<
+      McpServerControllerListToolsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/mcp-servers/tools",
+      ...options,
     });
   }
 
@@ -2574,7 +2760,7 @@ export class KnowledgeSourcesService {
 
 export class SkillsService {
   /**
-   * List all skills
+   * List all skills, in the library order (sortOrder, then name)
    */
   public static skillControllerFindAll<ThrowOnError extends boolean = false>(
     options?: Options<SkillControllerFindAllData, ThrowOnError>,
@@ -2590,7 +2776,7 @@ export class SkillsService {
   }
 
   /**
-   * Create a new skill
+   * Create a new skill (409 SKILL_EXISTS when the name is taken)
    */
   public static skillControllerCreate<ThrowOnError extends boolean = false>(
     options: Options<SkillControllerCreateData, ThrowOnError>,
@@ -2606,6 +2792,58 @@ export class SkillsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * The shared display order of the Skills page with its version (CLEAN-205)
+   */
+  public static getSkillOrder<ThrowOnError extends boolean = false>(
+    options?: Options<GetSkillOrderData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetSkillOrderResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/order",
+      ...options,
+    });
+  }
+
+  /**
+   * Replace the whole display order atomically. 409 ORDER_CHANGED when the version is stale. Agents and templates are not affected.
+   */
+  public static saveSkillOrder<ThrowOnError extends boolean = false>(
+    options: Options<SaveSkillOrderData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).patch<
+      SaveSkillOrderResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/order",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Whether a slug is free (the New / Edit skill form asks as you type)
+   */
+  public static skillNameAvailable<ThrowOnError extends boolean = false>(
+    options: Options<SkillNameAvailableData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      SkillNameAvailableResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/skills/name-available",
+      ...options,
     });
   }
 
@@ -2714,7 +2952,7 @@ export class SkillsService {
   }
 
   /**
-   * Update a skill
+   * Update a skill (409 SKILL_EXISTS when a new name is taken)
    */
   public static skillControllerUpdate<ThrowOnError extends boolean = false>(
     options: Options<SkillControllerUpdateData, ThrowOnError>,

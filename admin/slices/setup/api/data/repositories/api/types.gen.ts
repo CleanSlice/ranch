@@ -384,6 +384,21 @@ export type AgentResourcesDto = {
   memory: string;
 };
 
+export type SetAgentLimitsDto = {
+  /**
+   * Requests accepted in any 60 seconds. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.
+   */
+  perMinute?: number | null;
+  /**
+   * Requests accepted in any 60 minutes. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.
+   */
+  perHour?: number | null;
+  /**
+   * Requests accepted in any 24 hours. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.
+   */
+  perDay?: number | null;
+};
+
 export type CreateAgentDto = {
   name: string;
   templateId: string;
@@ -400,6 +415,10 @@ export type CreateAgentDto = {
    * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
    */
   allowedOrigins?: Array<string>;
+  /**
+   * Request limits, saved together with the rest (CLEAN-224). A public agent needs at least one: making an agent public without limits, or removing the last limit from a public one, is refused with PUBLIC_AGENT_NEEDS_LIMITS. Null switches limits off; absent leaves them as they are.
+   */
+  limits?: SetAgentLimitsDto | null;
   knowledgeIds?: Array<string>;
   /**
    * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
@@ -423,6 +442,10 @@ export type UpdateAgentDto = {
    * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
    */
   allowedOrigins?: Array<string>;
+  /**
+   * Request limits, saved together with the rest (CLEAN-224). A public agent needs at least one: making an agent public without limits, or removing the last limit from a public one, is refused with PUBLIC_AGENT_NEEDS_LIMITS. Null switches limits off; absent leaves them as they are.
+   */
+  limits?: SetAgentLimitsDto | null;
   knowledgeIds?: Array<string>;
   /**
    * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
@@ -1047,6 +1070,117 @@ export type ShareResolvedDto = {
    * The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.
    */
   agentStatus: string;
+};
+
+export type AgentLimitSummaryDto = {
+  agentId: string;
+  /**
+   * The agent has at least one limit.
+   */
+  enabled: boolean;
+  /**
+   * A limit is full right now: the next visitor request is refused.
+   */
+  atLimit: boolean;
+  /**
+   * Public with no limits. Only possible for an agent that was public before limits existed; its next visibility save requires them.
+   */
+  needsLimits: boolean;
+};
+
+export type AgentLimitsDto = {
+  perMinute: number | null;
+  perHour: number | null;
+  perDay: number | null;
+};
+
+export type AgentLimitsStateDto = {
+  /**
+   * Null when limits are off for this agent.
+   */
+  limits: AgentLimitsDto | null;
+};
+
+export type AgentLimitsEnabledDto = {
+  /**
+   * True when the agent has at least one limit.
+   */
+  enabled: boolean;
+};
+
+export type AgentLoadWindowDto = {
+  window: "minute" | "hour" | "day";
+  /**
+   * Requests accepted in this window so far.
+   */
+  used: number;
+  limit: number | null;
+  /**
+   * Seconds until this window has room again; null while it has room.
+   */
+  retryAfterSec: number | null;
+};
+
+export type AgentLoadMinuteDto = {
+  /**
+   * Start of the minute, ISO 8601 (UTC).
+   */
+  minute: string;
+  accepted: number;
+  refused: number;
+  /**
+   * Operator and agent-to-agent requests; not counted toward limits.
+   */
+  exempt: number;
+};
+
+export type AgentLoadByWindowDto = {
+  minute: number;
+  hour: number;
+  day: number;
+};
+
+export type AgentLoadRefusedDto = {
+  /**
+   * Requests refused for a limit in the last 60 minutes.
+   */
+  lastHour: number;
+  /**
+   * ISO 8601, or null.
+   */
+  lastAt: string | null;
+  /**
+   * Refusals in the last 60 minutes by the window that set the wait.
+   */
+  byWindow: AgentLoadByWindowDto;
+};
+
+export type AgentLoadDto = {
+  limits: AgentLimitsDto | null;
+  isPublic: boolean;
+  needsLimits: boolean;
+  windows: Array<AgentLoadWindowDto>;
+  /**
+   * Conversations with a turn open right now.
+   */
+  inFlight: number;
+  /**
+   * The last 60 minutes, oldest first, empty minutes included.
+   */
+  series: Array<AgentLoadMinuteDto>;
+  refused: AgentLoadRefusedDto;
+  /**
+   * Operator and agent-to-agent requests in the last 60 minutes.
+   */
+  exemptLastHour: number;
+  /**
+   * Highest number of accepted requests in any minute, hour and day of the last 30 days.
+   */
+  peaks: AgentLoadByWindowDto;
+  /**
+   * Live copies of the API. Above 1 these figures are the share of one copy only.
+   */
+  apiReplicas: number;
 };
 
 export type McpToolSummaryDto = {
@@ -4478,6 +4612,139 @@ export type ResolveShareLinkResponses = {
 
 export type ResolveShareLinkResponse =
   ResolveShareLinkResponses[keyof ResolveShareLinkResponses];
+
+export type ListAgentLimitsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agent-limits";
+};
+
+export type ListAgentLimitsErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+};
+
+export type ListAgentLimitsResponses = {
+  200: Array<AgentLimitSummaryDto>;
+};
+
+export type ListAgentLimitsResponse =
+  ListAgentLimitsResponses[keyof ListAgentLimitsResponses];
+
+export type GetAgentLimitsData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/limits";
+};
+
+export type GetAgentLimitsErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type GetAgentLimitsResponses = {
+  200: AgentLimitsStateDto;
+};
+
+export type GetAgentLimitsResponse =
+  GetAgentLimitsResponses[keyof GetAgentLimitsResponses];
+
+export type SetAgentLimitsData = {
+  body: SetAgentLimitsDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/limits";
+};
+
+export type SetAgentLimitsErrors = {
+  /**
+   * Refused, with a `code`: PUBLIC_AGENT_NEEDS_LIMITS, LIMIT_OUT_OF_RANGE or LIMIT_WINDOWS_CONTRADICT.
+   */
+  400: unknown;
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type SetAgentLimitsResponses = {
+  200: AgentLimitsStateDto;
+};
+
+export type SetAgentLimitsResponse =
+  SetAgentLimitsResponses[keyof SetAgentLimitsResponses];
+
+export type GetAgentLimitsEnabledData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/limits/enabled";
+};
+
+export type GetAgentLimitsEnabledErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type GetAgentLimitsEnabledResponses = {
+  200: AgentLimitsEnabledDto;
+};
+
+export type GetAgentLimitsEnabledResponse =
+  GetAgentLimitsEnabledResponses[keyof GetAgentLimitsEnabledResponses];
+
+export type GetAgentLoadData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/load";
+};
+
+export type GetAgentLoadErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type GetAgentLoadResponses = {
+  200: AgentLoadDto;
+};
+
+export type GetAgentLoadResponse =
+  GetAgentLoadResponses[keyof GetAgentLoadResponses];
 
 export type McpServerControllerFindAllData = {
   body?: never;

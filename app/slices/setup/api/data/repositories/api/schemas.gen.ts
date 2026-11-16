@@ -331,6 +331,23 @@ export const SetTemplateMcpsDtoSchema = {
   required: ["mcpServerIds"],
 } as const;
 
+export const SetTemplateToolsDtoSchema = {
+  type: "object",
+  properties: {
+    toolNames: {
+      nullable: true,
+      description:
+        "Full list of Documents MCP tool names agents of this template may list and call; replaces any prior list. `null` restores every tool (the default).",
+      example: ["query_knowledge", "list_knowledge_documents"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["toolNames"],
+} as const;
+
 export const AgentDtoSchema = {
   type: "object",
   properties: {
@@ -827,6 +844,33 @@ export const AgentResourcesDtoSchema = {
   required: ["cpu", "memory"],
 } as const;
 
+export const SetAgentLimitsDtoSchema = {
+  type: "object",
+  properties: {
+    perMinute: {
+      type: "number",
+      nullable: true,
+      description:
+        "Requests accepted in any 60 seconds. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.",
+      example: 20,
+    },
+    perHour: {
+      type: "number",
+      nullable: true,
+      description:
+        "Requests accepted in any 60 minutes. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.",
+      example: 300,
+    },
+    perDay: {
+      type: "number",
+      nullable: true,
+      description:
+        "Requests accepted in any 24 hours. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.",
+      example: 2000,
+    },
+  },
+} as const;
+
 export const CreateAgentDtoSchema = {
   type: "object",
   properties: {
@@ -858,6 +902,16 @@ export const CreateAgentDtoSchema = {
       items: {
         type: "string",
       },
+    },
+    limits: {
+      nullable: true,
+      description:
+        "Request limits, saved together with the rest (CLEAN-224). A public agent needs at least one: making an agent public without limits, or removing the last limit from a public one, is refused with PUBLIC_AGENT_NEEDS_LIMITS. Null switches limits off; absent leaves them as they are.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/SetAgentLimitsDto",
+        },
+      ],
     },
     knowledgeIds: {
       type: "array",
@@ -905,6 +959,16 @@ export const UpdateAgentDtoSchema = {
       items: {
         type: "string",
       },
+    },
+    limits: {
+      nullable: true,
+      description:
+        "Request limits, saved together with the rest (CLEAN-224). A public agent needs at least one: making an agent public without limits, or removing the last limit from a public one, is refused with PUBLIC_AGENT_NEEDS_LIMITS. Null switches limits off; absent leaves them as they are.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/SetAgentLimitsDto",
+        },
+      ],
     },
     knowledgeIds: {
       type: "array",
@@ -999,6 +1063,11 @@ export const FileLimitsDtoSchema = {
       type: "number",
       example: 500,
     },
+    importMaxFiles: {
+      type: "number",
+      example: 20,
+      description: "Selected-files import: plain files per import.",
+    },
     diffCompareMaxBytes: {
       type: "number",
       example: 1048576,
@@ -1022,6 +1091,20 @@ export const FileLimitsDtoSchema = {
         type: "string",
       },
     },
+    curated: {
+      type: "object",
+      additionalProperties: {
+        type: "number",
+      },
+      example: {
+        "SOUL.md": 32000,
+        "USER.md": 1375,
+        "MEMORY.md": 2200,
+        "HEARTBEAT.md": 1000,
+      },
+      description:
+        "Character limits of the curated root files, from this agent's agent.config.json (memory.limits; runtime defaults where unset). A save over the limit is refused with 400 naming the limit.",
+    },
   },
   required: [
     "maxEditBytes",
@@ -1033,11 +1116,13 @@ export const FileLimitsDtoSchema = {
     "importMaxEntries",
     "importMaxFileBytes",
     "importPlanListRows",
+    "importMaxFiles",
     "diffCompareMaxBytes",
     "diffInlineMaxLines",
     "diffInlineMaxBytes",
     "proposalListRows",
     "textExtensions",
+    "curated",
   ],
 } as const;
 
@@ -1411,6 +1496,78 @@ export const ImportPlanDtoSchema = {
     "more",
     "warnings",
   ],
+} as const;
+
+export const ImportResolveRequestDtoSchema = {
+  type: "object",
+  properties: {
+    names: {
+      example: ["SOUL.md", "SKILL.md", "notes.txt"],
+      description: "Names of the dropped files, as the browser reports them.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    targetFolder: {
+      type: "string",
+      example: "skills/research",
+      description:
+        "Relative folder for names that match nothing; empty = root.",
+    },
+  },
+  required: ["names"],
+} as const;
+
+export const ImportResolveRowDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "SKILL.md",
+    },
+    match: {
+      type: "string",
+      enum: ["unique", "none", "ambiguous"],
+    },
+    path: {
+      type: "string",
+      nullable: true,
+      description:
+        "unique → the matched path; none → <targetFolder>/<name>; ambiguous → null.",
+    },
+    candidates: {
+      example: ["skills/research/SKILL.md", "skills/writer/SKILL.md"],
+      description: "ambiguous only: the matching paths, sorted.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    size: {
+      type: "number",
+      nullable: true,
+      description: "unique only: size of the matched file.",
+    },
+  },
+  required: ["name", "match", "path", "candidates", "size"],
+} as const;
+
+export const ImportResolveResponseDtoSchema = {
+  type: "object",
+  properties: {
+    targetFolder: {
+      type: "string",
+      example: "",
+    },
+    rows: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ImportResolveRowDto",
+      },
+    },
+  },
+  required: ["targetFolder", "rows"],
 } as const;
 
 export const ImportApplyDtoSchema = {
@@ -2190,6 +2347,263 @@ export const ShareResolvedDtoSchema = {
   required: ["agentId", "agentName", "agentStatus"],
 } as const;
 
+export const AgentLimitSummaryDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+    },
+    enabled: {
+      type: "boolean",
+      description: "The agent has at least one limit.",
+    },
+    atLimit: {
+      type: "boolean",
+      description:
+        "A limit is full right now: the next visitor request is refused.",
+    },
+    needsLimits: {
+      type: "boolean",
+      description:
+        "Public with no limits. Only possible for an agent that was public before limits existed; its next visibility save requires them.",
+    },
+  },
+  required: ["agentId", "enabled", "atLimit", "needsLimits"],
+} as const;
+
+export const AgentLimitsDtoSchema = {
+  type: "object",
+  properties: {
+    perMinute: {
+      type: "number",
+      nullable: true,
+      example: 20,
+    },
+    perHour: {
+      type: "number",
+      nullable: true,
+      example: 300,
+    },
+    perDay: {
+      type: "number",
+      nullable: true,
+      example: null,
+    },
+  },
+  required: ["perMinute", "perHour", "perDay"],
+} as const;
+
+export const AgentLimitsStateDtoSchema = {
+  type: "object",
+  properties: {
+    limits: {
+      nullable: true,
+      description: "Null when limits are off for this agent.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentLimitsDto",
+        },
+      ],
+    },
+  },
+  required: ["limits"],
+} as const;
+
+export const AgentLimitsEnabledDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+      description: "True when the agent has at least one limit.",
+    },
+  },
+  required: ["enabled"],
+} as const;
+
+export const AgentLoadWindowDtoSchema = {
+  type: "object",
+  properties: {
+    window: {
+      type: "string",
+      enum: ["minute", "hour", "day"],
+    },
+    used: {
+      type: "number",
+      description: "Requests accepted in this window so far.",
+    },
+    limit: {
+      type: "number",
+      nullable: true,
+    },
+    retryAfterSec: {
+      type: "number",
+      nullable: true,
+      description:
+        "Seconds until this window has room again; null while it has room.",
+    },
+  },
+  required: ["window", "used", "limit", "retryAfterSec"],
+} as const;
+
+export const AgentLoadMinuteDtoSchema = {
+  type: "object",
+  properties: {
+    minute: {
+      type: "string",
+      description: "Start of the minute, ISO 8601 (UTC).",
+    },
+    accepted: {
+      type: "number",
+    },
+    refused: {
+      type: "number",
+    },
+    exempt: {
+      type: "number",
+      description:
+        "Operator and agent-to-agent requests; not counted toward limits.",
+    },
+  },
+  required: ["minute", "accepted", "refused", "exempt"],
+} as const;
+
+export const AgentLoadByWindowDtoSchema = {
+  type: "object",
+  properties: {
+    minute: {
+      type: "number",
+    },
+    hour: {
+      type: "number",
+    },
+    day: {
+      type: "number",
+    },
+  },
+  required: ["minute", "hour", "day"],
+} as const;
+
+export const AgentLoadRefusedDtoSchema = {
+  type: "object",
+  properties: {
+    lastHour: {
+      type: "number",
+      description: "Requests refused for a limit in the last 60 minutes.",
+    },
+    lastAt: {
+      type: "string",
+      nullable: true,
+      description: "ISO 8601, or null.",
+    },
+    byWindow: {
+      description:
+        "Refusals in the last 60 minutes by the window that set the wait.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentLoadByWindowDto",
+        },
+      ],
+    },
+  },
+  required: ["lastHour", "lastAt", "byWindow"],
+} as const;
+
+export const AgentLoadDtoSchema = {
+  type: "object",
+  properties: {
+    limits: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentLimitsDto",
+        },
+      ],
+    },
+    isPublic: {
+      type: "boolean",
+    },
+    needsLimits: {
+      type: "boolean",
+    },
+    windows: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentLoadWindowDto",
+      },
+    },
+    inFlight: {
+      type: "number",
+      description: "Conversations with a turn open right now.",
+    },
+    series: {
+      description: "The last 60 minutes, oldest first, empty minutes included.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentLoadMinuteDto",
+      },
+    },
+    refused: {
+      $ref: "#/components/schemas/AgentLoadRefusedDto",
+    },
+    exemptLastHour: {
+      type: "number",
+      description:
+        "Operator and agent-to-agent requests in the last 60 minutes.",
+    },
+    peaks: {
+      description:
+        "Highest number of accepted requests in any minute, hour and day of the last 30 days.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentLoadByWindowDto",
+        },
+      ],
+    },
+    apiReplicas: {
+      type: "number",
+      description:
+        "Live copies of the API. Above 1 these figures are the share of one copy only.",
+    },
+  },
+  required: [
+    "limits",
+    "isPublic",
+    "needsLimits",
+    "windows",
+    "inFlight",
+    "series",
+    "refused",
+    "exemptLastHour",
+    "peaks",
+    "apiReplicas",
+  ],
+} as const;
+
+export const McpToolSummaryDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "query_knowledge",
+    },
+    topic: {
+      type: "string",
+      example: "knowledge",
+      nullable: true,
+    },
+    title: {
+      type: "string",
+      example: "Ask the knowledge bases",
+      nullable: true,
+    },
+    description: {
+      type: "string",
+      example: "Search your bound knowledge bases for factual information.",
+    },
+  },
+  required: ["name", "topic", "title", "description"],
+} as const;
+
 export const CreateMcpServerDtoSchema = {
   type: "object",
   properties: {
@@ -2948,6 +3362,77 @@ export const AddFromArchiveResultDtoSchema = {
   required: ["detected", "started", "jobId"],
 } as const;
 
+export const SkillOrderItemDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      example: "skill-…",
+    },
+    sortOrder: {
+      type: "number",
+      example: 3,
+      description: "1-based position in the library",
+    },
+  },
+  required: ["id", "sortOrder"],
+} as const;
+
+export const SkillOrderDtoSchema = {
+  type: "object",
+  properties: {
+    version: {
+      type: "string",
+      description:
+        "Hash of every position. Send it back with PATCH /skills/order; a save against an older version is refused with 409 ORDER_CHANGED.",
+    },
+    items: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/SkillOrderItemDto",
+      },
+    },
+  },
+  required: ["version", "items"],
+} as const;
+
+export const SaveSkillOrderDtoSchema = {
+  type: "object",
+  properties: {
+    version: {
+      type: "string",
+      description: "The version GET /skills/order returned",
+    },
+    items: {
+      description:
+        "Every skill exactly once with its new position. Order only — agents and templates are not affected.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/SkillOrderItemDto",
+      },
+    },
+  },
+  required: ["version", "items"],
+} as const;
+
+export const NameAvailableDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "devops",
+    },
+    available: {
+      type: "boolean",
+    },
+    existingId: {
+      type: "string",
+      description: "The skill that holds the name, if any",
+    },
+  },
+  required: ["name", "available"],
+} as const;
+
 export const ImportSkillUrlDtoSchema = {
   type: "object",
   properties: {
@@ -2997,6 +3482,12 @@ export const ImportSkillDtoSchema = {
   required: ["repo", "path"],
 } as const;
 
+export const SkillGroupSchema = {
+  type: "string",
+  enum: ["api", "routing", "spec-lookup", "answer-format", "runtime"],
+  description: "Library group on the admin Skills page; null clears it",
+} as const;
+
 export const CreateSkillDtoSchema = {
   type: "object",
   properties: {
@@ -3015,6 +3506,15 @@ export const CreateSkillDtoSchema = {
     },
     description: {
       type: "string",
+    },
+    group: {
+      nullable: true,
+      description: "Library group on the admin Skills page; null clears it",
+      allOf: [
+        {
+          $ref: "#/components/schemas/SkillGroup",
+        },
+      ],
     },
   },
   required: ["name", "title", "body"],
@@ -3038,6 +3538,15 @@ export const UpdateSkillDtoSchema = {
     },
     description: {
       type: "string",
+    },
+    group: {
+      nullable: true,
+      description: "Library group on the admin Skills page; null clears it",
+      allOf: [
+        {
+          $ref: "#/components/schemas/SkillGroup",
+        },
+      ],
     },
   },
 } as const;

@@ -844,6 +844,33 @@ export const AgentResourcesDtoSchema = {
   required: ["cpu", "memory"],
 } as const;
 
+export const SetAgentLimitsDtoSchema = {
+  type: "object",
+  properties: {
+    perMinute: {
+      type: "number",
+      nullable: true,
+      description:
+        "Requests accepted in any 60 seconds. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.",
+      example: 20,
+    },
+    perHour: {
+      type: "number",
+      nullable: true,
+      description:
+        "Requests accepted in any 60 minutes. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.",
+      example: 300,
+    },
+    perDay: {
+      type: "number",
+      nullable: true,
+      description:
+        "Requests accepted in any 24 hours. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.",
+      example: 2000,
+    },
+  },
+} as const;
+
 export const CreateAgentDtoSchema = {
   type: "object",
   properties: {
@@ -875,6 +902,16 @@ export const CreateAgentDtoSchema = {
       items: {
         type: "string",
       },
+    },
+    limits: {
+      nullable: true,
+      description:
+        "Request limits, saved together with the rest (CLEAN-224). A public agent needs at least one: making an agent public without limits, or removing the last limit from a public one, is refused with PUBLIC_AGENT_NEEDS_LIMITS. Null switches limits off; absent leaves them as they are.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/SetAgentLimitsDto",
+        },
+      ],
     },
     knowledgeIds: {
       type: "array",
@@ -922,6 +959,16 @@ export const UpdateAgentDtoSchema = {
       items: {
         type: "string",
       },
+    },
+    limits: {
+      nullable: true,
+      description:
+        "Request limits, saved together with the rest (CLEAN-224). A public agent needs at least one: making an agent public without limits, or removing the last limit from a public one, is refused with PUBLIC_AGENT_NEEDS_LIMITS. Null switches limits off; absent leaves them as they are.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/SetAgentLimitsDto",
+        },
+      ],
     },
     knowledgeIds: {
       type: "array",
@@ -2298,6 +2345,238 @@ export const ShareResolvedDtoSchema = {
     },
   },
   required: ["agentId", "agentName", "agentStatus"],
+} as const;
+
+export const AgentLimitSummaryDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+    },
+    enabled: {
+      type: "boolean",
+      description: "The agent has at least one limit.",
+    },
+    atLimit: {
+      type: "boolean",
+      description:
+        "A limit is full right now: the next visitor request is refused.",
+    },
+    needsLimits: {
+      type: "boolean",
+      description:
+        "Public with no limits. Only possible for an agent that was public before limits existed; its next visibility save requires them.",
+    },
+  },
+  required: ["agentId", "enabled", "atLimit", "needsLimits"],
+} as const;
+
+export const AgentLimitsDtoSchema = {
+  type: "object",
+  properties: {
+    perMinute: {
+      type: "number",
+      nullable: true,
+      example: 20,
+    },
+    perHour: {
+      type: "number",
+      nullable: true,
+      example: 300,
+    },
+    perDay: {
+      type: "number",
+      nullable: true,
+      example: null,
+    },
+  },
+  required: ["perMinute", "perHour", "perDay"],
+} as const;
+
+export const AgentLimitsStateDtoSchema = {
+  type: "object",
+  properties: {
+    limits: {
+      nullable: true,
+      description: "Null when limits are off for this agent.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentLimitsDto",
+        },
+      ],
+    },
+  },
+  required: ["limits"],
+} as const;
+
+export const AgentLimitsEnabledDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+      description: "True when the agent has at least one limit.",
+    },
+  },
+  required: ["enabled"],
+} as const;
+
+export const AgentLoadWindowDtoSchema = {
+  type: "object",
+  properties: {
+    window: {
+      type: "string",
+      enum: ["minute", "hour", "day"],
+    },
+    used: {
+      type: "number",
+      description: "Requests accepted in this window so far.",
+    },
+    limit: {
+      type: "number",
+      nullable: true,
+    },
+    retryAfterSec: {
+      type: "number",
+      nullable: true,
+      description:
+        "Seconds until this window has room again; null while it has room.",
+    },
+  },
+  required: ["window", "used", "limit", "retryAfterSec"],
+} as const;
+
+export const AgentLoadMinuteDtoSchema = {
+  type: "object",
+  properties: {
+    minute: {
+      type: "string",
+      description: "Start of the minute, ISO 8601 (UTC).",
+    },
+    accepted: {
+      type: "number",
+    },
+    refused: {
+      type: "number",
+    },
+    exempt: {
+      type: "number",
+      description:
+        "Operator and agent-to-agent requests; not counted toward limits.",
+    },
+  },
+  required: ["minute", "accepted", "refused", "exempt"],
+} as const;
+
+export const AgentLoadByWindowDtoSchema = {
+  type: "object",
+  properties: {
+    minute: {
+      type: "number",
+    },
+    hour: {
+      type: "number",
+    },
+    day: {
+      type: "number",
+    },
+  },
+  required: ["minute", "hour", "day"],
+} as const;
+
+export const AgentLoadRefusedDtoSchema = {
+  type: "object",
+  properties: {
+    lastHour: {
+      type: "number",
+      description: "Requests refused for a limit in the last 60 minutes.",
+    },
+    lastAt: {
+      type: "string",
+      nullable: true,
+      description: "ISO 8601, or null.",
+    },
+    byWindow: {
+      description:
+        "Refusals in the last 60 minutes by the window that set the wait.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentLoadByWindowDto",
+        },
+      ],
+    },
+  },
+  required: ["lastHour", "lastAt", "byWindow"],
+} as const;
+
+export const AgentLoadDtoSchema = {
+  type: "object",
+  properties: {
+    limits: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentLimitsDto",
+        },
+      ],
+    },
+    isPublic: {
+      type: "boolean",
+    },
+    needsLimits: {
+      type: "boolean",
+    },
+    windows: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentLoadWindowDto",
+      },
+    },
+    inFlight: {
+      type: "number",
+      description: "Conversations with a turn open right now.",
+    },
+    series: {
+      description: "The last 60 minutes, oldest first, empty minutes included.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentLoadMinuteDto",
+      },
+    },
+    refused: {
+      $ref: "#/components/schemas/AgentLoadRefusedDto",
+    },
+    exemptLastHour: {
+      type: "number",
+      description:
+        "Operator and agent-to-agent requests in the last 60 minutes.",
+    },
+    peaks: {
+      description:
+        "Highest number of accepted requests in any minute, hour and day of the last 30 days.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentLoadByWindowDto",
+        },
+      ],
+    },
+    apiReplicas: {
+      type: "number",
+      description:
+        "Live copies of the API. Above 1 these figures are the share of one copy only.",
+    },
+  },
+  required: [
+    "limits",
+    "isPublic",
+    "needsLimits",
+    "windows",
+    "inFlight",
+    "series",
+    "refused",
+    "exemptLastHour",
+    "peaks",
+    "apiReplicas",
+  ],
 } as const;
 
 export const McpToolSummaryDtoSchema = {

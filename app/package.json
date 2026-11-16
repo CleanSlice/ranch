@@ -1,6 +1,7 @@
 {
   "name": "app",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "predev": "node ../scripts/wait-for-swagger.mjs && openapi-ts",

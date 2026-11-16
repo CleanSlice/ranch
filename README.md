@@ -178,4 +178,6 @@ The remaining steps (snapshots, platform services, DNS, secrets) are in [`docs/g
 
 ## License
 
-Private — CleanSlice. There is no `LICENSE` file in this repository yet.
+Proprietary to CleanSlice. No permission is granted to use, copy, modify or redistribute this code. The repository is public because npm refuses to verify build provenance for a package built from a private repository — readable is not the same as licensed.
+
+The one exception is `cli/`, published to npm as `@cleanslice/ranch` under the MIT licence. It carries its own [`LICENSE`](cli/LICENSE), and the bundle it publishes contains no platform code.

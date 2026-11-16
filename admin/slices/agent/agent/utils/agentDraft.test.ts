@@ -315,6 +315,20 @@ describe('agentDraft — payload', () => {
     expect(draft.limits()).toBe(null);
   });
 
+  test('a public agent with no limit states its limits when its origins change', () => {
+    const legacy = agent({ isPublic: true });
+    const draft = agentDraft(legacy, null, { allowedOrigins: ['https://c.test'] });
+    expect(draft.touchesLimitPath).toBe(true);
+    expect(draft.payload()).toEqual({ allowedOrigins: ['https://c.test'], limits: null });
+    // With a limit, or private, the origins travel alone.
+    const capped = agentDraft(legacy, limits, { allowedOrigins: ['https://c.test'] });
+    expect(capped.touchesLimitPath).toBe(false);
+    expect(capped.payload()).toEqual({ allowedOrigins: ['https://c.test'] });
+    const hidden = agentDraft(agent(), null, { allowedOrigins: ['https://c.test'] });
+    expect(hidden.touchesLimitPath).toBe(false);
+    expect(hidden.payload()).toEqual({ allowedOrigins: ['https://c.test'] });
+  });
+
   test('limits() is what the three fields say, changed or not', () => {
     expect(agentDraft(agent(), limits, {}).limits()).toEqual(limits);
     expect(agentDraft(agent(), null, {}).limits()).toBe(null);

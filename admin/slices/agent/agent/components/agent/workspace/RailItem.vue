@@ -48,7 +48,7 @@ defineProps<{ entry: IRailEntry }>();
         <span class="relative flex size-1.5">
           <span
             v-if="entry.tone.pulse"
-            class="absolute inline-flex size-full animate-ping rounded-full opacity-60"
+            class="absolute inline-flex size-full rounded-full opacity-60 motion-safe:animate-ping"
             :class="entry.tone.dot"
           />
           <span

@@ -144,11 +144,12 @@ try {
 
   section('All 30 days');
   await hook(page, 'usage-all').first().click();
+  const sheet = hook(page, 'usage-sheet');
   check(
-    await until(async () => (await anyDialog(page).count()) > 0, { timeout: 6000 }),
+    await until(async () => (await sheet.count()) > 0 && (await sheet.first().isVisible()), { timeout: 6000 }),
     'opens the full usage panel',
   );
-  const panel = await textOf(anyDialog(page));
+  const panel = await textOf(sheet);
   check(FIXTURES.usage.models.some((m) => panel.includes(m)), 'with the per-model rows the strip does not show');
   check(about(parseMoney(panel), usage.totals.costUsd) || panel.includes(usage.last30days[0]?.date ?? '—'), 'for the same agent');
   await page.keyboard.press('Escape');
@@ -238,9 +239,9 @@ try {
   check((await hook(page, 'delete-wipe').count()) > 0, 'and to wipe the stored files too');
   check((await hook(page, 'delete-confirm').count()) > 0, 'next to the button that really deletes');
   await shot(page, 'rest-delete-dialog');
-  const cancel = deleteDialog.getByRole('button', { name: /^cancel$/i });
-  if ((await cancel.count()) > 0) await cancel.first().click();
-  else await page.keyboard.press('Escape');
+  const cancel = hook(page, 'delete-cancel');
+  check((await cancel.count()) === 1, 'and a Cancel');
+  await cancel.first().click();
   check(
     await until(async () => !((await deleteDialog.count()) > 0 && (await deleteDialog.isVisible())), { timeout: 4000 }),
     'Cancel closes it',

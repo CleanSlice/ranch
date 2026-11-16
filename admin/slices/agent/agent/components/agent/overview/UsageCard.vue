@@ -76,7 +76,7 @@ const sheetOpen = ref(false)
     </header>
 
     <div class="flex flex-col gap-3.5 px-5 pb-[18px] pt-3">
-      <div v-if="state === 'loading'" class="grid grid-cols-2 gap-3 min-[760px]:grid-cols-4">
+      <div v-if="state === 'loading'" class="grid grid-cols-2 gap-3 @[460px]:grid-cols-4">
         <div v-for="i in 4" :key="i" class="space-y-2">
           <Skeleton class="h-3 w-20 motion-reduce:animate-none" />
           <Skeleton class="h-5 w-16 motion-reduce:animate-none" />
@@ -88,7 +88,7 @@ const sheetOpen = ref(false)
       </p>
 
       <template v-else>
-        <dl class="grid grid-cols-2 gap-3 min-[760px]:grid-cols-4">
+        <dl class="grid grid-cols-2 gap-3 @[460px]:grid-cols-4">
           <div class="min-w-0" data-usage-kpi="cost">
             <dt class="text-xs text-muted-foreground">Cost, 30 days</dt>
             <dd class="text-base font-semibold tabular-nums">{{ formatMoney(usage.totals.costUsd) }}{{ ' ' }}</dd>
@@ -158,7 +158,7 @@ const sheetOpen = ref(false)
     </div>
 
     <Sheet v-model:open="sheetOpen">
-      <SheetContent side="right" class="w-full gap-0 overflow-y-auto sm:max-w-md">
+      <SheetContent side="right" class="w-full gap-0 overflow-y-auto sm:max-w-md" data-usage-sheet>
         <SheetHeader>
           <SheetTitle>Usage, all 30 days</SheetTitle>
           <SheetDescription>This agent only, by day and model.</SheetDescription>

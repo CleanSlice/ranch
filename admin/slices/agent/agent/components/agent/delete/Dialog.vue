@@ -179,7 +179,7 @@ async function onRemove() {
         </p>
 
         <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button variant="outline" :disabled="removing" @click="onCancel">
+          <Button variant="outline" :disabled="removing" data-delete-cancel @click="onCancel">
             Cancel
           </Button>
           <Button

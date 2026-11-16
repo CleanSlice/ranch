@@ -226,7 +226,11 @@ const tableRows = computed(() =>
       </div>
     </div>
 
-    <table class="sr-only">
+    <!-- The wrapper is what hides it: a table sizes itself to its content
+         whatever width `sr-only` gives it, and on a phone that widened the
+         page into a sideways scroll. -->
+    <div class="sr-only">
+    <table>
       <caption>Requests per minute over the last hour, minutes with traffic only</caption>
       <thead>
         <tr>
@@ -245,6 +249,7 @@ const tableRows = computed(() =>
         </tr>
       </tbody>
     </table>
+    </div>
   </figure>
 </template>
 

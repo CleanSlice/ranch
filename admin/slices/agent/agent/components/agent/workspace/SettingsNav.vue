@@ -13,7 +13,7 @@ import {
  * headings, Overview alone on top. Picking a row swaps the content in place —
  * nothing to fall into and climb back out of.
  *
- * Below `lg` there is no room for a column next to the content, so the same
+ * Below `xl` there is no room for a column next to the content, so the same
  * rows become one horizontally scrolling row above it, without the headings.
  */
 const props = defineProps<{
@@ -24,10 +24,12 @@ const props = defineProps<{
 
 defineEmits<{ select: [value: SectionValue] }>();
 
-// Tailwind's `lg`. The classes below lay the list out; this says the same
+// Tailwind's `xl`. The classes below lay the list out; this says the same
 // thing to assistive technology and to the arrow keys, and takes the headings
-// out of the one-row layout altogether.
-const vertical = useMediaQuery('(min-width: 1024px)', { ssrWidth: 1280 });
+// out of the one-row layout altogether. Not `lg`: at 1024 px the admin
+// sidebar and the agent list are still on screen, and a column here as well
+// left the open section some 230 px.
+const vertical = useMediaQuery('(min-width: 1280px)', { ssrWidth: 1280 });
 
 const nav = ref<HTMLElement | null>(null);
 
@@ -84,7 +86,7 @@ function onKeydown(event: KeyboardEvent) {
     role="tablist"
     aria-label="Agent settings"
     :aria-orientation="vertical ? 'vertical' : 'horizontal'"
-    class="flex shrink-0 gap-px overflow-x-auto pb-1 lg:w-48 lg:flex-col lg:overflow-x-visible lg:overflow-y-auto lg:pb-0"
+    class="flex shrink-0 gap-px overflow-x-auto pb-1 xl:max-h-full xl:w-48 xl:flex-col xl:self-start xl:overflow-x-visible xl:overflow-y-auto xl:pb-0"
     @keydown="onKeydown"
   >
     <template v-for="(s, i) in sections" :key="s.value">
@@ -92,7 +94,7 @@ function onKeydown(event: KeyboardEvent) {
         v-if="vertical && headingAt(i)"
         role="presentation"
         :data-section-group="headingAt(i)!.value"
-        class="px-2.5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+        class="px-2.5 pb-1 pt-2.5 text-[11px] font-semibold uppercase leading-4 tracking-wide text-muted-foreground"
       >
         {{ headingAt(i)!.title }}
       </div>

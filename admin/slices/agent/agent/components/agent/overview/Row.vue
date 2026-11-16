@@ -17,13 +17,13 @@ defineProps<{
 
 <template>
   <div
-    class="grid grid-cols-1 items-start gap-x-5 gap-y-2 border-t py-3.5 first:border-t-0 min-[760px]:grid-cols-[170px_minmax(0,1fr)]"
+    class="grid grid-cols-1 items-start gap-x-5 gap-y-2 border-t py-3.5 first:border-t-0 @[460px]:grid-cols-[170px_minmax(0,1fr)]"
     data-row
   >
     <component
       :is="$props.for ? 'label' : 'div'"
       :for="$props.for"
-      class="text-[13.5px] font-medium min-[760px]:pt-[7px]"
+      class="text-[13.5px] font-medium @[460px]:pt-[7px]"
     >
       {{ label }}
       <small

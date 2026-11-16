@@ -15,10 +15,26 @@ import { useInjectedAgentDraft } from '#agent/composables/useAgentDraft'
 
 const draft = useInjectedAgentDraft()
 
+// A save that carries limits moves the limit record at once and takes it back
+// if the server refuses, so for the length of that request the draft counts
+// nothing as changed. The bar must not leave on that: it would be gone before
+// anything is saved, and back again after a refusal. While a save is running
+// it stays, with the count it was sent with.
+const sentCount = ref(0)
+watch(
+  draft.count,
+  (count) => {
+    if (count > 0) sentCount.value = count
+  },
+  { immediate: true },
+)
+const shown = computed(() => draft.isDirty.value || draft.saving.value)
+const count = computed(() =>
+  draft.count.value > 0 ? draft.count.value : sentCount.value,
+)
+
 const countText = computed(() =>
-  draft.count.value === 1
-    ? '1 unsaved change'
-    : `${draft.count.value} unsaved changes`,
+  count.value === 1 ? '1 unsaved change' : `${count.value} unsaved changes`,
 )
 
 // Which of the two buttons the running save came from.
@@ -33,7 +49,7 @@ async function onSave(restart: boolean) {
 
 <template>
   <div
-    v-if="draft.isDirty.value"
+    v-if="shown"
     class="sticky bottom-3 z-10 flex flex-col gap-2"
     data-save-bar
     role="status"

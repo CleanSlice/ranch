@@ -90,6 +90,10 @@ const FIXTURES = [
     id: EXTRA.stopped.id,
     name: EXTRA.stopped.name,
     status: 'stopped',
+    // It also holds the Ranch admin tools, so "demote asks first" has an
+    // agent to be shown on (rest.mjs opens that question and cancels it).
+    // Stopped, it connects nowhere and uses none of them.
+    admin: true,
     isPublic: false,
     allowedOrigins: [],
     limits: null,
@@ -210,9 +214,17 @@ async function main() {
   await seedCredentials();
   await seedKnowledge();
 
+  // One agent at most holds the admin tools. A database that already has
+  // one outside these fixtures keeps it: nothing else is touched.
+  const otherAdmin = await prisma.agent.findFirst({
+    where: { isAdmin: true, NOT: { id: { in: FIXTURES.map((f) => f.id) } } },
+    select: { id: true },
+  });
+
   for (const f of FIXTURES) {
     const agent = {
       name: f.name,
+      isAdmin: Boolean(f.admin) && !otherAdmin,
       templateId: template.id,
       status: f.status ?? 'running',
       statusReason: null,

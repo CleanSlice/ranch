@@ -224,7 +224,7 @@ const inUseNow = computed(() => {
 const UNIT =
   'inline-flex items-center overflow-hidden rounded-md border border-input shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50'
 const UNIT_INPUT =
-  'h-8 w-[82px] min-w-0 bg-transparent px-2.5 text-[13.5px] outline-none disabled:opacity-50 max-[760px]:w-16'
+  'h-8 w-[82px] min-w-0 bg-transparent px-2.5 text-[13.5px] outline-none disabled:opacity-50 @max-[460px]:w-16'
 const UNIT_LABEL =
   'grid h-8 place-items-center border-l bg-muted px-2.5 text-xs text-muted-foreground'
 </script>
@@ -350,7 +350,7 @@ const UNIT_LABEL =
           </div>
           <p
             v-else-if="!knowledgeStore.enabled"
-            class="text-[13px] text-muted-foreground min-[760px]:pt-[7px]"
+            class="text-[13px] text-muted-foreground @[460px]:pt-[7px]"
           >
             Knowledge service is disabled. Configure the URL in
             <NuxtLink to="/settings" class="underline">Settings</NuxtLink>
@@ -358,7 +358,7 @@ const UNIT_LABEL =
           </p>
           <p
             v-else-if="!bases.length && !knowledgeIds.length"
-            class="text-[13px] text-muted-foreground min-[760px]:pt-[7px]"
+            class="text-[13px] text-muted-foreground @[460px]:pt-[7px]"
           >
             No knowledge bases yet. Create one in
             <NuxtLink to="/knowledges" class="underline">Knowledges</NuxtLink>.

@@ -293,10 +293,19 @@ try {
     puts.length === 1 && Object.keys(puts[0] ?? {}).join(',') === 'limits',
     `sends the limits and nothing else (${Object.keys(puts[0] ?? {}).join(', ')})`,
   );
-  check((await limitsOf(agent))?.perMinute === LOW, `the agent now has ${LOW} per minute`);
-  check((await limitSwitch(page).getAttribute('aria-checked')) === 'true' && (await lineShown(page)), 'the switch is on and the line stays');
+  const savedLimits = await limitsOf(agent);
   check(
-    (await block(page).locator('[data-load-window="minute"]').first().getAttribute('data-limit')) === String(LOW),
+    savedLimits?.perMinute === LOW,
+    `the agent now has ${LOW} per minute (sent ${JSON.stringify(puts[0]?.limits ?? null)}, saved ${JSON.stringify(savedLimits)})`,
+  );
+  check((await limitSwitch(page).getAttribute('aria-checked')) === 'true' && (await lineShown(page)), 'the switch is on and the line stays');
+  // The meters are the load snapshot, read again after the save.
+  check(
+    await until(
+      async () =>
+        (await block(page).locator('[data-load-window="minute"]').first().getAttribute('data-limit')) === String(LOW),
+      { timeout: 6000 },
+    ),
     'and the minute meter has its ceiling',
   );
 

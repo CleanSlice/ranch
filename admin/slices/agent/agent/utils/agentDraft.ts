@@ -221,6 +221,16 @@ export function agentDraft(
     return next;
   }
 
+  // A public agent with no limit at all — public since before limits existed
+  // (CLEAN-224, case 8). The server holds such an agent to the rule only when
+  // a save states its limits, and "the next save of its limits or its access
+  // requires it" is what the Request limit block tells the operator. So a
+  // change to who may reach it carries the limits as they stand: none, which
+  // the server refuses, by the field. Any other agent sends only what changed.
+  const accessOnUncapped =
+    changed('allowedOrigins') && value('isPublic') && limitsNow() === null;
+  const sendsLimits = limitChanged || accessOnUncapped;
+
   function payload(): IUpdateAgentData {
     const body: IUpdateAgentData = {};
     if (changed('name')) body.name = value('name').trim();
@@ -245,7 +255,7 @@ export function agentDraft(
     if (changed('debugEnabled')) body.debugEnabled = value('debugEnabled');
     if (changed('isPublic')) body.isPublic = value('isPublic');
     if (changed('allowedOrigins')) body.allowedOrigins = [...value('allowedOrigins')];
-    if (limitChanged) body.limits = limitsNow();
+    if (sendsLimits) body.limits = limitsNow();
     return body;
   }
 
@@ -257,7 +267,7 @@ export function agentDraft(
     count: changedFields.length,
     needsRestartOffer: changed('cpu') || changed('memory'),
     marksPendingRestart: otherChanged,
-    touchesLimitPath: limitChanged || changed('isPublic'),
+    touchesLimitPath: sendsLimits || changed('isPublic'),
     limits: limitsNow,
     payload,
   };

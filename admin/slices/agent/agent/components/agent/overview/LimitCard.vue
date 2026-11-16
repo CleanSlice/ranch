@@ -240,7 +240,7 @@ const initials = computed(() =>
 const UNIT =
   'inline-flex items-center overflow-hidden rounded-md border border-input shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50'
 const UNIT_INPUT =
-  'h-8 w-[82px] min-w-0 bg-transparent px-2.5 text-[13.5px] tabular-nums outline-none disabled:opacity-50 max-[760px]:w-16'
+  'h-8 w-[82px] min-w-0 bg-transparent px-2.5 text-[13.5px] tabular-nums outline-none disabled:opacity-50 @max-[460px]:w-16'
 const UNIT_LABEL =
   'grid h-8 place-items-center border-l bg-muted px-2.5 text-xs whitespace-nowrap text-muted-foreground'
 const CHANGED = 'border-amber-500/70 ring-2 ring-amber-500/45'
@@ -399,7 +399,7 @@ const CALM_SWITCH =
         </AgentOverviewRow>
 
         <AgentOverviewRow label="Over the limit">
-          <p class="text-[13px] min-[760px]:pt-[7px]">
+          <p class="text-[13px] @[460px]:pt-[7px]">
             The message is declined and the person is asked to wait until
             there is room again.
           </p>

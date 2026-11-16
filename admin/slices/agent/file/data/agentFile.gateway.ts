@@ -49,6 +49,12 @@ export class AgentFileGateway extends BaseGateway implements IAgentFileGateway {
   list(agentId: string): Promise<IFileNode[]> {
     return this.execute(async () => {
       const res = await FilesService.fileControllerList({ path: { agentId } });
+      // A failed read is not an empty folder: unchecked, the section list
+      // showed it as a count of 0 (CLEAN-228, FR-006).
+      const failure = (res as SdkFailure).error;
+      if (failure !== undefined && failure !== null) {
+        throw new Error(errorMessage(res, 'Failed to load files'));
+      }
       return this.mapper.toNodeList(unwrapEnvelope(res.data));
     });
   }

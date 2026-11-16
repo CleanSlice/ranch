@@ -35,7 +35,10 @@ provideAgentMetrics(() => props.agent.id);
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 pb-3" data-overview>
+  <!-- A container: the blocks lay themselves out by the width Overview has,
+       not by the screen's — beside the sidebar, the agent list and the
+       section list that is a third of a 1024 px screen. -->
+  <div class="@container flex flex-col gap-4 pb-3" data-overview>
     <AgentOverviewSummary :agent-id="agent.id" />
     <AgentOverviewConfigCard :agent-id="agent.id" />
     <AgentOverviewLimitCard :agent-id="agent.id" />

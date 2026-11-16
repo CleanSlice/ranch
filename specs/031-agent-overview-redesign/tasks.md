@@ -76,7 +76,7 @@ description: "Task list for the agent Overview redesign (CLEAN-228)"
 - [X] T018 [US1] Write `components/agent/workspace/SectionRow.vue` per the contract and the prototype's `.snav button`: icon, name, right-aligned count (`data-section-count`, absent when unknown), `data-section`, `role="tab"`, `aria-selected`, `aria-current="page"` when selected, selected state shown by weight and an inset marker as well as background, `desc` as the tooltip, visible focus ring, at most 36 px high
 - [X] T019 [US1] Rework `components/agent/workspace/SettingsNav.vue`: `data-section-nav`, at most 200 px wide on desktop, group headings (`data-section-group`) from `SECTION_GROUPS`, one sideways-scrolling row without headings below `lg`, `aria-orientation` matching the layout, arrow-key movement between rows; delete `components/agent/workspace/SectionCard.vue`; adjust the flex gap in `components/agent/workspace/Canvas.vue` if the content needs it
 - [X] T020 [US1] Write `specs/031-agent-overview-redesign/e2e/nav.mjs` (quickstart §4): order, headings, one line per row, width, no scroll in the list at 1280×720, counts present or absent, `aria-current`, every old `?tab=` value plus `peers` and `settings`, keyboard reach and open, the one-row layout and no sideways page scroll at 390 px; screenshots
-- [ ] T021 [US1] Gate: `bun test slices`, `npx nuxt typecheck`, run `nav.mjs`
+- [X] T021 [US1] Gate: `bun test slices`, `npx nuxt typecheck`, run `nav.mjs`
 
 **Checkpoint**: the list is done on every section. Comment on CLEAN-228 with a screenshot next to the prototype.
 
@@ -108,7 +108,7 @@ description: "Task list for the agent Overview redesign (CLEAN-228)"
 - [X] T028 [US3] Retire the Edit page (research R12): `pages/agents/[id]/edit.vue` redirects to `/agents/:id?tab=overview` with replace; remove the "Edit" entry from the menu in `components/agent/workspace/Main.vue`; update the header's "public without limits" title text to name the Request limit block; delete `components/agent/edit/Provider.vue` only after T039 and T041 have moved debug, promote/demote and delete out of it
 - [X] T029 [US3] Trim `components/agent/item/Form.vue` to creation only (edit-only branches and props removed) and confirm `components/agent/create/Provider.vue` still creates an agent
 - [X] T030 [US3] Write `specs/031-agent-overview-redesign/e2e/edit.mjs` (quickstart §4): no bar until a change; marks and count; set-back; Discard; Save sends only the changed fields (assert the PUT body) and survives reload; CPU change → restart note and "Save and restart"; a refused save keeps every edit and names the field; unsaved changes + another section, the Chat tab, another agent, another page → confirmation each time and Cancel keeps the edits; `/agents/:id/edit` lands on Overview
-- [ ] T031 [US3] Gate: `bun test slices`, `npx nuxt typecheck`, run `edit.mjs`
+- [X] T031 [US3] Gate: `bun test slices`, `npx nuxt typecheck`, run `edit.mjs`
 
 **Checkpoint**: the three P1 stories work in a browser — this is the MVP. Comment on CLEAN-228.
 
@@ -125,7 +125,7 @@ description: "Task list for the agent Overview redesign (CLEAN-228)"
 - [X] T034 [US4] Write `components/agent/overview/LimitCard.vue` per the contract, on the draft, with `id="visibility-embed"`: the switch (off = three fields empty; on focuses per-minute; for a public agent the refusal shows here), the three fields with peaks beside them, presets 10 / 30 / 60 / 120 for per-minute, the sentence that everyone shares the allowance plus who is not counted and what is not covered, the preview of what a limited person reads ("This agent has reached its message limit. Try again in 0:42."), `AgentLoadMeters`, the chart with `previewLimit`, the verdict (`data-limit-verdict`, `data-over`, `data-refused`), the ask for limits on a legacy public agent; starts and stops `watchLoad`; every kept hook of the contract present
 - [X] T035 [US4] Mount `LimitCard` in `Tab.vue`; delete `components/agent/load/Provider.vue` and remove the limit fields from `components/agent/visibility/Provider.vue` (what is left of it is replaced in T038)
 - [X] T036 [US4] Write `specs/031-agent-overview-redesign/e2e/limit.mjs` (quickstart §4), including: typing a value sends no request; a preset counts as a change; the over-limit marks and the two numbers in the sentence match the series read from the API
-- [ ] T037 [US4] Gate: `bun test slices`, `npx nuxt typecheck`, run `limit.mjs` and `specs/030-agent-request-limits/e2e/load.mjs` (expect 19)
+- [X] T037 [US4] Gate: `bun test slices`, `npx nuxt typecheck`, run `limit.mjs` and `specs/030-agent-request-limits/e2e/load.mjs` (expect 19)
 
 ---
 
@@ -137,7 +137,7 @@ description: "Task list for the agent Overview redesign (CLEAN-228)"
 
 - [X] T038 [P] [US5] Write `utils/origin.test.ts` then `utils/origin.ts` (pure `parseOrigin`): scheme + host + optional port; trailing slash stripped; paths, missing scheme, spaces and `*` refused; then write `components/agent/access/OriginsInput.vue` per the contract: chips with a remove button named for the origin, Enter or comma adds, Backspace on an empty field removes the last, duplicates ignored, hint line for the three states
 - [X] T039 [US5] Write `components/agent/overview/AccessCard.vue` per the contract and the prototype's Access block, on the draft: landing-page switch with the sentence for each state and the kept hooks, `OriginsInput`, the share-link warning, and Embed code in the theme's `Accordion` (closed by default) with `Tabs` for Floating bubble / Inline / Mint a token, Copy, one line of explanation and the CSP note — snippet text and the public / private difference moved verbatim from `components/agent/visibility/Provider.vue`; then mount it in `Tab.vue` and delete `components/agent/visibility/Provider.vue`
-- [ ] T040 [US5] Adjust `specs/030-agent-request-limits/e2e/settings.mjs` for chips (type the origin and press Enter) and write `specs/031-agent-overview-redesign/e2e/access.mjs` (quickstart §4); run both (settings: expect 28)
+- [X] T040 [US5] Adjust `specs/030-agent-request-limits/e2e/settings.mjs` for chips (type the origin and press Enter) and write `specs/031-agent-overview-redesign/e2e/access.mjs` (quickstart §4); run both (settings: expect 28)
 
 ---
 
@@ -152,7 +152,7 @@ description: "Task list for the agent Overview redesign (CLEAN-228)"
 - [X] T043 [US6] Write `components/agent/overview/AdvancedCard.vue` per the contract: folded by default with what is inside named in its header; debug switch on the draft (help text from `components/agent/debug/Provider.vue`); admin tools with promote (existing confirmation) and demote (the same kind of confirmation, new), both acting at once; Identifiers — agent id selectable, workflow id, node disk line, created and updated
 - [X] T044 [US6] Mount the three in `Tab.vue` in the order of FR-008; delete `components/agent/edit/Provider.vue` and `components/agent/debug/Provider.vue`; remove the temporary list from T024; walk `data-model.md` "Where each fact goes" row by row and confirm each fact is on the page (SC-007)
 - [X] T045 [US6] Write `specs/031-agent-overview-redesign/e2e/rest.mjs` (quickstart §4): usage figures and bars, empty state, the sheet, Advanced folded, debug through the bar, demote asks, delete dialog options and Cancel, no sideways scroll at 390 / 768 / 1024 / 1280 / 1440 / 1920 px, nothing animated under reduced motion
-- [ ] T046 [US6] Gate: `bun test slices`, `npx nuxt typecheck`, `bun run locale:check`, run `rest.mjs`
+- [X] T046 [US6] Gate: `bun test slices`, `npx nuxt typecheck`, `bun run locale:check`, run `rest.mjs`
 
 **Checkpoint**: Overview is complete and the Edit page is gone. Comment on CLEAN-228.
 
@@ -161,12 +161,12 @@ description: "Task list for the agent Overview redesign (CLEAN-228)"
 ## Phase 9: Polish and delivery
 
 - [X] T047 Write `specs/031-agent-overview-redesign/e2e/all.mjs`: seed, start the API and the fake agents (as `specs/030-agent-request-limits/e2e/all.mjs` does — share its process handling through `lib.mjs` rather than copying it), run nav, summary, edit, limit, access, rest, then the whole CLEAN-224 suite, print one summary, exit non-zero on any failure
-- [ ] T048 Manual pass against the prototype at 1440×900 (quickstart §5): list width and row height, the strip, Configuration rows, the limit chart and sentence, folded blocks, save bar; fix what differs beyond spec.md's table; keyboard-only walk through the whole page; 200 % zoom
-- [ ] T049 [P] Grep for leftovers: links to `/edit` for an existing agent, imports of deleted components, the old hook `data-visibility-origins`, mentions of "Visibility & embed" in `admin/` and `docs/operations/agent-limits.md` (update the doc: limits are in the Request limit block of Overview)
-- [ ] T050 [P] Twin-console statement for the PR: `agent`, `usage` and `common` touched in admin only; grep `app/` for the changed symbols and say in words why it needs nothing
-- [ ] T051 Full gate on the finished build with Docker up: `cd admin && bun test slices && npx nuxt typecheck`, `bun run locale:check`, then `node specs/031-agent-overview-redesign/e2e/all.mjs`; keep the output; compare the CLEAN-224 counts with 45 / 26 / 22 / 14 / 28 / 19 / 13 / 29 and explain any difference (FR-050: written but not run does not count)
-- [ ] T052 Read the version on `origin/main` again right before the bump, bump the root `package.json` to the next free number, commit, push over HTTPS, open the PR into `main` with the commands run, the browser results, before/after screenshots next to the prototype, the "None" finding of T004 and the twin-console statement; put the PR URL on CLEAN-228 and move it to In Testing
-- [ ] T053 When CI is green, merge, watch `Release Platform`, check that the release tag points at the merge commit, then move CLEAN-228 to Done with the tag in a comment
+- [X] T048 Manual pass against the prototype at 1440×900 (quickstart §5): list width and row height, the strip, Configuration rows, the limit chart and sentence, folded blocks, save bar; fix what differs beyond spec.md's table; keyboard-only walk through the whole page; 200 % zoom
+- [X] T049 [P] Grep for leftovers: links to `/edit` for an existing agent, imports of deleted components, the old hook `data-visibility-origins`, mentions of "Visibility & embed" in `admin/` and `docs/operations/agent-limits.md` (update the doc: limits are in the Request limit block of Overview)
+- [X] T050 [P] Twin-console statement for the PR: `agent`, `usage` and `common` touched in admin only; grep `app/` for the changed symbols and say in words why it needs nothing
+- [X] T051 Full gate on the finished build with Docker up: `cd admin && bun test slices && npx nuxt typecheck`, `bun run locale:check`, then `node specs/031-agent-overview-redesign/e2e/all.mjs`; keep the output; compare the CLEAN-224 counts with 45 / 26 / 22 / 14 / 28 / 19 / 13 / 29 and explain any difference (FR-050: written but not run does not count)
+- [X] T052 Read the version on `origin/main` again right before the bump, bump the root `package.json` to the next free number, commit, push over HTTPS, open the PR into `main` with the commands run, the browser results, before/after screenshots next to the prototype, the "None" finding of T004 and the twin-console statement; put the PR URL on CLEAN-228 and move it to In Testing
+- [X] T053 When CI is green, merge, watch `Release Platform`, check that the release tag points at the merge commit, then move CLEAN-228 to Done with the tag in a comment
 
 ---
 

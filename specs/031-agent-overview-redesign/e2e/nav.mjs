@@ -139,8 +139,25 @@ try {
     });
     check(Number(count) === channels.body.length, `Channels shows what the API has (${count} vs ${channels.body.length})`);
   } else {
-    check(false, `GET /agents/:id/channels did not answer with a list (${channels.status})`);
+    // A stack with no file storage cannot read channels at all (400). Then
+    // the count is unknown, and the row must say nothing rather than 0.
+    const peersSettled = await until(async () => (await measure(page)).items.find((i) => i.section === 'a2a')?.count, {
+      timeout: 8000,
+    });
+    const count = (await measure(page)).items.find((i) => i.section === 'channels')?.count ?? null;
+    check(
+      peersSettled !== null && count === null,
+      `the API cannot read channels here (${channels.status}): the row shows no number, not a zero (${count ?? 'absent'})`,
+    );
   }
+  const peers = await api(`/agents/${agent}/peers`);
+  const a2aCount = await until(async () => (await measure(page)).items.find((i) => i.section === 'a2a')?.count, {
+    timeout: 8000,
+  });
+  check(
+    peers.status === 200 && Array.isArray(peers.body) && Number(a2aCount) === peers.body.length,
+    `A2A shows what the API has (${a2aCount} vs ${Array.isArray(peers.body) ? peers.body.length : peers.status})`,
+  );
 
   section('A count that cannot be known');
   // The two requests behind Secrets and Channels fail; the others do not.
@@ -150,7 +167,9 @@ try {
   );
   await openSettings(page, agent);
   // Give the counts that can load the time to arrive, then read once.
-  await until(async () => (await measure(page)).items.some((i) => i.section === 'files' && i.count !== null), {
+  // A2A is the witness: its source is the database, which every stack has
+  // (Files needs file storage, which a local stack does not).
+  await until(async () => (await measure(page)).items.some((i) => i.section === 'a2a' && i.count !== null), {
     timeout: 8000,
   });
   const after = (await measure(page)).items;
@@ -159,8 +178,8 @@ try {
   check(secretsRow?.count === null, `Secrets shows no number rather than a zero (${secretsRow?.count ?? 'absent'})`);
   check(channelsRow?.count === null, `and so does Channels (${channelsRow?.count ?? 'absent'})`);
   check(
-    after.find((i) => i.section === 'files')?.count !== null,
-    'while Files, whose source answered, still has its count',
+    (after.find((i) => i.section === 'a2a')?.count ?? null) !== null,
+    'while A2A, whose source answered, still has its count',
   );
   await page.unroute(broken);
 

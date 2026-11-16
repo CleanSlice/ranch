@@ -285,9 +285,9 @@ try {
   await page.locator('[data-section-nav] [data-section="knowledge"]').first().click();
   await stays('another section');
 
-  // The Chat tab of the agent page: a tab named exactly "Chat" (the section
-  // row is "Chats").
-  await page.getByRole('tab', { name: 'Chat', exact: true }).first().click();
+  // The Chat tab of the agent page, by its hook (the section row "Chats" is
+  // another thing).
+  await page.locator('[data-workspace-tab="chat"]').first().click();
   await stays('the Chat tab');
 
   await page.locator(`li[data-agent-id="${AGENTS.minute}"]`).first().click();

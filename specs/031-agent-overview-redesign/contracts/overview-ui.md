@@ -92,12 +92,17 @@ Four cells, `data-summary-cell="status|spend|pod|requests"`; each has
 | `data-usage-day="YYYY-MM-DD"`, `data-value` | each of the seven bars |
 | `data-usage-empty` | shown instead of the chart when there is no usage |
 | `data-usage-all` | "All 30 days" |
+| `data-usage-sheet` | the panel "All 30 days" opens: the full usage view, in a sheet |
 | `data-advanced` | the folded block, `data-state="open\|closed"` |
 | `data-field="debug"` | the debug switch |
 | `data-admin-action="promote\|demote"` | the admin tools button |
 | `data-agent-id-text` | the identifier |
 | `data-delete-agent` | the delete button |
-| `data-delete-dialog`, `data-delete-download`, `data-delete-wipe`, `data-delete-confirm` | the confirmation |
+| `data-delete-dialog`, `data-delete-download`, `data-delete-wipe`, `data-delete-confirm`, `data-delete-cancel` | the confirmation, and its Cancel |
+
+Promote and demote ask through the console's confirm dialog
+(`data-confirm-dialog`, below). The folded blocks (`data-advanced`,
+`data-embed`) open by the control inside them that carries `aria-expanded`.
 
 ### Save bar
 
@@ -119,6 +124,13 @@ The confirmation is the console's existing confirm dialog,
 `data-confirm-dialog`, with `data-confirm-accept` and `data-confirm-cancel`.
 It appears before: another section, the Chat tab, another agent, another
 page. Closing the tab uses the browser's own prompt.
+
+The two tabs of the agent page carry `data-workspace-tab="chat|settings"`
+(`role="tab"`, `aria-selected`), so the Chat tab is not found by its name —
+the section row "Chats" is one letter away.
+
+While a save is running the bar stays, with the count it was sent with; it
+leaves when the server has answered.
 
 ## Gone
 

@@ -60,7 +60,7 @@ const lastRefusedAt = computed(() => formatStamp(props.load.refused.lastAt));
       each counts on its own. What you see is the share of one copy.
     </p>
 
-    <div class="grid gap-4 sm:grid-cols-3">
+    <div class="grid gap-4 @[460px]:grid-cols-3">
       <div
         v-for="w in load.windows"
         :key="w.window"
@@ -119,7 +119,7 @@ const lastRefusedAt = computed(() => formatStamp(props.load.refused.lastAt));
       </div>
     </div>
 
-    <dl class="grid gap-3 text-sm sm:grid-cols-3">
+    <dl class="grid gap-3 text-sm @[460px]:grid-cols-3">
       <div>
         <dt class="text-xs text-muted-foreground">In progress right now</dt>
         <dd class="mt-0.5">

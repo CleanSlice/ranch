@@ -22,6 +22,7 @@ const TITLES: Record<WorkspaceTab, string> = {
       type="button"
       role="tab"
       :aria-selected="active === t"
+      :data-workspace-tab="t"
       class="rounded-md px-3 py-1.5 text-sm transition-colors"
       :class="
         active === t

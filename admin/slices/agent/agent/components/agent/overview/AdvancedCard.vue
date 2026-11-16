@@ -184,7 +184,7 @@ const CALM_SWITCH =
           </AgentOverviewRow>
 
           <AgentOverviewRow label="Identifiers">
-            <dl class="grid gap-1.5 text-xs min-[760px]:pt-[7px]">
+            <dl class="grid gap-1.5 text-xs @[460px]:pt-[7px]">
               <div class="flex flex-wrap gap-x-2">
                 <dt class="text-muted-foreground">Agent id</dt>
                 <dd

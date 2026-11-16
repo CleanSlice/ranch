@@ -284,14 +284,19 @@ function onSelect(id: string) {
         </button>
       </div>
 
+      <!-- Keyed by agent: the workspace itself stays mounted across
+           `/agents/:id` (see the page), and these two hold state that is one
+           agent's own: a failed action, a restart in flight, the request
+           for its record. -->
       <AgentWorkspaceSheet
+        :key="id"
         :agent="agent"
         :pending="pending"
         :can-manage="canCreate"
       />
 
       <div class="min-h-0 flex-1">
-        <AgentChatProvider :id="id" compact />
+        <AgentChatProvider :id="id" :key="id" compact />
       </div>
     </div>
 

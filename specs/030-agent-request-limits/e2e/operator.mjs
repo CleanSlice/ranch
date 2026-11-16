@@ -73,10 +73,16 @@ try {
     }),
     'the link leads to the Visibility & embed card',
   );
-  check(
-    await until(async () => page.locator('[data-visibility-save]').first().isVisible(), { timeout: 8000 }),
-    'where the limits can be changed',
-  );
+  // Not "a visible Save": since CLEAN-228 Save is in a bar that exists only
+  // while something is changed. What the link promises is the block itself —
+  // `#visibility-embed` on the card of CLEAN-224, the Request limit block now.
+  const limits = page.locator('[data-block="limit"], #visibility-embed').first();
+  const inView = () =>
+    limits.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return box.height > 0 && box.bottom > 0 && box.top < window.innerHeight;
+    });
+  check(await until(inView, { timeout: 8000 }), 'where the limits can be changed');
 } finally {
   await browser.close();
 }

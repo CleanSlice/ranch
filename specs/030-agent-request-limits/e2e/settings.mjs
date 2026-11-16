@@ -37,15 +37,41 @@ const savedAs = (page) => page.locator('[data-visibility-saved]').first().getAtt
 const agentOf = async (id) => (await api(`/agents/${id}`)).body;
 const limitsOf = async (id) => (await api(`/agents/${id}/limits`)).body?.limits ?? null;
 
+// The three helpers below work on the card as CLEAN-224 shipped it and on the
+// Overview of CLEAN-228 (specs/031-agent-overview-redesign, research R13):
+// Save lives in a bar that exists only while something is changed, the limits
+// have a switch, and origins are chips instead of one text field.
 async function openCard(page, agentId) {
   await page.goto(`${ADMIN}/agents/${agentId}?tab=overview`, { waitUntil: 'networkidle' });
-  await page.locator('[data-visibility-save]').first().waitFor({ state: 'visible', timeout: 20000 });
-  await page.locator('[data-visibility-save]').first().scrollIntoViewIfNeeded();
+  await input(page, 'minute').waitFor({ state: 'visible', timeout: 20000 });
+  await input(page, 'minute').scrollIntoViewIfNeeded();
 }
 async function setFields(page, values) {
-  for (const window of ['minute', 'hour', 'day']) {
-    await input(page, window).fill(values[window] === undefined ? '' : String(values[window]));
+  const windows = ['minute', 'hour', 'day'];
+  // Where the limits have a switch and it is off, typing a limit starts by
+  // switching it on.
+  const limitSwitch = page.locator('[data-limit-switch]').first();
+  const wantsOne = windows.some((window) => values[window] !== undefined);
+  if (wantsOne && (await limitSwitch.count()) > 0 && (await limitSwitch.getAttribute('aria-checked')) === 'false') {
+    await limitSwitch.click();
   }
+  for (const window of windows) {
+    const text = values[window] === undefined ? '' : String(values[window]);
+    const field = input(page, window);
+    // A field that is switched off is already empty.
+    if (text === '' && !(await field.isEditable())) continue;
+    await field.fill(text);
+  }
+}
+/** One allowed origin: a chip (type it, Enter) or the old one-per-line field. */
+async function addOrigin(page, origin) {
+  const chips = page.locator('[data-origin-input]').first();
+  if ((await chips.count()) > 0) {
+    await chips.fill(origin);
+    await chips.press('Enter');
+    return;
+  }
+  await page.locator('[data-visibility-origins]').first().fill(origin);
 }
 const save = (page) => page.locator('[data-visibility-save]').first().click();
 const togglePublic = (page) => page.locator('[data-visibility-public]').first().click();
@@ -149,7 +175,7 @@ try {
   check((await page.locator('[data-limits-needed]').count()) > 0, 'its card asks for limits');
   // Save is unavailable until something on the card changes; an operator who
   // touches its visibility settings at all is then asked for limits.
-  await page.locator('[data-visibility-origins]').first().fill('https://example.test');
+  await addOrigin(page, 'https://example.test');
   await save(page);
   check(
     await until(async () => (await errorCodes(page)).includes('PUBLIC_AGENT_NEEDS_LIMITS'), { timeout: 6000 }),

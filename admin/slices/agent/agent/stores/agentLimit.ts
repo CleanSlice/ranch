@@ -52,8 +52,8 @@ export function agentLimitStoreSetup(
 ) {
   // Single source of truth (docs/state.md): what the console knows about one
   // agent's limits lives here once. The summary, a limits read and the load
-  // poll all write into the same record; the list marks, the "Visibility &
-  // embed" card and the load view render it by agent id.
+  // poll all write into the same record; the list marks, the summary strip
+  // and the Request limit block of Overview render it by agent id.
   //
   // Shallow on purpose: every write replaces the map and the record, never a
   // field inside one, so there is nothing deeper to track — and the rollback
@@ -153,7 +153,7 @@ export function agentLimitStoreSetup(
    * `code` so the caller can word it next to the field it concerns.
    *
    * `send` replaces the request for a caller whose save carries more than
-   * limits: the "Visibility & embed" card sends the public flag, the origins
+   * limits: the Overview page's save sends the public flag, the origins
    * and the limits in one `PUT /agents/:id`, and still wants this record to
    * move — and to move back — with it. Without `send` the limits route is used.
    */

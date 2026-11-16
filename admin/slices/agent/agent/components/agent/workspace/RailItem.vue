@@ -100,7 +100,7 @@ defineProps<{ entry: IRailEntry }>();
         <span
           v-if="entry.needsLimits"
           class="rounded-sm border border-amber-500/40 bg-amber-500/10 px-1 text-[11px] font-medium leading-4 text-amber-800 dark:text-amber-300"
-          title="Public with no request limits — set them in Visibility &amp; embed"
+          title="Public with no request limits — set them in the Request limit block on Overview"
         >
           public without limits
         </span>

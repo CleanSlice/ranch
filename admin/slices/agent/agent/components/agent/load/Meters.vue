@@ -7,8 +7,8 @@ import type {
 import { formatRoomIn } from '#agent/utils/agentLimitForm';
 import { formatNumber, formatStamp } from '#common/utils/format';
 
-// Renders the snapshot it is handed; `load/Provider.vue` reads it from the
-// limit store by agent id (docs/state.md) and keeps it fresh.
+// Renders the snapshot it is handed; `overview/LimitCard.vue` reads it from
+// the limit store by agent id (docs/state.md) and keeps it fresh.
 const props = defineProps<{ load: IAgentLoad }>();
 
 const WINDOW_LABELS: Record<LimitWindowTypes, string> = {

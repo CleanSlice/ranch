@@ -1,5 +1,5 @@
 /**
- * The three limit fields of the "Visibility & embed" card, as pure functions
+ * The three limit fields of the Request limit block, as pure functions
  * (CLEAN-224): text in the fields to limits and back, and a refused save to
  * the sentence shown next to the field it concerns.
  *

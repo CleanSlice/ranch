@@ -104,7 +104,7 @@ export interface ICreateAgentData {
   resources?: IAgentResources;
   // No `isPublic` / `allowedOrigins`: an agent is created private, and both —
   // with the request limits a public agent must have — are set afterwards in
-  // the "Visibility & embed" card (CLEAN-224).
+  // the Access and Request limit blocks of its Overview (CLEAN-224, CLEAN-228).
   knowledgeIds?: string[];
   isAdmin?: boolean;
 }

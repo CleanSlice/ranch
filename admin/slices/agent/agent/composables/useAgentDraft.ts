@@ -52,6 +52,11 @@ export interface IAgentDraftApi {
   set<K extends DraftField>(field: K, value: IDraftFields[K]): void;
   /** Every field back to what is saved; errors cleared. */
   discard(): void;
+  /** Goes up by one on every discard and when the page moves to another
+   *  agent. A block that keeps a choice the draft cannot hold — "own
+   *  knowledge, nothing ticked yet", "limits on, nothing typed yet" — watches
+   *  it to drop that choice with the rest. */
+  resets: Ref<number>;
   /** Number of changed fields. */
   count: ComputedRef<number>;
   isDirty: ComputedRef<boolean>;
@@ -134,9 +139,11 @@ export function useAgentDraft(id: MaybeRefOrGetter<string>): IAgentDraftApi {
   const generalError = ref<string | null>(null);
   const restartError = ref<string | null>(null);
   const saving = ref(false);
+  const resets = ref(0);
 
   // Another agent under the same component: its edits are not this one's.
   watch(agentId, () => {
+    resets.value += 1;
     touched.value = {};
     errors.value = {};
     generalError.value = null;
@@ -176,6 +183,7 @@ export function useAgentDraft(id: MaybeRefOrGetter<string>): IAgentDraftApi {
   }
 
   function discard(): void {
+    resets.value += 1;
     touched.value = {};
     errors.value = {};
     generalError.value = null;
@@ -202,6 +210,22 @@ export function useAgentDraft(id: MaybeRefOrGetter<string>): IAgentDraftApi {
       errors.value = {
         ...errors.value,
         name: { code: null, text: 'An agent needs a name.' },
+      };
+      found = true;
+    }
+    // The API takes `resources` as given; an empty limit would reach the pod
+    // spec as one.
+    if (draft.changed('cpu') && !draft.value('cpu').trim()) {
+      errors.value = {
+        ...errors.value,
+        cpu: { code: null, text: 'Enter a CPU limit, such as 500m.' },
+      };
+      found = true;
+    }
+    if (draft.changed('memory') && !draft.value('memory').trim()) {
+      errors.value = {
+        ...errors.value,
+        memory: { code: null, text: 'Enter a memory limit, such as 512Mi.' },
       };
       found = true;
     }
@@ -326,6 +350,7 @@ export function useAgentDraft(id: MaybeRefOrGetter<string>): IAgentDraftApi {
     changed,
     set,
     discard,
+    resets,
     count: computed(() => view.value.count),
     isDirty: computed(() => view.value.count > 0),
     changedFields: computed(() => view.value.changedFields),

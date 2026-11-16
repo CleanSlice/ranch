@@ -8,7 +8,7 @@ hand-written on the console side.
 
 | Route | Who | Does |
 |-------|-----|------|
-| `GET /agents/limits` | Owner, Admin | `[{ agentId, enabled, atLimit, needsLimits }]` for every agent |
+| `GET /agent-limits` | Owner, Admin | `[{ agentId, enabled, atLimit, needsLimits }]` for every agent |
 | `GET /agents/:id/limits` | Owner, Admin | `{ perMinute, perHour, perDay }` with nulls, or `null` when off |
 | `PUT /agents/:id/limits` | Owner, Admin | body `{ perMinute?, perHour?, perDay? }` (null or absent = not limited); all null = switch off |
 | `GET /agents/:id/limits/enabled` | any signed-in role | `{ enabled }` — nothing else |

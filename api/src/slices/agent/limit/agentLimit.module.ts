@@ -5,6 +5,7 @@ import { AgentModule } from '#/agent/agent/agent.module';
 import { AgentLimitService, IAgentLimitGateway } from './domain';
 import { AgentLimitGateway } from './data/agentLimit.gateway';
 import { AgentLimitController } from './agentLimit.controller';
+import { AgentLimitTool } from './agentLimit.tool';
 
 // Request limits per agent (CLEAN-224).
 //
@@ -21,6 +22,7 @@ import { AgentLimitController } from './agentLimit.controller';
   providers: [
     AgentLimitService,
     { provide: IAgentLimitGateway, useClass: AgentLimitGateway },
+    AgentLimitTool,
   ],
   exports: [AgentLimitService],
 })

@@ -1,659 +1,183 @@
-![Ranch](docs/cleanslice-ranch-banner.png)
+![Ranch: run a team of AI agents on your own Kubernetes](docs/readme/banner.jpg)
 
 # Ranch
 
-Agent deployment platform on Kubernetes. Deploy, manage, and monitor AI agents at scale.
+Ranch runs AI agents as pods on Kubernetes. You describe an agent once as a template, start as many as you need, and talk to them from one console. Each agent keeps its own tools, files, secrets and knowledge.
 
-**Live demo:** [ranch.cleanslice.org](https://ranch.cleanslice.org/)
+[Live demo](https://ranch.cleanslice.org) · [Quick start](#quick-start) · [Examples](#examples) · [Guides](docs/guides)
 
-Built with [CleanSlice](https://github.com/CleanSlice) architecture.
+![The console: every agent on one orbit, with the open agent and its chat on the right](docs/readme/console.png)
 
-## Quick Start
+## What you get
 
-Install the CLI globally — it auto-clones the project on first run:
+- **Agents as pods.** Start, stop and restart them, set CPU and memory per agent, watch their status live.
+- **A console for people.** Chat with any agent, follow its steps and sources, share a chat by link.
+- **An admin panel for operators.** LLM keys, skills, MCP servers, knowledge bases, evaluations, usage and cost per agent.
+- **Agents that ask each other.** Connect a peer over A2A and an agent can hand it a question it cannot answer itself.
+- **Ways in from outside.** A script tag for your site, a Telegram bot, an HTTP endpoint.
 
-```bash
-bun add -g @cleanslice/ranch
-# or: npm install -g @cleanslice/ranch
+## Quick start
 
-ranch dev    # offers to clone if no checkout, then starts api + app + admin + local k3d
-```
-
-See [`cli/README.md`](cli/README.md) for all `ranch` commands.
-
-### Or clone manually
+You need [Bun](https://bun.sh) and [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
-git clone https://github.com/CleanSlice/ranch.git
-cd ranch
-make init
+bun add -g @cleanslice/ranch   # or: npm install -g @cleanslice/ranch
+ranch dev
 ```
 
-The setup wizard will guide you through:
-1. Installing dependencies (Bun, Docker)
-2. Setting up local PostgreSQL and running migrations
-3. Optionally: configuring and deploying to Hetzner Cloud
+The first run offers to clone this repository. Then it starts the API, both web apps, PostgreSQL and a local k3d cluster, so agents run as real pods on your machine. The first start is slow, because it pulls every image, the knowledge stack included: Ollama, LightRAG and its own PostgreSQL.
 
-After setup, start developing:
+The two Ollama models that stack uses are fetched on first use rather than at startup; `make lightrag-up` pulls them up front instead, about 3 GB. To leave the cluster and the knowledge stack out, run `ranch dev --no-k3d`, or name a single app: `ranch dev admin`.
 
-```bash
-make dev    # Starts api:3000 + app:3001 + admin:3002
-```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Hetzner Cloud                        │
-│                                                         │
-│  ┌────────────┐  ┌────────────────┐  ┌───────────────┐  │
-│  │  ArgoCD    │  │ Argo Workflows │  │  CloudNativePG│  │
-│  │  (GitOps)  │  │ (Agent runs)   │  │  (PostgreSQL) │  │
-│  └─────┬──────┘  └──────▲─────────┘  └───────────────┘  │
-│        │ sync           │ submit                        │
-│        ▼                │                               │
-│  ┌──────────────────────┴──────────────────────────┐    │
-│  │           Agent Manager (api)                   │    │
-│  │  NestJS + Prisma + CleanSlice                   │    │
-│  └─────────────────────────────────────────────────┘    │
-│  ┌─────────────────┐  ┌─────────────────────────────┐   │
-│  │  Dashboard (app)│  │   Admin Panel (admin)       │   │
-│  │  Nuxt + Vue 3   │  │   Nuxt + Vue 3              │   │
-│  └─────────────────┘  └─────────────────────────────┘   │
-│                                                         │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  Agent Pods (dynamic, via Argo Workflows)        │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-```
-
-## Tech Stack
-
-| Layer | Technology |
+| Open | To |
 |---|---|
-| Backend | NestJS, Prisma, PostgreSQL |
-| Frontend | Nuxt 3, Vue 3, Pinia, Tailwind, shadcn-vue |
-| Infrastructure | Terraform, Hetzner Cloud, k3s |
-| Deployment | ArgoCD (GitOps), Argo Workflows |
-| Runtime | Bun |
-| Monorepo | Turborepo |
+| http://localhost:3002 | set things up in the admin panel |
+| http://localhost:3001 | talk to agents in the console |
+| http://localhost:3000/api | browse the API (Swagger) |
 
-## Peers and A2A
+Your first agent takes four steps in the admin panel:
 
-An agent can hand work to another agent. Nothing is copied between them: each
-keeps its own runtime, tools and knowledge. What travels is a **card** — the
-agent-to-agent equivalent of a business card, saying who an agent is and what
-it can do. Connect a card to an agent and it gains a colleague it can ask.
+1. Create the owner account. The panel asks for it on first open.
+2. Add a model key under **LLMs**.
+3. Add a template under **Templates**: write one, or install it from a zip or a git repository.
+4. Press **New agent**, pick the template and the key. The agent starts as a pod, and its chat opens when it is running.
 
-The mental model: **MCP is the tools in an agent's hands; A2A is the
-colleagues at the next desk.** Copying an agent is a different feature —
-that is templates.
+`ranch down` stops everything. All commands: [`cli/README.md`](cli/README.md).
 
-- **The card** is derived, never written by hand: an agent's name and
-  description, its template's skills, and the knowledge bases bound to it.
-  Edit any of those and the card follows. It is served at the A2A standard
-  path, `/a2a/agents/<id>/.well-known/agent-card.json`, and needs a
-  credential — there is no anonymous discovery.
-- **Connecting a peer** happens in the admin console, on an agent's **A2A**
-  tab (formerly Peers — old `?tab=peers` links still land). Pick another
-  agent of this ranch, or **import an external A2A agent by its address** —
-  paste the URL, read its card, optionally give the access credential it
-  expects, confirm. Re-importing the same address updates the entry in place.
-  Connections are one-way: connecting B to A says nothing about what B may
-  ask of A.
-- **Delegating** is a tool the API serves to the runtime, so no agent image
-  changes. A pod reads its tool list once at boot, so a new peer needs a
-  restart — the tab shows **armed / pending restart** and the banner carries
-  a one-click **Restart now**. The tool also carries the delegation policy:
-  an agent that cannot answer must try a plausible peer before saying
-  "I don't know".
-- **Watching it happen**: a delegation appears in the chat's thinking
-  timeline while it runs, naming the peer, what its card promised, why it was
-  chosen and how long the wait is. Past delegations are listed on the A2A
-  tab; external peers are marked in both places.
-- **Limits**: a chain may be three hops long; an agent already in a chain
-  refuses to re-enter it. External addresses must be publicly reachable —
-  private hosts are refused (`A2A_ALLOW_PRIVATE_PEERS=true` lifts that for
-  local development).
+## Examples
 
-Set `PUBLIC_API_URL` to the origin other agents reach this API on — every
-card URL is built from it. See `specs/013-a2a-agent-peers/` and
-`specs/014-a2a-protocol-upgrade/` for the full specifications.
-
-## Agent events and failure notifications
-
-When an agent goes down the team is told in Slack, and the admin console
-keeps the record under **Events**. A failure is witnessed by Ranch's own
-watch, by an outside sender, or by both: cluster tooling can report one with
-`POST /agent-events` and an API key that carries only the `events:write`
-scope. An outside event never changes an agent's status. Two ways to be
-told, chosen under **Settings → Notifications**: a Slack bot keeps one
-message per incident (`#12`), rewritten as it moves, with every event as a
-reply in its thread and the state as a reaction; an incoming webhook posts
-one message when the incident opens and one when it closes. With
-`RANCH_ENVIRONMENT` set on the API, every message starts with the
-installation's name in brackets. The owner's and the sender's guide is
-`docs/operations/agent-events.md`; the rules are in
-`specs/020-agent-event-notifications/` and `specs/021-slack-bot-transport/`.
-
-## Agent tools and the Tools panel
-
-The console is a window; the chat is the hands. Everything the admin console
-can do, the Ranch admin agent can do through a tool served by this API's own
-MCP server — agents, templates, skills, LLM credentials, MCP servers,
-knowledge bases and sources, settings, peers, paddock, users and API keys,
-chats and usage, browser sessions, upgrades. Press the wrench beside the chat
-composer to see the agent's tools grouped by topic; a click drops a starter
-prompt into the composer. Tools added after a pod started show "after restart"
-until it restarts. Adding a console capability means adding its tool in the
-same PR — see `docs/agent-tools.md` and `specs/016-agent-tool-parity/`.
-
-The Skills page (`/skills` in the admin console) is a library: a summary of
-how many skills there are and how big they are in tokens, a strip of one
-segment per skill, search and group chips, a shared drag-and-drop order that
-every admin sees (it never changes what agents or templates receive), and a
-panel per skill with its path, size, templates and activity. New skill and
-Edit skill validate the slug as you type and preview the row and the rendered
-markdown. See `specs/025-skills-redesign/`.
-
-## Project Structure
-
-```
-ranch/
-├── api/                  # NestJS backend
-│   └── src/slices/
-│       ├── setup/        #   prisma, init, health
-│       ├── user/         #   auth + user
-│       ├── agent/        #   agent, file, pod, secret, template, templateFile, peer
-│       ├── workflow/     #   Argo Workflows integration
-│       ├── bridle/       #   chat (sessions, messages, streaming)
-│       ├── mcp/          #   MCP runtime hosted at /mcp/*
-│       ├── mcpServer/    #   MCP server registry
-│       ├── llm/          #   LLM provider config
-│       ├── skill/        #   Reusable agent skills
-│       ├── rancher/      #   Per-tenant ranch (workspace) management
-│       ├── reins/        #   Access control / API keys
-│       ├── setting/      #   System settings
-│       ├── usage/        #   Usage metering
-│       ├── log/          #   Agent logs
-│       └── aws/          #   AWS-backed integrations (S3, etc.)
-├── app/                  # Nuxt user dashboard
-│   └── slices/           #   setup, agent, bridle, share, template, user, common
-├── admin/                # Nuxt admin panel
-│   └── slices/           #   setup, agent (incl. peer), bridle, llm, mcpServer,
-│                         #   rancher,
-│                         #   reins, setting, skill, usage, user, common
-├── cli/                  # @cleanslice/ranch — published to npm
-├── rancher/              # Default agent template ("rancher" agent)
-├── terraform/            # Hetzner infrastructure
-│   ├── modules/          #   cluster, network, bootstrap, dns, database, storage, apps
-│   └── environments/     #   dev, prod, dreamvention (+ your custom env)
-├── k8s/                  # Kubernetes manifests
-│   ├── argocd/           #   App-of-apps
-│   ├── infrastructure/   #   Argo Workflows, CNPG, database
-│   ├── platform/         #   api, app, admin deployments
-│   ├── templates/        #   Argo WorkflowTemplate + RBAC for agents
-│   ├── local/            #   Local k3d-only manifests (CoreDNS host alias, etc.)
-│   └── deploy/           #   Deploy hooks
-└── .github/workflows/    # CI/CD
-```
-
-## Prerequisites
-
-- [Bun](https://bun.sh/) — `curl -fsSL https://bun.sh/install | bash`
-- [Docker](https://docs.docker.com/get-docker/) — for local PostgreSQL
-- [Terraform](https://developer.hashicorp.com/terraform/install) — for infrastructure
-- [kubectl](https://kubernetes.io/docs/tasks/tools/) — for cluster management
-- [Helm](https://helm.sh/docs/intro/install/) — for chart management
-
-## Local Development
-
-### Recommended: `ranch` CLI
-
-The `ranch` CLI wraps the most-used `make` targets and works from any
-directory once installed globally. See [`cli/README.md`](cli/README.md)
-for the full reference.
+The examples use two variables:
 
 ```bash
-bun add -g @cleanslice/ranch       # one-time install
-
-ranch dev                          # start api + app + admin
-ranch dev api                      # or just one service: api | app | admin
-ranch down                         # stop dev servers, postgres, k3d
-ranch db start | stop | reset | studio
-ranch generate                     # regenerate Prisma schema from slices
-ranch status                       # show what's running locally
-ranch where                        # show which Ranch checkout the CLI is using
+export RANCH_API=http://localhost:3000
+export AGENT_ID=<the agent's id, from its page address in the admin panel>
 ```
 
-### Or: `make` from inside the repo
+### Ask an agent over HTTP
 
-Equivalent targets, run from the project root:
+Create an API key with the `embed:mint` scope under **API Keys**, then mint a short-lived token for the person who is asking:
 
 ```bash
-make help             # Show all commands
-
-# Development
-make setup            # Full local setup (first time)
-make dev              # Start all services (api:3000, app:3001, admin:3002)
-make dev-api          # Start API only
-make dev-app          # Start app only
-make dev-admin        # Start admin only
-
-# Database
-make db               # Start PostgreSQL via Docker
-make db-stop          # Stop PostgreSQL
-make db-reset         # Reset database (destroy data)
-make migrate          # Generate schema + run migrations
-make generate         # Regenerate schema.prisma from slices
-make studio           # Open Prisma Studio
-
-# Build & Test
-make build            # Build all services
-make lint             # Lint all services
-make test             # Run tests
-make clean            # Remove node_modules and build artifacts
+curl -X POST "$RANCH_API/auth/embed/token" \
+  -H "Authorization: Bearer $RANCH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"sub":"user-123","email":"alice@example.com","expiresIn":"1h"}'
 ```
 
-### Services & Endpoints
+```json
+{ "token": "eyJhbGciOiJIUzI1NiIs…", "expiresAt": "2026-11-16T18:45:00.000Z" }
+```
 
-After `ranch dev` (or `make dev`):
+Put the `token` in `$TOKEN`, send a message and wait for the reply:
 
-| URL | Description |
+```bash
+curl -X POST "$RANCH_API/api/agent/$AGENT_ID/message/sync" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"What is your refund policy?"}'
+```
+
+```json
+{ "text": "<the agent's answer>", "messageId": "a1b2c3…", "ts": 1763318700123 }
+```
+
+`ts` is the hub clock in milliseconds. Each `sub` gets its own conversation and history. Without `expiresIn` a token lives 15 minutes.
+
+The route waits up to 120 seconds for the agent. A timeout is still `200`, with the sentence `Timeout: no response from agent` in `text` — check the text, not the status. Owner and Admin roles are stripped from a minted token unless the key also carries `embed:mint-admin`, and such a token is capped at 7 days.
+
+### Put the chat on your site
+
+```html
+<script
+  src="https://bridle.cleanslice.org/sdk/latest.js"
+  data-api-url="https://api.your-ranch.example"
+  data-agent-id="AGENT_ID"
+  data-token="JWT_FROM_YOUR_BACKEND"
+></script>
+```
+
+This adds a chat bubble to the page. For a public agent, list your site under **Allowed origins** and drop `data-token`. The admin panel shows the snippet for every agent, including an inline variant that mounts into your own container.
+
+### Share one chat by link
+
+Press **Share** on an agent in the console. You get one public link that opens a chat with that agent and nothing else: no login, no other pages. Regenerate the link to cut off the old one, or revoke it.
+
+### Let one agent ask another
+
+Open an agent in the admin panel, go to **A2A** and connect a peer: another agent of this ranch, or an external A2A agent by its address. After a restart the agent has a delegation tool, and it tries a suitable peer before answering "I don't know". The chat shows which peer was asked and why.
+
+### Hear about a failed agent in Slack
+
+Ranch watches the agents it starts. Your cluster tooling can report a failure too, with an API key that has only the `events:write` scope:
+
+```bash
+curl -X POST "$RANCH_API/agent-events" \
+  -H "Authorization: Bearer $RANCH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"'"$AGENT_ID"'","status":"failed","reason":"CrashLoopBackOff"}'
+```
+
+Choose where the team is told under **Settings → Notifications**. Details: [`docs/operations/agent-events.md`](docs/operations/agent-events.md).
+
+## How it works
+
+```mermaid
+flowchart LR
+  people([You and your team]) --> web[Console and admin panel]
+  outside([Your site, Telegram, HTTP]) --> api
+  web --> api[Ranch API]
+  api -->|submits a workflow| argo[Argo Workflows]
+  argo -->|starts| pods[Agent pods]
+  api <-->|chat, tools, files| pods
+  pods <-->|A2A| peers[Other agents]
+  api --- db[(PostgreSQL)]
+```
+
+The API is the only thing people and other systems talk to. It keeps agents, templates and chats in PostgreSQL, asks Argo Workflows to start a pod for each agent, and relays chat between the pod and whoever is asking. Agent files, skills and secrets live in S3-compatible storage.
+
+## Repository
+
+| Folder | Contents |
 |---|---|
-| `http://localhost:3000` | API (NestJS) |
-| `http://localhost:3000/api` | Swagger UI — full endpoint reference |
-| `http://localhost:3000/mcp/*` | MCP runtime (tools exposed via `@Tool` decorators) |
-| `http://localhost:3000/health` | Health check |
-| `http://localhost:3001` | App (user dashboard) |
-| `http://localhost:3002` | Admin panel |
+| `api/` | The API: agents, the chat hub, the MCP server, usage metering (NestJS, Prisma) |
+| `app/` | The console for people who talk to agents (Nuxt) |
+| `admin/` | The admin panel for operators (Nuxt) |
+| `cli/` | The `ranch` command, published as `@cleanslice/ranch` |
+| `k8s/` | Kubernetes manifests: Argo CD apps, workflow templates, platform deployments |
+| `terraform/` | Hetzner Cloud infrastructure |
+| `extension/` | A Chrome extension that hands an agent your logged-in browser session |
+| `specs/` | The specification behind each feature |
 
-`ranch dev` also brings up a local **k3d** cluster (`ranch`) with the
-`platform` and `agents` namespaces and Argo workflow templates pre-applied,
-so the API can submit real agent workflows against a local Kubernetes.
-Kubeconfig is written to `~/.kube/ranch-local.yaml`.
+Code is organised in slices, following [CleanSlice](https://github.com/CleanSlice): each feature keeps its API, data and UI together.
 
-### Optional: LightRAG stack
+## Deploy to your own cloud
 
-For RAG-backed agents, a LightRAG + Ollama + Postgres stack ships behind a
-Docker Compose profile:
+Ranch ships with Terraform for Hetzner Cloud and deploys through Argo CD.
 
 ```bash
-make lightrag-up      # First run pulls ~3GB of models — LightRAG at :9621
-make lightrag-down    # Stop (keeps data)
-make lightrag-reset   # Wipe data + models
-make lightrag-logs    # Tail container logs
+cp -r terraform/environments/dev terraform/environments/myenv   # then fill in terraform.tfvars
+make infra-init ENV=myenv
+make infra-apply ENV=myenv
 ```
 
-## Share links (`app` console)
-
-Every agent page has a **Share** action that mints one public link for that
-agent: `<console origin>/share?token=sl_…`. Opening it gives a full-view chat
-with that agent and nothing else — no login, no navigation, no console pages.
-
-- **Share** is idempotent: an agent that already has an active link hands the
-  same one back, so pressing it twice never breaks a link in circulation.
-- **Regenerate** mints a new token and kills the old one in the same write —
-  the link stays on, the old URL stops working. **Revoke** turns the link off
-  entirely. Nothing else ends a token's life: links never expire on their own,
-  and an open visitor page notices it was cut off within 30 seconds.
-- Visitor requests carry `X-Share-Token` (the secret) and `X-Share-Visitor` (an
-  opaque per-browser id) instead of a bearer token, and the console explicitly
-  drops its own `Authorization` header on them so an owner previewing their
-  link is treated as a visitor. The API re-validates the pair against the agent
-  in the path on **every** request.
-- Each visitor gets their own conversation, stored on the channel
-  `share-<visitorId>`, so share traffic shows up in the agent's chat history for
-  console users and is recognisable by that prefix. Attachments are own-only: a
-  visitor can read back the files they uploaded to their own chat, nothing else.
-- A token grants exactly that one chat — only the agent name and status, no other agents,
-  no console routes.
-
-The `AgentShareLink` table ships in the hand-written migration
-`api/prisma/migrations/20260907120000_agent_share_link` (additive: a new table
-plus a cascading FK, safe on an existing database).
-
-## Console sessions (`app` + `admin`)
-
-Signing in to either console establishes two credentials with different jobs:
-
-- a **session** — an opaque `rs_…` secret the API stores hashed in the
-  `Session` table and hands to the browser as an httpOnly cookie
-  `ranch_session` scoped to `Path=/auth` (so it never rides on ordinary
-  requests). It has a sliding inactivity window (`SESSION_IDLE_DAYS`, 7) and a
-  hard ceiling (`SESSION_ABSOLUTE_DAYS`, 30); `Secure` follows
-  `SESSION_COOKIE_SECURE` (true in the cluster, false for plain-http dev);
-- a short-lived **access token** — the JWT the console attaches as
-  `Authorization: Bearer` (`JWT_EXPIRES_IN`, 15 minutes), kept in memory only.
-
-Each console also keeps a note of its own in `localStorage` (`ranch.session`),
-set when a session is applied and cleared when the token is dropped for good.
-It holds no secret; it only tells the console on boot that `/auth/refresh` is
-worth asking, so an anonymous visit makes no refresh call and collects no 401
-(CLEAN-178). It has to live on the console's origin: the API's host is not the
-console's host, so a cookie the API sets is not readable there (CLEAN-182).
-
-`POST /auth/refresh` (no body, cookie in) renews the access token from the
-session alone — it works after the token has expired — and slides the
-inactivity window. `POST /auth/logout` revokes the session and clears the
-cookie. The consoles renew proactively a minute before expiry, when a hidden
-tab becomes visible, and once more reactively when a request comes back 401,
-then retry that request once; when the session itself cannot be renewed they
-show a single in-place "Your session has ended" dialog with the login form,
-leaving the page and any unsent message intact.
-
-Every 401 carries a machine-readable `code`:
-
-| `code` | Meaning | Console behaviour |
-|---|---|---|
-| `TOKEN_MISSING` | no bearer | logged out |
-| `TOKEN_EXPIRED` | bearer `exp` passed | refresh, retry once |
-| `TOKEN_INVALID` | bad signature / unusable subject | refresh once, then session ended |
-| `SESSION_MISSING` / `SESSION_EXPIRED` / `SESSION_INVALID` | from `/auth/refresh` | session ended (silently logged out on boot) |
-
-The bridle chat routes reject a failing bearer the same way instead of quietly
-treating the caller as an anonymous visitor; a request with **no** credentials
-still gets the anonymous throwaway channel, and share-link headers still win
-over a dead console token. Agent service, embed and browser-extension tokens
-set their own lifetimes and are unaffected. Contract and rationale:
-[`specs/012-jwt-token-refresh/contracts/session-api.md`](specs/012-jwt-token-refresh/contracts/session-api.md).
-
-## Authentication surface (`api`)
-
-Every route requires a bearer JWT unless it is marked `@Public()`.
-`JwtAuthGuard` is registered as a global guard in `api/src/app.module.ts`, and
-`api/src/slices/user/auth/guards/publicRoutes.spec.ts` pins the exact set of
-`@Public()` routes per controller: adding or removing one fails the test until
-the list is updated and the PR says why that caller cannot hold a token.
-`@Public()` lifts the JWT requirement alone — routes that authenticate with an
-API key (`rk_…`), the runtime key (`x-bridle-api-key`), an A2A peer credential
-(`ap_…`), a share token or a signed open link keep their own guard.
-
-Three kinds of JWT exist, told apart by their claims:
-
-| Token | Minted by | Opens |
-|---|---|---|
-| console login (`sid`) | `/auth/login`, `/auth/refresh` | everything its role allows |
-| agent service (`sub: agent:<id>`) | the agent runtime bootstrap | the agent's own routes |
-| embed (`typ: embed`) | `POST /auth/embed/token` with an `embed:mint` key | the chat only: `/ws/client`, `/api/agent/*` |
-
-An embed token is rendered into a customer's page and read by every visitor of
-that page, so the platform guards refuse it with `401 TOKEN_INVALID` whatever
-roles it carries; inside the chat it still maps to its `sub` (or to the `admin`
-conversation for `embed:mint-admin` keys). Its `sub` is validated on mint:
-letters, digits, dash and underscore, at most 128 characters, never `admin`,
-never prefixed `anon-`, `share-` or `http-`, never an existing user id.
-
-Transcript routes (`GET`/`DELETE /api/agent/:id/transcript`, `POST
-…/transcript/archive`) decide per channel: `share-…` answers to that visitor
-or a console user, `anon-…`/`http-…` stay open (random ids the hub mints for
-credential-less visitors), and a channel named by a JWT `sub` answers only to a
-bearer with that `sub` or to an admin — `403 CHANNEL_FORBIDDEN` otherwise, the
-same whether the channel exists or not. Background and decisions:
-[`specs/022-embed-token-hardening/`](specs/022-embed-token-hardening/) (CLEAN-175).
-
-## Sources in chat answers (`app` + `admin`)
-
-An agent's answer can carry numbered citations — chips after the sentences a
-source supports — and a list of those sources under the bubble, in the live
-chat of both consoles, on the share page and in the chat history. Two kinds:
-**knowledge** (a document of a knowledge base bound to the agent) and **web**
-(a page the agent looked up). The runtime builds the list from what its tools
-actually returned, hands the model the numbers it may cite, drops any marker
-that points at nothing, renumbers the rest and sends one `sources` socket event
-per bubble; the hub records every citation and overlays the same rows onto
-history. A client gets all of this only when it advertises the `sources`
-capability at handshake — Telegram, Slack and the synchronous HTTP reply get
-plain text.
-
-Readers can like or dislike a knowledge source (never a web page); the counts
-show per source in the knowledge console, sortable. Whether readers may *open*
-a cited document is a per-knowledge-base switch (**Readers may open cited
-documents**, closed by default); when open, a document is served only to the
-reader it was cited to, by the citation, never by the source's id. The
-platform team can always open documents. The Ranch agent mirrors the switch
-(`set_knowledge_reader_access`) and the counts (`list_knowledge_sources`).
-Contract and rationale:
-[`specs/020-chat-sources/`](specs/020-chat-sources/contracts/sources.md).
-
-## Translations (`app` console)
-
-The user console ships in English and Russian. `en.json` in each slice is the
-source; `bun run i18n:sync` generates the translation, and `bun run i18n:check`
-(a CI step) fails on a missing, stale or undefined key. The admin panel is
-English-only by design.
-
-See [`docs/i18n.md`](docs/i18n.md) before adding a user-visible string.
-
-## Prisma Schema (per-slice)
-
-Each slice defines its own `.prisma` file at the slice root. They are merged into `prisma/schema.prisma` by `prisma-import` at build time.
-
-```
-api/src/slices/
-├── setup/prisma/prisma.prisma          # datasource + generator
-├── agent/agent/agent.prisma            # Agent model
-├── agent/template/template.prisma      # Template model
-└── user/user/user.prisma               # User model
-```
-
-Edit the slice `.prisma` files, then:
-
-```bash
-make generate   # Merge into prisma/schema.prisma
-make migrate    # Create migration + generate client
-```
-
-## Deploy to Hetzner Cloud
-
-> 📘 Full Terraform guide (remote state backend, environments, imports, DNS, gotchas):
-> [`terraform/README.md`](terraform/README.md)
-
-### 1. Create Your Environment
-
-```bash
-# Copy the dev template
-cp -r terraform/environments/dev terraform/environments/myenv
-
-# Edit variables
-vi terraform/environments/myenv/terraform.tfvars.example
-# Copy and fill in your values:
-cp terraform/environments/myenv/terraform.tfvars.example terraform/environments/myenv/terraform.tfvars
-```
-
-Required variables in `terraform.tfvars`:
-
-```hcl
-hcloud_token        = "your-hetzner-api-token"
-domain              = "ranch.yourdomain.com"
-admin_ip            = "YOUR_IP/32"          # curl ifconfig.me
-ssh_public_key_path = "~/.ssh/id_ed25519.pub"
-```
-
-### 2. Create MicroOS Snapshots (first time only)
-
-The k3s cluster requires MicroOS snapshots on Hetzner:
-
-```bash
-brew install packer   # if not installed
-
-# Download and build snapshots
-cd /tmp
-curl -sLO https://raw.githubusercontent.com/kube-hetzner/terraform-hcloud-kube-hetzner/master/packer-template/hcloud-microos-snapshots.pkr.hcl
-packer init hcloud-microos-snapshots.pkr.hcl
-HCLOUD_TOKEN="your-token" packer build hcloud-microos-snapshots.pkr.hcl
-```
-
-### 3. Provision Infrastructure
-
-```bash
-make infra-init ENV=myenv    # Download providers
-make infra-plan ENV=myenv    # Preview changes
-make infra-apply ENV=myenv   # Create cluster (~5-10 min)
-```
-
-This creates:
-- k3s cluster with Traefik ingress and cert-manager
-- VPC + Firewall
-- Load Balancer
-
-### 4. Get Kubeconfig
-
-```bash
-make kubeconfig ENV=myenv
-export KUBECONFIG=~/.kube/ranch-myenv
-kubectl get nodes
-```
-
-### 5. Install Platform Services
-
-```bash
-# Add Helm repos
-helm repo add argo https://argoproj.github.io/argo-helm
-helm repo add cnpg https://cloudnative-pg.github.io/charts
-helm repo update
-
-# Install ArgoCD
-helm install argocd argo/argo-cd \
-  --namespace argocd --create-namespace \
-  --set server.ingress.enabled=true \
-  --set server.ingress.ingressClassName=traefik \
-  --set "server.ingress.hosts[0]=argocd.ranch.yourdomain.com"
-
-# Install Argo Workflows
-helm install argo-workflows argo/argo-workflows \
-  --namespace argo --create-namespace
-
-# Install CloudNativePG
-helm install cnpg cnpg/cloudnative-pg \
-  --namespace cnpg-system --create-namespace
-
-# Create namespaces
-kubectl create namespace platform
-kubectl create namespace agents
-```
-
-### 6. Configure DNS
-
-Ranch ships five public services behind one shared Hetzner Load Balancer.
-You need an **A record per subdomain** at your DNS provider — the records
-themselves are not managed by Terraform (intentional: keeps the DNS zone
-your single source of truth and lets you change provider without touching
-the platform module).
-
-**Required A records** — point each at the same Load Balancer IP:
-
-| Subdomain                       | Serves                       | Required? |
-|---------------------------------|------------------------------|-----------|
-| `ranch.yourdomain.com`          | App (root, end-user UI)      | yes       |
-| `api.ranch.yourdomain.com`      | NestJS API                   | yes       |
-| `admin.ranch.yourdomain.com`    | Admin panel (Nuxt)           | yes       |
-| `argocd.ranch.yourdomain.com`   | ArgoCD UI                    | yes       |
-| `browser.ranch.yourdomain.com`  | Browser-pool live VNC view   | yes — agents send users this URL for manual logins (Instagram, Meta Ads, etc.). Without it, every site that needs an interactive login is unreachable. |
-
-Get the Load Balancer IP after `terraform apply`:
-
-```bash
-kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-# or, equivalently, ask Terraform:
-terraform -chdir=terraform/environments/<env> output dns_records_needed
-```
-
-The `dns_records_needed` output lists every subdomain that needs a record
-and the IP to point it at — keep this in sync if you ever add a new
-public-facing ingress (otherwise `cert-manager` will spin forever on a
-challenge that can't resolve).
-
-**Propagation**: 1–5 min typical (set TTL=300). `cert-manager` then
-issues a Let's Encrypt cert automatically via the HTTP-01 challenge —
-the first hit to `https://<subdomain>/` after propagation triggers it.
-
-**Smoke test once propagated**:
-
-```bash
-for sub in "" api. admin. argocd. browser.; do
-  host="${sub}ranch.yourdomain.com"
-  printf "%-45s " "$host"
-  curl -sS -o /dev/null -w "%{http_code}\n" "https://$host/" --max-time 5 || echo "(timeout)"
-done
-```
-
-All five should return a non-zero HTTP code (200/301/302/401 are all fine —
-means the cert handshake succeeded and Traefik routed the request).
-
-### 7. Connect ArgoCD to Repository
-
-```bash
-# Get ArgoCD password
-make argocd-password
-
-# Login to ArgoCD UI at https://argocd.ranch.yourdomain.com
-# Username: admin
-# Password: <output from above>
-
-# Deploy app-of-apps
-make deploy
-```
-
-### 8. Create Secrets
-
-```bash
-make k8s-secrets   # Interactive — will ask for DATABASE_URL
-```
-
-## Forking for Your Organization
-
-Ranch is designed to be forked per-organization:
-
-```bash
-# 1. Fork CleanSlice/ranch → YourOrg/ranch
-
-# 2. Clone your fork
-git clone git@github.com:YourOrg/ranch.git
-cd ranch
-
-# 3. Add upstream
-git remote add upstream git@github.com:CleanSlice/ranch.git
-
-# 4. Create your environment
-cp -r terraform/environments/dev terraform/environments/yourenv
-
-# 5. Customize k8s manifests
-# - k8s/argocd/app-of-apps.yaml → change repoURL to YourOrg/ranch
-# - k8s/platform/*/ingress.yaml → change hostnames
-# - k8s/platform/*/deployment.yaml → change image registry
-# - Makefile → change ENV default
-
-# 6. Sync upstream changes
-git fetch upstream
-git merge upstream/main
-git push origin main
-```
-
-## Cluster Management
-
-```bash
-make k8s-status       # Show nodes, pods, ArgoCD apps
-make k8s-logs-api     # Tail API logs
-make argocd-password  # Get ArgoCD admin password
-make infra-destroy ENV=myenv   # Tear down infrastructure
-```
-
-## GitOps Flow
-
-```
-git push → GitHub Actions:
-  ├── CI (lint + test)
-  ├── Build Docker images → ghcr.io
-  └── ArgoCD detects new image
-        └── Syncs to cluster (zero-downtime rolling update)
-```
-
-ArgoCD manages:
-- **Infrastructure** — Argo Workflows, CloudNativePG, PostgreSQL cluster
-- **Platform** — API, App, Admin deployments
-- **Templates** — Argo WorkflowTemplates for agent pods
+The remaining steps (snapshots, platform services, DNS, secrets) are in [`docs/guides/deploy.md`](docs/guides/deploy.md) and [`terraform/README.md`](terraform/README.md).
+
+## Guides
+
+| Guide | Covers |
+|---|---|
+| [Development](docs/guides/development.md) | Prerequisites, `make` targets, local endpoints, the Prisma schema per slice, translations |
+| [Architecture](docs/guides/architecture.md) | Components, tech stack, project structure |
+| [A2A and peers](docs/guides/a2a.md) | Agent cards, connecting peers, delegation limits |
+| [Tools and skills](docs/guides/tools-and-skills.md) | The Tools panel, the skills library |
+| [Share links](docs/guides/share-links.md) | How public chat links work |
+| [Sessions and authentication](docs/guides/auth.md) | Console sessions, token kinds, the public route list |
+| [Sources in answers](docs/guides/chat-sources.md) | Citations, reader access to documents |
+| [Events and notifications](docs/guides/events.md) | Failure reports and Slack |
+| [Deploy](docs/guides/deploy.md) | Hetzner step by step, forking, cluster management, GitOps flow |
 
 ## License
 
-Private — CleanSlice
+Proprietary to CleanSlice. No permission is granted to use, copy, modify or redistribute this code. The repository is public because npm refuses to verify build provenance for a package built from a private repository — readable is not the same as licensed.
+
+The one exception is `cli/`, published to npm as `@cleanslice/ranch` under the MIT licence. It carries its own [`LICENSE`](cli/LICENSE), and the bundle it publishes contains no platform code.

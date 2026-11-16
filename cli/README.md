@@ -148,3 +148,12 @@ GitHub → **Actions → Publish CLI → Run workflow** and pick a dist-tag.
 npm install -g @cleanslice/ranch
 ranch --help
 ```
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
+
+That covers this package and nothing else. The CLI is a launcher: it clones the
+Ranch repository, drives `docker`, `k3d` and `bun`, and the bundle published
+here contains no code from the Ranch platform itself. The rest of the
+`CleanSlice/ranch` repository is proprietary to CleanSlice.

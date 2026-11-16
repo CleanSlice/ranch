@@ -1,5 +1,9 @@
 import type { Ref } from 'vue';
-import type { AgentStatusTypes, IAgentData } from '#agent/domain';
+import type {
+  AgentStatusTypes,
+  IAgentData,
+  IAgentLimitEntry,
+} from '#agent/domain';
 import { railOrder } from '#agent/utils/railOrder';
 
 export interface IRailStatusTone {
@@ -19,6 +23,10 @@ export interface IRailEntry {
   isAdmin: boolean;
   /** Pinned by an operator: marked, and listed right after Rancher (CLEAN-216). */
   pinned: boolean;
+  /** A request limit is full right now: visitors are being refused (CLEAN-224). */
+  atLimit: boolean;
+  /** Public with no request limits — made public before limits existed. */
+  needsLimits: boolean;
   isActive: boolean;
 }
 
@@ -92,6 +100,9 @@ export function useAgentRailEntries(
   agents: Ref<IAgentData[] | null | undefined>,
   activeId: Ref<string>,
   search: Ref<string>,
+  // The limit store's records by agent id. The two marks are read from there
+  // and nowhere else, so a row and the open agent's cards cannot disagree.
+  limits?: Ref<Record<string, IAgentLimitEntry>>,
 ) {
   return computed<IRailEntry[]>(() => {
     const term = search.value.trim().toLowerCase();
@@ -109,6 +120,8 @@ export function useAgentRailEntries(
         createdAt: a.createdAt,
         isAdmin: a.isAdmin,
         pinned: a.pinned,
+        atLimit: limits?.value[a.id]?.atLimit === true,
+        needsLimits: limits?.value[a.id]?.needsLimits === true,
         isActive: a.id === activeId.value,
       }));
   });

@@ -39,6 +39,12 @@ import {
   type BridleDelivery,
   type DeliveryEvent,
 } from '../utils/delivery'
+import {
+  applyAgentLimit,
+  clearVisitorLimit,
+  pruneVisitorLimits,
+  type VisitorLimits,
+} from '../utils/visitorLimit'
 
 export enum BridlePartTypes {
   Text = 'text',
@@ -804,6 +810,16 @@ const TURN_STALE_MS = 75_000
 
 const TURN_DIED_NOTICE = 'The agent did not finish this turn.'
 
+// When each agent's "visitors are being asked to wait" entry is due to end,
+// keyed by agent id. Not state: nothing renders from a timer handle.
+const visitorLimitTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/** The clock `visitorLimits[..].until` is on — monotonic, so a wrong or
+ *  changed device clock cannot stretch or cut a wait. */
+function monotonicNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
+
 export const useBridleStore = defineStore('bridle', {
   state: () => ({
     /** Every conversation this tab has touched, keyed by `bridleKey`. */
@@ -814,6 +830,15 @@ export const useBridleStore = defineStore('bridle', {
      * text. Persisted in localStorage so the user's choice survives refresh.
      */
     markdownEnabled: loadMarkdownPref(),
+    /**
+     * Agents whose hour or day request limit is full right now, by agent id
+     * (CLEAN-224): `until` on the `performance.now()` scale, and the window
+     * that filled. Written by the hub's `agent_limit` event, removed by
+     * `{ limited: false }` and when `until` passes. Operators are never
+     * limited — this drives one informational line above the composer and
+     * nothing else; Send stays as it is.
+     */
+    visitorLimits: {} as VisitorLimits,
   }),
 
   getters: {
@@ -951,6 +976,20 @@ export const useBridleStore = defineStore('bridle', {
       socket.on('connect', () => {
         c.isConnected = true
         c.authRetried = false
+        // The hub says again, right after the handshake, if a limit is full.
+        // Whatever was heard before the gap may have been cleared during it,
+        // and `{ limited: false }` is not replayed — start from "not limited".
+        this._setVisitorLimits(clearVisitorLimit(this.visitorLimits, agentId), agentId)
+      })
+
+      // An hour or day request limit of this agent filled, or room was made
+      // (CLEAN-224). Not a conversation event: it carries no place in the
+      // flow, so it does not go through `acceptHubSeq`.
+      socket.on('agent_limit', (e: unknown) => {
+        this._setVisitorLimits(
+          applyAgentLimit(this.visitorLimits, e, monotonicNow(), agentId),
+          agentId,
+        )
       })
 
       // The hub refused the handshake token and is about to drop the socket.
@@ -1297,6 +1336,33 @@ export const useBridleStore = defineStore('bridle', {
       // Raw on purpose: a socket is not view state, and a reactive proxy
       // around its internals only costs.
       c.socket = markRaw(socket)
+    },
+
+    /**
+     * Store the next `visitorLimits` and make sure this agent's entry leaves
+     * when its wait passes — nothing else would take it down if the hub's
+     * `{ limited: false }` never arrives (a dropped socket, a closed tab that
+     * comes back later).
+     */
+    _setVisitorLimits(next: VisitorLimits, agentId: string) {
+      this.visitorLimits = next
+      const pending = visitorLimitTimers.get(agentId)
+      if (pending) clearTimeout(pending)
+      visitorLimitTimers.delete(agentId)
+      const entry = next[agentId]
+      if (!entry) return
+      visitorLimitTimers.set(
+        agentId,
+        setTimeout(() => {
+          visitorLimitTimers.delete(agentId)
+          this.visitorLimits = pruneVisitorLimits(this.visitorLimits, monotonicNow())
+          // A timer may fire a hair early; whatever is still not due gets
+          // another one.
+          if (this.visitorLimits[agentId]) {
+            this._setVisitorLimits(this.visitorLimits, agentId)
+          }
+        }, Math.max(0, entry.until - monotonicNow()) + 50),
+      )
     },
 
     disconnect(key: string) {

@@ -180,6 +180,13 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
         (raw as { connected?: unknown } | null)?.connected === true,
       ),
     );
+    // The agent's request limit filled, or room was made early (CLEAN-224):
+    // sent right after `welcome` when an hour or day window is already full,
+    // and on every change. State like `agent_status` — no `seq`.
+    socket.on('agent_limit', (raw: unknown) => {
+      const event = mapper.toAgentLimit(raw);
+      if (event) events.onAgentLimit(event);
+    });
 
     return {
       send(text, attachmentIds, clientMessageId) {

@@ -1,10 +1,22 @@
 <script setup lang="ts">
 import type { IAgentData } from '#agent/stores/agent'
+import type { LimitWindowTypes } from '#agent/domain/agentLimit.types'
 import {
+  LIMIT_FIELDS,
+  findLimitProblem,
+  formToLimits,
+  isLimitFormEmpty,
+  limitsToForm,
+  placeRefusal,
+  type ILimitFormValues,
+  type ILimitProblem,
+} from '#agent/utils/agentLimitForm'
+import { formatNumber } from '#common/utils/format'
+import {
+  IconAlertTriangle,
   IconCheck,
   IconCopy,
   IconLoader2,
-  IconPencil,
   IconX,
 } from '@tabler/icons-vue'
 
@@ -20,19 +32,53 @@ const emit = defineEmits<{
 }>()
 
 const agentStore = useAgentStore()
+const limitStore = useAgentLimitStore()
+const shareStore = useShareStore()
 
-const editing = ref(false)
-const submitting = ref(false)
-const saveError = ref<string | null>(null)
-const originsText = ref('')
+// ── What is saved ────────────────────────────────────────────────────
+// The public flag and the origins are the agent record's (props, fed by the
+// agent store); the limits, the 30-day peaks and the "public without limits"
+// flag are the limit store's record for this agent (docs/state.md). Nothing
+// here keeps a copy of either — the form below is the only local state, and it
+// holds what is being typed, not what is saved.
+const limitEntry = computed(() => limitStore.byAgent[props.agentId])
+// `undefined`: not read yet. `null`: read, and limits are off.
+const savedLimits = computed(() => limitEntry.value?.limits)
+const limitsKnown = computed(() => savedLimits.value !== undefined)
+const peaks = computed(() => limitEntry.value?.load?.peaks ?? null)
 
-watch(
-  () => props.allowedOrigins,
-  (next) => {
-    if (!editing.value) originsText.value = next.join('\n')
-  },
-  { immediate: true },
+// Public before limits existed (spec case 8): it keeps working uncapped, and
+// this card says so until someone sets a limit.
+const needsLimits = computed(
+  () =>
+    limitEntry.value?.needsLimits === true ||
+    (props.isPublic && savedLimits.value === null),
 )
+
+const limitsLoadError = ref<string | null>(null)
+
+// Limits and load are two reads on purpose: the limits are what Save needs,
+// the load only adds "highest seen". A failed load must not block the form.
+async function loadLimits() {
+  limitsLoadError.value = null
+  const [limits] = await Promise.allSettled([
+    limitStore.fetchLimits(props.agentId),
+    limitStore.fetchLoad(props.agentId),
+  ])
+  if (limits.status === 'rejected' && !limitsKnown.value) {
+    limitsLoadError.value =
+      (limits.reason as Error)?.message || 'Could not load the limits'
+  }
+}
+
+// ── The form ─────────────────────────────────────────────────────────
+// One Save for the switch, the origins and the limits (FR-010): a private
+// agent goes public, limits included, in one request.
+
+interface IVisibilityForm extends ILimitFormValues {
+  isPublic: boolean
+  originsText: string
+}
 
 function parseOrigins(text: string): string[] {
   return text
@@ -41,35 +87,166 @@ function parseOrigins(text: string): string[] {
     .filter(Boolean)
 }
 
-function startEdit() {
-  originsText.value = props.allowedOrigins.join('\n')
-  saveError.value = null
-  editing.value = true
+const baseline = computed<IVisibilityForm>(() => ({
+  isPublic: props.isPublic,
+  originsText: props.allowedOrigins.join('\n'),
+  ...limitsToForm(savedLimits.value),
+}))
+
+const form = reactive<IVisibilityForm>({ ...baseline.value })
+
+function differsFrom(saved: IVisibilityForm): boolean {
+  return (
+    form.isPublic !== saved.isPublic ||
+    parseOrigins(form.originsText).join('\n') !==
+      parseOrigins(saved.originsText).join('\n') ||
+    form.minute.trim() !== saved.minute ||
+    form.hour.trim() !== saved.hour ||
+    form.day.trim() !== saved.day
+  )
 }
 
-function cancelEdit() {
-  editing.value = false
+const dirty = computed(() => differsFrom(baseline.value))
+
+function resetForm() {
+  Object.assign(form, baseline.value)
+  problem.value = null
   saveError.value = null
-  originsText.value = props.allowedOrigins.join('\n')
 }
 
-async function saveOrigins() {
-  if (submitting.value) return
-  submitting.value = true
+// What is saved changed under the form (the first read landing, a save from
+// the Ranch agent, another tab). Follow it — unless something is being typed:
+// an edit in progress is never overwritten by a poll.
+watch(baseline, (next, previous) => {
+  if (!differsFrom(previous)) Object.assign(form, next)
+})
+
+const submitting = ref(false)
+const justSaved = ref(false)
+let justSavedTimer: ReturnType<typeof setTimeout> | null = null
+// A refused save, placed next to the field it concerns.
+const problem = ref<ILimitProblem | null>(null)
+// Any other failure of a save (network, a rejected origin, …).
+const saveError = ref<string | null>(null)
+
+// The sentence belongs to what was sent; once the fields change it is stale.
+watch(
+  () => [form.isPublic, form.minute, form.hour, form.day, form.originsText],
+  () => {
+    problem.value = null
+    saveError.value = null
+  },
+)
+
+async function onSave() {
+  if (submitting.value || !limitsKnown.value) return
+  problem.value = null
   saveError.value = null
-  try {
-    const updated = await agentStore.update(props.agentId, {
-      allowedOrigins: parseOrigins(originsText.value),
-    })
-    agentStore.markPendingRestart(props.agentId)
-    emit('saved', updated)
-    editing.value = false
-  } catch (err) {
-    saveError.value = (err as Error).message || 'Save failed'
-  } finally {
-    submitting.value = false
+  const values: ILimitFormValues = {
+    minute: form.minute,
+    hour: form.hour,
+    day: form.day,
   }
+  // Text that is not a limit, or two limits that contradict each other,
+  // cannot be sent as numbers at all: said at once. Whether a PUBLIC agent
+  // may be saved without limits is the server's rule and the server's answer
+  // (`isPublic: false` here skips that check) — its refusal comes back below.
+  const unsendable = findLimitProblem(values, false)
+  if (unsendable) {
+    problem.value = unsendable
+    return
+  }
+
+  const limits = formToLimits(values)
+  const isPublic = form.isPublic
+  const allowedOrigins = parseOrigins(form.originsText)
+  // Origins and the public flag reach the running pod on its next start;
+  // limits take effect on the next request (FR-018) and need none.
+  const needsRestart =
+    isPublic !== props.isPublic ||
+    allowedOrigins.join('\n') !== props.allowedOrigins.join('\n')
+
+  submitting.value = true
+  let updated: IAgentData | null = null
+  // One `PUT /agents/:id` carries all three. It goes through the limit
+  // store's `save`, so the limits record moves optimistically with it and
+  // moves back if the server refuses; the agent record is only ever written
+  // from the server's answer (`agentStore.update` upserts it).
+  const result = await limitStore.save(props.agentId, limits, async () => {
+    updated = await agentStore.update(props.agentId, {
+      isPublic,
+      allowedOrigins,
+      limits,
+    })
+  })
+  submitting.value = false
+
+  if (!result.ok) {
+    const placed = placeRefusal(result.code, result.message, values, isPublic)
+    if (placed) problem.value = placed
+    else saveError.value = result.message
+    return
+  }
+
+  if (needsRestart) agentStore.markPendingRestart(props.agentId)
+  if (updated) emit('saved', updated)
+  // The load snapshot carries `needsLimits` and the windows' ceilings; bring
+  // it in line now rather than on the next poll.
+  void limitStore.fetchLoad(props.agentId).catch(() => undefined)
+  await nextTick()
+  Object.assign(form, baseline.value)
+  justSaved.value = true
+  if (justSavedTimer) clearTimeout(justSavedTimer)
+  justSavedTimer = setTimeout(() => {
+    justSaved.value = false
+  }, 2500)
 }
+
+function setLimitText(window: LimitWindowTypes, value: string | number) {
+  form[window] = String(value ?? '')
+}
+
+function peakOf(window: LimitWindowTypes): number {
+  return peaks.value?.[window] ?? 0
+}
+
+const PEAK_TITLES: Record<LimitWindowTypes, string> = {
+  minute: 'Most requests accepted in any one minute of the last 30 days',
+  hour: 'Most requests accepted in any 60 minutes of the last 30 days',
+  day: 'Most requests accepted in any 24 hours of the last 30 days',
+}
+
+// A private agent is not closed to someone holding its share link (FR-007):
+// warn while the form says "private, no limits" and a link is active. Read
+// from the share store — the same record the header's Share menu shows.
+const shareActive = computed(
+  () => shareStore.linkFor(props.agentId)?.active === true,
+)
+const showShareWarning = computed(
+  () => !form.isPublic && shareActive.value && isLimitFormEmpty(form),
+)
+
+onMounted(() => {
+  void loadLimits()
+  if (!shareStore.linkFor(props.agentId)) void shareStore.loadLink(props.agentId)
+  scrollIfLinkedTo()
+})
+
+// The chat's "Limits" link lands here by anchor. The card is rendered after
+// the route settles, so the browser's own jump has nothing to jump to — and
+// when Overview is already open, only the hash changes.
+const route = useRoute()
+function scrollIfLinkedTo() {
+  if (route.hash !== '#visibility-embed') return
+  void nextTick(() => {
+    document.getElementById('visibility-embed')?.scrollIntoView({ block: 'start' })
+  })
+}
+watch(() => route.hash, scrollIfLinkedTo)
+
+onBeforeUnmount(() => {
+  if (justSavedTimer) clearTimeout(justSavedTimer)
+})
 
 const SDK_URL = 'https://bridle.cleanslice.org/sdk/latest.js'
 
@@ -122,7 +299,7 @@ async function copy(key: string, value: string) {
 </script>
 
 <template>
-  <Card>
+  <Card id="visibility-embed" class="scroll-mt-4">
     <CardHeader>
       <CardTitle>Visibility &amp; embed</CardTitle>
       <CardDescription>
@@ -138,75 +315,200 @@ async function copy(key: string, value: string) {
       </CardDescription>
     </CardHeader>
     <CardContent class="grid gap-4">
-      <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <dt class="text-xs text-muted-foreground">Status</dt>
-          <dd class="mt-1">
-            <Badge :variant="isPublic ? 'default' : 'outline'">
+      <div
+        v-if="needsLimits"
+        class="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
+        role="status"
+        data-limits-needed
+      >
+        <IconAlertTriangle class="mt-0.5 size-4 shrink-0" />
+        <p>
+          <span class="font-medium">Public without limits.</span>
+          This agent was made public before request limits existed and still
+          answers without a cap. Set at least one limit below — the next save
+          of these settings requires it.
+        </p>
+      </div>
+
+      <form class="grid gap-4" novalidate @submit.prevent="onSave">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <Label :for="`visibility-public-${agentId}`">Public</Label>
+            <p class="mt-1 text-xs text-muted-foreground">
+              {{ form.isPublic
+                ? 'Listed on the landing page; visitors on an allowed origin chat with no token. A public agent needs at least one request limit.'
+                : 'Hidden from the landing page; a token is required from any origin.' }}
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <!-- What is SAVED, next to what the switch proposes: after a
+                 refused save the switch still says "public" and this still
+                 says "Private". -->
+            <Badge
+              :variant="isPublic ? 'default' : 'outline'"
+              :data-visibility-saved="isPublic ? 'public' : 'private'"
+              :title="isPublic ? 'Saved as public' : 'Saved as private'"
+            >
               {{ isPublic ? 'Public' : 'Private' }}
             </Badge>
-          </dd>
-        </div>
-        <div class="sm:col-span-2">
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-xs text-muted-foreground">Allowed origins</dt>
-            <Button
-              v-if="!editing"
-              variant="ghost"
-              size="sm"
-              class="h-7 px-2 text-xs"
-              @click="startEdit"
-            >
-              <IconPencil class="size-3.5" />
-              Edit
-            </Button>
+            <Switch
+              :id="`visibility-public-${agentId}`"
+              v-model="form.isPublic"
+              :disabled="submitting"
+              data-visibility-public
+            />
           </div>
-          <dd class="mt-1 text-sm">
-            <template v-if="!editing">
-              <template v-if="allowedOrigins.length">
-                <ul class="space-y-1 font-mono text-xs">
-                  <li v-for="o in allowedOrigins" :key="o" class="break-all">{{ o }}</li>
-                </ul>
-              </template>
-              <span v-else class="italic text-muted-foreground">
-                {{ isPublic
-                  ? 'None — public flag is on, but anonymous embed needs origins. Token still required.'
-                  : 'None — token required from any origin.' }}
-              </span>
-            </template>
-            <div v-else class="grid gap-2">
-              <Textarea
-                v-model="originsText"
-                rows="4"
-                placeholder="https://example.com&#10;http://localhost:5173"
-                :disabled="submitting"
-              />
-              <p class="text-xs text-muted-foreground">
-                One origin per line (scheme + host + optional port, no path). Browser sites
-                at these origins can open chat WebSockets without a JWT. Leave empty to
-                require a token from every origin.
-              </p>
-              <p v-if="saveError" class="text-xs text-destructive">{{ saveError }}</p>
-              <div class="flex items-center gap-2">
-                <Button size="sm" :disabled="submitting" @click="saveOrigins">
-                  <IconLoader2 v-if="submitting" class="size-4 animate-spin" />
-                  <IconCheck v-else class="size-4" />
-                  {{ submitting ? 'Saving…' : 'Save' }}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  :disabled="submitting"
-                  @click="cancelEdit"
-                >
-                  <IconX class="size-4" />
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </dd>
         </div>
-      </dl>
+
+        <div class="grid gap-2">
+          <Label :for="`visibility-origins-${agentId}`">Allowed origins</Label>
+          <Textarea
+            :id="`visibility-origins-${agentId}`"
+            v-model="form.originsText"
+            rows="3"
+            placeholder="https://example.com&#10;http://localhost:5173"
+            :disabled="submitting"
+            data-visibility-origins
+          />
+          <p class="text-xs text-muted-foreground">
+            One origin per line (scheme + host + optional port, no path). Browser sites
+            at these origins can open chat WebSockets without a JWT when the agent
+            is public. Leave empty to require a token from every origin.
+          </p>
+        </div>
+
+        <fieldset class="grid gap-2">
+          <legend class="text-sm font-medium leading-none">
+            Request limits
+            <span class="ml-1 text-xs font-normal text-muted-foreground">
+              {{ form.isPublic ? 'at least one is required while the agent is public' : 'optional' }}
+            </span>
+          </legend>
+          <p class="text-xs text-muted-foreground">
+            How many requests this agent accepts from everyone together — one
+            allowance shared by all visitors. An empty field means that window
+            is not limited; all three empty switches limits off.
+          </p>
+
+          <div class="grid gap-3 sm:grid-cols-3">
+            <div v-for="field in LIMIT_FIELDS" :key="field.window" class="grid content-start gap-1.5">
+              <Label
+                :for="`limit-${field.window}-${agentId}`"
+                class="text-xs text-muted-foreground"
+              >
+                Requests {{ field.label }}
+              </Label>
+              <Input
+                :id="`limit-${field.window}-${agentId}`"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="Not limited"
+                :model-value="form[field.window]"
+                :disabled="submitting || !limitsKnown"
+                :aria-invalid="problem?.place === field.window ? 'true' : undefined"
+                :aria-describedby="problem?.place === field.window ? `limit-${field.window}-${agentId}-error` : undefined"
+                :data-limit-input="field.window"
+                @update:model-value="(v: string | number) => setLimitText(field.window, v)"
+              />
+              <p
+                v-if="peakOf(field.window) > 0"
+                class="text-xs text-muted-foreground"
+                :title="PEAK_TITLES[field.window]"
+                :data-limit-peak="field.window"
+              >
+                highest seen: {{ formatNumber(peakOf(field.window)) }}
+              </p>
+              <p
+                v-if="problem?.place === field.window"
+                :id="`limit-${field.window}-${agentId}-error`"
+                class="text-xs text-destructive"
+                role="alert"
+                data-limits-error
+                :data-limits-error-code="problem.code"
+              >
+                {{ problem.text }}
+              </p>
+            </div>
+          </div>
+
+          <p
+            v-if="problem?.place === 'limits'"
+            class="text-xs text-destructive"
+            role="alert"
+            data-limits-error
+            :data-limits-error-code="problem.code"
+          >
+            {{ problem.text }}
+          </p>
+
+          <p v-if="limitsLoadError" class="text-xs text-destructive">
+            {{ limitsLoadError }} — the limits cannot be edited until they load.
+            <button type="button" class="underline" @click="loadLimits">Retry</button>
+          </p>
+
+          <p class="text-xs text-muted-foreground" data-limits-uncovered>
+            Limits do not cover: operators (Owners and Admins, from either
+            console), agent-to-agent requests, Telegram, and the agent's
+            scheduled runs.
+          </p>
+
+          <div
+            v-if="showShareWarning"
+            class="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
+            role="status"
+            data-limits-share-warning
+          >
+            <IconAlertTriangle class="mt-0.5 size-4 shrink-0" />
+            <p>
+              This agent is private, but it has an active share link and no
+              limits: anyone with the link can use it without a cap. You can
+              save it this way.
+            </p>
+          </div>
+        </fieldset>
+
+        <p
+          v-if="saveError"
+          class="text-xs text-destructive"
+          role="alert"
+          data-visibility-error
+        >
+          {{ saveError }}
+        </p>
+
+        <div class="flex items-center gap-2">
+          <Button
+            type="submit"
+            size="sm"
+            :disabled="submitting || !dirty || !limitsKnown"
+            data-visibility-save
+          >
+            <IconLoader2 v-if="submitting" class="size-4 animate-spin" />
+            <IconCheck v-else class="size-4" />
+            {{ submitting ? 'Saving…' : 'Save' }}
+          </Button>
+          <Button
+            v-if="dirty"
+            type="button"
+            variant="ghost"
+            size="sm"
+            :disabled="submitting"
+            @click="resetForm"
+          >
+            <IconX class="size-4" />
+            Cancel
+          </Button>
+          <span
+            v-if="justSaved && !dirty"
+            class="text-xs text-muted-foreground"
+            role="status"
+            data-visibility-saved-note
+          >
+            Saved
+          </span>
+        </div>
+      </form>
 
       <div class="grid gap-3">
         <div>

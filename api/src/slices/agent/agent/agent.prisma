@@ -6,6 +6,7 @@ import { PaddockEvaluation } from "../../paddock/evaluation/evaluation"
 import { ChatSession } from "../../chat/chat"
 import { AgentShareLink } from "../shareLink/shareLink"
 import { AgentPeer } from "../peer/peer"
+import { AgentLimit, AgentLoadMinute } from "../limit/agentLimit"
 import { AgentDelegation } from "../peer/delegation"
 import { AgentToolListing } from "../toolCatalog/toolCatalog"
 import { FileChangeProposal } from "../file/file"
@@ -67,6 +68,10 @@ model Agent {
   chatSessions       ChatSession[]
   // At most one public share link per agent (CLEAN-66).
   shareLink          AgentShareLink?
+  // Request limits and per-minute load (CLEAN-224). No AgentLimit row means
+  // limits are off. Deliberately not columns here: see agentLimit.prisma.
+  limit              AgentLimit?
+  loadMinutes        AgentLoadMinute[]
   // Agents this one may delegate to, and the ones that may delegate to it
   // (CLEAN-74). Directed: the two lists are unrelated.
   peers              AgentPeer[]         @relation("AgentPeerCaller")

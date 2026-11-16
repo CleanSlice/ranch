@@ -11,6 +11,7 @@ import { InitModule } from './slices/setup/init/init.module';
 import { AgentModule } from './slices/agent/agent/agent.module';
 import { AgentChannelModule } from './slices/agent/agentChannel/agentChannel.module';
 import { ShareLinkModule } from './slices/agent/shareLink/shareLink.module';
+import { AgentLimitModule } from './slices/agent/limit/agentLimit.module';
 import { PeerModule } from './slices/agent/peer/peer.module';
 import { AgentEventModule } from './slices/agent/event/agentEvent.module';
 import { ToolCatalogModule } from './slices/agent/toolCatalog/toolCatalog.module';
@@ -66,6 +67,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     AgentModule,
     AgentChannelModule,
     ShareLinkModule,
+    AgentLimitModule,
     PeerModule,
     AgentEventModule,
     ToolCatalogModule,

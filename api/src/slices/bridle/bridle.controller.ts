@@ -8,6 +8,8 @@ import {
   ConflictException,
   ForbiddenException,
   HttpCode,
+  HttpException,
+  HttpStatus,
   Inject,
   NotFoundException,
   ServiceUnavailableException,
@@ -136,6 +138,45 @@ const INLINE_SAFE_TYPES = new Set([
   'text/markdown',
   'text/csv',
 ]);
+
+/**
+ * Who a requester is to the agent's request limits (CLEAN-224). The same test
+ * this controller already uses for admin rights: a verified JWT whose chat
+ * identity is the shared `admin` channel belongs to an Owner or Admin, who
+ * must be able to reach an agent that is at its limit. Everyone else —
+ * signed-in users, share visitors, anonymous callers — is a visitor.
+ */
+function limitSourceOf(
+  requester: IAttachmentRequester,
+): 'visitor' | 'operator' {
+  return requester.kind === 'jwt' && requester.clientId === 'admin'
+    ? 'operator'
+    : 'visitor';
+}
+
+/**
+ * The refusal for a full limit: 429 with the wait, in whole seconds rounded
+ * up so it is never shorter than the real one. `Retry-After` is the standard
+ * place a client library looks; the body says the same for callers that read
+ * JSON only.
+ */
+function tooManyRequests(
+  res: Response,
+  retryAfterMs: number,
+  window: 'minute' | 'hour' | 'day',
+): HttpException {
+  const retryAfterSec = Math.max(1, Math.ceil(retryAfterMs / 1000));
+  res.setHeader('Retry-After', String(retryAfterSec));
+  return new HttpException(
+    {
+      code: 'RATE_LIMITED',
+      message: 'This agent has reached its message limit.',
+      retryAfterSec,
+      window,
+    },
+    HttpStatus.TOO_MANY_REQUESTS,
+  );
+}
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'attachment';
@@ -396,6 +437,7 @@ export class BridleController {
     @Param('agentId') agentId: string,
     @Req() req: Record<string, unknown>,
     @Body() body: SendMessageDto,
+    @Res({ passthrough: true }) res: Response,
   ) {
     const requester = await this.resolveRequester(req, agentId);
     const clientId = requester.clientId ?? 'http-' + crypto.randomUUID();
@@ -406,14 +448,36 @@ export class BridleController {
       body.attachmentIds,
       requester,
     );
-    this.hub.sendToAgent(
+    const sent = this.hub.sendToAgent(
       clientId,
       agentId,
       expanded.text,
       [...base, ...expanded.parts],
       expanded.attachments,
+      { source: limitSourceOf(requester), silentRefusal: true },
     );
+    if (sent.status === 'rejected' && sent.code === 'RATE_LIMITED') {
+      throw tooManyRequests(res, sent.retryAfterMs, sent.window);
+    }
+    this.paceHeaders(res, agentId, requester);
     return { ok: true };
+  }
+
+  /**
+   * Tell a caller that paces itself how much of the agent's tightest limit
+   * window is left (CLEAN-224). Only a caller that presented a credential:
+   * to an anonymous one these numbers would disclose the limit and the load.
+   */
+  private paceHeaders(
+    res: Response,
+    agentId: string,
+    requester: IAttachmentRequester,
+  ): void {
+    if (requester.kind !== 'jwt') return;
+    const left = this.hub.limitRemaining(agentId);
+    if (!left) return;
+    res.setHeader('X-RateLimit-Remaining', String(left.remaining));
+    res.setHeader('X-RateLimit-Reset', String(left.resetSec));
   }
 
   @ApiOperation({
@@ -448,6 +512,7 @@ export class BridleController {
     @Param('agentId') agentId: string,
     @Req() req: Record<string, unknown>,
     @Body() body: SendMessageDto,
+    @Res({ passthrough: true }) res: Response,
   ) {
     const requester = await this.resolveRequester(req, agentId);
     const clientId = requester.clientId ?? 'sync-' + crypto.randomUUID();
@@ -470,7 +535,19 @@ export class BridleController {
       parts: [...base, ...expanded.parts],
       attachments: expanded.attachments,
       ...(requester.user ? { user: requester.user } : {}),
+      source: limitSourceOf(requester),
     });
+
+    // The agent's limit was full: answered at once, as a refusal a caller can
+    // tell apart from every other failure and act on (CLEAN-224).
+    if (reply.rateLimited) {
+      throw tooManyRequests(
+        res,
+        reply.rateLimited.retryAfterMs,
+        reply.rateLimited.window,
+      );
+    }
+    this.paceHeaders(res, agentId, requester);
 
     return {
       // This route has always answered a timeout with a sentence in the

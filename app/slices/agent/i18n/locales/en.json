@@ -71,6 +71,8 @@
     "access_public": "Public",
     "access_private": "Private",
     "origins": "{count} origin | {count} origins",
+    "limits_on": "limits on",
+    "limits_off": "limits off",
     "age": "Created",
     "updated": "updated {when}",
     "start": "Start",

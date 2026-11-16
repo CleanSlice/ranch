@@ -145,6 +145,13 @@ export type SetTemplateMcpsDto = {
   mcpServerIds: Array<string>;
 };
 
+export type SetTemplateToolsDto = {
+  /**
+   * Full list of Documents MCP tool names agents of this template may list and call; replaces any prior list. `null` restores every tool (the default).
+   */
+  toolNames: Array<string> | null;
+};
+
 export type AgentDto = {
   id: string;
   name: string;
@@ -377,6 +384,21 @@ export type AgentResourcesDto = {
   memory: string;
 };
 
+export type SetAgentLimitsDto = {
+  /**
+   * Requests accepted in any 60 seconds. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.
+   */
+  perMinute?: number | null;
+  /**
+   * Requests accepted in any 60 minutes. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.
+   */
+  perHour?: number | null;
+  /**
+   * Requests accepted in any 24 hours. Null or absent means this window is not limited. A whole number from 1 to 1000000; a longer window may not allow fewer requests than a shorter one.
+   */
+  perDay?: number | null;
+};
+
 export type CreateAgentDto = {
   name: string;
   templateId: string;
@@ -393,6 +415,10 @@ export type CreateAgentDto = {
    * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
    */
   allowedOrigins?: Array<string>;
+  /**
+   * Request limits, saved together with the rest (CLEAN-224). A public agent needs at least one: making an agent public without limits, or removing the last limit from a public one, is refused with PUBLIC_AGENT_NEEDS_LIMITS. Null switches limits off; absent leaves them as they are.
+   */
+  limits?: SetAgentLimitsDto | null;
   knowledgeIds?: Array<string>;
   /**
    * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
@@ -416,6 +442,10 @@ export type UpdateAgentDto = {
    * Origins (scheme + host + port) authorized to open browser WebSockets to this bot without a JWT. Only consulted when isPublic=true.
    */
   allowedOrigins?: Array<string>;
+  /**
+   * Request limits, saved together with the rest (CLEAN-224). A public agent needs at least one: making an agent public without limits, or removing the last limit from a public one, is refused with PUBLIC_AGENT_NEEDS_LIMITS. Null switches limits off; absent leaves them as they are.
+   */
+  limits?: SetAgentLimitsDto | null;
   knowledgeIds?: Array<string>;
   /**
    * When true, the agent is created as the Ranch admin on first deploy: any existing admin is demoted (and redeployed without RANCH_ADMIN), and this agent boots with RANCH_ADMIN=true + a service token. Single-admin invariant is enforced.
@@ -455,11 +485,21 @@ export type FileLimitsDto = {
   importMaxEntries: number;
   importMaxFileBytes: number;
   importPlanListRows: number;
+  /**
+   * Selected-files import: plain files per import.
+   */
+  importMaxFiles: number;
   diffCompareMaxBytes: number;
   diffInlineMaxLines: number;
   diffInlineMaxBytes: number;
   proposalListRows: number;
   textExtensions: Array<string>;
+  /**
+   * Character limits of the curated root files, from this agent's agent.config.json (memory.limits; runtime defaults where unset). A save over the limit is refused with 400 naming the limit.
+   */
+  curated: {
+    [key: string]: number;
+  };
 };
 
 export type FileChunkDto = {
@@ -630,6 +670,39 @@ export type ImportPlanDto = {
   entries: Array<ImportPlanEntryDto>;
   more: number;
   warnings: Array<string>;
+};
+
+export type ImportResolveRequestDto = {
+  /**
+   * Names of the dropped files, as the browser reports them.
+   */
+  names: Array<string>;
+  /**
+   * Relative folder for names that match nothing; empty = root.
+   */
+  targetFolder?: string;
+};
+
+export type ImportResolveRowDto = {
+  name: string;
+  match: "unique" | "none" | "ambiguous";
+  /**
+   * unique → the matched path; none → <targetFolder>/<name>; ambiguous → null.
+   */
+  path: string | null;
+  /**
+   * ambiguous only: the matching paths, sorted.
+   */
+  candidates: Array<string>;
+  /**
+   * unique only: size of the matched file.
+   */
+  size: number | null;
+};
+
+export type ImportResolveResponseDto = {
+  targetFolder: string;
+  rows: Array<ImportResolveRowDto>;
 };
 
 export type ImportApplyDto = {
@@ -999,6 +1072,124 @@ export type ShareResolvedDto = {
   agentStatus: string;
 };
 
+export type AgentLimitSummaryDto = {
+  agentId: string;
+  /**
+   * The agent has at least one limit.
+   */
+  enabled: boolean;
+  /**
+   * A limit is full right now: the next visitor request is refused.
+   */
+  atLimit: boolean;
+  /**
+   * Public with no limits. Only possible for an agent that was public before limits existed; its next visibility save requires them.
+   */
+  needsLimits: boolean;
+};
+
+export type AgentLimitsDto = {
+  perMinute: number | null;
+  perHour: number | null;
+  perDay: number | null;
+};
+
+export type AgentLimitsStateDto = {
+  /**
+   * Null when limits are off for this agent.
+   */
+  limits: AgentLimitsDto | null;
+};
+
+export type AgentLimitsEnabledDto = {
+  /**
+   * True when the agent has at least one limit.
+   */
+  enabled: boolean;
+};
+
+export type AgentLoadWindowDto = {
+  window: "minute" | "hour" | "day";
+  /**
+   * Requests accepted in this window so far.
+   */
+  used: number;
+  limit: number | null;
+  /**
+   * Seconds until this window has room again; null while it has room.
+   */
+  retryAfterSec: number | null;
+};
+
+export type AgentLoadMinuteDto = {
+  /**
+   * Start of the minute, ISO 8601 (UTC).
+   */
+  minute: string;
+  accepted: number;
+  refused: number;
+  /**
+   * Operator and agent-to-agent requests; not counted toward limits.
+   */
+  exempt: number;
+};
+
+export type AgentLoadByWindowDto = {
+  minute: number;
+  hour: number;
+  day: number;
+};
+
+export type AgentLoadRefusedDto = {
+  /**
+   * Requests refused for a limit in the last 60 minutes.
+   */
+  lastHour: number;
+  /**
+   * ISO 8601, or null.
+   */
+  lastAt: string | null;
+  /**
+   * Refusals in the last 60 minutes by the window that set the wait.
+   */
+  byWindow: AgentLoadByWindowDto;
+};
+
+export type AgentLoadDto = {
+  limits: AgentLimitsDto | null;
+  isPublic: boolean;
+  needsLimits: boolean;
+  windows: Array<AgentLoadWindowDto>;
+  /**
+   * Conversations with a turn open right now.
+   */
+  inFlight: number;
+  /**
+   * The last 60 minutes, oldest first, empty minutes included.
+   */
+  series: Array<AgentLoadMinuteDto>;
+  refused: AgentLoadRefusedDto;
+  /**
+   * Operator and agent-to-agent requests in the last 60 minutes.
+   */
+  exemptLastHour: number;
+  /**
+   * Highest number of accepted requests in any minute, hour and day of the last 30 days.
+   */
+  peaks: AgentLoadByWindowDto;
+  /**
+   * Live copies of the API. Above 1 these figures are the share of one copy only.
+   */
+  apiReplicas: number;
+};
+
+export type McpToolSummaryDto = {
+  name: string;
+  topic: string | null;
+  title: string | null;
+  description: string;
+};
+
 export type CreateMcpServerDto = {
   name: string;
   description?: {
@@ -1318,6 +1509,42 @@ export type AddFromArchiveResultDto = {
   jobId: string;
 };
 
+export type SkillOrderItemDto = {
+  id: string;
+  /**
+   * 1-based position in the library
+   */
+  sortOrder: number;
+};
+
+export type SkillOrderDto = {
+  /**
+   * Hash of every position. Send it back with PATCH /skills/order; a save against an older version is refused with 409 ORDER_CHANGED.
+   */
+  version: string;
+  items: Array<SkillOrderItemDto>;
+};
+
+export type SaveSkillOrderDto = {
+  /**
+   * The version GET /skills/order returned
+   */
+  version: string;
+  /**
+   * Every skill exactly once with its new position. Order only — agents and templates are not affected.
+   */
+  items: Array<SkillOrderItemDto>;
+};
+
+export type NameAvailableDto = {
+  name: string;
+  available: boolean;
+  /**
+   * The skill that holds the name, if any
+   */
+  existingId?: string;
+};
+
 export type ImportSkillUrlDto = {
   /**
    * GitHub URL — folder (tree/<sha>/<path>) or file (blob/<sha>/<path>). The folder must contain a SKILL.md or README.md.
@@ -1349,6 +1576,17 @@ export type ImportSkillDto = {
   overwrite?: boolean;
 };
 
+/**
+ * Library group on the admin Skills page; null clears it
+ */
+export enum SkillGroup {
+  API = "api",
+  ROUTING = "routing",
+  SPEC_LOOKUP = "spec-lookup",
+  ANSWER_FORMAT = "answer-format",
+  RUNTIME = "runtime",
+}
+
 export type CreateSkillDto = {
   /**
    * Unique slug — lowercase letters, digits, dashes
@@ -1360,6 +1598,10 @@ export type CreateSkillDto = {
    */
   body: string;
   description?: string;
+  /**
+   * Library group on the admin Skills page; null clears it
+   */
+  group?: SkillGroup | null;
 };
 
 export type UpdateSkillDto = {
@@ -1373,6 +1615,10 @@ export type UpdateSkillDto = {
    */
   body?: string;
   description?: string;
+  /**
+   * Library group on the admin Skills page; null clears it
+   */
+  group?: SkillGroup | null;
 };
 
 export type ChatSessionDto = {
@@ -3028,6 +3274,19 @@ export type TemplateControllerSetMcpsResponses = {
   200: unknown;
 };
 
+export type TemplateControllerSetToolsData = {
+  body: SetTemplateToolsDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/templates/{id}/tools";
+};
+
+export type TemplateControllerSetToolsResponses = {
+  200: unknown;
+};
+
 export type AgentControllerFindAllData = {
   body?: never;
   path?: never;
@@ -3532,6 +3791,64 @@ export type StageAgentImportResponses = {
 
 export type StageAgentImportResponse =
   StageAgentImportResponses[keyof StageAgentImportResponses];
+
+export type ResolveAgentImportFilesData = {
+  body: ImportResolveRequestDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/import/resolve";
+};
+
+export type ResolveAgentImportFilesErrors = {
+  /**
+   * A name holds a separator or control character, two names are equal, too many names, or the target folder is not a relative workspace path.
+   */
+  400: unknown;
+};
+
+export type ResolveAgentImportFilesResponses = {
+  200: ImportResolveResponseDto;
+};
+
+export type ResolveAgentImportFilesResponse =
+  ResolveAgentImportFilesResponses[keyof ResolveAgentImportFilesResponses];
+
+export type StageAgentImportFilesData = {
+  body: {
+    files: Array<Blob | File>;
+    targets: string;
+    targetFolder?: string;
+  };
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/files/import/stage-files";
+};
+
+export type StageAgentImportFilesErrors = {
+  /**
+   * Duplicate name, a target outside the resolved set, an unsafe path, or no files.
+   */
+  400: unknown;
+  /**
+   * An import for this agent is already running.
+   */
+  409: unknown;
+  /**
+   * A file over the per-file limit, or too many files.
+   */
+  413: unknown;
+};
+
+export type StageAgentImportFilesResponses = {
+  200: ImportPlanDto;
+};
+
+export type StageAgentImportFilesResponse =
+  StageAgentImportFilesResponses[keyof StageAgentImportFilesResponses];
 
 export type PlanAgentImportData = {
   body?: never;
@@ -4296,6 +4613,139 @@ export type ResolveShareLinkResponses = {
 export type ResolveShareLinkResponse =
   ResolveShareLinkResponses[keyof ResolveShareLinkResponses];
 
+export type ListAgentLimitsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/agent-limits";
+};
+
+export type ListAgentLimitsErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+};
+
+export type ListAgentLimitsResponses = {
+  200: Array<AgentLimitSummaryDto>;
+};
+
+export type ListAgentLimitsResponse =
+  ListAgentLimitsResponses[keyof ListAgentLimitsResponses];
+
+export type GetAgentLimitsData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/limits";
+};
+
+export type GetAgentLimitsErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type GetAgentLimitsResponses = {
+  200: AgentLimitsStateDto;
+};
+
+export type GetAgentLimitsResponse =
+  GetAgentLimitsResponses[keyof GetAgentLimitsResponses];
+
+export type SetAgentLimitsData = {
+  body: SetAgentLimitsDto;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/limits";
+};
+
+export type SetAgentLimitsErrors = {
+  /**
+   * Refused, with a `code`: PUBLIC_AGENT_NEEDS_LIMITS, LIMIT_OUT_OF_RANGE or LIMIT_WINDOWS_CONTRADICT.
+   */
+  400: unknown;
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type SetAgentLimitsResponses = {
+  200: AgentLimitsStateDto;
+};
+
+export type SetAgentLimitsResponse =
+  SetAgentLimitsResponses[keyof SetAgentLimitsResponses];
+
+export type GetAgentLimitsEnabledData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/limits/enabled";
+};
+
+export type GetAgentLimitsEnabledErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type GetAgentLimitsEnabledResponses = {
+  200: AgentLimitsEnabledDto;
+};
+
+export type GetAgentLimitsEnabledResponse =
+  GetAgentLimitsEnabledResponses[keyof GetAgentLimitsEnabledResponses];
+
+export type GetAgentLoadData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/load";
+};
+
+export type GetAgentLoadErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent with this id.
+   */
+  404: unknown;
+};
+
+export type GetAgentLoadResponses = {
+  200: AgentLoadDto;
+};
+
+export type GetAgentLoadResponse =
+  GetAgentLoadResponses[keyof GetAgentLoadResponses];
+
 export type McpServerControllerFindAllData = {
   body?: never;
   path?: never;
@@ -4317,6 +4767,20 @@ export type McpServerControllerCreateData = {
 export type McpServerControllerCreateResponses = {
   201: unknown;
 };
+
+export type McpServerControllerListToolsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/mcp-servers/tools";
+};
+
+export type McpServerControllerListToolsResponses = {
+  200: Array<McpToolSummaryDto>;
+};
+
+export type McpServerControllerListToolsResponse =
+  McpServerControllerListToolsResponses[keyof McpServerControllerListToolsResponses];
 
 export type McpServerControllerRemoveData = {
   body?: never;
@@ -4741,6 +5205,57 @@ export type SkillControllerCreateData = {
 export type SkillControllerCreateResponses = {
   201: unknown;
 };
+
+export type GetSkillOrderData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/skills/order";
+};
+
+export type GetSkillOrderResponses = {
+  200: SkillOrderDto;
+};
+
+export type GetSkillOrderResponse =
+  GetSkillOrderResponses[keyof GetSkillOrderResponses];
+
+export type SaveSkillOrderData = {
+  body: SaveSkillOrderDto;
+  path?: never;
+  query?: never;
+  url: "/skills/order";
+};
+
+export type SaveSkillOrderResponses = {
+  200: SkillOrderDto;
+};
+
+export type SaveSkillOrderResponse =
+  SaveSkillOrderResponses[keyof SaveSkillOrderResponses];
+
+export type SkillNameAvailableData = {
+  body?: never;
+  path?: never;
+  query: {
+    /**
+     * Slug to check
+     */
+    name: string;
+    /**
+     * A skill whose own name does not count as taken (Edit skill)
+     */
+    excludeId?: string;
+  };
+  url: "/skills/name-available";
+};
+
+export type SkillNameAvailableResponses = {
+  200: NameAvailableDto;
+};
+
+export type SkillNameAvailableResponse =
+  SkillNameAvailableResponses[keyof SkillNameAvailableResponses];
 
 export type SkillControllerListSourcesData = {
   body?: never;

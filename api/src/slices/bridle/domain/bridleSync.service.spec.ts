@@ -1,5 +1,6 @@
 import { BridleSyncService } from './bridleSync.service';
 import type { IBridleGateway } from './bridle.gateway';
+import type { BridleSendResult } from './bridle.types';
 
 /**
  * The register/resolve/timeout dance the synchronous chat route has always
@@ -10,6 +11,10 @@ import type { IBridleGateway } from './bridle.gateway';
 type Send = (data: unknown) => void;
 
 function makeHarness() {
+  /** What the hub answers a send with; a test swaps it for a refusal. */
+  const sendResult: { current: BridleSendResult } = {
+    current: { status: 'accepted', messageId: 'sent-1', ts: 1 },
+  };
   const registrations: Array<{
     clientId: string;
     agentId: string;
@@ -60,6 +65,7 @@ function makeHarness() {
         attachments: unknown,
       ) => {
         sends.push({ clientId, agentId, text, parts, attachments });
+        return sendResult.current;
       },
     ),
   } as unknown as IBridleGateway;
@@ -68,6 +74,7 @@ function makeHarness() {
   return {
     service,
     hub,
+    sendResult,
     registrations,
     unregistrations,
     sends,
@@ -76,6 +83,46 @@ function makeHarness() {
 }
 
 const base = { agentId: 'agent-1', clientId: 'peer:caller:ctx-1', text: 'hi' };
+
+describe('BridleSyncService — request limits (CLEAN-224)', () => {
+  it('returns at once when the agent limit is full, instead of waiting for an answer', async () => {
+    const h = makeHarness();
+    h.sendResult.current = {
+      status: 'rejected',
+      code: 'RATE_LIMITED',
+      retryAfterMs: 42_000,
+      window: 'minute',
+    };
+
+    const reply = await h.service.sendAndAwait({ ...base, timeoutMs: 60_000 });
+
+    expect(reply).toEqual({
+      text: '',
+      messageId: '',
+      ts: expect.any(Number),
+      timedOut: false,
+      rateLimited: { retryAfterMs: 42_000, window: 'minute' },
+    });
+    // The listener it registered is gone: nothing is left waiting.
+    expect(h.unregistrations).toHaveLength(1);
+  });
+
+  it('asks as a visitor unless told otherwise, and renders the refusal itself', async () => {
+    const h = makeHarness();
+    const visitor = h.service.sendAndAwait(base);
+    h.emit({ type: 'message', text: 'ok', messageId: 'm', ts: 1 });
+    await visitor;
+    const peer = h.service.sendAndAwait({ ...base, source: 'peer' });
+    h.emit({ type: 'message', text: 'ok', messageId: 'm', ts: 1 });
+    await peer;
+
+    const calls = (h.hub.sendToAgent as unknown as jest.Mock).mock.calls;
+    expect(calls[0][5]).toEqual(
+      expect.objectContaining({ source: 'visitor', silentRefusal: true }),
+    );
+    expect(calls[1][5]).toEqual(expect.objectContaining({ source: 'peer' }));
+  });
+});
 
 describe('BridleSyncService.sendAndAwait', () => {
   beforeEach(() => jest.useRealTimers());

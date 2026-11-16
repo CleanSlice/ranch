@@ -1,0 +1,43 @@
+import { Agent } from "../agent/agent"
+
+// Request limits for one agent (CLEAN-224). One row per agent that has
+// limits; no row means "off", which is the default for every agent. Kept
+// apart from Agent on purpose: the whole Agent record is readable in places
+// limit values must never reach (the status stream, AgentDto).
+model AgentLimit {
+  agentId     String   @id
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // Requests accepted in any 60 seconds / 60 minutes / 24 hours. Null = this
+  // window is not limited. At least one is set, otherwise the row is deleted.
+  perMinute   Int?
+  perHour     Int?
+  perDay      Int?
+  // JWT `sub` of the console user who last changed it; null for a change that
+  // carried no user.
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Requests per agent per minute. Written for every agent that gets traffic,
+// limited or not: it is what survives a restart, what the last-hour chart
+// draws and what the 30-day peaks are computed from. Counts only — no message
+// content and nothing about who sent a request. Rows exist only for minutes
+// with traffic and are pruned after 30 days.
+model AgentLoadMinute {
+  agentId         String
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // Start of the minute, UTC.
+  minute          DateTime
+  accepted        Int      @default(0)
+  refused         Int      @default(0)
+  // Which window set the wait of a refusal.
+  refusedByMinute Int      @default(0)
+  refusedByHour   Int      @default(0)
+  refusedByDay    Int      @default(0)
+  // Operator and agent-to-agent requests: seen, never counted toward limits.
+  exempt          Int      @default(0)
+
+  @@id([agentId, minute])
+  @@index([minute])
+}

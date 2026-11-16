@@ -3,6 +3,7 @@ import {
   BridleChannelStates,
   type IBridleConversation,
 } from '#bridle/stores/bridle';
+import { useLimitCountdown } from '#bridle/composables/useLimitCountdown';
 import { buildChatFlow } from '#bridle/utils/chatFlow';
 import { noticeParams } from '#bridle/utils/noticeParams';
 import { useFormat } from '#common/composables/useFormat';
@@ -183,6 +184,23 @@ function onScroll() {
   if (el && el.scrollTop <= NEAR_TOP_PX) void loadOlder();
 }
 
+// ── Request limit (CLEAN-224) ─────────────────────────────────
+// The agent's limit is full: the composer carries a notice with the wait and
+// sends nothing until it ends. Counted here, once per chat, so the notice
+// outlives the composer being remounted or swapped for the drop zone. The
+// landing chat, the share page and the console chat all render this
+// component, which is why they all get it.
+
+const { countdown: limit } = useLimitCountdown(
+  () => activeConversation.value?.agentId,
+);
+/** What every control the limit turns off points at with `aria-describedby`. */
+const limitNoticeId = useId();
+/** The notice's id while sending is paused; undefined otherwise. */
+const sendPausedBy = computed(() =>
+  limit.value?.state === 'waiting' ? limitNoticeId : undefined,
+);
+
 /** Bumped by a reset; the composer is keyed on it and remounts empty. */
 const composerEpoch = computed(() => {
   const key = activeConversation.value?.key;
@@ -192,6 +210,8 @@ const composerEpoch = computed(() => {
 async function onSend(text: string) {
   const conversation = activeConversation.value;
   if (!conversation) return;
+  // The store refuses this by itself while the agent's limit is full and
+  // hands the text back to the composer (CLEAN-224).
   bridleStore.sendMessage(conversation, text);
   // Wherever the person was reading, they just spoke: show them their
   // message. The watcher below would not — it only follows a reader who was
@@ -391,6 +411,7 @@ onBeforeUnmount(() => {
               :message="item.message"
               :conversation="activeConversation"
               :agent-name="title"
+              :send-paused-by="sendPausedBy"
               @resend="onResend"
               @discard="onDiscard"
             />
@@ -484,6 +505,8 @@ onBeforeUnmount(() => {
         v-else
         :key="composerEpoch"
         :conversation="activeConversation"
+        :limit="limit"
+        :limit-notice-id="limitNoticeId"
         @send="onSend"
       />
     </template>

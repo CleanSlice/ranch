@@ -25,4 +25,10 @@ export abstract class IAgentGateway {
   abstract start(id: string): Promise<IAgentData | null>;
   abstract getCapacity(): Promise<IClusterCapacityData | null>;
   abstract getLinks(): Promise<IAgentLinkData[]>;
+  /**
+   * Whether the agent has at least one request limit (CLEAN-224). The one
+   * fact about limits this console is given: the numbers, the usage and the
+   * form live in the admin console. Null when the API gave no answer.
+   */
+  abstract getLimitsEnabled(id: string): Promise<boolean | null>;
 }

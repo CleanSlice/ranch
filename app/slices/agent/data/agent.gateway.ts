@@ -1,4 +1,4 @@
-import { AgentsService, PeersService } from '#api';
+import { AgentLimitsService, AgentsService, PeersService } from '#api';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
 import { IAgentGateway } from '../domain/agent.gateway';
@@ -125,6 +125,18 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
     return this.execute(async () => {
       const res = await PeersService.listAgentLinks();
       return this.mapper.toLinks(unwrapEnvelope(res.data));
+    });
+  }
+
+  // The generated client never throws: a refusal or a network failure leaves
+  // `data` empty, which reads as "no answer" — never as "limits off".
+  getLimitsEnabled(id: string): Promise<boolean | null> {
+    return this.execute(async () => {
+      const res = await AgentLimitsService.getAgentLimitsEnabled({
+        path: { agentId: id },
+      });
+      const body = unwrapEnvelope<{ enabled?: unknown }>(res.data);
+      return typeof body?.enabled === 'boolean' ? body.enabled : null;
     });
   }
 }

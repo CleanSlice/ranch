@@ -71,6 +71,8 @@
     "access_public": "Публичный",
     "access_private": "Приватный",
     "origins": "нет доменов | {count} домен | {count} домена | {count} доменов",
+    "limits_on": "лимиты вкл",
+    "limits_off": "лимиты выкл",
     "age": "Создан",
     "updated": "обновлён {when}",
     "start": "Запустить",

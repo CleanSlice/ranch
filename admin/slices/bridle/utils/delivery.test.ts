@@ -1,6 +1,13 @@
 // TWIN FILE: `app/slices/bridle/utils/delivery.test.ts` — change them together.
 import { describe, expect, test } from 'bun:test'
-import { FAILED_MS, SLOW_MS, nextDelivery, type IDeliveryState } from './delivery'
+import {
+  DeliveryFailureCodes,
+  FAILED_MS,
+  SLOW_MS,
+  deliveryFailureReason,
+  nextDelivery,
+  type IDeliveryState,
+} from './delivery'
 
 const sending: IDeliveryState = { delivery: 'sending' }
 const slow: IDeliveryState = { delivery: 'slow' }
@@ -72,5 +79,42 @@ describe('nextDelivery', () => {
     expect(nextDelivery(failed, { type: 'resend' })).toEqual(sending)
     expect(nextDelivery(delivered, { type: 'resend' })).toEqual(delivered)
     expect(nextDelivery(slow, { type: 'resend' })).toEqual(slow)
+  })
+
+  // CLEAN-224. Operators are not limited, so this ack should never arrive
+  // here — if it does, it is a failure like any other, with its own name.
+  test('ackRejected RATE_LIMITED: sending / slow → failed with that code', () => {
+    const limited = { delivery: 'failed', failureCode: 'RATE_LIMITED' }
+    expect(nextDelivery(sending, { type: 'ackRejected', code: 'RATE_LIMITED' })).toEqual(limited)
+    expect(nextDelivery(slow, { type: 'ackRejected', code: 'RATE_LIMITED' })).toEqual(limited)
+  })
+
+  test('a RATE_LIMITED message can be resent like any failed one', () => {
+    const limited: IDeliveryState = { delivery: 'failed', failureCode: 'RATE_LIMITED' }
+    expect(nextDelivery(limited, { type: 'resend' })).toEqual(sending)
+  })
+})
+
+describe('deliveryFailureReason', () => {
+  test('every known code has its own sentence', () => {
+    expect(deliveryFailureReason('AGENT_OFFLINE')).toBe('the agent is offline')
+    expect(deliveryFailureReason('OFFLINE')).toBe('the chat is not connected')
+    expect(deliveryFailureReason('TIMEOUT')).toBe('no confirmation from the server')
+    expect(deliveryFailureReason('ATTACHMENT_FAILED')).toBe('an attachment could not be read')
+  })
+
+  test('RATE_LIMITED is a named reason, not the fallback', () => {
+    expect(DeliveryFailureCodes.RateLimited).toBe('RATE_LIMITED')
+    expect(deliveryFailureReason('RATE_LIMITED')).toBe('the agent is at its message limit')
+  })
+
+  test('an unknown or missing code gets the general sentence and does not throw', () => {
+    expect(deliveryFailureReason('SOMETHING_NEW')).toBe('the server rejected it')
+    expect(deliveryFailureReason('')).toBe('the server rejected it')
+    expect(deliveryFailureReason(undefined)).toBe('the server rejected it')
+    expect(deliveryFailureReason(null)).toBe('the server rejected it')
+    // Names every object has must not be mistaken for codes.
+    expect(deliveryFailureReason('toString')).toBe('the server rejected it')
+    expect(deliveryFailureReason('constructor')).toBe('the server rejected it')
   })
 })

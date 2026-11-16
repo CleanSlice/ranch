@@ -36,6 +36,19 @@ onUnmounted(() => {
   if (capacityTimer) clearInterval(capacityTimer);
 });
 
+// The rail's "at limit" and "public without limits" marks (CLEAN-224). One
+// poll for the whole workspace, here for the same reason as the list request
+// above; the store pauses it while the tab is hidden.
+const limitStore = useAgentLimitStore();
+let stopLimitSummary: (() => void) | null = null;
+onMounted(() => {
+  stopLimitSummary = limitStore.watchSummary();
+});
+onUnmounted(() => {
+  stopLimitSummary?.();
+  stopLimitSummary = null;
+});
+
 // Selecting an agent is real navigation — `push`, so Back undoes it (FR-004).
 // The tab in `?tab=` rides along: an operator comparing Environment across two
 // agents should not be dropped back into a conversation on every switch.

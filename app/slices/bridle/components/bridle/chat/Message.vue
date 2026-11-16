@@ -18,6 +18,12 @@ const props = defineProps<{
   /** Carried through to the attachment list, which reads bytes back. */
   conversation: IBridleConversation;
   agentName?: string;
+  /**
+   * The id of the limit notice while the agent's request limit is full
+   * (CLEAN-224). Resend is a send like any other: it is off for as long as
+   * the composer's own Send is, and described by the same notice.
+   */
+  sendPausedBy?: string;
 }>();
 const emit = defineEmits<{ resend: [id: string]; discard: [id: string] }>();
 
@@ -176,8 +182,11 @@ function onBubbleKeydown(event: KeyboardEvent) {
         <div class="flex items-center gap-3">
           <button
             type="button"
-            class="font-medium text-foreground underline underline-offset-2 hover:opacity-80"
-            @click="emit('resend', message.id)"
+            class="font-medium text-foreground underline underline-offset-2"
+            :class="sendPausedBy ? 'cursor-not-allowed opacity-50' : 'hover:opacity-80'"
+            :aria-disabled="sendPausedBy ? 'true' : undefined"
+            :aria-describedby="sendPausedBy"
+            @click="!sendPausedBy && emit('resend', message.id)"
           >
             {{ $t('chat.resend') }}
           </button>

@@ -10,6 +10,7 @@ import { AlertCircle, FileText, Info, Loader2, X } from 'lucide-vue-next'
 import { Button } from '#theme/components/ui/button'
 import { cn } from '#theme/utils/cn'
 import { formatClock, formatDateTime } from '#common/utils/format'
+import { deliveryFailureReason } from '../../utils/delivery'
 
 const props = defineProps<{
   message: IBridleMessageData
@@ -53,21 +54,9 @@ const isoDateTime = computed(() => (hasTime.value ? new Date(props.message.ts).t
 // delivered (anything replayed from the transcript).
 const delivery = computed(() => (isUser.value ? props.message.delivery ?? 'delivered' : 'delivered'))
 
-/** Short, plain reason next to "Not delivered" — one per failure code. */
-const failureReason = computed(() => {
-  switch (props.message.failureCode) {
-    case 'AGENT_OFFLINE':
-      return 'the agent is offline'
-    case 'OFFLINE':
-      return 'the chat is not connected'
-    case 'TIMEOUT':
-      return 'no confirmation from the server'
-    case 'ATTACHMENT_FAILED':
-      return 'an attachment could not be read'
-    default:
-      return 'the server rejected it'
-  }
-})
+/** Short, plain reason next to "Not delivered" — one per failure code
+ *  (`utils/delivery.ts`, where an unknown code falls back to a sentence). */
+const failureReason = computed(() => deliveryFailureReason(props.message.failureCode))
 
 // Markdown rendering applies only to assistant messages — user input stays
 // plain text so pasted content can't accidentally be rendered as HTML.

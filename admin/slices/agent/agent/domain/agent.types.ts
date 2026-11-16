@@ -2,6 +2,8 @@
 // the (loosely-typed `unknown`) API responses onto these and converts domain
 // input payloads to the wire DTOs.
 
+import type { IAgentLimits } from './agentLimit.types';
+
 export type AgentStatusTypes =
   | 'pending'
   | 'deploying'
@@ -100,8 +102,9 @@ export interface ICreateAgentData {
   llmCredentialId?: string | null;
   config?: Record<string, unknown>;
   resources?: IAgentResources;
-  isPublic?: boolean;
-  allowedOrigins?: string[];
+  // No `isPublic` / `allowedOrigins`: an agent is created private, and both —
+  // with the request limits a public agent must have — are set afterwards in
+  // the "Visibility & embed" card (CLEAN-224).
   knowledgeIds?: string[];
   isAdmin?: boolean;
 }
@@ -114,6 +117,10 @@ export interface IUpdateAgentData {
   resources?: IAgentResources;
   isPublic?: boolean;
   allowedOrigins?: string[];
+  /** Request limits, applied in the same save as the two fields above
+   *  (CLEAN-224). `null` switches them off; absent leaves them as they are.
+   *  The server refuses a save that would leave a public agent without one. */
+  limits?: IAgentLimits | null;
   knowledgeIds?: string[];
   debugEnabled?: boolean;
   pinned?: boolean;

@@ -143,6 +143,16 @@ import type {
   RegenerateAgentShareLinkResponse,
   ResolveShareLinkData,
   ResolveShareLinkResponse,
+  ListAgentLimitsData,
+  ListAgentLimitsResponse,
+  GetAgentLimitsData,
+  GetAgentLimitsResponse,
+  SetAgentLimitsData,
+  SetAgentLimitsResponse,
+  GetAgentLimitsEnabledData,
+  GetAgentLimitsEnabledResponse,
+  GetAgentLoadData,
+  GetAgentLoadResponse,
   McpServerControllerFindAllData,
   McpServerControllerCreateData,
   McpServerControllerListToolsData,
@@ -2167,6 +2177,92 @@ export class ShareService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+}
+
+export class AgentLimitsService {
+  /**
+   * One line per agent: whether it has limits, whether one is full right now, and whether it is public without any. Admin or Owner.
+   */
+  public static listAgentLimits<ThrowOnError extends boolean = false>(
+    options?: Options<ListAgentLimitsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      ListAgentLimitsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agent-limits",
+      ...options,
+    });
+  }
+
+  /**
+   * The request limits of one agent. Admin or Owner.
+   */
+  public static getAgentLimits<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentLimitsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentLimitsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/limits",
+      ...options,
+    });
+  }
+
+  /**
+   * Set the request limits of one agent; all three empty switches them off. Takes effect on the next request and keeps what was used so far. A public agent must keep at least one limit. Admin or Owner.
+   */
+  public static setAgentLimits<ThrowOnError extends boolean = false>(
+    options: Options<SetAgentLimitsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SetAgentLimitsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/limits",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Whether this agent has request limits. Any signed-in user; the values themselves are not disclosed here.
+   */
+  public static getAgentLimitsEnabled<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentLimitsEnabledData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentLimitsEnabledResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/limits/enabled",
+      ...options,
+    });
+  }
+
+  /**
+   * How busy the agent is right now: usage against each limit, requests in progress, the last hour minute by minute, refusals, and the highest load of the last 30 days. Meant to be polled. Admin or Owner.
+   */
+  public static getAgentLoad<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentLoadData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentLoadResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/load",
+      ...options,
     });
   }
 }

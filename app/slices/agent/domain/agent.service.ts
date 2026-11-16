@@ -57,4 +57,8 @@ export class AgentService {
   getLinks(): Promise<IAgentLinkData[]> {
     return this.gateway.getLinks();
   }
+
+  getLimitsEnabled(id: string): Promise<boolean | null> {
+    return this.gateway.getLimitsEnabled(id);
+  }
 }

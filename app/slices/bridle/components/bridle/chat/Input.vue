@@ -4,12 +4,22 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from '#bridle/domain';
 import type { IBridleConversation } from '#bridle/stores/bridle';
+import type { ILimitCountdown } from '#bridle/composables/useLimitCountdown';
+import { restoredDraft as mergeRestoredDraft } from '#bridle/utils/limit';
 import { noticeParams } from '#bridle/utils/noticeParams';
 import { useFormat } from '#common/composables/useFormat';
 
 const props = defineProps<{
   disabled?: boolean;
   conversation: IBridleConversation;
+  /**
+   * The agent's request limit, counted down by the chat that owns this
+   * composer (CLEAN-224); null when there is none. While it is `waiting` the
+   * field stays editable and nothing can be sent.
+   */
+  limit?: ILimitCountdown | null;
+  /** The notice's id — what the controls the limit turns off are described by. */
+  limitNoticeId?: string;
 }>();
 const emit = defineEmits<{ send: [text: string] }>();
 
@@ -27,7 +37,10 @@ const attachmentError = computed(() =>
 
 // A message the store could not send because the session ended comes back
 // here as a draft (CLEAN-72): put it in the box and consume it, so it is
-// offered exactly once and a later remount does not resurrect it.
+// offered exactly once and a later remount does not resurrect it. A message
+// the agent's limit refused comes back the same way (CLEAN-224) — and by then
+// the person may have started the next one, so what is in the field stays,
+// below the text that returned.
 const restoredDraft = computed(() =>
   bridleStore.draftFor(props.conversation.key),
 );
@@ -35,11 +48,47 @@ watch(
   restoredDraft,
   (text) => {
     if (!text) return;
-    draft.value = text;
+    draft.value = mergeRestoredDraft(text, draft.value);
     bridleStore.clearDraft(props.conversation.key);
   },
   { immediate: true },
 );
+
+// ── Request limit (CLEAN-224) ──────────────────────────────────
+// The limit turns sending off and nothing else: the field is never disabled,
+// because the wait is a good moment to finish the thought.
+
+const limitWaiting = computed(() => props.limit?.state === 'waiting');
+/** Set on the controls the limit turns off, so they say why. */
+const limitDescribedBy = computed(() =>
+  limitWaiting.value ? props.limitNoticeId : undefined,
+);
+
+/** A little longer than the animation it covers (LimitNotice, 360 ms). */
+const NUDGE_MS = 400;
+const nudging = ref(false);
+let nudgeTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Enter, or a press on the Send button, while the limit is full: nothing
+ * leaves, and the notice answers so the person sees why. Dropped and set
+ * again a frame later, so a second press restarts the animation.
+ */
+function nudgeLimit() {
+  if (nudgeTimer) clearTimeout(nudgeTimer);
+  nudging.value = false;
+  requestAnimationFrame(() => {
+    nudging.value = true;
+    nudgeTimer = setTimeout(() => {
+      nudging.value = false;
+      nudgeTimer = undefined;
+    }, NUDGE_MS);
+  });
+}
+
+onBeforeUnmount(() => {
+  if (nudgeTimer) clearTimeout(nudgeTimer);
+});
 
 const atLimit = computed(
   () => staged.value.length >= MAX_ATTACHMENTS_PER_MESSAGE,
@@ -67,6 +116,11 @@ function autoResize() {
 }
 
 function submit() {
+  // Before anything is let go of: the text stays in the field.
+  if (limitWaiting.value) {
+    nudgeLimit();
+    return;
+  }
   if (!canSend.value) return;
   emit('send', draft.value.trim());
   draft.value = '';
@@ -108,9 +162,17 @@ watch(draft, () => nextTick(autoResize));
     @submit.prevent="submit"
   >
     <div class="mx-auto w-full max-w-3xl px-4 py-3">
+      <!-- On the top edge of the field, the same width: where the hand
+           already is. It cannot be dismissed — it leaves when the limit does. -->
+      <BridleChatLimitNotice
+        v-if="limit && limitNoticeId"
+        :id="limitNoticeId"
+        :countdown="limit"
+        :nudge="nudging"
+      />
       <div
         class="group flex flex-col gap-2 rounded-2xl border bg-card px-2 py-1.5 shadow-sm transition focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20"
-        :class="disabled && 'opacity-60'"
+        :class="[disabled && 'opacity-60', limit && limitNoticeId && 'rounded-t-none']"
       >
         <!-- Staged files sit inside the compose box so it reads as one block -->
         <div
@@ -161,11 +223,21 @@ watch(draft, () => nextTick(autoResize));
             @paste="onPaste"
           />
 
+          <!-- While the limit is full the button is off for assistive
+               technology and to the eye, but not `disabled`: it stays in the
+               tab order and says why it is off (CLEAN-224). A press goes to
+               `submit`, which sends nothing and nudges the notice. -->
           <button
             type="submit"
-            :disabled="!canSend"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:opacity-90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
+            :disabled="!limitWaiting && !canSend"
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
+            :class="limitWaiting
+              ? 'cursor-not-allowed bg-muted text-muted-foreground'
+              : 'bg-primary text-primary-foreground hover:opacity-90'"
             :aria-label="$t('chat.send')"
+            :aria-disabled="limitWaiting ? 'true' : undefined"
+            :aria-describedby="limitDescribedBy"
+            :title="limitWaiting ? $t('bridle.limit.sendDisabled') : undefined"
           >
             <Icon
               v-if="disabled"

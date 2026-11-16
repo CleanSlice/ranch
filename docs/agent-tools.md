@@ -137,6 +137,19 @@ has `reorder_skills` (topic `skills`, operator-only), which calls the
 console save surfaces as the same 409 and the tool says "try again". The order
 is the library's only; it never changes what agents or templates receive.
 
+Request limits (CLEAN-224) refine the rule the other way: `confirm` depends on
+the *direction* of the change. Setting limits for the first time or lowering
+them protects the agent and goes through at once; raising or removing any of
+them — switching limits off included — lets more through and waits for the
+person, with the refusal naming the exact change ("raise the limit per hour
+from 100 to 200"). The tool is `destructive: true` so the boot check
+guarantees the parameter, and `loosenedWindows` decides whether a call needs it.
+
+| Tool (topic `agents`, operator-only) | Backing |
+|---|---|
+| `get_agent_limits` | `AgentLimitService.snapshot` (what `GET /agents/:id/load` shows, minus the minute-by-minute chart): limits, `needsLimits`, the three windows, requests in progress, refusals in the last hour, 30-day peaks. Counts only — nothing about who sent a request |
+| `set_agent_limits` | `resolveLimitChange` → `AgentLimitService.setLimits`, as `PUT /agents/:id/limits` does; the three refusal codes come back as `{ error, code }` with the sentence to relay. A public agent cannot be left without a limit, confirmed or not |
+
 ## Secrets
 
 Parameters may carry secrets. Results never do. Strip `apiKey`, `authValue`,

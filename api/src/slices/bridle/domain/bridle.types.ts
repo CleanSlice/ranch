@@ -99,6 +99,28 @@ export interface IBridleUserIdentity {
 }
 
 /**
+ * Who the agent is answering, proven (CLEAN-232). Minted by the hub with
+ * every message a signed-in console person sends, and carried by the runtime
+ * verbatim onto each Ranch tool call of that turn, where the API turns it
+ * back into the person (`ActingPartyService`).
+ *
+ * Only `token` grants anything. `role` and `surface` are for the wording of
+ * the turn's prompt; a runtime that edited them would change what the
+ * assistant says, never what it may do.
+ */
+export interface IBridleActing {
+  /** The acting token: person, agent and session, 60 minutes, no role. */
+  token: string;
+  /** The person's role when the message was sent. Display only. */
+  role: string;
+  /** Which console the socket said it is. Display only, client-declared. */
+  surface?: BridleSurfaceTypes;
+}
+
+export const BRIDLE_SURFACES = ['app', 'admin'] as const;
+export type BridleSurfaceTypes = (typeof BRIDLE_SURFACES)[number];
+
+/**
  * Hub → Agent control event: an MCP OAuth login finished and the token was
  * stored (CLEAN-75, CLEAN-80). `subject` names whose token it is — a user id
  * from `IBridleUserIdentity`, a share/anon client id, or the agent id for a
@@ -123,6 +145,12 @@ export interface IBridleIncomingMessage {
   parts: BridlePart[];
   /** Who typed it, when a console login is behind the socket. */
   user?: IBridleUserIdentity;
+  /**
+   * Proof of who typed it, for the tool calls of this turn (CLEAN-232).
+   * Present only for a signed-in console person; an embed visitor, a share
+   * visitor and an anonymous caller get none, and their turn is a guest's.
+   */
+  acting?: IBridleActing;
   /**
    * The browser origin the sending socket connected from (`Origin` header
    * at handshake), e.g. the admin console. Lets a runtime build a link back
@@ -228,6 +256,12 @@ export interface IBridleSendOptions {
   /** What the person typed, without the attachment blocks inlined for the
    * model — that is what the other open views should show. */
   displayText?: string;
+  /**
+   * The acting token for this message, minted by the caller that verified
+   * the sender's console token (CLEAN-232). The hub forwards it as is and
+   * never invents one: absent means the turn is a guest's.
+   */
+  acting?: IBridleActing;
 }
 
 /**

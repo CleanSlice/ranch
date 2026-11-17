@@ -11,6 +11,7 @@ import {
   AuthErrorCodes,
   classifyJwtError,
   IAuthTokenPayload,
+  isActingToken,
   isEmbedToken,
   unauthorized,
 } from '../domain/auth.types';
@@ -33,6 +34,10 @@ import { PUBLIC_METADATA_KEY } from './public.decorator';
  * customer page is read by every visitor of that page, so it must open the
  * chat and nothing else (CLEAN-175). The chat surface verifies tokens on its
  * own and keeps accepting them.
+ *
+ * Acting tokens (`typ: 'acting'`, minted by the hub for a tool call made on a
+ * person's behalf, CLEAN-232) are refused the same way, here and by every
+ * other verifier: they are read from a tool call's `_meta` only.
  *
  * Registered as the global APP_GUARD (app.module.ts). Routes tagged with
  * @Public() bypass this check entirely; publicRoutes.spec.ts pins that set.
@@ -77,6 +82,15 @@ export class JwtAuthGuard implements CanActivate {
       // request: an embed token proves a chat identity, not a platform one.
       this.logger.warn(
         `Rejected embed token outside chat sub=${payload.sub} ${req.method} ${req.url}`,
+      );
+      throw unauthorized(AuthErrorCodes.TokenInvalid);
+    }
+    if (isActingToken(payload)) {
+      // An acting token names the person a tool call is made for. It travels
+      // in the call's `_meta`, next to the agent's own bearer; presented as
+      // the bearer it opens nothing (CLEAN-232).
+      this.logger.warn(
+        `Rejected acting token as a bearer sub=${payload.sub} ${req.method} ${req.url}`,
       );
       throw unauthorized(AuthErrorCodes.TokenInvalid);
     }

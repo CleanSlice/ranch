@@ -8,6 +8,10 @@ import {
   TOOL_LISTING_RECORDER,
   type IToolListingRecorder,
 } from '#/mcp/interfaces/tool-listing-recorder.interface';
+import {
+  ACTING_PARTY_RESOLVER,
+  type IActingPartyResolver,
+} from '#/mcp/interfaces/acting-party.interface';
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
@@ -42,6 +46,34 @@ class RecorderGateway extends IRecorderGateway {
 })
 class RecorderModule {}
 
+/**
+ * The party resolver is found the same way, under the same kind of alias:
+ * AuthModule provides `ACTING_PARTY_RESOLVER` with `useExisting:
+ * ActingPartyService` (CLEAN-232). A lookup that silently failed there would
+ * make every agent a guest. This stand-in takes `trusted` on the agent's
+ * word, which is all the snapshot needs.
+ */
+@Injectable()
+class PartyService implements IActingPartyResolver {
+  resolve(
+    _bearer: unknown,
+    actor: { kind?: unknown } | null | undefined,
+  ): ReturnType<IActingPartyResolver['resolve']> {
+    return Promise.resolve(
+      actor?.kind === 'trusted' ? { kind: 'trusted' } : { kind: 'guest' },
+    );
+  }
+}
+
+@Module({
+  providers: [
+    PartyService,
+    { provide: ACTING_PARTY_RESOLVER, useExisting: PartyService },
+  ],
+  exports: [PartyService, ACTING_PARTY_RESOLVER],
+})
+class PartyModule {}
+
 /** Stands in for McpModule: knows nothing about RecorderModule. */
 @Injectable()
 class HandlerHost {
@@ -54,7 +86,7 @@ class HostModule {}
 describe('tools/list snapshot — real container lookup (CLEAN-109)', () => {
   it('the handler reaches a recorder provided under a useExisting alias in another module', async () => {
     const app = await Test.createTestingModule({
-      imports: [RecorderModule, HostModule],
+      imports: [RecorderModule, PartyModule, HostModule],
     }).compile();
 
     const host = app.get(HandlerHost);
@@ -72,6 +104,7 @@ describe('tools/list snapshot — real container lookup (CLEAN-109)', () => {
           },
           providerClass: Symbol('none'),
           methodName: 'run',
+          audience: 'everyone' as const,
         },
       ],
       findTool: () => undefined,
@@ -91,12 +124,24 @@ describe('tools/list snapshot — real container lookup (CLEAN-109)', () => {
 
     const handler = new McpToolsHandler(host.moduleRef, registry);
     handler.registerHandlers(mcpServer, httpRequest);
-    await handlers.get(ListToolsRequestSchema)!({});
-    await new Promise((r) => setImmediate(r));
-
     const recorder = app.get<IRecorderGateway, RecorderGateway>(
       IRecorderGateway,
     );
+
+    // A listing that names nobody is a guest's, and is not the pod's snapshot.
+    await handlers.get(ListToolsRequestSchema)!({});
+    await new Promise((r) => setImmediate(r));
+    expect(recorder.calls).toEqual([]);
+
+    // The agent listing for itself: both lookups have to reach their
+    // provider for this line to be recorded.
+    await handlers.get(ListToolsRequestSchema)!({
+      params: {
+        _meta: { 'ranch/actor': { kind: 'trusted', via: 'internal' } },
+      },
+    });
+    await new Promise((r) => setImmediate(r));
+
     expect(recorder.calls).toEqual([['a-9', ['list_agents']]]);
   });
 });

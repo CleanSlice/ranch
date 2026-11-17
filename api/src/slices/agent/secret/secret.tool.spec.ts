@@ -4,6 +4,7 @@ import { SecretTool } from './secret.tool';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import type { ISecretGateway } from './domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * These tools put credentials within a model's reach. The property worth
@@ -18,8 +19,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const agentRow = { id: 'agent-a', name: 'Support Bot' };
 

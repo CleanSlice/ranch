@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   CONFIRM_SENTENCE,
@@ -44,6 +44,7 @@ const NOT_FOUND = (id: string) =>
  * Operator-only: a plain agent must not be able to rewrite the instructions
  * other agents are deployed with.
  */
+@ToolAudience('admin')
 @Injectable()
 export class SkillTool implements IConditionallyListedTool {
   private readonly logger = new Logger(SkillTool.name);

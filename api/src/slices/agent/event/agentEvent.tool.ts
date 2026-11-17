@@ -1,13 +1,14 @@
 import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   CONFIRM_SENTENCE,
   confirmed,
   ok,
   requireOperator,
+  requireOwner,
   type ToolResult,
 } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
@@ -135,14 +136,13 @@ const BAD_SINCE = ok({
  * and where they are told. Every call goes through the services the two
  * controllers inject, so a rule lives in one place.
  *
- * Operator agents only. `requireOperator` passes a caller that holds the
- * Owner role and nobody else — an Admin is refused — so the three tools that
- * set, test or remove the destination ask for exactly what the controller's
- * `@Roles(Owner)` asks for; the two listings are stricter here than in the
- * console, where an Admin may read. No result carries the destination's
- * address: it goes in through `set_notification_destination` and is never
- * read back.
+ * Audience `admin` for the two listings and for reading the destination, as
+ * the controller's `@Roles(Admin)`. The three tools that set, test or remove
+ * the destination are `owner`, as the controller's `@Roles(Owner)` on those
+ * routes (CLEAN-232). No result carries the destination's address: it goes
+ * in through `set_notification_destination` and is never read back.
  */
+@ToolAudience('admin')
 @Injectable()
 export class AgentEventTool implements IConditionallyListedTool {
   private readonly logger = new Logger(AgentEventTool.name);
@@ -283,6 +283,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     });
   }
 
+  @ToolAudience('owner')
   @Tool({
     name: 'set_notification_destination',
     topic: ToolTopics.Settings,
@@ -333,7 +334,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
+    requireOwner(httpRequest);
     try {
       const input: ISaveDestinationInput =
         args.kind === 'bot'
@@ -357,6 +358,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     }
   }
 
+  @ToolAudience('owner')
   @Tool({
     name: 'send_test_notification',
     topic: ToolTopics.Settings,
@@ -373,7 +375,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
+    requireOwner(httpRequest);
     try {
       const result = await this.destinations.sendTest();
       return ok({ delivered: result.delivered, error: result.error });
@@ -385,6 +387,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     }
   }
 
+  @ToolAudience('owner')
   @Tool({
     name: 'remove_notification_destination',
     topic: ToolTopics.Settings,
@@ -408,7 +411,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
+    requireOwner(httpRequest);
     const view = await this.destinations.view();
     if (!view.configured) {
       return ok({

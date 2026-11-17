@@ -6,6 +6,7 @@ import type { IBridleGateway } from '#/bridle/domain';
 import type { IFileGateway, SyncGuardService } from './domain';
 import { ProposalNeedsRemoveConfirmError } from './domain/fileProposal.service';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * The five CLEAN-112 tools: list/read return what the console shows, and
@@ -17,8 +18,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const pendingRow = (overrides: Record<string, unknown> = {}) => ({
   id: 'prop-1',

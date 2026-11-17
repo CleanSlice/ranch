@@ -13,6 +13,7 @@ import type {
   TranscriptMessage,
 } from '#/agent/file/domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * A chat is somebody's conversation with an agent. Worth more than the happy
@@ -58,8 +59,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: ChatTool;

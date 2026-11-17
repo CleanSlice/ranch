@@ -964,10 +964,14 @@ export const useBridleStore = defineStore('bridle', {
         // No 'ui': the admin preview doesn't render interactive ui parts.
         // 'sources' (CLEAN-138): the runtime keeps `[^n]` markers in the text
         // and the hub sends the list on a `sources` frame after `stream_end`.
+        // `surface` (CLEAN-232): which console this is, so the agent can say
+        // "in the management console". Wording only: what the person may do
+        // is decided by the API from their account, never from this field.
         auth: (cb) =>
           cb({
             token: useAuthStore().accessToken ?? '',
             agentId,
+            surface: 'admin',
             capabilities: ['streaming', 'images', 'files', 'thinking', 'proposals', 'sources'],
             lastSeq: c.lastHubSeq,
           }),

@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import {
   AuthErrorCodes,
   classifyJwtError,
+  isActingToken,
 } from '#/user/auth/domain/auth.types';
 import { Server, Socket } from 'socket.io';
 import {
@@ -19,11 +20,17 @@ import {
   BridleAttachmentService,
   type BridlePart,
   type BridleSendAck,
+  type BridleSurfaceTypes,
   type ChatRequesterKinds,
+  type IBridleActing,
   type IBridleUserIdentity,
+  type IConsoleSession,
+  BRIDLE_SURFACES,
   buildParts,
   clientIdFromJwtPayload,
+  consoleSessionOf,
 } from '../domain';
+import { ActingPartyService } from '#/user/auth/domain/actingParty.service';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import {
   ShareLinkErrorCodes,
@@ -38,6 +45,17 @@ import {
 interface IShareSocketAuth {
   token: string;
   visitorId: string;
+}
+
+/**
+ * What a console person's socket keeps from its handshake so that every
+ * message it sends can carry an acting token (CLEAN-232). Kept on
+ * `client.data`, like the share pair: it belongs to this one socket, and two
+ * admins on the shared `admin` conversation must never mint for each other.
+ */
+interface IConsoleSocketAuth extends IConsoleSession {
+  /** Which console this is, as the socket declared it. Display only. */
+  surface?: BridleSurfaceTypes;
 }
 
 /**
@@ -91,6 +109,7 @@ export class BridleClientWsHandler
     @Inject(forwardRef(() => IAgentGateway))
     private readonly agentGateway: IAgentGateway,
     private readonly shareLinks: ShareLinkService,
+    private readonly actingParty: ActingPartyService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -104,6 +123,7 @@ export class BridleClientWsHandler
       shareToken?: unknown;
       shareVisitor?: unknown;
       lastSeq?: unknown;
+      surface?: unknown;
     };
     // Offered AT ALL, like `hasShareToken` on the HTTP side: an empty token
     // must reach `authorizeChat` and come back rejected, never slip past into
@@ -162,6 +182,7 @@ export class BridleClientWsHandler
     let kind: ChatRequesterKinds = 'anonymous';
     let share: IShareSocketAuth | undefined;
     let user: IBridleUserIdentity | undefined;
+    let consoleAuth: IConsoleSocketAuth | undefined;
 
     if (auth.token) {
       // Authenticated path takes PRECEDENCE over the public/anon path: a
@@ -171,6 +192,9 @@ export class BridleClientWsHandler
       let verifyError: unknown;
       try {
         payload = this.jwt.verify<Record<string, unknown>>(auth.token);
+        // An acting token names the person a tool call is made for; at the
+        // handshake it is an invalid token (CLEAN-232).
+        if (isActingToken(payload)) payload = null;
       } catch (err) {
         payload = null;
         verifyError = err;
@@ -190,6 +214,13 @@ export class BridleClientWsHandler
         const sub = payload?.sub;
         if (typeof sub === 'string' && sub) {
           user = { id: sub, ...(email ? { email } : {}) };
+        }
+        // A person's own console token, and nothing else, is worth an acting
+        // token later: not an embed token, not an agent's (CLEAN-232).
+        const session = consoleSessionOf(payload);
+        if (session) {
+          const surface = BRIDLE_SURFACES.find((s) => s === auth.surface);
+          consoleAuth = { ...session, ...(surface ? { surface } : {}) };
         }
       } else if (shareOffered) {
         // Unusable console token next to a share pair: the pair decides
@@ -274,6 +305,7 @@ export class BridleClientWsHandler
       isAdmin,
       kind,
       ...(share ? { share } : {}),
+      ...(consoleAuth ? { console: consoleAuth } : {}),
     };
 
     // Integrator context from the embed's `data-prompt` (set on the `<script>`
@@ -450,6 +482,33 @@ export class BridleClientWsHandler
       return { status: 'rejected', code: 'EMPTY' };
     }
 
+    // Minted per message, from what the handshake verified: the token names
+    // this person, this agent and their console session, and the API checks
+    // all three again when a tool call presents it (CLEAN-232).
+    const consoleAuth = client.data?.console as IConsoleSocketAuth | undefined;
+    let acting: IBridleActing | undefined;
+    if (consoleAuth) {
+      try {
+        acting = {
+          token: await this.actingParty.mint({
+            userId: consoleAuth.userId,
+            agentId,
+            sid: consoleAuth.sid,
+          }),
+          role: consoleAuth.role,
+          ...(consoleAuth.surface ? { surface: consoleAuth.surface } : {}),
+        };
+      } catch (err) {
+        // The message still goes; without a token the turn is a guest's,
+        // which is the safe side to fail on.
+        this.logger.warn(
+          `Acting token could not be minted: clientId=${clientId} agentId=${agentId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
     return this.hub.sendToAgent(
       clientId,
       agentId,
@@ -458,6 +517,7 @@ export class BridleClientWsHandler
       expanded.attachments,
       {
         socketId: client.id,
+        ...(acting ? { acting } : {}),
         displayText: text,
         // Read back from the handshake, where it came out of a verified JWT:
         // an Owner or Admin must reach an agent that is at its limit, to test

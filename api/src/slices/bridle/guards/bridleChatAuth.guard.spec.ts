@@ -282,3 +282,53 @@ describe('BridleChatAuthGuard — no credentials', () => {
     expect(calls).toEqual([['sl_token', 'agent-1', 'v1']]);
   });
 });
+
+describe('BridleChatAuthGuard — acting tokens (CLEAN-232)', () => {
+  // The chat surface accepts embed tokens, so it has to say no to this one
+  // itself: an acting token names a person for a tool call and is no chat
+  // credential, whoever presents it.
+  const acting = () => ({
+    sub: 'user-owner',
+    email: '',
+    roles: [],
+    sid: 'session-1',
+    typ: 'acting',
+    aud: 'agent:ranch',
+  });
+
+  it('rejects one with 401 TOKEN_INVALID and sets no identity', async () => {
+    const { guard } = makeGuard({ verify: acting });
+    const { context, req } = makeContext({ authorization: 'Bearer acting' });
+
+    await expect(guard.canActivate(context)).rejects.toMatchObject({
+      response: { code: 'TOKEN_INVALID' },
+    });
+    expect(req.chatAuth).toBeUndefined();
+    expect(req.user).toBeUndefined();
+  });
+
+  it('rejects one that claims an admin role as well', async () => {
+    const { guard } = makeGuard({
+      verify: () => ({ ...acting(), roles: ['Owner'] }),
+    });
+    const { context, req } = makeContext({ authorization: 'Bearer acting' });
+
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(req.chatAuth).toBeUndefined();
+  });
+
+  it('lets a valid share pair decide when one rides along, as for any unusable token', async () => {
+    const { guard } = makeGuard({ verify: acting });
+    const { context, req } = makeContext({
+      authorization: 'Bearer acting',
+      'x-share-token': 'sl_live',
+      'x-share-visitor': 'v-1',
+    });
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(req.chatAuth).toEqual({ clientId: 'share-v-1', kind: 'share' });
+    expect(req.user).toBeUndefined();
+  });
+});

@@ -11,6 +11,7 @@ import type { IKnowledgeConfigGateway } from '../config/domain/knowledgeConfig.g
 import type { ILightragClient } from '../lightrag/domain/lightrag.client';
 import type { ILlmGateway } from '#/llm/domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * These tools let an agent decide what every other agent is allowed to read,
@@ -51,8 +52,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: KnowledgeAdminTool;

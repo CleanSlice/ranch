@@ -249,6 +249,8 @@ function makeController(stubs: IStubs = {}) {
     { attach: async (m: unknown) => m } as never,
     // The reader-facing source gate has its own spec (domain/sourceAccess.service.spec.ts).
     {} as never,
+    // Acting tokens (CLEAN-232) have their own spec (bridle.acting.spec.ts).
+    { mint: async () => 'acting-token' } as never,
   );
 
   // The two message routes take the response object since CLEAN-224 (they set

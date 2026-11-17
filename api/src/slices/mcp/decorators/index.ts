@@ -3,3 +3,4 @@ export * from './topics';
 export * from './constants';
 export * from './resource.decorator';
 export * from './prompt.decorator';
+export * from './tool-audience.decorator';

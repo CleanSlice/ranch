@@ -26,6 +26,7 @@ export {
   SHARE_TOKEN_HEADER,
   SHARE_VISITOR_HEADER,
   clientIdFromJwtPayload,
+  consoleSessionOf,
   hasShareToken,
   headerValue,
   parseBearer,
@@ -34,6 +35,7 @@ export {
   type ChatRequesterKinds,
   type IAttachmentRequester,
   type IChatAuth,
+  type IConsoleSession,
   type IShareChatAuthorizer,
 } from './chatIdentity';
 export * from './sourceAccess.service';

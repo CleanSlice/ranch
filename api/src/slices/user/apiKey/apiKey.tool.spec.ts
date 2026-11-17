@@ -4,6 +4,7 @@ import { ApiKeyTool, KEY_SHOWN_ONCE } from './apiKey.tool';
 import { ApiKeyScopeTypes } from './domain';
 import type { IApiKeyGateway, ApiKeyService } from './domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * An API key with the `admin` scope is the whole API. Three properties matter
@@ -19,8 +20,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 /**
  * A row as a careless gateway might return it: the domain type has no hash,

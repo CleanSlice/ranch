@@ -6,6 +6,7 @@ import type { ISkillData } from './domain';
 import type { GithubSearch } from './data/github.search';
 import type { SkillOrderService } from './domain/skillOrder.service';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * These tools let an agent rewrite the instructions other agents are deployed
@@ -44,8 +45,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: SkillTool;

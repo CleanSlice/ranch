@@ -5,6 +5,7 @@ import type { IAgentChannelGateway } from './domain/agentChannel.gateway';
 import type { IAgentChannel } from './domain/agentChannel.types';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * Two things matter more than the happy path here: that a bot token never
@@ -28,8 +29,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: AgentChannelTool;

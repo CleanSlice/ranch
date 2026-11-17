@@ -11,6 +11,7 @@ import {
   stripSecrets,
 } from './tooling';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asGuest, asTrustedAgent } from './testing';
 
 const request = (sub: string, roles: UserRoleTypes[]): Request =>
   ({ user: { sub, email: '', roles } }) as unknown as Request;
@@ -32,21 +33,51 @@ describe('tooling', () => {
     expect(callerAgentId({} as Request)).toBeNull();
   });
 
-  it('operator means the Owner role', () => {
-    expect(callerIsOperator(request('agent:admin', [UserRoleTypes.Owner]))).toBe(true);
-    expect(callerIsOperator(request('agent:a', [UserRoleTypes.Agent]))).toBe(false);
+  // Who counts as an operator is the subject of effectiveCaller.spec.ts
+  // (CLEAN-232). Here: an agent acting for itself, on each kind of token.
+  it('operator means an Owner token, for an agent acting for itself', () => {
+    expect(
+      callerIsOperator(
+        asTrustedAgent(request('agent:admin', [UserRoleTypes.Owner])),
+      ),
+    ).toBe(true);
+    expect(
+      callerIsOperator(
+        asTrustedAgent(request('agent:a', [UserRoleTypes.Agent])),
+      ),
+    ).toBe(false);
   });
 
   it('requireOperator accepts Owner and refuses Agent with the console hint', () => {
-    expect(() => requireOperator(request('agent:admin', [UserRoleTypes.Owner]))).not.toThrow();
-    expect(() => requireOperator(request('agent:a', [UserRoleTypes.Agent]))).toThrow(
-      ForbiddenException,
-    );
+    expect(() =>
+      requireOperator(
+        asTrustedAgent(request('agent:admin', [UserRoleTypes.Owner])),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      requireOperator(
+        asTrustedAgent(request('agent:a', [UserRoleTypes.Agent])),
+      ),
+    ).toThrow(ForbiddenException);
     try {
-      requireOperator(request('agent:a', [UserRoleTypes.Agent]));
+      requireOperator(
+        asTrustedAgent(request('agent:a', [UserRoleTypes.Agent])),
+      );
     } catch (e) {
       expect((e as Error).message).toContain('operator role');
       expect((e as Error).message).toContain('console');
+    }
+  });
+
+  it('requireOperator tells a guest that nobody is signed in', () => {
+    for (const guest of [
+      request('agent:admin', [UserRoleTypes.Owner]),
+      asGuest(request('agent:admin', [UserRoleTypes.Owner])),
+      {} as Request,
+    ]) {
+      expect(() => requireOperator(guest)).toThrow(
+        new ForbiddenException('This needs a signed-in administrator.'),
+      );
     }
   });
 

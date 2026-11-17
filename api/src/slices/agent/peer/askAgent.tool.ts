@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { Request } from 'express';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import type { IDynamicallyDescribedTool } from '#/mcp/interfaces/dynamic-description.interface';
@@ -90,6 +90,7 @@ const schema = z.object({
  * uses (CLEAN-74). Living in the API rather than in the runtime image is what
  * lets peers ship without rebuilding a single agent.
  */
+@ToolAudience('agent')
 @Injectable()
 export class AskAgentTool
   implements IDynamicallyDescribedTool, IConditionallyListedTool

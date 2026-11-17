@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   ok,
@@ -31,6 +31,7 @@ const OVERVIEW_DAYS = 30;
  * business. The class is hidden from a plain agent's list and refuses the
  * body as well, like every other operator tool.
  */
+@ToolAudience('admin')
 @Injectable()
 export class UsageTool implements IConditionallyListedTool {
   constructor(

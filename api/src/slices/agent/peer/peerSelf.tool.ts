@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import { CONFIRM_SENTENCE, confirmed } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { ISettingGateway } from '#/setting/domain';
@@ -47,6 +47,7 @@ export const SELF_SERVICE_SETTING = {
  * An installation that does not want this turns the setting off and the tools
  * vanish from every agent's list.
  */
+@ToolAudience('agent')
 @Injectable()
 export class PeerSelfTool implements IConditionallyListedTool {
   private readonly logger = new Logger(PeerSelfTool.name);

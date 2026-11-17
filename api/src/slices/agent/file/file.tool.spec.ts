@@ -5,6 +5,7 @@ import type { IAgentGateway } from '#/agent/agent/domain';
 import type { IBridleGateway } from '#/bridle/domain';
 import type { IFileGateway, SyncGuardService } from './domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * Two things matter more than the happy paths here: that a plain agent can
@@ -16,8 +17,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const agentRow = (overrides: Record<string, unknown> = {}) => ({
   id: 'agent-a',

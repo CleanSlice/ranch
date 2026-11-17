@@ -10,6 +10,8 @@ export interface IPruneSessionsBefore {
 export abstract class ISessionGateway {
   abstract create(data: ICreateSessionData): Promise<ISessionData>;
   abstract findByHash(secretHash: string): Promise<ISessionData | null>;
+  /** By id: what an acting token's `sid` claim names (CLEAN-232). */
+  abstract findById(id: string): Promise<ISessionData | null>;
   /** Slide the inactivity deadline and stamp `lastSeenAt = now`. */
   abstract touch(id: string, expiresAt: Date): Promise<ISessionData>;
   /** Set `revokedAt = now` if not already revoked. */

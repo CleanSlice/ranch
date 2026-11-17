@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   ok,
@@ -28,6 +28,7 @@ const DEFAULT_TOOL_TAIL = 100;
  * secrets a template author echoed by mistake, so a plain agent must not
  * be able to read another agent's (or its own) pod output through here.
  */
+@ToolAudience('admin')
 @Injectable()
 export class LogTool implements IConditionallyListedTool {
   constructor(

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
   callerIsOperator,
@@ -143,16 +143,17 @@ const WINDOW_PARAM = (label: string) =>
  * embed" card (`AgentController.update`): the public flag, the origins and
  * the limits together, limits written first.
  *
- * Operator-only, and narrower than the routes: the routes admit Owner and
- * Admin, these tools only a caller whose token carries Owner — the Ranch
- * admin agent (`requireOperator`). A plain agent must not read how loaded a
- * colleague is, and certainly must not lift its own ceiling.
+ * Audience `admin`, as the routes: Owner and Admin, through the Ranch admin
+ * agent or on their own console token (`requireOperator`, CLEAN-232). A
+ * plain agent must not read how loaded a colleague is, and certainly must
+ * not lift its own ceiling; nor may a User the agent is answering.
  *
  * Results are counts, limit values and visibility, nothing else. The limiter
  * never knew who sent a request, and every result is an explicit copy so that
  * whatever the domain or the agent record grows later does not reach a model
  * by accident.
  */
+@ToolAudience('admin')
 @Injectable()
 export class AgentLimitTool implements IConditionallyListedTool {
   private readonly logger = new Logger(AgentLimitTool.name);

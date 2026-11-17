@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   CONFIRM_SENTENCE,
   confirmed,
@@ -28,10 +28,13 @@ import { RancherService } from './domain/rancher.service';
 
 /**
  * The original Ranch management tools — agents, templates, skills, LLM
- * credentials, files, usage, settings. Operator-only: the Ranch admin agent
- * holds the Owner role, plain agents do not (CLEAN-109 moved the check to
- * the shared `requireOperator`; the tools themselves are unchanged).
+ * credentials, files, usage, settings. Audience `admin`: every console
+ * route these mirror admits Owner and Admin, or states no role at all. The
+ * check is the shared `requireOperator`, which since CLEAN-232 asks who the
+ * call is made for, not only what the agent's token carries. The class has
+ * no listing hook of its own; the audience hides it from everyone else.
  */
+@ToolAudience('admin')
 @Injectable()
 export class RancherTool {
   private readonly logger = new Logger(RancherTool.name);
@@ -65,14 +68,8 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
-    return ok(await this.rancher.getStatus());
-  }
-
-  private requireOwner(
-    httpRequest: Request & { user?: IAuthTokenPayload },
-  ): void {
     requireOperator(httpRequest);
+    return ok(await this.rancher.getStatus());
   }
 
   // ─── Agents ──────────────────────────────────────────────────────────
@@ -91,7 +88,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const items = await this.agents.findAll();
     return ok(items);
   }
@@ -112,7 +109,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const agent = await this.agents.findById(id);
     if (!agent) return ok({ error: `Agent ${id} not found` });
     return ok(agent);
@@ -134,7 +131,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const agent = await this.agents.findById(id);
     if (!agent) return ok({ error: `Agent ${id} not found` });
     // Fire-and-forget the real restart flow (template resync → cancel old
@@ -199,7 +196,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     // Friendly precheck — a bad templateId would otherwise surface as an
     // opaque foreign-key error from the DB layer.
     const template = await this.templates.findById(templateId);
@@ -262,7 +259,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const existing = await this.agents.findById(id);
     if (!existing) return ok({ error: `Agent ${id} not found` });
     const updated = await this.agents.update(id, {
@@ -300,7 +297,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const updated = await this.agents.setAdmin(id, enabled);
     return ok(updated);
   }
@@ -321,7 +318,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     return ok(await this.templates.findAll());
   }
 
@@ -339,7 +336,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     return ok(template ?? { error: `Template ${id} not found` });
   }
@@ -367,7 +364,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     return ok(await this.templates.setSkills(id, skillIds));
   }
 
@@ -408,7 +405,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     const updated = await this.templates.update(id, patch);
@@ -430,7 +427,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     return ok(await this.templateFiles.list(id));
@@ -456,7 +453,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     return ok(await this.templateFiles.read(id, path));
@@ -490,7 +487,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     await this.templateFiles.save(id, path, content);
@@ -514,7 +511,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     return ok(stripSecrets(await this.llms.findAll()));
   }
 
@@ -534,7 +531,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     return ok(await this.skills.findAll());
   }
 
@@ -578,7 +575,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const skill = await this.skills.findById(id);
     if (!skill) return ok({ error: `Skill ${id} not found` });
     const updated = await this.skills.update(id, patch);
@@ -602,7 +599,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     return ok(await this.skills.findDependentAgents(skillId));
   }
 
@@ -630,7 +627,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const { skillId } = args;
     const skill = await this.skills.findById(skillId);
     if (!skill) return ok({ error: `Skill ${skillId} not found` });
@@ -707,7 +704,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     return ok(await this.usage.findRecentForAgent(agentId, days ?? 30));
   }
 
@@ -734,7 +731,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const rows = group
       ? await this.settings.findByGroup(group)
       : await this.settings.findAll();
@@ -794,7 +791,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const saved = await this.settings.upsert(group, name, {
       value,
       valueType: valueType ?? 'string',

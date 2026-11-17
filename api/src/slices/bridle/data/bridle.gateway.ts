@@ -471,6 +471,10 @@ export class BridleGateway extends IBridleGateway {
         ? { capabilities: client.capabilities }
         : {}),
       ...(client?.user ? { user: client.user } : {}),
+      // Minted by whoever verified the sender (the socket handler, the HTTP
+      // routes) and passed in with the message: `sendToAgent` is synchronous
+      // and the token is per message, not per socket (CLEAN-232).
+      ...(options.acting?.token ? { acting: options.acting } : {}),
       ...(client?.origin ? { origin: client.origin } : {}),
       // Metadata only: the runtime persists this array verbatim into its
       // session transcript. The url is this API's own route (useless to the

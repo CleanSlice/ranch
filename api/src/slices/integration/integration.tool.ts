@@ -5,12 +5,13 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   CONFIRM_SENTENCE,
   confirmed,
   err,
   ok,
+  requirePerson,
   stripSecrets,
   type ToolResult,
 } from '#/mcp/tooling';
@@ -19,16 +20,6 @@ import { IntegrationService } from './domain/integration.service';
 import type { IIntegrationAccountData } from './domain/integration.types';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
-
-/**
- * Same convention as `browser.tool.ts`: an agent runtime holds a service
- * token (`sub = agent:<id>`), not the user's identity, so it names the user
- * it acts for. The rows and the credential stores are keyed by that user.
- */
-const userIdParam = z
-  .string()
-  .min(1)
-  .describe('Owning user — must match the calling principal.');
 
 /** Same charset the console enforces in `ConnectIntegrationDto`. */
 const accountKeyParam = z
@@ -75,7 +66,14 @@ const NOT_FOUND =
  * via the Ranch extension, secret values via the console. A login request
  * returns what the person needs to complete it (site URL, help page,
  * instructions) — that is for the person, and fine to forward.
+ *
+ * Audience `person` (CLEAN-232), same as `browser.tool.ts`. The rows and the
+ * credential stores are keyed by a console account, and that account is the
+ * party the call is made for (`requirePerson`). The `userId` argument these
+ * tools used to take was whatever the model wrote, so any agent runtime
+ * could list, connect or wipe the accounts of any user it could name.
  */
+@ToolAudience('person')
 @Injectable()
 export class IntegrationTool {
   constructor(private readonly service: IntegrationService) {}
@@ -92,8 +90,9 @@ export class IntegrationTool {
   async listIntegrationCatalogue(
     _args: Record<string, never>,
     _context: unknown,
-    _httpRequest: AuthedRequest,
+    httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
+    requirePerson(httpRequest);
     return ok(this.service.listCatalogue());
   }
 
@@ -101,16 +100,17 @@ export class IntegrationTool {
     name: 'list_integration_accounts',
     topic: ToolTopics.Browser,
     title: 'My integration accounts',
-    template: 'Which integration accounts does user «user» have?',
+    template: 'Which integration accounts do I have?',
     description:
-      'List the integration accounts connected for the user: id, service, accountKey, label, mechanism and status (pending, connected, needs_login, revoked). Never includes cookies or secret values. Use the id with request_integration_login or delete_integration_account.',
-    parameters: z.object({ userId: userIdParam }),
+      'List the integration accounts connected for the person this call is made for: id, service, accountKey, label, mechanism and status (pending, connected, needs_login, revoked). Never includes cookies or secret values. Use the id with request_integration_login or delete_integration_account.',
+    parameters: z.object({}),
   })
   async listIntegrationAccounts(
-    { userId }: { userId: string },
+    _args: Record<string, never>,
     _context: unknown,
-    _httpRequest: AuthedRequest,
+    httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
+    const { userId } = requirePerson(httpRequest);
     return ok(this.present(await this.service.listAccounts(userId)));
   }
 
@@ -120,9 +120,8 @@ export class IntegrationTool {
     title: 'Connect an integration account',
     template: 'Connect my «service» account «label»',
     description:
-      'Start connecting an account on a catalogue service for the user. Idempotent on (userId, service, accountKey): calling again returns the existing row. The account stays "pending" until the credential is stored — for a browser service call request_integration_login next; for a secret service the person enters the value in the console. Returns the account without any credential.',
+      'Start connecting an account on a catalogue service for the person this call is made for. Idempotent on (person, service, accountKey): calling again returns the existing row. The account stays "pending" until the credential is stored — for a browser service call request_integration_login next; for a secret service the person enters the value in the console. Returns the account without any credential.',
     parameters: z.object({
-      userId: userIdParam,
       service: z
         .string()
         .min(1)
@@ -138,14 +137,14 @@ export class IntegrationTool {
   })
   async createIntegrationAccount(
     {
-      userId,
       service,
       accountKey,
       label,
-    }: { userId: string; service: string; accountKey: string; label?: string },
+    }: { service: string; accountKey: string; label?: string },
     _context: unknown,
-    _httpRequest: AuthedRequest,
+    httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
+    const { userId } = requirePerson(httpRequest);
     try {
       const account = await this.service.connect(
         userId,
@@ -174,15 +173,15 @@ export class IntegrationTool {
     description:
       'Get what the person needs to log in to a browser-mechanism integration: the site URL, a help page and step-by-step instructions (log in in their own Chrome, send cookies via the Ranch extension). Forward these to the person; the account flips to "connected" once the extension posts the cookies. Only for browser services — a secret service takes its value in the console. Find the account id with list_integration_accounts.',
     parameters: z.object({
-      userId: userIdParam,
       id: z.string().min(1).describe('Integration account id.'),
     }),
   })
   async requestIntegrationLogin(
-    { userId, id }: { userId: string; id: string },
+    { id }: { id: string },
     _context: unknown,
-    _httpRequest: AuthedRequest,
+    httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
+    const { userId } = requirePerson(httpRequest);
     try {
       return ok(await this.service.openLogin(userId, id));
     } catch (e) {
@@ -203,10 +202,9 @@ export class IntegrationTool {
     template: 'Disconnect my «service» account',
     destructive: true,
     description:
-      'Disconnect an integration account for the user: removes the row and wipes its stored credential (browser cookies or the secret value). Agents that used the «service:accountKey» profile lose access. Find the id with list_integration_accounts. ' +
+      'Disconnect an integration account of the person this call is made for: removes the row and wipes its stored credential (browser cookies or the secret value). Agents that used the «service:accountKey» profile lose access. Find the id with list_integration_accounts. ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
-      userId: userIdParam,
       id: z.string().min(1).describe('Integration account id.'),
       confirm: z
         .boolean()
@@ -214,11 +212,12 @@ export class IntegrationTool {
     }),
   })
   async deleteIntegrationAccount(
-    args: { userId: string; id: string; confirm?: boolean },
+    args: { id: string; confirm?: boolean },
     _context: unknown,
-    _httpRequest: AuthedRequest,
+    httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    const { userId, id } = args;
+    const { userId } = requirePerson(httpRequest);
+    const { id } = args;
     // Resolve first so a wrong id is reported as such, not as a refusal to
     // delete something that does not exist.
     let account: IIntegrationAccountData;

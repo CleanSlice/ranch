@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   ok,
@@ -60,6 +60,7 @@ const gitInstallParameters = z.object({
  * plain agent must never be able to bring a new agent template into the
  * Ranch, least of all one a prompt injection pointed it at.
  */
+@ToolAudience('admin')
 @Injectable()
 export class TemplateInstallTool implements IConditionallyListedTool {
   constructor(

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   CONFIRM_SENTENCE,
@@ -49,6 +49,7 @@ const NOT_CONFIGURED =
  * service must be configured before anything but the list and the status can
  * answer, exactly as the routes refuse with 503.
  */
+@ToolAudience('admin')
 @Injectable()
 export class KnowledgeAdminTool implements IConditionallyListedTool {
   private readonly logger = new Logger(KnowledgeAdminTool.name);

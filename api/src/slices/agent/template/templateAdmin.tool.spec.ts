@@ -6,6 +6,7 @@ import type { ITemplateGateway } from './domain';
 import type { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import type { AgentDeployService } from '#/agent/agent/domain/agentDeploy.service';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * Two of these tools take agents down (delete a template, restart every
@@ -41,8 +42,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: TemplateAdminTool;

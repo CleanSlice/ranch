@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   CONFIRM_SENTENCE,
@@ -50,6 +50,7 @@ const storeSchema = z
  * Operator agents only: a plain agent holds these secrets and must not be
  * able to read, rewrite or erase its own credentials on a prompt's say-so.
  */
+@ToolAudience('admin')
 @Injectable()
 export class SecretTool implements IConditionallyListedTool {
   private readonly logger = new Logger(SecretTool.name);

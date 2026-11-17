@@ -194,6 +194,17 @@ stop, start, files, secrets, channels, limits, logs) keep their role and add
 `canManage`. When creation opens to Users they are the routes whose role
 drops to `User`, with `canManage` already in place.
 
+**An agent's token is an `Agent` on routes.** The Ranch admin agent's token
+carries `Owner`, and the runtime's `exec` tool (admin-only, so available to
+any Owner or Admin in the management console) can print it. Left as is, an
+Admin could take that token and call any route as the Owner, around the
+ceiling and the Owner-only checks alike. `RolesGuard` therefore treats a
+bearer whose `sub` starts with `agent:` as the `Agent` role, whatever roles
+it carries. Its Owner power exists only through tools, where the party is
+checked. The Rancher template's instructions to fall back to raw HTTP with
+that token are removed; the MCP endpoint stays open to every authenticated
+bearer.
+
 Three pinned sets, each a spec that fails when a route joins the set
 unannounced: `publicRoutes.spec.ts` (exists), `userRoutes.spec.ts` and
 `agentRoutes.spec.ts` (new, same shape).

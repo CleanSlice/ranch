@@ -4,6 +4,7 @@ import { LogTool } from './log.tool';
 import type { LogService } from './domain';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 // The k8s client ships as ESM, which this jest cannot load; the tool never
 // touches it directly (LogService does), so an empty stand-in is enough.
@@ -24,8 +25,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const THREE_LINES =
   '2026-09-22T10:00:00Z booting\n' +

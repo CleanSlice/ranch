@@ -64,14 +64,22 @@ import {
   MAX_ATTACHMENT_BYTES,
   buildParts,
   clientIdFromJwtPayload,
+  consoleSessionOf,
   hasShareToken,
   parseBearer,
   resolveShareIdentity,
 } from './domain';
-import type { ChatHeaders, IAttachmentRequester, IChatAuth } from './domain';
+import type {
+  ChatHeaders,
+  IAttachmentRequester,
+  IBridleActing,
+  IChatAuth,
+} from './domain';
+import { ActingPartyService } from '#/user/auth/domain/actingParty.service';
 import {
   AuthErrorCodes,
   classifyJwtError,
+  isActingToken,
   unauthorized,
 } from '#/user/auth/domain/auth.types';
 import {
@@ -268,7 +276,38 @@ export class BridleController {
     private readonly chatSources: ChatSourceService,
     @Inject(forwardRef(() => SourceAccessService))
     private readonly sourceAccess: SourceAccessService,
+    private readonly actingParty: ActingPartyService,
   ) {}
+
+  /**
+   * The acting token for one message of a console person (CLEAN-232), or
+   * nothing for everyone else: an embed visitor, a share visitor, an
+   * anonymous caller. Their turn carries no person and is a guest's.
+   */
+  private async actingFor(
+    requester: IAttachmentRequester,
+    agentId: string,
+  ): Promise<{ acting: IBridleActing } | Record<string, never>> {
+    const session = requester.console;
+    if (requester.kind !== 'jwt' || !session) return {};
+    try {
+      const token = await this.actingParty.mint({
+        userId: session.userId,
+        agentId,
+        sid: session.sid,
+      });
+      return { acting: { token, role: session.role } };
+    } catch (err) {
+      // The message still goes; without a token the turn is a guest's,
+      // which is the safe side to fail on.
+      this.logger.warn(
+        `Acting token could not be minted: agentId=${agentId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return {};
+    }
+  }
 
   /**
    * Resolve a STABLE client identity for HTTP chat calls, the same way the WS
@@ -322,10 +361,12 @@ export class BridleController {
                 ...(typeof email === 'string' && email ? { email } : {}),
               }
             : undefined;
+        const session = consoleSessionOf(verified.payload);
         return {
           clientId: identity.clientId,
           kind: 'jwt',
           ...(user ? { user } : {}),
+          ...(session ? { console: session } : {}),
         };
       }
       if (!shareOffered) {
@@ -354,7 +395,11 @@ export class BridleController {
     error?: unknown;
   } {
     try {
-      return { payload: this.jwt.verify<Record<string, unknown>>(token) };
+      const payload = this.jwt.verify<Record<string, unknown>>(token);
+      // An acting token names the person a tool call is made for; as a chat
+      // credential it is an invalid token (CLEAN-232).
+      if (isActingToken(payload)) return { payload: null };
+      return { payload };
     } catch (error) {
       return { payload: null, error };
     }
@@ -454,7 +499,11 @@ export class BridleController {
       expanded.text,
       [...base, ...expanded.parts],
       expanded.attachments,
-      { source: limitSourceOf(requester), silentRefusal: true },
+      {
+        source: limitSourceOf(requester),
+        silentRefusal: true,
+        ...(await this.actingFor(requester, agentId)),
+      },
     );
     if (sent.status === 'rejected' && sent.code === 'RATE_LIMITED') {
       throw tooManyRequests(res, sent.retryAfterMs, sent.window);
@@ -535,6 +584,7 @@ export class BridleController {
       parts: [...base, ...expanded.parts],
       attachments: expanded.attachments,
       ...(requester.user ? { user: requester.user } : {}),
+      ...(await this.actingFor(requester, agentId)),
       source: limitSourceOf(requester),
     });
 

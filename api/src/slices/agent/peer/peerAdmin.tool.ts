@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import { CONFIRM_SENTENCE, confirmed } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { PeerService } from './domain/peer.service';
@@ -47,6 +47,7 @@ const MAX_DELEGATION_LIMIT = 100;
  * registering an attacker's address and then leaking the conversation to it
  * through a delegation.
  */
+@ToolAudience('admin')
 @Injectable()
 export class PeerAdminTool implements IConditionallyListedTool {
   private readonly logger = new Logger(PeerAdminTool.name);

@@ -1,7 +1,7 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   CONFIRM_SENTENCE,
@@ -45,6 +45,7 @@ const NOT_FOUND = (id: string) =>
  * Operator only. A plain agent does not see these tools and cannot call them
  * by name either (`requireOperator` on every method).
  */
+@ToolAudience('admin')
 @Injectable()
 export class TemplateAdminTool implements IConditionallyListedTool {
   private readonly logger = new Logger(TemplateAdminTool.name);

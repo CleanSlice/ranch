@@ -11,6 +11,7 @@ import type { IFileGateway } from '#/agent/file/domain';
 import type { AgentMcpResolver } from '#/mcpServer/domain/agentMcpResolver.service';
 import type { IMcpServerData } from '#/mcpServer/domain/mcpServer.types';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * These tools stop, start and delete agents from the chat. What matters most
@@ -78,8 +79,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: AgentAdminTool;

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
   callerIsOperator,
@@ -91,16 +91,20 @@ function toHttpBase(value: string | null | undefined): string | null {
  * actor (the caller's token subject, recorded as who created or revoked the
  * link), the same 404 for an unknown agent.
  *
- * Operator-only. The controller lets any console user share an agent but
- * keeps the `Agent` role out: a runtime must not mint or revoke public links
- * to itself or to a colleague. An admin agent holds Owner and acts as the
- * operator; for a plain agent these tools are not listed and not callable.
+ * Audience `admin`, which is narrower than the route: the controller lets
+ * any console user share an agent (`@Roles(User)`), the tools only an Owner
+ * or Admin, or the Ranch admin agent acting for itself. They stay that way
+ * until "who may manage this agent" exists (specs/032, `manage-agent`):
+ * opening them to every person now would let a User mint a public link to
+ * any agent by naming it. The `Agent` role stays out, as in the controller:
+ * a runtime must not mint or revoke public links to itself or a colleague.
  *
  * The share URL is the product — the person asked for a link to hand out —
  * so an active link comes back as the full URL. Nothing else about the token
  * is returned: no bare `token` field, and a revoked link shows no token at
  * all, because the service already withholds a dead one.
  */
+@ToolAudience('admin')
 @Injectable()
 export class ShareLinkTool implements IConditionallyListedTool {
   private readonly logger = new Logger(ShareLinkTool.name);

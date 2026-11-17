@@ -1,10 +1,11 @@
 import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerAgentId,
   callerIsOperator,
+  callerPerson,
   err,
   ok,
   requireOperator,
@@ -27,7 +28,16 @@ type AuthedRequest = Request & { user?: IAuthTokenPayload };
  * registration, PKCE state — exactly as for the console. The tool adds only
  * the two things a model needs: which agent the connection belongs to (the
  * caller, unless told otherwise) and what to do with the URL that comes back.
+ *
+ * Audience `admin`, which is stricter than `person`: registering and
+ * connecting MCP servers is an operator's job in the console (`mcp-servers`
+ * routes, Owner and Admin). `subject` stays an argument, because an Owner or
+ * Admin may start a connection for another user, and is checked against the
+ * party all the same: whoever is not an operator may name only themselves.
+ * That second check cannot fire while the audience is `admin`; it is there so
+ * that lowering the audience later does not reopen "name any user" (CLEAN-232).
  */
+@ToolAudience('admin')
 @Injectable()
 export class McpOauthTool implements IConditionallyListedTool {
   private readonly logger = new Logger(McpOauthTool.name);
@@ -83,6 +93,16 @@ export class McpOauthTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
+    if (
+      subject &&
+      subject !== callerPerson(httpRequest)?.userId &&
+      !callerIsOperator(httpRequest)
+    ) {
+      return err(
+        'A connection for another person needs an administrator. Omit ' +
+          'subject for the agent-wide connection.',
+      );
+    }
     const owner = agentId ?? callerAgentId(httpRequest);
     if (!owner) {
       return err(

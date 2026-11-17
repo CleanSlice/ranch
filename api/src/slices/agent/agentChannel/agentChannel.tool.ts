@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
   callerIsOperator,
@@ -70,6 +70,7 @@ type ChannelInput = z.infer<typeof telegramChannel>;
  * set, and a write would create files under an agent that is not there. The
  * tool therefore resolves the agent first and names it in the answer.
  */
+@ToolAudience('admin')
 @Injectable()
 export class AgentChannelTool implements IConditionallyListedTool {
   private readonly logger = new Logger(AgentChannelTool.name);

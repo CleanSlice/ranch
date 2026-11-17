@@ -6,6 +6,7 @@ import type { GithubSearch } from './data/github.search';
 import type { SkillOrderService } from './domain/skillOrder.service';
 import { ORDER_CHANGED } from './domain/skillOrder.service';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * CLEAN-205: the console can drag the library into an order and pick a
@@ -16,8 +17,8 @@ const request = (roles: UserRoleTypes[]): Request =>
   ({
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 function harness() {
   const skills = {

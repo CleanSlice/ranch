@@ -99,6 +99,10 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
       auth: (cb) =>
         cb({
           agentId,
+          // Which console this is (CLEAN-232), so the agent can say "in the
+          // user console". Wording only: what the person may do is decided
+          // by the API from their account, never from this field.
+          surface: 'app',
           capabilities: CAPABILITIES,
           ...(auth.share
             ? {

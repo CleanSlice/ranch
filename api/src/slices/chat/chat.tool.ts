@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   err,
@@ -97,6 +97,7 @@ function toToolChat(s: IChatSessionData) {
  * Operator-only: a chat is somebody's conversation with an agent, and a plain
  * agent must not be able to read other people's sessions.
  */
+@ToolAudience('admin')
 @Injectable()
 export class ChatTool implements IConditionallyListedTool {
   private readonly logger = new Logger(ChatTool.name);

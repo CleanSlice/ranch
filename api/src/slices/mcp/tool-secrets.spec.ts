@@ -20,6 +20,7 @@ import { IntegrationTool } from '#/integration/integration.tool';
 import { ApiKeyTool, KEY_SHOWN_ONCE } from '#/user/apiKey/apiKey.tool';
 import { RancherTool } from '#/rancher/rancher.tool';
 import { AgentEventTool } from '#/agent/event/agentEvent.tool';
+import { asTrustedAgent } from '#/mcp/testing';
 
 const SENTINEL = 'SENTINEL-SECRET-7f3a';
 
@@ -78,7 +79,7 @@ function leakyGateway(overrides: Record<string, unknown> = {}) {
 
 const request = (roles: UserRoleTypes[]): Request =>
   ({ user: { sub: 'agent:admin', email: '', roles } }) as unknown as Request;
-const operator = () => request([UserRoleTypes.Owner]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
 
 /** Every plausible argument name, secrets everywhere they could go. */
 const args = {

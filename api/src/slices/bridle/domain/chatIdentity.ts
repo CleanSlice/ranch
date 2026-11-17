@@ -43,6 +43,46 @@ export interface IAttachmentRequester {
    * CLEAN-80). Absent for share visitors and anonymous callers.
    */
   user?: { id: string; email?: string };
+  /**
+   * Set only when the bearer was a person's own console token: what the hub
+   * needs to mint an acting token for the message (CLEAN-232). An embed
+   * token is a `jwt` requester too and has none.
+   */
+  console?: IConsoleSession;
+}
+
+/** A signed-in console person, as their own access token states it. */
+export interface IConsoleSession {
+  userId: string;
+  /** The console session the token belongs to (`sid`). */
+  sid: string;
+  /** Strongest role on the token. For display; the API re-reads it. */
+  role: string;
+}
+
+const CONSOLE_ROLES = ['Owner', 'Admin', 'User'] as const;
+
+/**
+ * The console session behind a verified JWT payload, or null when the token
+ * is not a person's own console token: an embed token (`typ`), an agent
+ * service token (`sub = agent:…`), or anything without a session id. Only
+ * such a token may have an acting token minted from it; the session and the
+ * account are checked again when that token is used.
+ */
+export function consoleSessionOf(
+  payload: Record<string, unknown> | null | undefined,
+): IConsoleSession | null {
+  if (!payload || payload.typ !== undefined) return null;
+  const sub = payload.sub;
+  const sid = payload.sid;
+  if (typeof sub !== 'string' || !sub || sub.startsWith('agent:')) return null;
+  if (typeof sid !== 'string' || !sid) return null;
+  const roles = Array.isArray(payload.roles)
+    ? (payload.roles as unknown[])
+    : [];
+  const role = CONSOLE_ROLES.find((r) => roles.includes(r));
+  if (!role) return null;
+  return { userId: sub, sid, role };
 }
 
 /** The one method this module needs from `ShareLinkService`. Structural on

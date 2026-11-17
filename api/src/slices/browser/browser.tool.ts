@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
-import { CONFIRM_SENTENCE, confirmed, ok } from '#/mcp/tooling';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
+import { CONFIRM_SENTENCE, confirmed, ok, requirePerson } from '#/mcp/tooling';
 import { IBrowserGateway, BrowserSessionStatusTypes } from './domain';
 
 const accountKeyParam = z
@@ -13,7 +14,7 @@ const accountKeyParam = z
       'accountKey may only contain alphanumerics, underscore, colon, dash',
   })
   .describe(
-    'Account label scoped to the calling user, e.g. "instagram:miybot", "paypal:main".',
+    'Account label scoped to the person this call is made for, e.g. "instagram:miybot", "paypal:main".',
   );
 
 const statusEnum = z.nativeEnum(BrowserSessionStatusTypes);
@@ -24,7 +25,15 @@ const statusEnum = z.nativeEnum(BrowserSessionStatusTypes);
  * back to the runtime over an authenticated channel. The VNC URL is the
  * one piece the agent CAN surface to the end user (e.g. forward it via
  * Telegram so they can finish a 2FA login).
+ *
+ * Audience `person` (CLEAN-232). The sessions belong to a console account,
+ * and that account is the party the call is made for (`requirePerson`): the
+ * person's own console token, or the acting token the hub minted for their
+ * message. These tools used to take a `userId` argument the model filled in,
+ * which let any agent runtime open, reset or list the sessions of any user
+ * it could name. There is no argument now, and no call without a person.
  */
+@ToolAudience('person')
 @Injectable()
 export class BrowserTool {
   private readonly logger = new Logger(BrowserTool.name);
@@ -39,9 +48,6 @@ export class BrowserTool {
     description:
       'Open or reuse a browser session for the given accountKey. Returns the session metadata and a VNC URL the user can open to finish a login manually. The runtime uses the returned cdpUrl internally — agents should not forward it anywhere. Pass loginUrl so the VNC view renders the right page immediately instead of about:blank.',
     parameters: z.object({
-      userId: z
-        .string()
-        .describe('Owning user — must match the calling principal.'),
       accountKey: accountKeyParam,
       loginUrl: z
         .string()
@@ -52,15 +58,12 @@ export class BrowserTool {
         ),
     }),
   })
-  async open({
-    userId,
-    accountKey,
-    loginUrl,
-  }: {
-    userId: string;
-    accountKey: string;
-    loginUrl?: string;
-  }) {
+  async open(
+    { accountKey, loginUrl }: { accountKey: string; loginUrl?: string },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    const { userId } = requirePerson(httpRequest);
     return ok(await this.gateway.openSession(userId, accountKey, loginUrl));
   }
 
@@ -74,15 +77,19 @@ export class BrowserTool {
       'Close (release) a browser session. Profile data stays on disk. ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
-      userId: z.string(),
       sessionId: z.string(),
       confirm: z
         .boolean()
         .describe('Set true only after the person confirmed in the chat.'),
     }),
   })
-  async close(args: { userId: string; sessionId: string; confirm?: boolean }) {
-    const { userId, sessionId } = args;
+  async close(
+    args: { sessionId: string; confirm?: boolean },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    const { userId } = requirePerson(httpRequest);
+    const { sessionId } = args;
     const refusal = confirmed(args, `close the browser session ${sessionId}`);
     if (refusal) return refusal;
     await this.gateway.closeSession(userId, sessionId);
@@ -99,15 +106,19 @@ export class BrowserTool {
       'Hard-reset a stuck session (e.g. after browser_play timed out). Returns a fresh CDP URL on the same profile. ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
-      userId: z.string(),
       sessionId: z.string(),
       confirm: z
         .boolean()
         .describe('Set true only after the person confirmed in the chat.'),
     }),
   })
-  async reset(args: { userId: string; sessionId: string; confirm?: boolean }) {
-    const { userId, sessionId } = args;
+  async reset(
+    args: { sessionId: string; confirm?: boolean },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    const { userId } = requirePerson(httpRequest);
+    const { sessionId } = args;
     const refusal = confirmed(args, `reset the browser session ${sessionId}`);
     if (refusal) return refusal;
     return ok(await this.gateway.resetSession(userId, sessionId));
@@ -121,11 +132,15 @@ export class BrowserTool {
     description:
       'Mint a short-lived VNC URL the user can open in a browser to log in manually (e.g. for 2FA / CAPTCHA). Call this when openSession or browser_play indicates the profile is not authenticated, then forward the URL to the user via Telegram or chat.',
     parameters: z.object({
-      userId: z.string(),
       sessionId: z.string(),
     }),
   })
-  async loginUrl({ userId, sessionId }: { userId: string; sessionId: string }) {
+  async loginUrl(
+    { sessionId }: { sessionId: string },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    const { userId } = requirePerson(httpRequest);
     const vncUrl = await this.gateway.mintVncUrl(userId, sessionId);
     return ok({ vncUrl });
   }
@@ -138,20 +153,19 @@ export class BrowserTool {
     description:
       'Flip a session status flag — call after browser_play completes (idle / needs_login / stuck) so the admin UI reflects reality.',
     parameters: z.object({
-      userId: z.string(),
       sessionId: z.string(),
       status: statusEnum,
     }),
   })
-  async setStatus({
-    userId,
-    sessionId,
-    status,
-  }: {
-    userId: string;
-    sessionId: string;
-    status: BrowserSessionStatusTypes;
-  }) {
+  async setStatus(
+    {
+      sessionId,
+      status,
+    }: { sessionId: string; status: BrowserSessionStatusTypes },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    const { userId } = requirePerson(httpRequest);
     return ok(await this.gateway.setStatus(userId, sessionId, status));
   }
 
@@ -159,20 +173,19 @@ export class BrowserTool {
     name: 'browser_session_list',
     topic: ToolTopics.Browser,
     title: 'List browser sessions',
-    template: 'List the browser sessions of the user «user»',
-    description: 'List browser sessions for a user.',
+    template: 'List my browser sessions',
+    description:
+      'List the browser sessions of the person this call is made for.',
     parameters: z.object({
-      userId: z.string(),
       status: statusEnum.optional(),
     }),
   })
-  async list({
-    userId,
-    status,
-  }: {
-    userId: string;
-    status?: BrowserSessionStatusTypes;
-  }) {
+  async list(
+    { status }: { status?: BrowserSessionStatusTypes },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    const { userId } = requirePerson(httpRequest);
     return ok(await this.gateway.findAll({ userId, status }));
   }
 }

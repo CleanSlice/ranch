@@ -66,6 +66,7 @@ function makeHandler(
     {} as never,
     {} as never,
     { authorizeChat } as never,
+    {} as never,
   );
 
   const emitted: Array<{ event: string; payload: unknown }> = [];
@@ -324,6 +325,7 @@ function makeConnection(options: IConnectOptions) {
     jwt as never,
     agentGateway as never,
     shareLinks as never,
+    {} as never,
   );
 
   const emitted: Array<{ event: string; payload: unknown }> = [];

@@ -237,3 +237,26 @@ describe('A2aCardGuard — embed tokens (CLEAN-175)', () => {
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });
+
+describe('A2aCardGuard — acting tokens (CLEAN-232)', () => {
+  it('refuses an acting token, also one that claims Owner', async () => {
+    for (const roles of [[], [UserRoleTypes.Owner]]) {
+      const { cardGuard } = makeHarness({
+        verify: () => ({
+          sub: 'user-owner',
+          email: '',
+          roles,
+          sid: 'session-1',
+          typ: 'acting',
+          aud: 'agent:ranch',
+        }),
+      });
+      const req = request('Bearer acting.jwt.token');
+
+      await expect(
+        cardGuard.canActivate(contextFor(req)),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect((req as { user?: unknown }).user).toBeUndefined();
+    }
+  });
+});

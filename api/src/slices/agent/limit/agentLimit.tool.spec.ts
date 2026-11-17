@@ -16,6 +16,7 @@ import type {
   IAgentLimits,
   IAgentLoadSnapshot,
 } from './domain';
+import { asPerson, asTrustedAgent } from '#/mcp/testing';
 
 /**
  * A limit is the only thing between a public agent and anyone who wants to
@@ -70,8 +71,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const PUBLIC_AGENT = {
   id: 'agent-a',
@@ -247,15 +248,32 @@ describe('AgentLimitTool — who may use it', () => {
     expect(service.setLimits).not.toHaveBeenCalled();
   });
 
-  it('does not take the console Admin role for the operator', async () => {
-    // The routes admit Admin; the tools are the Ranch admin agent's, whose
-    // token carries Owner. Widening that is a decision, not a side effect.
-    const { tool } = harness();
-    const admin = request([UserRoleTypes.Admin]);
-    await expect(tool.isListedForRequest(admin)).resolves.toBe(false);
-    await expect(tool.listAgentLimits({}, null, admin)).rejects.toThrow(
+  it('admits an Admin the agent is answering, as the routes do, and refuses a User', async () => {
+    // CLEAN-232 made this a decision: the audience is the party the call is
+    // made for, and the routes admit Owner and Admin. The agent's own Owner
+    // token carries nobody.
+    const { tool, service } = harness();
+    const ranch = () => request([UserRoleTypes.Owner]);
+
+    const admin = asPerson(ranch(), UserRoleTypes.Admin);
+    await expect(tool.isListedForRequest(admin)).resolves.toBe(true);
+    await expect(tool.listAgentLimits({}, null, admin)).resolves.toBeDefined();
+    expect(service.summary).toHaveBeenCalledTimes(1);
+
+    const user = asPerson(ranch(), UserRoleTypes.User);
+    await expect(tool.isListedForRequest(user)).resolves.toBe(false);
+    await expect(tool.listAgentLimits({}, null, user)).rejects.toThrow(
       ForbiddenException,
     );
+
+    // An agent token that names nobody is a guest, whatever role it carries.
+    for (const nobody of [ranch(), request([UserRoleTypes.Admin])]) {
+      await expect(tool.isListedForRequest(nobody)).resolves.toBe(false);
+      await expect(tool.listAgentLimits({}, null, nobody)).rejects.toThrow(
+        ForbiddenException,
+      );
+    }
+    expect(service.summary).toHaveBeenCalledTimes(1);
   });
 });
 

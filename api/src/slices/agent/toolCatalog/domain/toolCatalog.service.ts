@@ -11,6 +11,7 @@ import {
   RANCH_MCP_ID,
 } from '#/mcpServer/domain/mcpServer.seeder';
 import { ToolCatalogService as McpToolCatalogService } from '#/mcp/services/tool-catalog.service';
+import { withCallerParty } from '#/mcp/tooling';
 import { TOOL_TOPIC_INFO, isToolTopic, orderedTopics } from '#/mcp/decorators/topics';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { UserRoleTypes } from '#/user/user/domain';
@@ -38,8 +39,8 @@ export const BUILT_IN_MCP_IDS: readonly string[] = [
 /**
  * The principal a pod's service token carries — the same shape
  * `issueAgentServiceToken` signs (auth.service): admin agents act as Ranch
- * operators, plain agents hold the Agent role. Listing with it yields exactly
- * what the pod sees.
+ * operators, plain agents hold the Agent role. Listing with it, for the
+ * agent itself, yields what the pod sees when it acts on its own behalf.
  */
 export function agentPrincipal(agent: {
   id: string;
@@ -67,9 +68,16 @@ export class ToolCatalogService {
     if (!agent) throw new NotFoundException('Agent not found');
 
     const [tools, snapshot, pods, servers] = await Promise.all([
-      this.listing.listFor({
-        user: agentPrincipal(agent),
-      } as unknown as Request),
+      // The panel shows what this agent's token MAY hold, which is what the
+      // agent gets when it acts for itself: the `trusted` party. What a
+      // given person gets through it is narrower and decided per call
+      // (CLEAN-232); without a party this request would be a guest's and the
+      // panel would be empty.
+      this.listing.listFor(
+        withCallerParty({ user: agentPrincipal(agent) } as unknown as Request, {
+          kind: 'trusted',
+        }),
+      ),
       this.listings.findByAgent(agentId),
       this.pods.list(),
       this.mcpResolver.resolveForAgent(agent),

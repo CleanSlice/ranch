@@ -3,6 +3,9 @@ import type { Request } from 'express';
 import { UserTool } from './user.tool';
 import type { IUserGateway } from './domain';
 import { UserRoleTypes } from './domain';
+import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import { audienceAllows } from '#/mcp/tooling';
+import { toolAudienceOf } from '#/mcp/decorators';
 
 /**
  * These tools put user accounts within a model's reach. Two properties are
@@ -18,8 +21,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const at = new Date('2026-09-17T10:00:00.000Z');
 
@@ -107,6 +110,124 @@ describe('UserTool — who may use it', () => {
     await expect(
       tool.getUser({ userId: jane.id }, null, {} as Request),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+/**
+ * CLEAN-232. The Ranch admin agent's token carries Owner, and it used to do
+ * Owner things for whoever was chatting with it. What decides now is the
+ * person the call is made for, checked against the same roles the console
+ * routes state: `users` is @Roles(Admin), changing a role and removing an
+ * account are @Roles(Owner).
+ */
+describe('UserTool — the Ranch admin agent answering a person', () => {
+  /** The agent's own token: Owner, whoever it is talking to. */
+  const ranch = () => request([UserRoleTypes.Owner]);
+  const answering = (role: UserRoleTypes) => () => asPerson(ranch(), role);
+
+  it('does nothing for a User, though its token carries Owner', async () => {
+    const { tool, users } = harness();
+    const user = answering(UserRoleTypes.User);
+
+    await expect(tool.isListedForRequest(user())).resolves.toBe(false);
+    const calls = [
+      () => tool.listUsers({}, null, user()),
+      () => tool.getUser({ userId: owner.id }, null, user()),
+      () =>
+        tool.createUser(
+          {
+            name: 'Mallory',
+            email: 'mallory@ranch.test',
+            password: SENTINEL,
+            role: UserRoleTypes.Admin,
+          },
+          null,
+          user(),
+        ),
+      () =>
+        tool.updateUser({ userId: owner.id, password: SENTINEL }, null, user()),
+      () =>
+        tool.setUserRole(
+          { userId: jane.id, role: UserRoleTypes.Admin, confirm: true },
+          null,
+          user(),
+        ),
+      () => tool.deleteUser({ userId: jane.id, confirm: true }, null, user()),
+    ];
+    for (const call of calls) {
+      await expect(call()).rejects.toThrow(
+        new ForbiddenException(
+          'This tool requires the Ranch operator role. Ask the operator to do it ' +
+            'in the console, or through the Ranch admin agent.',
+        ),
+      );
+    }
+    for (const fn of Object.values(users)) expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('lets an Admin do what the Admin routes allow, and not the Owner’s two', async () => {
+    const { tool, users } = harness();
+    const admin = answering(UserRoleTypes.Admin);
+
+    await expect(tool.isListedForRequest(admin())).resolves.toBe(true);
+    await expect(tool.listUsers({}, null, admin())).resolves.toBeDefined();
+    await expect(
+      tool.updateUser({ userId: jane.id, name: 'Jane D.' }, null, admin()),
+    ).resolves.toBeDefined();
+    expect(users.update).toHaveBeenCalledTimes(1);
+
+    await expect(
+      tool.setUserRole(
+        { userId: jane.id, role: UserRoleTypes.Admin, confirm: true },
+        null,
+        admin(),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      tool.deleteUser({ userId: jane.id, confirm: true }, null, admin()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(users.update).toHaveBeenCalledTimes(1);
+    expect(users.delete).not.toHaveBeenCalled();
+
+    for (const method of ['setUserRole', 'deleteUser'] as const) {
+      const audience = toolAudienceOf(UserTool, tool[method]);
+      expect(audience).toBe('owner');
+      expect(audienceAllows(audience, admin())).toBe(false);
+    }
+    expect(toolAudienceOf(UserTool, tool['listUsers'])).toBe('admin');
+  });
+
+  it('lets the Owner change a role and remove an account', async () => {
+    const { tool, users } = harness();
+    const theOwner = answering(UserRoleTypes.Owner);
+
+    await tool.setUserRole(
+      { userId: jane.id, role: UserRoleTypes.Admin, confirm: true },
+      null,
+      theOwner(),
+    );
+    await tool.deleteUser({ userId: jane.id, confirm: true }, null, theOwner());
+
+    expect(users.update).toHaveBeenCalledWith(jane.id, {
+      role: UserRoleTypes.Admin,
+    });
+    expect(users.delete).toHaveBeenCalledWith(jane.id);
+  });
+
+  it('is a guest when the call names nobody: told to sign in, not to find an operator', async () => {
+    const { tool, users } = harness();
+
+    await expect(tool.isListedForRequest(ranch())).resolves.toBe(false);
+    await expect(tool.listUsers({}, null, ranch())).rejects.toThrow(
+      new ForbiddenException('This needs a signed-in administrator.'),
+    );
+    await expect(
+      tool.deleteUser({ userId: jane.id, confirm: true }, null, ranch()),
+    ).rejects.toThrow(
+      new ForbiddenException('This needs a signed-in administrator.'),
+    );
+    expect(users.findAll).not.toHaveBeenCalled();
+    expect(users.delete).not.toHaveBeenCalled();
   });
 });
 

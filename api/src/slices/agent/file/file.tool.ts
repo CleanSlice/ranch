@@ -1,7 +1,7 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   CONFIRM_SENTENCE,
   callerIsOperator,
@@ -77,6 +77,7 @@ const CONFIRM_BY_PROPOSAL =
  *
  * Operator-only: hidden from plain agents and refused if called anyway.
  */
+@ToolAudience('admin')
 @Injectable()
 export class FileTool implements IConditionallyListedTool {
   constructor(

@@ -1,5 +1,5 @@
 import { UnauthorizedException } from '@nestjs/common';
-import { IUserData, UserRoleTypes } from '../../user/domain';
+import { IUserData, ROLE_LEVELS, UserRoleTypes } from '../../user/domain';
 
 export interface IAuthTokenPayload {
   sub: string;
@@ -21,7 +21,19 @@ export interface IAuthTokenPayload {
    * token rendered into a customer page is worth exactly one thing: chatting
    * as that visitor. Absent on console, agent service and extension tokens.
    */
-  typ?: 'embed';
+  /**
+   * `'acting'` on the token the hub mints with each message of a signed-in
+   * console person (CLEAN-232, `ActingPartyService`). It says "this tool call
+   * is made for that person" and nothing else: every verifier of a bearer
+   * refuses it, and only the MCP tool layer reads it, from the call's
+   * `_meta`, never from the `Authorization` header.
+   */
+  typ?: 'embed' | 'acting';
+  /**
+   * Acting tokens only: `agent:<id>` of the one agent the token was minted
+   * for. A token carried to another agent's runtime is refused.
+   */
+  aud?: string;
 }
 
 /** True for a verified payload that `mintEmbedToken` produced. */
@@ -31,6 +43,55 @@ export function isEmbedToken(payload: unknown): boolean {
     payload !== null &&
     (payload as { typ?: unknown }).typ === 'embed'
   );
+}
+
+/** True for a verified payload that `ActingPartyService.mint` produced. */
+export function isActingToken(payload: unknown): boolean {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    (payload as { typ?: unknown }).typ === 'acting'
+  );
+}
+
+/**
+ * Who a tool call is made for (CLEAN-232). An agent's token says what the
+ * agent may do at most; the party says on whose behalf it is doing it, and
+ * the API grants the lesser of the two (`#/mcp/tooling`).
+ *
+ * - `person`: a signed-in console account, proven by an acting token or by
+ *   the person's own console token. The role is the one in the database.
+ * - `trusted`: the agent speaking for itself (a scheduled job, an
+ *   administrator its own configuration names). Bounded by the agent's token.
+ * - `guest`: everyone else, and every call that names nobody.
+ */
+export type ICallerParty =
+  | { kind: 'person'; userId: string; role: UserRoleTypes }
+  | { kind: 'trusted' }
+  | { kind: 'guest' };
+
+/** The roles a person can hold. `Agent` is not one. */
+const PERSON_ROLES: readonly UserRoleTypes[] = [
+  UserRoleTypes.Owner,
+  UserRoleTypes.Admin,
+  UserRoleTypes.User,
+];
+
+/**
+ * The strongest person role in a list of roles, or null when it holds none.
+ * One definition for the two places that turn a console token into a person:
+ * `ActingPartyService.resolve` and the fallback in `#/mcp/tooling`.
+ */
+export function highestPersonRole(
+  roles: readonly unknown[] | null | undefined,
+): UserRoleTypes | null {
+  if (!Array.isArray(roles)) return null;
+  let best: UserRoleTypes | null = null;
+  for (const role of PERSON_ROLES) {
+    if (!roles.includes(role)) continue;
+    if (best === null || ROLE_LEVELS[role] > ROLE_LEVELS[best]) best = role;
+  }
+  return best;
 }
 
 export interface IAuthResult {

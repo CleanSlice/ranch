@@ -5,6 +5,7 @@ import type { TemplateInstallService } from './domain/templateInstall.service';
 import type { ITemplateGateway, ITemplateData } from '#/agent/template/domain';
 import type { IInstallPreview, IInstallResult } from './domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * Installing a template writes to the database and S3 on the strength of a
@@ -18,8 +19,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const GIT_URL = 'https://github.com/CleanSlice/agent-templates.git';
 const SECRET = 'sk-live-do-not-leak-me';

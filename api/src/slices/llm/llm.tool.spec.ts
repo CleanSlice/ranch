@@ -8,6 +8,7 @@ import type { IUsageData } from '#/usage/domain';
 import type { ILlmCredentialData } from './domain';
 import type { ILlmGateway, ILlmHealthGateway } from './domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * Two things matter more here than the happy paths: that the key handed to
@@ -52,8 +53,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: LlmTool;

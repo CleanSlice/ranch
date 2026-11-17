@@ -29,6 +29,7 @@ function makeHandler(expand: BridleAttachmentService['expand']) {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   const emitted: string[] = [];
   const client = {

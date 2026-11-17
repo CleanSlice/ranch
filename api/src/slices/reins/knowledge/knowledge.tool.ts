@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import { Request } from 'express';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -49,6 +49,7 @@ type ContextBlockOrError =
   | IContextBlock
   | { knowledge_id: string; knowledge_name: string | null; error: string };
 
+@ToolAudience('everyone')
 @Injectable()
 export class KnowledgeTool implements IDynamicallyDescribedTool {
   private readonly logger = new Logger(KnowledgeTool.name);

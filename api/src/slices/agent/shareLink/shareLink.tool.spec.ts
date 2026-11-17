@@ -4,6 +4,7 @@ import { ShareLinkTool, resolveAppOrigin } from './shareLink.tool';
 import type { IShareLinkState, ShareLinkService } from './domain';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * A share link is a credential anyone can use, so the checks that matter are
@@ -42,8 +43,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: ShareLinkTool;

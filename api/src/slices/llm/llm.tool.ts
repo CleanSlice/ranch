@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   CONFIRM_SENTENCE,
   callerIsOperator,
@@ -53,6 +53,7 @@ const STATUS = z.enum(['active', 'disabled']);
  * Operator agents only: a plain agent has no business reading which models
  * the Ranch pays for, let alone deleting the credential it runs on.
  */
+@ToolAudience('admin')
 @Injectable()
 export class LlmTool implements IConditionallyListedTool {
   private readonly logger = new Logger(LlmTool.name);

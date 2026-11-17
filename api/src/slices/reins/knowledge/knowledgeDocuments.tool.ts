@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import { callerAgentId, err, ok, requireAgent } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -65,6 +65,7 @@ interface IDocumentsError {
  * so this tool can never name a document from a base its agent was not
  * given.
  */
+@ToolAudience('agent')
 @Injectable()
 export class KnowledgeDocumentsTool implements IConditionallyListedTool {
   private readonly logger = new Logger(KnowledgeDocumentsTool.name);

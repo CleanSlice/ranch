@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   CONFIRM_SENTENCE,
@@ -53,6 +53,7 @@ type AuthedRequest = Request & { user?: IAuthTokenPayload };
  *
  * Operator-only: hidden from a plain agent's tools/list, and refused by name.
  */
+@ToolAudience('admin')
 @Injectable()
 export class AgentAdminTool implements IConditionallyListedTool {
   private readonly logger = new Logger(AgentAdminTool.name);

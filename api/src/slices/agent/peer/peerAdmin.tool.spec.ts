@@ -8,6 +8,7 @@ import type { PeerService } from './domain/peer.service';
 import type { AgentCardService } from './domain/agentCard.service';
 import type { IDelegationGateway } from './domain/delegation.gateway';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * These tools hand an agent the power to decide which other agents exist for
@@ -59,8 +60,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: PeerAdminTool;

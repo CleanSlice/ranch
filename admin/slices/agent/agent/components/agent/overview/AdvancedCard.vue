@@ -16,6 +16,7 @@ import {
 } from '@tabler/icons-vue'
 import { useInjectedAgentDraft } from '#agent/composables/useAgentDraft'
 import { useInjectedAgentMetrics } from '#agent/composables/useAgentMetrics'
+import { isOwnerRole } from '#agent/utils/agentAccess'
 import { agentCreatorView } from '#agent/utils/agentCreator'
 import { formatBytes, usagePct } from '#agent/utils/agentFormat'
 import { formatDateTime } from '#common/utils/format'
@@ -36,7 +37,7 @@ const uid = useId()
 // Owner power, and the API keeps both routes for the Owner (CLEAN-232). An
 // Admin reads the state and is told who can change it, instead of being
 // offered a button that would be refused.
-const canChangeAdmin = computed(() => auth.user?.role === 'Owner')
+const canChangeAdmin = computed(() => isOwnerRole(auth.user?.role))
 
 // Who created the agent, read off the store record like everything else here.
 const creator = computed(() => agentCreatorView(agent.value?.createdBy))

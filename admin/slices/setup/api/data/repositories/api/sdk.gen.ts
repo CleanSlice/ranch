@@ -1090,7 +1090,7 @@ export class TemplatesService {
 
 export class AgentsService {
   /**
-   * List all agents, with their full configuration. Any signed-in account; `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).
+   * List all agents. Any signed-in account. An agent the reader may manage comes with its full configuration; any other comes as a reader sees it: `config` empty, `llmCredentialId`, `workflowId`, `statusReason`, `launchContext` and the deploy and sync dates null, `knowledgeIds` empty, `debugEnabled` false (CLEAN-232). `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).
    */
   public static agentControllerFindAll<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerFindAllData, ThrowOnError>,
@@ -1126,7 +1126,7 @@ export class AgentsService {
   }
 
   /**
-   * List agents flagged as public. Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.
+   * List agents flagged as public, each as a reader sees it (no configuration, see GET /agents). Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.
    */
   public static agentControllerFindPublic<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerFindPublicData, ThrowOnError>,
@@ -1206,7 +1206,7 @@ export class AgentsService {
   }
 
   /**
-   * Get agent by ID, with its full configuration and allowed origins. Any signed-in account (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this. `createdBy` is resolved for an Owner or Admin only.
+   * Get agent by ID. Any signed-in account (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this. With its full configuration for a reader who may manage it; as a reader sees it otherwise (see GET /agents). `createdBy` is resolved for an Owner or Admin only.
    */
   public static agentControllerFindById<ThrowOnError extends boolean = false>(
     options: Options<AgentControllerFindByIdData, ThrowOnError>,
@@ -1274,7 +1274,7 @@ export class AgentsService {
   }
 
   /**
-   * List of MCP servers this agent should connect to at runtime. Resolves the agent's template and returns its enabled MCP attachments. Called by the runtime on boot to populate its tool registry. Tokens with role=Agent (issued to runtimes) can only read their OWN agent — `sub` must match `agent:<id>`.
+   * List of MCP servers this agent should connect to at runtime. Resolves the agent's template and returns its enabled MCP attachments. Called by the runtime on boot to populate its tool registry. Tokens with role=Agent (issued to runtimes) can only read their OWN agent — `sub` must match `agent:<id>`. A person must be able to manage the agent: the Ranch admin agent answers 404 to anybody but the Owner (CLEAN-232).
    */
   public static getAgentMcps<ThrowOnError extends boolean = false>(
     options: Options<GetAgentMcpsData, ThrowOnError>,
@@ -1402,7 +1402,7 @@ export class AgentsService {
   }
 
   /**
-   * Restart every agent that uses this template. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner.
+   * Restart every agent that uses this template and that the caller may manage. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner. An agent the caller may not manage (the Ranch admin agent, for an Admin) is left running and counted in `skipped`, never named; `total` counts the agents that were restarted or failed.
    */
   public static restartByTemplate<ThrowOnError extends boolean = false>(
     options: Options<RestartByTemplateData, ThrowOnError>,
@@ -3607,7 +3607,7 @@ export class PeersService {
   }
 
   /**
-   * Connect a peer. Either `peerAgentId` (another agent of this installation — mints a pair credential and reads the card with it) or `url` (an external A2A agent imported by address, optionally with a credential; re-importing the same address updates the entry in place). Nothing is kept if the card cannot be read. The agent picks the tool up on its next restart.
+   * Connect a peer. Either `peerAgentId` (another agent of this installation — mints a pair credential and reads the card with it) or `url` (an external A2A agent imported by address, optionally with a credential; re-importing the same address updates the entry in place). Nothing is kept if the card cannot be read. The agent picks the tool up on its next restart. With `peerAgentId` the caller must be able to manage that agent too: one they may not manage answers 404, like one that does not exist.
    */
   public static connectAgentPeer<ThrowOnError extends boolean = false>(
     options: Options<ConnectAgentPeerData, ThrowOnError>,
@@ -3627,7 +3627,7 @@ export class PeersService {
   }
 
   /**
-   * Every other agent of this installation, each marked with whether it is already a peer. Excludes the agent itself.
+   * Every other agent of this installation the caller may manage, each marked with whether it is already a peer. Excludes the agent itself.
    */
   public static listAgentPeerCandidates<ThrowOnError extends boolean = false>(
     options: Options<ListAgentPeerCandidatesData, ThrowOnError>,

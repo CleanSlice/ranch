@@ -652,6 +652,7 @@ export class RancherTool {
       "the edited SKILL.md. Each agent's workflow is cancelled and resubmitted " +
       '(template files + skills resynced from DB). Sequential with concurrency 3 ' +
       'to avoid slamming the cluster. Returns aggregate counts and per-agent errors. ' +
+      'An agent the person may not manage is left running and only counted (`skipped`). ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       skillId: z.string(),
@@ -670,9 +671,25 @@ export class RancherTool {
     const skill = await this.skills.findById(skillId);
     if (!skill) return ok({ error: `Skill ${skillId} not found` });
 
-    const dependents = await this.skills.findDependentAgents(skillId);
+    const using = await this.skills.findDependentAgents(skillId);
+    // Restarting an agent is managing it (CLEAN-232): an Admin redeploying a
+    // skill must not restart the Ranch admin agent along with it. What was
+    // left out is counted, never named.
+    const caller = manageCaller(httpRequest);
+    const manageable = await Promise.all(
+      using.map((dep) => this.permission.manageable(caller, dep.id)),
+    );
+    const dependents = using.filter((_, i) => manageable[i] !== null);
+    const skipped = using.length - dependents.length;
     if (dependents.length === 0) {
-      return ok({ skillId, total: 0, restarted: 0, failed: 0, errors: [] });
+      return ok({
+        skillId,
+        total: 0,
+        restarted: 0,
+        failed: 0,
+        skipped,
+        errors: [],
+      });
     }
     const refusal = confirmed(
       args,
@@ -710,6 +727,7 @@ export class RancherTool {
       total: dependents.length,
       restarted,
       failed,
+      skipped,
       errors,
     });
   }

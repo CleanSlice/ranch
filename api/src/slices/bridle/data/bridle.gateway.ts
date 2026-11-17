@@ -691,7 +691,10 @@ export class BridleGateway extends IBridleGateway {
       );
       return;
     }
-    const payload: IBridleMcpConnectedEvent = { type: 'mcp_connected', ...event };
+    const payload: IBridleMcpConnectedEvent = {
+      type: 'mcp_connected',
+      ...event,
+    };
     agentSend(payload);
     this.logger.log(
       `Pushed mcp_connected server=${event.server} subject=${event.subject} to agent agentId=${agentId}`,

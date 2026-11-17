@@ -22,14 +22,17 @@ import {
 } from '#theme/components/ui/dropdown-menu';
 import { useToolCatalogStore } from '#toolCatalog/stores/toolCatalog';
 import { agentInitials } from '#agent/composables/useAgentRailEntries';
+import { useAgentAccess } from '#agent/composables/useAgentAccess';
 import { provideAgentDelete } from '#agent/composables/useAgentDelete';
 import { useAgentPin } from '#agent/composables/useAgentPin';
 import { useAgentSectionCounts } from '#agent/composables/useAgentSectionCounts';
 import { useAgentTab } from '#agent/composables/useAgentTab';
 import { useRelativeTime } from '#common/composables/useRelativeTime';
 import { formatDateTime } from '#common/utils/format';
+import { OWNER_MANAGED_TEXT } from '#agent/utils/agentAccess';
 import {
   DEFAULT_SECTION,
+  WORKSPACE_TABS,
   sectionOf,
   settingsSectionOf,
   workspaceTabOf,
@@ -64,6 +67,12 @@ const { pending, refresh } = useAsyncData(
 );
 const agent = computed(() => agentStore.byId(props.id));
 
+// The Ranch admin agent is the Owner's alone (CLEAN-232): for anybody else the
+// API answers "Agent not found" on its management routes. So an Admin gets the
+// conversation and one line saying who manages the agent: no Settings, no
+// lifecycle controls, and none of the requests behind them.
+const { canManage } = useAgentAccess(agent);
+
 const {
   isRestarting,
   restartError,
@@ -86,7 +95,16 @@ const {
   toggle: togglePin,
 } = useAgentPin(props.id, agent);
 
-const { tab, setTab } = useAgentTab();
+const { tab: requestedTab, setTab } = useAgentTab();
+
+// What is on screen. A viewer who may not manage the agent has the chat only,
+// whatever `?tab=` asks for: a link to Files must not open Files for them.
+const tab = computed<AgentTab>(() =>
+  canManage.value ? requestedTab.value : 'chat',
+);
+const workspaceTabs = computed<readonly WorkspaceTab[]>(() =>
+  canManage.value ? WORKSPACE_TABS : ['chat'],
+);
 
 // Settings reopens on the section the operator left it on, not on the first
 // one: Chat → Settings → Files → Chat → Settings lands on Files again. Kept
@@ -105,8 +123,9 @@ function onSelectWorkspaceTab(next: WorkspaceTab) {
 }
 
 // The Settings hub's cards show counts before you click, so there is nothing
-// to gate them behind — they are fetched from first paint.
-const { counts } = useAgentSectionCounts(props.id, agent);
+// to gate them behind — they are fetched from first paint, for a viewer who
+// may open the sections they count.
+const { counts } = useAgentSectionCounts(props.id, agent, canManage);
 
 // The status badge renders from the DB row (not the SSE pod stream). Re-fetch
 // when the operator opens Overview so a stale 'failed' or 'deploying' from
@@ -202,7 +221,7 @@ async function onDeleted() {
 <template>
   <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
     <div
-      v-if="pendingRestart"
+      v-if="pendingRestart && canManage"
       class="flex shrink-0 flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
     >
       <IconAlertTriangle class="size-4 shrink-0" />
@@ -286,7 +305,7 @@ async function onDeleted() {
           at limit
         </span>
         <button
-          v-if="limitEntry?.needsLimits"
+          v-if="limitEntry?.needsLimits && canManage"
           type="button"
           class="shrink-0 text-xs text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
           title="Public with no request limits — set them in the Request limit block on Overview"
@@ -298,6 +317,7 @@ async function onDeleted() {
 
         <AgentWorkspaceTabs
           class="ml-2"
+          :tabs="workspaceTabs"
           :active="workspaceTabOf(tab)"
           @select="onSelectWorkspaceTab"
         />
@@ -308,16 +328,28 @@ async function onDeleted() {
              Below ~900px it wraps under the tabs (`order-last basis-full`)
              so Stop and the menu never leave the row. -->
         <UsageLine
+          v-if="canManage"
           :agent-id="agent.id"
           :llm-credential-id="agent.llmCredentialId"
           class="order-last basis-full md:order-none md:basis-auto md:max-w-72"
           @details="setTab('overview')"
         />
 
-        <div class="flex shrink-0 items-center gap-2">
+        <!-- The one line a viewer who may not manage this agent reads where
+             the controls are for the Owner (CLEAN-232). -->
+        <p
+          v-if="!canManage"
+          class="shrink-0 text-xs text-muted-foreground"
+          data-owner-managed
+        >
+          {{ OWNER_MANAGED_TEXT }}
+        </p>
+
+        <div v-else class="flex shrink-0 items-center gap-2">
           <Button
             variant="outline"
             size="sm"
+            data-agent-toggle-running
             :disabled="toggling || isRestarting"
             :title="
               canStop
@@ -365,7 +397,12 @@ async function onDeleted() {
                last, separated — the one action here you cannot undo. -->
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
-              <Button variant="outline" size="sm" class="size-8 p-0">
+              <Button
+                variant="outline"
+                size="sm"
+                class="size-8 p-0"
+                data-agent-actions
+              >
                 <span class="sr-only">More agent actions</span>
                 <IconDotsVertical class="size-4" />
               </Button>
@@ -423,6 +460,7 @@ async function onDeleted() {
       </div>
 
       <AgentDeleteDialog
+        v-if="canManage"
         v-model:open="confirmRemoveOpen"
         :agent-id="agent.id"
         :agent-name="agent.name"

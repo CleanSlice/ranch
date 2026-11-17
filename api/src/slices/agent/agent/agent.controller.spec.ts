@@ -6,6 +6,7 @@ import {
   RANCH_MCP_ID,
 } from '#/mcpServer/domain/mcpServer.seeder';
 import type { IMcpServerData } from '#/mcpServer/domain';
+import { permissionOver } from './domain/__fixtures__/agentPermission';
 
 /**
  * getMcps only. Which servers an agent gets is AgentMcpResolver's answer now
@@ -57,12 +58,13 @@ function build(opts: { resolved?: IMcpServerData[]; agent?: unknown } = {}) {
     mcpResolver as never,
     stub,
     stub,
+    permissionOver(agentGateway),
   );
   return { controller, mcpResolver, agentGateway };
 }
 
 const asOwner = {
-  user: { sub: 'user-1', roles: ['owner'] },
+  user: { sub: 'user-1', roles: ['Owner'] },
 } as unknown as Request;
 
 const asAgent = (id: string) =>
@@ -197,6 +199,7 @@ function buildForLimits(
     stub,
     agentLimits as never,
     userGateway as never,
+    permissionOver(agentGateway),
   );
   return { controller, agentGateway, agentLimits, deploy, order, userGateway };
 }

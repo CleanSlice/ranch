@@ -18,6 +18,7 @@ import {
   IconExternalLink,
   IconCloud,
 } from '@tabler/icons-vue';
+import { isOwnerRole } from '#agent/utils/agentAccess';
 
 const rancherStore = useRancherStore();
 const agentStore = useAgentStore();
@@ -27,6 +28,11 @@ const authStore = useAuthStore();
 const llmStore = useLlmStore();
 const config = useRuntimeConfig();
 const { t } = useI18n();
+
+// The Ranch admin agent is the Owner's alone (CLEAN-232): only the Owner may
+// create it (`isAdmin` on POST /agents is refused for anybody else) and only
+// the Owner manages it. An Admin talks to it here and is told who deploys it.
+const isOwner = computed(() => isOwnerRole(authStore.user?.role));
 
 if (import.meta.client) {
   onMounted(() => agentStatusStore.connect());
@@ -325,9 +331,17 @@ async function onDeploy() {
             <IconCircle v-else class="size-4 text-muted-foreground" />
           </div>
         </CardHeader>
-        <CardContent v-if="!stepDone.agent" class="flex flex-col gap-2">
+        <CardContent
+          v-if="!stepDone.agent && !isOwner"
+          class="text-sm text-muted-foreground"
+          data-deploy-owner-only
+        >
+          Only the Owner can deploy the Ranch admin agent.
+        </CardContent>
+        <CardContent v-else-if="!stepDone.agent" class="flex flex-col gap-2">
           <div>
             <Button
+              data-deploy-admin-agent
               :disabled="!stepDone.llm || !stepDone.s3 || !stepDone.template || deploying"
               @click="onDeploy"
             >
@@ -362,6 +376,7 @@ async function onDeploy() {
           :api-url="apiUrl"
           :agent-id="admin.id"
           :title="`Chat with ${admin.name}`"
+          :manageable="isOwner"
           class="h-full min-h-0 w-full max-w-none flex-1"
         />
       </div>

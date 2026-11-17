@@ -129,17 +129,26 @@ export function parseBearer(headers: ChatHeaders | undefined): string | null {
  * `sub` and no admin role. Callers MUST treat that as an unusable token rather
  * than letting an `undefined` client id travel on; a request with no identity
  * is exactly the case an ownership check must not be skipped for.
+ *
+ * An agent's service token (`sub = agent:<id>`) is never `admin`, whatever
+ * roles it carries (CLEAN-232). The Ranch admin agent's token carries Owner,
+ * and its runtime can print it: read as an administrator here, it could read
+ * and write the conversation every Owner and Admin shares. It is an `Agent`
+ * on routes and a guest at the tools; here it is its own client, with a
+ * history of its own that nobody else's token opens.
  */
 export function clientIdFromJwtPayload(
   payload: Record<string, unknown> | null | undefined,
 ): { clientId: string; isAdmin: boolean } | null {
+  const sub = payload?.sub;
+  const isAgent = typeof sub === 'string' && sub.startsWith('agent:');
   const roles = payload?.roles as string[] | undefined;
   const isAdmin =
+    !isAgent &&
     Array.isArray(roles) &&
     (roles.includes('Owner') || roles.includes('Admin'));
   if (isAdmin) return { clientId: 'admin', isAdmin: true };
 
-  const sub = payload?.sub;
   if (typeof sub !== 'string' || !sub) return null;
   return { clientId: sub, isAdmin: false };
 }

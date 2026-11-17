@@ -37,6 +37,8 @@ import { IAgentGateway } from './domain';
 import { AgentStatusTypes, IAgentData } from './domain/agent.types';
 import { ManagesAgent } from './guards';
 import { AgentStatusService } from './domain/agentStatus.service';
+import { AgentPermissionService } from './domain/agentPermission.service';
+import { toReaderView } from './domain/agentReaderView';
 import { AgentDeployService } from './domain/agentDeploy.service';
 import { detectMcpConfigDrift } from './domain/mcpConfigDrift';
 import {
@@ -141,6 +143,7 @@ export class AgentController {
     @Inject(forwardRef(() => AgentLimitService))
     private agentLimits: AgentLimitService,
     private userGateway: IUserGateway,
+    private permission: AgentPermissionService,
   ) {}
 
   private deploy(agentId: string): Promise<void> {
@@ -152,6 +155,11 @@ export class AgentController {
    * created each one: `{ id, name, email }`, with null name and email when
    * the account has been removed, and null when nobody is recorded. A User
    * gets null and nothing to resolve it from: the bare id never leaves.
+   *
+   * A reader who may not manage an agent gets its reader view
+   * (`toReaderView`): no `config`, no credential or knowledge binding, no
+   * deploy history. That is every agent for a User who created none, the
+   * Ranch admin agent for an Admin, and everything for an anonymous reader.
    */
   private async present(
     agents: IAgentData[],
@@ -177,12 +185,44 @@ export class AgentController {
         }),
       );
     }
-    return agents.map((agent) => ({
+    const visible = await this.asReadBy(agents, req);
+    return visible.map((agent) => ({
       ...withoutCreatorId(agent),
       createdBy: agent.createdById
         ? (creators.get(agent.createdById) ?? null)
         : null,
     }));
+  }
+
+  /** Each agent whole for a reader who may manage it, its reader view otherwise. */
+  private async asReadBy(
+    agents: IAgentData[],
+    req: Request | undefined,
+  ): Promise<IAgentData[]> {
+    const caller = AgentPermissionService.callerOfBearer(
+      (req as (Request & { user?: IAuthTokenPayload }) | undefined)?.user,
+    );
+    return Promise.all(
+      agents.map(async (agent) =>
+        (await this.permission.canManage(caller, agent))
+          ? agent
+          : toReaderView(agent),
+      ),
+    );
+  }
+
+  /** The agents of a list the caller may manage, in the order given. */
+  private async manageableOf(
+    agents: IAgentData[],
+    req: Request | undefined,
+  ): Promise<IAgentData[]> {
+    const caller = AgentPermissionService.callerOfBearer(
+      (req as (Request & { user?: IAuthTokenPayload }) | undefined)?.user,
+    );
+    const allowed = await Promise.all(
+      agents.map((agent) => this.permission.canManage(caller, agent)),
+    );
+    return agents.filter((_, i) => allowed[i]);
   }
 
   private async presentOne(
@@ -242,7 +282,7 @@ export class AgentController {
   @Roles(UserRoleTypes.User)
   @ApiOperation({
     summary:
-      'List all agents, with their full configuration. Any signed-in account; `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).',
+      'List all agents. Any signed-in account. An agent the reader may manage comes with its full configuration; any other comes as a reader sees it: `config` empty, `llmCredentialId`, `workflowId`, `statusReason`, `launchContext` and the deploy and sync dates null, `knowledgeIds` empty, `debugEnabled` false (CLEAN-232). `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).',
   })
   @ApiOkResponse({ type: AgentDto, isArray: true })
   async findAll(@Req() req?: Request) {
@@ -253,7 +293,7 @@ export class AgentController {
   @Public()
   @ApiOperation({
     summary:
-      'List agents flagged as public. Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.',
+      'List agents flagged as public, each as a reader sees it (no configuration, see GET /agents). Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.',
   })
   @ApiOkResponse({ type: AgentDto, isArray: true })
   async findPublic() {
@@ -268,10 +308,19 @@ export class AgentController {
       'Snapshot of all agents joined with live pod status. Any signed-in account (CLEAN-177); the SSE stream below stays open because EventSource cannot send a token.',
   })
   @ApiOkResponse({ type: AgentStatusDto, isArray: true })
-  async status() {
+  async status(@Req() req?: Request) {
     // Status carries no creator: the consoles read that from GET /agents.
+    // The agent inside is read like any other: whole for a reader who may
+    // manage it, its reader view otherwise.
     const snapshot = await this.agentStatusService.snapshot();
-    return snapshot.map((s) => ({ ...s, agent: withoutCreatorId(s.agent) }));
+    const agents = await this.asReadBy(
+      snapshot.map((s) => s.agent),
+      req,
+    );
+    return snapshot.map((s, i) => ({
+      ...s,
+      agent: withoutCreatorId(agents[i]),
+    }));
   }
 
   @Sse('status/stream')
@@ -330,7 +379,7 @@ export class AgentController {
   @Roles(UserRoleTypes.User)
   @ApiOperation({
     summary:
-      'Get agent by ID, with its full configuration and allowed origins. Any signed-in account (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this. `createdBy` is resolved for an Owner or Admin only.',
+      'Get agent by ID. Any signed-in account (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this. With its full configuration for a reader who may manage it; as a reader sees it otherwise (see GET /agents). `createdBy` is resolved for an Owner or Admin only.',
   })
   @ApiOkResponse({ type: AgentDto })
   async findById(@Param('id') id: string, @Req() req?: Request) {
@@ -341,6 +390,7 @@ export class AgentController {
 
   @Get(':id/metrics')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ManagesAgent('id')
   @ApiOperation({
     operationId: 'getAgentMetrics',
     summary:
@@ -357,6 +407,7 @@ export class AgentController {
 
   @Get(':id/env')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ManagesAgent('id')
   @ApiOperation({
     operationId: 'getAgentEnv',
     summary:
@@ -374,7 +425,7 @@ export class AgentController {
   @ApiOperation({
     operationId: 'getAgentMcps',
     summary:
-      "List of MCP servers this agent should connect to at runtime. Resolves the agent's template and returns its enabled MCP attachments. Called by the runtime on boot to populate its tool registry. Tokens with role=Agent (issued to runtimes) can only read their OWN agent — `sub` must match `agent:<id>`.",
+      "List of MCP servers this agent should connect to at runtime. Resolves the agent's template and returns its enabled MCP attachments. Called by the runtime on boot to populate its tool registry. Tokens with role=Agent (issued to runtimes) can only read their OWN agent — `sub` must match `agent:<id>`. A person must be able to manage the agent: the Ranch admin agent answers 404 to anybody but the Owner (CLEAN-232).",
   })
   @ApiOkResponse({ type: AgentMcpDto, isArray: true })
   async getMcps(
@@ -393,7 +444,18 @@ export class AgentController {
       );
     }
 
-    const agent = await this.agentGateway.findById(id);
+    // A person reads it through the manage rule, like the env route next to
+    // it: the list carries the servers' auth values, and the Ranch admin
+    // agent's are the Owner's (CLEAN-232). `@ManagesAgent` cannot say this,
+    // because the guard reads an agent's token as a guest and the runtime
+    // reading its own list has to keep working. Same 404 for "no such
+    // agent" and "not yours".
+    const agent = sub.startsWith('agent:')
+      ? await this.agentGateway.findById(id)
+      : await this.permission.manageable(
+          AgentPermissionService.callerOfBearer(req.user),
+          id,
+        );
     if (!agent) throw new NotFoundException('Agent not found');
 
     const enabledServers = await this.mcpResolver.resolveForAgent(agent);
@@ -411,6 +473,7 @@ export class AgentController {
 
   @Get(':id/mcp-status')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ManagesAgent('id')
   @ApiOperation({
     operationId: 'getAgentMcpStatus',
     summary:
@@ -620,13 +683,25 @@ export class AgentController {
   @ApiOperation({
     operationId: 'restartByTemplate',
     summary:
-      'Restart every agent that uses this template. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner.',
+      'Restart every agent that uses this template and that the caller may manage. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner. An agent the caller may not manage (the Ranch admin agent, for an Admin) is left running and counted in `skipped`, never named; `total` counts the agents that were restarted or failed.',
   })
   async restartByTemplate(
     @Param('templateId') templateId: string,
-  ): Promise<{ restarted: number; failed: number; total: number }> {
-    const agents = await this.agentGateway.findByTemplateId(templateId);
-    if (agents.length === 0) return { restarted: 0, failed: 0, total: 0 };
+    @Req() req?: Request,
+  ): Promise<{
+    restarted: number;
+    failed: number;
+    total: number;
+    skipped: number;
+  }> {
+    const found = await this.agentGateway.findByTemplateId(templateId);
+    // Restarting an agent is managing it (CLEAN-232): an Admin restarting a
+    // template must not restart the Ranch admin agent along with it.
+    const agents = await this.manageableOf(found, req);
+    const skipped = found.length - agents.length;
+    if (agents.length === 0) {
+      return { restarted: 0, failed: 0, total: 0, skipped };
+    }
 
     const CONCURRENCY = 5;
     let index = 0;
@@ -652,10 +727,10 @@ export class AgentController {
     await Promise.all(Array.from({ length: workers }, () => worker()));
 
     this.logger.log(
-      `Restart-by-template ${templateId}: ${restarted} restarted, ${failed} failed of ${agents.length} total`,
+      `Restart-by-template ${templateId}: ${restarted} restarted, ${failed} failed of ${agents.length} total, ${skipped} skipped`,
     );
 
-    return { restarted, failed, total: agents.length };
+    return { restarted, failed, total: agents.length, skipped };
   }
 
   @Delete(':id')

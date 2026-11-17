@@ -7,6 +7,7 @@ import type { IA2aAgentCard } from './domain';
 import type { PeerService } from './domain/peer.service';
 import type { ISettingGateway } from '#/setting/domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asGuest, asPerson, asTrustedAgent } from '#/mcp/testing';
 
 /**
  * The point of this tool set is that an agent can only ever change its OWN
@@ -444,5 +445,84 @@ describe('PeerSelfTool — connecting from a card it was handed (CLEAN-116)', ()
 
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('not an agent card');
+  });
+});
+
+/**
+ * The Ranch admin agent's own peers are the Owner's (CLEAN-232). Its token
+ * carries Owner, and it answers anybody; without this a User, or a visitor
+ * with no account at all, could give the agent that acts with Owner power a
+ * colleague to hand conversations to.
+ */
+describe('PeerSelfTool — the Ranch admin agent serves itself only for the Owner', () => {
+  const ranch = () =>
+    ({
+      user: {
+        sub: 'agent:agent-ranch',
+        email: '',
+        roles: [UserRoleTypes.Owner],
+      },
+    }) as unknown as Request;
+  const turns: [string, () => Request, boolean][] = [
+    ['the agent on its own schedule', () => asTrustedAgent(ranch()), true],
+    ['the Owner', () => asPerson(ranch(), UserRoleTypes.Owner), true],
+    ['an Admin', () => asPerson(ranch(), UserRoleTypes.Admin), false],
+    ['a User', () => asPerson(ranch(), UserRoleTypes.User), false],
+    ['a guest', () => asGuest(ranch()), false],
+    ['a runtime that names no party', () => ranch(), false],
+  ];
+
+  it.each(turns)(
+    'lists the tools for %s as it should',
+    async (_who, req, allowed) => {
+      const { tool } = harness();
+      await expect(tool.isListedForRequest(req())).resolves.toBe(allowed);
+    },
+  );
+
+  it.each(turns.filter(([, , allowed]) => !allowed))(
+    'refuses %s by name too, reads included, and changes nothing',
+    async (_who, req) => {
+      const { tool, peers } = harness();
+      await expect(
+        tool.connectMyPeer({ peerAgentId: 'agent-b' }, null, req()),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(
+        tool.importMyPeerByAddress(
+          { url: 'https://evil.example' },
+          null,
+          req(),
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(
+        tool.removeMyPeer({ peerId: 'peer-1', confirm: true }, null, req()),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(tool.listMyPeers({}, null, req())).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(peers.connect).not.toHaveBeenCalled();
+      expect(peers.connectByUrl).not.toHaveBeenCalled();
+      expect(peers.remove).not.toHaveBeenCalled();
+      expect(peers.list).not.toHaveBeenCalled();
+    },
+  );
+
+  it('connects for the Owner, under the agent’s own id', async () => {
+    const { tool, peers } = harness();
+    await tool.connectMyPeer(
+      { peerAgentId: 'agent-b' },
+      null,
+      asPerson(ranch(), UserRoleTypes.Owner),
+    );
+    expect(peers.connect).toHaveBeenCalledWith('agent-ranch', 'agent-b');
+  });
+
+  it('leaves an ordinary agent as it was: whoever talks to it may connect it', async () => {
+    const { tool, peers } = harness();
+    for (const req of [agentRequest(), asGuest(agentRequest())]) {
+      await expect(tool.isListedForRequest(req)).resolves.toBe(true);
+      await tool.connectMyPeer({ peerAgentId: 'agent-b' }, null, req);
+    }
+    expect(peers.connect).toHaveBeenCalledTimes(2);
   });
 });

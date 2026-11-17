@@ -92,7 +92,7 @@
 
 - [X] T023 [P] [US8] `api/src/slices/user/auth/guards/userRoutes.spec.ts`: the exact set of routes whose least role is `User`, same shape as `publicRoutes.spec.ts`
 - [X] T024 [P] [US8] `api/src/slices/user/auth/guards/agentRoutes.spec.ts`: the exact set of routes that admit the `Agent` role
-- [ ] T025 [P] [US8] `specs/032-agent-user-access/e2e/routes.mjs`: sign in as a seeded User and call every route from the swagger spec; assert 403 outside the reviewed list and no 5xx
+- [X] T025 [P] [US8] `specs/032-agent-user-access/e2e/routes.mjs`: sign in as a seeded User and call every route from the swagger spec; assert 403 outside the reviewed list and no 5xx
 
 ### Implementation for User Story 8
 
@@ -125,7 +125,7 @@
 - [X] T034 [US9] `runtime:src/slices/setup/mcp/data/mcp.gateway.ts`: treat a lost session on a static client as recoverable (drop, initialise, retry once) and return the plain unavailable result otherwise
 - [X] T035 [US9] `runtime:src/slices/agent/agent/domain/prompts/audience.prompt.ts` and `runtime:src/slices/agent/agent/domain/agent.service.ts`: build the audience block of contracts/acting-party.md section 4 from `acting.role`, `acting.surface` and the actor kind, and add it to the turn's system prompt
 - [X] T036 [P] [US9] Move the Rancher template's guidance about the management console and raw API calls inside its admin-only blocks (the template files of the rancher seed under `api/src/slices/rancher/`; keep SOUL within the prompt limit of CLEAN-230)
-- [ ] T037 [US9] `specs/032-agent-user-access/e2e/assistant.mjs`: with a local runtime on the new version, as a User "delete agent X" gets one refusal and the transcript has no tool call; as the Owner it is carried out after confirmation; restart the API between two Owner requests
+- [X] T037 [US9] `specs/032-agent-user-access/e2e/assistant.mjs`: with a local runtime on the new version, as a User "delete agent X" gets one refusal and the transcript has no tool call; as the Owner it is carried out after confirmation; restart the API between two Owner requests
 
 **Checkpoint**: the conversation is honest about what the person can do
 

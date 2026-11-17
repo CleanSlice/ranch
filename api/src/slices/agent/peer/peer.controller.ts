@@ -5,9 +5,11 @@ import {
   Delete,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -23,7 +25,10 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
+import type { Request } from 'express';
 import { ManagesAgent } from '#/agent/agent/guards';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
+import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { PeerService } from './domain/peer.service';
 import { PeerErrorCodes } from './domain/peer.types';
 import type { IAgentPeerView } from './domain/peer.types';
@@ -71,6 +76,17 @@ function toPeerDto(view: IAgentPeerView): AgentPeerDto {
  * Owner/Admin only. `Agent` is deliberately outside this hierarchy: a runtime
  * delegates through its `ask_agent` tool and must never be able to grant
  * itself a new colleague.
+ *
+ * Every route here is about ONE agent, the one in the path, and all of them
+ * are behind the manage rule (CLEAN-232), reads included: the card says what
+ * the agent is for, the peer list and the delegation history say whom it
+ * asks and what about. For the Ranch admin agent that is the Owner's.
+ *
+ * A connection has two ends. The marker covers the agent in the path; the
+ * agent named in the body of `POST peers` is checked in the handler, and
+ * the candidates are only agents the caller may manage. Otherwise an Admin
+ * could give an agent of theirs a line to the Ranch admin agent, which acts
+ * with Owner power.
  */
 @ApiTags('peers')
 @ApiBearerAuth()
@@ -81,11 +97,13 @@ function toPeerDto(view: IAgentPeerView): AgentPeerDto {
 @Controller('agents/:agentId')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+@ManagesAgent('agentId')
 export class PeerController {
   constructor(
     private readonly peers: PeerService,
     private readonly cards: AgentCardService,
     private readonly delegations: IDelegationGateway,
+    private readonly permission: AgentPermissionService,
   ) {}
 
   @Get('card')
@@ -118,18 +136,25 @@ export class PeerController {
   @ApiOperation({
     operationId: 'listAgentPeerCandidates',
     summary:
-      'Every other agent of this installation, each marked with whether it ' +
-      'is already a peer. Excludes the agent itself.',
+      'Every other agent of this installation the caller may manage, each ' +
+      'marked with whether it is already a peer. Excludes the agent itself.',
   })
   @ApiOkResponse({ type: [AgentPeerCandidateDto] })
   async candidates(
     @Param('agentId') agentId: string,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
   ): Promise<AgentPeerCandidateDto[]> {
-    return this.peers.candidates(agentId);
+    const caller = AgentPermissionService.callerOfBearer(req?.user);
+    const all = await this.peers.candidates(agentId);
+    // Only agents the caller could connect: an agent they may not manage is
+    // not offered, exactly as it is refused by POST peers.
+    const allowed = await Promise.all(
+      all.map((c) => this.permission.manageable(caller, c.id)),
+    );
+    return all.filter((_, i) => allowed[i] !== null);
   }
 
   @Post('peers')
-  @ManagesAgent('agentId')
   @ApiOperation({
     operationId: 'connectAgentPeer',
     summary:
@@ -138,7 +163,9 @@ export class PeerController {
       '`url` (an external A2A agent imported by address, optionally with a ' +
       'credential; re-importing the same address updates the entry in ' +
       'place). Nothing is kept if the card cannot be read. The agent picks ' +
-      'the tool up on its next restart.',
+      'the tool up on its next restart. With `peerAgentId` the caller must ' +
+      'be able to manage that agent too: one they may not manage answers ' +
+      '404, like one that does not exist.',
   })
   @ApiOkResponse({ type: AgentPeerDto })
   @ApiConflictResponse({ description: 'Already a peer of this agent.' })
@@ -148,12 +175,28 @@ export class PeerController {
   async connect(
     @Param('agentId') agentId: string,
     @Body() body: ConnectPeerDto,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
   ): Promise<AgentPeerDto> {
     const given = [body.peerAgentId, body.url, body.card].filter(Boolean);
     if (given.length !== 1) {
       throw new BadRequestException({
         code: PeerErrorCodes.Body,
         message: 'Provide exactly one of `peerAgentId`, `url` or `card`',
+      });
+    }
+    // The other end of the connection. The guard checked the agent in the
+    // path; this one comes in the body, so it is asked here, with the answer
+    // PeerService gives for an agent that does not exist.
+    if (
+      body.peerAgentId &&
+      !(await this.permission.manageable(
+        AgentPermissionService.callerOfBearer(req?.user),
+        body.peerAgentId,
+      ))
+    ) {
+      throw new NotFoundException({
+        code: PeerErrorCodes.NotFound,
+        message: 'Agent not found',
       });
     }
     const view = body.card
@@ -206,7 +249,6 @@ export class PeerController {
   }
 
   @Post('peers/:peerId/refresh')
-  @ManagesAgent('agentId')
   @HttpCode(200)
   @ApiOperation({
     operationId: 'refreshAgentPeer',
@@ -226,7 +268,6 @@ export class PeerController {
   }
 
   @Delete('peers/:peerId')
-  @ManagesAgent('agentId')
   @HttpCode(204)
   @ApiOperation({
     operationId: 'removeAgentPeer',

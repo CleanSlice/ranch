@@ -546,3 +546,88 @@ describe('PeerAdminTool — importing from a card (CLEAN-116)', () => {
     expect(peers.connectByCard).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Both ends of a connection are checked (CLEAN-232). `agent-ranch` is the
+ * Ranch admin agent in this harness; an Admin manages every other agent.
+ */
+describe('PeerAdminTool — the other end of a connection', () => {
+  const admin = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin);
+  const owner = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Owner);
+
+  it('refuses an Admin who connects the Ranch admin agent as a peer, as not found', async () => {
+    const { tool, peers } = harness();
+
+    const result = await tool.connectAgentPeer(
+      { agentId: 'agent-a', peerAgentId: 'agent-ranch' },
+      null,
+      admin(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(NOT_FOUND);
+    expect(peers.connect).not.toHaveBeenCalled();
+    expect(peers.list).not.toHaveBeenCalled();
+  });
+
+  it('lets the Owner connect it', async () => {
+    const { tool, peers } = harness();
+
+    const result = await tool.connectAgentPeer(
+      { agentId: 'agent-a', peerAgentId: 'agent-ranch' },
+      null,
+      owner(),
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(peers.connect).toHaveBeenCalledWith('agent-a', 'agent-ranch');
+  });
+
+  it('does not show an Admin the card of the Ranch admin agent', async () => {
+    const { tool, cards } = harness();
+
+    const result = await tool.previewAgentCard(
+      { agentId: 'agent-a', peerAgentId: 'agent-ranch' },
+      null,
+      admin(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(NOT_FOUND);
+    expect(cards.build).not.toHaveBeenCalled();
+
+    const own = await tool.previewAgentCard(
+      { agentId: 'agent-a', peerAgentId: 'agent-b' },
+      null,
+      admin(),
+    );
+    expect(own.isError).toBeUndefined();
+    expect(cards.build).toHaveBeenCalledWith('agent-b');
+  });
+
+  it('offers an Admin only the candidates they may manage', async () => {
+    const { tool, peers } = harness();
+    (peers.candidates as jest.Mock).mockResolvedValue([
+      {
+        id: 'agent-b',
+        name: 'Support Bot',
+        status: 'running',
+        connected: false,
+      },
+      { id: 'agent-ranch', name: 'Ranch', status: 'running', connected: false },
+    ]);
+    const idsFor = async (req: Request) =>
+      (
+        JSON.parse(
+          textOf(
+            await tool.listPeerCandidates({ agentId: 'agent-a' }, null, req),
+          ),
+        ) as { id: string }[]
+      ).map((c) => c.id);
+
+    expect(await idsFor(admin())).toEqual(['agent-b']);
+    expect(await idsFor(owner())).toEqual(['agent-b', 'agent-ranch']);
+  });
+});

@@ -2,7 +2,16 @@ import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
-import { CONFIRM_SENTENCE, confirmed } from '#/mcp/tooling';
+import {
+  callerIsOperator,
+  callerIsOwner,
+  CONFIRM_SENTENCE,
+  confirmed,
+  GUEST_REFUSAL,
+  OPERATOR_REFUSAL,
+} from '#/mcp/tooling';
+import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
+import { UserRoleTypes } from '#/user/user/domain';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { ISettingGateway } from '#/setting/domain';
 import { PeerService } from './domain/peer.service';
@@ -46,6 +55,16 @@ export const SELF_SERVICE_SETTING = {
  *
  * An installation that does not want this turns the setting off and the tools
  * vanish from every agent's list.
+ *
+ * One agent is the exception (CLEAN-232): the Ranch admin agent. Its peers
+ * are the Owner's, like everything else about it, and "its own" is not a
+ * small thing there: a colleague of the agent that acts with Owner power is
+ * somebody it may hand a conversation to. So for the agent whose token
+ * carries operator power these tools are listed and run only when the turn
+ * is the Owner's or the agent's own (a trusted party). A User, an Admin, a
+ * share visitor or a messenger user talking to it cannot give it a
+ * colleague, take one away, or read whom it asks. An ordinary agent's token
+ * is unaffected: whoever talks to it may still connect it, as before.
  */
 @ToolAudience('agent')
 @Injectable()
@@ -59,7 +78,24 @@ export class PeerSelfTool implements IConditionallyListedTool {
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     if (!callerAgentId(httpRequest)) return false;
+    if (this.isOwnersAgentForSomebodyElse(httpRequest)) return false;
     return this.selfServiceEnabled();
+  }
+
+  /**
+   * The Ranch admin agent, in a turn that is neither the Owner's nor its
+   * own. The agent is told by its token, which carries operator power only
+   * for that agent; `callerIsOwner` is the lesser of the token and the party
+   * the call is made for, so it holds for the Owner and for a trusted party.
+   */
+  private isOwnersAgentForSomebodyElse(httpRequest: Request): boolean {
+    const roles =
+      (httpRequest as Request & { user?: IAuthTokenPayload })?.user?.roles ??
+      [];
+    const isRanchAdminAgent =
+      roles.includes(UserRoleTypes.Owner) ||
+      roles.includes(UserRoleTypes.Admin);
+    return isRanchAdminAgent && !callerIsOwner(httpRequest);
   }
 
   /**
@@ -98,6 +134,13 @@ export class PeerSelfTool implements IConditionallyListedTool {
     if (!agentId) {
       throw new ForbiddenException(
         'These tools can only be called by an agent runtime.',
+      );
+    }
+    if (this.isOwnersAgentForSomebodyElse(httpRequest)) {
+      // The words every other Owner-only tool uses: a person who lacks the
+      // role, or nobody signed in at all.
+      throw new ForbiddenException(
+        callerIsOperator(httpRequest) ? OPERATOR_REFUSAL : GUEST_REFUSAL,
       );
     }
     if (!(await this.selfServiceEnabled())) {

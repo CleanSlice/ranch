@@ -57,6 +57,25 @@ describe('clientIdFromJwtPayload', () => {
     });
   });
 
+  it('never reads an agent’s service token as an administrator (CLEAN-232)', () => {
+    // The Ranch admin agent's token carries Owner. Its runtime can print it,
+    // and `admin` is the conversation every Owner and Admin shares.
+    for (const roles of [['Owner'], ['Admin'], ['Owner', 'Admin'], ['Agent']]) {
+      expect(
+        clientIdFromJwtPayload({ sub: 'agent:agent-ranch', roles }),
+      ).toEqual({ clientId: 'agent:agent-ranch', isAdmin: false });
+    }
+    // Its own client: not the shared one, and not another agent's.
+    expect(
+      clientIdFromJwtPayload({ sub: 'agent:other', roles: ['Owner'] })
+        ?.clientId,
+    ).toBe('agent:other');
+    // A person whose id merely contains the word is still a person.
+    expect(
+      clientIdFromJwtPayload({ sub: 'user-agent:1', roles: ['Owner'] }),
+    ).toEqual({ clientId: 'admin', isAdmin: true });
+  });
+
   it('is null when the payload proves nothing usable', () => {
     // The bug this replaced handed back `undefined` as a client id, which then
     // travelled onto the request and skipped an ownership check.

@@ -14,11 +14,14 @@ import Row from './Row.vue'
  * "After restart" on the header means the running pod lacks at least one
  * tool here; the restart button reuses the agent store's normal flow.
  */
-defineProps<{
+withDefaults(defineProps<{
   group: IAgentToolGroup
   restarting: boolean
   canRestart: boolean
-}>()
+  // False for a viewer who may not manage the agent (CLEAN-232): the notice
+  // stays, the button that restarts the agent goes.
+  manageable?: boolean
+}>(), { manageable: true })
 
 const emit = defineEmits<{
   pick: [template: string]
@@ -67,6 +70,7 @@ const emit = defineEmits<{
           }}
         </span>
         <button
+          v-if="manageable"
           type="button"
           :disabled="restarting || !canRestart"
           class="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-orange-500/50 bg-background px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"

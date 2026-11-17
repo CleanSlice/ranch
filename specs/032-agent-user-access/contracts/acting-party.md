@@ -261,10 +261,33 @@ behind `ApiKeyGuard`) as open. Nothing changes for an Admin except the two
 promote-admin routes and the Ranch admin agent's own management routes.
 
 The management routes of one agent (`PUT`, `DELETE /agents/:id`, restart,
-stop, start, files, secrets, channels, logs, and the writes of limits and
-peers; 37 routes, pinned in `agentManage.guard.spec.ts`) keep their role and
-add `canManage`, reads included. When creation opens to Users they are the
-routes whose role drops to `User`, with `canManage` already in place.
+stop, start, its environment, metrics and MCP status, files, secrets,
+channels, logs, the write of limits, and every peer route: card, peers,
+candidates, preview, state, delegations; 46 routes, pinned in
+`agentManage.guard.spec.ts`) keep their role and add `canManage`, reads
+included. When creation opens to Users they are the routes whose role drops
+to `User`, with `canManage` already in place.
+
+Four places ask the same rule in the handler, because the marker cannot say
+it:
+
+- `GET /agents/:id/mcps`: a runtime reads its own list there, and the guard
+  reads an agent's token as a guest. A person must manage the agent.
+- `POST /agents/:agentId/peers` with `peerAgentId`, and the
+  `connect_agent_peer` and `preview_agent_card` tools: a connection has two
+  ends, and the caller must manage the peer too. Otherwise an Admin could
+  give an agent of theirs a line to the Ranch admin agent. Same 404 as an
+  unknown agent. `peers/candidates` and `list_peer_candidates` offer only
+  agents the caller may manage.
+- `POST /agents/restart-by-template/:templateId`, `restart_template_agents`
+  and `redeploy_skill_agents`: an agent the caller may not manage is left
+  running and counted in `skipped`, never named.
+- `GET /agents`, `GET /agents/:id`, `GET /agents/status` and
+  `GET /agents/public`: an agent the reader may not manage comes as its
+  reader view (`agentReaderView.ts`), which is what the user console draws:
+  `config` empty, `knowledgeIds` empty, `debugEnabled` false, and
+  `llmCredentialId`, `workflowId`, `statusReason`, `launchContext`,
+  `firstDeployedAt`, `lastDeployStartedAt`, `lastPullAt`, `lastSyncAt` null.
 
 **An agent's token is an `Agent` on routes.** The Ranch admin agent's token
 carries `Owner`, and the runtime's `exec` tool (admin-only, so available to
@@ -285,16 +308,18 @@ do, so they see the MCP controllers built at boot. `routeRoles.spec.ts` adds
 the statement the three sets leave open: outside the public set, the real
 guard refuses a token that holds no role on every route of the application.
 
-**The chat surface is not changed here.** `bridle/*` is `@Public()` and
-verifies tokens itself. It still reads an agent's service token that carries
-Owner as an administrator: `clientIdFromJwtPayload` maps any token with an
-Owner or Admin role to the shared `admin` conversation, so the Ranch admin
-agent's token can read and write that conversation over HTTP and the
-websocket. No acting token is minted for it (`consoleSessionOf` refuses an
-`agent:` subject), so a message sent with it is a guest's at the tools.
-Nothing in the API or the runtime relies on it: the paddock runner talks to
-the agent in process, and agent-to-agent delegation goes through the hub
-directly. Closing it belongs with Part B's chat access.
+**On the chat surface an agent's token is not an administrator either.**
+`bridle/*` is `@Public()` and verifies tokens itself.
+`clientIdFromJwtPayload` maps a token with an Owner or Admin role to the
+shared `admin` conversation, and used to do so for the Ranch admin agent's
+service token, which carries Owner: that token could read and write the
+conversation every Owner and Admin shares, over HTTP and the websocket. A
+bearer whose `sub` starts with `agent:` is now its own client
+(`agent:<id>`), never `admin`, whatever roles it carries. No acting token
+is minted for it (`consoleSessionOf` refuses an `agent:` subject), so a
+message sent with it is a guest's at the tools. Nothing in the API or the
+runtime relied on the old reading: the paddock runner talks to the agent in
+process, and agent-to-agent delegation goes through the hub directly.
 
 ## 7. What proves it
 

@@ -24,6 +24,10 @@ import type { SectionCounts } from '#agent/components/agent/workspace/sections';
 export function useAgentSectionCounts(
   agentId: string,
   agent: Ref<IAgentData | null | undefined>,
+  /** False for a viewer who may not manage the agent (CLEAN-232): the four
+   *  sources are management routes and answer "Agent not found" to them, so
+   *  nothing is asked and every count stays unknown. */
+  enabled: Ref<boolean> = ref(true),
 ) {
   const templateStore = useTemplateStore();
   const fileStore = useAgentFileStore();
@@ -97,7 +101,18 @@ export function useAgentSectionCounts(
     }
   }
 
-  onMounted(() => void load());
+  // Once mounted, and once the viewer is known to manage the agent — which
+  // is only known when the agent record has arrived.
+  const mounted = ref(false);
+  onMounted(() => {
+    mounted.value = true;
+  });
+  watch(
+    () => mounted.value && enabled.value,
+    (ready) => {
+      if (ready) void load();
+    },
+  );
 
   // The agent record arrives after the first paint, so the template lookup can
   // only run once we know which template to look up.

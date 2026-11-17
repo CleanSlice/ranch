@@ -56,6 +56,10 @@ const MAX_DELEGATION_LIMIT = 100;
  * asking, and runs only when the caller may manage that agent (`guard`
  * below). A plain agent's token manages nothing, so the invariant above
  * holds as before. The Ranch admin agent's own peers are the Owner's.
+ *
+ * A connection has two ends, and both are checked: `connect_agent_peer` and
+ * `preview_agent_card` with a `peerAgentId` need the caller to manage that
+ * agent as well, and `list_peer_candidates` offers only such agents.
  */
 @ToolAudience('manage-agent')
 @Injectable()
@@ -133,9 +137,15 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    return this.guard(httpRequest, agentId, async () =>
-      ok(await this.peers.candidates(agentId)),
-    );
+    return this.guard(httpRequest, agentId, async () => {
+      const all = await this.peers.candidates(agentId);
+      // Only agents the caller could connect (see `guardPeer`).
+      const caller = manageCaller(httpRequest);
+      const allowed = await Promise.all(
+        all.map((c) => this.permission.manageable(caller, c.id)),
+      );
+      return ok(all.filter((_, i) => allowed[i] !== null));
+    });
   }
 
   @Tool({
@@ -187,13 +197,14 @@ export class PeerAdminTool implements IConditionallyListedTool {
     if (Boolean(peerAgentId) === Boolean(url)) {
       return err('Pass exactly one of peerAgentId (this Ranch) or url.');
     }
-    return this.guard(httpRequest, agentId, async () =>
-      ok(
+    return this.guard(httpRequest, agentId, async () => {
+      if (peerAgentId) await this.guardPeer(httpRequest, peerAgentId);
+      return ok(
         peerAgentId
           ? await this.cards.build(peerAgentId)
           : await this.peers.previewByUrl(agentId, url!, credential),
-      ),
-    );
+      );
+    });
   }
 
   @Tool({
@@ -256,6 +267,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
     httpRequest: Request,
   ): Promise<ToolResult> {
     return this.guard(httpRequest, agentId, async () => {
+      await this.guardPeer(httpRequest, peerAgentId);
       const hadPeers = (await this.peers.list(agentId)).length > 0;
       const peer = await this.peers.connect(agentId, peerAgentId);
       this.logger.log(
@@ -470,6 +482,29 @@ export class PeerAdminTool implements IConditionallyListedTool {
       }
       return run();
     }, OPERATOR_HINTS);
+  }
+
+  /**
+   * The other end of a connection: the agent that would be asked. The caller
+   * must be able to manage it too, or an Admin could give an agent of theirs
+   * a line to the Ranch admin agent, which acts with Owner power. Called
+   * inside `guard`, so it fails through the same refusal advice and reads
+   * exactly like an agent that does not exist.
+   */
+  private async guardPeer(
+    httpRequest: Request,
+    peerAgentId: string,
+  ): Promise<void> {
+    const peer = await this.permission.manageable(
+      manageCaller(httpRequest),
+      peerAgentId,
+    );
+    if (!peer) {
+      throw new NotFoundException({
+        code: PeerErrorCodes.NotFound,
+        message: 'Agent not found',
+      });
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { IBridleConversation } from '#bridle/domain';
+import { canManageAgent } from '#agent/utils/agentAccess';
 
 const props = defineProps<{
   id: string;
@@ -32,8 +33,10 @@ const conversation = computed<IBridleConversation | null>(() =>
   agent.value ? { key: agent.value.id, agentId: agent.value.id } : null,
 );
 
+// Per agent, not per role: the Ranch admin agent is the Owner's alone
+// (CLEAN-232).
 const canManage = computed(() =>
-  authStore.hasRole(UserRoleTypes.Owner, UserRoleTypes.Admin),
+  agent.value ? canManageAgent(authStore.role, agent.value) : false,
 );
 
 const restarting = ref(false);

@@ -284,7 +284,10 @@ describe('McpToolsHandler — listing snapshot (CLEAN-109)', () => {
         { name: 'a', instance: { run: jest.fn() } },
         {
           name: 'hidden',
-          instance: { run: jest.fn(), isListedForRequest: jest.fn(async () => false) },
+          instance: {
+            run: jest.fn(),
+            isListedForRequest: jest.fn(async () => false),
+          },
         },
         { name: 'b', instance: { run: jest.fn() } },
       ],
@@ -325,10 +328,13 @@ describe('McpToolsHandler — listing snapshot (CLEAN-109)', () => {
 
   it('records nothing for a person listing through the console', async () => {
     const recorder = { record: jest.fn(async () => undefined) };
-    const { list } = makeHarness([{ name: 'a', instance: { run: jest.fn() } }], {
-      recorder,
-      request: { user: { sub: 'user-7', roles: ['owner'] } },
-    });
+    const { list } = makeHarness(
+      [{ name: 'a', instance: { run: jest.fn() } }],
+      {
+        recorder,
+        request: { user: { sub: 'user-7', roles: ['owner'] } },
+      },
+    );
 
     await list();
     await flush();

@@ -217,6 +217,13 @@ const EXPECTED: Record<string, 'id' | 'agentId'> = {
   'POST /agents/:id/restart': 'id',
   'POST /agents/:id/stop': 'id',
   'POST /agents/:id/start': 'id',
+  // What its pod is given and how it runs. The env of the Ranch admin agent
+  // can carry its own Owner-level token. `GET /agents/:id/mcps` belongs
+  // with these and is not marked: an agent's runtime reads its own list
+  // there, so the handler asks the rule for a person (agent.controller.spec).
+  'GET /agents/:id/env': 'id',
+  'GET /agents/:id/metrics': 'id',
+  'GET /agents/:id/mcp-status': 'id',
   // Channels: who it answers, with which bot tokens. Read and write.
   'GET /agents/:id/channels': 'id',
   'PUT /agents/:id/channels': 'id',
@@ -249,11 +256,19 @@ const EXPECTED: Record<string, 'id' | 'agentId'> = {
   'POST /agents/:agentId/secrets/replace': 'agentId',
   // Logs.
   'GET /agents/:agentId/logs': 'agentId',
-  // Limits and peers: the writes.
+  // Limits: the write.
   'PUT /agents/:agentId/limits': 'agentId',
+  // Peers, the whole controller, reads included: its card, whom it asks,
+  // and what it asked them.
+  'GET /agents/:agentId/card': 'agentId',
+  'GET /agents/:agentId/peers': 'agentId',
+  'GET /agents/:agentId/peers/candidates': 'agentId',
   'POST /agents/:agentId/peers': 'agentId',
+  'POST /agents/:agentId/peers/preview': 'agentId',
+  'GET /agents/:agentId/peers/state': 'agentId',
   'POST /agents/:agentId/peers/:peerId/refresh': 'agentId',
   'DELETE /agents/:agentId/peers/:peerId': 'agentId',
+  'GET /agents/:agentId/delegations': 'agentId',
 };
 
 describe('the management routes of one agent', () => {

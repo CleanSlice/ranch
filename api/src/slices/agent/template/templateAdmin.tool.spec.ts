@@ -6,7 +6,8 @@ import type { ITemplateGateway } from './domain';
 import type { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import type { AgentDeployService } from '#/agent/agent/domain/agentDeploy.service';
 import { UserRoleTypes } from '#/user/user/domain';
-import { asTrustedAgent } from '#/mcp/testing';
+import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 /**
  * Two of these tools take agents down (delete a template, restart every
@@ -91,6 +92,9 @@ function harness(): Harness {
     templates as unknown as ITemplateGateway,
     agents as unknown as IAgentGateway,
     deploy as unknown as AgentDeployService,
+    // The real rule over this spec's agents: `canManage` reads the rows
+    // `findByTemplateId` hands back and looks nothing up.
+    permissionOver(agents),
   );
   return { tool, templates, agents, deploy };
 }
@@ -369,5 +373,62 @@ describe('restart_template_agents', () => {
     expect(deploy.restartAgent).not.toHaveBeenCalled();
     expect(text).toContain('"total": 0');
     expect(text).toContain('nothing to restart');
+  });
+});
+
+/**
+ * Restarting an agent is managing it (CLEAN-232): the Ranch admin agent is
+ * the Owner's, so an Admin restarting its template leaves it running.
+ */
+describe('restart_template_agents — agents the caller may not manage', () => {
+  const admin = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin, 'user-a');
+  const owner = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Owner, 'user-o');
+  const ROWS = [
+    { id: 'agent-a', name: 'Support', isAdmin: false, createdById: null },
+    { id: 'agent-ranch', name: 'Ranch', isAdmin: true, createdById: null },
+  ];
+  const run = async (who: Request, rows = ROWS) => {
+    const h = harness();
+    h.agents.findByTemplateId.mockResolvedValue(rows);
+    const text = textOf(
+      await h.tool.restartTemplateAgents(
+        { templateId: 'tpl-1', confirm: true },
+        null,
+        who,
+      ),
+    );
+    return { ...h, text };
+  };
+
+  it('an Admin restarts the rest and is told how many were left, not which', async () => {
+    const { deploy, text } = await run(admin());
+
+    expect(deploy.restartAgent.mock.calls.map(([id]) => id)).toEqual([
+      'agent-a',
+    ]);
+    expect(text).toContain('"restarted": 1');
+    expect(text).toContain('"total": 1');
+    expect(text).toContain('"skipped": 1');
+    expect(text).not.toContain('agent-ranch');
+    expect(text).not.toContain('Ranch');
+  });
+
+  it('the Owner restarts all of them', async () => {
+    const { deploy, text } = await run(owner());
+
+    expect(deploy.restartAgent).toHaveBeenCalledTimes(2);
+    expect(text).toContain('"skipped": 0');
+  });
+
+  it('restarts nothing when the only agent is not the caller’s to manage', async () => {
+    const { deploy, text } = await run(admin(), [ROWS[1]]);
+
+    expect(deploy.restartAgent).not.toHaveBeenCalled();
+    expect(text).toContain('"restarted": 0');
+    expect(text).toContain('"skipped": 1');
+    expect(text).toContain('Nothing was restarted.');
+    expect(text).not.toContain('agent-ranch');
   });
 });

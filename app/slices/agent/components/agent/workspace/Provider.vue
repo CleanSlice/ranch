@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canManageAgent } from '#agent/utils/agentAccess';
 import { agentStatusMeta, LEGEND_STATUSES } from '#agent/utils/agentStatus';
 
 const props = defineProps<{ id: string }>();
@@ -25,6 +26,13 @@ const { pending, agents, capacity, links } = fleet;
 // fetches by id and the map node reads, so a restart flips all three
 // together.
 const agent = computed(() => agentStore.byId(props.id));
+
+// The sheet's restart, stop, start and pin. Not the role alone: the Ranch
+// admin agent is the Owner's, and the API answers an Admin "Agent not found"
+// on its management routes (CLEAN-232).
+const canManageOpen = computed(() =>
+  agent.value ? canManageAgent(authStore.role, agent.value) : false,
+);
 
 // Remember whichever agent is open so the next visit lands back on it.
 watch(
@@ -292,7 +300,7 @@ function onSelect(id: string) {
         :key="id"
         :agent="agent"
         :pending="pending"
-        :can-manage="canCreate"
+        :can-manage="canManageOpen"
       />
 
       <div class="min-h-0 flex-1">

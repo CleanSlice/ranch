@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  agentNotFound,
   callerManagesAgents,
   CONFIRM_SENTENCE,
   confirmed,
@@ -98,7 +99,7 @@ export class SecretTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     const agent = await this.manageable(httpRequest, agentId);
-    if (!agent) return notFound(agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     return ok(await this.summary(agent));
   }
 
@@ -126,7 +127,7 @@ export class SecretTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     const agent = await this.manageable(httpRequest, agentId);
-    if (!agent) return notFound(agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     await this.secrets.set(agentId, key, value);
     // Log the key, never the value: the API log is not a secret store.
     this.logger.log(`Secret set through MCP: agent=${agentId} key=${key}`);
@@ -168,7 +169,7 @@ export class SecretTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     const { agentId, key } = args;
     const agent = await this.manageable(httpRequest, agentId);
-    if (!agent) return notFound(agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const refusal = confirmed(
       args,
       `delete the secret «${key}» of the agent «${agent.name}» — its value cannot be recovered`,
@@ -215,7 +216,7 @@ export class SecretTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     const { agentId, store } = args;
     const agent = await this.manageable(httpRequest, agentId);
-    if (!agent) return notFound(agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const keys = Object.keys(store);
     const refusal = confirmed(
       args,
@@ -252,12 +253,6 @@ export class SecretTool implements IConditionallyListedTool {
       })),
     };
   }
-}
-
-function notFound(agentId: string): ToolResult {
-  return ok({
-    error: `Agent ${agentId} not found — call list_agents to find the id`,
-  });
 }
 
 /** Key names only, sorted so two listings of the same store read the same. */

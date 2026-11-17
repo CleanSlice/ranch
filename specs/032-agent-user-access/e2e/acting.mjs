@@ -140,6 +140,19 @@ try {
     const del = await mcp.call('delete_agent', { id: AGENTS.b.id, confirm: true }, person('user'));
     check(notFound(del), `delete_agent for ${AGENTS.b.name} answers "not found"`);
     check(await exists(AGENTS.b.id), `${AGENTS.b.name} still exists`);
+    // A refusal names the next move, and `list_agents` is not one this
+    // person has: none of the refusals above may send them there.
+    const naming = [other, ranch, del].filter((r) => /list_agents/.test(r.text));
+    check(
+      !names.includes('list_agents') && naming.length === 0,
+      `list_agents is not listed for them, and no "not found" names it ("${del.text.replace(/\s+/g, ' ').slice(0, 110)}")`,
+    );
+    // The peer tools word their refusal themselves; same rule.
+    const peers = await mcp.call('list_agent_peers', { agentId: AGENTS.b.id }, person('user'));
+    check(
+      peers.refused && /not found/i.test(peers.text) && !/list_agents/.test(peers.text),
+      `list_agent_peers for ${AGENTS.b.name} answers "not found" without naming it either ("${peers.text.replace(/\s+/g, ' ').slice(0, 110)}")`,
+    );
     const list = await mcp.call('list_users', {}, person('user'));
     check(unavailable(list), 'tools/call list_users is refused');
   }

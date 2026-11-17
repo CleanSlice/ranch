@@ -120,6 +120,36 @@ export function parseBearer(headers: ChatHeaders | undefined): string | null {
   return token;
 }
 
+// ── Client ids nobody outside may choose (CLEAN-232) ────────
+//
+// A client id travels to the agent runtime as the sender of the message,
+// and a few of them mean something there or here: `admin` is the
+// conversation every Owner and Admin shares, `cron` and `heartbeat` are the
+// names the runtime gives the turns it starts for itself, `agent:<id>` is an
+// agent's own service token, and `peer:<agent>:<context>` is a task another
+// agent handed over. The hub mints those itself or not at all. The runtime no
+// longer trusts a turn for its sender's name; this is the second lock, on
+// the side that hands the name out.
+
+/** Whole ids the hub keeps. */
+export const RESERVED_CLIENT_IDS = ['admin', 'cron', 'heartbeat'] as const;
+
+/** Namespaces the hub keeps. */
+export const RESERVED_CLIENT_PREFIXES = ['agent:', 'peer:'] as const;
+
+/**
+ * Whether `id` is one an anonymous, share or embed identity must never be
+ * given. Case and outer spaces aside, so `Cron` and ` cron ` are refused too:
+ * nothing legitimate is named that way.
+ */
+export function isReservedClientId(id: string): boolean {
+  const wanted = id.trim().toLowerCase();
+  return (
+    RESERVED_CLIENT_IDS.some((reserved) => wanted === reserved) ||
+    RESERVED_CLIENT_PREFIXES.some((prefix) => wanted.startsWith(prefix))
+  );
+}
+
 /**
  * The chat identity carried by a verified JWT payload: `admin` for owners and
  * admins (they share one channel so their history lives in one place), the
@@ -136,6 +166,12 @@ export function parseBearer(headers: ChatHeaders | undefined): string | null {
  * and write the conversation every Owner and Admin shares. It is an `Agent`
  * on routes and a guest at the tools; here it is its own client, with a
  * history of its own that nobody else's token opens.
+ *
+ * A `sub` that is a reserved client id is unusable too (CLEAN-232): a token
+ * that is not an admin's never becomes `admin`, `cron`, `heartbeat` or a
+ * `peer:` task by naming itself so. `agent:<id>` is the one reserved
+ * namespace a token may carry, and only an agent's own service token: an
+ * embed token (`typ`) whose `sub` starts with `agent:` proves nothing.
  */
 export function clientIdFromJwtPayload(
   payload: Record<string, unknown> | null | undefined,
@@ -150,6 +186,8 @@ export function clientIdFromJwtPayload(
   if (isAdmin) return { clientId: 'admin', isAdmin: true };
 
   if (typeof sub !== 'string' || !sub) return null;
+  const ownServiceToken = isAgent && payload?.typ === undefined;
+  if (!ownServiceToken && isReservedClientId(sub)) return null;
   return { clientId: sub, isAdmin: false };
 }
 

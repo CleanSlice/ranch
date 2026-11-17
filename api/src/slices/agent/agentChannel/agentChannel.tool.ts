@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
+  agentNotFound,
   callerManagesAgents,
   manageCaller,
   ok,
@@ -118,7 +119,7 @@ export class AgentChannelTool implements IConditionallyListedTool {
       manageCaller(httpRequest),
       agentId,
     );
-    if (!agent) return notFound(agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const channels = await this.channels.getForAgent(agentId);
     return ok({
       agentId: agent.id,
@@ -160,7 +161,7 @@ export class AgentChannelTool implements IConditionallyListedTool {
       manageCaller(httpRequest),
       agentId,
     );
-    if (!agent) return notFound(agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const saved = await this.channels.setForAgent(
       agentId,
       channels as IAgentChannel[],
@@ -181,10 +182,4 @@ export class AgentChannelTool implements IConditionallyListedTool {
         `restart_agent with id=${agentId} when the person is ready.`,
     });
   }
-}
-
-function notFound(agentId: string): ToolResult {
-  return ok({
-    error: `Agent ${agentId} not found — call list_agents to find the id`,
-  });
 }

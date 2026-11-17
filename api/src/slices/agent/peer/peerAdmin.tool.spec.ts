@@ -85,9 +85,17 @@ interface Harness {
   agents: { findById: jest.Mock };
 }
 
-/** What an unknown agent and one out of the caller's reach both answer. */
+/**
+ * What an unknown agent and one out of the caller's reach both answer, to a
+ * caller who has `list_agents` (an Owner, an Admin, the Ranch admin agent
+ * for itself).
+ */
 const NOT_FOUND =
   'Agent not found Check the ids with list_agents and list_agent_peers.';
+
+/** The same, to a caller who does not: no tool they lack is named (CLEAN-232). */
+const NOT_FOUND_BELOW =
+  'Agent not found There is no such agent or connection among the ones this person manages.';
 
 function harness(): Harness {
   const agents = {
@@ -178,7 +186,7 @@ describe('PeerAdminTool — who may use it', () => {
       plainAgent(),
     );
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toBe(NOT_FOUND);
+    expect(textOf(result)).toBe(NOT_FOUND_BELOW);
     expect(peers.connect).not.toHaveBeenCalled();
     // A plain agent's token manages nothing: the agent is not even looked up.
     expect(agents.findById).not.toHaveBeenCalled();
@@ -192,7 +200,7 @@ describe('PeerAdminTool — who may use it', () => {
       {} as Request,
     );
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toBe(NOT_FOUND);
+    expect(textOf(result)).toBe(NOT_FOUND_BELOW);
     expect(peers.list).not.toHaveBeenCalled();
   });
 
@@ -253,7 +261,9 @@ describe('PeerAdminTool — who may use it', () => {
         null,
         caller,
       );
-      expect(textOf(result)).toBe(NOT_FOUND);
+      // Neither has `list_agents`, so the refusal does not send them there.
+      expect(textOf(result)).toBe(NOT_FOUND_BELOW);
+      expect(textOf(result)).not.toContain('list_');
     }
     expect(peers.remove).not.toHaveBeenCalled();
   });
@@ -548,7 +558,7 @@ describe('PeerAdminTool — importing from a card (CLEAN-116)', () => {
       plainAgent(),
     );
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toBe(NOT_FOUND);
+    expect(textOf(result)).toBe(NOT_FOUND_BELOW);
     expect(peers.connectByCard).not.toHaveBeenCalled();
   });
 });

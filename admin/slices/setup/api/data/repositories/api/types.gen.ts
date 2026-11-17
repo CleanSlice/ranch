@@ -29,7 +29,7 @@ export enum UserRoleTypes {
 
 export type EmbedTokenDto = {
   /**
-   * Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.
+   * Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, `cron` or `heartbeat`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.
    */
   sub: string;
   email?: string;

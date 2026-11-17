@@ -270,6 +270,35 @@ export function audienceAllows(
   }
 }
 
+// ── An agent the caller cannot be shown (CLEAN-232) ─────────
+//
+// A refusal names the next move, and the next move must be one the caller
+// has. `list_agents` is an `admin` tool: a User who manages the agents they
+// created reaches the `manage-agent` tools without it, and a refusal that
+// sent them there would advertise a tool they cannot call and send the model
+// looking for it.
+
+/** What to try next after an agent was not found; the half after the dash. */
+export function agentNotFoundAdvice(httpRequest: Request): string {
+  return callerIsOperator(httpRequest)
+    ? 'call list_agents to find the id'
+    : 'there is no such agent among the ones this person manages';
+}
+
+/**
+ * The one sentence every tool answers for an agent that does not exist or is
+ * out of the caller's reach. The two read the same on purpose: which agents
+ * exist is not for a caller who cannot manage them.
+ */
+export function agentNotFoundText(httpRequest: Request, ref: string): string {
+  return `Agent ${ref} not found — ${agentNotFoundAdvice(httpRequest)}`;
+}
+
+/** `agentNotFoundText` as the result a tool hands back. */
+export function agentNotFound(httpRequest: Request, ref: string): ToolResult {
+  return ok({ error: agentNotFoundText(httpRequest, ref) });
+}
+
 /** A person, or an agent acting for itself, who lacks the role. */
 export const OPERATOR_REFUSAL =
   'This tool requires the Ranch operator role. Ask the operator to do it ' +

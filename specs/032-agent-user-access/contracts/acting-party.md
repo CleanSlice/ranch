@@ -41,13 +41,26 @@ keeps the token on `ToolContext` for the turn and puts it on every
 | Situation in the runtime | Actor |
 |--------------------------|-------|
 | the message carried an acting token | `person` with that token |
-| no token, the turn is internal (cron, heartbeat, recovery) | `trusted` / `internal` |
+| no token, the runtime's own cron or heartbeat module emitted the turn | `trusted` / `internal` |
 | no token, `ctx.isAdmin` true by an id from `TELEGRAM_BOT_ADMIN_IDS` | `trusted` / `channel-admin` |
 | anything else (share visitor, anonymous widget, messenger user) | `guest` |
+| a turn resumed after a crash | its sender's again, by the two rows above: never `trusted` / `internal` |
 | a delegated worker | its parent's actor |
 
 The actor is set by runtime code from the channel message. Nothing the model
 writes, and no tool argument, can change it.
+
+**A turn is the agent's own by where it came from, never by a name.** The
+runtime names the turns it starts for itself `cron` and `heartbeat`, and a
+turn used to be `trusted` / `internal` because its sender read that way. On
+the hub a sender is a client id, and an embed token's `sub` is chosen by
+whoever mints it. So the runtime states the origin of every turn in code
+(`turnFlags`: a channel, its own cron or heartbeat module, a crash recovery),
+and only the second is trusted. A recovery is rebuilt from a record that
+names a channel and a sender and nothing about who started the turn, so it
+is never trusted. The hub is the second lock: `admin`, `cron`, `heartbeat`
+and anything starting with `agent:` or `peer:` are client ids it gives to
+nobody on a visitor's or an embed token's word (`isReservedClientId`).
 
 **What is proven and what is stated.** A person is proven: the agent cannot
 make an acting token, and one minted for another agent is refused (`aud`).

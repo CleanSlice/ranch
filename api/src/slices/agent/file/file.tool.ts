@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   CONFIRM_SENTENCE,
+  agentNotFound,
   callerManagesAgents,
   confirmed,
   manageCaller,
@@ -133,7 +134,7 @@ export class FileTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
     const prefix = args.prefix
       ? args.prefix.endsWith('/')
         ? args.prefix
@@ -178,7 +179,7 @@ export class FileTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
     try {
       const chunk = await this.files.readRange(
         args.agentId,
@@ -299,7 +300,7 @@ export class FileTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
     const chatAgentId = callerAgentId(httpRequest) ?? 'operator';
 
     if (args.confirm) {
@@ -412,7 +413,7 @@ export class FileTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
     const chatAgentId = callerAgentId(httpRequest) ?? 'operator';
 
     if (args.confirm) {
@@ -807,7 +808,7 @@ export class FileTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
 
     const what = args.recursive
       ? `delete the folder «${args.path}» and everything under it from the agent «${agent.name}»`
@@ -866,7 +867,7 @@ export class FileTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
 
     // Same guard as FileController.sync (CLEAN-50): `confirm` skips the
     // check because the operator already saw and accepted the list.
@@ -931,7 +932,7 @@ export class FileTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, agentId);
-    if (!agent) return this.agentNotFound(agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
 
     const nodes = await this.files.list(agentId);
     return ok({
@@ -940,12 +941,6 @@ export class FileTool implements IConditionallyListedTool {
       fileCount: nodes.length,
       downloadPath: `/agents/${agentId}/files/export`,
       note: 'Open this path in the console (it needs your login) to download the zip.',
-    });
-  }
-
-  private agentNotFound(agentId: string) {
-    return ok({
-      error: `Agent ${agentId} not found — call list_agents to find the id`,
     });
   }
 }

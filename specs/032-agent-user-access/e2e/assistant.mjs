@@ -2,12 +2,13 @@
 //
 //   node specs/032-agent-user-access/e2e/assistant.mjs
 //   node specs/032-agent-user-access/e2e/assistant.mjs --boot-only   (no model call)
-//   node specs/032-agent-user-access/e2e/assistant.mjs --only user   (the User's turn alone)
+//   node specs/032-agent-user-access/e2e/assistant.mjs --only user   (the two Users' turns alone)
 //
-// `--only user` runs step 1 below and stops: no Owner turn, no API restart.
-// It is the cheap proof that a User's turn attempts no tool (FR-053,
-// SC-013), and the forwarder then lets at most four model calls through;
-// a fifth is answered with an error here and never leaves this machine.
+// `--only user` runs steps 1 and 2 below and stops: no Owner turn, no API
+// restart. It is the cheap proof that a User's turn attempts no tool
+// (FR-053, SC-013), and the forwarder then lets at most six model calls
+// through; a seventh is answered with an error here and never leaves this
+// machine.
 // The runtime's own heartbeat would spend that budget before the User is
 // answered (five seconds after start it reads the template's HEARTBEAT.md,
 // finds its list of patterns and works through it: four calls), so in this
@@ -53,15 +54,22 @@
 // user`: see above).
 //
 // Then, in the app console:
-//   1. as a User:  "delete the agent named access-bravo"
+//   1. as a User who created no agent (the second seeded User):
+//      "delete the agent named access-bravo"
 //                  → a short refusal, NO tool call in that turn, the agent still exists;
-//   2. as the Owner: "how many agents are there?" → answered with a tool;
-//   3. the API process is stopped and started again;
-//   4. as the Owner: another question that needs a tool → answered, without
+//   2. as the User who created access-charlie (the first seeded User), the
+//      same words. Ranch lists them the manage-agent tools, so this is not a
+//      request for something they cannot do: it is carried to `delete_agent`,
+//      which answers not found
+//                  → the agent still exists, and neither the tool nor the
+//                    reply names `list_agents` or a console they do not have;
+//   3. as the Owner: "how many agents are there?" → answered with a tool;
+//   4. the API process is stopped and started again;
+//   5. as the Owner: another question that needs a tool → answered, without
 //      restarting the runtime (the lost MCP session is recovered).
 //
-// The User is at 390 px and the Owner at 1440 px: both widths, without
-// paying for every turn twice.
+// The first turn is at 390 px, the second and the Owner's at 1440 px: both
+// widths, without paying for every turn twice.
 //
 // The fake runtime's socket for the Ranch admin agent is dropped first and
 // restored at the end. The API this script starts in step 3 keeps running
@@ -84,6 +92,7 @@ import {
   OWNER,
   REPO,
   USER,
+  USER2,
   agentServiceToken,
   api,
   apiEnv,
@@ -105,7 +114,9 @@ import {
 const RUNTIME_DIR = process.env.RUNTIME_DIR || 'E:/code/dream/cleanslice/runtime/.wt-clean-232';
 const LLM_MODEL = process.env.ASSISTANT_MODEL || 'claude-haiku-4-5';
 const RUNTIME_PORT = process.env.RUNTIME_PORT || '3399';
-const BUDGET = 10;
+// Ten, plus the three the first User's turn may take since the User check was
+// split in two: one call to pick `delete_agent`, one to answer, one spare.
+const BUDGET = 13;
 const RANCH = AGENTS.ranch.id;
 const WORK = resolve(OUT, 'assistant-032');
 const AGENT_DIR = resolve(WORK, 'agent');
@@ -113,8 +124,12 @@ const RUNTIME_LOG = resolve(WORK, 'runtime.log');
 const API_LOG = resolve(OUT, 'api.log');
 const bootOnly = arg('boot-only') === true;
 const onlyUser = arg('only') === 'user';
-/** With `--only user` the forwarder itself stops at this many model calls. */
-const CALL_CAP = onlyUser ? 4 : Infinity;
+/**
+ * With `--only user` the forwarder itself stops at this many model calls,
+ * both Users together: one for the refusal, two for the request that is
+ * carried to `delete_agent` and answered, three to spare.
+ */
+const CALL_CAP = onlyUser ? 6 : Infinity;
 const DUMP_DIR = process.env.ASSISTANT_DUMP_DIR ? resolve(process.env.ASSISTANT_DUMP_DIR) : null;
 if (DUMP_DIR) mkdirSync(DUMP_DIR, { recursive: true });
 
@@ -180,6 +195,37 @@ function runtimeUsage() {
   } catch {
     return 'no data/usage.json';
   }
+}
+
+/**
+ * A person's conversation with the Ranch admin agent as the runtime stored
+ * it, or null. The runtime keeps one transcript per conversation,
+ * `bridle:<client id>`, one JSON event per line: user, tool_call,
+ * tool_result, assistant. A User's client id is their user id. (On Windows
+ * the colon makes it an NTFS stream of the file `bridle`; the same path
+ * reads it.)
+ */
+async function transcriptOf(person) {
+  const userId = (await api('/users', { as: OWNER })).body.find((u) => u.email === person.email)?.id;
+  try {
+    return readFileSync(resolve(AGENT_DIR, `data/sessions/bridle:${userId}.jsonl`), 'utf8')
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch {
+    return null;
+  }
+}
+
+/** The calls to tools named like `name` in a transcript, each with what the tool answered, as text. */
+function toolResultsOf(events, name) {
+  const out = [];
+  for (const call of (events ?? []).filter((e) => e.type === 'tool_call' && name.test(String(e.data?.name ?? '')))) {
+    const result = (events ?? []).find((e) => e.type === 'tool_result' && e.data?.toolUseId === call.data?.toolUseId);
+    const raw = result?.data?.result;
+    out.push({ params: call.data?.params, result: typeof raw === 'string' ? raw : JSON.stringify(raw ?? null) });
+  }
+  return out;
 }
 
 /**
@@ -406,38 +452,53 @@ try {
   } else {
     browser = await launch();
 
-    // ---------------------------------------------------------------- User
-    section('As a User, 390 px: "delete the agent named access-bravo"');
-    const user = await watchedPage(browser, { width: 390, height: 844 });
-    await loginAs(user.page, USER, APP);
-    await user.page.goto(`${APP}/agents/${RANCH}`, { waitUntil: 'networkidle' });
     const question = `delete the agent named ${AGENTS.b.name}`;
-    let turn = await ask(user.page, question);
 
-    // The Rancher template ships with `accessStrategy: "approval"`: a person
-    // the agent has not seen is answered by the runtime itself, with a code
-    // for the administrator, before any model is asked. If that is what came
-    // back, the Owner approves it the way the product means it to be done
-    // (the code, sent in the Owner's own chat), and the User asks again.
-    const gate = /Access denied/i.test(turn.reply) ? /\b([A-Z0-9]{6})\b/.exec(turn.reply)?.[1] : null;
-    if (/Access denied/i.test(turn.reply)) {
-      console.log(`  note the User was first answered by the access gate, not the model: "${turn.reply.replace(/\b[A-Z0-9]{6}\b/, '<code>').slice(0, 140)}"`);
-      check(!toolCallsIn(turn.log, question).began, 'the gate asked no model and called no tool: no turn was begun for the message');
-      check(Boolean(gate), 'it gave an access code to pass to the administrator');
-      const approver = await watchedPage(browser, { width: 1440, height: 900 });
-      await loginAs(approver.page, OWNER, APP);
-      await approver.page.goto(`${APP}/agents/${RANCH}`, { waitUntil: 'networkidle' });
-      const approval = await ask(approver.page, gate ?? '');
-      check(/approved/i.test(approval.reply), `the Owner approves the User with the code ("${approval.reply.slice(0, 80)}")`);
-      check(approver.problems.length === 0, `no console error, no failed request for the Owner${approver.problems.length ? `: ${approver.problems.join(' | ')}` : ''}`);
-      await approver.context.close();
-      await sleep(1500);
-      turn = await ask(user.page, question);
-    }
+    /**
+     * `question`, asked by `person` in the app console at `width`.
+     *
+     * The Rancher template ships with `accessStrategy: "approval"`: a person
+     * the agent has not seen is answered by the runtime itself, with a code
+     * for the administrator, before any model is asked. If that is what came
+     * back, the Owner approves it the way the product means it to be done
+     * (the code, sent in the Owner's own chat), and the person asks again.
+     * Both seeded Users are new to the agent, so both go through it.
+     */
+    const requestAs = async (person, width) => {
+      const watched = await watchedPage(browser, { width, height: width < 600 ? 844 : 900 });
+      await loginAs(watched.page, person, APP);
+      await watched.page.goto(`${APP}/agents/${RANCH}`, { waitUntil: 'networkidle' });
+      const callsBefore = model.calls;
+      let turn = await ask(watched.page, question);
+      const gate = /Access denied/i.test(turn.reply) ? /\b([A-Z0-9]{6})\b/.exec(turn.reply)?.[1] : null;
+      if (/Access denied/i.test(turn.reply)) {
+        console.log(`  note the User was first answered by the access gate, not the model: "${turn.reply.replace(/\b[A-Z0-9]{6}\b/, '<code>').slice(0, 140)}"`);
+        check(!toolCallsIn(turn.log, question).began, 'the gate asked no model and called no tool: no turn was begun for the message');
+        check(Boolean(gate), 'it gave an access code to pass to the administrator');
+        const approver = await watchedPage(browser, { width: 1440, height: 900 });
+        await loginAs(approver.page, OWNER, APP);
+        await approver.page.goto(`${APP}/agents/${RANCH}`, { waitUntil: 'networkidle' });
+        const approval = await ask(approver.page, gate ?? '');
+        check(/approved/i.test(approval.reply), `the Owner approves the User with the code ("${approval.reply.slice(0, 80)}")`);
+        check(approver.problems.length === 0, `no console error, no failed request for the Owner${approver.problems.length ? `: ${approver.problems.join(' | ')}` : ''}`);
+        await approver.context.close();
+        await sleep(1500);
+        turn = await ask(watched.page, question);
+      }
+      return { ...watched, turn, logged: toolCallsIn(turn.log, question), spent: model.calls - callsBefore };
+    };
 
-    const refusal = turn.reply;
+    // ------------------------------------- a User who manages no agent
+    // FR-053, SC-013: asked for something the person cannot do, the assistant
+    // attempts nothing and says so in a sentence. The person it is true of is
+    // the second User, who created no agent: Ranch lists them no management
+    // tool at all.
+    section(`As a User who created no agent, 390 px: "${question}"`);
+    const user = await requestAs(USER2, 390);
+    const refusal = user.turn.reply;
     console.log(`  the User was answered, verbatim: "${refusal}"`);
-    const userTurn = toolCallsIn(turn.log, question);
+    console.log(`  tool calls in that turn: ${user.logged.calls.join(', ') || 'none'}; model calls spent on it: ${user.spent}`);
+    const userTurn = user.logged;
     const attempted = userTurn.calls;
     check(refusal.length > 0 && userTurn.began, 'the assistant answered the User');
     check(
@@ -449,6 +510,40 @@ try {
     await shot(user.page, 'assistant-user-refusal-390');
     check(user.problems.length === 0, `no console error, no failed request${user.problems.length ? `: ${user.problems.join(' | ')}` : ''}`);
     await user.context.close();
+
+    // ------------------------------- the User who created access-charlie
+    // The same words from the first User are a different case. They created
+    // an agent, so Ranch lists them the manage-agent tools, `delete_agent`
+    // among them, and deleting an agent is something they can do: the request
+    // is carried to the tool, and it is the tool that answers that no agent
+    // of theirs is called that. Correct product behaviour, not an attempt at
+    // something the person cannot do. What must hold: nothing was deleted,
+    // and neither the tool nor the assistant sent them to a tool
+    // (`list_agents`) or a console they do not have.
+    section(`As the User who created ${AGENTS.c.name}, 1440 px: "${question}"`);
+    const creator = await requestAs(USER, 1440);
+    const answer = creator.turn.reply;
+    console.log(`  the User was answered, verbatim: "${answer}"`);
+    console.log(`  tool calls in that turn: ${creator.logged.calls.join(', ') || 'none'}; model calls spent on it: ${creator.spent}`);
+    check(answer.length > 0 && creator.logged.began, 'the assistant answered the User');
+    // Whether the model reaches for delete_agent is its own choice (it has a
+    // name and no tool to turn it into an id). What is required is the
+    // outcome: every call it did make was answered not found.
+    const creatorEvents = await transcriptOf(USER);
+    const deletions = toolResultsOf(creatorEvents, /(^|__)delete_agent$/);
+    for (const d of deletions) console.log(`  delete_agent(${JSON.stringify(d.params)}) answered, verbatim: ${d.result}`);
+    check(deletions.every((d) => /not found/i.test(d.result)), `every delete_agent call was answered not found (${deletions.length} call${deletions.length === 1 ? '' : 's'})`);
+    check(
+      deletions.every((d) => !/list_agents/i.test(d.result) && !/console/i.test(d.result)),
+      'and the tool named neither list_agents nor a console',
+    );
+    check(await exists(AGENTS.b.id), `${AGENTS.b.name} still exists`);
+    check(await exists(AGENTS.c.id), `${AGENTS.c.name}, the agent they did create, still exists too`);
+    check(!/list_agents/i.test(answer), 'the reply does not name list_agents');
+    check(!/console/i.test(answer), 'the reply does not name the management console');
+    await shot(creator.page, 'assistant-creator-not-found-1440');
+    check(creator.problems.length === 0, `no console error, no failed request${creator.problems.length ? `: ${creator.problems.join(' | ')}` : ''}`);
+    await creator.context.close();
 
     // `--only user` stops here: the Owner's turns and the restart are the
     // full run's.
@@ -527,20 +622,8 @@ try {
     check(model.calls > 0 && model.failed.length === 0, `every model call was answered (${model.ok} of ${model.calls})`);
     const budget = onlyUser ? CALL_CAP : BUDGET;
     check(model.calls <= budget && model.capped === 0, `within the budget of ${budget} model calls (${model.calls}${model.capped ? `, and ${model.capped} more were stopped at the cap` : ''})`);
-    // The runtime keeps one transcript per conversation, `bridle:<client id>`,
-    // one JSON event per line: user, tool_call, tool_result, assistant. (On
-    // Windows the colon makes it an NTFS stream of the file `bridle`; the
-    // same path reads it.)
-    const userId = (await api('/users', { as: OWNER })).body.find((u) => u.email === USER.email)?.id;
-    let events = null;
-    try {
-      events = readFileSync(resolve(AGENT_DIR, `data/sessions/bridle:${userId}.jsonl`), 'utf8')
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .map((line) => JSON.parse(line));
-    } catch {
-      events = null;
-    }
+    // The transcript of the User who manages no agent (`transcriptOf`).
+    const events = await transcriptOf(USER2);
     check(Array.isArray(events) && events.some((e) => e.type === 'user' && e.data?.text === question), `the User's transcript is on disk (${events?.length ?? 0} events)`);
     const toolEvents = (events ?? []).filter((e) => e.type === 'tool_call' || e.type === 'tool_result');
     check(

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
+  agentNotFound,
   callerManagesAgents,
   CONFIRM_SENTENCE,
   confirmed,
@@ -609,11 +610,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
         }),
       };
     }
-    return {
-      refusal: ok({
-        error: `Agent ${ref} not found — call list_agents to find the id`,
-      }),
-    };
+    return { refusal: agentNotFound(httpRequest, ref) };
   }
 }
 

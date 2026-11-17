@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
+  agentNotFound,
   callerIsOperator,
   CONFIRM_SENTENCE,
   confirmed,
@@ -141,8 +142,8 @@ export class ShareLinkTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
     const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
-    return this.guard(agentId, async () =>
+    if (!agent) return agentNotFound(httpRequest, agentId);
+    return this.guard(httpRequest, agentId, async () =>
       present(agent, await this.shareLinks.getState(agentId)),
     );
   }
@@ -172,8 +173,8 @@ export class ShareLinkTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const userId = requireSub(httpRequest);
     const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
-    return this.guard(agentId, async () => {
+    if (!agent) return agentNotFound(httpRequest, agentId);
+    return this.guard(httpRequest, agentId, async () => {
       const state = await this.shareLinks.share(agentId, userId);
       this.logger.log(`Share link ensured through MCP: agent=${agentId}`);
       return present(agent, state);
@@ -210,14 +211,14 @@ export class ShareLinkTool implements IConditionallyListedTool {
     const userId = requireSub(httpRequest);
     const { agentId } = args;
     const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const refusal = confirmed(
       args,
       `regenerate the share link of agent «${agent.name}» — the current ` +
         'link stops working immediately for everyone who has it',
     );
     if (refusal) return refusal;
-    return this.guard(agentId, async () => {
+    return this.guard(httpRequest, agentId, async () => {
       const state = await this.shareLinks.regenerate(agentId, userId);
       this.logger.log(`Share link regenerated through MCP: agent=${agentId}`);
       return present(agent, state, 'The previous link no longer works.');
@@ -255,14 +256,14 @@ export class ShareLinkTool implements IConditionallyListedTool {
     const userId = requireSub(httpRequest);
     const { agentId } = args;
     const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const refusal = confirmed(
       args,
       `revoke the share link of agent «${agent.name}» — visitors are cut ` +
         'off on their next request',
     );
     if (refusal) return refusal;
-    return this.guard(agentId, async () => {
+    return this.guard(httpRequest, agentId, async () => {
       const state = await this.shareLinks.revoke(agentId, userId);
       this.logger.log(`Share link revoked through MCP: agent=${agentId}`);
       return present(
@@ -281,13 +282,16 @@ export class ShareLinkTool implements IConditionallyListedTool {
    * crash.
    */
   private async guard(
+    httpRequest: Request,
     agentId: string,
     run: () => Promise<ToolResult>,
   ): Promise<ToolResult> {
     try {
       return await run();
     } catch (err) {
-      if (err instanceof NotFoundException) return notFound(agentId);
+      if (err instanceof NotFoundException) {
+        return agentNotFound(httpRequest, agentId);
+      }
       throw err;
     }
   }
@@ -299,12 +303,6 @@ function requireSub(httpRequest: AuthedRequest): string {
   const sub = httpRequest.user?.sub;
   if (!sub) throw new ForbiddenException('No authenticated user');
   return sub;
-}
-
-function notFound(agentId: string): ToolResult {
-  return ok({
-    error: `Agent ${agentId} not found — call list_agents to find the id`,
-  });
 }
 
 /**

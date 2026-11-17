@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  agentNotFound,
   callerIsOwner,
   callerPerson,
   CONFIRM_SENTENCE,
@@ -149,7 +150,7 @@ export class RancherTool {
       manageCaller(httpRequest),
       id,
     );
-    if (!agent) return ok({ error: `Agent ${id} not found` });
+    if (!agent) return agentNotFound(httpRequest, id);
     // Fire-and-forget the real restart flow (template resync → cancel old
     // workflow → deploy). A bare status write here would leave the agent
     // stuck in 'deploying' with no new pod until drift detection failed it.
@@ -298,7 +299,7 @@ export class RancherTool {
       manageCaller(httpRequest),
       id,
     );
-    if (!existing) return ok({ error: `Agent ${id} not found` });
+    if (!existing) return agentNotFound(httpRequest, id);
     const updated = await this.agents.update(id, {
       name,
       llmCredentialId,

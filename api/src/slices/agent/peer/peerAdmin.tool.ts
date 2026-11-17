@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  callerIsOperator,
   callerManagesAgents,
   CONFIRM_SENTENCE,
   confirmed,
@@ -485,7 +486,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
         });
       }
       return run();
-    }, OPERATOR_HINTS);
+    }, hintsFor(httpRequest));
   }
 
   /**
@@ -512,16 +513,25 @@ export class PeerAdminTool implements IConditionallyListedTool {
   }
 }
 
-/** What to try next, in the vocabulary of the operator tool set. */
-const OPERATOR_HINTS: RefusalHints = {
-  ...SHARED_HINTS,
-  [PeerErrorCodes.SelfUrl]:
-    'Call list_peer_candidates and connect it with connect_agent_peer instead.',
-  [PeerErrorCodes.Exists]:
-    'It is already connected — list_agent_peers shows it.',
-  [PeerErrorCodes.NotFound]:
-    'Check the ids with list_agents and list_agent_peers.',
-};
+/**
+ * What to try next, in the vocabulary of this tool set. Per caller: the
+ * not-found advice names `list_agents` only for a caller who has it
+ * (CLEAN-232). A User managing their own agents reaches these tools without
+ * it, and is told only that nothing they manage answers to that id.
+ */
+function hintsFor(httpRequest: Request): RefusalHints {
+  return {
+    ...SHARED_HINTS,
+    [PeerErrorCodes.SelfUrl]:
+      'Call list_peer_candidates and connect it with connect_agent_peer instead.',
+    [PeerErrorCodes.Exists]:
+      'It is already connected — list_agent_peers shows it.',
+    [PeerErrorCodes.NotFound]: callerIsOperator(httpRequest)
+      ? 'Check the ids with list_agents and list_agent_peers.'
+      : 'There is no such agent or connection among the ones this person ' +
+        'manages.',
+  };
+}
 
 /**
  * What a restart is actually for, which depends on whether this was the

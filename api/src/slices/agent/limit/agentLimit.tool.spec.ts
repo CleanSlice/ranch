@@ -238,9 +238,11 @@ describe('AgentLimitTool — who may use it', () => {
       ),
     ];
     for (const result of refused) {
+      // A plain agent has no `list_agents`, so the refusal does not name it.
       expect(JSON.stringify(result)).toContain(
-        'Agent agent-b not found — call list_agents to find the id',
+        'Agent agent-b not found — there is no such agent among the ones this person manages',
       );
+      expect(JSON.stringify(result)).not.toContain('list_agents');
     }
     // The fleet view is `admin` and still refuses outright.
     await expect(tool.listAgentLimits({}, null, plainAgent())).rejects.toThrow(

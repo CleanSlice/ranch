@@ -1,6 +1,9 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
 import {
+  agentNotFound,
+  agentNotFoundAdvice,
+  agentNotFoundText,
   callerAgentId,
   callerIsOperator,
   confirmed,
@@ -8,10 +11,11 @@ import {
   ok,
   requireAgent,
   requireOperator,
+  setCallerManagesAgents,
   stripSecrets,
 } from './tooling';
 import { UserRoleTypes } from '#/user/user/domain';
-import { asGuest, asTrustedAgent } from './testing';
+import { asGuest, asPerson, asTrustedAgent } from './testing';
 
 const request = (sub: string, roles: UserRoleTypes[]): Request =>
   ({ user: { sub, email: '', roles } }) as unknown as Request;
@@ -117,5 +121,80 @@ describe('tooling', () => {
     expect(stripSecrets({ value: 'v', id: 1 }, ['value'])).toEqual({ id: 1 });
     expect(stripSecrets('str')).toBe('str');
     expect(stripSecrets(null)).toBeNull();
+  });
+});
+
+// A refusal names the next move, and the next move must be a tool the caller
+// has (CLEAN-232). `list_agents` is an `admin` tool; a User who manages the
+// agents they created reaches the `manage-agent` tools without it.
+describe('agentNotFound', () => {
+  const ranch = () => request('agent:agent-ranch', [UserRoleTypes.Owner]);
+  const consoleToken = (role: UserRoleTypes) => request('user-1', [role]);
+  const textOf = (r: { content: { text: string }[] }) => r.content[0].text;
+
+  const OPERATOR_TEXT =
+    'Agent agent-x not found — call list_agents to find the id';
+  const BELOW_TEXT =
+    'Agent agent-x not found — there is no such agent among the ones this person manages';
+
+  it('names list_agents for a caller who has it', () => {
+    for (const caller of [
+      asTrustedAgent(ranch()),
+      asPerson(ranch(), UserRoleTypes.Owner),
+      asPerson(ranch(), UserRoleTypes.Admin),
+      consoleToken(UserRoleTypes.Owner),
+      consoleToken(UserRoleTypes.Admin),
+    ]) {
+      expect(callerIsOperator(caller)).toBe(true);
+      expect(agentNotFoundText(caller, 'agent-x')).toBe(OPERATOR_TEXT);
+    }
+  });
+
+  it('names no tool for a caller below Admin, a User who manages agents included', () => {
+    const creator = asPerson(ranch(), UserRoleTypes.User);
+    setCallerManagesAgents(creator, true);
+    const ownConsole = consoleToken(UserRoleTypes.User);
+    setCallerManagesAgents(ownConsole, true);
+    for (const caller of [
+      creator,
+      ownConsole,
+      asPerson(ranch(), UserRoleTypes.User),
+      asGuest(ranch()),
+      asTrustedAgent(request('agent:a', [UserRoleTypes.Agent])),
+      // A token that names nobody is a guest.
+      ranch(),
+      {} as Request,
+    ]) {
+      expect(callerIsOperator(caller)).toBe(false);
+      const text = agentNotFoundText(caller, 'agent-x');
+      expect(text).toBe(BELOW_TEXT);
+      expect(text).not.toContain('list_agents');
+      expect(text).not.toContain('list_');
+      expect(text).not.toContain('console');
+    }
+  });
+
+  it('is the bounded caller that decides: an Owner named by a plain agent has no list_agents', () => {
+    // The token caps the party (callerLevel), and `list_agents` is listed by
+    // the same rule, so the advice follows the listing.
+    const caller = asPerson(
+      request('agent:a', [UserRoleTypes.Agent]),
+      UserRoleTypes.Owner,
+    );
+    expect(agentNotFoundText(caller, 'agent-x')).toBe(BELOW_TEXT);
+  });
+
+  it('hands the text back as an ordinary result, and the advice alone for a tool with its own sentence', () => {
+    const below = asGuest(ranch());
+    expect(textOf(agentNotFound(below, 'agent-x'))).toBe(
+      JSON.stringify({ error: BELOW_TEXT }, null, 2),
+    );
+    expect(agentNotFound(below, 'agent-x').isError).toBeUndefined();
+    expect(agentNotFoundAdvice(asTrustedAgent(ranch()))).toBe(
+      'call list_agents to find the id',
+    );
+    expect(agentNotFoundAdvice(below)).toBe(
+      'there is no such agent among the ones this person manages',
+    );
   });
 });

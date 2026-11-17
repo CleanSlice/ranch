@@ -84,7 +84,11 @@ describe('LogTool — who may use it', () => {
       null,
       plainAgent(),
     );
-    expect(textOf(result)).toContain('Agent «agent-a» not found');
+    // A plain agent has no `list_agents`, so the refusal does not name it.
+    expect(textOf(result)).toContain(
+      'Agent agent-a not found — there is no such agent among the ones this person manages',
+    );
+    expect(textOf(result)).not.toContain('list_agents');
     expect(agents.findById).not.toHaveBeenCalled();
     expect(logs.readPodLogs).not.toHaveBeenCalled();
   });
@@ -106,7 +110,10 @@ describe('LogTool — who may use it', () => {
       null,
       through(UserRoleTypes.Admin),
     );
-    expect(textOf(refused)).toContain('Agent «agent-ranch» not found');
+    // An Admin has `list_agents`: the refusal reads like any unknown id.
+    expect(textOf(refused)).toContain(
+      'Agent agent-ranch not found — call list_agents to find the id',
+    );
     expect(logs.readPodLogs).not.toHaveBeenCalled();
 
     await tool.getAgentLogs(

@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  agentNotFound,
   callerManagesAgents,
   manageCaller,
   ok,
@@ -83,11 +84,7 @@ export class LogTool implements IConditionallyListedTool {
       manageCaller(httpRequest),
       args.agentId,
     );
-    if (!agent) {
-      return ok({
-        error: `Agent «${args.agentId}» not found — call list_agents to find the id`,
-      });
-    }
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
 
     const lines = this.logService.parseTail(args.lines ?? DEFAULT_TOOL_TAIL);
     const read = await this.logService.readPodLogs(

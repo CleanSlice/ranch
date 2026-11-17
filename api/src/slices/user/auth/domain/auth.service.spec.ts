@@ -318,3 +318,24 @@ describe('AuthService — mintEmbedToken refuses a sub that names a console user
     expect(signed).toHaveLength(1);
   });
 });
+
+describe('AuthService — mintEmbedToken refuses a reserved client id (CLEAN-232)', () => {
+  // The DTO refuses these first. The service is asked again, so a caller that
+  // skips the DTO cannot mint a visitor the agent runtime reads as itself.
+  it.each([
+    'cron',
+    'heartbeat',
+    'admin',
+    'Cron',
+    'agent:agent-1',
+    'peer:agent-b:ctx-1',
+  ])('throws 400 for %p and signs nothing', async (sub) => {
+    const { service, signed } = makeDeps({ users: [] });
+
+    await expect(service.mintEmbedToken({ sub })).rejects.toMatchObject({
+      status: 400,
+      message: 'sub must not be a reserved client id',
+    });
+    expect(signed).toHaveLength(0);
+  });
+});

@@ -1158,7 +1158,7 @@ export class AgentsService {
   }
 
   /**
-   * Live SSE stream of agent pod state changes. Public — EventSource cannot send Authorization headers.
+   * Live SSE stream of agent status changes. Public — EventSource cannot send Authorization headers — so each frame carries status facts only: the agent `id`, `status` and `updatedAt`, the pod `phase`, `ready`, `restartCount` and `containerWaitingReason`, and `bridleConnected`. No name, configuration, credential or workflow id (CLEAN-232); read the row through GET /agents/:id.
    */
   public static agentControllerStatusStream<
     ThrowOnError extends boolean = false,
@@ -3300,7 +3300,7 @@ export class ChatsService {
   }
 
   /**
-   * Reconcile the current user's OWN chats from S3 into the index (self-service, non-admin). Only sessions belonging to the caller are touched. A manual fallback when realtime indexing has not caught up.
+   * Reconcile the current user's OWN chats from S3 into the index (self-service, non-admin). Only sessions belonging to the caller are touched, in the agents the caller already has a conversation with; the counts in the answer are about those alone, and an `agentId` the caller has no conversation with scans nothing (CLEAN-232). A manual fallback when realtime indexing has not caught up.
    */
   public static syncMyChats<ThrowOnError extends boolean = false>(
     options: Options<SyncMyChatsData, ThrowOnError>,

@@ -69,9 +69,10 @@ export const EmbedTokenDtoSchema = {
     sub: {
       type: "string",
       description:
-        "Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.",
+        "Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, `cron` or `heartbeat`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.",
       example: "wslid-A1234567",
-      pattern: "^(?!admin$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$",
+      pattern:
+        "^(?!admin$)(?!cron$)(?!heartbeat$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$",
       maxLength: 128,
     },
     email: {

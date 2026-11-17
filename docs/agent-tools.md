@@ -84,6 +84,13 @@ specs, `api/src/slices/mcp/testing.ts` has `asTrustedAgent`, `asPerson`,
   `list_*`).
 - **Descriptions** are read by the model. Say what the tool returns and what
   to call next on the usual failure ("call list_agents to find the id").
+- **A refusal names only a tool the caller has.** The next move in a result
+  must be one this caller can make. An agent that was not found is answered
+  with `agentNotFound(httpRequest, id)` from `#/mcp/tooling`, never with a
+  sentence of the tool's own: it names `list_agents` for an Owner or Admin,
+  and for anyone else (a User managing the agents they created reaches the
+  `manage-agent` tools without `list_agents`) says only that there is no such
+  agent among the ones this person manages.
 
 ## Audiences
 
@@ -317,7 +324,7 @@ parameters: z.object({
 }),
 …
 const agent = await this.agents.findById(id);
-if (!agent) return ok({ error: `Agent ${id} not found — call list_agents` });
+if (!agent) return agentNotFound(httpRequest, id);
 const refusal = confirmed(args, `delete agent «${agent.name}» and its workspace`);
 if (refusal) return refusal;
 ```

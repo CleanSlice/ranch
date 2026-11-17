@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  agentNotFound,
   callerIsOperator,
   CONFIRM_SENTENCE,
   confirmed,
@@ -187,7 +188,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const since = parseSince(args.since);
     if (since === null) return BAD_SINCE;
-    const missing = await this.missingAgent(args.agentId);
+    const missing = await this.missingAgent(httpRequest, args.agentId);
     if (missing) return missing;
 
     const page = await this.service.listEvents({
@@ -241,7 +242,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const since = parseSince(args.since);
     if (since === null) return BAD_SINCE;
-    const missing = await this.missingAgent(args.agentId);
+    const missing = await this.missingAgent(httpRequest, args.agentId);
     if (missing) return missing;
 
     const page = await this.service.listIncidents({
@@ -428,12 +429,13 @@ export class AgentEventTool implements IConditionallyListedTool {
     return ok({ removed: true });
   }
 
-  private async missingAgent(agentId?: string): Promise<ToolResult | null> {
+  private async missingAgent(
+    httpRequest: Request,
+    agentId?: string,
+  ): Promise<ToolResult | null> {
     if (!agentId) return null;
     if (await this.agents.findById(agentId)) return null;
-    return ok({
-      error: `Agent ${agentId} not found — call list_agents to find the id`,
-    });
+    return agentNotFound(httpRequest, agentId);
   }
 
   /** A service's own refusal (400, 409) as a result the model can act on. */

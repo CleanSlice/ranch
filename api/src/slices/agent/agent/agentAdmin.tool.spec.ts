@@ -11,7 +11,8 @@ import type { IFileGateway } from '#/agent/file/domain';
 import type { AgentMcpResolver } from '#/mcpServer/domain/agentMcpResolver.service';
 import type { IMcpServerData } from '#/mcpServer/domain/mcpServer.types';
 import { UserRoleTypes } from '#/user/user/domain';
-import { asTrustedAgent } from '#/mcp/testing';
+import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import { setCallerManagesAgents } from '#/mcp/tooling';
 import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 /**
@@ -557,5 +558,75 @@ describe('AgentAdminTool — get_cluster_capacity', () => {
     const text = textOf(await tool.getClusterCapacity({}, null, operator()));
     expect(text).toContain('"capacity": null');
     expect(text).toContain('unreachable');
+  });
+});
+
+// CLEAN-232: a User manages the agents they created, so these tools are
+// listed for them, and `list_agents` (an `admin` tool) is not. A refusal that
+// sent them there would advertise a tool they cannot call.
+describe('AgentAdminTool — a refusal names only what the caller has', () => {
+  const creator = () => {
+    const req = asPerson(
+      request([UserRoleTypes.Owner]),
+      UserRoleTypes.User,
+      'user-1',
+    );
+    setCallerManagesAgents(req, true);
+    return req;
+  };
+
+  it('tells a User only that no agent of theirs answers to the id', async () => {
+    const { tool, agents } = harness();
+    // Somebody else's agent: out of reach, answered like one that is not there.
+    agents.findById.mockResolvedValue(agent({ createdById: 'user-2' }));
+    const results = [
+      await tool.deleteAgent({ id: 'agent-a', confirm: true }, null, creator()),
+      await tool.stopAgent({ id: 'agent-a', confirm: true }, null, creator()),
+      await tool.startAgent({ id: 'agent-a' }, null, creator()),
+    ];
+    for (const result of results) {
+      const text = textOf(result);
+      expect(text).toContain(
+        'Agent agent-a not found — there is no such agent among the ones this person manages',
+      );
+      expect(text).not.toContain('list_agents');
+    }
+    expect(agents.delete).not.toHaveBeenCalled();
+
+    // An id nobody has reads the same.
+    agents.findById.mockResolvedValue(null);
+    expect(
+      textOf(
+        await tool.deleteAgent(
+          { id: 'agent-a', confirm: true },
+          null,
+          creator(),
+        ),
+      ),
+    ).toBe(textOf(results[0]));
+  });
+
+  it('still reaches the agent the User created', async () => {
+    const { tool, agents } = harness();
+    agents.findById.mockResolvedValue(agent({ createdById: 'user-1' }));
+    const text = textOf(
+      await tool.deleteAgent(
+        { id: 'agent-a', confirm: false },
+        null,
+        creator(),
+      ),
+    );
+    expect(text).toContain('delete the agent «Support Bot»');
+    expect(text).not.toContain('not found');
+  });
+
+  it('keeps naming list_agents for an operator', async () => {
+    const { tool, agents } = harness();
+    agents.findById.mockResolvedValue(null);
+    expect(
+      textOf(
+        await tool.deleteAgent({ id: 'nope', confirm: true }, null, operator()),
+      ),
+    ).toContain('Agent nope not found — call list_agents to find the id');
   });
 });

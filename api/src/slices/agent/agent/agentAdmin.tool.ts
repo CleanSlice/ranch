@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  agentNotFound,
   callerManagesAgents,
   CONFIRM_SENTENCE,
   confirmed,
@@ -36,9 +37,6 @@ function isSecretEnvName(name: string): boolean {
   const upper = name.toUpperCase();
   return SECRET_NAME_FRAGMENTS.some((fragment) => upper.includes(fragment));
 }
-
-const notFound = (id: string) =>
-  ok({ error: `Agent ${id} not found — call list_agents to find the id` });
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 
@@ -116,7 +114,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, args.id);
-    if (!agent) return notFound(args.id);
+    if (!agent) return agentNotFound(httpRequest, args.id);
     const refusal = confirmed(
       args,
       `stop the agent «${agent.name}» and delete its pod`,
@@ -152,7 +150,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, id);
-    if (!agent) return notFound(id);
+    if (!agent) return agentNotFound(httpRequest, id);
     await this.agentDeploy.deploy(id);
     const after = await this.agents.findById(id);
     return ok({
@@ -185,7 +183,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
   ) {
     requireOperator(httpRequest);
     const agent = await this.agents.findById(id);
-    if (!agent) return notFound(id);
+    if (!agent) return agentNotFound(httpRequest, id);
     // Not destructive, so no confirm (docs/agent-tools.md): reversible with
     // the same call and the pod never notices (CLEAN-216).
     const after = await this.agents.update(id, { pinned });
@@ -231,7 +229,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
   ) {
     const { id } = args;
     const agent = await this.manageable(httpRequest, id);
-    if (!agent) return notFound(id);
+    if (!agent) return agentNotFound(httpRequest, id);
     const refusal = confirmed(
       args,
       args.wipeS3
@@ -316,7 +314,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, id);
-    if (!agent) return notFound(id);
+    if (!agent) return agentNotFound(httpRequest, id);
     // Same sources as GET agents/status (pod list) and GET :id/metrics.
     const [pods, metrics] = await Promise.all([
       this.pods.list(),
@@ -367,7 +365,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, id);
-    if (!agent) return notFound(id);
+    if (!agent) return agentNotFound(httpRequest, id);
     const env = await this.workflows.previewAgentEnv(agent);
     return ok(
       env.map((v) => ({
@@ -403,7 +401,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ) {
     const agent = await this.manageable(httpRequest, id);
-    if (!agent) return notFound(id);
+    if (!agent) return agentNotFound(httpRequest, id);
 
     const [servers, pods] = await Promise.all([
       this.mcpResolver.resolveForAgent(agent),

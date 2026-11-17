@@ -5,3 +5,4 @@ export * from './dynamic-description.interface';
 export * from './conditional-listing.interface';
 export * from './tool-listing-recorder.interface';
 export * from './acting-party.interface';
+export * from './agent-manager.interface';

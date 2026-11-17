@@ -9,6 +9,8 @@ import { InitModule } from './slices/setup/init/init.module';
 
 // Feature slices
 import { AgentModule } from './slices/agent/agent/agent.module';
+import { AgentPermissionModule } from './slices/agent/agent/agentPermission.module';
+import { AgentManageGuard } from './slices/agent/agent/guards';
 import { AgentChannelModule } from './slices/agent/agentChannel/agentChannel.module';
 import { ShareLinkModule } from './slices/agent/shareLink/shareLink.module';
 import { AgentLimitModule } from './slices/agent/limit/agentLimit.module';
@@ -42,7 +44,13 @@ import { McpOauthModule } from './slices/mcpServer/oauth/mcpOauth.module';
 import { McpModule } from './slices/mcp';
 import { PaddockModule } from './slices/paddock/paddock.module';
 import { BrowserModule } from './slices/browser/browser.module';
-import { JwtAuthGuard } from './slices/user/auth/guards';
+import {
+  AnyBearer,
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+} from './slices/user/auth/guards';
+import { UserRoleTypes } from './slices/user/user/domain';
 import { IntegrationModule } from './slices/integration/integration.module';
 import { UserSecretModule } from './slices/user/secret/secret.module';
 import { UserBrowserStateModule } from './slices/user/browserState/browserState.module';
@@ -65,6 +73,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     TemplateFileModule,
     TemplateInstallModule,
     AgentModule,
+    AgentPermissionModule,
     AgentChannelModule,
     ShareLinkModule,
     AgentLimitModule,
@@ -103,6 +112,15 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
       messagesEndpoint: 'mcp/messages',
       mcpEndpoint: 'mcp/mcp',
       guards: [JwtAuthGuard],
+      // Every authenticated bearer, a person of any role or an agent runtime
+      // (CLEAN-232). Without it the endpoints would fall to the Admin default
+      // of the global RolesGuard and no agent could reach its tools. What a
+      // caller may then list and call is decided per tool, for the party the
+      // call is made for.
+      decorators: [AnyBearer()],
+      // The session diagnostics list every live MCP session id. Stated on
+      // the handler, so it wins over the class's @AnyBearer: operators only.
+      diagnosticDecorators: [Roles(UserRoleTypes.Admin)],
       // Stateful streamable-http: clients send `initialize`, get an
       // `Mcp-Session-Id`, then route subsequent calls to that session.
       // The module default is stateless, which breaks the standard MCP
@@ -127,6 +145,21 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     // carries ApiKeyGuard, BridleApiKeyGuard or a peer guard drops the JWT
     // requirement alone; those guards still run and still reject.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // A role on every route (CLEAN-232). JwtAuthGuard above says who is
+    // calling; this says whether they may. Order matters: global guards run
+    // in registration order, and RolesGuard reads the req.user the first one
+    // sets. A route with no @Roles asks for Admin, so a route nobody thought
+    // about is closed to a User and to an agent runtime, where it used to be
+    // open to any valid token. An agent's token is an Agent here whatever
+    // roles it carries. @Public() routes are skipped, which covers every
+    // machine-guarded route. userRoutes.spec.ts and agentRoutes.spec.ts pin
+    // what a role opens below Admin.
+    { provide: APP_GUARD, useClass: RolesGuard },
+    // For which agent (CLEAN-232). Acts only on routes marked
+    // @ManagesAgent(...): the caller must be allowed to manage the agent the
+    // route names, or the answer is the 404 an unknown agent gets. Last of
+    // the three, because it reads the bearer the first one verified.
+    { provide: APP_GUARD, useClass: AgentManageGuard },
   ],
 })
 export class AppModule {}

@@ -56,6 +56,7 @@ function build(opts: { resolved?: IMcpServerData[]; agent?: unknown } = {}) {
     stub,
     mcpResolver as never,
     stub,
+    stub,
   );
   return { controller, mcpResolver, agentGateway };
 }
@@ -144,10 +145,21 @@ function buildForLimits(
   opts: {
     agent?: { isPublic: boolean } | null;
     limits?: Record<string, number | null> | null;
+    /** Rows for the list routes (CLEAN-232). */
+    agents?: Array<Record<string, unknown>>;
+    /** The accounts that still exist, by id. */
+    users?: Record<string, { id: string; name: string; email: string }>;
   } = {},
 ) {
   const order: string[] = [];
+  const userGateway = {
+    findById: jest.fn((id: string) =>
+      Promise.resolve(opts.users?.[id] ?? null),
+    ),
+  };
   const agentGateway = {
+    findAll: jest.fn(() => Promise.resolve(opts.agents ?? [])),
+    findPublic: jest.fn(() => Promise.resolve(opts.agents ?? [])),
     findById: jest.fn(() =>
       Promise.resolve(
         opts.agent === null
@@ -184,8 +196,9 @@ function buildForLimits(
     deploy as never,
     stub,
     agentLimits as never,
+    userGateway as never,
   );
-  return { controller, agentGateway, agentLimits, deploy, order };
+  return { controller, agentGateway, agentLimits, deploy, order, userGateway };
 }
 
 const codeOf = async (run: Promise<unknown>): Promise<unknown> => {
@@ -338,7 +351,7 @@ describe('AgentController — visibility and request limits', () => {
     );
 
     expect(deploy.createAgent).toHaveBeenCalledWith(
-      { name: 'a', templateId: 't', isPublic: true },
+      { name: 'a', templateId: 't', isPublic: true, createdById: 'user-1' },
       { isAdmin: undefined },
     );
     expect(agentLimits.setLimits).toHaveBeenCalledWith(
@@ -352,5 +365,163 @@ describe('AgentController — visibility and request limits', () => {
     const { controller, agentLimits } = buildForLimits();
     await controller.create({ name: 'a', templateId: 't' } as never, owner);
     expect(agentLimits.setLimits).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Who created an agent (CLEAN-232): written once on POST /agents from the
+ * console token, shown by name to an Owner or Admin, and never sent as a
+ * bare id. Making an agent the Ranch admin agent is the Owner's decision.
+ */
+describe('AgentController — who created an agent', () => {
+  const as = (sub: string, role: string) =>
+    ({ user: { sub, roles: [role] } }) as unknown as Request;
+  const owner = as('user-o', 'Owner');
+  const admin = as('user-a', 'Admin');
+  const user = as('user-u', 'User');
+
+  const USERS = {
+    'user-a': { id: 'user-a', name: 'Ada Admin', email: 'ada@example.test' },
+  };
+  const AGENTS = [
+    { id: 'ag-1', name: 'By Ada', createdById: 'user-a' },
+    { id: 'ag-2', name: 'By a removed account', createdById: 'user-gone' },
+    { id: 'ag-3', name: 'Older than the field', createdById: null },
+  ];
+
+  it('records the console person behind POST /agents', async () => {
+    const { controller, deploy } = buildForLimits();
+
+    await controller.create({ name: 'a', templateId: 't' } as never, admin);
+
+    expect(deploy.createAgent).toHaveBeenCalledWith(
+      { name: 'a', templateId: 't', createdById: 'user-a' },
+      { isAdmin: undefined },
+    );
+  });
+
+  it('never records an `agent:` subject as a creator', async () => {
+    const { controller, deploy } = buildForLimits();
+
+    // The role guard refuses an agent's token on this route; the handler
+    // does not rely on that.
+    await controller.create(
+      { name: 'a', templateId: 't' } as never,
+      as('agent:ranch', 'Owner'),
+    );
+
+    expect(deploy.createAgent).toHaveBeenCalledWith(
+      { name: 'a', templateId: 't', createdById: null },
+      { isAdmin: undefined },
+    );
+  });
+
+  it('cannot be set or changed by a later update', async () => {
+    const { controller, agentGateway } = buildForLimits();
+
+    await controller.update(
+      'ag-1',
+      { name: 'Renamed', createdById: 'user-u' } as never,
+      owner,
+    );
+
+    // The update DTO has no such field (the validation pipe strips it); what
+    // the gateway is handed is typed without it, and the gateway writes only
+    // the fields it knows.
+    const [, data] = agentGateway.update.mock.calls[0];
+    expect(Object.keys(data as object)).toEqual(
+      expect.arrayContaining(['name']),
+    );
+  });
+
+  it('refuses an Admin who creates the Ranch admin agent, before anything is created', async () => {
+    const { controller, deploy } = buildForLimits();
+
+    await expect(
+      controller.create(
+        { name: 'a', templateId: 't', isAdmin: true } as never,
+        admin,
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: expect.stringContaining('Only the Owner') as string,
+    });
+    expect(deploy.createAgent).not.toHaveBeenCalled();
+  });
+
+  it('lets the Owner create the Ranch admin agent', async () => {
+    const { controller, deploy } = buildForLimits();
+
+    await controller.create(
+      { name: 'a', templateId: 't', isAdmin: true } as never,
+      owner,
+    );
+
+    expect(deploy.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'a', createdById: 'user-o' }),
+      { isAdmin: true },
+    );
+  });
+
+  it.each([
+    ['an Owner', owner],
+    ['an Admin', admin],
+  ])('shows %s who created each agent', async (_who, reader) => {
+    const { controller } = buildForLimits({ agents: AGENTS, users: USERS });
+
+    const listed = await controller.findAll(reader);
+
+    expect(listed.map((a) => [a.id, a.createdBy])).toEqual([
+      ['ag-1', { id: 'user-a', name: 'Ada Admin', email: 'ada@example.test' }],
+      // The account is gone: the id stays, the name and email do not.
+      ['ag-2', { id: 'user-gone', name: null, email: null }],
+      // Nobody is recorded.
+      ['ag-3', null],
+    ]);
+  });
+
+  it('tells a User nothing about creators, resolved or bare', async () => {
+    const { controller, userGateway } = buildForLimits({
+      agents: AGENTS,
+      users: USERS,
+    });
+
+    const listed = await controller.findAll(user);
+
+    expect(listed.map((a) => a.createdBy)).toEqual([null, null, null]);
+    expect(userGateway.findById).not.toHaveBeenCalled();
+    for (const agent of listed) expect(agent).not.toHaveProperty('createdById');
+  });
+
+  it('never sends the bare id, to anyone', async () => {
+    const { controller } = buildForLimits({ agents: AGENTS, users: USERS });
+
+    for (const reader of [owner, admin, user]) {
+      for (const agent of await controller.findAll(reader)) {
+        expect(agent).not.toHaveProperty('createdById');
+      }
+    }
+    // The anonymous landing page gets no creator at all.
+    for (const agent of await controller.findPublic()) {
+      expect(agent).not.toHaveProperty('createdById');
+      expect(agent.createdBy).toBeNull();
+    }
+  });
+
+  it('looks each creator up once, however many agents they created', async () => {
+    const { controller, userGateway } = buildForLimits({
+      agents: [
+        ...AGENTS,
+        { id: 'ag-4', name: 'Also Ada', createdById: 'user-a' },
+      ],
+      users: USERS,
+    });
+
+    await controller.findAll(owner);
+
+    expect(userGateway.findById.mock.calls.map(([id]) => id).sort()).toEqual([
+      'user-a',
+      'user-gone',
+    ]);
   });
 });

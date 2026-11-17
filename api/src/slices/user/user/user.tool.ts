@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
+  callerPerson,
   CONFIRM_SENTENCE,
   confirmed,
   err,
@@ -18,6 +19,7 @@ import type { IAuthTokenPayload } from '#/user/auth/domain';
 import {
   ASSIGNABLE_USER_ROLES,
   IUserGateway,
+  refuseUserEdit,
   UserRoleTypes,
   type IUpdateUserData,
   type IUserData,
@@ -167,7 +169,10 @@ export class UserTool implements IConditionallyListedTool {
       "Change a user's name, email, password or status (active, invited, " +
       'disabled). Pass only the fields to change. The role is not changed ' +
       'here — use set_user_role. The Owner account cannot be disabled or ' +
-      'otherwise re-statused. Returns the updated account, never a password.',
+      'otherwise re-statused. An Admin can change accounts with the User ' +
+      'role and their own name, email and password; the Owner account and ' +
+      "another Admin's are for the Owner to change. Returns the updated " +
+      'account, never a password.',
     parameters: z.object({
       userId: z.string().describe('User id (list_users has them)'),
       name: nameSchema.optional(),
@@ -196,6 +201,26 @@ export class UserTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const target = await this.users.findById(userId);
     if (!target) return notFound(userId);
+    // Who may change whom, the same function as UserController.update
+    // (CLEAN-232): an Admin edits Users and their own name, email and
+    // password, never the Owner or another Admin. The editor is the person
+    // the call is made for; the agent acting for itself is trusted.
+    const person = callerPerson(httpRequest);
+    const refusal = refuseUserEdit(
+      person ? { kind: 'person', ...person } : { kind: 'trusted' },
+      target,
+      (
+        [
+          ['name', name],
+          ['email', email],
+          ['password', password],
+          ['status', status],
+        ] as const
+      )
+        .filter(([, value]) => value !== undefined)
+        .map(([field]) => field),
+    );
+    if (refusal) return err(refusal);
     // Same rule as UserController.update: the Owner's status is not for
     // changing, since a disabled Owner locks the Ranch.
     if (status !== undefined && target.role === UserRoleTypes.Owner) {

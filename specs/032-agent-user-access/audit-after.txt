@@ -1,0 +1,347 @@
+
+agent/agentChannel/agentChannel.controller.ts
+  Admin+   GET /agents/:id/channels  :32
+  Admin+   PUT /agents/:id/channels  :44
+
+agent/agent/agent.controller.ts
+  User+    GET /agents  :248
+  PUBLIC   GET /agents/public  :259
+  User+    GET /agents/status  :271
+  PUBLIC   GET /agents/status/stream  :283
+  Admin+   GET /agents/capacity  :325
+  User+    GET /agents/:id  :336
+  Admin+   GET /agents/:id/metrics  :350
+  Admin+   GET /agents/:id/env  :366
+  Admin+   GET /agents/:id/mcps  :380 +Agent
+  Admin+   GET /agents/:id/mcp-status  :420
+  Admin+   POST /agents  :443
+  Admin+   PUT /agents/:id  :496
+  Admin+   GET /agents/admin/current  :537
+  Owner    POST /agents/:id/promote-admin  :547
+  Owner    DELETE /agents/:id/promote-admin  :570
+  Admin+   POST /agents/:id/restart  :583
+  Admin+   POST /agents/:id/stop  :597
+  Admin+   POST /agents/:id/start  :611
+  Admin+   POST /agents/restart-by-template/:templateId  :625
+  Admin+   DELETE /agents/:id  :668
+
+agent/event/agentEvent.controller.ts
+  Admin+   GET /agent-events  :83
+  Admin+   GET /agent-incidents  :101
+  Admin+   GET /agent-events/destination  :123
+  Owner    PUT /agent-events/destination  :135
+  Owner    DELETE /agent-events/destination  :158
+  Owner    POST /agent-events/destination/test  :171
+
+agent/event/agentEvent.ingest.controller.ts
+  machine  POST /agent-events  :69
+
+agent/file/file.controller.ts
+  Admin+   GET /agents/:agentId/files  :80 default
+  Admin+   GET /agents/:agentId/files/limits  :92 default
+  Admin+   GET /agents/:agentId/files/content  :106 default
+  Admin+   PUT /agents/:agentId/files/content  :129 default
+  Admin+   DELETE /agents/:agentId/files/content  :153 default
+  Admin+   DELETE /agents/:agentId/files  :177 default
+  Admin+   POST /agents/:agentId/files/sync  :226 default
+  Admin+   GET /agents/:agentId/files/export  :277 default
+  Admin+   POST /agents/:agentId/files/export  :292 default
+  Admin+   POST /agents/:agentId/files/open-link  :313 default
+  PUBLIC   GET /agents/:agentId/files/raw  :340
+
+agent/file/fileImport.controller.ts
+  Admin+   POST /agents/:agentId/files/import/stage  :130 default
+  Admin+   POST /agents/:agentId/files/import/resolve  :178 default
+  Admin+   POST /agents/:agentId/files/import/stage-files  :234 default
+  Admin+   GET /agents/:agentId/files/import/:importId/plan  :317 default
+  Admin+   POST /agents/:agentId/files/import/:importId/apply  :349 default
+
+agent/file/fileProposal.controller.ts
+  Admin+   GET /agents/:agentId/files/proposals  :67 default
+  Admin+   GET /agents/:agentId/files/proposals/:proposalId  :93 default
+  Admin+   GET /agents/:agentId/files/proposals/:proposalId/content  :108 default
+  Admin+   GET /agents/:agentId/files/proposals/:proposalId/diff  :130 default
+  Admin+   POST /agents/:agentId/files/proposals/:proposalId/apply  :162 default
+  Admin+   POST /agents/:agentId/files/proposals/:proposalId/skip  :189 default
+
+agent/limit/agentLimit.controller.ts
+  Admin+   GET /agent-limits  :104
+  Admin+   GET /agents/:agentId/limits  :116
+  Admin+   PUT /agents/:agentId/limits  :138
+  User+    GET /agents/:agentId/limits/enabled  :167
+  Admin+   GET /agents/:agentId/load  :185
+
+agent/peer/a2a.controller.ts
+  machine  GET /a2a/agents/:agentId/.well-known/agent-card.json  :60
+  machine  POST /a2a/agents/:agentId  :75
+
+agent/peer/peer.controller.ts
+  Admin+   GET /agents/:agentId/card  :100
+  Admin+   GET /agents/:agentId/peers  :113
+  Admin+   GET /agents/:agentId/peers/candidates  :125
+  Admin+   POST /agents/:agentId/peers  :148
+  Admin+   POST /agents/:agentId/peers/preview  :180
+  Admin+   GET /agents/:agentId/peers/state  :204
+  Admin+   POST /agents/:agentId/peers/:peerId/refresh  :221
+  Admin+   DELETE /agents/:agentId/peers/:peerId  :238
+  Admin+   GET /agents/:agentId/delegations  :253
+
+agent/peer/peerLink.controller.ts
+  Admin+   GET /agent-links  :44
+
+agent/secret/secret.controller.ts
+  Admin+   GET /agents/:agentId/secrets  :40 default
+  Admin+   PUT /agents/:agentId/secrets  :50 default
+  Admin+   DELETE /agents/:agentId/secrets  :65 default
+  Admin+   POST /agents/:agentId/secrets/replace  :80 default
+
+agent/shareLink/share.controller.ts
+  PUBLIC   POST /share/resolve  :52
+
+agent/shareLink/shareLink.controller.ts
+  User+    GET /agents/:agentId/share-link  :85
+  User+    POST /agents/:agentId/share-link  :103
+  User+    POST /agents/:agentId/share-link/regenerate  :124
+  User+    DELETE /agents/:agentId/share-link  :145
+
+agent/templateFile/templateFile.controller.ts
+  Admin+   GET /templates/:id/files  :40 default
+  Admin+   GET /templates/:id/files/content  :47 default
+  Admin+   PUT /templates/:id/files/content  :54 default
+  Admin+   POST /templates/:id/files/upload  :89 default
+
+agent/templateInstall/templateExport.controller.ts
+  Admin+   GET /templates/:id/download  :20 default
+
+agent/templateInstall/templateInstall.controller.ts
+  Admin+   POST /templates/install/preview  :56 default
+  Admin+   POST /templates/install  :99 default
+  Admin+   POST /templates/install/from-git/preview  :119 default
+  Admin+   POST /templates/install/from-git  :144 default
+
+agent/template/template.controller.ts
+  Admin+   GET /templates  :29 default
+  Admin+   GET /templates/:id  :35 default
+  Admin+   POST /templates  :43 default
+  Admin+   PUT /templates/:id  :49 default
+  Admin+   PUT /templates/:id/skills  :58 default
+  Admin+   PUT /templates/:id/mcps  :69 default
+  Admin+   PUT /templates/:id/tools  :80 default
+  Admin+   DELETE /templates/:id  :88 default
+
+agent/toolCatalog/toolCatalog.controller.ts
+  Admin+   GET /agents/:id/tools  :41
+
+bridle/bridle.controller.ts
+  PUBLIC   POST /api/agent/:agentId/message  :481
+  PUBLIC   POST /api/agent/:agentId/message/sync  :563
+  PUBLIC   POST /api/agent/:agentId/attachment  :671
+  PUBLIC   GET /api/agent/:agentId/attachment/:attachmentId  :742
+  PUBLIC   GET /api/agent/:agentId/message/:messageId/source/:n/content  :799
+  PUBLIC   PUT /api/agent/:agentId/message/:messageId/source/:n/rating  :862
+  PUBLIC   DELETE /api/agent/:agentId/message/:messageId/source/:n/rating  :888
+  PUBLIC   GET /api/agent/health  :918
+  PUBLIC   GET /api/agent/:agentId/health  :929
+  PUBLIC   GET /api/agent/list  :939
+  PUBLIC   GET /api/agent/:agentId/transcript  :953
+  PUBLIC   DELETE /api/agent/:agentId/transcript  :1071
+  PUBLIC   POST /api/agent/:agentId/transcript/archive  :1122
+
+browser/browser.controller.ts
+  Admin+   GET /browser/sessions  :42 default
+  Admin+   POST /browser/sessions  :57 default
+  Admin+   GET /browser/sessions/:id  :74 default
+  Admin+   POST /browser/sessions/:id/reset  :91 default
+  Admin+   POST /browser/sessions/:id/status  :108 default
+  Admin+   POST /browser/sessions/:id/vnc-url  :126 default
+  Admin+   DELETE /browser/sessions/:id  :140 default
+
+browser/browser.extension.controller.ts
+  Admin+   POST /browser/extension/token  :70 default
+  PUBLIC   POST /browser/extension/import-state  :98
+
+browser/browser.internal.controller.ts
+  machine  POST /browser/internal/sessions  :66
+  machine  POST /browser/internal/sessions/:id/status  :82
+  machine  POST /browser/internal/sessions/:id/reset  :99
+  machine  POST /browser/internal/sessions/:id/harvest  :115
+  machine  POST /browser/internal/sessions/cleanup  :131
+
+chat/chat.controller.ts
+  Admin+   GET /chats  :91
+  Admin+   GET /chats/:id  :108
+  Admin+   GET /chats/:id/messages  :123
+  Admin+   POST /chats/sync  :180
+  Admin+   POST /chats/:id/summarize  :191
+  Admin+   POST /chats/:id/feedback  :201
+  Admin+   DELETE /chats/:id/feedback/:messageId  :226
+  Admin+   GET /chats/:id/feedback  :242
+  Admin+   GET /chats/:id/export  :257
+
+chat/myChat.controller.ts
+  User+    GET /me/chats  :93
+  User+    GET /me/chats/:id  :115
+  User+    GET /me/chats/:id/messages  :130
+  User+    POST /me/chats/sync  :174
+  User+    POST /me/chats/:id/feedback  :187
+  User+    DELETE /me/chats/:id/feedback/:messageId  :211
+  User+    GET /me/chats/:id/feedback  :226
+  User+    GET /me/chats/:id/export  :242
+
+integration/integration.controller.ts
+  Admin+   GET /integrations/catalogue  :45 default
+  Admin+   GET /integrations/accounts  :55 default
+  Admin+   POST /integrations/accounts  :70 default
+  Admin+   GET /integrations/accounts/:id  :89 default
+  Admin+   POST /integrations/accounts/:id/login  :106 default
+  Admin+   POST /integrations/accounts/:id/import-cookies  :123 default
+  Admin+   POST /integrations/accounts/:id/secret  :144 default
+  Admin+   DELETE /integrations/accounts/:id  :163 default
+
+integration/integration.extension.controller.ts
+  Admin+   POST /integrations/extension/token  :69 default
+  PUBLIC   POST /integrations/extension/import-state  :93
+  PUBLIC   GET /integrations/extension/download  :125
+
+integration/integration.internal.controller.ts
+  machine  GET /integrations/internal/secrets  :109
+  machine  GET /integrations/internal/accounts  :123
+  machine  POST /integrations/internal/request-login  :143
+  machine  GET /integrations/internal/browser-state  :158
+
+llm/llm.controller.ts
+  Admin+   GET /llms  :29 default
+  Admin+   GET /llms/:id  :35 default
+  Admin+   POST /llms  :43 default
+  Admin+   PUT /llms/:id  :49 default
+  Admin+   DELETE /llms/:id  :55 default
+  Admin+   POST /llms/:id/health-check  :65 default
+
+log/log.controller.ts
+  Admin+   GET /agents/:agentId/logs  :32 default
+
+mcpServer/mcpServer.controller.ts
+  Admin+   GET /mcp-servers  :39
+  Admin+   GET /mcp-servers/tools  :51
+  Admin+   GET /mcp-servers/:id  :70
+  Admin+   POST /mcp-servers  :79
+  Admin+   PATCH /mcp-servers/:id  :86
+  Admin+   DELETE /mcp-servers/:id  :107
+
+mcpServer/oauth/mcpOauth.controller.ts
+  machine  POST /mcp-servers/:serverId/oauth/start  :58
+  PUBLIC   GET /mcp-servers/:serverId/oauth/callback  :78
+  machine  GET /mcp-servers/:serverId/oauth/status  :140
+
+paddock/evaluation/evaluation.controller.ts
+  Admin+   POST /paddock-evaluations  :17 default
+  Admin+   GET /paddock-evaluations  :28 default
+  Admin+   GET /paddock-evaluations/:id  :44 default
+  Admin+   GET /paddock-evaluations/:id/report  :53 default
+  Admin+   GET /paddock-evaluations/:id/logs  :62 default
+  Admin+   GET /paddock-evaluations/:id/scenarios/:scenarioId  :71 default
+  Admin+   GET /paddock-evaluations/:id/trace  :81 default
+  Admin+   POST /paddock-evaluations/:id/abort  :90 default
+  Admin+   POST /paddock-evaluations/:id/rerun  :99 default
+
+paddock/scenario/scenario.controller.ts
+  Admin+   GET /paddock-scenarios  :45 default
+  Admin+   GET /paddock-scenarios/:id  :54 default
+  Admin+   POST /paddock-scenarios  :65 default
+  Admin+   POST /paddock-scenarios/generate  :75 default
+  Admin+   PATCH /paddock-scenarios/:id  :91 default
+  Admin+   DELETE /paddock-scenarios/:id  :99 default
+
+rancher/rancher.controller.ts
+  Admin+   GET /rancher/status  :20
+  Admin+   POST /rancher/template  :30
+
+reins/knowledge/knowledge.controller.ts
+  Admin+   GET /knowledges  :58 default
+  Admin+   GET /knowledges/status  :74 default
+  Admin+   GET /knowledges/:id/graph/labels  :128 default
+  Admin+   GET /knowledges/:id/graph  :145 default
+  Admin+   GET /knowledges/:id/overview  :163 default
+  Admin+   GET /knowledges/:id  :170 default
+  Admin+   POST /knowledges  :177 default
+  Admin+   PUT /knowledges/:id  :184 default
+  Admin+   DELETE /knowledges/:id  :192 default
+  Admin+   POST /knowledges/:id/index  :200 default
+  Admin+   POST /knowledges/:id/query  :212 default
+
+reins/source/source.controller.ts
+  Admin+   GET /knowledges/:knowledgeId/sources  :101 default
+  Admin+   GET /knowledges/:knowledgeId/sources/imports  :123 default
+  Admin+   GET /knowledges/:knowledgeId/sources/export  :136 default
+  Admin+   GET /knowledges/:knowledgeId/sources/:sourceId/content  :172 default
+  Admin+   POST /knowledges/:knowledgeId/sources/:sourceId/reindex  :209 default
+  Admin+   POST /knowledges/:knowledgeId/sources/:sourceId/extract  :225 default
+  Admin+   POST /knowledges/:knowledgeId/sources  :240 default
+  Admin+   POST /knowledges/:knowledgeId/sources/files  :288 default
+  Admin+   POST /knowledges/:knowledgeId/sources/from-sitemap  :316 default
+  Admin+   POST /knowledges/:knowledgeId/sources/from-archive  :356 default
+  Admin+   DELETE /knowledges/:knowledgeId/sources/:sourceId  :373 default
+
+setting/setting.controller.ts
+  Admin+   GET /settings  :36 default
+  PUBLIC   GET /settings/auth  :47
+  Admin+   GET /settings/:group  :54 default
+  Admin+   GET /settings/:group/:name  :60 default
+  Admin+   PUT /settings/:group/:name  :68 default
+  Admin+   DELETE /settings/:group/:name  :80 default
+
+setup/health/health.controller.ts
+  PUBLIC   GET /health  :9
+
+setup/init/init.controller.ts
+  PUBLIC   GET /setup/status  :33
+  PUBLIC   POST /setup/init  :44
+
+skill/skill.controller.ts
+  Admin+   GET /skills  :44 default
+  Admin+   GET /skills/order  :58 default
+  Admin+   PATCH /skills/order  :70 default
+  Admin+   GET /skills/name-available  :81 default
+  Admin+   GET /skills/sources  :95 default
+  Admin+   GET /skills/search  :101 default
+  Admin+   POST /skills/import-url  :109 default
+  Admin+   POST /skills/import  :125 default
+  Admin+   GET /skills/:id  :181 default
+  Admin+   GET /skills/:id/agents  :193 default
+  Admin+   POST /skills  :201 default
+  Admin+   PUT /skills/:id  :209 default
+  Admin+   DELETE /skills/:id  :241 default
+
+upgrade/upgrade.controller.ts
+  Admin+   GET /upgrade/status  :27
+  Admin+   POST /upgrade  :36
+
+usage/usage.controller.ts
+  machine  POST /agents/:agentId/usage  :61
+  Admin+   GET /agents/:agentId/usage  :70 default
+  Admin+   GET /llms/:id/usage  :213 default
+  Admin+   GET /usage/overview  :229 default
+
+user/apiKey/apiKey.controller.ts
+  Admin+   GET /api-keys  :34
+  Admin+   POST /api-keys  :43
+  Admin+   DELETE /api-keys/:id  :58
+
+user/auth/auth.controller.ts
+  PUBLIC   POST /auth/login  :76
+  PUBLIC   POST /auth/register  :96
+  PUBLIC   POST /auth/refresh  :118
+  PUBLIC   POST /auth/logout  :133
+  User+    GET /auth/me  :150
+  machine  POST /auth/embed/token  :166
+
+user/user/user.controller.ts
+  Admin+   GET /users  :60
+  Admin+   GET /users/:id  :66
+  Admin+   POST /users  :74
+  Admin+   PUT /users/:id  :83
+  Owner    PUT /users/:id/role  :109
+  Owner    DELETE /users/:id  :120
+
+TOTAL 252 {"Admin+":183,"User+":17,"PUBLIC":29,"Owner":7,"machine":16} controllers 46
+RolesGuard global: yes; routes an agent token passes: 1; routes on the Admin default: 124

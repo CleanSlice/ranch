@@ -3,13 +3,18 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  callerIsOwner,
+  callerPerson,
   CONFIRM_SENTENCE,
   confirmed,
+  manageCaller,
   ok,
   requireOperator,
+  requireOwner,
   stripSecrets,
 } from '#/mcp/tooling';
 import { IAgentGateway } from '#/agent/agent/domain';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { AgentDeployService } from '#/agent/agent/domain/agentDeploy.service';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { ITemplateFileGateway } from '#/agent/templateFile/domain';
@@ -33,6 +38,13 @@ import { RancherService } from './domain/rancher.service';
  * check is the shared `requireOperator`, which since CLEAN-232 asks who the
  * call is made for, not only what the agent's token carries. The class has
  * no listing hook of its own; the audience hides it from everyone else.
+ *
+ * Three tools differ from the class (CLEAN-232). `restart_agent` and
+ * `update_agent` act on one agent and are `manage-agent`: each call asks
+ * `AgentPermissionService` about the agent it names and answers "not found"
+ * for one the caller may not manage. `set_agent_admin` is `owner`, like the
+ * console route. `create_agent` stays `admin` and records who created the
+ * agent.
  */
 @ToolAudience('admin')
 @Injectable()
@@ -50,6 +62,7 @@ export class RancherTool {
     private readonly usage: IUsageGateway,
     private readonly files: IFileGateway,
     private readonly rancher: RancherService,
+    private readonly permission: AgentPermissionService,
   ) {}
 
   // ─── Platform ────────────────────────────────────────────────────────
@@ -115,6 +128,7 @@ export class RancherTool {
     return ok(agent);
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'restart_agent',
     topic: ToolTopics.Agents,
@@ -131,8 +145,10 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(id);
+    const agent = await this.permission.manageable(
+      manageCaller(httpRequest),
+      id,
+    );
     if (!agent) return ok({ error: `Agent ${id} not found` });
     // Fire-and-forget the real restart flow (template resync → cancel old
     // workflow → deploy). A bare status write here would leave the agent
@@ -197,6 +213,15 @@ export class RancherTool {
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
     requireOperator(httpRequest);
+    // Which agent is the Ranch admin agent is the Owner's decision, here as
+    // on set_agent_admin and on the console route (CLEAN-232).
+    if (isAdmin === true && !callerIsOwner(httpRequest)) {
+      return ok({
+        error:
+          'Only the Owner can make an agent the Ranch admin agent. Create ' +
+          'it without isAdmin; the Owner can promote it afterwards.',
+      });
+    }
     // Friendly precheck — a bad templateId would otherwise surface as an
     // opaque foreign-key error from the DB layer.
     const template = await this.templates.findById(templateId);
@@ -205,8 +230,17 @@ export class RancherTool {
         error: `Template ${templateId} not found — pick one from list_templates`,
       });
     }
+    // The creator is the person this call is made for, as the acting token
+    // proved them; a trusted party (the agent on its own schedule) leaves
+    // none. Written once, here: update_agent cannot change it.
     const created = await this.agentDeploy.createAgent(
-      { name, templateId, llmCredentialId, knowledgeIds },
+      {
+        name,
+        templateId,
+        llmCredentialId,
+        knowledgeIds,
+        createdById: callerPerson(httpRequest)?.userId ?? null,
+      },
       { isAdmin },
     );
     return ok({
@@ -218,6 +252,7 @@ export class RancherTool {
     });
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'update_agent',
     topic: ToolTopics.Agents,
@@ -259,8 +294,10 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    requireOperator(httpRequest);
-    const existing = await this.agents.findById(id);
+    const existing = await this.permission.manageable(
+      manageCaller(httpRequest),
+      id,
+    );
     if (!existing) return ok({ error: `Agent ${id} not found` });
     const updated = await this.agents.update(id, {
       name,
@@ -280,13 +317,14 @@ export class RancherTool {
     });
   }
 
+  @ToolAudience('owner')
   @Tool({
     name: 'set_agent_admin',
     topic: ToolTopics.Agents,
     title: 'Make an agent the Ranch admin',
     template: 'Make «name» the Ranch admin agent',
     description:
-      'Promote or demote an agent to/from Ranch admin. Single-admin invariant: enabling clears the flag from any other agent.',
+      'Promote or demote an agent to/from Ranch admin. Owner only: the Ranch admin agent holds Owner power. Single-admin invariant: enabling clears the flag from any other agent.',
     parameters: z.object({
       id: z.string(),
       enabled: z.boolean(),
@@ -297,7 +335,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    requireOperator(httpRequest);
+    requireOwner(httpRequest);
     const updated = await this.agents.setAdmin(id, enabled);
     return ok(updated);
   }

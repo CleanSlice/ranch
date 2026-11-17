@@ -3,14 +3,16 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
-  callerIsOperator,
+  callerManagesAgents,
   CONFIRM_SENTENCE,
   confirmed,
+  manageCaller,
   ok,
   requireOperator,
 } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAgentGateway } from './domain';
+import { AgentPermissionService } from './domain/agentPermission.service';
 import { AgentDeployService } from './domain/agentDeploy.service';
 import { AgentStatusService } from './domain/agentStatus.service';
 import { detectMcpConfigDrift } from './domain/mcpConfigDrift';
@@ -51,7 +53,12 @@ type AuthedRequest = Request & { user?: IAuthTokenPayload };
  * the same order, so a stop from the chat frees the slot the same way a stop
  * from the console does, and a delete tolerates the same Argo/k8s hiccups.
  *
- * Operator-only: hidden from a plain agent's tools/list, and refused by name.
+ * Two audiences (CLEAN-232). The tools that act on ONE agent (stop, start,
+ * delete, status, environment, MCP servers) are `manage-agent`: listed for
+ * whoever may manage at least one agent, and each call asks
+ * `AgentPermissionService` about the agent it names, answering "not found"
+ * for one the caller may not manage. Pinning and cluster capacity stay with
+ * the class's `admin`. Hidden from a plain agent's tools/list either way.
  */
 @ToolAudience('admin')
 @Injectable()
@@ -66,14 +73,23 @@ export class AgentAdminTool implements IConditionallyListedTool {
     private readonly workflows: WorkflowService,
     private readonly files: IFileGateway,
     private readonly mcpResolver: AgentMcpResolver,
+    private readonly permission: AgentPermissionService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return callerIsOperator(httpRequest);
+    // The widest audience in the class; each tool's own audience has already
+    // been checked by the time this runs.
+    return callerManagesAgents(httpRequest);
+  }
+
+  /** The agent, when it exists and this caller may manage it. */
+  private manageable(httpRequest: Request, id: string) {
+    return this.permission.manageable(manageCaller(httpRequest), id);
   }
 
   // ─── Lifecycle ───────────────────────────────────────────────────────
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'stop_agent',
     topic: ToolTopics.Agents,
@@ -99,8 +115,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(args.id);
+    const agent = await this.manageable(httpRequest, args.id);
     if (!agent) return notFound(args.id);
     const refusal = confirmed(
       args,
@@ -116,6 +131,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     });
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'start_agent',
     topic: ToolTopics.Agents,
@@ -135,8 +151,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(id);
+    const agent = await this.manageable(httpRequest, id);
     if (!agent) return notFound(id);
     await this.agentDeploy.deploy(id);
     const after = await this.agents.findById(id);
@@ -183,6 +198,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     });
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'delete_agent',
     topic: ToolTopics.Agents,
@@ -213,9 +229,8 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
     const { id } = args;
-    const agent = await this.agents.findById(id);
+    const agent = await this.manageable(httpRequest, id);
     if (!agent) return notFound(id);
     const refusal = confirmed(
       args,
@@ -279,6 +294,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
 
   // ─── Read-only panels ────────────────────────────────────────────────
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'get_agent_status',
     topic: ToolTopics.Agents,
@@ -299,8 +315,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(id);
+    const agent = await this.manageable(httpRequest, id);
     if (!agent) return notFound(id);
     // Same sources as GET agents/status (pod list) and GET :id/metrics.
     const [pods, metrics] = await Promise.all([
@@ -330,6 +345,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     });
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'get_agent_env',
     topic: ToolTopics.Agents,
@@ -350,8 +366,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(id);
+    const agent = await this.manageable(httpRequest, id);
     if (!agent) return notFound(id);
     const env = await this.workflows.previewAgentEnv(agent);
     return ok(
@@ -363,6 +378,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     );
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'list_agent_mcps',
     topic: ToolTopics.Agents,
@@ -386,8 +402,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(id);
+    const agent = await this.manageable(httpRequest, id);
     if (!agent) return notFound(id);
 
     const [servers, pods] = await Promise.all([

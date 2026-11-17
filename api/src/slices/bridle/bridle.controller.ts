@@ -502,6 +502,9 @@ export class BridleController {
       {
         source: limitSourceOf(requester),
         silentRefusal: true,
+        // The requester, never a socket that happens to share the channel:
+        // `user` and `acting` must name the same person (CLEAN-232).
+        user: requester.user ?? null,
         ...(await this.actingFor(requester, agentId)),
       },
     );

@@ -10,6 +10,11 @@ export const MCP_TOOL_AUDIENCE_METADATA_KEY = 'mcp:tool-audience';
  * - `agent`: an agent runtime, acting for itself (its token names the agent).
  * - `person`: a signed-in person of any role, proven by a console token or
  *   an acting token.
+ * - `manage-agent`: whoever may manage at least one agent: an Owner or
+ *   Admin, an agent trusted to act as one, or a person who created an agent.
+ *   That lists the tool; each call then checks the agent it names with
+ *   `AgentPermissionService`, and answers "not found" for one the caller may
+ *   not manage.
  * - `admin`: an Owner or Admin, or an agent trusted to act as one.
  * - `owner`: the Owner, or an agent trusted to act as one.
  */
@@ -17,6 +22,7 @@ export const TOOL_AUDIENCES = [
   'everyone',
   'agent',
   'person',
+  'manage-agent',
   'admin',
   'owner',
 ] as const;

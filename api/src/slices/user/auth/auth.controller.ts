@@ -31,7 +31,15 @@ import { ApiKeyScopeTypes, IApiKeyData } from '../apiKey/domain';
 import { ApiKeyService } from '../apiKey/domain/apiKey.service';
 import { SessionService } from '../session/domain/session.service';
 import { SESSION_COOKIE_NAME } from '../session/domain/session.types';
-import { ApiKeyGuard, JwtAuthGuard, Public, Scopes, ScopesGuard } from './guards';
+import {
+  ApiKeyGuard,
+  JwtAuthGuard,
+  Public,
+  Roles,
+  Scopes,
+  ScopesGuard,
+} from './guards';
+import { UserRoleTypes } from '../user/domain';
 
 export const TOKEN_UNAUTHORIZED_DESCRIPTION =
   'Missing, expired or invalid bearer. Body is `{ code: ' +
@@ -133,6 +141,9 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  // Every signed-in account reads its own session (CLEAN-232). An agent
+  // runtime's token is not an account and is refused.
+  @Roles(UserRoleTypes.User)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get the current authenticated user' })
   @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })

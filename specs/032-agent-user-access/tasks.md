@@ -30,10 +30,10 @@
 
 **Purpose**: branches, generated code, a baseline to compare against
 
-- [ ] T001 Create branch `fix/CLEAN-232-acting-party` from up-to-date `origin/main` in this repository for Part A; keep `feat/CLEAN-231-agent-user-access` for Part B and rebase it onto Part A once merged
-- [ ] T002 [P] Create branch `fix/CLEAN-232-acting-party` from up-to-date `origin/main` in `CleanSlice/runtime`; record the baseline of `bun test` and `bunx tsc --noEmit -p tsconfig.json` (known noise: `telegramFile`, `bridleAttachments.spec.ts`)
-- [ ] T003 [P] In `api/` run `bun run generate`, `bun run build`, `bun run generate:swagger`; in `admin/` and `app/` run `bun run build:api`; confirm a clean tree afterwards
-- [ ] T004 [P] Move the route audit script into the repository as `api/scripts/audit-routes.mjs` (prints route, guards, least role per `*.controller.ts`) and save its current output as the baseline in `specs/032-agent-user-access/audit-before.txt`
+- [X] T001 Create branch `fix/CLEAN-232-acting-party` from up-to-date `origin/main` in this repository for Part A; keep `feat/CLEAN-231-agent-user-access` for Part B and rebase it onto Part A once merged
+- [X] T002 [P] Create branch `fix/CLEAN-232-acting-party` from up-to-date `origin/main` in `CleanSlice/runtime`; record the baseline of `bun test` and `bunx tsc --noEmit -p tsconfig.json` (known noise: `telegramFile`, `bridleAttachments.spec.ts`)
+- [X] T003 [P] In `api/` run `bun run generate`, `bun run build`, `bun run generate:swagger`; in `admin/` and `app/` run `bun run build:api`; confirm a clean tree afterwards
+- [X] T004 [P] Move the route audit script into the repository as `api/scripts/audit-routes.mjs` (prints route, guards, least role per `*.controller.ts`) and save its current output as the baseline in `specs/032-agent-user-access/audit-before.txt`
 
 ---
 
@@ -43,12 +43,12 @@
 
 **⚠️ CRITICAL**: nothing in Part A can be finished before this phase
 
-- [ ] T005 Add the acting token to `api/src/slices/user/auth/domain/auth.service.ts`: `mintActingToken({ userId, agentId, sid })` (claims `typ: 'acting'`, `sub`, `aud: 'agent:<id>'`, `sid`, 60 min) and `verifyActingToken(token, bearerSub)` (signature, `typ`, `aud` equals the bearer's `sub`, expiry, session `sid` alive); extend `IAuthTokenPayload` in `api/src/slices/user/auth/domain/auth.types.ts` with `typ: 'acting'` and `aud`
-- [ ] T006 Refuse `typ: 'acting'` as a bearer in `api/src/slices/user/auth/guards/jwtAuth.guard.ts`, next to the embed refusal
-- [ ] T007 [P] Spec `api/src/slices/user/auth/domain/actingToken.spec.ts`: valid, forged signature, expired, wrong `aud`, ended session, used as a bearer
-- [ ] T008 Add `effectiveCaller(req)` to `api/src/slices/mcp/tooling.ts` per the table in contracts/acting-party.md section 2 (person on a console token; agent with `person` / `trusted` / `guest` / absent actor), returning `{ kind, userId?, role?, agentId? }`; rewrite `callerIsOperator` and `requireOperator` on top of it and add `requireAudience(req, audience)`
-- [ ] T009 Read `params._meta["ranch/actor"]` for `tools/list` and `tools/call` in `api/src/slices/mcp/services/handlers/mcp-tools.handler.ts` and attach it to the request the tool receives (`api/src/slices/mcp/adapters/express-http.adapter.ts`), so `effectiveCaller` can see it
-- [ ] T010 [P] Spec `api/src/slices/mcp/effectiveCaller.spec.ts` over every row of the table, including "the actor never raises what the token allows" for a role-`Agent` runtime naming the Owner
+- [X] T005 Add the acting token to `api/src/slices/user/auth/domain/auth.service.ts`: `mintActingToken({ userId, agentId, sid })` (claims `typ: 'acting'`, `sub`, `aud: 'agent:<id>'`, `sid`, 60 min) and `verifyActingToken(token, bearerSub)` (signature, `typ`, `aud` equals the bearer's `sub`, expiry, session `sid` alive); extend `IAuthTokenPayload` in `api/src/slices/user/auth/domain/auth.types.ts` with `typ: 'acting'` and `aud`
+- [X] T006 Refuse `typ: 'acting'` as a bearer in `api/src/slices/user/auth/guards/jwtAuth.guard.ts`, next to the embed refusal
+- [X] T007 [P] Spec `api/src/slices/user/auth/domain/actingToken.spec.ts`: valid, forged signature, expired, wrong `aud`, ended session, used as a bearer
+- [X] T008 Add `effectiveCaller(req)` to `api/src/slices/mcp/tooling.ts` per the table in contracts/acting-party.md section 2 (person on a console token; agent with `person` / `trusted` / `guest` / absent actor), returning `{ kind, userId?, role?, agentId? }`; rewrite `callerIsOperator` and `requireOperator` on top of it and add `requireAudience(req, audience)`
+- [X] T009 Read `params._meta["ranch/actor"]` for `tools/list` and `tools/call` in `api/src/slices/mcp/services/handlers/mcp-tools.handler.ts` and attach it to the request the tool receives (`api/src/slices/mcp/adapters/express-http.adapter.ts`), so `effectiveCaller` can see it
+- [X] T010 [P] Spec `api/src/slices/mcp/effectiveCaller.spec.ts` over every row of the table, including "the actor never raises what the token allows" for a role-`Agent` runtime naming the Owner
 
 **Checkpoint**: a tool can ask who it is being called for, and the answer cannot be forged
 
@@ -62,20 +62,20 @@
 
 ### Tests for User Story 7
 
-- [ ] T011 [P] [US7] Spec `api/src/slices/mcp/toolAudience.spec.ts`: enumerate every registered tool, list and call each as guest, User, Admin and Owner, and assert the audience table of contracts/acting-party.md section 2 (a new tool with no audience fails the spec)
-- [ ] T012 [P] [US7] `runtime:src/slices/setup/mcp/domain/actor.spec.ts`: the actor chosen for each row of contracts/acting-party.md section 1 (console person with token, internal turn, Telegram admin, share visitor, messenger user, delegated worker)
-- [ ] T013 [P] [US7] `runtime:src/slices/setup/mcp/data/mcp.gateway.actor.spec.ts`: `_meta["ranch/actor"]` is present on `tools/list` and `tools/call`, the catalogue is cached per actor for 60 s, and a tool absent from the caller's catalogue is not offered to the model
+- [X] T011 [P] [US7] Spec `api/src/slices/mcp/toolAudience.spec.ts`: enumerate every registered tool, list and call each as guest, User, Admin and Owner, and assert the audience table of contracts/acting-party.md section 2 (a new tool with no audience fails the spec)
+- [X] T012 [P] [US7] `runtime:src/slices/setup/mcp/domain/actor.spec.ts`: the actor chosen for each row of contracts/acting-party.md section 1 (console person with token, internal turn, Telegram admin, share visitor, messenger user, delegated worker)
+- [X] T013 [P] [US7] `runtime:src/slices/setup/mcp/data/mcp.gateway.actor.spec.ts`: `_meta["ranch/actor"]` is present on `tools/list` and `tools/call`, the catalogue is cached per actor for 60 s, and a tool absent from the caller's catalogue is not offered to the model
 
 ### Implementation for User Story 7
 
-- [ ] T014 [US7] Mint the acting token for a signed-in console socket in `api/src/slices/bridle/data/bridle.gateway.ts` (`sendToAgent`, beside `user`): message field `acting: { token, role, surface }`, `surface` derived from the socket origin in `api/src/slices/bridle/handlers/bridleClientWs.handler.ts`; same for a console requester on the HTTP message routes in `api/src/slices/bridle/bridle.controller.ts`
-- [ ] T015 [P] [US7] `runtime:src/slices/setup/channel/domain/channel.types.ts` and the bridle channel repository under `runtime:src/slices/setup/channel/data/repositories/bridle/`: carry `acting` from the hub message onto `Message`; `runtime:src/slices/agent/tool/domain/tool.types.ts`: add `actor` to `ToolContext`
-- [ ] T016 [US7] `runtime:src/slices/setup/mcp/domain/actor.ts`: `actorOf(ctx)` returning `person` (with the token) / `trusted` (`internal`, `channel-admin`) / `guest`; wire it where `ToolContext` is built in `runtime:src/slices/runtime/runtime/domain/runtime.service.ts` and inherit it in `runtime:src/slices/runtime/loop/domain/delegate.service.ts`
-- [ ] T017 [US7] `runtime:src/slices/setup/mcp/data/mcp.gateway.ts`: for the Ranch server send `_meta["ranch/actor"]` on `callTool` and on `listTools`; list per actor with a 60 s cache and expose only that catalogue to the turn (replace the single shared catalogue for this server)
-- [ ] T018 [US7] Declare an audience on every tool class and enforce it at list and call time: `owner` for `api/src/slices/user/user/user.tool.ts` (role, delete), `api/src/slices/user/apiKey/apiKey.tool.ts`, `api/src/slices/setting/setting.tool.ts`, `api/src/slices/upgrade/upgrade.tool.ts`, event destinations in `api/src/slices/agent/event/agentEvent.tool.ts`; `admin` for the remaining operator tool files; check each against the role of the console route it mirrors
-- [ ] T019 [P] [US7] Gate the tools that have no gate today as `admin`: `api/src/slices/paddock/evaluation/evaluation.tool.ts`, `api/src/slices/paddock/scenario/scenario.tool.ts`
-- [ ] T020 [P] [US7] Make `api/src/slices/browser/browser.tool.ts`, `api/src/slices/integration/integration.tool.ts` and `api/src/slices/mcpServer/oauth/mcpOauth.tool.ts` `person` tools: drop the model-supplied `userId` / `subject` argument and take the person from `effectiveCaller`; refuse when there is none
-- [ ] T021 [US7] Rewrite `docs/agent-tools.md`: audiences are decided by the party acted for; the table of audiences; the acting token; "no actor means guest"; the reviewer checklist gains "which audience, and does the console route agree"
+- [X] T014 [US7] Mint the acting token for a signed-in console socket in `api/src/slices/bridle/data/bridle.gateway.ts` (`sendToAgent`, beside `user`): message field `acting: { token, role, surface }`, `surface` derived from the socket origin in `api/src/slices/bridle/handlers/bridleClientWs.handler.ts`; same for a console requester on the HTTP message routes in `api/src/slices/bridle/bridle.controller.ts`
+- [X] T015 [P] [US7] `runtime:src/slices/setup/channel/domain/channel.types.ts` and the bridle channel repository under `runtime:src/slices/setup/channel/data/repositories/bridle/`: carry `acting` from the hub message onto `Message`; `runtime:src/slices/agent/tool/domain/tool.types.ts`: add `actor` to `ToolContext`
+- [X] T016 [US7] `runtime:src/slices/setup/mcp/domain/actor.ts`: `actorOf(ctx)` returning `person` (with the token) / `trusted` (`internal`, `channel-admin`) / `guest`; wire it where `ToolContext` is built in `runtime:src/slices/runtime/runtime/domain/runtime.service.ts` and inherit it in `runtime:src/slices/runtime/loop/domain/delegate.service.ts`
+- [X] T017 [US7] `runtime:src/slices/setup/mcp/data/mcp.gateway.ts`: for the Ranch server send `_meta["ranch/actor"]` on `callTool` and on `listTools`; list per actor with a 60 s cache and expose only that catalogue to the turn (replace the single shared catalogue for this server)
+- [X] T018 [US7] Declare an audience on every tool class and enforce it at list and call time: `owner` for `api/src/slices/user/user/user.tool.ts` (role, delete), `api/src/slices/user/apiKey/apiKey.tool.ts`, `api/src/slices/setting/setting.tool.ts`, `api/src/slices/upgrade/upgrade.tool.ts`, event destinations in `api/src/slices/agent/event/agentEvent.tool.ts`; `admin` for the remaining operator tool files; check each against the role of the console route it mirrors
+- [X] T019 [P] [US7] Gate the tools that have no gate today as `admin`: `api/src/slices/paddock/evaluation/evaluation.tool.ts`, `api/src/slices/paddock/scenario/scenario.tool.ts`
+- [X] T020 [P] [US7] Make `api/src/slices/browser/browser.tool.ts`, `api/src/slices/integration/integration.tool.ts` and `api/src/slices/mcpServer/oauth/mcpOauth.tool.ts` `person` tools: drop the model-supplied `userId` / `subject` argument and take the person from `effectiveCaller`; refuse when there is none
+- [X] T021 [US7] Rewrite `docs/agent-tools.md`: audiences are decided by the party acted for; the table of audiences; the acting token; "no actor means guest"; the reviewer checklist gains "which audience, and does the console route agree"
 - [ ] T022 [US7] Release `CleanSlice/runtime` (version bump, changelog), then raise the runtime version Ranch deploys (the setting or constant the deploy reads; find it from `api/src/slices/agent/agent/domain/agentDeploy.service.ts`) in the same PR as T014 to T021
 
 **Checkpoint**: Story 7 holds end to end with a redeployed admin agent; an agent on the old runtime has no management tools
@@ -90,20 +90,20 @@
 
 ### Tests for User Story 8
 
-- [ ] T023 [P] [US8] `api/src/slices/user/auth/guards/userRoutes.spec.ts`: the exact set of routes whose least role is `User`, same shape as `publicRoutes.spec.ts`
-- [ ] T024 [P] [US8] `api/src/slices/user/auth/guards/agentRoutes.spec.ts`: the exact set of routes that admit the `Agent` role
+- [X] T023 [P] [US8] `api/src/slices/user/auth/guards/userRoutes.spec.ts`: the exact set of routes whose least role is `User`, same shape as `publicRoutes.spec.ts`
+- [X] T024 [P] [US8] `api/src/slices/user/auth/guards/agentRoutes.spec.ts`: the exact set of routes that admit the `Agent` role
 - [ ] T025 [P] [US8] `specs/032-agent-user-access/e2e/routes.mjs`: sign in as a seeded User and call every route from the swagger spec; assert 403 outside the reviewed list and no 5xx
 
 ### Implementation for User Story 8
 
-- [ ] T026 [US8] Inventory the routes the runtime calls with `RANCH_API_TOKEN` (`runtime:src/slices/runtime/init/data/init.gateway.ts`, `runtime:src/slices/agent/skill/data/skill.gateway.ts`, `runtime:src/slices/bot/usage/data/usage.gateway.ts`, browser login, `agent_status`) and write the list into `specs/032-agent-user-access/contracts/acting-party.md` section 6
-- [ ] T027 [US8] State `@Roles(..., UserRoleTypes.Agent)` on each route from T026 in its controller under `api/src/slices/`
-- [ ] T028 [US8] State `@Roles(UserRoleTypes.User)` on the routes of the table in contracts/acting-party.md section 6: `api/src/slices/user/auth/auth.controller.ts` (`me`, session routes), `api/src/slices/agent/agent/agent.controller.ts` (`GET /agents`, `/agents/status`, `/agents/:id`), `api/src/slices/chat/myChat.controller.ts`
-- [ ] T029 [US8] Make `RolesGuard` global in `api/src/app.module.ts` (after `JwtAuthGuard`) and change `api/src/slices/user/auth/guards/roles.guard.ts` so a route with no `@Roles` requires Admin; skip `@Public()` routes and routes behind `BridleApiKeyGuard`, `ApiKeyGuard` and the peer guards
-- [ ] T030 [US8] Run `api/scripts/audit-routes.mjs` again, save `specs/032-agent-user-access/audit-after.txt`, and confirm zero routes with "any token"; walk every admin console screen as an Admin for a 403 (`admin/` uses only Owner and Admin)
-- [ ] T104 [US8] An agent runtime's token is an `Agent` on routes, whatever roles it carries: in `api/src/slices/user/auth/guards/roles.guard.ts` reduce a bearer whose `sub` starts with `agent:` to the `Agent` role, so the Ranch admin agent's Owner power exists only through tools, where the party is checked (found in implementation: an Admin can read `RANCH_API_TOKEN` with the runtime's `exec` tool and call the routes as Owner); keep the MCP endpoint open to every authenticated bearer through the `decorators` option of `McpModule.forRoot` in `api/src/app.module.ts`; spec in `roles.guard.spec.ts`
-- [ ] T105 [US8] Remove the raw-HTTP fallback from the Rancher template (`rancher/.agent/SOUL.md`, `rancher/.agent/HEARTBEAT.md`, `rancher/.agent/skills/ranch/SKILL.md`): no `RANCH_API_TOKEN` bearer recipes, no "pivot to http"; where a recipe has no tool (knowledge freshness in HEARTBEAT), use the existing knowledge tools or add the missing one in its slice
-- [ ] T031 [P] [US8] Fix controller specs that assumed "no role": search `api/src/slices/**/*.controller.spec.ts` for the affected controllers and assert the role metadata instead
+- [X] T026 [US8] Inventory the routes the runtime calls with `RANCH_API_TOKEN` (`runtime:src/slices/runtime/init/data/init.gateway.ts`, `runtime:src/slices/agent/skill/data/skill.gateway.ts`, `runtime:src/slices/bot/usage/data/usage.gateway.ts`, browser login, `agent_status`) and write the list into `specs/032-agent-user-access/contracts/acting-party.md` section 6
+- [X] T027 [US8] State `@Roles(..., UserRoleTypes.Agent)` on each route from T026 in its controller under `api/src/slices/`
+- [X] T028 [US8] State `@Roles(UserRoleTypes.User)` on the routes of the table in contracts/acting-party.md section 6: `api/src/slices/user/auth/auth.controller.ts` (`me`, session routes), `api/src/slices/agent/agent/agent.controller.ts` (`GET /agents`, `/agents/status`, `/agents/:id`), `api/src/slices/chat/myChat.controller.ts`
+- [X] T029 [US8] Make `RolesGuard` global in `api/src/app.module.ts` (after `JwtAuthGuard`) and change `api/src/slices/user/auth/guards/roles.guard.ts` so a route with no `@Roles` requires Admin; skip `@Public()` routes and routes behind `BridleApiKeyGuard`, `ApiKeyGuard` and the peer guards
+- [X] T030 [US8] Run `api/scripts/audit-routes.mjs` again, save `specs/032-agent-user-access/audit-after.txt`, and confirm zero routes with "any token"; walk every admin console screen as an Admin for a 403 (`admin/` uses only Owner and Admin)
+- [X] T104 [US8] An agent runtime's token is an `Agent` on routes, whatever roles it carries: in `api/src/slices/user/auth/guards/roles.guard.ts` reduce a bearer whose `sub` starts with `agent:` to the `Agent` role, so the Ranch admin agent's Owner power exists only through tools, where the party is checked (found in implementation: an Admin can read `RANCH_API_TOKEN` with the runtime's `exec` tool and call the routes as Owner); keep the MCP endpoint open to every authenticated bearer through the `decorators` option of `McpModule.forRoot` in `api/src/app.module.ts`; spec in `roles.guard.spec.ts`
+- [X] T105 [US8] Remove the raw-HTTP fallback from the Rancher template (`rancher/.agent/SOUL.md`, `rancher/.agent/HEARTBEAT.md`, `rancher/.agent/skills/ranch/SKILL.md`): no `RANCH_API_TOKEN` bearer recipes, no "pivot to http"; where a recipe has no tool (knowledge freshness in HEARTBEAT), use the existing knowledge tools or add the missing one in its slice
+- [X] T031 [P] [US8] Fix controller specs that assumed "no role": search `api/src/slices/**/*.controller.spec.ts` for the affected controllers and assert the role metadata instead
 
 **Checkpoint**: Stories 7 and 8 close both ways around the roles
 
@@ -117,14 +117,14 @@
 
 ### Tests for User Story 9
 
-- [ ] T032 [P] [US9] `runtime:src/slices/setup/mcp/data/mcp.gateway.reconnect.spec.ts`: a 404 / `Session not found` drops the client, reconnects and retries once; a second failure returns "Ranch is not reachable right now" with no `next`
-- [ ] T033 [P] [US9] `runtime:src/slices/agent/agent/domain/audiencePrompt.spec.ts`: the block for User / Admin / Owner in `app` and `admin`, for a guest and for a trusted party
+- [X] T032 [P] [US9] `runtime:src/slices/setup/mcp/data/mcp.gateway.reconnect.spec.ts`: a 404 / `Session not found` drops the client, reconnects and retries once; a second failure returns "Ranch is not reachable right now" with no `next`
+- [X] T033 [P] [US9] `runtime:src/slices/agent/agent/domain/audiencePrompt.spec.ts`: the block for User / Admin / Owner in `app` and `admin`, for a guest and for a trusted party
 
 ### Implementation for User Story 9
 
-- [ ] T034 [US9] `runtime:src/slices/setup/mcp/data/mcp.gateway.ts`: treat a lost session on a static client as recoverable (drop, initialise, retry once) and return the plain unavailable result otherwise
-- [ ] T035 [US9] `runtime:src/slices/agent/agent/domain/prompts/audience.prompt.ts` and `runtime:src/slices/agent/agent/domain/agent.service.ts`: build the audience block of contracts/acting-party.md section 4 from `acting.role`, `acting.surface` and the actor kind, and add it to the turn's system prompt
-- [ ] T036 [P] [US9] Move the Rancher template's guidance about the management console and raw API calls inside its admin-only blocks (the template files of the rancher seed under `api/src/slices/rancher/`; keep SOUL within the prompt limit of CLEAN-230)
+- [X] T034 [US9] `runtime:src/slices/setup/mcp/data/mcp.gateway.ts`: treat a lost session on a static client as recoverable (drop, initialise, retry once) and return the plain unavailable result otherwise
+- [X] T035 [US9] `runtime:src/slices/agent/agent/domain/prompts/audience.prompt.ts` and `runtime:src/slices/agent/agent/domain/agent.service.ts`: build the audience block of contracts/acting-party.md section 4 from `acting.role`, `acting.surface` and the actor kind, and add it to the turn's system prompt
+- [X] T036 [P] [US9] Move the Rancher template's guidance about the management console and raw API calls inside its admin-only blocks (the template files of the rancher seed under `api/src/slices/rancher/`; keep SOUL within the prompt limit of CLEAN-230)
 - [ ] T037 [US9] `specs/032-agent-user-access/e2e/assistant.mjs`: with a local runtime on the new version, as a User "delete agent X" gets one refusal and the transcript has no tool call; as the Owner it is carried out after confirmation; restart the API between two Owner requests
 
 **Checkpoint**: the conversation is honest about what the person can do
@@ -139,17 +139,17 @@
 
 ### Tests for User Story 10
 
-- [ ] T038 [P] [US10] `api/src/slices/agent/agent/domain/agentPermission.service.spec.ts`: the three lines of `canManage`, a creator who is a User, a creator denied their own agent, a null creator
-- [ ] T039 [P] [US10] Extend `api/src/slices/agent/agent/agent.controller.spec.ts` and `api/src/slices/rancher/rancher.tool.spec.ts`: `createdById` comes from the console token and from the acting token, and is null for a trusted actor
+- [X] T038 [P] [US10] `api/src/slices/agent/agent/domain/agentPermission.service.spec.ts`: the three lines of `canManage`, a creator who is a User, a creator denied their own agent, a null creator
+- [X] T039 [P] [US10] Extend `api/src/slices/agent/agent/agent.controller.spec.ts` and `api/src/slices/rancher/rancher.tool.spec.ts`: `createdById` comes from the console token and from the acting token, and is null for a trusted actor
 
 ### Implementation for User Story 10
 
-- [ ] T040 [US10] Add `createdById String?` to `api/src/slices/agent/agent/agent.prisma` and the migration `api/prisma/migrations/<timestamp>_agent_created_by/migration.sql`; thread it through `api/src/slices/agent/agent/domain/agent.types.ts`, `data/agent.mapper.ts`, `data/agent.gateway.ts`
-- [ ] T041 [US10] Pass the creator into `AgentDeployService.createAgent` (`api/src/slices/agent/agent/domain/agentDeploy.service.ts`) from `POST /agents` in `agent.controller.ts` and from `create_agent` in `api/src/slices/rancher/rancher.tool.ts`
-- [ ] T042 [US10] `api/src/slices/agent/agent/domain/agentPermission.service.ts`: `canManage(caller, agent)`; until Part B, `reaches` is always true behind an interface Part B will implement
-- [ ] T043 [US10] Call `canManage` on the management routes of one agent (`PUT` / `DELETE /agents/:id`, restart, stop, start in `agent.controller.ts`; files, secrets, channels, limits, logs controllers) and make the corresponding tools the `manage-agent` audience: listed when the caller may manage at least one agent, checked per agent at call time
-- [ ] T044 [P] [US10] `AgentDto.createdBy` in `api/src/slices/agent/agent/dtos/agent.dto.ts` (resolved for Owner and Admin, `{ id, name: null }` for a removed account); regenerate both SDKs
-- [ ] T045 [P] [US10] Show "Created by" on the agent's detail in `admin/slices/agent/agent/components/agent/workspace/Main.vue` (unknown / removed account states); `app` shows nothing new, state that in the PR
+- [X] T040 [US10] Add `createdById String?` to `api/src/slices/agent/agent/agent.prisma` and the migration `api/prisma/migrations/<timestamp>_agent_created_by/migration.sql`; thread it through `api/src/slices/agent/agent/domain/agent.types.ts`, `data/agent.mapper.ts`, `data/agent.gateway.ts`
+- [X] T041 [US10] Pass the creator into `AgentDeployService.createAgent` (`api/src/slices/agent/agent/domain/agentDeploy.service.ts`) from `POST /agents` in `agent.controller.ts` and from `create_agent` in `api/src/slices/rancher/rancher.tool.ts`
+- [X] T042 [US10] `api/src/slices/agent/agent/domain/agentPermission.service.ts`: `canManage(caller, agent)`; until Part B, `reaches` is always true behind an interface Part B will implement
+- [X] T043 [US10] Call `canManage` on the management routes of one agent (`PUT` / `DELETE /agents/:id`, restart, stop, start in `agent.controller.ts`; files, secrets, channels, limits, logs controllers) and make the corresponding tools the `manage-agent` audience: listed when the caller may manage at least one agent, checked per agent at call time
+- [X] T044 [P] [US10] `AgentDto.createdBy` in `api/src/slices/agent/agent/dtos/agent.dto.ts` (resolved for Owner and Admin, `{ id, name: null }` for a removed account); regenerate both SDKs
+- [X] T045 [P] [US10] Show "Created by" on the agent's detail in `admin/slices/agent/agent/components/agent/workspace/Main.vue` (unknown / removed account states); `app` shows nothing new, state that in the PR
 
 **Checkpoint**: Part A complete. Merge order: runtime, Ranch tools (T005 to T022, T032 to T045), Ranch routes (T023 to T031)
 

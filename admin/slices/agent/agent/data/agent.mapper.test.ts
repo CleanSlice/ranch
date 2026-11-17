@@ -30,3 +30,36 @@ describe('AgentMapper.toCreateDto', () => {
     expect(dto.llmCredentialId).toBe(undefined);
   });
 });
+
+describe('AgentMapper.toEntity: who created the agent (CLEAN-232)', () => {
+  const row = (extra: Record<string, unknown>) => ({ id: 'agent-1', name: 'Sales', ...extra });
+
+  test('a resolved creator is kept as it came', () => {
+    expect(
+      mapper.toEntity(row({ createdBy: { id: 'u-1', name: 'Ada', email: 'ada@example.test' } }))?.createdBy,
+    ).toEqual({ id: 'u-1', name: 'Ada', email: 'ada@example.test' });
+  });
+
+  test('a removed account keeps its id and has no name or email', () => {
+    expect(
+      mapper.toEntity(row({ createdBy: { id: 'u-gone', name: null, email: null } }))?.createdBy,
+    ).toEqual({ id: 'u-gone', name: null, email: null });
+  });
+
+  test('null says nobody is recorded', () => {
+    expect(mapper.toEntity(row({ createdBy: null }))?.createdBy).toBe(null);
+  });
+
+  test('a payload that does not carry the field says nothing: undefined, not null', () => {
+    // The status stream is anonymous and never carries it. The store keeps
+    // what it knew for `undefined`; `null` would wipe it.
+    const decoded = mapper.toEntity(row({}));
+    expect(decoded?.createdBy).toBe(undefined);
+  });
+
+  test('a creator without an id is nobody, and a bare id never passes for one', () => {
+    expect(mapper.toEntity(row({ createdBy: { name: 'Ada' } }))?.createdBy).toBe(null);
+    expect(mapper.toEntity(row({ createdBy: 'u-1' }))?.createdBy).toBe(null);
+    expect(mapper.toEntity(row({ createdById: 'u-1' }))?.createdBy).toBe(undefined);
+  });
+});

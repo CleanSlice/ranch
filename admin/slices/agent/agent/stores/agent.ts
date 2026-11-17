@@ -1,4 +1,5 @@
 import { createServiceGetter } from '#common/composables/createServiceGetter';
+import { keepKnownCreator } from '#agent/utils/agentCreator';
 import type { AgentService } from '#agent/domain';
 import type {
   IAgentData,
@@ -98,9 +99,16 @@ export const useAgentStore = defineStore('agent', () => {
     return agents.value.find((a) => a.id === id);
   }
 
+  // One field a full record may not carry: who created the agent. A frame of
+  // the status stream never says, and must not wipe what GET /agents said.
+  function withKnownCreator(agent: IAgentData): IAgentData {
+    return keepKnownCreator(agent, byId(agent.id));
+  }
+
   // Full records only (anything the API returned for one agent): replaces the
   // row in place so the list keeps its order, appends when the id is new.
-  function upsert(agent: IAgentData): IAgentData {
+  function upsert(incoming: IAgentData): IAgentData {
+    const agent = withKnownCreator(incoming);
     agents.value = agents.value.some((a) => a.id === agent.id)
       ? agents.value.map((a) => (a.id === agent.id ? agent : a))
       : [...agents.value, agent];
@@ -132,7 +140,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // The whole collection at once — `fetchAll` and the stream's snapshot.
   function setAll(list: IAgentData[]): void {
-    agents.value = list;
+    agents.value = list.map(withKnownCreator);
   }
 
   const pendingRestart = ref<Record<string, true>>(

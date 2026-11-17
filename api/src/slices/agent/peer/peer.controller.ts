@@ -23,6 +23,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
+import { ManagesAgent } from '#/agent/agent/guards';
 import { PeerService } from './domain/peer.service';
 import { PeerErrorCodes } from './domain/peer.types';
 import type { IAgentPeerView } from './domain/peer.types';
@@ -128,6 +129,7 @@ export class PeerController {
   }
 
   @Post('peers')
+  @ManagesAgent('agentId')
   @ApiOperation({
     operationId: 'connectAgentPeer',
     summary:
@@ -204,6 +206,7 @@ export class PeerController {
   }
 
   @Post('peers/:peerId/refresh')
+  @ManagesAgent('agentId')
   @HttpCode(200)
   @ApiOperation({
     operationId: 'refreshAgentPeer',
@@ -223,6 +226,7 @@ export class PeerController {
   }
 
   @Delete('peers/:peerId')
+  @ManagesAgent('agentId')
   @HttpCode(204)
   @ApiOperation({
     operationId: 'removeAgentPeer',

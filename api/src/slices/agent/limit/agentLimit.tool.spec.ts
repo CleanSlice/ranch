@@ -17,6 +17,7 @@ import type {
   IAgentLoadSnapshot,
 } from './domain';
 import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 /**
  * A limit is the only thing between a public agent and anyone who wants to
@@ -141,6 +142,7 @@ function harness(
   const tool = new AgentLimitTool(
     service as unknown as AgentLimitService,
     agents as unknown as IAgentGateway,
+    permissionOver(agents),
   );
   return { tool, service, agents };
 }
@@ -220,27 +222,32 @@ describe('AgentLimitTool — who may use it', () => {
 
   it('refuses a plain agent even by name, before touching anything', async () => {
     const { tool, service, agents } = harness();
-    await expect(
-      tool.getAgentLimits({ agent: 'agent-b' }, null, plainAgent()),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(
-      tool.setAgentLimits(
+    // The per-agent tools answer a caller who manages nothing exactly as
+    // they answer an unknown agent (CLEAN-232): no 403 to confirm it exists.
+    const refused = [
+      await tool.getAgentLimits({ agent: 'agent-b' }, null, plainAgent()),
+      await tool.setAgentLimits(
         { agent: 'agent-b', perMinute: 1, confirm: true },
         null,
         plainAgent(),
       ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(tool.listAgentLimits({}, null, plainAgent())).rejects.toThrow(
-      ForbiddenException,
-    );
-    await expect(
-      tool.setAgentVisibility(
+      await tool.setAgentVisibility(
         { agent: 'agent-b', isPublic: true, perMinute: 1, confirm: true },
         null,
         plainAgent(),
       ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ];
+    for (const result of refused) {
+      expect(JSON.stringify(result)).toContain(
+        'Agent agent-b not found — call list_agents to find the id',
+      );
+    }
+    // The fleet view is `admin` and still refuses outright.
+    await expect(tool.listAgentLimits({}, null, plainAgent())).rejects.toThrow(
+      ForbiddenException,
+    );
     expect(agents.findById).not.toHaveBeenCalled();
+    expect(agents.findAll).not.toHaveBeenCalled();
     expect(agents.findAll).not.toHaveBeenCalled();
     expect(agents.update).not.toHaveBeenCalled();
     expect(service.summary).not.toHaveBeenCalled();

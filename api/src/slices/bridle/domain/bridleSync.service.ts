@@ -157,6 +157,9 @@ export class BridleSyncService {
           socketId,
           source: input.source ?? 'visitor',
           silentRefusal: true,
+          // Stated, so it never depends on which socket the hub picks: the
+          // person this call verified, or nobody (CLEAN-232).
+          user: user ?? null,
           ...(input.acting ? { acting: input.acting } : {}),
         },
       );

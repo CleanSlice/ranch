@@ -1,90 +1,53 @@
 ---
 name: ranch
-description: Operate the Ranch — manage agents, templates, skills, LLMs, knowledge, users, settings via the ranch_* MCP tools or the http tool. Use this skill whenever the operator asks anything about agents, templates, skills, deployments, LLM credentials, knowledge bases, users, usage, secrets, or platform settings.
+description: Operate the Ranch through its tools. Manage agents, templates, skills, LLMs, knowledge, users and settings. Use this skill whenever someone asks anything about agents, templates, skills, deployments, LLM credentials, knowledge bases, users, usage, secrets, or platform settings.
 metadata:
   emoji: "🤠"
   always: true
 ---
 
-# Ranch Skill — Operating the Platform
+# Ranch Skill: Operating the Platform
 
-You have **two ways** to act on the Ranch. Use the right one for the right job.
+You act on the Ranch through **your tools, and only through them**. There is no second way in: no HTTP calls to the Ranch API, no `exec` or `curl` against it, no reading your own token to get around a tool you lack.
 
-1. **`ranch_*` MCP tools** — fast shortcuts auto-attached because you have `RANCH_ADMIN=true`. They cover the most common reads and a handful of mutations. Call them by their exact names from the table below.
-2. **`http` tool against `${RANCH_API_URL}`** — universal interface; everything the API can do is reachable here, including all the ops that don't have an MCP shortcut. Always available.
+Your tool list is decided per conversation, by who you are talking to. An Owner gets everything below, an Admin nearly everything, a User very little. So the tables here are a map, not a promise: **a tool that is not in your list right now is not yours to call**, and the answer to a request that needs it is one plain sentence saying this account cannot do that.
 
-This skill is `always: true` because every operator request touches at least one of these resources.
-
----
-
-## MCP tool catalogue (real names — these are the ONLY ones)
-
-| Domain | Tool | Purpose |
-|--------|------|---------|
-| **Agents** | `list_agents` | every agent on the ranch with status, template, resources |
-|            | `get_agent` (id) | single agent's status / workflowId / config |
-|            | `restart_agent` (id) | queue restart of an agent's pod |
-|            | `set_agent_admin` (id, enabled) | promote / demote (single-admin invariant — enabling clears the flag elsewhere) |
-| **Templates** | `list_templates` | all templates |
-|               | `get_template` (id) | template + image + defaults + attached skill ids |
-|               | `set_template_skills` (id, skillIds) | EXHAUSTIVE — sends the full skill list, omitted ids get detached |
-| **Skills** | `list_skills` | inventory |
-| **LLMs** | `list_llms` | configured credentials (provider, model, status) |
-| **Settings** | `list_settings` (group?) | all platform settings, optionally filtered by group |
-|              | `upsert_setting` (group, name, value, valueType?) | create / replace; `valueType=string` for strings, `json` for objects/numbers/arrays |
-| **Agent files** | `list_agent_files` (agentId) | files in agent's S3 prefix (mounted into pod's `.agent/`) |
-|                 | `read_agent_file` (agentId, path) | one file (`SOUL.md`, `MEMORY.md`, `agent.config.json`, …) |
-|                 | `write_agent_file` (agentId, path, content) | only `.md` and `.json` accepted; restart the agent for changes to apply |
-| **Usage** | `agent_usage` (agentId, days?) | recent token usage records (default 30 days) |
-
-**Anything not in this table — there is no `ranch_*` shortcut.** Don't invent names. Use `http` (next section).
+This skill is `always: true` because almost every request touches one of these resources.
 
 ---
 
-## HTTP fallback — for everything not in the table above
+## Tool map (real names)
 
-The Ranch API has many endpoints that don't have a dedicated MCP tool. Use the `http` tool with the env vars guaranteed on your pod:
+| Domain | Tools | Notes |
+|--------|-------|-------|
+| **Agents** | `list_agents`, `get_agent` | every agent with status, template, resources |
+|            | `create_agent`, `update_agent` | `update_agent` renames, switches the LLM credential, binds knowledge |
+|            | `restart_agent`, `stop_agent`, `start_agent`, `delete_agent` | `stop` and `delete` take `confirm` |
+|            | `get_agent_status`, `get_agent_env`, `list_agent_mcps`, `get_agent_logs` | live pod state, next deploy's env (secrets masked), MCP servers, pod logs |
+|            | `set_agent_admin` | Owner only |
+| **Agent files** | `list_agent_files`, `read_agent_file` | the agent's S3 copy (mounted into the pod's `.agent/`) |
+|                 | `write_agent_file`, `create_agent_file`, `delete_agent_file`, `import_agent_files` | the first call proposes, the person accepts, the second call applies |
+|                 | `sync_agent_files`, `export_agent_files` | pod → S3, and a download of the workspace |
+| **Agent settings** | `list_agent_secrets`, `set_agent_secret`, `delete_agent_secret` | names only; a value goes in and never comes back out |
+|                    | `get_agent_channels`, `set_agent_channels` | Telegram, Slack and the rest |
+|                    | `get_agent_limits`, `set_agent_limits`, `set_agent_visibility` | request limits, public or private |
+| **Templates** | `list_templates`, `get_template`, `create_template`, `update_template`, `delete_template` | image, defaults, attached skills |
+|               | `set_template_skills`, `set_template_mcps`, `set_template_tools` | each replaces the FULL list |
+|               | `list_template_files`, `read_template_file`, `write_template_file` | `.md` and `.json` only |
+| **Skills** | `list_skills`, `get_skill`, `search_skills`, `create_skill`, `update_skill`, `delete_skill` | the library |
+|            | `import_skill`, `import_skill_from_url` | from GitHub |
+|            | `list_skill_agents`, `redeploy_skill_agents` | who uses a skill, and the restart that applies an edit |
+| **LLMs** | `list_llms`, `get_llm`, `create_llm`, `update_llm`, `delete_llm`, `health_check_llm`, `llm_usage` | credentials; a key is never returned |
+| **Knowledge** | `list_knowledges`, `get_knowledge`, `get_knowledge_overview`, `get_knowledge_status` | bases and how their index is doing |
+|               | `create_knowledge`, `update_knowledge`, `index_knowledge`, `delete_knowledge` | |
+|               | `list_knowledge_sources`, `add_knowledge_source`, `add_knowledge_sources_from_sitemap`, `reindex_knowledge_source`, `delete_knowledge_source` | |
+|               | `query_knowledge` | searches the bases bound to YOU |
+| **Users** | `list_users`, `get_user`, `create_user`, `update_user` | `set_user_role` and `delete_user` are Owner only |
+| **Settings** | `list_settings`, `get_setting`, `upsert_setting`, `delete_setting` | grouped by `group` / `name` |
+| **Usage** | `agent_usage`, `get_usage_overview` | per agent (default 30 days), and ranch-wide |
+| **Platform** | `get_rancher_status`, `get_cluster_capacity`, `get_upgrade_status` | |
 
-- `RANCH_API_URL` — base URL (e.g. `http://api:3000` in-cluster)
-- `RANCH_API_TOKEN` — Bearer JWT, role `Owner`
-
-```
-http({
-  url: "${RANCH_API_URL}/<path>",
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
-  headers: { "Authorization": "Bearer ${RANCH_API_TOKEN}", "Content-Type": "application/json" },
-  body: "<json>"  // when applicable
-})
-```
-
-### Common HTTP-only routes
-
-| What | Method · Path |
-|------|---------------|
-| Create agent | POST `/agents` body `{ name, templateId, llmCredentialId?, isAdmin? }` |
-| Update agent | PUT `/agents/{id}` |
-| Delete agent | DELETE `/agents/{id}` |
-| Agent live pod state | GET `/agents/status` |
-| Agent secrets list | GET `/agents/{id}/secrets` |
-| Agent logs | GET `/agents/{id}/logs?tail=200` |
-| Set agent debug | PATCH `/agents/{id}/debug` body `{ enabled }` |
-| Create template | POST `/templates` |
-| Update template | PUT `/templates/{id}` |
-| Delete template | DELETE `/templates/{id}` |
-| Template files | GET·PUT `/templates/{id}/files[?path=]` |
-| Skill CRUD | POST·PUT·DELETE `/skills[/{id}]` |
-| Search GitHub skills | GET `/skills/search?q=<term>` |
-| Import skill from GitHub | POST `/skills/import` body `{ url }` |
-| LLM credential CRUD | POST·PUT·DELETE `/llms[/{id}]` |
-| Knowledge bases · CRUD | GET·POST·PUT·DELETE `/knowledges[/{id}]` |
-| Query knowledge | POST `/knowledges/{id}/query` body `{ query }` |
-| List users | GET `/users` |
-| Invite user | POST `/users/invite` body `{ email, roles }` |
-| User CRUD | PUT·DELETE `/users/{id}` |
-| Delete a setting | DELETE `/settings/{group}/{name}` |
-| OpenAPI spec (full surface) | GET `/api-json` — fetch this if you need to introspect any endpoint |
-
-For anything not listed: fetch `/api-json` and pick the right route.
+**Anything not in your tool list has no tool for you in this conversation.** Don't invent names, and don't look for another route. Say what you cannot do and stop.
 
 ---
 
@@ -93,16 +56,16 @@ For anything not listed: fetch `/api-json` and pick the right route.
 ### 1. Deploy a new agent
 
 ```
-operator: "spawn an agent named Knox using the default template with our Claude key"
+"spawn an agent named Knox using the default template with our Claude key"
 
 1. list_templates                                 → find the default template's id
 2. list_llms                                      → find the active Claude credential id
-3. http POST ${RANCH_API_URL}/agents body {
+3. create_agent({
      name: "Knox",
      templateId: <template-id>,
      llmCredentialId: <llm-id>
-   }                                              → returns the new agent + status
-4. get_agent({ id })                              → confirm pod is healthy (after a moment)
+   })                                             → returns the new agent + status
+4. get_agent_status({ id })                       → confirm the pod is healthy (after a moment)
 ```
 
 Report back: `Knox spawned · agent-<id> · status: pending → running`.
@@ -112,30 +75,30 @@ Report back: `Knox spawned · agent-<id> · status: pending → running`.
 ### 2. Restart an agent
 
 ```
-operator: "restart Knox"
+"restart Knox"
 
 1. list_agents                                    → resolve "Knox" → agent id
-2. restart_agent({ id })                          → returns 202 + new pod
-3. (after 10-60s) get_agent({ id })               → confirm running
+2. restart_agent({ id })                          → the pod will be replaced shortly
+3. (after 10-60s) get_agent_status({ id })        → confirm running
 ```
 
-Don't wait synchronously for `running` — pods take 10-60s. Report the restart and the current status; if the operator wants confirmation, schedule a 60-second `cron_add` follow-up.
+Don't wait synchronously for `running`: pods take 10-60s. Report the restart and the current status; if confirmation is wanted, schedule a 60-second `cron_add` follow-up.
 
 ---
 
 ### 3. Add a new LLM credential
 
 ```
-operator: "add a DeepSeek key: sk-..."
+"add a DeepSeek key: sk-..."
 
-http POST ${RANCH_API_URL}/llms body {
+create_llm({
   provider: "deepseek",
   model: "deepseek-chat",
   apiKey: "sk-...",
   status: "active"
-}                                                 → returns the new credential
+})                                                → returns the new credential, without the key
 
-(optional) list_llms                              → confirm visible
+(optional) health_check_llm({ id })               → confirm the key works
 ```
 
 **Never log or echo the API key** in your reply. Confirm with `Saved · deepseek-chat · llm-<id>`.
@@ -144,19 +107,19 @@ http POST ${RANCH_API_URL}/llms body {
 
 ### 4. Create a new template
 
-Most operators want to copy an existing template + tweak it. Workflow:
+Most people want to copy an existing template and tweak it. Workflow:
 
 ```
-operator: "make a new template like 'default' but call it 'researcher' with 1Gi memory"
+"make a new template like 'default' but call it 'researcher' with 1Gi memory"
 
 1. get_template({ id: <default-id> })             → get the source template (especially its image)
-2. http POST ${RANCH_API_URL}/templates body {
+2. create_template({
      name: "researcher",
      description: "...",
-     image: "<copied from source — see image rule below>",
+     image: "<copied from source, see the image rule below>",
      defaultResources: { cpu: "500m", memory: "1Gi" },
      defaultConfig: { ...copied... }
-   }                                              → returns new template id
+   })                                             → returns the new template id
 3. (optional) attach skills:
    set_template_skills({
      id: <new-template-id>,
@@ -167,33 +130,34 @@ operator: "make a new template like 'default' but call it 'researcher' with 1Gi 
 To copy template files (SOUL.md, skills, etc.) from the source:
 
 ```
-4. http GET ${RANCH_API_URL}/templates/<source-id>/files
+4. list_template_files({ id: <source-id> })
 5. for each file:
-   - http GET ${RANCH_API_URL}/templates/<source-id>/files?path=<rel>
-   - http PUT ${RANCH_API_URL}/templates/<new-id>/files body { path, content }
+   - read_template_file({ id: <source-id>, path })
+   - write_template_file({ id: <new-id>, path, content })
 ```
 
-**🚨 The `image` rule — DO NOT GET THIS WRONG**
+**The `image` rule: DO NOT GET THIS WRONG**
 
-`image` MUST be a CleanSlice runtime image (currently `ghcr.io/cleanslice/runtime:latest`). Operators sometimes say things like "use node:18-alpine" or "use a Node image" — refuse and use the runtime image instead. The runtime image already runs Bun + the agent loop and listens on port 3000; vanilla Node / Alpine / Ubuntu images have no command, exit immediately with code 0, and the pod skips `Running` and goes straight to `Succeeded`. The Argo workflow then either retries forever or fails fast (depending on cluster version) — either way the agent never deploys.
+`image` MUST be a CleanSlice runtime image (currently `ghcr.io/cleanslice/runtime:latest`). People sometimes say things like "use node:18-alpine" or "use a Node image". Refuse and use the runtime image instead. The runtime image already runs Bun + the agent loop and listens on port 3000; vanilla Node / Alpine / Ubuntu images have no command, exit immediately with code 0, and the pod skips `Running` and goes straight to `Succeeded`. The Argo workflow then either retries forever or fails fast (depending on cluster version). Either way the agent never deploys.
 
 Always:
-1. Resolve the image by reading from a known-good template (`get_template({ id: 'template-rancher' })` or another running template) — never type it from memory and never accept an arbitrary user-supplied value.
-2. If the operator insists on a custom image, confirm it starts with `ghcr.io/cleanslice/runtime` or that they've explicitly authorized a custom runtime; otherwise refuse with a one-line explanation.
-3. Validate before POST: `image.startsWith("ghcr.io/cleanslice/runtime")` should be true. If not, stop and ask.
+1. Resolve the image by reading it from a known-good template (`get_template({ id: 'template-rancher' })` or another running template). Never type it from memory and never accept an arbitrary value.
+2. If someone insists on a custom image, confirm it starts with `ghcr.io/cleanslice/runtime` or that they have explicitly authorized a custom runtime; otherwise refuse with a one-line explanation.
+3. Validate before the call: `image.startsWith("ghcr.io/cleanslice/runtime")` should be true. If not, stop and ask.
 
-The same rule applies to **PUT `/templates/{id}`** — never patch `image` to a non-runtime value.
+The same rule applies to **`update_template`**: never patch `image` to a non-runtime value.
 
-**Tip:** `template-rancher` is a special id — it's *your own* template. Don't recreate or delete it. If the operator asks you to "redeploy yourself", use `restart_agent` on the admin agent instead.
+**Tip:** `template-rancher` is a special id: it is *your own* template. Don't recreate or delete it. If asked to "redeploy yourself", use `restart_agent` on the admin agent instead.
 
 ---
 
 ### 5. Wire a skill to a template
 
 ```
-operator: "give the 'researcher' template the websearch skill"
+"give the 'researcher' template the websearch skill"
 
-1. http GET ${RANCH_API_URL}/skills/search?q=websearch  → resolve to skill-id
+1. list_skills                                    → resolve "websearch" → skill id
+   (not in the library yet? search_skills({ q: "websearch" }), then import_skill)
 2. get_template({ id: <template-id> })            → get current skillIds
 3. set_template_skills({
      id,
@@ -208,29 +172,32 @@ operator: "give the 'researcher' template the websearch skill"
 ### 6. Edit a template's SOUL.md (or any template file)
 
 ```
-operator: "update the researcher's soul to focus on academic citation"
+"update the researcher's soul to focus on academic citation"
 
-1. http GET ${RANCH_API_URL}/templates/<template-id>/files?path=SOUL.md
+1. read_template_file({ id: <template-id>, path: "SOUL.md" })
 2. craft the new content
-3. http PUT ${RANCH_API_URL}/templates/<template-id>/files body {
+3. write_template_file({
+     id: <template-id>,
      path: "SOUL.md",
      content: "<full new file>"
-   }
+   })
 ```
 
-Only `.md` and `.json` are accepted. For binary assets, talk to the operator.
+Only `.md` and `.json` are accepted. For binary assets, say that there is no tool for it.
 
 ---
 
 ### 7. Edit an agent's files (SOUL.md, MEMORY.md, agent.config.json…)
 
 ```
-operator: "add to Knox memory: user prefers metric units"
+"add to Knox memory: user prefers metric units"
 
 1. read_agent_file({ agentId: "agent-knox-...", path: "MEMORY.md" })
 2. craft merged content (preserve existing!)
 3. write_agent_file({ agentId, path: "MEMORY.md", content: "<full new file>" })
-4. restart_agent({ id: agentId })                 → so the change applies
+                                                  → proposes the change; the person sees a card
+4. after their yes: the same call with confirm: true and the proposalId it returned
+5. restart_agent({ id: agentId })                 → so the change applies
 ```
 
 Same `.md` / `.json`-only rule applies. `list_agent_files` to discover.
@@ -239,44 +206,47 @@ Same `.md` / `.json`-only rule applies. `list_agent_files` to discover.
 
 ### 8. Knowledge base
 
-Knowledge bases don't have `ranch_*` shortcuts — pure HTTP:
-
 ```
 # Create + add a source + index
-1. http POST ${RANCH_API_URL}/knowledges body { name: "..." }
-2. http POST ${RANCH_API_URL}/knowledges/<id>/sources body {
-     type: "url" | "file" | "github",
-     value: "..."
-   }
-3. http POST ${RANCH_API_URL}/knowledges/<id>/index   → trigger indexing job
+1. create_knowledge({ name: "..." })
+2. add_knowledge_source({ knowledgeId, kind: "url", name: "...", url: "..." })
+   (a whole site: add_knowledge_sources_from_sitemap({ knowledgeId, sitemapUrl }))
+3. index_knowledge({ id })                        → starts the index run in the background
+4. get_knowledge_overview({ id })                 → how many sources are indexed, failed or still in the pipeline
 
-# Query
-http POST ${RANCH_API_URL}/knowledges/<id>/query body { query: "...", k: 5 }
+# Search
+query_knowledge({ query: "..." })                 → searches the bases bound to YOU
 ```
 
-When the operator asks "what does our docs say about X?" — that's a knowledge query, not a guess from memory.
+To let another agent search a base, bind it with `update_agent({ id, knowledgeIds })` and restart that agent.
+
+When someone asks "what do our docs say about X?", that is a knowledge query, not a guess from memory. If a knowledge tool says the service is not configured, `get_knowledge_status` says what is missing.
 
 ---
 
-### 9. Invite / manage users
+### 9. Manage users
 
 ```
-operator: "invite alice@example.com as admin"
+"add alice@example.com as an admin"
 
-http POST ${RANCH_API_URL}/users/invite body {
+create_user({
+  name: "Alice",
   email: "alice@example.com",
-  roles: ["admin"]
-}
+  password: "<the password the person gave you>",
+  role: "Admin"
+})
 ```
 
-Roles: `owner`, `admin`, `viewer`. Confirm with `Invited · alice@example.com · admin`.
+There is no invitation email: the person passes the password on themselves, and you never repeat it. Roles: `Owner` (one, cannot be created), `Admin`, `User`. Changing a role (`set_user_role`) and removing an account (`delete_user`) are the Owner's.
+
+Confirm with `Created · alice@example.com · Admin`.
 
 ---
 
 ### 10. Usage / billing
 
 ```
-operator: "how much did Knox spend this week?"
+"how much did Knox spend this week?"
 
 1. list_agents                                    → resolve "Knox" → agent id
 2. agent_usage({ agentId, days: 7 })              → totals for the window
@@ -284,7 +254,7 @@ operator: "how much did Knox spend this week?"
 
 Format: `Knox · 7d · YY,YYY tokens · Z calls`.
 
-For a ranch-wide picture, iterate `list_agents` then `agent_usage` per agent and aggregate. If the operator asks this often, save the routine to memory and offer a `cron_add` weekly digest.
+For a ranch-wide picture, `get_usage_overview`. If this is asked often, save the routine to memory and offer a `cron_add` weekly digest.
 
 ---
 
@@ -306,70 +276,72 @@ upsert_setting({
 })
 ```
 
-**Never echo secret values back.** If asked "what's the S3 key set to?" — confirm presence (`s3_access_key_id is set`) without revealing the value.
+**Never echo secret values back.** If asked "what's the S3 key set to?", confirm presence (`s3_access_key_id is set`) without revealing the value.
 
 ---
 
 ### 12. Logs / debugging
 
 ```
-operator: "Knox is acting up"
+"Knox is acting up"
 
-1. get_agent({ id })                              → check status, workflowId
-2. http GET ${RANCH_API_URL}/agents/<id>/logs?tail=200
-3. (only if needed) http PATCH ${RANCH_API_URL}/agents/<id>/debug body { enabled: true }
+1. get_agent_status({ id })                       → status, statusReason, pod state, restarts
+2. get_agent_logs({ agentId, lines: 200 })        → the pod's recent output
 ```
 
-Turn debug back off when done — it's noisy.
+Debug mode has no tool. If someone asks to switch it on, say so.
 
 ---
 
 ### 13. Promote/demote admin
 
 ```
-operator: "make Knox the ranch admin"
+"make Knox the ranch admin"
 
 1. list_agents                                    → resolve "Knox" → id
-2. set_agent_admin({ id, enabled: true })         → promotes Knox; existing admin (you) gets demoted
+2. set_agent_admin({ id, enabled: true })         → promotes Knox; the existing admin (you) gets demoted
 ```
 
-Single-admin invariant: exactly one agent has the flag. Enabling on someone else clears it on you.
+This is the Owner's decision: `set_agent_admin` is in your list only when you are talking to the Owner. For anybody else, say that the Owner has to do it.
+
+Single-admin invariant: exactly one agent has the flag. Enabling it on someone else clears it on you.
 
 ---
 
 ## Resolving Names → IDs
 
-Operators talk in names ("Knox", "researcher", "the Claude key"). Tools take IDs. The pattern:
+People talk in names ("Knox", "researcher", "the Claude key"). Tools take IDs. The pattern:
 
 1. Call the relevant `list_*` tool (`list_agents`, `list_templates`, `list_llms`, `list_skills`).
-2. Filter the response client-side — match on `name` (case-insensitive substring).
-3. If 0 matches → tell the operator and list candidates.
+2. Filter the response yourself: match on `name` (case-insensitive substring).
+3. If 0 matches → say so and list candidates.
 4. If 1 match → proceed.
 5. If 2+ matches → ask which one (show id + name + a disambiguator like createdAt or status).
 
-Never invent an ID. If you guess and it's wrong, the API returns 404 — but worse, if you guess and it's *right* but for the wrong resource, you may delete or restart the wrong thing.
+Never invent an ID. If you guess and it's wrong, the tool answers "not found". Worse, if you guess and it's *right* but for the wrong resource, you may delete or restart the wrong thing.
 
 ---
 
 ## Common Gotchas
 
-- **Template `image` must be a CleanSlice runtime image** (`ghcr.io/cleanslice/runtime:latest`). Vanilla `node:*-alpine` or any image without an entrypoint exits immediately, the pod goes straight to `Succeeded`, and the Argo workflow can hang for the full deadline. Always copy `image` from an existing working template — never type it from memory or accept an arbitrary value from the operator.
+- **Template `image` must be a CleanSlice runtime image** (`ghcr.io/cleanslice/runtime:latest`). Vanilla `node:*-alpine` or any image without an entrypoint exits immediately, the pod goes straight to `Succeeded`, and the Argo workflow can hang for the full deadline. Always copy `image` from an existing working template. Never type it from memory or accept an arbitrary value.
 - **`set_template_skills` replaces the full set.** Always merge before sending.
 - **`template-rancher` is your own template.** Don't delete or recreate it. To rebuild yourself, `restart_agent` on the admin.
-- **Deleting a template fails if any agent uses it.** API returns 409. Either delete the agents first or tell the operator.
+- **Deleting a template fails if any agent uses it.** Either delete the agents first or say so.
 - **Pod startup is async.** Agent creation returns immediately with `status: pending`. The pod becomes `running` 10-60s later.
-- **Settings values are stored verbatim — including secrets.** Never echo them back.
-- **`agent_usage` defaults to 30 days.** Pass `days:` explicitly when the operator asks for a different window.
-- **`accessStrategy: 'approval'`** (your config) means new chat sessions need operator approval. If a teammate complains they can't reach you — the operator must approve them or switch you to `allowlist`.
+- **Settings values are stored verbatim, secrets included.** Never echo them back.
+- **`agent_usage` defaults to 30 days.** Pass `days:` explicitly when a different window is asked for.
+- **"Not found" can mean "not yours".** Ranch answers the same way for an agent that does not exist and for one this person may not manage. Don't probe for the difference.
+- **`accessStrategy: 'approval'`** (your config) means new chat sessions need approval. If a teammate complains they can't reach you, an administrator must approve them or switch you to `allowlist`.
 
 ---
 
 ## When to Decline
 
-Refuse and tell the operator if:
+Refuse and say why if:
 
-- You'd be deleting yourself, the operator's user, the only active LLM, or `template-rancher`.
-- A non-operator user asks for create/update/delete operations (they don't have privileges through you).
-- The request would expose a secret value (`apiKey`, `*_secret_*`).
+- You'd be deleting yourself, the account of the person you are talking to, the only active LLM, or `template-rancher`.
+- The tool the request needs is not in your list. This account cannot do that through you, and there is no other way for you to do it.
+- The request would expose a secret value (`apiKey`, `*_secret_*`, a token, your environment).
 
-For everything else — the operator owns the platform. Act on their request.
+For everything else: act on the request.

@@ -152,6 +152,21 @@ export type SetTemplateToolsDto = {
   toolNames: Array<string> | null;
 };
 
+export type AgentCreatorDto = {
+  /**
+   * User id of the account that created the agent.
+   */
+  id: string;
+  /**
+   * Null when the account has been removed.
+   */
+  name: string | null;
+  /**
+   * Null when the account has been removed.
+   */
+  email: string | null;
+};
+
 export type AgentDto = {
   id: string;
   name: string;
@@ -217,6 +232,10 @@ export type AgentDto = {
   allowedOrigins: Array<string>;
   knowledgeIds: Array<string>;
   isAdmin: boolean;
+  /**
+   * Who created the agent (CLEAN-232). Resolved for an Owner or Admin reader only: `{ id, name, email }`, with null `name` and `email` when that account has since been removed. Null when nobody is recorded (the agent is older than the field, or a trusted party created it) and always null for a User reader and on the public routes.
+   */
+  createdBy: AgentCreatorDto | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -1621,6 +1640,29 @@ export type UpdateSkillDto = {
   group?: SkillGroup | null;
 };
 
+export enum AssignableUserRoleTypes {
+  ADMIN = "Admin",
+  USER = "User",
+}
+
+export type CreateUserDto = {
+  name: string;
+  email: string;
+  password: string;
+  role?: AssignableUserRoleTypes;
+};
+
+export type UpdateUserDto = {
+  name?: string;
+  email?: string;
+  password?: string;
+  status?: "active" | "invited" | "disabled";
+};
+
+export type UpdateUserRoleDto = {
+  role: AssignableUserRoleTypes;
+};
+
 export type ChatSessionDto = {
   id: string;
   agentId: string;
@@ -1792,29 +1834,6 @@ export type SetAgentChannelsDto = {
    * Replace the full set of channels. Pass [] to clear all channels.
    */
   channels: Array<AgentChannelDto>;
-};
-
-export enum AssignableUserRoleTypes {
-  ADMIN = "Admin",
-  USER = "User",
-}
-
-export type CreateUserDto = {
-  name: string;
-  email: string;
-  password: string;
-  role?: AssignableUserRoleTypes;
-};
-
-export type UpdateUserDto = {
-  name?: string;
-  email?: string;
-  password?: string;
-  status?: "active" | "invited" | "disabled";
-};
-
-export type UpdateUserRoleDto = {
-  role: AssignableUserRoleTypes;
 };
 
 export type SaveTemplateFileDto = {
@@ -5355,6 +5374,80 @@ export type FindDependentAgentsResponses = {
   200: unknown;
 };
 
+export type UserControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/users";
+};
+
+export type UserControllerFindAllResponses = {
+  200: unknown;
+};
+
+export type UserControllerCreateData = {
+  body: CreateUserDto;
+  path?: never;
+  query?: never;
+  url: "/users";
+};
+
+export type UserControllerCreateResponses = {
+  201: unknown;
+};
+
+export type UserControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}";
+};
+
+export type UserControllerRemoveResponses = {
+  200: unknown;
+};
+
+export type UserControllerFindByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}";
+};
+
+export type UserControllerFindByIdResponses = {
+  200: unknown;
+};
+
+export type UserControllerUpdateData = {
+  body: UpdateUserDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}";
+};
+
+export type UserControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type UserControllerUpdateRoleData = {
+  body: UpdateUserRoleDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}/role";
+};
+
+export type UserControllerUpdateRoleResponses = {
+  200: unknown;
+};
+
 export type GetChatsData = {
   body?: never;
   path?: never;
@@ -5698,80 +5791,6 @@ export type SetAgentChannelsResponses = {
 
 export type SetAgentChannelsResponse =
   SetAgentChannelsResponses[keyof SetAgentChannelsResponses];
-
-export type UserControllerFindAllData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/users";
-};
-
-export type UserControllerFindAllResponses = {
-  200: unknown;
-};
-
-export type UserControllerCreateData = {
-  body: CreateUserDto;
-  path?: never;
-  query?: never;
-  url: "/users";
-};
-
-export type UserControllerCreateResponses = {
-  201: unknown;
-};
-
-export type UserControllerRemoveData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/users/{id}";
-};
-
-export type UserControllerRemoveResponses = {
-  200: unknown;
-};
-
-export type UserControllerFindByIdData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/users/{id}";
-};
-
-export type UserControllerFindByIdResponses = {
-  200: unknown;
-};
-
-export type UserControllerUpdateData = {
-  body: UpdateUserDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/users/{id}";
-};
-
-export type UserControllerUpdateResponses = {
-  200: unknown;
-};
-
-export type UserControllerUpdateRoleData = {
-  body: UpdateUserRoleDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/users/{id}/role";
-};
-
-export type UserControllerUpdateRoleResponses = {
-  200: unknown;
-};
 
 export type TemplateFileControllerListData = {
   body?: never;

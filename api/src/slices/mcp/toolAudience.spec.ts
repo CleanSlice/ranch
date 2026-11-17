@@ -25,7 +25,7 @@ import {
   type ToolAudienceTypes,
   type ToolMetadata,
 } from './decorators';
-import { audienceAllows } from './tooling';
+import { audienceAllows, setCallerManagesAgents } from './tooling';
 import { asGuest, asPerson, asTrustedAgent } from './testing';
 
 jest.mock('@kubernetes/client-node', () => ({
@@ -50,14 +50,14 @@ const SLICES = join(__dirname, '..');
  */
 const CLASS_AUDIENCE: Record<string, ToolAudienceTypes> = {
   'agent/agent/agentAdmin.tool.ts': 'admin',
-  'agent/agentChannel/agentChannel.tool.ts': 'admin',
+  'agent/agentChannel/agentChannel.tool.ts': 'manage-agent',
   'agent/event/agentEvent.tool.ts': 'admin',
-  'agent/file/file.tool.ts': 'admin',
+  'agent/file/file.tool.ts': 'manage-agent',
   'agent/limit/agentLimit.tool.ts': 'admin',
   'agent/peer/askAgent.tool.ts': 'agent',
-  'agent/peer/peerAdmin.tool.ts': 'admin',
+  'agent/peer/peerAdmin.tool.ts': 'manage-agent',
   'agent/peer/peerSelf.tool.ts': 'agent',
-  'agent/secret/secret.tool.ts': 'admin',
+  'agent/secret/secret.tool.ts': 'manage-agent',
   'agent/shareLink/shareLink.tool.ts': 'admin',
   'agent/template/templateAdmin.tool.ts': 'admin',
   'agent/templateInstall/templateInstall.tool.ts': 'admin',
@@ -66,7 +66,7 @@ const CLASS_AUDIENCE: Record<string, ToolAudienceTypes> = {
   'chat/chat.tool.ts': 'admin',
   'integration/integration.tool.ts': 'person',
   'llm/llm.tool.ts': 'admin',
-  'log/log.tool.ts': 'admin',
+  'log/log.tool.ts': 'manage-agent',
   'mcpServer/mcpProbe.tool.ts': 'admin',
   'mcpServer/mcpServer.tool.ts': 'admin',
   'mcpServer/oauth/mcpOauth.tool.ts': 'admin',
@@ -86,8 +86,15 @@ const CLASS_AUDIENCE: Record<string, ToolAudienceTypes> = {
 };
 
 /**
- * Tools whose audience differs from their class's: the console route behind
- * each is `@Roles(Owner)` while the rest of its controller admits an Admin.
+ * Tools whose audience differs from their class's.
+ *
+ * `owner`: the console route behind each is `@Roles(Owner)` while the rest
+ * of its controller admits an Admin. `set_agent_admin` joined them with
+ * CLEAN-232: which agent holds Owner power is the Owner's decision.
+ *
+ * `manage-agent`: the tools that act on ONE agent inside a class that also
+ * holds fleet-wide tools. The classes that only hold per-agent tools
+ * (channels, files, secrets, logs, peers) carry the audience themselves.
  */
 const METHOD_AUDIENCE: Record<string, ToolAudienceTypes> = {
   set_user_role: 'owner',
@@ -95,7 +102,72 @@ const METHOD_AUDIENCE: Record<string, ToolAudienceTypes> = {
   set_notification_destination: 'owner',
   send_test_notification: 'owner',
   remove_notification_destination: 'owner',
+  set_agent_admin: 'owner',
+  // agent/agent/agentAdmin.tool.ts
+  stop_agent: 'manage-agent',
+  start_agent: 'manage-agent',
+  delete_agent: 'manage-agent',
+  get_agent_status: 'manage-agent',
+  get_agent_env: 'manage-agent',
+  list_agent_mcps: 'manage-agent',
+  // agent/limit/agentLimit.tool.ts
+  get_agent_limits: 'manage-agent',
+  set_agent_limits: 'manage-agent',
+  set_agent_visibility: 'manage-agent',
+  // rancher/rancher.tool.ts
+  restart_agent: 'manage-agent',
+  update_agent: 'manage-agent',
 };
+
+/**
+ * Every `manage-agent` tool there is, by name. Each of them names one agent
+ * and asks `AgentPermissionService` about it; the table in
+ * docs/agent-tools.md lists the same names.
+ */
+const MANAGE_AGENT_TOOLS = [
+  // the agent itself
+  'stop_agent',
+  'start_agent',
+  'delete_agent',
+  'restart_agent',
+  'update_agent',
+  'get_agent_status',
+  'get_agent_env',
+  'list_agent_mcps',
+  // channels
+  'get_agent_channels',
+  'set_agent_channels',
+  // workspace files
+  'list_agent_files',
+  'read_agent_file',
+  'write_agent_file',
+  'create_agent_file',
+  'import_agent_files',
+  'delete_agent_file',
+  'sync_agent_files',
+  'export_agent_files',
+  // secrets
+  'list_agent_secrets',
+  'set_agent_secret',
+  'delete_agent_secret',
+  'replace_agent_secrets',
+  // limits and visibility
+  'get_agent_limits',
+  'set_agent_limits',
+  'set_agent_visibility',
+  // logs
+  'get_agent_logs',
+  // peers
+  'list_agent_peers',
+  'list_peer_candidates',
+  'preview_agent_card',
+  'list_agent_delegations',
+  'connect_agent_peer',
+  'import_external_agent',
+  'import_agent_from_card',
+  'refresh_agent_peer',
+  'remove_agent_peer',
+].sort();
 
 function toolFiles(dir: string): string[] {
   const out: string[] = [];
@@ -197,6 +269,9 @@ const EXPECTED: Record<ToolAudienceTypes, Record<CallerNames, boolean>> = {
   agent: { guest: true, user: true, admin: true, owner: true, trustedAgent: true, plainAgent: true },
   // prettier-ignore
   person: { guest: false, user: true, admin: true, owner: true, trustedAgent: false, plainAgent: false },
+  // A User here is one who created no agent; the creator is covered below.
+  // prettier-ignore
+  'manage-agent': { guest: false, user: false, admin: true, owner: true, trustedAgent: true, plainAgent: false },
   // prettier-ignore
   admin: { guest: false, user: false, admin: true, owner: true, trustedAgent: true, plainAgent: false },
   // prettier-ignore
@@ -227,7 +302,7 @@ describe('every tool declares who it is for (CLEAN-232)', () => {
     expect(actual).toEqual(CLASS_AUDIENCE);
   });
 
-  it('the only tools that differ from their class are the pinned Owner-only ones', () => {
+  it('the only tools that differ from their class are the pinned ones', () => {
     const differing: Record<string, ToolAudienceTypes | undefined> = {};
     for (const t of tools) {
       if (t.audience !== t.classAudience) differing[t.name] = t.audience;
@@ -239,8 +314,12 @@ describe('every tool declares who it is for (CLEAN-232)', () => {
     const audienceOf = (name: string) =>
       tools.find((t) => t.name === name)?.audience;
 
-    expect(audienceOf('delete_agent')).toBe('admin');
-    expect(audienceOf('stop_agent')).toBe('admin');
+    expect(audienceOf('delete_agent')).toBe('manage-agent');
+    expect(audienceOf('stop_agent')).toBe('manage-agent');
+    expect(audienceOf('set_agent_admin')).toBe('owner');
+    expect(audienceOf('create_agent')).toBe('admin');
+    expect(audienceOf('list_agents')).toBe('admin');
+    expect(audienceOf('get_agent')).toBe('admin');
     expect(audienceOf('create_user')).toBe('admin');
     expect(audienceOf('set_user_role')).toBe('owner');
     expect(audienceOf('delete_user')).toBe('owner');
@@ -318,11 +397,80 @@ describe('every tool, as each caller', () => {
   it('a guest and a User get no management tool at all', () => {
     for (const caller of ['guest', 'user'] as const) {
       const reached = tools
-        .filter((t) => t.audience === 'admin' || t.audience === 'owner')
+        .filter(
+          (t) =>
+            t.audience === 'admin' ||
+            t.audience === 'owner' ||
+            t.audience === 'manage-agent',
+        )
         .filter((t) => audienceAllows(t.audience, CALLERS[caller]()))
         .map((t) => t.name);
       expect(reached).toEqual([]);
     }
+  });
+
+  it('the manage-agent tools are exactly the reviewed list', () => {
+    expect(
+      tools
+        .filter((t) => t.audience === 'manage-agent')
+        .map((t) => t.name)
+        .sort(),
+    ).toEqual(MANAGE_AGENT_TOOLS);
+  });
+
+  it('a User who created an agent gets the manage-agent tools and nothing above', () => {
+    // What the MCP handler notes on the call's view for such a person.
+    const creator = () => {
+      const req = asPerson(ranchAgent(), UserRoleTypes.User, 'user-creator');
+      setCallerManagesAgents(req, true);
+      return req;
+    };
+    const reached = tools
+      .filter((t) => audienceAllows(t.audience, creator()))
+      .map((t) => t.audience);
+    expect(new Set(reached)).toEqual(
+      new Set(['everyone', 'agent', 'person', 'manage-agent']),
+    );
+    expect(
+      tools
+        .filter((t) => t.audience === 'manage-agent')
+        .every((t) => audienceAllows(t.audience, creator())),
+    ).toBe(true);
+    expect(audienceAllows('admin', creator())).toBe(false);
+    expect(audienceAllows('owner', creator())).toBe(false);
+  });
+
+  it('but not through a plain agent, nor for a guest or a plain agent acting for itself', () => {
+    const viaPlainAgent = asPerson(
+      plainAgentToken(),
+      UserRoleTypes.User,
+      'user-creator',
+    );
+    setCallerManagesAgents(viaPlainAgent, true);
+    expect(audienceAllows('manage-agent', viaPlainAgent)).toBe(false);
+
+    // The Owner named by a plain agent: a person, still no manager there.
+    const ownerViaPlainAgent = asPerson(plainAgentToken(), UserRoleTypes.Owner);
+    setCallerManagesAgents(ownerViaPlainAgent, true);
+    expect(audienceAllows('manage-agent', ownerViaPlainAgent)).toBe(false);
+
+    const guest = asGuest(ranchAgent());
+    setCallerManagesAgents(guest, true);
+    expect(audienceAllows('manage-agent', guest)).toBe(false);
+
+    const trustedPlain = asTrustedAgent(plainAgentToken());
+    setCallerManagesAgents(trustedPlain, true);
+    expect(audienceAllows('manage-agent', trustedPlain)).toBe(false);
+  });
+
+  it('a creator on their own console token is shown them too', () => {
+    const own = {
+      user: { sub: 'user-creator', email: '', roles: [UserRoleTypes.User] },
+    } as unknown as Request;
+    expect(audienceAllows('manage-agent', own)).toBe(false);
+    setCallerManagesAgents(own, true);
+    expect(audienceAllows('manage-agent', own)).toBe(true);
+    expect(audienceAllows('admin', own)).toBe(false);
   });
 
   it('an Admin gets every admin tool and none of the Owner’s', () => {

@@ -22,6 +22,14 @@ export interface McpOptions {
   globalApiPrefix?: string;
   guards?: Type<CanActivate>[];
   decorators?: ClassDecorator[];
+  /**
+   * Decorators for the diagnostic routes alone (the SSE controller's
+   * `teams/:teamId/sessions/debug`, which lists live session ids). They sit
+   * on the handler, so they win over `decorators` on the class: the endpoints
+   * a client speaks MCP on can be open to every bearer while the diagnostics
+   * stay with an operator.
+   */
+  diagnosticDecorators?: MethodDecorator[];
   sse?: {
     pingEnabled?: boolean;
     pingIntervalMs?: number;

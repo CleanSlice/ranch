@@ -182,6 +182,67 @@ export function callerPerson(
     : null;
 }
 
+// ── Who may manage an agent (CLEAN-232, contract section 5) ──
+
+const MANAGES_PROPERTY = 'ranchManagesAgents';
+
+/** An agent runtime's token that does not carry operator power. */
+function isPlainAgentToken(httpRequest: Request): boolean {
+  return (
+    callerAgentId(httpRequest) !== null && tokenLevel(httpRequest) < ADMIN_LEVEL
+  );
+}
+
+/**
+ * Record whether the person this call is made for manages at least one
+ * agent. The MCP handler asks the agent slice once per call, for a person
+ * below Admin only, and writes the answer on the same per-call view the
+ * party sits on. Not enumerable, like the party.
+ */
+export function setCallerManagesAgents(
+  httpRequest: Request,
+  manages: boolean,
+): void {
+  Object.defineProperty(httpRequest, MANAGES_PROPERTY, {
+    value: manages === true,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+}
+
+/**
+ * The `manage-agent` audience: a caller who may manage at least one agent.
+ * An operator always; otherwise a person the handler found to have created
+ * an agent. Bounded by the token like everything else here: a plain agent
+ * naming such a person still lists nothing, only the person's own console
+ * token or an agent trusted with operator power carries it.
+ *
+ * This lists the tools. Which agent a call may touch is a second question,
+ * answered per call by `AgentPermissionService` with `manageCaller`.
+ */
+export function callerManagesAgents(httpRequest: Request): boolean {
+  if (callerIsOperator(httpRequest)) return true;
+  if (callerPerson(httpRequest) === null) return false;
+  if (isPlainAgentToken(httpRequest)) return false;
+  return (
+    (httpRequest as unknown as Record<string, unknown> | null)?.[
+      MANAGES_PROPERTY
+    ] === true
+  );
+}
+
+/**
+ * The caller as `AgentPermissionService.canManage` reads it: the party the
+ * call is made for, bounded by the token. A plain agent's token manages
+ * nothing whoever it names, so it is a guest here; the Ranch admin agent
+ * acting for itself stays trusted; a person stays that person.
+ */
+export function manageCaller(httpRequest: Request): ICallerParty {
+  if (isPlainAgentToken(httpRequest)) return GUEST;
+  return callerParty(httpRequest);
+}
+
 /**
  * The single answer to "may this caller use a tool of that audience". The
  * catalogue, tools/call and the listing hooks all ask here. An audience
@@ -198,6 +259,8 @@ export function audienceAllows(
       return callerAgentId(httpRequest) !== null;
     case 'person':
       return callerPerson(httpRequest) !== null;
+    case 'manage-agent':
+      return callerManagesAgents(httpRequest);
     case 'admin':
       return callerIsOperator(httpRequest);
     case 'owner':

@@ -87,7 +87,13 @@ describe('effective caller: a person’s console token', () => {
     });
     expect(callerIsOperator(req)).toBe(true);
     expect(callerIsOwner(req)).toBe(true);
-    expect(allowed(req)).toEqual(['everyone', 'person', 'admin', 'owner']);
+    expect(allowed(req)).toEqual([
+      'everyone',
+      'person',
+      'manage-agent',
+      'admin',
+      'owner',
+    ]);
   });
 
   it('Admin: operator, not owner', async () => {
@@ -99,7 +105,12 @@ describe('effective caller: a person’s console token', () => {
 
     expect(callerIsOperator(req)).toBe(true);
     expect(callerIsOwner(req)).toBe(false);
-    expect(allowed(req)).toEqual(['everyone', 'person', 'admin']);
+    expect(allowed(req)).toEqual([
+      'everyone',
+      'person',
+      'manage-agent',
+      'admin',
+    ]);
     expect(() => requireOperator(req)).not.toThrow();
     expect(() => requireOwner(req)).toThrow(
       new ForbiddenException(OPERATOR_REFUSAL),
@@ -220,13 +231,26 @@ describe('effective caller: the Ranch admin agent (token carries Owner)', () => 
     expect(callerIsOperator(req)).toBe(true);
     expect(callerIsOwner(req)).toBe(true);
     expect(callerPerson(req)).toBeNull();
-    expect(allowed(req)).toEqual(['everyone', 'agent', 'admin', 'owner']);
+    expect(allowed(req)).toEqual([
+      'everyone',
+      'agent',
+      'manage-agent',
+      'admin',
+      'owner',
+    ]);
     expect(() => requireOwner(req)).not.toThrow();
   });
 
   it.each([
-    [UserRoleTypes.Owner, ['everyone', 'agent', 'person', 'admin', 'owner']],
-    [UserRoleTypes.Admin, ['everyone', 'agent', 'person', 'admin']],
+    [
+      UserRoleTypes.Owner,
+      ['everyone', 'agent', 'person', 'manage-agent', 'admin', 'owner'],
+    ],
+    [
+      UserRoleTypes.Admin,
+      ['everyone', 'agent', 'person', 'manage-agent', 'admin'],
+    ],
+    // A User who created no agent: nothing of an agent's management.
     [UserRoleTypes.User, ['everyone', 'agent', 'person']],
   ])(
     'a valid person who is %s: that person, role read from the database',

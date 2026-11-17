@@ -512,3 +512,170 @@ describe('UserTool — removing', () => {
     expect(users.delete).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Who may change which account (CLEAN-232), the same rule as
+ * `PUT /users/:id`: the Owner anyone; an Admin the Users and their own name,
+ * email and password; never the Owner's account or another Admin's. A new
+ * password on either of those would be that person's role.
+ */
+describe('UserTool — who may change which account', () => {
+  const bob = {
+    ...jane,
+    id: 'user-bob',
+    name: 'Bob Admin',
+    email: 'bob@ranch.test',
+    role: UserRoleTypes.Admin,
+    status: 'active' as const,
+  };
+  const ada = {
+    ...bob,
+    id: 'user-ada',
+    name: 'Ada Admin',
+    email: 'ada@t.test',
+  };
+
+  /** The Ranch admin agent answering `ada`, an Admin. */
+  const asAda = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin, ada.id);
+  const asTheOwner = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Owner, owner.id);
+
+  function people() {
+    const h = harness();
+    const rows = [owner, jane, bob, ada];
+    h.users.findById.mockImplementation(
+      async (id: string) => rows.find((u) => u.id === id) ?? null,
+    );
+    return h;
+  }
+
+  it('an Admin changes a User', async () => {
+    const { tool, users } = people();
+    const result = await tool.updateUser(
+      { userId: jane.id, name: 'Jane D.', status: 'disabled' },
+      null,
+      asAda(),
+    );
+    expect(result.isError).toBeUndefined();
+    expect(users.update).toHaveBeenCalledWith(jane.id, {
+      name: 'Jane D.',
+      status: 'disabled',
+    });
+  });
+
+  it('an Admin does not change the Owner: not the password, not the email, not the name', async () => {
+    const { tool, users } = people();
+    for (const patch of [
+      { password: SENTINEL },
+      { email: 'taken@over.test' },
+      { name: 'Somebody Else' },
+    ]) {
+      const result = await tool.updateUser(
+        { userId: owner.id, ...patch },
+        null,
+        asAda(),
+      );
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toBe(
+        'Only the Owner can change the Owner account. Ask the Owner to do it ' +
+          'from their own session.',
+      );
+      expect(textOf(result)).not.toContain(SENTINEL);
+    }
+    expect(users.update).not.toHaveBeenCalled();
+  });
+
+  it('an Admin does not change another Admin', async () => {
+    const { tool, users } = people();
+    const result = await tool.updateUser(
+      { userId: bob.id, password: SENTINEL },
+      null,
+      asAda(),
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(
+      "An Admin cannot change another Admin's account. Ask the Owner to do it.",
+    );
+    expect(users.update).not.toHaveBeenCalled();
+  });
+
+  it('an Admin changes their own name, email and password', async () => {
+    const { tool, users } = people();
+    const result = await tool.updateUser(
+      {
+        userId: ada.id,
+        name: 'Ada L.',
+        email: 'ada@new.test',
+        password: SENTINEL,
+      },
+      null,
+      asAda(),
+    );
+    expect(result.isError).toBeUndefined();
+    expect(users.update).toHaveBeenCalledWith(ada.id, {
+      name: 'Ada L.',
+      email: 'ada@new.test',
+      password: SENTINEL,
+    });
+    expect(textOf(result)).not.toContain(SENTINEL);
+  });
+
+  it('but not their own status', async () => {
+    const { tool, users } = people();
+    const result = await tool.updateUser(
+      { userId: ada.id, status: 'disabled' },
+      null,
+      asAda(),
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain(
+      'You cannot change the status of your own account.',
+    );
+    expect(users.update).not.toHaveBeenCalled();
+  });
+
+  it('the Owner changes anyone, another Admin included', async () => {
+    const { tool, users } = people();
+    await tool.updateUser(
+      { userId: bob.id, password: SENTINEL },
+      null,
+      asTheOwner(),
+    );
+    await tool.updateUser(
+      { userId: jane.id, name: 'J' + 'ane' },
+      null,
+      asTheOwner(),
+    );
+    await tool.updateUser(
+      { userId: owner.id, name: 'The Boss' },
+      null,
+      asTheOwner(),
+    );
+    expect(users.update).toHaveBeenCalledTimes(3);
+  });
+
+  it('the Ranch admin agent acting for itself is trusted, as before', async () => {
+    const { tool, users } = people();
+    await tool.updateUser({ userId: bob.id, name: 'Robert' }, null, operator());
+    expect(users.update).toHaveBeenCalledWith(bob.id, { name: 'Robert' });
+  });
+
+  it('an Admin may still create an Admin, as POST /users allows', async () => {
+    const { tool, users } = people();
+    const result = await tool.createUser(
+      {
+        name: 'New Admin',
+        email: 'new@ranch.test',
+        password: SENTINEL,
+        role: UserRoleTypes.Admin,
+      },
+      null,
+      asAda(),
+    );
+    expect(result.isError).toBeUndefined();
+    expect(users.create).toHaveBeenCalledWith(
+      expect.objectContaining({ role: UserRoleTypes.Admin }),
+    );
+  });
+});

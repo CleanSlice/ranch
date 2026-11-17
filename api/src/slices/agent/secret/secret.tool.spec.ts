@@ -1,10 +1,10 @@
-import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
 import { SecretTool } from './secret.tool';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import type { ISecretGateway } from './domain';
 import { UserRoleTypes } from '#/user/user/domain';
-import { asTrustedAgent } from '#/mcp/testing';
+import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 /**
  * These tools put credentials within a model's reach. The property worth
@@ -59,6 +59,7 @@ function harness(): Harness {
   const tool = new SecretTool(
     agents as unknown as IAgentGateway,
     secrets as unknown as ISecretGateway,
+    permissionOver(agents),
   );
   return { tool, agents, secrets };
 }
@@ -78,22 +79,75 @@ describe('SecretTool — who may use it', () => {
   });
 
   it('refuses a call from a plain agent even by name', async () => {
-    const { tool, secrets } = harness();
-    await expect(
-      tool.setAgentSecret(
-        { agentId: 'agent-a', key: 'k', value: SENTINEL },
-        null,
-        plainAgent(),
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    // Answered like an agent that does not exist (CLEAN-232): no 403 that
+    // would confirm the agent is there.
+    const { tool, secrets, agents } = harness();
+    const result = await tool.setAgentSecret(
+      { agentId: 'agent-a', key: 'k', value: SENTINEL },
+      null,
+      plainAgent(),
+    );
+    expect(textOf(result)).toContain('Agent agent-a not found');
+    expect(textOf(result)).not.toContain(SENTINEL);
     expect(secrets.set).not.toHaveBeenCalled();
+    expect(agents.findById).not.toHaveBeenCalled();
   });
 
   it('refuses a caller with no roles at all', async () => {
-    const { tool } = harness();
-    await expect(
-      tool.listAgentSecrets({ agentId: 'agent-a' }, null, {} as Request),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    const { tool, secrets } = harness();
+    const result = await tool.listAgentSecrets(
+      { agentId: 'agent-a' },
+      null,
+      {} as Request,
+    );
+    expect(textOf(result)).toContain('Agent agent-a not found');
+    expect(secrets.list).not.toHaveBeenCalled();
+  });
+
+  it('an Admin reads and writes no secret of the Ranch admin agent; the Owner does', async () => {
+    const { tool, secrets, agents } = harness();
+    agents.findById.mockResolvedValue({
+      ...agentRow,
+      id: 'agent-ranch',
+      isAdmin: true,
+      createdById: null,
+    });
+    const through = (role: UserRoleTypes) =>
+      asPerson(request([UserRoleTypes.Owner]), role);
+    const admin = () => through(UserRoleTypes.Admin);
+
+    const answers = [
+      await tool.listAgentSecrets({ agentId: 'agent-ranch' }, null, admin()),
+      await tool.setAgentSecret(
+        { agentId: 'agent-ranch', key: 'k', value: SENTINEL },
+        null,
+        admin(),
+      ),
+      await tool.deleteAgentSecret(
+        { agentId: 'agent-ranch', key: 'k', confirm: true },
+        null,
+        admin(),
+      ),
+      await tool.replaceAgentSecrets(
+        { agentId: 'agent-ranch', store: { k: SENTINEL }, confirm: true },
+        null,
+        admin(),
+      ),
+    ];
+    for (const answer of answers) {
+      expect(textOf(answer)).toContain('Agent agent-ranch not found');
+    }
+    expect(secrets.list).not.toHaveBeenCalled();
+    expect(secrets.set).not.toHaveBeenCalled();
+    expect(secrets.delete).not.toHaveBeenCalled();
+    expect(secrets.replaceAll).not.toHaveBeenCalled();
+
+    await tool.listAgentSecrets(
+      { agentId: 'agent-ranch' },
+      null,
+      through(UserRoleTypes.Owner),
+    );
+    expect(secrets.list).toHaveBeenCalledWith('agent-ranch');
   });
 });
 

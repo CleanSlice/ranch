@@ -348,6 +348,27 @@ export const SetTemplateToolsDtoSchema = {
   required: ["toolNames"],
 } as const;
 
+export const AgentCreatorDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description: "User id of the account that created the agent.",
+    },
+    name: {
+      type: "string",
+      nullable: true,
+      description: "Null when the account has been removed.",
+    },
+    email: {
+      type: "string",
+      nullable: true,
+      description: "Null when the account has been removed.",
+    },
+  },
+  required: ["id", "name", "email"],
+} as const;
+
 export const AgentDtoSchema = {
   type: "object",
   properties: {
@@ -454,6 +475,16 @@ export const AgentDtoSchema = {
     isAdmin: {
       type: "boolean",
     },
+    createdBy: {
+      nullable: true,
+      description:
+        "Who created the agent (CLEAN-232). Resolved for an Owner or Admin reader only: `{ id, name, email }`, with null `name` and `email` when that account has since been removed. Null when nobody is recorded (the agent is older than the field, or a trusted party created it) and always null for a User reader and on the public routes.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentCreatorDto",
+        },
+      ],
+    },
     createdAt: {
       format: "date-time",
       type: "string",
@@ -483,6 +514,7 @@ export const AgentDtoSchema = {
     "allowedOrigins",
     "knowledgeIds",
     "isAdmin",
+    "createdBy",
     "createdAt",
     "updatedAt",
   ],
@@ -3551,6 +3583,77 @@ export const UpdateSkillDtoSchema = {
   },
 } as const;
 
+export const AssignableUserRoleTypesSchema = {
+  type: "string",
+  enum: ["Admin", "User"],
+} as const;
+
+export const CreateUserDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "Jane Doe",
+    },
+    email: {
+      type: "string",
+      example: "jane@example.com",
+    },
+    password: {
+      type: "string",
+      example: "strongPassword1",
+      minLength: 8,
+    },
+    role: {
+      example: "User",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssignableUserRoleTypes",
+        },
+      ],
+    },
+  },
+  required: ["name", "email", "password"],
+} as const;
+
+export const UpdateUserDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "Jane Doe",
+    },
+    email: {
+      type: "string",
+      example: "jane@example.com",
+    },
+    password: {
+      type: "string",
+      example: "strongPassword1",
+      minLength: 8,
+    },
+    status: {
+      type: "string",
+      enum: ["active", "invited", "disabled"],
+    },
+  },
+} as const;
+
+export const UpdateUserRoleDtoSchema = {
+  type: "object",
+  properties: {
+    role: {
+      example: "User",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssignableUserRoleTypes",
+        },
+      ],
+    },
+  },
+  required: ["role"],
+} as const;
+
 export const ChatSessionDtoSchema = {
   type: "object",
   properties: {
@@ -3889,77 +3992,6 @@ export const SetAgentChannelsDtoSchema = {
     },
   },
   required: ["channels"],
-} as const;
-
-export const AssignableUserRoleTypesSchema = {
-  type: "string",
-  enum: ["Admin", "User"],
-} as const;
-
-export const CreateUserDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "Jane Doe",
-    },
-    email: {
-      type: "string",
-      example: "jane@example.com",
-    },
-    password: {
-      type: "string",
-      example: "strongPassword1",
-      minLength: 8,
-    },
-    role: {
-      example: "User",
-      allOf: [
-        {
-          $ref: "#/components/schemas/AssignableUserRoleTypes",
-        },
-      ],
-    },
-  },
-  required: ["name", "email", "password"],
-} as const;
-
-export const UpdateUserDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "Jane Doe",
-    },
-    email: {
-      type: "string",
-      example: "jane@example.com",
-    },
-    password: {
-      type: "string",
-      example: "strongPassword1",
-      minLength: 8,
-    },
-    status: {
-      type: "string",
-      enum: ["active", "invited", "disabled"],
-    },
-  },
-} as const;
-
-export const UpdateUserRoleDtoSchema = {
-  type: "object",
-  properties: {
-    role: {
-      example: "User",
-      allOf: [
-        {
-          $ref: "#/components/schemas/AssignableUserRoleTypes",
-        },
-      ],
-    },
-  },
-  required: ["role"],
 } as const;
 
 export const SaveTemplateFileDtoSchema = {

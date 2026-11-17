@@ -41,6 +41,7 @@ export function createSseController(
   globalApiPrefix: string,
   guards: Type<CanActivate>[] = [],
   decorators: ClassDecorator[] = [],
+  diagnosticDecorators: MethodDecorator[] = [],
 ) {
   @Controller({
     version: VERSION_NEUTRAL,
@@ -362,6 +363,7 @@ export function createSseController(
      * Diagnostic endpoint for checking active sessions
      */
     @Get('teams/:teamId/sessions/debug')
+    @applyDecorators(...diagnosticDecorators)
     async debugSessions(@Param('teamId') teamId: string, @Res() res: Response) {
       try {
         // Get local sessions

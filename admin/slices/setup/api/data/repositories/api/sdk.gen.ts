@@ -210,6 +210,12 @@ import type {
   SkillControllerFindByIdData,
   SkillControllerUpdateData,
   FindDependentAgentsData,
+  UserControllerFindAllData,
+  UserControllerCreateData,
+  UserControllerRemoveData,
+  UserControllerFindByIdData,
+  UserControllerUpdateData,
+  UserControllerUpdateRoleData,
   GetChatsData,
   GetChatsResponse,
   GetChatData,
@@ -246,12 +252,6 @@ import type {
   GetAgentChannelsResponse,
   SetAgentChannelsData,
   SetAgentChannelsResponse,
-  UserControllerFindAllData,
-  UserControllerCreateData,
-  UserControllerRemoveData,
-  UserControllerFindByIdData,
-  UserControllerUpdateData,
-  UserControllerUpdateRoleData,
   TemplateFileControllerListData,
   TemplateFileControllerReadData,
   TemplateFileControllerSaveData,
@@ -1090,7 +1090,7 @@ export class TemplatesService {
 
 export class AgentsService {
   /**
-   * List all agents, with their full configuration. Requires a console token; the login-free landing page reads GET /agents/public instead (CLEAN-177).
+   * List all agents, with their full configuration. Any signed-in account; `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).
    */
   public static agentControllerFindAll<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerFindAllData, ThrowOnError>,
@@ -1142,7 +1142,7 @@ export class AgentsService {
   }
 
   /**
-   * Snapshot of all agents joined with live pod status. Requires a console token (CLEAN-177); the SSE stream below stays open because EventSource cannot send one.
+   * Snapshot of all agents joined with live pod status. Any signed-in account (CLEAN-177); the SSE stream below stays open because EventSource cannot send a token.
    */
   public static agentControllerStatus<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerStatusData, ThrowOnError>,
@@ -1206,7 +1206,7 @@ export class AgentsService {
   }
 
   /**
-   * Get agent by ID, with its full configuration and allowed origins. Requires a console token (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this.
+   * Get agent by ID, with its full configuration and allowed origins. Any signed-in account (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this. `createdBy` is resolved for an Owner or Admin only.
    */
   public static agentControllerFindById<ThrowOnError extends boolean = false>(
     options: Options<AgentControllerFindByIdData, ThrowOnError>,
@@ -1222,7 +1222,7 @@ export class AgentsService {
   }
 
   /**
-   * Update agent configuration. Admin or Owner.
+   * Update agent configuration. Admin or Owner; the Ranch admin agent is the Owner’s alone and answers 404 to anybody else.
    */
   public static agentControllerUpdate<ThrowOnError extends boolean = false>(
     options: Options<AgentControllerUpdateData, ThrowOnError>,
@@ -1322,7 +1322,7 @@ export class AgentsService {
   }
 
   /**
-   * Demote this agent from Ranch admin. Redeploys without RANCH_ADMIN.
+   * Demote this agent from Ranch admin. Owner only. Redeploys without RANCH_ADMIN.
    */
   public static agentControllerDemoteAdmin<
     ThrowOnError extends boolean = false,
@@ -1338,7 +1338,7 @@ export class AgentsService {
   }
 
   /**
-   * Mark this agent as the Ranch admin. Clears the flag from any other agent (single-admin invariant) and redeploys with RANCH_ADMIN=true + a service token. Any previous admin is redeployed without the flag.
+   * Mark this agent as the Ranch admin. Owner only: the Ranch admin agent holds Owner power, so who it is is the Owner’s decision. Clears the flag from any other agent (single-admin invariant) and redeploys with RANCH_ADMIN=true + a service token. Any previous admin is redeployed without the flag.
    */
   public static agentControllerPromoteAdmin<
     ThrowOnError extends boolean = false,
@@ -2988,6 +2988,116 @@ export class SkillsService {
   }
 }
 
+export class UsersService {
+  /**
+   * List all users
+   */
+  public static userControllerFindAll<ThrowOnError extends boolean = false>(
+    options?: Options<UserControllerFindAllData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users",
+      ...options,
+    });
+  }
+
+  /**
+   * Create a user (admin sets the password)
+   */
+  public static userControllerCreate<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerCreateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Remove user. Owner only.
+   */
+  public static userControllerRemove<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerRemoveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Get user by ID
+   */
+  public static userControllerFindById<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerFindByIdData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Update user (name, email, password, status). Use /role to change the role. The Owner may change any account; an Admin may change accounts with the User role, and the name, email and password of their own, never the Owner or another Admin (403).
+   */
+  public static userControllerUpdate<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerUpdateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Set the user's role. Owner only.
+   */
+  public static userControllerUpdateRole<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerUpdateRoleData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}/role",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
 export class ChatsService {
   /**
    * List chat sessions (index). Filter by agent, channel, search; paginated.
@@ -3274,116 +3384,6 @@ export class ChatsService {
     >({
       url: "/me/chats/{id}/export",
       ...options,
-    });
-  }
-}
-
-export class UsersService {
-  /**
-   * List all users
-   */
-  public static userControllerFindAll<ThrowOnError extends boolean = false>(
-    options?: Options<UserControllerFindAllData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users",
-      ...options,
-    });
-  }
-
-  /**
-   * Create a user (admin sets the password)
-   */
-  public static userControllerCreate<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerCreateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Remove user. Owner only.
-   */
-  public static userControllerRemove<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerRemoveData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Get user by ID
-   */
-  public static userControllerFindById<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerFindByIdData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Update user (name, email, password, status). Use /role to change the role.
-   */
-  public static userControllerUpdate<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerUpdateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users/{id}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Set the user's role. Owner only.
-   */
-  public static userControllerUpdateRole<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerUpdateRoleData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users/{id}/role",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
     });
   }
 }

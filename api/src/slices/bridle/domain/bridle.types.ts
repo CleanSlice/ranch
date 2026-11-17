@@ -262,6 +262,18 @@ export interface IBridleSendOptions {
    * never invents one: absent means the turn is a guest's.
    */
   acting?: IBridleActing;
+  /**
+   * The person sending, when the caller verified them itself and has no
+   * socket of its own to carry them: the HTTP message routes (CLEAN-232).
+   * Stated, it is what the agent is told, and `null` states "nobody": the
+   * message then carries no `user` at all. Absent, the hub falls back to the
+   * sending socket's identity, as a websocket message always has.
+   *
+   * Without it an HTTP message took `user` from whichever socket happened to
+   * be first on the channel. On the shared `admin` channel that is another
+   * administrator, so `user` named one person and `acting` another.
+   */
+  user?: IBridleUserIdentity | null;
 }
 
 /**

@@ -21,7 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Request, Response } from 'express';
-import { JwtAuthGuard } from '#/user/auth/guards';
+import { JwtAuthGuard, Roles } from '#/user/auth/guards';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { UserRoleTypes } from '#/user/user/domain';
 import {
@@ -71,6 +71,9 @@ const USER_TYPES: TranscriptMessage['role'][] = [
 @ApiBearerAuth()
 @Controller('me/chats')
 @UseGuards(JwtAuthGuard)
+// Stated, not left to a default: a route with no @Roles asks for Admin
+// (CLEAN-232), and these are every signed-in account's own conversations.
+@Roles(UserRoleTypes.User)
 export class MyChatController {
   private readonly logger = new Logger(MyChatController.name);
 

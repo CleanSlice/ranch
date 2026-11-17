@@ -54,6 +54,13 @@ model Agent {
   // Installation-wide pin (CLEAN-216): both consoles keep a pinned agent at
   // the top of every agent list. Decides nothing for the pod or for access.
   pinned          Boolean        @default(false)
+  // The console account that created this agent (CLEAN-232): written once at
+  // creation, never updated. Null for an agent created by a trusted party
+  // (the Ranch admin agent on its own schedule) and for every agent that
+  // existed before the column. A bare id on purpose, no relation: the agent
+  // outlives the account, and "Removed account" is told from a user row that
+  // is no longer there. Read by AgentPermissionService.canManage.
+  createdById     String?
   // When the running pod last received this agent's peer list over MCP, and
   // the hash of the peer row ids it received. armed = stored hash equals the
   // hash of the current peer set; recorded by AskAgentTool (CLEAN-95).

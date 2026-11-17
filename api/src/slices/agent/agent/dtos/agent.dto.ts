@@ -1,5 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+/** The account that created an agent, as an Owner or Admin reads it. */
+export class AgentCreatorDto {
+  @ApiProperty({
+    description: 'User id of the account that created the agent.',
+  })
+  id: string;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'Null when the account has been removed.',
+  })
+  name: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'Null when the account has been removed.',
+  })
+  email: string | null;
+}
+
 export class AgentDto {
   @ApiProperty()
   id: string;
@@ -116,6 +138,14 @@ export class AgentDto {
 
   @ApiProperty()
   isAdmin: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    type: AgentCreatorDto,
+    description:
+      'Who created the agent (CLEAN-232). Resolved for an Owner or Admin reader only: `{ id, name, email }`, with null `name` and `email` when that account has since been removed. Null when nobody is recorded (the agent is older than the field, or a trusted party created it) and always null for a User reader and on the public routes.',
+  })
+  createdBy: AgentCreatorDto | null;
 
   @ApiProperty()
   createdAt: Date;

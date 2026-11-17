@@ -20,6 +20,7 @@ import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { ConfigModule as KnowledgeConfigModule } from '#/reins/config/config.module';
 import { SkillModule } from '#/skill/skill.module';
 import { SettingModule } from '#/setting/setting.module';
+import { UserModule } from '#/user/user/user.module';
 
 @Module({
   imports: [
@@ -37,6 +38,8 @@ import { SettingModule } from '#/setting/setting.module';
     forwardRef(() => KnowledgeModule),
     KnowledgeConfigModule,
     SkillModule,
+    // Who created an agent is shown to an Owner or Admin by name (CLEAN-232).
+    UserModule,
   ],
   controllers: [AgentController],
   providers: [
@@ -51,6 +54,8 @@ import { SettingModule } from '#/setting/setting.module';
       useClass: AgentGateway,
     },
   ],
+  // AgentPermissionService (who may manage one agent, CLEAN-232) lives in
+  // AgentPermissionModule, which is global.
   exports: [IAgentGateway, AgentDeployService, AgentStatusChanges],
 })
 export class AgentModule {}

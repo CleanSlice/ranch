@@ -21,11 +21,18 @@ import {
   AUDIENCE_META_KEY,
   type IActingPartyResolver,
 } from '../../interfaces/acting-party.interface';
+import {
+  AGENT_MANAGER_RESOLVER,
+  type IAgentManagerResolver,
+} from '../../interfaces/agent-manager.interface';
 import { ToolCatalogService } from '../tool-catalog.service';
 import {
   audienceAllows,
   callerAgentId,
+  callerIsOperator,
   callerParty,
+  callerPerson,
+  setCallerManagesAgents,
   withCallerParty,
 } from '../../tooling';
 import type {
@@ -101,7 +108,42 @@ export class McpToolsHandler extends McpHandlerBase {
     }
     // Without an answer, fall back to what the bearer alone proves: a person
     // for a console token, a guest for an agent's.
-    return withCallerParty(httpRequest, party ?? callerParty(httpRequest));
+    const view = withCallerParty(
+      httpRequest,
+      party ?? callerParty(httpRequest),
+    );
+    await this.noteManagedAgents(view);
+    return view;
+  }
+
+  /**
+   * The `manage-agent` tools are for whoever manages at least one agent. For
+   * an operator that is always so and nothing is asked. For a person below
+   * Admin it is a fact about the agents they created, which only the agent
+   * slice knows: ask once per call and note the answer on the call's view,
+   * where `audienceAllows` reads it. No resolver, or one that throws, leaves
+   * the answer at no.
+   */
+  private async noteManagedAgents(callRequest: Request): Promise<void> {
+    const person = callerPerson(callRequest);
+    if (!person || callerIsOperator(callRequest)) return;
+    let manages = false;
+    try {
+      const resolver = this.moduleRef.get<IAgentManagerResolver>(
+        AGENT_MANAGER_RESOLVER,
+        { strict: false },
+      );
+      manages =
+        typeof resolver?.managesAny === 'function' &&
+        (await resolver.managesAny(person)) === true;
+    } catch (e) {
+      this.logger.warn(
+        `could not tell whether user ${person.userId} manages an agent: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+    setCallerManagesAgents(callRequest, manages);
   }
 
   /**

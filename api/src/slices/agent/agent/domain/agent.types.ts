@@ -36,6 +36,13 @@ export interface IAgentData {
   isAdmin: boolean;
   /** Installation-wide: both consoles list a pinned agent first (CLEAN-216). */
   pinned: boolean;
+  /**
+   * The console account that created the agent (CLEAN-232). Written once at
+   * creation; null for a trusted party's agent and for agents older than the
+   * column. A bare id: the account may be gone. Never sent to a client as is;
+   * the controller resolves it into `createdBy` for Owner and Admin readers.
+   */
+  createdById: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +61,12 @@ export interface ICreateAgentData {
   isPublic?: boolean;
   allowedOrigins?: string[];
   knowledgeIds?: string[];
+  /**
+   * Who is creating the agent: a console person's user id, never an
+   * `agent:` subject. Null or absent for a trusted party. There is no
+   * counterpart on `IUpdateAgentData`: the creator is never rewritten.
+   */
+  createdById?: string | null;
 }
 
 export interface IUpdateAgentData {

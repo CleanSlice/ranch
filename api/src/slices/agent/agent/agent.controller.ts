@@ -34,11 +34,13 @@ import {
 import { limitRuleToHttp } from '#/agent/limit/agentLimit.controller';
 import { Observable, map } from 'rxjs';
 import { IAgentGateway } from './domain';
-import { AgentStatusTypes } from './domain/agent.types';
+import { AgentStatusTypes, IAgentData } from './domain/agent.types';
+import { ManagesAgent } from './guards';
 import { AgentStatusService } from './domain/agentStatus.service';
 import { AgentDeployService } from './domain/agentDeploy.service';
 import { detectMcpConfigDrift } from './domain/mcpConfigDrift';
 import {
+  AgentCreatorDto,
   AgentDto,
   AgentMcpDto,
   AgentMcpStatusDto,
@@ -55,8 +57,15 @@ import { IPodGateway } from '#/agent/pod/domain';
 import { IFileGateway } from '#/agent/file/domain';
 import { IBridleGateway } from '#/bridle/domain';
 import { AgentMcpResolver } from '#/mcpServer/domain/agentMcpResolver.service';
-import { JwtAuthGuard, Public, Roles, RolesGuard } from '#/user/auth/guards';
-import { UserRoleTypes } from '#/user/user/domain';
+import {
+  heldRoles,
+  JwtAuthGuard,
+  Public,
+  Roles,
+  RolesGuard,
+  rolesAdmit,
+} from '#/user/auth/guards';
+import { IUserGateway, UserRoleTypes } from '#/user/user/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 
 // Workflow ends as soon as the pod hits phase=Running, but pod=Running does
@@ -77,6 +86,42 @@ function subOf(req: Request): string | null {
   return typeof sub === 'string' && sub ? sub : null;
 }
 
+/**
+ * The console person creating an agent, for `Agent.createdById`: the `sub` of
+ * a person's own token. Never an `agent:` subject; an agent has no account
+ * and creates through the `create_agent` tool, for the party it acts for.
+ */
+function creatorOf(req: Request): string | null {
+  const sub = subOf(req);
+  return sub && !sub.startsWith('agent:') ? sub : null;
+}
+
+/** Owner and Admin are the readers an agent's creator is resolved for. */
+function readsCreator(req: Request | undefined): boolean {
+  return rolesAdmit(
+    [UserRoleTypes.Admin],
+    heldRoles(
+      (req as (Request & { user?: IAuthTokenPayload }) | undefined)?.user,
+    ),
+  );
+}
+
+/**
+ * An agent as a response carries it: without the bare `createdById`, which
+ * stays inside the API. `createdBy` is added by `AgentController.present`
+ * for the readers it is resolved for and is null for everybody else.
+ */
+function withoutCreatorId<T extends { createdById?: string | null }>(
+  agent: T,
+): Omit<T, 'createdById'> {
+  const { createdById: _createdById, ...rest } = agent;
+  return rest;
+}
+
+const ADMIN_AGENT_IS_THE_OWNERS =
+  'Only the Owner can make an agent the Ranch admin agent. Create it ' +
+  'without that, then ask the Owner to promote it.';
+
 @ApiTags('agents')
 @ApiBearerAuth()
 @Controller('agents')
@@ -95,10 +140,56 @@ export class AgentController {
     private mcpResolver: AgentMcpResolver,
     @Inject(forwardRef(() => AgentLimitService))
     private agentLimits: AgentLimitService,
+    private userGateway: IUserGateway,
   ) {}
 
   private deploy(agentId: string): Promise<void> {
     return this.agentDeployService.deploy(agentId);
+  }
+
+  /**
+   * Agents as this reader gets them (CLEAN-232). An Owner or Admin sees who
+   * created each one: `{ id, name, email }`, with null name and email when
+   * the account has been removed, and null when nobody is recorded. A User
+   * gets null and nothing to resolve it from: the bare id never leaves.
+   */
+  private async present(
+    agents: IAgentData[],
+    req: Request | undefined,
+  ): Promise<AgentDto[]> {
+    const creators = new Map<string, AgentCreatorDto>();
+    if (readsCreator(req)) {
+      const ids = [
+        ...new Set(
+          agents
+            .map((a) => a.createdById)
+            .filter((id): id is string => typeof id === 'string' && id !== ''),
+        ),
+      ];
+      await Promise.all(
+        ids.map(async (id) => {
+          const user = await this.userGateway.findById(id).catch(() => null);
+          creators.set(id, {
+            id,
+            name: user?.name ?? null,
+            email: user?.email ?? null,
+          });
+        }),
+      );
+    }
+    return agents.map((agent) => ({
+      ...withoutCreatorId(agent),
+      createdBy: agent.createdById
+        ? (creators.get(agent.createdById) ?? null)
+        : null,
+    }));
+  }
+
+  private async presentOne(
+    agent: IAgentData | null,
+    req: Request | undefined,
+  ): Promise<AgentDto | null> {
+    return agent ? (await this.present([agent], req))[0] : null;
   }
 
   private async syncStatus(agentId: string) {
@@ -148,13 +239,14 @@ export class AgentController {
   }
 
   @Get()
+  @Roles(UserRoleTypes.User)
   @ApiOperation({
     summary:
-      'List all agents, with their full configuration. Requires a console token; the login-free landing page reads GET /agents/public instead (CLEAN-177).',
+      'List all agents, with their full configuration. Any signed-in account; `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).',
   })
   @ApiOkResponse({ type: AgentDto, isArray: true })
-  findAll() {
-    return this.agentGateway.findAll();
+  async findAll(@Req() req?: Request) {
+    return this.present(await this.agentGateway.findAll(), req);
   }
 
   @Get('public')
@@ -164,18 +256,22 @@ export class AgentController {
       'List agents flagged as public. Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.',
   })
   @ApiOkResponse({ type: AgentDto, isArray: true })
-  findPublic() {
-    return this.agentGateway.findPublic();
+  async findPublic() {
+    // Anonymous readers: no creator, resolved or bare.
+    return this.present(await this.agentGateway.findPublic(), undefined);
   }
 
   @Get('status')
+  @Roles(UserRoleTypes.User)
   @ApiOperation({
     summary:
-      'Snapshot of all agents joined with live pod status. Requires a console token (CLEAN-177); the SSE stream below stays open because EventSource cannot send one.',
+      'Snapshot of all agents joined with live pod status. Any signed-in account (CLEAN-177); the SSE stream below stays open because EventSource cannot send a token.',
   })
   @ApiOkResponse({ type: AgentStatusDto, isArray: true })
-  status() {
-    return this.agentStatusService.snapshot();
+  async status() {
+    // Status carries no creator: the consoles read that from GET /agents.
+    const snapshot = await this.agentStatusService.snapshot();
+    return snapshot.map((s) => ({ ...s, agent: withoutCreatorId(s.agent) }));
   }
 
   @Sse('status/stream')
@@ -185,9 +281,32 @@ export class AgentController {
       'Live SSE stream of agent pod state changes. Public — EventSource cannot send Authorization headers.',
   })
   statusStream(): Observable<MessageEvent> {
-    return this.agentStatusService
-      .stream$()
-      .pipe(map((data) => ({ data }) as MessageEvent));
+    // Anonymous readers: the creator's id is taken off every agent on the way
+    // out, in the opening snapshot and in each event.
+    return this.agentStatusService.stream$().pipe(
+      map((message) => {
+        const data =
+          message.type === 'snapshot'
+            ? {
+                ...message,
+                payload: message.payload.map((s) => ({
+                  ...s,
+                  agent: withoutCreatorId(s.agent),
+                })),
+              }
+            : {
+                ...message,
+                payload: {
+                  ...message.payload,
+                  status: {
+                    ...message.payload.status,
+                    agent: withoutCreatorId(message.payload.status.agent),
+                  },
+                },
+              };
+        return { data } as MessageEvent;
+      }),
+    );
   }
 
   @Get('capacity')
@@ -208,15 +327,16 @@ export class AgentController {
   }
 
   @Get(':id')
+  @Roles(UserRoleTypes.User)
   @ApiOperation({
     summary:
-      'Get agent by ID, with its full configuration and allowed origins. Requires a console token (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this.',
+      'Get agent by ID, with its full configuration and allowed origins. Any signed-in account (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this. `createdBy` is resolved for an Owner or Admin only.',
   })
   @ApiOkResponse({ type: AgentDto })
-  async findById(@Param('id') id: string) {
+  async findById(@Param('id') id: string, @Req() req?: Request) {
     const agent = await this.syncStatus(id);
     if (!agent) throw new NotFoundException('Agent not found');
-    return agent;
+    return this.presentOne(agent, req);
   }
 
   @Get(':id/metrics')
@@ -325,19 +445,33 @@ export class AgentController {
     // taken out of the payload and saved next to it. Checked BEFORE anything
     // is created: an agent born public needs its limit in the same request.
     const { limits, ...data } = dto;
+    // Making an agent the Ranch admin agent hands it Owner power, so it is
+    // the Owner's decision here as on POST :id/promote-admin (CLEAN-232).
+    if (
+      dto.isAdmin === true &&
+      !rolesAdmit(
+        [UserRoleTypes.Owner],
+        heldRoles((req as Request & { user?: IAuthTokenPayload }).user),
+      )
+    ) {
+      throw new ForbiddenException(ADMIN_AGENT_IS_THE_OWNERS);
+    }
     const change = this.resolveLimits(
       { isPublic: false, limits: null },
       { isPublic: dto.isPublic, limits },
     );
     // Full sequence (seed → skills → promote-before-deploy → deploy) lives in
     // AgentDeployService.createAgent, shared with the rancher create_agent tool.
-    const agent = await this.agentDeployService.createAgent(data, {
-      isAdmin: dto.isAdmin,
-    });
+    // The creator is the console person behind this request; it is written
+    // once, here, and no update carries it.
+    const agent = await this.agentDeployService.createAgent(
+      { ...data, createdById: creatorOf(req) },
+      { isAdmin: dto.isAdmin },
+    );
     if (agent && change.limitsTouched) {
       await this.agentLimits.setLimits(agent.id, change.limits, subOf(req));
     }
-    return agent;
+    return this.presentOne(agent, req);
   }
 
   /** The visibility rule, as the 400 the console maps to a sentence by `code`. */
@@ -354,7 +488,11 @@ export class AgentController {
 
   @Put(':id')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
-  @ApiOperation({ summary: 'Update agent configuration. Admin or Owner.' })
+  @ManagesAgent('id')
+  @ApiOperation({
+    summary:
+      'Update agent configuration. Admin or Owner; the Ranch admin agent is the Owner’s alone and answers 404 to anybody else.',
+  })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateAgentDto,
@@ -388,7 +526,7 @@ export class AgentController {
     if (dto.debugEnabled !== undefined) {
       this.bridleHub.setDebug(id, dto.debugEnabled);
     }
-    return agent;
+    return this.presentOne(agent, req);
   }
 
   @Get('admin/current')
@@ -396,17 +534,17 @@ export class AgentController {
   @ApiOperation({
     summary: 'Get the agent currently flagged as Ranch admin (or null).',
   })
-  findAdmin() {
-    return this.agentGateway.findAdmin();
+  async findAdmin(@Req() req?: Request) {
+    return this.presentOne(await this.agentGateway.findAdmin(), req);
   }
 
   @Post(':id/promote-admin')
-  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @Roles(UserRoleTypes.Owner)
   @ApiOperation({
     summary:
-      'Mark this agent as the Ranch admin. Clears the flag from any other agent (single-admin invariant) and redeploys with RANCH_ADMIN=true + a service token. Any previous admin is redeployed without the flag.',
+      'Mark this agent as the Ranch admin. Owner only: the Ranch admin agent holds Owner power, so who it is is the Owner’s decision. Clears the flag from any other agent (single-admin invariant) and redeploys with RANCH_ADMIN=true + a service token. Any previous admin is redeployed without the flag.',
   })
-  async promoteAdmin(@Param('id') id: string) {
+  async promoteAdmin(@Param('id') id: string, @Req() req?: Request) {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
     const previous = await this.agentGateway.findAdmin();
@@ -420,58 +558,61 @@ export class AgentController {
     }
     await this.agentDeployService.detachAndCancelWorkflow(id, agent.workflowId);
     await this.deploy(id);
-    return this.agentGateway.findById(id);
+    return this.presentOne(await this.agentGateway.findById(id), req);
   }
 
   @Delete(':id/promote-admin')
-  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @Roles(UserRoleTypes.Owner)
   @ApiOperation({
     summary:
-      'Demote this agent from Ranch admin. Redeploys without RANCH_ADMIN.',
+      'Demote this agent from Ranch admin. Owner only. Redeploys without RANCH_ADMIN.',
   })
-  async demoteAdmin(@Param('id') id: string) {
+  async demoteAdmin(@Param('id') id: string, @Req() req?: Request) {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
     await this.agentGateway.setAdmin(id, false);
     await this.agentDeployService.detachAndCancelWorkflow(id, agent.workflowId);
     await this.deploy(id);
-    return this.agentGateway.findById(id);
+    return this.presentOne(await this.agentGateway.findById(id), req);
   }
 
   @Post(':id/restart')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ManagesAgent('id')
   @ApiOperation({ summary: 'Restart an agent. Admin or Owner.' })
-  async restart(@Param('id') id: string) {
+  async restart(@Param('id') id: string, @Req() req?: Request) {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
     await this.agentDeployService.restartAgent(id);
-    return this.agentGateway.findById(id);
+    return this.presentOne(await this.agentGateway.findById(id), req);
   }
 
   @Post(':id/stop')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ManagesAgent('id')
   @ApiOperation({
     summary:
       'Stop an agent without deleting it: cancels its workflow and deletes its pod to free cluster CPU/memory, then marks it `stopped`. Use this to free a slot so another agent can start. Bring it back with POST :id/start. Admin or Owner.',
   })
-  async stop(@Param('id') id: string) {
+  async stop(@Param('id') id: string, @Req() req?: Request) {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
     await this.agentDeployService.stopAgent(id);
-    return this.agentGateway.findById(id);
+    return this.presentOne(await this.agentGateway.findById(id), req);
   }
 
   @Post(':id/start')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ManagesAgent('id')
   @ApiOperation({
     summary:
       'Start a stopped agent: deploys a fresh pod and reattaches the runtime. Inverse of POST :id/stop. Admin or Owner.',
   })
-  async start(@Param('id') id: string) {
+  async start(@Param('id') id: string, @Req() req?: Request) {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
     await this.deploy(id);
-    return this.agentGateway.findById(id);
+    return this.presentOne(await this.agentGateway.findById(id), req);
   }
 
   @Post('restart-by-template/:templateId')
@@ -519,6 +660,7 @@ export class AgentController {
 
   @Delete(':id')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ManagesAgent('id')
   @ApiOperation({
     summary:
       'Stop and delete an agent. Pass `?wipeS3=true` to also drop every object under `agents/{id}/` — opt-in so accidental deletes don’t nuke files. Admin or Owner.',

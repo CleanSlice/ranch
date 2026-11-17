@@ -54,6 +54,15 @@ export class AgentGateway extends IAgentGateway {
     return records.map((r) => this.mapper.toEntity(r));
   }
 
+  async hasCreatedBy(userId: string): Promise<boolean> {
+    if (!userId) return false;
+    const record = await this.prisma.agent.findFirst({
+      where: { createdById: userId },
+      select: { id: true },
+    });
+    return record !== null;
+  }
+
   async create(data: ICreateAgentData): Promise<IAgentData> {
     const record = await this.prisma.agent.create({
       data: this.mapper.toCreate(data),

@@ -13,6 +13,10 @@ import {
   ACTING_PARTY_RESOLVER,
   type IActingPartyResolver,
 } from '../../interfaces/acting-party.interface';
+import {
+  AGENT_MANAGER_RESOLVER,
+  type IAgentManagerResolver,
+} from '../../interfaces/agent-manager.interface';
 import type { ToolAudienceTypes } from '../../decorators';
 import { callerParty } from '../../tooling';
 import type { ICallerParty } from '#/user/auth/domain/auth.types';
@@ -43,6 +47,8 @@ interface HarnessOptions {
   request?: object;
   /** Who a call is made for (CLEAN-232). None wired: an agent is a guest. */
   resolver?: IActingPartyResolver;
+  /** Whether a person manages any agent. None wired: nobody below Admin. */
+  manager?: IAgentManagerResolver;
 }
 
 /** `_meta["ranch/actor"]`, as a runtime states it. */
@@ -108,6 +114,9 @@ function makeHarness(tools: FakeTool[], options: HarnessOptions = {}) {
     get: jest.fn((token: unknown) => {
       if (token === TOOL_LISTING_RECORDER) return options.recorder;
       if (token === ACTING_PARTY_RESOLVER) return options.resolver;
+      if (token === AGENT_MANAGER_RESOLVER && options.manager) {
+        return options.manager;
+      }
       throw new Error('no such provider');
     }),
   } as unknown as ModuleRef;
@@ -589,6 +598,143 @@ describe('McpToolsHandler — who the call is made for (CLEAN-232)', () => {
     expect(namesOf(await harness.list(TRUSTED))).toEqual([]);
     expect((await harness.call('undeclared', asOwner)).isError).toBe(true);
     expect(run).not.toHaveBeenCalled();
+  });
+});
+
+describe('McpToolsHandler — the manage-agent audience (CLEAN-232)', () => {
+  const RANCH = {
+    user: { sub: 'agent:ranch', email: '', roles: [UserRoleTypes.Owner] },
+  };
+  const people: Record<string, ICallerParty> = {
+    creator: { kind: 'person', userId: 'user-c', role: UserRoleTypes.User },
+    other: { kind: 'person', userId: 'user-x', role: UserRoleTypes.User },
+    admin: { kind: 'person', userId: 'user-a', role: UserRoleTypes.Admin },
+  };
+  const as = (token: string): Actor => ({ kind: 'person', token });
+  /** Only `user-c` created an agent. */
+  const manager = () => ({
+    managesAny: jest.fn((person: { userId: string }) =>
+      Promise.resolve(person.userId === 'user-c'),
+    ),
+  });
+
+  const ranch = (
+    options: Pick<HarnessOptions, 'manager' | 'request'> = {},
+    run = jest.fn(async () => ok('done')),
+  ) => ({
+    run,
+    ...makeHarness(
+      [
+        { name: 'query_knowledge', instance: { run }, audience: 'everyone' },
+        { name: 'stop_agent', instance: { run }, audience: 'manage-agent' },
+        { name: 'create_user', instance: { run }, audience: 'admin' },
+      ],
+      { request: RANCH, resolver: partyResolver(people), ...options },
+    ),
+  });
+  const namesOf = (result: { tools: { name: string }[] }) =>
+    result.tools.map((t) => t.name);
+
+  it('lists the tools for a User who created an agent, and runs the call', async () => {
+    const { list, call, run } = ranch({ manager: manager() });
+
+    expect(namesOf(await list(as('creator')))).toEqual([
+      'query_knowledge',
+      'stop_agent',
+    ]);
+    const result = await call('stop_agent', as('creator'));
+    expect(result.isError).toBeUndefined();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('not for a User who created none: not listed, and refused by name', async () => {
+    const { list, call, run } = ranch({ manager: manager() });
+
+    expect(namesOf(await list(as('other')))).toEqual(['query_knowledge']);
+    const result = await call('stop_agent', as('other'));
+    expect(result.content[0].text).toBe(
+      'Tool "stop_agent" is not available to this caller.',
+    );
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('an Admin and a trusted agent have them without anyone being asked', async () => {
+    const asked = manager();
+    const { list } = ranch({ manager: asked });
+
+    expect(namesOf(await list(as('admin')))).toEqual([
+      'query_knowledge',
+      'stop_agent',
+      'create_user',
+    ]);
+    expect(namesOf(await list(TRUSTED))).toContain('stop_agent');
+    expect(asked.managesAny).not.toHaveBeenCalled();
+  });
+
+  it('a guest is never asked about, and gets none', async () => {
+    const asked = manager();
+    const { list } = ranch({ manager: asked });
+
+    expect(namesOf(await list())).toEqual(['query_knowledge']);
+    expect(asked.managesAny).not.toHaveBeenCalled();
+  });
+
+  it('asks once per call, about the person the call is made for', async () => {
+    const asked = manager();
+    const { list } = ranch({ manager: asked });
+
+    await list(as('creator'));
+    await list(as('other'));
+
+    expect(asked.managesAny.mock.calls.map(([p]) => p)).toEqual([
+      { userId: 'user-c', role: UserRoleTypes.User },
+      { userId: 'user-x', role: UserRoleTypes.User },
+    ]);
+  });
+
+  it('fails closed with nothing wired to answer', async () => {
+    const { list } = ranch();
+    expect(namesOf(await list(as('creator')))).toEqual(['query_knowledge']);
+  });
+
+  it('fails closed when the answer cannot be had', async () => {
+    const { list } = ranch({
+      manager: {
+        managesAny: jest.fn(() => Promise.reject(new Error('db is down'))),
+      },
+    });
+    expect(namesOf(await list(as('creator')))).toEqual(['query_knowledge']);
+  });
+
+  it('anything but a plain yes is a no', async () => {
+    const { list } = ranch({
+      manager: {
+        managesAny: jest.fn(() => Promise.resolve('yes' as never)),
+      },
+    });
+    expect(namesOf(await list(as('creator')))).toEqual(['query_knowledge']);
+  });
+
+  it('a creator on their own console token is shown them too', async () => {
+    const { list } = ranch({
+      manager: manager(),
+      request: {
+        user: { sub: 'user-c', email: '', roles: [UserRoleTypes.User] },
+      },
+    });
+    expect(namesOf(await list())).toEqual(['query_knowledge', 'stop_agent']);
+  });
+
+  it('one session, two people: the answer for one never reaches the other', async () => {
+    const { list } = ranch({ manager: manager() });
+
+    const [forCreator, forOther] = await Promise.all([
+      list(as('creator')),
+      list(as('other')),
+    ]);
+
+    expect(namesOf(forCreator)).toContain('stop_agent');
+    expect(namesOf(forOther)).not.toContain('stop_agent');
   });
 });
 

@@ -21,6 +21,7 @@ import {
 import { Request } from 'express';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
+import { ManagesAgent } from '#/agent/agent/guards';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { IAgentData, IAgentGateway } from '#/agent/agent/domain';
 import {
@@ -119,6 +120,7 @@ export class AgentLimitController {
 
   @Put('agents/:agentId/limits')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ManagesAgent('agentId')
   @ApiOperation({
     operationId: 'setAgentLimits',
     summary:

@@ -450,6 +450,62 @@ describe('the hub mints an acting token: the HTTP message routes', () => {
     });
   });
 
+  it('names the requester as the user, not whoever else has the shared channel open', async () => {
+    const h = makeHub();
+    // The Owner has the shared `admin` conversation open on a socket …
+    await h.connect({ token: h.consoleToken('user-o', UserRoleTypes.Owner) });
+    // … and an Admin sends into the same conversation over HTTP. The hub
+    // used to take `user` from the first socket on the channel, so the
+    // message said "from the Owner" beside the Admin's acting token.
+    const asAdmin = bearer(h.consoleToken('user-a', UserRoleTypes.Admin));
+
+    await h.controller.sendMessage(
+      AGENT,
+      asAdmin,
+      { text: 'one' } as never,
+      res,
+    );
+
+    const first = h.last();
+    expect(first.clientId).toBe('admin');
+    expect(first.user).toEqual({ id: 'user-a', email: 'user-a@example.test' });
+    expect(await h.resolve(first.acting?.token)).toMatchObject({
+      userId: 'user-a',
+      role: UserRoleTypes.Admin,
+    });
+
+    await h.controller.sendMessageSync(
+      AGENT,
+      asAdmin,
+      { text: 'two' } as never,
+      res,
+    );
+
+    const second = h.last();
+    expect(second.text).toBe('two');
+    expect(second.user).toEqual({ id: 'user-a', email: 'user-a@example.test' });
+    expect(await h.resolve(second.acting?.token)).toMatchObject({
+      userId: 'user-a',
+    });
+  });
+
+  it('a sender stated as nobody carries no user, whoever shares the channel', async () => {
+    const h = makeHub();
+    await h.connect({ token: h.consoleToken('user-o', UserRoleTypes.Owner) });
+
+    // What the HTTP routes pass for a requester with no login behind it.
+    h.hub.sendToAgent('admin', AGENT, 'x', [], undefined, { user: null });
+    expect(h.last()).not.toHaveProperty('user');
+
+    // Unstated, the socket still speaks for itself, as a websocket message
+    // always has.
+    h.hub.sendToAgent('admin', AGENT, 'y', []);
+    expect(h.last().user).toEqual({
+      id: 'user-o',
+      email: 'user-o@example.test',
+    });
+  });
+
   it('none for an embed token, a share visitor or an anonymous caller', async () => {
     const h = makeHub();
     const embed = h.acting.jwt.sign({

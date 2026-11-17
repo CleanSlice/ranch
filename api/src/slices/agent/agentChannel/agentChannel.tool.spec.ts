@@ -1,11 +1,11 @@
-import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
 import { AgentChannelTool } from './agentChannel.tool';
 import type { IAgentChannelGateway } from './domain/agentChannel.gateway';
 import type { IAgentChannel } from './domain/agentChannel.types';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import { UserRoleTypes } from '#/user/user/domain';
-import { asTrustedAgent } from '#/mcp/testing';
+import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 /**
  * Two things matter more than the happy path here: that a bot token never
@@ -51,6 +51,7 @@ function harness(): Harness {
   const tool = new AgentChannelTool(
     channels as unknown as IAgentChannelGateway,
     agents as unknown as IAgentGateway,
+    permissionOver(agents),
   );
   return { tool, channels, agents };
 }
@@ -77,23 +78,65 @@ describe('AgentChannelTool — who may use it', () => {
   });
 
   it('refuses a call from a plain agent even by name', async () => {
-    const { tool, channels } = harness();
-    await expect(
-      tool.setAgentChannels(
-        { agentId: 'agent-a', channels: input() },
-        null,
-        plainAgent(),
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    // Answered like an agent that does not exist (CLEAN-232): no 403 that
+    // would confirm the agent is there.
+    const { tool, channels, agents } = harness();
+    const result = await tool.setAgentChannels(
+      { agentId: 'agent-a', channels: input() },
+      null,
+      plainAgent(),
+    );
+    expect(textOf(result)).toContain('Agent agent-a not found');
     expect(channels.setForAgent).not.toHaveBeenCalled();
+    expect(agents.findById).not.toHaveBeenCalled();
   });
 
   it('refuses a read from a plain agent too', async () => {
     const { tool, channels } = harness();
-    await expect(
-      tool.getAgentChannels({ agentId: 'agent-a' }, null, plainAgent()),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    const result = await tool.getAgentChannels(
+      { agentId: 'agent-a' },
+      null,
+      plainAgent(),
+    );
+    expect(textOf(result)).toContain('Agent agent-a not found');
     expect(channels.getForAgent).not.toHaveBeenCalled();
+  });
+
+  it('an Admin does not read or set the Ranch admin agent’s channels', async () => {
+    const { tool, channels, agents } = harness();
+    agents.findById.mockResolvedValue({
+      id: 'agent-ranch',
+      name: 'Ranch',
+      isAdmin: true,
+      createdById: null,
+    });
+    const admin = () =>
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin);
+
+    expect(
+      textOf(
+        await tool.getAgentChannels({ agentId: 'agent-ranch' }, null, admin()),
+      ),
+    ).toContain('Agent agent-ranch not found');
+    expect(
+      textOf(
+        await tool.setAgentChannels(
+          { agentId: 'agent-ranch', channels: input() },
+          null,
+          admin(),
+        ),
+      ),
+    ).toContain('Agent agent-ranch not found');
+    expect(channels.getForAgent).not.toHaveBeenCalled();
+    expect(channels.setForAgent).not.toHaveBeenCalled();
+
+    // The Owner does.
+    await tool.getAgentChannels(
+      { agentId: 'agent-ranch' },
+      null,
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Owner),
+    );
+    expect(channels.getForAgent).toHaveBeenCalledWith('agent-ranch');
   });
 });
 

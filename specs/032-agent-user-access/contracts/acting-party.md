@@ -90,9 +90,9 @@ Audiences, one per tool class:
 | `everyone` | any caller | attachment, knowledge search |
 | `agent` | the calling agent, for itself | today's self-service tools |
 | `person` | a signed-in person, any role | `pin_agent`; browser and integration tools, which now read the person from the actor instead of a `userId` argument |
-| `manage-agent` | whoever may manage the agent named in the call (section 5) | stop, start, restart, delete, files, secrets, channels, limits, share link, logs, peers of one agent |
+| `manage-agent` | whoever may manage the agent named in the call (section 5) | stop, start, restart, update, delete, status, environment, MCP servers, files, secrets, channels, limits and visibility, logs, peers of one agent (35 tools; the list is pinned in `toolAudience.spec.ts`). The share-link tools stay `admin` until Part B |
 | `admin` | Owner, Admin | the rest of today's operator tools, the 16 paddock tools, agent access |
-| `owner` | Owner | where the console route is Owner-only: user role and deletion, API keys, event destinations, settings, upgrade |
+| `owner` | Owner | where the console route is Owner-only: user role and deletion, event destinations, and which agent is the Ranch admin agent (`set_agent_admin`, `isAdmin` on `create_agent`) |
 
 `manage-agent` tools are listed for a caller who may manage at least one
 agent, and check the named agent at call time with the "not found" of FR-008.
@@ -145,13 +145,36 @@ management routes and the `manage-agent` tools:
 
 ```text
 canManage = caller is Owner
-         OR (caller is Admin AND reaches(caller, agent))
-         OR (agent.createdById = caller.id AND reaches(caller, agent))
+         OR (agent is not the Ranch admin agent AND caller is Admin AND reaches(caller, agent))
+         OR (agent is not the Ranch admin agent AND agent.createdById = caller.id AND reaches(caller, agent))
 ```
+
+The caller is a party: a person, a trusted agent (allowed, as before) or a
+guest (never). `reaches` sits behind an interface, `IAgentReach`, whose
+default provider answers yes for everybody; Part B replaces the provider.
+
+**The Ranch admin agent is the Owner's alone.** Its workspace files are its
+instructions, and its secrets, schedule and restart are Owner power for
+whoever changes them: an Admin who could rewrite its `HEARTBEAT.md` would get
+a scheduled turn that runs as a trusted party. So neither the Admin line nor
+the creator line applies to it. For the same reason, which agent is the Ranch
+admin agent is the Owner's decision: `POST` and `DELETE
+/agents/:id/promote-admin` are `@Roles(Owner)`, `set_agent_admin` is an
+`owner` tool, and `isAdmin` on `POST /agents` and on `create_agent` is
+refused for anybody else.
+
+A refusal is never told apart from an unknown agent. The routes marked
+`@ManagesAgent('id' | 'agentId')` answer 404 `Agent not found` for both,
+from one global guard (`AgentManageGuard`); the tools get `null` from
+`AgentPermissionService.manageable` for both and give their ordinary "not
+found".
 
 `Agent.createdById` is written when an agent is created: from the console
 token on `POST /agents`, from the acting token on `create_agent`, null for a
-trusted party and for every agent that exists today.
+trusted party and for every agent that exists today. It is never updated, and
+never sent to a client as a bare id: `AgentDto.createdBy` is `{ id, name,
+email }` for an Owner or Admin reader (null name and email for a removed
+account) and null for everybody else.
 
 The third line does nothing for a User yet, because only Owner and Admin can
 create agents. It is there so that opening creation to Users is one change —
@@ -163,24 +186,62 @@ console and through the assistant, and nobody else's.
 
 `RolesGuard` becomes global, registered after `JwtAuthGuard` in
 `api/src/app.module.ts`. A route with no `@Roles` is treated as
-`@Roles(Admin)`: closed to `User` and to `Agent` tokens. `@Public()` and the
-machine guards (`BridleApiKeyGuard`, `ApiKeyGuard`, the peer guards) are
-unaffected.
+`@Roles(Admin)`: closed to `User` and to `Agent` tokens.
 
-Routes that state `@Roles(User)` after this change, and nothing else may:
+**How a machine route is recognised: it is `@Public()`.** `RolesGuard` skips
+`@Public()` routes, as `JwtAuthGuard` does, and keeps no list of machine
+guards. That one rule covers every route behind `BridleApiKeyGuard`,
+`ApiKeyGuard`, the A2A guards, and the controllers that verify a share,
+extension or signed-link token by hand, because the JWT guard is already
+global: such a route cannot work without `@Public()`, or the JWT guard would
+refuse the machine's credential as a bad token before its own guard ran. A
+marker of its own (`@MachineRoute()`) would have been a second list to keep
+in step with the first. `routeRoles.spec.ts` asserts the premise: every
+route behind a machine guard is `@Public()`.
+
+Routes that state `@Roles(User)` after this change, and nothing else may
+(`userRoutes.spec.ts`, 17 routes and the 5 MCP endpoints):
 
 | Routes | Why a User needs them |
 |--------|-----------------------|
-| `GET /auth/me`, session routes | their own session |
+| `GET /auth/me` | their own session. Login, register, refresh and logout are `@Public()`: they run when there is no access token. There is no other session route |
 | `GET /agents`, `GET /agents/status`, `GET /agents/:id` | the agents they reach (CLEAN-231 filters them) |
 | `GET /agents/:agentId/limits/enabled` | the chat's limit notice |
-| `/me/chats…` | their own conversations |
-| `/agents/:agentId/share-link…` | sharing an agent they reach (already `User`) |
-| `PUT`/`DELETE /agents/:id/pin` | their pins (CLEAN-231) |
+| `/me/chats…` (8 routes) | their own conversations |
+| `/agents/:agentId/share-link…` (4 routes) | sharing an agent they reach (already `User`) |
+| `PUT`/`DELETE /agents/:id/pin` | their pins. Not built yet: CLEAN-231 adds the routes and this row |
 
-Routes that state `Agent`: exactly those the runtime calls with its own
-token, taken from the runtime's API gateways (`runtime/init`, `agent/skill`,
-`bot/usage`, browser login, agent status) before the guard goes global.
+That is everything the user console calls with a User's token. Its agent
+screens also call create, update, delete, restart, stop, start,
+`GET /agents/capacity` and `GET /agent-links`; those were Admin before this
+change and stay Admin.
+
+Routes that state `Agent` (`agentRoutes.spec.ts`): **one**, plus the MCP
+endpoints.
+
+| Route | Who calls it |
+|-------|--------------|
+| `GET /agents/:id/mcps` | a runtime reading its own MCP list. The handler refuses an agent asking about another agent. The current runtime no longer calls it (the workflow puts the servers into the pod's environment), so it is kept for older images and can go when they are gone |
+
+The inventory of T026 came out shorter than planned. The runtime uses
+`RANCH_API_TOKEN` for one thing, the bearer of the Ranch MCP server
+(`setup/mcp/data/mcp.gateway.ts`). Every REST call it makes (usage, browser
+sessions and login, integrations, MCP OAuth, the session host) authenticates
+with `BRIDLE_API_KEY` and lands on a `@Public()` route behind
+`BridleApiKeyGuard`. Inside the API, the token is minted in
+`AgentDeployService.deploy`, handed to the workflow as an environment
+variable and substituted into the MCP servers' `authValue`; nothing in the
+API calls its own REST routes with it. The paddock runner sets a sandbox
+value that authenticates nowhere.
+
+**The MCP endpoints stay open to every authenticated bearer**: a person of
+any role, or an agent. `POST`, `GET`, `DELETE /mcp/mcp`, `GET /mcp/sse` and
+`POST /mcp/messages` carry `@AnyBearer()` (User or Agent), given to
+`McpModule.forRoot` through its `decorators` option. Without it they would
+fall to the Admin default and no agent could reach a tool. What a caller may
+list and call there is decided per tool, by its audience. The session
+diagnostics next to them (`GET /teams/:teamId/sessions/debug`, which lists
+live session ids) are `@Roles(Admin)` through `diagnosticDecorators`.
 
 Everything else found open by the audit moves to Admin by default: agent
 files, file import and proposals, agent secrets, logs, usage, templates and
@@ -189,10 +250,21 @@ credentials, settings, paddock, integrations, browser sessions. The admin
 console is used only by Owner and Admin, so none of its screens change; the
 user console calls none of these.
 
+The audit (`api/scripts/audit-routes.mjs`, `audit-before.txt` and
+`audit-after.txt` here): of 252 routes, 136 let any valid token through
+before and none does after. Admin goes from 61 to 183 routes (124 of them by
+the default), Owner from 5 to 7, User from 5 to 17; 29 public and 16 machine
+routes are unchanged, and an agent's token passes 1 REST route where it
+passed 137. The scratch version of the script reported 137 open routes: it
+lost the decorators under a comment and read `POST /agent-events` (public,
+behind `ApiKeyGuard`) as open. Nothing changes for an Admin except the two
+promote-admin routes and the Ranch admin agent's own management routes.
+
 The management routes of one agent (`PUT`, `DELETE /agents/:id`, restart,
-stop, start, files, secrets, channels, limits, logs) keep their role and add
-`canManage`. When creation opens to Users they are the routes whose role
-drops to `User`, with `canManage` already in place.
+stop, start, files, secrets, channels, logs, and the writes of limits and
+peers; 37 routes, pinned in `agentManage.guard.spec.ts`) keep their role and
+add `canManage`, reads included. When creation opens to Users they are the
+routes whose role drops to `User`, with `canManage` already in place.
 
 **An agent's token is an `Agent` on routes.** The Ranch admin agent's token
 carries `Owner`, and the runtime's `exec` tool (admin-only, so available to
@@ -207,7 +279,22 @@ bearer.
 
 Three pinned sets, each a spec that fails when a route joins the set
 unannounced: `publicRoutes.spec.ts` (exists), `userRoutes.spec.ts` and
-`agentRoutes.spec.ts` (new, same shape).
+`agentRoutes.spec.ts` (new). The two new ones read the routes from the
+module graph of `AppModule` and each handler's metadata, the way the guards
+do, so they see the MCP controllers built at boot. `routeRoles.spec.ts` adds
+the statement the three sets leave open: outside the public set, the real
+guard refuses a token that holds no role on every route of the application.
+
+**The chat surface is not changed here.** `bridle/*` is `@Public()` and
+verifies tokens itself. It still reads an agent's service token that carries
+Owner as an administrator: `clientIdFromJwtPayload` maps any token with an
+Owner or Admin role to the shared `admin` conversation, so the Ranch admin
+agent's token can read and write that conversation over HTTP and the
+websocket. No acting token is minted for it (`consoleSessionOf` refuses an
+`agent:` subject), so a message sent with it is a guest's at the tools.
+Nothing in the API or the runtime relies on it: the paddock runner talks to
+the agent in process, and agent-to-agent delegation goes through the hub
+directly. Closing it belongs with Part B's chat access.
 
 ## 7. What proves it
 

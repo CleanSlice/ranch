@@ -12,6 +12,7 @@ import type { AgentMcpResolver } from '#/mcpServer/domain/agentMcpResolver.servi
 import type { IMcpServerData } from '#/mcpServer/domain/mcpServer.types';
 import { UserRoleTypes } from '#/user/user/domain';
 import { asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 /**
  * These tools stop, start and delete agents from the chat. What matters most
@@ -151,6 +152,7 @@ function harness(): Harness {
     workflows as unknown as WorkflowService,
     files as unknown as IFileGateway,
     mcps as unknown as AgentMcpResolver,
+    permissionOver(agents),
   );
   return { tool, agents, deploy, status, pods, workflows, files, mcps };
 }
@@ -170,10 +172,15 @@ describe('AgentAdminTool — who may use it', () => {
   });
 
   it('refuses a call from a plain agent even by name', async () => {
+    // Answered like an agent that does not exist (CLEAN-232): no 403 that
+    // would confirm the agent is there.
     const { tool, deploy, agents } = harness();
-    await expect(
-      tool.stopAgent({ id: 'agent-a', confirm: true }, null, plainAgent()),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    const result = await tool.stopAgent(
+      { id: 'agent-a', confirm: true },
+      null,
+      plainAgent(),
+    );
+    expect(textOf(result)).toContain('Agent agent-a not found');
     expect(agents.findById).not.toHaveBeenCalled();
     expect(deploy.stopAgent).not.toHaveBeenCalled();
   });

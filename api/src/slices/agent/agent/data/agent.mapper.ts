@@ -26,6 +26,7 @@ export class AgentMapper {
       knowledgeIds: record.knowledgeIds,
       isAdmin: record.isAdmin,
       pinned: record.pinned,
+      createdById: record.createdById,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -50,6 +51,7 @@ export class AgentMapper {
       isPublic: data.isPublic ?? false,
       allowedOrigins: data.allowedOrigins ?? [],
       knowledgeIds: data.knowledgeIds ?? [],
+      createdById: data.createdById ?? null,
     };
   }
 }

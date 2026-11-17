@@ -21,6 +21,7 @@ import { ApiKeyTool, KEY_SHOWN_ONCE } from '#/user/apiKey/apiKey.tool';
 import { RancherTool } from '#/rancher/rancher.tool';
 import { AgentEventTool } from '#/agent/event/agentEvent.tool';
 import { asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 const SENTINEL = 'SENTINEL-SECRET-7f3a';
 
@@ -157,6 +158,7 @@ function cases(): Case[] {
       replaceAll: jest.fn(async () => undefined),
       delete: jest.fn(async () => undefined),
     }) as never,
+    permissionOver(leakyGateway()),
   );
   const user = new UserTool(leakyGateway() as never);
   const integration = new IntegrationTool(leakyGateway() as never);
@@ -198,6 +200,7 @@ function cases(): Case[] {
     leakyGateway() as never,
     leakyGateway() as never,
     leakyGateway() as never,
+    permissionOver(leakyGateway()),
   );
 
   // Rows that also carry the one secret this slice has — the destination's

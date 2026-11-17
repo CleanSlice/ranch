@@ -92,8 +92,23 @@ export interface IAgentData {
    *  after Rancher. Toggled from the header; the app console shows the same
    *  flag. Changes nothing about the pod, the status or access. */
   pinned: boolean;
+  /** Who created the agent (CLEAN-232), as the API resolves it for an Owner
+   *  or Admin. `null` ⇒ nobody is recorded: the agent is older than the
+   *  field, or the Ranch admin agent created it on its own. `undefined` only
+   *  on a record decoded from a payload that does not say (the status stream
+   *  is anonymous and never does); the store keeps what it already knew, so
+   *  a record read from the store has a creator or `null`. */
+  createdBy?: IAgentCreator | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** The account that created an agent. `name` and `email` are both `null`
+ *  when that account has since been removed; the id stays. */
+export interface IAgentCreator {
+  id: string;
+  name: string | null;
+  email: string | null;
 }
 
 export interface ICreateAgentData {

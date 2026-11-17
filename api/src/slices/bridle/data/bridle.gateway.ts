@@ -461,6 +461,12 @@ export class BridleGateway extends IBridleGateway {
     const client =
       (options.socketId && channel.sockets.get(options.socketId)) ||
       channel.sockets.values().next().value;
+    // Who is sending. A caller that verified the sender itself says so (the
+    // HTTP routes, `null` for nobody); only without that does the socket's
+    // own identity stand in. The fallback socket above may belong to someone
+    // else on a shared channel, which is fine for the prompt and never for
+    // the person (CLEAN-232).
+    const user = options.user !== undefined ? options.user : client?.user;
     agentSend({
       type: 'message',
       clientId,
@@ -470,7 +476,7 @@ export class BridleGateway extends IBridleGateway {
       ...(client?.capabilities?.length
         ? { capabilities: client.capabilities }
         : {}),
-      ...(client?.user ? { user: client.user } : {}),
+      ...(user ? { user } : {}),
       // Minted by whoever verified the sender (the socket handler, the HTTP
       // routes) and passed in with the message: `sendToAgent` is synchronous
       // and the token is per message, not per socket (CLEAN-232).

@@ -59,7 +59,13 @@ patch(id, partial): () => void            // partial change, returns a rollback
   carries into this store and keeps only what exists nowhere else: pod state
   and hub connectivity. Its frames carry the full `AgentDto` and are decoded
   by the same `AgentMapper` as REST responses, so a frame can never thin out a
-  record.
+  record. One field is the exception, and the store handles it in `upsert`
+  and `setAll`: the stream is anonymous and never says who created an agent
+  (`createdBy`, CLEAN-232), so a record decoded from a frame has it
+  `undefined` and the creator the store already holds stands
+  (`keepKnownCreator`). `null` is a different answer, "nobody is recorded",
+  and only a response that resolves creators gives it (`GET /agents`,
+  `GET /agents/:id` and the routes that return one agent).
 - The rail (`workspace/Provider.vue`), the header (`workspace/Main.vue`), the
   Overview card, the edit page and the Files tab all read `agentStore.agents`
   / `agentStore.byId(id)`.

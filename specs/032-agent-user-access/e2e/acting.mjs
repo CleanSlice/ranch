@@ -273,6 +273,35 @@ try {
           (shown.length ? ` — LISTED: ${shown.join(', ')}` : ''),
       );
     }
+    {
+      // The other direction: an ordinary agent taking the Ranch admin agent
+      // as ITS colleague. Its own token, whatever actor it states, is a
+      // guest to that rule: the agent is not found and is not offered.
+      const actors = [
+        ['{ kind: "trusted" }', trusted],
+        ['the Owner’s acting token', person('owner')],
+        ['an Admin’s acting token', person('admin')],
+        ['{ kind: "guest" }', { kind: 'guest' }],
+      ];
+      for (const [label, actor] of actors) {
+        const connect = await plain.call('connect_my_peer', { peerAgentId: RANCH }, actor);
+        const ghost = await plain.call('connect_my_peer', { peerAgentId: 'agent-00000032-0000-4000-8000-0000000000ee' }, actor);
+        const offered = await plain.call('list_ranch_agents', {}, actor);
+        check(
+          connect.refused && notFound(connect) && connect.text === ghost.text,
+          `a plain agent’s connect_my_peer naming the Ranch admin agent, stating ${label}: refused as not found, in the words an unknown agent gets ("${connect.text.slice(0, 50)}")`,
+        );
+        check(
+          !offered.refused && offered.text.includes(AGENTS.a.id) && !offered.text.includes(RANCH) && !offered.text.includes(AGENTS.ranch.name),
+          'and list_ranch_agents names the other agents, not that one',
+        );
+      }
+      const own = await api(`/agents/${AGENTS.b.id}/peers`, { as: OWNER });
+      check(
+        Array.isArray(own.body) && !own.body.some((p) => p.peerAgentId === RANCH),
+        `after all of it ${AGENTS.b.name} has no connection to the Ranch admin agent (${Array.isArray(own.body) ? own.body.length : '?'} peers)`,
+      );
+    }
     await plain.close();
     const peers = await api(`/agents/${RANCH}/peers`, { as: OWNER });
     check(Array.isArray(peers.body) && peers.body.length === 0, 'after all of it the Ranch admin agent has no peer');

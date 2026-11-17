@@ -204,3 +204,160 @@ describe('ChatSyncService.syncAll', () => {
     });
   });
 });
+
+/**
+ * `POST /me/chats/sync` (CLEAN-232): a person's own conversations, in the
+ * agents they already have one with. It used to walk every agent on the
+ * ranch for whoever asked and report how many there are.
+ */
+describe('ChatSyncService.syncForExternalUser', () => {
+  const MINE = 'data/sessions/bridle:user-1.jsonl';
+  const THEIRS = 'data/sessions/bridle:user-2.jsonl';
+  const transcript = jsonl(
+    { id: 'u1', type: 'user', ts: 1, data: { text: 'hello' } },
+    { id: 'a1', type: 'assistant', ts: 2, data: { text: 'hi' } },
+  );
+
+  function bed(indexed: Partial<IChatSessionData>[]) {
+    const listed: string[] = [];
+    const filters: Record<string, unknown>[] = [];
+    const files_ = {
+      ...fileStub(
+        [
+          { path: MINE, size: 70 },
+          { path: THEIRS, size: 70 },
+          { path: 'data/sessions/telegram:user-1.jsonl', size: 70 },
+        ],
+        { [MINE]: transcript, [THEIRS]: transcript },
+      ),
+    } as IFileGateway;
+    const list = files_.list.bind(files_);
+    files_.list = async (agentId: string) => {
+      listed.push(agentId);
+      return list(agentId);
+    };
+    const upserts: IChatReconcileInput[] = [];
+    const chats = {
+      list: async (filter: Record<string, unknown>) => {
+        filters.push(filter);
+        const items = indexed.filter(
+          (s) =>
+            (filter.agentId === undefined || s.agentId === filter.agentId) &&
+            (filter.externalUserId === undefined ||
+              s.externalUserId === filter.externalUserId) &&
+            (filter.channel === undefined || s.channel === filter.channel),
+        );
+        return { items: items as IChatSessionData[], total: items.length };
+      },
+      reconcileUpsert: async (i: IChatReconcileInput) => {
+        upserts.push(i);
+        return i as unknown as IChatSessionData;
+      },
+    } as unknown as IChatGateway;
+    const findAll = jest.fn(async () => [
+      { id: 'agent-1' },
+      { id: 'agent-2' },
+      { id: 'agent-3' },
+    ]);
+    const svc = new ChatSyncService(
+      files_,
+      new TranscriptReaderService(files_),
+      chats,
+      { findAll } as unknown as IAgentGateway,
+    );
+    return { svc, listed, filters, upserts, findAll };
+  }
+
+  const session = (
+    agentId: string,
+    externalUserId: string,
+    lastIndexedSize = 10,
+  ): Partial<IChatSessionData> => ({
+    agentId,
+    channel: 'bridle',
+    externalUserId,
+    sessionKey: `bridle:${externalUserId}`,
+    lastIndexedSize,
+  });
+
+  it('looks only at the agents this person has a conversation with, and never lists the ranch', async () => {
+    const { svc, listed, upserts, findAll } = bed([
+      session('agent-1', 'user-1'),
+      session('agent-2', 'user-2'),
+      session('agent-3', 'user-2'),
+    ]);
+
+    const result = await svc.syncForExternalUser('user-1');
+
+    expect(findAll).not.toHaveBeenCalled();
+    expect(listed).toEqual(['agent-1']);
+    expect(result).toEqual({
+      scannedAgents: 1,
+      scannedFiles: 1,
+      upserted: 1,
+      skipped: 0,
+    });
+    expect(upserts.map((u) => u.sessionKey)).toEqual(['bridle:user-1']);
+  });
+
+  it('reads no row of the index that is not this person’s', async () => {
+    const { svc, filters } = bed([
+      session('agent-1', 'user-1'),
+      session('agent-1', 'user-2'),
+    ]);
+
+    await svc.syncForExternalUser('user-1');
+
+    expect(filters.length).toBeGreaterThan(0);
+    for (const filter of filters) {
+      expect(filter.channel).toBe('bridle');
+      expect(filter.externalUserId).toBe('user-1');
+      expect(filter.includeInternal).toBeUndefined();
+    }
+  });
+
+  it('scans nothing and counts nothing for a person with no conversation', async () => {
+    const { svc, listed, upserts } = bed([session('agent-2', 'user-2')]);
+
+    const result = await svc.syncForExternalUser('user-1');
+
+    expect(listed).toEqual([]);
+    expect(upserts).toEqual([]);
+    expect(result).toEqual({
+      scannedAgents: 0,
+      scannedFiles: 0,
+      upserted: 0,
+      skipped: 0,
+    });
+  });
+
+  it('scans nothing when the agent named is not one of theirs', async () => {
+    const { svc, listed } = bed([
+      session('agent-1', 'user-1'),
+      session('agent-2', 'user-2'),
+    ]);
+
+    const result = await svc.syncForExternalUser('user-1', 'agent-2');
+
+    expect(listed).toEqual([]);
+    expect(result.scannedAgents).toBe(0);
+  });
+
+  it('scans the one agent named when it is theirs, and skips a file that has not grown', async () => {
+    const { svc, listed, upserts } = bed([
+      session('agent-1', 'user-1', 70),
+      session('agent-2', 'user-1'),
+    ]);
+
+    const result = await svc.syncForExternalUser('user-1', 'agent-1');
+
+    expect(listed).toEqual(['agent-1']);
+    expect(result).toEqual({
+      scannedAgents: 1,
+      scannedFiles: 1,
+      upserted: 0,
+      skipped: 1,
+    });
+    expect(upserts).toEqual([]);
+  });
+});

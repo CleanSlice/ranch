@@ -182,7 +182,11 @@ describe('PeerSelfTool — it can only touch its own peers', () => {
   it('connects using the id from the token, which no argument can override', async () => {
     const { tool, peers } = harness();
     await tool.connectMyPeer({ peerAgentId: 'agent-b' }, null, agentRequest());
-    expect(peers.connect).toHaveBeenCalledWith('agent-me', 'agent-b');
+    // An ordinary agent's token is a guest to PeerService, whoever it
+    // speaks for: the Ranch admin agent is not found for it (CLEAN-232).
+    expect(peers.connect).toHaveBeenCalledWith('agent-me', 'agent-b', {
+      kind: 'guest',
+    });
   });
 
   it('imports an outside agent for itself, credential and all', async () => {
@@ -225,7 +229,9 @@ describe('PeerSelfTool — it can only touch its own peers', () => {
   it('lists the Ranch agents it could take as colleagues', async () => {
     const { tool, peers } = harness();
     const text = textOf(await tool.listRanchAgents({}, null, agentRequest()));
-    expect(peers.candidates).toHaveBeenCalledWith('agent-me');
+    expect(peers.candidates).toHaveBeenCalledWith('agent-me', {
+      kind: 'guest',
+    });
     expect(text).toContain('Skyhunter');
   });
 });
@@ -514,7 +520,11 @@ describe('PeerSelfTool — the Ranch admin agent serves itself only for the Owne
       null,
       asPerson(ranch(), UserRoleTypes.Owner),
     );
-    expect(peers.connect).toHaveBeenCalledWith('agent-ranch', 'agent-b');
+    expect(peers.connect).toHaveBeenCalledWith('agent-ranch', 'agent-b', {
+      kind: 'person',
+      userId: 'user-1',
+      role: 'Owner',
+    });
   });
 
   it('leaves an ordinary agent as it was: whoever talks to it may connect it', async () => {

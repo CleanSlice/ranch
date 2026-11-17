@@ -253,6 +253,90 @@ check(isReaderView(oneAsUser), 'GET /agents/:id answers a User the same way');
 const statusAsUser = (await api('/agents/status', { as: USER })).body.find((s) => s.agent.id === AGENTS.b.id);
 check(isReaderView(statusAsUser?.agent), 'and so does GET /agents/status');
 
+section('What the public status stream says');
+/**
+ * The first events of GET /agents/status/stream, read with no token at all
+ * (it is public: an EventSource cannot send one), then the connection is
+ * dropped. The opening snapshot is the whole fleet, so it is the frame that
+ * would carry a leak.
+ */
+async function firstFrames(ms = 4000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  let text = '';
+  let status = 0;
+  try {
+    const res = await fetch(`${API}/agents/status/stream`, { signal: controller.signal });
+    status = res.status;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    // The snapshot is one `data:` line ended by a blank line.
+    while (!/\n\n/.test(text)) {
+      const { value, done: ended } = await reader.read();
+      if (ended) break;
+      text += decoder.decode(value, { stream: true });
+    }
+  } catch (e) {
+    if (e?.name !== 'AbortError') throw e;
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
+  return { status, text };
+}
+{
+  const { status, text } = await firstFrames();
+  const line = text.split(/\r?\n/).find((l) => l.startsWith('data:'));
+  let frame = null;
+  try {
+    frame = JSON.parse(line.slice('data:'.length));
+  } catch {
+    frame = null;
+  }
+  const message = frame?.type === undefined && frame?.data ? frame.data : frame;
+  const items = message?.type === 'snapshot' && Array.isArray(message.payload) ? message.payload : [];
+  check(status === 200 && items.length >= Object.keys(AGENTS).length, `an anonymous reader gets the opening snapshot (${status}, ${items.length} agents)`);
+  const leaked = ['operator-only', '"config"', 'llmCredentialId', 'workflowId', 'statusReason', 'launchContext', 'createdById', '"name"', '"podName"', '"message"'].filter((s) => text.includes(s));
+  check(leaked.length === 0, `nothing of an agent’s row is in it: no seeded operator note, no config, credential or workflow id, no name${leaked.length ? ` — FOUND: ${leaked.join(', ')}` : ''}`);
+  const names = Object.values(AGENTS).filter((a) => text.includes(a.name));
+  check(names.length === 0, `no agent is named${names.length ? ` — FOUND: ${names.map((a) => a.name).join(', ')}` : ''}`);
+  const keysOf = (pick) => [...new Set(items.flatMap((item) => Object.keys(pick(item) ?? {})))].sort().join(',');
+  check(
+    keysOf((i) => i) === 'agent,bridleConnected,pod' && keysOf((i) => i.agent) === 'id,status,updatedAt',
+    `each agent is { agent: { id, status, updatedAt }, pod, bridleConnected } and nothing more (${keysOf((i) => i)} / ${keysOf((i) => i.agent)})`,
+  );
+  const podKeys = keysOf((i) => i.pod);
+  check(
+    podKeys === '' || podKeys === 'containerWaitingReason,phase,ready,restartCount',
+    `a pod, when there is one, is { phase, ready, restartCount, containerWaitingReason } (${podKeys || 'no pod on this stack'})`,
+  );
+  check(
+    Object.values(AGENTS).every((a) => items.some((i) => i.agent?.id === a.id && typeof i.agent.status === 'string')),
+    'the status of each seeded agent is there, which is what the consoles draw from it',
+  );
+}
+
+section('What POST /me/chats/sync does for a User');
+{
+  // The User has no conversation yet on this stack, or only their own: the
+  // sync looks at the agents they have one with and reports about those.
+  const mine = (await api('/me/chats?perPage=100', { as: USER })).body;
+  const myAgents = new Set((mine?.items ?? []).map((s) => s.agentId));
+  const total = (await api('/agents', { as: USER })).body.length;
+  const sync = await api('/me/chats/sync', { method: 'POST', body: {}, as: USER });
+  check(
+    sync.status >= 200 && sync.status < 300 && sync.body?.scannedAgents === myAgents.size,
+    `it scans the ${myAgents.size} agent(s) the User has a conversation with, of ${total} on the ranch (scannedAgents ${sync.body?.scannedAgents}, status ${sync.status})`,
+  );
+  check(myAgents.size < total, `which is fewer than all of them, so the count says nothing about the ranch (${myAgents.size} < ${total})`);
+  const other = Object.values(AGENTS).find((a) => !myAgents.has(a.id));
+  const named = await api('/me/chats/sync', { method: 'POST', body: { agentId: other.id }, as: USER });
+  check(
+    named.status >= 200 && named.status < 300 && named.body?.scannedAgents === 0 && named.body?.scannedFiles === 0,
+    `naming an agent the User has no conversation with scans nothing (scannedAgents ${named.body?.scannedAgents}, scannedFiles ${named.body?.scannedFiles})`,
+  );
+}
+
 const asAdmin = seeded((await api('/agents', { as: ADMIN_USER })).body);
 check(
   isWhole(asAdmin.a) && isWhole(asAdmin.b) && isWhole(asAdmin.c) && isReaderView(asAdmin.ranch) && asAdmin.ranch.isAdmin === true,

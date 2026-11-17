@@ -138,9 +138,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
     httpRequest: Request,
   ): Promise<ToolResult> {
     return this.guard(httpRequest, agentId, async () => {
-      const all = await this.peers.candidates(agentId);
       // Only agents the caller could connect (see `guardPeer`).
       const caller = manageCaller(httpRequest);
+      const all = await this.peers.candidates(agentId, caller);
       const allowed = await Promise.all(
         all.map((c) => this.permission.manageable(caller, c.id)),
       );
@@ -269,7 +269,11 @@ export class PeerAdminTool implements IConditionallyListedTool {
     return this.guard(httpRequest, agentId, async () => {
       await this.guardPeer(httpRequest, peerAgentId);
       const hadPeers = (await this.peers.list(agentId)).length > 0;
-      const peer = await this.peers.connect(agentId, peerAgentId);
+      const peer = await this.peers.connect(
+        agentId,
+        peerAgentId,
+        manageCaller(httpRequest),
+      );
       this.logger.log(
         `Peer connected through MCP: agent=${agentId} peer=${peerAgentId}`,
       );

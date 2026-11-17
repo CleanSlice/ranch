@@ -196,8 +196,10 @@ export function useAgentLifecycle(
       return {
         kind: 'starting',
         title: firstStart ? 'Setting up agent…' : 'Starting agent…',
+        // The pod's name is no longer on the public status stream
+        // (CLEAN-232); its state is what this line is for.
         detail: freshPod
-          ? `Pod ${freshPod.podName}: ${podLabel.value ?? freshPod.phase}`
+          ? `Pod: ${podLabel.value ?? freshPod.phase}`
           : firstStart
             ? 'First start — preparing the agent’s pod.'
             : 'Cancelling old workflow and submitting a fresh one.',
@@ -231,11 +233,12 @@ export function useAgentLifecycle(
         kind: 'failed',
         title: 'Agent failed to start',
         // Server-side statusReason is the authoritative cause (startup
-        // timeout, ImagePullBackOff, workflow submit error, …); live pod
-        // details are the fallback for failures recorded before it existed.
+        // timeout, ImagePullBackOff, workflow submit error, …); the pod's
+        // waiting reason is the fallback for failures recorded before it
+        // existed. The pod's Kubernetes message is no longer on the public
+        // status stream (CLEAN-232).
         detail:
           agent.value.statusReason ??
-          pod?.message ??
           pod?.containerWaitingReason ??
           'Pod did not come up. Check logs and restart.',
       };

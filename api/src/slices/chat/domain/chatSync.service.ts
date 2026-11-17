@@ -85,10 +85,20 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Reconcile only ONE end user's own bridle sessions (App "my history" —
-   * `POST /me/chats/sync`). Scans the agent(s) but reconciles just files whose
-   * parsed externalUserId matches: a self-service, non-admin equivalent of
-   * syncAll. Not guarded by `running` (scoped + read-only), so it can run
-   * alongside the interval reconcile.
+   * `POST /me/chats/sync`).
+   *
+   * It is the caller's own conversations and nothing else (CLEAN-232). It
+   * used to walk every agent on the ranch, whoever asked, and answer with how
+   * many there are. Now the agents it looks at are the ones in which this
+   * person already has a conversation in the index; with `agentId`, that one
+   * agent and only if it is among them. In each, only the files named for
+   * this person are counted, compared and read, and the counts in the answer
+   * are about those alone. A conversation with an agent this person has never
+   * been indexed on is picked up by realtime indexing or by the operators'
+   * `POST /chats/sync`, not here.
+   *
+   * Not guarded by `running` (scoped + read-only), so it can run alongside
+   * the interval reconcile.
    */
   async syncForExternalUser(
     externalUserId: string,
@@ -100,14 +110,15 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
       upserted: 0,
       skipped: 0,
     };
+    const own = { channel: 'bridle', externalUserId };
+    const sessions = await this.chats.list({ ...own, perPage: 100_000 });
+    const ownAgentIds = [...new Set(sessions.items.map((s) => s.agentId))];
     const agentIds = agentId
-      ? [agentId]
-      : (await this.agents.findAll()).map((a) => a.id);
-    const mine = (m: { channel: string; externalUserId: string }): boolean =>
-      m.channel === 'bridle' && m.externalUserId === externalUserId;
+      ? ownAgentIds.filter((id) => id === agentId)
+      : ownAgentIds;
     for (const id of agentIds) {
       result.scannedAgents++;
-      await this.syncAgent(id, result, mine);
+      await this.syncAgent(id, result, own);
     }
     this.logger.log(
       `user reconcile (${externalUserId}) done: agents=${result.scannedAgents} ` +
@@ -119,7 +130,9 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
   private async syncAgent(
     agentId: string,
     result: IChatSyncResult,
-    filter?: (meta: { channel: string; externalUserId: string }) => boolean,
+    // One person's conversations only: other files are not counted, and no
+    // other row of the index is read.
+    own?: { channel: string; externalUserId: string },
   ): Promise<void> {
     let nodes;
     try {
@@ -137,7 +150,7 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     // One read of existing rows → size map, so we only re-read changed files.
     const existing = await this.chats.list({
       agentId,
-      includeInternal: true,
+      ...(own ?? { includeInternal: true }),
       perPage: 100_000,
     });
     const sizeByKey = new Map(
@@ -147,7 +160,13 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     for (const node of sessionFiles) {
       const meta = this.parseName(node.path);
       if (!meta) continue;
-      if (filter && !filter(meta)) continue;
+      if (
+        own &&
+        (meta.channel !== own.channel ||
+          meta.externalUserId !== own.externalUserId)
+      ) {
+        continue;
+      }
       result.scannedFiles++;
 
       if (sizeByKey.get(meta.sessionKey) === node.size) {

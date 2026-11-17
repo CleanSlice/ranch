@@ -153,7 +153,11 @@ describe('PeerController — routes', () => {
       asAdmin,
     );
 
-    expect(peers.connect).toHaveBeenCalledWith('a', 'b');
+    expect(peers.connect).toHaveBeenCalledWith('a', 'b', {
+      kind: 'person',
+      userId: 'user-a',
+      role: 'Admin',
+    });
     expect(JSON.stringify(created)).not.toContain('ap_');
     expect(JSON.stringify(created)).not.toContain('EXT_SECRET');
   });
@@ -281,7 +285,11 @@ describe('PeerController — routes', () => {
 
     await controller.candidates('a', asAdmin);
 
-    expect(peers.candidates).toHaveBeenCalledWith('a');
+    expect(peers.candidates).toHaveBeenCalledWith('a', {
+      kind: 'person',
+      userId: 'user-a',
+      role: 'Admin',
+    });
   });
 
   it('reads recent delegations with the default limit when none is given', async () => {
@@ -382,7 +390,11 @@ describe('PeerController — the other end of a connection', () => {
 
     await controller.connect('a', { peerAgentId: 'ranch' }, asOwner);
 
-    expect(peers.connect).toHaveBeenCalledWith('a', 'ranch');
+    expect(peers.connect).toHaveBeenCalledWith('a', 'ranch', {
+      kind: 'person',
+      userId: 'user-o',
+      role: 'Owner',
+    });
   });
 
   it('refuses a peer when nobody is signed in behind the request', async () => {

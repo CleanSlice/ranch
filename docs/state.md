@@ -55,17 +55,20 @@ patch(id, partial): () => void            // partial change, returns a rollback
   header) do not flip anything themselves. The rollback restores a field only
   if it still holds the optimistic value, so a fresher server write that
   landed in between survives.
-- The status stream (`stores/agentStatus.ts`) upserts the agent row each frame
-  carries into this store and keeps only what exists nowhere else: pod state
-  and hub connectivity. Its frames carry the full `AgentDto` and are decoded
-  by the same `AgentMapper` as REST responses, so a frame can never thin out a
-  record. One field is the exception, and the store handles it in `upsert`
-  and `setAll`: the stream is anonymous and never says who created an agent
-  (`createdBy`, CLEAN-232), so a record decoded from a frame has it
-  `undefined` and the creator the store already holds stands
-  (`keepKnownCreator`). `null` is a different answer, "nobody is recorded",
-  and only a response that resolves creators gives it (`GET /agents`,
-  `GET /agents/:id` and the routes that return one agent).
+- The status stream (`stores/agentStatus.ts`) patches the status each frame
+  carries into this store's record and keeps only what exists nowhere else:
+  pod state and hub connectivity. The stream is public (an EventSource cannot
+  send a token), so a frame carries status facts only, never the row
+  (CLEAN-232): the agent's `id`, `status` and `updatedAt`. When
+  `updatedAt` is later than the record's, or the store has never held that
+  agent, the store reads the row through the authenticated route
+  (`fetchById`, which upserts; `fetchAll` after a snapshot that does not
+  match the collection). A push patches, a fetch upserts, and it is still one
+  record. Who created an agent (`createdBy`) is likewise only in responses
+  that resolve creators (`GET /agents`, `GET /agents/:id` and the routes
+  that return one agent): a record that does not say keeps the creator the
+  store already holds (`keepKnownCreator`), and `null` means "nobody is
+  recorded".
 - The rail (`workspace/Provider.vue`), the header (`workspace/Main.vue`), the
   Overview card, the edit page and the Files tab all read `agentStore.agents`
   / `agentStore.byId(id)`.

@@ -224,7 +224,11 @@ describe('PeerAdminTool — who may use it', () => {
       asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Owner),
     );
     expect(asOwner.isError).toBeUndefined();
-    expect(peers.connect).toHaveBeenCalledWith('agent-ranch', 'agent-b');
+    expect(peers.connect).toHaveBeenCalledWith('agent-ranch', 'agent-b', {
+      kind: 'person',
+      userId: 'user-1',
+      role: 'Owner',
+    });
   });
 
   it('answers an agent that does not exist in the very same words', async () => {
@@ -353,7 +357,9 @@ describe('PeerAdminTool — changing the peer set', () => {
         operator(),
       ),
     );
-    expect(peers.connect).toHaveBeenCalledWith('agent-a', 'agent-b');
+    expect(peers.connect).toHaveBeenCalledWith('agent-a', 'agent-b', {
+      kind: 'trusted',
+    });
     expect(text).toContain('«Support Bot» is now a peer of agent-a');
     expect(text).toContain('connection peer-1');
     expect(text).toContain('restart_agent with id=agent-a');
@@ -582,7 +588,11 @@ describe('PeerAdminTool — the other end of a connection', () => {
     );
 
     expect(result.isError).toBeUndefined();
-    expect(peers.connect).toHaveBeenCalledWith('agent-a', 'agent-ranch');
+    expect(peers.connect).toHaveBeenCalledWith('agent-a', 'agent-ranch', {
+      kind: 'person',
+      userId: 'user-1',
+      role: 'Owner',
+    });
   });
 
   it('does not show an Admin the card of the Ranch admin agent', async () => {

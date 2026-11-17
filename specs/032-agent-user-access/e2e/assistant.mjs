@@ -2,6 +2,23 @@
 //
 //   node specs/032-agent-user-access/e2e/assistant.mjs
 //   node specs/032-agent-user-access/e2e/assistant.mjs --boot-only   (no model call)
+//   node specs/032-agent-user-access/e2e/assistant.mjs --only user   (the User's turn alone)
+//
+// `--only user` runs step 1 below and stops: no Owner turn, no API restart.
+// It is the cheap proof that a User's turn attempts no tool (FR-053,
+// SC-013), and the forwarder then lets at most four model calls through;
+// a fifth is answered with an error here and never leaves this machine.
+// The runtime's own heartbeat would spend that budget before the User is
+// answered (five seconds after start it reads the template's HEARTBEAT.md,
+// finds its list of patterns and works through it: four calls), so in this
+// mode alone the COPY of HEARTBEAT.md is reduced to its heading, which the
+// runtime skips. SOUL.md, USER.md and the skill are the shipped ones.
+//
+// ASSISTANT_DUMP_DIR=<a folder outside the repo> writes, for every model
+// call, the system prompt and the names of the tools it was sent with
+// (call-<n>.json). No header, so no key; the conversation is not written.
+// That is how to see which words a turn was given when it tries a tool it
+// does not have.
 //
 // It spends the project's model key: a handful of short turns on the
 // cheapest model the runtime supports (LLM_MODEL below), budgeted at ten
@@ -32,7 +49,8 @@
 // CLAUDE_WORKSPACE_ID the forwarder only counts.
 //
 // The agent directory is the Rancher template exactly as it ships. Nothing
-// in it is edited for the test.
+// in it is edited for the test (one file of the copy is, under `--only
+// user`: see above).
 //
 // Then, in the app console:
 //   1. as a User:  "delete the agent named access-bravo"
@@ -54,7 +72,7 @@
 //
 // Needs: API :3333 (after seed.mjs), app :3000, fakeRuntime.mjs, bun.
 import { execSync, spawn } from 'node:child_process';
-import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
@@ -94,6 +112,11 @@ const AGENT_DIR = resolve(WORK, 'agent');
 const RUNTIME_LOG = resolve(WORK, 'runtime.log');
 const API_LOG = resolve(OUT, 'api.log');
 const bootOnly = arg('boot-only') === true;
+const onlyUser = arg('only') === 'user';
+/** With `--only user` the forwarder itself stops at this many model calls. */
+const CALL_CAP = onlyUser ? 4 : Infinity;
+const DUMP_DIR = process.env.ASSISTANT_DUMP_DIR ? resolve(process.env.ASSISTANT_DUMP_DIR) : null;
+if (DUMP_DIR) mkdirSync(DUMP_DIR, { recursive: true });
 
 // ------------------------------------------------------------------ helpers
 
@@ -165,7 +188,19 @@ function runtimeUsage() {
  * carry the key, and bodies carry the conversation.
  */
 const MODEL_API = 'https://api.anthropic.com';
-const model = { calls: 0, ok: 0, failed: [] };
+const model = { calls: 0, ok: 0, failed: [], capped: 0 };
+/** The system prompt and tool names of one call, for ASSISTANT_DUMP_DIR. Never a header. */
+function dumpCall(n, body) {
+  if (!DUMP_DIR) return;
+  try {
+    const parsed = JSON.parse(body.toString('utf8'));
+    const system = Array.isArray(parsed.system) ? parsed.system.map((b) => b?.text ?? '').join('\n') : String(parsed.system ?? '');
+    const tools = (parsed.tools ?? []).map((t) => t?.name).filter(Boolean);
+    writeFileSync(resolve(DUMP_DIR, `call-${n}.json`), JSON.stringify({ model: parsed.model, tools, system }, null, 2));
+  } catch {
+    // Not JSON: nothing to dump.
+  }
+}
 function startModelForwarder(workspaceId) {
   const server = createServer(async (req, res) => {
     try {
@@ -175,6 +210,14 @@ function startModelForwarder(workspaceId) {
       for (const h of ['host', 'connection', 'content-length', 'accept-encoding']) delete headers[h];
       if (workspaceId) headers['anthropic-workspace-id'] = workspaceId;
       const isCall = req.method === 'POST' && /^\/v1\/messages(\?|$)/.test(req.url ?? '');
+      if (isCall && model.calls >= CALL_CAP) {
+        // The cap of `--only user`: answered here, nothing is sent on.
+        model.capped += 1;
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'assistant.mjs: model call cap reached' } }));
+        return;
+      }
+      if (isCall) dumpCall(model.calls + 1, Buffer.concat(chunks));
       const upstream = await fetch(MODEL_API + req.url, {
         method: req.method,
         headers,
@@ -255,6 +298,8 @@ if (!llmKey || !apiEnv.BRIDLE_API_KEY || !existsSync(resolve(RUNTIME_DIR, 'src/i
 rmSync(WORK, { recursive: true, force: true });
 mkdirSync(WORK, { recursive: true });
 cpSync(resolve(REPO, 'rancher/.agent'), AGENT_DIR, { recursive: true });
+// See the header: with `--only user` the heartbeat must not spend the budget.
+if (onlyUser) writeFileSync(resolve(AGENT_DIR, 'HEARTBEAT.md'), '# HEARTBEAT.md\n');
 
 const forwarder = await startModelForwarder(projectEnv.CLAUDE_WORKSPACE_ID);
 const ranchToken = agentServiceToken(RANCH);
@@ -405,6 +450,9 @@ try {
     check(user.problems.length === 0, `no console error, no failed request${user.problems.length ? `: ${user.problems.join(' | ')}` : ''}`);
     await user.context.close();
 
+    // `--only user` stops here: the Owner's turns and the restart are the
+    // full run's.
+    if (!onlyUser) {
     // --------------------------------------------------------------- Owner
     section('As the Owner, 1440 px: "how many agents are there?"');
     const total = (await api('/agents', { as: OWNER })).body.length;
@@ -469,6 +517,7 @@ try {
     await shot(owner.page, 'assistant-owner-after-restart-1440');
     check(owner.problems.length === 0, `no console error, no failed request${owner.problems.length ? `: ${owner.problems.join(' | ')}` : ''}`);
     await owner.context.close();
+    }
 
     // ------------------------------------------------------------ the bill
     section('What it cost, and what it left behind');
@@ -476,7 +525,8 @@ try {
     console.log(`  model calls that left this machine: ${model.calls} (${model.ok} answered${model.failed.length ? `, refused: ${model.failed.join(', ')}` : ''}); ${internal} of the turns were the runtime's own (its heartbeat at start)`);
     console.log(`  the runtime's own count (data/usage.json): ${runtimeUsage()}`);
     check(model.calls > 0 && model.failed.length === 0, `every model call was answered (${model.ok} of ${model.calls})`);
-    check(model.calls <= BUDGET, `within the budget of ${BUDGET} model calls (${model.calls})`);
+    const budget = onlyUser ? CALL_CAP : BUDGET;
+    check(model.calls <= budget && model.capped === 0, `within the budget of ${budget} model calls (${model.calls}${model.capped ? `, and ${model.capped} more were stopped at the cap` : ''})`);
     // The runtime keeps one transcript per conversation, `bridle:<client id>`,
     // one JSON event per line: user, tool_call, tool_result, assistant. (On
     // Windows the colon makes it an NTFS stream of the file `bridle`; the

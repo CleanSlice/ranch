@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync, statSync } from 'fs';
 import * as path from 'path';
 
 /**
@@ -13,10 +13,19 @@ import * as path from 'path';
  *     whoever was asking.
  *  2. Guidance that points at the management console sits inside
  *     `admin-only` blocks, which the runtime strips for anybody who is not
- *     an administrator of the agent. HEARTBEAT.md and the skill are not
- *     stripped by the runtime, so they do not mention it at all.
+ *     an administrator of the agent. HEARTBEAT.md and the skill do not
+ *     mention it at all.
  *  3. SOUL.md fits the prompt limit its own agent.config.json sets
  *     (CLEAN-230): past it the runtime cuts the file mid-sentence.
+ *  4. It names no Ranch tool where somebody who is not an administrator
+ *     reads it. A User asked the agent to delete an agent; the answer was
+ *     the right refusal, and before it the model tried `list_agents`, a
+ *     tool that was not in that User's list. It knew the name from the
+ *     `ranch` skill, which went whole into every prompt, and from the
+ *     tables of SOUL.md. So the skill is for administrators only
+ *     (`audience: admin`, the runtime neither lists nor loads it for
+ *     anybody else), and SOUL.md, HEARTBEAT.md and USER.md name tools
+ *     inside `admin-only` blocks only.
  */
 
 const TEMPLATE = path.resolve(__dirname, '../../../../rancher/.agent');
@@ -109,9 +118,72 @@ describe('the management console is mentioned to administrators only', () => {
     }
   });
 
-  it('HEARTBEAT.md and the skill, which the runtime does not strip, do not mention it', () => {
+  it('HEARTBEAT.md and the skill do not mention it', () => {
     expect(read('HEARTBEAT.md')).not.toMatch(CONSOLE);
     expect(read('skills/ranch/SKILL.md')).not.toMatch(CONSOLE);
+  });
+});
+
+describe('no Ranch tool is named where a User reads it', () => {
+  /**
+   * Every tool the API registers, read from the source: the `name` that
+   * opens each `@Tool({ … })`. Every one, not only the management ones: a
+   * tool this person does have is described in their tool list, so the
+   * template has no reason to name it, and a list here would go stale.
+   */
+  const SLICES = path.resolve(__dirname, '..');
+  const toolNames = (dir: string): string[] =>
+    readdirSync(dir).flatMap((entry) => {
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) return toolNames(full);
+      if (!entry.endsWith('.tool.ts')) return [];
+      return [
+        ...readFileSync(full, 'utf8').matchAll(
+          /@Tool\(\{\s*name:\s*'([a-z0-9_]+)'/g,
+        ),
+      ].map((m) => m[1]);
+    });
+  const TOOLS = [...new Set(toolNames(SLICES))].sort();
+  const named = (text: string) =>
+    TOOLS.filter((name) => new RegExp(`\\b${name}\\b`).test(text));
+
+  it('reads the tool names from the API source', () => {
+    expect(TOOLS.length).toBeGreaterThan(150);
+    // The ones the User's turn went looking for, and the audiences' own.
+    for (const name of [
+      'list_agents',
+      'delete_agent',
+      'set_agent_admin',
+      'restart_agent',
+      'list_users',
+      'upsert_setting',
+    ]) {
+      expect(TOOLS).toContain(name);
+    }
+  });
+
+  it.each(['SOUL.md', 'HEARTBEAT.md', 'USER.md'])(
+    '%s: only inside admin-only blocks',
+    (file) => {
+      expect([file, named(forEveryone(read(file)))]).toEqual([file, []]);
+    },
+  );
+
+  it('SOUL.md and HEARTBEAT.md still name them for an administrator', () => {
+    expect(named(read('SOUL.md'))).toContain('list_agents');
+    expect(named(read('HEARTBEAT.md'))).toContain('list_agents');
+  });
+
+  it('the ranch skill, which names them all over, is for administrators only', () => {
+    const skill = read('skills/ranch/SKILL.md');
+    expect(named(skill).length).toBeGreaterThan(50);
+    const frontmatter = skill.split(/^---\s*$/m)[1] ?? '';
+    expect(frontmatter).toMatch(/^audience:\s*admin\s*$/m);
+  });
+
+  it('no other skill ships with the template', () => {
+    // A second skill would need the same decision; it is made here.
+    expect(readdirSync(path.join(TEMPLATE, 'skills'))).toEqual(['ranch']);
   });
 });
 

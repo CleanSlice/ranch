@@ -39,6 +39,7 @@ import { ManagesAgent } from './guards';
 import { AgentStatusService } from './domain/agentStatus.service';
 import { AgentPermissionService } from './domain/agentPermission.service';
 import { toReaderView } from './domain/agentReaderView';
+import { toStatusFrameMessage } from './domain/agentStatusFrame';
 import { AgentDeployService } from './domain/agentDeploy.service';
 import { detectMcpConfigDrift } from './domain/mcpConfigDrift';
 import {
@@ -327,35 +328,20 @@ export class AgentController {
   @Public()
   @ApiOperation({
     summary:
-      'Live SSE stream of agent pod state changes. Public — EventSource cannot send Authorization headers.',
+      'Live SSE stream of agent status changes. Public — EventSource cannot send Authorization headers — so each frame carries status facts only: the agent `id`, `status` and `updatedAt`, the pod `phase`, `ready`, `restartCount` and `containerWaitingReason`, and `bridleConnected`. No name, configuration, credential or workflow id (CLEAN-232); read the row through GET /agents/:id.',
   })
   statusStream(): Observable<MessageEvent> {
-    // Anonymous readers: the creator's id is taken off every agent on the way
-    // out, in the opening snapshot and in each event.
-    return this.agentStatusService.stream$().pipe(
-      map((message) => {
-        const data =
-          message.type === 'snapshot'
-            ? {
-                ...message,
-                payload: message.payload.map((s) => ({
-                  ...s,
-                  agent: withoutCreatorId(s.agent),
-                })),
-              }
-            : {
-                ...message,
-                payload: {
-                  ...message.payload,
-                  status: {
-                    ...message.payload.status,
-                    agent: withoutCreatorId(message.payload.status.agent),
-                  },
-                },
-              };
-        return { data } as MessageEvent;
-      }),
-    );
+    // Anonymous readers: status facts only, in the opening snapshot and in
+    // each event (toStatusFrame). A console that needs the agent's row reads
+    // it through GET /agents/:id, which knows who is asking.
+    return this.agentStatusService
+      .stream$()
+      .pipe(
+        map(
+          (message) =>
+            ({ data: toStatusFrameMessage(message) }) as MessageEvent,
+        ),
+      );
   }
 
   @Get('capacity')

@@ -1,5 +1,6 @@
 ---
 name: ranch
+audience: admin
 description: Operate the Ranch through its tools. Manage agents, templates, skills, LLMs, knowledge, users and settings. Use this skill whenever someone asks anything about agents, templates, skills, deployments, LLM credentials, knowledge bases, users, usage, secrets, or platform settings.
 metadata:
   emoji: "🤠"

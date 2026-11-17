@@ -8,6 +8,7 @@ import {
   CONFIRM_SENTENCE,
   confirmed,
   GUEST_REFUSAL,
+  manageCaller,
   OPERATOR_REFUSAL,
 } from '#/mcp/tooling';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
@@ -64,7 +65,10 @@ export const SELF_SERVICE_SETTING = {
  * is the Owner's or the agent's own (a trusted party). A User, an Admin, a
  * share visitor or a messenger user talking to it cannot give it a
  * colleague, take one away, or read whom it asks. An ordinary agent's token
- * is unaffected: whoever talks to it may still connect it, as before.
+ * is unaffected: whoever talks to it may still connect it, as before, to
+ * any agent but that one. The Ranch admin agent is not a colleague an
+ * ordinary agent can take: `PeerService.connect` answers "not found" for
+ * it and `list_ranch_agents` does not name it.
  */
 @ToolAudience('agent')
 @Injectable()
@@ -202,7 +206,8 @@ export class PeerSelfTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     const agentId = await this.requireSelf(httpRequest);
     return withRefusalAdvice(
-      async () => ok(await this.peers.candidates(agentId)),
+      async () =>
+        ok(await this.peers.candidates(agentId, manageCaller(httpRequest))),
       SELF_HINTS,
     );
   }
@@ -270,7 +275,14 @@ export class PeerSelfTool implements IConditionallyListedTool {
     const agentId = await this.requireSelf(httpRequest);
     return withRefusalAdvice(async () => {
       const hadPeers = (await this.peers.list(agentId)).length > 0;
-      const peer = await this.peers.connect(agentId, peerAgentId);
+      // An ordinary agent's token manages nothing, whoever it speaks for,
+      // so it is a guest to the rule about the Ranch admin agent: that one
+      // is not found for it, and it is not in list_ranch_agents either.
+      const peer = await this.peers.connect(
+        agentId,
+        peerAgentId,
+        manageCaller(httpRequest),
+      );
       this.logger.log(
         `Agent connected its own peer: agent=${agentId} peer=${peerAgentId}`,
       );

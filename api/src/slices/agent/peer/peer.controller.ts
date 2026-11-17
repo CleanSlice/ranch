@@ -145,7 +145,7 @@ export class PeerController {
     @Req() req?: Request & { user?: IAuthTokenPayload },
   ): Promise<AgentPeerCandidateDto[]> {
     const caller = AgentPermissionService.callerOfBearer(req?.user);
-    const all = await this.peers.candidates(agentId);
+    const all = await this.peers.candidates(agentId, caller);
     // Only agents the caller could connect: an agent they may not manage is
     // not offered, exactly as it is refused by POST peers.
     const allowed = await Promise.all(
@@ -203,7 +203,11 @@ export class PeerController {
       ? await this.peers.connectByCard(agentId, body.card, body.token)
       : body.url
         ? await this.peers.connectByUrl(agentId, body.url, body.token)
-        : await this.peers.connect(agentId, body.peerAgentId!);
+        : await this.peers.connect(
+            agentId,
+            body.peerAgentId!,
+            AgentPermissionService.callerOfBearer(req?.user),
+          );
     return toPeerDto(view);
   }
 

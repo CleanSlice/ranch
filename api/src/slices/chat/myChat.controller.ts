@@ -166,7 +166,10 @@ export class MyChatController {
     description:
       "Reconcile the current user's OWN chats from S3 into the index " +
       '(self-service, non-admin). Only sessions belonging to the caller are ' +
-      'touched. A manual fallback when realtime indexing has not caught up.',
+      'touched, in the agents the caller already has a conversation with; ' +
+      'the counts in the answer are about those alone, and an `agentId` ' +
+      'the caller has no conversation with scans nothing (CLEAN-232). A ' +
+      'manual fallback when realtime indexing has not caught up.',
     operationId: 'syncMyChats',
   })
   @ApiOkResponse({ type: SyncChatsResponseDto })

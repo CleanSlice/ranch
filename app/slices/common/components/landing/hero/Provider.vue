@@ -12,7 +12,7 @@
           {{ $t('hero.eyebrow') }}
         </p>
 
-        <h1 class="land-hero__title">
+        <h1 class="land-hero__title land-ink">
           <!-- No entrance animation on the headline or the lede: they are the
                page's largest text and must be on screen at first paint, not
                fade in behind the brand mark (LCP stays the hero, FR-007). -->
@@ -49,7 +49,19 @@
         </div>
       </div>
 
-      <div class="land-hero__stage land-enter land-enter--stage" style="--enter-delay: 620ms; --enter-dur: 1000ms">
+      <div ref="stageWrapEl" class="land-hero__stage land-enter land-enter--stage" style="--enter-delay: 620ms; --enter-dur: 1000ms">
+        <!-- A beam of light falls from above the headline into the demo panel
+             and pools along its top edge; short sparks run down its last
+             stretch, one landing every 1.2 s. It sits behind the copy and the panel, holds
+             while the hero is off screen and is still under reduced motion. -->
+        <span class="land-hero__beam land-fx" aria-hidden="true">
+          <span class="land-hero__beam-haze" />
+          <span class="land-hero__beam-glow" />
+          <span class="land-hero__beam-core" />
+          <span v-for="i in 2" :key="i" class="land-hero__beam-spark" :style="{ '--i': i - 1 }" />
+          <span class="land-hero__beam-pool" />
+          <span class="land-hero__beam-edge" />
+        </span>
         <LandingHeroStage :agent="featured" :origin="origin" />
       </div>
 
@@ -69,6 +81,11 @@ import { NuxtLink } from '#components';
 
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
+
+// The beam's loops hold while the stage is off screen or the tab is hidden.
+// Registered before the first await: lifecycle hooks need the instance.
+const stageWrapEl = ref<HTMLElement | null>(null);
+useFxPause(stageWrapEl);
 
 // Only the hero image is worth preloading; everything below the fold lazy-loads.
 useHead({
@@ -147,6 +164,8 @@ function scrollTo(id: string, event: MouseEvent) {
   gap: clamp(2.5rem, 6vh, 4.5rem);
 }
 .land-hero__copy {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -215,8 +234,167 @@ function scrollTo(id: string, event: MouseEvent) {
   }
 }
 .land-hero__stage {
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 1120px;
+}
+
+/* ── The beam ────────────────────────────────────────────────────────
+   Lives in the stage's stacking context at z-index -1: over the atmosphere,
+   under the panel; the copy above it is lifted one level so the letters
+   cover the light instead of being washed by it. */
+.land-hero__beam {
+  --beam-h: 46rem;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 1px);
+  z-index: -1;
+  width: min(46rem, 92%);
+  height: var(--beam-h);
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: land-beam-breathe 4s ease-in-out infinite;
+}
+.land-hero__beam > * {
+  position: absolute;
+}
+.land-hero__beam-haze {
+  inset: 0;
+  background: radial-gradient(
+    ellipse 34% 58% at 50% 100%,
+    rgba(201, 161, 228, 0.22) 0%,
+    rgba(245, 161, 107, 0.1) 42%,
+    rgba(245, 161, 107, 0) 74%
+  );
+}
+/* Behind the headline the beam is a wide soft shaft; it sharpens into a
+   hard line only in the last stretch above the panel, below the copy. */
+.land-hero__beam-glow {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 9rem;
+  margin-left: -4.5rem;
+  background: linear-gradient(
+    to top,
+    rgba(255, 226, 204, 0.7) 0%,
+    rgba(245, 161, 107, 0.42) 22%,
+    rgba(201, 161, 228, 0.26) 58%,
+    rgba(201, 161, 228, 0) 100%
+  );
+  filter: blur(26px);
+}
+.land-hero__beam-core {
+  left: 50%;
+  bottom: 0;
+  width: 2px;
+  height: 8.5rem;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to top,
+    #ffffff 0%,
+    #ffe0c8 22%,
+    rgba(245, 161, 107, 0.8) 55%,
+    rgba(245, 161, 107, 0) 100%
+  );
+  box-shadow: 0 0 14px 1px rgba(245, 161, 107, 0.35);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 40%, rgba(0, 0, 0, 0) 100%);
+  mask-image: linear-gradient(to top, #000 0%, #000 40%, rgba(0, 0, 0, 0) 100%);
+}
+.land-hero__beam-spark {
+  left: 50%;
+  top: 0;
+  width: 2px;
+  height: 2rem;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #ffffff);
+  box-shadow: 0 0 10px 1px rgba(255, 226, 204, 0.8);
+  opacity: 0;
+  animation: land-beam-spark 2.4s cubic-bezier(0.55, 0, 0.9, 0.55) infinite;
+  animation-delay: calc(var(--i) * 1.2s);
+}
+/* Where the beam lands, the light spreads along the panel's top edge. */
+.land-hero__beam-pool {
+  left: 50%;
+  bottom: -0.75rem;
+  width: 150%;
+  height: 12rem;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse 50% 100% at 50% 100%,
+    rgba(255, 240, 228, 0.95) 0%,
+    rgba(245, 161, 107, 0.6) 16%,
+    rgba(201, 161, 228, 0.2) 46%,
+    rgba(201, 161, 228, 0) 72%
+  );
+  animation: land-beam-pool 1.2s ease-out infinite;
+}
+.land-hero__beam-edge {
+  left: 50%;
+  bottom: 0;
+  width: 130%;
+  height: 2px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    90deg,
+    rgba(245, 161, 107, 0) 0%,
+    rgba(245, 161, 107, 0.75) 26%,
+    #ffffff 50%,
+    rgba(245, 161, 107, 0.75) 74%,
+    rgba(245, 161, 107, 0) 100%
+  );
+  filter: blur(0.4px);
+}
+@keyframes land-beam-breathe {
+  0%,
+  100% {
+    opacity: 0.86;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes land-beam-spark {
+  0% {
+    opacity: 0;
+    transform: translateY(calc(var(--beam-h) - 9rem));
+  }
+  25% {
+    opacity: 0.9;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(calc(var(--beam-h) - 2rem));
+  }
+}
+@keyframes land-beam-pool {
+  0% {
+    opacity: 1;
+  }
+  35% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0.72;
+  }
+}
+@media (max-width: 640px) {
+  .land-hero__beam {
+    --beam-h: 38rem;
+  }
+  .land-hero__beam-pool {
+    width: 110%;
+    height: 7rem;
+  }
+  .land-hero__beam-edge {
+    width: 100%;
+  }
 }
 .land-hero__strip {
   list-style: none;

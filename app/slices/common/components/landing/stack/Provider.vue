@@ -34,7 +34,8 @@ useFxPause(fxRoot);
 <style scoped>
 .land-stack {
   padding: clamp(2.5rem, 6vw, 4rem) 0;
-  border-top: 1px solid var(--land-border);
+  border-top: 1px solid transparent;
+  border-image: var(--land-horizon) 1;
 }
 .land-stack__inner {
   display: flex;

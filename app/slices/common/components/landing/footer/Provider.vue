@@ -26,7 +26,8 @@ const version = useRuntimeConfig().public.ranchVersion;
 
 <style scoped>
 .land-footer {
-  border-top: 1px solid var(--land-border);
+  border-top: 1px solid transparent;
+  border-image: var(--land-horizon) 1;
   background: var(--land-bg);
   padding: 2rem 0 2.5rem;
 }

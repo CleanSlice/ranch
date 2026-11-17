@@ -31,6 +31,20 @@
   /* Display face for the hero headline only: wide, loud, native Cyrillic. */
   --land-display: 'Unbounded', var(--land-font);
   --land-max: 1280px;
+  /* Light as a material: one ink for display type, one rim
+     for dark surfaces, one horizon for section edges. */
+  --land-ink: linear-gradient(172deg, #ffffff 28%, #eadcf3 66%, #f6c9ab 108%);
+  --land-rim: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --land-horizon: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.1) 14%,
+    rgba(201, 161, 228, 0.34) 38%,
+    rgba(245, 161, 107, 0.55) 50%,
+    rgba(201, 161, 228, 0.34) 62%,
+    rgba(255, 255, 255, 0.1) 86%,
+    rgba(255, 255, 255, 0) 100%
+  );
 
   background: var(--land-bg);
   color: var(--land-text);
@@ -78,6 +92,26 @@ html:has(body.landing-body),
   font-weight: 700;
   text-wrap: balance;
   margin: 0;
+}
+/* Display type is lit from the upper left: white where the light lands,
+   a breath of lavender and copper where it falls off. Plain text colour
+   stays underneath for browsers without background-clip and for forced
+   colours. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .land-h2,
+  .land-ink {
+    background: var(--land-ink);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+@media (forced-colors: active) {
+  .land-h2,
+  .land-ink {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
 }
 .land-lede {
   font-size: clamp(1rem, 0.95rem + 0.3vw, 1.125rem);
@@ -141,9 +175,65 @@ html:has(body.landing-body),
   color: #120c18;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
+/* A primary or accent pill is lit from inside: a hot spot rests near the
+   arrow and follows the pointer along the pill. useButtonGlow writes two
+   variables on the pill under the cursor: `--hx`, the pointer's x inside the
+   pill (the spot), and `--gx`, its offset from the centre (the light that
+   falls under the pill leans the same way). Without the composable (touch,
+   reduced motion) the spot stays at rest and the light sits in the middle. */
+.land-btn--primary,
+.land-btn--accent {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.land-btn--primary::after,
+.land-btn--accent::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: var(--hx, 86%);
+  width: 6.5em;
+  height: 6.5em;
+  margin: -3.25em 0 0 -3.25em;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    #fffdf7 0%,
+    #ffd9b8 26%,
+    rgba(245, 161, 107, 0.62) 50%,
+    rgba(245, 161, 107, 0) 100%
+  );
+  opacity: 0.62;
+  pointer-events: none;
+  transition:
+    left 0.22s var(--land-ease),
+    opacity 0.35s var(--land-ease);
+}
+.land-btn--accent::after {
+  background: radial-gradient(
+    closest-side,
+    #fffaf0 0%,
+    #ffe3c4 30%,
+    rgba(255, 214, 170, 0.6) 55%,
+    rgba(255, 214, 170, 0) 100%
+  );
+}
+.land-btn--primary:hover::after,
+.land-btn--accent:hover::after {
+  opacity: 1;
+}
+@media (forced-colors: active) {
+  .land-btn--primary::after,
+  .land-btn--accent::after {
+    display: none;
+  }
+}
 .land-btn--primary:hover {
   background: #fff;
   box-shadow:
+    var(--gx, 0px) 12px 30px -8px rgba(245, 161, 107, 0.6),
     0 14px 36px rgba(0, 0, 0, 0.4),
     0 0 0 6px rgba(245, 161, 107, 0.12);
 }
@@ -165,6 +255,9 @@ html:has(body.landing-body),
 }
 .land-btn--accent:hover {
   background: #f9b386;
+  box-shadow:
+    var(--gx, 0px) 14px 38px -6px rgba(245, 161, 107, 0.62),
+    0 0 0 6px rgba(245, 161, 107, 0.14);
 }
 
 /* Glass pill (navigation) */
@@ -181,6 +274,28 @@ html:has(body.landing-body),
   background: linear-gradient(180deg, rgba(37, 27, 43, 0.6), rgba(19, 14, 25, 0.9));
   border: 1px solid var(--land-border);
   border-radius: 1.25rem;
+  /* The top edge catches the light; the card sits on the page, not in it. */
+  box-shadow:
+    var(--land-rim),
+    0 28px 48px -36px rgba(0, 0, 0, 0.7);
+}
+
+/* Dot-matrix light: the same pixel grain as the DotGothic numerals, used as
+   a light source behind a surface. Static, masked to a soft ellipse; the
+   caller places it and picks the colour through --dots-color. */
+.land-dots {
+  position: absolute;
+  pointer-events: none;
+  background-image: radial-gradient(circle at center, var(--dots-color, rgba(245, 161, 107, 0.95)) 0 0.9px, transparent 1.5px);
+  background-size: 6px 6px;
+  opacity: var(--dots-opacity, 0.55);
+  -webkit-mask-image: radial-gradient(closest-side, #000 0%, rgba(0, 0, 0, 0.6) 42%, rgba(0, 0, 0, 0) 100%);
+  mask-image: radial-gradient(closest-side, #000 0%, rgba(0, 0, 0, 0.6) 42%, rgba(0, 0, 0, 0) 100%);
+}
+@media (forced-colors: active) {
+  .land-dots {
+    display: none;
+  }
 }
 
 /* ── Scroll reveal ──────────────────────────────────────────────────── */

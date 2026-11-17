@@ -316,6 +316,7 @@ import type {
   SecretControllerReplaceData,
   SecretControllerReplaceResponse,
   LogControllerGetLogsData,
+  LogControllerGetSummaryData,
   UsageControllerFindForAgentData,
   UsageControllerReportData,
   UsageControllerReportResponse,
@@ -3956,6 +3957,22 @@ export class LogsService {
       ThrowOnError
     >({
       url: "/agents/{agentId}/logs",
+      ...options,
+    });
+  }
+
+  /**
+   * Get a summary of the agent pod logs
+   */
+  public static logControllerGetSummary<ThrowOnError extends boolean = false>(
+    options: Options<LogControllerGetSummaryData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/logs/summary",
       ...options,
     });
   }

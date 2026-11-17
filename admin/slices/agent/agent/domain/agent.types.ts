@@ -55,6 +55,17 @@ export interface IClusterCapacityData {
   maxNodeFreeMemBytes: number;
 }
 
+/**
+ * What the collapsed Logs bar renders, as the api already worked it out
+ * (CLEAN-233): the newest line raw, and the two figures beside it. Counted
+ * over the window the api read, not the pod's whole history.
+ */
+export interface IAgentLogSummary {
+  logs: string;
+  total: number;
+  alerts: number;
+}
+
 export interface IAgentEnvVar {
   name: string;
   value: string;

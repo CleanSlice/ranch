@@ -3,11 +3,13 @@
  * Pod logs as a bar under the composer (specs/017, R5).
  *
  * Collapsed, it is one row: the newest line and how many entries sit behind
- * it (`AgentLogsBarSummary`, which owns its own `useAgentLogs`). Expanded, it
- * is the existing logs panel in a region below the composer. The two are
- * `v-if` branches so exactly one `useAgentLogs` instance — one 5 s poller —
- * exists at any moment; the host mounts this only while the chat is the
- * active tab, so nothing polls behind Settings either (SC-005).
+ * it (`AgentLogsBarSummary`, which owns its own `useAgentLogSummary` — the
+ * api counts the window so the row need not download it, CLEAN-233).
+ * Expanded, it is the existing logs panel in a region below the composer.
+ *
+ * The two are `v-if` branches so exactly one poller exists at any moment,
+ * and the host mounts this only while the chat is the active tab, so nothing
+ * polls behind Settings either (SC-005).
  */
 defineProps<{
   agentId: string;

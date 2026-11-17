@@ -95,19 +95,33 @@ export function useRanchUpdate() {
     loading: false,
   }));
 
-  async function check(force = false): Promise<void> {
-    if (state.value.loading) return;
-
+  /**
+   * What the api says is running. The runtime config value is baked in at
+   * admin startup, so after an in-place upgrade it stays stale until
+   * `ranch dev` is restarted — but asking costs a request, so it is only
+   * asked when it would change the answer (CLEAN-233): if the newest tag is
+   * not newer than what we think we run, a fresher `current` cannot make it
+   * newer either.
+   */
+  async function settleVerdict(latest: string): Promise<void> {
+    if (!isNewer(latest, state.value.current)) {
+      state.value.hasUpdate = false;
+      return;
+    }
     const live = await fetchLiveCurrent();
     if (live) state.value.current = live;
-    const current = state.value.current;
+    state.value.hasUpdate = isNewer(latest, state.value.current);
+  }
+
+  async function check(force = false): Promise<void> {
+    if (state.value.loading) return;
 
     if (!force) {
       const cached = readCache();
       if (cached) {
         state.value.latest = cached.latest;
         state.value.releaseUrl = cached.releaseUrl;
-        state.value.hasUpdate = isNewer(cached.latest, current);
+        await settleVerdict(cached.latest);
         return;
       }
     }
@@ -129,8 +143,8 @@ export function useRanchUpdate() {
       const latest = tag.slice(1);
       state.value.latest = latest;
       state.value.releaseUrl = url;
-      state.value.hasUpdate = isNewer(latest, current);
       writeCache({ latest, releaseUrl: url, checkedAt: Date.now() });
+      await settleVerdict(latest);
     } catch {
       // network down / CORS / rate limit — silent
     } finally {

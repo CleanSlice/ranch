@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { IAgentGateway } from '#/agent/agent/domain';
-import { LogService } from './domain';
+import { LogService, type IPodLogSummary } from './domain';
 
 /**
  * Agent-pod logs for the console. The Kubernetes read lives in `LogService`
@@ -37,5 +37,27 @@ export class LogController {
       this.logService.parseTail(tail),
     );
     return { logs: read.logs };
+  }
+
+  /**
+   * The collapsed Logs bar's view of the same window: the newest line, how
+   * many lines are behind it and how many of those are warnings or errors
+   * (CLEAN-233). Same `tail` meaning as the full read — the counts describe
+   * the window asked for, not the pod's whole history.
+   */
+  @Get('summary')
+  @ApiOperation({ summary: 'Get a summary of the agent pod logs' })
+  async getSummary(
+    @Param('agentId') agentId: string,
+    @Query('tail') tail?: string,
+  ): Promise<IPodLogSummary> {
+    const agent = await this.agentGateway.findById(agentId);
+    if (!agent) throw new NotFoundException('Agent not found');
+
+    return this.logService.readPodLogSummary(
+      agentId,
+      agent.status,
+      this.logService.parseTail(tail),
+    );
   }
 }

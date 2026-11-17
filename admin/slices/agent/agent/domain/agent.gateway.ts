@@ -1,6 +1,7 @@
 import type {
   IAgentData,
   IAgentEnvVar,
+  IAgentLogSummary,
   IAgentMetrics,
   IClusterCapacityData,
   ICreateAgentData,
@@ -26,6 +27,7 @@ export abstract class IAgentGateway {
   abstract promoteAdmin(id: string): Promise<IAgentData>;
   abstract demoteAdmin(id: string): Promise<IAgentData>;
   abstract logs(id: string): Promise<string>;
+  abstract logSummary(id: string): Promise<IAgentLogSummary>;
   abstract env(id: string): Promise<IAgentEnvVar[]>;
   abstract metrics(id: string): Promise<IAgentMetrics | null>;
   abstract capacity(): Promise<IClusterCapacityData | null>;

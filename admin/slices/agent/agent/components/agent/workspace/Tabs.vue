@@ -6,7 +6,12 @@ import { WORKSPACE_TABS, type WorkspaceTab } from './sections';
 // but the two names.
 defineProps<{ active: WorkspaceTab }>();
 
-defineEmits<{ select: [tab: WorkspaceTab] }>();
+defineEmits<{
+  select: [tab: WorkspaceTab];
+  /** Pointer or focus landed on a tab the operator has not chosen yet, which
+   *  is the host's cue to fetch what that tab will need (CLEAN-233). */
+  prefetch: [tab: WorkspaceTab];
+}>();
 
 const TITLES: Record<WorkspaceTab, string> = {
   chat: 'Chat',
@@ -30,6 +35,8 @@ const TITLES: Record<WorkspaceTab, string> = {
           : 'text-muted-foreground hover:text-foreground'
       "
       @click="$emit('select', t)"
+      @mouseenter="$emit('prefetch', t)"
+      @focus="$emit('prefetch', t)"
     >
       {{ TITLES[t] }}
     </button>

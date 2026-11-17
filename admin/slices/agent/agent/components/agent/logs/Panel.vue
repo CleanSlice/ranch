@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AgentLogLevel } from '#agent/utils/agentLogs';
+import type { AgentLogLevel } from '#agent/utils/logLines';
 import { IconLoader2, IconReload, IconX } from '@tabler/icons-vue';
 
 const props = defineProps<{

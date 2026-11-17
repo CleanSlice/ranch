@@ -13,3 +13,18 @@ export interface IPodLogRead {
   /** Raw log text, or a timestamp-less `[...]` marker line when there is none. */
   logs: string;
 }
+
+/**
+ * The same read, reduced to what the console's collapsed Logs bar renders:
+ * one line and two numbers (CLEAN-233). The bar used to download the whole
+ * window every five seconds to work these out in the browser.
+ */
+export interface IPodLogSummary {
+  state: PodLogState;
+  /** The newest line, raw — or the `[...]` marker, which is the whole read. */
+  logs: string;
+  /** Lines in the window that was read, not in the pod's whole history. */
+  total: number;
+  /** How many of them carry a warn or error level. */
+  alerts: number;
+}

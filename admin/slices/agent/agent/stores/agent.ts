@@ -2,6 +2,7 @@ import { createServiceGetter } from '#common/composables/createServiceGetter';
 import type { AgentService } from '#agent/domain';
 import type {
   IAgentData,
+  IAgentLogSummary,
   IClusterCapacityData,
   ICreateAgentData,
   IUpdateAgentData,
@@ -290,6 +291,12 @@ export const useAgentStore = defineStore('agent', () => {
     return getService().logs(id);
   }
 
+  /** The collapsed Logs bar reads this instead of the whole window: one line
+   *  and two counts the api has already worked out (CLEAN-233). */
+  function fetchLogSummary(id: string): Promise<IAgentLogSummary> {
+    return getService().logSummary(id);
+  }
+
   function fetchEnv(id: string) {
     return getService().env(id);
   }
@@ -318,6 +325,7 @@ export const useAgentStore = defineStore('agent', () => {
     promoteAdmin,
     demoteAdmin,
     fetchLogs,
+    fetchLogSummary,
     fetchEnv,
     fetchMetrics,
     isPendingRestart,

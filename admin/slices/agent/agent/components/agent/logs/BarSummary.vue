@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { IconAlertTriangle, IconChevronRight, IconLoader2 } from '@tabler/icons-vue';
-import { summarizeAgentLogs, type AgentLogLevel } from '#agent/utils/agentLogs';
+import type { AgentLogLevel } from '#agent/utils/logLines';
 import { formatNumber } from '#common/utils/format';
 
 /**
  * The collapsed Logs bar: one row with the newest line and the entry count.
- * Owns a `useAgentLogs` (and its 5 s interval) only while mounted — the
+ * Owns a `useAgentLogSummary` (and its 5 s poll) only while mounted — the
  * parent swaps it for the full panel with `v-if`, never alongside it.
+ *
+ * The summary is the api's (CLEAN-233): collapsed, this row costs a few
+ * hundred bytes a poll rather than the ~100 kB window it used to pull in to
+ * find one line and count it in the browser.
  */
 const props = defineProps<{
   agentId: string;
@@ -16,11 +20,14 @@ const props = defineProps<{
 
 defineEmits<{ expand: [] }>();
 
-const { logGroups, statusLabel, error, containerWaitingLabel } = useAgentLogs(
-  props.agentId,
-);
-
-const summary = computed(() => summarizeAgentLogs(logGroups.value));
+const {
+  latest,
+  total,
+  alerts,
+  statusLabel,
+  error,
+  containerWaitingLabel,
+} = useAgentLogSummary(props.agentId);
 
 // Same precedence the full panel uses, so the bar never says less than the
 // panel would: restart overlay, container waiting, backend marker, error,
@@ -39,7 +46,7 @@ const state = computed<
     return { kind: 'busy', text: `${containerWaitingLabel.value}…` };
   if (statusLabel.value) return { kind: 'note', text: statusLabel.value };
   if (error.value) return { kind: 'note', text: 'Logs unavailable' };
-  if (!summary.value.latest) return { kind: 'note', text: 'No entries yet' };
+  if (!latest.value) return { kind: 'note', text: 'No entries yet' };
   return { kind: 'line' };
 });
 
@@ -75,23 +82,23 @@ const LEVEL_TEXT: Record<AgentLogLevel, string> = {
     </span>
     <span v-else class="flex min-w-0 items-baseline gap-2 font-mono">
       <span
-        v-if="summary.latest?.time"
+        v-if="latest?.time"
         class="shrink-0 tabular-nums text-muted-foreground/70"
-      >{{ summary.latest.time }}</span>
+      >{{ latest.time }}</span>
       <span
         class="min-w-0 truncate"
-        :class="summary.latest?.level ? LEVEL_TEXT[summary.latest.level] : ''"
-      >{{ summary.latest?.text }}</span>
+        :class="latest?.level ? LEVEL_TEXT[latest.level] : ''"
+      >{{ latest?.text }}</span>
     </span>
 
     <span class="ml-auto flex shrink-0 items-center gap-1.5 text-muted-foreground">
-      <span class="tabular-nums">{{ formatNumber(summary.total) }} entries</span>
+      <span class="tabular-nums">{{ formatNumber(total) }} entries</span>
       <span
-        v-if="summary.alerts > 0"
+        v-if="alerts > 0"
         class="flex items-center gap-0.5 text-amber-700 dark:text-amber-300"
-        :title="`${summary.alerts} warnings or errors`"
+        :title="`${alerts} warnings or errors`"
       >
-        · {{ formatNumber(summary.alerts) }}
+        · {{ formatNumber(alerts) }}
         <IconAlertTriangle class="size-3.5" />
       </span>
     </span>

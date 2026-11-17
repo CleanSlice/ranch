@@ -104,9 +104,25 @@ function onSelectWorkspaceTab(next: WorkspaceTab) {
   setTab(next === 'chat' ? 'chat' : lastSection.value);
 }
 
-// The Settings hub's cards show counts before you click, so there is nothing
-// to gate them behind — they are fetched from first paint.
-const { counts } = useAgentSectionCounts(props.id, agent);
+// The Settings hub's cards show counts beside their names, so they are
+// fetched when Settings is wanted — on hover of the tab, on opening it, and
+// on a deep link that lands straight in a section. Not at page load: Chat is
+// what opens, and this navigator is not in the DOM there (CLEAN-233).
+const { counts, load: loadCounts } = useAgentSectionCounts(props.id, agent);
+
+watch(
+  tab,
+  (t) => {
+    if (settingsSectionOf(t)) void loadCounts();
+  },
+  { immediate: true },
+);
+
+/** Hovering or tabbing to Settings is enough to start its counts, so the
+ *  numbers are on screen by the time the operator gets there. */
+function onPrefetchWorkspaceTab(next: WorkspaceTab) {
+  if (next === 'settings') void loadCounts();
+}
 
 // The status badge renders from the DB row (not the SSE pod stream). Re-fetch
 // when the operator opens Overview so a stale 'failed' or 'deploying' from
@@ -300,6 +316,7 @@ async function onDeleted() {
           class="ml-2"
           :active="workspaceTabOf(tab)"
           @select="onSelectWorkspaceTab"
+          @prefetch="onPrefetchWorkspaceTab"
         />
 
         <div class="flex-1" />

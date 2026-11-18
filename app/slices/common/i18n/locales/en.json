@@ -105,6 +105,12 @@
     "chat_msg_user": "Which pods restarted overnight?",
     "chat_msg_agent": "Two: agent-7f2c at 02:14 after an image update, agent-a913 at 05:40 on a memory limit.",
     "chat_streaming": "streaming",
+    "chat_thinking": "thinking",
+    "chat_sources": "Sources",
+    "chat_source_events": "pod events",
+    "chat_source_workflow": "workflow history",
+    "chat_msg_user2": "What changed in the last deploy?",
+    "chat_msg_agent2": "The image tag went from 1.3 to 1.4. CPU and memory stayed the same.",
     "templates_title": "Agent templates",
     "templates_body": "Choose a Docker image, set CPU and memory — a template fixes the defaults, you adjust them per agent.",
     "lifecycle_title": "Runtime lifecycle",
@@ -114,7 +120,8 @@
     "logs_title": "Logs & monitoring",
     "logs_body": "Read the agent's logs from the pod without leaving the console. Pod metrics come from the same place.",
     "fleet_title": "Multi-agent management",
-    "fleet_body": "Several agents per install, an admin console for templates, users, quotas and the whole fleet in the cluster."
+    "fleet_body": "Several agents per install, an admin console for templates, users, quotas and the whole fleet in the cluster.",
+    "demo_note": "The scenes in the cards are a demo: sample data, played on a timer."
   },
   "runtime": {
     "eyebrow": "Infrastructure",
@@ -128,7 +135,19 @@
     "k8s_body": "The workflow schedules a pod on k3s with the requested CPU and memory. Logs and metrics are read from it.",
     "agent_title": "Active agent",
     "agent_body": "The container joins the Bridle hub. From here on it answers over Socket.IO with JWT-protected channels.",
-    "note": "The status in the console comes from the workflow phase and the pod state."
+    "tab_config": "Record",
+    "tab_argo": "Workflow",
+    "tab_k8s": "Pod",
+    "tab_agent": "Chat",
+    "ui_record": "Agent record",
+    "ui_tag": "Image tag",
+    "ui_visibility": "Visibility",
+    "ui_private": "private",
+    "chat_user": "Are you online?",
+    "chat_agent": "Yes. Connected to the Bridle hub and ready for tasks.",
+    "note": "The status in the console comes from the workflow phase and the pod state.",
+    "scene_note": "The window is a demo with sample data. It advances as you scroll.",
+    "scene_note_flat": "The windows are a demo with sample data."
   },
   "final": {
     "region": "Call to action",

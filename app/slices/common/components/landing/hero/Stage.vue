@@ -1,6 +1,10 @@
 <template>
   <div ref="fxRoot" class="land-stage">
     <div class="land-stage__glow" aria-hidden="true" />
+    <!-- Two pools of dot-matrix light the panel stands in: lavender on the
+         cold side of the scene, copper on the sunrise side. Static. -->
+    <span class="land-dots land-stage__dots land-stage__dots--cold" aria-hidden="true" />
+    <span class="land-dots land-stage__dots land-stage__dots--warm" aria-hidden="true" />
     <div class="land-stage__panel">
       <!-- The hero's one looping effect: a slow copper light around the panel
            edge, so the eye is led to the demo (effects contract #1). -->
@@ -300,6 +304,36 @@ onBeforeUnmount(() => {
   background: radial-gradient(50% 50% at 50% 50%, rgba(245, 161, 107, 0.32) 0%, rgba(245, 161, 107, 0) 70%);
   filter: blur(34px);
   pointer-events: none;
+}
+.land-stage__dots {
+  width: 44%;
+  height: 78%;
+}
+.land-stage__dots--cold {
+  left: -11%;
+  bottom: -20%;
+  --dots-color: rgba(201, 161, 228, 0.95);
+  --dots-opacity: 0.5;
+}
+.land-stage__dots--warm {
+  right: -11%;
+  top: -22%;
+  --dots-color: rgba(245, 161, 107, 0.95);
+  --dots-opacity: 0.6;
+}
+/* Stacked layout: the halos stay tucked against the panel, clear of the
+   buttons above it and the step labels below. */
+@media (max-width: 899px) {
+  .land-stage__dots {
+    width: 70%;
+    height: 40%;
+  }
+  .land-stage__dots--warm {
+    top: -6%;
+  }
+  .land-stage__dots--cold {
+    bottom: -6%;
+  }
 }
 .land-stage__panel {
   position: relative;

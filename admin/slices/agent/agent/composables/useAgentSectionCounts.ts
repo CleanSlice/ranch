@@ -6,7 +6,7 @@ import type { SectionCounts } from '#agent/components/agent/workspace/sections';
  * How much each countable tab holds, shown beside its name in the tab bar —
  * the number is the reason to click, so it has to be there before the click.
  *
- * Three rules this owes the UI:
+ * Four rules this owes the UI:
  *
  * 1. **Each source fails independently.** One unreachable bucket must not
  *    blank the other three.
@@ -15,6 +15,10 @@ import type { SectionCounts } from '#agent/components/agent/workspace/sections';
  * 3. **The knowledge count is assembled by hand** rather than riding
  *    `useAgentKnowledges`, so that an agent whose knowledge is a per-agent
  *    override costs no template fetch at all.
+ * 4. **Nothing is fetched until Settings is wanted.** `load()` is the host's
+ *    to call — on hover of the Settings tab and on opening it, never at page
+ *    load, where Chat is on screen and this navigator is not in the DOM at
+ *    all (CLEAN-233). Calling it twice costs one fetch.
  *
  * There is no aggregate endpoint and this deliberately does not add one — the
  * requests are the same ones the sections themselves make, and `useAsyncData`
@@ -44,9 +48,12 @@ export function useAgentSectionCounts(
   const templateKnowledge = ref<number | null>(null);
 
   let started = false;
+  /** load() was called, whether or not it could run yet. */
+  let wanted = false;
 
   async function load() {
-    if (started) return;
+    wanted = true;
+    if (started || !enabled.value) return;
     started = true;
 
     await Promise.allSettled([
@@ -101,18 +108,19 @@ export function useAgentSectionCounts(
     }
   }
 
-  // Once mounted, and once the viewer is known to manage the agent — which
-  // is only known when the agent record has arrived.
-  const mounted = ref(false);
-  onMounted(() => {
-    mounted.value = true;
+  // Deliberately NOT on mount. The Chat tab is where an agent opens, and the
+  // navigator these numbers sit in is not even rendered there — six requests
+  // for figures nobody can see, three of them a second slow on production,
+  // all of it racing the chat transcript for connections (CLEAN-233). The
+  // host calls load() when Settings is opened, and on hover of the Settings
+  // tab, so the numbers are still there before the click.
+
+  // Whether the viewer manages the agent is only known when the agent record
+  // has arrived, and a deep link into a section asks before that: the load
+  // it asked for runs then (CLEAN-232).
+  watch(enabled, (ok) => {
+    if (ok && wanted) void load();
   });
-  watch(
-    () => mounted.value && enabled.value,
-    (ready) => {
-      if (ready) void load();
-    },
-  );
 
   // The agent record arrives after the first paint, so the template lookup can
   // only run once we know which template to look up.
@@ -136,5 +144,5 @@ export function useAgentSectionCounts(
     };
   });
 
-  return { counts };
+  return { counts, load };
 }

@@ -13,4 +13,5 @@
 
 <script setup lang="ts">
 useLandingChrome();
+useButtonGlow();
 </script>

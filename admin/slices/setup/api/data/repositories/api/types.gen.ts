@@ -6533,6 +6533,21 @@ export type LogControllerGetLogsResponses = {
   200: unknown;
 };
 
+export type LogControllerGetSummaryData = {
+  body?: never;
+  path: {
+    agentId: string;
+  };
+  query: {
+    tail: string;
+  };
+  url: "/agents/{agentId}/logs/summary";
+};
+
+export type LogControllerGetSummaryResponses = {
+  200: unknown;
+};
+
 export type UsageControllerFindForAgentData = {
   body?: never;
   path: {

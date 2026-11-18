@@ -28,6 +28,8 @@ export class MemoryAgentAccessGateway extends IAgentAccessGateway {
     }
   >();
   private locks = new Map<string, Promise<unknown>>();
+  /** Accounts that were deleted: they read as missing, like the real read. */
+  private gone = new Set<string>();
   private clock = Date.parse('2026-11-17T10:00:00.000Z');
 
   constructor(agentIds: string[] = []) {
@@ -51,6 +53,15 @@ export class MemoryAgentAccessGateway extends IAgentAccessGateway {
   }
 
   load(userId: string): Promise<IAgentAccessState> {
+    if (this.gone.has(userId)) {
+      return Promise.resolve({
+        userId,
+        limited: false,
+        entries: [],
+        updatedAt: null,
+        accountMissing: true as const,
+      });
+    }
     const row = this.rows.get(userId);
     return Promise.resolve(
       row
@@ -116,6 +127,8 @@ export class MemoryAgentAccessGateway extends IAgentAccessGateway {
 
   removeUser(userId: string): Promise<void> {
     this.rows.delete(userId);
+    // The account row goes in the same delete; a token may still name it.
+    this.gone.add(userId);
     return Promise.resolve();
   }
 

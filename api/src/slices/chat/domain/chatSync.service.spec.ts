@@ -361,3 +361,56 @@ describe('ChatSyncService.syncForExternalUser', () => {
     expect(upserts).toEqual([]);
   });
 });
+
+/**
+ * `POST /chats/sync` and `sync_chats` with no agent named walk every agent.
+ * For a caller whose access lists hide some, the walk and the counts are of
+ * the agents they reach (CLEAN-231): a hidden agent's files are not listed,
+ * and the answer does not say how many agents there are.
+ */
+describe('ChatSyncService.syncAll for a caller with a reach', () => {
+  const threeAgents = {
+    findAll: async () => [{ id: 'agent-1' }, { id: 'agent-2' }, { id: 'agent-3' }],
+  } as unknown as IAgentGateway;
+
+  function service() {
+    const listed: string[] = [];
+    const files = {
+      list: async (agentId: string) => {
+        listed.push(agentId);
+        return [];
+      },
+    } as unknown as IFileGateway;
+    const { chats } = chatsStub([]);
+    const svc = new ChatSyncService(
+      files,
+      new TranscriptReaderService(files),
+      chats,
+      threeAgents,
+    );
+    return { svc, listed };
+  }
+
+  const reach = { has: (id: string) => id !== 'agent-2' };
+
+  it('skips an unreached agent when walking and when counting', async () => {
+    const { svc, listed } = service();
+    const result = await svc.syncAll(undefined, reach);
+    expect(listed).toEqual(['agent-1', 'agent-3']);
+    expect(result.scannedAgents).toBe(2);
+  });
+
+  it('scans nothing for an unreached agent named outright', async () => {
+    const { svc, listed } = service();
+    const result = await svc.syncAll('agent-2', reach);
+    expect(listed).toEqual([]);
+    expect(result.scannedAgents).toBe(0);
+  });
+
+  it('walks every agent when no reach is given: the service’s own run', async () => {
+    const { svc, listed } = service();
+    const result = await svc.syncAll();
+    expect(listed).toEqual(['agent-1', 'agent-2', 'agent-3']);
+    expect(result.scannedAgents).toBe(3);
+  });
+});

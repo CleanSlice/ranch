@@ -12,7 +12,11 @@ import {
   AgentAccessErrorCodes,
   type IAgentAccessState,
 } from '../domain/agentAccess.types';
-import { AgentAccessMapper, IAgentAccessRow } from './agentAccess.mapper';
+import {
+  AgentAccessMapper,
+  IAccountAccessRow,
+  IAgentAccessRow,
+} from './agentAccess.mapper';
 
 type Tx = Prisma.TransactionClient;
 
@@ -177,17 +181,23 @@ export class AgentAccessGateway extends IAgentAccessGateway {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey(userId)}))::text AS locked`;
   }
 
-  /** One query: the account's row with its entries, or nothing. */
+  /**
+   * One query, from the account itself: its access row and entries when it
+   * has them. No row at all means the account does not exist, which is not
+   * the same as an account nobody edited (the mapper tells them apart): a
+   * token survives its account, and a deleted account must reach nothing.
+   */
   private async loadWith(
     client: Tx | PrismaService,
     userId: string,
   ): Promise<IAgentAccessState> {
-    const rows = await client.$queryRaw<IAgentAccessRow[]>`
-      SELECT a."userId", a."limited", a."updatedAt", e."agentId", e."list"
-      FROM "UserAgentAccess" a
+    const rows = await client.$queryRaw<IAccountAccessRow[]>`
+      SELECT u."id" AS "userId", a."limited", a."updatedAt", e."agentId", e."list"
+      FROM "User" u
+      LEFT JOIN "UserAgentAccess" a ON a."userId" = u."id"
       LEFT JOIN "UserAgentAccessEntry" e ON e."userId" = a."userId"
-      WHERE a."userId" = ${userId}`;
-    return this.mapper.toState(userId, rows);
+      WHERE u."id" = ${userId}`;
+    return this.mapper.toAccountState(userId, rows);
   }
 
   private async agentIdsWith(client: Tx | PrismaService): Promise<string[]> {

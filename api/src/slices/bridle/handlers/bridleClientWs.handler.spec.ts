@@ -49,6 +49,7 @@ const reachOf = (admits: Admits) =>
     reached: jest.fn((_s: unknown, items: unknown[]) => Promise.resolve(items)),
     subjectOf: jest.fn().mockReturnValue(null),
     onChanged: jest.fn().mockReturnValue(() => undefined),
+    onRemoved: jest.fn().mockReturnValue(() => undefined),
   }) as unknown as ConsoleReachService;
 
 function makeHandler(
@@ -910,5 +911,89 @@ describe('BridleClientWsHandler — limit state at connect (CLEAN-224)', () => {
     await handler.handleConnection(client);
 
     expect(emitted.map((e) => e.event)).not.toContain('agent_limit');
+  });
+});
+
+/**
+ * An account that is deleted (CLEAN-231). Its token is still a valid token
+ * for a few minutes, so nothing may be left to a question about its access:
+ * every socket it holds is closed, on whatever agent, and nobody else's.
+ */
+describe('BridleClientWsHandler — a deleted account’s sockets', () => {
+  function sockets() {
+    let removed: ((userId: string) => void) | undefined;
+    const admits = jest.fn<Promise<boolean>, [unknown, string]>(() =>
+      // Nobody may be asked; if somebody is, the answer would keep the socket.
+      Promise.resolve(true),
+    );
+    const reach = {
+      admits,
+      onChanged: jest.fn().mockReturnValue(() => undefined),
+      onRemoved: jest.fn((listener: (userId: string) => void) => {
+        removed = listener;
+        return () => undefined;
+      }),
+    } as unknown as ConsoleReachService;
+    const handler = new BridleClientWsHandler(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      reach,
+    );
+    const socket = (userId: string | null, agentId: string) => {
+      const state = { emitted: [] as unknown[], disconnected: 0 };
+      const client = {
+        data: {
+          clientId: userId ?? 'anon-1',
+          agentId,
+          ...(userId
+            ? { console: { userId, sid: `sid-${userId}`, role: 'User' } }
+            : {}),
+        },
+        emit: (event: string, payload: unknown) => {
+          state.emitted.push({ event, payload });
+          return true;
+        },
+        disconnect: () => {
+          state.disconnected++;
+        },
+      } as unknown as Socket;
+      return { client, state };
+    };
+    const open = [
+      socket('user-gone', 'agent-1'),
+      socket('user-gone', 'agent-2'),
+      socket('user-stays', 'agent-1'),
+      socket(null, 'agent-1'),
+    ];
+    handler.server = {
+      sockets: new Map(open.map((s, i) => [`socket-${i}`, s.client])),
+    } as never;
+    handler.onModuleInit();
+    return { open, admits, remove: (userId: string) => removed?.(userId) };
+  }
+
+  it('closes every socket of that account, without asking the lists', () => {
+    const { open, admits, remove } = sockets();
+
+    remove('user-gone');
+
+    const [first, second, other, anonymous] = open.map((s) => s.state);
+    expect(first.disconnected).toBe(1);
+    expect(second.disconnected).toBe(1);
+    expect(first.emitted).toEqual([
+      {
+        event: 'bridle_error',
+        payload: { code: 'AGENT_NOT_FOUND', agentId: 'agent-1' },
+      },
+    ]);
+    // Another person on the same agent, and a visitor, are left alone.
+    expect(other.disconnected).toBe(0);
+    expect(anonymous.disconnected).toBe(0);
+    // Unconditional: a wrong or failed answer cannot keep a socket open.
+    expect(admits).not.toHaveBeenCalled();
   });
 });

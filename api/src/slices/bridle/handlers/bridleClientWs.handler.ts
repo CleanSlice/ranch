@@ -127,6 +127,7 @@ export class BridleClientWsHandler
   ) {}
 
   private stopListening: (() => void) | undefined;
+  private stopListeningRemoved: (() => void) | undefined;
 
   onModuleInit(): void {
     // A change of somebody's access applies to their very next action
@@ -136,10 +137,33 @@ export class BridleClientWsHandler
     this.stopListening = this.reach.onChanged((userId) => {
       void this.dropUnreached(userId);
     });
+    // A deleted account: nothing to ask, every socket it holds is closed.
+    this.stopListeningRemoved = this.reach.onRemoved((userId) => {
+      this.dropAll(userId);
+    });
   }
 
   onModuleDestroy(): void {
     this.stopListening?.();
+    this.stopListeningRemoved?.();
+  }
+
+  /**
+   * Close every socket of a deleted account, on whatever agent, without
+   * asking the lists: the account is gone, and a failed question must not
+   * be what keeps its sockets open.
+   */
+  private dropAll(userId: string): void {
+    for (const client of this.openSockets()) {
+      const session = client.data?.console as IConsoleSocketAuth | undefined;
+      if (!session || session.userId !== userId) continue;
+      const agentId = client.data?.agentId as string | undefined;
+      this.logger.log(
+        `Browser dropped, account removed: clientId=${String(client.data?.clientId)} agentId=${String(agentId)}`,
+      );
+      client.emit('bridle_error', { code: CHAT_AGENT_NOT_FOUND_CODE, agentId });
+      client.disconnect();
+    }
   }
 
   /** Every socket of this namespace, whatever shape the server has. */

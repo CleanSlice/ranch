@@ -209,8 +209,16 @@ export class ChatController {
   @ApiOkResponse({ type: SyncChatsResponseDto })
   @Post('sync')
   @AgentScoped('body.agentId')
-  async syncChats(@Body() dto: SyncChatsDto): Promise<SyncChatsResponseDto> {
-    return this.sync.syncAll(dto.agentId);
+  async syncChats(
+    @Body() dto: SyncChatsDto,
+    @Req() req?: AuthedRequest,
+  ): Promise<SyncChatsResponseDto> {
+    // With no agent named the sync walks the agents the caller reaches, and
+    // counts only those (CLEAN-231).
+    return this.sync.syncAll(
+      dto.agentId,
+      await this.access.reachableIds(accessCallerOf(req)),
+    );
   }
 
   @ApiOperation({

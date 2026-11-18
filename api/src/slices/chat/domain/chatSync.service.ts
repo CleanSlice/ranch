@@ -53,7 +53,13 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Reconcile every agent (or just one). Guarded against overlapping runs. */
-  async syncAll(agentId?: string): Promise<IChatSyncResult> {
+  async syncAll(
+    agentId?: string,
+    // The agents the caller reaches (CLEAN-231). An agent outside it is
+    // neither walked nor counted, so the answer says nothing about agents
+    // the caller cannot see. Absent for the service's own nightly run.
+    reach?: { has(agentId: string): boolean },
+  ): Promise<IChatSyncResult> {
     if (this.running) {
       this.logger.warn('reconcile already in progress — skipping');
       return { scannedAgents: 0, scannedFiles: 0, upserted: 0, skipped: 0 };
@@ -66,9 +72,9 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
       skipped: 0,
     };
     try {
-      const agentIds = agentId
-        ? [agentId]
-        : (await this.agents.findAll()).map((a) => a.id);
+      const agentIds = (
+        agentId ? [agentId] : (await this.agents.findAll()).map((a) => a.id)
+      ).filter((id) => !reach || reach.has(id));
       for (const id of agentIds) {
         result.scannedAgents++;
         await this.syncAgent(id, result);

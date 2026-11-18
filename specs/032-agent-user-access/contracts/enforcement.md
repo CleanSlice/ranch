@@ -132,3 +132,17 @@ check is `e2e/http.mjs`.
   longer reaches.
 - **`SSE /agents/status/stream`** stays exempt; since CLEAN-232 it carries
   status facts only (id, status, pod phase), no name and no configuration.
+- **An account that no longer exists reaches nothing.** The bearer guard
+  verifies a token's signature and does not read the user row, so a deleted
+  person's access token is accepted until it expires. Their access row goes
+  with the account, and "no row" reads as "not limited": without this a
+  restricted person who was deleted would have reached every agent for as
+  long as the token lived. The read of the lists starts from the account,
+  and no account means no agent. On deletion every socket of the account is
+  closed without asking the lists again.
+- **`POST /browser/extension/import-state`** asks the lists on every use,
+  for the account that minted the token, with its role as the database has
+  it now: 404 when that account is gone, disabled, or no longer reaches the
+  agent the token names. The token lives up to 365 days.
+- **`POST /chats/sync` and `sync_chats` with no agent named** walk and count
+  only the agents the caller reaches.

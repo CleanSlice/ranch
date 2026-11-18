@@ -105,6 +105,7 @@ const uniq = (ids: readonly string[] | undefined): string[] => [
 export class AgentAccessService implements IAgentReach {
   private readonly logger = new Logger(AgentAccessService.name);
   private readonly listeners = new Set<ChangedListener>();
+  private readonly removedListeners = new Set<ChangedListener>();
 
   constructor(
     private readonly gateway: IAgentAccessGateway,
@@ -399,10 +400,43 @@ export class AgentAccessService implements IAgentReach {
     return () => this.listeners.delete(listener);
   }
 
-  /** The account is being deleted: its row and entries go with it. */
+  /**
+   * Called when an account is deleted. Unlike `onChanged` there is nothing
+   * to ask again: everything that account holds open is to be closed.
+   */
+  onRemoved(listener: ChangedListener): () => void {
+    this.removedListeners.add(listener);
+    return () => this.removedListeners.delete(listener);
+  }
+
+  /**
+   * The account is being deleted: its row and entries go with it, and its
+   * open sockets are closed whatever the lists said. The listeners are told
+   * even when the cleanup fails: a row left behind is debris, a socket left
+   * open is a deleted person still reading.
+   */
   async removeUser(userId: string): Promise<void> {
-    await this.gateway.removeUser(userId);
-    this.notifyChanged(userId);
+    try {
+      await this.gateway.removeUser(userId);
+    } finally {
+      this.notify(this.removedListeners, userId);
+    }
+  }
+
+  /**
+   * `reachesExisting` for an account named by id alone, with the role read
+   * from the database now. For a credential that outlives a session (the
+   * browser extension's token): an account that is gone or disabled
+   * reaches nothing, an Admin or User what their lists reach today.
+   */
+  async accountReachesExisting(
+    userId: string,
+    agentId: string,
+  ): Promise<boolean> {
+    const user = userId ? await this.users.findById(userId) : null;
+    if (!user || user.status === 'disabled') return false;
+    if (!agentId || !(await this.gateway.agentExists(agentId))) return false;
+    return this.reaches({ userId: user.id, role: user.role }, agentId);
   }
 
   /**
@@ -415,7 +449,11 @@ export class AgentAccessService implements IAgentReach {
   }
 
   private notifyChanged(userId: string): void {
-    for (const listener of this.listeners) {
+    this.notify(this.listeners, userId);
+  }
+
+  private notify(listeners: Set<ChangedListener>, userId: string): void {
+    for (const listener of listeners) {
       try {
         listener(userId);
       } catch (err) {

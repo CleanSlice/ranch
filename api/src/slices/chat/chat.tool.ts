@@ -360,7 +360,12 @@ export class ChatTool implements IConditionallyListedTool {
     ) {
       return agentNotFound(httpRequest, agentId);
     }
-    return ok(await this.sync.syncAll(agentId));
+    return ok(
+      await this.sync.syncAll(
+        agentId,
+        await this.access.reachableIds(callerParty(httpRequest)),
+      ),
+    );
   }
 
   @Tool({

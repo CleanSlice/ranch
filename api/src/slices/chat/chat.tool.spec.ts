@@ -377,7 +377,11 @@ describe('sync_chats', () => {
       null,
       operator(),
     );
-    expect(sync.syncAll).toHaveBeenCalledWith('agent-a');
+    // The second argument is the caller's reach (CLEAN-231).
+    expect(sync.syncAll).toHaveBeenCalledWith(
+      'agent-a',
+      expect.objectContaining({ unrestricted: true }),
+    );
     expect(parse(result)).toEqual({
       scannedAgents: 1,
       scannedFiles: 3,
@@ -389,7 +393,10 @@ describe('sync_chats', () => {
   it('reconciles every agent when no id is given', async () => {
     const { tool, sync } = harness();
     await tool.syncChats({}, null, operator());
-    expect(sync.syncAll).toHaveBeenCalledWith(undefined);
+    expect(sync.syncAll).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ unrestricted: true }),
+    );
   });
 });
 

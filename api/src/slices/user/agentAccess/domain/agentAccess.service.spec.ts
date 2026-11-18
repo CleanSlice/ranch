@@ -447,6 +447,8 @@ describe('AgentAccessService.replace as the Owner', () => {
       limited: false,
       entries: [],
       updatedAt: null,
+      // The account went with it: no lists, and nothing reached.
+      accountMissing: true,
     });
   });
 });
@@ -468,5 +470,90 @@ describe('AgentAccessService: a limited account that creates an agent', () => {
       { agentId: 'A', list: 'denied' },
     ]);
     expect(await service.reaches(person(ADMIN), 'D')).toBe(true);
+  });
+});
+
+/**
+ * A token outlives its account: the bearer guard verifies the signature and
+ * never reads the user row, so a deleted person's token is accepted until
+ * it expires. Their access row is deleted with them, and no row used to read
+ * as "not limited, no entries": a restricted person who was deleted reached
+ * every agent for as long as the token lived. An account that does not
+ * exist reaches nothing.
+ */
+describe('AgentAccessService: an account that no longer exists', () => {
+  it('reaches nothing after it is removed, although its lists are gone', async () => {
+    const { service, gateway } = accessHarness();
+    gateway.seed(USER.id, false, [{ agentId: 'A', list: 'denied' }]);
+    expect(await service.reaches(person(USER), 'B')).toBe(true);
+
+    await service.removeUser(USER.id);
+
+    for (const id of ['A', 'B', 'C']) {
+      expect(await service.reaches(person(USER), id)).toBe(false);
+      expect(await service.reachesExisting(person(USER), id)).toBe(false);
+    }
+    const reach = await service.reachableIds(person(USER));
+    expect(reach.unrestricted).toBe(false);
+    expect(reach.filter([{ id: 'A' }, { id: 'B' }], (r) => r.id)).toEqual([]);
+    expect(reach.where()).toEqual({ in: [] });
+    await expect(service.assertReaches(person(USER), 'B')).rejects.toThrow(
+      new NotFoundException('Agent not found'),
+    );
+  });
+
+  it('the same for an Admin, and the Owner is still not looked up', async () => {
+    const { service } = accessHarness();
+    await service.removeUser(ADMIN.id);
+    expect(await service.reaches(person(ADMIN), 'A')).toBe(false);
+    expect(await service.reaches(person(OWNER), 'A')).toBe(true);
+  });
+
+  it('a missing account is not an unedited one', () => {
+    const missing = new AgentReach({
+      limited: false,
+      entries: [],
+      accountMissing: true,
+    });
+    expect(missing.has('A')).toBe(false);
+    expect(missing.unrestricted).toBe(false);
+    expect(new AgentReach({ limited: false, entries: [] }).has('A')).toBe(true);
+  });
+
+  it('tells the removal listeners, not the change listeners, and even when the cleanup fails', async () => {
+    const { service, gateway } = accessHarness();
+    const changed: string[] = [];
+    const removed: string[] = [];
+    service.onChanged((id) => changed.push(id));
+    const stop = service.onRemoved((id) => removed.push(id));
+
+    await service.removeUser(USER.id);
+    expect(removed).toEqual([USER.id]);
+    expect(changed).toEqual([]);
+
+    jest
+      .spyOn(gateway, 'removeUser')
+      .mockRejectedValueOnce(new Error('database is down'));
+    await expect(service.removeUser(USER2.id)).rejects.toThrow(
+      'database is down',
+    );
+    // A socket left open is worse than a row left behind.
+    expect(removed).toEqual([USER.id, USER2.id]);
+
+    stop();
+    await service.removeUser(ADMIN.id);
+    expect(removed).toEqual([USER.id, USER2.id]);
+  });
+
+  it('accountReachesExisting reads the account now: gone, limited, or the Owner', async () => {
+    const { service, gateway } = accessHarness();
+    expect(await service.accountReachesExisting(USER.id, 'A')).toBe(true);
+    expect(await service.accountReachesExisting(USER.id, 'nope')).toBe(false);
+    expect(await service.accountReachesExisting('nobody', 'A')).toBe(false);
+    expect(await service.accountReachesExisting('', 'A')).toBe(false);
+    gateway.seed(USER.id, true, [{ agentId: 'B', list: 'allowed' }]);
+    expect(await service.accountReachesExisting(USER.id, 'A')).toBe(false);
+    expect(await service.accountReachesExisting(USER.id, 'B')).toBe(true);
+    expect(await service.accountReachesExisting(OWNER.id, 'A')).toBe(true);
   });
 });

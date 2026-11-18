@@ -14,6 +14,19 @@ export interface IAgentAccessRow {
   list: string | null;
 }
 
+/**
+ * One row of the read that starts from the account itself: no row at all
+ * means there is no such account; a row with no `updatedAt` an account whose
+ * access nobody edited.
+ */
+export interface IAccountAccessRow {
+  userId: string;
+  limited: boolean | null;
+  updatedAt: Date | null;
+  agentId: string | null;
+  list: string | null;
+}
+
 const isList = (value: unknown): value is AgentAccessListTypes =>
   value === 'allowed' || value === 'denied';
 
@@ -23,6 +36,33 @@ export class AgentAccessMapper {
    * The rows of one account as its state. No row at all is an account
    * nobody ever edited: not limited, no entries, no version.
    */
+  /**
+   * The same, read from the account's side. An account that does not exist
+   * is told apart from one nobody edited: the first reaches nothing.
+   */
+  toAccountState(
+    userId: string,
+    rows: IAccountAccessRow[],
+  ): IAgentAccessState {
+    if (rows.length === 0) {
+      return {
+        userId,
+        limited: false,
+        entries: [],
+        updatedAt: null,
+        accountMissing: true,
+      };
+    }
+    const edited = rows.filter(
+      (row): row is IAccountAccessRow & { updatedAt: Date } =>
+        row.updatedAt !== null,
+    );
+    return this.toState(
+      userId,
+      edited.map((row) => ({ ...row, limited: row.limited === true })),
+    );
+  }
+
   toState(userId: string, rows: IAgentAccessRow[]): IAgentAccessState {
     if (rows.length === 0) {
       return { userId, limited: false, entries: [], updatedAt: null };

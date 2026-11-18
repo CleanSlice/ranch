@@ -23,6 +23,14 @@ export interface IAgentAccessState {
   limited: boolean;
   entries: IAgentAccessEntry[];
   updatedAt: Date | null;
+  /**
+   * Set when there is no such account at all. A token outlives the account
+   * it was issued to (the bearer guard does not read the user row), and an
+   * account that is gone has no row here either, which would otherwise read
+   * as the defaults: every agent. An account that does not exist reaches
+   * nothing.
+   */
+  accountMissing?: true;
 }
 
 export type AgentAccessOutcomeKinds = 'all' | 'all_except' | 'only' | 'none';
@@ -124,7 +132,18 @@ export class AgentReach {
   private readonly allowed: ReadonlySet<string> | null;
   private readonly denied: ReadonlySet<string>;
 
-  constructor(state: Pick<IAgentAccessState, 'limited' | 'entries'> | null) {
+  constructor(
+    state: Pick<
+      IAgentAccessState,
+      'limited' | 'entries' | 'accountMissing'
+    > | null,
+  ) {
+    if (state?.accountMissing === true) {
+      // Deny by default: limited to an empty allowed list.
+      this.denied = new Set();
+      this.allowed = new Set();
+      return;
+    }
     const entries = state?.entries ?? [];
     this.denied = new Set(
       entries.filter((e) => e.list === 'denied').map((e) => e.agentId),

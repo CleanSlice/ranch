@@ -21,7 +21,13 @@
 //   5. deleting the only allowed agent leaves no access and a review mark;
 //   6. pins are per account;
 //   7. a socket open on an agent is closed when access is taken away;
-//   8. the same through the tools.
+//   8. the same through the tools;
+//   9. POST /chats/sync with no agent named walks and counts only the
+//      agents the caller reaches;
+//  10. the browser extension's token, which lives up to a year, is asked
+//      again on every use: it stops working when the agent is taken away;
+//  11. a deleted account's token, still a valid token, reaches nothing, and
+//      its open socket is closed.
 //
 // Needs: API :3333 after seed.mjs, and the fake runtime for section 7.
 import {
@@ -471,6 +477,94 @@ try {
   const msg = await api(`/api/agent/${AGENTS.b.id}/message`, { method: 'POST', as: USER2, body: { text: 'after the denial' } });
   check(msg.status === 404, `POST /api/agent/<bravo>/message as the second User: 404 (${msg.status})`);
 
+  // -------------------------------------------------- 9. sync with no agent
+  section('9. POST /chats/sync with no agent named');
+  {
+    const asAdmin = await api('/chats/sync', { method: 'POST', as: ADMIN_USER, body: {} });
+    const total = (await api('/agents', { as: OWNER })).body.length;
+    check(
+      asAdmin.status >= 200 && asAdmin.status < 300 && asAdmin.body?.scannedAgents === 2,
+      `the limited Admin's sync walks their 2 agents, not the ${total} of the ranch (scannedAgents ${asAdmin.body?.scannedAgents}, status ${asAdmin.status})`,
+    );
+    const asOwner = await api('/chats/sync', { method: 'POST', as: OWNER, body: {} });
+    check(asOwner.body?.scannedAgents === total, `the Owner's walks all ${total} (scannedAgents ${asOwner.body?.scannedAgents})`);
+  }
+
+  // ------------------------------------------- 10. the extension's token
+  section("10. The browser extension's token is asked again on every use");
+  {
+    const minted = await api('/browser/extension/token', { method: 'POST', as: ADMIN_USER, body: { agentId: AGENTS.b.id, userId: 'admin', ttlDays: 1 } });
+    const extToken = minted.body?.token;
+    check(minted.status >= 200 && minted.status < 300 && typeof extToken === 'string', `the Admin mints a token for access-bravo (${minted.status})`);
+    const importState = () =>
+      fetch(`${API}/browser/extension/import-state`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${extToken}` },
+        body: JSON.stringify({ profile: 'access-e2e', cookies: [] }),
+      });
+    const while_ = await importState();
+    // This stack has no bucket, so the write itself may fail; what matters
+    // is that the request got as far as the write.
+    check(while_.status !== 404 && while_.status !== 401, `while the Admin reaches bravo the import is let through to the storage (${while_.status})`);
+    const adminAccess = (await access(ids.admin, OWNER)).body;
+    res = await put(ids.admin, OWNER, { allowed: [AGENTS.a.id], denied: [], version: adminAccess.version });
+    check(res.status === 200, 'the Owner takes access-bravo away from the Admin');
+    const after_ = await importState();
+    const body_ = await after_.text();
+    check(after_.status === 404 && !body_.includes(AGENTS.b.name), `the same token now answers 404, as for an agent that does not exist (${after_.status})`);
+    res = await put(ids.admin, OWNER, { allowed: [AGENTS.a.id, AGENTS.b.id], denied: [], version: res.body.version });
+    check(res.status === 200 && res.body?.allowed?.length === 2, 'the Admin is limited to alpha and bravo again');
+    const back_ = await importState();
+    check(back_.status !== 404, `and the token works again with the access (${back_.status})`);
+  }
+
+  // ---------------------------------------------- 11. a deleted account
+  section('11. A deleted account, whose token is still a valid token');
+  {
+    const GONE = { email: 'access-gone@ranch.test', password: 'Access-e2e-gone-1' };
+    await prisma.user.deleteMany({ where: { email: GONE.email } });
+    const created = await api('/users', { method: 'POST', as: OWNER, body: { name: 'access gone', email: GONE.email, password: GONE.password } });
+    const goneId = created.body?.id;
+    check(Boolean(goneId), `a throwaway User is created (${created.status})`);
+    res = await put(goneId, OWNER, { allowed: [], denied: [AGENTS.c.id], version: null });
+    check(res.status === 200, 'restricted: access-charlie is denied for them');
+    const seen = (await api('/agents', { as: GONE })).body;
+    check(Array.isArray(seen) && seen.some((a) => a.id === AGENTS.b.id) && !seen.some((a) => a.id === AGENTS.c.id), 'signed in, they see bravo and not charlie');
+    const goneSocket = await open(GONE, AGENTS.b);
+    check(goneSocket.welcome, 'and have a socket open on bravo');
+
+    const removed = await api(`/users/${goneId}`, { method: 'DELETE', as: OWNER });
+    check(removed.status >= 200 && removed.status < 300, `the Owner deletes the account (${removed.status})`);
+    const dropped = await until(() => goneSocket.closed, { timeout: 5000, every: 50 });
+    check(Boolean(dropped) && goneSocket.error === 'AGENT_NOT_FOUND', 'their socket is closed at once');
+    goneSocket.socket.close();
+
+    // The access token is not revoked by the deletion: the bearer guard
+    // verifies the signature and does not read the user row. What the token
+    // still opens is what matters.
+    const list = await api('/agents', { as: GONE });
+    check(list.status === 200 && Array.isArray(list.body) && list.body.length === 0, `GET /agents with the deleted account's token: an empty list, not every agent (${list.status}, ${list.body?.length})`);
+    for (const agent of [AGENTS.b, AGENTS.c]) {
+      const one = await api(`/agents/${agent.id}`, { as: GONE });
+      check(one.status === 404, `GET /agents/<${agent.name}>: 404 (${one.status})`);
+    }
+    const say = await api(`/api/agent/${AGENTS.b.id}/message`, { method: 'POST', as: GONE, body: { text: 'from a deleted account' } });
+    check(say.status === 404, `a chat message to bravo: 404 (${say.status})`);
+    const pin = await api(`/agents/${AGENTS.b.id}/pin`, { method: 'PUT', as: GONE });
+    check(pin.status === 404, `pinning bravo: 404 (${pin.status})`);
+    const reopened = await open(GONE, AGENTS.b);
+    check(reopened.error === 'AGENT_NOT_FOUND' && !reopened.welcome, `a new socket on bravo is refused (${reopened.error})`);
+    reopened.socket.close();
+    const gmcp = await mcpAs(await tokenFor(GONE));
+    try {
+      const out = await gmcp.call('list_agents');
+      check(!Object.values(AGENTS).some((a) => out.text.includes(a.name)), 'list_agents through the tools names no agent');
+    } finally {
+      await gmcp.close();
+    }
+    check((await prisma.userAgentAccess.count({ where: { userId: goneId } })) === 0 && (await prisma.userAgentAccessEntry.count({ where: { userId: goneId } })) === 0, 'no access row or entry of the account is left');
+  }
+
   // ------------------------------------------------------------- 8. tools
   section('8. The same through the tools');
   const adminMcp = await mcpAs(await tokenFor(ADMIN_USER));
@@ -546,6 +640,7 @@ try {
     await prisma.userAgentAccess.deleteMany({ where: { userId: user2.id } }).catch(() => undefined);
   }
   await prisma.agent.deleteMany({ where: { name: 'access-throwaway' } }).catch(() => undefined);
+  await prisma.user.deleteMany({ where: { email: 'access-gone@ranch.test' } }).catch(() => undefined);
   await prisma.$disconnect();
 }
 

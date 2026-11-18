@@ -62,6 +62,11 @@ export class ConsoleReachService {
     return reach.filter(items, agentIdOf);
   }
 
+  /** Called when an account was deleted; see `AgentAccessService`. */
+  onRemoved(listener: (userId: string) => void): () => void {
+    return this.access.onRemoved(listener);
+  }
+
   /** Called when an account's access changed; see `AgentAccessService`. */
   onChanged(listener: (userId: string) => void): () => void {
     return this.access.onChanged(listener);

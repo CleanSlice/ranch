@@ -146,3 +146,10 @@ check is `e2e/http.mjs`.
   agent the token names. The token lives up to 365 days.
 - **`POST /chats/sync` and `sync_chats` with no agent named** walk and count
   only the agents the caller reaches.
+- **`GET /rancher/status` and `get_rancher_status`** name the Ranch admin
+  agent by its flag, so no marker covers them. They answer the setup state
+  (`hasLlm`, `hasS3`, `template`, `hasAdmin`) to every Owner and Admin, and
+  `admin` as the caller may read the agent: null when their lists do not
+  reach it, its reader view when they may not manage it, the whole row for
+  the Owner. The only other route that returns that agent without naming
+  its id is `GET /agents/admin/current`, which already asked the lists.

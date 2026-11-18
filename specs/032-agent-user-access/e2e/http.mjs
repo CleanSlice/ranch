@@ -207,6 +207,15 @@ try {
   const adminCurrent = await api('/agents/admin/current', { as: ADMIN_USER });
   check(adminCurrent.status === 404 && !mentions(adminCurrent, AGENTS.ranch), `GET /agents/admin/current: 404 for the Admin who does not reach it (${adminCurrent.status})`);
   check((await api('/agents/admin/current', { as: OWNER })).body?.id === AGENTS.ranch.id, 'and the Ranch admin agent for the Owner');
+  // The same agent by another door: the setup status names it by its flag.
+  const rancherAdmin = await api('/rancher/status', { as: ADMIN_USER });
+  check(
+    rancherAdmin.status === 200 && rancherAdmin.body?.admin === null && rancherAdmin.body?.hasAdmin === true,
+    `GET /rancher/status tells the Admin the setup state and no agent (${rancherAdmin.status}, admin ${JSON.stringify(rancherAdmin.body?.admin)?.slice(0, 40)})`,
+  );
+  check(!mentions(rancherAdmin, AGENTS.ranch) && !textOf(rancherAdmin).includes('operator-only'), 'nothing in it identifies the Ranch admin agent: no id, no name, no configuration');
+  const rancherOwner = await api('/rancher/status', { as: OWNER });
+  check(rancherOwner.body?.admin?.id === AGENTS.ranch.id && typeof rancherOwner.body?.admin?.config?.e2eOperatorNote === 'string', 'the Owner gets it whole from the same route');
 
   // ------------------------------------------------------------- 2. lists
   section('2. Lists leave the hidden agents out');

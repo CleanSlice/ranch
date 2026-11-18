@@ -4112,7 +4112,7 @@ export class UsageService {
 
 export class RancherService {
   /**
-   * Stepper state for the Rancher setup wizard: do we have an LLM, the special template, and an admin agent?
+   * Stepper state for the Rancher setup wizard: do we have an LLM, storage, the special template, and an admin agent (`hasAdmin`)? `admin` is the Ranch admin agent as the caller may read it: null for a caller whose access lists do not reach it, without configuration for a caller who may not manage it (an Admin), whole for the Owner (CLEAN-231).
    */
   public static rancherControllerStatus<ThrowOnError extends boolean = false>(
     options?: Options<RancherControllerStatusData, ThrowOnError>,

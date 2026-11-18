@@ -24,7 +24,13 @@ describe('AgentAccessMapper.toAccountState', () => {
 
   it('the account with no access row: nobody edited it, it reaches every agent', () => {
     const state = mapper.toAccountState('user-1', [
-      { userId: 'user-1', limited: null, updatedAt: null, agentId: null, list: null },
+      {
+        userId: 'user-1',
+        limited: null,
+        updatedAt: null,
+        agentId: null,
+        list: null,
+      },
     ]);
     expect(state).toEqual({
       userId: 'user-1',
@@ -56,7 +62,13 @@ describe('AgentAccessMapper.toAccountState', () => {
 
   it('a limited account whose entries are all gone stays limited: needs review, not everything', () => {
     const state = mapper.toAccountState('user-1', [
-      { userId: 'user-1', limited: true, updatedAt: at, agentId: null, list: null },
+      {
+        userId: 'user-1',
+        limited: true,
+        updatedAt: at,
+        agentId: null,
+        list: null,
+      },
     ]);
     expect(state.limited).toBe(true);
     expect(state.accountMissing).toBeUndefined();

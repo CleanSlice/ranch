@@ -38,6 +38,7 @@ import { IUsageGateway } from '#/usage/domain';
 import { IFileGateway } from '#/agent/file/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { RancherService } from './domain/rancher.service';
+import { rancherStatusFor } from './domain/rancherStatusView';
 
 /**
  * The original Ranch management tools — agents, templates, skills, LLM
@@ -118,7 +119,7 @@ export class RancherTool {
     title: 'Rancher setup status',
     template: 'Is the Rancher setup complete?',
     description:
-      'The Rancher setup wizard state: is there an LLM credential, the special Rancher template, an admin agent, and S3 configured. Read-only; the console shows the same stepper.',
+      'The Rancher setup wizard state: is there an LLM credential, the special Rancher template, an admin agent (`hasAdmin`), and S3 configured. `admin` is the Ranch admin agent as the person asking may read it: absent for somebody who has no access to it, without its configuration for an Admin. Read-only; the console shows the same stepper.',
     parameters: z.object({}),
   })
   async getRancherStatus(
@@ -127,7 +128,24 @@ export class RancherTool {
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
     requireOperator(httpRequest);
-    return ok(await this.rancher.getStatus());
+    const status = await this.rancher.getStatus();
+    // The same rule as GET /rancher/status (CLEAN-231): the agent is named
+    // by its flag, so the lists and the manage rule are asked here.
+    let reaches = false;
+    let manages = false;
+    if (status.admin) {
+      reaches = await this.access.reaches(
+        callerParty(httpRequest),
+        status.admin.id,
+      );
+      manages =
+        reaches &&
+        (await this.permission.canManage(
+          manageCaller(httpRequest),
+          status.admin,
+        ));
+    }
+    return ok(rancherStatusFor(status, { reaches, manages }));
   }
 
   // ─── Agents ──────────────────────────────────────────────────────────

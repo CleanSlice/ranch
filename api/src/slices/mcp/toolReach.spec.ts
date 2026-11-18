@@ -678,3 +678,64 @@ describe('the same tools for an agent the Admin does reach', () => {
     ).rejects.toThrow('secrets.list was reached');
   });
 });
+
+/**
+ * `get_rancher_status` names the Ranch admin agent by its flag, not by an
+ * id. It answers the setup state to every operator, and the agent itself
+ * only as that caller may read it.
+ */
+describe('get_rancher_status, when the Ranch admin agent is the hidden one', () => {
+  const ranchAgent = { ...AGENTS[2], isAdmin: true };
+  const statusTool = new RancherTool(
+    agents,
+    never('agentDeploy'),
+    never('templates'),
+    never('templateFiles'),
+    never('llms'),
+    never('skills'),
+    never('settings'),
+    never('usage'),
+    never('files'),
+    only('rancher', {
+      getStatus: () =>
+        Promise.resolve({
+          hasLlm: true,
+          hasS3: true,
+          template: null,
+          admin: ranchAgent,
+        }),
+    }),
+    permission,
+    access,
+    pins,
+  );
+  const statusAs = (req: Request) =>
+    said(() => statusTool.getRancherStatus({}, null, req));
+
+  it('a limited Admin is told the setup state and nothing that identifies the agent', async () => {
+    const mine = await statusAs(asAdmin());
+    expect(JSON.parse(mine)).toEqual({
+      hasLlm: true,
+      hasS3: true,
+      template: null,
+      hasAdmin: true,
+      admin: null,
+    });
+    expect(mine).not.toContain(HIDDEN);
+    expect(mine).not.toContain(HIDDEN_NAME);
+  });
+
+  it('the Owner gets the agent whole', async () => {
+    const whole = await statusAs(asOwner());
+    expect(whole).toContain(HIDDEN);
+    expect(whole).toContain(`config-of-${HIDDEN_NAME}`);
+  });
+
+  it('an Admin who reaches it gets it without its configuration', async () => {
+    const reaching = { id: 'user-admin2', role: UserRoleTypes.Admin };
+    const text = await statusAs(forPerson(reaching));
+    expect(text).toContain(HIDDEN_NAME);
+    expect(text).not.toContain(`config-of-${HIDDEN_NAME}`);
+    expect(text).not.toContain('llm-1');
+  });
+});

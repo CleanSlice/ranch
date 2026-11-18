@@ -75,6 +75,9 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
   // is remembered, and the row is read once more if it is still behind.
   async function readRow(id: string) {
     if (reading.has(id)) return;
+    // The row is behind a token. With nobody signed in there is nobody to
+    // read it for: the stream outlives a sign-out by a moment (CLEAN-231).
+    if (!useAuthStore().isAuthenticated) return;
     reading.add(id);
     try {
       for (let i = 0; i < 3; i += 1) {
@@ -106,6 +109,7 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
       // (a new agent, a changed row, one deleted while the stream was down),
       // GET /agents loads it, as it does on a page load.
       if (
+        useAuthStore().isAuthenticated &&
         collectionIsStale(
           agentStore.agents,
           msg.payload.map((item) => item.agent),
@@ -138,6 +142,19 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
     }
   }
 
+  // Whoever was signed in is not any more (CLEAN-231): what the stream said
+  // while they were is dropped, the rows it remembered included. The stream
+  // itself belongs to the components that subscribed and is left to them;
+  // its next frame fills this again for whoever is signed in then. The ONE
+  // way this store is emptied for an account change (docs/state.md).
+  function resetForAccount() {
+    statuses.value = {};
+    bridleConnected.value = {};
+    lastEventAt.value = null;
+    lastSeen.clear();
+    reading.clear();
+  }
+
   function connect() {
     subscribers += 1;
     if (active || !import.meta.client) return;
@@ -166,6 +183,7 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
     bridleConnected,
     failingCount,
     unreachableCount,
+    resetForAccount,
     connect,
     disconnect,
   };

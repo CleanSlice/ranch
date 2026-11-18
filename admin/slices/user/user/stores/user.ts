@@ -11,9 +11,22 @@ const getService = createServiceGetter<UserService>('$userService');
 
 export const useUserStore = defineStore('user', () => {
   const users = ref<IUserData[]>([]);
+  // Bumped by `resetForAccount`: a list that was on its way when the account
+  // changed was read for the previous account and is dropped.
+  let accountGeneration = 0;
+
+  // Whoever was signed in is not any more (CLEAN-231): the accounts they
+  // could list go with them. The ONE way this store is emptied for an
+  // account change (docs/state.md).
+  function resetForAccount() {
+    accountGeneration += 1;
+    users.value = [];
+  }
 
   async function fetchAll() {
-    users.value = await getService().findAll();
+    const generation = accountGeneration;
+    const list = await getService().findAll();
+    if (generation === accountGeneration) users.value = list;
     return users.value;
   }
 
@@ -44,5 +57,14 @@ export const useUserStore = defineStore('user', () => {
     users.value = users.value.filter((u) => u.id !== id);
   }
 
-  return { users, fetchAll, fetchById, create, update, updateRole, remove };
+  return {
+    users,
+    resetForAccount,
+    fetchAll,
+    fetchById,
+    create,
+    update,
+    updateRole,
+    remove,
+  };
 });

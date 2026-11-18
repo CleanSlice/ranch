@@ -212,18 +212,18 @@
 
 ### Tests for User Story 5
 
-- [ ] T070 [P] [US5] `app/slices/bridle/utils/storageKeys.test.ts` and `admin/slices/bridle/utils/storageKeys.test.ts`: scoped key builders, `share:` keys untouched, the one-time removal of old unscoped console keys
-- [ ] T071 [P] [US5] `app/slices/bridle/stores/bridle.reset.test.ts`: after `resetForAccount()` no conversation, hydration mark, history mark, seq or channel survives
+- [X] T070 [P] [US5] `app/slices/bridle/utils/storageKeys.test.ts` and `admin/slices/bridle/utils/storageKeys.test.ts`: scoped key builders, `share:` keys untouched, the one-time removal of old unscoped console keys
+- [X] T071 [P] [US5] `app/slices/bridle/stores/bridle.reset.test.ts`: after `resetForAccount()` no conversation, hydration mark, history mark, seq or channel survives
 
 ### Implementation for User Story 5
 
-- [ ] T072 [US5] `app/slices/bridle/utils/storageKeys.ts` and its use in `app/slices/bridle/stores/bridle.ts`: `bridle:conversation:<userId>:<key>`, `bridle:seq:<userId>:<key>`; `hydrate` returns without reading until the signed-in id is known; add `resetForAccount()` (close channels, clear every keyed map)
-- [ ] T073 [P] [US5] `app/slices/agent/composables/useLastAgent.ts`: key `agent:lastOpened:<userId>`; `app/slices/agent/stores/agent.ts` and `app/slices/chat/stores/chat.ts`: `resetForAccount()`
-- [ ] T074 [US5] `app/slices/user/auth/plugins/accountScope.client.ts`: watch `auth.user?.id`; on a change to another id or to null call each store's `resetForAccount()`, `clearNuxtData()`, remove old unscoped keys once; when a different account signs in from the session-ended dialog, reset before the dialog closes and navigate to `/agents`
-- [ ] T075 [P] [US5] Admin twin: `admin/slices/bridle/utils/storageKeys.ts`, scoped `bridle:debug:<userId>:<agentId>` and `bridle:outbox:<userId>:<agentId>:<channel>` in `admin/slices/bridle/stores/bridle.ts`, `resetForAccount()` there and in `admin/slices/agent/agent/stores/agent.ts`, `admin/slices/user/agentAccess/stores/agentAccess.ts`, `admin/slices/user/user/stores/user.ts`
-- [ ] T076 [US5] `admin/slices/user/auth/plugins/accountScope.client.ts`, same behaviour as T074
-- [ ] T077 [P] [US5] `docs/state.md`: an account change resets every data store; browser-kept keys that hold content or name an agent carry the account id
-- [ ] T078 [US5] `specs/032-agent-user-access/e2e/switch.mjs`: record frames from "Sign in" to an idle chat and assert no message id or agent of the previous account appears; reload as the same account restores at once; the session-ended dialog path; at 390 px and 1440 px
+- [X] T072 [US5] `app/slices/bridle/utils/storageKeys.ts` and its use in `app/slices/bridle/stores/bridle.ts`: `bridle:conversation:<userId>:<key>`, `bridle:seq:<userId>:<key>`; `hydrate` returns without reading until the signed-in id is known; add `resetForAccount()` (close channels, clear every keyed map)
+- [X] T073 [P] [US5] `app/slices/agent/composables/useLastAgent.ts`: key `agent:lastOpened:<userId>`; `app/slices/agent/stores/agent.ts` and `app/slices/chat/stores/chat.ts`: `resetForAccount()`
+- [X] T074 [US5] `app/slices/user/auth/plugins/accountScope.client.ts`: watch `auth.user?.id`; on a change to another id or to null call each store's `resetForAccount()`, `clearNuxtData()`, remove old unscoped keys once; when a different account signs in from the session-ended dialog, reset before the dialog closes and navigate to `/agents`
+- [X] T075 [P] [US5] Admin twin: `admin/slices/bridle/utils/storageKeys.ts`, scoped `bridle:debug:<userId>:<agentId>` and `bridle:outbox:<userId>:<agentId>:<channel>` in `admin/slices/bridle/stores/bridle.ts`, `resetForAccount()` there and in `admin/slices/agent/agent/stores/agent.ts`, `admin/slices/user/agentAccess/stores/agentAccess.ts`, `admin/slices/user/user/stores/user.ts`
+- [X] T076 [US5] `admin/slices/user/auth/plugins/accountScope.client.ts`, same behaviour as T074
+- [X] T077 [P] [US5] `docs/state.md`: an account change resets every data store; browser-kept keys that hold content or name an agent carry the account id
+- [X] T078 [US5] `specs/032-agent-user-access/e2e/switch.mjs`: record frames from "Sign in" to an idle chat and assert no message id or agent of the previous account appears; reload as the same account restores at once; the session-ended dialog path; at 390 px and 1440 px
 
 **Checkpoint**: Stories 1 and 5 are shippable together or apart
 

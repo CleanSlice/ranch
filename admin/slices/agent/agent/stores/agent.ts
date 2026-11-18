@@ -93,6 +93,9 @@ export const useAgentStore = defineStore('agent', () => {
   // components render `byId(id)` — never the value a fetch handed back. A
   // list row and a detail header are then the same object and cannot disagree.
   const agents = ref<IAgentData[]>([]);
+  // Bumped by `resetForAccount`: the answer to a request that was open when
+  // the account changed is about the previous account and is dropped.
+  let accountGeneration = 0;
 
   // Plain lookup — reactive when read inside a computed.
   function byId(id: string): IAgentData | undefined {
@@ -193,30 +196,49 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   async function fetchAll() {
-    setAll(await getService().findAll());
+    const generation = accountGeneration;
+    const list = await getService().findAll();
+    if (generation === accountGeneration) setAll(list);
     return agents.value;
   }
 
   const capacity = ref<IClusterCapacityData | null>(null);
 
+  // Whoever was signed in is not any more (CLEAN-231): the agents read for
+  // them go, so the next account's first screen is its own list. The ONE way
+  // this store is emptied for an account change (docs/state.md). The restart
+  // marks stay: they mirror what is in the browser's storage and say nothing
+  // an account that does not reach the agent can see.
+  function resetForAccount() {
+    accountGeneration += 1;
+    agents.value = [];
+    capacity.value = null;
+  }
+
   // Silent degradation on purpose: K8s unreachable or a network failure both
   // mean "no number to show" — never an error banner.
   async function fetchCapacity() {
+    const generation = accountGeneration;
     try {
-      capacity.value = await getService().capacity();
+      const next = await getService().capacity();
+      if (generation === accountGeneration) capacity.value = next;
     } catch {
-      capacity.value = null;
+      if (generation === accountGeneration) capacity.value = null;
     }
     return capacity.value;
   }
 
   async function fetchById(id: string) {
+    const generation = accountGeneration;
     const agent = await getService().findById(id);
+    if (generation !== accountGeneration) return null;
     return agent ? upsert(agent) : agent;
   }
 
   async function fetchAdmin() {
+    const generation = accountGeneration;
     const agent = await getService().findAdmin();
+    if (generation !== accountGeneration) return null;
     return agent ? upsert(agent) : agent;
   }
 
@@ -312,6 +334,7 @@ export const useAgentStore = defineStore('agent', () => {
     upsert,
     patch,
     setAll,
+    resetForAccount,
     capacity,
     fetchAll,
     fetchCapacity,

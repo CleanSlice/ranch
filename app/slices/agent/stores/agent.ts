@@ -38,6 +38,23 @@ export const useAgentStore = defineStore('agent', () => {
   const limitsEnabled = ref<Record<string, boolean>>({});
   const loading = ref(false);
   const error = ref<string | null>(null);
+  // Bumped by `resetForAccount`: the answer to a request that was open when
+  // the account changed is about the previous account and is dropped.
+  let accountGeneration = 0;
+
+  // Whoever was signed in is not any more (CLEAN-231): everything read for
+  // them goes, so the next account's first screen is its own list. The ONE
+  // way this store is emptied for an account change (docs/state.md).
+  // `publicAgents` stays: the landing page's cards are for everybody.
+  function resetForAccount() {
+    accountGeneration += 1;
+    agents.value = [];
+    capacity.value = null;
+    links.value = [];
+    limitsEnabled.value = {};
+    loading.value = false;
+    error.value = null;
+  }
 
   // Plain lookup — reactive when read inside a computed.
   function byId(id: string): IAgentData | undefined {
@@ -79,10 +96,12 @@ export const useAgentStore = defineStore('agent', () => {
   // Silent degradation on purpose: 403 (non-admin), K8s unreachable, or
   // network failure all mean "no number to show" — never an error banner.
   async function fetchCapacity() {
+    const generation = accountGeneration;
     try {
-      capacity.value = await getService().getCapacity();
+      const next = await getService().getCapacity();
+      if (generation === accountGeneration) capacity.value = next;
     } catch {
-      capacity.value = null;
+      if (generation === accountGeneration) capacity.value = null;
     }
     return capacity.value;
   }
@@ -91,8 +110,10 @@ export const useAgentStore = defineStore('agent', () => {
   // simply sees a map without connections. A failed refresh keeps the links
   // already drawn rather than blinking them off.
   async function fetchLinks() {
+    const generation = accountGeneration;
     try {
-      links.value = await getService().getLinks();
+      const next = await getService().getLinks();
+      if (generation === accountGeneration) links.value = next;
     } catch {
       // Keep what we have.
     }
@@ -107,9 +128,12 @@ export const useAgentStore = defineStore('agent', () => {
   // Same silent degradation as capacity and links: no answer leaves what we
   // have — a failed refresh must not flip "limits on" to nothing on screen.
   async function fetchLimitsEnabled(id: string) {
+    const generation = accountGeneration;
     try {
       const enabled = await getService().getLimitsEnabled(id);
-      if (enabled !== null) limitsEnabled.value[id] = enabled;
+      if (enabled !== null && generation === accountGeneration) {
+        limitsEnabled.value[id] = enabled;
+      }
     } catch {
       // Keep what we have.
     }
@@ -119,8 +143,10 @@ export const useAgentStore = defineStore('agent', () => {
   async function fetchAll() {
     loading.value = true;
     error.value = null;
+    const generation = accountGeneration;
     try {
-      agents.value = await getService().findAll();
+      const next = await getService().findAll();
+      if (generation === accountGeneration) agents.value = next;
     } catch (err) {
       // Keep the rows we have: this runs on a 30s poll, and the open chat
       // renders from the same collection — one failed poll must not unmount it.
@@ -150,8 +176,10 @@ export const useAgentStore = defineStore('agent', () => {
   async function fetchById(id: string) {
     loading.value = true;
     error.value = null;
+    const generation = accountGeneration;
     try {
       const agent = await getService().findById(id);
+      if (generation !== accountGeneration) return null;
       return agent ? upsert(agent) : null;
     } catch (err) {
       error.value = (err as Error).message;
@@ -245,6 +273,7 @@ export const useAgentStore = defineStore('agent', () => {
     byId,
     upsert,
     patch,
+    resetForAccount,
     capacity,
     links,
     loading,

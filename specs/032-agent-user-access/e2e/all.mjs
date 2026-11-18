@@ -4,7 +4,7 @@
 //   node specs/032-agent-user-access/e2e/all.mjs --only routes,acting
 //   node specs/032-agent-user-access/e2e/all.mjs --skip assistant
 //
-//   seed → fake runtime → routes → acting → owner-only → live-status → assistant → table
+//   seed → fake runtime → routes → acting → http → owner-only → live-status → switch → assistant → table
 //
 // What it does NOT start: Postgres, the API on :3333 (built, `node
 // dist/main`), the app console on :3000 and the admin console on :3001
@@ -21,7 +21,7 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { ADMIN, API, APP, HERE, OUT, arg, fake, until } from './lib.mjs';
 
-const SCRIPTS = ['routes', 'acting', 'owner-only', 'live-status', 'assistant'];
+const SCRIPTS = ['routes', 'acting', 'http', 'owner-only', 'live-status', 'switch', 'assistant'];
 const only = typeof arg('only') === 'string' ? arg('only').split(',') : null;
 const skip = typeof arg('skip') === 'string' ? arg('skip').split(',') : [];
 const wanted = (name) => (!only || only.includes(name)) && !skip.includes(name);

@@ -192,6 +192,11 @@ export const useAuthStore = defineStore('auth', () => {
    * Explicit sign-out. State is cleared synchronously so callers that
    * navigate right after (`logout(); navigateTo('/login')`) see "signed out"
    * immediately; the cookie revocation is best effort.
+   *
+   * Clearing `user` is also what empties the page (CLEAN-231): the
+   * account-scope plugin watches the id synchronously, so by the time this
+   * function reaches its first `await` every data store has been reset and
+   * every live socket closed.
    */
   async function logout() {
     sessionGeneration += 1;

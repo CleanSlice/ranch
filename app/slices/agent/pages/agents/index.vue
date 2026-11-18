@@ -34,6 +34,27 @@ watchEffect(() => {
     <div class="h-64 w-full animate-pulse rounded-xl bg-muted/70" />
   </div>
 
+  <!-- A person who reaches no agents (CLEAN-231): nothing here is theirs to
+       create, and "spin up your first" would send them looking for a button
+       they do not have. Owner and Admin keep the state below. Only when the
+       list really came back empty: a list that could not be read leaves an
+       error in the store and is not "no access". -->
+  <div
+    v-else-if="!landing && !canCreate && !agentStore.error"
+    class="rounded-xl border border-dashed bg-card/40 p-8 text-center sm:p-12"
+    data-agents-empty="no_access"
+  >
+    <div
+      class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground"
+    >
+      <Icon name="bot" :size="22" />
+    </div>
+    <h2 class="mt-4 text-base font-semibold">{{ $t('agents.no_access_title') }}</h2>
+    <p class="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+      {{ $t('agents.no_access_body') }}
+    </p>
+  </div>
+
   <div
     v-else-if="!landing"
     class="rounded-xl border border-dashed bg-card/40 p-12 text-center"

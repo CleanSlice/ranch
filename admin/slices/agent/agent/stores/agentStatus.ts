@@ -38,14 +38,19 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
 
   const connected = computed(() => connectionState.value === 'connected');
 
+  // Counted over the agents this account holds, not over every pod the
+  // stream names (CLEAN-231): the stream is public and names every agent of
+  // the installation, and a count that included the others would tell a
+  // limited account how many agents it does not reach are failing.
   const failingCount = computed(
     () =>
-      Object.values(statuses.value).filter(
-        (s) =>
-          s.phase === 'Failed' ||
-          s.containerWaitingReason === 'CrashLoopBackOff' ||
-          s.containerWaitingReason === 'ImagePullBackOff' ||
-          s.containerWaitingReason === 'ErrImagePull',
+      Object.entries(statuses.value).filter(
+        ([id, s]) =>
+          agentStore.byId(id) !== undefined &&
+          (s.phase === 'Failed' ||
+            s.containerWaitingReason === 'CrashLoopBackOff' ||
+            s.containerWaitingReason === 'ImagePullBackOff' ||
+            s.containerWaitingReason === 'ErrImagePull'),
       ).length,
   );
 
@@ -63,6 +68,31 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
   // record is stale or names an agent the store has never held.
   const lastSeen = new Map<string, IAgentRecord>();
   const reading = new Set<string>();
+  // Agents the stream names and GET /agents did not return to this account:
+  // ones it does not reach (CLEAN-231). Their rows are never asked for (the
+  // API answers 404), and they do not make the collection look stale. An id
+  // leaves this set by turning up in the collection, on any later list read.
+  const notOurs = new Set<string>();
+  // Bumped by `resetForAccount`: a list read for the previous account says
+  // nothing about what the next one reaches.
+  let accountGeneration = 0;
+
+  // The list, read because the stream named something the store does not
+  // hold. Whatever the stream named that is still missing afterwards is not
+  // this account's.
+  async function readList(named: string[]) {
+    const generation = accountGeneration;
+    try {
+      await agentStore.fetchAll();
+    } catch {
+      // Refused or unreachable: nothing was learned, the next frame asks.
+      return;
+    }
+    if (generation !== accountGeneration) return;
+    for (const id of named) {
+      if (!agentStore.byId(id)) notOurs.add(id);
+    }
+  }
 
   function patchStatus(frame: IAgentRecord) {
     const known = agentStore.byId(frame.id);
@@ -78,10 +108,25 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
     // The row is behind a token. With nobody signed in there is nobody to
     // read it for: the stream outlives a sign-out by a moment (CLEAN-231).
     if (!useAuthStore().isAuthenticated) return;
+    // An agent the store has never held is found through the list, not by
+    // id: for one this account does not reach, GET /agents/:id answers 404,
+    // and the list simply does not have it (CLEAN-231). Asked once per id.
+    if (!agentStore.byId(id)) {
+      if (notOurs.has(id)) return;
+      reading.add(id);
+      try {
+        await readList([id]);
+      } finally {
+        reading.delete(id);
+      }
+      return;
+    }
     reading.add(id);
     try {
       for (let i = 0; i < 3; i += 1) {
-        await agentStore.fetchById(id);
+        // No row back: gone, or not this account's any more. Asking again
+        // would be answered the same way.
+        if (!(await agentStore.fetchById(id))) break;
         const seen = lastSeen.get(id);
         if (!seen || !rowIsStale(agentStore.byId(id), seen)) break;
       }
@@ -107,15 +152,17 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
       bridleConnected.value = nextBridle;
       // The snapshot names every agent. When the collection is not that list
       // (a new agent, a changed row, one deleted while the stream was down),
-      // GET /agents loads it, as it does on a page load.
+      // GET /agents loads it, as it does on a page load. Agents already
+      // known not to be this account's are left out of the comparison:
+      // they would make the collection look stale on every snapshot.
+      const frames = msg.payload
+        .map((item) => item.agent)
+        .filter((a) => agentStore.byId(a.id) || !notOurs.has(a.id));
       if (
         useAuthStore().isAuthenticated &&
-        collectionIsStale(
-          agentStore.agents,
-          msg.payload.map((item) => item.agent),
-        )
+        collectionIsStale(agentStore.agents, frames)
       ) {
-        void agentStore.fetchAll().catch(() => undefined);
+        void readList(frames.map((a) => a.id));
       }
       return;
     }
@@ -148,11 +195,13 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
   // its next frame fills this again for whoever is signed in then. The ONE
   // way this store is emptied for an account change (docs/state.md).
   function resetForAccount() {
+    accountGeneration += 1;
     statuses.value = {};
     bridleConnected.value = {};
     lastEventAt.value = null;
     lastSeen.clear();
     reading.clear();
+    notOurs.clear();
   }
 
   function connect() {

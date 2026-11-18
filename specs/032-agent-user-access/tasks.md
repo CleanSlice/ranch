@@ -193,12 +193,12 @@
 - [X] T061 [US1] Bridle socket: check at handshake and on each inbound `message` in `api/src/slices/bridle/handlers/bridleClientWs.handler.ts`; register an `onChanged` listener that disconnects that person's sockets for agents no longer reached (`api/src/slices/bridle/data/bridle.gateway.ts`)
 - [X] T062 [US1] `api/src/slices/user/agentAccess/agentAccess.controller.ts` and `dtos/`: `GET` / `PUT /users/:id/agent-access` per contracts/http-api.md; `AgentAccessService.replace` steps 1, 5 and 6 of research R8 (who may edit, confirm before opening, version) in a transaction that locks the account row
 - [X] T063 [US1] `UserDto.agentAccess` summary in `api/src/slices/user/user/dtos/user.dto.ts` and the controller; call `removeUser` from the user delete path (`user.controller.ts`, `user.tool.ts`)
-- [ ] T064 [US1] Admin sub-slice `admin/slices/user/agentAccess/`: `domain/` types, service and gateway interface, `data/` gateway and mapper over the regenerated SDK (check `res.error`), `stores/agentAccess.ts` keyed by user id with `upsert` and `patch` + rollback, `plugins/di.ts`
-- [ ] T065 [US1] Repair `admin/slices/user/user/stores/user.ts` (`byId`, `upsert`, `patch`) and render by id in `components/user/list/Provider.vue`, `item/Provider.vue`, `edit/Provider.vue` (research R11)
-- [ ] T066 [US1] Editor `admin/slices/user/agentAccess/components/agentAccess/Editor.vue`, `Row.vue`, `Outcome.vue` per contracts/console.md (three-way choice per row, outcome sentence, review banner, confirm dialog, server refusal shown as received, `data-access-*` hooks); pure helper `admin/slices/user/agentAccess/utils/outcome.ts` with `outcome.test.ts`; host it on `admin/slices/user/user/components/user/item/Provider.vue`
-- [ ] T067 [P] [US1] Badges "Restricted" / "Needs review" in `admin/slices/user/user/components/user/list/Provider.vue`
-- [ ] T068 [P] [US1] App empty state for an account with no agents: keys `agents.no_access_title`, `agents.no_access_body` in `app/slices/agent/i18n/locales/en.json`, `bun run i18n:sync`, the state in `app/slices/agent/pages/agents/index.vue` with `data-agents-empty="no_access"`
-- [ ] T069 [US1] `specs/032-agent-user-access/e2e/owner-editor.mjs`, `enforce.mjs`, `deletion.mjs` at 390 px and 1440 px
+- [X] T064 [US1] Admin sub-slice `admin/slices/user/agentAccess/`: `domain/` types, service and gateway interface, `data/` gateway and mapper over the regenerated SDK (check `res.error`), `stores/agentAccess.ts` keyed by user id with `upsert` and `patch` + rollback, `plugins/di.ts`
+- [X] T065 [US1] Repair `admin/slices/user/user/stores/user.ts` (`byId`, `upsert`, `patch`) and render by id in `components/user/list/Provider.vue`, `item/Provider.vue`, `edit/Provider.vue` (research R11)
+- [X] T066 [US1] Editor `admin/slices/user/agentAccess/components/agentAccess/Editor.vue`, `Row.vue`, `Outcome.vue` per contracts/console.md (three-way choice per row, outcome sentence, review banner, confirm dialog, server refusal shown as received, `data-access-*` hooks); pure helper `admin/slices/user/agentAccess/utils/outcome.ts` with `outcome.test.ts`; host it on `admin/slices/user/user/components/user/item/Provider.vue`
+- [X] T067 [P] [US1] Badges "Restricted" / "Needs review" in `admin/slices/user/user/components/user/list/Provider.vue`
+- [X] T068 [P] [US1] App empty state for an account with no agents: keys `agents.no_access_title`, `agents.no_access_body` in `app/slices/agent/i18n/locales/en.json`, `bun run i18n:sync`, the state in `app/slices/agent/pages/agents/index.vue` with `data-agents-empty="no_access"`
+- [X] T069 [US1] `specs/032-agent-user-access/e2e/owner-editor.mjs`, `enforce.mjs`, `deletion.mjs` at 390 px and 1440 px
 
 **Checkpoint**: an installation with one Owner and Users is fully served
 
@@ -242,8 +242,8 @@
 ### Implementation for User Story 2
 
 - [X] T080 [US2] `AgentAccessService.replace` steps 2, 3 and 4 of research R8 in `api/src/slices/user/agentAccess/domain/agentAccess.service.ts`; `hasEntriesOutsideView` and view-limited `allowed` / `denied` in the `GET` response
-- [ ] T081 [US2] Editor for an Admin viewer in `admin/slices/user/agentAccess/components/agentAccess/Editor.vue`: only reached agents as rows, the outside-view note, the "who manages this access" line for accounts the viewer may not edit
-- [ ] T082 [US2] `specs/032-agent-user-access/e2e/ceiling.mjs` at both widths, including a hand-made request naming agent C
+- [X] T081 [US2] Editor for an Admin viewer in `admin/slices/user/agentAccess/components/agentAccess/Editor.vue`: only reached agents as rows, the outside-view note, the "who manages this access" line for accounts the viewer may not edit
+- [X] T082 [US2] `specs/032-agent-user-access/e2e/ceiling.mjs` at both widths, including a hand-made request naming agent C
 
 ---
 
@@ -254,8 +254,8 @@
 **Independent Test**: deny agent C for an Admin; as that Admin C is absent from every screen and refused on direct access
 
 - [X] T083 [US3] Creator auto-allow in `POST /agents` (`api/src/slices/agent/agent/agent.controller.ts` → `AgentAccessService`): a limited Admin's new agent joins their allowed list in the same transaction; spec case in `agentAccess.service.spec.ts`
-- [ ] T084 [P] [US3] `POST /agents/restart-by-template/:templateId` restarts only reached agents; `GET /agents/admin/current` answers 404 when the admin agent is not reached (`agent.controller.ts`); admin layout hides the assistant entry on that 404 (`admin/slices/common/components/layout/`). API part done (CLEAN-231); the admin layout is left to the consoles work
-- [ ] T085 [US3] Walk the admin console as the seeded limited Admin (agents list, search, pins, usage, events, links, chats) and fix any screen that names or counts an unreached agent; add the walk to `specs/032-agent-user-access/e2e/enforce.mjs`
+- [X] T084 [P] [US3] `POST /agents/restart-by-template/:templateId` restarts only reached agents; `GET /agents/admin/current` answers 404 when the admin agent is not reached (`agent.controller.ts`); admin layout hides the assistant entry on that 404 (`admin/slices/common/components/layout/`). API part done (CLEAN-231); the admin layout is left to the consoles work
+- [X] T085 [US3] Walk the admin console as the seeded limited Admin (agents list, search, pins, usage, events, links, chats) and fix any screen that names or counts an unreached agent; add the walk to `specs/032-agent-user-access/e2e/enforce.mjs`
 
 ---
 
@@ -283,9 +283,9 @@
 - [X] T092 [US6] Sub-slice `api/src/slices/agent/pin/`: module, gateway, `agentPin.controller.ts` (`PUT` / `DELETE /agents/:id/pin`, `@Roles(User)`, `@AgentScoped('id')`); add both routes to `userRoutes.spec.ts`
 - [X] T093 [US6] Remove `pinned` from `api/src/slices/agent/agent/dtos/updateAgent.dto.ts`, the gateway write and the domain update type; compute `AgentDto.pinned` for the caller from the pin gateway; update `agent.gateway.spec.ts` and the status fixture
 - [X] T094 [US6] Rewrite `pin_agent` in `api/src/slices/agent/agent/agentAdmin.tool.ts` as a `person` tool that pins for the effective caller; update `agentAdmin.tool.spec.ts` and its row in `docs/agent-tools.md`
-- [ ] T095 [P] [US6] App: `setPinned` in `app/slices/agent/stores/agent.ts` calls the pin routes; move the pin control out of the `canManage` block in `app/slices/agent/components/agent/workspace/Sheet.vue` and out of `canCreate` in `Rail.vue`; drop `pinned` from `IAgentUpdateInput`
-- [ ] T096 [P] [US6] Admin twin: `admin/slices/agent/agent/composables/useAgentPin.ts` calls the pin routes; drop `pinned` from `IUpdateAgentData`
-- [ ] T097 [US6] `specs/032-agent-user-access/e2e/pins.mjs` at both widths, with a second browser context for the other account
+- [X] T095 [P] [US6] App: `setPinned` in `app/slices/agent/stores/agent.ts` calls the pin routes; move the pin control out of the `canManage` block in `app/slices/agent/components/agent/workspace/Sheet.vue` and out of `canCreate` in `Rail.vue`; drop `pinned` from `IAgentUpdateInput`
+- [X] T096 [P] [US6] Admin twin: `admin/slices/agent/agent/composables/useAgentPin.ts` calls the pin routes; drop `pinned` from `IUpdateAgentData`
+- [X] T097 [US6] `specs/032-agent-user-access/e2e/pins.mjs` at both widths, with a second browser context for the other account
 
 ---
 

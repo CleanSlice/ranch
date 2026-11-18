@@ -827,6 +827,12 @@ const TURN_STALE_MS = 75_000
 
 const TURN_DIED_NOTICE = 'The agent did not finish this turn.'
 
+/**
+ * The hub's answer to a console person whose access lists do not include the
+ * agent (CLEAN-231): the same "not found" an agent that does not exist gets.
+ */
+const AGENT_GONE_CODE = 'AGENT_NOT_FOUND'
+
 // When each agent's "visitors are being asked to wait" entry is due to end,
 // keyed by agent id. Not state: nothing renders from a timer handle.
 const visitorLimitTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -856,6 +862,15 @@ export const useBridleStore = defineStore('bridle', {
      * nothing else; Send stays as it is.
      */
     visitorLimits: {} as VisitorLimits,
+    /**
+     * Agents the hub refused this account as "not found" (CLEAN-231), by
+     * agent id: the socket was turned away at the handshake, on a message,
+     * or closed when access was taken away. The conversation is emptied
+     * here; the page that hosts the chat watches this, drops the agent from
+     * its list, leaves for the agents, and takes the mark off
+     * (`clearUnreachable`). Twin of the app store's `unreachable`.
+     */
+    unreachable: {} as Record<string, true>,
   }),
 
   getters: {
@@ -1019,6 +1034,12 @@ export const useBridleStore = defineStore('bridle', {
       // replaces the "Chat reconnecting…" limbo.
       socket.on('bridle_error', async (e: { code?: string; agentId?: string; origin?: string }) => {
         const code = e?.code
+        // This account does not reach the agent (any more): not a token to
+        // renew and not a session that ended (CLEAN-231).
+        if (code === AGENT_GONE_CODE) {
+          this._dropUnreachable(key)
+          return
+        }
         // MISSING_TOKEN and ORIGIN_NOT_ALLOWED reach a signed-in person's
         // socket only when the handshake carried no token, i.e. the session
         // is gone; they take the same renew-once-then-end path (CLEAN-178).
@@ -2323,6 +2344,42 @@ export const useBridleStore = defineStore('bridle', {
     },
 
     /**
+     * The hub answered `AGENT_NOT_FOUND` for this conversation (CLEAN-231):
+     * let go of everything the store holds of it. The socket is closed for
+     * good, with no listener left to write into the record (the hub would
+     * refuse it again); the record is emptied IN PLACE, because the mounted
+     * provider holds it; what the browser kept of this agent for this
+     * account goes too, since it may not read the agent any more; and the
+     * agent is marked for the page to act on.
+     */
+    _dropUnreachable(key: string) {
+      const c = this._conv(key)
+      if (!c) return
+      const agentId = c.agentId
+      c.socket?.removeAllListeners()
+      this.disconnect(key)
+      this.clearStaged(key)
+      this.clearMessages(key)
+      saveOutbox(key, [])
+      clearDebugFromStorage(agentId)
+      Object.assign(c, {
+        ...createConversation(c.agentId, c.channel),
+        holders: c.holders,
+        apiUrl: c.apiUrl,
+      })
+      this._setVisitorLimits(clearVisitorLimit(this.visitorLimits, agentId), agentId)
+      this.unreachable = { ...this.unreachable, [agentId]: true }
+    },
+
+    /** The host has acted on the mark; a later visit starts clean. */
+    clearUnreachable(agentId: string) {
+      if (!this.unreachable[agentId]) return
+      const next = { ...this.unreachable }
+      delete next[agentId]
+      this.unreachable = next
+    },
+
+    /**
      * Whoever was signed in is not any more (CLEAN-231): let go of everything
      * this store holds for them. Every conversation is emptied IN PLACE — a
      * mounted provider holds its record, so dropping the record from the map
@@ -2355,6 +2412,7 @@ export const useBridleStore = defineStore('bridle', {
       for (const handle of visitorLimitTimers.values()) clearTimeout(handle)
       visitorLimitTimers.clear()
       this.visitorLimits = {}
+      this.unreachable = {}
       this.isOpen = false
     },
 

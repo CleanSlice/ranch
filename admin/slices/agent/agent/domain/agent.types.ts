@@ -88,9 +88,11 @@ export interface IAgentData {
   knowledgeIds: string[];
   isAdmin: boolean;
   debugEnabled: boolean;
-  /** Installation-wide pin (CLEAN-216): the rail lists pinned agents right
-   *  after Rancher. Toggled from the header; the app console shows the same
-   *  flag. Changes nothing about the pod, the status or access. */
+  /** The signed-in account's own pin (CLEAN-216, personal since CLEAN-231):
+   *  the rail lists the agents this account pinned right after Rancher.
+   *  Toggled from the header by anyone who reaches the agent; the app
+   *  console shows the same flag for the same account. Changes nothing about
+   *  the pod, the status, access, or anybody else's list. */
   pinned: boolean;
   /** Who created the agent (CLEAN-232), as the API resolves it for an Owner
    *  or Admin. `null` ⇒ nobody is recorded: the agent is older than the
@@ -138,5 +140,7 @@ export interface IUpdateAgentData {
   limits?: IAgentLimits | null;
   knowledgeIds?: string[];
   debugEnabled?: boolean;
-  pinned?: boolean;
+  // No `pinned`: the pin is the account's, not the agent's, and has routes
+  // of its own (`setPinned`); the API refuses an update that carries it
+  // (CLEAN-231).
 }

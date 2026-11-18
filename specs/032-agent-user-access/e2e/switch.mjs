@@ -74,9 +74,14 @@ const EXPECTED_APP = [
 ];
 /**
  * Admin: the local stack has no S3 bucket, so the routes that read an agent's
- * workspace answer 400 (see owner-only.mjs).
+ * workspace answer 400 (see owner-only.mjs). The Admin who signs in here is
+ * the seeded limited one: the layout asks once per load whether they reach
+ * the Ranch admin agent, and 404 is the API's "no" (T084, enforce.mjs).
  */
-const EXPECTED_ADMIN = [{ status: 400, url: /\/agents\/[^/]+\/(env|channels|files|secrets)(\?|\/|$)/ }];
+const EXPECTED_ADMIN = [
+  { status: 400, url: /\/agents\/[^/]+\/(env|channels|files|secrets)(\?|\/|$)/ },
+  { status: 404, url: '/agents/admin/current' },
+];
 
 // ------------------------------------------------------------- the recorder
 

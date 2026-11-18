@@ -87,6 +87,18 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
     });
   }
 
+  // The caller's own pin (CLEAN-231): its own two routes, both answering 204
+  // with no body. A refusal is thrown, as for the lifecycle actions, so the
+  // store rolls the optimistic flip back.
+  setPinned(id: string, pinned: boolean): Promise<void> {
+    return this.execute(async () => {
+      const res = pinned
+        ? await AgentsService.pinAgent({ path: { id } })
+        : await AgentsService.unpinAgent({ path: { id } });
+      unwrapOrThrow(res);
+    });
+  }
+
   remove(id: string): Promise<void> {
     return this.execute(async () => {
       // `wipeS3` is required by the SDK type; default to non-destructive so a

@@ -27,12 +27,17 @@ const { pending, agents, capacity, links } = fleet;
 // together.
 const agent = computed(() => agentStore.byId(props.id));
 
-// The sheet's restart, stop, start and pin. Not the role alone: the Ranch
-// admin agent is the Owner's, and the API answers an Admin "Agent not found"
-// on its management routes (CLEAN-232).
+// The sheet's restart, stop and start. Not the role alone: the Ranch admin
+// agent is the Owner's, and the API answers an Admin "Agent not found" on its
+// management routes (CLEAN-232). The pin is not gated: it is the viewer's own
+// (CLEAN-231).
 const canManageOpen = computed(() =>
   agent.value ? canManageAgent(authStore.role, agent.value) : false,
 );
+
+// The hub said this account does not reach the open agent (CLEAN-231): the
+// record leaves the list and the page leaves for the agents.
+useAgentGone(() => props.id);
 
 // Remember whichever agent is open so the next visit lands back on it.
 watch(

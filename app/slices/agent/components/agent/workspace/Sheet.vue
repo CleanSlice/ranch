@@ -201,25 +201,27 @@ const failedKey = computed(() => {
             />
             <span class="sr-only">{{ $t(controls.busy.value === 'stop' ? 'sheet.stopping' : 'sheet.stop') }}</span>
           </button>
-          <!-- Pin / unpin (CLEAN-216): optimistic, the lists reorder on the
-               click; a failure rolls back and lands in the line below. -->
-          <button
-            type="button"
-            class="agent-sheet__btn"
-            :title="$t(agent.pinned ? 'sheet.unpin' : 'sheet.pin')"
-            :aria-pressed="agent.pinned"
-            :disabled="controls.busy.value !== null"
-            data-pin-toggle
-            @click="controls.togglePin()"
-          >
-            <Icon
-              :name="controls.busy.value === 'pin' ? 'loader-2' : agent.pinned ? 'pin-off' : 'pin'"
-              :size="13"
-              :class="controls.busy.value === 'pin' ? 'animate-spin' : undefined"
-            />
-            <span class="sr-only">{{ $t(agent.pinned ? 'sheet.unpin' : 'sheet.pin') }}</span>
-          </button>
         </template>
+        <!-- Pin / unpin (CLEAN-216): optimistic, the lists reorder on the
+             click; a failure rolls back and lands in the line below. Outside
+             the `canManage` block: the pin is the viewer's own, so whoever
+             can open the agent may set it, a User included (CLEAN-231). -->
+        <button
+          type="button"
+          class="agent-sheet__btn"
+          :title="$t(agent.pinned ? 'sheet.unpin' : 'sheet.pin')"
+          :aria-pressed="agent.pinned"
+          :disabled="controls.busy.value !== null"
+          data-pin-toggle
+          @click="controls.togglePin()"
+        >
+          <Icon
+            :name="controls.busy.value === 'pin' ? 'loader-2' : agent.pinned ? 'pin-off' : 'pin'"
+            :size="13"
+            :class="controls.busy.value === 'pin' ? 'animate-spin' : undefined"
+          />
+          <span class="sr-only">{{ $t(agent.pinned ? 'sheet.unpin' : 'sheet.pin') }}</span>
+        </button>
 
         <!-- No role gate: whoever can open the agent may share it and start
              their conversation over (spec clarification, 2026-09-07). -->

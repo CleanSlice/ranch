@@ -25,6 +25,20 @@ export enum UserStatusTypes {
   Disabled = 'disabled',
 }
 
+/** What an account's agent access lists come to (CLEAN-231). */
+export enum AgentAccessKindTypes {
+  All = 'all',
+  AllExcept = 'all_except',
+  Only = 'only',
+  None = 'none',
+}
+
+/** The mark on the user list: the outcome kind and whether it needs a look. */
+export interface IUserAgentAccessSummary {
+  kind: AgentAccessKindTypes;
+  needsReview: boolean;
+}
+
 export interface IUserData {
   id: string;
   name: string;
@@ -36,6 +50,9 @@ export interface IUserData {
   role: UserRoleTypes;
   status: UserStatusTypes;
   createdAt: string;
+  // From `UserDto.agentAccess`, which only the /users routes carry. Null when
+  // the response did not say: nothing is marked, and nothing is assumed.
+  agentAccess: IUserAgentAccessSummary | null;
 }
 
 export interface ICreateUserData {

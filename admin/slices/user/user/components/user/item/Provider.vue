@@ -5,10 +5,13 @@ import { formatDate } from '#common/utils/format';
 const props = defineProps<{ id: string }>();
 const userStore = useUserStore();
 
-const { data: user, pending } = await useAsyncData(
+// Loading state from the request, content from the store (docs/state.md):
+// the access editor below writes the mark into this same record.
+const { pending } = await useAsyncData(
   `admin-user-${props.id}`,
   () => userStore.fetchById(props.id),
 );
+const user = computed(() => userStore.byId(props.id));
 
 const statusVariant: Record<UserStatusTypes, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   [UserStatusTypes.Active]: 'default',
@@ -93,6 +96,8 @@ async function onRemove() {
           </dl>
         </CardContent>
       </Card>
+
+      <AgentAccessEditor :user-id="user.id" />
     </template>
 
     <div v-else class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">

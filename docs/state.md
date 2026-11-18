@@ -123,18 +123,26 @@ second from being shown anything of the first (CLEAN-231).
    was created with, except the few listed in `#auth/utils/accountReset`
    that are about no account. A store that owns a socket, a timer, or records
    a component holds directly (admin's conversation record) needs its own
-   function: going back to the first state does not close anything.
+   function: going back to the first state does not close anything. So does
+   a store whose state mirrors a per-account key (admin's `agent` and
+   `agentFile`, the restart marks): the state it was created with is the
+   previous account's, so its function reads the key again, for the id that
+   is signed in by then.
 8. **What the browser keeps carries the account.** A `localStorage` key that
    holds content or names an agent has the signed-in id in it, built by the
    console's `bridle/utils/storageKeys.ts` and nowhere else:
    `bridle:conversation:<userId>:<key>`, `bridle:seq:<userId>:<key>` and
-   `agent:lastOpened:<userId>` in `app`; `bridle:debug:<userId>:<agentId>`
-   and `bridle:outbox:<userId>:<agentId>:<channel>` in `admin`. With no
+   `agent:lastOpened:<userId>` in `app`; `bridle:debug:<userId>:<agentId>`,
+   `bridle:outbox:<userId>:<agentId>:<channel>` and the restart marks
+   `agent:pendingRestart:<userId>`, `agent:restartInFlight:<userId>` and
+   `agentFile:pendingRestart:<userId>` in `admin`. With no
    signed-in id there is no key: nothing is read and nothing is written. A
    share-link conversation has no account and keeps its `share:…` key. View
    preferences that name no agent (`agent:view`, the theme) stay as they
    are. A new key of this kind goes through that module, and the old shape is
-   added to its one-time sweep.
+   added to its one-time sweep as a new step with the next number in the
+   flag: browsers that already ran the earlier steps hold the earlier number
+   and still get the new one, once.
 
 ## Review checklist
 

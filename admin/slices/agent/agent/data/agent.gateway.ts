@@ -29,6 +29,17 @@ interface HeyApiResult {
  * and return the unwrapped payload on success.
  */
 function unwrapOrThrow(res: HeyApiResult, action: string): unknown {
+  throwIfRefused(res, action);
+  const payload = unwrapEnvelope(res.data);
+  if (payload === null) throw new Error(`${action} failed: the API returned no data.`);
+  return payload;
+}
+
+/**
+ * The failure half of `unwrapOrThrow`, on its own for the routes that answer
+ * 204 with no body (the pin): there, "no data" is the success.
+ */
+function throwIfRefused(res: HeyApiResult, action: string): void {
   const status = res.response?.status;
   const err = res.error;
   if (err !== undefined && err !== null) {
@@ -45,9 +56,6 @@ function unwrapOrThrow(res: HeyApiResult, action: string): unknown {
         "running and that this app's origin is listed in CORS_ORIGIN.",
     );
   }
-  const payload = unwrapEnvelope(res.data);
-  if (payload === null) throw new Error(`${action} failed: the API returned no data.`);
-  return payload;
 }
 
 export class AgentGateway extends BaseGateway implements IAgentGateway {
@@ -56,7 +64,12 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
   findAll(): Promise<IAgentData[]> {
     return this.execute(async () => {
       const res = await AgentsService.agentControllerFindAll();
-      return this.mapper.toList(unwrapEnvelope(res.data));
+      // A refused or unreachable list is not an empty one. Answering `[]`
+      // here made the store replace its collection with nothing on a failed
+      // read: the rail emptied and the resolver offered "create your first
+      // agent" to an operator whose request had merely failed (CLEAN-231,
+      // twin of the app gateway). Thrown, the store keeps the rows it has.
+      return this.mapper.toList(unwrapOrThrow(res, 'Agent list'));
     });
   }
 
@@ -70,6 +83,18 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
   findAdmin(): Promise<IAgentData | null> {
     return this.execute(async () => {
       const res = await AgentsService.agentControllerFindAdmin();
+      // Three answers, and the caller tells them apart (CLEAN-231): the
+      // agent, `null` when the installation has none yet, and a refusal.
+      // 404 is the API saying this account does not reach the Ranch admin
+      // agent, so the status stays on the error.
+      const failure = (res as HeyApiResult).error;
+      if (failure !== undefined && failure !== null) {
+        const error = new Error('Ranch admin agent read failed') as Error & {
+          status?: number;
+        };
+        error.status = (res as HeyApiResult).response?.status;
+        throw error;
+      }
       return this.mapper.toEntity(unwrapEnvelope(res.data));
     });
   }
@@ -90,6 +115,18 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
         body: this.mapper.toUpdateDto(input),
       });
       return this.entityOrThrow(unwrapOrThrow(res, 'Agent update'), 'Agent update');
+    });
+  }
+
+  // The caller's own pin (CLEAN-231): its own two routes, both answering 204
+  // with no body. A refusal is thrown, so the store rolls the optimistic
+  // flip back.
+  setPinned(id: string, pinned: boolean): Promise<void> {
+    return this.execute(async () => {
+      const res = pinned
+        ? await AgentsService.pinAgent({ path: { id } })
+        : await AgentsService.unpinAgent({ path: { id } });
+      throwIfRefused(res, pinned ? 'Pin' : 'Unpin');
     });
   }
 

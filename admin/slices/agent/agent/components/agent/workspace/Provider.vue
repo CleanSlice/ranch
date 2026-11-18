@@ -7,6 +7,10 @@ const agentStore = useAgentStore();
 const router = useRouter();
 const route = useRoute();
 
+// The hub said this account does not reach the open agent (CLEAN-231): the
+// record leaves the rail and the page leaves for the agents.
+useAgentGone(() => props.id);
+
 // One list request for the whole workspace. It lives here — above the keyed
 // `Main` — so switching agents does not refetch it or flash the rail.
 //

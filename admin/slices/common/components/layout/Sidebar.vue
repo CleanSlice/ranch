@@ -76,8 +76,36 @@ const groups = [
   { key: MenuGroupTypes.Admin, label: 'Admin' },
 ];
 
+// The assistant entry: "Rancher" in the list and the brand link above it both
+// lead to the Ranch admin agent. An account whose access lists do not include
+// that agent is answered 404 by `GET /agents/admin/current` (CLEAN-231), and
+// then neither is offered: the entry is left out and the brand goes to the
+// agents. Asked once when the layout appears and once more when another
+// account signs in in place; the store keeps the answer, so nothing here
+// asks a second time and gets a second 404. Until the answer is in, and when
+// the request fails for any other reason, the entry is shown, as it was
+// before this was asked.
+const ASSISTANT_MENU_ID = 'rancher';
+const agentStore = useAgentStore();
+const assistantHidden = computed(() => agentStore.adminReach === 'hidden');
+const homeLink = computed(() => (assistantHidden.value ? '/agents' : '/rancher'));
+
+onMounted(() => {
+  watch(
+    () => authStore.user?.id ?? null,
+    (id) => {
+      if (id) void agentStore.ensureAdminReach();
+    },
+    { immediate: true },
+  );
+});
+
 const itemsByGroup = (group: MenuGroupTypes) =>
-  menu.getSidebar.filter((item) => item.group === group);
+  menu.getSidebar.filter(
+    (item) =>
+      item.group === group &&
+      !(assistantHidden.value && item.id === ASSISTANT_MENU_ID),
+  );
 </script>
 
 <template>
@@ -86,7 +114,7 @@ const itemsByGroup = (group: MenuGroupTypes) =>
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton as-child size="lg">
-            <NuxtLink to="/rancher">
+            <NuxtLink :to="homeLink" data-assistant-home>
               <div
                 class="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
               >

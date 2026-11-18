@@ -284,7 +284,7 @@ async function onDeleted() {
           class="size-4 shrink-0 text-primary"
           role="img"
           aria-label="Pinned"
-          title="Pinned: kept at the top of the list in both consoles"
+          title="Pinned: kept at the top of your list in both consoles"
           data-pinned
         />
         <span
@@ -345,8 +345,12 @@ async function onDeleted() {
           {{ OWNER_MANAGED_TEXT }}
         </p>
 
-        <div v-else class="flex shrink-0 items-center gap-2">
+        <!-- The row is drawn for every viewer: the pin in it is the viewer's
+             own, so it is offered on an agent they may not manage too
+             (CLEAN-231). Stop/Start and the menu stay with `canManage`. -->
+        <div class="flex shrink-0 items-center gap-2">
           <Button
+            v-if="canManage"
             variant="outline"
             size="sm"
             data-agent-toggle-running
@@ -382,7 +386,7 @@ async function onDeleted() {
             :title="
               pinned
                 ? 'Unpin: back to its ordinary place in the list'
-                : 'Pin: keep this agent at the top of the list in both consoles'
+                : 'Pin: keep this agent at the top of your list in both consoles'
             "
             data-pin-toggle
             @click="togglePin"
@@ -395,7 +399,7 @@ async function onDeleted() {
           <!-- Everything but Stop/Start lives in the menu (specs/017, R6):
                Restart, Tools, Share as a submenu of rows, and Delete
                last, separated — the one action here you cannot undo. -->
-          <DropdownMenu>
+          <DropdownMenu v-if="canManage">
             <DropdownMenuTrigger as-child>
               <Button
                 variant="outline"

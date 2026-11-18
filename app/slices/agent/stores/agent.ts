@@ -85,7 +85,10 @@ export const useAgentStore = defineStore('agent', () => {
       if (!current) return;
       const restored: Record<string, unknown> = {};
       for (const key of Object.keys(partial) as (keyof IAgentData)[]) {
-        if (current[key] === partial[key]) restored[key] = previous[key];
+        // Unwrapped: an array or object field is read back through Vue's
+        // reactive wrapper, which is never `===` the value that was patched
+        // in, so a refused change to such a field was not rolled back.
+        if (toRaw(current[key]) === toRaw(partial[key])) restored[key] = previous[key];
       }
       agents.value = agents.value.map((a) =>
         a.id === id ? { ...a, ...(restored as Partial<IAgentData>) } : a,
@@ -204,14 +207,16 @@ export const useAgentStore = defineStore('agent', () => {
     return updated;
   }
 
-  // Pin / unpin (CLEAN-216). The pin is not a status, so it has no endpoint
-  // of its own: the record is patched at once, so every list reorders on the
-  // click, the general update carries the flag, and a refusal rolls it back
-  // and rethrows for the caller to show.
+  // Pin / unpin (CLEAN-216), the signed-in account's own since CLEAN-231.
+  // The record is patched at once, so every list reorders on the click; the
+  // pin routes carry it (the general update refuses the flag), and a refusal
+  // rolls it back and rethrows for the caller to show. Nothing to upsert:
+  // the routes answer 204, and the patched record already says what they did.
   async function setPinned(id: string, pinned: boolean) {
     const rollback = patch(id, { pinned });
     try {
-      return await update(id, { pinned });
+      await getService().setPinned(id, pinned);
+      return byId(id) ?? null;
     } catch (err) {
       rollback();
       throw err;
@@ -222,6 +227,18 @@ export const useAgentStore = defineStore('agent', () => {
     await getService().remove(id);
     agents.value = agents.value.filter((a) => a.id !== id);
     void fetchCapacity();
+  }
+
+  // The API says this account does not reach the agent any more (the hub's
+  // `AGENT_NOT_FOUND` on an open chat, CLEAN-231): the record goes, so no
+  // list offers it. Not a delete: nothing is asked of the server.
+  function forget(id: string): void {
+    if (!byId(id)) return;
+    agents.value = agents.value.filter((a) => a.id !== id);
+    links.value = links.value.filter(
+      (l) => l.agentId !== id && l.peerAgentId !== id,
+    );
+    delete limitsEnabled.value[id];
   }
 
   // Optimistic: flip to 'deploying' so every screen showing this agent reacts
@@ -273,6 +290,7 @@ export const useAgentStore = defineStore('agent', () => {
     byId,
     upsert,
     patch,
+    forget,
     resetForAccount,
     capacity,
     links,

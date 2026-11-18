@@ -19,6 +19,11 @@ export abstract class IAgentGateway {
   abstract findAdmin(): Promise<IAgentData | null>;
   abstract create(input: ICreateAgentData): Promise<IAgentData>;
   abstract update(id: string, input: IUpdateAgentData): Promise<IAgentData>;
+  /**
+   * Pin or unpin the agent for the signed-in account (CLEAN-231). Idempotent
+   * on the server; throws when it refuses, so the store can roll back.
+   */
+  abstract setPinned(id: string, pinned: boolean): Promise<void>;
   abstract restart(id: string): Promise<IAgentData>;
   abstract stop(id: string): Promise<IAgentData>;
   abstract start(id: string): Promise<IAgentData>;

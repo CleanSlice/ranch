@@ -3,15 +3,18 @@ import type {
   UpdateUserDto,
 } from '#api/data/repositories/api/types.gen';
 import {
+  AgentAccessKindTypes,
   UserRoleTypes,
   UserStatusTypes,
   type ICreateUserData,
   type IUpdateUserData,
+  type IUserAgentAccessSummary,
   type IUserData,
 } from '../domain/user.types';
 
 const ROLE_VALUES = new Set<string>(Object.values(UserRoleTypes));
 const STATUS_VALUES = new Set<string>(Object.values(UserStatusTypes));
+const ACCESS_KIND_VALUES = new Set<string>(Object.values(AgentAccessKindTypes));
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -36,6 +39,19 @@ export class UserMapper {
       role: this.toRole(o.role),
       status: this.toStatus(o.status),
       createdAt: str(o.createdAt),
+      agentAccess: this.toAgentAccess(o.agentAccess),
+    };
+  }
+
+  // Absent on a response that does not carry it, and unreadable when the
+  // kind is not one this console knows: either way, no mark.
+  private toAgentAccess(raw: unknown): IUserAgentAccessSummary | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    if (typeof o.kind !== 'string' || !ACCESS_KIND_VALUES.has(o.kind)) return null;
+    return {
+      kind: o.kind as AgentAccessKindTypes,
+      needsReview: o.needsReview === true,
     };
   }
 

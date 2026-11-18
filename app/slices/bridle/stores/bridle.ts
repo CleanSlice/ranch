@@ -130,6 +130,11 @@ const RENEWABLE_CODES = new Set(['TOKEN_EXPIRED', 'INVALID_TOKEN']);
  * this origin is not on its list.
  */
 const TOKENLESS_CODES = new Set(['MISSING_TOKEN', 'ORIGIN_NOT_ALLOWED']);
+/**
+ * The hub's answer to a console person whose access lists do not include the
+ * agent (CLEAN-231): the same "not found" an agent that does not exist gets.
+ */
+const AGENT_GONE_CODE = 'AGENT_NOT_FOUND';
 /** Hub rejections that mean the share link itself is dead. */
 const SHARE_DEAD_CODES = new Set(['SHARE_LINK_INVALID', 'SHARE_VISITOR_INVALID']);
 
@@ -345,6 +350,14 @@ export const useBridleStore = defineStore('bridle', () => {
    * calls: the verdict is final and turns the page into its revoked state.
    */
   const shareRevoked = ref<Record<string, boolean>>({});
+  /**
+   * Agents the hub refused this account as "not found" (CLEAN-231), by agent
+   * id: the socket was turned away at the handshake, on a message, or closed
+   * when access was taken away. The conversation is emptied here; the page
+   * that hosts the chat watches this, drops the agent from its list, leaves
+   * for the agents, and takes the mark off (`clearUnreachable`).
+   */
+  const unreachable = ref<Record<string, boolean>>({});
 
   // Plain maps, not refs: sockets and timers are not view state, and a
   // reactive proxy around a socket.io client would only get in the way.
@@ -1462,6 +1475,13 @@ export const useBridleStore = defineStore('bridle', () => {
       return;
     }
 
+    // A signed-in person does not reach this agent (any more). Not an error
+    // to show under a chat: there is no chat to show it under.
+    if (code === AGENT_GONE_CODE) {
+      dropUnreachable(conv);
+      return;
+    }
+
     const auth = useAuthStore();
     if (
       RENEWABLE_CODES.has(code) ||
@@ -2027,6 +2047,50 @@ export const useBridleStore = defineStore('bridle', () => {
     clearConversationFromStorage(conversationStorageKey(conv.key));
   }
 
+  // ── An agent this account does not reach (CLEAN-231) ───────
+
+  const isUnreachable = (agentId: string) => unreachable.value[agentId] === true;
+
+  /** The host has acted on the mark; a later visit starts clean. */
+  function clearUnreachable(agentId: string) {
+    delete unreachable.value[agentId];
+  }
+
+  /**
+   * The hub answered `AGENT_NOT_FOUND` for a console conversation: let go of
+   * everything this store holds of it. The socket is closed for good (the
+   * hub would refuse it again), the record is emptied together with the copy
+   * the browser keeps, since it is a conversation with an agent this account
+   * may not read any more, and the agent is marked for the page to act on.
+   * A share-link conversation never comes here: it has no account, and its
+   * dead link is `shareRevoked`'s story.
+   */
+  function dropUnreachable(conv: IBridleConversation) {
+    const key = conv.key;
+    const held = channels.get(key);
+    if (held) {
+      if (held.closeTimer) clearTimeout(held.closeTimer);
+      held.channel?.close();
+      channels.delete(key);
+    }
+    // Messages, pending, notice, draft, thinking, staged files, timers and
+    // the stored copy.
+    reset(conv);
+    clearConversationFromStorage(seqStorageKey(key));
+    delete hydrated.value[key];
+    delete history.value[key];
+    delete agentOnline.value[key];
+    delete attachmentErrors.value[key];
+    delete resetting.value[key];
+    connection.value[key] = BridleChannelStates.Offline;
+    lastHubSeqs.delete(key);
+    hubClientIds.delete(key);
+    authRetried.delete(key);
+    historyLoading.delete(key);
+    clearLimit(conv.agentId);
+    unreachable.value[conv.agentId] = true;
+  }
+
   // ── Account change (CLEAN-231) ─────────────────────────────
 
   /**
@@ -2072,6 +2136,7 @@ export const useBridleStore = defineStore('bridle', () => {
     connection.value = {};
     resetting.value = {};
     shareRevoked.value = {};
+    unreachable.value = {};
 
     nextSeqs.clear();
     lastHubSeqs.clear();
@@ -2199,6 +2264,8 @@ export const useBridleStore = defineStore('bridle', () => {
     thinkingFor,
     hasOpenThinking,
     isShareRevoked,
+    isUnreachable,
+    clearUnreachable,
     // attachments
     stagedFor,
     attachmentErrorFor,

@@ -29,10 +29,18 @@ export type {
 } from '#agentFile/domain';
 
 import { closeTab as closeTabUtil, openTab as openTabUtil } from '#agentFile/utils/tabs';
+import { useAuthStore } from '#auth/stores/auth';
+import { filePendingRestartKey } from '#bridle/utils/storageKeys';
 
 const getService = createServiceGetter<AgentFileService>('$agentFileService');
 
-const PENDING_RESTART_KEY = 'agentFile:pendingRestart';
+// Whose restart marks the browser keeps (CLEAN-231): the map is keyed by
+// agent id, so it names agents, and each account has its own. The key is
+// built in `#bridle/utils/storageKeys`; with nobody signed in there is no
+// key, and nothing is read or written.
+function pendingRestartStorageKey(): string | null {
+  return filePendingRestartKey(useAuthStore().user?.id ?? null);
+}
 
 /** What the viewer/editor has of one file (CLEAN-112): slices so far + facts. */
 export interface ILoadedFile {
@@ -58,8 +66,10 @@ export interface IDraft {
 
 function loadPendingRestartFromStorage(): Record<string, true> {
   if (typeof window === 'undefined') return {};
+  const storageKey = pendingRestartStorageKey();
+  if (!storageKey) return {};
   try {
-    const raw = window.localStorage.getItem(PENDING_RESTART_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === 'object') {
@@ -73,8 +83,10 @@ function loadPendingRestartFromStorage(): Record<string, true> {
 
 function savePendingRestartToStorage(state: Record<string, true>): void {
   if (typeof window === 'undefined') return;
+  const storageKey = pendingRestartStorageKey();
+  if (!storageKey) return;
   try {
-    window.localStorage.setItem(PENDING_RESTART_KEY, JSON.stringify(state));
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
   } catch {
     // quota exceeded — give up silently
   }
@@ -96,8 +108,11 @@ export const useAgentFileStore = defineStore('agentFile', () => {
   const pendingRestart = ref<Record<string, true>>(
     loadPendingRestartFromStorage(),
   );
+  // Bumped by `resetForAccount`: the answer to a read that was open when the
+  // account changed is about the previous account and is not kept.
+  let accountGeneration = 0;
 
-  // ── Pending restart (unchanged behaviour) ───────────────────────
+  // ── Pending restart (per account since CLEAN-231) ───────────────
 
   function isPendingRestart(agentId: string): boolean {
     return pendingRestart.value[agentId] === true;
@@ -123,9 +138,14 @@ export const useAgentFileStore = defineStore('agentFile', () => {
   let limitsFor: string | null = null;
   async function fetchLimits(agentId: string): Promise<IFileLimits> {
     if (limits.value && limitsFor === agentId) return limits.value;
-    limits.value = await getService().limits(agentId);
+    const generation = accountGeneration;
+    const next = await getService().limits(agentId);
+    // Asked for the account that was signed in then (CLEAN-231): the caller
+    // gets its answer, the store keeps none of it.
+    if (generation !== accountGeneration) return next;
+    limits.value = next;
     limitsFor = agentId;
-    return limits.value;
+    return next;
   }
 
   function nodesFor(agentId: string): IFileNode[] {
@@ -137,7 +157,9 @@ export const useAgentFileStore = defineStore('agentFile', () => {
   }
 
   async function fetchList(agentId: string): Promise<IFileNode[]> {
+    const generation = accountGeneration;
     const list = await getService().list(agentId);
+    if (generation !== accountGeneration) return list;
     filesByAgent.value = { ...filesByAgent.value, [agentId]: list };
     // Tabs whose file vanished (delete, import, sync) close themselves.
     const present = new Set(list.map((n) => n.path));
@@ -174,6 +196,18 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     };
   }
 
+  /**
+   * `setLoaded` for a read that takes a while: it writes only while the
+   * account that asked is still the one signed in (CLEAN-231). After an
+   * account change the store has been emptied and keeps nothing of it.
+   */
+  function keeperFor(agentId: string, path: string): (file: ILoadedFile) => void {
+    const generation = accountGeneration;
+    return (file) => {
+      if (generation === accountGeneration) setLoaded(agentId, path, file);
+    };
+  }
+
   function fromChunk(chunk: IFileChunk, previous?: ILoadedFile | null): ILoadedFile {
     return {
       path: chunk.path,
@@ -197,8 +231,9 @@ export const useAgentFileStore = defineStore('agentFile', () => {
   ): Promise<ILoadedFile> {
     const existing = loadedFor(agentId, path);
     if (existing && !force && !existing.error) return existing;
+    const keep = keeperFor(agentId, path);
     const lim = await fetchLimits(agentId);
-    setLoaded(agentId, path, {
+    const blank: ILoadedFile = {
       path,
       content: '',
       totalSize: 0,
@@ -209,19 +244,20 @@ export const useAgentFileStore = defineStore('agentFile', () => {
       updatedAt: '',
       loading: true,
       error: null,
-    });
+    };
+    keep(blank);
     try {
       const chunk = await getService().read(agentId, path, 0, lim.rangeBytes);
       const file = fromChunk(chunk);
-      setLoaded(agentId, path, file);
+      keep(file);
       return file;
     } catch (err) {
       const failed: ILoadedFile = {
-        ...(loadedFor(agentId, path) as ILoadedFile),
+        ...(loadedFor(agentId, path) ?? blank),
         loading: false,
         error: (err as Error).message || 'Failed to load file',
       };
-      setLoaded(agentId, path, failed);
+      keep(failed);
       return failed;
     }
   }
@@ -232,15 +268,16 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     if (!current || !current.hasMore || current.nextOffset === null || current.loading) {
       return current;
     }
+    const keep = keeperFor(agentId, path);
     const lim = await fetchLimits(agentId);
-    setLoaded(agentId, path, { ...current, loading: true });
+    keep({ ...current, loading: true });
     try {
       const chunk = await getService().read(agentId, path, current.nextOffset, lim.rangeBytes);
       const file = fromChunk(chunk, current);
-      setLoaded(agentId, path, file);
+      keep(file);
       return file;
     } catch (err) {
-      setLoaded(agentId, path, {
+      keep({
         ...current,
         loading: false,
         error: (err as Error).message || 'Failed to load more',
@@ -495,6 +532,33 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     return outcome;
   }
 
+  // ── Account change (CLEAN-231) ──────────────────────────────────
+
+  /**
+   * Whoever was signed in is not any more: the files, slices, drafts, tabs
+   * and selections read or made for them go. The ONE way this store is
+   * emptied for an account change (docs/state.md). It has its own function,
+   * and is not left to the "back to the state it was created with" fallback
+   * of `#auth/utils/accountReset`, because of the restart marks: they live
+   * in the browser per account, so the state the store was created with is
+   * the previous account's. This runs once the signed-in id has changed, so
+   * what is read back is the new account's own (nothing, with nobody signed
+   * in).
+   */
+  function resetForAccount(): void {
+    accountGeneration += 1;
+    limits.value = null;
+    limitsFor = null;
+    filesByAgent.value = {};
+    loaded.value = {};
+    drafts.value = {};
+    openTabs.value = {};
+    activePath.value = {};
+    selection.value = {};
+    importMode.value = 'workspace';
+    pendingRestart.value = loadPendingRestartFromStorage();
+  }
+
   /** Open the raw stored file in a new tab through a short-lived link. */
   async function openFull(agentId: string, path: string): Promise<void> {
     const link = await getService().openLink(agentId, path);
@@ -565,5 +629,6 @@ export const useAgentFileStore = defineStore('agentFile', () => {
     isPendingRestart,
     markPendingRestart,
     clearPendingRestart,
+    resetForAccount,
   };
 });

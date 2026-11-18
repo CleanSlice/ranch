@@ -67,6 +67,25 @@ async function openAdvanced(page) {
   await page.locator('[data-created-by]').first().waitFor({ state: 'visible', timeout: 10000 });
 }
 
+// Since CLEAN-231 the seeded Admin is limited to access-alpha and
+// access-bravo, so the Ranch admin agent is simply not there for them. This
+// script is about what an Admin who DOES reach it may see and do, so for its
+// own run the Owner also allows it for the Admin, through the access route,
+// and takes it back at the end.
+const adminAccountId = (await api('/users', { as: OWNER })).body.find((u) => u.email === ADMIN_USER.email)?.id;
+async function setAdminAccess(allowed) {
+  const current = (await api(`/users/${adminAccountId}/agent-access`, { as: OWNER })).body;
+  return api(`/users/${adminAccountId}/agent-access`, {
+    method: 'PUT',
+    as: OWNER,
+    body: { allowed, denied: [], version: current?.version ?? null },
+  });
+}
+{
+  const res = await setAdminAccess([AGENTS.a.id, AGENTS.b.id, AGENTS.ranch.id]);
+  check(res.status === 200 && res.body?.allowed?.length === 3, `for this run the Admin is allowed the Ranch admin agent too (${res.status})`);
+}
+
 const browser = await launch();
 try {
   for (const width of WIDTHS) {
@@ -215,6 +234,11 @@ section('From the script: the ceiling on accounts and on the Ranch admin agent')
   check(forOwner.some((c) => c.id === AGENTS.ranch.id), 'the Owner’s do');
   const mcps = await api(`/agents/${AGENTS.ranch.id}/mcps`, { as: OWNER });
   check(mcps.status === 200, `the Owner reads the Ranch admin agent’s MCP servers (${mcps.status})`);
+}
+
+{
+  const back = await setAdminAccess([AGENTS.a.id, AGENTS.b.id]);
+  check(back.status === 200 && back.body?.allowed?.length === 2, `the Admin is limited to access-alpha and access-bravo again (${back.status})`);
 }
 
 done('owner-only');

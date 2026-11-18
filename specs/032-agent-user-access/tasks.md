@@ -291,10 +291,10 @@
 
 ## Phase 14: Polish & Cross-Cutting
 
-- [ ] T098 [P] `specs/032-agent-user-access/e2e/all.mjs` running every script; screenshots to the scratchpad, never the repository
-- [ ] T099 Run every command of quickstart.md section 3 and both e2e entry points; record the output in the PR descriptions
-- [ ] T100 [P] Update `CLAUDE.md` and `.specify/memory/constitution.md` together where Principle V's wording ("gated to the right audience") now means the party acted for
-- [ ] T101 [P] Twin-console statement for each PR: which of `agent`, `bridle`, `user`, `chat` was changed in which console and why the other needed nothing (`share`, `setup`, `common`: checked, unchanged)
+- [X] T098 [P] `specs/032-agent-user-access/e2e/all.mjs` running every script; screenshots to the scratchpad, never the repository
+- [X] T099 Run every command of quickstart.md section 3 and both e2e entry points; record the output in the PR descriptions
+- [X] T100 [P] Update `CLAUDE.md` and `.specify/memory/constitution.md` together where Principle V's wording ("gated to the right audience") now means the party acted for
+- [X] T101 [P] Twin-console statement for each PR: which of `agent`, `bridle`, `user`, `chat` was changed in which console and why the other needed nothing (`share`, `setup`, `common`: checked, unchanged)
 - [ ] T102 Bump the root `package.json` version in each Ranch PR that should produce a release tag; after each merge watch `Release Platform` and confirm the tag exists
 - [ ] T103 Ticket hygiene: comment on CLEAN-232 and CLEAN-231 at each checkpoint, link each PR, move to In Testing on PR and to Done with the release tag once shipped
 

@@ -62,9 +62,15 @@ const REFUSED_PIN = { status: 500, url: /\/agents\/[^/]+\/pin$/ };
 const EXPECTED_APP = [REFUSED_PIN];
 /**
  * Admin: the local stack has no S3 bucket, so the routes that read an agent's
- * workspace answer 400 (see owner-only.mjs).
+ * workspace answer 400 (see owner-only.mjs). The seeded Admin does not reach
+ * the Ranch admin agent, so the console's one question about the assistant
+ * answers 404 (enforce.mjs checks it is asked at most once per load).
  */
-const EXPECTED_ADMIN = [REFUSED_PIN, { status: 400, url: /\/agents\/[^/]+\/(env|channels|files|secrets)(\?|\/|$)/ }];
+const EXPECTED_ADMIN = [
+  REFUSED_PIN,
+  { status: 400, url: /\/agents\/[^/]+\/(env|channels|files|secrets)(\?|\/|$)/ },
+  { status: 404, url: '/agents/admin/current' },
+];
 
 // ------------------------------------------------------------------ helpers
 

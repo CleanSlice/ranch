@@ -62,7 +62,12 @@ function harness(admin: IAgentData | null = ranchAgent()) {
   } as unknown as IAgentGateway;
   const rancher = {
     getStatus: () =>
-      Promise.resolve({ hasLlm: true, hasS3: false, template: TEMPLATE, admin }),
+      Promise.resolve({
+        hasLlm: true,
+        hasS3: false,
+        template: TEMPLATE,
+        admin,
+      }),
   } as unknown as RancherService;
   const controller = new RancherController(
     rancher,

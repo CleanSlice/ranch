@@ -8,6 +8,7 @@ import { errorWithCode } from '../domain/agentLimit.types';
 import type {
   IAgentData,
   IAgentEnvVar,
+  IAgentLogSummary,
   IAgentMetrics,
   IClusterCapacityData,
   ICreateAgentData,
@@ -195,6 +196,30 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
       });
       const payload = unwrapEnvelope<{ logs?: string }>(res.data);
       return typeof payload?.logs === 'string' ? payload.logs : '';
+    });
+  }
+
+  /**
+   * The same window, already counted by the api (CLEAN-233): the newest line
+   * and the two figures beside it. The collapsed Logs bar used to download
+   * every line of that window to work them out in the browser.
+   */
+  logSummary(id: string): Promise<IAgentLogSummary> {
+    return this.execute(async () => {
+      const res = await LogsService.logControllerGetSummary({
+        path: { agentId: id },
+        query: { tail: '1000' },
+      });
+      const payload = unwrapEnvelope<{
+        logs?: string;
+        total?: number;
+        alerts?: number;
+      }>(res.data);
+      return {
+        logs: typeof payload?.logs === 'string' ? payload.logs : '',
+        total: typeof payload?.total === 'number' ? payload.total : 0,
+        alerts: typeof payload?.alerts === 'number' ? payload.alerts : 0,
+      };
     });
   }
 

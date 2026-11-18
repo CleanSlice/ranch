@@ -256,6 +256,7 @@ const EXPECTED: Record<string, 'id' | 'agentId'> = {
   'POST /agents/:agentId/secrets/replace': 'agentId',
   // Logs.
   'GET /agents/:agentId/logs': 'agentId',
+  'GET /agents/:agentId/logs/summary': 'agentId',
   // Limits: the write.
   'PUT /agents/:agentId/limits': 'agentId',
   // Peers, the whole controller, reads included: its card, whom it asks,

@@ -6,7 +6,8 @@ import {
   kubeErrorMessage,
 } from '#/agent/pod/domain/kubeError';
 import { IInfraConfigGateway } from '#/setting/domain';
-import type { IPodLogRead } from './log.types';
+import type { IPodLogRead, IPodLogSummary } from './log.types';
+import { summarizeLogText } from './logLines';
 
 /** Tail the console gets when it asks for nothing sensible, and the ceiling. */
 export const DEFAULT_TAIL_LINES = 500;
@@ -131,6 +132,28 @@ export class LogService {
       this.logger.warn(`log fetch failed for ${podName}: ${message}`);
       return { state: 'failed', logs: `[log fetch failed: ${message}]` };
     }
+  }
+
+  /**
+   * The same read, reduced to the newest line and two counts (CLEAN-233).
+   *
+   * The console's collapsed Logs bar shows one line and the figures beside it;
+   * it used to fetch the whole window every five seconds and count in the
+   * browser, which is ~100 kB a poll for ~100 bytes of answer. The counting
+   * rules are `logLines.ts`, copied verbatim into the console, so the bar and
+   * the expanded panel can never disagree about what a warning is.
+   *
+   * A `[...]` marker is the whole read, so it travels as the line and counts
+   * as one — exactly what the browser made of it before.
+   */
+  async readPodLogSummary(
+    agentId: string,
+    agentStatus: string,
+    tailLines: number,
+  ): Promise<IPodLogSummary> {
+    const read = await this.readPodLogs(agentId, agentStatus, tailLines);
+    const { latest, total, alerts } = summarizeLogText(read.logs);
+    return { state: read.state, logs: latest ?? '', total, alerts };
   }
 
   private isNotFound(err: unknown): boolean {

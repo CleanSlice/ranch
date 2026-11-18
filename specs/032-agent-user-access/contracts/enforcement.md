@@ -98,7 +98,7 @@ Where the code differs from the tables above, and why. The pinned truth is
 check is `e2e/http.mjs`.
 
 - **Management routes carry `@ManagesAgent`, not S.** CLEAN-232 marked the
-  46 management routes of one agent (update, delete, restart, stop, start,
+  47 management routes of one agent (update, delete, restart, stop, start,
   env, metrics, MCP status, channels, files, secrets, logs, the limits
   write, every peer route). `canManage` asks the lists through `IAgentReach`,
   which is `AgentAccessService` now, so those routes are covered without a

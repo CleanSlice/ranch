@@ -42,8 +42,16 @@ import { Bot, FlaskConical, KeyRound, MessageSquare } from 'lucide-vue-next';
 const authStore = useAuthStore();
 const update = useRanchUpdate();
 const upgradeDialogOpen = ref(false);
+// The update badge is chrome, not content: it waits for the page to go quiet
+// rather than joining the opening rush (CLEAN-233). `check` reads its own
+// one-hour cache, so this is usually no request at all.
 onMounted(() => {
-  void update.check();
+  if (typeof window === 'undefined') return;
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => void update.check(), { timeout: 5000 });
+    return;
+  }
+  window.setTimeout(() => void update.check(), 2000);
 });
 
 async function onLogout() {

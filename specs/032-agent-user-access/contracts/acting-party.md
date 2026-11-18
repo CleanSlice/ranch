@@ -275,8 +275,8 @@ promote-admin routes and the Ranch admin agent's own management routes.
 
 The management routes of one agent (`PUT`, `DELETE /agents/:id`, restart,
 stop, start, its environment, metrics and MCP status, files, secrets,
-channels, logs, the write of limits, and every peer route: card, peers,
-candidates, preview, state, delegations; 46 routes, pinned in
+channels, logs and their summary, the write of limits, and every peer route:
+card, peers, candidates, preview, state, delegations; 47 routes, pinned in
 `agentManage.guard.spec.ts`) keep their role and add `canManage`, reads
 included. When creation opens to Users they are the routes whose role drops
 to `User`, with `canManage` already in place.

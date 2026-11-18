@@ -2,6 +2,7 @@ import type { IAgentGateway } from './agent.gateway';
 import type {
   IAgentData,
   IAgentEnvVar,
+  IAgentLogSummary,
   IAgentMetrics,
   IClusterCapacityData,
   ICreateAgentData,
@@ -67,6 +68,10 @@ export class AgentService {
 
   logs(id: string): Promise<string> {
     return this.gateway.logs(id);
+  }
+
+  logSummary(id: string): Promise<IAgentLogSummary> {
+    return this.gateway.logSummary(id);
   }
 
   env(id: string): Promise<IAgentEnvVar[]> {

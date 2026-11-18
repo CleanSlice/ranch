@@ -82,7 +82,8 @@ const startRoute = computed(() => (registrationEnabled.value ? '/register' : '/l
   position: relative;
   overflow: hidden;
   padding: clamp(6rem, 14vw, 11rem) 0 clamp(7rem, 16vw, 13rem);
-  border-top: 1px solid var(--land-border);
+  border-top: 1px solid transparent;
+  border-image: var(--land-horizon) 1;
   isolation: isolate;
 }
 .land-cta__scene {

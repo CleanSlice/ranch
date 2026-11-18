@@ -18,6 +18,7 @@ import type {
 } from './domain';
 import { asPerson, asTrustedAgent } from '#/mcp/testing';
 import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 /**
  * A limit is the only thing between a public agent and anyone who wants to
@@ -143,6 +144,7 @@ function harness(
     service as unknown as AgentLimitService,
     agents as unknown as IAgentGateway,
     permissionOver(agents),
+    openAccess(),
   );
   return { tool, service, agents };
 }
@@ -240,7 +242,7 @@ describe('AgentLimitTool — who may use it', () => {
     for (const result of refused) {
       // A plain agent has no `list_agents`, so the refusal does not name it.
       expect(JSON.stringify(result)).toContain(
-        'Agent agent-b not found — there is no such agent among the ones this person manages',
+        'Agent agent-b not found — there is no such agent for this caller',
       );
       expect(JSON.stringify(result)).not.toContain('list_agents');
     }

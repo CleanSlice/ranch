@@ -190,7 +190,13 @@ export type BridleSendAck =
     }
   | {
       status: 'rejected';
-      code: 'AGENT_OFFLINE' | 'ATTACHMENT_FAILED' | 'SHARE_REJECTED' | 'EMPTY';
+      code:
+        | 'AGENT_OFFLINE'
+        | 'ATTACHMENT_FAILED'
+        | 'SHARE_REJECTED'
+        | 'EMPTY'
+        // The person's access lists no longer reach the agent (CLEAN-231).
+        | 'AGENT_NOT_FOUND';
       message?: string;
     }
   | BridleRateLimited;

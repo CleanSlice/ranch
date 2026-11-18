@@ -121,7 +121,7 @@ export class AgentDto {
 
   @ApiProperty({
     description:
-      'When true, the agent is kept at the top of every agent list in both consoles. Installation-wide, not per user.',
+      'Pinned by the caller: when true, the agent is kept at the top of the caller’s own agent lists. Personal (PUT / DELETE /agents/:id/pin); false for a caller that is not a person.',
   })
   pinned: boolean;
 

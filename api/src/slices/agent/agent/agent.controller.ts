@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   ForbiddenException,
   Get,
@@ -70,6 +71,9 @@ import {
 } from '#/user/auth/guards';
 import { IUserGateway, UserRoleTypes } from '#/user/user/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { AgentScoped, accessCallerOf } from '#/user/agentAccess/guards';
+import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
 
 // Workflow ends as soon as the pod hits phase=Running, but pod=Running does
 // not mean the agent inside is ready (channels connected, S3 pulled, HTTP up).
@@ -145,7 +149,35 @@ export class AgentController {
     private agentLimits: AgentLimitService,
     private userGateway: IUserGateway,
     private permission: AgentPermissionService,
+    private access: AgentAccessService,
+    private pins: IAgentPinGateway,
   ) {}
+
+  /** The agents of a list this caller reaches, in the order given (CLEAN-231). */
+  private async reachedOf(
+    agents: IAgentData[],
+    req: Request | undefined,
+  ): Promise<IAgentData[]> {
+    const reach = await this.access.reachableIds(accessCallerOf(req));
+    return reach.filter(agents, (agent) => agent.id);
+  }
+
+  /**
+   * Each agent with `pinned` as this caller set it (CLEAN-231). A pin is
+   * personal: one read of the caller's pins, and false for everybody who is
+   * not a person (an agent runtime, an anonymous reader).
+   */
+  private async withPins(
+    agents: IAgentData[],
+    req: Request | undefined,
+  ): Promise<IAgentData[]> {
+    const caller = accessCallerOf(req);
+    const pinned =
+      caller.kind === 'person' && agents.length > 0
+        ? await this.pins.pinnedIds(caller.userId)
+        : new Set<string>();
+    return agents.map((agent) => ({ ...agent, pinned: pinned.has(agent.id) }));
+  }
 
   private deploy(agentId: string): Promise<void> {
     return this.agentDeployService.deploy(agentId);
@@ -186,7 +218,7 @@ export class AgentController {
         }),
       );
     }
-    const visible = await this.asReadBy(agents, req);
+    const visible = await this.withPins(await this.asReadBy(agents, req), req);
     return visible.map((agent) => ({
       ...withoutCreatorId(agent),
       createdBy: agent.createdById
@@ -283,11 +315,14 @@ export class AgentController {
   @Roles(UserRoleTypes.User)
   @ApiOperation({
     summary:
-      'List all agents. Any signed-in account. An agent the reader may manage comes with its full configuration; any other comes as a reader sees it: `config` empty, `llmCredentialId`, `workflowId`, `statusReason`, `launchContext` and the deploy and sync dates null, `knowledgeIds` empty, `debugEnabled` false (CLEAN-232). `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).',
+      'List the agents the caller reaches. Any signed-in account; an Admin or User whose access lists hide an agent does not get it, and nothing says it exists (CLEAN-231). `pinned` is the caller’s own pin. An agent the reader may manage comes with its full configuration; any other comes as a reader sees it: `config` empty, `llmCredentialId`, `workflowId`, `statusReason`, `launchContext` and the deploy and sync dates null, `knowledgeIds` empty, `debugEnabled` false (CLEAN-232). `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).',
   })
   @ApiOkResponse({ type: AgentDto, isArray: true })
   async findAll(@Req() req?: Request) {
-    return this.present(await this.agentGateway.findAll(), req);
+    return this.present(
+      await this.reachedOf(await this.agentGateway.findAll(), req),
+      req,
+    );
   }
 
   @Get('public')
@@ -306,16 +341,23 @@ export class AgentController {
   @Roles(UserRoleTypes.User)
   @ApiOperation({
     summary:
-      'Snapshot of all agents joined with live pod status. Any signed-in account (CLEAN-177); the SSE stream below stays open because EventSource cannot send a token.',
+      'Snapshot of the agents the caller reaches, joined with live pod status. Any signed-in account (CLEAN-177); filtered by the caller’s access lists like GET /agents (CLEAN-231); the SSE stream below stays open because EventSource cannot send a token.',
   })
   @ApiOkResponse({ type: AgentStatusDto, isArray: true })
   async status(@Req() req?: Request) {
     // Status carries no creator: the consoles read that from GET /agents.
     // The agent inside is read like any other: whole for a reader who may
     // manage it, its reader view otherwise.
-    const snapshot = await this.agentStatusService.snapshot();
-    const agents = await this.asReadBy(
-      snapshot.map((s) => s.agent),
+    const reach = await this.access.reachableIds(accessCallerOf(req));
+    const snapshot = reach.filter(
+      await this.agentStatusService.snapshot(),
+      (s) => s.agent.id,
+    );
+    const agents = await this.withPins(
+      await this.asReadBy(
+        snapshot.map((s) => s.agent),
+        req,
+      ),
       req,
     );
     return snapshot.map((s, i) => ({
@@ -363,6 +405,7 @@ export class AgentController {
 
   @Get(':id')
   @Roles(UserRoleTypes.User)
+  @AgentScoped('id')
   @ApiOperation({
     summary:
       'Get agent by ID. Any signed-in account (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this. With its full configuration for a reader who may manage it; as a reader sees it otherwise (see GET /agents). `createdBy` is resolved for an Owner or Admin only.',
@@ -547,6 +590,15 @@ export class AgentController {
     @Body() dto: UpdateAgentDto,
     @Req() req: Request,
   ) {
+    // The pin left this route (CLEAN-231). The validation pipe would drop
+    // the old field without a word and the console would believe it saved;
+    // say so instead.
+    const raw = (req as Request & { body?: unknown }).body;
+    if (typeof raw === 'object' && raw !== null && 'pinned' in raw) {
+      throw new BadRequestException(
+        'property pinned should not exist: a pin is personal, use PUT or DELETE /agents/:id/pin',
+      );
+    }
     const { limits, ...data } = dto;
     // "A public agent has at least one limit" is a rule on this save, checked
     // only when the save touches visibility or limits — so an agent that was
@@ -581,14 +633,19 @@ export class AgentController {
   @Get('admin/current')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({
-    summary: 'Get the agent currently flagged as Ranch admin (or null).',
+    summary:
+      'Get the agent currently flagged as Ranch admin (or null). 404 for a caller whose access lists hide it (CLEAN-231).',
   })
   async findAdmin(@Req() req?: Request) {
-    return this.presentOne(await this.agentGateway.findAdmin(), req);
+    const agent = await this.agentGateway.findAdmin();
+    // Addressed by a flag, not by id, so the lists are asked here.
+    await this.access.assertReaches(accessCallerOf(req), agent?.id);
+    return this.presentOne(agent, req);
   }
 
   @Post(':id/promote-admin')
   @Roles(UserRoleTypes.Owner)
+  @AgentScoped('id')
   @ApiOperation({
     summary:
       'Mark this agent as the Ranch admin. Owner only: the Ranch admin agent holds Owner power, so who it is is the Owner’s decision. Clears the flag from any other agent (single-admin invariant) and redeploys with RANCH_ADMIN=true + a service token. Any previous admin is redeployed without the flag.',
@@ -612,6 +669,7 @@ export class AgentController {
 
   @Delete(':id/promote-admin')
   @Roles(UserRoleTypes.Owner)
+  @AgentScoped('id')
   @ApiOperation({
     summary:
       'Demote this agent from Ranch admin. Owner only. Redeploys without RANCH_ADMIN.',

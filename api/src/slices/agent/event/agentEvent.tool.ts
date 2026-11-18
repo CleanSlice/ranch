@@ -11,7 +11,9 @@ import {
   requireOperator,
   requireOwner,
   type ToolResult,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import type { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -152,6 +154,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     private service: AgentEventService,
     private destinations: NotificationDestinationService,
     private agents: IAgentGateway,
+    private access: AgentAccessService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
@@ -193,6 +196,7 @@ export class AgentEventTool implements IConditionallyListedTool {
 
     const page = await this.service.listEvents({
       agentId: args.agentId,
+      agentScope: await this.scopeOf(httpRequest),
       since,
       limit: args.limit ?? EVENT_PAGE_DEFAULT,
     });
@@ -247,6 +251,7 @@ export class AgentEventTool implements IConditionallyListedTool {
 
     const page = await this.service.listIncidents({
       agentId: args.agentId,
+      agentScope: await this.scopeOf(httpRequest),
       state: args.state,
       since,
       limit: args.limit ?? EVENT_PAGE_DEFAULT,
@@ -434,8 +439,20 @@ export class AgentEventTool implements IConditionallyListedTool {
     agentId?: string,
   ): Promise<ToolResult | null> {
     if (!agentId) return null;
-    if (await this.agents.findById(agentId)) return null;
+    // An agent the caller's access lists hide is an agent that does not
+    // exist (CLEAN-231).
+    if (
+      (await this.agents.findById(agentId)) &&
+      (await this.access.reaches(callerParty(httpRequest), agentId))
+    ) {
+      return null;
+    }
     return agentNotFound(httpRequest, agentId);
+  }
+
+  /** The caller's reach as a filter for the two lists. */
+  private async scopeOf(httpRequest: Request) {
+    return (await this.access.reachableIds(callerParty(httpRequest))).where();
   }
 
   /** A service's own refusal (400, 409) as a result the model can act on. */

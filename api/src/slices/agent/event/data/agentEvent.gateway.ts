@@ -102,7 +102,9 @@ export class AgentEventGateway extends IAgentEventGateway {
     const before = filter.before ? decodeCursor(filter.before) : null;
     const records = await this.prisma.agentEvent.findMany({
       where: {
-        ...(filter.agentId && { agentId: filter.agentId }),
+        ...(filter.agentId
+          ? { agentId: filter.agentId }
+          : filter.agentScope && { agentId: filter.agentScope }),
         ...(filter.incidentId && { incidentId: filter.incidentId }),
         ...(filter.since && { receivedAt: { gte: filter.since } }),
         // Strictly after the cursor row in (receivedAt desc, id desc): two
@@ -307,7 +309,9 @@ export class AgentEventGateway extends IAgentEventGateway {
     const before = filter.before ? decodeCursor(filter.before) : null;
     const records = await this.prisma.agentIncident.findMany({
       where: {
-        ...(filter.agentId && { agentId: filter.agentId }),
+        ...(filter.agentId
+          ? { agentId: filter.agentId }
+          : filter.agentScope && { agentId: filter.agentScope }),
         ...(filter.state === 'open' && { openKey: { not: null } }),
         ...(filter.state === 'closed' && { openKey: null }),
         ...(filter.since && { openedAt: { gte: filter.since } }),

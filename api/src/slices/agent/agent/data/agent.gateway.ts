@@ -11,6 +11,7 @@ import {
 } from '../domain/agent.types';
 import { AgentStatusChanges } from '../domain/agentStatusChanges';
 import { AgentMapper } from './agent.mapper';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 
 @Injectable()
 export class AgentGateway extends IAgentGateway {
@@ -18,6 +19,7 @@ export class AgentGateway extends IAgentGateway {
     private prisma: PrismaService,
     private mapper: AgentMapper,
     private statusChanges: AgentStatusChanges,
+    private access: AgentAccessService,
   ) {
     super();
   }
@@ -64,8 +66,17 @@ export class AgentGateway extends IAgentGateway {
   }
 
   async create(data: ICreateAgentData): Promise<IAgentData> {
-    const record = await this.prisma.agent.create({
-      data: this.mapper.toCreate(data),
+    // One transaction for the agent and its creator's allowed entry
+    // (CLEAN-231): a limited account that creates an agent keeps working
+    // with it, and the agent never exists without that entry.
+    const record = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.agent.create({
+        data: this.mapper.toCreate(data),
+      });
+      if (data.createdById) {
+        await this.access.allowCreated(tx, data.createdById, created.id);
+      }
+      return created;
     });
     return this.mapper.toEntity(record);
   }
@@ -94,7 +105,6 @@ export class AgentGateway extends IAgentGateway {
         ...(data.debugEnabled !== undefined && {
           debugEnabled: data.debugEnabled,
         }),
-        ...(data.pinned !== undefined && { pinned: data.pinned }),
       },
     });
     return this.mapper.toEntity(record);

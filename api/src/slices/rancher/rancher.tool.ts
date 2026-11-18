@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   agentNotFound,
+  callerIsOperator,
   callerIsOwner,
+  callerParty,
   callerPerson,
   CONFIRM_SENTENCE,
   confirmed,
@@ -12,8 +14,13 @@ import {
   ok,
   requireOperator,
   requireOwner,
+  requirePersonOrOperator,
   stripSecrets,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
+import { toReaderView } from '#/agent/agent/domain/agentReaderView';
+import type { IAgentData } from '#/agent/agent/domain/agent.types';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { AgentDeployService } from '#/agent/agent/domain/agentDeploy.service';
@@ -46,6 +53,11 @@ import { RancherService } from './domain/rancher.service';
  * for one the caller may not manage. `set_agent_admin` is `owner`, like the
  * console route. `create_agent` stays `admin` and records who created the
  * agent.
+ *
+ * `list_agents` and `get_agent` are `reader` (CLEAN-231): any signed-in
+ * person, as well as an operator. They show a caller the agents their
+ * access lists reach, each as that caller may read it, which is what lets a
+ * User turn a name into an id for the tools they do have.
  */
 @ToolAudience('admin')
 @Injectable()
@@ -64,7 +76,39 @@ export class RancherTool {
     private readonly files: IFileGateway,
     private readonly rancher: RancherService,
     private readonly permission: AgentPermissionService,
+    private readonly access: AgentAccessService,
+    private readonly pins: IAgentPinGateway,
   ) {}
+
+  /**
+   * Agents as this caller reads them through `list_agents` and `get_agent`
+   * (CLEAN-231), the way `GET /agents` answers the same person: whole for a
+   * caller who may manage the agent, its reader view otherwise (no config,
+   * no credential or knowledge binding, no deploy history), `pinned` as the
+   * person's own pin, and the bare creator id for operators only.
+   */
+  private async asReadBy(agents: IAgentData[], httpRequest: Request) {
+    const caller = manageCaller(httpRequest);
+    const person = callerPerson(httpRequest);
+    const pinned =
+      person && agents.length > 0
+        ? await this.pins.pinnedIds(person.userId)
+        : new Set<string>();
+    const operator = callerIsOperator(httpRequest);
+    return Promise.all(
+      agents.map(async (agent) => {
+        const view = (await this.permission.canManage(caller, agent))
+          ? agent
+          : toReaderView(agent);
+        const { createdById, ...rest } = view;
+        return {
+          ...rest,
+          pinned: pinned.has(agent.id),
+          ...(operator ? { createdById } : {}),
+        };
+      }),
+    );
+  }
 
   // ─── Platform ────────────────────────────────────────────────────────
 
@@ -88,13 +132,19 @@ export class RancherTool {
 
   // ─── Agents ──────────────────────────────────────────────────────────
 
+  @ToolAudience('reader')
   @Tool({
     name: 'list_agents',
     topic: ToolTopics.Agents,
     title: 'List agents',
     template: 'List all agents and their status',
     description:
-      'List every agent on this Ranch with their status, template, and resources.',
+      'List the agents the person asking can use, with their id, name, ' +
+      'status, template and resources, and whether that person pinned ' +
+      'them. Use it to turn a name into the id the other tools take. An ' +
+      'agent the person may manage comes with its configuration; any ' +
+      'other comes without it. Agents the person has no access to are not ' +
+      'listed at all: do not assume there are others.',
     parameters: z.object({}),
   })
   async listAgents(
@@ -102,18 +152,22 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    requireOperator(httpRequest);
-    const items = await this.agents.findAll();
-    return ok(items);
+    requirePersonOrOperator(httpRequest);
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    const items = reach.filter(await this.agents.findAll(), (a) => a.id);
+    return ok(await this.asReadBy(items, httpRequest));
   }
 
+  @ToolAudience('reader')
   @Tool({
     name: 'get_agent',
     topic: ToolTopics.Agents,
     title: 'Show an agent',
     template: 'Show the agent «name»',
     description:
-      'Get a single agent by id, including current status, workflowId and config.',
+      'Get a single agent by id, among the ones the person asking can use: ' +
+      'current status, template and resources, and for a person who may ' +
+      'manage it also its workflowId and config.',
     parameters: z.object({
       id: z.string().describe('Agent id, e.g. agent-abc123'),
     }),
@@ -123,10 +177,17 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    requireOperator(httpRequest);
+    requirePersonOrOperator(httpRequest);
     const agent = await this.agents.findById(id);
-    if (!agent) return ok({ error: `Agent ${id} not found` });
-    return ok(agent);
+    // One answer for an agent that does not exist and one this person's
+    // access lists hide.
+    if (
+      !agent ||
+      !(await this.access.reaches(callerParty(httpRequest), agent.id))
+    ) {
+      return agentNotFound(httpRequest, id);
+    }
+    return ok((await this.asReadBy([agent], httpRequest))[0]);
   }
 
   @ToolAudience('manage-agent')
@@ -639,7 +700,11 @@ export class RancherTool {
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
     requireOperator(httpRequest);
-    return ok(await this.skills.findDependentAgents(skillId));
+    // Only the agents the caller reaches (CLEAN-231): the list names them.
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    return ok(
+      reach.filter(await this.skills.findDependentAgents(skillId), (a) => a.id),
+    );
   }
 
   @Tool({
@@ -762,6 +827,12 @@ export class RancherTool {
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
     requireOperator(httpRequest);
+    if (
+      !(await this.agents.findById(agentId)) ||
+      !(await this.access.reaches(callerParty(httpRequest), agentId))
+    ) {
+      return agentNotFound(httpRequest, agentId);
+    }
     return ok(await this.usage.findRecentForAgent(agentId, days ?? 30));
   }
 

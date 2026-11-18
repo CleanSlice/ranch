@@ -24,6 +24,7 @@ import { UserRoleTypes } from '#/user/user/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { IShareLinkState, ShareLinkService } from './domain';
 import { ShareLinkDto } from './dtos';
+import { AgentScoped } from '#/user/agentAccess/guards';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 
@@ -69,6 +70,9 @@ function toShareLinkDto(state: IShareLinkState): ShareLinkDto {
 @Controller('agents/:agentId/share-link')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRoleTypes.User)
+// Sharing an agent takes reaching it (CLEAN-231): a hidden agent answers
+// the service's own 404 for an agent that does not exist.
+@AgentScoped('agentId')
 export class ShareLinkController {
   constructor(private readonly shareLinks: ShareLinkService) {}
 

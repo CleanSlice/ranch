@@ -12,6 +12,8 @@ import { AgentToolListing } from "../toolCatalog/toolCatalog"
 import { FileChangeProposal } from "../file/file"
 import { AgentEvent } from "../event/agentEvent"
 import { AgentIncident } from "../event/agentEvent"
+import { AgentPin } from "../pin/agentPin"
+import { UserAgentAccessEntry } from "../../user/agentAccess/agentAccess"
 
 model Agent {
   id              String         @id @default(uuid())
@@ -51,9 +53,6 @@ model Agent {
   allowedOrigins  String[]       @default([])
   knowledgeIds    String[]       @default([])
   isAdmin         Boolean        @default(false)
-  // Installation-wide pin (CLEAN-216): both consoles keep a pinned agent at
-  // the top of every agent list. Decides nothing for the pod or for access.
-  pinned          Boolean        @default(false)
   // The console account that created this agent (CLEAN-232): written once at
   // creation, never updated. Null for an agent created by a trusted party
   // (the Ranch admin agent on its own schedule) and for every agent that
@@ -91,4 +90,9 @@ model Agent {
   // their rows when the agent is deleted (SetNull) — history outlives it.
   agentEvents        AgentEvent[]
   agentIncidents     AgentIncident[]
+  // Which accounts have this agent on their allowed or denied list, and who
+  // pinned it (CLEAN-231). Both go with the agent (Cascade): deleting an
+  // agent never leaves an entry or a pin behind.
+  accessEntries      UserAgentAccessEntry[]
+  pins               AgentPin[]
 }

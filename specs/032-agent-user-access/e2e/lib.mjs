@@ -233,7 +233,12 @@ export async function mcpAs(bearer, actor) {
 /** Tools checked by name. Each is the real name in the API's code. */
 export const TOOLS = {
   /** `admin` audience: Owner or Admin. */
-  admin: ['list_users', 'list_agents', 'create_agent', 'list_settings', 'upsert_setting', 'delete_setting'],
+  admin: ['list_users', 'create_agent', 'list_settings', 'upsert_setting', 'delete_setting'],
+  /**
+   * `reader` audience (CLEAN-231): any signed-in person, or an operator.
+   * They show a caller the agents they reach and are not management.
+   */
+  reader: ['list_agents', 'get_agent'],
   /** `owner` audience. */
   owner: ['set_user_role', 'delete_user', 'set_agent_admin'],
   /** `manage-agent` audience: whoever may manage the agent named. */

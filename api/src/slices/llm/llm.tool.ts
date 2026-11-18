@@ -12,7 +12,9 @@ import {
   requireOperator,
   stripSecrets,
   type ToolResult,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -74,6 +76,10 @@ export class LlmTool implements IConditionallyListedTool {
 
   private get usage(): IUsageGateway {
     return this.moduleRef.get(IUsageGateway, { strict: false });
+  }
+
+  private get access(): AgentAccessService {
+    return this.moduleRef.get(AgentAccessService, { strict: false });
   }
 
   private get agents(): IAgentGateway {
@@ -172,7 +178,13 @@ export class LlmTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const credential = await this.llms.findById(id);
     if (!credential) return ok({ error: NOT_FOUND });
-    const rows = await this.usage.findRecentForCredential(id, USAGE_DAYS);
+    // Rows of agents the caller does not reach are dropped before anything
+    // is summed (CLEAN-231), as GET /llms/:id/usage does.
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    const rows = reach.filter(
+      await this.usage.findRecentForCredential(id, USAGE_DAYS),
+      (row) => row.agentId,
+    );
     const { last30days, totals, topModel, agentTotals } =
       rollUpAcrossAgents(rows);
     const byAgent = await this.resolveAgentNames(agentTotals);
@@ -355,10 +367,21 @@ export class LlmTool implements IConditionallyListedTool {
       (a) => a.llmCredentialId === id,
     );
     const name = displayName(credential);
+    // Named: the agents the caller reaches. The rest are counted, never
+    // named (CLEAN-231); the consequence is stated either way.
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    const named = users.filter((a) => reach.has(a.id));
+    const unnamed = users.length - named.length;
+    const who = [
+      ...named.map((a) => `«${a.name}»`),
+      ...(unnamed > 0
+        ? [`${unnamed} ${named.length > 0 ? 'more ' : ''}you cannot see`]
+        : []),
+    ].join(', ');
     const inUse =
       users.length > 0
         ? `, which ${users.length === 1 ? 'agent' : 'agents'} ` +
-          `${users.map((a) => `«${a.name}»`).join(', ')} still ` +
+          `${who} still ` +
           `${users.length === 1 ? 'uses' : 'use'} — ` +
           `${users.length === 1 ? 'it' : 'they'} would be left without a model`
         : '';

@@ -43,6 +43,11 @@ const EXPECTED_USER_ROUTES = [
   'GET /agents/:id',
   // The chat's limit notice: one boolean, no numbers.
   'GET /agents/:agentId/limits/enabled',
+  // Their own pins, on agents they reach (CLEAN-231). Called by the agent
+  // rail and the agent sheet of the user console; changes nothing about the
+  // agent and nothing for anybody else.
+  'PUT /agents/:id/pin',
+  'DELETE /agents/:id/pin',
   // Sharing an agent they reach. The service decides whose link it is.
   'GET /agents/:agentId/share-link',
   'POST /agents/:agentId/share-link',

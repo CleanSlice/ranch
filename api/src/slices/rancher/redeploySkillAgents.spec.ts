@@ -2,6 +2,7 @@ import type { Request } from 'express';
 import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 import { asPerson, asTrustedAgent } from '#/mcp/testing';
 import { UserRoleTypes } from '#/user/user/domain';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 import { RancherTool } from './rancher.tool';
 
 jest.mock('@kubernetes/client-node', () => ({
@@ -69,6 +70,8 @@ function harness(using = AGENTS) {
     stub,
     stub,
     permissionOver(agents),
+    openAccess(),
+    stub,
   );
   return { tool, agentDeploy };
 }

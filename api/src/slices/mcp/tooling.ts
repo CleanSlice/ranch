@@ -259,6 +259,10 @@ export function audienceAllows(
       return callerAgentId(httpRequest) !== null;
     case 'person':
       return callerPerson(httpRequest) !== null;
+    case 'reader':
+      return (
+        callerPerson(httpRequest) !== null || callerIsOperator(httpRequest)
+      );
     case 'manage-agent':
       return callerManagesAgents(httpRequest);
     case 'admin':
@@ -273,16 +277,17 @@ export function audienceAllows(
 // ── An agent the caller cannot be shown (CLEAN-232) ─────────
 //
 // A refusal names the next move, and the next move must be one the caller
-// has. `list_agents` is an `admin` tool: a User who manages the agents they
-// created reaches the `manage-agent` tools without it, and a refusal that
-// sent them there would advertise a tool they cannot call and send the model
-// looking for it.
+// has. `list_agents` is a `reader` tool since CLEAN-231: every signed-in
+// person has it and gets the agents they reach from it. A caller that is
+// nobody (a guest, an agent acting for itself without operator power) does
+// not, and a refusal that sent them there would advertise a tool they
+// cannot call and send the model looking for it.
 
 /** What to try next after an agent was not found; the half after the dash. */
 export function agentNotFoundAdvice(httpRequest: Request): string {
-  return callerIsOperator(httpRequest)
+  return callerIsOperator(httpRequest) || callerPerson(httpRequest) !== null
     ? 'call list_agents to find the id'
-    : 'there is no such agent among the ones this person manages';
+    : 'there is no such agent for this caller';
 }
 
 /**
@@ -338,6 +343,16 @@ export function requirePerson(httpRequest: Request): {
   const person = callerPerson(httpRequest);
   if (!person) throw new ForbiddenException(PERSON_REFUSAL);
   return person;
+}
+
+/**
+ * Third lock for `reader` tools (`list_agents`, `get_agent`): a signed-in
+ * person of any role, or an operator. A guest is refused.
+ */
+export function requirePersonOrOperator(httpRequest: Request): void {
+  if (callerPerson(httpRequest) !== null) return;
+  if (callerIsOperator(httpRequest)) return;
+  throw new ForbiddenException(PERSON_REFUSAL);
 }
 
 export const AGENT_ONLY_REFUSAL =

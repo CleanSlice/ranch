@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { asPerson, asTrustedAgent } from '#/mcp/testing';
 import { toolAudienceOf } from '#/mcp/decorators';
 import { UserRoleTypes } from '#/user/user/domain';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 import { PaddockEvaluationTool } from './evaluation.tool';
 
 const snapshot = {
@@ -64,7 +65,7 @@ const harness = () => {
       return scenarioId === 'sc-1' ? { turns: [{ response: 'Sure' }] } : null;
     }),
   };
-  const tool = new PaddockEvaluationTool(service as never);
+  const tool = new PaddockEvaluationTool(service as never, openAccess());
   return { tool, service };
 };
 

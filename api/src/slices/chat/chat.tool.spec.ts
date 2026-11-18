@@ -13,7 +13,12 @@ import type {
   TranscriptMessage,
 } from '#/agent/file/domain';
 import { UserRoleTypes } from '#/user/user/domain';
-import { asTrustedAgent } from '#/mcp/testing';
+import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import type { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import {
+  accessHarness,
+  openAccess,
+} from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 /**
  * A chat is somebody's conversation with an agent. Worth more than the happy
@@ -70,7 +75,7 @@ interface Harness {
   insight: jest.Mocked<Pick<ChatInsightService, 'summarize'>>;
 }
 
-function harness(): Harness {
+function harness(access: AgentAccessService = openAccess()): Harness {
   const chats = {
     list: jest.fn().mockResolvedValue({ items: [session()], total: 1 }),
     findById: jest.fn().mockResolvedValue(session()),
@@ -106,6 +111,7 @@ function harness(): Harness {
     reader as unknown as TranscriptReaderService,
     sync as unknown as ChatSyncService,
     insight as unknown as ChatInsightService,
+    access,
   );
   return { tool, chats, reader, sync, insight };
 }
@@ -171,6 +177,8 @@ describe('list_chats', () => {
     expect(chats.list).toHaveBeenCalledWith({
       agentId: 'agent-a',
       search: 'refund',
+      // A caller with no access lists: no agent is filtered out.
+      agentScope: undefined,
       page: 1,
       perPage: 50,
     });
@@ -210,6 +218,31 @@ describe('get_chat', () => {
     const result = await tool.getChat({ id: 'nope' }, null, operator());
     expect(textOf(result)).toContain('Chat nope not found');
     expect(textOf(result)).toContain('list_chats');
+  });
+
+  it('answers a chat of an agent the person does not reach as a chat that does not exist', async () => {
+    const { service, gateway } = accessHarness(['agent-a', 'agent-b']);
+    gateway.seed('user-1', false, [{ agentId: 'agent-a', list: 'denied' }]);
+    const { tool, chats, reader } = harness(service);
+    const admin = () =>
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin, 'user-1');
+
+    const hidden = await tool.getChat({ id: 'chat-1' }, null, admin());
+    chats.findById.mockResolvedValueOnce(null);
+    const unknown = await tool.getChat({ id: 'chat-1' }, null, admin());
+
+    expect(textOf(hidden)).toBe(textOf(unknown));
+    expect(textOf(hidden)).toContain('Chat chat-1 not found');
+    expect(textOf(hidden)).not.toContain('Refund for order 42');
+    // Nor its turns, and the list is asked for the reached agents only.
+    expect(
+      textOf(await tool.getChatMessages({ id: 'chat-1' }, null, admin())),
+    ).toBe(textOf(unknown));
+    expect(reader.read).not.toHaveBeenCalled();
+    await tool.listChats({}, null, admin());
+    expect(chats.list).toHaveBeenCalledWith(
+      expect.objectContaining({ agentScope: { notIn: ['agent-a'] } }),
+    );
   });
 });
 

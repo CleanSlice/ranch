@@ -1,4 +1,5 @@
-// Seeds the local database for the acting-party checks (CLEAN-232).
+// Seeds the local database for the acting-party checks (CLEAN-232) and the
+// agent-access checks (CLEAN-231).
 //
 //   node specs/032-agent-user-access/e2e/seed.mjs
 //
@@ -15,6 +16,16 @@
 //   access-charlie  created by the first User. Written directly: no route
 //                   lets a User create an agent yet, and the rule that the
 //                   creator manages their agent is proven ahead of it.
+//
+// Agent access, put back to this on every run (CLEAN-231):
+//
+//   the Admin        limited: allowed access-alpha and access-bravo only
+//   the first User   open, with access-alpha denied
+//   the second User  open: no row at all, as an account nobody edited
+//
+// So the Admin reaches neither access-charlie nor the Ranch admin agent, and
+// the first User reaches everything but access-alpha. Pins of the four
+// accounts are removed.
 //
 // Reads DATABASE_URL from api/.env; prints no secrets.
 import { ADMIN_USER, AGENTS, LLM, OWNER, TEMPLATE, USER, USER2, apiEnv, requireFromApi } from './lib.mjs';
@@ -37,10 +48,10 @@ async function upsertUser({ email, password, role }) {
 
 async function main() {
   const now = new Date();
-  await upsertUser(OWNER);
+  const owner = await upsertUser(OWNER);
   const admin = await upsertUser(ADMIN_USER);
   const user = await upsertUser(USER);
-  await upsertUser(USER2);
+  const user2 = await upsertUser(USER2);
 
   const template = await prisma.template.upsert({
     where: { name: TEMPLATE.name },
@@ -91,7 +102,6 @@ async function main() {
       config: { e2eOperatorNote: `operator-only-${row.name}` },
       resources: { cpu: '500m', memory: '512Mi' },
       debugEnabled: false,
-      pinned: false,
       // Keeps the pod-less fixture inside the deploy grace window, so the
       // drift sweep does not mark it failed while the checks run.
       lastDeployStartedAt: now,
@@ -106,6 +116,76 @@ async function main() {
   // A connection a check may have made, back to none.
   const ids = rows.map((r) => r.id);
   await prisma.agentPeer.deleteMany({ where: { agentId: { in: ids } } });
+
+  // Agent access (CLEAN-231). Written directly, like the rest of the
+  // fixtures; the routes that edit it are what http.mjs checks.
+  const accounts = [owner.id, admin.id, user.id, user2.id];
+  await prisma.userAgentAccessEntry.deleteMany({ where: { userId: { in: accounts } } });
+  await prisma.userAgentAccess.deleteMany({ where: { userId: { in: accounts } } });
+  await prisma.agentPin.deleteMany({ where: { userId: { in: accounts } } });
+  await prisma.userAgentAccess.create({ data: { userId: admin.id, limited: true } });
+  await prisma.userAgentAccessEntry.createMany({
+    data: [
+      { userId: admin.id, agentId: AGENTS.a.id, list: 'allowed' },
+      { userId: admin.id, agentId: AGENTS.b.id, list: 'allowed' },
+    ],
+  });
+  await prisma.userAgentAccess.create({ data: { userId: user.id, limited: false } });
+  await prisma.userAgentAccessEntry.create({ data: { userId: user.id, agentId: AGENTS.a.id, list: 'denied' } });
+  // Something for a list to leave out (http.mjs): one day of usage per
+  // ordinary agent, one conversation on the shared `admin` channel of each,
+  // and the first User's own conversation with access-alpha, which that
+  // User's lists now hide. Upserted, so a second run changes nothing.
+  const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  for (const key of ['a', 'b', 'c']) {
+    const agentId = AGENTS[key].id;
+    const usage = { agentId, llmCredentialId: LLM.id, model: LLM.model, date: day, inputTokens: 1000, outputTokens: 100, callCount: 3 };
+    await prisma.usage.upsert({
+      where: { agentId_model_date: { agentId, model: LLM.model, date: day } },
+      create: usage,
+      update: usage,
+    });
+    const chat = {
+      agentId,
+      channel: 'bridle',
+      externalUserId: 'admin',
+      sessionKey: 'bridle:admin',
+      title: `e2e ${AGENTS[key].name}`,
+      preview: `fixture conversation with ${AGENTS[key].name}`,
+      lastRole: 'assistant',
+      lastMessageAt: now,
+      messageCount: 2,
+      userMessageCount: 1,
+      archived: false,
+    };
+    // By the table's own key: a conversation somebody really had on that
+    // channel is the row, and is left with its id.
+    await prisma.chatSession.upsert({
+      where: { agentId_sessionKey: { agentId, sessionKey: chat.sessionKey } },
+      create: chat,
+      update: { archived: false, lastMessageAt: now },
+    });
+  }
+  const own = {
+    agentId: AGENTS.a.id,
+    channel: 'bridle',
+    externalUserId: user.id,
+    sessionKey: `bridle:${user.id}`,
+    title: 'e2e the User with access-alpha',
+    preview: 'fixture conversation of the first User with access-alpha',
+    lastRole: 'assistant',
+    lastMessageAt: now,
+    messageCount: 2,
+    userMessageCount: 1,
+    archived: false,
+  };
+  await prisma.chatSession.upsert({
+    where: { agentId_sessionKey: { agentId: own.agentId, sessionKey: own.sessionKey } },
+    create: own,
+    update: { archived: false, lastMessageAt: now },
+  });
+
+  console.log('  access: the Admin limited to access-alpha and access-bravo; the first User denied access-alpha; the second User open');
 
   const admins = await prisma.agent.count({ where: { isAdmin: true } });
   if (admins !== 1) throw new Error(`expected exactly one Ranch admin agent, found ${admins}`);

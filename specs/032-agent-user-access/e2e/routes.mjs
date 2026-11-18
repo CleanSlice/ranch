@@ -45,6 +45,9 @@ const USER_SET = new Set([
   'GET /agents/status',
   'GET /agents/:id',
   'GET /agents/:agentId/limits/enabled',
+  // Personal pins (CLEAN-231).
+  'PUT /agents/:id/pin',
+  'DELETE /agents/:id/pin',
   'GET /agents/:agentId/share-link',
   'POST /agents/:agentId/share-link',
   'POST /agents/:agentId/share-link/regenerate',
@@ -233,14 +236,17 @@ const isWhole = (agent) => typeof agent?.config?.e2eOperatorNote === 'string' &&
 const seeded = (list) => Object.fromEntries(Object.entries(AGENTS).map(([key, a]) => [key, list.find((x) => x.id === a.id)]));
 
 const asUser = seeded((await api('/agents', { as: USER })).body);
+// Since CLEAN-231 the seeded User is denied access-alpha: it is not in
+// their list at all. The reader view is checked on the two they still get.
+check(asUser.a === undefined, 'access-alpha, denied for this User, is not in their GET /agents');
 check(
-  isReaderView(asUser.ranch) && isReaderView(asUser.a) && isReaderView(asUser.b),
+  isReaderView(asUser.ranch) && isReaderView(asUser.b),
   'a User gets no configuration of an agent they do not manage: config {}, no credential, workflow or deploy history',
 );
 check(isWhole(asUser.c), 'and the whole of the one they created');
 check(
-  !JSON.stringify([asUser.ranch, asUser.a, asUser.b]).includes('operator-only'),
-  'nothing of the seeded operator note is anywhere in those three',
+  !JSON.stringify([asUser.ranch, asUser.b]).includes('operator-only'),
+  'nothing of the seeded operator note is anywhere in those two',
 );
 check(
   ['id', 'name', 'status', 'templateId', 'resources', 'isPublic', 'allowedOrigins', 'isAdmin', 'pinned', 'createdAt', 'updatedAt'].every(
@@ -329,7 +335,9 @@ section('What POST /me/chats/sync does for a User');
     `it scans the ${myAgents.size} agent(s) the User has a conversation with, of ${total} on the ranch (scannedAgents ${sync.body?.scannedAgents}, status ${sync.status})`,
   );
   check(myAgents.size < total, `which is fewer than all of them, so the count says nothing about the ranch (${myAgents.size} < ${total})`);
-  const other = Object.values(AGENTS).find((a) => !myAgents.has(a.id));
+  // An agent the User reaches and has no conversation with. access-alpha is
+  // neither: it is denied for this User (CLEAN-231) and answers 404 below.
+  const other = Object.values(AGENTS).find((a) => !myAgents.has(a.id) && a.id !== AGENTS.a.id);
   const named = await api('/me/chats/sync', { method: 'POST', body: { agentId: other.id }, as: USER });
   check(
     named.status >= 200 && named.status < 300 && named.body?.scannedAgents === 0 && named.body?.scannedFiles === 0,
@@ -337,10 +345,20 @@ section('What POST /me/chats/sync does for a User');
   );
 }
 
+{
+  const hidden = await api('/me/chats/sync', { method: 'POST', body: { agentId: AGENTS.a.id }, as: USER });
+  check(hidden.status === 404, `naming access-alpha, which the User does not reach, is the 404 of an unknown agent (${hidden.status})`);
+}
+
+// Since CLEAN-231 the seeded Admin is limited to access-alpha and
+// access-bravo: those two whole, and neither access-charlie nor the Ranch
+// admin agent in the list. That an Admin who DOES reach the Ranch admin
+// agent gets it as a reader view, marked isAdmin, is checked by acting.mjs
+// (which allows it for its own run) and by agent.controller.readers.spec.ts.
 const asAdmin = seeded((await api('/agents', { as: ADMIN_USER })).body);
 check(
-  isWhole(asAdmin.a) && isWhole(asAdmin.b) && isWhole(asAdmin.c) && isReaderView(asAdmin.ranch) && asAdmin.ranch.isAdmin === true,
-  'an Admin gets every agent whole except the Ranch admin agent, which stays marked isAdmin',
+  isWhole(asAdmin.a) && isWhole(asAdmin.b) && asAdmin.c === undefined && asAdmin.ranch === undefined,
+  'a limited Admin gets the agents on their allowed list whole, and no other',
 );
 const asOwner = seeded((await api('/agents', { as: OWNER })).body);
 check(Object.values(asOwner).every(isWhole), 'the Owner gets all four whole');

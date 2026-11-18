@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { ShareLinkService } from '#/agent/shareLink/domain';
@@ -10,7 +15,10 @@ import {
 } from '#/user/auth/domain/auth.types';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import {
+  CHAT_AGENT_NOT_FOUND,
+  ConsoleReachService,
   clientIdFromJwtPayload,
+  consoleSessionOf,
   hasShareToken,
   parseBearer,
   resolveShareIdentity,
@@ -60,6 +68,7 @@ export class BridleChatAuthGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
     private readonly shareLinks: ShareLinkService,
+    private readonly reach: ConsoleReachService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -73,6 +82,16 @@ export class BridleChatAuthGuard implements CanActivate {
       const verified = this.verify(token);
       const identity = clientIdFromJwtPayload(verified.payload);
       if (identity) {
+        // A console person reads and writes files only on an agent their
+        // access lists reach; the answer for a hidden one is the answer for
+        // one that does not exist (CLEAN-231). Embed tokens have no session
+        // and are not asked.
+        const params = req.params as Record<string, string> | undefined;
+        const admitted = await this.reach.admits(
+          consoleSessionOf(verified.payload),
+          params?.agentId ?? '',
+        );
+        if (!admitted) throw new NotFoundException(CHAT_AGENT_NOT_FOUND);
         req.user = verified.payload as unknown as IAuthTokenPayload;
         req.chatAuth = { clientId: identity.clientId, kind: 'jwt' };
         return true;

@@ -11,6 +11,9 @@ import { InitModule } from './slices/setup/init/init.module';
 import { AgentModule } from './slices/agent/agent/agent.module';
 import { AgentPermissionModule } from './slices/agent/agent/agentPermission.module';
 import { AgentManageGuard } from './slices/agent/agent/guards';
+import { AgentPinModule } from './slices/agent/pin/agentPin.module';
+import { AgentAccessModule } from './slices/user/agentAccess/agentAccess.module';
+import { AgentAccessGuard } from './slices/user/agentAccess/guards';
 import { AgentChannelModule } from './slices/agent/agentChannel/agentChannel.module';
 import { ShareLinkModule } from './slices/agent/shareLink/shareLink.module';
 import { AgentLimitModule } from './slices/agent/limit/agentLimit.module';
@@ -74,6 +77,8 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     TemplateInstallModule,
     AgentModule,
     AgentPermissionModule,
+    AgentAccessModule,
+    AgentPinModule,
     AgentChannelModule,
     ShareLinkModule,
     AgentLimitModule,
@@ -160,6 +165,13 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     // route names, or the answer is the 404 an unknown agent gets. Last of
     // the three, because it reads the bearer the first one verified.
     { provide: APP_GUARD, useClass: AgentManageGuard },
+    // Which agents (CLEAN-231). Acts only on routes marked @AgentScoped(...):
+    // a person whose access lists hide the agent the route names gets the
+    // 404 an unknown agent gets. The management routes above already ask
+    // the same lists through canManage; this covers the reads that are not
+    // management. agentScopedRoutes.spec.ts pins that every route naming an
+    // agent carries one of the two markers or a stated exemption.
+    { provide: APP_GUARD, useClass: AgentAccessGuard },
   ],
 })
 export class AppModule {}

@@ -6,6 +6,8 @@ import { UserRoleTypes } from './domain';
 import { asPerson, asTrustedAgent } from '#/mcp/testing';
 import { audienceAllows } from '#/mcp/tooling';
 import { toolAudienceOf } from '#/mcp/decorators';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
+import type { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
 
 /**
  * These tools put user accounts within a model's reach. Two properties are
@@ -55,6 +57,8 @@ interface Harness {
     update: jest.Mock;
     delete: jest.Mock;
   };
+  removeAccess: jest.SpyInstance;
+  pins: { removeUser: jest.Mock };
 }
 
 function harness(): Harness {
@@ -75,8 +79,20 @@ function harness(): Harness {
     })),
     delete: jest.fn().mockResolvedValue(undefined),
   };
-  const tool = new UserTool(users as unknown as IUserGateway);
-  return { tool, users };
+  const access = openAccess();
+  const removeAccess = jest.spyOn(access, 'removeUser');
+  const pins = {
+    pin: jest.fn().mockResolvedValue(true),
+    unpin: jest.fn().mockResolvedValue(true),
+    pinnedIds: jest.fn().mockResolvedValue(new Set()),
+    removeUser: jest.fn().mockResolvedValue(undefined),
+  };
+  const tool = new UserTool(
+    users as unknown as IUserGateway,
+    access,
+    pins as unknown as IAgentPinGateway,
+  );
+  return { tool, users, removeAccess, pins };
 }
 
 const textOf = (result: { content: { text: string }[] }) =>
@@ -479,6 +495,19 @@ describe('UserTool — removing', () => {
     );
     expect(users.delete).toHaveBeenCalledWith(jane.id);
     expect(text).toContain('jane@ranch.test');
+  });
+
+  it('takes the account’s agent access lists and pins with it, as the route does', async () => {
+    const { tool, removeAccess, pins } = harness();
+    await tool.deleteUser({ userId: jane.id, confirm: true }, null, operator());
+    expect(removeAccess).toHaveBeenCalledWith(jane.id);
+    expect(pins.removeUser).toHaveBeenCalledWith(jane.id);
+
+    // Nothing is removed for a call that was not confirmed.
+    const unconfirmed = harness();
+    await unconfirmed.tool.deleteUser({ userId: jane.id }, null, operator());
+    expect(unconfirmed.removeAccess).not.toHaveBeenCalled();
+    expect(unconfirmed.pins.removeUser).not.toHaveBeenCalled();
   });
 
   it('refuses without the confirmation argument and names the user by email', async () => {

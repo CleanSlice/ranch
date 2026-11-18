@@ -6,8 +6,13 @@ import {
   Param,
   HttpCode,
   Logger,
+  NotFoundException,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { AgentScoped, accessCallerOf } from '#/user/agentAccess/guards';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { IUsageGateway } from './domain';
 import { costUsd } from './domain/model-pricing';
@@ -47,6 +52,7 @@ export class UsageController {
     private fileGateway: IFileGateway,
     private agentGateway: IAgentGateway,
     private llmGateway: ILlmGateway,
+    private access: AgentAccessService,
   ) {}
 
   // Posted by the runtime with the bridle key, never a user token.
@@ -66,10 +72,19 @@ export class UsageController {
   }
 
   @Get('agents/:agentId/usage')
-  @ApiOperation({ summary: 'Get 30-day usage for an agent with cost' })
+  @AgentScoped('agentId')
+  @ApiOperation({
+    summary:
+      'Get 30-day usage for an agent with cost. 404 when there is no such agent among the ones the caller reaches.',
+  })
   async findForAgent(
     @Param('agentId') agentId: string,
   ): Promise<IAgentUsageResponse> {
+    // An agent that does not exist used to answer an empty report, which
+    // told it apart from one the caller's lists hide (CLEAN-231).
+    if (!(await this.agentGateway.findById(agentId))) {
+      throw new NotFoundException('Agent not found');
+    }
     const rows = await this.gateway.findRecentForAgent(agentId, 30);
     const todayKey = dayKey(new Date());
 
@@ -208,12 +223,20 @@ export class UsageController {
 
   @Get('llms/:id/usage')
   @ApiOperation({
-    summary: 'Get 30-day usage for a single LLM credential across all agents',
+    summary:
+      'Get 30-day usage for a single LLM credential across the agents the caller reaches; totals are of those agents only',
   })
   async findForCredential(
     @Param('id') credentialId: string,
+    @Req() req?: Request,
   ): Promise<ICredentialUsageResponse> {
-    const rows = await this.gateway.findRecentForCredential(credentialId, 30);
+    // Rows of agents the caller does not reach are dropped before anything
+    // is summed, so no total carries them either (CLEAN-231).
+    const reach = await this.access.reachableIds(accessCallerOf(req));
+    const rows = reach.filter(
+      await this.gateway.findRecentForCredential(credentialId, 30),
+      (row) => row.agentId,
+    );
     const { last30days, totals, topModel, agentTotals } =
       rollUpAcrossAgents(rows);
     const byAgent = await resolveAgentNames(agentTotals, (id) =>
@@ -224,14 +247,19 @@ export class UsageController {
 
   @Get('usage/overview')
   @ApiOperation({
-    summary: 'Get 30-day usage across all agents with cost',
+    summary:
+      'Get 30-day usage across the agents the caller reaches, with cost; totals are of those agents only',
   })
-  async findOverview(): Promise<IOverviewUsageResponse> {
+  async findOverview(@Req() req?: Request): Promise<IOverviewUsageResponse> {
     // DB rows only — today's not-yet-reported runtime usage is excluded
     // until agents POST their daily report. The per-agent endpoint keeps
     // the live usage.json merge; doing that here would cost one S3 read
     // per agent per page view.
-    const rows = await this.gateway.findRecentAll(30);
+    const reach = await this.access.reachableIds(accessCallerOf(req));
+    const rows = reach.filter(
+      await this.gateway.findRecentAll(30),
+      (row) => row.agentId,
+    );
     const { last30days, totals, topModel, agentTotals } =
       rollUpAcrossAgents(rows);
     const byAgent = await resolveAgentNames(agentTotals, (id) =>

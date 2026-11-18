@@ -62,6 +62,8 @@ import {
   BridleResetErrorCodes,
   BridleChannelErrorCodes,
   MAX_ATTACHMENT_BYTES,
+  CHAT_AGENT_NOT_FOUND,
+  ConsoleReachService,
   buildParts,
   clientIdFromJwtPayload,
   consoleSessionOf,
@@ -74,6 +76,7 @@ import type {
   IAttachmentRequester,
   IBridleActing,
   IChatAuth,
+  IConsoleSession,
 } from './domain';
 import { ActingPartyService } from '#/user/auth/domain/actingParty.service';
 import {
@@ -277,7 +280,35 @@ export class BridleController {
     @Inject(forwardRef(() => SourceAccessService))
     private readonly sourceAccess: SourceAccessService,
     private readonly actingParty: ActingPartyService,
+    private readonly reach: ConsoleReachService,
   ) {}
+
+  /**
+   * The access lists on these routes (CLEAN-231): a console person whose
+   * lists hide the agent is answered as if it did not exist. Nobody else is
+   * asked: a share visitor, an embed token and an anonymous caller have no
+   * session here and pass.
+   */
+  private async refuseHiddenAgent(
+    session: IConsoleSession | null,
+    agentId: string,
+  ): Promise<void> {
+    if (!(await this.reach.admits(session, agentId))) {
+      throw new NotFoundException(CHAT_AGENT_NOT_FOUND);
+    }
+  }
+
+  /**
+   * The console session behind a request, when its bearer is a person's own
+   * live token; null for anything else, a dead token included. For the
+   * routes that do not otherwise need to know who is asking.
+   */
+  private consoleSessionOfRequest(
+    req: Record<string, unknown>,
+  ): IConsoleSession | null {
+    const token = parseBearer(req.headers as ChatHeaders);
+    return token ? consoleSessionOf(this.verifyJwt(token).payload) : null;
+  }
 
   /**
    * The acting token for one message of a console person (CLEAN-232), or
@@ -362,6 +393,7 @@ export class BridleController {
               }
             : undefined;
         const session = consoleSessionOf(verified.payload);
+        await this.refuseHiddenAgent(session, agentId);
         return {
           clientId: identity.clientId,
           kind: 'jwt',
@@ -439,6 +471,9 @@ export class BridleController {
     }
 
     if (OPEN_CHANNEL_PREFIXES.some((prefix) => channel.startsWith(prefix))) {
+      // Open to anybody who holds the name, as before. A console person
+      // still does not read through an agent their lists hide (CLEAN-231).
+      await this.refuseHiddenAgent(this.consoleSessionOfRequest(req), agentId);
       return;
     }
 
@@ -926,7 +961,11 @@ export class BridleController {
   @FlatResponse()
   @ApiOkResponse({ type: BridleAgentHealthDto })
   @Get(':agentId/health')
-  async agentHealth(@Param('agentId') agentId: string) {
+  async agentHealth(
+    @Param('agentId') agentId: string,
+    @Req() req: Record<string, unknown>,
+  ) {
+    await this.refuseHiddenAgent(this.consoleSessionOfRequest(req), agentId);
     return this.hub.agentHealth(agentId);
   }
 
@@ -936,8 +975,13 @@ export class BridleController {
   })
   @FlatResponse()
   @Get('list')
-  async listAgents() {
-    return this.hub.listAgents();
+  async listAgents(@Req() req: Record<string, unknown>) {
+    // Filtered for a console person whose lists hide some (CLEAN-231).
+    return this.reach.reached(
+      this.consoleSessionOfRequest(req),
+      this.hub.listAgents(),
+      (agent) => agent.agentId,
+    );
   }
 
   @ApiOperation({

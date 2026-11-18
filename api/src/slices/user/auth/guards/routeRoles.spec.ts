@@ -70,11 +70,13 @@ const guarded = () => appRoutes().filter((row) => !row.isPublic);
 describe('every route asks for a role', () => {
   it('registers the guards globally, in the order they depend on each other', () => {
     // JwtAuthGuard sets req.user, RolesGuard reads its role, AgentManageGuard
-    // reads who it is. A different order is a guard reading nothing.
+    // and AgentAccessGuard (CLEAN-231) read who it is. A different order is
+    // a guard reading nothing.
     expect(appGlobalGuards()).toEqual([
       'JwtAuthGuard',
       'RolesGuard',
       'AgentManageGuard',
+      'AgentAccessGuard',
     ]);
   });
 

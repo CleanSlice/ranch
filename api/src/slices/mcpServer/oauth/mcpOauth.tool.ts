@@ -10,7 +10,10 @@ import {
   ok,
   requireOperator,
   type ToolResult,
+  agentNotFound,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { McpOauthService } from './domain/mcpOauth.service';
@@ -42,7 +45,10 @@ type AuthedRequest = Request & { user?: IAuthTokenPayload };
 export class McpOauthTool implements IConditionallyListedTool {
   private readonly logger = new Logger(McpOauthTool.name);
 
-  constructor(private readonly oauth: McpOauthService) {}
+  constructor(
+    private readonly oauth: McpOauthService,
+    private readonly access: AgentAccessService,
+  ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     return Promise.resolve(callerIsOperator(httpRequest));
@@ -109,6 +115,11 @@ export class McpOauthTool implements IConditionallyListedTool {
         'Pass agentId: the token is stored for one agent, and this caller is ' +
           'not an agent. list_agents has the ids.',
       );
+    }
+    // The token is stored for one agent; a person connects it only for an
+    // agent their access lists reach (CLEAN-231).
+    if (!(await this.access.reaches(callerParty(httpRequest), owner))) {
+      return agentNotFound(httpRequest, owner);
     }
     try {
       const { authorizeUrl } = await this.oauth.start({

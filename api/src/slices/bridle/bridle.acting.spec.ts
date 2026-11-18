@@ -9,8 +9,10 @@ import { BridleGateway } from './data';
 import {
   BridleAttachmentService,
   BridleSyncService,
+  ConsoleReachService,
   consoleSessionOf,
 } from './domain';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 import { BridleClientWsHandler } from './handlers';
 
 /**
@@ -73,6 +75,10 @@ function makeHub() {
       }),
   };
 
+  // The real reach rule over access lists that hide nothing (CLEAN-231): a
+  // console person here reaches the agent, so what is tested stays the token.
+  const reach = new ConsoleReachService(openAccess(), agentGateway as never);
+
   const handler = new BridleClientWsHandler(
     hub,
     attachments,
@@ -80,6 +86,7 @@ function makeHub() {
     agentGateway as never,
     shareLinks as never,
     acting.service,
+    reach,
   );
   const controller = new BridleController(
     hub,
@@ -94,6 +101,7 @@ function makeHub() {
     {} as never,
     {} as never,
     acting.service,
+    reach,
   );
 
   let sockets = 0;
@@ -381,6 +389,8 @@ describe('the hub mints no acting token for anyone else', () => {
       } as never,
       {} as never,
       hub.acting.service,
+      // Never asked: an acting token is refused before the access lists.
+      {} as never,
     );
     const rejected: string[] = [];
     await priv.handleConnection({

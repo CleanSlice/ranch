@@ -64,6 +64,25 @@ const health = await fake.health();
 check(health?.connected?.includes(RANCH), 'the fake runtime is connected for the Ranch admin agent');
 await fake.reset();
 
+// Since CLEAN-231 the seeded Admin is limited to access-alpha and
+// access-bravo, which leaves them no assistant to talk to. This script is
+// about whom the assistant acts for, so for its own run the Owner also
+// allows the Ranch admin agent for the Admin, through the access route, and
+// takes it back at the end. The Admin still does not reach access-charlie.
+const adminId = (await api('/users', { as: OWNER })).body.find((u) => u.email === ADMIN_USER.email)?.id;
+async function setAdminAccess(allowed) {
+  const current = (await api(`/users/${adminId}/agent-access`, { as: OWNER })).body;
+  return api(`/users/${adminId}/agent-access`, {
+    method: 'PUT',
+    as: OWNER,
+    body: { allowed, denied: [], version: current?.version ?? null },
+  });
+}
+{
+  const res = await setAdminAccess([AGENTS.a.id, AGENTS.b.id, RANCH]);
+  check(res.status === 200 && res.body?.allowed?.length === 3, `for this run the Admin is allowed the Ranch admin agent too (${res.status})`);
+}
+
 // ------------------------------------------------- the browser: who is asking
 
 /** key → { token, role, surface, context } of the LAST width; the context stays open. */
@@ -140,18 +159,28 @@ try {
     const del = await mcp.call('delete_agent', { id: AGENTS.b.id, confirm: true }, person('user'));
     check(notFound(del), `delete_agent for ${AGENTS.b.name} answers "not found"`);
     check(await exists(AGENTS.b.id), `${AGENTS.b.name} still exists`);
-    // A refusal names the next move, and `list_agents` is not one this
-    // person has: none of the refusals above may send them there.
+    // A refusal names the next move, and since CLEAN-231 `list_agents` is
+    // one every signed-in person has: it is listed for them, so a "not
+    // found" may send them there, and it shows them the agents they reach.
     const naming = [other, ranch, del].filter((r) => /list_agents/.test(r.text));
     check(
-      !names.includes('list_agents') && naming.length === 0,
-      `list_agents is not listed for them, and no "not found" names it ("${del.text.replace(/\s+/g, ' ').slice(0, 110)}")`,
+      names.includes('list_agents') && naming.length === 3,
+      `list_agents is listed for them, and each "not found" names it ("${del.text.replace(/\s+/g, ' ').slice(0, 110)}")`,
+    );
+    const mine = await mcp.call('list_agents', {}, person('user'));
+    check(
+      !mine.refused && mine.text.includes(AGENTS.c.name) && mine.text.includes(AGENTS.b.name) && !mine.text.includes(AGENTS.a.name),
+      `list_agents shows them the agents they reach: not ${AGENTS.a.name}, which is denied for this User`,
+    );
+    check(
+      mine.text.includes('operator-only-access-charlie') && !mine.text.includes('operator-only-access-bravo'),
+      `with the configuration of ${AGENTS.c.name}, which they created, and without that of ${AGENTS.b.name}`,
     );
     // The peer tools word their refusal themselves; same rule.
     const peers = await mcp.call('list_agent_peers', { agentId: AGENTS.b.id }, person('user'));
     check(
-      peers.refused && /not found/i.test(peers.text) && !/list_agents/.test(peers.text),
-      `list_agent_peers for ${AGENTS.b.name} answers "not found" without naming it either ("${peers.text.replace(/\s+/g, ' ').slice(0, 110)}")`,
+      peers.refused && /not found/i.test(peers.text) && !peers.text.includes(AGENTS.b.name),
+      `list_agent_peers for ${AGENTS.b.name} answers "not found" in the same words, without the agent's name ("${peers.text.replace(/\s+/g, ' ').slice(0, 110)}")`,
     );
     const list = await mcp.call('list_users', {}, person('user'));
     check(unavailable(list), 'tools/call list_users is refused');
@@ -182,6 +211,23 @@ try {
     check(still?.role === 'User', 'the second User is still there, still a User');
     const own = await mcp.call('get_agent_status', { id: AGENTS.a.id }, person('admin'));
     check(!own.refused && own.text.includes(AGENTS.a.name), `get_agent_status works for ${AGENTS.a.name}`);
+    // The Admin's lists (CLEAN-231): alpha, bravo and, for this run, the
+    // Ranch admin agent. access-charlie is not among them.
+    const listed = await mcp.call('list_agents', {}, person('admin'));
+    check(
+      !listed.refused && listed.text.includes(AGENTS.a.name) && listed.text.includes(AGENTS.b.name) && !listed.text.includes(AGENTS.c.name),
+      `list_agents shows the Admin their agents and not ${AGENTS.c.name}`,
+    );
+    check(
+      listed.text.includes(AGENTS.ranch.name) && !listed.text.includes('operator-only-access-ranch'),
+      'the Ranch admin agent, which they reach but may not manage, comes without its configuration',
+    );
+    const hidden = await mcp.call('restart_agent', { id: AGENTS.c.id }, person('admin'));
+    const unknown = await mcp.call('restart_agent', { id: 'agent-00000032-0000-4000-8000-0000000000ee' }, person('admin'));
+    check(
+      notFound(hidden) && hidden.text.split(AGENTS.c.id).join('x') === unknown.text.split('agent-00000032-0000-4000-8000-0000000000ee').join('x'),
+      `restart_agent for ${AGENTS.c.name} is reported as not found, in the words an unknown agent gets`,
+    );
     const ranch = await mcp.call('get_agent_status', { id: RANCH }, person('admin'));
     check(notFound(ranch) && !ranch.text.includes(AGENTS.ranch.name), 'manage tools answer "not found" for the Ranch admin agent');
     const env = await mcp.call('get_agent_env', { id: RANCH }, person('admin'));
@@ -269,6 +315,10 @@ try {
     const names = await mcp.list(trusted);
     const lacking = hasAll(names, MANAGEMENT_TOOLS);
     check(lacking.length === 0, `{ kind: "trusted", via: "internal" }: every management tool listed${lacking.length ? ` (missing: ${lacking.join(', ')})` : ''}`);
+    const readers = hasAll(names, TOOLS.reader);
+    check(readers.length === 0, `and list_agents and get_agent, which a scheduled job needs as before${readers.length ? ` (missing: ${readers.join(', ')})` : ''}`);
+    const all = await mcp.call('list_agents', {}, trusted);
+    check(Object.values(AGENTS).every((a) => all.text.includes(a.name)), 'list_agents names every agent for it: the lists are about people');
     const list = await mcp.call('list_users', {}, trusted);
     check(!list.refused && list.text.includes(OWNER.email), 'list_users works: full power, as today');
     // Trust is the Ranch admin agent's: a plain agent's token gains nothing by saying it.
@@ -331,6 +381,8 @@ try {
   await mcp.close();
 } finally {
   await browser.close();
+  const back = await setAdminAccess([AGENTS.a.id, AGENTS.b.id]);
+  check(back.status === 200 && back.body?.allowed?.length === 2, `the Admin is limited to ${AGENTS.a.name} and ${AGENTS.b.name} again (${back.status})`);
 }
 
 done('acting');

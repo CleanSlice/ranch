@@ -11,16 +11,29 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Request } from 'express';
 import {
   IUserGateway,
   refuseUserEdit,
   UserRoleTypes,
+  type IUserData,
   type IUserEditor,
   type UserEditFields,
 } from './domain';
-import { CreateUserDto, UpdateUserDto, UpdateUserRoleDto } from './dtos';
+import {
+  CreateUserDto,
+  UpdateUserDto,
+  UpdateUserRoleDto,
+  UserDto,
+} from './dtos';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
 import { JwtAuthGuard, Roles, RolesGuard } from '../auth/guards';
 import {
   highestPersonRole,
@@ -53,26 +66,55 @@ function editorOf(req: { user?: IAuthTokenPayload } | undefined): IUserEditor {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRoleTypes.Admin)
 export class UserController {
-  constructor(private userGateway: IUserGateway) {}
+  constructor(
+    private userGateway: IUserGateway,
+    private access: AgentAccessService,
+    private pins: IAgentPinGateway,
+  ) {}
+
+  /**
+   * Accounts as a response carries them: with what each one's agent access
+   * comes to (CLEAN-231). One read for the whole list.
+   */
+  private async present(users: IUserData[]): Promise<UserDto[]> {
+    const summaries = await this.access.summaries(users);
+    return users.map((user) => ({
+      ...user,
+      agentAccess: summaries.get(user.id) ?? {
+        kind: 'all',
+        needsReview: false,
+      },
+    }));
+  }
+
+  private async presentOne(user: IUserData): Promise<UserDto> {
+    return (await this.present([user]))[0];
+  }
 
   @Get()
-  @ApiOperation({ summary: 'List all users' })
-  findAll() {
-    return this.userGateway.findAll();
+  @ApiOperation({
+    summary:
+      'List all users, each with what its agent access comes to (`agentAccess`).',
+  })
+  @ApiOkResponse({ type: UserDto, isArray: true })
+  async findAll() {
+    return this.present(await this.userGateway.findAll());
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get user by ID' })
+  @ApiOkResponse({ type: UserDto })
   async findById(@Param('id') id: string) {
     const user = await this.userGateway.findById(id);
     if (!user) throw new NotFoundException('User not found');
-    return user;
+    return this.presentOne(user);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create a user (admin sets the password)' })
-  create(@Body() dto: CreateUserDto) {
-    return this.userGateway.create(dto);
+  @ApiOkResponse({ type: UserDto })
+  async create(@Body() dto: CreateUserDto) {
+    return this.presentOne(await this.userGateway.create(dto));
   }
 
   @Put(':id')
@@ -100,7 +142,7 @@ export class UserController {
         'The Owner account status cannot be changed',
       );
     }
-    return this.userGateway.update(id, dto);
+    return this.presentOne(await this.userGateway.update(id, dto));
   }
 
   @Put(':id/role')
@@ -111,7 +153,9 @@ export class UserController {
     if (target.role === UserRoleTypes.Owner) {
       throw new ForbiddenException('The Owner role cannot be changed');
     }
-    return this.userGateway.update(id, { role: dto.role });
+    return this.presentOne(
+      await this.userGateway.update(id, { role: dto.role }),
+    );
   }
 
   @Delete(':id')
@@ -123,6 +167,10 @@ export class UserController {
       throw new ForbiddenException('The Owner account cannot be removed');
     }
     await this.userGateway.delete(id);
+    // The account's access lists and pins go with it (CLEAN-231). `userId`
+    // is a bare id on those rows, so nothing cascades for us.
+    await this.access.removeUser(id);
+    await this.pins.removeUser(id);
   }
 
   private async getTargetOrThrow(id: string) {

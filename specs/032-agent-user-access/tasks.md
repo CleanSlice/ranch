@@ -159,10 +159,10 @@
 
 **Purpose**: the lists and the rule
 
-- [ ] T046 Models `UserAgentAccess` and `UserAgentAccessEntry` in `api/src/slices/user/agentAccess/agentAccess.prisma` and `AgentPin` in `api/src/slices/agent/pin/agentPin.prisma` per data-model.md; migration `api/prisma/migrations/<timestamp>_agent_access_and_pins/migration.sql` (create three tables, drop `Agent.pinned`)
-- [ ] T047 Sub-slice skeleton `api/src/slices/user/agentAccess/`: `agentAccess.module.ts`, `domain/agentAccess.types.ts`, `domain/agentAccess.gateway.ts`, `data/agentAccess.gateway.ts`, `data/agentAccess.mapper.ts`; register the module in `api/src/app.module.ts`
-- [ ] T048 `api/src/slices/user/agentAccess/domain/agentAccess.service.ts`: `reaches`, `reachableIds`, `assertReaches`, `outcome`, `onChanged(listener)`, `removeUser`; one query by `userId` per call, no cache; plug it into `effectiveCaller` consumers and into the `reaches` interface of T042
-- [ ] T049 [P] Spec `api/src/slices/user/agentAccess/domain/agentAccess.service.spec.ts`: the rule table of data-model.md, Owner and non-person callers, the four outcomes, `needsReview` after the last allowed entry disappears
+- [X] T046 Models `UserAgentAccess` and `UserAgentAccessEntry` in `api/src/slices/user/agentAccess/agentAccess.prisma` and `AgentPin` in `api/src/slices/agent/pin/agentPin.prisma` per data-model.md; migration `api/prisma/migrations/<timestamp>_agent_access_and_pins/migration.sql` (create three tables, drop `Agent.pinned`)
+- [X] T047 Sub-slice skeleton `api/src/slices/user/agentAccess/`: `agentAccess.module.ts`, `domain/agentAccess.types.ts`, `domain/agentAccess.gateway.ts`, `data/agentAccess.gateway.ts`, `data/agentAccess.mapper.ts`; register the module in `api/src/app.module.ts`
+- [X] T048 `api/src/slices/user/agentAccess/domain/agentAccess.service.ts`: `reaches`, `reachableIds`, `assertReaches`, `outcome`, `onChanged(listener)`, `removeUser`; one query by `userId` per call, no cache; plug it into `effectiveCaller` consumers and into the `reaches` interface of T042
+- [X] T049 [P] Spec `api/src/slices/user/agentAccess/domain/agentAccess.service.spec.ts`: the rule table of data-model.md, Owner and non-person callers, the four outcomes, `needsReview` after the last allowed entry disappears
 
 **Checkpoint**: the rule exists and is tested; nothing enforces it yet
 
@@ -176,23 +176,23 @@
 
 ### Tests for User Story 1
 
-- [ ] T050 [P] [US1] `api/src/slices/user/agentAccess/guards/agentScopedRoutes.spec.ts`: every route whose path contains `:agentId` or sits under `agents/:id` has `@AgentScoped` or an entry in the exemption list of contracts/enforcement.md
-- [ ] T051 [P] [US1] `api/src/slices/user/agentAccess/guards/agentAccess.guard.spec.ts`: param, query and body sources; 404 identical to the route's own "not found"; Owner, agent runtime, embed and public callers pass
-- [ ] T052 [P] [US1] `api/src/slices/user/agentAccess/agentAccess.controller.spec.ts`: roles, `ACCESS_NOT_EDITABLE`, `ACCESS_LISTS_OVERLAP`, `ACCESS_OPEN_NEEDS_CONFIRM`, `ACCESS_CHANGED`, moving an agent between lists
-- [ ] T053 [P] [US1] `specs/032-agent-user-access/e2e/seed.mjs` (agents A, B, C; an Admin limited to A and B; two Users) and `e2e/http.mjs` (every route of contracts/enforcement.md with the restricted token for a hidden agent)
+- [X] T050 [P] [US1] `api/src/slices/user/agentAccess/guards/agentScopedRoutes.spec.ts`: every route whose path contains `:agentId` or sits under `agents/:id` has `@AgentScoped` or an entry in the exemption list of contracts/enforcement.md
+- [X] T051 [P] [US1] `api/src/slices/user/agentAccess/guards/agentAccess.guard.spec.ts`: param, query and body sources; 404 identical to the route's own "not found"; Owner, agent runtime, embed and public callers pass
+- [X] T052 [P] [US1] `api/src/slices/user/agentAccess/agentAccess.controller.spec.ts`: roles, `ACCESS_NOT_EDITABLE`, `ACCESS_LISTS_OVERLAP`, `ACCESS_OPEN_NEEDS_CONFIRM`, `ACCESS_CHANGED`, moving an agent between lists
+- [X] T053 [P] [US1] `specs/032-agent-user-access/e2e/seed.mjs` (agents A, B, C; an Admin limited to A and B; two Users) and `e2e/http.mjs` (every route of contracts/enforcement.md with the restricted token for a hidden agent)
 
 ### Implementation for User Story 1
 
-- [ ] T054 [US1] `api/src/slices/user/agentAccess/guards/agentScoped.decorator.ts` and `agentAccess.guard.ts` (mechanism S); export both from the module
-- [ ] T055 [US1] Apply S / F / A to `api/src/slices/agent/agent/agent.controller.ts` and compute `pinned` per caller there (false until Phase 13 adds the pin gateway)
-- [ ] T056 [P] [US1] Apply S / F to `api/src/slices/agent/agentChannel/`, `agent/toolCatalog/`, `agent/limit/`, `agent/event/` controllers
-- [ ] T057 [P] [US1] Apply S at class level to `api/src/slices/agent/file/` (three controllers), `agent/secret/`, `agent/shareLink/`, and S plus F to `agent/peer/` (`peer.controller.ts`, `peerLink.controller.ts`)
-- [ ] T058 [P] [US1] Apply F / S / A to `api/src/slices/chat/chat.controller.ts` and `chat/myChat.controller.ts`
-- [ ] T059 [P] [US1] Apply S / F / A to `api/src/slices/log/`, `usage/`, `paddock/evaluation/`, `paddock/scenario/`, `skill/` (`GET /skills/:id/agents`), `browser/browser.extension.controller.ts`
-- [ ] T060 [US1] Bridle HTTP: check `reaches` for a console person inside `resolveRequester`, `requireChannelAccess` and `BridleChatAuthGuard`, and filter `GET list`, in `api/src/slices/bridle/bridle.controller.ts` and `api/src/slices/bridle/guards/`
-- [ ] T061 [US1] Bridle socket: check at handshake and on each inbound `message` in `api/src/slices/bridle/handlers/bridleClientWs.handler.ts`; register an `onChanged` listener that disconnects that person's sockets for agents no longer reached (`api/src/slices/bridle/data/bridle.gateway.ts`)
-- [ ] T062 [US1] `api/src/slices/user/agentAccess/agentAccess.controller.ts` and `dtos/`: `GET` / `PUT /users/:id/agent-access` per contracts/http-api.md; `AgentAccessService.replace` steps 1, 5 and 6 of research R8 (who may edit, confirm before opening, version) in a transaction that locks the account row
-- [ ] T063 [US1] `UserDto.agentAccess` summary in `api/src/slices/user/user/dtos/user.dto.ts` and the controller; call `removeUser` from the user delete path (`user.controller.ts`, `user.tool.ts`)
+- [X] T054 [US1] `api/src/slices/user/agentAccess/guards/agentScoped.decorator.ts` and `agentAccess.guard.ts` (mechanism S); export both from the module
+- [X] T055 [US1] Apply S / F / A to `api/src/slices/agent/agent/agent.controller.ts` and compute `pinned` per caller there (false until Phase 13 adds the pin gateway)
+- [X] T056 [P] [US1] Apply S / F to `api/src/slices/agent/agentChannel/`, `agent/toolCatalog/`, `agent/limit/`, `agent/event/` controllers
+- [X] T057 [P] [US1] Apply S at class level to `api/src/slices/agent/file/` (three controllers), `agent/secret/`, `agent/shareLink/`, and S plus F to `agent/peer/` (`peer.controller.ts`, `peerLink.controller.ts`)
+- [X] T058 [P] [US1] Apply F / S / A to `api/src/slices/chat/chat.controller.ts` and `chat/myChat.controller.ts`
+- [X] T059 [P] [US1] Apply S / F / A to `api/src/slices/log/`, `usage/`, `paddock/evaluation/`, `paddock/scenario/`, `skill/` (`GET /skills/:id/agents`), `browser/browser.extension.controller.ts`
+- [X] T060 [US1] Bridle HTTP: check `reaches` for a console person inside `resolveRequester`, `requireChannelAccess` and `BridleChatAuthGuard`, and filter `GET list`, in `api/src/slices/bridle/bridle.controller.ts` and `api/src/slices/bridle/guards/`
+- [X] T061 [US1] Bridle socket: check at handshake and on each inbound `message` in `api/src/slices/bridle/handlers/bridleClientWs.handler.ts`; register an `onChanged` listener that disconnects that person's sockets for agents no longer reached (`api/src/slices/bridle/data/bridle.gateway.ts`)
+- [X] T062 [US1] `api/src/slices/user/agentAccess/agentAccess.controller.ts` and `dtos/`: `GET` / `PUT /users/:id/agent-access` per contracts/http-api.md; `AgentAccessService.replace` steps 1, 5 and 6 of research R8 (who may edit, confirm before opening, version) in a transaction that locks the account row
+- [X] T063 [US1] `UserDto.agentAccess` summary in `api/src/slices/user/user/dtos/user.dto.ts` and the controller; call `removeUser` from the user delete path (`user.controller.ts`, `user.tool.ts`)
 - [ ] T064 [US1] Admin sub-slice `admin/slices/user/agentAccess/`: `domain/` types, service and gateway interface, `data/` gateway and mapper over the regenerated SDK (check `res.error`), `stores/agentAccess.ts` keyed by user id with `upsert` and `patch` + rollback, `plugins/di.ts`
 - [ ] T065 [US1] Repair `admin/slices/user/user/stores/user.ts` (`byId`, `upsert`, `patch`) and render by id in `components/user/list/Provider.vue`, `item/Provider.vue`, `edit/Provider.vue` (research R11)
 - [ ] T066 [US1] Editor `admin/slices/user/agentAccess/components/agentAccess/Editor.vue`, `Row.vue`, `Outcome.vue` per contracts/console.md (three-way choice per row, outcome sentence, review banner, confirm dialog, server refusal shown as received, `data-access-*` hooks); pure helper `admin/slices/user/agentAccess/utils/outcome.ts` with `outcome.test.ts`; host it on `admin/slices/user/user/components/user/item/Provider.vue`
@@ -237,11 +237,11 @@
 
 ### Tests for User Story 2
 
-- [ ] T079 [P] [US2] `api/src/slices/user/agentAccess/domain/agentAccess.ceiling.spec.ts`: view filtering, carry-over of entries outside the view, `ACCESS_EXCEEDS_CEILING` on emptying the allowed list and on removing a denial, an id outside the view refused as unknown, two simultaneous edits
+- [X] T079 [P] [US2] `api/src/slices/user/agentAccess/domain/agentAccess.ceiling.spec.ts`: view filtering, carry-over of entries outside the view, `ACCESS_EXCEEDS_CEILING` on emptying the allowed list and on removing a denial, an id outside the view refused as unknown, two simultaneous edits
 
 ### Implementation for User Story 2
 
-- [ ] T080 [US2] `AgentAccessService.replace` steps 2, 3 and 4 of research R8 in `api/src/slices/user/agentAccess/domain/agentAccess.service.ts`; `hasEntriesOutsideView` and view-limited `allowed` / `denied` in the `GET` response
+- [X] T080 [US2] `AgentAccessService.replace` steps 2, 3 and 4 of research R8 in `api/src/slices/user/agentAccess/domain/agentAccess.service.ts`; `hasEntriesOutsideView` and view-limited `allowed` / `denied` in the `GET` response
 - [ ] T081 [US2] Editor for an Admin viewer in `admin/slices/user/agentAccess/components/agentAccess/Editor.vue`: only reached agents as rows, the outside-view note, the "who manages this access" line for accounts the viewer may not edit
 - [ ] T082 [US2] `specs/032-agent-user-access/e2e/ceiling.mjs` at both widths, including a hand-made request naming agent C
 
@@ -253,8 +253,8 @@
 
 **Independent Test**: deny agent C for an Admin; as that Admin C is absent from every screen and refused on direct access
 
-- [ ] T083 [US3] Creator auto-allow in `POST /agents` (`api/src/slices/agent/agent/agent.controller.ts` → `AgentAccessService`): a limited Admin's new agent joins their allowed list in the same transaction; spec case in `agentAccess.service.spec.ts`
-- [ ] T084 [P] [US3] `POST /agents/restart-by-template/:templateId` restarts only reached agents; `GET /agents/admin/current` answers 404 when the admin agent is not reached (`agent.controller.ts`); admin layout hides the assistant entry on that 404 (`admin/slices/common/components/layout/`)
+- [X] T083 [US3] Creator auto-allow in `POST /agents` (`api/src/slices/agent/agent/agent.controller.ts` → `AgentAccessService`): a limited Admin's new agent joins their allowed list in the same transaction; spec case in `agentAccess.service.spec.ts`
+- [ ] T084 [P] [US3] `POST /agents/restart-by-template/:templateId` restarts only reached agents; `GET /agents/admin/current` answers 404 when the admin agent is not reached (`agent.controller.ts`); admin layout hides the assistant entry on that 404 (`admin/slices/common/components/layout/`). API part done (CLEAN-231); the admin layout is left to the consoles work
 - [ ] T085 [US3] Walk the admin console as the seeded limited Admin (agents list, search, pins, usage, events, links, chats) and fix any screen that names or counts an unreached agent; add the walk to `specs/032-agent-user-access/e2e/enforce.mjs`
 
 ---
@@ -265,11 +265,11 @@
 
 **Independent Test**: change a User's lists through the assistant; the editor shows the same; a change the ceiling forbids gets the same refusal
 
-- [ ] T086 [P] [US4] `api/src/slices/user/agentAccess/agentAccess.tool.spec.ts`: listing and refusal per audience, the dry run without `confirm`, the ceiling for an Admin caller, no secret in results
-- [ ] T087 [US4] `api/src/slices/user/agentAccess/agentAccess.tool.ts`: `get_user_agent_access`, `set_user_agent_access` (`allow` / `deny` / `clear`, `confirm`), audience `admin`, calling `AgentAccessService.replace` as the effective caller
-- [ ] T088 [US4] Reach in every agent-naming tool: filter with `reachableIds` and check `reaches` for the effective caller in the tool files listed in research R6 (`rancher.tool.ts`, `agentAdmin.tool.ts`, `agentChannel.tool.ts`, `agentEvent.tool.ts`, `file.tool.ts`, `agentLimit.tool.ts`, `peerAdmin.tool.ts`, `secret.tool.ts`, `shareLink.tool.ts`, `templateAdmin.tool.ts`, `chat.tool.ts`, `log.tool.ts`, `usage.tool.ts`, paddock tools)
-- [ ] T089 [P] [US4] Spec `api/src/slices/mcp/toolReach.spec.ts`: each tool of T088 run as the limited Admin lists only A and B and answers "not found" for C
-- [ ] T090 [P] [US4] `docs/agent-tools.md`: the two access tools in the capability matrix
+- [X] T086 [P] [US4] `api/src/slices/user/agentAccess/agentAccess.tool.spec.ts`: listing and refusal per audience, the dry run without `confirm`, the ceiling for an Admin caller, no secret in results
+- [X] T087 [US4] `api/src/slices/user/agentAccess/agentAccess.tool.ts`: `get_user_agent_access`, `set_user_agent_access` (`allow` / `deny` / `clear`, `confirm`), audience `admin`, calling `AgentAccessService.replace` as the effective caller
+- [X] T088 [US4] Reach in every agent-naming tool: filter with `reachableIds` and check `reaches` for the effective caller in the tool files listed in research R6 (`rancher.tool.ts`, `agentAdmin.tool.ts`, `agentChannel.tool.ts`, `agentEvent.tool.ts`, `file.tool.ts`, `agentLimit.tool.ts`, `peerAdmin.tool.ts`, `secret.tool.ts`, `shareLink.tool.ts`, `templateAdmin.tool.ts`, `chat.tool.ts`, `log.tool.ts`, `usage.tool.ts`, paddock tools)
+- [X] T089 [P] [US4] Spec `api/src/slices/mcp/toolReach.spec.ts`: each tool of T088 run as the limited Admin lists only A and B and answers "not found" for C
+- [X] T090 [P] [US4] `docs/agent-tools.md`: the two access tools in the capability matrix
 
 ---
 
@@ -279,10 +279,10 @@
 
 **Independent Test**: as a User pin an agent; it stays on top after a reload; another account's order is unchanged
 
-- [ ] T091 [P] [US6] `api/src/slices/agent/pin/agentPin.controller.spec.ts` and `data/agentPin.gateway.spec.ts`: idempotent pin and unpin, 404 for an unreached agent, 403 for a caller that is not a person
-- [ ] T092 [US6] Sub-slice `api/src/slices/agent/pin/`: module, gateway, `agentPin.controller.ts` (`PUT` / `DELETE /agents/:id/pin`, `@Roles(User)`, `@AgentScoped('id')`); add both routes to `userRoutes.spec.ts`
-- [ ] T093 [US6] Remove `pinned` from `api/src/slices/agent/agent/dtos/updateAgent.dto.ts`, the gateway write and the domain update type; compute `AgentDto.pinned` for the caller from the pin gateway; update `agent.gateway.spec.ts` and the status fixture
-- [ ] T094 [US6] Rewrite `pin_agent` in `api/src/slices/agent/agent/agentAdmin.tool.ts` as a `person` tool that pins for the effective caller; update `agentAdmin.tool.spec.ts` and its row in `docs/agent-tools.md`
+- [X] T091 [P] [US6] `api/src/slices/agent/pin/agentPin.controller.spec.ts` and `data/agentPin.gateway.spec.ts`: idempotent pin and unpin, 404 for an unreached agent, 403 for a caller that is not a person
+- [X] T092 [US6] Sub-slice `api/src/slices/agent/pin/`: module, gateway, `agentPin.controller.ts` (`PUT` / `DELETE /agents/:id/pin`, `@Roles(User)`, `@AgentScoped('id')`); add both routes to `userRoutes.spec.ts`
+- [X] T093 [US6] Remove `pinned` from `api/src/slices/agent/agent/dtos/updateAgent.dto.ts`, the gateway write and the domain update type; compute `AgentDto.pinned` for the caller from the pin gateway; update `agent.gateway.spec.ts` and the status fixture
+- [X] T094 [US6] Rewrite `pin_agent` in `api/src/slices/agent/agent/agentAdmin.tool.ts` as a `person` tool that pins for the effective caller; update `agentAdmin.tool.spec.ts` and its row in `docs/agent-tools.md`
 - [ ] T095 [P] [US6] App: `setPinned` in `app/slices/agent/stores/agent.ts` calls the pin routes; move the pin control out of the `canManage` block in `app/slices/agent/components/agent/workspace/Sheet.vue` and out of `canCreate` in `Rail.vue`; drop `pinned` from `IAgentUpdateInput`
 - [ ] T096 [P] [US6] Admin twin: `admin/slices/agent/agent/composables/useAgentPin.ts` calls the pin routes; drop `pinned` from `IUpdateAgentData`
 - [ ] T097 [US6] `specs/032-agent-user-access/e2e/pins.mjs` at both widths, with a second browser context for the other account

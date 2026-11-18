@@ -87,10 +87,10 @@ specs, `api/src/slices/mcp/testing.ts` has `asTrustedAgent`, `asPerson`,
 - **A refusal names only a tool the caller has.** The next move in a result
   must be one this caller can make. An agent that was not found is answered
   with `agentNotFound(httpRequest, id)` from `#/mcp/tooling`, never with a
-  sentence of the tool's own: it names `list_agents` for an Owner or Admin,
-  and for anyone else (a User managing the agents they created reaches the
-  `manage-agent` tools without `list_agents`) says only that there is no such
-  agent among the ones this person manages.
+  sentence of the tool's own: it names `list_agents` for an operator and for
+  any signed-in person (a `reader` tool since CLEAN-231, so every person has
+  it), and for a caller that is nobody says only that there is no such agent
+  for this caller.
 
 ## Audiences
 
@@ -146,6 +146,7 @@ One per tool, declared with `@ToolAudience`:
 | `everyone` | any caller | nothing |
 | `agent` | an agent runtime, for itself (the token names the agent, whoever it is answering) | `requireAgent(httpRequest)` |
 | `person` | a signed-in person of any role | `const { userId } = requirePerson(httpRequest)` |
+| `reader` | a signed-in person of any role, or whoever `admin` admits (so the Ranch admin agent on its own schedule keeps the tool) | `requirePersonOrOperator(httpRequest)`, then only what `AgentAccessService` says the caller reaches |
 | `manage-agent` | whoever may manage at least one agent: an Owner or Admin, an agent with an Owner token acting for itself, a person who created an agent | `const agent = await this.permission.manageable(manageCaller(httpRequest), id)` and the tool's own "not found" when it is null |
 | `admin` | an Owner or Admin; an agent with an Owner token acting for itself | `requireOperator(httpRequest)` |
 | `owner` | the Owner; an agent with an Owner token acting for itself | `requireOwner(httpRequest)` |
@@ -254,8 +255,8 @@ The `manage-agent` tools:
 
 | Tool file | Tools |
 |---|---|
-| `agent/agent/agentAdmin.tool.ts` | `stop_agent`, `start_agent`, `delete_agent`, `get_agent_status`, `get_agent_env`, `list_agent_mcps` (`pin_agent` and `get_cluster_capacity` stay `admin`) |
-| `rancher/rancher.tool.ts` | `restart_agent`, `update_agent` (`list_agents`, `get_agent`, `create_agent` and the rest stay `admin`; `set_agent_admin` is `owner`) |
+| `agent/agent/agentAdmin.tool.ts` | `stop_agent`, `start_agent`, `delete_agent`, `get_agent_status`, `get_agent_env`, `list_agent_mcps` (`get_cluster_capacity` stays `admin`; `pin_agent` is `person`) |
+| `rancher/rancher.tool.ts` | `restart_agent`, `update_agent` (`create_agent` and the rest stay `admin`; `list_agents` and `get_agent` are `reader`; `set_agent_admin` is `owner`) |
 | `agent/agentChannel/agentChannel.tool.ts` | `get_agent_channels`, `set_agent_channels` |
 | `agent/file/file.tool.ts` | `list_agent_files`, `read_agent_file`, `write_agent_file`, `create_agent_file`, `import_agent_files`, `delete_agent_file`, `sync_agent_files`, `export_agent_files` |
 | `agent/secret/secret.tool.ts` | `list_agent_secrets`, `set_agent_secret`, `delete_agent_secret`, `replace_agent_secrets` |
@@ -271,7 +272,7 @@ written once and no tool or route changes it.
 
 | Tool file (under `api/src/slices/`) | Audience | The console route it mirrors |
 |---|---|---|
-| `agent/agent/agentAdmin.tool.ts` | `admin`; `manage-agent` for the six tools that name one agent | `agents`: Owner, Admin; `PUT`/`DELETE agents/:id`, restart, stop, start: `@ManagesAgent` |
+| `agent/agent/agentAdmin.tool.ts` | `admin`; `manage-agent` for the six tools that name one agent; `person` for `pin_agent` (`PUT`/`DELETE agents/:id/pin`: User) | `agents`: Owner, Admin; `PUT`/`DELETE agents/:id`, restart, stop, start: `@ManagesAgent` |
 | `agent/agentChannel/agentChannel.tool.ts` | `manage-agent` | `agents/:id/channels`: Owner, Admin, `@ManagesAgent` |
 | `agent/event/agentEvent.tool.ts` | `admin`; `owner` for `set_notification_destination`, `send_test_notification`, `remove_notification_destination` | `agent-events`, `agent-incidents`, reading the destination: Admin. Setting, testing, removing it: Owner |
 | `agent/file/file.tool.ts` | `manage-agent` | `agents/:agentId/files`: Admin by default, `@ManagesAgent` |
@@ -289,7 +290,7 @@ written once and no tool or route changes it.
 | `log/log.tool.ts` | `manage-agent` | `agents/:agentId/logs`: Admin by default, `@ManagesAgent` |
 | `mcpServer/mcpServer.tool.ts`, `mcpServer/mcpProbe.tool.ts`, `mcpServer/oauth/mcpOauth.tool.ts` | `admin` | `mcp-servers`: Owner, Admin |
 | `paddock/evaluation/evaluation.tool.ts`, `paddock/scenario/scenario.tool.ts` | `admin` | `paddock-evaluations`, `paddock-scenarios`: no role stated |
-| `rancher/rancher.tool.ts` | `admin`; `manage-agent` for `restart_agent`, `update_agent`; `owner` for `set_agent_admin` | `agents`, `templates`, `skills`, `llms`, `settings`, usage: Owner and Admin, or no role stated. `agents/:id/promote-admin`: Owner |
+| `rancher/rancher.tool.ts` | `admin`; `manage-agent` for `restart_agent`, `update_agent`; `reader` for `list_agents`, `get_agent` (`GET agents`, `GET agents/:id`: User); `owner` for `set_agent_admin` | `agents`, `templates`, `skills`, `llms`, `settings`, usage: Owner and Admin, or no role stated. `agents/:id/promote-admin`: Owner |
 | `reins/knowledge/knowledge.tool.ts` | `everyone` | none: searches the bases of the calling agent |
 | `reins/knowledge/knowledgeAdmin.tool.ts`, `reins/source/source.tool.ts` | `admin` | `knowledges`, `knowledges/:id/sources`: no role stated |
 | `reins/knowledge/knowledgeDocuments.tool.ts` | `agent` | none: the documents of the calling agent's bases |
@@ -297,6 +298,7 @@ written once and no tool or route changes it.
 | `skill/skill.tool.ts` | `admin` | `skills`: no role stated |
 | `upgrade/upgrade.tool.ts` | `admin` | `upgrade`: Owner, Admin |
 | `usage/usage.tool.ts` | `admin` | `usage/overview`: no role stated |
+| `user/agentAccess/agentAccess.tool.ts` | `admin` | `users/:id/agent-access`: Admin. Who may read and change whose access, and the ceiling, are the service's, the same for both |
 | `user/apiKey/apiKey.tool.ts` | `admin` | `api-keys`: Owner, Admin |
 | `user/user/user.tool.ts` | `admin`; `owner` for `set_user_role`, `delete_user` | `users`: Admin. `users/:id/role` and `DELETE users/:id`: Owner |
 
@@ -309,6 +311,48 @@ party is checked.
 `api/src/slices/mcp/toolAudience.spec.ts` pins this table and the list of
 `manage-agent` tools: a new tool file, or a changed audience, fails it until
 the tables there are updated.
+
+### Which agents: reach
+
+The audience says what kind of caller may use a tool. Which agents it may
+use it on is a second question, answered by the access lists of CLEAN-231
+(`AgentAccessService`, `api/src/slices/user/agentAccess/`): a person whose
+role is Admin or User reaches an agent unless it is on their denied list, or
+their allowed list is not empty and does not hold it. The Owner, a trusted
+agent and every caller that is not a person reach every agent.
+
+The caller of that question is the party the call is made for,
+`callerParty(httpRequest)`, so an Admin asking through the assistant is
+limited exactly as in the console. Three shapes, the same as on the routes:
+
+| The tool | Does |
+|---|---|
+| lists agents, or rows that belong to agents | `const reach = await this.access.reachableIds(callerParty(httpRequest))`, then `reach.filter(rows, (row) => row.agentId)`; a list paged in the database passes `reach.where()` to its gateway as `agentScope`. Totals are summed after the filter |
+| takes an agent id and is not `manage-agent` | finds the agent, then `await this.access.reaches(callerParty(httpRequest), id)`; when either fails, `return agentNotFound(httpRequest, id)` |
+| takes the id of a record that belongs to an agent (a chat, an evaluation, a scenario) | loads the record, asks `reaches` about its `agentId`, and answers the tool's own "not found" for the record |
+
+A `manage-agent` tool needs none of this: `AgentPermissionService.manageable`
+already asks the lists (they are its `IAgentReach`).
+
+An agent the caller does not reach is an agent that does not exist: the same
+words as for an id that names nothing, never the agent's name, and nothing
+read or changed before the answer. `api/src/slices/mcp/toolReach.spec.ts`
+runs every tool that lists agents or takes an agent id as an Admin limited
+to two agents of three and holds each of them to that; a new such tool joins
+its tables.
+
+| Tools | How reach is applied |
+|---|---|
+| `list_agents`, `get_agent` (`reader`) | only reached agents; an agent the caller may not manage comes as its reader view (no `config`, credential, knowledge binding or deploy history); `pinned` is the person's own |
+| `pin_agent` (`person`) | pins for the person the call is made for; an unreached agent is not found; an agent acting for itself is refused |
+| `get_user_agent_access`, `set_user_agent_access` (`admin`) | `AgentAccessService.view` / `adjust` as the party: an Admin sees and may name only agents they reach, and meets the ceiling |
+| the 35 `manage-agent` tools | through `manageable` |
+| `list_agent_limits`, `list_skill_agents`, `get_usage_overview`, `llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios` | filtered; usage totals are of the reached agents |
+| `list_chats`, `list_agent_events`, `list_agent_incidents` | `agentScope` in the query; an `agentId` argument is checked |
+| `agent_usage`, the four share-link tools, `sync_chats`, `start_mcp_oauth`, `run_paddock_evaluation`, `list_agent_paddock_scenarios`, `create_paddock_scenario`, `generate_paddock_scenarios` | the agent id is checked |
+| `get_chat`, `get_chat_messages`, `summarize_chat`, `export_chat`, the paddock evaluation tools by id, `get` / `update` / `delete_paddock_scenario` | the record's agent is checked |
+| `delete_llm` | names the agents that would lose their model only when the caller reaches them; the rest are counted |
+| `restart_template_agents`, `redeploy_skill_agents` | an agent the caller may not manage is skipped and counted, never named |
 
 One class, one audience, with a method-level exception where one route of a
 controller is narrower than the rest, or where a class holds fleet tools
@@ -455,6 +499,10 @@ puts the block back (it is idempotent and `make init` runs it).
   party.
 - Does the spec call the tool as the Ranch admin agent answering a User, and
   is it refused?
+- Does the tool list agents, take an agent id, or take the id of something
+  that belongs to an agent? Then it asks `AgentAccessService` for the party
+  the call is made for (see "Which agents: reach"), answers an unreached
+  agent as one that does not exist, and is in `toolReach.spec.ts`.
 - Does the tool name one agent? Then it is `manage-agent`, it resolves the
   agent with `AgentPermissionService.manageable`, and the spec shows an Admin
   getting "not found" for the Ranch admin agent in the same words as for an

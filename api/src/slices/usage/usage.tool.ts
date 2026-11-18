@@ -7,7 +7,9 @@ import {
   ok,
   requireOperator,
   type ToolResult,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -37,6 +39,7 @@ export class UsageTool implements IConditionallyListedTool {
   constructor(
     private readonly usage: IUsageGateway,
     private readonly agents: IAgentGateway,
+    private readonly access: AgentAccessService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
@@ -65,7 +68,12 @@ export class UsageTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    const rows = await this.usage.findRecentAll(OVERVIEW_DAYS);
+    // Only the agents the caller reaches, totals included (CLEAN-231).
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    const rows = reach.filter(
+      await this.usage.findRecentAll(OVERVIEW_DAYS),
+      (row) => row.agentId,
+    );
     const { last30days, totals, topModel, agentTotals } =
       rollUpAcrossAgents(rows);
     const byAgent = await resolveAgentNames(agentTotals, (id) =>

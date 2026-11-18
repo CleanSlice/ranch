@@ -8,6 +8,7 @@ import { McpOauthTool } from './mcpOauth.tool';
 import type { McpOauthService } from './domain/mcpOauth.service';
 import { UserRoleTypes } from '#/user/user/domain';
 import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 const AUTHORIZE_URL =
   'https://auth.provider.test/authorize?client_id=abc&state=xyz';
@@ -26,7 +27,10 @@ function harness() {
   const oauth = {
     start: jest.fn().mockResolvedValue({ authorizeUrl: AUTHORIZE_URL }),
   };
-  const tool = new McpOauthTool(oauth as unknown as McpOauthService);
+  const tool = new McpOauthTool(
+    oauth as unknown as McpOauthService,
+    openAccess(),
+  );
   return { tool, oauth };
 }
 
@@ -102,7 +106,10 @@ describe('McpOauthTool — starting a connect', () => {
     const text = textOf(
       await tool.startMcpOauth({ serverId: 'mcp-1' }, null, operator()),
     );
-    expect(oauth.start).toHaveBeenCalledWith({ serverId: 'mcp-1', agentId: 'agent-ops' });
+    expect(oauth.start).toHaveBeenCalledWith({
+      serverId: 'mcp-1',
+      agentId: 'agent-ops',
+    });
     expect(text).toContain(AUTHORIZE_URL);
     expect(text).toContain('"agentId": "agent-ops"');
     expect(text).toContain('browser');
@@ -115,7 +122,10 @@ describe('McpOauthTool — starting a connect', () => {
       null,
       operator(),
     );
-    expect(oauth.start).toHaveBeenCalledWith({ serverId: 'mcp-1', agentId: 'agent-support' });
+    expect(oauth.start).toHaveBeenCalledWith({
+      serverId: 'mcp-1',
+      agentId: 'agent-support',
+    });
   });
 
   it('asks for an agentId when the operator is a person', async () => {

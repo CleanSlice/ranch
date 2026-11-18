@@ -12,7 +12,9 @@ import {
   ok,
   requireOperator,
   type ToolResult,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { IAgentData, IAgentGateway } from '#/agent/agent/domain';
 import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { IAuthTokenPayload } from '#/user/auth/domain';
@@ -171,6 +173,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
     private readonly limits: AgentLimitService,
     private readonly agents: IAgentGateway,
     private readonly permission: AgentPermissionService,
+    private readonly access: AgentAccessService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
@@ -201,7 +204,9 @@ export class AgentLimitTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    const agents = await this.agents.findAll();
+    // One line per agent the caller reaches (CLEAN-231).
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    const agents = reach.filter(await this.agents.findAll(), (a) => a.id);
     // The same call `GET /agent-limits` makes; the name and the values are
     // joined on so the answer can be read out without a second lookup.
     const marks = new Map(

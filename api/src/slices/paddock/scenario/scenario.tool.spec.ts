@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { asPerson, asTrustedAgent } from '#/mcp/testing';
 import { toolAudienceOf } from '#/mcp/decorators';
 import { UserRoleTypes } from '#/user/user/domain';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 import { PaddockScenarioTool } from './scenario.tool';
 
 const draft = (name: string) => ({
@@ -34,7 +35,11 @@ const harness = () => {
   const generator = {
     generate: jest.fn(async () => draft(`Draft ${++n}`)),
   };
-  const tool = new PaddockScenarioTool(scenarios as never, generator as never);
+  const tool = new PaddockScenarioTool(
+    scenarios as never,
+    generator as never,
+    openAccess(),
+  );
   return { tool, scenarios, generator };
 };
 

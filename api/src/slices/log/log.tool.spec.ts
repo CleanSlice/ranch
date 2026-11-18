@@ -86,7 +86,7 @@ describe('LogTool — who may use it', () => {
     );
     // A plain agent has no `list_agents`, so the refusal does not name it.
     expect(textOf(result)).toContain(
-      'Agent agent-a not found — there is no such agent among the ones this person manages',
+      'Agent agent-a not found — there is no such agent for this caller',
     );
     expect(textOf(result)).not.toContain('list_agents');
     expect(agents.findById).not.toHaveBeenCalled();

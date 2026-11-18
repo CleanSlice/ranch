@@ -7,7 +7,14 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { HttpException, Inject, Logger, forwardRef } from '@nestjs/common';
+import {
+  HttpException,
+  Inject,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  forwardRef,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   AuthErrorCodes,
@@ -26,6 +33,8 @@ import {
   type IBridleUserIdentity,
   type IConsoleSession,
   BRIDLE_SURFACES,
+  CHAT_AGENT_NOT_FOUND_CODE,
+  ConsoleReachService,
   buildParts,
   clientIdFromJwtPayload,
   consoleSessionOf,
@@ -95,7 +104,11 @@ interface IConsoleSocketAuth extends IConsoleSession {
  */
 @WebSocketGateway({ namespace: '/ws/client', cors: { origin: '*' } })
 export class BridleClientWsHandler
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnModuleInit,
+    OnModuleDestroy
 {
   @WebSocketServer()
   server: Server;
@@ -110,7 +123,60 @@ export class BridleClientWsHandler
     private readonly agentGateway: IAgentGateway,
     private readonly shareLinks: ShareLinkService,
     private readonly actingParty: ActingPartyService,
+    private readonly reach: ConsoleReachService,
   ) {}
+
+  private stopListening: (() => void) | undefined;
+
+  onModuleInit(): void {
+    // A change of somebody's access applies to their very next action
+    // (FR-010), and an open socket is an action that never ends: it keeps
+    // receiving the conversation. So their sockets are looked at again the
+    // moment the lists change (CLEAN-231).
+    this.stopListening = this.reach.onChanged((userId) => {
+      void this.dropUnreached(userId);
+    });
+  }
+
+  onModuleDestroy(): void {
+    this.stopListening?.();
+  }
+
+  /** Every socket of this namespace, whatever shape the server has. */
+  private openSockets(): Socket[] {
+    const sockets = (this.server as unknown as { sockets?: unknown })?.sockets;
+    if (sockets instanceof Map) return [...sockets.values()] as Socket[];
+    const nested = (sockets as { sockets?: unknown } | undefined)?.sockets;
+    return nested instanceof Map ? ([...nested.values()] as Socket[]) : [];
+  }
+
+  /**
+   * Close this person's sockets on agents they no longer reach. Each gets
+   * the reason first, the same one a refused handshake gets, so the console
+   * shows its not-found state instead of reconnecting.
+   */
+  private async dropUnreached(userId: string): Promise<void> {
+    for (const client of this.openSockets()) {
+      const session = client.data?.console as IConsoleSocketAuth | undefined;
+      const agentId = client.data?.agentId as string | undefined;
+      if (!session || session.userId !== userId || !agentId) continue;
+      try {
+        if (await this.reach.admits(session, agentId)) continue;
+      } catch (err) {
+        this.logger.warn(
+          `Access re-check failed, socket kept: agentId=${agentId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        continue;
+      }
+      this.logger.log(
+        `Browser dropped, access removed: clientId=${String(client.data?.clientId)} agentId=${agentId}`,
+      );
+      client.emit('bridle_error', { code: CHAT_AGENT_NOT_FOUND_CODE, agentId });
+      client.disconnect();
+    }
+  }
 
   async handleConnection(client: Socket) {
     const auth = (client.handshake.auth ?? {}) as {
@@ -245,6 +311,17 @@ export class BridleClientWsHandler
         this.logger.warn(`Browser connection rejected: ${code}`);
         return reject(code);
       }
+    }
+
+    // A console person whose access lists hide this agent is turned away
+    // as from an agent that does not exist (CLEAN-231). Only they are
+    // asked: a share visitor, an embed token and an anonymous visitor have
+    // no console session.
+    if (consoleAuth && !(await this.reach.admits(consoleAuth, agentId))) {
+      this.logger.warn(
+        `Browser connection rejected: ${CHAT_AGENT_NOT_FOUND_CODE} (agentId=${agentId})`,
+      );
+      return reject(CHAT_AGENT_NOT_FOUND_CODE);
     }
 
     if (clientId === undefined && shareOffered) {
@@ -442,6 +519,22 @@ export class BridleClientWsHandler
         client.disconnect();
         return { status: 'rejected', code: 'SHARE_REJECTED', message: code };
       }
+    }
+
+    // The access lists are asked again on every message: the handshake may
+    // be hours old, and access can be taken away in between (CLEAN-231).
+    const session = client.data?.console as IConsoleSocketAuth | undefined;
+    if (session && !(await this.reach.admits(session, agentId))) {
+      this.logger.warn(
+        `Message rejected: ${CHAT_AGENT_NOT_FOUND_CODE} (clientId=${clientId} agentId=${agentId})`,
+      );
+      client.emit('bridle_error', { code: CHAT_AGENT_NOT_FOUND_CODE, agentId });
+      client.disconnect();
+      return {
+        status: 'rejected',
+        code: CHAT_AGENT_NOT_FOUND_CODE,
+        message: 'Agent not found',
+      };
     }
 
     const text = data.text ?? '';

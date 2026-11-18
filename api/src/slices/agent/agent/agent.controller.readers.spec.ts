@@ -4,6 +4,12 @@ import { AgentController } from './agent.controller';
 import { permissionOver } from './domain/__fixtures__/agentPermission';
 import { READER_HIDDEN_FIELDS, toReaderView } from './domain/agentReaderView';
 import type { IAgentData } from './domain/agent.types';
+import type { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
+import type { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import {
+  accessHarness,
+  openAccess,
+} from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 /**
  * What a reader gets of an agent they may not manage, and the three routes
@@ -82,8 +88,21 @@ const operatorFieldsOf = (agent: object) =>
 const isWhole = (agent: object) =>
   (agent as { config: Record<string, unknown> }).config.webhook !== undefined;
 
-function build(agents: IAgentData[] = AGENTS) {
+// The access lists hide nothing and nobody has pinned anything, unless a
+// test hands in its own.
+function build(
+  agents: IAgentData[] = AGENTS,
+  opts: { access?: AgentAccessService; pinned?: Record<string, string[]> } = {},
+) {
+  const pins = {
+    pinnedIds: jest.fn((userId: string) =>
+      Promise.resolve(new Set(opts.pinned?.[userId] ?? [])),
+    ),
+  };
   const agentGateway = {
+    findAdmin: jest.fn(() =>
+      Promise.resolve(agents.find((a) => a.isAdmin) ?? null),
+    ),
     findAll: jest.fn(() => Promise.resolve(agents)),
     findPublic: jest.fn(() => Promise.resolve(agents)),
     findById: jest.fn((id: string) =>
@@ -129,8 +148,10 @@ function build(agents: IAgentData[] = AGENTS) {
     stub,
     userGateway as never,
     permissionOver(agentGateway),
+    opts.access ?? openAccess(),
+    pins as unknown as IAgentPinGateway,
   );
-  return { controller, agentGateway, deploy, mcpResolver };
+  return { controller, agentGateway, deploy, mcpResolver, pins };
 }
 
 describe('toReaderView', () => {
@@ -256,6 +277,66 @@ describe('AgentController — what each reader gets of an agent', () => {
     expect(
       wholeIds(await controller.findAll(agentToken('ag-ranch', 'Owner'))),
     ).toEqual([]);
+  });
+});
+
+describe('AgentController — the caller’s own pins and reach (CLEAN-231)', () => {
+  const ids = (list: { id: string }[]) => list.map((a) => a.id);
+  const pinnedIds = (list: { id: string; pinned?: boolean }[]) =>
+    ids(list.filter((a) => a.pinned));
+
+  it('`pinned` is what this caller pinned, and false for a caller who is nobody', async () => {
+    // Every row says `pinned: true`, as a stale column would: the answer
+    // comes from the caller's pins and from nowhere else.
+    const { controller, pins } = build(AGENTS, {
+      pinned: { 'user-u': ['ag-plain'], 'user-a': ['ag-mine', 'ag-ranch'] },
+    });
+
+    expect(pinnedIds(await controller.findAll(user))).toEqual(['ag-plain']);
+    expect(pinnedIds(await controller.findAll(admin))).toEqual([
+      'ag-ranch',
+      'ag-mine',
+    ]);
+    expect(pinnedIds(await controller.findAll(otherUser))).toEqual([]);
+    expect(
+      pinnedIds((await controller.status(user)).map((s) => s.agent)),
+    ).toEqual(['ag-plain']);
+    expect((await controller.findById('ag-plain', user))?.pinned).toBe(true);
+    expect((await controller.findById('ag-plain', admin))?.pinned).toBe(false);
+
+    // An agent's token, an anonymous reader: no person, so no pins are read.
+    pins.pinnedIds.mockClear();
+    expect(pinnedIds(await controller.findAll(agentToken('ag-plain')))).toEqual(
+      [],
+    );
+    expect(pinnedIds(await controller.findAll(undefined))).toEqual([]);
+    expect(pinnedIds(await controller.findPublic())).toEqual([]);
+    expect(pins.pinnedIds).not.toHaveBeenCalled();
+  });
+
+  it('an agent the caller’s access lists hide is not in the lists, for that caller only', async () => {
+    const { gateway, service } = accessHarness(AGENTS.map((a) => a.id));
+    gateway.seed('user-u', false, [{ agentId: 'ag-plain', list: 'denied' }]);
+    gateway.seed('user-a', false, [{ agentId: 'ag-ranch', list: 'denied' }]);
+    const { controller } = build(AGENTS, { access: service });
+
+    expect(ids(await controller.findAll(user))).toEqual([
+      'ag-ranch',
+      'ag-mine',
+    ]);
+    expect(ids((await controller.status(user)).map((s) => s.agent))).toEqual([
+      'ag-ranch',
+      'ag-mine',
+    ]);
+    // Somebody else's lists, and the Owner, who has none.
+    expect(ids(await controller.findAll(otherUser))).toHaveLength(3);
+    expect(ids(await controller.findAll(owner))).toHaveLength(3);
+
+    // The Ranch admin agent is addressed by a flag, so the route asks itself.
+    await expect(controller.findAdmin(admin)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect((await controller.findAdmin(owner))?.id).toBe('ag-ranch');
   });
 });
 

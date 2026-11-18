@@ -25,6 +25,8 @@ import {
   type IUserData,
   type UserStatusTypes,
 } from './domain';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 
@@ -71,7 +73,11 @@ const USER_SECRET_KEYS = ['password', 'passwordHash'] as const;
 export class UserTool implements IConditionallyListedTool {
   private readonly logger = new Logger(UserTool.name);
 
-  constructor(private readonly users: IUserGateway) {}
+  constructor(
+    private readonly users: IUserGateway,
+    private readonly access: AgentAccessService,
+    private readonly pins: IAgentPinGateway,
+  ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     return Promise.resolve(callerIsOperator(httpRequest));
@@ -349,6 +355,10 @@ export class UserTool implements IConditionallyListedTool {
     );
     if (refusal) return refusal;
     await this.users.delete(userId);
+    // As UserController.remove: the access lists and pins go with the
+    // account (CLEAN-231).
+    await this.access.removeUser(userId);
+    await this.pins.removeUser(userId);
     this.logger.log(`User removed through MCP: id=${userId}`);
     return ok({
       ok: true,

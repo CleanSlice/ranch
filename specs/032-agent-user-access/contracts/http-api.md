@@ -115,3 +115,35 @@ Every existing tool that lists agents or takes an agent id filters with
 "not found" as the routes (FR-027). The list is in
 [research.md](../research.md) R6 and is covered by one spec that runs each of
 them as a limited Admin.
+
+## As built (CLEAN-231)
+
+Where the code differs from the text above, and why.
+
+- **`PUT /agents/:id` with `pinned`** answers 400 from the handler. The
+  global validation pipe drops unknown fields without refusing
+  (`whitelist: true`, `forbidNonWhitelisted: false`), so "rejected as any
+  unknown field is" would have been a silent no-op that the console reads as
+  saved.
+- **`DELETE /agents/:id/pin`** answers 404 for an agent that does not exist
+  (and 204 for one that is simply not pinned), so that it cannot tell a
+  hidden agent from a missing one.
+- **`GET /users/:id/agent-access` for an Admin** answers 403
+  `ACCESS_NOT_EDITABLE` for any account that is not a User: an Admin reads
+  what an Admin may edit. The Owner reads any account; the Owner's own row
+  answers `all` with empty lists.
+- **`version` is required in the `PUT` body** (a string, or null for an
+  account never edited); a body without it is 400.
+- **`UserDto.agentAccess` is optional in the schema**: present on the
+  `/users` routes, absent on the session routes that reuse `UserDto`
+  (`/auth/me`, login), so a User is not told what their lists come to.
+- **`ACCESS_OPEN_NEEDS_CONFIRM`** carries `outcome` next to `code` and
+  `message`.
+- **Order of refusals**: not editable, then the version, then overlap and
+  unknown agents, then the ceiling, then the confirmation.
+- **`list_agents` and `get_agent` are `reader`**, a new audience: a
+  signed-in person of any role, or whoever `admin` admits. `person` alone
+  would have taken both tools from the Ranch admin agent acting for itself
+  (a scheduled job), which FR-043 forbids.
+- **`set_user_agent_access`**: `confirm: true` also confirms opening the
+  account; the dry run says when the change would open it.

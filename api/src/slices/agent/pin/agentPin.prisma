@@ -1,0 +1,16 @@
+import { Agent } from "../agent/agent"
+
+// A personal pin (CLEAN-231): one account keeps one agent at the top of its
+// own agent lists. Many accounts may pin the same agent independently; it
+// changes nothing about the agent. `userId` is a bare id (repo convention
+// for User); the row goes with the agent by cascade and with the account
+// through IAgentPinGateway.removeUser.
+model AgentPin {
+  userId    String
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, agentId])
+  @@index([agentId])
+}

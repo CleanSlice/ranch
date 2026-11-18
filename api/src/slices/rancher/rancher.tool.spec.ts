@@ -6,6 +6,12 @@ import type { ToolMetadata } from '#/mcp/decorators';
 import { asGuest, asPerson, asTrustedAgent } from '#/mcp/testing';
 import { audienceAllows, setCallerManagesAgents } from '#/mcp/tooling';
 import { UserRoleTypes } from '#/user/user/domain';
+import type { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import {
+  accessHarness,
+  openAccess,
+} from '#/user/agentAccess/domain/__fixtures__/agentAccess';
+import type { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
 import { RancherTool } from './rancher.tool';
 
 jest.mock('@kubernetes/client-node', () => ({
@@ -29,10 +35,37 @@ jest.mock('@kubernetes/client-node', () => ({
  * the Owner's decision.
  */
 
+/** What an operator set up on an agent, and a reader does not get. */
+const OPERATOR_SIDE = {
+  config: { systemPrompt: 'operator notes' },
+  llmCredentialId: 'llm-1',
+  workflowId: 'wf-1',
+  knowledgeIds: ['kb-1'],
+  debugEnabled: true,
+};
+
 const AGENTS = [
-  { id: 'agent-1', name: 'Support', isAdmin: false, createdById: null },
-  { id: 'agent-ranch', name: 'Ranch', isAdmin: true, createdById: null },
-  { id: 'agent-mine', name: 'Mine', isAdmin: false, createdById: 'user-u' },
+  {
+    id: 'agent-1',
+    name: 'Support',
+    isAdmin: false,
+    createdById: null,
+    ...OPERATOR_SIDE,
+  },
+  {
+    id: 'agent-ranch',
+    name: 'Ranch',
+    isAdmin: true,
+    createdById: null,
+    ...OPERATOR_SIDE,
+  },
+  {
+    id: 'agent-mine',
+    name: 'Mine',
+    isAdmin: false,
+    createdById: 'user-u',
+    ...OPERATOR_SIDE,
+  },
 ];
 
 /** The Ranch admin agent's own token: Owner, whoever it is talking to. */
@@ -52,8 +85,9 @@ const forCreator = () => {
 };
 const forOtherUser = () => asPerson(ranch(), UserRoleTypes.User, 'user-x');
 
-function harness() {
+function harness(access: AgentAccessService = openAccess()) {
   const agents = {
+    findAll: jest.fn(() => Promise.resolve(AGENTS)),
     findById: jest.fn((id: string) =>
       Promise.resolve(AGENTS.find((a) => a.id === id) ?? null),
     ),
@@ -76,6 +110,12 @@ function harness() {
   const templates = {
     findById: jest.fn(() => Promise.resolve({ id: 'tpl-1' })),
   };
+  const pins = {
+    pin: jest.fn().mockResolvedValue(true),
+    unpin: jest.fn().mockResolvedValue(true),
+    pinnedIds: jest.fn().mockResolvedValue(new Set<string>()),
+    removeUser: jest.fn().mockResolvedValue(undefined),
+  };
   const stub = {} as never;
   const tool = new RancherTool(
     agents as never,
@@ -89,8 +129,10 @@ function harness() {
     stub,
     stub,
     permissionOver(agents),
+    access,
+    pins as unknown as IAgentPinGateway,
   );
-  return { tool, agents, agentDeploy, templates };
+  return { tool, agents, agentDeploy, templates, pins };
 }
 
 const textOf = (result: { content: { text: string }[] }) =>
@@ -222,12 +264,19 @@ describe('the Ranch admin agent is the Owner’s decision', () => {
 });
 
 describe('restart_agent and update_agent — for an agent the caller may manage', () => {
-  it('are manage-agent tools; the rest of the class stays admin', () => {
+  it('are manage-agent tools; reading agents is for any person; the rest of the class stays admin', () => {
     expect(audienceOf('restartAgent')).toBe('manage-agent');
     expect(audienceOf('updateAgent')).toBe('manage-agent');
     expect(audienceOf('createAgent')).toBe('admin');
-    expect(audienceOf('getAgent')).toBe('admin');
-    expect(audienceOf('listAgents')).toBe('admin');
+    // Since CLEAN-231 a person reads the agents they reach, whatever their
+    // role, and the Ranch admin agent on its own schedule keeps them.
+    expect(audienceOf('getAgent')).toBe('reader');
+    expect(audienceOf('listAgents')).toBe('reader');
+    expect(audienceAllows('reader', forOtherUser())).toBe(true);
+    expect(audienceAllows('reader', forItself())).toBe(true);
+    expect(audienceAllows('reader', asGuest(ranch()))).toBe(false);
+    expect(audienceOf('listSkillAgents')).toBe('admin');
+    expect(audienceOf('agentUsage')).toBe('admin');
   });
 
   it('an Admin restarts and updates an ordinary agent', async () => {
@@ -332,5 +381,92 @@ describe('restart_agent and update_agent — for an agent the caller may manage'
     );
     const [, data] = agents.update.mock.calls[0];
     expect(data).not.toHaveProperty('createdById');
+  });
+});
+
+describe('list_agents and get_agent — the agents the caller reaches (CLEAN-231)', () => {
+  /** `user-u` is limited to Support and the agent they created. */
+  const limited = () => {
+    const { service, gateway } = accessHarness(AGENTS.map((a) => a.id));
+    gateway.seed('user-u', true, [
+      { agentId: 'agent-1', list: 'allowed' },
+      { agentId: 'agent-mine', list: 'allowed' },
+    ]);
+    return harness(service);
+  };
+  const parse = (result: { content: { text: string }[] }) =>
+    JSON.parse(textOf(result)) as Record<string, unknown>[];
+
+  it('a User gets only the agents they reach: their own whole, the others as a reader', async () => {
+    const { tool, pins } = limited();
+    pins.pinnedIds.mockResolvedValue(new Set(['agent-1']));
+
+    const list = parse(await tool.listAgents({}, null, forCreator()));
+
+    expect(list.map((a) => a.id)).toEqual(['agent-1', 'agent-mine']);
+    expect(pins.pinnedIds).toHaveBeenCalledWith('user-u');
+    const [support, mine] = list;
+    expect(support).toMatchObject({
+      name: 'Support',
+      pinned: true,
+      config: {},
+      llmCredentialId: null,
+      workflowId: null,
+      knowledgeIds: [],
+      debugEnabled: false,
+    });
+    expect(mine).toMatchObject({ pinned: false, ...OPERATOR_SIDE });
+    // Who created an agent is for operators.
+    expect(support).not.toHaveProperty('createdById');
+    expect(mine).not.toHaveProperty('createdById');
+  });
+
+  it('an operator gets every agent, whole, with its creator', async () => {
+    const { tool } = limited();
+
+    const list = parse(await tool.listAgents({}, null, forOwner()));
+
+    expect(list.map((a) => a.id)).toEqual(AGENTS.map((a) => a.id));
+    expect(list[2]).toMatchObject({ createdById: 'user-u', ...OPERATOR_SIDE });
+  });
+
+  it('get_agent answers an agent out of reach as one that does not exist', async () => {
+    const { tool } = limited();
+
+    const hidden = await tool.getAgent(
+      { id: 'agent-ranch' },
+      null,
+      forCreator(),
+    );
+    const unknown = await tool.getAgent(
+      { id: 'agent-nope' },
+      null,
+      forCreator(),
+    );
+
+    expect(textOf(hidden)).toBe(
+      textOf(unknown).replace(/agent-nope/g, 'agent-ranch'),
+    );
+    expect(textOf(hidden)).toContain(
+      'Agent agent-ranch not found — call list_agents to find the id',
+    );
+    expect(textOf(hidden)).not.toContain('"name"');
+    // The same person reads an agent they do reach.
+    expect(
+      parse(await tool.getAgent({ id: 'agent-1' }, null, forCreator())),
+    ).toMatchObject({ id: 'agent-1', config: {} });
+  });
+
+  it('a guest reads no agents', async () => {
+    const { tool, agents } = limited();
+
+    await expect(
+      tool.listAgents({}, null, asGuest(ranch())),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      tool.getAgent({ id: 'agent-1' }, null, asGuest(ranch())),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(agents.findAll).not.toHaveBeenCalled();
+    expect(agents.findById).not.toHaveBeenCalled();
   });
 });

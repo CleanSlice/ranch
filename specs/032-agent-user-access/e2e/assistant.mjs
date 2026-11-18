@@ -62,7 +62,7 @@
 //      request for something they cannot do: it is carried to `delete_agent`,
 //      which answers not found
 //                  → the agent still exists, and neither the tool nor the
-//                    reply names `list_agents` or a console they do not have;
+//                    reply names a console they do not have;
 //   3. as the Owner: "how many agents are there?" → answered with a tool;
 //   4. the API process is stopped and started again;
 //   5. as the Owner: another question that needs a tool → answered, without
@@ -533,13 +533,14 @@ try {
     const deletions = toolResultsOf(creatorEvents, /(^|__)delete_agent$/);
     for (const d of deletions) console.log(`  delete_agent(${JSON.stringify(d.params)}) answered, verbatim: ${d.result}`);
     check(deletions.every((d) => /not found/i.test(d.result)), `every delete_agent call was answered not found (${deletions.length} call${deletions.length === 1 ? '' : 's'})`);
+    // Since CLEAN-231 `list_agents` is a tool every signed-in person has, so
+    // a "not found" may name it. A console they do not have it still may not.
     check(
-      deletions.every((d) => !/list_agents/i.test(d.result) && !/console/i.test(d.result)),
-      'and the tool named neither list_agents nor a console',
+      deletions.every((d) => !/console/i.test(d.result)),
+      'and the tool named no console',
     );
     check(await exists(AGENTS.b.id), `${AGENTS.b.name} still exists`);
     check(await exists(AGENTS.c.id), `${AGENTS.c.name}, the agent they did create, still exists too`);
-    check(!/list_agents/i.test(answer), 'the reply does not name list_agents');
     check(!/console/i.test(answer), 'the reply does not name the management console');
     await shot(creator.page, 'assistant-creator-not-found-1440');
     check(creator.problems.length === 0, `no console error, no failed request${creator.problems.length ? `: ${creator.problems.join(' | ')}` : ''}`);

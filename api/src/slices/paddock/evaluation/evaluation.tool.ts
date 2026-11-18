@@ -8,7 +8,10 @@ import {
   confirmed,
   ok,
   requireOperator,
+  agentNotFound,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { PaddockEvaluationService } from './domain/evaluation.service';
 
@@ -26,7 +29,29 @@ const judgeOverrideSchema = z
 export class PaddockEvaluationTool implements IConditionallyListedTool {
   private readonly logger = new Logger(PaddockEvaluationTool.name);
 
-  constructor(private readonly service: PaddockEvaluationService) {}
+  constructor(
+    private readonly service: PaddockEvaluationService,
+    private readonly access: AgentAccessService,
+  ) {}
+
+  /**
+   * An evaluation belongs to one agent. For a caller whose access lists
+   * hide that agent it does not exist (CLEAN-231): the same NotFound the
+   * service throws for an unknown id. An id that really is unknown is left
+   * to the service.
+   */
+  private async reached(
+    httpRequest: Request,
+    id: string,
+    notFound = 'Evaluation not found',
+  ): Promise<void> {
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    if (reach.unrestricted) return;
+    const evaluation = await this.service.getById(id).catch(() => null);
+    if (evaluation && !reach.has(evaluation.agentId)) {
+      throw new NotFoundException(notFound);
+    }
+  }
 
   /**
    * Paddock is an operator's screen (its routes carry no role and so admit
@@ -72,6 +97,9 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
+    if (!(await this.access.reaches(callerParty(httpRequest), input.agentId))) {
+      return agentNotFound(httpRequest, input.agentId);
+    }
     return ok(await this.service.start(input));
   }
 
@@ -94,7 +122,11 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
-    return ok(await this.service.list(input));
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    if (input.agentId && !reach.has(input.agentId)) {
+      return agentNotFound(httpRequest, input.agentId);
+    }
+    return ok(reach.filter(await this.service.list(input), (ev) => ev.agentId));
   }
 
   @Tool({
@@ -108,6 +140,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   })
   async get({ id }: { id: string }, _context: unknown, httpRequest: Request) {
     requireOperator(httpRequest);
+    await this.reached(httpRequest, id);
     return ok(await this.service.getById(id));
   }
 
@@ -126,6 +159,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
+    await this.reached(httpRequest, id);
     return ok(await this.service.getReport(id));
   }
 
@@ -154,6 +188,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     const { id } = args;
     const refusal = confirmed(args, `abort the paddock evaluation ${id}`);
     if (refusal) return refusal;
+    await this.reached(httpRequest, id);
     return ok(await this.service.abort(id));
   }
 
@@ -168,6 +203,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   })
   async rerun({ id }: { id: string }, _context: unknown, httpRequest: Request) {
     requireOperator(httpRequest);
+    await this.reached(httpRequest, id, 'Source evaluation not found');
     return ok(await this.service.rerun(id));
   }
 
@@ -194,7 +230,10 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
-    const found = await this.lookup(() => this.service.getLogs(id));
+    const found = await this.lookup(async () => {
+      await this.reached(httpRequest, id);
+      return this.service.getLogs(id);
+    });
     if ('error' in found) return ok(found);
     const lines = tail ? found.value.lines.slice(-tail) : found.value.lines;
     return ok({ id, total: found.value.lines.length, lines });
@@ -216,6 +255,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   ) {
     requireOperator(httpRequest);
     const found = await this.lookup(async () => {
+      await this.reached(httpRequest, id);
       const scenario = await this.service.getScenario(id, scenarioId);
       const evaluation = await this.service.getById(id);
       return { scenario, evaluation };
@@ -248,9 +288,10 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
-    const found = await this.lookup(() =>
-      this.service.getTrace(id, scenarioId),
-    );
+    const found = await this.lookup(async () => {
+      await this.reached(httpRequest, id);
+      return this.service.getTrace(id, scenarioId);
+    });
     if ('error' in found) return ok(found);
     if (!found.value) {
       return ok({

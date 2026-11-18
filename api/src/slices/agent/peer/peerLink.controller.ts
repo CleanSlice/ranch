@@ -1,4 +1,7 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { accessCallerOf } from '#/user/agentAccess/guards';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -31,18 +34,26 @@ import { AgentLinkDto } from './dtos/agentLink.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
 export class PeerLinkController {
-  constructor(private readonly peers: IPeerGateway) {}
+  constructor(
+    private readonly peers: IPeerGateway,
+    private readonly access: AgentAccessService,
+  ) {}
 
   @Get()
   @ApiOperation({
     operationId: 'listAgentLinks',
     summary:
       'Internal agent-to-agent connections of the whole installation as ' +
-      'directed pairs of agent ids. No card, no credential.',
+      'directed pairs of agent ids. No card, no credential. A pair is ' +
+      'listed when the caller reaches both of its agents (CLEAN-231).',
   })
   @ApiOkResponse({ type: [AgentLinkDto] })
-  async list(): Promise<AgentLinkDto[]> {
-    const links = await this.peers.listInternalLinks();
+  async list(@Req() req?: Request): Promise<AgentLinkDto[]> {
+    const reach = await this.access.reachableIds(accessCallerOf(req));
+    // Both ends: a pair with one hidden end would name the hidden agent.
+    const links = (await this.peers.listInternalLinks()).filter(
+      (link) => reach.has(link.agentId) && reach.has(link.peerAgentId),
+    );
     // Rebuilt field by field: a row carries the pair credential, and a
     // spread here would be how it leaves the API.
     return links.map((link) => ({

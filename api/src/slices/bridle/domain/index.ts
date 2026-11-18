@@ -1,4 +1,9 @@
 export * from './bridle.types';
+export {
+  CHAT_AGENT_NOT_FOUND,
+  CHAT_AGENT_NOT_FOUND_CODE,
+  ConsoleReachService,
+} from './consoleReach.service';
 export * from './attachment.constants';
 export * from './attachmentBlocks';
 export * from './sheetStructure';

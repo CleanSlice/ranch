@@ -90,3 +90,45 @@ Which role may call each route is settled by CLEAN-232
 ([acting-party.md](./acting-party.md), section 4), before this checklist is
 applied: by then every route above except the few stated for `User` already
 requires Admin. This checklist adds *which agents* on top.
+
+## As built (CLEAN-231)
+
+Where the code differs from the tables above, and why. The pinned truth is
+`api/src/slices/user/agentAccess/guards/agentScopedRoutes.spec.ts`; the live
+check is `e2e/http.mjs`.
+
+- **Management routes carry `@ManagesAgent`, not S.** CLEAN-232 marked the
+  46 management routes of one agent (update, delete, restart, stop, start,
+  env, metrics, MCP status, channels, files, secrets, logs, the limits
+  write, every peer route). `canManage` asks the lists through `IAgentReach`,
+  which is `AgentAccessService` now, so those routes are covered without a
+  second marker. No route carries both.
+- **S routes** (`@AgentScoped`, 25): `GET /agents/:id`, `/agents/:id/tools`,
+  `POST`/`DELETE /agents/:id/promote-admin` (Owner only), the two pin routes,
+  the limits reads and `/load`, the four share-link routes,
+  `GET /agents/:agentId/usage`; on the query: `/agent-events`,
+  `/agent-incidents`, `/chats`, `/paddock-evaluations`, `/paddock-scenarios`;
+  on the body: `/chats/sync`, `/me/chats/sync`, `POST /paddock-evaluations`,
+  `POST /paddock-scenarios`, `/paddock-scenarios/generate`,
+  `/browser/extension/token`.
+- **For a person the lists apply to, the guard also answers 404 for an id
+  that names no agent.** Several routes do not 404 an unknown agent by
+  themselves (a list with an agent filter answers an empty page), which
+  would have told a hidden agent from a missing one. The Owner is not looked
+  up for and gets the route's own behaviour.
+- **`GET /agents/:agentId/usage` now answers 404 for an agent that does not
+  exist**, for every caller. It used to answer an empty report.
+- **`GET /agents/:id/mcps`** is exempt from both markers: the handler asks
+  `canManage` for a person and the own id for an agent runtime (CLEAN-232).
+- **`GET /api/agent/:agentId/health`** asks the lists too, for a console
+  person's bearer; it is not in the table above.
+- **The socket**: the listener that closes a person's sockets lives in
+  `bridleClientWs.handler.ts` (it holds the sockets), not in
+  `bridle.gateway.ts`. The refusal is `bridle_error { code: 'AGENT_NOT_FOUND' }`
+  at the handshake, on a message, and when access is taken away. For a
+  console person the lists apply to, an agent that does not exist is refused
+  the same way.
+- **`POST /me/chats/sync`** with no `agentId` skips agents the caller no
+  longer reaches.
+- **`SSE /agents/status/stream`** stays exempt; since CLEAN-232 it carries
+  status facts only (id, status, pod phase), no name and no configuration.

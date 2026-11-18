@@ -9,6 +9,12 @@ import { JwtAuthGuard, RolesGuard } from '#/user/auth/guards';
 import { ROLES_METADATA_KEY } from '#/user/auth/guards/roles.decorator';
 import { UserRoleTypes } from '#/user/user/domain';
 import type { IPeerGateway } from './domain/peer.gateway';
+import type { Request } from 'express';
+import {
+  ADMIN,
+  accessHarness,
+  openAccess,
+} from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 /**
  * The fleet map of who can ask whom. Two things matter: the route is behind
@@ -40,9 +46,12 @@ describe('PeerLinkController', () => {
       },
       { agentId: 'b', peerAgentId: 'c' },
     ]);
-    const controller = new PeerLinkController({
-      listInternalLinks,
-    } as unknown as IPeerGateway);
+    const controller = new PeerLinkController(
+      {
+        listInternalLinks,
+      } as unknown as IPeerGateway,
+      openAccess(),
+    );
 
     const out = await controller.list();
 
@@ -55,9 +64,35 @@ describe('PeerLinkController', () => {
   });
 
   it('an installation without connections answers with an empty list', async () => {
-    const controller = new PeerLinkController({
-      listInternalLinks: jest.fn().mockResolvedValue([]),
-    } as unknown as IPeerGateway);
+    const controller = new PeerLinkController(
+      {
+        listInternalLinks: jest.fn().mockResolvedValue([]),
+      } as unknown as IPeerGateway,
+      openAccess(),
+    );
     expect(await controller.list()).toEqual([]);
+  });
+
+  it('leaves out a pair with an end the caller does not reach', async () => {
+    // Both ends are checked: a pair with one hidden end would name the
+    // hidden agent (CLEAN-231).
+    const { gateway, service } = accessHarness(['a', 'b', 'c']);
+    gateway.seed(ADMIN.id, false, [{ agentId: 'c', list: 'denied' }]);
+    const controller = new PeerLinkController(
+      {
+        listInternalLinks: jest.fn().mockResolvedValue([
+          { agentId: 'a', peerAgentId: 'b' },
+          { agentId: 'b', peerAgentId: 'c' },
+          { agentId: 'c', peerAgentId: 'a' },
+        ]),
+      } as unknown as IPeerGateway,
+      service,
+    );
+
+    const out = await controller.list({
+      user: { sub: ADMIN.id, roles: [ADMIN.role] },
+    } as unknown as Request);
+
+    expect(out).toEqual([{ agentId: 'a', peerAgentId: 'b' }]);
   });
 });

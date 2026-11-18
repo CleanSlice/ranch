@@ -28,11 +28,16 @@ describe('tooling', () => {
   });
 
   it('err marks the result', () => {
-    expect(err('no')).toEqual({ content: [{ type: 'text', text: 'no' }], isError: true });
+    expect(err('no')).toEqual({
+      content: [{ type: 'text', text: 'no' }],
+      isError: true,
+    });
   });
 
   it('reads the caller agent id from agent tokens only', () => {
-    expect(callerAgentId(request('agent:a-1', [UserRoleTypes.Agent]))).toBe('a-1');
+    expect(callerAgentId(request('agent:a-1', [UserRoleTypes.Agent]))).toBe(
+      'a-1',
+    );
     expect(callerAgentId(request('user-1', [UserRoleTypes.Owner]))).toBeNull();
     expect(callerAgentId({} as Request)).toBeNull();
   });
@@ -86,10 +91,12 @@ describe('tooling', () => {
   });
 
   it('requireAgent returns the id for agents and refuses people', () => {
-    expect(requireAgent(request('agent:a-2', [UserRoleTypes.Agent]))).toBe('a-2');
-    expect(() => requireAgent(request('user-1', [UserRoleTypes.Owner]))).toThrow(
-      ForbiddenException,
+    expect(requireAgent(request('agent:a-2', [UserRoleTypes.Agent]))).toBe(
+      'a-2',
     );
+    expect(() =>
+      requireAgent(request('user-1', [UserRoleTypes.Owner])),
+    ).toThrow(ForbiddenException);
   });
 
   it('confirmed refuses without confirm and names what would happen', () => {
@@ -107,7 +114,11 @@ describe('tooling', () => {
     const input = {
       id: '1',
       apiKey: 'sk-secret',
-      nested: { authValue: 'bearer x', name: 'n', list: [{ token: 't', keep: 1 }] },
+      nested: {
+        authValue: 'bearer x',
+        name: 'n',
+        list: [{ token: 't', keep: 1 }],
+      },
       value: 'plain',
       when: new Date('2026-09-22T00:00:00Z'),
     };
@@ -125,8 +136,9 @@ describe('tooling', () => {
 });
 
 // A refusal names the next move, and the next move must be a tool the caller
-// has (CLEAN-232). `list_agents` is an `admin` tool; a User who manages the
-// agents they created reaches the `manage-agent` tools without it.
+// has (CLEAN-232). `list_agents` is a `reader` tool since CLEAN-231: every
+// signed-in person has it, as well as an operator. A caller that is nobody
+// does not, and is told only that there is no such agent.
 describe('agentNotFound', () => {
   const ranch = () => request('agent:agent-ranch', [UserRoleTypes.Owner]);
   const consoleToken = (role: UserRoleTypes) => request('user-1', [role]);
@@ -135,7 +147,7 @@ describe('agentNotFound', () => {
   const OPERATOR_TEXT =
     'Agent agent-x not found — call list_agents to find the id';
   const BELOW_TEXT =
-    'Agent agent-x not found — there is no such agent among the ones this person manages';
+    'Agent agent-x not found — there is no such agent for this caller';
 
   it('names list_agents for a caller who has it', () => {
     for (const caller of [
@@ -150,15 +162,21 @@ describe('agentNotFound', () => {
     }
   });
 
-  it('names no tool for a caller below Admin, a User who manages agents included', () => {
+  it('names list_agents for a signed-in person below Admin: they have it too', () => {
     const creator = asPerson(ranch(), UserRoleTypes.User);
     setCallerManagesAgents(creator, true);
-    const ownConsole = consoleToken(UserRoleTypes.User);
-    setCallerManagesAgents(ownConsole, true);
     for (const caller of [
       creator,
-      ownConsole,
       asPerson(ranch(), UserRoleTypes.User),
+      consoleToken(UserRoleTypes.User),
+    ]) {
+      expect(callerIsOperator(caller)).toBe(false);
+      expect(agentNotFoundText(caller, 'agent-x')).toBe(OPERATOR_TEXT);
+    }
+  });
+
+  it('names no tool for a caller that is nobody', () => {
+    for (const caller of [
       asGuest(ranch()),
       asTrustedAgent(request('agent:a', [UserRoleTypes.Agent])),
       // A token that names nobody is a guest.
@@ -174,14 +192,16 @@ describe('agentNotFound', () => {
     }
   });
 
-  it('is the bounded caller that decides: an Owner named by a plain agent has no list_agents', () => {
-    // The token caps the party (callerLevel), and `list_agents` is listed by
-    // the same rule, so the advice follows the listing.
+  it('follows the listing: a person named by a plain agent has list_agents, as a person', () => {
+    // A plain agent acting for a proven person gets the person's `reader`
+    // tools and nothing above (toolAudience.spec.ts), so the advice may name
+    // one of them.
     const caller = asPerson(
       request('agent:a', [UserRoleTypes.Agent]),
       UserRoleTypes.Owner,
     );
-    expect(agentNotFoundText(caller, 'agent-x')).toBe(BELOW_TEXT);
+    expect(callerIsOperator(caller)).toBe(false);
+    expect(agentNotFoundText(caller, 'agent-x')).toBe(OPERATOR_TEXT);
   });
 
   it('hands the text back as an ordinary result, and the advice alone for a tool with its own sentence', () => {
@@ -194,7 +214,7 @@ describe('agentNotFound', () => {
       'call list_agents to find the id',
     );
     expect(agentNotFoundAdvice(below)).toBe(
-      'there is no such agent among the ones this person manages',
+      'there is no such agent for this caller',
     );
   });
 });

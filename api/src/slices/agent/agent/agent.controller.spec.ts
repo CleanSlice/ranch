@@ -1,5 +1,9 @@
 import type { Request } from 'express';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AgentController } from './agent.controller';
 import {
   DOCUMENTS_MCP_ID,
@@ -7,6 +11,18 @@ import {
 } from '#/mcpServer/domain/mcpServer.seeder';
 import type { IMcpServerData } from '#/mcpServer/domain';
 import { permissionOver } from './domain/__fixtures__/agentPermission';
+import type { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
+
+// Neither the access lists nor the pins are what this file is about: the
+// lists hide nothing and nobody has pinned anything.
+const noPins = () =>
+  ({
+    pin: jest.fn().mockResolvedValue(true),
+    unpin: jest.fn().mockResolvedValue(true),
+    pinnedIds: jest.fn().mockResolvedValue(new Set()),
+    removeUser: jest.fn(),
+  }) as unknown as IAgentPinGateway;
 
 /**
  * getMcps only. Which servers an agent gets is AgentMcpResolver's answer now
@@ -59,6 +75,8 @@ function build(opts: { resolved?: IMcpServerData[]; agent?: unknown } = {}) {
     stub,
     stub,
     permissionOver(agentGateway),
+    openAccess(),
+    noPins(),
   );
   return { controller, mcpResolver, agentGateway };
 }
@@ -200,6 +218,8 @@ function buildForLimits(
     agentLimits as never,
     userGateway as never,
     permissionOver(agentGateway),
+    openAccess(),
+    noPins(),
   );
   return { controller, agentGateway, agentLimits, deploy, order, userGateway };
 }
@@ -324,6 +344,35 @@ describe('AgentController — visibility and request limits', () => {
         owner,
       ),
     ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('refuses a save that still carries `pinned`, and writes nothing', async () => {
+    // The pin left this route (CLEAN-231). The validation pipe drops the old
+    // field from the dto, so the raw body is what tells: a console that
+    // still sends it must hear so, not believe it saved.
+    const { controller, agentGateway, agentLimits } = buildForLimits();
+    const stale = {
+      ...owner,
+      body: { name: 'New name', pinned: true },
+    } as unknown as Request;
+
+    const err = await controller
+      .update('ag-1', { name: 'New name' }, stale)
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).message).toContain(
+      'property pinned should not exist',
+    );
+    expect(agentGateway.update).not.toHaveBeenCalled();
+    expect(agentLimits.setLimits).not.toHaveBeenCalled();
+    // `pinned: false` is the same stale field.
+    await expect(
+      controller.update('ag-1', {}, {
+        ...owner,
+        body: { pinned: false },
+      } as unknown as Request),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('refuses to create a public agent with no limit, before anything is created', async () => {

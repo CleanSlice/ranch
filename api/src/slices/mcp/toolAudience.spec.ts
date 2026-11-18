@@ -81,6 +81,7 @@ const CLASS_AUDIENCE: Record<string, ToolAudienceTypes> = {
   'skill/skill.tool.ts': 'admin',
   'upgrade/upgrade.tool.ts': 'admin',
   'usage/usage.tool.ts': 'admin',
+  'user/agentAccess/agentAccess.tool.ts': 'admin',
   'user/apiKey/apiKey.tool.ts': 'admin',
   'user/user/user.tool.ts': 'admin',
 };
@@ -103,6 +104,13 @@ const METHOD_AUDIENCE: Record<string, ToolAudienceTypes> = {
   send_test_notification: 'owner',
   remove_notification_destination: 'owner',
   set_agent_admin: 'owner',
+  // `person` (CLEAN-231): a pin is the asking person's own, whatever their
+  // role; an agent acting for itself has none.
+  pin_agent: 'person',
+  // `reader` (CLEAN-231): any signed-in person, or an operator. They show
+  // only the agents the caller reaches.
+  list_agents: 'reader',
+  get_agent: 'reader',
   // agent/agent/agentAdmin.tool.ts
   stop_agent: 'manage-agent',
   start_agent: 'manage-agent',
@@ -269,6 +277,9 @@ const EXPECTED: Record<ToolAudienceTypes, Record<CallerNames, boolean>> = {
   agent: { guest: true, user: true, admin: true, owner: true, trustedAgent: true, plainAgent: true },
   // prettier-ignore
   person: { guest: false, user: true, admin: true, owner: true, trustedAgent: false, plainAgent: false },
+  // A person of any role, or an operator: the trusted agent keeps these.
+  // prettier-ignore
+  reader: { guest: false, user: true, admin: true, owner: true, trustedAgent: true, plainAgent: false },
   // A User here is one who created no agent; the creator is covered below.
   // prettier-ignore
   'manage-agent': { guest: false, user: false, admin: true, owner: true, trustedAgent: true, plainAgent: false },
@@ -318,8 +329,11 @@ describe('every tool declares who it is for (CLEAN-232)', () => {
     expect(audienceOf('stop_agent')).toBe('manage-agent');
     expect(audienceOf('set_agent_admin')).toBe('owner');
     expect(audienceOf('create_agent')).toBe('admin');
-    expect(audienceOf('list_agents')).toBe('admin');
-    expect(audienceOf('get_agent')).toBe('admin');
+    expect(audienceOf('list_agents')).toBe('reader');
+    expect(audienceOf('get_agent')).toBe('reader');
+    expect(audienceOf('pin_agent')).toBe('person');
+    expect(audienceOf('get_user_agent_access')).toBe('admin');
+    expect(audienceOf('set_user_agent_access')).toBe('admin');
     expect(audienceOf('create_user')).toBe('admin');
     expect(audienceOf('set_user_role')).toBe('owner');
     expect(audienceOf('delete_user')).toBe('owner');
@@ -429,7 +443,7 @@ describe('every tool, as each caller', () => {
       .filter((t) => audienceAllows(t.audience, creator()))
       .map((t) => t.audience);
     expect(new Set(reached)).toEqual(
-      new Set(['everyone', 'agent', 'person', 'manage-agent']),
+      new Set(['everyone', 'agent', 'person', 'reader', 'manage-agent']),
     );
     expect(
       tools

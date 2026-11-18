@@ -3,6 +3,8 @@ import type { IUserGateway } from './domain';
 import { refuseUserEdit, USER_EDIT_REFUSALS, UserRoleTypes } from './domain';
 import { ROLES_METADATA_KEY } from '../auth/guards';
 import { UserController } from './user.controller';
+import { accessHarness } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
+import type { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
 
 /**
  * `PUT /users/:id` (CLEAN-232). The route admits an Admin, and until now an
@@ -37,10 +39,27 @@ function make() {
       Promise.resolve({ ...ROWS.find((u) => u.id === id), ...patch }),
     ),
     create: jest.fn((data: object) => Promise.resolve({ ...jane, ...data })),
+    findAll: jest.fn(() => Promise.resolve(ROWS)),
+    delete: jest.fn(() => Promise.resolve()),
+  };
+  // The real access service over lists in memory, and the pins as a stub.
+  const { service: access, gateway: lists } = accessHarness(['agent-1']);
+  const pins = {
+    pin: jest.fn().mockResolvedValue(true),
+    unpin: jest.fn().mockResolvedValue(true),
+    pinnedIds: jest.fn().mockResolvedValue(new Set()),
+    removeUser: jest.fn().mockResolvedValue(undefined),
   };
   return {
-    controller: new UserController(users as unknown as IUserGateway),
+    controller: new UserController(
+      users as unknown as IUserGateway,
+      access,
+      pins as unknown as IAgentPinGateway,
+    ),
     users,
+    access,
+    lists,
+    pins,
   };
 }
 
@@ -195,6 +214,52 @@ describe('the roles on the user routes', () => {
     expect(users.create).toHaveBeenCalledWith(
       expect.objectContaining({ role: UserRoleTypes.Admin }),
     );
+  });
+});
+
+describe('agent access on the user routes (CLEAN-231)', () => {
+  it('GET /users carries what each account’s agent access comes to', async () => {
+    const { controller, lists } = make();
+    lists.seed(jane.id, true, [{ agentId: 'agent-1', list: 'allowed' }]);
+    lists.seed(bob.id, true, []);
+    // Lists left on the Owner's account are ignored: the Owner reaches all.
+    lists.seed(owner.id, true, []);
+
+    const list = await controller.findAll();
+
+    expect(list.map((u) => [u.id, u.agentAccess])).toEqual([
+      [owner.id, { kind: 'all', needsReview: false }],
+      [ada.id, { kind: 'all', needsReview: false }],
+      [bob.id, { kind: 'none', needsReview: true }],
+      [jane.id, { kind: 'only', needsReview: false }],
+    ]);
+    expect((await controller.findById(jane.id)).agentAccess).toEqual({
+      kind: 'only',
+      needsReview: false,
+    });
+  });
+
+  it('DELETE /users/:id takes the account’s access lists and pins with it', async () => {
+    const { controller, users, access, lists, pins } = make();
+    lists.seed(jane.id, true, [{ agentId: 'agent-1', list: 'allowed' }]);
+
+    await controller.remove(jane.id);
+
+    expect(users.delete).toHaveBeenCalledWith(jane.id);
+    expect(await access.outcome(jane.id)).toEqual({
+      kind: 'all',
+      needsReview: false,
+    });
+    expect(pins.removeUser).toHaveBeenCalledWith(jane.id);
+  });
+
+  it('and leaves all three alone when the account is the Owner’s', async () => {
+    const { controller, users, pins } = make();
+    await expect(controller.remove(owner.id)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(users.delete).not.toHaveBeenCalled();
+    expect(pins.removeUser).not.toHaveBeenCalled();
   });
 });
 

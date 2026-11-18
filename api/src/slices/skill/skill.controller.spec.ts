@@ -3,6 +3,7 @@ import { SkillController } from './skill.controller';
 import type { ISkillGateway, ISkillData } from './domain';
 import type { GithubSearch } from './data/github.search';
 import type { SkillOrderService } from './domain/skillOrder.service';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 /**
  * CLEAN-205: the two things the New / Edit skill form leans on — the
@@ -35,6 +36,7 @@ function harness() {
     gateway as unknown as ISkillGateway,
     {} as GithubSearch,
     {} as SkillOrderService,
+    openAccess(),
   );
   return { controller, gateway };
 }

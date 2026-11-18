@@ -211,9 +211,12 @@ import type {
   SkillControllerUpdateData,
   FindDependentAgentsData,
   UserControllerFindAllData,
+  UserControllerFindAllResponse,
   UserControllerCreateData,
+  UserControllerCreateResponse,
   UserControllerRemoveData,
   UserControllerFindByIdData,
+  UserControllerFindByIdResponse,
   UserControllerUpdateData,
   UserControllerUpdateRoleData,
   GetChatsData,
@@ -271,6 +274,14 @@ import type {
   PaddockScenarioControllerFindByIdData,
   PaddockScenarioControllerUpdateData,
   PaddockScenarioControllerGenerateData,
+  GetUserAgentAccessData,
+  GetUserAgentAccessResponse,
+  SetUserAgentAccessData,
+  SetUserAgentAccessResponse,
+  UnpinAgentData,
+  UnpinAgentResponse,
+  PinAgentData,
+  PinAgentResponse,
   GetAgentCardData,
   GetAgentCardResponse,
   ListAgentPeersData,
@@ -1090,7 +1101,7 @@ export class TemplatesService {
 
 export class AgentsService {
   /**
-   * List all agents. Any signed-in account. An agent the reader may manage comes with its full configuration; any other comes as a reader sees it: `config` empty, `llmCredentialId`, `workflowId`, `statusReason`, `launchContext` and the deploy and sync dates null, `knowledgeIds` empty, `debugEnabled` false (CLEAN-232). `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).
+   * List the agents the caller reaches. Any signed-in account; an Admin or User whose access lists hide an agent does not get it, and nothing says it exists (CLEAN-231). `pinned` is the caller’s own pin. An agent the reader may manage comes with its full configuration; any other comes as a reader sees it: `config` empty, `llmCredentialId`, `workflowId`, `statusReason`, `launchContext` and the deploy and sync dates null, `knowledgeIds` empty, `debugEnabled` false (CLEAN-232). `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).
    */
   public static agentControllerFindAll<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerFindAllData, ThrowOnError>,
@@ -1142,7 +1153,7 @@ export class AgentsService {
   }
 
   /**
-   * Snapshot of all agents joined with live pod status. Any signed-in account (CLEAN-177); the SSE stream below stays open because EventSource cannot send a token.
+   * Snapshot of the agents the caller reaches, joined with live pod status. Any signed-in account (CLEAN-177); filtered by the caller’s access lists like GET /agents (CLEAN-231); the SSE stream below stays open because EventSource cannot send a token.
    */
   public static agentControllerStatus<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerStatusData, ThrowOnError>,
@@ -1306,7 +1317,7 @@ export class AgentsService {
   }
 
   /**
-   * Get the agent currently flagged as Ranch admin (or null).
+   * Get the agent currently flagged as Ranch admin (or null). 404 for a caller whose access lists hide it (CLEAN-231).
    */
   public static agentControllerFindAdmin<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerFindAdminData, ThrowOnError>,
@@ -1450,6 +1461,38 @@ export class AgentsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Unpin the agent for the caller. Idempotent: an agent that was not pinned is still 204.
+   */
+  public static unpinAgent<ThrowOnError extends boolean = false>(
+    options: Options<UnpinAgentData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      UnpinAgentResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/pin",
+      ...options,
+    });
+  }
+
+  /**
+   * Pin the agent for the caller: it is kept at the top of the caller's own agent lists, on every device. Idempotent. Any signed-in person; nobody else is affected.
+   */
+  public static pinAgent<ThrowOnError extends boolean = false>(
+    options: Options<PinAgentData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      PinAgentResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/pin",
+      ...options,
     });
   }
 
@@ -2990,13 +3033,13 @@ export class SkillsService {
 
 export class UsersService {
   /**
-   * List all users
+   * List all users, each with what its agent access comes to (`agentAccess`).
    */
   public static userControllerFindAll<ThrowOnError extends boolean = false>(
     options?: Options<UserControllerFindAllData, ThrowOnError>,
   ) {
     return (options?.client ?? _heyApiClient).get<
-      unknown,
+      UserControllerFindAllResponse,
       unknown,
       ThrowOnError
     >({
@@ -3012,7 +3055,7 @@ export class UsersService {
     options: Options<UserControllerCreateData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).post<
-      unknown,
+      UserControllerCreateResponse,
       unknown,
       ThrowOnError
     >({
@@ -3048,7 +3091,7 @@ export class UsersService {
     options: Options<UserControllerFindByIdData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).get<
-      unknown,
+      UserControllerFindByIdResponse,
       unknown,
       ThrowOnError
     >({
@@ -3089,6 +3132,42 @@ export class UsersService {
       ThrowOnError
     >({
       url: "/users/{id}/role",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * One account's agent access as the caller may see it: the allowed and denied agents among the ones the caller reaches, what the lists come to, and whether there is more the caller cannot see. Owner: any account. Admin: accounts with the User role.
+   */
+  public static getUserAgentAccess<ThrowOnError extends boolean = false>(
+    options: Options<GetUserAgentAccessData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetUserAgentAccessResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}/agent-access",
+      ...options,
+    });
+  }
+
+  /**
+   * Replace the part of an account's agent access that lies inside the caller's view. The body is the whole desired state there: an agent absent from both arrays ends with no entry, and entries about agents the caller does not reach are kept as they are. A refusal saves nothing. Owner: Admins and Users. Admin: Users, and never more than the Admin reaches.
+   */
+  public static setUserAgentAccess<ThrowOnError extends boolean = false>(
+    options: Options<SetUserAgentAccessData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SetUserAgentAccessResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}/agent-access",
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -3465,7 +3544,7 @@ export class TemplateFilesService {
 
 export class PaddockScenariosService {
   /**
-   * List paddock scenarios. Filter by templateId or agentId; without filters returns all.
+   * List paddock scenarios. Filter by templateId or agentId; without filters returns all the caller may see: template scenarios, and the scenarios of the agents the caller reaches.
    */
   public static paddockScenarioControllerFindAll<
     ThrowOnError extends boolean = false,
@@ -3727,7 +3806,7 @@ export class PeersService {
   }
 
   /**
-   * Internal agent-to-agent connections of the whole installation as directed pairs of agent ids. No card, no credential.
+   * Internal agent-to-agent connections of the whole installation as directed pairs of agent ids. No card, no credential. A pair is listed when the caller reaches both of its agents (CLEAN-231).
    */
   public static listAgentLinks<ThrowOnError extends boolean = false>(
     options?: Options<ListAgentLinksData, ThrowOnError>,
@@ -3963,7 +4042,7 @@ export class LogsService {
 
 export class UsageService {
   /**
-   * Get 30-day usage for an agent with cost
+   * Get 30-day usage for an agent with cost. 404 when there is no such agent among the ones the caller reaches.
    */
   public static usageControllerFindForAgent<
     ThrowOnError extends boolean = false,
@@ -3999,7 +4078,7 @@ export class UsageService {
   }
 
   /**
-   * Get 30-day usage for a single LLM credential across all agents
+   * Get 30-day usage for a single LLM credential across the agents the caller reaches; totals are of those agents only
    */
   public static usageControllerFindForCredential<
     ThrowOnError extends boolean = false,
@@ -4015,7 +4094,7 @@ export class UsageService {
   }
 
   /**
-   * Get 30-day usage across all agents with cost
+   * Get 30-day usage across the agents the caller reaches, with cost; totals are of those agents only
    */
   public static usageControllerFindOverview<
     ThrowOnError extends boolean = false,
@@ -4155,7 +4234,7 @@ export class McpOauthService {
 
 export class PaddockEvaluationsService {
   /**
-   * List paddock evaluations. Filter by agentId / templateId.
+   * List paddock evaluations of the agents the caller reaches. Filter by agentId / templateId.
    */
   public static paddockEvaluationControllerList<
     ThrowOnError extends boolean = false,

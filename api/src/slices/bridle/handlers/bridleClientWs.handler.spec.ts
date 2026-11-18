@@ -7,6 +7,7 @@ import {
   BridleAttachmentService,
   BridlePartTypes,
   type BridlePart,
+  type ConsoleReachService,
   type IBridleAttachment,
 } from '../domain';
 
@@ -37,9 +38,23 @@ const rejectEveryShare: AuthorizeChat = () =>
     new ForbiddenException({ code: ShareLinkErrorCodes.LinkInvalid }),
   );
 
+/** Stands in for `ConsoleReachService.admits`; the default admits everybody. */
+type Admits = (session: unknown, agentId: string) => Promise<boolean>;
+
+const admitEveryone: Admits = () => Promise.resolve(true);
+
+const reachOf = (admits: Admits) =>
+  ({
+    admits,
+    reached: jest.fn((_s: unknown, items: unknown[]) => Promise.resolve(items)),
+    subjectOf: jest.fn().mockReturnValue(null),
+    onChanged: jest.fn().mockReturnValue(() => undefined),
+  }) as unknown as ConsoleReachService;
+
 function makeHandler(
   expand: BridleAttachmentService['expand'],
   authorizeChat: AuthorizeChat = rejectEveryShare,
+  admits: Admits = admitEveryone,
 ) {
   const sent: ISentToAgent[] = [];
   const hub = {
@@ -67,6 +82,7 @@ function makeHandler(
     {} as never,
     { authorizeChat } as never,
     {} as never,
+    reachOf(admits),
   );
 
   const emitted: Array<{ event: string; payload: unknown }> = [];
@@ -272,6 +288,8 @@ interface IConnectOptions {
   authorizeChat?: AuthorizeChat;
   /** What the hub says about the agent's request limits at connect (CLEAN-224). */
   limit?: Record<string, unknown>;
+  /** Stands in for `ConsoleReachService.admits`; the default admits everybody. */
+  admits?: Admits;
 }
 
 function makeConnection(options: IConnectOptions) {
@@ -319,6 +337,8 @@ function makeConnection(options: IConnectOptions) {
     findById: () => Promise.resolve(options.agent ?? null),
   };
 
+  const admits = jest.fn(options.admits ?? admitEveryone);
+
   const handler = new BridleClientWsHandler(
     hub as never,
     {} as BridleAttachmentService,
@@ -326,6 +346,7 @@ function makeConnection(options: IConnectOptions) {
     agentGateway as never,
     shareLinks as never,
     {} as never,
+    reachOf(admits),
   );
 
   const emitted: Array<{ event: string; payload: unknown }> = [];
@@ -351,6 +372,7 @@ function makeConnection(options: IConnectOptions) {
     client,
     emitted,
     registered,
+    admits,
     disconnected: () => disconnected,
   };
 }
@@ -407,7 +429,11 @@ describe('BridleClientWsHandler — handshake identity', () => {
     const { handler, client, registered } = makeConnection({
       auth: { agentId: 'agent-1', token: 'signed' },
       origin: 'https://admin.ranch.test',
-      verify: () => ({ sub: 'u2', email: 'boss@example.test', roles: ['Owner'] }),
+      verify: () => ({
+        sub: 'u2',
+        email: 'boss@example.test',
+        roles: ['Owner'],
+      }),
     });
 
     await handler.handleConnection(client);
@@ -724,6 +750,110 @@ describe('BridleClientWsHandler — share-link handshake', () => {
       {
         event: 'bridle_error',
         payload: { code: 'SHARE_LINK_INVALID', agentId: 'agent-1' },
+      },
+    ]);
+    expect(disconnected()).toBe(1);
+  });
+});
+
+/**
+ * The access lists on the socket (CLEAN-231). A console person whose lists
+ * hide the agent is turned away as from an agent that does not exist, at
+ * the handshake and again on every message, because access can be taken
+ * away while the socket stays open. Only a person's own console token is
+ * asked; whether the lists reach the agent is `ConsoleReachService`'s
+ * answer, stubbed here.
+ */
+describe('BridleClientWsHandler — access lists (CLEAN-231)', () => {
+  const SESSION = { userId: 'u1', sid: 'session-1', role: 'Admin' };
+  const consoleToken = () => ({
+    sub: 'u1',
+    sid: 'session-1',
+    roles: ['Admin'],
+  });
+
+  it('rejects the handshake with AGENT_NOT_FOUND and never registers the socket', async () => {
+    const { handler, client, emitted, registered, admits, disconnected } =
+      makeConnection({
+        auth: { agentId: 'agent-1', token: 'signed' },
+        verify: consoleToken,
+        admits: () => Promise.resolve(false),
+      });
+
+    await handler.handleConnection(client);
+
+    expect(admits).toHaveBeenCalledWith(SESSION, 'agent-1');
+    expect(emitted).toEqual([
+      {
+        event: 'bridle_error',
+        payload: { code: 'AGENT_NOT_FOUND', agentId: 'agent-1' },
+      },
+    ]);
+    expect(disconnected()).toBe(1);
+    expect(registered).toEqual([]);
+    expect(client.data).toEqual({});
+  });
+
+  it('keeps the session on an admitted socket, for the checks that follow', async () => {
+    const { handler, client, registered, disconnected } = makeConnection({
+      auth: { agentId: 'agent-1', token: 'signed' },
+      verify: consoleToken,
+    });
+
+    await handler.handleConnection(client);
+
+    expect(client.data).toMatchObject({ clientId: 'admin', console: SESSION });
+    expect(registered).toHaveLength(1);
+    expect(disconnected()).toBe(0);
+  });
+
+  it('does not ask the lists about a token that is no console session', async () => {
+    // An embed token and a token with no session id name no person the
+    // lists apply to; a refusal here would lock visitors out.
+    for (const payload of [
+      { sub: 'u1', roles: ['User'] },
+      { sub: 'u1', sid: 'session-1', roles: ['User'], typ: 'embed' },
+    ]) {
+      const { handler, client, registered, admits } = makeConnection({
+        auth: { agentId: 'agent-1', token: 'signed' },
+        verify: () => payload,
+        admits: () => Promise.resolve(false),
+      });
+
+      await handler.handleConnection(client);
+
+      expect(admits).not.toHaveBeenCalled();
+      expect(registered).toHaveLength(1);
+    }
+  });
+
+  it('rejects a message and drops the socket once the agent is out of reach', async () => {
+    let reached = true;
+    const { handler, client, sent, emitted, disconnected } = makeHandler(
+      async () => ({ text: 'hi', parts: [], attachments: [] }),
+      rejectEveryShare,
+      () => Promise.resolve(reached),
+    );
+    client.data = { clientId: 'u1', agentId: 'agent-1', kind: 'jwt' };
+
+    // A socket with no console session is not asked at all.
+    reached = false;
+    await handler.handleMessage(client, { text: 'hi' });
+    expect(sent).toHaveLength(1);
+
+    client.data = { ...client.data, console: SESSION };
+    const ack = await handler.handleMessage(client, { text: 'still there?' });
+
+    expect(ack).toEqual({
+      status: 'rejected',
+      code: 'AGENT_NOT_FOUND',
+      message: 'Agent not found',
+    });
+    expect(sent).toHaveLength(1);
+    expect(emitted).toEqual([
+      {
+        event: 'bridle_error',
+        payload: { code: 'AGENT_NOT_FOUND', agentId: 'agent-1' },
       },
     ]);
     expect(disconnected()).toBe(1);

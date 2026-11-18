@@ -14,6 +14,7 @@ import type {
 import { asPerson, asTrustedAgent } from '#/mcp/testing';
 import { audienceAllows } from '#/mcp/tooling';
 import { toolAudienceOf } from '#/mcp/decorators';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 /**
  * These tools are the Events page and the Notifications settings from the
@@ -121,6 +122,7 @@ function harness(configured = true) {
     service as unknown as AgentEventService,
     destinations as unknown as NotificationDestinationService,
     agents as unknown as IAgentGateway,
+    openAccess(),
   );
   return { tool, service, destinations, agents };
 }

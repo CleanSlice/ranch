@@ -10,6 +10,11 @@ export const MCP_TOOL_AUDIENCE_METADATA_KEY = 'mcp:tool-audience';
  * - `agent`: an agent runtime, acting for itself (its token names the agent).
  * - `person`: a signed-in person of any role, proven by a console token or
  *   an acting token.
+ * - `reader`: a signed-in person of any role, or whoever `admin` admits
+ *   (CLEAN-231). For the tools that only show a caller the agents they
+ *   reach (`list_agents`, `get_agent`): a User needs them to turn a name
+ *   into an id, and the Ranch admin agent on its own schedule must keep
+ *   them, which `person` would not allow.
  * - `manage-agent`: whoever may manage at least one agent: an Owner or
  *   Admin, an agent trusted to act as one, or a person who created an agent.
  *   That lists the tool; each call then checks the agent it names with
@@ -22,6 +27,7 @@ export const TOOL_AUDIENCES = [
   'everyone',
   'agent',
   'person',
+  'reader',
   'manage-agent',
   'admin',
   'owner',

@@ -90,6 +90,7 @@ describe('effective caller: a person’s console token', () => {
     expect(allowed(req)).toEqual([
       'everyone',
       'person',
+      'reader',
       'manage-agent',
       'admin',
       'owner',
@@ -108,6 +109,7 @@ describe('effective caller: a person’s console token', () => {
     expect(allowed(req)).toEqual([
       'everyone',
       'person',
+      'reader',
       'manage-agent',
       'admin',
     ]);
@@ -129,7 +131,7 @@ describe('effective caller: a person’s console token', () => {
       userId: 'user-1',
       role: UserRoleTypes.User,
     });
-    expect(allowed(req)).toEqual(['everyone', 'person']);
+    expect(allowed(req)).toEqual(['everyone', 'person', 'reader']);
     expect(() => requireOperator(req)).toThrow(
       new ForbiddenException(OPERATOR_REFUSAL),
     );
@@ -177,7 +179,7 @@ describe('effective caller: an agent runtime with role Agent', () => {
     expect(callerIsOwner(req)).toBe(false);
     expect(callerLevel(req)).toBe(0);
     expect(callerAgentId(req)).toBe('helper');
-    expect(allowed(req)).toEqual(['everyone', 'agent', 'person']);
+    expect(allowed(req)).toEqual(['everyone', 'agent', 'person', 'reader']);
     expect(requirePerson(req).userId).toBe('user-o');
   });
 
@@ -234,6 +236,8 @@ describe('effective caller: the Ranch admin agent (token carries Owner)', () => 
     expect(allowed(req)).toEqual([
       'everyone',
       'agent',
+      // list_agents and get_agent (CLEAN-231): a scheduled job keeps them.
+      'reader',
       'manage-agent',
       'admin',
       'owner',
@@ -244,14 +248,22 @@ describe('effective caller: the Ranch admin agent (token carries Owner)', () => 
   it.each([
     [
       UserRoleTypes.Owner,
-      ['everyone', 'agent', 'person', 'manage-agent', 'admin', 'owner'],
+      [
+        'everyone',
+        'agent',
+        'person',
+        'reader',
+        'manage-agent',
+        'admin',
+        'owner',
+      ],
     ],
     [
       UserRoleTypes.Admin,
-      ['everyone', 'agent', 'person', 'manage-agent', 'admin'],
+      ['everyone', 'agent', 'person', 'reader', 'manage-agent', 'admin'],
     ],
     // A User who created no agent: nothing of an agent's management.
-    [UserRoleTypes.User, ['everyone', 'agent', 'person']],
+    [UserRoleTypes.User, ['everyone', 'agent', 'person', 'reader']],
   ])(
     'a valid person who is %s: that person, role read from the database',
     async (role, audiences) => {

@@ -2,6 +2,9 @@ import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { IsBoolean, IsOptional } from 'class-validator';
 import { CreateAgentDto } from './createAgent.dto';
 
+// There is no `pinned` here (CLEAN-231): a pin is personal and is set through
+// PUT / DELETE /agents/:id/pin. The update route refuses a body that still
+// carries the old field instead of dropping it silently.
 export class UpdateAgentDto extends PartialType(CreateAgentDto) {
   @ApiPropertyOptional({
     description:
@@ -12,14 +15,4 @@ export class UpdateAgentDto extends PartialType(CreateAgentDto) {
   @IsOptional()
   @IsBoolean()
   debugEnabled?: boolean;
-
-  @ApiPropertyOptional({
-    description:
-      'Pin or unpin the agent. Pinned agents are kept at the top of every ' +
-      'agent list in both consoles. Installation-wide; changes nothing about ' +
-      'the pod, the status or access.',
-  })
-  @IsOptional()
-  @IsBoolean()
-  pinned?: boolean;
 }

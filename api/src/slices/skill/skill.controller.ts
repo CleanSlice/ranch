@@ -10,7 +10,11 @@ import {
   Query,
   NotFoundException,
   ConflictException,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { accessCallerOf } from '#/user/agentAccess/guards';
 import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
 import { ISkillGateway, ISkillData } from './domain';
 import { SkillOrderService } from './domain/skillOrder.service';
@@ -35,6 +39,7 @@ export class SkillController {
     private gateway: ISkillGateway,
     private github: GithubSearch,
     private order: SkillOrderService,
+    private access: AgentAccessService,
   ) {}
 
   @Get()
@@ -190,8 +195,13 @@ export class SkillController {
     summary:
       'List agents that use this skill via their template. Drives the post-edit "Redeploy N agents" flow — skills are baked into agent pods at deploy time, so a skill update has no effect until those agents restart.',
   })
-  findDependentAgents(@Param('id') id: string) {
-    return this.gateway.findDependentAgents(id);
+  async findDependentAgents(@Param('id') id: string, @Req() req?: Request) {
+    // Only the agents the caller reaches (CLEAN-231): the list names them.
+    const reach = await this.access.reachableIds(accessCallerOf(req));
+    return reach.filter(
+      await this.gateway.findDependentAgents(id),
+      (agent) => agent.id,
+    );
   }
 
   @Post()

@@ -30,6 +30,8 @@ function makeHandler(expand: BridleAttachmentService['expand']) {
     {} as never,
     {} as never,
     {} as never,
+    // Nobody here is a console person the access lists apply to.
+    { admits: () => Promise.resolve(true) } as never,
   );
   const emitted: string[] = [];
   const client = {

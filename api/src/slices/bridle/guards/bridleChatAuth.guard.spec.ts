@@ -1,7 +1,12 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ShareLinkService } from '#/agent/shareLink/domain';
+import type { ConsoleReachService } from '../domain';
 import { BridleChatAuthGuard } from './bridleChatAuth.guard';
 import type { IChatAuthRequest } from './bridleChatAuth.guard';
 
@@ -20,6 +25,7 @@ interface IStubs {
     agentId: string,
     visitorId: string,
   ) => Promise<string>;
+  admits?: (session: unknown, agentId: string) => Promise<boolean>;
 }
 
 function makeGuard(stubs: IStubs = {}) {
@@ -40,7 +46,16 @@ function makeGuard(stubs: IStubs = {}) {
     },
   } as unknown as ShareLinkService;
 
-  return { guard: new BridleChatAuthGuard(jwt, shareLinks), calls };
+  // The access lists are not what these tests are about: every console
+  // person is admitted unless a test says otherwise.
+  const admits = jest.fn(stubs.admits ?? (() => Promise.resolve(true)));
+  const reach = { admits } as unknown as ConsoleReachService;
+
+  return {
+    guard: new BridleChatAuthGuard(jwt, shareLinks, reach),
+    calls,
+    admits,
+  };
 }
 
 function makeContext(
@@ -165,6 +180,25 @@ describe('BridleChatAuthGuard — JWT callers', () => {
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(req.chatAuth).toEqual({ clientId: 'share-v1', kind: 'share' });
+  });
+
+  it('answers 404 for an agent the access lists hide, and sets no identity', async () => {
+    // The same answer as for an agent that does not exist (CLEAN-231), asked
+    // about the agent id in the path.
+    const { guard, admits } = makeGuard({
+      admits: () => Promise.resolve(false),
+    });
+    const { context, req } = makeContext(
+      { authorization: 'Bearer jwt-token' },
+      { agentId: 'agent-hidden' },
+    );
+
+    const err = await guard.canActivate(context).catch((e) => e);
+    expect(err).toBeInstanceOf(NotFoundException);
+    expect(err.message).toBe('Agent not found');
+    expect(admits.mock.calls[0][1]).toBe('agent-hidden');
+    expect(req.chatAuth).toBeUndefined();
+    expect(req.user).toBeUndefined();
   });
 });
 

@@ -7,6 +7,7 @@ import type { IUsageGateway } from './domain';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import { UserRoleTypes } from '#/user/user/domain';
 import { asTrustedAgent } from '#/mcp/testing';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 /**
  * The tool must say the same dollars the console's Usage page says: same
@@ -53,6 +54,7 @@ function harness(rows: IUsageData[], agentNames: Record<string, string> = {}) {
   const tool = new UsageTool(
     { findRecentAll } as unknown as IUsageGateway,
     { findById } as unknown as IAgentGateway,
+    openAccess(),
   );
   return { tool, findRecentAll, findById };
 }

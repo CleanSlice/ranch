@@ -103,6 +103,9 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
   async syncForExternalUser(
     externalUserId: string,
     agentId?: string,
+    // The agents the person still reaches (CLEAN-231): a conversation with
+    // an agent taken away from them is neither scanned nor counted.
+    reach?: { has(agentId: string): boolean },
   ): Promise<IChatSyncResult> {
     const result: IChatSyncResult = {
       scannedAgents: 0,
@@ -112,7 +115,9 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     };
     const own = { channel: 'bridle', externalUserId };
     const sessions = await this.chats.list({ ...own, perPage: 100_000 });
-    const ownAgentIds = [...new Set(sessions.items.map((s) => s.agentId))];
+    const ownAgentIds = [
+      ...new Set(sessions.items.map((s) => s.agentId)),
+    ].filter((id) => !reach || reach.has(id));
     const agentIds = agentId
       ? ownAgentIds.filter((id) => id === agentId)
       : ownAgentIds;

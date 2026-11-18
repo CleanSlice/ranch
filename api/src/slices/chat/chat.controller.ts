@@ -24,6 +24,8 @@ import { Request, Response } from 'express';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { AgentScoped, accessCallerOf } from '#/user/agentAccess/guards';
 import {
   TranscriptReaderService,
   TranscriptMessage,
@@ -33,6 +35,7 @@ import {
   ChatSourceService,
   ChatSyncService,
   ChatInsightService,
+  IChatSessionData,
   formatChatExport,
 } from './domain';
 import {
@@ -79,7 +82,28 @@ export class ChatController {
     private readonly sync: ChatSyncService,
     private readonly insight: ChatInsightService,
     private readonly sources: ChatSourceService,
+    private readonly access: AgentAccessService,
   ) {}
+
+  /**
+   * The session, when it exists and the caller reaches its agent
+   * (CLEAN-231). One answer for both: a chat of a hidden agent is a chat
+   * that does not exist.
+   */
+  private async requireChat(
+    id: string,
+    req: AuthedRequest | undefined,
+  ): Promise<IChatSessionData> {
+    const session = await this.chats.findById(id);
+    const notFound = `Chat ${id} not found`;
+    if (!session) throw new NotFoundException(notFound);
+    await this.access.assertReaches(
+      accessCallerOf(req),
+      session.agentId,
+      notFound,
+    );
+    return session;
+  }
 
   @ApiOperation({
     description:
@@ -88,11 +112,17 @@ export class ChatController {
   })
   @ApiOkResponse({ type: ChatListResponseDto })
   @Get()
-  async list(@Query() filter: FilterChatsDto): Promise<ChatListResponseDto> {
+  @AgentScoped('query.agentId')
+  async list(
+    @Query() filter: FilterChatsDto,
+    @Req() req?: AuthedRequest,
+  ): Promise<ChatListResponseDto> {
     const page = filter.page ?? 1;
     const perPage = filter.perPage ?? 50;
+    const reach = await this.access.reachableIds(accessCallerOf(req));
     const { items, total } = await this.chats.list({
       ...filter,
+      agentScope: reach.where(),
       page,
       perPage,
     });
@@ -105,10 +135,11 @@ export class ChatController {
   })
   @ApiOkResponse({ type: ChatSessionDto })
   @Get(':id')
-  async detail(@Param('id') id: string): Promise<ChatSessionDto> {
-    const session = await this.chats.findById(id);
-    if (!session) throw new NotFoundException(`Chat ${id} not found`);
-    return session;
+  async detail(
+    @Param('id') id: string,
+    @Req() req?: AuthedRequest,
+  ): Promise<ChatSessionDto> {
+    return this.requireChat(id, req);
   }
 
   @ApiOperation({
@@ -123,9 +154,9 @@ export class ChatController {
   async messages(
     @Param('id') id: string,
     @Query() q: ChatMessagesQueryDto,
+    @Req() req?: AuthedRequest,
   ): Promise<ChatMessagesResponseDto> {
-    const session = await this.chats.findById(id);
-    if (!session) throw new NotFoundException(`Chat ${id} not found`);
+    const session = await this.requireChat(id, req);
 
     const types = q.types
       ? (q.types
@@ -177,6 +208,7 @@ export class ChatController {
   })
   @ApiOkResponse({ type: SyncChatsResponseDto })
   @Post('sync')
+  @AgentScoped('body.agentId')
   async syncChats(@Body() dto: SyncChatsDto): Promise<SyncChatsResponseDto> {
     return this.sync.syncAll(dto.agentId);
   }
@@ -188,7 +220,11 @@ export class ChatController {
   })
   @ApiOkResponse({ type: ChatSessionDto })
   @Post(':id/summarize')
-  async summarize(@Param('id') id: string): Promise<ChatSessionDto> {
+  async summarize(
+    @Param('id') id: string,
+    @Req() req?: AuthedRequest,
+  ): Promise<ChatSessionDto> {
+    await this.requireChat(id, req);
     return this.insight.summarize(id);
   }
 
@@ -205,8 +241,7 @@ export class ChatController {
   ): Promise<ChatFeedbackDto> {
     const authorId = req.user?.sub;
     if (!authorId) throw new ForbiddenException('No authenticated user');
-    const session = await this.chats.findById(id);
-    if (!session) throw new NotFoundException(`Chat ${id} not found`);
+    await this.requireChat(id, req);
     return this.chats.upsertFeedback({
       sessionId: id,
       messageId: dto.messageId,
@@ -230,6 +265,7 @@ export class ChatController {
   ): Promise<void> {
     const authorId = req.user?.sub;
     if (!authorId) throw new ForbiddenException('No authenticated user');
+    await this.requireChat(id, req);
     await this.chats.deleteFeedback(id, messageId, authorId);
   }
 
@@ -244,6 +280,7 @@ export class ChatController {
     @Req() req: AuthedRequest,
   ): Promise<ChatFeedbackDto[]> {
     const authorId = req.user?.sub ?? '';
+    await this.requireChat(id, req);
     return this.chats.listFeedbackByAuthor(id, authorId);
   }
 
@@ -258,9 +295,9 @@ export class ChatController {
     @Param('id') id: string,
     @Query() q: ExportChatQueryDto,
     @Res() res: Response,
+    @Req() req?: AuthedRequest,
   ): Promise<void> {
-    const session = await this.chats.findById(id);
-    if (!session) throw new NotFoundException(`Chat ${id} not found`);
+    const session = await this.requireChat(id, req);
 
     const format = q.format ?? 'json';
     const types: TranscriptMessage['role'][] =

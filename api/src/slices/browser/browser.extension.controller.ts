@@ -25,6 +25,7 @@ import {
 } from './dtos';
 import { IAuthTokenPayload } from '../user/auth/domain/auth.types';
 import { JwtAuthGuard, Public } from '../user/auth/guards';
+import { AgentScoped } from '../user/agentAccess/guards';
 
 interface IExtensionTokenPayload {
   /** Ranch user that minted the token (audit/replay). */
@@ -67,6 +68,9 @@ export class BrowserExtensionController {
   })
   @ApiOkResponse({ type: IssueExtensionTokenResponseDto })
   @UseGuards(JwtAuthGuard)
+  // The token imports cookies into one agent; minting it takes reaching
+  // that agent (CLEAN-231).
+  @AgentScoped('body.agentId')
   async issueToken(
     @Body() dto: IssueExtensionTokenDto,
     @Req() req: Request & { user: IAuthTokenPayload },

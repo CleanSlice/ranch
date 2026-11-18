@@ -1,0 +1,36 @@
+import { Agent } from "../../agent/agent/agent"
+
+// Which agents an account reaches (CLEAN-231). One row per account whose
+// access was ever edited; no row means the defaults: not limited, no entries,
+// every agent reached. `userId` is a bare id with no relation, the repo
+// convention for User (see session.prisma): deleting an account cleans up
+// explicitly, through AgentAccessService.removeUser.
+model UserAgentAccess {
+  userId      String   @id
+  // True while the account is restricted to its allowed entries. Turns true
+  // with the first allowed entry and false only when a person empties the
+  // allowed list and confirms. It is what keeps "the only allowed agent was
+  // deleted" from meaning "every agent": limited with no allowed entry
+  // reaches nothing and is shown as needing review.
+  limited     Boolean  @default(false)
+  // Who made the last change; not shown in this version.
+  updatedById String?
+  createdAt   DateTime @default(now())
+  // Also the `version` of the optimistic check on PUT /users/:id/agent-access.
+  updatedAt   DateTime @updatedAt
+}
+
+// One row per account and agent, carrying the list the agent is on. The
+// primary key is what makes "never in both lists" and "at most once in a
+// list" hold by construction: moving an agent is an update of `list`.
+model UserAgentAccessEntry {
+  userId    String
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // 'allowed' | 'denied'
+  list      String
+  createdAt DateTime @default(now())
+
+  @@id([userId, agentId])
+  @@index([agentId])
+}

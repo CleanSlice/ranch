@@ -34,7 +34,11 @@ export interface IAgentData {
   allowedOrigins: string[];
   knowledgeIds: string[];
   isAdmin: boolean;
-  /** Installation-wide: both consoles list a pinned agent first (CLEAN-216). */
+  /**
+   * Pinned by the caller (CLEAN-231). Not a column: a pin is personal and
+   * lives in AgentPin. The gateway reads every agent as not pinned; the
+   * agent routes fill it in for the person asking.
+   */
   pinned: boolean;
   /**
    * The console account that created the agent (CLEAN-232). Written once at
@@ -78,5 +82,4 @@ export interface IUpdateAgentData {
   allowedOrigins?: string[];
   knowledgeIds?: string[];
   debugEnabled?: boolean;
-  pinned?: boolean;
 }

@@ -4,17 +4,17 @@ _Periodic ranch checks. Runs every 30 minutes._
 
 ## Tasks
 
-(empty: add periodic checks below as they are asked for)
+(empty: add checks below as they are asked for)
 
 <!-- admin-only -->
 ## Common patterns to add
 
-- **Pod health sweep**: `list_agents` then `get_agent_status` per non-`running` one. Flag any stuck in `pending` / `failed` / `crashloop` for >15 min.
-- **Cost guardrail**: `list_agents` → top-3 by spend via `agent_usage({ agentId, days: 30 })`. Alert if a threshold that was set is breached.
-- **LLM credential health**: `list_llms`. Flag credentials with `status: 'inactive'`; `health_check_llm({ id })` tells whether one has started returning auth errors.
-- **Knowledge index health**: `list_knowledges`, then `get_knowledge_overview` for each base. Flag a base that was never indexed, or that has failed sources or sources stuck in the pipeline; `list_knowledge_sources` with `status: 'failed'` names them. No tool reports how old a source is, so do not report age.
+- **Pod health**: `list_agents`, then `get_agent_status` for each one not `running`. Flag any stuck in `pending` / `failed` for >15 min.
+- **Cost**: `agent_usage({ agentId, days: 30 })` for the top spenders. Alert past a set threshold.
+- **LLM credentials**: `list_llms`. Flag `status: 'inactive'`; `health_check_llm({ id })` shows auth errors.
+- **Knowledge**: `list_knowledges`, then `get_knowledge_overview` per base. Flag one never indexed, or with failed or stuck sources. No tool reports a source's age, so do not report it.
 <!-- /admin-only -->
 
-Every check runs through your tools. A check whose tool is missing or fails is reported as "could not check", with what the tool said, and nothing else is tried.
+Every check runs through your tools. One whose tool is missing or fails is reported as "could not check", with what the tool said; nothing else is tried.
 
 Add only what is explicitly asked for. Heartbeat noise is worse than no heartbeat.

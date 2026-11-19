@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'fs';
 import * as path from 'path';
+import { curatedLimitsFrom } from '#/agent/file/domain/file.limits';
 
 /**
  * The Rancher template that every Ranch admin agent is deployed from
@@ -197,6 +198,21 @@ describe('SOUL.md fits its prompt limit (CLEAN-230)', () => {
     // The runtime counts characters of the file as it is on disk.
     expect(read('SOUL.md').length).toBeLessThanOrEqual(limit as number);
   });
+
+  // HEARTBEAT.md shipped at 1218 characters against a limit of 1000: the
+  // console refused to save it on a live Ranch admin agent, and a fresh one
+  // would have had it cut in its prompt. The limit is what the save route
+  // reads off the same config, defaults included.
+  it.each(['HEARTBEAT.md', 'USER.md'])(
+    '%s is no longer than the limit the save route enforces for it',
+    (file) => {
+      const limit = curatedLimitsFrom(JSON.parse(read('agent.config.json')))[
+        file
+      ];
+      expect(typeof limit).toBe('number');
+      expect(read(file).length).toBeLessThanOrEqual(limit);
+    },
+  );
 });
 
 describe('the template’s prose', () => {

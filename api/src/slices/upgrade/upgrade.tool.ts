@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
   CONFIRM_SENTENCE,
@@ -22,6 +22,7 @@ type AuthedRequest = Request & { user?: IAuthTokenPayload };
  * status is a read, running it is gated by the same eligibility check and,
  * because it replaces the running code, by the person's confirmation.
  */
+@ToolAudience('admin')
 @Injectable()
 export class UpgradeTool implements IConditionallyListedTool {
   private readonly logger = new Logger(UpgradeTool.name);

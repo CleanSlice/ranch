@@ -24,10 +24,13 @@ import Empty from './Empty.vue'
  * (docs/state.md). Search text and open accordions live in the store per
  * agent so reopening restores them.
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   agentId: string
   open: boolean
-}>()
+  // False when the viewer may not manage this agent (CLEAN-232): the list is
+  // still theirs to read and pick from, the "Restart now" button is not.
+  manageable?: boolean
+}>(), { manageable: true })
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -237,6 +240,7 @@ const searchRef = ref<InstanceType<typeof Input> | null>(null)
               :group="group"
               :restarting="restarting"
               :can-restart="canRestart"
+              :manageable="manageable"
               @pick="pick"
               @restart="restart"
             />

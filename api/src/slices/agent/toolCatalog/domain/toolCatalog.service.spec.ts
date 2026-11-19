@@ -4,7 +4,9 @@ import {
   agentPrincipal,
   listingStateOf,
 } from './toolCatalog.service';
+import type { Request } from 'express';
 import type { IListedTool } from '#/mcp/services/tool-catalog.service';
+import { callerIsOperator, callerIsOwner, callerParty } from '#/mcp/tooling';
 import { UserRoleTypes } from '#/user/user/domain';
 
 /**
@@ -27,6 +29,7 @@ const listed = (
     template: `Do «${name}»`,
     ...extra,
   },
+  audience: 'admin',
 });
 
 const POD_START = '2026-09-22T10:00:00.000Z';
@@ -111,6 +114,29 @@ describe('ToolCatalogService.forAgent', () => {
     };
     expect(req.user.sub).toBe('agent:agent-1');
     expect(req.user.roles).toEqual([UserRoleTypes.Agent]);
+  });
+
+  it('lists for the agent itself: what its token may hold, not what one person gets (CLEAN-232)', async () => {
+    // Without a party the synthetic request would be a guest's, and the
+    // panel of the Ranch admin agent would show no management tool at all.
+    const { service, listing } = harness({
+      agent: { id: 'agent-1', isAdmin: true },
+    });
+    await service.forAgent('agent-1');
+    const req = (listing.listFor as jest.Mock).mock.calls[0][0] as Request;
+    expect(callerParty(req)).toEqual({ kind: 'trusted' });
+    expect(callerIsOperator(req)).toBe(true);
+    expect(callerIsOwner(req)).toBe(true);
+  });
+
+  it('a plain agent listed for itself is still a plain agent', async () => {
+    const { service, listing } = harness({
+      agent: { id: 'agent-1', isAdmin: false },
+    });
+    await service.forAgent('agent-1');
+    const req = (listing.listFor as jest.Mock).mock.calls[0][0] as Request;
+    expect(callerParty(req)).toEqual({ kind: 'trusted' });
+    expect(callerIsOperator(req)).toBe(false);
   });
 
   it('groups by topic in panel order, drops empty topics, sorts tools by title', async () => {

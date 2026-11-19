@@ -4,6 +4,7 @@ import { McpProbeTool } from './mcpProbe.tool';
 import type { McpProbeService } from './domain/mcpProbe.service';
 import type { IMcpProbeResult, IMcpServerData, IMcpServerGateway } from './domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * Audience, the two ways in (url vs id), and that a registered row's
@@ -13,8 +14,8 @@ const SENTINEL = 'SENTINEL-BEARER';
 
 const request = (roles: UserRoleTypes[]): Request =>
   ({ user: { sub: 'agent:agent-ops', email: '', roles } }) as unknown as Request;
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const row = (): IMcpServerData => ({
   id: 'mcp-1',

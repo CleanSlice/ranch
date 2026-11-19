@@ -1,15 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  agentNotFound,
+  callerIsOperator,
+  callerIsOwner,
+  callerParty,
+  callerPerson,
   CONFIRM_SENTENCE,
   confirmed,
+  manageCaller,
   ok,
   requireOperator,
+  requireOwner,
+  requirePersonOrOperator,
   stripSecrets,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
+import { toReaderView } from '#/agent/agent/domain/agentReaderView';
+import type { IAgentData } from '#/agent/agent/domain/agent.types';
 import { IAgentGateway } from '#/agent/agent/domain';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { AgentDeployService } from '#/agent/agent/domain/agentDeploy.service';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { ITemplateFileGateway } from '#/agent/templateFile/domain';
@@ -25,13 +38,29 @@ import { IUsageGateway } from '#/usage/domain';
 import { IFileGateway } from '#/agent/file/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { RancherService } from './domain/rancher.service';
+import { rancherStatusFor } from './domain/rancherStatusView';
 
 /**
  * The original Ranch management tools — agents, templates, skills, LLM
- * credentials, files, usage, settings. Operator-only: the Ranch admin agent
- * holds the Owner role, plain agents do not (CLEAN-109 moved the check to
- * the shared `requireOperator`; the tools themselves are unchanged).
+ * credentials, files, usage, settings. Audience `admin`: every console
+ * route these mirror admits Owner and Admin, or states no role at all. The
+ * check is the shared `requireOperator`, which since CLEAN-232 asks who the
+ * call is made for, not only what the agent's token carries. The class has
+ * no listing hook of its own; the audience hides it from everyone else.
+ *
+ * Three tools differ from the class (CLEAN-232). `restart_agent` and
+ * `update_agent` act on one agent and are `manage-agent`: each call asks
+ * `AgentPermissionService` about the agent it names and answers "not found"
+ * for one the caller may not manage. `set_agent_admin` is `owner`, like the
+ * console route. `create_agent` stays `admin` and records who created the
+ * agent.
+ *
+ * `list_agents` and `get_agent` are `reader` (CLEAN-231): any signed-in
+ * person, as well as an operator. They show a caller the agents their
+ * access lists reach, each as that caller may read it, which is what lets a
+ * User turn a name into an id for the tools they do have.
  */
+@ToolAudience('admin')
 @Injectable()
 export class RancherTool {
   private readonly logger = new Logger(RancherTool.name);
@@ -47,7 +76,40 @@ export class RancherTool {
     private readonly usage: IUsageGateway,
     private readonly files: IFileGateway,
     private readonly rancher: RancherService,
+    private readonly permission: AgentPermissionService,
+    private readonly access: AgentAccessService,
+    private readonly pins: IAgentPinGateway,
   ) {}
+
+  /**
+   * Agents as this caller reads them through `list_agents` and `get_agent`
+   * (CLEAN-231), the way `GET /agents` answers the same person: whole for a
+   * caller who may manage the agent, its reader view otherwise (no config,
+   * no credential or knowledge binding, no deploy history), `pinned` as the
+   * person's own pin, and the bare creator id for operators only.
+   */
+  private async asReadBy(agents: IAgentData[], httpRequest: Request) {
+    const caller = manageCaller(httpRequest);
+    const person = callerPerson(httpRequest);
+    const pinned =
+      person && agents.length > 0
+        ? await this.pins.pinnedIds(person.userId)
+        : new Set<string>();
+    const operator = callerIsOperator(httpRequest);
+    return Promise.all(
+      agents.map(async (agent) => {
+        const view = (await this.permission.canManage(caller, agent))
+          ? agent
+          : toReaderView(agent);
+        const { createdById, ...rest } = view;
+        return {
+          ...rest,
+          pinned: pinned.has(agent.id),
+          ...(operator ? { createdById } : {}),
+        };
+      }),
+    );
+  }
 
   // ─── Platform ────────────────────────────────────────────────────────
 
@@ -57,7 +119,7 @@ export class RancherTool {
     title: 'Rancher setup status',
     template: 'Is the Rancher setup complete?',
     description:
-      'The Rancher setup wizard state: is there an LLM credential, the special Rancher template, an admin agent, and S3 configured. Read-only; the console shows the same stepper.',
+      'The Rancher setup wizard state: is there an LLM credential, the special Rancher template, an admin agent (`hasAdmin`), and S3 configured. `admin` is the Ranch admin agent as the person asking may read it: absent for somebody who has no access to it, without its configuration for an Admin. Read-only; the console shows the same stepper.',
     parameters: z.object({}),
   })
   async getRancherStatus(
@@ -65,25 +127,42 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
-    return ok(await this.rancher.getStatus());
-  }
-
-  private requireOwner(
-    httpRequest: Request & { user?: IAuthTokenPayload },
-  ): void {
     requireOperator(httpRequest);
+    const status = await this.rancher.getStatus();
+    // The same rule as GET /rancher/status (CLEAN-231): the agent is named
+    // by its flag, so the lists and the manage rule are asked here.
+    let reaches = false;
+    let manages = false;
+    if (status.admin) {
+      reaches = await this.access.reaches(
+        callerParty(httpRequest),
+        status.admin.id,
+      );
+      manages =
+        reaches &&
+        (await this.permission.canManage(
+          manageCaller(httpRequest),
+          status.admin,
+        ));
+    }
+    return ok(rancherStatusFor(status, { reaches, manages }));
   }
 
   // ─── Agents ──────────────────────────────────────────────────────────
 
+  @ToolAudience('reader')
   @Tool({
     name: 'list_agents',
     topic: ToolTopics.Agents,
     title: 'List agents',
     template: 'List all agents and their status',
     description:
-      'List every agent on this Ranch with their status, template, and resources.',
+      'List the agents the person asking can use, with their id, name, ' +
+      'status, template and resources, and whether that person pinned ' +
+      'them. Use it to turn a name into the id the other tools take. An ' +
+      'agent the person may manage comes with its configuration; any ' +
+      'other comes without it. Agents the person has no access to are not ' +
+      'listed at all: do not assume there are others.',
     parameters: z.object({}),
   })
   async listAgents(
@@ -91,18 +170,22 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
-    const items = await this.agents.findAll();
-    return ok(items);
+    requirePersonOrOperator(httpRequest);
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    const items = reach.filter(await this.agents.findAll(), (a) => a.id);
+    return ok(await this.asReadBy(items, httpRequest));
   }
 
+  @ToolAudience('reader')
   @Tool({
     name: 'get_agent',
     topic: ToolTopics.Agents,
     title: 'Show an agent',
     template: 'Show the agent «name»',
     description:
-      'Get a single agent by id, including current status, workflowId and config.',
+      'Get a single agent by id, among the ones the person asking can use: ' +
+      'current status, template and resources, and for a person who may ' +
+      'manage it also its workflowId and config.',
     parameters: z.object({
       id: z.string().describe('Agent id, e.g. agent-abc123'),
     }),
@@ -112,12 +195,20 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requirePersonOrOperator(httpRequest);
     const agent = await this.agents.findById(id);
-    if (!agent) return ok({ error: `Agent ${id} not found` });
-    return ok(agent);
+    // One answer for an agent that does not exist and one this person's
+    // access lists hide.
+    if (
+      !agent ||
+      !(await this.access.reaches(callerParty(httpRequest), agent.id))
+    ) {
+      return agentNotFound(httpRequest, id);
+    }
+    return ok((await this.asReadBy([agent], httpRequest))[0]);
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'restart_agent',
     topic: ToolTopics.Agents,
@@ -134,9 +225,11 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
-    const agent = await this.agents.findById(id);
-    if (!agent) return ok({ error: `Agent ${id} not found` });
+    const agent = await this.permission.manageable(
+      manageCaller(httpRequest),
+      id,
+    );
+    if (!agent) return agentNotFound(httpRequest, id);
     // Fire-and-forget the real restart flow (template resync → cancel old
     // workflow → deploy). A bare status write here would leave the agent
     // stuck in 'deploying' with no new pod until drift detection failed it.
@@ -199,7 +292,16 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
+    // Which agent is the Ranch admin agent is the Owner's decision, here as
+    // on set_agent_admin and on the console route (CLEAN-232).
+    if (isAdmin === true && !callerIsOwner(httpRequest)) {
+      return ok({
+        error:
+          'Only the Owner can make an agent the Ranch admin agent. Create ' +
+          'it without isAdmin; the Owner can promote it afterwards.',
+      });
+    }
     // Friendly precheck — a bad templateId would otherwise surface as an
     // opaque foreign-key error from the DB layer.
     const template = await this.templates.findById(templateId);
@@ -208,8 +310,17 @@ export class RancherTool {
         error: `Template ${templateId} not found — pick one from list_templates`,
       });
     }
+    // The creator is the person this call is made for, as the acting token
+    // proved them; a trusted party (the agent on its own schedule) leaves
+    // none. Written once, here: update_agent cannot change it.
     const created = await this.agentDeploy.createAgent(
-      { name, templateId, llmCredentialId, knowledgeIds },
+      {
+        name,
+        templateId,
+        llmCredentialId,
+        knowledgeIds,
+        createdById: callerPerson(httpRequest)?.userId ?? null,
+      },
       { isAdmin },
     );
     return ok({
@@ -221,6 +332,7 @@ export class RancherTool {
     });
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'update_agent',
     topic: ToolTopics.Agents,
@@ -262,9 +374,11 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
-    const existing = await this.agents.findById(id);
-    if (!existing) return ok({ error: `Agent ${id} not found` });
+    const existing = await this.permission.manageable(
+      manageCaller(httpRequest),
+      id,
+    );
+    if (!existing) return agentNotFound(httpRequest, id);
     const updated = await this.agents.update(id, {
       name,
       llmCredentialId,
@@ -283,13 +397,14 @@ export class RancherTool {
     });
   }
 
+  @ToolAudience('owner')
   @Tool({
     name: 'set_agent_admin',
     topic: ToolTopics.Agents,
     title: 'Make an agent the Ranch admin',
     template: 'Make «name» the Ranch admin agent',
     description:
-      'Promote or demote an agent to/from Ranch admin. Single-admin invariant: enabling clears the flag from any other agent.',
+      'Promote or demote an agent to/from Ranch admin. Owner only: the Ranch admin agent holds Owner power. Single-admin invariant: enabling clears the flag from any other agent.',
     parameters: z.object({
       id: z.string(),
       enabled: z.boolean(),
@@ -300,7 +415,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOwner(httpRequest);
     const updated = await this.agents.setAdmin(id, enabled);
     return ok(updated);
   }
@@ -321,7 +436,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     return ok(await this.templates.findAll());
   }
 
@@ -339,7 +454,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     return ok(template ?? { error: `Template ${id} not found` });
   }
@@ -367,7 +482,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     return ok(await this.templates.setSkills(id, skillIds));
   }
 
@@ -408,7 +523,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     const updated = await this.templates.update(id, patch);
@@ -430,7 +545,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     return ok(await this.templateFiles.list(id));
@@ -456,7 +571,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     return ok(await this.templateFiles.read(id, path));
@@ -490,7 +605,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
     await this.templateFiles.save(id, path, content);
@@ -514,7 +629,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     return ok(stripSecrets(await this.llms.findAll()));
   }
 
@@ -534,7 +649,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     return ok(await this.skills.findAll());
   }
 
@@ -578,7 +693,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const skill = await this.skills.findById(id);
     if (!skill) return ok({ error: `Skill ${id} not found` });
     const updated = await this.skills.update(id, patch);
@@ -602,8 +717,12 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
-    return ok(await this.skills.findDependentAgents(skillId));
+    requireOperator(httpRequest);
+    // Only the agents the caller reaches (CLEAN-231): the list names them.
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    return ok(
+      reach.filter(await this.skills.findDependentAgents(skillId), (a) => a.id),
+    );
   }
 
   @Tool({
@@ -617,6 +736,7 @@ export class RancherTool {
       "the edited SKILL.md. Each agent's workflow is cancelled and resubmitted " +
       '(template files + skills resynced from DB). Sequential with concurrency 3 ' +
       'to avoid slamming the cluster. Returns aggregate counts and per-agent errors. ' +
+      'An agent the person may not manage is left running and only counted (`skipped`). ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       skillId: z.string(),
@@ -630,14 +750,30 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const { skillId } = args;
     const skill = await this.skills.findById(skillId);
     if (!skill) return ok({ error: `Skill ${skillId} not found` });
 
-    const dependents = await this.skills.findDependentAgents(skillId);
+    const using = await this.skills.findDependentAgents(skillId);
+    // Restarting an agent is managing it (CLEAN-232): an Admin redeploying a
+    // skill must not restart the Ranch admin agent along with it. What was
+    // left out is counted, never named.
+    const caller = manageCaller(httpRequest);
+    const manageable = await Promise.all(
+      using.map((dep) => this.permission.manageable(caller, dep.id)),
+    );
+    const dependents = using.filter((_, i) => manageable[i] !== null);
+    const skipped = using.length - dependents.length;
     if (dependents.length === 0) {
-      return ok({ skillId, total: 0, restarted: 0, failed: 0, errors: [] });
+      return ok({
+        skillId,
+        total: 0,
+        restarted: 0,
+        failed: 0,
+        skipped,
+        errors: [],
+      });
     }
     const refusal = confirmed(
       args,
@@ -675,6 +811,7 @@ export class RancherTool {
       total: dependents.length,
       restarted,
       failed,
+      skipped,
       errors,
     });
   }
@@ -707,7 +844,13 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
+    if (
+      !(await this.agents.findById(agentId)) ||
+      !(await this.access.reaches(callerParty(httpRequest), agentId))
+    ) {
+      return agentNotFound(httpRequest, agentId);
+    }
     return ok(await this.usage.findRecentForAgent(agentId, days ?? 30));
   }
 
@@ -734,7 +877,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const rows = group
       ? await this.settings.findByGroup(group)
       : await this.settings.findAll();
@@ -794,7 +937,7 @@ export class RancherTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
-    this.requireOwner(httpRequest);
+    requireOperator(httpRequest);
     const saved = await this.settings.upsert(group, name, {
       value,
       valueType: valueType ?? 'string',

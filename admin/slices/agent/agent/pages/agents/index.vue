@@ -12,8 +12,10 @@ import { railOrder } from '#agent/utils/railOrder';
 const agentStore = useAgentStore();
 
 // The request is awaited for its loading state; the list itself is read from
-// the store like everywhere else (docs/state.md).
-const { pending } = await useAsyncData('admin-agents', () =>
+// the store like everywhere else (docs/state.md). A list that could not be
+// read is not an empty one (CLEAN-231): `fetchAll` throws, `useAsyncData`
+// keeps the error, and the page says so instead of offering a first agent.
+const { pending, error, refresh } = await useAsyncData('admin-agents', () =>
   agentStore.fetchAll(),
 );
 const { agents } = storeToRefs(agentStore);
@@ -41,6 +43,20 @@ watchEffect(() => {
   <div v-if="pending && !agents.length" class="flex flex-col gap-3">
     <Skeleton class="h-8 w-48" />
     <Skeleton class="h-64 w-full rounded-lg" />
+  </div>
+
+  <div
+    v-else-if="!landing && error"
+    class="rounded-lg border border-dashed p-12 text-center"
+    data-agents-empty="load_failed"
+  >
+    <h1 class="text-base font-semibold">Agents could not be loaded</h1>
+    <p class="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+      The list did not arrive. Nothing was changed.
+    </p>
+    <Button class="mt-5" variant="outline" :disabled="pending" @click="refresh()">
+      Try again
+    </Button>
   </div>
 
   <div

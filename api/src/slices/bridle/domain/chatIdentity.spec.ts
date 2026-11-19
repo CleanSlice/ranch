@@ -2,6 +2,7 @@ import {
   clientIdFromJwtPayload,
   hasShareToken,
   headerValue,
+  isReservedClientId,
   parseBearer,
   resolveShareIdentity,
 } from './chatIdentity';
@@ -55,6 +56,25 @@ describe('clientIdFromJwtPayload', () => {
       clientId: 'admin',
       isAdmin: true,
     });
+  });
+
+  it('never reads an agent’s service token as an administrator (CLEAN-232)', () => {
+    // The Ranch admin agent's token carries Owner. Its runtime can print it,
+    // and `admin` is the conversation every Owner and Admin shares.
+    for (const roles of [['Owner'], ['Admin'], ['Owner', 'Admin'], ['Agent']]) {
+      expect(
+        clientIdFromJwtPayload({ sub: 'agent:agent-ranch', roles }),
+      ).toEqual({ clientId: 'agent:agent-ranch', isAdmin: false });
+    }
+    // Its own client: not the shared one, and not another agent's.
+    expect(
+      clientIdFromJwtPayload({ sub: 'agent:other', roles: ['Owner'] })
+        ?.clientId,
+    ).toBe('agent:other');
+    // A person whose id merely contains the word is still a person.
+    expect(
+      clientIdFromJwtPayload({ sub: 'user-agent:1', roles: ['Owner'] }),
+    ).toEqual({ clientId: 'admin', isAdmin: true });
   });
 
   it('is null when the payload proves nothing usable', () => {
@@ -141,5 +161,94 @@ describe('clientIdFromJwtPayload — embed tokens (CLEAN-175)', () => {
     expect(
       clientIdFromJwtPayload({ sub: 'wslid-A1', roles: [], typ: 'embed' }),
     ).toEqual({ clientId: 'wslid-A1', isAdmin: false });
+  });
+});
+
+// CLEAN-232. A client id is the sender the agent runtime sees. `cron` and
+// `heartbeat` are the names the runtime gives its own turns, and a hub client
+// called that was the agent itself until the runtime stopped reading trust
+// off the name. This is the second lock: the hub does not hand those names
+// out, whatever a token says.
+describe('reserved client ids (CLEAN-232)', () => {
+  const RESERVED = [
+    'admin',
+    'cron',
+    'heartbeat',
+    'agent:agent-1',
+    'agent:',
+    'peer:agent-b:ctx-1',
+    'peer:',
+    // Case and outer spaces aside.
+    'Cron',
+    'HEARTBEAT',
+    ' cron ',
+    'Agent:agent-1',
+    'PEER:x',
+  ];
+
+  it.each(RESERVED)('%p is reserved', (id) => {
+    expect(isReservedClientId(id)).toBe(true);
+  });
+
+  it.each([
+    'wslid-A1234567',
+    'user_42',
+    // Reserved only as a whole word or as a namespace.
+    'cronjob',
+    'heartbeats',
+    'administrator',
+    'my-cron',
+    'agent-1',
+    'peer-1',
+    'user-agent:1',
+  ])('%p is an ordinary id', (id) => {
+    expect(isReservedClientId(id)).toBe(false);
+  });
+
+  it('never is a namespace the hub mints itself', () => {
+    // anon-<id> (public embed), share-<visitor> (share link), http-/sync-<uuid>
+    // (token-less HTTP): a visitor chooses only what follows the prefix.
+    for (const tail of ['cron', 'heartbeat', 'admin', 'x']) {
+      for (const prefix of ['anon-', 'share-', 'http-', 'sync-']) {
+        expect(isReservedClientId(`${prefix}${tail}`)).toBe(false);
+      }
+    }
+  });
+
+  it('an embed token named after the runtime’s own turns proves nothing', () => {
+    for (const sub of ['cron', 'heartbeat', 'Cron', 'peer:agent-b:ctx-1']) {
+      expect(
+        clientIdFromJwtPayload({ sub, roles: [], typ: 'embed' }),
+      ).toBeNull();
+      expect(
+        clientIdFromJwtPayload({ sub, roles: ['User'], typ: 'embed' }),
+      ).toBeNull();
+    }
+  });
+
+  it('nor does any other token that is not an admin’s', () => {
+    for (const sub of ['cron', 'heartbeat', 'admin', 'peer:agent-b:ctx-1']) {
+      expect(clientIdFromJwtPayload({ sub, roles: ['User'] })).toBeNull();
+      expect(clientIdFromJwtPayload({ sub, roles: [] })).toBeNull();
+      expect(clientIdFromJwtPayload({ sub })).toBeNull();
+    }
+  });
+
+  it('agent:<id> is an agent’s own service token only, never an embed token’s', () => {
+    expect(
+      clientIdFromJwtPayload({ sub: 'agent:agent-1', roles: ['Agent'] }),
+    ).toEqual({ clientId: 'agent:agent-1', isAdmin: false });
+    for (const roles of [[], ['User'], ['Agent'], ['Owner']]) {
+      expect(
+        clientIdFromJwtPayload({ sub: 'agent:agent-1', roles, typ: 'embed' }),
+      ).toBeNull();
+    }
+  });
+
+  it('an admin is still `admin`, whatever the sub says', () => {
+    expect(clientIdFromJwtPayload({ sub: 'cron', roles: ['Owner'] })).toEqual({
+      clientId: 'admin',
+      isAdmin: true,
+    });
   });
 });

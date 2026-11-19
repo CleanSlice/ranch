@@ -64,6 +64,14 @@ export function agentLimitStoreSetup(
     return byAgent.value[agentId];
   }
 
+  // Whoever was signed in is not any more (CLEAN-231): the limits and loads
+  // read for them go. The polls belong to the components that started them
+  // and are left to them. The ONE way this store is emptied for an account
+  // change (docs/state.md).
+  function resetForAccount() {
+    byAgent.value = {};
+  }
+
   // Merges into the record, creating it when the id is new.
   function upsert(
     agentId: string,
@@ -238,6 +246,7 @@ export function agentLimitStoreSetup(
     entry,
     upsert,
     patch,
+    resetForAccount,
     fetchSummary,
     fetchLimits,
     fetchLoad,

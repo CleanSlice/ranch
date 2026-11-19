@@ -1,15 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
-  callerIsOperator,
+  agentNotFound,
+  callerManagesAgents,
+  manageCaller,
   ok,
-  requireOperator,
   type ToolResult,
 } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAgentGateway } from '#/agent/agent/domain';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { LogService, MAX_TAIL_LINES } from './domain';
 
@@ -27,16 +29,22 @@ const DEFAULT_TOOL_TAIL = 100;
  * Operator-only: logs can carry anything the agent printed, including
  * secrets a template author echoed by mistake, so a plain agent must not
  * be able to read another agent's (or its own) pod output through here.
+ *
+ * `manage-agent` (CLEAN-232): the call asks `AgentPermissionService` about
+ * the agent it names, and one the caller may not manage is answered like one
+ * that is not there.
  */
+@ToolAudience('manage-agent')
 @Injectable()
 export class LogTool implements IConditionallyListedTool {
   constructor(
     private readonly agentGateway: IAgentGateway,
     private readonly logService: LogService,
+    private readonly permission: AgentPermissionService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(callerIsOperator(httpRequest));
+    return Promise.resolve(callerManagesAgents(httpRequest));
   }
 
   @Tool({
@@ -72,14 +80,11 @@ export class LogTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request & { user?: IAuthTokenPayload },
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
-
-    const agent = await this.agentGateway.findById(args.agentId);
-    if (!agent) {
-      return ok({
-        error: `Agent «${args.agentId}» not found — call list_agents to find the id`,
-      });
-    }
+    const agent = await this.permission.manageable(
+      manageCaller(httpRequest),
+      args.agentId,
+    );
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
 
     const lines = this.logService.parseTail(args.lines ?? DEFAULT_TOOL_TAIL);
     const read = await this.logService.readPodLogs(

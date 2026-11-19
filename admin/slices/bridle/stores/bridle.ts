@@ -18,6 +18,7 @@ import {
   type IUploadedAttachment,
 } from '../utils/attachment'
 import { nextSeq, numberLegacy } from '../utils/chatFlow'
+import { debugKey, outboxKey } from '../utils/storageKeys'
 import { INTERIM_TURN, foldReplayedInterim, interimStep, isReplayBlock, trailingBlock } from '../utils/interim'
 import { openCitedSource, setCitedSourceRating } from '../utils/citedSource'
 import { describeCitedSourceError } from '../utils/citedSourceFile'
@@ -324,10 +325,24 @@ export interface IBridleDebugData {
 /**
  * localStorage persistence for debug snapshots — survives a page refresh so
  * the inspect icon doesn't disappear after every reload. Scoped per agentId so
- * switching agents doesn't bleed.
+ * switching agents doesn't bleed, and per signed-in account so a second
+ * operator on the same browser is not shown the first one's (CLEAN-231). The
+ * keys are built in `../utils/storageKeys`; with nobody signed in there is
+ * no key, and nothing is read or written.
  */
-const DEBUG_STORAGE_PREFIX = 'bridle:debug:'
 const MARKDOWN_STORAGE_KEY = 'bridle:markdownEnabled'
+
+/** Whose debug snapshots and outbox the browser keeps. */
+function accountId(): string | null {
+  return useAuthStore().user?.id ?? null
+}
+
+/**
+ * Bumped by `resetForAccount`. A transcript request that was open when the
+ * account changed compares it on return and drops its answer: that page was
+ * read for whoever was signed in before (CLEAN-231).
+ */
+let accountGeneration = 0
 
 function loadMarkdownPref(): boolean {
   if (typeof window === 'undefined') return true
@@ -355,9 +370,10 @@ interface IPersistedDebug {
 }
 
 function loadDebugFromStorage(agentId: string): IPersistedDebug | null {
-  if (typeof window === 'undefined') return null
+  const storageKey = debugKey(accountId(), agentId)
+  if (typeof window === 'undefined' || !storageKey) return null
   try {
-    const raw = window.localStorage.getItem(DEBUG_STORAGE_PREFIX + agentId)
+    const raw = window.localStorage.getItem(storageKey)
     if (!raw) return null
     return JSON.parse(raw) as IPersistedDebug
   } catch (err) {
@@ -367,12 +383,10 @@ function loadDebugFromStorage(agentId: string): IPersistedDebug | null {
 }
 
 function saveDebugToStorage(agentId: string, payload: IPersistedDebug): void {
-  if (typeof window === 'undefined') return
+  const storageKey = debugKey(accountId(), agentId)
+  if (typeof window === 'undefined' || !storageKey) return
   try {
-    window.localStorage.setItem(
-      DEBUG_STORAGE_PREFIX + agentId,
-      JSON.stringify(payload),
-    )
+    window.localStorage.setItem(storageKey, JSON.stringify(payload))
   } catch (err) {
     // Quota exceeded or storage disabled — debug is best-effort, ignore.
     console.warn('[bridle] failed to persist debug', err)
@@ -380,9 +394,10 @@ function saveDebugToStorage(agentId: string, payload: IPersistedDebug): void {
 }
 
 function clearDebugFromStorage(agentId: string): void {
-  if (typeof window === 'undefined') return
+  const storageKey = debugKey(accountId(), agentId)
+  if (typeof window === 'undefined' || !storageKey) return
   try {
-    window.localStorage.removeItem(DEBUG_STORAGE_PREFIX + agentId)
+    window.localStorage.removeItem(storageKey)
   } catch {
     // ignore
   }
@@ -727,9 +742,9 @@ function hasOpenTurn(c: IBridleConversation): boolean {
 // message the agent never received is in no transcript, so without this it
 // would vanish on reload, silently (research F2). The outbox holds exactly the
 // operator's messages that are NOT delivered: text and attachment references,
-// never image bytes.
-
-const OUTBOX_STORAGE_PREFIX = 'bridle:outbox:'
+// never image bytes. It is the operator's who wrote them: the key carries the
+// signed-in account (CLEAN-231, `../utils/storageKeys`), so the next person
+// on this browser is not shown somebody else's unsent words.
 
 interface IOutboxEntry {
   id: string
@@ -741,9 +756,10 @@ interface IOutboxEntry {
 }
 
 function loadOutbox(key: string): IOutboxEntry[] {
-  if (typeof window === 'undefined') return []
+  const storageKey = outboxKey(accountId(), key)
+  if (typeof window === 'undefined' || !storageKey) return []
   try {
-    const raw = window.localStorage.getItem(OUTBOX_STORAGE_PREFIX + key)
+    const raw = window.localStorage.getItem(storageKey)
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
@@ -757,13 +773,14 @@ function loadOutbox(key: string): IOutboxEntry[] {
 }
 
 function saveOutbox(key: string, entries: IOutboxEntry[]): void {
-  if (typeof window === 'undefined') return
+  const storageKey = outboxKey(accountId(), key)
+  if (typeof window === 'undefined' || !storageKey) return
   try {
     if (!entries.length) {
-      window.localStorage.removeItem(OUTBOX_STORAGE_PREFIX + key)
+      window.localStorage.removeItem(storageKey)
       return
     }
-    window.localStorage.setItem(OUTBOX_STORAGE_PREFIX + key, JSON.stringify(entries))
+    window.localStorage.setItem(storageKey, JSON.stringify(entries))
   } catch (err) {
     // Quota exceeded or storage disabled — the message still shows its state
     // for this session; it just will not survive a reload.
@@ -810,6 +827,12 @@ const TURN_STALE_MS = 75_000
 
 const TURN_DIED_NOTICE = 'The agent did not finish this turn.'
 
+/**
+ * The hub's answer to a console person whose access lists do not include the
+ * agent (CLEAN-231): the same "not found" an agent that does not exist gets.
+ */
+const AGENT_GONE_CODE = 'AGENT_NOT_FOUND'
+
 // When each agent's "visitors are being asked to wait" entry is due to end,
 // keyed by agent id. Not state: nothing renders from a timer handle.
 const visitorLimitTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -839,6 +862,15 @@ export const useBridleStore = defineStore('bridle', {
      * nothing else; Send stays as it is.
      */
     visitorLimits: {} as VisitorLimits,
+    /**
+     * Agents the hub refused this account as "not found" (CLEAN-231), by
+     * agent id: the socket was turned away at the handshake, on a message,
+     * or closed when access was taken away. The conversation is emptied
+     * here; the page that hosts the chat watches this, drops the agent from
+     * its list, leaves for the agents, and takes the mark off
+     * (`clearUnreachable`). Twin of the app store's `unreachable`.
+     */
+    unreachable: {} as Record<string, true>,
   }),
 
   getters: {
@@ -964,10 +996,14 @@ export const useBridleStore = defineStore('bridle', {
         // No 'ui': the admin preview doesn't render interactive ui parts.
         // 'sources' (CLEAN-138): the runtime keeps `[^n]` markers in the text
         // and the hub sends the list on a `sources` frame after `stream_end`.
+        // `surface` (CLEAN-232): which console this is, so the agent can say
+        // "in the management console". Wording only: what the person may do
+        // is decided by the API from their account, never from this field.
         auth: (cb) =>
           cb({
             token: useAuthStore().accessToken ?? '',
             agentId,
+            surface: 'admin',
             capabilities: ['streaming', 'images', 'files', 'thinking', 'proposals', 'sources'],
             lastSeq: c.lastHubSeq,
           }),
@@ -998,6 +1034,12 @@ export const useBridleStore = defineStore('bridle', {
       // replaces the "Chat reconnecting…" limbo.
       socket.on('bridle_error', async (e: { code?: string; agentId?: string; origin?: string }) => {
         const code = e?.code
+        // This account does not reach the agent (any more): not a token to
+        // renew and not a session that ended (CLEAN-231).
+        if (code === AGENT_GONE_CODE) {
+          this._dropUnreachable(key)
+          return
+        }
         // MISSING_TOKEN and ORIGIN_NOT_ALLOWED reach a signed-in person's
         // socket only when the handshake carried no token, i.e. the session
         // is gone; they take the same renew-once-then-end path (CLEAN-178).
@@ -2063,12 +2105,15 @@ export const useBridleStore = defineStore('bridle', {
      */
     async loadTranscript(apiUrl: string, agentId: string, channel = DEFAULT_CHANNEL) {
       const c = this.conversation(agentId, channel)
+      const generation = accountGeneration
       let page: ITranscriptPage | null = null
       try {
         page = await fetchTranscriptPage(apiUrl, agentId, channel)
       } catch (err) {
         console.warn('[bridle] failed to load transcript', err)
       }
+      // The account changed while the page was on its way (CLEAN-231).
+      if (generation !== accountGeneration) return
 
       // Outbox entries that are not in memory were written by a previous page.
       // Whatever was still in flight then can no longer be acknowledged.
@@ -2254,6 +2299,7 @@ export const useBridleStore = defineStore('bridle', {
         return 0
       }
       c.loadingOlder = true
+      const generation = accountGeneration
       try {
         const page = await fetchTranscriptPage(
           apiUrl,
@@ -2261,7 +2307,7 @@ export const useBridleStore = defineStore('bridle', {
           channel,
           c.transcriptCursor,
         )
-        if (!page) return 0
+        if (!page || generation !== accountGeneration) return 0
         const known = new Set(c.messages.map(m => m.id))
         const fresh = page.messages.filter(m => !known.has(m.id))
         // Proposals of this older window (CLEAN-112), minus the ones on screen.
@@ -2295,6 +2341,79 @@ export const useBridleStore = defineStore('bridle', {
       } finally {
         c.loadingOlder = false
       }
+    },
+
+    /**
+     * The hub answered `AGENT_NOT_FOUND` for this conversation (CLEAN-231):
+     * let go of everything the store holds of it. The socket is closed for
+     * good, with no listener left to write into the record (the hub would
+     * refuse it again); the record is emptied IN PLACE, because the mounted
+     * provider holds it; what the browser kept of this agent for this
+     * account goes too, since it may not read the agent any more; and the
+     * agent is marked for the page to act on.
+     */
+    _dropUnreachable(key: string) {
+      const c = this._conv(key)
+      if (!c) return
+      const agentId = c.agentId
+      c.socket?.removeAllListeners()
+      this.disconnect(key)
+      this.clearStaged(key)
+      this.clearMessages(key)
+      saveOutbox(key, [])
+      clearDebugFromStorage(agentId)
+      Object.assign(c, {
+        ...createConversation(c.agentId, c.channel),
+        holders: c.holders,
+        apiUrl: c.apiUrl,
+      })
+      this._setVisitorLimits(clearVisitorLimit(this.visitorLimits, agentId), agentId)
+      this.unreachable = { ...this.unreachable, [agentId]: true }
+    },
+
+    /** The host has acted on the mark; a later visit starts clean. */
+    clearUnreachable(agentId: string) {
+      if (!this.unreachable[agentId]) return
+      const next = { ...this.unreachable }
+      delete next[agentId]
+      this.unreachable = next
+    },
+
+    /**
+     * Whoever was signed in is not any more (CLEAN-231): let go of everything
+     * this store holds for them. Every conversation is emptied IN PLACE — a
+     * mounted provider holds its record, so dropping the record from the map
+     * would leave that provider drawing the old one — its socket is closed
+     * with no listener left to write into it, and its timers are stopped.
+     * The ONE way this store is emptied for an account change
+     * (docs/state.md). What is in storage stays there, under its owner's id;
+     * `markdownEnabled` is a view preference and stays too.
+     */
+    resetForAccount() {
+      accountGeneration += 1
+      for (const key of Object.keys(this.conversations)) {
+        const c = this._conv(key)
+        if (!c) continue
+        c.socket?.removeAllListeners()
+        this.disconnect(key)
+        // Both revoke the object URLs they hold before letting go of them.
+        this.clearStaged(key)
+        this.clearMessages(key)
+        Object.assign(c, {
+          ...createConversation(c.agentId, c.channel),
+          // The provider that holds the record is still mounted, and still
+          // counted; where the API lives is not about the account.
+          holders: c.holders,
+          apiUrl: c.apiUrl,
+        })
+      }
+      for (const handle of slowTimers.values()) clearTimeout(handle)
+      slowTimers.clear()
+      for (const handle of visitorLimitTimers.values()) clearTimeout(handle)
+      visitorLimitTimers.clear()
+      this.visitorLimits = {}
+      this.unreachable = {}
+      this.isOpen = false
     },
 
     setMarkdownEnabled(enabled: boolean) {

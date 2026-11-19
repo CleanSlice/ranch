@@ -21,9 +21,11 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Request, Response } from 'express';
-import { JwtAuthGuard } from '#/user/auth/guards';
+import { JwtAuthGuard, Roles } from '#/user/auth/guards';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { UserRoleTypes } from '#/user/user/domain';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { AgentScoped, accessCallerOf } from '#/user/agentAccess/guards';
 import {
   TranscriptMessage,
   TranscriptReaderService,
@@ -71,6 +73,9 @@ const USER_TYPES: TranscriptMessage['role'][] = [
 @ApiBearerAuth()
 @Controller('me/chats')
 @UseGuards(JwtAuthGuard)
+// Stated, not left to a default: a route with no @Roles asks for Admin
+// (CLEAN-232), and these are every signed-in account's own conversations.
+@Roles(UserRoleTypes.User)
 export class MyChatController {
   private readonly logger = new Logger(MyChatController.name);
 
@@ -79,6 +84,7 @@ export class MyChatController {
     private readonly reader: TranscriptReaderService,
     private readonly sync: ChatSyncService,
     private readonly sources: ChatSourceService,
+    private readonly access: AgentAccessService,
   ) {}
 
   @ApiOperation({
@@ -93,7 +99,12 @@ export class MyChatController {
   ): Promise<ChatListResponseDto> {
     const page = q.page ?? 1;
     const perPage = q.perPage ?? 50;
+    // Their own conversations with the agents they still reach (CLEAN-231):
+    // history with an agent taken away is hidden, not deleted, and returns
+    // with the access.
+    const reach = await this.access.reachableIds(accessCallerOf(req));
     const { items, total } = await this.chats.list({
+      agentScope: reach.where(),
       channel: OWN_CHANNEL,
       externalUserId: this.ownExternalId(req),
       archived: q.archived ?? false,
@@ -113,7 +124,7 @@ export class MyChatController {
     @Param('id') id: string,
     @Req() req: AuthedRequest,
   ): Promise<ChatSessionDto> {
-    return this.requireOwned(id, this.ownExternalId(req));
+    return this.requireOwned(id, this.ownExternalId(req), req);
   }
 
   @ApiOperation({
@@ -129,7 +140,7 @@ export class MyChatController {
     @Query() q: ChatMessagesQueryDto,
     @Req() req: AuthedRequest,
   ): Promise<ChatMessagesResponseDto> {
-    const session = await this.requireOwned(id, this.ownExternalId(req));
+    const session = await this.requireOwned(id, this.ownExternalId(req), req);
 
     const path = `data/sessions/${session.sessionKey}.jsonl`;
     let all: TranscriptMessage[];
@@ -163,16 +174,24 @@ export class MyChatController {
     description:
       "Reconcile the current user's OWN chats from S3 into the index " +
       '(self-service, non-admin). Only sessions belonging to the caller are ' +
-      'touched. A manual fallback when realtime indexing has not caught up.',
+      'touched, in the agents the caller already has a conversation with; ' +
+      'the counts in the answer are about those alone, and an `agentId` ' +
+      'the caller has no conversation with scans nothing (CLEAN-232). A ' +
+      'manual fallback when realtime indexing has not caught up.',
     operationId: 'syncMyChats',
   })
   @ApiOkResponse({ type: SyncChatsResponseDto })
   @Post('sync')
+  @AgentScoped('body.agentId')
   async syncMine(
     @Body() dto: SyncChatsDto,
     @Req() req: AuthedRequest,
   ): Promise<SyncChatsResponseDto> {
-    return this.sync.syncForExternalUser(this.ownExternalId(req), dto.agentId);
+    return this.sync.syncForExternalUser(
+      this.ownExternalId(req),
+      dto.agentId,
+      await this.access.reachableIds(accessCallerOf(req)),
+    );
   }
 
   @ApiOperation({
@@ -186,7 +205,7 @@ export class MyChatController {
     @Body() dto: CreateChatFeedbackDto,
     @Req() req: AuthedRequest,
   ): Promise<ChatFeedbackDto> {
-    await this.requireOwned(id, this.ownExternalId(req));
+    await this.requireOwned(id, this.ownExternalId(req), req);
     return this.chats.upsertFeedback({
       sessionId: id,
       messageId: dto.messageId,
@@ -210,7 +229,7 @@ export class MyChatController {
     @Param('messageId') messageId: string,
     @Req() req: AuthedRequest,
   ): Promise<void> {
-    await this.requireOwned(id, this.ownExternalId(req));
+    await this.requireOwned(id, this.ownExternalId(req), req);
     await this.chats.deleteFeedback(id, messageId, this.requireSub(req));
   }
 
@@ -224,7 +243,7 @@ export class MyChatController {
     @Param('id') id: string,
     @Req() req: AuthedRequest,
   ): Promise<ChatFeedbackDto[]> {
-    await this.requireOwned(id, this.ownExternalId(req));
+    await this.requireOwned(id, this.ownExternalId(req), req);
     return this.chats.listFeedbackByAuthor(id, this.requireSub(req));
   }
 
@@ -242,7 +261,7 @@ export class MyChatController {
     @Req() req: AuthedRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const session = await this.requireOwned(id, this.ownExternalId(req));
+    const session = await this.requireOwned(id, this.ownExternalId(req), req);
     const format = q.format ?? 'json';
     const path = `data/sessions/${session.sessionKey}.jsonl`;
     let messages: TranscriptMessage[] = [];
@@ -300,15 +319,23 @@ export class MyChatController {
   private async requireOwned(
     id: string,
     externalUserId: string,
+    req: AuthedRequest,
   ): Promise<IChatSessionData> {
     const session = await this.chats.findById(id);
+    const notFound = `Chat ${id} not found`;
     if (
       !session ||
       session.channel !== OWN_CHANNEL ||
       session.externalUserId !== externalUserId
     ) {
-      throw new NotFoundException(`Chat ${id} not found`);
+      throw new NotFoundException(notFound);
     }
+    // Theirs, and with an agent they still reach (CLEAN-231). The same 404.
+    await this.access.assertReaches(
+      accessCallerOf(req),
+      session.agentId,
+      notFound,
+    );
     return session;
   }
 }

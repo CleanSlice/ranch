@@ -43,6 +43,46 @@ export interface IAttachmentRequester {
    * CLEAN-80). Absent for share visitors and anonymous callers.
    */
   user?: { id: string; email?: string };
+  /**
+   * Set only when the bearer was a person's own console token: what the hub
+   * needs to mint an acting token for the message (CLEAN-232). An embed
+   * token is a `jwt` requester too and has none.
+   */
+  console?: IConsoleSession;
+}
+
+/** A signed-in console person, as their own access token states it. */
+export interface IConsoleSession {
+  userId: string;
+  /** The console session the token belongs to (`sid`). */
+  sid: string;
+  /** Strongest role on the token. For display; the API re-reads it. */
+  role: string;
+}
+
+const CONSOLE_ROLES = ['Owner', 'Admin', 'User'] as const;
+
+/**
+ * The console session behind a verified JWT payload, or null when the token
+ * is not a person's own console token: an embed token (`typ`), an agent
+ * service token (`sub = agent:…`), or anything without a session id. Only
+ * such a token may have an acting token minted from it; the session and the
+ * account are checked again when that token is used.
+ */
+export function consoleSessionOf(
+  payload: Record<string, unknown> | null | undefined,
+): IConsoleSession | null {
+  if (!payload || payload.typ !== undefined) return null;
+  const sub = payload.sub;
+  const sid = payload.sid;
+  if (typeof sub !== 'string' || !sub || sub.startsWith('agent:')) return null;
+  if (typeof sid !== 'string' || !sid) return null;
+  const roles = Array.isArray(payload.roles)
+    ? (payload.roles as unknown[])
+    : [];
+  const role = CONSOLE_ROLES.find((r) => roles.includes(r));
+  if (!role) return null;
+  return { userId: sub, sid, role };
 }
 
 /** The one method this module needs from `ShareLinkService`. Structural on
@@ -80,6 +120,36 @@ export function parseBearer(headers: ChatHeaders | undefined): string | null {
   return token;
 }
 
+// ── Client ids nobody outside may choose (CLEAN-232) ────────
+//
+// A client id travels to the agent runtime as the sender of the message,
+// and a few of them mean something there or here: `admin` is the
+// conversation every Owner and Admin shares, `cron` and `heartbeat` are the
+// names the runtime gives the turns it starts for itself, `agent:<id>` is an
+// agent's own service token, and `peer:<agent>:<context>` is a task another
+// agent handed over. The hub mints those itself or not at all. The runtime no
+// longer trusts a turn for its sender's name; this is the second lock, on
+// the side that hands the name out.
+
+/** Whole ids the hub keeps. */
+export const RESERVED_CLIENT_IDS = ['admin', 'cron', 'heartbeat'] as const;
+
+/** Namespaces the hub keeps. */
+export const RESERVED_CLIENT_PREFIXES = ['agent:', 'peer:'] as const;
+
+/**
+ * Whether `id` is one an anonymous, share or embed identity must never be
+ * given. Case and outer spaces aside, so `Cron` and ` cron ` are refused too:
+ * nothing legitimate is named that way.
+ */
+export function isReservedClientId(id: string): boolean {
+  const wanted = id.trim().toLowerCase();
+  return (
+    RESERVED_CLIENT_IDS.some((reserved) => wanted === reserved) ||
+    RESERVED_CLIENT_PREFIXES.some((prefix) => wanted.startsWith(prefix))
+  );
+}
+
 /**
  * The chat identity carried by a verified JWT payload: `admin` for owners and
  * admins (they share one channel so their history lives in one place), the
@@ -89,18 +159,35 @@ export function parseBearer(headers: ChatHeaders | undefined): string | null {
  * `sub` and no admin role. Callers MUST treat that as an unusable token rather
  * than letting an `undefined` client id travel on; a request with no identity
  * is exactly the case an ownership check must not be skipped for.
+ *
+ * An agent's service token (`sub = agent:<id>`) is never `admin`, whatever
+ * roles it carries (CLEAN-232). The Ranch admin agent's token carries Owner,
+ * and its runtime can print it: read as an administrator here, it could read
+ * and write the conversation every Owner and Admin shares. It is an `Agent`
+ * on routes and a guest at the tools; here it is its own client, with a
+ * history of its own that nobody else's token opens.
+ *
+ * A `sub` that is a reserved client id is unusable too (CLEAN-232): a token
+ * that is not an admin's never becomes `admin`, `cron`, `heartbeat` or a
+ * `peer:` task by naming itself so. `agent:<id>` is the one reserved
+ * namespace a token may carry, and only an agent's own service token: an
+ * embed token (`typ`) whose `sub` starts with `agent:` proves nothing.
  */
 export function clientIdFromJwtPayload(
   payload: Record<string, unknown> | null | undefined,
 ): { clientId: string; isAdmin: boolean } | null {
+  const sub = payload?.sub;
+  const isAgent = typeof sub === 'string' && sub.startsWith('agent:');
   const roles = payload?.roles as string[] | undefined;
   const isAdmin =
+    !isAgent &&
     Array.isArray(roles) &&
     (roles.includes('Owner') || roles.includes('Admin'));
   if (isAdmin) return { clientId: 'admin', isAdmin: true };
 
-  const sub = payload?.sub;
   if (typeof sub !== 'string' || !sub) return null;
+  const ownServiceToken = isAgent && payload?.typ === undefined;
+  if (!ownServiceToken && isReservedClientId(sub)) return null;
   return { clientId: sub, isAdmin: false };
 }
 

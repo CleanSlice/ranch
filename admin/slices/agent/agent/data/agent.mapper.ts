@@ -4,6 +4,7 @@ import type {
 } from '#api/data/repositories/api/types.gen';
 import type {
   AgentStatusTypes,
+  IAgentCreator,
   IAgentData,
   IAgentEnvVar,
   IAgentMetrics,
@@ -82,6 +83,10 @@ export class AgentMapper {
       isAdmin: o.isAdmin === true,
       debugEnabled: o.debugEnabled === true,
       pinned: o.pinned === true,
+      // Absent is not the same as null: a status-stream frame does not carry
+      // the field at all, and decoding that as "nobody" would wipe what
+      // GET /agents said. The store keeps the known creator for `undefined`.
+      createdBy: 'createdBy' in o ? this.toCreator(o.createdBy) : undefined,
       createdAt: typeof o.createdAt === 'string' ? o.createdAt : '',
       updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : '',
     };
@@ -175,6 +180,19 @@ export class AgentMapper {
   }
 
   // ── internals ──────────────────────────────────────────────────────────
+
+  /** `{ id, name, email }`, or null for nobody. A creator without an id is
+   *  nobody; a name or email that is not a string is a removed account's. */
+  private toCreator(raw: unknown): IAgentCreator | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const c = raw as Record<string, unknown>;
+    if (typeof c.id !== 'string' || !c.id) return null;
+    return {
+      id: c.id,
+      name: typeof c.name === 'string' ? c.name : null,
+      email: typeof c.email === 'string' ? c.email : null,
+    };
+  }
 
   private toStatus(raw: unknown): AgentStatusTypes {
     return typeof raw === 'string' && KNOWN_STATUSES.has(raw as AgentStatusTypes)

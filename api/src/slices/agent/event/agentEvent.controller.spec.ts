@@ -38,6 +38,7 @@ import {
   ISlackBotNotifier,
 } from './domain';
 import { PostAgentEventDto, SaveNotificationDestinationDto } from './dtos';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 const ADDRESS = 'https://hooks.slack.com/services/T000/B000/SECRETSECRET';
 
@@ -441,6 +442,7 @@ describe('the notification destination', () => {
     const controller = new AgentEventController(
       {} as AgentEventService,
       destinations,
+      openAccess(),
     );
     return { controller, gateway, notifier, bot };
   }
@@ -609,6 +611,7 @@ describe('GET /agent-incidents', () => {
     const controller = new AgentEventController(
       service as unknown as AgentEventService,
       {} as NotificationDestinationService,
+      openAccess(),
     );
 
     const page = await controller.listIncidents({
@@ -751,6 +754,7 @@ describe('the bot destination', () => {
     const controller = new AgentEventController(
       {} as AgentEventService,
       destinations,
+      openAccess(),
     );
     return { controller, gateway, notifier, bot };
   }

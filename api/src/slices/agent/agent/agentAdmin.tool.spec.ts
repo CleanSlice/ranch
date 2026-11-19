@@ -11,6 +11,15 @@ import type { IFileGateway } from '#/agent/file/domain';
 import type { AgentMcpResolver } from '#/mcpServer/domain/agentMcpResolver.service';
 import type { IMcpServerData } from '#/mcpServer/domain/mcpServer.types';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asGuest, asPerson, asTrustedAgent } from '#/mcp/testing';
+import { PERSON_REFUSAL, setCallerManagesAgents } from '#/mcp/tooling';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
+import type { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
+import type { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import {
+  accessHarness,
+  openAccess,
+} from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 /**
  * These tools stop, start and delete agents from the chat. What matters most
@@ -78,8 +87,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: AgentAdminTool;
@@ -90,17 +99,21 @@ interface Harness {
   workflows: { previewAgentEnv: jest.Mock; cancelAgentWorkflow: jest.Mock };
   files: { wipe: jest.Mock };
   mcps: { resolveForAgent: jest.Mock };
+  pins: { pin: jest.Mock; unpin: jest.Mock };
 }
 
-function harness(): Harness {
+// The access lists hide nothing unless a test hands in its own.
+function harness(access: AgentAccessService = openAccess()): Harness {
   const agents = {
     findById: jest.fn().mockResolvedValue(agent()),
     delete: jest.fn().mockResolvedValue(undefined),
-    update: jest
-      .fn()
-      .mockImplementation((_id: string, data: { pinned?: boolean }) =>
-        Promise.resolve(agent({ pinned: data.pinned === true })),
-      ),
+    update: jest.fn().mockResolvedValue(agent()),
+  };
+  const pins = {
+    pin: jest.fn().mockResolvedValue(true),
+    unpin: jest.fn().mockResolvedValue(true),
+    pinnedIds: jest.fn().mockResolvedValue(new Set()),
+    removeUser: jest.fn(),
   };
   const deploy = {
     stopAgent: jest.fn().mockResolvedValue(undefined),
@@ -150,8 +163,11 @@ function harness(): Harness {
     workflows as unknown as WorkflowService,
     files as unknown as IFileGateway,
     mcps as unknown as AgentMcpResolver,
+    permissionOver(agents),
+    access,
+    pins as unknown as IAgentPinGateway,
   );
-  return { tool, agents, deploy, status, pods, workflows, files, mcps };
+  return { tool, agents, deploy, status, pods, workflows, files, mcps, pins };
 }
 
 const textOf = (result: { content: { text: string }[] }) =>
@@ -168,11 +184,35 @@ describe('AgentAdminTool — who may use it', () => {
     await expect(tool.isListedForRequest(operator())).resolves.toBe(true);
   });
 
-  it('refuses a call from a plain agent even by name', async () => {
-    const { tool, deploy, agents } = harness();
+  it('lists them for a signed-in person who manages nothing', async () => {
+    // `pin_agent` is a `person` tool (CLEAN-231), so the class is listed for
+    // any person; each tool's own audience still decides which of them.
+    const { tool } = harness();
+    const person = asPerson(
+      request([UserRoleTypes.Owner]),
+      UserRoleTypes.User,
+      'user-1',
+    );
+    await expect(tool.isListedForRequest(person)).resolves.toBe(true);
     await expect(
-      tool.stopAgent({ id: 'agent-a', confirm: true }, null, plainAgent()),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+      tool.isListedForRequest(asGuest(request([UserRoleTypes.Owner]))),
+    ).resolves.toBe(false);
+  });
+
+  it('refuses a call from a plain agent even by name', async () => {
+    // Answered like an agent that does not exist (CLEAN-232): no 403 that
+    // would confirm the agent is there.
+    const { tool, deploy, agents } = harness();
+    const result = await tool.stopAgent(
+      { id: 'agent-a', confirm: true },
+      null,
+      plainAgent(),
+    );
+    expect(textOf(result)).toContain(
+      'Agent agent-a not found — there is no such agent for this caller',
+    );
+    // A plain agent has no `list_agents`, so the refusal does not name it.
+    expect(textOf(result)).not.toContain('list_agents');
     expect(agents.findById).not.toHaveBeenCalled();
     expect(deploy.stopAgent).not.toHaveBeenCalled();
   });
@@ -252,49 +292,92 @@ describe('AgentAdminTool — start_agent', () => {
 });
 
 describe('AgentAdminTool — pin_agent', () => {
-  // Reversible and harmless, so no confirm step; what matters is that the
-  // flag goes through the same gateway update the console uses, that the
-  // result carries only id / name / pinned, and that nobody but an operator
-  // can reach it (CLEAN-216).
-  it('pins through the gateway update and says so', async () => {
-    const { tool, agents } = harness();
+  // Reversible and harmless, so no confirm step. A pin is personal
+  // (CLEAN-231): what matters is that it is written for the person the call
+  // is made for and nobody else, that the agent itself is not touched, that
+  // the result carries only id / name / pinned, and that a caller who is not
+  // a person, or who does not reach the agent, pins nothing.
+  const user = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.User, 'user-1');
+
+  it('pins for the person asking, whatever their role, and says so', async () => {
+    const { tool, agents, pins } = harness();
     const text = textOf(
-      await tool.pinAgent({ id: 'agent-a', pinned: true }, null, operator()),
+      await tool.pinAgent({ id: 'agent-a', pinned: true }, null, user()),
     );
-    expect(agents.update).toHaveBeenCalledWith('agent-a', { pinned: true });
+    expect(pins.pin).toHaveBeenCalledWith('user-1', 'agent-a');
+    expect(pins.unpin).not.toHaveBeenCalled();
+    // The agent's own record is not what a pin changes.
+    expect(agents.update).not.toHaveBeenCalled();
     expect(text).toContain('"pinned": true');
-    expect(text).toContain('is pinned');
+    expect(text).toContain(
+      'Agent «Support Bot» is pinned for you — it stays at the top of your agent lists.',
+    );
     // Only the three fields a model needs; no config, no credential id.
     expect(text).not.toContain('llmCredentialId');
     expect(text).not.toContain('"config"');
   });
 
   it('unpins with the same call', async () => {
-    const { tool, agents } = harness();
+    const { tool, agents, pins } = harness();
     const text = textOf(
-      await tool.pinAgent({ id: 'agent-a', pinned: false }, null, operator()),
+      await tool.pinAgent({ id: 'agent-a', pinned: false }, null, user()),
     );
-    expect(agents.update).toHaveBeenCalledWith('agent-a', { pinned: false });
+    expect(pins.unpin).toHaveBeenCalledWith('user-1', 'agent-a');
+    expect(pins.pin).not.toHaveBeenCalled();
+    expect(agents.update).not.toHaveBeenCalled();
     expect(text).toContain('"pinned": false');
-    expect(text).toContain('is unpinned');
+    expect(text).toContain(
+      'Agent «Support Bot» is unpinned for you — back to its ordinary place in your lists.',
+    );
   });
 
   it('names the next move when the agent does not exist', async () => {
-    const { tool, agents } = harness();
+    const { tool, agents, pins } = harness();
     agents.findById.mockResolvedValue(null);
     const text = textOf(
-      await tool.pinAgent({ id: 'nope', pinned: true }, null, operator()),
+      await tool.pinAgent({ id: 'nope', pinned: true }, null, user()),
     );
-    expect(text).toContain('not found');
+    expect(text).toContain('Agent nope not found');
     expect(text).toContain('list_agents');
-    expect(agents.update).not.toHaveBeenCalled();
+    expect(pins.pin).not.toHaveBeenCalled();
   });
 
-  it('refuses a caller that is not a Ranch operator and writes nothing', async () => {
-    const { tool, agents } = harness();
-    await expect(
-      tool.pinAgent({ id: 'agent-a', pinned: true }, null, plainAgent()),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+  it('answers an agent the access lists hide like one that does not exist', async () => {
+    const { gateway, service } = accessHarness(['agent-a']);
+    gateway.seed('user-1', false, [{ agentId: 'agent-a', list: 'denied' }]);
+    const hidden = harness(service);
+    const missing = harness();
+    missing.agents.findById.mockResolvedValue(null);
+
+    const args = { id: 'agent-a', pinned: true };
+    const text = textOf(await hidden.tool.pinAgent(args, null, user()));
+
+    expect(text).toBe(textOf(await missing.tool.pinAgent(args, null, user())));
+    expect(text).not.toContain('Support Bot');
+    expect(hidden.pins.pin).not.toHaveBeenCalled();
+  });
+
+  it('refuses a caller that is not a person and writes nothing', async () => {
+    // An agent acting for itself has no lists to order, operator power or
+    // not; neither has a guest.
+    const { tool, agents, pins } = harness();
+    for (const caller of [
+      operator(),
+      plainAgent(),
+      asGuest(request([UserRoleTypes.Owner])),
+    ]) {
+      for (const pinned of [true, false]) {
+        const err = await tool
+          .pinAgent({ id: 'agent-a', pinned }, null, caller)
+          .catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ForbiddenException);
+        expect((err as ForbiddenException).message).toBe(PERSON_REFUSAL);
+      }
+    }
+    expect(agents.findById).not.toHaveBeenCalled();
+    expect(pins.pin).not.toHaveBeenCalled();
+    expect(pins.unpin).not.toHaveBeenCalled();
     expect(agents.update).not.toHaveBeenCalled();
   });
 });
@@ -549,5 +632,78 @@ describe('AgentAdminTool — get_cluster_capacity', () => {
     const text = textOf(await tool.getClusterCapacity({}, null, operator()));
     expect(text).toContain('"capacity": null');
     expect(text).toContain('unreachable');
+  });
+});
+
+// CLEAN-232: a refusal names the next move, and the next move must be one the
+// caller has. A User manages the agents they created, so these tools are
+// listed for them; `list_agents` is a `person` tool since CLEAN-231, so it is
+// theirs as well and the refusal sends them there. What it must not do is
+// tell an agent out of their reach from one that does not exist.
+describe('AgentAdminTool — a refusal names only what the caller has', () => {
+  const creator = () => {
+    const req = asPerson(
+      request([UserRoleTypes.Owner]),
+      UserRoleTypes.User,
+      'user-1',
+    );
+    setCallerManagesAgents(req, true);
+    return req;
+  };
+
+  it('tells a User only that the id was not found, and where to look', async () => {
+    const { tool, agents } = harness();
+    // Somebody else's agent: out of reach, answered like one that is not there.
+    agents.findById.mockResolvedValue(agent({ createdById: 'user-2' }));
+    const results = [
+      await tool.deleteAgent({ id: 'agent-a', confirm: true }, null, creator()),
+      await tool.stopAgent({ id: 'agent-a', confirm: true }, null, creator()),
+      await tool.startAgent({ id: 'agent-a' }, null, creator()),
+    ];
+    for (const result of results) {
+      const text = textOf(result);
+      // A person has `list_agents` and gets the agents they reach from it.
+      expect(text).toContain(
+        'Agent agent-a not found — call list_agents to find the id',
+      );
+      expect(text).not.toContain('Support Bot');
+    }
+    expect(agents.delete).not.toHaveBeenCalled();
+
+    // An id nobody has reads the same.
+    agents.findById.mockResolvedValue(null);
+    expect(
+      textOf(
+        await tool.deleteAgent(
+          { id: 'agent-a', confirm: true },
+          null,
+          creator(),
+        ),
+      ),
+    ).toBe(textOf(results[0]));
+  });
+
+  it('still reaches the agent the User created', async () => {
+    const { tool, agents } = harness();
+    agents.findById.mockResolvedValue(agent({ createdById: 'user-1' }));
+    const text = textOf(
+      await tool.deleteAgent(
+        { id: 'agent-a', confirm: false },
+        null,
+        creator(),
+      ),
+    );
+    expect(text).toContain('delete the agent «Support Bot»');
+    expect(text).not.toContain('not found');
+  });
+
+  it('keeps naming list_agents for an operator', async () => {
+    const { tool, agents } = harness();
+    agents.findById.mockResolvedValue(null);
+    expect(
+      textOf(
+        await tool.deleteAgent({ id: 'nope', confirm: true }, null, operator()),
+      ),
+    ).toContain('Agent nope not found — call list_agents to find the id');
   });
 });

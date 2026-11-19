@@ -1,15 +1,19 @@
 import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerAgentId,
   callerIsOperator,
+  callerPerson,
   err,
   ok,
   requireOperator,
   type ToolResult,
+  agentNotFound,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { McpOauthService } from './domain/mcpOauth.service';
@@ -27,12 +31,24 @@ type AuthedRequest = Request & { user?: IAuthTokenPayload };
  * registration, PKCE state — exactly as for the console. The tool adds only
  * the two things a model needs: which agent the connection belongs to (the
  * caller, unless told otherwise) and what to do with the URL that comes back.
+ *
+ * Audience `admin`, which is stricter than `person`: registering and
+ * connecting MCP servers is an operator's job in the console (`mcp-servers`
+ * routes, Owner and Admin). `subject` stays an argument, because an Owner or
+ * Admin may start a connection for another user, and is checked against the
+ * party all the same: whoever is not an operator may name only themselves.
+ * That second check cannot fire while the audience is `admin`; it is there so
+ * that lowering the audience later does not reopen "name any user" (CLEAN-232).
  */
+@ToolAudience('admin')
 @Injectable()
 export class McpOauthTool implements IConditionallyListedTool {
   private readonly logger = new Logger(McpOauthTool.name);
 
-  constructor(private readonly oauth: McpOauthService) {}
+  constructor(
+    private readonly oauth: McpOauthService,
+    private readonly access: AgentAccessService,
+  ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     return Promise.resolve(callerIsOperator(httpRequest));
@@ -83,12 +99,27 @@ export class McpOauthTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
+    if (
+      subject &&
+      subject !== callerPerson(httpRequest)?.userId &&
+      !callerIsOperator(httpRequest)
+    ) {
+      return err(
+        'A connection for another person needs an administrator. Omit ' +
+          'subject for the agent-wide connection.',
+      );
+    }
     const owner = agentId ?? callerAgentId(httpRequest);
     if (!owner) {
       return err(
         'Pass agentId: the token is stored for one agent, and this caller is ' +
           'not an agent. list_agents has the ids.',
       );
+    }
+    // The token is stored for one agent; a person connects it only for an
+    // agent their access lists reach (CLEAN-231).
+    if (!(await this.access.reaches(callerParty(httpRequest), owner))) {
+      return agentNotFound(httpRequest, owner);
     }
     try {
       const { authorizeUrl } = await this.oauth.start({

@@ -27,6 +27,7 @@ import { refuseAgentWrite } from './domain/agentTokenGuard';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 import { IAgentGateway } from '#/agent/agent/domain';
+import { ManagesAgent } from '#/agent/agent/guards';
 import { IBridleGateway } from '#/bridle/domain';
 import { Public } from '#/user/auth/guards';
 import { IFileGateway, OpenLinkService, SyncGuardService } from './domain';
@@ -52,8 +53,13 @@ import {
   SyncFilesDto,
 } from './dtos';
 
+// An agent's workspace is its instructions: Admin by the default of the role
+// guard, and only for an agent the caller may manage (CLEAN-232). The Ranch
+// admin agent's files are the Owner's alone. The signed `raw` link below is
+// @Public() and is left to its own token.
 @ApiTags('files')
 @Controller('agents/:agentId/files')
+@ManagesAgent('agentId')
 export class FileController {
   constructor(
     @Inject(forwardRef(() => IAgentGateway))

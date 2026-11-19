@@ -1,7 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
-import { CONFIRM_SENTENCE, confirmed, ok } from '#/mcp/tooling';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
+import {
+  callerIsOperator,
+  CONFIRM_SENTENCE,
+  confirmed,
+  ok,
+  requireOperator,
+  agentNotFound,
+  callerParty,
+} from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
   IPaddockScenarioGateway,
   IPaddockScenarioGeneratorGateway,
@@ -53,14 +64,41 @@ const setupSchema = z
   })
   .optional();
 
+@ToolAudience('admin')
 @Injectable()
-export class PaddockScenarioTool {
+export class PaddockScenarioTool implements IConditionallyListedTool {
   private readonly logger = new Logger(PaddockScenarioTool.name);
 
   constructor(
     private readonly scenarios: IPaddockScenarioGateway,
     private readonly generator: IPaddockScenarioGeneratorGateway,
+    private readonly access: AgentAccessService,
   ) {}
+
+  /**
+   * The scenario, when it exists and is not scoped to an agent the caller's
+   * access lists hide (CLEAN-231). One answer for both.
+   */
+  private async reachedScenario(httpRequest: Request, id: string) {
+    const scenario = await this.scenarios.findById(id);
+    if (!scenario) return null;
+    if (!scenario.agentId) return scenario;
+    return (await this.access.reaches(
+      callerParty(httpRequest),
+      scenario.agentId,
+    ))
+      ? scenario
+      : null;
+  }
+
+  /**
+   * Paddock is an operator's screen (its routes carry no role and so admit
+   * Owner and Admin). Until CLEAN-232 these tools had no gate at all: any
+   * agent runtime could start, abort and read evaluations.
+   */
+  async isListedForRequest(httpRequest: Request): Promise<boolean> {
+    return Promise.resolve(callerIsOperator(httpRequest));
+  }
 
   @Tool({
     name: 'list_paddock_scenarios',
@@ -74,14 +112,28 @@ export class PaddockScenarioTool {
       agentId: z.string().optional(),
     }),
   })
-  async list({
-    templateId,
-    agentId,
-  }: {
-    templateId?: string;
-    agentId?: string;
-  }) {
-    return ok(await this.scenarios.findAll({ templateId, agentId }));
+  async list(
+    {
+      templateId,
+      agentId,
+    }: {
+      templateId?: string;
+      agentId?: string;
+    },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    requireOperator(httpRequest);
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    if (agentId && !reach.has(agentId)) {
+      return agentNotFound(httpRequest, agentId);
+    }
+    return ok(
+      reach.filter(
+        await this.scenarios.findAll({ templateId, agentId }),
+        (scenario) => scenario.agentId,
+      ),
+    );
   }
 
   @Tool({
@@ -92,8 +144,9 @@ export class PaddockScenarioTool {
     description: 'Get a single paddock scenario by id.',
     parameters: z.object({ id: z.string() }),
   })
-  async get({ id }: { id: string }) {
-    const scenario = await this.scenarios.findById(id);
+  async get({ id }: { id: string }, _context: unknown, httpRequest: Request) {
+    requireOperator(httpRequest);
+    const scenario = await this.reachedScenario(httpRequest, id);
     return ok(scenario ?? { error: `Scenario ${id} not found` });
   }
 
@@ -106,7 +159,15 @@ export class PaddockScenarioTool {
       'List the merged set of paddock scenarios that would run for a given agent (template defaults + agent overrides; overrides win on name collision).',
     parameters: z.object({ agentId: z.string() }),
   })
-  async listForAgent({ agentId }: { agentId: string }) {
+  async listForAgent(
+    { agentId }: { agentId: string },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    requireOperator(httpRequest);
+    if (!(await this.access.reaches(callerParty(httpRequest), agentId))) {
+      return agentNotFound(httpRequest, agentId);
+    }
     return ok(await this.scenarios.findForAgent(agentId));
   }
 
@@ -131,26 +192,37 @@ export class PaddockScenarioTool {
       setup: setupSchema,
     }),
   })
-  async create(input: {
-    templateId?: string;
-    agentId?: string;
-    category: PaddockScenarioCategory;
-    difficulty: PaddockScenarioDifficulty;
-    name: string;
-    description: string;
-    expectedBehavior: string;
-    messages: Array<{ text: string; from: string; delayMs?: number }>;
-    successCriteria: Array<{
-      dimension: string;
+  async create(
+    input: {
+      templateId?: string;
+      agentId?: string;
+      category: PaddockScenarioCategory;
+      difficulty: PaddockScenarioDifficulty;
+      name: string;
       description: string;
-      weight: number;
-    }>;
-    setup?: {
-      files?: Record<string, string>;
-      env?: Record<string, string>;
-      tools?: string[];
-    };
-  }) {
+      expectedBehavior: string;
+      messages: Array<{ text: string; from: string; delayMs?: number }>;
+      successCriteria: Array<{
+        dimension: string;
+        description: string;
+        weight: number;
+      }>;
+      setup?: {
+        files?: Record<string, string>;
+        env?: Record<string, string>;
+        tools?: string[];
+      };
+    },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    requireOperator(httpRequest);
+    if (
+      input.agentId &&
+      !(await this.access.reaches(callerParty(httpRequest), input.agentId))
+    ) {
+      return agentNotFound(httpRequest, input.agentId);
+    }
     const hasTemplate = Boolean(input.templateId);
     const hasAgent = Boolean(input.agentId);
     if (hasTemplate === hasAgent) {
@@ -193,8 +265,13 @@ export class PaddockScenarioTool {
       setup: setupSchema,
     }),
   })
-  async update({ id, ...patch }: { id: string } & IUpdatePaddockScenarioData) {
-    const existing = await this.scenarios.findById(id);
+  async update(
+    { id, ...patch }: { id: string } & IUpdatePaddockScenarioData,
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    requireOperator(httpRequest);
+    const existing = await this.reachedScenario(httpRequest, id);
     if (!existing) return ok({ error: `Scenario ${id} not found` });
     return ok(await this.scenarios.update(id, patch));
   }
@@ -213,9 +290,14 @@ export class PaddockScenarioTool {
         .describe('Set true only after the person confirmed in the chat.'),
     }),
   })
-  async remove(args: { id: string; confirm?: boolean }) {
+  async remove(
+    args: { id: string; confirm?: boolean },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    requireOperator(httpRequest);
     const { id } = args;
-    const existing = await this.scenarios.findById(id);
+    const existing = await this.reachedScenario(httpRequest, id);
     if (!existing) return ok({ error: `Scenario ${id} not found` });
     const refusal = confirmed(
       args,
@@ -255,15 +337,26 @@ export class PaddockScenarioTool {
         .describe('LlmCredential id to draft with; default: first active.'),
     }),
   })
-  async generate(input: {
-    description: string;
-    agentId?: string;
-    templateId?: string;
-    count?: number;
-    category?: PaddockScenarioCategory;
-    difficulty?: PaddockScenarioDifficulty;
-    credentialId?: string;
-  }) {
+  async generate(
+    input: {
+      description: string;
+      agentId?: string;
+      templateId?: string;
+      count?: number;
+      category?: PaddockScenarioCategory;
+      difficulty?: PaddockScenarioDifficulty;
+      credentialId?: string;
+    },
+    _context: unknown,
+    httpRequest: Request,
+  ) {
+    requireOperator(httpRequest);
+    if (
+      input.agentId &&
+      !(await this.access.reaches(callerParty(httpRequest), input.agentId))
+    ) {
+      return agentNotFound(httpRequest, input.agentId);
+    }
     // Same XOR rule the controller enforces on POST /paddock-scenarios/generate.
     const hasTemplate = Boolean(input.templateId);
     const hasAgent = Boolean(input.agentId);

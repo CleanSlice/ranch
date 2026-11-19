@@ -3,6 +3,7 @@ import {
   Controller,
   Headers,
   Logger,
+  NotFoundException,
   Post,
   Req,
   UnauthorizedException,
@@ -25,6 +26,8 @@ import {
 } from './dtos';
 import { IAuthTokenPayload } from '../user/auth/domain/auth.types';
 import { JwtAuthGuard, Public } from '../user/auth/guards';
+import { AgentScoped } from '../user/agentAccess/guards';
+import { AgentAccessService } from '../user/agentAccess/domain/agentAccess.service';
 
 interface IExtensionTokenPayload {
   /** Ranch user that minted the token (audit/replay). */
@@ -56,6 +59,7 @@ export class BrowserExtensionController {
   constructor(
     private readonly gateway: IBrowserGateway,
     private readonly jwt: JwtService,
+    private readonly access: AgentAccessService,
   ) {}
 
   @Post('token')
@@ -67,6 +71,9 @@ export class BrowserExtensionController {
   })
   @ApiOkResponse({ type: IssueExtensionTokenResponseDto })
   @UseGuards(JwtAuthGuard)
+  // The token imports cookies into one agent; minting it takes reaching
+  // that agent (CLEAN-231).
+  @AgentScoped('body.agentId')
   async issueToken(
     @Body() dto: IssueExtensionTokenDto,
     @Req() req: Request & { user: IAuthTokenPayload },
@@ -101,6 +108,19 @@ export class BrowserExtensionController {
   ): Promise<ImportStateResponseDto> {
     const token = this.parseBearer(auth);
     const payload = this.verifyExtensionToken(token);
+    // The token lives up to a year, and what it was minted with was true on
+    // that day only. Asked again on every use, with the minting account's
+    // role and lists as the database has them now (CLEAN-231): an account
+    // that was deleted or disabled, or that no longer reaches the agent,
+    // imports nothing. The 404 of an agent that does not exist, either way.
+    if (
+      !(await this.access.accountReachesExisting(payload.sub, payload.agentId))
+    ) {
+      this.logger.warn(
+        `Extension token refused: sub=${payload.sub} no longer reaches agent=${payload.agentId}`,
+      );
+      throw new NotFoundException('Agent not found');
+    }
     const result = await this.gateway.importStorageState(
       payload.sub,
       payload.agentId,

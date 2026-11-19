@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { formatNumber } from '#common/utils/format';
 
-const { rows, totals, loading, load } = useLlmUsageOverview();
+const { rows, totals, loading, failed, load } = useLlmUsageOverview();
 
 function formatCost(n: number): string {
   if (n === 0) return '$0.00';
@@ -55,6 +55,11 @@ function formatCost(n: number): string {
           <TableRow v-if="loading && rows.length === 0">
             <TableCell colspan="6" class="py-6 text-center text-muted-foreground">
               Loading…
+            </TableCell>
+          </TableRow>
+          <TableRow v-else-if="failed && rows.length === 0" data-usage-load-failed>
+            <TableCell colspan="6" class="py-6 text-center text-muted-foreground">
+              Usage could not be loaded. Use Refresh to try again.
             </TableCell>
           </TableRow>
           <TableRow v-else-if="!loading && rows.length === 0">

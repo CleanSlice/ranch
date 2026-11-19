@@ -1,16 +1,18 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   CONFIRM_SENTENCE,
-  callerIsOperator,
+  agentNotFound,
+  callerManagesAgents,
   confirmed,
+  manageCaller,
   ok,
-  requireOperator,
 } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAgentGateway } from '#/agent/agent/domain';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { IBridleAttachmentGateway, IBridleGateway } from '#/bridle/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { callerAgentId, err } from '#/mcp/tooling';
@@ -75,8 +77,13 @@ const CONFIRM_BY_PROPOSAL =
  * over S3, and the at-risk list is the only thing standing between an
  * operator and a silent overwrite.
  *
- * Operator-only: hidden from plain agents and refused if called anyway.
+ * `manage-agent` (CLEAN-232): hidden from plain agents, listed for whoever
+ * may manage at least one agent, and each call asks `AgentPermissionService`
+ * about the agent it names. One the caller may not manage is answered like
+ * one that is not there; the Ranch admin agent's workspace is the Owner's
+ * alone, because its files are its instructions.
  */
+@ToolAudience('manage-agent')
 @Injectable()
 export class FileTool implements IConditionallyListedTool {
   constructor(
@@ -90,10 +97,16 @@ export class FileTool implements IConditionallyListedTool {
     private readonly proposals: FileProposalService,
     @Inject(forwardRef(() => IBridleAttachmentGateway))
     private readonly attachments: IBridleAttachmentGateway,
+    private readonly permission: AgentPermissionService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return callerIsOperator(httpRequest);
+    return callerManagesAgents(httpRequest);
+  }
+
+  /** The agent, when it exists and this caller may manage it. */
+  private manageable(httpRequest: Request, agentId: string) {
+    return this.permission.manageable(manageCaller(httpRequest), agentId);
   }
 
   // ── Read (CLEAN-112) ─────────────────────────────────────────────
@@ -120,9 +133,8 @@ export class FileTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    const agent = await this.manageable(httpRequest, args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
     const prefix = args.prefix
       ? args.prefix.endsWith('/')
         ? args.prefix
@@ -166,9 +178,8 @@ export class FileTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    const agent = await this.manageable(httpRequest, args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
     try {
       const chunk = await this.files.readRange(
         args.agentId,
@@ -288,9 +299,8 @@ export class FileTool implements IConditionallyListedTool {
     op: 'write' | 'create',
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    const agent = await this.manageable(httpRequest, args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
     const chatAgentId = callerAgentId(httpRequest) ?? 'operator';
 
     if (args.confirm) {
@@ -359,14 +369,18 @@ export class FileTool implements IConditionallyListedTool {
       attachmentIds: z
         .array(z.string())
         .optional()
-        .describe('Ids of plain (non-zip) attachments to import as selected files.'),
+        .describe(
+          'Ids of plain (non-zip) attachments to import as selected files.',
+        ),
       url: z.string().optional().describe('https link to a zip.'),
       mode: z.enum(['merge', 'replace']).optional(),
       includeSessions: z.boolean().optional(),
       targetFolder: z
         .string()
         .optional()
-        .describe('Selected files: folder for names that match nothing; empty = root.'),
+        .describe(
+          'Selected files: folder for names that match nothing; empty = root.',
+        ),
       targets: z
         .array(z.object({ name: z.string(), path: z.string() }))
         .optional()
@@ -398,9 +412,8 @@ export class FileTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    const agent = await this.manageable(httpRequest, args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
     const chatAgentId = callerAgentId(httpRequest) ?? 'operator';
 
     if (args.confirm) {
@@ -574,8 +587,7 @@ export class FileTool implements IConditionallyListedTool {
           agentName,
           targetFolder,
           needsChoice,
-          next:
-            'Ask the person which file each name should replace (or whether to add it as new in the target folder), then call again with `targets: [{ name, path }]` for those names.',
+          next: 'Ask the person which file each name should replace (or whether to add it as new in the target folder), then call again with `targets: [{ name, path }]` for those names.',
         });
       }
 
@@ -795,9 +807,8 @@ export class FileTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    const agent = await this.manageable(httpRequest, args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
 
     const what = args.recursive
       ? `delete the folder «${args.path}» and everything under it from the agent «${agent.name}»`
@@ -855,9 +866,8 @@ export class FileTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(args.agentId);
-    if (!agent) return this.agentNotFound(args.agentId);
+    const agent = await this.manageable(httpRequest, args.agentId);
+    if (!agent) return agentNotFound(httpRequest, args.agentId);
 
     // Same guard as FileController.sync (CLEAN-50): `confirm` skips the
     // check because the operator already saw and accepted the list.
@@ -921,9 +931,8 @@ export class FileTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return this.agentNotFound(agentId);
+    const agent = await this.manageable(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
 
     const nodes = await this.files.list(agentId);
     return ok({
@@ -932,12 +941,6 @@ export class FileTool implements IConditionallyListedTool {
       fileCount: nodes.length,
       downloadPath: `/agents/${agentId}/files/export`,
       note: 'Open this path in the console (it needs your login) to download the zip.',
-    });
-  }
-
-  private agentNotFound(agentId: string) {
-    return ok({
-      error: `Agent ${agentId} not found — call list_agents to find the id`,
     });
   }
 }

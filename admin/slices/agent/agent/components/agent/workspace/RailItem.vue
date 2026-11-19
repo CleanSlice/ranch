@@ -34,7 +34,7 @@ defineProps<{ entry: IRailEntry }>();
           class="size-3.5 shrink-0 text-primary"
           role="img"
           aria-label="Pinned"
-          title="Pinned: kept at the top of the list in both consoles"
+          title="Pinned: kept at the top of your list in both consoles"
           data-pinned
         />
         <IconShield

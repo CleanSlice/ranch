@@ -5,6 +5,7 @@ import { IChatGateway, IChatSessionData, ChatSyncService } from './domain';
 import { TranscriptReaderService } from '#/agent/file/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { UserRoleTypes } from '#/user/user/domain';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 const SUB = 'user-1';
 
@@ -83,7 +84,13 @@ function makeController(findById: jest.Mock, read?: jest.Mock) {
   const { chats, list, upsertFeedback, deleteFeedback } = makeChats(findById);
   const { sync, syncForExternalUser } = syncStub();
   const sources = { attach: async (m: unknown) => m } as never;
-  const ctrl = new MyChatController(chats, readerStub(read), sync, sources);
+  const ctrl = new MyChatController(
+    chats,
+    readerStub(read),
+    sync,
+    sources,
+    openAccess(),
+  );
   return { ctrl, list, syncForExternalUser, upsertFeedback, deleteFeedback };
 }
 
@@ -92,6 +99,8 @@ describe('MyChatController.list', () => {
     const { ctrl, list } = makeController(jest.fn());
     const res = await ctrl.list({ page: 2, perPage: 10 }, req(SUB));
     expect(list).toHaveBeenCalledWith({
+      // No access list on this account: no agent is filtered out.
+      agentScope: undefined,
       channel: 'bridle',
       externalUserId: SUB,
       archived: false,
@@ -239,12 +248,22 @@ describe('MyChatController.syncMine', () => {
   it('reconciles only the caller (regular user → their sub)', async () => {
     const { ctrl, syncForExternalUser } = makeController(jest.fn());
     await ctrl.syncMine({ agentId: 'a1' }, req(SUB));
-    expect(syncForExternalUser).toHaveBeenCalledWith(SUB, 'a1');
+    // The third argument is the caller's reach (CLEAN-231): the sync leaves
+    // out conversations with agents taken away from them.
+    expect(syncForExternalUser).toHaveBeenCalledWith(
+      SUB,
+      'a1',
+      expect.objectContaining({ unrestricted: true }),
+    );
   });
 
   it("reconciles the 'admin' channel for an owner/admin", async () => {
     const { ctrl, syncForExternalUser } = makeController(jest.fn());
     await ctrl.syncMine({}, req(SUB, [UserRoleTypes.Owner]));
-    expect(syncForExternalUser).toHaveBeenCalledWith('admin', undefined);
+    expect(syncForExternalUser).toHaveBeenCalledWith(
+      'admin',
+      undefined,
+      expect.objectContaining({ unrestricted: true }),
+    );
   });
 });

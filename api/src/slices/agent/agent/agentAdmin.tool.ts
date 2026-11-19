@@ -1,16 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
-  callerIsOperator,
+  agentNotFound,
+  callerManagesAgents,
+  callerParty,
+  callerPerson,
   CONFIRM_SENTENCE,
   confirmed,
+  manageCaller,
   ok,
   requireOperator,
+  requirePerson,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAgentGateway } from './domain';
+import { AgentPermissionService } from './domain/agentPermission.service';
 import { AgentDeployService } from './domain/agentDeploy.service';
 import { AgentStatusService } from './domain/agentStatus.service';
 import { detectMcpConfigDrift } from './domain/mcpConfigDrift';
@@ -35,9 +43,6 @@ function isSecretEnvName(name: string): boolean {
   return SECRET_NAME_FRAGMENTS.some((fragment) => upper.includes(fragment));
 }
 
-const notFound = (id: string) =>
-  ok({ error: `Agent ${id} not found — call list_agents to find the id` });
-
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 
 /**
@@ -51,8 +56,15 @@ type AuthedRequest = Request & { user?: IAuthTokenPayload };
  * the same order, so a stop from the chat frees the slot the same way a stop
  * from the console does, and a delete tolerates the same Argo/k8s hiccups.
  *
- * Operator-only: hidden from a plain agent's tools/list, and refused by name.
+ * Two audiences (CLEAN-232). The tools that act on ONE agent (stop, start,
+ * delete, status, environment, MCP servers) are `manage-agent`: listed for
+ * whoever may manage at least one agent, and each call asks
+ * `AgentPermissionService` about the agent it names, answering "not found"
+ * for one the caller may not manage. Cluster capacity stays with the
+ * class's `admin`. Pinning is `person` (CLEAN-231): a pin is the asking
+ * person's own, whatever their role, for an agent they reach.
  */
+@ToolAudience('admin')
 @Injectable()
 export class AgentAdminTool implements IConditionallyListedTool {
   private readonly logger = new Logger(AgentAdminTool.name);
@@ -65,14 +77,27 @@ export class AgentAdminTool implements IConditionallyListedTool {
     private readonly workflows: WorkflowService,
     private readonly files: IFileGateway,
     private readonly mcpResolver: AgentMcpResolver,
+    private readonly permission: AgentPermissionService,
+    private readonly access: AgentAccessService,
+    private readonly pins: IAgentPinGateway,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return callerIsOperator(httpRequest);
+    // The widest audience in the class; each tool's own audience has already
+    // been checked by the time this runs.
+    return (
+      callerManagesAgents(httpRequest) || callerPerson(httpRequest) !== null
+    );
+  }
+
+  /** The agent, when it exists and this caller may manage it. */
+  private manageable(httpRequest: Request, id: string) {
+    return this.permission.manageable(manageCaller(httpRequest), id);
   }
 
   // ─── Lifecycle ───────────────────────────────────────────────────────
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'stop_agent',
     topic: ToolTopics.Agents,
@@ -98,9 +123,8 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(args.id);
-    if (!agent) return notFound(args.id);
+    const agent = await this.manageable(httpRequest, args.id);
+    if (!agent) return agentNotFound(httpRequest, args.id);
     const refusal = confirmed(
       args,
       `stop the agent «${agent.name}» and delete its pod`,
@@ -115,6 +139,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     });
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'start_agent',
     topic: ToolTopics.Agents,
@@ -134,9 +159,8 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(id);
-    if (!agent) return notFound(id);
+    const agent = await this.manageable(httpRequest, id);
+    if (!agent) return agentNotFound(httpRequest, id);
     await this.agentDeploy.deploy(id);
     const after = await this.agents.findById(id);
     return ok({
@@ -146,17 +170,20 @@ export class AgentAdminTool implements IConditionallyListedTool {
     });
   }
 
+  @ToolAudience('person')
   @Tool({
     name: 'pin_agent',
     topic: ToolTopics.Agents,
     title: 'Pin or unpin an agent',
     template: 'Pin the agent «name»',
     description:
-      'Pin an agent so both consoles keep it at the top of every agent ' +
-      'list (right after the Ranch admin agent), or unpin it with ' +
-      'pinned=false. One installation-wide flag; it changes nothing about ' +
-      'the pod, the status or access, and is undone by the same call. ' +
-      'Takes the agent id — resolve a name with list_agents first.',
+      'Pin an agent for the person asking, so the consoles keep it at the ' +
+      'top of THEIR agent lists, or unpin it with pinned=false. A pin is ' +
+      'personal: nobody else\u2019s lists change, and nobody can pin for ' +
+      'somebody else. It changes nothing about the agent, its pod, its ' +
+      'status or who may use it, and is undone by the same call. Needs a ' +
+      'signed-in person and an agent that person can use. Takes the agent ' +
+      'id — resolve a name with list_agents first.',
     parameters: z.object({
       id: z.string().describe('Agent id — pick from list_agents'),
       pinned: z.boolean().describe('true to pin, false to unpin'),
@@ -167,21 +194,31 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
+    // The pin belongs to the person the call is made for (FR-037); an
+    // agent acting for itself has no lists to order and is refused.
+    const person = requirePerson(httpRequest);
     const agent = await this.agents.findById(id);
-    if (!agent) return notFound(id);
+    // An agent this person does not reach is an agent that does not exist.
+    if (
+      !agent ||
+      !(await this.access.reaches(callerParty(httpRequest), agent.id))
+    ) {
+      return agentNotFound(httpRequest, id);
+    }
     // Not destructive, so no confirm (docs/agent-tools.md): reversible with
-    // the same call and the pod never notices (CLEAN-216).
-    const after = await this.agents.update(id, { pinned });
+    // the same call and the pod never notices.
+    if (pinned) await this.pins.pin(person.userId, agent.id);
+    else await this.pins.unpin(person.userId, agent.id);
     return ok({
       ok: true,
-      agent: { id: after.id, name: after.name, pinned: after.pinned },
-      message: after.pinned
-        ? `Agent «${after.name}» is pinned — it stays at the top of every agent list.`
-        : `Agent «${after.name}» is unpinned — back to its ordinary place in the lists.`,
+      agent: { id: agent.id, name: agent.name, pinned },
+      message: pinned
+        ? `Agent «${agent.name}» is pinned for you — it stays at the top of your agent lists.`
+        : `Agent «${agent.name}» is unpinned for you — back to its ordinary place in your lists.`,
     });
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'delete_agent',
     topic: ToolTopics.Agents,
@@ -212,10 +249,9 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
     const { id } = args;
-    const agent = await this.agents.findById(id);
-    if (!agent) return notFound(id);
+    const agent = await this.manageable(httpRequest, id);
+    if (!agent) return agentNotFound(httpRequest, id);
     const refusal = confirmed(
       args,
       args.wipeS3
@@ -278,6 +314,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
 
   // ─── Read-only panels ────────────────────────────────────────────────
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'get_agent_status',
     topic: ToolTopics.Agents,
@@ -298,9 +335,8 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(id);
-    if (!agent) return notFound(id);
+    const agent = await this.manageable(httpRequest, id);
+    if (!agent) return agentNotFound(httpRequest, id);
     // Same sources as GET agents/status (pod list) and GET :id/metrics.
     const [pods, metrics] = await Promise.all([
       this.pods.list(),
@@ -329,6 +365,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     });
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'get_agent_env',
     topic: ToolTopics.Agents,
@@ -349,9 +386,8 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(id);
-    if (!agent) return notFound(id);
+    const agent = await this.manageable(httpRequest, id);
+    if (!agent) return agentNotFound(httpRequest, id);
     const env = await this.workflows.previewAgentEnv(agent);
     return ok(
       env.map((v) => ({
@@ -362,6 +398,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     );
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'list_agent_mcps',
     topic: ToolTopics.Agents,
@@ -385,9 +422,8 @@ export class AgentAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ) {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(id);
-    if (!agent) return notFound(id);
+    const agent = await this.manageable(httpRequest, id);
+    if (!agent) return agentNotFound(httpRequest, id);
 
     const [servers, pods] = await Promise.all([
       this.mcpResolver.resolveForAgent(agent),

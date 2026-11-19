@@ -12,6 +12,9 @@ export abstract class IAgentGateway {
   abstract findAdmin(): Promise<IAgentData | null>;
   abstract findById(id: string): Promise<IAgentData | null>;
   abstract findByTemplateId(templateId: string): Promise<IAgentData[]>;
+  // Whether this account created at least one agent that still exists. Asked
+  // when deciding if a person below Admin is shown the manage-agent tools.
+  abstract hasCreatedBy(userId: string): Promise<boolean>;
   abstract create(data: ICreateAgentData): Promise<IAgentData>;
   abstract update(id: string, data: IUpdateAgentData): Promise<IAgentData>;
   abstract updateStatus(

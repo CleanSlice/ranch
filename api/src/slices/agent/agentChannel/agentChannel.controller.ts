@@ -9,11 +9,15 @@ import { IAgentChannelGateway } from './domain/agentChannel.gateway';
 import { AgentChannelDto, SetAgentChannelsDto } from './dtos';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
+import { ManagesAgent } from '#/agent/agent/guards';
 
+// Channels hold bot tokens and decide who an agent answers: both routes are
+// for an agent the caller may manage, the read included (CLEAN-232).
 @ApiTags('agents')
 @ApiBearerAuth()
 @Controller('agents')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@ManagesAgent('id')
 export class AgentChannelController {
   constructor(private gateway: IAgentChannelGateway) {}
 

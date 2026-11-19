@@ -32,6 +32,9 @@ const filtered = computed(() => {
 // Pin from the row. The store patches the record at once and rolls it back
 // if the server refuses; there is no place in a list row for an error line,
 // so a refusal simply puts the row back where it was.
+//
+// Offered on every row, whatever the role: the pin is the viewer's own, and
+// every agent in this list is one they reach (CLEAN-231).
 const agentStore = useAgentStore();
 const pinning = ref<string | null>(null);
 async function togglePin(agent: IAgentData) {
@@ -92,10 +95,9 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
             @click="$emit('select', agent.id)"
           />
           <!-- Pin without opening the agent (owner review): shown on hover
-               and on keyboard focus, for those who may manage agents. A
+               and on keyboard focus, for everyone who sees the row. A
                sibling of the row button, not a child. -->
           <button
-            v-if="canCreate"
             type="button"
             class="agent-rail__pin absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-transparent text-muted-foreground opacity-0 transition hover:border-primary/40 hover:bg-background/70 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 group-hover:opacity-100 disabled:opacity-40"
             :aria-pressed="agent.pinned"

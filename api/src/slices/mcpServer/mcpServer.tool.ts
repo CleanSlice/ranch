@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   CONFIRM_SENTENCE,
@@ -62,10 +62,11 @@ const ATTACH_LINE =
  * an `authValue`, store it, and acknowledge without echoing it; no result of
  * these tools ever carries `authValue` or `oauthClientId` (FR-004).
  *
- * Operator-only: the Ranch admin agent holds the Owner role, a plain agent
- * does not — for it these tools are not listed, and a call by name is
- * refused.
+ * Audience `admin`, as the `mcp-servers` routes (Owner and Admin). For a
+ * plain agent, and for anyone below Admin the Ranch admin agent is
+ * answering, these tools are not listed and a call by name is refused.
  */
+@ToolAudience('admin')
 @Injectable()
 export class McpServerTool implements IConditionallyListedTool {
   private readonly logger = new Logger(McpServerTool.name);

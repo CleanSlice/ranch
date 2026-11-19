@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { UserStatusTypes, UserRoleTypes, type IUserData } from '#user/domain/user.types';
 import { pages } from '#user/pages';
+import { accessBadges } from '#agentAccess/utils/outcome';
 
 const userStore = useUserStore();
 
-const { data: users, pending, refresh } = await useAsyncData(
+// Loading state from the request, rows from the store (docs/state.md): a
+// save in the access editor moves the badge of the same record.
+const { users } = storeToRefs(userStore);
+const { pending, refresh } = await useAsyncData(
   'admin-users',
   () => userStore.fetchAll(),
 );
@@ -46,7 +50,7 @@ async function onRemove() {
 
     <div v-if="pending" class="text-sm text-muted-foreground">Loading users…</div>
 
-    <div v-else-if="users?.length">
+    <div v-else-if="users.length">
       <Table>
         <TableHeader>
           <TableRow>
@@ -70,7 +74,30 @@ async function onRemove() {
                   <AvatarFallback>{{ user.initials }}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <div class="font-medium">{{ user.name }}</div>
+                  <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span class="font-medium">{{ user.name }}</span>
+                    <span
+                      v-if="user.agentAccess"
+                      class="flex flex-wrap items-center gap-1"
+                      :data-user-access="user.agentAccess.kind"
+                    >
+                      <Badge
+                        v-if="accessBadges(user.agentAccess).restricted"
+                        variant="outline"
+                        data-user-access-restricted
+                      >
+                        Restricted
+                      </Badge>
+                      <Badge
+                        v-if="accessBadges(user.agentAccess).needsReview"
+                        variant="outline"
+                        class="border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                        data-user-access-review
+                      >
+                        Needs review
+                      </Badge>
+                    </span>
+                  </div>
                   <div class="text-xs text-muted-foreground">{{ user.email }}</div>
                 </div>
               </div>

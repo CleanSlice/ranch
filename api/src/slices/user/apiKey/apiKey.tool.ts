@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   CONFIRM_SENTENCE,
@@ -73,6 +73,7 @@ function notFound(id: string): ToolResult {
  * Operator agents only: a key with the `admin` scope is the whole API, and a
  * plain agent must not be able to mint one on a prompt's say-so.
  */
+@ToolAudience('admin')
 @Injectable()
 export class ApiKeyTool implements IConditionallyListedTool {
   private readonly logger = new Logger(ApiKeyTool.name);

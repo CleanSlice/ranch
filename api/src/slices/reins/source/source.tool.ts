@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   CONFIRM_SENTENCE,
@@ -65,6 +65,7 @@ const SOURCE_NOT_FOUND = (sourceId: string, knowledgeId: string) =>
  * Operator-only: a plain agent must not be able to feed documents into a
  * base other agents answer from, nor delete what they answer from.
  */
+@ToolAudience('admin')
 @Injectable()
 export class SourceTool implements IConditionallyListedTool {
   private readonly logger = new Logger(SourceTool.name);

@@ -30,6 +30,11 @@ export class SessionGateway extends ISessionGateway {
     return record ? this.mapper.toEntity(record) : null;
   }
 
+  async findById(id: string): Promise<ISessionData | null> {
+    const record = await this.prisma.session.findUnique({ where: { id } });
+    return record ? this.mapper.toEntity(record) : null;
+  }
+
   async touch(id: string, expiresAt: Date): Promise<ISessionData> {
     const record = await this.prisma.session.update({
       where: { id },

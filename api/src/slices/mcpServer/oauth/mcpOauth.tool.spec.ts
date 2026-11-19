@@ -7,6 +7,8 @@ import type { Request } from 'express';
 import { McpOauthTool } from './mcpOauth.tool';
 import type { McpOauthService } from './domain/mcpOauth.service';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 const AUTHORIZE_URL =
   'https://auth.provider.test/authorize?client_id=abc&state=xyz';
@@ -16,8 +18,8 @@ const request = (roles: UserRoleTypes[], sub = 'agent:agent-ops'): Request =>
     user: { sub, email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 /** An operator that is a person, not an agent — there is no "self" to connect. */
 const humanOperator = () => request([UserRoleTypes.Owner], 'user-1');
 
@@ -25,7 +27,10 @@ function harness() {
   const oauth = {
     start: jest.fn().mockResolvedValue({ authorizeUrl: AUTHORIZE_URL }),
   };
-  const tool = new McpOauthTool(oauth as unknown as McpOauthService);
+  const tool = new McpOauthTool(
+    oauth as unknown as McpOauthService,
+    openAccess(),
+  );
   return { tool, oauth };
 }
 
@@ -43,6 +48,49 @@ describe('McpOauthTool — who may use it', () => {
     await expect(tool.isListedForRequest(operator())).resolves.toBe(true);
   });
 
+  it('refuses a User the Ranch admin agent is answering, also for their own account (CLEAN-232)', async () => {
+    // Stricter than a person tool on purpose: connecting an MCP server is an
+    // operator's job, so naming yourself as the subject is not enough.
+    const { tool, oauth } = harness();
+    const user = () =>
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.User, 'user-1');
+
+    await expect(tool.isListedForRequest(user())).resolves.toBe(false);
+    await expect(
+      tool.startMcpOauth(
+        { serverId: 'mcp-1', subject: 'user-1' },
+        null,
+        user(),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      tool.startMcpOauth({ serverId: 'mcp-1' }, null, user()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(oauth.start).not.toHaveBeenCalled();
+  });
+
+  it('lets an Admin start a connection for another user, as an operator may', async () => {
+    const { tool, oauth } = harness();
+    const admin = asPerson(
+      request([UserRoleTypes.Owner]),
+      UserRoleTypes.Admin,
+      'user-a',
+    );
+
+    const result = await tool.startMcpOauth(
+      { serverId: 'mcp-1', subject: 'user-7' },
+      null,
+      admin,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(oauth.start).toHaveBeenCalledWith({
+      serverId: 'mcp-1',
+      agentId: 'agent-ops',
+      subject: 'user-7',
+    });
+  });
+
   it('refuses a call from a plain agent even by name', async () => {
     const { tool, oauth } = harness();
     await expect(
@@ -58,7 +106,10 @@ describe('McpOauthTool — starting a connect', () => {
     const text = textOf(
       await tool.startMcpOauth({ serverId: 'mcp-1' }, null, operator()),
     );
-    expect(oauth.start).toHaveBeenCalledWith({ serverId: 'mcp-1', agentId: 'agent-ops' });
+    expect(oauth.start).toHaveBeenCalledWith({
+      serverId: 'mcp-1',
+      agentId: 'agent-ops',
+    });
     expect(text).toContain(AUTHORIZE_URL);
     expect(text).toContain('"agentId": "agent-ops"');
     expect(text).toContain('browser');
@@ -71,7 +122,10 @@ describe('McpOauthTool — starting a connect', () => {
       null,
       operator(),
     );
-    expect(oauth.start).toHaveBeenCalledWith({ serverId: 'mcp-1', agentId: 'agent-support' });
+    expect(oauth.start).toHaveBeenCalledWith({
+      serverId: 'mcp-1',
+      agentId: 'agent-support',
+    });
   });
 
   it('asks for an agentId when the operator is a person', async () => {

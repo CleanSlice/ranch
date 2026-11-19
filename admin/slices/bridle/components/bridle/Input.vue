@@ -16,7 +16,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from '../../utils/attachment'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   apiUrl: string
   agentId: string
   channel?: string
@@ -26,7 +26,10 @@ const props = defineProps<{
   // it with attach + the host's `tools` slot on the left and send on the
   // right. The card layout keeps the flat attach / field / send row.
   boxed?: boolean
-}>()
+  // False when the viewer may not manage this agent (CLEAN-232); handed on
+  // to the Tools panel, which then leaves out its restart button.
+  manageable?: boolean
+}>(), { manageable: true })
 
 const emit = defineEmits<{
   send: [text: string]
@@ -173,6 +176,7 @@ const onPaste = (event: ClipboardEvent) => {
     <ToolCatalogSheet
       v-model:open="toolsOpen"
       :agent-id="agentId"
+      :manageable="manageable"
       @pick="onPickTemplate"
     />
 

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import type { Workbook } from 'exceljs';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { IBridleAttachmentGateway } from './domain/attachment.gateway';
 import { MAX_QUERY_CELLS } from './domain/attachment.constants';
@@ -125,6 +125,7 @@ const err = (message: string): ToolResult => ({
  * skipped, so the operator can verify the figure in the source file and
  * the model can quote the coordinates alongside it.
  */
+@ToolAudience('everyone')
 @Injectable()
 export class BridleAttachmentTool {
   private readonly logger = new Logger(BridleAttachmentTool.name);

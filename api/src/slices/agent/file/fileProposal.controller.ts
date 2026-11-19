@@ -22,6 +22,7 @@ import {
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { IAgentGateway } from '#/agent/agent/domain';
+import { ManagesAgent } from '#/agent/agent/guards';
 import type { IAuthTokenPayload } from '#/user/auth/domain';
 import {
   FileProposalService,
@@ -48,6 +49,7 @@ type AuthedRequest = Request & { user?: IAuthTokenPayload };
  */
 @ApiTags('files')
 @Controller('agents/:agentId/files/proposals')
+@ManagesAgent('agentId')
 export class FileProposalController {
   constructor(
     @Inject(forwardRef(() => IAgentGateway))

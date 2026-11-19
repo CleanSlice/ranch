@@ -38,6 +38,10 @@ export class AgentService {
     return this.gateway.update(id, input);
   }
 
+  setPinned(id: string, pinned: boolean): Promise<void> {
+    return this.gateway.setPinned(id, pinned);
+  }
+
   restart(id: string): Promise<IAgentData> {
     return this.gateway.restart(id);
   }

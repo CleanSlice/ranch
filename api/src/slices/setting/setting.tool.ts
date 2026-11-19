@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   CONFIRM_SENTENCE,
   callerIsOperator,
@@ -37,6 +37,7 @@ type AuthedRequest = Request & { user?: IAuthTokenPayload };
  * a plain agent has no business reading the AWS keys or the bridle secret
  * that live there.
  */
+@ToolAudience('admin')
 @Injectable()
 export class SettingTool implements IConditionallyListedTool {
   private readonly logger = new Logger(SettingTool.name);

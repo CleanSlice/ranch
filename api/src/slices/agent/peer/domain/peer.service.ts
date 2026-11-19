@@ -9,6 +9,8 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { IAgentGateway } from '#/agent/agent/domain';
+import type { ICallerParty } from '#/user/auth/domain/auth.types';
+import { UserRoleTypes } from '#/user/user/domain';
 import { IPeerGateway } from './peer.gateway';
 import { AgentCardService } from './agentCard.service';
 import {
@@ -45,6 +47,18 @@ import {
 } from './peer.types';
 
 /**
+ * Who may tie the Ranch admin agent to another agent, in either direction:
+ * the Owner, or a trusted party (that agent acting for itself). The same two
+ * `AgentPermissionService.canManage` allows on the Ranch admin agent.
+ */
+function ownsRanchAdminAgent(party: ICallerParty): boolean {
+  return (
+    party.kind === 'trusted' ||
+    (party.kind === 'person' && party.role === UserRoleTypes.Owner)
+  );
+}
+
+/**
  * Connecting, refreshing and removing peers (CLEAN-74).
  *
  * The shape worth knowing: a connection is created BEFORE its card is read,
@@ -69,8 +83,15 @@ export class PeerService {
     return Promise.all(rows.map((row) => this.toView(row)));
   }
 
-  /** Every other agent of this installation, marked with what is already connected. */
-  async candidates(agentId: string): Promise<IAgentPeerCandidate[]> {
+  /**
+   * Every other agent of this installation, marked with what is already
+   * connected. The Ranch admin agent is offered only to a caller who may
+   * connect it (see `connect`); for anybody else it is not in the list.
+   */
+  async candidates(
+    agentId: string,
+    party: ICallerParty,
+  ): Promise<IAgentPeerCandidate[]> {
     const [all, connected] = await Promise.all([
       this.agents.findAll(),
       this.peers.listByAgent(agentId),
@@ -79,6 +100,7 @@ export class PeerService {
 
     return all
       .filter((agent) => agent.id !== agentId)
+      .filter((agent) => !agent.isAdmin || ownsRanchAdminAgent(party))
       .map((agent) => ({
         id: agent.id,
         name: agent.name,
@@ -87,7 +109,22 @@ export class PeerService {
       }));
   }
 
-  async connect(agentId: string, peerAgentId: string): Promise<IAgentPeerView> {
+  /**
+   * `party` is who the connection is made for, and every entry point hands
+   * it in: the console route, the operator tool and the agent's own tool.
+   *
+   * One rule lives here because all three pass through here (CLEAN-232): a
+   * connection with the Ranch admin agent on either end needs the Owner, or
+   * that agent acting for itself. A colleague of the agent that acts with
+   * Owner power is somebody it hands conversations to, and somebody who can
+   * put text in front of it. For anybody else the answer is the one an
+   * unknown agent gets, so the refusal does not say the agent exists.
+   */
+  async connect(
+    agentId: string,
+    peerAgentId: string,
+    party: ICallerParty,
+  ): Promise<IAgentPeerView> {
     if (agentId === peerAgentId) {
       throw new BadRequestException({
         code: PeerErrorCodes.Self,
@@ -99,7 +136,11 @@ export class PeerService {
       this.agents.findById(agentId),
       this.agents.findById(peerAgentId),
     ]);
-    if (!caller || !peerAgent) {
+    if (
+      !caller ||
+      !peerAgent ||
+      ((caller.isAdmin || peerAgent.isAdmin) && !ownsRanchAdminAgent(party))
+    ) {
       throw new NotFoundException({
         code: PeerErrorCodes.NotFound,
         message: 'Agent not found',

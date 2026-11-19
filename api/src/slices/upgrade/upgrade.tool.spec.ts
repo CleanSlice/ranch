@@ -2,11 +2,12 @@ import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
 import { UpgradeTool } from './upgrade.tool';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 const request = (roles: UserRoleTypes[]): Request =>
   ({ user: { sub: 'agent:x', email: '', roles } }) as unknown as Request;
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const harness = (eligible = true) => {
   const upgrade = {

@@ -210,6 +210,15 @@ import type {
   SkillControllerFindByIdData,
   SkillControllerUpdateData,
   FindDependentAgentsData,
+  UserControllerFindAllData,
+  UserControllerFindAllResponse,
+  UserControllerCreateData,
+  UserControllerCreateResponse,
+  UserControllerRemoveData,
+  UserControllerFindByIdData,
+  UserControllerFindByIdResponse,
+  UserControllerUpdateData,
+  UserControllerUpdateRoleData,
   GetChatsData,
   GetChatsResponse,
   GetChatData,
@@ -246,12 +255,6 @@ import type {
   GetAgentChannelsResponse,
   SetAgentChannelsData,
   SetAgentChannelsResponse,
-  UserControllerFindAllData,
-  UserControllerCreateData,
-  UserControllerRemoveData,
-  UserControllerFindByIdData,
-  UserControllerUpdateData,
-  UserControllerUpdateRoleData,
   TemplateFileControllerListData,
   TemplateFileControllerReadData,
   TemplateFileControllerSaveData,
@@ -271,6 +274,14 @@ import type {
   PaddockScenarioControllerFindByIdData,
   PaddockScenarioControllerUpdateData,
   PaddockScenarioControllerGenerateData,
+  GetUserAgentAccessData,
+  GetUserAgentAccessResponse,
+  SetUserAgentAccessData,
+  SetUserAgentAccessResponse,
+  UnpinAgentData,
+  UnpinAgentResponse,
+  PinAgentData,
+  PinAgentResponse,
   GetAgentCardData,
   GetAgentCardResponse,
   ListAgentPeersData,
@@ -1090,7 +1101,7 @@ export class TemplatesService {
 
 export class AgentsService {
   /**
-   * List all agents, with their full configuration. Requires a console token; the login-free landing page reads GET /agents/public instead (CLEAN-177).
+   * List the agents the caller reaches. Any signed-in account; an Admin or User whose access lists hide an agent does not get it, and nothing says it exists (CLEAN-231). `pinned` is the caller’s own pin. An agent the reader may manage comes with its full configuration; any other comes as a reader sees it: `config` empty, `llmCredentialId`, `workflowId`, `statusReason`, `launchContext` and the deploy and sync dates null, `knowledgeIds` empty, `debugEnabled` false (CLEAN-232). `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).
    */
   public static agentControllerFindAll<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerFindAllData, ThrowOnError>,
@@ -1126,7 +1137,7 @@ export class AgentsService {
   }
 
   /**
-   * List agents flagged as public. Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.
+   * List agents flagged as public, each as a reader sees it (no configuration, see GET /agents). Used by the marketing landing page so private agents stay hidden from unauthenticated visitors.
    */
   public static agentControllerFindPublic<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerFindPublicData, ThrowOnError>,
@@ -1142,7 +1153,7 @@ export class AgentsService {
   }
 
   /**
-   * Snapshot of all agents joined with live pod status. Requires a console token (CLEAN-177); the SSE stream below stays open because EventSource cannot send one.
+   * Snapshot of the agents the caller reaches, joined with live pod status. Any signed-in account (CLEAN-177); filtered by the caller’s access lists like GET /agents (CLEAN-231); the SSE stream below stays open because EventSource cannot send a token.
    */
   public static agentControllerStatus<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerStatusData, ThrowOnError>,
@@ -1158,7 +1169,7 @@ export class AgentsService {
   }
 
   /**
-   * Live SSE stream of agent pod state changes. Public — EventSource cannot send Authorization headers.
+   * Live SSE stream of agent status changes. Public — EventSource cannot send Authorization headers — so each frame carries status facts only: the agent `id`, `status` and `updatedAt`, the pod `phase`, `ready`, `restartCount` and `containerWaitingReason`, and `bridleConnected`. No name, configuration, credential or workflow id (CLEAN-232); read the row through GET /agents/:id.
    */
   public static agentControllerStatusStream<
     ThrowOnError extends boolean = false,
@@ -1206,7 +1217,7 @@ export class AgentsService {
   }
 
   /**
-   * Get agent by ID, with its full configuration and allowed origins. Requires a console token (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this.
+   * Get agent by ID. Any signed-in account (CLEAN-177): the share page reads POST /share/resolve and the chat widget gets name and status from the hub, so nothing anonymous needs this. With its full configuration for a reader who may manage it; as a reader sees it otherwise (see GET /agents). `createdBy` is resolved for an Owner or Admin only.
    */
   public static agentControllerFindById<ThrowOnError extends boolean = false>(
     options: Options<AgentControllerFindByIdData, ThrowOnError>,
@@ -1222,7 +1233,7 @@ export class AgentsService {
   }
 
   /**
-   * Update agent configuration. Admin or Owner.
+   * Update agent configuration. Admin or Owner; the Ranch admin agent is the Owner’s alone and answers 404 to anybody else.
    */
   public static agentControllerUpdate<ThrowOnError extends boolean = false>(
     options: Options<AgentControllerUpdateData, ThrowOnError>,
@@ -1274,7 +1285,7 @@ export class AgentsService {
   }
 
   /**
-   * List of MCP servers this agent should connect to at runtime. Resolves the agent's template and returns its enabled MCP attachments. Called by the runtime on boot to populate its tool registry. Tokens with role=Agent (issued to runtimes) can only read their OWN agent — `sub` must match `agent:<id>`.
+   * List of MCP servers this agent should connect to at runtime. Resolves the agent's template and returns its enabled MCP attachments. Called by the runtime on boot to populate its tool registry. Tokens with role=Agent (issued to runtimes) can only read their OWN agent — `sub` must match `agent:<id>`. A person must be able to manage the agent: the Ranch admin agent answers 404 to anybody but the Owner (CLEAN-232).
    */
   public static getAgentMcps<ThrowOnError extends boolean = false>(
     options: Options<GetAgentMcpsData, ThrowOnError>,
@@ -1306,7 +1317,7 @@ export class AgentsService {
   }
 
   /**
-   * Get the agent currently flagged as Ranch admin (or null).
+   * Get the agent currently flagged as Ranch admin (or null). 404 for a caller whose access lists hide it (CLEAN-231).
    */
   public static agentControllerFindAdmin<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerFindAdminData, ThrowOnError>,
@@ -1322,7 +1333,7 @@ export class AgentsService {
   }
 
   /**
-   * Demote this agent from Ranch admin. Redeploys without RANCH_ADMIN.
+   * Demote this agent from Ranch admin. Owner only. Redeploys without RANCH_ADMIN.
    */
   public static agentControllerDemoteAdmin<
     ThrowOnError extends boolean = false,
@@ -1338,7 +1349,7 @@ export class AgentsService {
   }
 
   /**
-   * Mark this agent as the Ranch admin. Clears the flag from any other agent (single-admin invariant) and redeploys with RANCH_ADMIN=true + a service token. Any previous admin is redeployed without the flag.
+   * Mark this agent as the Ranch admin. Owner only: the Ranch admin agent holds Owner power, so who it is is the Owner’s decision. Clears the flag from any other agent (single-admin invariant) and redeploys with RANCH_ADMIN=true + a service token. Any previous admin is redeployed without the flag.
    */
   public static agentControllerPromoteAdmin<
     ThrowOnError extends boolean = false,
@@ -1402,7 +1413,7 @@ export class AgentsService {
   }
 
   /**
-   * Restart every agent that uses this template. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner.
+   * Restart every agent that uses this template and that the caller may manage. Pulls latest template-owned files into each agent and redeploys, preserving runtime state. Concurrency capped at 5 to avoid overwhelming the cluster. Admin or Owner. An agent the caller may not manage (the Ranch admin agent, for an Admin) is left running and counted in `skipped`, never named; `total` counts the agents that were restarted or failed.
    */
   public static restartByTemplate<ThrowOnError extends boolean = false>(
     options: Options<RestartByTemplateData, ThrowOnError>,
@@ -1450,6 +1461,38 @@ export class AgentsService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+
+  /**
+   * Unpin the agent for the caller. Idempotent: an agent that was not pinned is still 204.
+   */
+  public static unpinAgent<ThrowOnError extends boolean = false>(
+    options: Options<UnpinAgentData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      UnpinAgentResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/pin",
+      ...options,
+    });
+  }
+
+  /**
+   * Pin the agent for the caller: it is kept at the top of the caller's own agent lists, on every device. Idempotent. Any signed-in person; nobody else is affected.
+   */
+  public static pinAgent<ThrowOnError extends boolean = false>(
+    options: Options<PinAgentData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      PinAgentResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/pin",
+      ...options,
     });
   }
 
@@ -2988,6 +3031,152 @@ export class SkillsService {
   }
 }
 
+export class UsersService {
+  /**
+   * List all users, each with what its agent access comes to (`agentAccess`).
+   */
+  public static userControllerFindAll<ThrowOnError extends boolean = false>(
+    options?: Options<UserControllerFindAllData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      UserControllerFindAllResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users",
+      ...options,
+    });
+  }
+
+  /**
+   * Create a user (admin sets the password)
+   */
+  public static userControllerCreate<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerCreateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      UserControllerCreateResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Remove user. Owner only.
+   */
+  public static userControllerRemove<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerRemoveData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Get user by ID
+   */
+  public static userControllerFindById<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerFindByIdData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      UserControllerFindByIdResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}",
+      ...options,
+    });
+  }
+
+  /**
+   * Update user (name, email, password, status). Use /role to change the role. The Owner may change any account; an Admin may change accounts with the User role, and the name, email and password of their own, never the Owner or another Admin (403).
+   */
+  public static userControllerUpdate<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerUpdateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Set the user's role. Owner only.
+   */
+  public static userControllerUpdateRole<ThrowOnError extends boolean = false>(
+    options: Options<UserControllerUpdateRoleData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}/role",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * One account's agent access as the caller may see it: the allowed and denied agents among the ones the caller reaches, what the lists come to, and whether there is more the caller cannot see. Owner: any account. Admin: accounts with the User role.
+   */
+  public static getUserAgentAccess<ThrowOnError extends boolean = false>(
+    options: Options<GetUserAgentAccessData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetUserAgentAccessResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}/agent-access",
+      ...options,
+    });
+  }
+
+  /**
+   * Replace the part of an account's agent access that lies inside the caller's view. The body is the whole desired state there: an agent absent from both arrays ends with no entry, and entries about agents the caller does not reach are kept as they are. A refusal saves nothing. Owner: Admins and Users. Admin: Users, and never more than the Admin reaches.
+   */
+  public static setUserAgentAccess<ThrowOnError extends boolean = false>(
+    options: Options<SetUserAgentAccessData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SetUserAgentAccessResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}/agent-access",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+}
+
 export class ChatsService {
   /**
    * List chat sessions (index). Filter by agent, channel, search; paginated.
@@ -3190,7 +3379,7 @@ export class ChatsService {
   }
 
   /**
-   * Reconcile the current user's OWN chats from S3 into the index (self-service, non-admin). Only sessions belonging to the caller are touched. A manual fallback when realtime indexing has not caught up.
+   * Reconcile the current user's OWN chats from S3 into the index (self-service, non-admin). Only sessions belonging to the caller are touched, in the agents the caller already has a conversation with; the counts in the answer are about those alone, and an `agentId` the caller has no conversation with scans nothing (CLEAN-232). A manual fallback when realtime indexing has not caught up.
    */
   public static syncMyChats<ThrowOnError extends boolean = false>(
     options: Options<SyncMyChatsData, ThrowOnError>,
@@ -3278,116 +3467,6 @@ export class ChatsService {
   }
 }
 
-export class UsersService {
-  /**
-   * List all users
-   */
-  public static userControllerFindAll<ThrowOnError extends boolean = false>(
-    options?: Options<UserControllerFindAllData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users",
-      ...options,
-    });
-  }
-
-  /**
-   * Create a user (admin sets the password)
-   */
-  public static userControllerCreate<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerCreateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Remove user. Owner only.
-   */
-  public static userControllerRemove<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerRemoveData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).delete<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Get user by ID
-   */
-  public static userControllerFindById<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerFindByIdData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users/{id}",
-      ...options,
-    });
-  }
-
-  /**
-   * Update user (name, email, password, status). Use /role to change the role.
-   */
-  public static userControllerUpdate<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerUpdateData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users/{id}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-
-  /**
-   * Set the user's role. Owner only.
-   */
-  public static userControllerUpdateRole<ThrowOnError extends boolean = false>(
-    options: Options<UserControllerUpdateRoleData, ThrowOnError>,
-  ) {
-    return (options.client ?? _heyApiClient).put<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/users/{id}/role",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-  }
-}
-
 export class TemplateFilesService {
   /**
    * List files for a template
@@ -3465,7 +3544,7 @@ export class TemplateFilesService {
 
 export class PaddockScenariosService {
   /**
-   * List paddock scenarios. Filter by templateId or agentId; without filters returns all.
+   * List paddock scenarios. Filter by templateId or agentId; without filters returns all the caller may see: template scenarios, and the scenarios of the agents the caller reaches.
    */
   public static paddockScenarioControllerFindAll<
     ThrowOnError extends boolean = false,
@@ -3607,7 +3686,7 @@ export class PeersService {
   }
 
   /**
-   * Connect a peer. Either `peerAgentId` (another agent of this installation — mints a pair credential and reads the card with it) or `url` (an external A2A agent imported by address, optionally with a credential; re-importing the same address updates the entry in place). Nothing is kept if the card cannot be read. The agent picks the tool up on its next restart.
+   * Connect a peer. Either `peerAgentId` (another agent of this installation — mints a pair credential and reads the card with it) or `url` (an external A2A agent imported by address, optionally with a credential; re-importing the same address updates the entry in place). Nothing is kept if the card cannot be read. The agent picks the tool up on its next restart. With `peerAgentId` the caller must be able to manage that agent too: one they may not manage answers 404, like one that does not exist.
    */
   public static connectAgentPeer<ThrowOnError extends boolean = false>(
     options: Options<ConnectAgentPeerData, ThrowOnError>,
@@ -3627,7 +3706,7 @@ export class PeersService {
   }
 
   /**
-   * Every other agent of this installation, each marked with whether it is already a peer. Excludes the agent itself.
+   * Every other agent of this installation the caller may manage, each marked with whether it is already a peer. Excludes the agent itself.
    */
   public static listAgentPeerCandidates<ThrowOnError extends boolean = false>(
     options: Options<ListAgentPeerCandidatesData, ThrowOnError>,
@@ -3727,7 +3806,7 @@ export class PeersService {
   }
 
   /**
-   * Internal agent-to-agent connections of the whole installation as directed pairs of agent ids. No card, no credential.
+   * Internal agent-to-agent connections of the whole installation as directed pairs of agent ids. No card, no credential. A pair is listed when the caller reaches both of its agents (CLEAN-231).
    */
   public static listAgentLinks<ThrowOnError extends boolean = false>(
     options?: Options<ListAgentLinksData, ThrowOnError>,
@@ -3963,7 +4042,7 @@ export class LogsService {
 
 export class UsageService {
   /**
-   * Get 30-day usage for an agent with cost
+   * Get 30-day usage for an agent with cost. 404 when there is no such agent among the ones the caller reaches.
    */
   public static usageControllerFindForAgent<
     ThrowOnError extends boolean = false,
@@ -3999,7 +4078,7 @@ export class UsageService {
   }
 
   /**
-   * Get 30-day usage for a single LLM credential across all agents
+   * Get 30-day usage for a single LLM credential across the agents the caller reaches; totals are of those agents only
    */
   public static usageControllerFindForCredential<
     ThrowOnError extends boolean = false,
@@ -4015,7 +4094,7 @@ export class UsageService {
   }
 
   /**
-   * Get 30-day usage across all agents with cost
+   * Get 30-day usage across the agents the caller reaches, with cost; totals are of those agents only
    */
   public static usageControllerFindOverview<
     ThrowOnError extends boolean = false,
@@ -4033,7 +4112,7 @@ export class UsageService {
 
 export class RancherService {
   /**
-   * Stepper state for the Rancher setup wizard: do we have an LLM, the special template, and an admin agent?
+   * Stepper state for the Rancher setup wizard: do we have an LLM, storage, the special template, and an admin agent (`hasAdmin`)? `admin` is the Ranch admin agent as the caller may read it: null for a caller whose access lists do not reach it, without configuration for a caller who may not manage it (an Admin), whole for the Owner (CLEAN-231).
    */
   public static rancherControllerStatus<ThrowOnError extends boolean = false>(
     options?: Options<RancherControllerStatusData, ThrowOnError>,
@@ -4155,7 +4234,7 @@ export class McpOauthService {
 
 export class PaddockEvaluationsService {
   /**
-   * List paddock evaluations. Filter by agentId / templateId.
+   * List paddock evaluations of the agents the caller reaches. Filter by agentId / templateId.
    */
   public static paddockEvaluationControllerList<
     ThrowOnError extends boolean = false,

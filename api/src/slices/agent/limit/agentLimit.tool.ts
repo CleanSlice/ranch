@@ -1,17 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
-  callerIsOperator,
+  agentNotFound,
+  callerManagesAgents,
   CONFIRM_SENTENCE,
   confirmed,
+  manageCaller,
   ok,
   requireOperator,
   type ToolResult,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { IAgentData, IAgentGateway } from '#/agent/agent/domain';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import {
   AgentLimitService,
@@ -143,16 +148,23 @@ const WINDOW_PARAM = (label: string) =>
  * embed" card (`AgentController.update`): the public flag, the origins and
  * the limits together, limits written first.
  *
- * Operator-only, and narrower than the routes: the routes admit Owner and
- * Admin, these tools only a caller whose token carries Owner — the Ranch
- * admin agent (`requireOperator`). A plain agent must not read how loaded a
- * colleague is, and certainly must not lift its own ceiling.
+ * Audience `admin`, as the routes: Owner and Admin, through the Ranch admin
+ * agent or on their own console token (`requireOperator`, CLEAN-232). A
+ * plain agent must not read how loaded a colleague is, and certainly must
+ * not lift its own ceiling; nor may a User the agent is answering.
+ *
+ * The three tools that name ONE agent (`get_agent_limits`,
+ * `set_agent_limits`, `set_agent_visibility`) are `manage-agent`: the agent
+ * is resolved among those the caller may manage, so one that is out of reach
+ * is "not found" by id and by name alike. `list_agent_limits` is the fleet
+ * view and stays `admin`.
  *
  * Results are counts, limit values and visibility, nothing else. The limiter
  * never knew who sent a request, and every result is an explicit copy so that
  * whatever the domain or the agent record grows later does not reach a model
  * by accident.
  */
+@ToolAudience('admin')
 @Injectable()
 export class AgentLimitTool implements IConditionallyListedTool {
   private readonly logger = new Logger(AgentLimitTool.name);
@@ -160,10 +172,14 @@ export class AgentLimitTool implements IConditionallyListedTool {
   constructor(
     private readonly limits: AgentLimitService,
     private readonly agents: IAgentGateway,
+    private readonly permission: AgentPermissionService,
+    private readonly access: AgentAccessService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(callerIsOperator(httpRequest));
+    // The widest audience in the class; each tool's own audience has already
+    // been checked by the time this runs.
+    return Promise.resolve(callerManagesAgents(httpRequest));
   }
 
   @Tool({
@@ -188,7 +204,9 @@ export class AgentLimitTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    const agents = await this.agents.findAll();
+    // One line per agent the caller reaches (CLEAN-231).
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    const agents = reach.filter(await this.agents.findAll(), (a) => a.id);
     // The same call `GET /agent-limits` makes; the name and the values are
     // joined on so the answer can be read out without a second lookup.
     const marks = new Map(
@@ -216,6 +234,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
     });
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'get_agent_limits',
     topic: ToolTopics.Agents,
@@ -246,13 +265,13 @@ export class AgentLimitTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
-    const found = await this.resolveAgent(ref);
+    const found = await this.resolveAgent(ref, httpRequest);
     if ('refusal' in found) return found.refusal;
     const { agent } = found;
     return ok(present(agent, await this.limits.snapshot(agent)));
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'set_agent_limits',
     topic: ToolTopics.Agents,
@@ -299,8 +318,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
-    const found = await this.resolveAgent(args.agent);
+    const found = await this.resolveAgent(args.agent, httpRequest);
     if ('refusal' in found) return found.refusal;
     const { agent } = found;
 
@@ -354,6 +372,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
     });
   }
 
+  @ToolAudience('manage-agent')
   @Tool({
     name: 'set_agent_visibility',
     topic: ToolTopics.Agents,
@@ -420,8 +439,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
-    const found = await this.resolveAgent(args.agent);
+    const found = await this.resolveAgent(args.agent, httpRequest);
     if ('refusal' in found) return found.refusal;
     const { agent } = found;
     const current = this.limits.getLimits(agent.id);
@@ -566,19 +584,27 @@ export class AgentLimitTool implements IConditionallyListedTool {
    * By id first, then by exact name (case and outer spaces aside). A name two
    * agents share is not guessed at: a limit on the wrong agent is a public
    * agent left open or a busy one shut.
+   *
+   * Only among the agents this caller may manage (CLEAN-232): one that is
+   * out of reach is not found by id, does not count as a namesake, and is
+   * not named in the "several agents" refusal.
    */
   private async resolveAgent(
     ref: string,
+    httpRequest: Request,
   ): Promise<{ agent: IAgentData } | { refusal: ToolResult }> {
-    const byId = await this.agents.findById(ref);
+    const caller = manageCaller(httpRequest);
+    const byId = await this.permission.manageable(caller, ref);
     if (byId) return { agent: byId };
 
     const wanted = ref.trim().toLowerCase();
-    const named = wanted
-      ? (await this.agents.findAll()).filter(
-          (a) => a.name.trim().toLowerCase() === wanted,
-        )
-      : [];
+    const named: IAgentData[] = [];
+    if (wanted && caller.kind !== 'guest') {
+      for (const a of await this.agents.findAll()) {
+        if (a.name.trim().toLowerCase() !== wanted) continue;
+        if (await this.permission.canManage(caller, a)) named.push(a);
+      }
+    }
     if (named.length === 1) return { agent: named[0] };
     if (named.length > 1) {
       return {
@@ -589,11 +615,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
         }),
       };
     }
-    return {
-      refusal: ok({
-        error: `Agent ${ref} not found — call list_agents to find the id`,
-      }),
-    };
+    return { refusal: agentNotFound(httpRequest, ref) };
   }
 }
 

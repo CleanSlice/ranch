@@ -5,6 +5,12 @@ import { IUsageData } from './domain/usage.types';
 import { IFileGateway } from '#/agent/file/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { ILlmGateway } from '#/llm/domain';
+import { UserRoleTypes } from '#/user/user/domain';
+import type { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import {
+  accessHarness,
+  openAccess,
+} from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 const HAIKU = 'claude-haiku-4-5';
 const SONNET = 'claude-sonnet-4-6';
@@ -34,6 +40,7 @@ function row(
 function makeController(
   rows: IUsageData[],
   agentNames: Record<string, string> = {},
+  access: AgentAccessService = openAccess(),
 ) {
   const findRecentAll = jest.fn(async () => rows);
   const gateway = { findRecentAll } as unknown as IUsageGateway;
@@ -54,6 +61,7 @@ function makeController(
     fileGateway,
     agentGateway,
     llmGateway,
+    access,
   );
   return { controller, findRecentAll, findById };
 }
@@ -208,5 +216,55 @@ describe('UsageController.findOverview', () => {
       byAgent: [],
     });
     expect(findById).not.toHaveBeenCalled();
+  });
+
+  it('leaves an agent the caller does not reach out of byAgent and out of the totals', async () => {
+    // Same model and day for both agents, so a row that slipped through
+    // would be merged into the daily entry and show only in the sums.
+    const rows = [
+      row({
+        agentId: 'a1',
+        model: HAIKU,
+        date: DAY_1,
+        inputTokens: 1000,
+        outputTokens: 100,
+        callCount: 2,
+      }),
+      row({
+        agentId: 'a2',
+        model: HAIKU,
+        date: DAY_1,
+        inputTokens: 90000,
+        outputTokens: 9000,
+        callCount: 7,
+      }),
+    ];
+    const { service, gateway } = accessHarness(['a1', 'a2']);
+    gateway.seed('user-1', false, [{ agentId: 'a2', list: 'denied' }]);
+    const { controller } = makeController(
+      rows,
+      { a1: 'One', a2: 'Two' },
+      service,
+    );
+    const admin = {
+      user: { sub: 'user-1', email: '', roles: [UserRoleTypes.Admin] },
+    } as never;
+
+    const res = await controller.findOverview(admin);
+
+    expect(res.byAgent.map((a) => a.agentId)).toEqual(['a1']);
+    expect(res.last30days).toHaveLength(1);
+    expect(res.totals.inputTokens).toBe(1000);
+    expect(res.totals.outputTokens).toBe(100);
+    expect(res.totals.callCount).toBe(2);
+    expect(res.totals.costUsd).toBeCloseTo(costUsd(HAIKU, 1000, 100), 10);
+
+    // The Owner has no lists: the same rows, whole.
+    const owner = {
+      user: { sub: 'user-o', email: '', roles: [UserRoleTypes.Owner] },
+    } as never;
+    const whole = await controller.findOverview(owner);
+    expect(whole.byAgent.map((a) => a.agentId).sort()).toEqual(['a1', 'a2']);
+    expect(whole.totals.callCount).toBe(9);
   });
 });

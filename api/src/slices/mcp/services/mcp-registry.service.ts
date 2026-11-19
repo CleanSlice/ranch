@@ -10,6 +10,8 @@ import {
   MCP_TOOL_METADATA_KEY,
   ToolMetadata,
   isToolTopic,
+  toolAudienceOf,
+  type ToolAudienceTypes,
 } from '../decorators';
 import { ResourceMetadata } from '../decorators/resource.decorator';
 import { match } from 'path-to-regexp';
@@ -73,6 +75,10 @@ export function toolMetadataProblems(metadata: Partial<ToolMetadata>): string[] 
   return problems.map((p) => `${name}: ${p}`);
 }
 
+/** What the boot check says about a tool with no `@ToolAudience`. */
+export const TOOL_AUDIENCE_PROBLEM =
+  'no audience: put @ToolAudience on the class or on the method';
+
 /**
  * Interface representing a discovered tool
  */
@@ -81,6 +87,11 @@ export type DiscoveredTool<T extends object> = {
   metadata: T;
   providerClass: InjectionToken;
   methodName: string;
+  /**
+   * Tools only: who the tool is for (`@ToolAudience` on the method, else on
+   * its class). Undefined is refused at boot and allows nobody (CLEAN-232).
+   */
+  audience?: ToolAudienceTypes;
 };
 
 /**
@@ -115,10 +126,13 @@ export class McpRegistryService implements OnApplicationBootstrap {
       if (!name) continue;
       if (seen.has(name)) problems.push(`${name}: duplicate tool name`);
       seen.add(name);
+      // A tool nobody declared an audience for would be a tool anybody can
+      // call, so it does not boot (CLEAN-232).
+      if (!t.audience) problems.push(`${name}: ${TOOL_AUDIENCE_PROBLEM}`);
     }
     if (problems.length) {
       throw new Error(
-        `MCP tool metadata is incomplete — every @Tool needs topic, title and template, and a destructive tool needs a boolean confirm parameter:\n  - ${problems.join('\n  - ')}`,
+        `MCP tool metadata is incomplete — every @Tool needs topic, title and template, an audience (@ToolAudience on its class or on the method), and a destructive tool needs a boolean confirm parameter:\n  - ${problems.join('\n  - ')}`,
       );
     }
     this.logger.log(`Validated ${tools.length} MCP tools`);
@@ -149,6 +163,8 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
         if (methodMetaKeys.includes(MCP_TOOL_METADATA_KEY)) {
           this.addDiscoveryTool(methodRef, token, methodName);
+          const added = this.discoveredTools[this.discoveredTools.length - 1];
+          added.audience = toolAudienceOf(instance.constructor, methodRef);
         }
 
         if (methodMetaKeys.includes(MCP_RESOURCE_METADATA_KEY)) {

@@ -1,10 +1,11 @@
-import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
 import { FileTool } from './file.tool';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import type { IBridleGateway } from '#/bridle/domain';
 import type { IFileGateway, SyncGuardService } from './domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 /**
  * Two things matter more than the happy paths here: that a plain agent can
@@ -16,8 +17,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const agentRow = (overrides: Record<string, unknown> = {}) => ({
   id: 'agent-a',
@@ -181,6 +182,7 @@ function harness(): Harness {
     archive as never,
     proposals as never,
     attachments as never,
+    permissionOver(agents),
   );
   return {
     tool,
@@ -209,20 +211,22 @@ describe('FileTool — who may use it', () => {
   });
 
   it('refuses a call from a plain agent even by name', async () => {
-    const { tool, files, bridle } = harness();
-    await expect(
-      tool.deleteAgentFile(
+    // Answered like an agent that does not exist (CLEAN-232): no 403 that
+    // would confirm the agent is there.
+    const { tool, files, bridle, agents } = harness();
+    const answers = [
+      await tool.deleteAgentFile(
         { agentId: 'agent-a', path: 'SOUL.md', confirm: true },
         null,
         plainAgent(),
       ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(
-      tool.syncAgentFiles({ agentId: 'agent-a' }, null, plainAgent()),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(
-      tool.exportAgentFiles({ agentId: 'agent-a' }, null, plainAgent()),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+      await tool.syncAgentFiles({ agentId: 'agent-a' }, null, plainAgent()),
+      await tool.exportAgentFiles({ agentId: 'agent-a' }, null, plainAgent()),
+    ];
+    for (const answer of answers) {
+      expect(JSON.stringify(answer)).toContain('Agent agent-a not found');
+    }
+    expect(agents.findById).not.toHaveBeenCalled();
     expect(files.delete).not.toHaveBeenCalled();
     expect(bridle.syncAgent).not.toHaveBeenCalled();
   });

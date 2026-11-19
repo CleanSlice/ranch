@@ -50,13 +50,29 @@ export const useChatStore = defineStore('chat', () => {
    * closed by "New chat" (CLEAN-136).
    */
   const showArchived = ref(false);
+  // Bumped by `resetForAccount`: a list that was on its way when the account
+  // changed is the previous account's and is dropped.
+  let accountGeneration = 0;
+
+  /**
+   * Whoever was signed in is not any more (CLEAN-231): their conversations
+   * leave the page with them. The ONE way this store is emptied for an
+   * account change (docs/state.md).
+   */
+  function resetForAccount() {
+    accountGeneration += 1;
+    sessions.value = [];
+    showArchived.value = false;
+  }
 
   /** Load the list `showArchived` asks for and replace the collection. */
   async function listMine(page = 1, perPage = 50): Promise<void> {
     // Pinned before the await: a toggle while the request is open must not
     // let the answer for the other list land in this one.
     const archived = showArchived.value;
+    const generation = accountGeneration;
     const result = await getService().listMine(page, perPage, archived);
+    if (generation !== accountGeneration) return;
     if (showArchived.value === archived) sessions.value = result.items;
   }
 
@@ -102,6 +118,7 @@ export const useChatStore = defineStore('chat', () => {
   return {
     sessions,
     showArchived,
+    resetForAccount,
     setShowArchived,
     listMine,
     getMine,

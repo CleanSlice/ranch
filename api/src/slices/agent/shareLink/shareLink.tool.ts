@@ -6,16 +6,19 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
+  agentNotFound,
   callerIsOperator,
   CONFIRM_SENTENCE,
   confirmed,
   ok,
   requireOperator,
   type ToolResult,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { ShareLinkService, type IShareLinkState } from './domain';
@@ -91,16 +94,23 @@ function toHttpBase(value: string | null | undefined): string | null {
  * actor (the caller's token subject, recorded as who created or revoked the
  * link), the same 404 for an unknown agent.
  *
- * Operator-only. The controller lets any console user share an agent but
- * keeps the `Agent` role out: a runtime must not mint or revoke public links
- * to itself or to a colleague. An admin agent holds Owner and acts as the
- * operator; for a plain agent these tools are not listed and not callable.
+ * An agent the caller's access lists hide is not found, as on the route
+ * (CLEAN-231).
+ *
+ * Audience `admin`, which is narrower than the route: the controller lets
+ * any console user share an agent (`@Roles(User)`), the tools only an Owner
+ * or Admin, or the Ranch admin agent acting for itself. They stay that way
+ * until "who may manage this agent" exists (specs/032, `manage-agent`):
+ * opening them to every person now would let a User mint a public link to
+ * any agent by naming it. The `Agent` role stays out, as in the controller:
+ * a runtime must not mint or revoke public links to itself or a colleague.
  *
  * The share URL is the product — the person asked for a link to hand out —
  * so an active link comes back as the full URL. Nothing else about the token
  * is returned: no bare `token` field, and a revoked link shows no token at
  * all, because the service already withholds a dead one.
  */
+@ToolAudience('admin')
 @Injectable()
 export class ShareLinkTool implements IConditionallyListedTool {
   private readonly logger = new Logger(ShareLinkTool.name);
@@ -108,7 +118,20 @@ export class ShareLinkTool implements IConditionallyListedTool {
   constructor(
     private readonly shareLinks: ShareLinkService,
     private readonly agents: IAgentGateway,
+    private readonly access: AgentAccessService,
   ) {}
+
+  /**
+   * The agent, when it exists and the caller reaches it (CLEAN-231). An
+   * Admin whose access lists hide an agent cannot read or mint its link.
+   */
+  private async reachedAgent(httpRequest: Request, agentId: string) {
+    const found = await this.agents.findById(agentId);
+    if (!found) return null;
+    return (await this.access.reaches(callerParty(httpRequest), agentId))
+      ? found
+      : null;
+  }
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     return Promise.resolve(callerIsOperator(httpRequest));
@@ -136,9 +159,9 @@ export class ShareLinkTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
-    return this.guard(agentId, async () =>
+    const agent = await this.reachedAgent(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
+    return this.guard(httpRequest, agentId, async () =>
       present(agent, await this.shareLinks.getState(agentId)),
     );
   }
@@ -167,9 +190,9 @@ export class ShareLinkTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
     const userId = requireSub(httpRequest);
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
-    return this.guard(agentId, async () => {
+    const agent = await this.reachedAgent(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
+    return this.guard(httpRequest, agentId, async () => {
       const state = await this.shareLinks.share(agentId, userId);
       this.logger.log(`Share link ensured through MCP: agent=${agentId}`);
       return present(agent, state);
@@ -205,15 +228,15 @@ export class ShareLinkTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const userId = requireSub(httpRequest);
     const { agentId } = args;
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
+    const agent = await this.reachedAgent(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const refusal = confirmed(
       args,
       `regenerate the share link of agent «${agent.name}» — the current ` +
         'link stops working immediately for everyone who has it',
     );
     if (refusal) return refusal;
-    return this.guard(agentId, async () => {
+    return this.guard(httpRequest, agentId, async () => {
       const state = await this.shareLinks.regenerate(agentId, userId);
       this.logger.log(`Share link regenerated through MCP: agent=${agentId}`);
       return present(agent, state, 'The previous link no longer works.');
@@ -250,15 +273,15 @@ export class ShareLinkTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const userId = requireSub(httpRequest);
     const { agentId } = args;
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
+    const agent = await this.reachedAgent(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const refusal = confirmed(
       args,
       `revoke the share link of agent «${agent.name}» — visitors are cut ` +
         'off on their next request',
     );
     if (refusal) return refusal;
-    return this.guard(agentId, async () => {
+    return this.guard(httpRequest, agentId, async () => {
       const state = await this.shareLinks.revoke(agentId, userId);
       this.logger.log(`Share link revoked through MCP: agent=${agentId}`);
       return present(
@@ -277,13 +300,16 @@ export class ShareLinkTool implements IConditionallyListedTool {
    * crash.
    */
   private async guard(
+    httpRequest: Request,
     agentId: string,
     run: () => Promise<ToolResult>,
   ): Promise<ToolResult> {
     try {
       return await run();
     } catch (err) {
-      if (err instanceof NotFoundException) return notFound(agentId);
+      if (err instanceof NotFoundException) {
+        return agentNotFound(httpRequest, agentId);
+      }
       throw err;
     }
   }
@@ -295,12 +321,6 @@ function requireSub(httpRequest: AuthedRequest): string {
   const sub = httpRequest.user?.sub;
   if (!sub) throw new ForbiddenException('No authenticated user');
   return sub;
-}
-
-function notFound(agentId: string): ToolResult {
-  return ok({
-    error: `Agent ${agentId} not found — call list_agents to find the id`,
-  });
 }
 
 /**

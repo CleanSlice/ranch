@@ -1,28 +1,36 @@
-const LAST_AGENT_KEY = 'agent:lastOpened';
+import { lastAgentKey } from '#bridle/utils/storageKeys';
 
 /**
  * Which agent to open when someone lands on the agents area.
  *
  * A convenience, not synced state: it lives in this browser only, so a second
- * device simply falls back to the first running agent. Every read is
- * validated against what the user can actually see right now — without that
- * check a deleted agent, a revoked visibility, or a second user on a shared
- * browser would strand the next visit on a dead id.
+ * device simply falls back to the first running agent. It is kept per
+ * account (CLEAN-231): the key carries the signed-in id, so a second person
+ * on a shared browser is not taken to the agent the first one had open.
+ * Every read is still validated against what the user can actually see right
+ * now, so a deleted agent or a revoked visibility does not strand the next
+ * visit on a dead id.
  */
 export function useLastAgent() {
+  // Read on every call, not once: the composable outlives a sign-in.
+  const key = (): string | null =>
+    lastAgentKey(useAuthStore().user?.id ?? null);
+
   function read(): string | null {
-    if (typeof window === 'undefined') return null;
+    const storageKey = key();
+    if (typeof window === 'undefined' || !storageKey) return null;
     try {
-      return window.localStorage.getItem(LAST_AGENT_KEY);
+      return window.localStorage.getItem(storageKey);
     } catch {
       return null;
     }
   }
 
   function remember(id: string): void {
-    if (typeof window === 'undefined') return;
+    const storageKey = key();
+    if (typeof window === 'undefined' || !storageKey) return;
     try {
-      window.localStorage.setItem(LAST_AGENT_KEY, id);
+      window.localStorage.setItem(storageKey, id);
     } catch {
       // Quota or private mode — losing the memory costs one extra click.
     }

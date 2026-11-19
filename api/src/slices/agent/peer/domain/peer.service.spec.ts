@@ -10,6 +10,8 @@ import type { AgentCardService } from './agentCard.service';
 import type { A2aClient } from './a2a.client';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import type { IA2aAgentCard } from './a2a.types';
+import type { ICallerParty } from '#/user/auth/domain/auth.types';
+import { UserRoleTypes } from '#/user/user/domain';
 
 /**
  * Connecting a peer. The rule these cases defend: "connected" must mean the
@@ -54,7 +56,12 @@ const foreignCard = (
 
 function makeHarness(
   options: {
-    agents?: Array<{ id: string; name: string; status: string }>;
+    agents?: Array<{
+      id: string;
+      name: string;
+      status: string;
+      isAdmin?: boolean;
+    }>;
     fetchCardThrows?: Error;
     /** Card returned for external imports; defaults to a valid 1.0 card. */
     externalCard?: IA2aAgentCard;
@@ -152,11 +159,118 @@ function makeHarness(
   return { service, peers, rows, fetchCard, cards };
 }
 
+// Who the connection is made for. The specs that are not about the Ranch
+// admin agent connect as a trusted party; with ordinary agents on both ends
+// the party decides nothing.
+const TRUSTED: ICallerParty = { kind: 'trusted' };
+const GUEST: ICallerParty = { kind: 'guest' };
+const person = (role: UserRoleTypes): ICallerParty => ({
+  kind: 'person',
+  userId: 'user-1',
+  role,
+});
+
+/**
+ * The Ranch admin agent is the Owner's alone (CLEAN-232), and a connection
+ * with it on either end is too. The rule is here, in the one function the
+ * console route, the operator tool and the agent's own tool all call.
+ */
+describe('PeerService: a connection with the Ranch admin agent', () => {
+  const agents = [
+    { id: 'a', name: 'Caller', status: 'running' },
+    { id: 'b', name: 'Support Bot', status: 'running' },
+    { id: 'ranch', name: 'Ranch', status: 'running', isAdmin: true },
+  ];
+  const everybodyElse: Array<[string, ICallerParty]> = [
+    ['a guest (an ordinary agent, whoever it speaks for)', GUEST],
+    ['a User', person(UserRoleTypes.User)],
+    ['an Admin', person(UserRoleTypes.Admin)],
+  ];
+  const owners: Array<[string, ICallerParty]> = [
+    ['the Owner', person(UserRoleTypes.Owner)],
+    ['a trusted party', TRUSTED],
+  ];
+
+  it.each(everybodyElse)(
+    'is not found for %s, in either direction, and nothing is saved',
+    async (_who, party) => {
+      const { service, rows } = makeHarness({ agents });
+
+      for (const [from, to] of [
+        ['a', 'ranch'],
+        ['ranch', 'a'],
+      ]) {
+        await expect(service.connect(from, to, party)).rejects.toMatchObject({
+          status: 404,
+          response: { code: 'PEER_NOT_FOUND', message: 'Agent not found' },
+        });
+      }
+      expect(Object.keys(rows)).toHaveLength(0);
+    },
+  );
+
+  it('answers exactly as it does for an agent that does not exist', async () => {
+    const { service } = makeHarness({ agents });
+    const answer = (to: string) =>
+      service.connect('a', to, GUEST).then(
+        () => null,
+        (e: { status: number; response: unknown }) => ({
+          status: e.status,
+          response: e.response,
+        }),
+      );
+
+    expect(await answer('ranch')).toEqual(await answer('ghost'));
+  });
+
+  it.each(owners)(
+    'is made for %s, in either direction',
+    async (_who, party) => {
+      const { service, rows } = makeHarness({ agents });
+
+      await service.connect('a', 'ranch', party);
+      await service.connect('ranch', 'a', party);
+
+      expect(Object.keys(rows)).toHaveLength(2);
+    },
+  );
+
+  it.each(everybodyElse)(
+    'leaves two ordinary agents to %s, as before',
+    async (_who, party) => {
+      const { service, rows } = makeHarness({ agents });
+
+      await service.connect('a', 'b', party);
+
+      expect(Object.keys(rows)).toHaveLength(1);
+    },
+  );
+
+  it.each(everybodyElse)(
+    'does not offer the Ranch admin agent as a candidate to %s',
+    async (_who, party) => {
+      const { service } = makeHarness({ agents });
+
+      const ids = (await service.candidates('a', party)).map((c) => c.id);
+
+      expect(ids).toEqual(['b']);
+    },
+  );
+
+  it.each(owners)('offers it to %s', async (_who, party) => {
+    const { service } = makeHarness({ agents });
+
+    const ids = (await service.candidates('a', party)).map((c) => c.id);
+
+    expect(ids).toEqual(['b', 'ranch']);
+  });
+});
+
 describe('PeerService.connect', () => {
   it('mints a credential of the documented shape', async () => {
     const { service, rows } = makeHarness();
 
-    await service.connect('a', 'b');
+    await service.connect('a', 'b', TRUSTED);
 
     const [row] = Object.values(rows);
     expect(row.token).toMatch(PEER_TOKEN_RE);
@@ -165,7 +279,7 @@ describe('PeerService.connect', () => {
   it('proves the credential works by reading the card with it', async () => {
     const { service, fetchCard, rows } = makeHarness();
 
-    await service.connect('a', 'b');
+    await service.connect('a', 'b', TRUSTED);
 
     const [row] = Object.values(rows);
     expect(fetchCard).toHaveBeenCalledWith(
@@ -177,7 +291,7 @@ describe('PeerService.connect', () => {
   it('stores the card it read, with the time it read it', async () => {
     const { service } = makeHarness();
 
-    const view = await service.connect('a', 'b');
+    const view = await service.connect('a', 'b', TRUSTED);
 
     expect(view.card.name).toBe('Support Bot');
     expect(view.cardReadAt).toEqual(expect.any(String));
@@ -190,7 +304,7 @@ describe('PeerService.connect', () => {
       fetchCardThrows: new PeerCardUnreachableError('host is down'),
     });
 
-    await expect(service.connect('a', 'b')).rejects.toMatchObject({
+    await expect(service.connect('a', 'b', TRUSTED)).rejects.toMatchObject({
       response: { code: 'PEER_CARD_UNREACHABLE' },
     });
     expect(Object.values(rows)).toHaveLength(0);
@@ -199,16 +313,16 @@ describe('PeerService.connect', () => {
   it('refuses to connect an agent to itself', async () => {
     const { service } = makeHarness();
 
-    await expect(service.connect('a', 'a')).rejects.toMatchObject({
+    await expect(service.connect('a', 'a', TRUSTED)).rejects.toMatchObject({
       response: { code: 'PEER_SELF' },
     });
   });
 
   it('refuses a second connection to a peer it already holds', async () => {
     const { service } = makeHarness();
-    await service.connect('a', 'b');
+    await service.connect('a', 'b', TRUSTED);
 
-    await expect(service.connect('a', 'b')).rejects.toMatchObject({
+    await expect(service.connect('a', 'b', TRUSTED)).rejects.toMatchObject({
       response: { code: 'PEER_EXISTS' },
     });
   });
@@ -216,7 +330,7 @@ describe('PeerService.connect', () => {
   it('refuses a peer that does not exist', async () => {
     const { service } = makeHarness();
 
-    await expect(service.connect('a', 'ghost')).rejects.toMatchObject({
+    await expect(service.connect('a', 'ghost', TRUSTED)).rejects.toMatchObject({
       response: { code: 'PEER_NOT_FOUND' },
     });
   });
@@ -224,7 +338,7 @@ describe('PeerService.connect', () => {
   it('never lets the credential reach the caller', async () => {
     const { service } = makeHarness();
 
-    const view = await service.connect('a', 'b');
+    const view = await service.connect('a', 'b', TRUSTED);
 
     expect(JSON.stringify(view)).not.toContain('ap_');
     expect(view).not.toHaveProperty('token');
@@ -232,7 +346,7 @@ describe('PeerService.connect', () => {
 
   it('leaves the opposite direction alone', async () => {
     const { service } = makeHarness();
-    await service.connect('a', 'b');
+    await service.connect('a', 'b', TRUSTED);
 
     await expect(service.list('b')).resolves.toEqual([]);
   });
@@ -241,7 +355,7 @@ describe('PeerService.connect', () => {
 describe('PeerService.refresh', () => {
   it('replaces the snapshot with what the card says now', async () => {
     const { service, fetchCard } = makeHarness();
-    const connected = await service.connect('a', 'b');
+    const connected = await service.connect('a', 'b', TRUSTED);
     fetchCard.mockResolvedValue({
       ...card('Support Bot'),
       description: 'Now also handles refunds.',
@@ -254,7 +368,7 @@ describe('PeerService.refresh', () => {
 
   it('keeps the old snapshot when the read fails, and says what failed', async () => {
     const { service, fetchCard } = makeHarness();
-    const connected = await service.connect('a', 'b');
+    const connected = await service.connect('a', 'b', TRUSTED);
     fetchCard.mockRejectedValue(
       new PeerCardUnreachableError('502 Bad Gateway'),
     );
@@ -268,7 +382,7 @@ describe('PeerService.refresh', () => {
 
   it('refuses to refresh a connection that belongs to another agent', async () => {
     const { service } = makeHarness();
-    const connected = await service.connect('a', 'b');
+    const connected = await service.connect('a', 'b', TRUSTED);
 
     await expect(service.refresh('c', connected.id)).rejects.toMatchObject({
       response: { code: 'PEER_NOT_FOUND' },
@@ -279,7 +393,7 @@ describe('PeerService.refresh', () => {
 describe('PeerService.remove', () => {
   it('kills the connection and with it the credential', async () => {
     const { service, peers, rows } = makeHarness();
-    const connected = await service.connect('a', 'b');
+    const connected = await service.connect('a', 'b', TRUSTED);
     const token = Object.values(rows)[0].token as string;
 
     await service.remove('a', connected.id);
@@ -290,7 +404,7 @@ describe('PeerService.remove', () => {
 
   it('refuses to remove a connection that belongs to another agent', async () => {
     const { service } = makeHarness();
-    const connected = await service.connect('a', 'b');
+    const connected = await service.connect('a', 'b', TRUSTED);
 
     await expect(service.remove('c', connected.id)).rejects.toMatchObject({
       response: { code: 'PEER_NOT_FOUND' },
@@ -301,9 +415,9 @@ describe('PeerService.remove', () => {
 describe('PeerService.candidates', () => {
   it('offers every other agent and marks the ones already connected', async () => {
     const { service } = makeHarness();
-    await service.connect('a', 'b');
+    await service.connect('a', 'b', TRUSTED);
 
-    const candidates = await service.candidates('a');
+    const candidates = await service.candidates('a', TRUSTED);
 
     expect(candidates).toEqual([
       { id: 'b', name: 'Support Bot', status: 'running', connected: true },
@@ -314,7 +428,7 @@ describe('PeerService.candidates', () => {
   it('never offers the agent itself', async () => {
     const { service } = makeHarness();
 
-    const candidates = await service.candidates('a');
+    const candidates = await service.candidates('a', TRUSTED);
 
     expect(candidates.map((c) => c.id)).not.toContain('a');
   });
@@ -323,7 +437,7 @@ describe('PeerService.candidates', () => {
 describe('PeerService.list', () => {
   it('reports a peer whose agent has been deleted as gone', async () => {
     const { service, rows } = makeHarness();
-    await service.connect('a', 'b');
+    await service.connect('a', 'b', TRUSTED);
     // The FK cascade normally removes the row with the agent; this is the
     // remote-peer shape the view has to survive anyway.
     Object.values(rows)[0].peerAgentId = 'vanished';
@@ -510,7 +624,7 @@ describe('PeerService — refreshing an external row (CLEAN-95)', () => {
 describe('PeerService — armed state (CLEAN-95)', () => {
   it('is armed when the served hash matches the current peer set', async () => {
     const harness = makeHarness({ served: null });
-    const view = await harness.service.connect('a', 'b');
+    const view = await harness.service.connect('a', 'b', TRUSTED);
     const hash = hashPeerIds([view.id]);
 
     const cold = await harness.service.peersState('a');
@@ -520,7 +634,7 @@ describe('PeerService — armed state (CLEAN-95)', () => {
       served: { servedAt: '2026-09-16T10:00:00.000Z', hash },
     });
     // Recreate the same single row so the hashes line up.
-    const again = await warm.service.connect('a', 'b');
+    const again = await warm.service.connect('a', 'b', TRUSTED);
     expect(hashPeerIds([again.id])).toBe(hash);
 
     const state = await warm.service.peersState('a');
@@ -535,7 +649,7 @@ describe('PeerService — armed state (CLEAN-95)', () => {
 
     expect((await harness.service.peersState('a')).armed).toBe(true);
 
-    await harness.service.connect('a', 'b');
+    await harness.service.connect('a', 'b', TRUSTED);
     expect((await harness.service.peersState('a')).armed).toBe(false);
   });
 });
@@ -758,7 +872,7 @@ describe('PeerService — refreshing holds a card to the import bar (CLEAN-97)',
 
   it('leaves internal peers alone: their card interface IS this installation', async () => {
     const { service } = makeHarness();
-    const connected = await service.connect('a', 'b');
+    const connected = await service.connect('a', 'b', TRUSTED);
 
     await expect(service.refresh('a', connected.id)).resolves.toMatchObject({
       id: connected.id,

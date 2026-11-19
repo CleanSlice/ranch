@@ -28,6 +28,10 @@ import type { SectionCounts } from '#agent/components/agent/workspace/sections';
 export function useAgentSectionCounts(
   agentId: string,
   agent: Ref<IAgentData | null | undefined>,
+  /** False for a viewer who may not manage the agent (CLEAN-232): the four
+   *  sources are management routes and answer "Agent not found" to them, so
+   *  nothing is asked and every count stays unknown. */
+  enabled: Ref<boolean> = ref(true),
 ) {
   const templateStore = useTemplateStore();
   const fileStore = useAgentFileStore();
@@ -44,9 +48,12 @@ export function useAgentSectionCounts(
   const templateKnowledge = ref<number | null>(null);
 
   let started = false;
+  /** load() was called, whether or not it could run yet. */
+  let wanted = false;
 
   async function load() {
-    if (started) return;
+    wanted = true;
+    if (started || !enabled.value) return;
     started = true;
 
     await Promise.allSettled([
@@ -107,6 +114,13 @@ export function useAgentSectionCounts(
   // all of it racing the chat transcript for connections (CLEAN-233). The
   // host calls load() when Settings is opened, and on hover of the Settings
   // tab, so the numbers are still there before the click.
+
+  // Whether the viewer manages the agent is only known when the agent record
+  // has arrived, and a deep link into a section asks before that: the load
+  // it asked for runs then (CLEAN-232).
+  watch(enabled, (ok) => {
+    if (ok && wanted) void load();
+  });
 
   // The agent record arrives after the first paint, so the template lookup can
   // only run once we know which template to look up.

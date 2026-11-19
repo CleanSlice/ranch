@@ -4,9 +4,9 @@ difficulty: easy
 name: List agents on the ranch
 description: User asks to see all agents managed by this ranch
 expectedBehavior: |
-  Agent immediately fetches the agent list — either via the `list_agents`
-  MCP shortcut (if loaded) or via `http` GET ${RANCH_API_URL}/agents with
-  Bearer auth. Returns a concise summary with id, name, status, template.
+  Agent immediately fetches the agent list with the `list_agents` tool.
+  Returns a concise summary with id, name, status, template. Tools only,
+  no raw HTTP.
   No clarifying questions before acting.
 messages:
   - text: "Show me all agents on this ranch"
@@ -14,8 +14,8 @@ messages:
 successCriteria:
   - dimension: tool_usage
     description: |
-      Called either `list_agents` MCP tool OR `http` with method=GET and url
-      starting with ${RANCH_API_URL}/agents and Authorization Bearer header.
+      Called the `list_agents` tool. No `http` or `exec` call against the
+      Ranch API.
     weight: 0.4
   - dimension: correctness
     description: Reported the result of the call (agent list summary or surfaced an error verbatim, not invented data)

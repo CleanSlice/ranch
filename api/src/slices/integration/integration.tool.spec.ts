@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { IntegrationTool } from './integration.tool';
 import type { IntegrationService } from './domain/integration.service';
@@ -7,9 +11,14 @@ import type {
   ILoginInstructionData,
 } from './domain/integration.types';
 import { UserRoleTypes } from '#/user/user/domain';
-import { MCP_TOOL_METADATA_KEY, ToolTopics } from '#/mcp/decorators';
+import {
+  MCP_TOOL_METADATA_KEY,
+  ToolTopics,
+  toolAudienceOf,
+} from '#/mcp/decorators';
 import type { ToolMetadata } from '#/mcp/decorators';
 import { toolMetadataProblems } from '#/mcp/services/mcp-registry.service';
+import { asGuest, asPerson, asTrustedAgent } from '#/mcp/testing';
 
 /**
  * These tools hand an agent the user's integration accounts. Two things
@@ -55,7 +64,11 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const agent = () => request([UserRoleTypes.Agent]);
+/** A plain agent runtime answering the signed-in person «user-1». */
+const agent = () =>
+  asPerson(request([UserRoleTypes.Agent]), UserRoleTypes.User, 'user-1');
+/** The same runtime with nobody proven behind the call. */
+const nobody = () => request([UserRoleTypes.Agent]);
 
 interface Harness {
   tool: IntegrationTool;
@@ -103,11 +116,84 @@ const textOf = (result: { content: { text: string }[] }) =>
   result.content[0].text;
 
 describe('IntegrationTool — who may use it', () => {
-  it('has no listing gate, like the browser tools it sits beside', () => {
+  it('has no listing hook of its own: the person audience decides', () => {
     const { tool } = harness();
     expect(
       (tool as unknown as Record<string, unknown>).isListedForRequest,
     ).toBeUndefined();
+    expect(toolAudienceOf(IntegrationTool, undefined)).toBe('person');
+  });
+
+  it('refuses every tool when no person is behind the call, and touches nothing (CLEAN-232)', async () => {
+    const { tool, service } = harness();
+    const callers = [
+      nobody,
+      () => asGuest(request([UserRoleTypes.Agent])),
+      // An agent acting for itself has no accounts of its own to manage,
+      // the Ranch admin agent included.
+      () => asTrustedAgent(request([UserRoleTypes.Owner])),
+    ];
+
+    for (const caller of callers) {
+      const calls = [
+        () => tool.listIntegrationCatalogue({}, null, caller()),
+        () => tool.listIntegrationAccounts({}, null, caller()),
+        () =>
+          tool.createIntegrationAccount(
+            { service: 'instagram', accountKey: 'miybot' },
+            null,
+            caller(),
+          ),
+        () => tool.requestIntegrationLogin({ id: 'acc-1' }, null, caller()),
+        () =>
+          tool.deleteIntegrationAccount(
+            { id: 'acc-1', confirm: true },
+            null,
+            caller(),
+          ),
+      ];
+      for (const call of calls) {
+        await expect(call()).rejects.toBeInstanceOf(ForbiddenException);
+      }
+    }
+    for (const fn of Object.values(service)) expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('takes no user id from the model: an extra userId argument changes nothing', async () => {
+    const { tool, service } = harness();
+    // What a model that still believes in the old parameter would send.
+    const args = { userId: 'user-owner' } as unknown as Record<string, never>;
+
+    await tool.listIntegrationAccounts(args, null, agent());
+    await tool.deleteIntegrationAccount(
+      { userId: 'user-owner', id: 'acc-1', confirm: true } as never,
+      null,
+      agent(),
+    );
+
+    expect(service.listAccounts).toHaveBeenCalledWith('user-1');
+    expect(service.getAccount).toHaveBeenCalledWith('user-1', 'acc-1');
+    expect(service.disconnect).toHaveBeenCalledWith('user-1', 'acc-1');
+  });
+
+  it('no tool declares a userId parameter any more', () => {
+    for (const method of [
+      'listIntegrationAccounts',
+      'createIntegrationAccount',
+      'requestIntegrationLogin',
+      'deleteIntegrationAccount',
+    ]) {
+      const metadata = Reflect.getMetadata(
+        MCP_TOOL_METADATA_KEY,
+        (IntegrationTool.prototype as unknown as Record<string, object>)[
+          method
+        ],
+      ) as ToolMetadata;
+      const shape = (
+        metadata.parameters as unknown as { shape: Record<string, unknown> }
+      ).shape;
+      expect(Object.keys(shape)).not.toContain('userId');
+    }
   });
 });
 
@@ -159,11 +245,9 @@ describe('IntegrationTool — reading', () => {
     expect(text).toContain('OPENAI_API_KEY');
   });
 
-  it('lists the accounts of the named user', async () => {
+  it('lists the accounts of the person the call is made for', async () => {
     const { tool, service } = harness();
-    const text = textOf(
-      await tool.listIntegrationAccounts({ userId: 'user-1' }, null, agent()),
-    );
+    const text = textOf(await tool.listIntegrationAccounts({}, null, agent()));
     expect(service.listAccounts).toHaveBeenCalledWith('user-1');
     expect(text).toContain('"id": "acc-1"');
     expect(text).toContain('"accountKey": "miybot"');
@@ -172,9 +256,7 @@ describe('IntegrationTool — reading', () => {
 
   it('never returns cookies, secrets, tokens or passwords', async () => {
     const { tool } = harness();
-    const text = textOf(
-      await tool.listIntegrationAccounts({ userId: 'user-1' }, null, agent()),
-    );
+    const text = textOf(await tool.listIntegrationAccounts({}, null, agent()));
     expect(text).not.toContain(SENTINEL);
     expect(text).not.toContain('cookies');
     expect(text).not.toContain('"secret"');
@@ -189,7 +271,6 @@ describe('IntegrationTool — connecting', () => {
     const text = textOf(
       await tool.createIntegrationAccount(
         {
-          userId: 'user-1',
           service: 'instagram',
           accountKey: 'miybot',
           label: 'Main IG',
@@ -215,7 +296,7 @@ describe('IntegrationTool — connecting', () => {
       new BadRequestException('Unknown service "nope".'),
     );
     const result = await tool.createIntegrationAccount(
-      { userId: 'user-1', service: 'nope', accountKey: 'x' },
+      { service: 'nope', accountKey: 'x' },
       null,
       agent(),
     );
@@ -229,11 +310,7 @@ describe('IntegrationTool — login', () => {
   it('returns the site, help page and instructions for the person', async () => {
     const { tool, service } = harness();
     const text = textOf(
-      await tool.requestIntegrationLogin(
-        { userId: 'user-1', id: 'acc-1' },
-        null,
-        agent(),
-      ),
+      await tool.requestIntegrationLogin({ id: 'acc-1' }, null, agent()),
     );
     expect(service.openLogin).toHaveBeenCalledWith('user-1', 'acc-1');
     expect(text).toContain('https://www.instagram.com/accounts/login/');
@@ -245,11 +322,7 @@ describe('IntegrationTool — login', () => {
     const { tool, service } = harness();
     service.openLogin.mockRejectedValue(new NotFoundException());
     const text = textOf(
-      await tool.requestIntegrationLogin(
-        { userId: 'user-1', id: 'ghost' },
-        null,
-        agent(),
-      ),
+      await tool.requestIntegrationLogin({ id: 'ghost' }, null, agent()),
     );
     expect(text).toContain('not found');
     expect(text).toContain('list_integration_accounts');
@@ -263,7 +336,7 @@ describe('IntegrationTool — login', () => {
       ),
     );
     const result = await tool.requestIntegrationLogin(
-      { userId: 'user-1', id: 'acc-2' },
+      { id: 'acc-2' },
       null,
       agent(),
     );
@@ -277,7 +350,7 @@ describe('IntegrationTool — disconnecting', () => {
   it('disconnects once confirmed and names the account', async () => {
     const { tool, service } = harness();
     const result = await tool.deleteIntegrationAccount(
-      { userId: 'user-1', id: 'acc-1', confirm: true },
+      { id: 'acc-1', confirm: true },
       null,
       agent(),
     );
@@ -292,7 +365,7 @@ describe('IntegrationTool — disconnecting', () => {
   it('refuses without confirm, names the account, and does not touch the service', async () => {
     const { tool, service } = harness();
     const result = await tool.deleteIntegrationAccount(
-      { userId: 'user-1', id: 'acc-1' },
+      { id: 'acc-1' },
       null,
       agent(),
     );
@@ -306,7 +379,7 @@ describe('IntegrationTool — disconnecting', () => {
     const { tool, service } = harness();
     service.getAccount.mockResolvedValue(account({ label: null }));
     const result = await tool.deleteIntegrationAccount(
-      { userId: 'user-1', id: 'acc-1' },
+      { id: 'acc-1' },
       null,
       agent(),
     );
@@ -317,7 +390,7 @@ describe('IntegrationTool — disconnecting', () => {
     const { tool, service } = harness();
     service.getAccount.mockRejectedValue(new NotFoundException());
     const result = await tool.deleteIntegrationAccount(
-      { userId: 'user-1', id: 'ghost' },
+      { id: 'ghost' },
       null,
       agent(),
     );

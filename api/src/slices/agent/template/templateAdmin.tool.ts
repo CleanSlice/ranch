@@ -1,12 +1,13 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   CONFIRM_SENTENCE,
   confirmed,
   err,
+  manageCaller,
   ok,
   requireOperator,
   type ToolResult,
@@ -15,6 +16,7 @@ import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-list
 import type { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { AgentDeployService } from '#/agent/agent/domain/agentDeploy.service';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { ITemplateGateway } from './domain';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
@@ -45,6 +47,7 @@ const NOT_FOUND = (id: string) =>
  * Operator only. A plain agent does not see these tools and cannot call them
  * by name either (`requireOperator` on every method).
  */
+@ToolAudience('admin')
 @Injectable()
 export class TemplateAdminTool implements IConditionallyListedTool {
   private readonly logger = new Logger(TemplateAdminTool.name);
@@ -57,6 +60,7 @@ export class TemplateAdminTool implements IConditionallyListedTool {
     private agents: IAgentGateway,
     @Inject(forwardRef(() => AgentDeployService))
     private agentDeploy: AgentDeployService,
+    private permission: AgentPermissionService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
@@ -253,7 +257,9 @@ export class TemplateAdminTool implements IConditionallyListedTool {
       'Restart every agent that uses a template: each one pulls the latest ' +
       'template-owned files and redeploys, keeping its runtime state. At ' +
       'most 5 restart at once. Returns how many restarted, failed and were ' +
-      'found in total. Interrupts running conversations on those agents. ' +
+      'found in total. An agent the person may not manage is left running ' +
+      'and only counted (`skipped`). Interrupts running conversations on ' +
+      'those agents. ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       templateId: z.string(),
@@ -277,13 +283,33 @@ export class TemplateAdminTool implements IConditionallyListedTool {
     );
     if (refusal) return refusal;
 
-    const agents = await this.agents.findByTemplateId(templateId);
+    const found = await this.agents.findByTemplateId(templateId);
+    // Restarting an agent is managing it (CLEAN-232): an Admin restarting a
+    // template must not restart the Ranch admin agent along with it. What
+    // was left out is counted, never named.
+    const caller = manageCaller(httpRequest);
+    const allowed = await Promise.all(
+      found.map((agent) => this.permission.canManage(caller, agent)),
+    );
+    const agents = found.filter((_, i) => allowed[i]);
+    const skipped = found.length - agents.length;
+    const skippedNote =
+      skipped > 0
+        ? ` ${skipped} agent${skipped === 1 ? '' : 's'} of this template ` +
+          `${skipped === 1 ? 'was' : 'were'} left running: this account ` +
+          'cannot manage ' +
+          (skipped === 1 ? 'it.' : 'them.')
+        : '';
     if (agents.length === 0) {
       return ok({
         restarted: 0,
         failed: 0,
         total: 0,
-        message: `No agents use template «${template.name}» — nothing to restart.`,
+        skipped,
+        message:
+          (found.length === 0
+            ? `No agents use template «${template.name}» — nothing to restart.`
+            : 'Nothing was restarted.') + skippedNote,
       });
     }
 
@@ -310,18 +336,20 @@ export class TemplateAdminTool implements IConditionallyListedTool {
     await Promise.all(Array.from({ length: workers }, () => worker()));
 
     this.logger.log(
-      `Restart-by-template ${templateId} through MCP: ${restarted} restarted, ${failed} failed of ${agents.length} total`,
+      `Restart-by-template ${templateId} through MCP: ${restarted} restarted, ${failed} failed of ${agents.length} total, ${skipped} skipped`,
     );
     return ok({
       restarted,
       failed,
       total: agents.length,
+      skipped,
       message:
         `${restarted} of ${agents.length} agent${agents.length === 1 ? '' : 's'} ` +
         `of template «${template.name}» restarting` +
         (failed > 0
           ? `; ${failed} failed — get_agent_status on each to see why, then restart_agent one by one.`
-          : '. They will boot shortly; get_agent_status to follow.'),
+          : '. They will boot shortly; get_agent_status to follow.') +
+        skippedNote,
     });
   }
 }

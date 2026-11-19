@@ -55,11 +55,20 @@ patch(id, partial): () => void            // partial change, returns a rollback
   header) do not flip anything themselves. The rollback restores a field only
   if it still holds the optimistic value, so a fresher server write that
   landed in between survives.
-- The status stream (`stores/agentStatus.ts`) upserts the agent row each frame
-  carries into this store and keeps only what exists nowhere else: pod state
-  and hub connectivity. Its frames carry the full `AgentDto` and are decoded
-  by the same `AgentMapper` as REST responses, so a frame can never thin out a
-  record.
+- The status stream (`stores/agentStatus.ts`) patches the status each frame
+  carries into this store's record and keeps only what exists nowhere else:
+  pod state and hub connectivity. The stream is public (an EventSource cannot
+  send a token), so a frame carries status facts only, never the row
+  (CLEAN-232): the agent's `id`, `status` and `updatedAt`. When
+  `updatedAt` is later than the record's, or the store has never held that
+  agent, the store reads the row through the authenticated route
+  (`fetchById`, which upserts; `fetchAll` after a snapshot that does not
+  match the collection). A push patches, a fetch upserts, and it is still one
+  record. Who created an agent (`createdBy`) is likewise only in responses
+  that resolve creators (`GET /agents`, `GET /agents/:id` and the routes
+  that return one agent): a record that does not say keeps the creator the
+  store already holds (`keepKnownCreator`), and `null` means "nobody is
+  recorded".
 - The rail (`workspace/Provider.vue`), the header (`workspace/Main.vue`), the
   Overview card, the edit page and the Files tab all read `agentStore.agents`
   / `agentStore.byId(id)`.
@@ -91,6 +100,50 @@ way from every direction — the view that asked, another tab, the other
 console — through one function, so two screens cannot disagree about what
 "empty" left behind (CLEAN-136).
 
+## An account change
+
+Two people may use one browser, one after the other. Two rules keep the
+second from being shown anything of the first (CLEAN-231).
+
+7. **An account change resets every data store.** A store that holds what an
+   account read exposes one `resetForAccount()`: it empties every collection
+   and keyed map, closes the sockets and stops the timers it owns, and makes
+   the answer of a request that was still open a no-op (a generation counter
+   compared after the `await`). The `accountScope` plugin in `user/auth` of
+   each console watches the signed-in id and calls them, then drops what
+   `useAsyncData` kept: on sign-out, on sign-in, and when a different account
+   signs in in the session-ended dialog, where it also sends the console to
+   its landing. The watcher is synchronous, so the stores are empty before
+   `logout()` returns to its caller and before anything is drawn for a new
+   account. The same account signing in again in that dialog changes no id
+   and keeps its page. In `app` the plugin names the stores (`bridle`,
+   `agent`, `chat`, `share`): a new store with account data is added there.
+   In `admin` every store is covered as it is created: one with a
+   `resetForAccount()` through it, any other by going back to the state it
+   was created with, except the few listed in `#auth/utils/accountReset`
+   that are about no account. A store that owns a socket, a timer, or records
+   a component holds directly (admin's conversation record) needs its own
+   function: going back to the first state does not close anything. So does
+   a store whose state mirrors a per-account key (admin's `agent` and
+   `agentFile`, the restart marks): the state it was created with is the
+   previous account's, so its function reads the key again, for the id that
+   is signed in by then.
+8. **What the browser keeps carries the account.** A `localStorage` key that
+   holds content or names an agent has the signed-in id in it, built by the
+   console's `bridle/utils/storageKeys.ts` and nowhere else:
+   `bridle:conversation:<userId>:<key>`, `bridle:seq:<userId>:<key>` and
+   `agent:lastOpened:<userId>` in `app`; `bridle:debug:<userId>:<agentId>`,
+   `bridle:outbox:<userId>:<agentId>:<channel>` and the restart marks
+   `agent:pendingRestart:<userId>`, `agent:restartInFlight:<userId>` and
+   `agentFile:pendingRestart:<userId>` in `admin`. With no
+   signed-in id there is no key: nothing is read and nothing is written. A
+   share-link conversation has no account and keeps its `share:…` key. View
+   preferences that name no agent (`agent:view`, the theme) stay as they
+   are. A new key of this kind goes through that module, and the old shape is
+   added to its one-time sweep as a new step with the next number in the
+   flag: browsers that already ran the earlier steps hold the earlier number
+   and still get the new one, once.
+
 ## Review checklist
 
 - Does the template read `data` from `useAsyncData` / `useFetch`? Render from
@@ -99,3 +152,7 @@ console — through one function, so two screens cannot disagree about what
 - Is there a `live…` / `fresh…` / `current…` ref next to a store that already
   holds that entity?
 - Does anything assign to a local copy of an entity to "update" it?
+- Does a new store hold what an account read? It needs `resetForAccount()`
+  (and, in `app`, a line in the `accountScope` plugin).
+- Does a new `localStorage` key hold content or name an agent? It carries
+  the account id, through `bridle/utils/storageKeys.ts`.

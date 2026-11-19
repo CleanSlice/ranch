@@ -34,6 +34,10 @@ export class AgentService {
     return this.gateway.update(id, input);
   }
 
+  setPinned(id: string, pinned: boolean): Promise<void> {
+    return this.gateway.setPinned(id, pinned);
+  }
+
   remove(id: string): Promise<void> {
     return this.gateway.remove(id);
   }

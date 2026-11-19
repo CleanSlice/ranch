@@ -6,7 +6,8 @@ import { McpRegistryService } from './mcp-registry.service';
 import { isDynamicallyDescribed } from '../interfaces/dynamic-description.interface';
 import { isConditionallyListed } from '../interfaces/conditional-listing.interface';
 import { CallerToolPolicy } from '../interfaces/caller-tool-policy.interface';
-import type { ToolMetadata } from '../decorators';
+import type { ToolAudienceTypes, ToolMetadata } from '../decorators';
+import { audienceAllows } from '../tooling';
 
 /** One tool as a given caller sees it: the per-caller description applied. */
 export interface IListedTool {
@@ -14,6 +15,8 @@ export interface IListedTool {
   description: string;
   inputSchema: unknown;
   metadata: ToolMetadata;
+  /** Who the tool is for; always one this caller belongs to (CLEAN-232). */
+  audience: ToolAudienceTypes;
 }
 
 /**
@@ -22,6 +25,12 @@ export interface IListedTool {
  * (a synthetic request carrying the principal a pod would have). One
  * implementation, so the panel can never disagree with the runtime
  * (CLEAN-109, research R3).
+ *
+ * The first question for every tool is its audience (CLEAN-232): a tool
+ * whose audience does not include the party this request is made for is
+ * never listed, before any hook of the tool runs. `httpRequest` is therefore
+ * expected to carry that party (`withCallerParty` in `../tooling`); a request
+ * from an agent that carries none is a guest's.
  */
 @Injectable()
 export class ToolCatalogService {
@@ -41,6 +50,10 @@ export class ToolCatalogService {
       this.registry
         .getTools()
         .map(async (tool): Promise<IListedTool | null> => {
+          // Decided here and never left to a hook: unlike the hooks below,
+          // this has no "stay listed when the check breaks" fallback.
+          const audience = tool.audience;
+          if (!audience || !audienceAllows(audience, httpRequest)) return null;
           let description = tool.metadata.description;
           // Tools may opt into per-caller descriptions by implementing
           // IDynamicallyDescribedTool, and out of the list entirely by
@@ -79,6 +92,7 @@ export class ToolCatalogService {
               ? this.convertZodToJsonSchema(tool.metadata.parameters)
               : undefined,
             metadata: tool.metadata,
+            audience,
           };
         }),
     );

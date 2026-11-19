@@ -9,6 +9,10 @@
     "empty_cta": "Create your first agent",
     "empty_no_permission": "Ask an Admin or Owner to deploy one."
   },
+  "agents": {
+    "no_access_title": "No agents yet",
+    "no_access_body": "An administrator decides which agents you can use. Ask them for access."
+  },
   "item": {
     "template": "Template",
     "resources": "Resources",

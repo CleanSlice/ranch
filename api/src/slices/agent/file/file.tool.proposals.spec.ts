@@ -1,4 +1,3 @@
-import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
 import { FileTool, isPrivateAddress } from './file.tool';
 import type { IAgentGateway } from '#/agent/agent/domain';
@@ -6,6 +5,8 @@ import type { IBridleGateway } from '#/bridle/domain';
 import type { IFileGateway, SyncGuardService } from './domain';
 import { ProposalNeedsRemoveConfirmError } from './domain/fileProposal.service';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 /**
  * The five CLEAN-112 tools: list/read return what the console shows, and
@@ -17,8 +18,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const pendingRow = (overrides: Record<string, unknown> = {}) => ({
   id: 'prop-1',
@@ -143,6 +144,7 @@ function harness() {
     archive as never,
     proposals as never,
     attachments as never,
+    permissionOver(agents),
   );
   return { tool, agents, files, archive, proposals, attachments };
 }
@@ -154,17 +156,24 @@ const textOf = (result: { content: { text: string }[] }) =>
 
 describe('list_agent_files / read_agent_file', () => {
   it('are refused for a plain agent', async () => {
-    const { tool } = harness();
-    await expect(
-      tool.listAgentFiles({ agentId: 'agent-a' }, undefined, plainAgent()),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(
-      tool.readAgentFile(
-        { agentId: 'agent-a', path: 'SOUL.md' },
-        undefined,
-        plainAgent(),
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    // Answered like an agent that does not exist (CLEAN-232).
+    const { tool, files } = harness();
+    const listed = await tool.listAgentFiles(
+      { agentId: 'agent-a' },
+      undefined,
+      plainAgent(),
+    );
+    const read = await tool.readAgentFile(
+      { agentId: 'agent-a', path: 'SOUL.md' },
+      undefined,
+      plainAgent(),
+    );
+    for (const result of [listed, read]) {
+      expect(JSON.stringify(result)).toContain('Agent agent-a not found');
+    }
+    for (const call of Object.values(files)) {
+      expect(call).not.toHaveBeenCalled();
+    }
   });
 
   it('list narrows by prefix and carries kind/editable', async () => {

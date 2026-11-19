@@ -16,13 +16,18 @@ import { UserRoleTypes } from '../../user/domain';
  * session file name on the runtime, so it is a plain identifier: letters,
  * digits, dash and underscore. `admin` is the owners' conversation; `anon-`,
  * `share-` and `http-` are the namespaces the hub mints itself (CLEAN-175).
+ * `cron` and `heartbeat` are the names an agent runtime gives the turns it
+ * starts for itself (CLEAN-232); `agent:` and `peer:` cannot be spelled in
+ * this alphabet. The same list lives in `isReservedClientId`, which the
+ * service and the hub ask again.
  */
-const EMBED_SUB_PATTERN = /^(?!admin$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$/;
+const EMBED_SUB_PATTERN =
+  /^(?!admin$)(?!cron$)(?!heartbeat$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$/;
 
 export class EmbedTokenDto {
   @ApiProperty({
     description:
-      'Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.',
+      'Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, `cron` or `heartbeat`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.',
     example: 'wslid-A1234567',
     pattern: EMBED_SUB_PATTERN.source,
     maxLength: 128,
@@ -31,7 +36,7 @@ export class EmbedTokenDto {
   @MaxLength(128)
   @Matches(EMBED_SUB_PATTERN, {
     message:
-      'sub: letters, digits, dash and underscore only, 1-128 characters, not admin and not prefixed anon-, share- or http-',
+      'sub: letters, digits, dash and underscore only, 1-128 characters, not admin, cron or heartbeat and not prefixed anon-, share- or http-',
   })
   sub: string;
 

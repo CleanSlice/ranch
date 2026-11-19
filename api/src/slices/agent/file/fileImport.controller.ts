@@ -23,6 +23,7 @@ import { Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { IAuthTokenPayload } from '#/user/auth/domain';
 import { refuseAgentWrite } from './domain/agentTokenGuard';
+import { ManagesAgent } from '#/agent/agent/guards';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 import {
@@ -84,6 +85,7 @@ interface UploadedFileLike {
  */
 @ApiTags('files')
 @Controller('agents/:agentId/files/import')
+@ManagesAgent('agentId')
 export class FileImportController {
   /** One import at a time per agent — a second one answers 409. */
   private readonly running = new Set<string>();

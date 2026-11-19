@@ -69,6 +69,23 @@ export const useShareStore = defineStore('share', () => {
   /** Visitor side: the agent behind the token in the current page's URL. */
   const resolved = ref<IShareResolved | null>(null);
 
+  // Bumped by `resetForAccount`: a link state that was on its way when the
+  // account changed was read for the previous account and is dropped.
+  let accountGeneration = 0;
+
+  /**
+   * Whoever was signed in is not any more (CLEAN-231): the share links they
+   * looked at, tokens included, go with them. The ONE way this store is
+   * emptied for an account change (docs/state.md). `resolved` stays: it is
+   * the visitor side of a share page, which has no account.
+   */
+  function resetForAccount() {
+    accountGeneration += 1;
+    links.value = {};
+    pending.value = false;
+    error.value = null;
+  }
+
   const linkFor = (agentId: string): IShareLinkState | null =>
     links.value[agentId] ?? null;
 
@@ -83,15 +100,17 @@ export const useShareStore = defineStore('share', () => {
   ): Promise<IShareLinkState | null> {
     pending.value = true;
     error.value = null;
+    const generation = accountGeneration;
     try {
       const state = withUrl(await call(getService()), appOrigin.value);
+      if (generation !== accountGeneration) return null;
       links.value[agentId] = state;
       return state;
     } catch (err) {
-      error.value = errorText(err);
+      if (generation === accountGeneration) error.value = errorText(err);
       return null;
     } finally {
-      pending.value = false;
+      if (generation === accountGeneration) pending.value = false;
     }
   }
 
@@ -146,6 +165,7 @@ export const useShareStore = defineStore('share', () => {
     pending,
     error,
     resolved,
+    resetForAccount,
     linkFor,
     loadLink,
     share,

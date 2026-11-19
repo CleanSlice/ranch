@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { McpRegistryService } from './mcp-registry.service';
 import { DiscoveryService, MetadataScanner } from '@nestjs/core';
 import { z } from 'zod';
+import { Tool, ToolAudience, ToolTopics } from '../decorators';
 
 describe('McpRegistryService', () => {
   let service: McpRegistryService;
@@ -87,6 +88,7 @@ describe('McpRegistryService', () => {
         metadata,
         providerClass: Symbol(`tool${i}`),
         methodName: 'run',
+        audience: 'admin',
       }));
     };
 
@@ -148,6 +150,14 @@ describe('McpRegistryService', () => {
       expect(() => service.validateToolMetadata()).toThrow(/duplicate tool name/);
     });
 
+    it('refuses a tool nobody declared an audience for (CLEAN-232)', () => {
+      withTools(complete());
+      delete (service as any).discoveredTools[0].audience;
+      expect(() => service.validateToolMetadata()).toThrow(
+        /register_thing: no audience: put @ToolAudience on the class or on the method/,
+      );
+    });
+
     it('lists every problem in one error', () => {
       withTools({ ...complete(), title: '', template: '' });
       let message = '';
@@ -158,6 +168,79 @@ describe('McpRegistryService', () => {
       }
       expect(message).toContain('register_thing: missing title');
       expect(message).toContain('register_thing: missing template');
+    });
+  });
+
+  /**
+   * CLEAN-232: the audience is read where the tool is discovered, from the
+   * method first and its class second, so one class can hold an `admin`
+   * majority and an `owner` exception. A class with neither does not boot.
+   */
+  describe('tool audience discovery', () => {
+    const tool = (name: string) => ({
+      name,
+      description: 'x',
+      topic: ToolTopics.Agents,
+      title: `Title of ${name}`,
+      template: 'Do the thing',
+    });
+
+    @ToolAudience('admin')
+    class MixedTool {
+      @Tool(tool('list_things'))
+      list() {
+        return 'listed';
+      }
+
+      @ToolAudience('owner')
+      @Tool(tool('delete_everything'))
+      remove() {
+        return 'removed';
+      }
+    }
+
+    class UndeclaredTool {
+      @Tool(tool('anyone_may_call_this'))
+      run() {
+        return 'ran';
+      }
+    }
+
+    const bootWith = async (...instances: object[]) => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          McpRegistryService,
+          {
+            provide: DiscoveryService,
+            useValue: {
+              getProviders: () =>
+                instances.map((instance) => ({
+                  instance,
+                  token: instance.constructor,
+                })),
+              getControllers: () => [],
+            },
+          },
+          MetadataScanner,
+        ],
+      }).compile();
+      return module.get<McpRegistryService>(McpRegistryService);
+    };
+
+    it('takes the class audience, and the method audience where one is stated', async () => {
+      const registry = await bootWith(new MixedTool());
+      registry.onApplicationBootstrap();
+
+      expect(registry.findTool('list_things')?.audience).toBe('admin');
+      expect(registry.findTool('delete_everything')?.audience).toBe('owner');
+    });
+
+    it('refuses to boot a tool class with no audience, naming the tool', async () => {
+      const registry = await bootWith(new MixedTool(), new UndeclaredTool());
+
+      expect(() => registry.onApplicationBootstrap()).toThrow(
+        /anyone_may_call_this: no audience/,
+      );
     });
   });
 });

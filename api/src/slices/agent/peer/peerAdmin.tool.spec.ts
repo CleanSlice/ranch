@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import type { Request } from 'express';
 import { PeerAdminTool } from './peerAdmin.tool';
 import { PeerErrorCodes, PeerOrigins } from './domain/peer.types';
@@ -8,6 +8,8 @@ import type { PeerService } from './domain/peer.service';
 import type { AgentCardService } from './domain/agentCard.service';
 import type { IDelegationGateway } from './domain/delegation.gateway';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asGuest, asPerson, asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 /**
  * These tools hand an agent the power to decide which other agents exist for
@@ -59,8 +61,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: PeerAdminTool;
@@ -80,9 +82,31 @@ interface Harness {
   >;
   cards: { build: jest.Mock };
   delegations: { listRecent: jest.Mock };
+  agents: { findById: jest.Mock };
 }
 
+/**
+ * What an unknown agent and one out of the caller's reach both answer, to a
+ * caller who has `list_agents` (an Owner, an Admin, the Ranch admin agent
+ * for itself).
+ */
+const NOT_FOUND =
+  'Agent not found Check the ids with list_agents and list_agent_peers.';
+
+/** The same, to a caller who does not: no tool they lack is named (CLEAN-232). */
+const NOT_FOUND_BELOW =
+  'Agent not found There is no such agent or connection among the ones this person manages.';
+
 function harness(): Harness {
+  const agents = {
+    findById: jest.fn((id: string) =>
+      Promise.resolve(
+        id === 'agent-ranch'
+          ? { id, name: 'Ranch', isAdmin: true, createdById: null }
+          : { id, name: 'Sales Bot', isAdmin: false, createdById: null },
+      ),
+    ),
+  };
   const peers = {
     list: jest.fn().mockResolvedValue([view()]),
     peersState: jest
@@ -129,8 +153,12 @@ function harness(): Harness {
     peers as unknown as PeerService,
     cards as unknown as AgentCardService,
     delegations as unknown as IDelegationGateway,
+    // Every agent exists and is an ordinary one, so the callers of this spec
+    // (the Ranch admin agent for itself, an Owner, an Admin) may manage it;
+    // who may not is covered at the end of the file.
+    permissionOver(agents),
   );
-  return { tool, peers, cards, delegations };
+  return { tool, peers, cards, delegations, agents };
 }
 
 const textOf = (result: { content: { text: string }[] }) =>
@@ -147,23 +175,97 @@ describe('PeerAdminTool — who may use it', () => {
     await expect(tool.isListedForRequest(operator())).resolves.toBe(true);
   });
 
+  // Since CLEAN-232 a caller who may not manage the agent is answered like
+  // one who named an agent that does not exist: no 403 that would confirm
+  // the agent is there.
   it('refuses a call from a plain agent even by name', async () => {
-    const { tool, peers } = harness();
-    await expect(
-      tool.connectAgentPeer(
-        { agentId: 'agent-a', peerAgentId: 'agent-b' },
-        null,
-        plainAgent(),
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    const { tool, peers, agents } = harness();
+    const result = await tool.connectAgentPeer(
+      { agentId: 'agent-a', peerAgentId: 'agent-b' },
+      null,
+      plainAgent(),
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(NOT_FOUND_BELOW);
     expect(peers.connect).not.toHaveBeenCalled();
+    // A plain agent's token manages nothing: the agent is not even looked up.
+    expect(agents.findById).not.toHaveBeenCalled();
   });
 
   it('refuses a caller with no roles at all', async () => {
-    const { tool } = harness();
-    await expect(
-      tool.listAgentPeers({ agentId: 'agent-a' }, null, {} as Request),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    const { tool, peers } = harness();
+    const result = await tool.listAgentPeers(
+      { agentId: 'agent-a' },
+      null,
+      {} as Request,
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(NOT_FOUND_BELOW);
+    expect(peers.list).not.toHaveBeenCalled();
+  });
+
+  it('an Admin manages an ordinary agent’s peers, not the Ranch admin agent’s', async () => {
+    const { tool, peers } = harness();
+    const admin = () =>
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin);
+
+    const own = await tool.listAgentPeers(
+      { agentId: 'agent-a' },
+      null,
+      admin(),
+    );
+    expect(own.isError).toBeUndefined();
+
+    const ranch = await tool.connectAgentPeer(
+      { agentId: 'agent-ranch', peerAgentId: 'agent-b' },
+      null,
+      admin(),
+    );
+    expect(ranch.isError).toBe(true);
+    expect(textOf(ranch)).toBe(NOT_FOUND);
+    expect(peers.connect).not.toHaveBeenCalled();
+
+    // The Owner may.
+    const asOwner = await tool.connectAgentPeer(
+      { agentId: 'agent-ranch', peerAgentId: 'agent-b' },
+      null,
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Owner),
+    );
+    expect(asOwner.isError).toBeUndefined();
+    expect(peers.connect).toHaveBeenCalledWith('agent-ranch', 'agent-b', {
+      kind: 'person',
+      userId: 'user-1',
+      role: 'Owner',
+    });
+  });
+
+  it('answers an agent that does not exist in the very same words', async () => {
+    const { tool, agents } = harness();
+    agents.findById.mockResolvedValue(null);
+    const result = await tool.listAgentPeers(
+      { agentId: 'agent-nope' },
+      null,
+      operator(),
+    );
+    expect(textOf(result)).toBe(NOT_FOUND);
+  });
+
+  it('a User, and a guest, reach nothing through the Ranch admin agent', async () => {
+    const { tool, peers } = harness();
+    for (const caller of [
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.User),
+      asGuest(request([UserRoleTypes.Owner])),
+    ]) {
+      const result = await tool.removeAgentPeer(
+        { agentId: 'agent-a', peerId: 'peer-1', confirm: true },
+        null,
+        caller,
+      );
+      // Neither has `list_agents`, so the refusal does not send them there.
+      expect(textOf(result)).toBe(NOT_FOUND_BELOW);
+      expect(textOf(result)).not.toContain('list_');
+    }
+    expect(peers.remove).not.toHaveBeenCalled();
   });
 });
 
@@ -265,7 +367,9 @@ describe('PeerAdminTool — changing the peer set', () => {
         operator(),
       ),
     );
-    expect(peers.connect).toHaveBeenCalledWith('agent-a', 'agent-b');
+    expect(peers.connect).toHaveBeenCalledWith('agent-a', 'agent-b', {
+      kind: 'trusted',
+    });
     expect(text).toContain('«Support Bot» is now a peer of agent-a');
     expect(text).toContain('connection peer-1');
     expect(text).toContain('restart_agent with id=agent-a');
@@ -448,13 +552,102 @@ describe('PeerAdminTool — importing from a card (CLEAN-116)', () => {
   it('stays shut to an agent that is not a Ranch operator', async () => {
     const { tool, peers } = harness();
 
-    await expect(
-      tool.importAgentFromCard(
-        { agentId: 'agent-a', card: CARD },
-        null,
-        plainAgent(),
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    const result = await tool.importAgentFromCard(
+      { agentId: 'agent-a', card: CARD },
+      null,
+      plainAgent(),
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(NOT_FOUND_BELOW);
     expect(peers.connectByCard).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Both ends of a connection are checked (CLEAN-232). `agent-ranch` is the
+ * Ranch admin agent in this harness; an Admin manages every other agent.
+ */
+describe('PeerAdminTool — the other end of a connection', () => {
+  const admin = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin);
+  const owner = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Owner);
+
+  it('refuses an Admin who connects the Ranch admin agent as a peer, as not found', async () => {
+    const { tool, peers } = harness();
+
+    const result = await tool.connectAgentPeer(
+      { agentId: 'agent-a', peerAgentId: 'agent-ranch' },
+      null,
+      admin(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(NOT_FOUND);
+    expect(peers.connect).not.toHaveBeenCalled();
+    expect(peers.list).not.toHaveBeenCalled();
+  });
+
+  it('lets the Owner connect it', async () => {
+    const { tool, peers } = harness();
+
+    const result = await tool.connectAgentPeer(
+      { agentId: 'agent-a', peerAgentId: 'agent-ranch' },
+      null,
+      owner(),
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(peers.connect).toHaveBeenCalledWith('agent-a', 'agent-ranch', {
+      kind: 'person',
+      userId: 'user-1',
+      role: 'Owner',
+    });
+  });
+
+  it('does not show an Admin the card of the Ranch admin agent', async () => {
+    const { tool, cards } = harness();
+
+    const result = await tool.previewAgentCard(
+      { agentId: 'agent-a', peerAgentId: 'agent-ranch' },
+      null,
+      admin(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(NOT_FOUND);
+    expect(cards.build).not.toHaveBeenCalled();
+
+    const own = await tool.previewAgentCard(
+      { agentId: 'agent-a', peerAgentId: 'agent-b' },
+      null,
+      admin(),
+    );
+    expect(own.isError).toBeUndefined();
+    expect(cards.build).toHaveBeenCalledWith('agent-b');
+  });
+
+  it('offers an Admin only the candidates they may manage', async () => {
+    const { tool, peers } = harness();
+    (peers.candidates as jest.Mock).mockResolvedValue([
+      {
+        id: 'agent-b',
+        name: 'Support Bot',
+        status: 'running',
+        connected: false,
+      },
+      { id: 'agent-ranch', name: 'Ranch', status: 'running', connected: false },
+    ]);
+    const idsFor = async (req: Request) =>
+      (
+        JSON.parse(
+          textOf(
+            await tool.listPeerCandidates({ agentId: 'agent-a' }, null, req),
+          ),
+        ) as { id: string }[]
+      ).map((c) => c.id);
+
+    expect(await idsFor(admin())).toEqual(['agent-b']);
+    expect(await idsFor(owner())).toEqual(['agent-b', 'agent-ranch']);
   });
 });

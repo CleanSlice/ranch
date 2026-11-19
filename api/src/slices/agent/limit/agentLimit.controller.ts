@@ -21,8 +21,14 @@ import {
 import { Request } from 'express';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { UserRoleTypes } from '#/user/user/domain';
+import { ManagesAgent } from '#/agent/agent/guards';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { IAgentData, IAgentGateway } from '#/agent/agent/domain';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { AgentScoped, accessCallerOf } from '#/user/agentAccess/guards';
+
+/** This controller's own "not found", for the access guard to repeat. */
+const agentNotFound = (agentId: string) => `Agent ${agentId} not found`;
 import {
   AgentLimitService,
   IAgentLimits,
@@ -89,6 +95,7 @@ export class AgentLimitController {
   constructor(
     private readonly limits: AgentLimitService,
     private readonly agents: IAgentGateway,
+    private readonly access: AgentAccessService,
   ) {}
 
   @Get('agent-limits')
@@ -100,12 +107,17 @@ export class AgentLimitController {
       'now, and whether it is public without any. Admin or Owner.',
   })
   @ApiOkResponse({ type: [AgentLimitSummaryDto] })
-  async list(): Promise<AgentLimitSummaryDto[]> {
-    return this.limits.summary(await this.agents.findAll());
+  async list(@Req() req?: AuthedRequest): Promise<AgentLimitSummaryDto[]> {
+    // One line per agent the caller reaches (CLEAN-231).
+    const reach = await this.access.reachableIds(accessCallerOf(req));
+    return this.limits.summary(
+      reach.filter(await this.agents.findAll(), (agent) => agent.id),
+    );
   }
 
   @Get('agents/:agentId/limits')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @AgentScoped('agentId', { notFound: agentNotFound })
   @ApiOperation({
     operationId: 'getAgentLimits',
     summary: 'The request limits of one agent. Admin or Owner.',
@@ -119,6 +131,7 @@ export class AgentLimitController {
 
   @Put('agents/:agentId/limits')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ManagesAgent('agentId')
   @ApiOperation({
     operationId: 'setAgentLimits',
     summary:
@@ -154,6 +167,7 @@ export class AgentLimitController {
 
   @Get('agents/:agentId/limits/enabled')
   @Roles(UserRoleTypes.User)
+  @AgentScoped('agentId', { notFound: agentNotFound })
   @ApiOperation({
     operationId: 'getAgentLimitsEnabled',
     summary:
@@ -171,6 +185,7 @@ export class AgentLimitController {
 
   @Get('agents/:agentId/load')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @AgentScoped('agentId', { notFound: agentNotFound })
   @ApiOperation({
     operationId: 'getAgentLoad',
     summary:
@@ -187,7 +202,7 @@ export class AgentLimitController {
 
   private async requireAgent(agentId: string): Promise<IAgentData> {
     const agent = await this.agents.findById(agentId);
-    if (!agent) throw new NotFoundException(`Agent ${agentId} not found`);
+    if (!agent) throw new NotFoundException(agentNotFound(agentId));
     return agent;
   }
 }

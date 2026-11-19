@@ -1,15 +1,19 @@
 import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  agentNotFound,
   callerIsOperator,
   CONFIRM_SENTENCE,
   confirmed,
   ok,
   requireOperator,
+  requireOwner,
   type ToolResult,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import type { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -135,14 +139,13 @@ const BAD_SINCE = ok({
  * and where they are told. Every call goes through the services the two
  * controllers inject, so a rule lives in one place.
  *
- * Operator agents only. `requireOperator` passes a caller that holds the
- * Owner role and nobody else — an Admin is refused — so the three tools that
- * set, test or remove the destination ask for exactly what the controller's
- * `@Roles(Owner)` asks for; the two listings are stricter here than in the
- * console, where an Admin may read. No result carries the destination's
- * address: it goes in through `set_notification_destination` and is never
- * read back.
+ * Audience `admin` for the two listings and for reading the destination, as
+ * the controller's `@Roles(Admin)`. The three tools that set, test or remove
+ * the destination are `owner`, as the controller's `@Roles(Owner)` on those
+ * routes (CLEAN-232). No result carries the destination's address: it goes
+ * in through `set_notification_destination` and is never read back.
  */
+@ToolAudience('admin')
 @Injectable()
 export class AgentEventTool implements IConditionallyListedTool {
   private readonly logger = new Logger(AgentEventTool.name);
@@ -151,6 +154,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     private service: AgentEventService,
     private destinations: NotificationDestinationService,
     private agents: IAgentGateway,
+    private access: AgentAccessService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
@@ -187,11 +191,12 @@ export class AgentEventTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const since = parseSince(args.since);
     if (since === null) return BAD_SINCE;
-    const missing = await this.missingAgent(args.agentId);
+    const missing = await this.missingAgent(httpRequest, args.agentId);
     if (missing) return missing;
 
     const page = await this.service.listEvents({
       agentId: args.agentId,
+      agentScope: await this.scopeOf(httpRequest),
       since,
       limit: args.limit ?? EVENT_PAGE_DEFAULT,
     });
@@ -241,11 +246,12 @@ export class AgentEventTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const since = parseSince(args.since);
     if (since === null) return BAD_SINCE;
-    const missing = await this.missingAgent(args.agentId);
+    const missing = await this.missingAgent(httpRequest, args.agentId);
     if (missing) return missing;
 
     const page = await this.service.listIncidents({
       agentId: args.agentId,
+      agentScope: await this.scopeOf(httpRequest),
       state: args.state,
       since,
       limit: args.limit ?? EVENT_PAGE_DEFAULT,
@@ -283,6 +289,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     });
   }
 
+  @ToolAudience('owner')
   @Tool({
     name: 'set_notification_destination',
     topic: ToolTopics.Settings,
@@ -333,7 +340,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
+    requireOwner(httpRequest);
     try {
       const input: ISaveDestinationInput =
         args.kind === 'bot'
@@ -357,6 +364,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     }
   }
 
+  @ToolAudience('owner')
   @Tool({
     name: 'send_test_notification',
     topic: ToolTopics.Settings,
@@ -373,7 +381,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
+    requireOwner(httpRequest);
     try {
       const result = await this.destinations.sendTest();
       return ok({ delivered: result.delivered, error: result.error });
@@ -385,6 +393,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     }
   }
 
+  @ToolAudience('owner')
   @Tool({
     name: 'remove_notification_destination',
     topic: ToolTopics.Settings,
@@ -408,7 +417,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
+    requireOwner(httpRequest);
     const view = await this.destinations.view();
     if (!view.configured) {
       return ok({
@@ -425,12 +434,25 @@ export class AgentEventTool implements IConditionallyListedTool {
     return ok({ removed: true });
   }
 
-  private async missingAgent(agentId?: string): Promise<ToolResult | null> {
+  private async missingAgent(
+    httpRequest: Request,
+    agentId?: string,
+  ): Promise<ToolResult | null> {
     if (!agentId) return null;
-    if (await this.agents.findById(agentId)) return null;
-    return ok({
-      error: `Agent ${agentId} not found — call list_agents to find the id`,
-    });
+    // An agent the caller's access lists hide is an agent that does not
+    // exist (CLEAN-231).
+    if (
+      (await this.agents.findById(agentId)) &&
+      (await this.access.reaches(callerParty(httpRequest), agentId))
+    ) {
+      return null;
+    }
+    return agentNotFound(httpRequest, agentId);
+  }
+
+  /** The caller's reach as a filter for the two lists. */
+  private async scopeOf(httpRequest: Request) {
+    return (await this.access.reachableIds(callerParty(httpRequest))).where();
   }
 
   /** A service's own refusal (400, 409) as a result the model can act on. */

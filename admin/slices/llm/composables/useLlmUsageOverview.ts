@@ -43,8 +43,13 @@ export function useLlmUsageOverview() {
     ),
   );
 
+  // The agent list could not be read (CLEAN-231). The rows already on screen
+  // stay; the page says the numbers are not fresh.
+  const failed = ref(false);
+
   async function load() {
     loading.value = true;
+    failed.value = false;
     try {
       const agents = await agentStore.fetchAll();
 
@@ -77,6 +82,10 @@ export function useLlmUsageOverview() {
         )
         .map((r) => r.value as IPerAgentUsage)
         .sort((a, b) => b.costUsd - a.costUsd);
+    } catch {
+      // `fetchAll` throws when the list is refused or unreachable. Called
+      // from `onMounted` and from a click, so nothing above would catch it.
+      failed.value = true;
     } finally {
       loading.value = false;
     }
@@ -84,5 +93,5 @@ export function useLlmUsageOverview() {
 
   onMounted(() => void load());
 
-  return { rows, totals, loading, load };
+  return { rows, totals, loading, failed, load };
 }

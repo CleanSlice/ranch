@@ -1,0 +1,347 @@
+
+agent/agentChannel/agentChannel.controller.ts
+  Admin+   GET /agents/:id/channels  :28
+  Admin+   PUT /agents/:id/channels  :40
+
+agent/agent/agent.controller.ts
+  ANY-JWT  GET /agents  :156 no @Roles
+  PUBLIC   GET /agents/public  :167
+  ANY-JWT  GET /agents/status  :177 no @Roles
+  PUBLIC   GET /agents/status/stream  :187
+  Admin+   GET /agents/capacity  :206
+  ANY-JWT  GET /agents/:id  :216 no @Roles
+  Admin+   GET /agents/:id/metrics  :230
+  Admin+   GET /agents/:id/env  :246
+  Admin+   GET /agents/:id/mcps  :260 +Agent
+  Admin+   GET /agents/:id/mcp-status  :300
+  Admin+   POST /agents  :323
+  Admin+   PUT /agents/:id  :358
+  Admin+   GET /agents/admin/current  :399
+  Admin+   POST /agents/:id/promote-admin  :409
+  Admin+   DELETE /agents/:id/promote-admin  :432
+  Admin+   POST /agents/:id/restart  :444
+  Admin+   POST /agents/:id/stop  :457
+  Admin+   POST /agents/:id/start  :470
+  Admin+   POST /agents/restart-by-template/:templateId  :484
+  Admin+   DELETE /agents/:id  :526
+
+agent/event/agentEvent.controller.ts
+  Admin+   GET /agent-events  :83
+  Admin+   GET /agent-incidents  :101
+  Admin+   GET /agent-events/destination  :123
+  Owner    PUT /agent-events/destination  :135
+  Owner    DELETE /agent-events/destination  :158
+  Owner    POST /agent-events/destination/test  :171
+
+agent/event/agentEvent.ingest.controller.ts
+  machine  POST /agent-events  :69
+
+agent/file/file.controller.ts
+  ANY-JWT  GET /agents/:agentId/files  :74 no RolesGuard
+  ANY-JWT  GET /agents/:agentId/files/limits  :86 no RolesGuard
+  ANY-JWT  GET /agents/:agentId/files/content  :100 no RolesGuard
+  ANY-JWT  PUT /agents/:agentId/files/content  :123 no RolesGuard
+  ANY-JWT  DELETE /agents/:agentId/files/content  :147 no RolesGuard
+  ANY-JWT  DELETE /agents/:agentId/files  :171 no RolesGuard
+  ANY-JWT  POST /agents/:agentId/files/sync  :220 no RolesGuard
+  ANY-JWT  GET /agents/:agentId/files/export  :271 no RolesGuard
+  ANY-JWT  POST /agents/:agentId/files/export  :286 no RolesGuard
+  ANY-JWT  POST /agents/:agentId/files/open-link  :307 no RolesGuard
+  PUBLIC   GET /agents/:agentId/files/raw  :334
+
+agent/file/fileImport.controller.ts
+  ANY-JWT  POST /agents/:agentId/files/import/stage  :128 no RolesGuard
+  ANY-JWT  POST /agents/:agentId/files/import/resolve  :176 no RolesGuard
+  ANY-JWT  POST /agents/:agentId/files/import/stage-files  :232 no RolesGuard
+  ANY-JWT  GET /agents/:agentId/files/import/:importId/plan  :315 no RolesGuard
+  ANY-JWT  POST /agents/:agentId/files/import/:importId/apply  :347 no RolesGuard
+
+agent/file/fileProposal.controller.ts
+  ANY-JWT  GET /agents/:agentId/files/proposals  :65 no RolesGuard
+  ANY-JWT  GET /agents/:agentId/files/proposals/:proposalId  :91 no RolesGuard
+  ANY-JWT  GET /agents/:agentId/files/proposals/:proposalId/content  :106 no RolesGuard
+  ANY-JWT  GET /agents/:agentId/files/proposals/:proposalId/diff  :128 no RolesGuard
+  ANY-JWT  POST /agents/:agentId/files/proposals/:proposalId/apply  :160 no RolesGuard
+  ANY-JWT  POST /agents/:agentId/files/proposals/:proposalId/skip  :187 no RolesGuard
+
+agent/limit/agentLimit.controller.ts
+  Admin+   GET /agent-limits  :103
+  Admin+   GET /agents/:agentId/limits  :115
+  Admin+   PUT /agents/:agentId/limits  :136
+  User+    GET /agents/:agentId/limits/enabled  :165
+  Admin+   GET /agents/:agentId/load  :183
+
+agent/peer/a2a.controller.ts
+  machine  GET /a2a/agents/:agentId/.well-known/agent-card.json  :60
+  machine  POST /a2a/agents/:agentId  :75
+
+agent/peer/peer.controller.ts
+  Admin+   GET /agents/:agentId/card  :99
+  Admin+   GET /agents/:agentId/peers  :112
+  Admin+   GET /agents/:agentId/peers/candidates  :124
+  Admin+   POST /agents/:agentId/peers  :146
+  Admin+   POST /agents/:agentId/peers/preview  :178
+  Admin+   GET /agents/:agentId/peers/state  :202
+  Admin+   POST /agents/:agentId/peers/:peerId/refresh  :218
+  Admin+   DELETE /agents/:agentId/peers/:peerId  :234
+  Admin+   GET /agents/:agentId/delegations  :249
+
+agent/peer/peerLink.controller.ts
+  Admin+   GET /agent-links  :44
+
+agent/secret/secret.controller.ts
+  ANY-JWT  GET /agents/:agentId/secrets  :35 no RolesGuard
+  ANY-JWT  PUT /agents/:agentId/secrets  :45 no RolesGuard
+  ANY-JWT  DELETE /agents/:agentId/secrets  :60 no RolesGuard
+  ANY-JWT  POST /agents/:agentId/secrets/replace  :75 no RolesGuard
+
+agent/shareLink/share.controller.ts
+  PUBLIC   POST /share/resolve  :52
+
+agent/shareLink/shareLink.controller.ts
+  User+    GET /agents/:agentId/share-link  :85
+  User+    POST /agents/:agentId/share-link  :103
+  User+    POST /agents/:agentId/share-link/regenerate  :124
+  User+    DELETE /agents/:agentId/share-link  :145
+
+agent/templateFile/templateFile.controller.ts
+  ANY-JWT  GET /templates/:id/files  :40 no RolesGuard
+  ANY-JWT  GET /templates/:id/files/content  :47 no RolesGuard
+  ANY-JWT  PUT /templates/:id/files/content  :54 no RolesGuard
+  ANY-JWT  POST /templates/:id/files/upload  :89 no RolesGuard
+
+agent/templateInstall/templateExport.controller.ts
+  ANY-JWT  GET /templates/:id/download  :20 no RolesGuard
+
+agent/templateInstall/templateInstall.controller.ts
+  ANY-JWT  POST /templates/install/preview  :56 no RolesGuard
+  ANY-JWT  POST /templates/install  :99 no RolesGuard
+  ANY-JWT  POST /templates/install/from-git/preview  :119 no RolesGuard
+  ANY-JWT  POST /templates/install/from-git  :144 no RolesGuard
+
+agent/template/template.controller.ts
+  ANY-JWT  GET /templates  :29 no RolesGuard
+  ANY-JWT  GET /templates/:id  :35 no RolesGuard
+  ANY-JWT  POST /templates  :43 no RolesGuard
+  ANY-JWT  PUT /templates/:id  :49 no RolesGuard
+  ANY-JWT  PUT /templates/:id/skills  :58 no RolesGuard
+  ANY-JWT  PUT /templates/:id/mcps  :69 no RolesGuard
+  ANY-JWT  PUT /templates/:id/tools  :80 no RolesGuard
+  ANY-JWT  DELETE /templates/:id  :88 no RolesGuard
+
+agent/toolCatalog/toolCatalog.controller.ts
+  Admin+   GET /agents/:id/tools  :41
+
+bridle/bridle.controller.ts
+  PUBLIC   POST /api/agent/:agentId/message  :481
+  PUBLIC   POST /api/agent/:agentId/message/sync  :560
+  PUBLIC   POST /api/agent/:agentId/attachment  :668
+  PUBLIC   GET /api/agent/:agentId/attachment/:attachmentId  :739
+  PUBLIC   GET /api/agent/:agentId/message/:messageId/source/:n/content  :796
+  PUBLIC   PUT /api/agent/:agentId/message/:messageId/source/:n/rating  :859
+  PUBLIC   DELETE /api/agent/:agentId/message/:messageId/source/:n/rating  :885
+  PUBLIC   GET /api/agent/health  :915
+  PUBLIC   GET /api/agent/:agentId/health  :926
+  PUBLIC   GET /api/agent/list  :936
+  PUBLIC   GET /api/agent/:agentId/transcript  :950
+  PUBLIC   DELETE /api/agent/:agentId/transcript  :1068
+  PUBLIC   POST /api/agent/:agentId/transcript/archive  :1119
+
+browser/browser.controller.ts
+  ANY-JWT  GET /browser/sessions  :42 no RolesGuard
+  ANY-JWT  POST /browser/sessions  :57 no RolesGuard
+  ANY-JWT  GET /browser/sessions/:id  :74 no RolesGuard
+  ANY-JWT  POST /browser/sessions/:id/reset  :91 no RolesGuard
+  ANY-JWT  POST /browser/sessions/:id/status  :108 no RolesGuard
+  ANY-JWT  POST /browser/sessions/:id/vnc-url  :126 no RolesGuard
+  ANY-JWT  DELETE /browser/sessions/:id  :140 no RolesGuard
+
+browser/browser.extension.controller.ts
+  ANY-JWT  POST /browser/extension/token  :70 no RolesGuard
+  PUBLIC   POST /browser/extension/import-state  :98
+
+browser/browser.internal.controller.ts
+  machine  POST /browser/internal/sessions  :66
+  machine  POST /browser/internal/sessions/:id/status  :82
+  machine  POST /browser/internal/sessions/:id/reset  :99
+  machine  POST /browser/internal/sessions/:id/harvest  :115
+  machine  POST /browser/internal/sessions/cleanup  :131
+
+chat/chat.controller.ts
+  Admin+   GET /chats  :91
+  Admin+   GET /chats/:id  :108
+  Admin+   GET /chats/:id/messages  :123
+  Admin+   POST /chats/sync  :180
+  Admin+   POST /chats/:id/summarize  :191
+  Admin+   POST /chats/:id/feedback  :201
+  Admin+   DELETE /chats/:id/feedback/:messageId  :226
+  Admin+   GET /chats/:id/feedback  :242
+  Admin+   GET /chats/:id/export  :257
+
+chat/myChat.controller.ts
+  ANY-JWT  GET /me/chats  :90 no RolesGuard
+  ANY-JWT  GET /me/chats/:id  :112 no RolesGuard
+  ANY-JWT  GET /me/chats/:id/messages  :127 no RolesGuard
+  ANY-JWT  POST /me/chats/sync  :171 no RolesGuard
+  ANY-JWT  POST /me/chats/:id/feedback  :184 no RolesGuard
+  ANY-JWT  DELETE /me/chats/:id/feedback/:messageId  :208 no RolesGuard
+  ANY-JWT  GET /me/chats/:id/feedback  :223 no RolesGuard
+  ANY-JWT  GET /me/chats/:id/export  :239 no RolesGuard
+
+integration/integration.controller.ts
+  ANY-JWT  GET /integrations/catalogue  :45 no RolesGuard
+  ANY-JWT  GET /integrations/accounts  :55 no RolesGuard
+  ANY-JWT  POST /integrations/accounts  :70 no RolesGuard
+  ANY-JWT  GET /integrations/accounts/:id  :89 no RolesGuard
+  ANY-JWT  POST /integrations/accounts/:id/login  :106 no RolesGuard
+  ANY-JWT  POST /integrations/accounts/:id/import-cookies  :123 no RolesGuard
+  ANY-JWT  POST /integrations/accounts/:id/secret  :144 no RolesGuard
+  ANY-JWT  DELETE /integrations/accounts/:id  :163 no RolesGuard
+
+integration/integration.extension.controller.ts
+  ANY-JWT  POST /integrations/extension/token  :69 no RolesGuard
+  PUBLIC   POST /integrations/extension/import-state  :93
+  PUBLIC   GET /integrations/extension/download  :125
+
+integration/integration.internal.controller.ts
+  machine  GET /integrations/internal/secrets  :109
+  machine  GET /integrations/internal/accounts  :123
+  machine  POST /integrations/internal/request-login  :143
+  machine  GET /integrations/internal/browser-state  :158
+
+llm/llm.controller.ts
+  ANY-JWT  GET /llms  :29 no RolesGuard
+  ANY-JWT  GET /llms/:id  :35 no RolesGuard
+  ANY-JWT  POST /llms  :43 no RolesGuard
+  ANY-JWT  PUT /llms/:id  :49 no RolesGuard
+  ANY-JWT  DELETE /llms/:id  :55 no RolesGuard
+  ANY-JWT  POST /llms/:id/health-check  :65 no RolesGuard
+
+log/log.controller.ts
+  ANY-JWT  GET /agents/:agentId/logs  :27 no RolesGuard
+
+mcpServer/mcpServer.controller.ts
+  Admin+   GET /mcp-servers  :39
+  Admin+   GET /mcp-servers/tools  :51
+  Admin+   GET /mcp-servers/:id  :70
+  Admin+   POST /mcp-servers  :79
+  Admin+   PATCH /mcp-servers/:id  :86
+  Admin+   DELETE /mcp-servers/:id  :107
+
+mcpServer/oauth/mcpOauth.controller.ts
+  machine  POST /mcp-servers/:serverId/oauth/start  :58
+  PUBLIC   GET /mcp-servers/:serverId/oauth/callback  :78
+  machine  GET /mcp-servers/:serverId/oauth/status  :140
+
+paddock/evaluation/evaluation.controller.ts
+  ANY-JWT  POST /paddock-evaluations  :17 no RolesGuard
+  ANY-JWT  GET /paddock-evaluations  :28 no RolesGuard
+  ANY-JWT  GET /paddock-evaluations/:id  :44 no RolesGuard
+  ANY-JWT  GET /paddock-evaluations/:id/report  :53 no RolesGuard
+  ANY-JWT  GET /paddock-evaluations/:id/logs  :62 no RolesGuard
+  ANY-JWT  GET /paddock-evaluations/:id/scenarios/:scenarioId  :71 no RolesGuard
+  ANY-JWT  GET /paddock-evaluations/:id/trace  :81 no RolesGuard
+  ANY-JWT  POST /paddock-evaluations/:id/abort  :90 no RolesGuard
+  ANY-JWT  POST /paddock-evaluations/:id/rerun  :99 no RolesGuard
+
+paddock/scenario/scenario.controller.ts
+  ANY-JWT  GET /paddock-scenarios  :45 no RolesGuard
+  ANY-JWT  GET /paddock-scenarios/:id  :54 no RolesGuard
+  ANY-JWT  POST /paddock-scenarios  :65 no RolesGuard
+  ANY-JWT  POST /paddock-scenarios/generate  :75 no RolesGuard
+  ANY-JWT  PATCH /paddock-scenarios/:id  :91 no RolesGuard
+  ANY-JWT  DELETE /paddock-scenarios/:id  :99 no RolesGuard
+
+rancher/rancher.controller.ts
+  Admin+   GET /rancher/status  :20
+  Admin+   POST /rancher/template  :30
+
+reins/knowledge/knowledge.controller.ts
+  ANY-JWT  GET /knowledges  :58 no RolesGuard
+  ANY-JWT  GET /knowledges/status  :74 no RolesGuard
+  ANY-JWT  GET /knowledges/:id/graph/labels  :128 no RolesGuard
+  ANY-JWT  GET /knowledges/:id/graph  :145 no RolesGuard
+  ANY-JWT  GET /knowledges/:id/overview  :163 no RolesGuard
+  ANY-JWT  GET /knowledges/:id  :170 no RolesGuard
+  ANY-JWT  POST /knowledges  :177 no RolesGuard
+  ANY-JWT  PUT /knowledges/:id  :184 no RolesGuard
+  ANY-JWT  DELETE /knowledges/:id  :192 no RolesGuard
+  ANY-JWT  POST /knowledges/:id/index  :200 no RolesGuard
+  ANY-JWT  POST /knowledges/:id/query  :212 no RolesGuard
+
+reins/source/source.controller.ts
+  ANY-JWT  GET /knowledges/:knowledgeId/sources  :101 no RolesGuard
+  ANY-JWT  GET /knowledges/:knowledgeId/sources/imports  :123 no RolesGuard
+  ANY-JWT  GET /knowledges/:knowledgeId/sources/export  :136 no RolesGuard
+  ANY-JWT  GET /knowledges/:knowledgeId/sources/:sourceId/content  :172 no RolesGuard
+  ANY-JWT  POST /knowledges/:knowledgeId/sources/:sourceId/reindex  :209 no RolesGuard
+  ANY-JWT  POST /knowledges/:knowledgeId/sources/:sourceId/extract  :225 no RolesGuard
+  ANY-JWT  POST /knowledges/:knowledgeId/sources  :240 no RolesGuard
+  ANY-JWT  POST /knowledges/:knowledgeId/sources/files  :288 no RolesGuard
+  ANY-JWT  POST /knowledges/:knowledgeId/sources/from-sitemap  :316 no RolesGuard
+  ANY-JWT  POST /knowledges/:knowledgeId/sources/from-archive  :356 no RolesGuard
+  ANY-JWT  DELETE /knowledges/:knowledgeId/sources/:sourceId  :373 no RolesGuard
+
+setting/setting.controller.ts
+  ANY-JWT  GET /settings  :36 no RolesGuard
+  PUBLIC   GET /settings/auth  :47
+  ANY-JWT  GET /settings/:group  :54 no RolesGuard
+  ANY-JWT  GET /settings/:group/:name  :60 no RolesGuard
+  ANY-JWT  PUT /settings/:group/:name  :68 no RolesGuard
+  ANY-JWT  DELETE /settings/:group/:name  :80 no RolesGuard
+
+setup/health/health.controller.ts
+  PUBLIC   GET /health  :9
+
+setup/init/init.controller.ts
+  PUBLIC   GET /setup/status  :33
+  PUBLIC   POST /setup/init  :44
+
+skill/skill.controller.ts
+  ANY-JWT  GET /skills  :44 no RolesGuard
+  ANY-JWT  GET /skills/order  :58 no RolesGuard
+  ANY-JWT  PATCH /skills/order  :70 no RolesGuard
+  ANY-JWT  GET /skills/name-available  :81 no RolesGuard
+  ANY-JWT  GET /skills/sources  :95 no RolesGuard
+  ANY-JWT  GET /skills/search  :101 no RolesGuard
+  ANY-JWT  POST /skills/import-url  :109 no RolesGuard
+  ANY-JWT  POST /skills/import  :125 no RolesGuard
+  ANY-JWT  GET /skills/:id  :181 no RolesGuard
+  ANY-JWT  GET /skills/:id/agents  :193 no RolesGuard
+  ANY-JWT  POST /skills  :201 no RolesGuard
+  ANY-JWT  PUT /skills/:id  :209 no RolesGuard
+  ANY-JWT  DELETE /skills/:id  :241 no RolesGuard
+
+upgrade/upgrade.controller.ts
+  Admin+   GET /upgrade/status  :27
+  Admin+   POST /upgrade  :36
+
+usage/usage.controller.ts
+  machine  POST /agents/:agentId/usage  :61
+  ANY-JWT  GET /agents/:agentId/usage  :70 no RolesGuard
+  ANY-JWT  GET /llms/:id/usage  :213 no RolesGuard
+  ANY-JWT  GET /usage/overview  :229 no RolesGuard
+
+user/apiKey/apiKey.controller.ts
+  Admin+   GET /api-keys  :34
+  Admin+   POST /api-keys  :43
+  Admin+   DELETE /api-keys/:id  :58
+
+user/auth/auth.controller.ts
+  PUBLIC   POST /auth/login  :68
+  PUBLIC   POST /auth/register  :88
+  PUBLIC   POST /auth/refresh  :110
+  PUBLIC   POST /auth/logout  :125
+  ANY-JWT  GET /auth/me  :139 no RolesGuard
+  machine  POST /auth/embed/token  :155
+
+user/user/user.controller.ts
+  Admin+   GET /users  :28
+  Admin+   GET /users/:id  :34
+  Admin+   POST /users  :42
+  Admin+   PUT /users/:id  :51
+  Owner    PUT /users/:id/role  :62
+  Owner    DELETE /users/:id  :73
+
+TOTAL 252 {"Admin+":61,"ANY-JWT":136,"PUBLIC":29,"Owner":5,"machine":16,"User+":5} controllers 46
+RolesGuard global: no; routes an agent token passes: 137; routes on the Admin default: 0

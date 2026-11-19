@@ -45,7 +45,12 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
   findAll(): Promise<IAgentData[]> {
     return this.execute(async () => {
       const res = await AgentsService.agentControllerFindAll();
-      return this.mapper.toList(unwrapEnvelope(res.data));
+      // A refused or unreachable list is not an empty one. Answering `[]`
+      // here made the store replace its collection with nothing on every
+      // failed poll: thirty seconds after a session ended, the page kept
+      // behind the session-ended dialog lost its agent (CLEAN-231). Thrown,
+      // the store keeps the rows it has, as its `fetchAll` says it does.
+      return this.mapper.toList(unwrapOrThrow(res as IHeyApiResult));
     });
   }
 
@@ -79,6 +84,18 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
         body: this.mapper.toUpdateDto(input),
       });
       return this.mapper.toEntity(unwrapEnvelope(res.data));
+    });
+  }
+
+  // The caller's own pin (CLEAN-231): its own two routes, both answering 204
+  // with no body. A refusal is thrown, as for the lifecycle actions, so the
+  // store rolls the optimistic flip back.
+  setPinned(id: string, pinned: boolean): Promise<void> {
+    return this.execute(async () => {
+      const res = pinned
+        ? await AgentsService.pinAgent({ path: { id } })
+        : await AgentsService.unpinAgent({ path: { id } });
+      unwrapOrThrow(res);
     });
   }
 

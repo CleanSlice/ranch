@@ -2,6 +2,7 @@
 import { useResizeObserver } from '@vueuse/core';
 import type { IAgentData } from '#agent/domain';
 import type { ChatOverlay } from '#agent/composables/useAgentLifecycle';
+import { useAgentAccess } from '#agent/composables/useAgentAccess';
 import {
   IconAlertTriangle,
   IconLoader2,
@@ -29,6 +30,13 @@ const props = withDefaults(
 const emit = defineEmits<{ restart: []; toggleRunning: [] }>();
 
 const authStore = useAuthStore();
+
+// The conversation is for anybody who can open the agent; what manages the
+// agent from inside it is not (CLEAN-232). For a viewer who may not manage
+// this agent the pod logs, the Start and Restart buttons of the overlay, the
+// chat's own restart prompt and Debug toggle, and the troubleshooting links
+// into Environment are left out — each is a request the API would refuse.
+const { canManage } = useAgentAccess(() => props.agent);
 
 // One "restart is underway" signal for every surface (bridle header status,
 // disabled input, logs overlay) — covers both an explicit Restart click and
@@ -72,7 +80,7 @@ const hubUnreachable = computed(
 );
 
 const offlineHint = computed(() =>
-  hubUnreachable.value
+  hubUnreachable.value && canManage.value
     ? {
         reason: props.agent.statusReason,
         envHref: `/agents/${props.agent.id}?tab=env`,
@@ -135,6 +143,7 @@ watch(
         :title="`Chat with ${agent.name}`"
         :restart-prompt="false"
         :tools-button="false"
+        :manageable="canManage"
         frameless
         :agent-state="bridleAgentState"
         :offline-hint="offlineHint"
@@ -171,7 +180,7 @@ watch(
             <p class="mt-1 text-xs text-muted-foreground">{{ overlay.detail }}</p>
           </div>
           <Button
-            v-if="overlay.kind === 'stopped'"
+            v-if="overlay.kind === 'stopped' && canManage"
             size="sm"
             :disabled="toggling"
             @click="emit('toggleRunning')"
@@ -181,7 +190,7 @@ watch(
             {{ toggling ? 'Starting…' : 'Start agent' }}
           </Button>
           <Button
-            v-if="overlay.kind === 'failed'"
+            v-if="overlay.kind === 'failed' && canManage"
             size="sm"
             :disabled="restarting"
             @click="emit('restart')"
@@ -195,7 +204,7 @@ watch(
     </div>
 
     <AgentLogsBar
-      v-if="active"
+      v-if="active && canManage"
       :agent-id="agent.id"
       :restarting="restartUnderway"
       :first-start="agent.launchContext === 'initial'"

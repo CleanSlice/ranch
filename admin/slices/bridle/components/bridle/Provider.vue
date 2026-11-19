@@ -59,6 +59,12 @@ const props = withDefaults(defineProps<{
   // When set (non-null), the widget skips its own GET /agents/:id — the admin
   // agent page otherwise loads the same agent twice on every open.
   initialDebugEnabled?: boolean | null
+  // False when the viewer may not manage this agent (CLEAN-232: the Ranch
+  // admin agent for anybody but the Owner). The conversation works as ever;
+  // what manages the agent from inside it is not offered — the restart
+  // prompt, the Debug toggle, the link to its limits and the Tools panel's
+  // "Restart now" — because the API answers each with "Agent not found".
+  manageable?: boolean
 }>(), {
   channel: 'admin',
   title: 'Agent Chat',
@@ -70,6 +76,7 @@ const props = withDefaults(defineProps<{
   agentState: null,
   offlineHint: null,
   initialDebugEnabled: null,
+  manageable: true,
 })
 
 const store = useBridleStore()
@@ -255,7 +262,7 @@ const showOfflineHint = computed(() =>
 )
 
 const showRestartPrompt = computed(() => {
-  if (!props.restartPrompt) return false
+  if (!props.restartPrompt || !props.manageable) return false
   if (isAgentConnected.value) return false
   // Only nudge a restart when the chat WS itself is up — if both are offline
   // it's likely the user's network, not the agent.
@@ -776,6 +783,7 @@ async function onConfirmReset() {
         Visitors are being asked to wait — this agent is at its message limit.
         Your messages are not limited.
         <NuxtLink
+          v-if="manageable"
           :to="limitsHref"
           class="font-medium text-foreground underline hover:no-underline"
           data-visitor-limit-link
@@ -795,6 +803,7 @@ async function onConfirmReset() {
         :placeholder="placeholder"
         :disabled="inputDisabled"
         :boxed="frameless"
+        :manageable="manageable"
         @send="handleSend"
       >
         <!-- Frameless: the toggles sit inside the composer box, and the two
@@ -805,6 +814,7 @@ async function onConfirmReset() {
             :debug-enabled="debugEnabled"
             :markdown-enabled="markdownEnabled"
             :toggling-debug="togglingDebug"
+            :can-debug="manageable"
             @toggle-debug="onToggleDebug"
             @toggle-markdown="onMarkdownChange(!markdownEnabled)"
           />
@@ -836,6 +846,7 @@ async function onConfirmReset() {
           :debug-enabled="debugEnabled"
           :markdown-enabled="markdownEnabled"
           :toggling-debug="togglingDebug"
+          :can-debug="manageable"
           @toggle-debug="onToggleDebug"
           @toggle-markdown="onMarkdownChange(!markdownEnabled)"
         />

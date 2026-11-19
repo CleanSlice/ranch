@@ -4,7 +4,13 @@ import { WORKSPACE_TABS, type WorkspaceTab } from './sections';
 // Two tabs, no overflow (specs/017): the sections that used to line up here
 // live behind Settings as cards, counts included, so the bar carries nothing
 // but the two names.
-defineProps<{ active: WorkspaceTab }>();
+//
+// `tabs` narrows the bar for a viewer who may not manage the agent
+// (CLEAN-232): the Ranch admin agent shows an Admin the chat alone.
+withDefaults(
+  defineProps<{ active: WorkspaceTab; tabs?: readonly WorkspaceTab[] }>(),
+  { tabs: () => WORKSPACE_TABS },
+);
 
 defineEmits<{
   select: [tab: WorkspaceTab];
@@ -22,7 +28,7 @@ const TITLES: Record<WorkspaceTab, string> = {
 <template>
   <div class="flex shrink-0 items-center gap-1" role="tablist">
     <button
-      v-for="t in WORKSPACE_TABS"
+      v-for="t in tabs"
       :key="t"
       type="button"
       role="tab"

@@ -4,6 +4,7 @@ import { IBridleGateway } from './bridle.gateway';
 import { stripCitationMarkers } from './citationMarkers';
 import type {
   BridlePart,
+  IBridleActing,
   IBridleAttachment,
   IBridleUserIdentity,
 } from './bridle.types';
@@ -27,6 +28,8 @@ export interface ISendAndAwaitInput {
   isAdmin?: boolean;
   /** The console login behind the call, forwarded to the agent (CLEAN-80). */
   user?: IBridleUserIdentity;
+  /** Proof of that login for the turn's tool calls (CLEAN-232). */
+  acting?: IBridleActing;
   timeoutMs?: number;
   /**
    * Who is asking, for the agent's request limits (CLEAN-224). Absent means
@@ -150,7 +153,15 @@ export class BridleSyncService {
         text,
         parts,
         attachments,
-        { socketId, source: input.source ?? 'visitor', silentRefusal: true },
+        {
+          socketId,
+          source: input.source ?? 'visitor',
+          silentRefusal: true,
+          // Stated, so it never depends on which socket the hub picks: the
+          // person this call verified, or nobody (CLEAN-232).
+          user: user ?? null,
+          ...(input.acting ? { acting: input.acting } : {}),
+        },
       );
       // Refused for a limit: do not hold the call open for an answer that
       // will never come (CLEAN-224).

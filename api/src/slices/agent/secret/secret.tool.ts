@@ -1,15 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
-  callerIsOperator,
+  agentNotFound,
+  callerManagesAgents,
   CONFIRM_SENTENCE,
   confirmed,
+  manageCaller,
   ok,
-  requireOperator,
   type ToolResult,
 } from '#/mcp/tooling';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import type { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
@@ -49,7 +51,12 @@ const storeSchema = z
  *
  * Operator agents only: a plain agent holds these secrets and must not be
  * able to read, rewrite or erase its own credentials on a prompt's say-so.
+ *
+ * `manage-agent` (CLEAN-232): each call asks `AgentPermissionService` about
+ * the agent it names, and one the caller may not manage is answered like one
+ * that is not there. The Ranch admin agent's secrets are the Owner's alone.
  */
+@ToolAudience('manage-agent')
 @Injectable()
 export class SecretTool implements IConditionallyListedTool {
   private readonly logger = new Logger(SecretTool.name);
@@ -57,10 +64,16 @@ export class SecretTool implements IConditionallyListedTool {
   constructor(
     private readonly agents: IAgentGateway,
     private readonly secrets: ISecretGateway,
+    private readonly permission: AgentPermissionService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(callerIsOperator(httpRequest));
+    return Promise.resolve(callerManagesAgents(httpRequest));
+  }
+
+  /** The agent, when it exists and this caller may manage it. */
+  private manageable(httpRequest: Request, agentId: string) {
+    return this.permission.manageable(manageCaller(httpRequest), agentId);
   }
 
   @Tool({
@@ -85,9 +98,8 @@ export class SecretTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
+    const agent = await this.manageable(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     return ok(await this.summary(agent));
   }
 
@@ -114,9 +126,8 @@ export class SecretTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
+    const agent = await this.manageable(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     await this.secrets.set(agentId, key, value);
     // Log the key, never the value: the API log is not a secret store.
     this.logger.log(`Secret set through MCP: agent=${agentId} key=${key}`);
@@ -156,10 +167,9 @@ export class SecretTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
     const { agentId, key } = args;
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
+    const agent = await this.manageable(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const refusal = confirmed(
       args,
       `delete the secret «${key}» of the agent «${agent.name}» — its value cannot be recovered`,
@@ -204,10 +214,9 @@ export class SecretTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
     const { agentId, store } = args;
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
+    const agent = await this.manageable(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const keys = Object.keys(store);
     const refusal = confirmed(
       args,
@@ -244,12 +253,6 @@ export class SecretTool implements IConditionallyListedTool {
       })),
     };
   }
-}
-
-function notFound(agentId: string): ToolResult {
-  return ok({
-    error: `Agent ${agentId} not found — call list_agents to find the id`,
-  });
 }
 
 /** Key names only, sorted so two listings of the same store read the same. */

@@ -4,18 +4,24 @@
  * chat renders them in two places: under the composer in the card layout,
  * and inside the composer box in the frameless one (specs/017).
  */
-defineProps<{
+withDefaults(defineProps<{
   debugEnabled: boolean
   markdownEnabled: boolean
   togglingDebug: boolean
-}>()
+  // Debug is saved on the agent (PUT /agents/:id), so it is offered only to
+  // a viewer who may manage the agent (CLEAN-232). Markdown is the viewer's
+  // own display setting and stays.
+  canDebug?: boolean
+}>(), { canDebug: true })
 
 defineEmits<{ toggleDebug: []; toggleMarkdown: [] }>()
 </script>
 
 <template>
   <button
+    v-if="canDebug"
     type="button"
+    data-debug-toggle
     :disabled="togglingDebug"
     :title="debugEnabled
       ? 'Prompt debug: ON — runtime is emitting debug snapshots. Click to disable.'

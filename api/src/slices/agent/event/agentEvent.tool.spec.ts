@@ -11,6 +11,10 @@ import type {
   AgentEventService,
   NotificationDestinationService,
 } from './domain';
+import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import { audienceAllows } from '#/mcp/tooling';
+import { toolAudienceOf } from '#/mcp/decorators';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 /**
  * These tools are the Events page and the Notifications settings from the
@@ -22,8 +26,8 @@ const ADDRESS = 'https://hooks.slack.com/services/T000/B000/SECRETSECRET';
 
 const request = (roles: UserRoleTypes[]): Request =>
   ({ user: { sub: 'agent:rancher', email: '', roles } }) as unknown as Request;
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 type Result = { content: { text: string }[] };
 const textOf = (r: unknown) =>
@@ -118,6 +122,7 @@ function harness(configured = true) {
     service as unknown as AgentEventService,
     destinations as unknown as NotificationDestinationService,
     agents as unknown as IAgentGateway,
+    openAccess(),
   );
   return { tool, service, destinations, agents };
 }
@@ -163,9 +168,12 @@ describe('AgentEventTool — who may use it', () => {
 
   it('keeps the destination for the owner, as the console does: an admin is refused', async () => {
     // The controller guards these three routes with @Roles(Owner). A caller
-    // one step below must not get through the chat what the console refuses.
+    // one step below must not get through the chat what the console refuses:
+    // here an Admin talking to the Ranch admin agent, whose own token
+    // carries Owner (CLEAN-232).
     const { tool, destinations } = harness();
-    const admin = () => request([UserRoleTypes.Admin]);
+    const admin = () =>
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin);
 
     await expect(
       tool.setNotificationDestination(
@@ -181,10 +189,57 @@ describe('AgentEventTool — who may use it', () => {
       tool.removeNotificationDestination({ confirm: true }, null, admin()),
     ).rejects.toBeInstanceOf(ForbiddenException);
 
-    expect(await tool.isListedForRequest(admin())).toBe(false);
     expect(destinations.save).not.toHaveBeenCalled();
     expect(destinations.sendTest).not.toHaveBeenCalled();
     expect(destinations.remove).not.toHaveBeenCalled();
+
+    // The three are hidden from an Admin as well as refused: their audience
+    // is `owner`, on the method, and the catalogue asks that first.
+    for (const method of [
+      'setNotificationDestination',
+      'sendTestNotification',
+      'removeNotificationDestination',
+    ] as const) {
+      const audience = toolAudienceOf(AgentEventTool, tool[method]);
+      expect(audience).toBe('owner');
+      expect(audienceAllows(audience, admin())).toBe(false);
+      expect(
+        audienceAllows(
+          audience,
+          asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Owner),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('lets an Admin read what the console lets an Admin read', async () => {
+    // `agent-events`, `agent-incidents` and reading the destination are
+    // @Roles(Admin) in the controller.
+    const { tool, service, destinations } = harness();
+    const admin = () =>
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin);
+
+    expect(await tool.isListedForRequest(admin())).toBe(true);
+    await expect(
+      tool.listAgentEvents({}, null, admin()),
+    ).resolves.toBeDefined();
+    await expect(
+      tool.getNotificationDestination({}, null, admin()),
+    ).resolves.toBeDefined();
+    expect(service.listEvents).toHaveBeenCalledTimes(1);
+    expect(destinations.view).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives a User the agent is answering nothing, whatever the agent’s token', async () => {
+    const { tool, service } = harness();
+    const user = () =>
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.User);
+
+    expect(await tool.isListedForRequest(user())).toBe(false);
+    await expect(tool.listAgentEvents({}, null, user())).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(service.listEvents).not.toHaveBeenCalled();
   });
 });
 

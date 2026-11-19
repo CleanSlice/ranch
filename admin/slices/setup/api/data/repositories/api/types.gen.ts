@@ -29,7 +29,7 @@ export enum UserRoleTypes {
 
 export type EmbedTokenDto = {
   /**
-   * Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.
+   * Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, `cron` or `heartbeat`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.
    */
   sub: string;
   email?: string;
@@ -152,6 +152,21 @@ export type SetTemplateToolsDto = {
   toolNames: Array<string> | null;
 };
 
+export type AgentCreatorDto = {
+  /**
+   * User id of the account that created the agent.
+   */
+  id: string;
+  /**
+   * Null when the account has been removed.
+   */
+  name: string | null;
+  /**
+   * Null when the account has been removed.
+   */
+  email: string | null;
+};
+
 export type AgentDto = {
   id: string;
   name: string;
@@ -208,7 +223,7 @@ export type AgentDto = {
    */
   isPublic: boolean;
   /**
-   * When true, the agent is kept at the top of every agent list in both consoles. Installation-wide, not per user.
+   * Pinned by the caller: when true, the agent is kept at the top of the caller’s own agent lists. Personal (PUT / DELETE /agents/:id/pin); false for a caller that is not a person.
    */
   pinned: boolean;
   /**
@@ -217,6 +232,10 @@ export type AgentDto = {
   allowedOrigins: Array<string>;
   knowledgeIds: Array<string>;
   isAdmin: boolean;
+  /**
+   * Who created the agent (CLEAN-232). Resolved for an Owner or Admin reader only: `{ id, name, email }`, with null `name` and `email` when that account has since been removed. Null when nobody is recorded (the agent is older than the field, or a trusted party created it) and always null for a User reader and on the public routes.
+   */
+  createdBy: AgentCreatorDto | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -455,10 +474,6 @@ export type UpdateAgentDto = {
    * Enable debug mode — emits the prompt-debug event stream and verbose pod logs (LOG_LEVEL=debug). The verbose-log half applies on the next agent restart; the prompt-debug stream flips live.
    */
   debugEnabled?: boolean;
-  /**
-   * Pin or unpin the agent. Pinned agents are kept at the top of every agent list in both consoles. Installation-wide; changes nothing about the pod, the status or access.
-   */
-  pinned?: boolean;
 };
 
 export type FileNodeDto = {
@@ -1621,6 +1636,58 @@ export type UpdateSkillDto = {
   group?: SkillGroup | null;
 };
 
+export enum AgentAccessOutcomeKinds {
+  ALL = "all",
+  ALL_EXCEPT = "all_except",
+  ONLY = "only",
+  NONE = "none",
+}
+
+export type AgentAccessSummaryDto = {
+  kind: AgentAccessOutcomeKinds;
+  /**
+   * True when the account is limited and its last allowed agent is gone: it reaches no agents until somebody edits its access.
+   */
+  needsReview: boolean;
+};
+
+export type UserDto = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRoleTypes;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  /**
+   * What the account’s agent access lists come to (CLEAN-231): the mark on the user list. The Owner is always `all`. The lists themselves are read through GET /users/:id/agent-access. Present on the /users routes only: the session routes (login, /auth/me) do not carry it.
+   */
+  agentAccess?: AgentAccessSummaryDto;
+};
+
+export enum AssignableUserRoleTypes {
+  ADMIN = "Admin",
+  USER = "User",
+}
+
+export type CreateUserDto = {
+  name: string;
+  email: string;
+  password: string;
+  role?: AssignableUserRoleTypes;
+};
+
+export type UpdateUserDto = {
+  name?: string;
+  email?: string;
+  password?: string;
+  status?: "active" | "invited" | "disabled";
+};
+
+export type UpdateUserRoleDto = {
+  role: AssignableUserRoleTypes;
+};
+
 export type ChatSessionDto = {
   id: string;
   agentId: string;
@@ -1794,29 +1861,6 @@ export type SetAgentChannelsDto = {
   channels: Array<AgentChannelDto>;
 };
 
-export enum AssignableUserRoleTypes {
-  ADMIN = "Admin",
-  USER = "User",
-}
-
-export type CreateUserDto = {
-  name: string;
-  email: string;
-  password: string;
-  role?: AssignableUserRoleTypes;
-};
-
-export type UpdateUserDto = {
-  name?: string;
-  email?: string;
-  password?: string;
-  status?: "active" | "invited" | "disabled";
-};
-
-export type UpdateUserRoleDto = {
-  role: AssignableUserRoleTypes;
-};
-
 export type SaveTemplateFileDto = {
   /**
    * Full file content as text
@@ -1985,6 +2029,58 @@ export type UpdatePaddockScenarioDto = {
   messages?: Array<CreatePaddockScenarioMessageDto>;
   successCriteria?: Array<CreatePaddockSuccessCriterionDto>;
   setup?: CreatePaddockScenarioSetupDto | null;
+};
+
+export type AgentAccessOutcomeDto = {
+  /**
+   * `all`: reaches every agent. `all_except`: every agent except `count` denied. `only`: only the `count` allowed. `none`: limited with no allowed agent left, needs review.
+   */
+  kind: AgentAccessOutcomeKinds;
+  /**
+   * The entries behind the sentence that the caller may see: denied for `all_except`, allowed for `only`, 0 otherwise.
+   */
+  count: number;
+};
+
+export type AgentAccessDto = {
+  userId: string;
+  /**
+   * Allowed agents, among the ones the caller reaches.
+   */
+  allowed: Array<string>;
+  /**
+   * Denied agents, among the ones the caller reaches.
+   */
+  denied: Array<string>;
+  outcome: AgentAccessOutcomeDto;
+  needsReview: boolean;
+  /**
+   * True when the account has entries, or reaches agents, that the caller cannot see. No id or name of those is returned.
+   */
+  hasEntriesOutsideView: boolean;
+  /**
+   * Send it back with PUT. Null for an account whose access was never edited.
+   */
+  version: string | null;
+};
+
+export type SetAgentAccessDto = {
+  /**
+   * The agents the account is allowed, among the ones the caller reaches. With at least one, the account reaches only its allowed agents.
+   */
+  allowed: Array<string>;
+  /**
+   * The agents the account is denied, among the same.
+   */
+  denied: Array<string>;
+  /**
+   * The `version` the access was read with; null when it was never edited. Refused with ACCESS_CHANGED when it is no longer current.
+   */
+  version: string | null;
+  /**
+   * Required to turn a limited account into one that reaches every agent not denied; without it such a change is refused with ACCESS_OPEN_NEEDS_CONFIRM.
+   */
+  confirmOpen?: boolean;
 };
 
 export type AgentInterfaceDto = {
@@ -5355,6 +5451,89 @@ export type FindDependentAgentsResponses = {
   200: unknown;
 };
 
+export type UserControllerFindAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/users";
+};
+
+export type UserControllerFindAllResponses = {
+  200: Array<UserDto>;
+};
+
+export type UserControllerFindAllResponse =
+  UserControllerFindAllResponses[keyof UserControllerFindAllResponses];
+
+export type UserControllerCreateData = {
+  body: CreateUserDto;
+  path?: never;
+  query?: never;
+  url: "/users";
+};
+
+export type UserControllerCreateResponses = {
+  200: UserDto;
+};
+
+export type UserControllerCreateResponse =
+  UserControllerCreateResponses[keyof UserControllerCreateResponses];
+
+export type UserControllerRemoveData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}";
+};
+
+export type UserControllerRemoveResponses = {
+  200: unknown;
+};
+
+export type UserControllerFindByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}";
+};
+
+export type UserControllerFindByIdResponses = {
+  200: UserDto;
+};
+
+export type UserControllerFindByIdResponse =
+  UserControllerFindByIdResponses[keyof UserControllerFindByIdResponses];
+
+export type UserControllerUpdateData = {
+  body: UpdateUserDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}";
+};
+
+export type UserControllerUpdateResponses = {
+  200: unknown;
+};
+
+export type UserControllerUpdateRoleData = {
+  body: UpdateUserRoleDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}/role";
+};
+
+export type UserControllerUpdateRoleResponses = {
+  200: unknown;
+};
+
 export type GetChatsData = {
   body?: never;
   path?: never;
@@ -5699,80 +5878,6 @@ export type SetAgentChannelsResponses = {
 export type SetAgentChannelsResponse =
   SetAgentChannelsResponses[keyof SetAgentChannelsResponses];
 
-export type UserControllerFindAllData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/users";
-};
-
-export type UserControllerFindAllResponses = {
-  200: unknown;
-};
-
-export type UserControllerCreateData = {
-  body: CreateUserDto;
-  path?: never;
-  query?: never;
-  url: "/users";
-};
-
-export type UserControllerCreateResponses = {
-  201: unknown;
-};
-
-export type UserControllerRemoveData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/users/{id}";
-};
-
-export type UserControllerRemoveResponses = {
-  200: unknown;
-};
-
-export type UserControllerFindByIdData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/users/{id}";
-};
-
-export type UserControllerFindByIdResponses = {
-  200: unknown;
-};
-
-export type UserControllerUpdateData = {
-  body: UpdateUserDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/users/{id}";
-};
-
-export type UserControllerUpdateResponses = {
-  200: unknown;
-};
-
-export type UserControllerUpdateRoleData = {
-  body: UpdateUserRoleDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: "/users/{id}/role";
-};
-
-export type UserControllerUpdateRoleResponses = {
-  200: unknown;
-};
-
 export type TemplateFileControllerListData = {
   body?: never;
   path: {
@@ -5994,6 +6099,126 @@ export type PaddockScenarioControllerGenerateData = {
 export type PaddockScenarioControllerGenerateResponses = {
   201: unknown;
 };
+
+export type GetUserAgentAccessData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}/agent-access";
+};
+
+export type GetUserAgentAccessErrors = {
+  /**
+   * `ACCESS_NOT_EDITABLE`: for an Admin, any account that is not a User.
+   */
+  403: unknown;
+  /**
+   * No user with this id.
+   */
+  404: unknown;
+};
+
+export type GetUserAgentAccessResponses = {
+  200: AgentAccessDto;
+};
+
+export type GetUserAgentAccessResponse =
+  GetUserAgentAccessResponses[keyof GetUserAgentAccessResponses];
+
+export type SetUserAgentAccessData = {
+  body: SetAgentAccessDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}/agent-access";
+};
+
+export type SetUserAgentAccessErrors = {
+  /**
+   * `ACCESS_LISTS_OVERLAP`: an agent is in both arrays.
+   */
+  400: unknown;
+  /**
+   * `ACCESS_NOT_EDITABLE`: the account is the Owner, the caller, or (for an Admin) another Admin.
+   */
+  403: unknown;
+  /**
+   * No user with this id; or `Agent not found`: an agent id is unknown or outside the caller's view.
+   */
+  404: unknown;
+  /**
+   * `ACCESS_EXCEEDS_CEILING`: an Admin would open agents they do not reach. `ACCESS_OPEN_NEEDS_CONFIRM`: the change turns a limited account into an open one and `confirmOpen` is not true; carries the resulting `outcome`. `ACCESS_CHANGED`: `version` is not current.
+   */
+  409: unknown;
+};
+
+export type SetUserAgentAccessResponses = {
+  200: AgentAccessDto;
+};
+
+export type SetUserAgentAccessResponse =
+  SetUserAgentAccessResponses[keyof SetUserAgentAccessResponses];
+
+export type UnpinAgentData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/pin";
+};
+
+export type UnpinAgentErrors = {
+  /**
+   * The caller is not a person.
+   */
+  403: unknown;
+  /**
+   * No agent with this id among the ones the caller reaches.
+   */
+  404: unknown;
+};
+
+export type UnpinAgentResponses = {
+  /**
+   * Not pinned any more.
+   */
+  204: void;
+};
+
+export type UnpinAgentResponse = UnpinAgentResponses[keyof UnpinAgentResponses];
+
+export type PinAgentData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/pin";
+};
+
+export type PinAgentErrors = {
+  /**
+   * The caller is not a person.
+   */
+  403: unknown;
+  /**
+   * No agent with this id among the ones the caller reaches.
+   */
+  404: unknown;
+};
+
+export type PinAgentResponses = {
+  /**
+   * Pinned, or already pinned.
+   */
+  204: void;
+};
+
+export type PinAgentResponse = PinAgentResponses[keyof PinAgentResponses];
 
 export type GetAgentCardData = {
   body?: never;

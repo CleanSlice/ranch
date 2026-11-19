@@ -1,16 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
-  callerIsOperator,
+  agentNotFound,
+  callerManagesAgents,
+  manageCaller,
   ok,
-  requireOperator,
   stripSecrets,
   type ToolResult,
 } from '#/mcp/tooling';
 import { IAgentGateway } from '#/agent/agent/domain';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentChannelGateway } from './domain/agentChannel.gateway';
 import type { IAgentChannel } from './domain/agentChannel.types';
@@ -69,7 +71,13 @@ type ChannelInput = z.infer<typeof telegramChannel>;
  * treats a missing file as "no channels" — so a typo would read as an empty
  * set, and a write would create files under an agent that is not there. The
  * tool therefore resolves the agent first and names it in the answer.
+ *
+ * `manage-agent` (CLEAN-232): listed for whoever may manage at least one
+ * agent, and each call asks `AgentPermissionService` about the agent it
+ * names. One the caller may not manage is answered like one that is not
+ * there.
  */
+@ToolAudience('manage-agent')
 @Injectable()
 export class AgentChannelTool implements IConditionallyListedTool {
   private readonly logger = new Logger(AgentChannelTool.name);
@@ -77,10 +85,11 @@ export class AgentChannelTool implements IConditionallyListedTool {
   constructor(
     private readonly channels: IAgentChannelGateway,
     private readonly agents: IAgentGateway,
+    private readonly permission: AgentPermissionService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(callerIsOperator(httpRequest));
+    return Promise.resolve(callerManagesAgents(httpRequest));
   }
 
   @Tool({
@@ -106,9 +115,11 @@ export class AgentChannelTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
+    const agent = await this.permission.manageable(
+      manageCaller(httpRequest),
+      agentId,
+    );
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const channels = await this.channels.getForAgent(agentId);
     return ok({
       agentId: agent.id,
@@ -146,9 +157,11 @@ export class AgentChannelTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
-    const agent = await this.agents.findById(agentId);
-    if (!agent) return notFound(agentId);
+    const agent = await this.permission.manageable(
+      manageCaller(httpRequest),
+      agentId,
+    );
+    if (!agent) return agentNotFound(httpRequest, agentId);
     const saved = await this.channels.setForAgent(
       agentId,
       channels as IAgentChannel[],
@@ -169,10 +182,4 @@ export class AgentChannelTool implements IConditionallyListedTool {
         `restart_agent with id=${agentId} when the person is ready.`,
     });
   }
-}
-
-function notFound(agentId: string): ToolResult {
-  return ok({
-    error: `Agent ${agentId} not found — call list_agents to find the id`,
-  });
 }

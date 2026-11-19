@@ -335,8 +335,20 @@ export interface INotificationDestinationView {
   lastDelivery: { at: Date; ok: boolean; error: string | null } | null;
 }
 
+/**
+ * The agents a list may show, as a filter on the agent id column: what
+ * `AgentReach.where()` hands back for a caller whose access lists hide some
+ * (CLEAN-231). Absent when nothing is hidden. A row whose agent was deleted
+ * has no agent id and matches neither form, so it is hidden too.
+ */
+export interface IAgentIdScope {
+  in?: string[];
+  notIn?: string[];
+}
+
 export interface IEventListFilter {
   agentId?: string;
+  agentScope?: IAgentIdScope;
   incidentId?: string;
   since?: Date;
   limit: number;
@@ -345,6 +357,7 @@ export interface IEventListFilter {
 
 export interface IIncidentListFilter {
   agentId?: string;
+  agentScope?: IAgentIdScope;
   state?: 'open' | 'closed';
   since?: Date;
   limit: number;

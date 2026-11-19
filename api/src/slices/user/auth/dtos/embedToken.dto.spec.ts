@@ -47,3 +47,23 @@ describe('EmbedTokenDto.sub', () => {
     expect((await subErrors(sub)).length).toBeGreaterThan(0);
   });
 });
+
+// CLEAN-232. An agent runtime names the turns it starts for itself `cron`
+// and `heartbeat`; a visitor with that client id was the agent itself.
+describe('EmbedTokenDto.sub — ids an agent runtime keeps for itself (CLEAN-232)', () => {
+  it.each([
+    ['the runtime’s scheduled turn', 'cron'],
+    ['the runtime’s heartbeat', 'heartbeat'],
+    ['a task handed over by another agent', 'peer:agent-b:ctx-1'],
+    ['the agent service namespace', 'agent:agent-1'],
+  ])('refuses %s', async (_label, sub) => {
+    expect((await subErrors(sub)).length).toBeGreaterThan(0);
+  });
+
+  it.each(['cronjob', 'heartbeats', 'my-cron', 'cron-1'])(
+    'accepts %p: reserved only as a whole word',
+    async (sub) => {
+      expect(await subErrors(sub)).toEqual([]);
+    },
+  );
+});

@@ -138,7 +138,7 @@ const DETAIL = 'text-xs text-muted-foreground'
           />
           {{ summary.status.label }}
         </strong>{{ ' ' }}
-        <span :class="DETAIL" :title="pod?.message || undefined">{{ statusDetail }}</span>{{ ' ' }}
+        <span :class="DETAIL">{{ statusDetail }}</span>{{ ' ' }}
         <span
           v-if="summary.status.reason"
           class="text-xs break-words"

@@ -75,6 +75,7 @@ export class McpModule {
         globalApiPrefix,
         guards,
         decorators,
+        options.diagnosticDecorators ?? [],
       );
       controllers.push(sseController);
     }

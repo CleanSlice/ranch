@@ -8,6 +8,9 @@ import type { IUsageData } from '#/usage/domain';
 import type { ILlmCredentialData } from './domain';
 import type { ILlmGateway, ILlmHealthGateway } from './domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 /**
  * Two things matter more here than the happy paths: that the key handed to
@@ -52,8 +55,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: LlmTool;
@@ -94,10 +97,12 @@ function harness(): Harness {
   };
   // LlmTool resolves the cross-slice gateways through ModuleRef (see the
   // constructor comment); the fake hands back the token asked for.
+  const access = openAccess();
   const moduleRef = {
     get: jest.fn((token: unknown) => {
       if (token === IUsageGateway) return usage;
       if (token === IAgentGateway) return agents;
+      if (token === AgentAccessService) return access;
       throw new Error(`unexpected token ${String(token)}`);
     }),
   } as unknown as ModuleRef;

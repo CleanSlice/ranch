@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ShareLinkService } from '#/agent/shareLink/domain';
 import { BridleController } from './bridle.controller';
 import { BridleAttachmentService } from './domain';
+import type { ConsoleReachService } from './domain';
 import type {
   IAttachmentRequester,
   IBridleAttachment,
@@ -45,6 +46,8 @@ interface IStubs {
   rateLimited?: { retryAfterMs: number; window: 'minute' | 'hour' | 'day' };
   /** Room left in the tightest limit window; undefined = the agent has no limits. */
   limitRemaining?: { remaining: number; resetSec: number };
+  /** Stands in for `ConsoleReachService.admits` (CLEAN-231); default: yes. */
+  admits?: (session: unknown, agentId: string) => Promise<boolean>;
 }
 
 function makeController(stubs: IStubs = {}) {
@@ -234,6 +237,11 @@ function makeController(stubs: IStubs = {}) {
     ),
   };
 
+  const admits = jest.fn(
+    stubs.admits ??
+      ((_session: unknown, _agentId: string) => Promise.resolve(true)),
+  );
+
   const controller = new BridleController(
     hub as never,
     jwt,
@@ -249,6 +257,18 @@ function makeController(stubs: IStubs = {}) {
     { attach: async (m: unknown) => m } as never,
     // The reader-facing source gate has its own spec (domain/sourceAccess.service.spec.ts).
     {} as never,
+    // Acting tokens (CLEAN-232) have their own spec (bridle.acting.spec.ts).
+    { mint: async () => 'acting-token' } as never,
+    // The access lists (CLEAN-231): everybody is admitted and nothing is
+    // filtered unless a test says otherwise.
+    {
+      admits,
+      reached: jest.fn((_session: unknown, items: unknown[]) =>
+        Promise.resolve(items),
+      ),
+      subjectOf: jest.fn().mockReturnValue(null),
+      onChanged: jest.fn().mockReturnValue(() => undefined),
+    } as unknown as ConsoleReachService,
   );
 
   // The two message routes take the response object since CLEAN-224 (they set
@@ -278,6 +298,7 @@ function makeController(stubs: IStubs = {}) {
   return {
     controller: lenient,
     hub,
+    admits,
     chats,
     order,
     registered,
@@ -423,6 +444,29 @@ describe('BridleController — identity precedence', () => {
     );
 
     expect(registered[0].clientId).toBe('admin');
+  });
+
+  it('answers 404 to a console person whose access lists hide the agent, on both routes', async () => {
+    // The same answer as for an agent that does not exist (CLEAN-231), and
+    // nothing reaches the hub. The session asked about is the token's own.
+    const { controller, registered, sent, admits } = makeController({
+      verify: () => ({ sub: 'user-9', sid: 'session-1', roles: ['Admin'] }),
+      admits: () => Promise.resolve(false),
+    });
+    const bearer = request({ authorization: 'Bearer jwt-token' });
+
+    for (const send of [controller.sendMessageSync, controller.sendMessage]) {
+      await expect(
+        send(AGENT, bearer, { text: 'hello' } as never),
+      ).rejects.toMatchObject({ status: 404, message: 'Agent not found' });
+    }
+
+    expect(admits).toHaveBeenCalledWith(
+      { userId: 'user-9', sid: 'session-1', role: 'Admin' },
+      AGENT,
+    );
+    expect(registered).toHaveLength(0);
+    expect(sent).toHaveLength(0);
   });
 
   it('keeps the anonymous fallback when no headers are offered at all', async () => {

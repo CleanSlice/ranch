@@ -23,6 +23,7 @@ import { AgentLimitModule } from '#/agent/limit/agentLimit.module';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { SourceModule } from '#/reins/source/source.module';
 import { SourceAccessService } from './domain/sourceAccess.service';
+import { ConsoleReachService } from './domain/consoleReach.service';
 
 /**
  * Bridle Module — authenticated hub between browsers and agents.
@@ -96,6 +97,8 @@ import { SourceAccessService } from './domain/sourceAccess.service';
     BridleSyncService,
     // Reader-facing gate for cited sources (CLEAN-138).
     SourceAccessService,
+    // The access lists on the chat surface (CLEAN-231).
+    ConsoleReachService,
     // MCP tool: query_attachment. Discovered by the #mcp registry like every
     // @Tool provider; served on the same endpoint as the Ranch/Knowledge
     // built-ins and auto-attached through the Documents entry (seeder).

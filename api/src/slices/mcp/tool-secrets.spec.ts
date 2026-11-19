@@ -20,6 +20,10 @@ import { IntegrationTool } from '#/integration/integration.tool';
 import { ApiKeyTool, KEY_SHOWN_ONCE } from '#/user/apiKey/apiKey.tool';
 import { RancherTool } from '#/rancher/rancher.tool';
 import { AgentEventTool } from '#/agent/event/agentEvent.tool';
+import { asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
+import type { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
 
 const SENTINEL = 'SENTINEL-SECRET-7f3a';
 
@@ -76,9 +80,18 @@ function leakyGateway(overrides: Record<string, unknown> = {}) {
   });
 }
 
+/** Nobody pinned anything: pins carry no secret, so a plain stub will do. */
+const noPins = () =>
+  ({
+    pin: jest.fn().mockResolvedValue(true),
+    unpin: jest.fn().mockResolvedValue(true),
+    pinnedIds: jest.fn().mockResolvedValue(new Set()),
+    removeUser: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as IAgentPinGateway;
+
 const request = (roles: UserRoleTypes[]): Request =>
   ({ user: { sub: 'agent:admin', email: '', roles } }) as unknown as Request;
-const operator = () => request([UserRoleTypes.Owner]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
 
 /** Every plausible argument name, secrets everywhere they could go. */
 const args = {
@@ -156,8 +169,9 @@ function cases(): Case[] {
       replaceAll: jest.fn(async () => undefined),
       delete: jest.fn(async () => undefined),
     }) as never,
+    permissionOver(leakyGateway()),
   );
-  const user = new UserTool(leakyGateway() as never);
+  const user = new UserTool(leakyGateway() as never, openAccess(), noPins());
   const integration = new IntegrationTool(leakyGateway() as never);
   const apiKey = new ApiKeyTool(
     leakyGateway() as never,
@@ -197,6 +211,9 @@ function cases(): Case[] {
     leakyGateway() as never,
     leakyGateway() as never,
     leakyGateway() as never,
+    permissionOver(leakyGateway()),
+    openAccess(),
+    noPins(),
   );
 
   // Rows that also carry the one secret this slice has — the destination's
@@ -223,6 +240,7 @@ function cases(): Case[] {
       sendTest: jest.fn(async () => ({ delivered: false, error: 'refused' })),
     }) as never,
     leakyGateway() as never,
+    openAccess(),
   );
 
   const call = (fn: (...a: never[]) => Promise<unknown>) => () =>

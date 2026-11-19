@@ -7,14 +7,17 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   err,
   ok,
   requireOperator,
   type ToolResult,
+  agentNotFound,
+  callerParty,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import {
@@ -97,6 +100,7 @@ function toToolChat(s: IChatSessionData) {
  * Operator-only: a chat is somebody's conversation with an agent, and a plain
  * agent must not be able to read other people's sessions.
  */
+@ToolAudience('admin')
 @Injectable()
 export class ChatTool implements IConditionallyListedTool {
   private readonly logger = new Logger(ChatTool.name);
@@ -106,7 +110,23 @@ export class ChatTool implements IConditionallyListedTool {
     private readonly reader: TranscriptReaderService,
     private readonly sync: ChatSyncService,
     private readonly insight: ChatInsightService,
+    private readonly access: AgentAccessService,
   ) {}
+
+  /**
+   * The session, when it exists and the caller reaches its agent
+   * (CLEAN-231): a chat of a hidden agent is a chat that does not exist.
+   */
+  private async reachedChat(httpRequest: Request, id: string) {
+    const session = await this.chats.findById(id);
+    if (!session) return null;
+    return (await this.access.reaches(
+      callerParty(httpRequest),
+      session.agentId,
+    ))
+      ? session
+      : null;
+  }
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     return Promise.resolve(callerIsOperator(httpRequest));
@@ -171,8 +191,13 @@ export class ChatTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const page = args.page ?? DEFAULT_PAGE;
     const perPage = args.perPage ?? DEFAULT_PER_PAGE;
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    if (args.agentId && !reach.has(args.agentId)) {
+      return agentNotFound(httpRequest, args.agentId);
+    }
     const { items, total } = await this.chats.list({
       ...args,
+      agentScope: reach.where(),
       page,
       perPage,
     });
@@ -199,7 +224,7 @@ export class ChatTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    const session = await this.chats.findById(id);
+    const session = await this.reachedChat(httpRequest, id);
     if (!session) return NOT_FOUND(id);
     return ok(toToolChat(session));
   }
@@ -249,7 +274,7 @@ export class ChatTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    const session = await this.chats.findById(args.id);
+    const session = await this.reachedChat(httpRequest, args.id);
     if (!session) return NOT_FOUND(args.id);
 
     const types = args.types?.length ? args.types : DEFAULT_TYPES;
@@ -329,7 +354,18 @@ export class ChatTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    return ok(await this.sync.syncAll(agentId));
+    if (
+      agentId &&
+      !(await this.access.reaches(callerParty(httpRequest), agentId))
+    ) {
+      return agentNotFound(httpRequest, agentId);
+    }
+    return ok(
+      await this.sync.syncAll(
+        agentId,
+        await this.access.reachableIds(callerParty(httpRequest)),
+      ),
+    );
   }
 
   @Tool({
@@ -354,6 +390,7 @@ export class ChatTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
+    if (!(await this.reachedChat(httpRequest, id))) return NOT_FOUND(id);
     try {
       const session = await this.insight.summarize(id);
       return ok({
@@ -402,7 +439,7 @@ export class ChatTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    const session = await this.chats.findById(id);
+    const session = await this.reachedChat(httpRequest, id);
     if (!session) return NOT_FOUND(id);
     return ok({
       chatId: session.id,

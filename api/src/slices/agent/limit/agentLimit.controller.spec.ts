@@ -3,6 +3,7 @@ import { AgentLimitController } from './agentLimit.controller';
 import { AgentLimitService, IAgentLimitGateway, IAgentLimits } from './domain';
 import { ROLES_METADATA_KEY } from '#/user/auth/guards/roles.decorator';
 import { UserRoleTypes } from '#/user/user/domain';
+import { openAccess } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 
 const limits = (l: Partial<IAgentLimits>): IAgentLimits => ({
   perMinute: null,
@@ -34,7 +35,11 @@ function make(agents: Array<{ id: string; isPublic: boolean }>) {
     findById: (id: string) =>
       Promise.resolve(agents.find((a) => a.id === id) ?? null),
   };
-  const controller = new AgentLimitController(service, agentGateway as never);
+  const controller = new AgentLimitController(
+    service,
+    agentGateway as never,
+    openAccess(),
+  );
   return { controller, service, saved };
 }
 

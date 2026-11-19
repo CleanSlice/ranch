@@ -8,10 +8,12 @@ import {
 const props = defineProps<{ id: string }>();
 const userStore = useUserStore();
 
-const { data: user, pending } = await useAsyncData(
+// Loading state from the request, content from the store (docs/state.md).
+const { pending } = await useAsyncData(
   `admin-user-edit-${props.id}`,
   () => userStore.fetchById(props.id),
 );
+const user = computed(() => userStore.byId(props.id));
 
 const roleLocked = computed(() => user.value?.role === UserRoleTypes.Owner);
 

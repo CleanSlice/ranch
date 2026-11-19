@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IAgentGateway } from '#/agent/agent/domain';
+import { ManagesAgent } from '#/agent/agent/guards';
 import { ISecretGateway } from './domain';
 import {
   SecretListDto,
@@ -18,8 +19,12 @@ import {
   ReplaceSecretsDto,
 } from './dtos';
 
+// Admin by the default of the role guard, and only for an agent the caller
+// may manage (CLEAN-232): reads included, so an Admin cannot list the Ranch
+// admin agent's secrets, let alone change them.
 @ApiTags('secrets')
 @Controller('agents/:agentId/secrets')
+@ManagesAgent('agentId')
 export class SecretController {
   constructor(
     private agentGateway: IAgentGateway,

@@ -20,6 +20,8 @@ import type { Request } from 'express';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { UserRoleTypes } from '#/user/user/domain';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { AgentScoped, accessCallerOf } from '#/user/agentAccess/guards';
 import {
   AgentEventService,
   EVENT_PAGE_DEFAULT,
@@ -71,9 +73,16 @@ export class AgentEventController {
   constructor(
     private service: AgentEventService,
     private destinations: NotificationDestinationService,
+    private access: AgentAccessService,
   ) {}
 
+  /** The caller's reach as a filter for the two lists (CLEAN-231). */
+  private async scopeOf(req: Request | undefined) {
+    return (await this.access.reachableIds(accessCallerOf(req))).where();
+  }
+
   @Get('agent-events')
+  @AgentScoped('query.agentId')
   @ApiOperation({
     summary:
       'Agent events, newest first: reports from outside senders and failures Ranch noticed itself.',
@@ -82,9 +91,11 @@ export class AgentEventController {
   @ApiOkResponse({ type: AgentEventPageDto })
   async listEvents(
     @Query() query: ListAgentEventsQueryDto,
+    @Req() req?: Request,
   ): Promise<AgentEventPageDto> {
     return this.service.listEvents({
       agentId: query.agentId,
+      agentScope: await this.scopeOf(req),
       incidentId: query.incidentId,
       limit: query.limit ?? EVENT_PAGE_DEFAULT,
       before: query.before,
@@ -92,6 +103,7 @@ export class AgentEventController {
   }
 
   @Get('agent-incidents')
+  @AgentScoped('query.agentId')
   @ApiOperation({
     summary:
       'Incidents, newest first: one per stretch of trouble for an agent, with who witnessed it and whether the team was told.',
@@ -100,9 +112,11 @@ export class AgentEventController {
   @ApiOkResponse({ type: AgentIncidentPageDto })
   async listIncidents(
     @Query() query: ListAgentIncidentsQueryDto,
+    @Req() req?: Request,
   ): Promise<AgentIncidentPageDto> {
     const page = await this.service.listIncidents({
       agentId: query.agentId,
+      agentScope: await this.scopeOf(req),
       state: query.state,
       limit: query.limit ?? EVENT_PAGE_DEFAULT,
       before: query.before,

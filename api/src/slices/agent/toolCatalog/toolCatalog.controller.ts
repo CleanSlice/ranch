@@ -18,12 +18,14 @@ import { UserRoleTypes } from '#/user/user/domain';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { ToolCatalogService } from './domain/toolCatalog.service';
 import { AgentToolCatalogDto } from './dto/agentToolCatalog.dto';
+import { AgentScoped } from '#/user/agentAccess/guards';
 
 @ApiTags('agents')
 @ApiBearerAuth()
 @Controller('agents/:id')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+@AgentScoped('id')
 export class ToolCatalogController {
   constructor(private readonly catalog: ToolCatalogService) {}
 

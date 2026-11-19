@@ -16,6 +16,8 @@ import {
 } from '@tabler/icons-vue'
 import { useInjectedAgentDraft } from '#agent/composables/useAgentDraft'
 import { useInjectedAgentMetrics } from '#agent/composables/useAgentMetrics'
+import { isOwnerRole } from '#agent/utils/agentAccess'
+import { agentCreatorView } from '#agent/utils/agentCreator'
 import { formatBytes, usagePct } from '#agent/utils/agentFormat'
 import { formatDateTime } from '#common/utils/format'
 
@@ -26,9 +28,19 @@ const { saving } = draft
 
 const agentStore = useAgentStore()
 const confirmStore = useConfirmStore()
+const auth = useAuthStore()
 
 const agent = computed(() => agentStore.byId(props.agentId))
 const uid = useId()
+
+// Which agent is the Ranch admin agent is the Owner's decision: it holds
+// Owner power, and the API keeps both routes for the Owner (CLEAN-232). An
+// Admin reads the state and is told who can change it, instead of being
+// offered a button that would be refused.
+const canChangeAdmin = computed(() => isOwnerRole(auth.user?.role))
+
+// Who created the agent, read off the store record like everything else here.
+const creator = computed(() => agentCreatorView(agent.value?.createdBy))
 
 // ── Promote / demote ─────────────────────────────────────────────────
 const promoting = ref(false)
@@ -147,6 +159,7 @@ const CALM_SWITCH =
               </Badge>
               <Badge v-else variant="outline">Not admin</Badge>
               <Button
+                v-if="canChangeAdmin"
                 type="button"
                 variant="outline"
                 size="sm"
@@ -163,7 +176,7 @@ const CALM_SWITCH =
                 {{ agent.isAdmin ? 'Demote' : 'Promote to admin' }}
               </Button>
             </div>
-            <p class="text-xs text-muted-foreground">
+            <p v-if="canChangeAdmin" class="text-xs text-muted-foreground">
               <template v-if="agent.isAdmin">
                 This agent has the <span class="font-mono">ranch_*</span> admin
                 tools enabled and was deployed with
@@ -177,6 +190,17 @@ const CALM_SWITCH =
                 cleared from any other admin agent.
               </template>
               Acts at once after you confirm; it is not part of the save bar.
+            </p>
+            <p v-else class="text-xs text-muted-foreground" data-admin-owner-only>
+              <template v-if="agent.isAdmin">
+                This agent has the <span class="font-mono">ranch_*</span> admin
+                tools enabled.
+              </template>
+              <template v-else>
+                This agent does not have the <span class="font-mono">ranch_*</span>
+                admin tools.
+              </template>
+              Only the Owner can change which agent is the Ranch admin.
             </p>
             <p v-if="promoteError" class="text-xs text-destructive" role="alert">
               {{ promoteError }}
@@ -215,6 +239,23 @@ const CALM_SWITCH =
                   {{ formatDateTime(agent.createdAt) }}
                   <span class="text-muted-foreground">· updated</span>
                   {{ formatDateTime(agent.updatedAt) }}
+                </dd>
+              </div>
+              <div
+                class="flex flex-wrap gap-x-2"
+                data-created-by
+                :data-state="creator.state"
+              >
+                <dt class="text-muted-foreground">Created by</dt>
+                <dd v-if="creator.state === 'known'" class="min-w-0 break-words">
+                  {{ creator.name }}
+                  <template v-if="creator.email">
+                    <span class="text-muted-foreground">·</span>
+                    {{ creator.email }}
+                  </template>
+                </dd>
+                <dd v-else class="min-w-0 text-muted-foreground">
+                  {{ creator.text }}
                 </dd>
               </div>
             </dl>

@@ -5,16 +5,10 @@ import type { IAgentPodStatus } from '#agent/domain/agentStatus.types';
 import { agentSummary, type ISummaryInput } from './agentSummary';
 
 const pod = (over: Partial<IAgentPodStatus> = {}): IAgentPodStatus => ({
-  agentId: 'agent-1',
-  podName: 'agent-1-pod',
   phase: 'Running',
   ready: true,
   restartCount: 0,
-  startedAt: '2026-11-03T10:00:00.000Z',
-  lastTerminationReason: null,
   containerWaitingReason: null,
-  message: null,
-  observedAt: '2026-11-03T10:05:00.000Z',
   ...over,
 });
 

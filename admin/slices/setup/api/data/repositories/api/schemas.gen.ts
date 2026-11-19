@@ -69,9 +69,10 @@ export const EmbedTokenDtoSchema = {
     sub: {
       type: "string",
       description:
-        "Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.",
+        "Subject — the visitor identity: used as clientId and transcript channel inside the bridle hub. Letters, digits, dash and underscore, 1-128 characters; never `admin`, `cron` or `heartbeat`, never prefixed `anon-`, `share-` or `http-`, never an existing user id.",
       example: "wslid-A1234567",
-      pattern: "^(?!admin$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$",
+      pattern:
+        "^(?!admin$)(?!cron$)(?!heartbeat$)(?!anon-)(?!share-)(?!http-)[A-Za-z0-9_-]{1,128}$",
       maxLength: 128,
     },
     email: {
@@ -348,6 +349,27 @@ export const SetTemplateToolsDtoSchema = {
   required: ["toolNames"],
 } as const;
 
+export const AgentCreatorDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description: "User id of the account that created the agent.",
+    },
+    name: {
+      type: "string",
+      nullable: true,
+      description: "Null when the account has been removed.",
+    },
+    email: {
+      type: "string",
+      nullable: true,
+      description: "Null when the account has been removed.",
+    },
+  },
+  required: ["id", "name", "email"],
+} as const;
+
 export const AgentDtoSchema = {
   type: "object",
   properties: {
@@ -434,7 +456,7 @@ export const AgentDtoSchema = {
     pinned: {
       type: "boolean",
       description:
-        "When true, the agent is kept at the top of every agent list in both consoles. Installation-wide, not per user.",
+        "Pinned by the caller: when true, the agent is kept at the top of the caller’s own agent lists. Personal (PUT / DELETE /agents/:id/pin); false for a caller that is not a person.",
     },
     allowedOrigins: {
       description:
@@ -453,6 +475,16 @@ export const AgentDtoSchema = {
     },
     isAdmin: {
       type: "boolean",
+    },
+    createdBy: {
+      nullable: true,
+      description:
+        "Who created the agent (CLEAN-232). Resolved for an Owner or Admin reader only: `{ id, name, email }`, with null `name` and `email` when that account has since been removed. Null when nobody is recorded (the agent is older than the field, or a trusted party created it) and always null for a User reader and on the public routes.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentCreatorDto",
+        },
+      ],
     },
     createdAt: {
       format: "date-time",
@@ -483,6 +515,7 @@ export const AgentDtoSchema = {
     "allowedOrigins",
     "knowledgeIds",
     "isAdmin",
+    "createdBy",
     "createdAt",
     "updatedAt",
   ],
@@ -985,11 +1018,6 @@ export const UpdateAgentDtoSchema = {
       type: "boolean",
       description:
         "Enable debug mode — emits the prompt-debug event stream and verbose pod logs (LOG_LEVEL=debug). The verbose-log half applies on the next agent restart; the prompt-debug stream flips live.",
-    },
-    pinned: {
-      type: "boolean",
-      description:
-        "Pin or unpin the agent. Pinned agents are kept at the top of every agent list in both consoles. Installation-wide; changes nothing about the pod, the status or access.",
     },
   },
 } as const;
@@ -3551,6 +3579,145 @@ export const UpdateSkillDtoSchema = {
   },
 } as const;
 
+export const AgentAccessOutcomeKindsSchema = {
+  type: "string",
+  enum: ["all", "all_except", "only", "none"],
+} as const;
+
+export const AgentAccessSummaryDtoSchema = {
+  type: "object",
+  properties: {
+    kind: {
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentAccessOutcomeKinds",
+        },
+      ],
+    },
+    needsReview: {
+      type: "boolean",
+      description:
+        "True when the account is limited and its last allowed agent is gone: it reaches no agents until somebody edits its access.",
+    },
+  },
+  required: ["kind", "needsReview"],
+} as const;
+
+export const UserDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+    email: {
+      type: "string",
+    },
+    role: {
+      example: "User",
+      allOf: [
+        {
+          $ref: "#/components/schemas/UserRoleTypes",
+        },
+      ],
+    },
+    status: {
+      type: "string",
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+    agentAccess: {
+      description:
+        "What the account’s agent access lists come to (CLEAN-231): the mark on the user list. The Owner is always `all`. The lists themselves are read through GET /users/:id/agent-access. Present on the /users routes only: the session routes (login, /auth/me) do not carry it.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentAccessSummaryDto",
+        },
+      ],
+    },
+  },
+  required: ["id", "name", "email", "role", "status", "createdAt", "updatedAt"],
+} as const;
+
+export const AssignableUserRoleTypesSchema = {
+  type: "string",
+  enum: ["Admin", "User"],
+} as const;
+
+export const CreateUserDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "Jane Doe",
+    },
+    email: {
+      type: "string",
+      example: "jane@example.com",
+    },
+    password: {
+      type: "string",
+      example: "strongPassword1",
+      minLength: 8,
+    },
+    role: {
+      example: "User",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssignableUserRoleTypes",
+        },
+      ],
+    },
+  },
+  required: ["name", "email", "password"],
+} as const;
+
+export const UpdateUserDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      example: "Jane Doe",
+    },
+    email: {
+      type: "string",
+      example: "jane@example.com",
+    },
+    password: {
+      type: "string",
+      example: "strongPassword1",
+      minLength: 8,
+    },
+    status: {
+      type: "string",
+      enum: ["active", "invited", "disabled"],
+    },
+  },
+} as const;
+
+export const UpdateUserRoleDtoSchema = {
+  type: "object",
+  properties: {
+    role: {
+      example: "User",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssignableUserRoleTypes",
+        },
+      ],
+    },
+  },
+  required: ["role"],
+} as const;
+
 export const ChatSessionDtoSchema = {
   type: "object",
   properties: {
@@ -3889,77 +4056,6 @@ export const SetAgentChannelsDtoSchema = {
     },
   },
   required: ["channels"],
-} as const;
-
-export const AssignableUserRoleTypesSchema = {
-  type: "string",
-  enum: ["Admin", "User"],
-} as const;
-
-export const CreateUserDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "Jane Doe",
-    },
-    email: {
-      type: "string",
-      example: "jane@example.com",
-    },
-    password: {
-      type: "string",
-      example: "strongPassword1",
-      minLength: 8,
-    },
-    role: {
-      example: "User",
-      allOf: [
-        {
-          $ref: "#/components/schemas/AssignableUserRoleTypes",
-        },
-      ],
-    },
-  },
-  required: ["name", "email", "password"],
-} as const;
-
-export const UpdateUserDtoSchema = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      example: "Jane Doe",
-    },
-    email: {
-      type: "string",
-      example: "jane@example.com",
-    },
-    password: {
-      type: "string",
-      example: "strongPassword1",
-      minLength: 8,
-    },
-    status: {
-      type: "string",
-      enum: ["active", "invited", "disabled"],
-    },
-  },
-} as const;
-
-export const UpdateUserRoleDtoSchema = {
-  type: "object",
-  properties: {
-    role: {
-      example: "User",
-      allOf: [
-        {
-          $ref: "#/components/schemas/AssignableUserRoleTypes",
-        },
-      ],
-    },
-  },
-  required: ["role"],
 } as const;
 
 export const SaveTemplateFileDtoSchema = {
@@ -4402,6 +4498,109 @@ export const UpdatePaddockScenarioDtoSchema = {
       ],
     },
   },
+} as const;
+
+export const AgentAccessOutcomeDtoSchema = {
+  type: "object",
+  properties: {
+    kind: {
+      description: `\`all\`: reaches every agent. \`all_except\`: every agent except \`count\` denied. \`only\`: only the \`count\` allowed. \`none\`: limited with no allowed agent left, needs review.`,
+      allOf: [
+        {
+          $ref: "#/components/schemas/AgentAccessOutcomeKinds",
+        },
+      ],
+    },
+    count: {
+      type: "number",
+      description:
+        "The entries behind the sentence that the caller may see: denied for `all_except`, allowed for `only`, 0 otherwise.",
+    },
+  },
+  required: ["kind", "count"],
+} as const;
+
+export const AgentAccessDtoSchema = {
+  type: "object",
+  properties: {
+    userId: {
+      type: "string",
+    },
+    allowed: {
+      description: "Allowed agents, among the ones the caller reaches.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    denied: {
+      description: "Denied agents, among the ones the caller reaches.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    outcome: {
+      $ref: "#/components/schemas/AgentAccessOutcomeDto",
+    },
+    needsReview: {
+      type: "boolean",
+    },
+    hasEntriesOutsideView: {
+      type: "boolean",
+      description:
+        "True when the account has entries, or reaches agents, that the caller cannot see. No id or name of those is returned.",
+    },
+    version: {
+      type: "string",
+      nullable: true,
+      description:
+        "Send it back with PUT. Null for an account whose access was never edited.",
+    },
+  },
+  required: [
+    "userId",
+    "allowed",
+    "denied",
+    "outcome",
+    "needsReview",
+    "hasEntriesOutsideView",
+    "version",
+  ],
+} as const;
+
+export const SetAgentAccessDtoSchema = {
+  type: "object",
+  properties: {
+    allowed: {
+      description:
+        "The agents the account is allowed, among the ones the caller reaches. With at least one, the account reaches only its allowed agents.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    denied: {
+      description: "The agents the account is denied, among the same.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    version: {
+      type: "string",
+      nullable: true,
+      description:
+        "The `version` the access was read with; null when it was never edited. Refused with ACCESS_CHANGED when it is no longer current.",
+    },
+    confirmOpen: {
+      type: "boolean",
+      default: false,
+      description:
+        "Required to turn a limited account into one that reaches every agent not denied; without it such a change is refused with ACCESS_OPEN_NEEDS_CONFIRM.",
+    },
+  },
+  required: ["allowed", "denied", "version"],
 } as const;
 
 export const AgentInterfaceDtoSchema = {

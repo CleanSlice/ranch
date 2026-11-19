@@ -4,17 +4,17 @@ difficulty: easy
 name: Inspect a single agent
 description: User asks for details on a specific agent by id
 expectedBehavior: |
-  Agent calls `get_agent` MCP tool (if loaded) OR `http` GET
-  ${RANCH_API_URL}/agents/agent-abc123 with Bearer auth, then reports
-  status / workflowId / template (or surfaces "not found" cleanly).
+  Agent calls the `get_agent` tool with id="agent-abc123", then reports
+  status / workflowId / template (or surfaces "not found" cleanly). Tools
+  only, no raw HTTP.
 messages:
   - text: "What's the status of agent agent-abc123?"
     from: eval-user
 successCriteria:
   - dimension: tool_usage
     description: |
-      Called either `get_agent` with id="agent-abc123" OR `http` GET on
-      url=${RANCH_API_URL}/agents/agent-abc123 with Bearer auth.
+      Called `get_agent` with id="agent-abc123". No `http` or `exec` call
+      against the Ranch API.
     weight: 0.5
   - dimension: correctness
     description: Reported what the call returned, did not fabricate fields

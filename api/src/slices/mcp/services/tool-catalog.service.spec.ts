@@ -3,11 +3,16 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { ToolCatalogService } from './tool-catalog.service';
 import { McpRegistryService } from '../services/mcp-registry.service';
+import type { ToolAudienceTypes } from '../decorators';
+import { asGuest, asPerson, asTrustedAgent } from '../testing';
+import { UserRoleTypes } from '#/user/user/domain';
 
 interface FakeTool {
   name: string;
   instance: Record<string, unknown>;
   resolveThrows?: boolean;
+  /** Defaults to `everyone`; `null` is a tool that declared none. */
+  audience?: ToolAudienceTypes | null;
 }
 
 function makeHarness(tools: FakeTool[]) {
@@ -23,6 +28,7 @@ function makeHarness(tools: FakeTool[]) {
     },
     providerClass: t.name as unknown as symbol,
     methodName: 'run',
+    ...(t.audience === null ? {} : { audience: t.audience ?? 'everyone' }),
   }));
   const registry = {
     getTools: () => discovered,
@@ -39,10 +45,129 @@ function makeHarness(tools: FakeTool[]) {
   return { service: new ToolCatalogService(moduleRef, registry), moduleRef };
 }
 
+// Token roles are lower-case on purpose in these two: the hooks under test
+// read whatever the fake tool wants, and the audience is `everyone`.
 const operator = () =>
   ({ user: { sub: 'agent:admin', roles: ['owner'] } }) as unknown as Request;
 const plain = () =>
   ({ user: { sub: 'agent:a1', roles: ['agent'] } }) as unknown as Request;
+
+const ranchAgent = () =>
+  ({
+    user: { sub: 'agent:ranch', email: '', roles: [UserRoleTypes.Owner] },
+  }) as unknown as Request;
+const plainAgent = () =>
+  ({
+    user: { sub: 'agent:helper', email: '', roles: [UserRoleTypes.Agent] },
+  }) as unknown as Request;
+
+/**
+ * CLEAN-232: the audience is the first question, asked before any hook of
+ * the tool, and it is answered for the party the request is made for.
+ */
+describe('ToolCatalogService audience', () => {
+  const fiveTools = (hook = jest.fn(async () => true)) =>
+    makeHarness([
+      { name: 'query_knowledge', instance: {}, audience: 'everyone' },
+      { name: 'list_my_peers', instance: {}, audience: 'agent' },
+      { name: 'browser_session_list', instance: {}, audience: 'person' },
+      {
+        name: 'delete_agent',
+        instance: { isListedForRequest: hook },
+        audience: 'admin',
+      },
+      { name: 'delete_user', instance: {}, audience: 'owner' },
+    ]);
+  const names = async (
+    service: ToolCatalogService,
+    req: Request,
+  ): Promise<string[]> => (await service.listFor(req)).map((t) => t.name);
+
+  it('the Ranch admin agent acting for itself sees everything but person tools', async () => {
+    const { service } = fiveTools();
+    expect(await names(service, asTrustedAgent(ranchAgent()))).toEqual([
+      'query_knowledge',
+      'list_my_peers',
+      'delete_agent',
+      'delete_user',
+    ]);
+  });
+
+  it('the same agent answering a User lists nothing an administrator has', async () => {
+    const { service } = fiveTools();
+    expect(
+      await names(service, asPerson(ranchAgent(), UserRoleTypes.User)),
+    ).toEqual(['query_knowledge', 'list_my_peers', 'browser_session_list']);
+  });
+
+  it('answering an Admin it lists admin tools and not the Owner’s', async () => {
+    const { service } = fiveTools();
+    expect(
+      await names(service, asPerson(ranchAgent(), UserRoleTypes.Admin)),
+    ).toEqual([
+      'query_knowledge',
+      'list_my_peers',
+      'browser_session_list',
+      'delete_agent',
+    ]);
+  });
+
+  it('answering the Owner it lists all five', async () => {
+    const { service } = fiveTools();
+    expect(
+      await names(service, asPerson(ranchAgent(), UserRoleTypes.Owner)),
+    ).toHaveLength(5);
+  });
+
+  it('a call that names nobody is a guest’s: no management tool, hooks not asked', async () => {
+    const hook = jest.fn(async () => true);
+    const { service } = fiveTools(hook);
+
+    expect(await names(service, ranchAgent())).toEqual([
+      'query_knowledge',
+      'list_my_peers',
+    ]);
+    expect(await names(service, asGuest(ranchAgent()))).toEqual([
+      'query_knowledge',
+      'list_my_peers',
+    ]);
+    // A hook that would have said yes is never consulted: the audience has
+    // no "stay listed when the check breaks" fallback to fall into.
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('a plain agent gains nothing by being trusted or by naming the Owner', async () => {
+    const { service } = fiveTools();
+    expect(await names(service, asTrustedAgent(plainAgent()))).toEqual([
+      'query_knowledge',
+      'list_my_peers',
+    ]);
+    expect(
+      await names(service, asPerson(plainAgent(), UserRoleTypes.Owner)),
+    ).toEqual(['query_knowledge', 'list_my_peers', 'browser_session_list']);
+  });
+
+  it('never lists a tool that declared no audience, whoever asks', async () => {
+    const { service } = makeHarness([
+      { name: 'undeclared', instance: {}, audience: null },
+    ]);
+    expect(await names(service, asTrustedAgent(ranchAgent()))).toEqual([]);
+    expect(
+      await names(service, asPerson(ranchAgent(), UserRoleTypes.Owner)),
+    ).toEqual([]);
+  });
+
+  it('says which audience each listed tool has', async () => {
+    const { service } = fiveTools();
+    const listed = await service.listFor(asTrustedAgent(ranchAgent()));
+    expect(listed.map((t) => t.audience)).toEqual([
+      'everyone',
+      'agent',
+      'admin',
+      'owner',
+    ]);
+  });
+});
 
 describe('ToolCatalogService caller tool policy (CLEAN-209)', () => {
   const twoTools = () =>

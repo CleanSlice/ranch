@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ISettingGateway } from '#/setting/domain';
 import { SessionService } from '#/user/session/domain/session.service';
+import { isReservedClientId } from '#/bridle/domain/chatIdentity';
 import { UserMapper } from '../../user/data/user.mapper';
 import { IUserData, UserRoleTypes } from '../../user/domain';
 import {
@@ -266,6 +267,12 @@ export class AuthService {
       throw new BadRequestException(
         `expiresIn exceeds the ${ADMIN_EMBED_MAX_TTL} maximum for admin embed tokens`,
       );
+    }
+    // A client id the hub keeps for itself, or one an agent runtime reads as
+    // its own turn (CLEAN-232). The DTO refuses these first; a caller that
+    // skips the DTO gets the same answer.
+    if (isReservedClientId(claims.sub)) {
+      throw new BadRequestException('sub must not be a reserved client id');
     }
     // Console users chat on a channel named by their user id, and the channel
     // owner is whoever presents a token with that sub (requireChannelAccess).

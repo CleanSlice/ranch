@@ -7,11 +7,19 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { HttpException, Inject, Logger, forwardRef } from '@nestjs/common';
+import {
+  HttpException,
+  Inject,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  forwardRef,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   AuthErrorCodes,
   classifyJwtError,
+  isActingToken,
 } from '#/user/auth/domain/auth.types';
 import { Server, Socket } from 'socket.io';
 import {
@@ -19,11 +27,19 @@ import {
   BridleAttachmentService,
   type BridlePart,
   type BridleSendAck,
+  type BridleSurfaceTypes,
   type ChatRequesterKinds,
+  type IBridleActing,
   type IBridleUserIdentity,
+  type IConsoleSession,
+  BRIDLE_SURFACES,
+  CHAT_AGENT_NOT_FOUND_CODE,
+  ConsoleReachService,
   buildParts,
   clientIdFromJwtPayload,
+  consoleSessionOf,
 } from '../domain';
+import { ActingPartyService } from '#/user/auth/domain/actingParty.service';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import {
   ShareLinkErrorCodes,
@@ -38,6 +54,17 @@ import {
 interface IShareSocketAuth {
   token: string;
   visitorId: string;
+}
+
+/**
+ * What a console person's socket keeps from its handshake so that every
+ * message it sends can carry an acting token (CLEAN-232). Kept on
+ * `client.data`, like the share pair: it belongs to this one socket, and two
+ * admins on the shared `admin` conversation must never mint for each other.
+ */
+interface IConsoleSocketAuth extends IConsoleSession {
+  /** Which console this is, as the socket declared it. Display only. */
+  surface?: BridleSurfaceTypes;
 }
 
 /**
@@ -77,7 +104,11 @@ interface IShareSocketAuth {
  */
 @WebSocketGateway({ namespace: '/ws/client', cors: { origin: '*' } })
 export class BridleClientWsHandler
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnModuleInit,
+    OnModuleDestroy
 {
   @WebSocketServer()
   server: Server;
@@ -91,7 +122,85 @@ export class BridleClientWsHandler
     @Inject(forwardRef(() => IAgentGateway))
     private readonly agentGateway: IAgentGateway,
     private readonly shareLinks: ShareLinkService,
+    private readonly actingParty: ActingPartyService,
+    private readonly reach: ConsoleReachService,
   ) {}
+
+  private stopListening: (() => void) | undefined;
+  private stopListeningRemoved: (() => void) | undefined;
+
+  onModuleInit(): void {
+    // A change of somebody's access applies to their very next action
+    // (FR-010), and an open socket is an action that never ends: it keeps
+    // receiving the conversation. So their sockets are looked at again the
+    // moment the lists change (CLEAN-231).
+    this.stopListening = this.reach.onChanged((userId) => {
+      void this.dropUnreached(userId);
+    });
+    // A deleted account: nothing to ask, every socket it holds is closed.
+    this.stopListeningRemoved = this.reach.onRemoved((userId) => {
+      this.dropAll(userId);
+    });
+  }
+
+  onModuleDestroy(): void {
+    this.stopListening?.();
+    this.stopListeningRemoved?.();
+  }
+
+  /**
+   * Close every socket of a deleted account, on whatever agent, without
+   * asking the lists: the account is gone, and a failed question must not
+   * be what keeps its sockets open.
+   */
+  private dropAll(userId: string): void {
+    for (const client of this.openSockets()) {
+      const session = client.data?.console as IConsoleSocketAuth | undefined;
+      if (!session || session.userId !== userId) continue;
+      const agentId = client.data?.agentId as string | undefined;
+      this.logger.log(
+        `Browser dropped, account removed: clientId=${String(client.data?.clientId)} agentId=${String(agentId)}`,
+      );
+      client.emit('bridle_error', { code: CHAT_AGENT_NOT_FOUND_CODE, agentId });
+      client.disconnect();
+    }
+  }
+
+  /** Every socket of this namespace, whatever shape the server has. */
+  private openSockets(): Socket[] {
+    const sockets = (this.server as unknown as { sockets?: unknown })?.sockets;
+    if (sockets instanceof Map) return [...sockets.values()] as Socket[];
+    const nested = (sockets as { sockets?: unknown } | undefined)?.sockets;
+    return nested instanceof Map ? ([...nested.values()] as Socket[]) : [];
+  }
+
+  /**
+   * Close this person's sockets on agents they no longer reach. Each gets
+   * the reason first, the same one a refused handshake gets, so the console
+   * shows its not-found state instead of reconnecting.
+   */
+  private async dropUnreached(userId: string): Promise<void> {
+    for (const client of this.openSockets()) {
+      const session = client.data?.console as IConsoleSocketAuth | undefined;
+      const agentId = client.data?.agentId as string | undefined;
+      if (!session || session.userId !== userId || !agentId) continue;
+      try {
+        if (await this.reach.admits(session, agentId)) continue;
+      } catch (err) {
+        this.logger.warn(
+          `Access re-check failed, socket kept: agentId=${agentId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        continue;
+      }
+      this.logger.log(
+        `Browser dropped, access removed: clientId=${String(client.data?.clientId)} agentId=${agentId}`,
+      );
+      client.emit('bridle_error', { code: CHAT_AGENT_NOT_FOUND_CODE, agentId });
+      client.disconnect();
+    }
+  }
 
   async handleConnection(client: Socket) {
     const auth = (client.handshake.auth ?? {}) as {
@@ -104,6 +213,7 @@ export class BridleClientWsHandler
       shareToken?: unknown;
       shareVisitor?: unknown;
       lastSeq?: unknown;
+      surface?: unknown;
     };
     // Offered AT ALL, like `hasShareToken` on the HTTP side: an empty token
     // must reach `authorizeChat` and come back rejected, never slip past into
@@ -162,6 +272,7 @@ export class BridleClientWsHandler
     let kind: ChatRequesterKinds = 'anonymous';
     let share: IShareSocketAuth | undefined;
     let user: IBridleUserIdentity | undefined;
+    let consoleAuth: IConsoleSocketAuth | undefined;
 
     if (auth.token) {
       // Authenticated path takes PRECEDENCE over the public/anon path: a
@@ -171,6 +282,9 @@ export class BridleClientWsHandler
       let verifyError: unknown;
       try {
         payload = this.jwt.verify<Record<string, unknown>>(auth.token);
+        // An acting token names the person a tool call is made for; at the
+        // handshake it is an invalid token (CLEAN-232).
+        if (isActingToken(payload)) payload = null;
       } catch (err) {
         payload = null;
         verifyError = err;
@@ -190,6 +304,13 @@ export class BridleClientWsHandler
         const sub = payload?.sub;
         if (typeof sub === 'string' && sub) {
           user = { id: sub, ...(email ? { email } : {}) };
+        }
+        // A person's own console token, and nothing else, is worth an acting
+        // token later: not an embed token, not an agent's (CLEAN-232).
+        const session = consoleSessionOf(payload);
+        if (session) {
+          const surface = BRIDLE_SURFACES.find((s) => s === auth.surface);
+          consoleAuth = { ...session, ...(surface ? { surface } : {}) };
         }
       } else if (shareOffered) {
         // Unusable console token next to a share pair: the pair decides
@@ -214,6 +335,17 @@ export class BridleClientWsHandler
         this.logger.warn(`Browser connection rejected: ${code}`);
         return reject(code);
       }
+    }
+
+    // A console person whose access lists hide this agent is turned away
+    // as from an agent that does not exist (CLEAN-231). Only they are
+    // asked: a share visitor, an embed token and an anonymous visitor have
+    // no console session.
+    if (consoleAuth && !(await this.reach.admits(consoleAuth, agentId))) {
+      this.logger.warn(
+        `Browser connection rejected: ${CHAT_AGENT_NOT_FOUND_CODE} (agentId=${agentId})`,
+      );
+      return reject(CHAT_AGENT_NOT_FOUND_CODE);
     }
 
     if (clientId === undefined && shareOffered) {
@@ -274,6 +406,7 @@ export class BridleClientWsHandler
       isAdmin,
       kind,
       ...(share ? { share } : {}),
+      ...(consoleAuth ? { console: consoleAuth } : {}),
     };
 
     // Integrator context from the embed's `data-prompt` (set on the `<script>`
@@ -412,6 +545,22 @@ export class BridleClientWsHandler
       }
     }
 
+    // The access lists are asked again on every message: the handshake may
+    // be hours old, and access can be taken away in between (CLEAN-231).
+    const session = client.data?.console as IConsoleSocketAuth | undefined;
+    if (session && !(await this.reach.admits(session, agentId))) {
+      this.logger.warn(
+        `Message rejected: ${CHAT_AGENT_NOT_FOUND_CODE} (clientId=${clientId} agentId=${agentId})`,
+      );
+      client.emit('bridle_error', { code: CHAT_AGENT_NOT_FOUND_CODE, agentId });
+      client.disconnect();
+      return {
+        status: 'rejected',
+        code: CHAT_AGENT_NOT_FOUND_CODE,
+        message: 'Agent not found',
+      };
+    }
+
     const text = data.text ?? '';
     const base = data.parts ?? buildParts(text, data.images);
 
@@ -450,6 +599,33 @@ export class BridleClientWsHandler
       return { status: 'rejected', code: 'EMPTY' };
     }
 
+    // Minted per message, from what the handshake verified: the token names
+    // this person, this agent and their console session, and the API checks
+    // all three again when a tool call presents it (CLEAN-232).
+    const consoleAuth = client.data?.console as IConsoleSocketAuth | undefined;
+    let acting: IBridleActing | undefined;
+    if (consoleAuth) {
+      try {
+        acting = {
+          token: await this.actingParty.mint({
+            userId: consoleAuth.userId,
+            agentId,
+            sid: consoleAuth.sid,
+          }),
+          role: consoleAuth.role,
+          ...(consoleAuth.surface ? { surface: consoleAuth.surface } : {}),
+        };
+      } catch (err) {
+        // The message still goes; without a token the turn is a guest's,
+        // which is the safe side to fail on.
+        this.logger.warn(
+          `Acting token could not be minted: clientId=${clientId} agentId=${agentId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
     return this.hub.sendToAgent(
       clientId,
       agentId,
@@ -458,6 +634,7 @@ export class BridleClientWsHandler
       expanded.attachments,
       {
         socketId: client.id,
+        ...(acting ? { acting } : {}),
         displayText: text,
         // Read back from the handshake, where it came out of a verified JWT:
         // an Owner or Admin must reach an agent that is at its limit, to test

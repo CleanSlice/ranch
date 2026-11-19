@@ -34,6 +34,12 @@ export interface IChatSessionData {
 
 export interface IChatFilter {
   agentId?: string;
+  /**
+   * The agents the list may show, for a caller whose access lists hide some
+   * (CLEAN-231): what `AgentReach.where()` hands back. Used when no single
+   * `agentId` is asked for.
+   */
+  agentScope?: { in?: string[]; notIn?: string[] };
   channel?: string;
   externalUserId?: string; // scope to one end user (App "my history")
   search?: string; // matches title / preview / externalUserId

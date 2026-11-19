@@ -13,14 +13,22 @@ const EVENT_TYPES = new Set<AgentStatusEventType>([
   'deleted',
 ]);
 
+const PHASES = new Set<IAgentPodStatus['phase']>([
+  'Pending',
+  'Running',
+  'Succeeded',
+  'Failed',
+  'Unknown',
+]);
+
 /**
  * Decodes a raw status-stream frame into a typed domain message, validating the
  * discriminant (`type` / `eventType`) and requiring a well-formed agent record
  * so the store's reducer can't crash on a malformed payload.
  */
 export class AgentStatusMapper {
-  // One decoder for an agent row, whichever transport carried it — REST and
-  // the stream must not drift into two shapes of the same entity.
+  // The status word is decoded by the agent row's own decoder, so REST and
+  // the stream cannot disagree about which statuses exist.
   private agentMapper = new AgentMapper();
 
   toStreamMessage(raw: unknown): AgentStatusStreamMessage | null {
@@ -68,8 +76,14 @@ export class AgentStatusMapper {
   private toStatus(raw: unknown): IAgentStatus | null {
     if (!raw || typeof raw !== 'object') return null;
     const o = raw as Record<string, unknown>;
-    const agent: IAgentRecord | null = this.agentMapper.toEntity(o.agent);
-    if (!agent) return null;
+    const row = this.agentMapper.toEntity(o.agent);
+    if (!row) return null;
+    // Status facts only: whatever else a frame held is not read.
+    const agent: IAgentRecord = {
+      id: row.id,
+      status: row.status,
+      updatedAt: row.updatedAt,
+    };
     return {
       agent,
       pod: this.toPod(o.pod),
@@ -77,9 +91,19 @@ export class AgentStatusMapper {
     };
   }
 
-  // Pod fields come from our own API; validate presence and trust the shape.
   private toPod(raw: unknown): IAgentPodStatus | null {
     if (!raw || typeof raw !== 'object') return null;
-    return raw as IAgentPodStatus;
+    const o = raw as Record<string, unknown>;
+    return {
+      phase: PHASES.has(o.phase as IAgentPodStatus['phase'])
+        ? (o.phase as IAgentPodStatus['phase'])
+        : 'Unknown',
+      ready: o.ready === true,
+      restartCount: typeof o.restartCount === 'number' ? o.restartCount : 0,
+      containerWaitingReason:
+        typeof o.containerWaitingReason === 'string'
+          ? o.containerWaitingReason
+          : null,
+    };
   }
 }

@@ -2,6 +2,8 @@ import { AgentGateway } from './agent.gateway';
 import { AgentStatusChanges, IAgentStatusChange } from '../domain';
 import type { PrismaService } from '#/setup/prisma/prisma.service';
 import type { AgentMapper } from './agent.mapper';
+import type { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import type { ICreateAgentData, IUpdateAgentData } from '../domain';
 
 /**
  * updateStatus is the one write every status change passes through, and the
@@ -21,12 +23,25 @@ function harness(movedCount: number) {
   const changes = new AgentStatusChanges();
   const seen: IAgentStatusChange[] = [];
   changes.changes$().subscribe((c) => seen.push(c));
-  const gateway = new AgentGateway(
-    { agent } as unknown as PrismaService,
-    { toEntity: (r: unknown) => r } as unknown as AgentMapper,
-    changes,
+  // The transaction client is a different object from the plain one, so a
+  // test can tell which of the two a write went through.
+  const tx = {
+    agent: { create: jest.fn().mockResolvedValue({ id: 'agent-new' }) },
+  };
+  const $transaction = jest.fn((run: (client: typeof tx) => Promise<unknown>) =>
+    run(tx),
   );
-  return { gateway, agent, seen };
+  const access = { allowCreated: jest.fn().mockResolvedValue(true) };
+  const gateway = new AgentGateway(
+    { agent, $transaction } as unknown as PrismaService,
+    {
+      toEntity: (r: unknown) => r,
+      toCreate: (d: unknown) => d,
+    } as unknown as AgentMapper,
+    changes,
+    access as unknown as AgentAccessService,
+  );
+  return { gateway, agent, seen, tx, $transaction, access };
 }
 
 describe('AgentGateway.updateStatus', () => {
@@ -94,19 +109,57 @@ describe('AgentGateway.updateStatus', () => {
   });
 });
 
+describe('AgentGateway.create', () => {
+  // The agent and its creator's allowed entry are one write (CLEAN-231): a
+  // limited account that creates an agent must never be left without it.
+  const data = (createdById?: string) =>
+    ({ name: 'Support Bot', createdById }) as unknown as ICreateAgentData;
+
+  it('allows the creator inside the transaction that creates the agent', async () => {
+    const { gateway, agent, tx, $transaction, access } = harness(1);
+
+    const out = await gateway.create(data('user-1'));
+
+    expect($transaction).toHaveBeenCalledTimes(1);
+    expect(tx.agent.create).toHaveBeenCalledWith({ data: data('user-1') });
+    // The same client as the create, so both land or neither does.
+    expect(access.allowCreated).toHaveBeenCalledWith(tx, 'user-1', 'agent-new');
+    expect('create' in agent).toBe(false);
+    expect(out).toEqual({ id: 'agent-new' });
+  });
+
+  it('writes no entry for an agent nobody is recorded as the creator of', async () => {
+    const { gateway, tx, access } = harness(1);
+
+    await gateway.create(data());
+
+    expect(tx.agent.create).toHaveBeenCalledTimes(1);
+    expect(access.allowCreated).not.toHaveBeenCalled();
+  });
+
+  it('fails as a whole when the entry cannot be written', async () => {
+    const { gateway, access } = harness(1);
+    access.allowCreated.mockRejectedValue(new Error('entry refused'));
+
+    await expect(gateway.create(data('user-1'))).rejects.toThrow(
+      'entry refused',
+    );
+  });
+});
+
 describe('AgentGateway.update', () => {
-  // The pin (CLEAN-216) rides on the general update: present → written as
-  // given, absent → the column is not touched. Pinned by a test because the
-  // spread-per-field style makes a forgotten field silently a no-op.
-  it('writes pinned when it is in the payload', async () => {
+  // The pin is no longer a column of the agent (CLEAN-231): it is personal
+  // and lives with the person. The general update must not write it, even
+  // for a payload that still carries the key past the type.
+  it('never writes pinned, even when a payload still carries it', async () => {
     const { gateway, agent } = harness(1);
-    agent.update.mockResolvedValue({ id: 'agent-1', pinned: true });
-    const out = await gateway.update('agent-1', { pinned: true });
-    expect(agent.update).toHaveBeenCalledWith({
-      where: { id: 'agent-1' },
-      data: { pinned: true },
-    });
-    expect(out).toEqual({ id: 'agent-1', pinned: true });
+    await gateway.update('agent-1', {
+      name: 'Renamed',
+      pinned: true,
+    } as unknown as IUpdateAgentData);
+    const data = agent.update.mock.calls[0][0].data;
+    expect(data).toEqual({ name: 'Renamed' });
+    expect('pinned' in data).toBe(false);
   });
 
   it('leaves pinned alone when the payload does not mention it', async () => {

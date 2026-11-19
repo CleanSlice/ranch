@@ -9,6 +9,7 @@ import type { SourceService } from './domain/source.service';
 import type { ISourceGateway } from './domain/source.gateway';
 import type { IImportJob, ISourceData } from './domain/source.types';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asTrustedAgent } from '#/mcp/testing';
 
 /**
  * These tools let an agent decide what other agents answer from. What
@@ -62,8 +63,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 interface Harness {
   tool: SourceTool;

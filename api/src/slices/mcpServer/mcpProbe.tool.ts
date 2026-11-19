@@ -1,7 +1,7 @@
 import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   err,
@@ -33,6 +33,7 @@ type AuthedRequest = Request & { user?: IAuthTokenPayload };
  * Results never carry a credential: the service is given the row's
  * `authValue` and answers only with what it proved about it.
  */
+@ToolAudience('admin')
 @Injectable()
 export class McpProbeTool implements IConditionallyListedTool {
   private readonly logger = new Logger(McpProbeTool.name);

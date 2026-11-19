@@ -70,6 +70,7 @@ import {
   type NewChatBlocks,
 } from '#bridle/utils/newChat';
 import { proposalMessageId, proposalTs } from '#bridle/utils/proposalMerge';
+import { conversationKey, seqKey } from '#bridle/utils/storageKeys';
 import type {
   IBridleProposalSnapshot,
   IBridleProposalUpdate,
@@ -129,22 +130,24 @@ const RENEWABLE_CODES = new Set(['TOKEN_EXPIRED', 'INVALID_TOKEN']);
  * this origin is not on its list.
  */
 const TOKENLESS_CODES = new Set(['MISSING_TOKEN', 'ORIGIN_NOT_ALLOWED']);
+/**
+ * The hub's answer to a console person whose access lists do not include the
+ * agent (CLEAN-231): the same "not found" an agent that does not exist gets.
+ */
+const AGENT_GONE_CODE = 'AGENT_NOT_FOUND';
 /** Hub rejections that mean the share link itself is dead. */
 const SHARE_DEAD_CODES = new Set(['SHARE_LINK_INVALID', 'SHARE_VISITOR_INVALID']);
 
 // localStorage persistence for chat conversations — survives page refresh.
 // Scoped per conversation key so switching agents doesn't bleed history, and
 // so a share-link visitor's chat never lands in the owner's console history
-// for the same agent. In the console `key === agentId`, which is what the
-// pre-descriptor version wrote — already-stored conversations still load.
-// Mirrors the admin's per-bot persistence pattern for debug snapshots.
-const CONVERSATION_STORAGE_PREFIX = 'bridle:conversation:';
-/**
- * The highest hub `seq` applied to a conversation, kept next to it so a reload
- * can ask the hub for what arrived while the page was gone. A key of its own:
- * the conversation entry is a bare message array that older builds still read.
- */
-const HUB_SEQ_STORAGE_PREFIX = 'bridle:seq:';
+// for the same agent. In the console `key === agentId`, so the storage key
+// also carries the signed-in account (CLEAN-231): two people on one browser
+// each have their own copy, and with nobody signed in there is none. The
+// keys are built in `#bridle/utils/storageKeys`; the functions below take
+// the finished storage key, or null when there is nothing to read or write.
+// The highest hub `seq` applied to a conversation is kept next to it, under
+// a key of its own, so a reload can ask the hub for what arrived meanwhile.
 
 /**
  * How much of a conversation the stored copy keeps: the newest two transcript
@@ -223,10 +226,12 @@ export function openDocument(doc: { blob: Blob; filename: string | null }): void
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-function loadConversationFromStorage(key: string): IBridleMessage[] | null {
-  if (typeof window === 'undefined') return null;
+function loadConversationFromStorage(
+  storageKey: string | null,
+): IBridleMessage[] | null {
+  if (typeof window === 'undefined' || !storageKey) return null;
   try {
-    const raw = window.localStorage.getItem(CONVERSATION_STORAGE_PREFIX + key);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as IBridleMessage[];
     return Array.isArray(parsed) ? parsed : null;
@@ -237,44 +242,41 @@ function loadConversationFromStorage(key: string): IBridleMessage[] | null {
 }
 
 function saveConversationToStorage(
-  key: string,
+  storageKey: string | null,
   messages: IBridleMessage[],
 ): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !storageKey) return;
   try {
-    window.localStorage.setItem(
-      CONVERSATION_STORAGE_PREFIX + key,
-      JSON.stringify(messages),
-    );
+    window.localStorage.setItem(storageKey, JSON.stringify(messages));
   } catch (err) {
     // Quota exceeded or storage disabled — best-effort, ignore.
     console.warn('[bridle] failed to persist conversation', err);
   }
 }
 
-function clearConversationFromStorage(key: string): void {
-  if (typeof window === 'undefined') return;
+function clearConversationFromStorage(storageKey: string | null): void {
+  if (typeof window === 'undefined' || !storageKey) return;
   try {
-    window.localStorage.removeItem(CONVERSATION_STORAGE_PREFIX + key);
+    window.localStorage.removeItem(storageKey);
   } catch {
     // ignore
   }
 }
 
-function loadHubSeqFromStorage(key: string): number {
-  if (typeof window === 'undefined') return 0;
+function loadHubSeqFromStorage(storageKey: string | null): number {
+  if (typeof window === 'undefined' || !storageKey) return 0;
   try {
-    const seq = Number(window.localStorage.getItem(HUB_SEQ_STORAGE_PREFIX + key));
+    const seq = Number(window.localStorage.getItem(storageKey));
     return Number.isFinite(seq) && seq > 0 ? seq : 0;
   } catch {
     return 0;
   }
 }
 
-function saveHubSeqToStorage(key: string, seq: number): void {
-  if (typeof window === 'undefined') return;
+function saveHubSeqToStorage(storageKey: string | null, seq: number): void {
+  if (typeof window === 'undefined' || !storageKey) return;
   try {
-    window.localStorage.setItem(HUB_SEQ_STORAGE_PREFIX + key, String(seq));
+    window.localStorage.setItem(storageKey, String(seq));
   } catch {
     // Best-effort: a lost value only means the hub replays a little more.
   }
@@ -348,6 +350,14 @@ export const useBridleStore = defineStore('bridle', () => {
    * calls: the verdict is final and turns the page into its revoked state.
    */
   const shareRevoked = ref<Record<string, boolean>>({});
+  /**
+   * Agents the hub refused this account as "not found" (CLEAN-231), by agent
+   * id: the socket was turned away at the handshake, on a message, or closed
+   * when access was taken away. The conversation is emptied here; the page
+   * that hosts the chat watches this, drops the agent from its list, leaves
+   * for the agents, and takes the mark off (`clearUnreachable`).
+   */
+  const unreachable = ref<Record<string, boolean>>({});
 
   // Plain maps, not refs: sockets and timers are not view state, and a
   // reactive proxy around a socket.io client would only get in the way.
@@ -433,6 +443,20 @@ export const useBridleStore = defineStore('bridle', () => {
   let sendOrder = 0;
   /** Why a message being resent had failed, so a refused resend can say it again. */
   const resendCodes = new Map<string, string>();
+  /**
+   * Bumped by `resetForAccount`. A request that was open when the account
+   * changed compares it on return and drops its answer: that answer belongs
+   * to whoever was signed in before (CLEAN-231).
+   */
+  let accountGeneration = 0;
+
+  // Whose copy the browser keeps (CLEAN-231). The id survives a session that
+  // ended by itself, so the same person signing in again finds their page;
+  // with nobody signed in a console conversation has no stored copy at all.
+  const accountId = (): string | null => useAuthStore().user?.id ?? null;
+  const conversationStorageKey = (key: string) =>
+    conversationKey(accountId(), key);
+  const seqStorageKey = (key: string) => seqKey(accountId(), key);
 
   // Read side takes the bare `key` — a template already holds the descriptor
   // and passing the whole object just to look up an array buys nothing.
@@ -596,9 +620,13 @@ export const useBridleStore = defineStore('bridle', () => {
   function hydrate(conv: IBridleConversation) {
     const key = conv.key;
     if (hydrated.value[key]) return;
+    // Nothing is read until it is known whose copy to read (CLEAN-231). Not
+    // marked as hydrated either: the copy is still there for its owner.
+    const storageKey = conversationStorageKey(key);
+    if (!storageKey) return;
     hydrated.value[key] = true;
     if (conversations.value[key]?.length) return;
-    const stored = loadConversationFromStorage(key);
+    const stored = loadConversationFromStorage(storageKey);
     if (stored && stored.length) {
       // Belt and braces: `persist` strips the flag, but a bubble that was
       // stored mid-stream by an older build must not reload as "in progress".
@@ -635,13 +663,13 @@ export const useBridleStore = defineStore('bridle', () => {
     const messages = conversations.value[conv.key];
     if (messages && messages.length) {
       saveConversationToStorage(
-        conv.key,
+        conversationStorageKey(conv.key),
         messages
           .slice(-STORED_COPY_MAX)
           .map(({ streaming: _s, cached: _c, ...m }) => m),
       );
     } else {
-      clearConversationFromStorage(conv.key);
+      clearConversationFromStorage(conversationStorageKey(conv.key));
     }
   }
 
@@ -675,7 +703,7 @@ export const useBridleStore = defineStore('bridle', () => {
   function lastHubSeq(key: string): number {
     let seq = lastHubSeqs.get(key);
     if (seq === undefined) {
-      seq = loadHubSeqFromStorage(key);
+      seq = loadHubSeqFromStorage(seqStorageKey(key));
       lastHubSeqs.set(key, seq);
     }
     return seq;
@@ -692,7 +720,7 @@ export const useBridleStore = defineStore('bridle', () => {
     if (seq === undefined) return true;
     if (seq <= lastHubSeq(key)) return false;
     lastHubSeqs.set(key, seq);
-    if (save) saveHubSeqToStorage(key, seq);
+    if (save) saveHubSeqToStorage(seqStorageKey(key), seq);
     return true;
   }
 
@@ -910,6 +938,7 @@ export const useBridleStore = defineStore('bridle', () => {
     const key = conv.key;
     const channel = hubClientIds.get(key);
     if (!channel) return false;
+    const generation = accountGeneration;
     let tail: IBridleMessage[];
     try {
       const page = await getService().transcriptPage(
@@ -923,6 +952,8 @@ export const useBridleStore = defineStore('bridle', () => {
       console.warn('[bridle] transcript read failed', err);
       return false;
     }
+    // The answer is about the account that asked (CLEAN-231).
+    if (generation !== accountGeneration) return false;
     // Measured against the screen as it is NOW: the answer may have arrived
     // over the socket while the request was in flight.
     const missed = missedReplies(messagesFor(key), tail);
@@ -974,8 +1005,10 @@ export const useBridleStore = defineStore('bridle', () => {
 
     historyLoading.add(key);
     // A reset while the request is open makes its answer a page of the
-    // conversation that was just closed.
+    // conversation that was just closed; an account change makes it a page
+    // of somebody else's.
     const epoch = epochFor(key);
+    const generation = accountGeneration;
     try {
       const page = await getService().transcriptPage(
         conv.agentId,
@@ -983,6 +1016,7 @@ export const useBridleStore = defineStore('bridle', () => {
         null,
         conv.share,
       );
+      if (generation !== accountGeneration) return;
       if (epochFor(key) !== epoch) return;
 
       // Measured against the screen as it is NOW: messages may have been
@@ -1020,7 +1054,8 @@ export const useBridleStore = defineStore('bridle', () => {
     } catch (err) {
       console.warn('[bridle] history load failed', err);
     } finally {
-      historyLoading.delete(key);
+      // Not the next account's load of the same key.
+      if (generation === accountGeneration) historyLoading.delete(key);
     }
   }
 
@@ -1038,6 +1073,7 @@ export const useBridleStore = defineStore('bridle', () => {
 
     state.loadingOlder = true;
     const epoch = epochFor(key);
+    const generation = accountGeneration;
     try {
       const page = await getService().transcriptPage(
         conv.agentId,
@@ -1045,6 +1081,7 @@ export const useBridleStore = defineStore('bridle', () => {
         state.cursor,
         conv.share,
       );
+      if (generation !== accountGeneration) return 0;
       if (epochFor(key) !== epoch) return 0;
 
       const list = messagesFor(key);
@@ -1073,7 +1110,9 @@ export const useBridleStore = defineStore('bridle', () => {
     } finally {
       // Looked up again: a reset in the meantime replaced the record.
       const current = history.value[key];
-      if (current) current.loadingOlder = false;
+      if (current && generation === accountGeneration) {
+        current.loadingOlder = false;
+      }
     }
   }
 
@@ -1436,6 +1475,13 @@ export const useBridleStore = defineStore('bridle', () => {
       return;
     }
 
+    // A signed-in person does not reach this agent (any more). Not an error
+    // to show under a chat: there is no chat to show it under.
+    if (code === AGENT_GONE_CODE) {
+      dropUnreachable(conv);
+      return;
+    }
+
     const auth = useAuthStore();
     if (
       RENEWABLE_CODES.has(code) ||
@@ -1592,7 +1638,7 @@ export const useBridleStore = defineStore('bridle', () => {
     // replay can no longer bring. Only when one is owed: the last word on
     // screen is the person's, or a turn is visibly open.
     lastHubSeqs.set(key, welcome.seq);
-    saveHubSeqToStorage(key, welcome.seq);
+    saveHubSeqToStorage(seqStorageKey(key), welcome.seq);
     const list = messagesFor(key);
     const last = list[list.length - 1];
     const owed =
@@ -1998,7 +2044,108 @@ export const useBridleStore = defineStore('bridle', () => {
     // conversation just cleared must not be replayed into the new one.
     nextSeqs.delete(conv.key);
     disarmWatchdog(conv.key);
-    clearConversationFromStorage(conv.key);
+    clearConversationFromStorage(conversationStorageKey(conv.key));
+  }
+
+  // ── An agent this account does not reach (CLEAN-231) ───────
+
+  const isUnreachable = (agentId: string) => unreachable.value[agentId] === true;
+
+  /** The host has acted on the mark; a later visit starts clean. */
+  function clearUnreachable(agentId: string) {
+    delete unreachable.value[agentId];
+  }
+
+  /**
+   * The hub answered `AGENT_NOT_FOUND` for a console conversation: let go of
+   * everything this store holds of it. The socket is closed for good (the
+   * hub would refuse it again), the record is emptied together with the copy
+   * the browser keeps, since it is a conversation with an agent this account
+   * may not read any more, and the agent is marked for the page to act on.
+   * A share-link conversation never comes here: it has no account, and its
+   * dead link is `shareRevoked`'s story.
+   */
+  function dropUnreachable(conv: IBridleConversation) {
+    const key = conv.key;
+    const held = channels.get(key);
+    if (held) {
+      if (held.closeTimer) clearTimeout(held.closeTimer);
+      held.channel?.close();
+      channels.delete(key);
+    }
+    // Messages, pending, notice, draft, thinking, staged files, timers and
+    // the stored copy.
+    reset(conv);
+    clearConversationFromStorage(seqStorageKey(key));
+    delete hydrated.value[key];
+    delete history.value[key];
+    delete agentOnline.value[key];
+    delete attachmentErrors.value[key];
+    delete resetting.value[key];
+    connection.value[key] = BridleChannelStates.Offline;
+    lastHubSeqs.delete(key);
+    hubClientIds.delete(key);
+    authRetried.delete(key);
+    historyLoading.delete(key);
+    clearLimit(conv.agentId);
+    unreachable.value[conv.agentId] = true;
+  }
+
+  // ── Account change (CLEAN-231) ─────────────────────────────
+
+  /**
+   * Whoever was signed in is not any more: let go of everything this store
+   * holds for them. Live channels are closed, every timer is stopped and
+   * every map is emptied, so the next account starts from what the server
+   * says and nothing else. The ONE way this store is emptied for an account
+   * change (docs/state.md); the stored copies stay where they are, under
+   * their owner's id.
+   */
+  function resetForAccount() {
+    accountGeneration += 1;
+    for (const held of channels.values()) {
+      if (held.closeTimer) clearTimeout(held.closeTimer);
+      held.channel?.close();
+    }
+    channels.clear();
+    for (const timer of watchdogs.values()) clearTimeout(timer);
+    watchdogs.clear();
+    for (const timer of slowTimers.values()) clearTimeout(timer);
+    slowTimers.clear();
+    for (const timer of limitTimers.values()) clearTimeout(timer);
+    limitTimers.clear();
+    for (const timer of limitRechecks.values()) clearTimeout(timer);
+    limitRechecks.clear();
+    // Object URLs of files picked or on their way would otherwise leak.
+    for (const list of Object.values(staged.value)) list.forEach(revoke);
+    for (const list of heldStaged.values()) list.forEach(revoke);
+    heldStaged.clear();
+
+    conversations.value = {};
+    hydrated.value = {};
+    history.value = {};
+    thinking.value = {};
+    pending.value = {};
+    errors.value = {};
+    drafts.value = {};
+    staged.value = {};
+    attachmentErrors.value = {};
+    epochs.value = {};
+    agentOnline.value = {};
+    limits.value = {};
+    connection.value = {};
+    resetting.value = {};
+    shareRevoked.value = {};
+    unreachable.value = {};
+
+    nextSeqs.clear();
+    lastHubSeqs.clear();
+    hubClientIds.clear();
+    closedTurns.clear();
+    authRetried.clear();
+    historyLoading.clear();
+    awaitedBefore.clear();
+    resendCodes.clear();
   }
 
   // ── New chat (CLEAN-136) ───────────────────────────────────
@@ -2060,13 +2207,18 @@ export const useBridleStore = defineStore('bridle', () => {
     resetting.value[key] = true;
     errors.value[key] = null;
     const epoch = epochFor(key);
+    const generation = accountGeneration;
     try {
       await getService().archiveTranscript(conv.agentId, channel, conv.share);
+      // The account changed meanwhile: this conversation is not on screen
+      // any more and its record is gone (CLEAN-231).
+      if (generation !== accountGeneration) return;
       // The hub's `conversation_reset` frame usually lands before this
       // answer and has done the work; emptying twice could take a message
       // sent in between with it.
       if (epochFor(key) === epoch) applyReset(conv);
     } catch (err) {
+      if (generation !== accountGeneration) return;
       const response = (
         err as { response?: { status?: number; data?: unknown } } | null
       )?.response;
@@ -2081,7 +2233,7 @@ export const useBridleStore = defineStore('bridle', () => {
         key: newChatFailureKey(typeof code === 'string' ? code : undefined),
       };
     } finally {
-      delete resetting.value[key];
+      if (generation === accountGeneration) delete resetting.value[key];
     }
   }
 
@@ -2100,6 +2252,7 @@ export const useBridleStore = defineStore('bridle', () => {
     resend,
     discard,
     reset,
+    resetForAccount,
     // request limit (CLEAN-224)
     limits,
     limitFor,
@@ -2111,6 +2264,8 @@ export const useBridleStore = defineStore('bridle', () => {
     thinkingFor,
     hasOpenThinking,
     isShareRevoked,
+    isUnreachable,
+    clearUnreachable,
     // attachments
     stagedFor,
     attachmentErrorFor,

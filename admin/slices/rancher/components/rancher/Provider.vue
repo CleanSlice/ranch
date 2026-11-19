@@ -18,6 +18,7 @@ import {
   IconExternalLink,
   IconCloud,
 } from '@tabler/icons-vue';
+import { isOwnerRole } from '#agent/utils/agentAccess';
 
 const rancherStore = useRancherStore();
 const agentStore = useAgentStore();
@@ -27,6 +28,33 @@ const authStore = useAuthStore();
 const llmStore = useLlmStore();
 const config = useRuntimeConfig();
 const { t } = useI18n();
+
+// The Ranch admin agent is the Owner's alone (CLEAN-232): only the Owner may
+// create it (`isAdmin` on POST /agents is refused for anybody else) and only
+// the Owner manages it. An Admin talks to it here and is told who deploys it.
+const isOwner = computed(() => isOwnerRole(authStore.user?.role));
+
+// An account whose access lists do not include the Ranch admin agent has no
+// assistant (CLEAN-231): the layout leaves the entry out, and an address
+// typed by hand leads back to the agents. The page draws nothing until the
+// answer is in, so the agent is not named in the moment before. The answer
+// is the layout's own, asked once (`ensureAdminReach`); a request that
+// failed for another reason leaves it unknown and the page is shown, as it
+// was before this was asked.
+const reachAsked = ref(agentStore.adminReach !== 'unknown');
+const assistantHidden = computed(() => agentStore.adminReach === 'hidden');
+if (import.meta.client) {
+  void agentStore.ensureAdminReach().finally(() => {
+    reachAsked.value = true;
+  });
+  watch(
+    assistantHidden,
+    (hidden) => {
+      if (hidden) void navigateTo('/agents', { replace: true });
+    },
+    { immediate: true },
+  );
+}
 
 if (import.meta.client) {
   onMounted(() => agentStatusStore.connect());
@@ -40,7 +68,12 @@ const apiUrl =
 
 const { data: status, pending, refresh } = useAsyncData(
   'rancher-status',
-  () => rancherStore.fetchStatus(),
+  // Not for an account that has no assistant (CLEAN-231): this page is
+  // about to leave, and the status is about an agent that is not theirs.
+  async () =>
+    (await agentStore.ensureAdminReach()) === 'hidden'
+      ? null
+      : rancherStore.fetchStatus(),
   { lazy: true },
 );
 
@@ -56,6 +89,24 @@ const hasLlm = computed(() => !!status.value?.hasLlm);
 const hasS3 = computed(() => !!status.value?.hasS3);
 const hasTemplate = computed(() => !!status.value?.template);
 const admin = computed(() => status.value?.admin ?? null);
+
+// The hub refused this page's chat as "not found" (CLEAN-231): access to the
+// Ranch admin agent was taken away while the page was open, or after the
+// layout asked. The bridle store has emptied the conversation; the reach
+// becomes 'hidden', which is what the watcher above leaves the page on.
+if (import.meta.client) {
+  watch(
+    () => (admin.value ? bridleStore.unreachable[admin.value.id] === true : false),
+    (gone) => {
+      if (!gone || !admin.value) return;
+      const agentId = admin.value.id;
+      agentStore.adminReach = 'hidden';
+      agentStore.forget(agentId);
+      bridleStore.clearUnreachable(agentId);
+    },
+    { immediate: true },
+  );
+}
 
 const adminConnected = computed(() => {
   const a = admin.value;
@@ -160,7 +211,7 @@ async function onDeploy() {
 </script>
 
 <template>
-  <div class="flex h-full flex-col gap-6">
+  <div v-if="reachAsked && !assistantHidden" class="flex h-full flex-col gap-6">
     <div class="flex items-start justify-between gap-4">
       <div>
         <div class="flex items-center gap-2">
@@ -325,9 +376,17 @@ async function onDeploy() {
             <IconCircle v-else class="size-4 text-muted-foreground" />
           </div>
         </CardHeader>
-        <CardContent v-if="!stepDone.agent" class="flex flex-col gap-2">
+        <CardContent
+          v-if="!stepDone.agent && !isOwner"
+          class="text-sm text-muted-foreground"
+          data-deploy-owner-only
+        >
+          Only the Owner can deploy the Ranch admin agent.
+        </CardContent>
+        <CardContent v-else-if="!stepDone.agent" class="flex flex-col gap-2">
           <div>
             <Button
+              data-deploy-admin-agent
               :disabled="!stepDone.llm || !stepDone.s3 || !stepDone.template || deploying"
               @click="onDeploy"
             >
@@ -362,6 +421,7 @@ async function onDeploy() {
           :api-url="apiUrl"
           :agent-id="admin.id"
           :title="`Chat with ${admin.name}`"
+          :manageable="isOwner"
           class="h-full min-h-0 w-full max-w-none flex-1"
         />
       </div>

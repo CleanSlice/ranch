@@ -1,9 +1,10 @@
-import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
 import { LogTool } from './log.tool';
 import type { LogService } from './domain';
 import type { IAgentGateway } from '#/agent/agent/domain';
 import { UserRoleTypes } from '#/user/user/domain';
+import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 // The k8s client ships as ESM, which this jest cannot load; the tool never
 // touches it directly (LogService does), so an empty stand-in is enough.
@@ -24,8 +25,8 @@ const request = (roles: UserRoleTypes[]): Request =>
     user: { sub: 'agent:agent-ops', email: '', roles },
   }) as unknown as Request;
 
-const operator = () => request([UserRoleTypes.Owner]);
-const plainAgent = () => request([UserRoleTypes.Agent]);
+const operator = () => asTrustedAgent(request([UserRoleTypes.Owner]));
+const plainAgent = () => asTrustedAgent(request([UserRoleTypes.Agent]));
 
 const THREE_LINES =
   '2026-09-22T10:00:00Z booting\n' +
@@ -56,6 +57,7 @@ function harness(): Harness {
   const tool = new LogTool(
     agents as unknown as IAgentGateway,
     logs as unknown as LogService,
+    permissionOver(agents),
   );
   return { tool, agents, logs };
 }
@@ -76,11 +78,50 @@ describe('LogTool — who may use it', () => {
 
   it('refuses a call from a plain agent even by name', async () => {
     const { tool, logs, agents } = harness();
-    await expect(
-      tool.getAgentLogs({ agentId: 'agent-a' }, null, plainAgent()),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    // Answered like an agent that does not exist (CLEAN-232).
+    const result = await tool.getAgentLogs(
+      { agentId: 'agent-a' },
+      null,
+      plainAgent(),
+    );
+    // A plain agent has no `list_agents`, so the refusal does not name it.
+    expect(textOf(result)).toContain(
+      'Agent agent-a not found — there is no such agent for this caller',
+    );
+    expect(textOf(result)).not.toContain('list_agents');
     expect(agents.findById).not.toHaveBeenCalled();
     expect(logs.readPodLogs).not.toHaveBeenCalled();
+  });
+
+  it('an Admin does not read the Ranch admin agent’s logs; the Owner does', async () => {
+    const { tool, logs, agents } = harness();
+    agents.findById.mockResolvedValue({
+      id: 'agent-ranch',
+      name: 'Ranch',
+      status: 'running',
+      isAdmin: true,
+      createdById: null,
+    });
+    const through = (role: UserRoleTypes) =>
+      asPerson(request([UserRoleTypes.Owner]), role);
+
+    const refused = await tool.getAgentLogs(
+      { agentId: 'agent-ranch' },
+      null,
+      through(UserRoleTypes.Admin),
+    );
+    // An Admin has `list_agents`: the refusal reads like any unknown id.
+    expect(textOf(refused)).toContain(
+      'Agent agent-ranch not found — call list_agents to find the id',
+    );
+    expect(logs.readPodLogs).not.toHaveBeenCalled();
+
+    await tool.getAgentLogs(
+      { agentId: 'agent-ranch' },
+      null,
+      through(UserRoleTypes.Owner),
+    );
+    expect(logs.readPodLogs).toHaveBeenCalled();
   });
 });
 

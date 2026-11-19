@@ -155,3 +155,40 @@ describe('JwtAuthGuard — embed tokens (CLEAN-175)', () => {
     expect(req.user?.sub).toBe('user-1');
   });
 });
+
+describe('JwtAuthGuard — acting tokens (CLEAN-232)', () => {
+  // An acting token says "this tool call is made for that person". It rides
+  // in the call's _meta next to the agent's own bearer. Signed with the same
+  // secret as a console login, so here too the typ claim decides where it
+  // may be used: nowhere as a bearer. An agent that holds one must not be
+  // able to call the API as the person it is answering.
+  it('refuses a verified acting token as TOKEN_INVALID and leaves req.user unset', () => {
+    const guard = makeGuard(() => ({
+      sub: 'user-owner',
+      email: '',
+      roles: [] as IAuthTokenPayload['roles'],
+      sid: 'session-1',
+      typ: 'acting',
+      aud: 'agent:ranch',
+    }));
+    const { context, req } = makeContext({ authorization: 'Bearer acting' });
+
+    expect(codeOf(() => guard.canActivate(context))).toBe('TOKEN_INVALID');
+    expect(req.user).toBeUndefined();
+  });
+
+  it('refuses one that claims roles too: nothing in it widens where it may be used', () => {
+    const guard = makeGuard(() => ({
+      sub: 'user-owner',
+      email: '',
+      roles: ['Owner'] as IAuthTokenPayload['roles'],
+      sid: 'session-1',
+      typ: 'acting',
+      aud: 'agent:ranch',
+    }));
+    const { context, req } = makeContext({ authorization: 'Bearer acting' });
+
+    expect(codeOf(() => guard.canActivate(context))).toBe('TOKEN_INVALID');
+    expect(req.user).toBeUndefined();
+  });
+});

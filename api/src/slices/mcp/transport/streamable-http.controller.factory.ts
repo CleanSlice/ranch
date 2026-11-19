@@ -29,6 +29,7 @@ import { McpExecutorService } from '../services/mcp-executor.service';
 import { McpRegistryService } from '../services/mcp-registry.service';
 import { buildMcpCapabilities } from '../utils/capabilities-builder';
 import { normalizeEndpoint } from '../utils/normalize-endpoint';
+import { redactActorToken } from '../utils/redact-actor';
 
 /**
  * Creates a controller for handling Streamable HTTP connections and tool executions
@@ -120,7 +121,8 @@ export function createStreamableHttpController(
       @Body() body: unknown,
       @Param('teamId') _teamId: string,
     ) {
-      this.logger.debug('Received MCP request:', body);
+      // Never the body as received: it carries the acting token (CLEAN-232).
+      this.logger.debug('Received MCP request:', redactActorToken(body));
 
       // Get the appropriate HTTP adapter for the request/response
       const adapter = HttpAdapterFactory.getAdapter(req, res);
@@ -158,7 +160,7 @@ export function createStreamableHttpController(
     ): Promise<void> {
       this.logger.debug(
         `Handling stateless MCP request at ${req.url} with body: ${JSON.stringify(
-          body,
+          redactActorToken(body),
         )}`,
       );
 
@@ -199,7 +201,7 @@ export function createStreamableHttpController(
     ): Promise<void> {
       this.logger.debug(
         `Handling stateful MCP request at ${req.url} with body: ${JSON.stringify(
-          body,
+          redactActorToken(body),
         )}`,
       );
       // Check for existing session ID

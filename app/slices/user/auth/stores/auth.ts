@@ -213,6 +213,12 @@ export const useAuthStore = defineStore('auth', () => {
    * refresh already in flight is discarded, then the server revokes the
    * session behind the cookie. A failed revoke is not the person's problem —
    * the cookie is gone from this tab's state either way.
+   *
+   * Clearing `user` is also what empties the page (CLEAN-231): the
+   * account-scope plugin watches the id synchronously, so by the time this
+   * function reaches its first `await` every data store has been reset and
+   * every live channel closed. Callers navigate after calling this and find
+   * nothing of the account left to draw.
    */
   async function logout(): Promise<void> {
     refreshGeneration += 1;

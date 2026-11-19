@@ -1,8 +1,15 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
-import { CONFIRM_SENTENCE, confirmed } from '#/mcp/tooling';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
+import {
+  callerIsOperator,
+  callerManagesAgents,
+  CONFIRM_SENTENCE,
+  confirmed,
+  manageCaller,
+} from '#/mcp/tooling';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { PeerService } from './domain/peer.service';
 import { AgentCardService } from './domain/agentCard.service';
@@ -10,7 +17,6 @@ import { IDelegationGateway } from './domain/delegation.gateway';
 import { PeerErrorCodes } from './domain/peer.types';
 import {
   advertises,
-  callerIsOperator,
   err,
   ok,
   SHARED_HINTS,
@@ -46,7 +52,17 @@ const MAX_DELEGATION_LIMIT = 100;
  * carrying a prompt injection must not be able to talk an ordinary agent into
  * registering an attacker's address and then leaking the conversation to it
  * through a delegation.
+ *
+ * `manage-agent` (CLEAN-232): every tool here names the agent that does the
+ * asking, and runs only when the caller may manage that agent (`guard`
+ * below). A plain agent's token manages nothing, so the invariant above
+ * holds as before. The Ranch admin agent's own peers are the Owner's.
+ *
+ * A connection has two ends, and both are checked: `connect_agent_peer` and
+ * `preview_agent_card` with a `peerAgentId` need the caller to manage that
+ * agent as well, and `list_peer_candidates` offers only such agents.
  */
+@ToolAudience('manage-agent')
 @Injectable()
 export class PeerAdminTool implements IConditionallyListedTool {
   private readonly logger = new Logger(PeerAdminTool.name);
@@ -55,23 +71,11 @@ export class PeerAdminTool implements IConditionallyListedTool {
     private readonly peers: PeerService,
     private readonly cards: AgentCardService,
     private readonly delegations: IDelegationGateway,
+    private readonly permission: AgentPermissionService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(callerIsOperator(httpRequest));
-  }
-
-  /**
-   * The listing hook above already hides these, and tools/call refuses a name
-   * that stopped applying — this is the third lock, for the day one of those
-   * two is refactored.
-   */
-  private requireOperator(httpRequest: Request): void {
-    if (!callerIsOperator(httpRequest)) {
-      throw new ForbiddenException(
-        'Managing peers requires the Ranch operator role.',
-      );
-    }
+    return Promise.resolve(callerManagesAgents(httpRequest));
   }
 
   // ─── Reading ─────────────────────────────────────────────────────────
@@ -97,8 +101,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    this.requireOperator(httpRequest);
-    return this.guard(async () => {
+    return this.guard(httpRequest, agentId, async () => {
       const [peers, state] = await Promise.all([
         this.peers.list(agentId),
         this.peers.peersState(agentId),
@@ -135,8 +138,15 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    this.requireOperator(httpRequest);
-    return this.guard(async () => ok(await this.peers.candidates(agentId)));
+    return this.guard(httpRequest, agentId, async () => {
+      // Only agents the caller could connect (see `guardPeer`).
+      const caller = manageCaller(httpRequest);
+      const all = await this.peers.candidates(agentId, caller);
+      const allowed = await Promise.all(
+        all.map((c) => this.permission.manageable(caller, c.id)),
+      );
+      return ok(all.filter((_, i) => allowed[i] !== null));
+    });
   }
 
   @Tool({
@@ -185,17 +195,17 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    this.requireOperator(httpRequest);
     if (Boolean(peerAgentId) === Boolean(url)) {
       return err('Pass exactly one of peerAgentId (this Ranch) or url.');
     }
-    return this.guard(async () =>
-      ok(
+    return this.guard(httpRequest, agentId, async () => {
+      if (peerAgentId) await this.guardPeer(httpRequest, peerAgentId);
+      return ok(
         peerAgentId
           ? await this.cards.build(peerAgentId)
           : await this.peers.previewByUrl(agentId, url!, credential),
-      ),
-    );
+      );
+    });
   }
 
   @Tool({
@@ -224,8 +234,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    this.requireOperator(httpRequest);
-    return this.guard(async () =>
+    return this.guard(httpRequest, agentId, async () =>
       ok(
         await this.delegations.listRecent(
           agentId,
@@ -258,10 +267,14 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    this.requireOperator(httpRequest);
-    return this.guard(async () => {
+    return this.guard(httpRequest, agentId, async () => {
+      await this.guardPeer(httpRequest, peerAgentId);
       const hadPeers = (await this.peers.list(agentId)).length > 0;
-      const peer = await this.peers.connect(agentId, peerAgentId);
+      const peer = await this.peers.connect(
+        agentId,
+        peerAgentId,
+        manageCaller(httpRequest),
+      );
       this.logger.log(
         `Peer connected through MCP: agent=${agentId} peer=${peerAgentId}`,
       );
@@ -308,8 +321,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    this.requireOperator(httpRequest);
-    return this.guard(async () => {
+    return this.guard(httpRequest, agentId, async () => {
       const hadPeers = (await this.peers.list(agentId)).length > 0;
       const peer = await this.peers.connectByUrl(agentId, url, credential);
       this.logger.log(
@@ -360,8 +372,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    this.requireOperator(httpRequest);
-    return this.guard(async () => {
+    return this.guard(httpRequest, agentId, async () => {
       const hadPeers = (await this.peers.list(agentId)).length > 0;
       const peer = await this.peers.connectByCard(agentId, card, credential);
       this.logger.log(
@@ -397,8 +408,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    this.requireOperator(httpRequest);
-    return this.guard(async () => {
+    return this.guard(httpRequest, agentId, async () => {
       const peer = await this.peers.refresh(agentId, peerId);
       return ok(
         `Card re-read for «${peer.peerName}» (${peer.cardReadAt}). ${advertises(peer)} ` +
@@ -434,14 +444,13 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    this.requireOperator(httpRequest);
     const { agentId, peerId } = args;
     const refusal = confirmed(
       args,
       `disconnect peer ${peerId} from agent ${agentId}`,
     );
     if (refusal) return refusal;
-    return this.guard(async () => {
+    return this.guard(httpRequest, agentId, async () => {
       await this.peers.remove(agentId, peerId);
       this.logger.log(
         `Peer removed through MCP: agent=${agentId} connection=${peerId}`,
@@ -454,21 +463,75 @@ export class PeerAdminTool implements IConditionallyListedTool {
     });
   }
 
-  private guard(run: () => Promise<ToolResult>): Promise<ToolResult> {
-    return withRefusalAdvice(run, OPERATOR_HINTS);
+  /**
+   * Every tool here acts for one agent, the one doing the asking. The call
+   * goes ahead only when the caller may manage that agent (CLEAN-232); for
+   * one they may not, it fails exactly as it does for an agent that does not
+   * exist, through the same refusal advice, so the two cannot be told apart.
+   */
+  private guard(
+    httpRequest: Request,
+    agentId: string,
+    run: () => Promise<ToolResult>,
+  ): Promise<ToolResult> {
+    return withRefusalAdvice(async () => {
+      const agent = await this.permission.manageable(
+        manageCaller(httpRequest),
+        agentId,
+      );
+      if (!agent) {
+        throw new NotFoundException({
+          code: PeerErrorCodes.NotFound,
+          message: 'Agent not found',
+        });
+      }
+      return run();
+    }, hintsFor(httpRequest));
+  }
+
+  /**
+   * The other end of a connection: the agent that would be asked. The caller
+   * must be able to manage it too, or an Admin could give an agent of theirs
+   * a line to the Ranch admin agent, which acts with Owner power. Called
+   * inside `guard`, so it fails through the same refusal advice and reads
+   * exactly like an agent that does not exist.
+   */
+  private async guardPeer(
+    httpRequest: Request,
+    peerAgentId: string,
+  ): Promise<void> {
+    const peer = await this.permission.manageable(
+      manageCaller(httpRequest),
+      peerAgentId,
+    );
+    if (!peer) {
+      throw new NotFoundException({
+        code: PeerErrorCodes.NotFound,
+        message: 'Agent not found',
+      });
+    }
   }
 }
 
-/** What to try next, in the vocabulary of the operator tool set. */
-const OPERATOR_HINTS: RefusalHints = {
-  ...SHARED_HINTS,
-  [PeerErrorCodes.SelfUrl]:
-    'Call list_peer_candidates and connect it with connect_agent_peer instead.',
-  [PeerErrorCodes.Exists]:
-    'It is already connected — list_agent_peers shows it.',
-  [PeerErrorCodes.NotFound]:
-    'Check the ids with list_agents and list_agent_peers.',
-};
+/**
+ * What to try next, in the vocabulary of this tool set. Per caller: the
+ * not-found advice names `list_agents` only for a caller who has it
+ * (CLEAN-232). A User managing their own agents reaches these tools without
+ * it, and is told only that nothing they manage answers to that id.
+ */
+function hintsFor(httpRequest: Request): RefusalHints {
+  return {
+    ...SHARED_HINTS,
+    [PeerErrorCodes.SelfUrl]:
+      'Call list_peer_candidates and connect it with connect_agent_peer instead.',
+    [PeerErrorCodes.Exists]:
+      'It is already connected — list_agent_peers shows it.',
+    [PeerErrorCodes.NotFound]: callerIsOperator(httpRequest)
+      ? 'Check the ids with list_agents and list_agent_peers.'
+      : 'There is no such agent or connection among the ones this person ' +
+        'manages.',
+  };
+}
 
 /**
  * What a restart is actually for, which depends on whether this was the

@@ -1,14 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
-import { Tool, ToolTopics } from '#mcp';
+import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
+  callerPerson,
   CONFIRM_SENTENCE,
   confirmed,
   err,
   ok,
   requireOperator,
+  requireOwner,
   stripSecrets,
   type ToolResult,
 } from '#/mcp/tooling';
@@ -17,11 +19,14 @@ import type { IAuthTokenPayload } from '#/user/auth/domain';
 import {
   ASSIGNABLE_USER_ROLES,
   IUserGateway,
+  refuseUserEdit,
   UserRoleTypes,
   type IUpdateUserData,
   type IUserData,
   type UserStatusTypes,
 } from './domain';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 
@@ -59,15 +64,20 @@ const USER_SECRET_KEYS = ['password', 'passwordHash'] as const;
  * `password` / `passwordHash` even though the gateway's mapper already omits
  * them — the mapper is one refactor away from not doing so.
  *
- * Operator agents only. Role changes and removals are Owner-only in the
- * controller; operator gating already means the Owner role, so the same
- * caller reaches both.
+ * Audience `admin`, as the controller's `@Roles(Admin)`. Changing a role and
+ * removing an account are `owner`, as the controller's `@Roles(Owner)` on
+ * those two routes (CLEAN-232).
  */
+@ToolAudience('admin')
 @Injectable()
 export class UserTool implements IConditionallyListedTool {
   private readonly logger = new Logger(UserTool.name);
 
-  constructor(private readonly users: IUserGateway) {}
+  constructor(
+    private readonly users: IUserGateway,
+    private readonly access: AgentAccessService,
+    private readonly pins: IAgentPinGateway,
+  ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     return Promise.resolve(callerIsOperator(httpRequest));
@@ -165,7 +175,10 @@ export class UserTool implements IConditionallyListedTool {
       "Change a user's name, email, password or status (active, invited, " +
       'disabled). Pass only the fields to change. The role is not changed ' +
       'here — use set_user_role. The Owner account cannot be disabled or ' +
-      'otherwise re-statused. Returns the updated account, never a password.',
+      'otherwise re-statused. An Admin can change accounts with the User ' +
+      'role and their own name, email and password; the Owner account and ' +
+      "another Admin's are for the Owner to change. Returns the updated " +
+      'account, never a password.',
     parameters: z.object({
       userId: z.string().describe('User id (list_users has them)'),
       name: nameSchema.optional(),
@@ -194,6 +207,26 @@ export class UserTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const target = await this.users.findById(userId);
     if (!target) return notFound(userId);
+    // Who may change whom, the same function as UserController.update
+    // (CLEAN-232): an Admin edits Users and their own name, email and
+    // password, never the Owner or another Admin. The editor is the person
+    // the call is made for; the agent acting for itself is trusted.
+    const person = callerPerson(httpRequest);
+    const refusal = refuseUserEdit(
+      person ? { kind: 'person', ...person } : { kind: 'trusted' },
+      target,
+      (
+        [
+          ['name', name],
+          ['email', email],
+          ['password', password],
+          ['status', status],
+        ] as const
+      )
+        .filter(([, value]) => value !== undefined)
+        .map(([field]) => field),
+    );
+    if (refusal) return err(refusal);
     // Same rule as UserController.update: the Owner's status is not for
     // changing, since a disabled Owner locks the Ranch.
     if (status !== undefined && target.role === UserRoleTypes.Owner) {
@@ -220,6 +253,7 @@ export class UserTool implements IConditionallyListedTool {
     return ok({ ok: true, user: publicUser(user) });
   }
 
+  @ToolAudience('owner')
   @Tool({
     name: 'set_user_role',
     topic: ToolTopics.UsersKeys,
@@ -245,12 +279,12 @@ export class UserTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
+    requireOwner(httpRequest);
     const { userId, role } = args;
     const target = await this.users.findById(userId);
     if (!target) return notFound(userId);
-    // Same rule as UserController.updateRole (Owner-only there; the operator
-    // gate above is the same lock).
+    // Same rule as UserController.updateRole, which is Owner-only like this
+    // tool.
     if (target.role === UserRoleTypes.Owner) {
       return err(
         `The Owner role cannot be changed — «${target.email}» stays Owner.`,
@@ -280,6 +314,7 @@ export class UserTool implements IConditionallyListedTool {
     return ok({ ok: true, user: publicUser(user) });
   }
 
+  @ToolAudience('owner')
   @Tool({
     name: 'delete_user',
     topic: ToolTopics.UsersKeys,
@@ -303,7 +338,7 @@ export class UserTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
-    requireOperator(httpRequest);
+    requireOwner(httpRequest);
     const { userId } = args;
     const target = await this.users.findById(userId);
     if (!target) return notFound(userId);
@@ -320,6 +355,10 @@ export class UserTool implements IConditionallyListedTool {
     );
     if (refusal) return refusal;
     await this.users.delete(userId);
+    // As UserController.remove: the access lists and pins go with the
+    // account (CLEAN-231).
+    await this.access.removeUser(userId);
+    await this.pins.removeUser(userId);
     this.logger.log(`User removed through MCP: id=${userId}`);
     return ok({
       ok: true,

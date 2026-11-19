@@ -1,7 +1,12 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ShareLinkService } from '#/agent/shareLink/domain';
+import type { ConsoleReachService } from '../domain';
 import { BridleChatAuthGuard } from './bridleChatAuth.guard';
 import type { IChatAuthRequest } from './bridleChatAuth.guard';
 
@@ -20,6 +25,7 @@ interface IStubs {
     agentId: string,
     visitorId: string,
   ) => Promise<string>;
+  admits?: (session: unknown, agentId: string) => Promise<boolean>;
 }
 
 function makeGuard(stubs: IStubs = {}) {
@@ -40,7 +46,16 @@ function makeGuard(stubs: IStubs = {}) {
     },
   } as unknown as ShareLinkService;
 
-  return { guard: new BridleChatAuthGuard(jwt, shareLinks), calls };
+  // The access lists are not what these tests are about: every console
+  // person is admitted unless a test says otherwise.
+  const admits = jest.fn(stubs.admits ?? (() => Promise.resolve(true)));
+  const reach = { admits } as unknown as ConsoleReachService;
+
+  return {
+    guard: new BridleChatAuthGuard(jwt, shareLinks, reach),
+    calls,
+    admits,
+  };
 }
 
 function makeContext(
@@ -166,6 +181,25 @@ describe('BridleChatAuthGuard — JWT callers', () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(req.chatAuth).toEqual({ clientId: 'share-v1', kind: 'share' });
   });
+
+  it('answers 404 for an agent the access lists hide, and sets no identity', async () => {
+    // The same answer as for an agent that does not exist (CLEAN-231), asked
+    // about the agent id in the path.
+    const { guard, admits } = makeGuard({
+      admits: () => Promise.resolve(false),
+    });
+    const { context, req } = makeContext(
+      { authorization: 'Bearer jwt-token' },
+      { agentId: 'agent-hidden' },
+    );
+
+    const err = await guard.canActivate(context).catch((e) => e);
+    expect(err).toBeInstanceOf(NotFoundException);
+    expect(err.message).toBe('Agent not found');
+    expect(admits.mock.calls[0][1]).toBe('agent-hidden');
+    expect(req.chatAuth).toBeUndefined();
+    expect(req.user).toBeUndefined();
+  });
 });
 
 describe('BridleChatAuthGuard — share visitors', () => {
@@ -280,5 +314,55 @@ describe('BridleChatAuthGuard — no credentials', () => {
 
     await expect(guard.canActivate(req.context)).resolves.toBe(true);
     expect(calls).toEqual([['sl_token', 'agent-1', 'v1']]);
+  });
+});
+
+describe('BridleChatAuthGuard — acting tokens (CLEAN-232)', () => {
+  // The chat surface accepts embed tokens, so it has to say no to this one
+  // itself: an acting token names a person for a tool call and is no chat
+  // credential, whoever presents it.
+  const acting = () => ({
+    sub: 'user-owner',
+    email: '',
+    roles: [],
+    sid: 'session-1',
+    typ: 'acting',
+    aud: 'agent:ranch',
+  });
+
+  it('rejects one with 401 TOKEN_INVALID and sets no identity', async () => {
+    const { guard } = makeGuard({ verify: acting });
+    const { context, req } = makeContext({ authorization: 'Bearer acting' });
+
+    await expect(guard.canActivate(context)).rejects.toMatchObject({
+      response: { code: 'TOKEN_INVALID' },
+    });
+    expect(req.chatAuth).toBeUndefined();
+    expect(req.user).toBeUndefined();
+  });
+
+  it('rejects one that claims an admin role as well', async () => {
+    const { guard } = makeGuard({
+      verify: () => ({ ...acting(), roles: ['Owner'] }),
+    });
+    const { context, req } = makeContext({ authorization: 'Bearer acting' });
+
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(req.chatAuth).toBeUndefined();
+  });
+
+  it('lets a valid share pair decide when one rides along, as for any unusable token', async () => {
+    const { guard } = makeGuard({ verify: acting });
+    const { context, req } = makeContext({
+      authorization: 'Bearer acting',
+      'x-share-token': 'sl_live',
+      'x-share-visitor': 'v-1',
+    });
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(req.chatAuth).toEqual({ clientId: 'share-v-1', kind: 'share' });
+    expect(req.user).toBeUndefined();
   });
 });

@@ -15,8 +15,11 @@ const getService = createServiceGetter<AssistantAccessService>(
   '$assistantAccessService',
 );
 
-/** What a change shows before the API has answered. Counts wait for it. */
-function optimistic<T extends { enabled: boolean; level: string }>(
+/**
+ * What a change shows before the API has answered. A custom pick is its own
+ * count; a level's count waits for the answer.
+ */
+function optimistic<T extends { enabled: boolean; level: string; offered: number }>(
   current: T,
   input: ISetAssistantInput,
 ): T {
@@ -24,6 +27,9 @@ function optimistic<T extends { enabled: boolean; level: string }>(
     ...current,
     ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
     ...(input.level !== undefined ? { level: input.level } : {}),
+    ...(input.level === 'custom' && input.on
+      ? { offered: input.on.length }
+      : {}),
   };
 }
 

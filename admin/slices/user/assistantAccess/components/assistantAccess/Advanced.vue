@@ -56,19 +56,30 @@ const props = defineProps<{
   ceiling?: readonly string[] | null;
   saving?: boolean;
   error?: string | null;
+  /**
+   * What saving this would cost people, when the parent has worked it out.
+   * Shown above Save, which then reads "Save anyway": the question is asked
+   * here, inside the panel, because a dialog opened from a sheet lands
+   * underneath it.
+   */
+  warning?: string | null;
 }>();
 
 const emit = defineEmits<{
   'update:open': [open: boolean];
-  save: [choice: { level: AssistantLevelOrCustom; on: string[] }];
+  save: [
+    choice: { level: AssistantLevelOrCustom; on: string[]; confirmed: boolean },
+  ];
+  /** The form changed: what was warned about no longer describes it. */
+  edited: [];
 }>();
-
-const confirmStore = useConfirmStore();
 
 const picked = ref<Set<string>>(new Set());
 const search = ref('');
 const onlyWrites = ref(false);
 const openAreas = ref<Set<string>>(new Set());
+// A level clicked while the pick is custom, waiting for "Replace".
+const replaceWith = ref<AssistantLevel | null>(null);
 
 // A fresh form every time the panel opens: Cancel leaves nothing behind.
 watch(
@@ -82,9 +93,12 @@ watch(
     search.value = '';
     onlyWrites.value = false;
     openAreas.value = new Set();
+    replaceWith.value = null;
   },
   { immediate: true },
 );
+
+watch(picked, () => emit('edited'));
 
 const freshNames = computed(() => new Set(props.fresh ?? []));
 const handOut = computed(() => (props.ceiling ? new Set(props.ceiling) : null));
@@ -154,17 +168,17 @@ function toggleOpen(key: string) {
   openAreas.value = next;
 }
 
-/** A level as a starting point. Replacing a custom pick asks first. */
-async function startFrom(level: AssistantLevel) {
+/** A level as a starting point. Replacing a custom pick asks first, in place. */
+function startFrom(level: AssistantLevel) {
   if (current.value === null && picked.value.size > 0) {
-    const yes = await confirmStore.ask({
-      title: `Start from ${LEVEL_LABELS[level]}`,
-      description: 'This replaces your custom choice.',
-      confirmLabel: 'Replace',
-      variant: 'default',
-    });
-    if (!yes) return;
+    replaceWith.value = level;
+    return;
   }
+  applyStart(level);
+}
+
+function applyStart(level: AssistantLevel) {
+  replaceWith.value = null;
   picked.value = within(applyLevel(props.catalog, props.role, level));
 }
 
@@ -179,8 +193,12 @@ function save() {
   emit(
     'save',
     level
-      ? { level, on: [] }
-      : { level: 'custom', on: [...picked.value].sort() },
+      ? { level, on: [], confirmed: Boolean(props.warning) }
+      : {
+          level: 'custom',
+          on: [...picked.value].sort(),
+          confirmed: Boolean(props.warning),
+        },
   );
 }
 </script>
@@ -219,6 +237,19 @@ function save() {
           </span>
         </div>
 
+        <p
+          v-if="replaceWith"
+          class="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs"
+          role="alert"
+          data-advanced-replace
+        >
+          <span class="flex-1">
+            Starting from {{ LEVEL_LABELS[replaceWith] }} replaces your custom choice.
+          </span>
+          <Button size="sm" variant="outline" @click="applyStart(replaceWith)">Replace</Button>
+          <Button size="sm" variant="ghost" @click="replaceWith = null">Keep mine</Button>
+        </p>
+
         <Input v-model="search" placeholder="Search abilities" data-advanced-search />
 
         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -232,7 +263,7 @@ function save() {
             data-advanced-no-deletes
             @click="removeDestructive"
           >
-            Untick everything that deletes
+            Untick everything destructive
           </Button>
         </div>
       </div>
@@ -312,7 +343,7 @@ function save() {
                 <span v-if="freshNames.has(ability.name)" class="rounded-full bg-primary/10 px-1.5 text-primary">new</span>
                 <span v-if="lockedReason(ability)" class="rounded-full border px-1.5">{{ lockedReason(ability) }}</span>
                 <template v-else>
-                  <span v-if="ability.destructive" class="rounded-full border border-rose-500/40 px-1.5 text-rose-700 dark:text-rose-300">deletes</span>
+                  <span v-if="ability.destructive" class="rounded-full border border-rose-500/40 px-1.5 text-rose-700 dark:text-rose-300">destructive</span>
                   <span v-else-if="ability.effect === 'write'" class="rounded-full border px-1.5">changes</span>
                 </template>
               </span>
@@ -334,12 +365,20 @@ function save() {
         <p v-if="error" class="text-sm text-destructive" role="alert" data-advanced-error>
           {{ error }}
         </p>
+        <p
+          v-else-if="warning"
+          class="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+          role="alert"
+          data-advanced-warning
+        >
+          {{ warning }}
+        </p>
         <div class="flex justify-end gap-2">
           <Button variant="ghost" :disabled="saving" @click="emit('update:open', false)">
             Cancel
           </Button>
           <Button :disabled="!dirty || saving" data-advanced-save @click="save">
-            {{ saving ? 'Saving…' : 'Save' }}
+            {{ saving ? 'Saving…' : warning ? 'Save anyway' : 'Save' }}
           </Button>
         </div>
       </SheetFooter>

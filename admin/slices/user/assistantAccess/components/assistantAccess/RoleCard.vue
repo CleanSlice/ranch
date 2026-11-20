@@ -42,6 +42,8 @@ const saving = ref<AssistantRole | null>(null);
 const rowError = ref<Partial<Record<AssistantRole, string>>>({});
 const advancedFor = ref<AssistantRole | null>(null);
 const advancedError = ref<string | null>(null);
+// What the choice in the Advanced panel would cost, asked inside the panel.
+const advancedWarning = ref<string | null>(null);
 
 const messageOf = (err: unknown, fallback: string): string =>
   err instanceof AssistantAccessRefusal || err instanceof Error
@@ -93,25 +95,33 @@ function lossOf(
 const plural = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
 
+/** "2 accounts lose 42 abilities." — who pays for a narrower choice. */
+function lossText(setting: IAssistantRoleData, lost: number): string {
+  return (
+    `${plural(setting.accounts, 'account loses', 'accounts lose')} ` +
+    `${plural(lost, 'ability', 'abilities')}. People with their own ` +
+    'setting keep it. It applies from their next message.'
+  );
+}
+
 async function change(
   role: AssistantRole,
   input: ISetAssistantInput,
   undo?: ISetAssistantInput,
+  /** The question was already asked where the change was made. */
+  asked = false,
 ): Promise<boolean> {
   const setting = store.roles?.[role];
   if (!setting || saving.value) return false;
 
   const lost = lossOf(role, setting, input);
-  if (lost > 0) {
+  if (lost > 0 && !asked) {
     const yes = await confirmStore.ask({
       title:
         input.enabled === false
           ? `Switch the assistant off for ${ROLE_LABELS[role]}`
           : `Give ${ROLE_LABELS[role]} less`,
-      description:
-        `${plural(setting.accounts, 'account loses', 'accounts lose')} ` +
-        `${plural(lost, 'ability', 'abilities')}. People with their own ` +
-        'setting keep it. It applies from their next message.',
+      description: lossText(setting, lost),
       confirmLabel: 'Change',
       variant: 'default',
     });
@@ -160,16 +170,36 @@ function onLevel(role: AssistantRole, setting: IAssistantRoleData, level: Assist
   );
 }
 
-async function onAdvancedSave(choice: { level: AssistantLevelOrCustom; on: string[] }) {
+async function onAdvancedSave(choice: {
+  level: AssistantLevelOrCustom;
+  on: string[];
+  confirmed: boolean;
+}) {
   const role = advancedFor.value;
-  if (!role) return;
+  const setting = role ? store.roles?.[role] : null;
+  if (!role || !setting) return;
   advancedError.value = null;
-  const saved = await change(
-    role,
-    choice.level === 'custom' ? choice : { level: choice.level },
-  );
-  if (saved) advancedFor.value = null;
+  const input: ISetAssistantInput =
+    choice.level === 'custom'
+      ? { level: 'custom', on: choice.on }
+      : { level: choice.level };
+
+  // A narrower choice is asked about in the panel itself: the first Save
+  // says what it costs, the second one ("Save anyway") makes it.
+  const lost = lossOf(role, setting, input);
+  if (lost > 0 && !choice.confirmed) {
+    advancedWarning.value = lossText(setting, lost);
+    return;
+  }
+  const saved = await change(role, input, undefined, true);
+  if (saved) closeAdvanced();
   else advancedError.value = rowError.value[role] ?? null;
+}
+
+function closeAdvanced() {
+  advancedFor.value = null;
+  advancedWarning.value = null;
+  advancedError.value = null;
 }
 
 const resetting = ref<string | null>(null);
@@ -341,7 +371,9 @@ const advancedSetting = computed(() =>
       :fresh="advancedSetting.pick?.new ?? []"
       :saving="saving !== null"
       :error="advancedError"
-      @update:open="(value: boolean) => { if (!value) advancedFor = null; }"
+      :warning="advancedWarning"
+      @update:open="(value: boolean) => { if (!value) closeAdvanced(); }"
+      @edited="advancedWarning = null"
       @save="onAdvancedSave"
     />
   </Card>

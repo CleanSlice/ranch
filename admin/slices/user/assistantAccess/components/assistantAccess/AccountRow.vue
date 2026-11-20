@@ -94,10 +94,16 @@ async function reset() {
   }
 }
 
-async function onAdvancedSave(choice: { level: AssistantLevelOrCustom; on: string[] }) {
+async function onAdvancedSave(choice: {
+  level: AssistantLevelOrCustom;
+  on: string[];
+  confirmed: boolean;
+}) {
   advancedError.value = null;
   const saved = await change(
-    choice.level === 'custom' ? choice : { level: choice.level },
+    choice.level === 'custom'
+      ? { level: 'custom', on: choice.on }
+      : { level: choice.level },
   );
   if (saved) advancedOpen.value = false;
   else advancedError.value = saveError.value;

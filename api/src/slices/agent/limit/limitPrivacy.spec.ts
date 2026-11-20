@@ -3,6 +3,7 @@ import * as path from 'path';
 import { Agent } from '@prisma/client';
 import { AgentMapper } from '#/agent/agent/data/agent.mapper';
 import { PUBLIC_METADATA_KEY } from '#/user/auth/guards/public.decorator';
+import { ShareLimitsDto } from '#/agent/shareLink/dtos';
 import { AgentLimitController } from './agentLimit.controller';
 
 /**
@@ -12,6 +13,11 @@ import { AgentLimitController } from './agentLimit.controller';
  * sends to anyone who subscribes, signed in or not (CLEAN-225). So limits
  * live in their own table and travel on their own routes, and this file is
  * what notices if someone later "just adds the field to the agent".
+ *
+ * One exception, on purpose (CLEAN-237): `POST /share/resolve` tells a share
+ * visitor the configured values, so the page can say what the limits are.
+ * Values only. How much is used, whether the agent is at its limit and how
+ * long the wait is stay where they were.
  */
 const LIMIT_WORDS = [
   'perMinute',
@@ -68,6 +74,29 @@ describe('request limits stay off every anonymous surface', () => {
       )[name];
       if (typeof handler !== 'function') continue;
       expect(Reflect.getMetadata(PUBLIC_METADATA_KEY, handler)).toBeUndefined();
+    }
+  });
+
+  it('lets a share visitor read the configured values and nothing else', () => {
+    // The three values are the whole DTO: a usage figure added to it later
+    // fails here by name.
+    const fields = (
+      Reflect.getMetadata(
+        'swagger/apiModelPropertiesArray',
+        ShareLimitsDto.prototype,
+      ) as string[]
+    ).map((field) => field.replace(/^:/, ''));
+    expect(fields.sort()).toEqual(['perDay', 'perHour', 'perMinute']);
+
+    const text = source('shareLink/dtos/shareResolve.dto.ts');
+    for (const word of [
+      'atLimit',
+      'needsLimits',
+      'retryAfter',
+      'AgentLoad',
+      'inFlight',
+    ]) {
+      expect(text).not.toContain(word);
     }
   });
 });

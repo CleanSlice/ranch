@@ -15,7 +15,16 @@ import {
   SHARE_VISITOR_RE,
   ShareLinkErrorCodes,
 } from './shareLink.types';
-import { IAgentGateway } from '#/agent/agent/domain';
+import { IAgentData, IAgentGateway } from '#/agent/agent/domain';
+import { ITemplateGateway } from '#/agent/template/domain';
+import { ISkillGateway } from '#/skill/domain';
+import { AgentLimitService } from '#/agent/limit/domain';
+import {
+  attachmentsForVisitor,
+  describeForVisitor,
+  limitsForVisitor,
+  skillsForVisitor,
+} from './shareAgentInfo';
 
 /**
  * The share-link grant for one agent (CLEAN-66).
@@ -35,6 +44,9 @@ export class ShareLinkService {
   constructor(
     private gateway: IShareLinkGateway,
     private agents: IAgentGateway,
+    private templates: ITemplateGateway,
+    private skills: ISkillGateway,
+    private limits: AgentLimitService,
   ) {}
 
   async getState(agentId: string): Promise<IShareLinkState> {
@@ -74,11 +86,50 @@ export class ShareLinkService {
     const agent = await this.agents.findById(link.agentId);
     if (!agent) throw this.notFound();
 
+    const { templateDescription, skills } = await this.readTemplate(agent);
+
+    // Every key is named: this is the one place an anonymous caller reads
+    // about an agent, so nothing reaches it by being on a record.
     return {
       agentId: agent.id,
       agentName: agent.name,
       agentStatus: agent.status,
+      description: describeForVisitor(agent.config, templateDescription),
+      skills: skillsForVisitor(skills),
+      limits: limitsForVisitor(this.limits.getLimits(agent.id)),
+      attachments: attachmentsForVisitor(),
     };
+  }
+
+  /**
+   * The template's description and skills, or nothing. The link and the agent
+   * are what make a share page work; this is what decorates it, so a template
+   * that is gone or a lookup that fails costs the visitor a few lines of the
+   * info panel and never the chat.
+   */
+  private async readTemplate(agent: IAgentData): Promise<{
+    templateDescription: string | null;
+    skills: { title: string; description: string | null }[];
+  }> {
+    let templateDescription: string | null = null;
+    try {
+      const template = await this.templates.findById(agent.templateId);
+      if (!template) return { templateDescription, skills: [] };
+      templateDescription = template.description ?? null;
+      const skillIds = template.skillIds ?? [];
+      const found = skillIds.length
+        ? await this.skills.findByIds(skillIds)
+        : [];
+      // The lookup answers in no particular order; the template's own order
+      // is the one the owner arranged, and it keeps the list from
+      // reshuffling between two polls of an open page.
+      const skills = [...found].sort(
+        (a, b) => skillIds.indexOf(a.id) - skillIds.indexOf(b.id),
+      );
+      return { templateDescription, skills };
+    } catch {
+      return { templateDescription, skills: [] };
+    }
   }
 
   /**

@@ -157,7 +157,18 @@ function makeService() {
           agentId,
           agentName: agent.name,
           agentStatus: agent.status,
-          // Deliberate extra key: the controller must not pass it through.
+          description: 'Answers questions about orders.',
+          // Deliberate extra keys, top level and nested: the controller must
+          // not pass any of them through.
+          skills: [{ title: 'Orders', description: null, body: 'do-not-leak' }],
+          limits: { perMinute: null, perHour: 20, perDay: 100, used: 7 },
+          attachments: {
+            maxPerMessage: 5,
+            maxFileBytes: 10,
+            maxMessageBytes: 25,
+            kinds: ['image'],
+            bucket: 'do-not-leak',
+          },
           secret: 'do-not-leak',
         } as unknown as IShareResolved);
       }
@@ -351,23 +362,30 @@ describe('ShareLinkController rotation and revocation', () => {
 });
 
 describe('ShareController.resolve (visitor side)', () => {
-  it('returns exactly agentId, agentName and agentStatus', async () => {
+  it('returns exactly the allowlisted fields, at every level', async () => {
     const { owner, visitor, resolveForVisitor } = makeControllers();
     const created = await owner.create(AGENT, req());
     const token = created.token as string;
 
     const res = await visitor.resolve({ token });
 
+    // toEqual is exact about keys: `used`, `body`, `bucket` and `secret`
+    // from the stub would each fail it.
     expect(res).toEqual({
       agentId: AGENT,
       agentName: AGENT_NAME,
       agentStatus: AGENT_STATUS,
+      description: 'Answers questions about orders.',
+      skills: [{ title: 'Orders', description: null }],
+      limits: { perMinute: null, perHour: 20, perDay: 100 },
+      attachments: {
+        maxPerMessage: 5,
+        maxFileBytes: 10,
+        maxMessageBytes: 25,
+        kinds: ['image'],
+      },
     });
-    expect(Object.keys(res).sort()).toEqual([
-      'agentId',
-      'agentName',
-      'agentStatus',
-    ]);
+    expect(JSON.stringify(res)).not.toContain('do-not-leak');
     expect(resolveForVisitor).toHaveBeenCalledWith(token);
   });
 

@@ -2352,6 +2352,84 @@ export const ShareResolveRequestDtoSchema = {
   required: ["token"],
 } as const;
 
+export const ShareSkillDtoSchema = {
+  type: "object",
+  properties: {
+    title: {
+      type: "string",
+      example: "Order tracking",
+    },
+    description: {
+      type: "string",
+      nullable: true,
+      example: "Finds an order by its number and reports where it is.",
+    },
+  },
+  required: ["title", "description"],
+} as const;
+
+export const ShareLimitsDtoSchema = {
+  type: "object",
+  properties: {
+    perMinute: {
+      type: "number",
+      nullable: true,
+      description: "Requests accepted in any 60 seconds; null = not limited.",
+      example: null,
+    },
+    perHour: {
+      type: "number",
+      nullable: true,
+      description: "Requests accepted in any 60 minutes; null = not limited.",
+      example: 20,
+    },
+    perDay: {
+      type: "number",
+      nullable: true,
+      description: "Requests accepted in any 24 hours; null = not limited.",
+      example: 100,
+    },
+  },
+  required: ["perMinute", "perHour", "perDay"],
+} as const;
+
+export const ShareAttachmentsDtoSchema = {
+  type: "object",
+  properties: {
+    maxPerMessage: {
+      type: "number",
+      description: "Attachments per message.",
+      example: 5,
+    },
+    maxFileBytes: {
+      type: "number",
+      description: "Largest single file, bytes.",
+      example: 10485760,
+    },
+    maxMessageBytes: {
+      type: "number",
+      description: "Largest combined attachments on one message, bytes.",
+      example: 26214400,
+    },
+    kinds: {
+      type: "array",
+      description: "Accepted file families.",
+      items: {
+        type: "string",
+        enum: [
+          "image",
+          "pdf",
+          "document",
+          "spreadsheet",
+          "presentation",
+          "text",
+        ],
+      },
+    },
+  },
+  required: ["maxPerMessage", "maxFileBytes", "maxMessageBytes", "kinds"],
+} as const;
+
 export const ShareResolvedDtoSchema = {
   type: "object",
   properties: {
@@ -2371,8 +2449,43 @@ export const ShareResolvedDtoSchema = {
         "The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.",
       example: "running",
     },
+    description: {
+      type: "string",
+      nullable: true,
+      description:
+        "What the agent is for: its own description, else its template's, else null. At most 500 characters.",
+      example: "Answers questions about orders, returns and delivery.",
+    },
+    skills: {
+      description:
+        "The skills of the agent's template. Empty when it has none.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/ShareSkillDto",
+      },
+    },
+    limits: {
+      nullable: true,
+      description: "Null when the agent has no request limits.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/ShareLimitsDto",
+        },
+      ],
+    },
+    attachments: {
+      $ref: "#/components/schemas/ShareAttachmentsDto",
+    },
   },
-  required: ["agentId", "agentName", "agentStatus"],
+  required: [
+    "agentId",
+    "agentName",
+    "agentStatus",
+    "description",
+    "skills",
+    "limits",
+    "attachments",
+  ],
 } as const;
 
 export const AgentLimitSummaryDtoSchema = {

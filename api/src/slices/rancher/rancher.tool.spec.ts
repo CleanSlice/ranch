@@ -365,9 +365,88 @@ describe('restart_agent and update_agent — for an agent the caller may manage'
     expect(agentDeploy.restartAgent).not.toHaveBeenCalled();
   });
 
+  // The description lives in config next to whatever else the agent keeps
+  // there (CLEAN-237): the A2A card and the share page both read it.
+  describe('update_agent — description', () => {
+    const withConfig = (agents: ReturnType<typeof harness>['agents']) =>
+      agents.findById.mockImplementation((id: string) =>
+        Promise.resolve({
+          ...AGENTS.find((a) => a.id === id)!,
+          config: { botName: 'x', description: 'old' },
+        } as never),
+      );
+    const configSaved = (agents: ReturnType<typeof harness>['agents']) =>
+      (agents.update.mock.calls[0][1] as { config?: unknown }).config;
+    const descriptionSchema = () =>
+      (
+        (
+          Reflect.getMetadata(
+            MCP_TOOL_METADATA_KEY,
+            methodOf('updateAgent') as object,
+          ) as ToolMetadata
+        ).parameters as unknown as {
+          shape: Record<
+            string,
+            { safeParse(v: unknown): { success: boolean } }
+          >;
+        }
+      ).shape.description;
+
+    it('writes it into config, trimmed, and keeps the rest of config', async () => {
+      const { tool, agents } = harness();
+      withConfig(agents);
+      await tool.updateAgent(
+        { id: 'agent-1', description: '  New text  ' },
+        null,
+        forAdmin(),
+      );
+      expect(configSaved(agents)).toEqual({
+        botName: 'x',
+        description: 'New text',
+      });
+    });
+
+    it.each([[null], [''], ['   ']])('clears it on %p', async (value) => {
+      const { tool, agents } = harness();
+      withConfig(agents);
+      await tool.updateAgent(
+        { id: 'agent-1', description: value },
+        null,
+        forAdmin(),
+      );
+      expect(configSaved(agents)).toEqual({ botName: 'x' });
+    });
+
+    it('leaves config alone when it is absent', async () => {
+      const { tool, agents } = harness();
+      withConfig(agents);
+      await tool.updateAgent({ id: 'agent-1', name: 'n' }, null, forAdmin());
+      expect(configSaved(agents)).toBeUndefined();
+    });
+
+    it('does not ask for a restart', async () => {
+      const { tool, agents } = harness();
+      withConfig(agents);
+      const result = await tool.updateAgent(
+        { id: 'agent-1', description: 'New text' },
+        null,
+        forAdmin(),
+      );
+      expect(textOf(result as never)).not.toContain('restart');
+    });
+
+    it('refuses more than 500 characters', () => {
+      expect(descriptionSchema().safeParse('x'.repeat(500)).success).toBe(true);
+      expect(descriptionSchema().safeParse('x'.repeat(501)).success).toBe(
+        false,
+      );
+    });
+  });
+
   it('update_agent has no way to change who created an agent', async () => {
     const { tool, agents } = harness();
     expect(argumentsOf('updateAgent')).toEqual([
+      'description',
       'id',
       'knowledgeIds',
       'llmCredentialId',

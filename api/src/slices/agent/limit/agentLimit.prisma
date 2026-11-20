@@ -4,6 +4,8 @@ import { Agent } from "../agent/agent"
 // limits; no row means "off", which is the default for every agent. Kept
 // apart from Agent on purpose: the whole Agent record is readable in places
 // limit values must never reach (the status stream, AgentDto).
+// The one anonymous reader is a share visitor, who is told the configured
+// values through `/share/resolve` and nothing about usage (CLEAN-237).
 model AgentLimit {
   agentId     String   @id
   agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)

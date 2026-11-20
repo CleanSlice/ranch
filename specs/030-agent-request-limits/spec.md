@@ -728,10 +728,15 @@ value.
 
 **Privacy and safety**
 
-- **FR-051**: Limit values and usage figures MUST be visible only to roles that
-  may edit the agent. Nothing an anonymous caller can read — the public agent
-  list, the status feed, the refusal itself — may expose them beyond the wait
-  in FR-020.
+- **FR-051**: Usage figures — how much of a limit is spent, whether the agent
+  is at its limit, how many people are talking to it — MUST be visible only to
+  roles that may edit the agent. Nothing an anonymous caller can read — the
+  public agent list, the status feed, the refusal itself — may expose them
+  beyond the wait in FR-020. The configured limit values are held to the same
+  rule with one exception (revised by CLEAN-237): a share-link visitor is told
+  them through the link's own resolve answer, so the share page can say what
+  the limits are, always together with the fact that they are shared by
+  everyone using the agent. The notice in the chat still shows no numbers.
 - **FR-052**: Counting MUST NOT store anything about who sent a request: no
   account, no network address, no message content.
 

@@ -186,7 +186,7 @@
 
 ---
 
-## Phase 9: User Story 7 — A person can see why the assistant will not do something (P3)
+## Phase 9: User Story 7 — The assistant knows about levels and can explain them (P3)
 
 **Goal**: the assistant says "not included for you, the Owner decides"; the console shows the person's level.
 

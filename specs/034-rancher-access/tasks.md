@@ -232,8 +232,8 @@
 
 ## Phase 11: Polish & cross-cutting
 
-- [ ] T078 [P] Update `docs/agent-tools.md`: the `effect` field in "The `@Tool` metadata" and the review checklist; a section "The assistant's grant" (what it narrows, what it never governs, where the policy lives); the new tools in the reach and audience tables
-- [ ] T079 [P] Update the Agent-tools line in `CLAUDE.md` and principle V in `.specify/memory/constitution.md` to name `effect` among the required metadata (both in the same commit, per the constitution's governance rule); update the `<!-- ranch:agent-tools -->` block of `.claude/skills/graft/SKILL.md` if it is tracked
+- [X] T078 [P] Update `docs/agent-tools.md`: the `effect` field in "The `@Tool` metadata" and the review checklist; a section "The assistant's grant" (what it narrows, what it never governs, where the policy lives); the new tools in the reach and audience tables
+- [X] T079 [P] Update the Agent-tools line in `CLAUDE.md` and principle V in `.specify/memory/constitution.md` to name `effect` among the required metadata (both in the same commit, per the constitution's governance rule); update the `<!-- ranch:agent-tools -->` block of `.claude/skills/graft/SKILL.md` if it is tracked
 - [ ] T080 [P] Twin-console check: grep `assistantAccess`, `isAdmin`, `adminReach` in `admin/slices` and `app/slices`; record for the PR which console needed what and why `app` edits nothing
 - [ ] T081 Run from the repo root `bun run typecheck && bun run locale:check && bun run i18n:check && bun run test:scripts`, then `cd api && bun run test`, `cd admin && bun run test`, `cd app && bun run test`; report any failure with its output
 - [ ] T082 Run quickstart.md §1–§7 on a local stack (API from the worktree, both consoles); §8 is T077; screenshot card A, block B and sheet C for the PR; note anything not exercised

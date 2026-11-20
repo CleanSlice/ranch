@@ -58,7 +58,7 @@ two to disagree. See `docs/state.md` before adding a store, a fetch, or a feed.
 ### V. The console is a window, the chat is the hands
 
 An admin-console capability is not finished until the Ranch agent has a tool for
-it: in the slice, carrying `topic` / `title` / `template`, gated to the right
+it: in the slice, carrying `topic` / `title` / `template` / `effect`, gated to the right
 audience (the party the call is made for, never the agent's own token; a tool
 that names an agent also checks that party reaches it), `confirm` on anything destructive, no secrets in its result, and a
 spec. The API refuses to boot a tool without that metadata.
@@ -134,4 +134,4 @@ change what is required. When an amendment makes `CLAUDE.md` or a file under
 A principle that is waived in three consecutive plans is not being followed, and
 should be amended or removed rather than quietly ignored.
 
-**Version**: 1.0.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-18
+**Version**: 1.0.2 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-20

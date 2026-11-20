@@ -116,9 +116,16 @@ export class ShareLinkService {
       const template = await this.templates.findById(agent.templateId);
       if (!template) return { templateDescription, skills: [] };
       templateDescription = template.description ?? null;
-      const skills = template.skillIds?.length
-        ? await this.skills.findByIds(template.skillIds)
+      const skillIds = template.skillIds ?? [];
+      const found = skillIds.length
+        ? await this.skills.findByIds(skillIds)
         : [];
+      // The lookup answers in no particular order; the template's own order
+      // is the one the owner arranged, and it keeps the list from
+      // reshuffling between two polls of an open page.
+      const skills = [...found].sort(
+        (a, b) => skillIds.indexOf(a.id) - skillIds.indexOf(b.id),
+      );
       return { templateDescription, skills };
     } catch {
       return { templateDescription, skills: [] };

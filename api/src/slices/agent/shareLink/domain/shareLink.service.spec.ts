@@ -393,6 +393,24 @@ describe('ShareLinkService.resolveForVisitor', () => {
     expect((await service.resolveForVisitor(token!)).description).toBe('Tpl');
   });
 
+  it('lists skills in the order the template has them', async () => {
+    const { service } = newService(describedAgent(), {
+      template: { id: 'tpl-1', description: 'Tpl', skillIds: ['s1', 's2'] },
+      // The database answers in whatever order it likes.
+      skills: [
+        { id: 's2', title: 'Returns', description: null },
+        { id: 's1', title: 'Orders', description: null },
+      ],
+    });
+    const { token } = await service.share('agent-1', 'user-1');
+    const resolved = await service.resolveForVisitor(token!);
+
+    expect(resolved.skills.map((skill) => skill.title)).toEqual([
+      'Orders',
+      'Returns',
+    ]);
+  });
+
   it('still answers when the template cannot be read', async () => {
     const { service } = newService(describedAgent(), {
       template: new Error('db down'),

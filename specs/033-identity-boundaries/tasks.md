@@ -52,7 +52,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 - [X] T008 runtime: add a pure `gateFor(msg, { isAdmin, isAllowed })` in a new `src/slices/bot/bot/domain/gate.ts` (returns `colleague` for a message with `handover`, else `admin`, `allowed` or `denied`) with `gate.spec.ts` (no test covers `BotService` today); in `src/slices/bot/bot/domain/bot.service.ts` a `colleague` turn skips the access-code approval, the slash commands and the access check and registers no pending visitor, and the admin auto-approve reads `turnIsAdmin` of T007
 - [X] T009 runtime: in `src/slices/setup/mcp/data/mcp.gateway.ts` add `_meta["ranch/turn"] = { client: <msg.from> }` to tool calls of a turn that came over the bridle channel, for Ranch servers only; key the catalogue cache of a peer actor by its token; cover in `src/slices/setup/mcp/data/mcp.gateway.actor.spec.ts`
 - [X] T010 runtime: make a delegated worker inherit the peer actor in `src/slices/runtime/loop/domain/delegate.service.ts` (case in `delegate.service.spec.ts`); confirm the hand-over token goes to Ranch MCP servers only (same test that pins it for the acting token)
-- [ ] T011 runtime: `bun test` and `bun run build` green; open the PR into `main` with CLEAN-236 in the title, stating that the change is inert against Ranch ≤ 0.3.90
+- [X] T011 runtime: `bun test` and `bun run build` green; open the PR into `main` with CLEAN-236 in the title, stating that the change is inert against Ranch ≤ 0.3.90
 
 ### API
 
@@ -240,7 +240,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 - [X] T089 [P] `.specify/memory/constitution.md` and `CLAUDE.md`: no rule changes; confirm both still agree with `docs/agent-tools.md` after T087 and say so in the PR
 - [X] T090 Write `specs/033-identity-boundaries/e2e/all.mjs`; run every scenario of quickstart.md §4 and every command of §3; fix what fails
 - [X] T091 Regenerate `api/swagger-spec.json` and both console SDKs; `npx nuxt typecheck` in `admin/` and `app/`; `bun run locale:check`, `i18n:check`, `test:scripts` at the root
-- [ ] T092 Bump the root `package.json` version; open the Ranch PR into `main` with CLEAN-236, stating which console was checked for each twin slice (T078, T085) and the release order; put the PR link on the ticket
+- [X] T092 Bump the root `package.json` version; open the Ranch PR into `main` with CLEAN-236, stating which console was checked for each twin slice (T078, T085) and the release order; put the PR link on the ticket
 - [ ] T093 Release: merge the runtime PR, tag the runtime release, restart the agents; then merge the Ranch PR and watch `Release Platform`; run quickstart.md §5 on the live installation and report each line
 
 ---

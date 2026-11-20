@@ -106,12 +106,13 @@ behind the call may do.
 
 ### The party
 
-Every `tools/list` and `tools/call` is made for one of three parties:
+Every `tools/list` and `tools/call` is made for one of four parties:
 
 | party | who | power |
 |---|---|---|
 | `person` | a signed-in console account, proven | the role that account has in the database now |
 | `trusted` | the agent acting for itself: a scheduled job, a heartbeat, an administrator its own configuration names | whatever the agent's token carries |
+| `peer` | another agent's question, proven (CLEAN-236) | none: a guest's. It carries the chain the question travelled and the person it was started for |
 | `guest` | everyone else, and every call that names nobody | none |
 
 A person is proven by an acting token. The hub signs one with every message
@@ -126,6 +127,20 @@ role read from the database (`ActingPartyService`).
 The agent cannot make an acting token, and one minted for another agent is
 refused. As a bearer the token opens nothing: `JwtAuthGuard` and every other
 verifier refuse it.
+
+A colleague's question is proven by a hand-over token (CLEAN-236). When one
+agent passes a question to another agent of this Ranch, the API signs a token
+that names the receiving agent, the connection the question travels through,
+every agent it has passed and the person the chain was started for, and
+delivers it with the message (`handover` on the message). The receiving
+runtime carries it on that turn's tool calls as
+`_meta["ranch/actor"] = { kind: "peer", token }`, and the API turns it back
+into the party (`HandoverService`). Power never travels with a hand-over: a
+peer party is admitted to `everyone` and `agent` tools only and is refused by
+`requirePerson`, so a question cannot tell the agent it reaches to rewire
+itself. What the token is for is the next hop: `ask_agent` checks every
+connection against the person the chain was started for, and refuses an agent
+that is already in the chain. An invalid or expired token is a guest.
 
 **No actor means guest.** A runtime that sends no `_meta["ranch/actor"]`, an
 actor it cannot prove, a share visitor, a messenger user, an anonymous
@@ -277,8 +292,9 @@ written once and no tool or route changes it.
 | `agent/event/agentEvent.tool.ts` | `admin`; `owner` for `set_notification_destination`, `send_test_notification`, `remove_notification_destination` | `agent-events`, `agent-incidents`, reading the destination: Admin. Setting, testing, removing it: Owner |
 | `agent/file/file.tool.ts` | `manage-agent` | `agents/:agentId/files`: Admin by default, `@ManagesAgent` |
 | `agent/limit/agentLimit.tool.ts` | `admin`; `manage-agent` for `get_agent_limits`, `set_agent_limits`, `set_agent_visibility` | `agent-limits`, `agents/:agentId/limits`: Owner, Admin; the write is `@ManagesAgent` |
-| `agent/peer/peerAdmin.tool.ts` | `manage-agent` | `agents/:agentId/peers`: Owner, Admin; the writes are `@ManagesAgent` |
-| `agent/peer/peerSelf.tool.ts`, `agent/peer/askAgent.tool.ts` | `agent` | none: an agent's own peers |
+| `agent/peer/peerAdmin.tool.ts` | `manage-agent`, and a person: each tool answers for what the person the call is made for may see, so an agent acting for itself is refused. `set_agent_peer_visitors` takes somebody who manages both agents | `agents/:agentId/peers`: Owner, Admin; the writes are `@ManagesAgent`; `PUT …/peers/:peerId/visitors` |
+| `agent/peer/peerSelf.tool.ts` | `person` (CLEAN-236; it was `agent`, so a visitor with no account could connect and remove an agent's colleagues) | none: the colleagues of the agent the person is talking to, among the agents that person reaches |
+| `agent/peer/askAgent.tool.ts` | `agent` | none. The colleagues it offers and accepts are decided per call, for the party: see "Whose colleague" below |
 | `agent/secret/secret.tool.ts` | `manage-agent` | `agents/:agentId/secrets`: Admin by default, `@ManagesAgent` |
 | `agent/shareLink/shareLink.tool.ts` | `admin` | `agents/:agentId/share-link`: User. Narrower than the route until "who may manage this agent" exists |
 | `agent/template/templateAdmin.tool.ts`, `agent/templateInstall/templateInstall.tool.ts` | `admin` | `templates`: no role stated |
@@ -358,6 +374,30 @@ One class, one audience, with a method-level exception where one route of a
 controller is narrower than the rest, or where a class holds fleet tools
 next to tools that name one agent. Split classes when a slice needs two
 unrelated audiences (as `peer/` does).
+
+### Whose colleague
+
+A connection from agent A to an agent B of this Ranch exists for a person
+only when that person reaches B (CLEAN-236). Every tool and route that lists,
+names or uses a connection asks `PeerAccessService` for the party the call is
+made for, and gets one of three answers per connection
+(`agent/peer/domain/peerAccess.ts`):
+
+| answer | when | what the caller gets |
+|---|---|---|
+| `full` | the person reaches B; or, for an agent outside this Ranch, the connection is shared, is theirs, or they manage A | the connection as it is |
+| `masked` | they do not reach B, and somebody who manages both agents opened the connection to visitors | "A colleague": skills only, no name, id, address, status or description. It can be asked, and neither removed nor closed |
+| `hidden` | anything else | nothing, in the words used for a connection that does not exist |
+
+A guest and a peer party with nobody behind it reach no agent, so they are
+served by open connections alone. An agent outside this Ranch that a person
+added from the chat without managing A is theirs (`ownerUserId`) and serves
+their turns only; one added by somebody who manages A is the agent's.
+
+A tool that names a connection therefore never reads the row and then decides:
+it asks for the caller's view and treats `hidden` as absent. The specs that
+pin it are `peerAccess.spec.ts`, `peer.service.spec.ts`, `askAgent.tool.spec.ts`
+and the scenarios in `specs/033-identity-boundaries/e2e/`.
 
 ## Destructive tools
 
@@ -507,6 +547,10 @@ puts the block back (it is idempotent and `make init` runs it).
   agent with `AgentPermissionService.manageable`, and the spec shows an Admin
   getting "not found" for the Ranch admin agent in the same words as for an
   id that does not exist.
+- Does the tool list, name or use an agent's colleagues? Then it takes the
+  caller's view from `PeerAccessService` (see "Whose colleague"), answers a
+  hidden connection as one that does not exist, and a masked one without its
+  name, id or address.
 - Does anything destructive lack `confirm`?
 - Does any result echo a secret?
 - Does the tool call the controller's service, or its own copy of the logic?

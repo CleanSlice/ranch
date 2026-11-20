@@ -36,6 +36,46 @@ that is templates.
   private hosts are refused (`A2A_ALLOW_PRIVATE_PEERS=true` lifts that for
   local development).
 
+## Who a connection is for
+
+A connection is not the agent's alone: who may see and use it depends on who
+is asking (CLEAN-236).
+
+- **A connection to an agent of this Ranch exists for a person only when
+  that person has access to the colleague.** Somebody who does not is not
+  shown it on the A2A tab, cannot remove or re-read it by its id, and the
+  agent does not offer it in their turns. Every refusal reads exactly like
+  the one for a connection that does not exist.
+- **Open to visitors** is a switch on the connection, for somebody who
+  manages both agents, and it asks to be confirmed. An open connection also
+  serves everybody else who talks to the agent: people without access to the
+  colleague, share and anonymous visitors. They are shown that *a colleague*
+  was asked, never which one: no name, address, status or description, on
+  the tab, in the chat's thinking timeline and in the list of delegations.
+  Connections made before this feature kept working for everybody and are
+  marked **needs review** until somebody decides.
+- **Each hop is checked for the same person.** A question that travels
+  A → B → C is checked at B against the person who started it at A. Power
+  never travels with it: the agent that receives a question cannot be told
+  by it to connect, remove or open anything.
+- **Who connected it** is recorded and shown. The person who made a
+  connection can remove it; otherwise that takes somebody who manages the
+  agent and has access to the colleague.
+- **From the chat**, a signed-in person can connect the agents they have
+  access to, and nobody else can connect anything: a visitor uses the agent
+  and does not configure it.
+- **An agent outside this Ranch** that a User adds from the chat is theirs
+  alone: the agent asks it in that person's turns only. One added by
+  somebody who manages the agent is the agent's, for everybody. An address
+  that belongs to one of this Ranch's own agents is refused however it is
+  written, as is a card that sends its questions here: pick the agent from
+  the list, where access is checked.
+
+Rolling this out needs agents on runtime 0.36 or later, restarted, before
+the API is upgraded: until then an agent treats a colleague's question as a
+visitor's and an Admin as somebody who is not an administrator.
+
 Set `PUBLIC_API_URL` to the origin other agents reach this API on — every
-card URL is built from it. See `specs/013-a2a-agent-peers/` and
-`specs/014-a2a-protocol-upgrade/` for the full specifications.
+card URL is built from it. See `specs/013-a2a-agent-peers/`,
+`specs/014-a2a-protocol-upgrade/` and `specs/033-identity-boundaries/` for
+the full specifications.

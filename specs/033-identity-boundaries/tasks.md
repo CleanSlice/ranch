@@ -235,9 +235,9 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 
 ## Phase 12: Polish and release
 
-- [ ] T087 [P] `docs/agent-tools.md`: the `peer` party in the table of parties, the changed audiences of the colleague tools, `set_agent_peer_visitors` in the table of tool classes
-- [ ] T088 [P] `docs/guides/a2a.md` (who sees and uses a connection, open to visitors, a colleague's question, outside colleagues) and `docs/guides/auth.md` (a sign-in per console, the header, chat identities)
-- [ ] T089 [P] `.specify/memory/constitution.md` and `CLAUDE.md`: no rule changes; confirm both still agree with `docs/agent-tools.md` after T087 and say so in the PR
+- [X] T087 [P] `docs/agent-tools.md`: the `peer` party in the table of parties, the changed audiences of the colleague tools, `set_agent_peer_visitors` in the table of tool classes
+- [X] T088 [P] `docs/guides/a2a.md` (who sees and uses a connection, open to visitors, a colleague's question, outside colleagues) and `docs/guides/auth.md` (a sign-in per console, the header, chat identities)
+- [X] T089 [P] `.specify/memory/constitution.md` and `CLAUDE.md`: no rule changes; confirm both still agree with `docs/agent-tools.md` after T087 and say so in the PR
 - [X] T090 Write `specs/033-identity-boundaries/e2e/all.mjs`; run every scenario of quickstart.md §4 and every command of §3; fix what fails
 - [ ] T091 Regenerate `api/swagger-spec.json` and both console SDKs; `npx nuxt typecheck` in `admin/` and `app/`; `bun run locale:check`, `i18n:check`, `test:scripts` at the root
 - [ ] T092 Bump the root `package.json` version; open the Ranch PR into `main` with CLEAN-236, stating which console was checked for each twin slice (T078, T085) and the release order; put the PR link on the ticket

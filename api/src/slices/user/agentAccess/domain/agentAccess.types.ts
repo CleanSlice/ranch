@@ -128,23 +128,55 @@ export function accessSubject(caller: IAccessCaller): IAccessPerson | null {
  * request from one read of the account's lists, then asked about any number
  * of agents: a list is filtered with `filter`, a database query with `where`.
  */
+/**
+ * The assistant as one person has it (CLEAN-240): its agent id and whether
+ * it is switched on for them. Not an entry in any list.
+ */
+export interface IAssistantSwitch {
+  id: string;
+  enabled: boolean;
+}
+
+/**
+ * Where the reach learns about the assistant. Provided by the assistant's
+ * own slice and handed to `AgentAccessService` at start, so that this slice
+ * knows the question and nothing about the settings behind the answer.
+ */
+export interface IAssistantAvailability {
+  /** The agent that is the assistant, or null while there is none. */
+  assistantId(): Promise<string | null>;
+  /** The switch for one person; null while there is no assistant. */
+  forPerson(person: IAccessPerson): Promise<IAssistantSwitch | null>;
+}
+
 export class AgentReach {
   private readonly allowed: ReadonlySet<string> | null;
   private readonly denied: ReadonlySet<string>;
+  /**
+   * The assistant, when the installation has one. Asked before the lists:
+   * limiting an account to some agents must not take the assistant away,
+   * and switching it off must hold whatever the lists say.
+   */
+  private readonly assistant: IAssistantSwitch | null;
 
   constructor(
     state: Pick<
       IAgentAccessState,
       'limited' | 'entries' | 'accountMissing'
     > | null,
+    assistant: IAssistantSwitch | null = null,
   ) {
     if (state?.accountMissing === true) {
-      // Deny by default: limited to an empty allowed list.
       this.denied = new Set();
       this.allowed = new Set();
+      // An account that is gone has nothing, the assistant included.
+      this.assistant = assistant ? { id: assistant.id, enabled: false } : null;
       return;
     }
-    const entries = state?.entries ?? [];
+    this.assistant = assistant;
+    const entries = (state?.entries ?? []).filter(
+      (e) => e.agentId !== assistant?.id,
+    );
     this.denied = new Set(
       entries.filter((e) => e.list === 'denied').map((e) => e.agentId),
     );
@@ -155,40 +187,46 @@ export class AgentReach {
       : null;
   }
 
-  /** Everybody the lists do not apply to. */
   static readonly ALL = new AgentReach(null);
 
   /** True when no agent is hidden from this caller. */
   get unrestricted(): boolean {
-    return this.allowed === null && this.denied.size === 0;
+    return (
+      this.allowed === null &&
+      this.denied.size === 0 &&
+      this.assistant?.enabled !== false
+    );
   }
 
   has(agentId: string | null | undefined): boolean {
     if (typeof agentId !== 'string' || !agentId) return this.unrestricted;
+    if (this.assistant && agentId === this.assistant.id) {
+      return this.assistant.enabled;
+    }
     if (this.denied.has(agentId)) return false;
     return this.allowed === null || this.allowed.has(agentId);
   }
 
-  /** The items whose agent is reached, in the order given. */
   filter<T>(items: readonly T[], agentIdOf: (item: T) => string | null): T[] {
     if (this.unrestricted) return [...items];
     return items.filter((item) => {
       const id = agentIdOf(item);
-      // A row that names no agent hides no agent.
       return id === null ? true : this.has(id);
     });
   }
 
-  /**
-   * The same rule as a Prisma filter on an agent id column, or undefined
-   * when nothing is hidden. For lists that are paged in the database.
-   */
   where(): { in?: string[]; notIn?: string[] } | undefined {
     if (this.unrestricted) return undefined;
     if (this.allowed !== null) {
-      return { in: [...this.allowed].filter((id) => !this.denied.has(id)) };
+      const ids = [...this.allowed].filter((id) => !this.denied.has(id));
+      if (this.assistant?.enabled) ids.push(this.assistant.id);
+      return { in: ids };
     }
-    return { notIn: [...this.denied] };
+    const hidden = [...this.denied];
+    if (this.assistant && !this.assistant.enabled) {
+      hidden.push(this.assistant.id);
+    }
+    return { notIn: hidden };
   }
 }
 
@@ -198,6 +236,8 @@ export const AgentAccessErrorCodes = {
   ExceedsCeiling: 'ACCESS_EXCEEDS_CEILING',
   OpenNeedsConfirm: 'ACCESS_OPEN_NEEDS_CONFIRM',
   Changed: 'ACCESS_CHANGED',
+  /** The assistant is not set through the lists (CLEAN-240). */
+  AssistantNotListed: 'ASSISTANT_NOT_LISTED',
   /** No `code` on the wire: the ordinary "not found". */
   AgentNotFound: 'AGENT_NOT_FOUND',
   UserNotFound: 'USER_NOT_FOUND',
@@ -220,6 +260,9 @@ export const AGENT_ACCESS_REFUSALS = {
     'An agent cannot be both allowed and denied. Put each agent on one ' +
     'list only.',
   ceiling: 'This would open agents you do not have. Ask the Owner.',
+  assistant:
+    'The assistant is not on these lists. Who can use it is its own ' +
+    'setting, on the account and on the assistant’s page.',
   confirm:
     'This account will reach every agent that is not denied. Confirm to ' +
     'save it.',

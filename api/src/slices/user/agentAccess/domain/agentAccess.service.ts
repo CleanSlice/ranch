@@ -20,6 +20,8 @@ import {
   type IAgentAccessState,
   type IAgentAccessSummary,
   type IAgentAccessView,
+  type IAssistantAvailability,
+  type IAccessPerson,
 } from './agentAccess.types';
 
 /** What every agent route answers for an agent that does not exist. */
@@ -107,10 +109,40 @@ export class AgentAccessService implements IAgentReach {
   private readonly listeners = new Set<ChangedListener>();
   private readonly removedListeners = new Set<ChangedListener>();
 
+  /** Whether a person has the assistant; null until its slice says (CLEAN-240). */
+  private assistant: IAssistantAvailability | null = null;
+
   constructor(
     private readonly gateway: IAgentAccessGateway,
     private readonly users: IUserGateway,
   ) {}
+
+  /**
+   * The assistant is not an entry in the lists: whether a person has it is
+   * a setting of its own, kept in another slice. That slice hands the answer
+   * over here once, at start, so neither service is the other's dependency.
+   * Until it does, the assistant is an agent like any other, as it was.
+   */
+  attachAssistant(assistant: IAssistantAvailability): void {
+    this.assistant = assistant;
+  }
+
+  /** The reach of one person: their lists, and their assistant switch. */
+  private async reachOf(subject: IAccessPerson): Promise<AgentReach> {
+    const [state, assistant] = await Promise.all([
+      this.gateway.load(subject.userId),
+      this.assistant?.forPerson(subject) ?? null,
+    ]);
+    return new AgentReach(state, assistant);
+  }
+
+  /** The agents the lists are about: every agent but the assistant. */
+  private async listable(agentIds: string[]): Promise<string[]> {
+    const assistantId = (await this.assistant?.assistantId()) ?? null;
+    return assistantId === null
+      ? agentIds
+      : agentIds.filter((id) => id !== assistantId);
+  }
 
   // ── The rule ────────────────────────────────────────────────
 
@@ -118,7 +150,7 @@ export class AgentAccessService implements IAgentReach {
   async reachableIds(caller: IAccessCaller): Promise<AgentReach> {
     const subject = accessSubject(caller);
     if (!subject) return AgentReach.ALL;
-    return new AgentReach(await this.gateway.load(subject.userId));
+    return this.reachOf(subject);
   }
 
   async reaches(caller: IAccessCaller, agentId: string): Promise<boolean> {
@@ -140,7 +172,7 @@ export class AgentAccessService implements IAgentReach {
     const subject = accessSubject(caller);
     if (!subject) return true;
     if (!agentId) return false;
-    const reach = new AgentReach(await this.gateway.load(subject.userId));
+    const reach = await this.reachOf(subject);
     return reach.has(agentId) && (await this.gateway.agentExists(agentId));
   }
 
@@ -208,7 +240,7 @@ export class AgentAccessService implements IAgentReach {
         : this.gateway.load(target.id),
       this.gateway.agentIds(),
     ]);
-    return toView(state, viewerReach, agentIds);
+    return toView(state, viewerReach, await this.listable(agentIds));
   }
 
   // ── The one write path ──────────────────────────────────────
@@ -287,6 +319,7 @@ export class AgentAccessService implements IAgentReach {
       throw new AgentAccessError(AgentAccessErrorCodes.NotEditable, refusal);
     }
     const viewerReach = await this.reachOfEditor(editor);
+    const assistantId = (await this.assistant?.assistantId()) ?? null;
     const updatedById = editor.kind === 'person' ? editor.userId : null;
     const checksCeiling =
       editor.kind === 'person' && editor.role !== UserRoleTypes.Owner;
@@ -308,7 +341,8 @@ export class AgentAccessService implements IAgentReach {
         }
 
         // 2. The editor's view: the agents the editor reaches.
-        const existing = new Set(agentIds);
+        // The assistant is not one of the agents the lists are about.
+        const existing = new Set(agentIds.filter((id) => id !== assistantId));
         const inView = (id: string): boolean =>
           existing.has(id) && viewerReach.has(id);
         const wanted = compute(
@@ -324,6 +358,15 @@ export class AgentAccessService implements IAgentReach {
           throw new AgentAccessError(
             AgentAccessErrorCodes.ListsOverlap,
             AGENT_ACCESS_REFUSALS.overlap,
+          );
+        }
+        if (
+          assistantId !== null &&
+          [...allowed, ...denied].includes(assistantId)
+        ) {
+          throw new AgentAccessError(
+            AgentAccessErrorCodes.AssistantNotListed,
+            AGENT_ACCESS_REFUSALS.assistant,
           );
         }
         // An id that does not exist and one outside the view are the same

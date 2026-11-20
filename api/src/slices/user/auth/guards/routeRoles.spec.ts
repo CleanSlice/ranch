@@ -147,6 +147,10 @@ describe('every route asks for a role', () => {
         // Which agent holds Owner power (CLEAN-232).
         'POST /agents/:id/promote-admin',
         'DELETE /agents/:id/promote-admin',
+        // What a whole role gets from the assistant, and who differs from
+        // their role (CLEAN-240). An Admin sets it for single Users only.
+        'GET /assistant-access',
+        'PUT /assistant-access/roles/:role',
       ].sort(),
     );
   });

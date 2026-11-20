@@ -8,6 +8,7 @@ export {
   AssistantAccessService,
   type IAssistantAccountView,
   type IAssistantAreaCount,
+  type IAssistantCatalog,
   type IAssistantException,
   type IAssistantLevelInfo,
   type IAssistantMine,

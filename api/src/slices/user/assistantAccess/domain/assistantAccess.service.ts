@@ -15,6 +15,7 @@ import {
   abilityOf,
   isAssistantLevel,
   levelSet,
+  levelsOf,
   withinCeiling,
 } from './assistantLevels';
 import {
@@ -89,6 +90,28 @@ export interface IAssistantOverview {
   assistant: { id: string; name: string } | null;
   roles: Record<AssistantRole, IAssistantRoleView & { accounts: number }>;
   exceptions: IAssistantException[];
+}
+
+export interface IAssistantCatalogAbility {
+  name: string;
+  title: string;
+  area: ToolTopic;
+  effect: 'read' | 'write';
+  destructive: boolean;
+  minRole: UserRoleTypes;
+  levels: AssistantLevel[];
+}
+
+export interface IAssistantCatalogArea {
+  key: ToolTopic;
+  title: string;
+  order: number;
+  abilities: IAssistantCatalogAbility[];
+}
+
+export interface IAssistantCatalog {
+  areas: IAssistantCatalogArea[];
+  alwaysOn: IAssistantCatalogAbility[];
 }
 
 export interface IAssistantMine {
@@ -490,6 +513,47 @@ export class AssistantAccessService {
         },
       } as IAssistantOverview['roles'],
       exceptions,
+    };
+  }
+
+  /**
+   * Every ability with the levels it belongs to, area by area: what the
+   * Advanced panel draws. The same for every caller; what a role cannot have
+   * is told by `minRole`.
+   */
+  catalog(): IAssistantCatalog {
+    const abilities = this.abilities();
+    const describe = (ability: IAbility): IAssistantCatalogAbility => ({
+      name: ability.name,
+      title: ability.title,
+      area: ability.area,
+      effect: ability.effect,
+      destructive: ability.destructive,
+      minRole: ability.minRole,
+      levels: ability.governed ? levelsOf(ability) : [],
+    });
+    const areas = new Map<ToolTopic, IAssistantCatalogArea>();
+    for (const ability of abilities.filter((a) => a.governed)) {
+      const info = TOOL_TOPIC_INFO[ability.area];
+      const area = areas.get(ability.area) ?? {
+        key: ability.area,
+        title: info?.title ?? ability.area,
+        order: info?.order ?? 0,
+        abilities: [],
+      };
+      area.abilities.push(describe(ability));
+      areas.set(ability.area, area);
+    }
+    return {
+      areas: [...areas.values()]
+        .map((area) => ({
+          ...area,
+          abilities: area.abilities.sort((a, b) =>
+            a.title.localeCompare(b.title),
+          ),
+        }))
+        .sort((a, b) => a.order - b.order),
+      alwaysOn: abilities.filter((a) => !a.governed).map(describe),
     };
   }
 

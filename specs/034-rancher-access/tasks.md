@@ -23,7 +23,7 @@
 
 **Purpose**: a workspace that builds, and the slices' empty shells.
 
-- [ ] T001 Prepare the worktree: `bun install`, `cd api && bun run generate && bun run build && bun run generate:swagger`, confirm `cd api && bun run test -- tool-metadata toolAudience toolReach` is green before any change
+- [X] T001 Prepare the worktree: `bun install`, `cd api && bun run generate && bun run build && bun run generate:swagger`, confirm `cd api && bun run test -- tool-metadata toolAudience toolReach` is green before any change
 - [ ] T002 [P] Create the API slice shell `api/src/slices/user/assistantAccess/` (`assistantAccess.module.ts`, `index.ts`, empty `domain/`, `data/`, `dtos/`) and register the module where `AgentAccessModule` is registered
 - [ ] T003 [P] Create the admin slice shell `admin/slices/user/assistantAccess/` (`nuxt.config.ts` with alias `#assistantAccess`, `index.d.ts`, `plugins/di.ts`) following `admin/slices/user/agentAccess/`
 - [ ] T004 [P] Create the app slice shell `app/slices/user/assistantAccess/` (`nuxt.config.ts`, `index.d.ts`, `plugins/di.ts`, `i18n/locales/en.json` with an empty `assistantAccess` object) following `app/slices/share/`
@@ -36,13 +36,13 @@
 
 ### The `effect` mark (research R3)
 
-- [ ] T005 Add failing cases to `api/src/slices/mcp/tool-metadata.spec.ts`: every registered tool has `effect` of `'read'` or `'write'`; no tool is `destructive: true` with `effect: 'read'`; no tool whose name starts with `create_ / set_ / delete_ / update_ / write_ / remove_ / revoke_ / run_ / start_ / stop_ / restart_ / import_ / install_ / replace_ / sync_` is `'read'` unless listed in an in-file `READ_DESPITE_NAME` map with a reason
-- [ ] T006 Add required `effect: 'read' | 'write'` to `ToolMetadata` and `ToolOptions` in `api/src/slices/mcp/decorators/tool.decorator.ts`, and make `api/src/slices/mcp/services/mcp-registry.service.ts` refuse to boot a tool without it or with `destructive` + `'read'` (same place and wording style as the `topic`/`title`/`template` refusal)
-- [ ] T007 [P] Classify every `@Tool` in `api/src/slices/agent/**/*.tool.ts` (agents, files, secrets, channels, limits, share links, peers, templates, events, pins) with `effect`
-- [ ] T008 [P] Classify every `@Tool` in `api/src/slices/reins/**/*.tool.ts`, `api/src/slices/skill/**/*.tool.ts`, `api/src/slices/paddock/**/*.tool.ts` with `effect`
-- [ ] T009 [P] Classify every `@Tool` in `api/src/slices/user/**/*.tool.ts`, `api/src/slices/setting/**/*.tool.ts`, `api/src/slices/llm/**/*.tool.ts`, `api/src/slices/mcpServer/**/*.tool.ts`, `api/src/slices/usage/**/*.tool.ts`, `api/src/slices/chat/**/*.tool.ts` with `effect`
-- [ ] T010 [P] Classify every `@Tool` in `api/src/slices/rancher/*.tool.ts`, `api/src/slices/browser/*.tool.ts`, `api/src/slices/integration/**/*.tool.ts`, `api/src/slices/bridle/**/*.tool.ts` and any `*.tool.ts` not covered by T007–T009 (`grep -rL "effect:" api/src/slices --include='*.tool.ts'` must come back empty) with `effect`
-- [ ] T011 Run `cd api && bun run test -- tool-metadata && bun run build && bun run generate:swagger`; fix until green and the API boots. Commit: `feat(mcp): every tool says whether it reads or writes`
+- [X] T005 Add failing cases to `api/src/slices/mcp/tool-metadata.spec.ts`: every registered tool has `effect` of `'read'` or `'write'`; no tool is `destructive: true` with `effect: 'read'`; no tool whose name starts with `create_ / set_ / delete_ / update_ / write_ / remove_ / revoke_ / run_ / start_ / stop_ / restart_ / import_ / install_ / replace_ / sync_` is `'read'` unless listed in an in-file `READ_DESPITE_NAME` map with a reason
+- [X] T006 Add required `effect: 'read' | 'write'` to `ToolMetadata` and `ToolOptions` in `api/src/slices/mcp/decorators/tool.decorator.ts`, and make `api/src/slices/mcp/services/mcp-registry.service.ts` refuse to boot a tool without it or with `destructive` + `'read'` (same place and wording style as the `topic`/`title`/`template` refusal)
+- [X] T007 [P] Classify every `@Tool` in `api/src/slices/agent/**/*.tool.ts` (agents, files, secrets, channels, limits, share links, peers, templates, events, pins) with `effect`
+- [X] T008 [P] Classify every `@Tool` in `api/src/slices/reins/**/*.tool.ts`, `api/src/slices/skill/**/*.tool.ts`, `api/src/slices/paddock/**/*.tool.ts` with `effect`
+- [X] T009 [P] Classify every `@Tool` in `api/src/slices/user/**/*.tool.ts`, `api/src/slices/setting/**/*.tool.ts`, `api/src/slices/llm/**/*.tool.ts`, `api/src/slices/mcpServer/**/*.tool.ts`, `api/src/slices/usage/**/*.tool.ts`, `api/src/slices/chat/**/*.tool.ts` with `effect`
+- [X] T010 [P] Classify every `@Tool` in `api/src/slices/rancher/*.tool.ts`, `api/src/slices/browser/*.tool.ts`, `api/src/slices/integration/**/*.tool.ts`, `api/src/slices/bridle/**/*.tool.ts` and any `*.tool.ts` not covered by T007–T009 (`grep -rL "effect:" api/src/slices --include='*.tool.ts'` must come back empty) with `effect`
+- [X] T011 Run `cd api && bun run test -- tool-metadata && bun run build && bun run generate:swagger`; fix until green and the API boots. Commit: `feat(mcp): every tool says whether it reads or writes`
 
 ### Settings and resolution (data-model.md)
 

@@ -64,6 +64,7 @@ export class SkillTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_skill',
     topic: ToolTopics.Skills,
+    effect: 'read',
     title: 'Show a skill',
     template: 'Show the skill «name»',
     description:
@@ -89,6 +90,7 @@ export class SkillTool implements IConditionallyListedTool {
   @Tool({
     name: 'search_skills',
     topic: ToolTopics.Skills,
+    effect: 'read',
     title: 'Search public skills',
     template: 'Find public skills about «topic»',
     description:
@@ -124,6 +126,7 @@ export class SkillTool implements IConditionallyListedTool {
   @Tool({
     name: 'create_skill',
     topic: ToolTopics.Skills,
+    effect: 'write',
     title: 'Create a skill',
     template: 'Create a skill «title» that «what it does»',
     description:
@@ -174,6 +177,7 @@ export class SkillTool implements IConditionallyListedTool {
   @Tool({
     name: 'reorder_skills',
     topic: ToolTopics.Skills,
+    effect: 'write',
     title: 'Reorder the skills library',
     template: 'Put the skills «names» first in the library',
     description:
@@ -212,6 +216,7 @@ export class SkillTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_skill',
     topic: ToolTopics.Skills,
+    effect: 'write',
     title: 'Delete a skill',
     template: 'Delete the skill «name»',
     destructive: true,
@@ -272,6 +277,7 @@ export class SkillTool implements IConditionallyListedTool {
   @Tool({
     name: 'import_skill_from_url',
     topic: ToolTopics.Skills,
+    effect: 'write',
     title: 'Import a skill from GitHub',
     template: 'Import the skill at «github url»',
     description:
@@ -325,6 +331,7 @@ export class SkillTool implements IConditionallyListedTool {
   @Tool({
     name: 'import_skill',
     topic: ToolTopics.Skills,
+    effect: 'write',
     title: 'Import a found skill',
     template: 'Import the skill «name» from «repo»',
     description:

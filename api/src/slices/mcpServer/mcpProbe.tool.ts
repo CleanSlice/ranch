@@ -50,6 +50,7 @@ export class McpProbeTool implements IConditionallyListedTool {
   @Tool({
     name: 'probe_mcp_server',
     topic: ToolTopics.McpServers,
+    effect: 'read',
     title: 'Check what an MCP server offers',
     template: 'Check what the MCP server at «url» offers',
     description:

@@ -50,6 +50,7 @@ export class LogTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_agent_logs',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: 'Read pod logs',
     template: 'Show the last «100» log lines of the agent «name»',
     description:

@@ -164,6 +164,7 @@ export class AgentEventTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_agent_events',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: 'List agent events',
     template: 'Show what happened to «agent name» since «when»',
     description:
@@ -209,6 +210,7 @@ export class AgentEventTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_agent_incidents',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: 'List agent incidents',
     template: 'Which agents went down since «when», and are any still down?',
     description:
@@ -265,6 +267,7 @@ export class AgentEventTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_notification_destination',
     topic: ToolTopics.Settings,
+    effect: 'read',
     title: 'Show where failure notifications go',
     template:
       'Where do agent failure notifications go, and did the last one arrive?',
@@ -293,6 +296,7 @@ export class AgentEventTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_notification_destination',
     topic: ToolTopics.Settings,
+    effect: 'write',
     title: 'Set where notifications go',
     template:
       'Send agent failure notifications to Slack through «a webhook address, or a bot token and channel»',
@@ -368,6 +372,7 @@ export class AgentEventTool implements IConditionallyListedTool {
   @Tool({
     name: 'send_test_notification',
     topic: ToolTopics.Settings,
+    effect: 'write',
     title: 'Send a test notification',
     template: 'Send a test notification to the team chat',
     description:
@@ -397,6 +402,7 @@ export class AgentEventTool implements IConditionallyListedTool {
   @Tool({
     name: 'remove_notification_destination',
     topic: ToolTopics.Settings,
+    effect: 'write',
     title: 'Stop sending notifications',
     template: 'Stop sending agent failure notifications to Slack',
     destructive: true,

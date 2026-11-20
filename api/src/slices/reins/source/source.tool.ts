@@ -97,6 +97,7 @@ export class SourceTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_knowledge_sources',
     topic: ToolTopics.Knowledge,
+    effect: 'read',
     title: 'List sources',
     template: 'List the sources of the knowledge base «name»',
     description:
@@ -177,6 +178,7 @@ export class SourceTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_knowledge_imports',
     topic: ToolTopics.Knowledge,
+    effect: 'read',
     title: 'Imports in progress',
     template: 'Are any imports running for the knowledge base «name»?',
     description:
@@ -206,6 +208,7 @@ export class SourceTool implements IConditionallyListedTool {
   @Tool({
     name: 'add_knowledge_source',
     topic: ToolTopics.Knowledge,
+    effect: 'write',
     title: 'Add a URL or text source',
     template: 'Add «url or text» to the knowledge base «name»',
     description:
@@ -271,6 +274,7 @@ export class SourceTool implements IConditionallyListedTool {
   @Tool({
     name: 'add_knowledge_sources_from_sitemap',
     topic: ToolTopics.Knowledge,
+    effect: 'write',
     title: 'Add URLs from a sitemap',
     template: 'Add every page of «sitemap url» to the knowledge base «name»',
     description:
@@ -328,6 +332,7 @@ export class SourceTool implements IConditionallyListedTool {
   @Tool({
     name: 'reindex_knowledge_source',
     topic: ToolTopics.Knowledge,
+    effect: 'write',
     title: 'Retry one source',
     template: 'Reindex the source «name» in the knowledge base «base»',
     description:
@@ -366,6 +371,7 @@ export class SourceTool implements IConditionallyListedTool {
   @Tool({
     name: 'extract_knowledge_source',
     topic: ToolTopics.Knowledge,
+    effect: 'write',
     title: 'Re-extract a scanned PDF',
     template: 'Re-run text extraction for «source» in «base»',
     description:
@@ -412,6 +418,7 @@ export class SourceTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_knowledge_source',
     topic: ToolTopics.Knowledge,
+    effect: 'write',
     title: 'Delete a source',
     template: 'Delete the source «name» from the knowledge base «base»',
     destructive: true,

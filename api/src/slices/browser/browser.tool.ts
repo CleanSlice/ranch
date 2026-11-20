@@ -43,6 +43,7 @@ export class BrowserTool {
   @Tool({
     name: 'browser_session_open',
     topic: ToolTopics.Browser,
+    effect: 'write',
     title: 'Open a browser session',
     template: 'Open a browser session for «account» at «login url»',
     description:
@@ -70,6 +71,7 @@ export class BrowserTool {
   @Tool({
     name: 'browser_session_close',
     topic: ToolTopics.Browser,
+    effect: 'write',
     title: 'Close a browser session',
     template: 'Close the browser session «session»',
     destructive: true,
@@ -99,6 +101,7 @@ export class BrowserTool {
   @Tool({
     name: 'browser_session_reset',
     topic: ToolTopics.Browser,
+    effect: 'write',
     title: 'Reset a stuck browser session',
     template: 'Reset the browser session «session»',
     destructive: true,
@@ -127,6 +130,7 @@ export class BrowserTool {
   @Tool({
     name: 'browser_session_login_url',
     topic: ToolTopics.Browser,
+    effect: 'write',
     title: 'Get a login link for a session',
     template: 'Give me a link to log in to the browser session «session»',
     description:
@@ -148,6 +152,7 @@ export class BrowserTool {
   @Tool({
     name: 'browser_session_set_status',
     topic: ToolTopics.Browser,
+    effect: 'write',
     title: "Set a session's status",
     template: 'Mark the browser session «session» as «status»',
     description:
@@ -172,6 +177,7 @@ export class BrowserTool {
   @Tool({
     name: 'browser_session_list',
     topic: ToolTopics.Browser,
+    effect: 'read',
     title: 'List browser sessions',
     template: 'List my browser sessions',
     description:

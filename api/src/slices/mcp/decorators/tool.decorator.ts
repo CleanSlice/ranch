@@ -3,6 +3,8 @@ import { MCP_TOOL_METADATA_KEY } from './constants';
 import { z } from 'zod';
 import type { ToolTopic } from './topics';
 
+export type ToolEffect = 'read' | 'write';
+
 export interface ToolMetadata {
   name: string;
   description: string;
@@ -18,6 +20,14 @@ export interface ToolMetadata {
    */
   template: string;
   /**
+   * What the tool does to the platform (CLEAN-240): `read` when calling it
+   * changes nothing anyone else could notice, `write` otherwise. The
+   * assistant's access levels are a rule over this mark, so "see and ask"
+   * holds exactly the tools filed as `read`. A tool that starts a job, sends
+   * something or stores anything is a `write`, however small.
+   */
+  effect: ToolEffect;
+  /**
    * The tool removes, revokes, replaces wholesale or interrupts something.
    * Such a tool must take a boolean `confirm` parameter and refuse without
    * it (see `confirmed()` in `../tooling`).
@@ -32,15 +42,17 @@ export interface ToolOptions {
   topic: ToolTopic;
   title: string;
   template: string;
+  effect: ToolEffect;
   destructive?: boolean;
 }
 
 /**
  * Decorator that marks a provider method as an MCP tool.
  *
- * `topic`, `title` and `template` are required: the registry refuses to boot
- * a tool without them (CLEAN-109), so a new console capability cannot ship a
- * tool the Tools panel cannot show.
+ * `topic`, `title`, `template` and `effect` are required: the registry refuses
+ * to boot a tool without them (CLEAN-109, CLEAN-240), so a new console
+ * capability cannot ship a tool the Tools panel cannot show or the assistant's
+ * access levels cannot place.
  *
  * @param {Object} options - The options for the decorator
  * @param {string} options.name - The name of the tool

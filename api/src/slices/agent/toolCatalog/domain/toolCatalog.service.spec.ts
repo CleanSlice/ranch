@@ -27,6 +27,7 @@ const listed = (
     topic: topic as never,
     title: `Title ${name}`,
     template: `Do «${name}»`,
+    effect: 'read',
     ...extra,
   },
   audience: 'admin',

@@ -70,6 +70,7 @@ export class TemplateAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'create_template',
     topic: ToolTopics.Templates,
+    effect: 'write',
     title: 'Create a template',
     template:
       'Create a template «name» with image «image» described as «description»',
@@ -124,6 +125,7 @@ export class TemplateAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_template',
     topic: ToolTopics.Templates,
+    effect: 'write',
     title: 'Delete a template',
     template: 'Delete the template «name»',
     destructive: true,
@@ -167,6 +169,7 @@ export class TemplateAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_template_mcps',
     topic: ToolTopics.Templates,
+    effect: 'write',
     title: 'Attach MCP servers to a template',
     template: 'Attach the MCP servers «server list» to the template «name»',
     description:
@@ -206,6 +209,7 @@ export class TemplateAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_template_tools',
     topic: ToolTopics.Templates,
+    effect: 'write',
     title: 'Limit the tools a template hands its agents',
     template: 'Give the template «name» only the tools «tool list»',
     description:
@@ -250,6 +254,7 @@ export class TemplateAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'restart_template_agents',
     topic: ToolTopics.Templates,
+    effect: 'write',
     title: 'Restart every agent of a template',
     template: 'Restart all agents of the template «name»',
     destructive: true,

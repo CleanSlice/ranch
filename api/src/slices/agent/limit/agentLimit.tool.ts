@@ -185,6 +185,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_agent_limits',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: 'List request limits of all agents',
     template:
       'Which agents are at their request limit right now, and which public ones have no limit?',
@@ -238,6 +239,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_agent_limits',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: 'Show request limits and load',
     template:
       'What are the request limits of the agent «name», and how busy is it?',
@@ -275,6 +277,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_agent_limits',
     topic: ToolTopics.Agents,
+    effect: 'write',
     title: 'Set request limits',
     template:
       'Limit the agent «name» to «number» requests per minute and «number» per day',
@@ -376,6 +379,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_agent_visibility',
     topic: ToolTopics.Agents,
+    effect: 'write',
     title: 'Make an agent public or private',
     template:
       'Make the agent «name» public for «site address» with «number» requests per minute',

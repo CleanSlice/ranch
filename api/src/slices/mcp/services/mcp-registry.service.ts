@@ -66,6 +66,12 @@ export function toolMetadataProblems(metadata: Partial<ToolMetadata>): string[] 
   if (template && needsPlaceholder && !template.includes('«')) {
     problems.push('template has parameters but no «…» placeholder');
   }
+  if (metadata.effect !== 'read' && metadata.effect !== 'write') {
+    problems.push("missing effect ('read' or 'write')");
+  }
+  if (metadata.destructive && metadata.effect === 'read') {
+    problems.push('destructive tool filed as a read');
+  }
   if (metadata.destructive) {
     const confirm = properties.confirm as { type?: unknown } | undefined;
     if (!confirm || confirm.type !== 'boolean') {
@@ -132,7 +138,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     }
     if (problems.length) {
       throw new Error(
-        `MCP tool metadata is incomplete — every @Tool needs topic, title and template, an audience (@ToolAudience on its class or on the method), and a destructive tool needs a boolean confirm parameter:\n  - ${problems.join('\n  - ')}`,
+        `MCP tool metadata is incomplete — every @Tool needs topic, title, template and effect ('read' or 'write'), an audience (@ToolAudience on its class or on the method), and a destructive tool needs a boolean confirm parameter:\n  - ${problems.join('\n  - ')}`,
       );
     }
     this.logger.log(`Validated ${tools.length} MCP tools`);

@@ -101,6 +101,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'stop_agent',
     topic: ToolTopics.Agents,
+    effect: 'write',
     title: 'Stop an agent',
     template: 'Stop the agent «name»',
     destructive: true,
@@ -143,6 +144,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'start_agent',
     topic: ToolTopics.Agents,
+    effect: 'write',
     title: 'Start an agent',
     template: 'Start the agent «name»',
     description:
@@ -174,6 +176,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'pin_agent',
     topic: ToolTopics.Agents,
+    effect: 'write',
     title: 'Pin or unpin an agent',
     template: 'Pin the agent «name»',
     description:
@@ -222,6 +225,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_agent',
     topic: ToolTopics.Agents,
+    effect: 'write',
     title: 'Delete an agent',
     template: 'Delete the agent «name» and its workspace',
     destructive: true,
@@ -318,6 +322,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_agent_status',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: 'Show live status and metrics',
     template: 'How is the agent «name» doing right now?',
     description:
@@ -369,6 +374,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_agent_env',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: 'Show the pod environment preview',
     template: 'Show the environment the agent «name» runs with',
     description:
@@ -402,6 +408,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_agent_mcps',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: "Show the agent's MCP servers",
     template:
       'Which MCP servers does the agent «name» have, and does it need a restart?',
@@ -463,6 +470,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_cluster_capacity',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: 'Show cluster capacity',
     template: 'How much capacity is left for new agents?',
     description:

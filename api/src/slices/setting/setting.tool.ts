@@ -54,6 +54,7 @@ export class SettingTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_setting',
     topic: ToolTopics.Settings,
+    effect: 'read',
     title: 'Show one setting',
     template: 'What is «group».«name» set to?',
     description:
@@ -90,6 +91,7 @@ export class SettingTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_setting',
     topic: ToolTopics.Settings,
+    effect: 'write',
     title: 'Delete a setting',
     template: 'Reset «group».«name» to its default',
     destructive: true,

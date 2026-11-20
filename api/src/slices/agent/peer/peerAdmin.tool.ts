@@ -83,6 +83,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_agent_peers',
     topic: ToolTopics.Peers,
+    effect: 'read',
     title: "List an agent's peers",
     template: 'Which peers does the agent «name» have?',
     description:
@@ -123,6 +124,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_peer_candidates',
     topic: ToolTopics.Peers,
+    effect: 'read',
     title: 'Agents that can become peers',
     template: 'Which agents could «name» delegate to?',
     description:
@@ -152,6 +154,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'preview_agent_card',
     topic: ToolTopics.Peers,
+    effect: 'read',
     title: "Preview an agent's card",
     template: 'Show the A2A card of the agent «name»',
     description:
@@ -211,6 +214,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_agent_delegations',
     topic: ToolTopics.Peers,
+    effect: 'read',
     title: 'Recent delegations',
     template: 'What did the agent «name» delegate recently?',
     description:
@@ -249,6 +253,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'connect_agent_peer',
     topic: ToolTopics.Peers,
+    effect: 'write',
     title: 'Connect a peer',
     template: 'Connect the agent «peer» as a peer of «name»',
     description:
@@ -288,6 +293,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'import_external_agent',
     topic: ToolTopics.Peers,
+    effect: 'write',
     title: 'Import an external A2A agent',
     template: 'Import the external agent at «url» as a peer of «name»',
     description:
@@ -338,6 +344,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'import_agent_from_card',
     topic: ToolTopics.Peers,
+    effect: 'write',
     title: 'Import an agent from its card',
     template: 'Connect this agent to «name» — here is its card',
     description:
@@ -389,6 +396,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'refresh_agent_peer',
     topic: ToolTopics.Peers,
+    effect: 'write',
     title: "Refresh a peer's card",
     template: 'Refresh the card of the peer «peer» on the agent «name»',
     description:
@@ -421,6 +429,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'remove_agent_peer',
     topic: ToolTopics.Peers,
+    effect: 'write',
     title: 'Remove a peer',
     template: 'Remove the peer «peer» from the agent «name»',
     destructive: true,

@@ -157,6 +157,7 @@ export class AskAgentTool
   @Tool({
     name: 'ask_agent',
     topic: ToolTopics.Peers,
+    effect: 'write',
     title: 'Ask a peer agent',
     template: 'Ask your peer «name» to «task»',
     description: NO_PEERS_DESCRIPTION,

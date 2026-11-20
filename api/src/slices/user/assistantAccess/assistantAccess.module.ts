@@ -2,12 +2,14 @@ import { Global, Module, forwardRef } from '@nestjs/common';
 import { AgentModule } from '#/agent/agent/agent.module';
 import { UserModule } from '#/user/user/user.module';
 import { AssistantAccessController } from './assistantAccess.controller';
+import { AssistantAccessTool } from './assistantAccess.tool';
 import { AssistantAccessGateway } from './data/assistantAccess.gateway';
 import { AssistantAccessMapper } from './data/assistantAccess.mapper';
 import { IAssistantAccessGateway } from './domain/assistantAccess.gateway';
 import { AssistantAccessService } from './domain/assistantAccess.service';
 import { AssistantToolPolicyService } from './domain/assistantToolPolicy.service';
 import { AssistantAccessWiring } from './assistantAccess.wiring';
+import { IActingAssistant } from '#/bridle/domain/bridle.types';
 
 // Who has the Ranch assistant and what it offers them (CLEAN-240).
 //
@@ -24,10 +26,13 @@ import { AssistantAccessWiring } from './assistantAccess.wiring';
   providers: [
     AssistantAccessMapper,
     AssistantAccessService,
+    AssistantAccessTool,
     AssistantToolPolicyService,
     AssistantAccessWiring,
     { provide: IAssistantAccessGateway, useClass: AssistantAccessGateway },
+    // The hub asks this for the level it says beside an acting token.
+    { provide: IActingAssistant, useExisting: AssistantAccessService },
   ],
-  exports: [AssistantAccessService],
+  exports: [AssistantAccessService, IActingAssistant],
 })
 export class AssistantAccessModule {}

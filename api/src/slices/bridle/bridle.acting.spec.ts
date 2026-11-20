@@ -35,11 +35,21 @@ const AGENT = 'agent-1';
 type Outbound = Record<string, unknown> & {
   clientId: string;
   text: string;
-  acting?: { token: string; role: string; surface?: string };
+  acting?: {
+    token: string;
+    role: string;
+    surface?: string;
+    assistant?: { level: string };
+  };
   user?: { id: string; email?: string };
 };
 
-function makeHub() {
+function makeHub(assistant?: {
+  actingLevelFor: (
+    agentId: string,
+    person: { userId: string; role: string },
+  ) => Promise<string | null>;
+}) {
   const acting = makeActingParty();
   const hub = new BridleGateway();
   const toAgent: Outbound[] = [];
@@ -87,6 +97,7 @@ function makeHub() {
     shareLinks as never,
     acting.service,
     reach,
+    assistant as never,
   );
   const controller = new BridleController(
     hub,
@@ -102,6 +113,7 @@ function makeHub() {
     {} as never,
     acting.service,
     reach,
+    assistant as never,
   );
 
   let sockets = 0;
@@ -305,6 +317,91 @@ describe('the hub mints an acting token: a console person on the socket', () => 
     expect(await h.resolve(h.last().acting?.token)).toMatchObject({
       role: UserRoleTypes.User,
     });
+  });
+});
+
+// CLEAN-240: when the agent is the assistant, the hub also says which level
+// the person uses it at. Wording for the turn's prompt and nothing more: the
+// token beside it is still the only thing that grants.
+describe('the hub says the person’s assistant level', () => {
+  const levels = (answer: string | null) => ({
+    actingLevelFor: jest.fn(async () => answer),
+  });
+
+  it('on the socket, beside the token', async () => {
+    const assistant = levels('standard');
+    const h = makeHub(assistant);
+    const client = await h.connect({
+      token: h.consoleToken('user-a', UserRoleTypes.Admin),
+      surface: 'admin',
+    });
+    await h.say(client, 'what can you do for me?');
+
+    expect(h.last().acting).toEqual({
+      token: expect.any(String) as string,
+      role: 'Admin',
+      surface: 'admin',
+      assistant: { level: 'standard' },
+    });
+    expect(assistant.actingLevelFor).toHaveBeenCalledWith(AGENT, {
+      userId: 'user-a',
+      role: UserRoleTypes.Admin,
+    });
+  });
+
+  it('on the HTTP routes', async () => {
+    const h = makeHub(levels('owner'));
+    await h.controller.sendMessage(
+      AGENT,
+      bearer(h.consoleToken('user-o', UserRoleTypes.Owner)),
+      { text: 'who is on which level?' } as never,
+      res,
+    );
+    expect(h.last().acting?.assistant).toEqual({ level: 'owner' });
+  });
+
+  it('nothing for an agent that is not the assistant', async () => {
+    const h = makeHub(levels(null));
+    const client = await h.connect({
+      token: h.consoleToken('user-1', UserRoleTypes.User),
+    });
+    await h.say(client, 'hello');
+    expect(h.last().acting).not.toHaveProperty('assistant');
+  });
+
+  it('nothing for a visitor: there is no person to have a level', async () => {
+    const assistant = levels('basic');
+    const h = makeHub(assistant);
+    const client = await h.connect({
+      shareToken: 'sl_live',
+      shareVisitor: 'v1',
+    });
+    await h.say(client, 'hello');
+    expect(h.last().acting).toBeUndefined();
+    expect(assistant.actingLevelFor).not.toHaveBeenCalled();
+  });
+
+  it('a level that cannot be read costs the wording, never the token', async () => {
+    const h = makeHub({
+      actingLevelFor: jest.fn(async () => {
+        throw new Error('db down');
+      }),
+    });
+    const client = await h.connect({
+      token: h.consoleToken('user-a', UserRoleTypes.Admin),
+    });
+    await h.say(client, 'restart agent X');
+    expect(h.last().acting?.token).toEqual(expect.any(String));
+    expect(h.last().acting).not.toHaveProperty('assistant');
+  });
+
+  it('a hub built without it says nothing, as before', async () => {
+    const h = makeHub();
+    const client = await h.connect({
+      token: h.consoleToken('user-a', UserRoleTypes.Admin),
+    });
+    await h.say(client, 'hello');
+    expect(h.last().acting).not.toHaveProperty('assistant');
   });
 });
 

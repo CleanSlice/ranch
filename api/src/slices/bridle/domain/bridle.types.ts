@@ -115,6 +115,58 @@ export interface IBridleActing {
   role: string;
   /** Which console the socket said it is. Display only, client-declared. */
   surface?: BridleSurfaceTypes;
+  /**
+   * Only on a message to the installation's assistant (CLEAN-240): the level
+   * this person uses it at, so the turn's prompt can name it. Display only,
+   * like `role`: what the assistant may do for the person is decided by the
+   * API from `token`, on every tool list and every tool call.
+   */
+  assistant?: { level: BridleAssistantLevelTypes };
+}
+
+export const BRIDLE_ASSISTANT_LEVELS = [
+  'owner',
+  'basic',
+  'standard',
+  'full',
+  'custom',
+] as const;
+export type BridleAssistantLevelTypes =
+  (typeof BRIDLE_ASSISTANT_LEVELS)[number];
+
+/**
+ * Where the hub learns a person's assistant level. The assistant's own slice
+ * provides it; the hub knows the question and nothing about the settings.
+ * Answers null for an agent that is not the assistant.
+ */
+export abstract class IActingAssistant {
+  abstract actingLevelFor(
+    agentId: string,
+    person: { userId: string; role: string },
+  ): Promise<string | null>;
+}
+
+/**
+ * The `assistant` member of an acting block, or nothing. A level that cannot
+ * be read, or is not one the runtime knows, costs the wording of one turn and
+ * never the token beside it.
+ */
+export async function actingAssistantOf(
+  source: IActingAssistant | null | undefined,
+  agentId: string,
+  person: { userId: string; role: string },
+): Promise<
+  { assistant: { level: BridleAssistantLevelTypes } } | Record<string, never>
+> {
+  if (!source) return {};
+  try {
+    const level = await source.actingLevelFor(agentId, person);
+    return (BRIDLE_ASSISTANT_LEVELS as readonly unknown[]).includes(level)
+      ? { assistant: { level: level as BridleAssistantLevelTypes } }
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 export const BRIDLE_SURFACES = ['app', 'admin'] as const;

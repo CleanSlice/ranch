@@ -668,3 +668,72 @@ describe('what a person is told about themselves', () => {
     expect(mine).toMatchObject({ enabled: false, areas: [], leftOut: [] });
   });
 });
+
+describe('the level the hub says beside an acting token', () => {
+  it('only for the assistant', async () => {
+    const { service } = harness();
+    expect(
+      await service.actingLevelFor('support-bot', {
+        userId: ADMIN.id,
+        role: 'Admin',
+      }),
+    ).toBeNull();
+    expect(
+      await service.actingLevelFor('assistant', {
+        userId: ADMIN.id,
+        role: 'Admin',
+      }),
+    ).toBe('full');
+  });
+
+  it('the Owner is the Owner, whatever is configured', async () => {
+    const { service } = harness();
+    expect(
+      await service.actingLevelFor('assistant', {
+        userId: OWNER.id,
+        role: 'Owner',
+      }),
+    ).toBe('owner');
+  });
+
+  it('follows the role and the account’s own setting', async () => {
+    const { service } = harness();
+    expect(
+      await service.actingLevelFor('assistant', {
+        userId: USER.id,
+        role: 'User',
+      }),
+    ).toBe('basic');
+    await service.setAccount(asOwner, USER.id, { level: 'standard' });
+    expect(
+      await service.actingLevelFor('assistant', {
+        userId: USER.id,
+        role: 'User',
+      }),
+    ).toBe('standard');
+    await service.setAccount(asOwner, USER.id, {
+      level: 'custom',
+      on: ['list_agents'],
+    });
+    expect(
+      await service.actingLevelFor('assistant', {
+        userId: USER.id,
+        role: 'User',
+      }),
+    ).toBe('custom');
+  });
+
+  it('says nothing for a person it is off for, or for a role that is not a person’s', async () => {
+    const { service } = harness();
+    await service.setRole(asOwner, UserRoleTypes.User, { enabled: false });
+    expect(
+      await service.actingLevelFor('assistant', {
+        userId: USER.id,
+        role: 'User',
+      }),
+    ).toBeNull();
+    expect(
+      await service.actingLevelFor('assistant', { userId: 'x', role: 'Agent' }),
+    ).toBeNull();
+  });
+});

@@ -114,6 +114,13 @@ export interface IAssistantCatalog {
   alwaysOn: IAssistantCatalogAbility[];
 }
 
+/** What a change would take away, and from how many accounts. */
+export interface IAssistantLoss {
+  accounts: number;
+  abilities: number;
+  byArea: { area: string; abilities: number }[];
+}
+
 export interface IAssistantMine {
   enabled: boolean;
   level: AssistantLevelOrCustom | 'owner';
@@ -448,6 +455,11 @@ export class AssistantAccessService {
     return this.accountView(editor, userId);
   }
 
+  /** The email next to an id, for an answer a person reads. */
+  async emailOf(userId: string): Promise<string | null> {
+    return (await this.users.findById(userId))?.email ?? null;
+  }
+
   /** The exception goes with the account. */
   async removeUser(userId: string): Promise<void> {
     await this.gateway.deleteAccount(userId);
@@ -555,6 +567,115 @@ export class AssistantAccessService {
         .sort((a, b) => a.order - b.order),
       alwaysOn: abilities.filter((a) => !a.governed).map(describe),
     };
+  }
+
+  // ------------------------------------------------- what a change would cost
+
+  /**
+   * What people would lose if a role's setting were changed this way. Asked
+   * before a change is made from the chat, where nobody sees a form: the
+   * assistant states it and waits for a yes (FR-018). Checks what `setRole`
+   * checks and saves nothing.
+   */
+  async lossForRole(
+    editor: IAssistantEditor,
+    role: AssistantRole,
+    input: IAssistantSettingInput,
+  ): Promise<IAssistantLoss> {
+    if (!isAssistantRole(role)) {
+      throw new AssistantAccessError(
+        AssistantAccessErrorCodes.BadRole,
+        ASSISTANT_ACCESS_REFUSALS.owner,
+      );
+    }
+    if (!isOwnerEditor(editor)) {
+      throw new AssistantAccessError(
+        AssistantAccessErrorCodes.NotAllowed,
+        ASSISTANT_ACCESS_REFUSALS.roles,
+      );
+    }
+    const before = await this.effectiveForRole(role);
+    const next = this.merge(role, before, input);
+    const [people, rows] = await Promise.all([
+      this.users.findAll(),
+      this.gateway.listAccounts(),
+    ]);
+    const excepted = new Set(rows.map((r) => r.userId));
+    return this.loss(
+      role,
+      before,
+      next,
+      people.filter((p) => p.role === role && !excepted.has(p.id)).length,
+    );
+  }
+
+  /** The same for one account. */
+  async lossForAccount(
+    editor: IAssistantEditor,
+    userId: string,
+    input: IAssistantSettingInput,
+  ): Promise<IAssistantLoss> {
+    const target = await this.requireEditable(editor, userId);
+    const before = await this.effectiveFor(userId, target.role);
+    return this.loss(
+      target.role,
+      before,
+      this.merge(target.role, before, input),
+      1,
+    );
+  }
+
+  private loss(
+    role: UserRoleTypes,
+    before: Pick<IEffective, 'enabled' | 'level' | 'custom'>,
+    after: Pick<IEffective, 'enabled' | 'level' | 'custom'>,
+    accounts: number,
+  ): IAssistantLoss {
+    const have = before.enabled
+      ? this.offeredNames(role, before)
+      : new Set<string>();
+    const keep = after.enabled
+      ? this.offeredNames(role, after)
+      : new Set<string>();
+    const lost = this.ceilingOf(role).filter(
+      (a) => have.has(a.name) && !keep.has(a.name),
+    );
+    const byArea = new Map<ToolTopic, number>();
+    for (const ability of lost) {
+      byArea.set(ability.area, (byArea.get(ability.area) ?? 0) + 1);
+    }
+    return {
+      accounts,
+      abilities: lost.length,
+      byArea: [...byArea.entries()]
+        .sort(
+          (a, b) =>
+            (TOOL_TOPIC_INFO[a[0]]?.order ?? 0) -
+            (TOOL_TOPIC_INFO[b[0]]?.order ?? 0),
+        )
+        .map(([area, abilities]) => ({
+          area: TOOL_TOPIC_INFO[area]?.title ?? area,
+          abilities,
+        })),
+    };
+  }
+
+  /**
+   * The level the hub says beside a person's acting token, when the agent is
+   * the assistant (contracts/acting.md). Wording only. Null for any other
+   * agent, and for a person the assistant is off for: their message is
+   * refused by the reach before anybody reads this.
+   */
+  async actingLevelFor(
+    agentId: string,
+    person: { userId: string; role: string },
+  ): Promise<string | null> {
+    const assistant = await this.assistant();
+    if (!assistant || assistant.id !== agentId) return null;
+    if (person.role === UserRoleTypes.Owner) return 'owner';
+    if (!isAssistantRole(person.role)) return null;
+    const effective = await this.effectiveFor(person.userId, person.role);
+    return effective.enabled ? effective.level : null;
   }
 
   // ------------------------------------------------------------- explaining

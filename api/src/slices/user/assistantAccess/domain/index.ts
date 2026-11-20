@@ -11,6 +11,7 @@ export {
   type IAssistantCatalog,
   type IAssistantException,
   type IAssistantLevelInfo,
+  type IAssistantLoss,
   type IAssistantMine,
   type IAssistantOverview,
   type IAssistantRoleView,

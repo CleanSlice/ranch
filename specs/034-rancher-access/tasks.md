@@ -25,7 +25,7 @@
 
 - [X] T001 Prepare the worktree: `bun install`, `cd api && bun run generate && bun run build && bun run generate:swagger`, confirm `cd api && bun run test -- tool-metadata toolAudience toolReach` is green before any change
 - [X] T002 [P] Create the API slice shell `api/src/slices/user/assistantAccess/` (`assistantAccess.module.ts`, `index.ts`, empty `domain/`, `data/`, `dtos/`) and register the module where `AgentAccessModule` is registered
-- [ ] T003 [P] Create the admin slice shell `admin/slices/user/assistantAccess/` (`nuxt.config.ts` with alias `#assistantAccess`, `index.d.ts`, `plugins/di.ts`) following `admin/slices/user/agentAccess/`
+- [X] T003 [P] Create the admin slice shell `admin/slices/user/assistantAccess/` (`nuxt.config.ts` with alias `#assistantAccess`, `index.d.ts`, `plugins/di.ts`) following `admin/slices/user/agentAccess/`
 - [ ] T004 [P] Create the app slice shell `app/slices/user/assistantAccess/` (`nuxt.config.ts`, `index.d.ts`, `plugins/di.ts`, `i18n/locales/en.json` with an empty `assistantAccess` object) following `app/slices/share/`
 
 ---
@@ -74,7 +74,7 @@
 - [X] T021 [P] [US1] Add to the same spec: `view()` never returns the assistant's id in `allowed` or `denied`; `change()` naming the assistant's id is refused with `ASSISTANT_NOT_LISTED` and saves nothing
 - [ ] T022 [P] [US1] Add to `api/src/slices/mcp/toolReach.spec.ts`: an Admin limited to two ordinary agents, assistant on → `list_agents` returns those two plus the assistant; assistant off → `get_agent` on the assistant's id answers the same "not found" as an unknown id
 - [X] T023 [P] [US1] Write `api/src/slices/user/assistantAccess/assistantAccess.migration.spec.ts` for the pure function of T029: entries `[denied assistant]` → account row `enabled: false`; `[allowed assistant, allowed X]` → no row, entry for X kept; `[allowed X]` with `limited` → no row; every assistant entry removed; `limited` untouched
-- [ ] T024 [P] [US1] Add to `admin/slices/user/agentAccess/` a test `utils/assistantRow.test.ts`: the editor's rows never include an agent with `isAdmin`, and a search that matches only the assistant's name yields the "set above" state
+- [X] T024 [P] [US1] Add to `admin/slices/user/agentAccess/` a test `utils/assistantRow.test.ts`: the editor's rows never include an agent with `isAdmin`, and a search that matches only the assistant's name yields the "set above" state
 
 ### Implementation
 
@@ -83,7 +83,7 @@
 - [X] T027 [US1] In the same service make `view()` drop the assistant's id and `change()` refuse it (`ASSISTANT_NOT_LISTED`, 422 in `agentAccess.controller.ts`; the same refusal text in `set_user_agent_access` of `agentAccess.tool.ts`) until T021 passes
 - [X] T028 [US1] Open `GET /agents/admin/current` to `UserRoleTypes.User` in `api/src/slices/agent/agent/agent.controller.ts` (reach decides; a User gets the reader view through `presentOne`); update its `summary` and the route-table fixture `api/src/slices/user/auth/guards/__fixtures__/routeTable.ts`
 - [X] T029 [US1] Implement the carry-over as a pure function `carryOver(entries, assistantId)` in `api/src/slices/user/assistantAccess/domain/assistantCarryOver.ts` (T023 green) and its SQL twin appended to the T014 migration: insert `AssistantAccountAccess(enabled=false, level=<role default>)` for accounts with a `denied` entry on the agent where `"isAdmin" = true`, then delete every `UserAgentAccessEntry` for that agent
-- [ ] T030 [US1] Remove the assistant from the rows of `admin/slices/user/agentAccess/components/agentAccess/Editor.vue` (filter `isAdmin` in the rows source; "The assistant is set above." when the search matches only it) until T024 passes; regenerate both consoles' API clients (`cd admin && bun run build:api`, `cd app && bun run build:api`)
+- [X] T030 [US1] Remove the assistant from the rows of `admin/slices/user/agentAccess/components/agentAccess/Editor.vue` (filter `isAdmin` in the rows source; "The assistant is set above." when the search matches only it) until T024 passes; regenerate both consoles' API clients (`cd admin && bun run build:api`, `cd app && bun run build:api`)
 
 **Checkpoint**: the reported failure is gone. Every non-Owner account has the assistant on with its role's default level. ⚠ Ship together with Phase 4 (see Implementation Strategy).
 
@@ -100,17 +100,17 @@
 - [X] T031 [P] [US2] Write `api/src/slices/user/assistantAccess/domain/assistantToolPolicy.service.spec.ts`: answers `null` when the bearer is not the assistant's token, when the party is the Owner, `trusted` or a `guest`; for a `person` Admin/User through the assistant answers exactly `resolveFor(person).names` plus the never-governed tools (audiences `everyone`, `agent`) plus `get_my_assistant_access`; memoised per request
 - [X] T032 [P] [US2] Write `api/src/slices/mcp/assistantGrant.spec.ts` in the style of `toolReach.spec.ts`: for role ∈ {Admin, User} × level ∈ {basic, standard, full}, the listed tools through the assistant equal `levelSet(level) ∩ audienceAllows(role)`; one named probe per area (e.g. `restart_agent`, `create_user`, `update_template`, `list_knowledges`); a tool not listed is refused at `tools/call` with the catalogue's ordinary unknown-tool answer (SC-006)
 - [X] T033 [P] [US2] Write `api/src/slices/user/assistantAccess/assistantAccess.controller.spec.ts` for `GET /assistant-access` and `PUT /assistant-access/roles/:role`: Owner only (Admin → 403); defaults reported when no rows; `enabled`/`level` saved; stale `version` → 409; `:role = Owner` → 400; `accounts` counts the accounts of that role without an exception
-- [ ] T034 [P] [US2] Write `admin/slices/user/assistantAccess/utils/roleChange.test.ts`: `narrows(before, after, catalogue, role)` is true for a lower level and for off, false for a higher level or on; `lossSummary` returns the number of abilities lost within the role's ceiling
-- [ ] T035 [P] [US2] Write `admin/slices/user/assistantAccess/stores/assistantAccess.test.ts`: `patchRole` applies optimistically and rolls back on a failed save; a fetch upserts; the catalogue is fetched once
+- [X] T034 [P] [US2] Write `admin/slices/user/assistantAccess/utils/roleChange.test.ts`: `narrows(before, after, catalogue, role)` is true for a lower level and for off, false for a higher level or on; `lossSummary` returns the number of abilities lost within the role's ceiling
+- [X] T035 [P] [US2] Write `admin/slices/user/assistantAccess/stores/assistantAccess.test.ts`: `patchRole` applies optimistically and rolls back on a failed save; a fetch upserts; the catalogue is fetched once
 
 ### Implementation
 
 - [X] T036 [US2] Implement `AssistantToolPolicyService extends CallerToolPolicy` in `api/src/slices/user/assistantAccess/domain/assistantToolPolicy.service.ts` (assistant detected by `callerAgentId(req)` equal to `findAdmin()`'s id; party by `callerParty(req)`), register it under `CALLER_TOOL_POLICIES` in `assistantAccess.module.ts` until T031 and T032 pass
 - [X] T037 [US2] Implement `setRole(editor, role, setting, version)` and `overview(editor)` (roles only; `exceptions: []`, `notice: null` for now) in `domain/assistantAccess.service.ts`, with an audit log line on every write (editor, target, before, after — FR-031)
 - [X] T038 [US2] Implement DTOs in `api/src/slices/user/assistantAccess/dtos/` (`AssistantSettingDto`, `AssistantResolvedDto`, `AssistantOverviewDto`, `AbilityDto`, `AreaDto`, `AssistantCatalogDto`) and the routes `GET /assistant-access`, `PUT /assistant-access/roles/:role`, `GET /assistant-access/catalog` in `assistantAccess.controller.ts` until T033 passes; regenerate swagger and both consoles' API clients
-- [ ] T039 [P] [US2] Implement the admin data layer `admin/slices/user/assistantAccess/{domain,data}/` (types, gateway, mapper, service) and the Pinia store `stores/assistantAccess.ts` (`roles`, `catalogue`, `fetchOverview`, `fetchCatalogue`, `patchRole` with rollback per docs/state.md) until T035 passes
-- [ ] T040 [P] [US2] Implement `admin/slices/user/assistantAccess/components/assistantAccess/LevelPicker.vue` (segmented Basic | Standard | Full; `levels` prop so Users get two; `disabledAbove` prop; shows `Custom · N of M` when `level === 'custom'`) and `utils/roleChange.ts` until T034 passes
-- [ ] T041 [US2] Implement `admin/slices/user/assistantAccess/components/assistantAccess/RoleCard.vue` per contracts/ui.md §A (two rows: switch, `LevelPicker`, accounts count; narrowing asks once with `lossSummary`; widening saves at once; toast with Undo; off greys the row) and mount it on the assistant's page in `admin/slices/rancher/components/rancher/Provider.vue` for the Owner only
+- [X] T039 [P] [US2] Implement the admin data layer `admin/slices/user/assistantAccess/{domain,data}/` (types, gateway, mapper, service) and the Pinia store `stores/assistantAccess.ts` (`roles`, `catalogue`, `fetchOverview`, `fetchCatalogue`, `patchRole` with rollback per docs/state.md) until T035 passes
+- [X] T040 [P] [US2] Implement `admin/slices/user/assistantAccess/components/assistantAccess/LevelPicker.vue` (segmented Basic | Standard | Full; `levels` prop so Users get two; `disabledAbove` prop; shows `Custom · N of M` when `level === 'custom'`) and `utils/roleChange.ts` until T034 passes
+- [X] T041 [US2] Implement `admin/slices/user/assistantAccess/components/assistantAccess/RoleCard.vue` per contracts/ui.md §A (two rows: switch, `LevelPicker`, accounts count; narrowing asks once with `lossSummary`; widening saves at once; toast with Undo; off greys the row) and mount it on the assistant's page in `admin/slices/rancher/components/rancher/Provider.vue` for the Owner only
 
 **Checkpoint**: US1 + US2 together are the shippable MVP — the failure is fixed and the Owner has the controls for the new defaults.
 
@@ -126,14 +126,14 @@
 
 - [X] T042 [P] [US3] Add to `assistantAccess.service.spec.ts`: `refuseEdit` — Owner edits any non-Owner; an Admin edits only a User they may edit under specs/032; nobody edits an Owner's or their own; an Admin's write whose resulting set is not a subset of the Admin's own offered set is refused `ABOVE_YOUR_OWN` with the offending names; `reset` deletes the row and is idempotent; an account keeps its row when the role row changes
 - [X] T043 [P] [US3] Add to `assistantAccess.controller.spec.ts`: `GET/PUT/DELETE /users/:id/assistant-access` — the refusals above as 403/422; an account the caller may not see → the same 404 body as an unknown id; `ceiling` present only for an Admin editor; `editable: false` for an Owner target
-- [ ] T044 [P] [US3] Write `admin/slices/user/assistantAccess/utils/accountRow.test.ts`: the caption is "Same as all Admins" / "Same as all Users" / "Set for this account" / "The Owner always has everything." / "No assistant yet."; levels above `ceiling` come back disabled
+- [X] T044 [P] [US3] Write `admin/slices/user/assistantAccess/utils/accountRow.test.ts`: the caption is "Same as all Admins" / "Same as all Users" / "Set for this account" / "The Owner always has everything." / "No assistant yet."; levels above `ceiling` come back disabled
 
 ### Implementation
 
 - [X] T045 [US3] Implement `viewAccount`, `setAccount`, `resetAccount` and `refuseEdit` in `domain/assistantAccess.service.ts` (reuse `refuseAccessEdit` of `agentAccess.service.ts` for who-edits-whom; add the subset rule) until T042 passes
 - [X] T046 [US3] Add the three account routes and their DTOs to `assistantAccess.controller.ts` / `dtos/` until T043 passes; regenerate swagger and the admin API client
-- [ ] T047 [US3] Extend the admin store with `accounts: Record<userId, …>`, `fetchAccount`, `patchAccount` (rollback), `resetAccount`; implement `utils/accountRow.ts` until T044 passes
-- [ ] T048 [US3] Implement `admin/slices/user/assistantAccess/components/assistantAccess/AccountRow.vue` per contracts/ui.md §B and mount it as the first block of `admin/slices/user/agentAccess/components/agentAccess/Editor.vue`, saving independently of "Save access"
+- [X] T047 [US3] Extend the admin store with `accounts: Record<userId, …>`, `fetchAccount`, `patchAccount` (rollback), `resetAccount`; implement `utils/accountRow.ts` until T044 passes
+- [X] T048 [US3] Implement `admin/slices/user/assistantAccess/components/assistantAccess/AccountRow.vue` per contracts/ui.md §B and mount it as the first block of `admin/slices/user/agentAccess/components/agentAccess/Editor.vue`, saving independently of "Save access"
 
 **Checkpoint**: exceptions work from the account page.
 
@@ -148,15 +148,15 @@
 ### Tests
 
 - [X] T049 [P] [US4] Add to `assistantAccess.service.spec.ts`: a custom `on` list is validated — unknown names → `UNKNOWN_ABILITY`; ungoverned names and names above the target's role ceiling are refused, not stored; saved sorted and deduplicated with `known` = all governed names at save time; `matchesLevel` reported when `on` equals a level's set
-- [ ] T050 [P] [US4] Write `admin/slices/user/assistantAccess/utils/advanced.test.ts`: `areaState(area, on)` → `'on' | 'off' | 'mixed'` with `offered`/`available` counts within the role ceiling; toggling a `mixed` area turns it on; `applyLevel(level, catalogue)`; `untickDestructive(on, catalogue)`; `filterAbilities(query, onlyWrites)` keeps area grouping; abilities with `minRole` above the role come back `disabled` with reason `owner_only` / `admins_and_above`; `isNew(name, known)`
+- [X] T050 [P] [US4] Write `admin/slices/user/assistantAccess/utils/advanced.test.ts`: `areaState(area, on)` → `'on' | 'off' | 'mixed'` with `offered`/`available` counts within the role ceiling; toggling a `mixed` area turns it on; `applyLevel(level, catalogue)`; `untickDestructive(on, catalogue)`; `filterAbilities(query, onlyWrites)` keeps area grouping; abilities with `minRole` above the role come back `disabled` with reason `owner_only` / `admins_and_above`; `isNew(name, known)`
 
 ### Implementation
 
 - [X] T051 [US4] Accept `{ level: 'custom', on }` in `setRole` / `setAccount` with the validation of T049; include `on` and `new` in the account and role views when the level is custom
-- [ ] T052 [P] [US4] Implement `admin/slices/user/assistantAccess/utils/advanced.ts` until T050 passes
-- [ ] T053 [P] [US4] Implement `admin/slices/user/assistantAccess/components/assistantAccess/AreaSwitch.vue` (three states, `role="checkbox"` with `aria-checked="mixed"`, keyboard operable — FR-027)
-- [ ] T054 [US4] Implement `admin/slices/user/assistantAccess/components/assistantAccess/Advanced.vue` per contracts/ui.md §C (Sheet from the right; accordion of areas; checklist with `changes` / `deletes` marks and `new` badge; All · None per area; search; "Only the ones that change things"; "Untick everything that deletes"; "Start from" levels with the replace-custom confirmation; "Always on" disclosure; Cancel / Save; focus returns to the trigger)
-- [ ] T055 [US4] Wire "Advanced ›" in `RoleCard.vue` and `AccountRow.vue` to `Advanced.vue` (one component, target = role or account), and show `Custom · N of M` in `LevelPicker.vue`
+- [X] T052 [P] [US4] Implement `admin/slices/user/assistantAccess/utils/advanced.ts` until T050 passes
+- [X] T053 [P] [US4] Implement `admin/slices/user/assistantAccess/components/assistantAccess/AreaSwitch.vue` (three states, `role="checkbox"` with `aria-checked="mixed"`, keyboard operable — FR-027)
+- [X] T054 [US4] Implement `admin/slices/user/assistantAccess/components/assistantAccess/Advanced.vue` per contracts/ui.md §C (Sheet from the right; accordion of areas; checklist with `changes` / `deletes` marks and `new` badge; All · None per area; search; "Only the ones that change things"; "Untick everything that deletes"; "Start from" levels with the replace-custom confirmation; "Always on" disclosure; Cancel / Save; focus returns to the trigger)
+- [X] T055 [US4] Wire "Advanced ›" in `RoleCard.vue` and `AccountRow.vue` to `Advanced.vue` (one component, target = role or account), and show `Custom · N of M` in `LevelPicker.vue`
 
 **Checkpoint**: the flexible case works; the common case never opens it.
 

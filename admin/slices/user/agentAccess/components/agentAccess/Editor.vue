@@ -27,6 +27,10 @@ import {
   type AccessChoice,
   type IAccessOutcome,
 } from '#agentAccess/utils/outcome';
+import {
+  listedAgents,
+  searchNamesAssistant,
+} from '#agentAccess/utils/assistantRow';
 
 /**
  * Which agents one account reaches, and the three-way choice that changes it
@@ -92,11 +96,16 @@ const access = computed(() => accessStore.byId(props.userId));
 // What the person chose and has not saved: agent id → choice.
 const pending = ref<Record<string, AccessChoice>>({});
 
+// The assistant is not one of the agents these lists are about (CLEAN-240):
+// who has it is set in the block above them, and the API refuses its id here.
 const agents = computed(() =>
-  [...agentStore.agents].sort((a, b) => compareText(a.name, b.name)),
+  listedAgents(agentStore.agents).sort((a, b) => compareText(a.name, b.name)),
 );
 const search = ref('');
 const rows = computed(() => filterByName(agents.value, search.value));
+const searchedAssistant = computed(() =>
+  searchNamesAssistant(agentStore.agents, search.value),
+);
 
 function choiceFor(agentId: string): AccessChoice {
   const chosen = pending.value[agentId];
@@ -222,7 +231,13 @@ function onConfirm() {
       <CardTitle>Agent access</CardTitle>
       <CardDescription>Which agents this account can use.</CardDescription>
     </CardHeader>
-    <CardContent>
+    <CardContent class="flex flex-col gap-4">
+      <AssistantAccessAccountRow
+        v-if="target"
+        :user-id="userId"
+        :name="target.name || target.email"
+      />
+
       <p
         v-if="!editable"
         class="text-sm text-muted-foreground"
@@ -298,7 +313,8 @@ function onConfirm() {
             v-if="!rows.length"
             class="p-2 text-center text-xs text-muted-foreground"
           >
-            No agent matches “{{ search.trim() }}”.
+            <template v-if="searchedAssistant">The assistant is set above.</template>
+            <template v-else>No agent matches “{{ search.trim() }}”.</template>
           </p>
         </div>
         <p

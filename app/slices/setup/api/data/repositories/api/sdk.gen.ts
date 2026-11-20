@@ -527,9 +527,9 @@ export class AuthService {
    * Renew the access token from the session cookie alone (works after the access token expired). Slides the session inactivity window and re-sets the cookie. No body; send credentials.
    */
   public static authControllerRefresh<ThrowOnError extends boolean = false>(
-    options: Options<AuthControllerRefreshData, ThrowOnError>,
+    options?: Options<AuthControllerRefreshData, ThrowOnError>,
   ) {
-    return (options.client ?? _heyApiClient).post<
+    return (options?.client ?? _heyApiClient).post<
       unknown,
       unknown,
       ThrowOnError
@@ -543,9 +543,9 @@ export class AuthService {
    * Revoke the session behind the cookie and clear it. Always 200; `revoked` is false when nothing live matched.
    */
   public static authControllerLogout<ThrowOnError extends boolean = false>(
-    options: Options<AuthControllerLogoutData, ThrowOnError>,
+    options?: Options<AuthControllerLogoutData, ThrowOnError>,
   ) {
-    return (options.client ?? _heyApiClient).post<
+    return (options?.client ?? _heyApiClient).post<
       unknown,
       unknown,
       ThrowOnError

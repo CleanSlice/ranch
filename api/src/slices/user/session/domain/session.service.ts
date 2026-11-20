@@ -53,10 +53,14 @@ export class SessionService {
     };
   }
 
-  /** `surface`: the console the person is signing in to (CLEAN-236). */
+  /**
+   * `surface`: the console the person is signing in to (CLEAN-236), or null
+   * when no console is: the session then backs one access token and can be
+   * renewed by nobody.
+   */
   async create(
     userId: string,
-    surface: SessionSurface,
+    surface: SessionSurface | null,
     userAgent?: string | null,
   ): Promise<ISessionIssue> {
     const { idleDays, absoluteDays } = this.config();

@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -10,7 +9,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
-  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiHeader,
   ApiOperation,
@@ -22,7 +20,6 @@ import { AuthService } from './domain';
 import { IAuthSessionResult } from './domain/auth.service';
 import {
   AuthErrorCodes,
-  CONSOLE_REQUIRED_CODE,
   IAuthTokenPayload,
   unauthorized,
 } from './domain/auth.types';
@@ -68,17 +65,15 @@ export const SESSION_UNAUTHORIZED_DESCRIPTION =
 
 export const CONSOLE_HEADER_DESCRIPTION =
   'The console the request comes from. A sign-in belongs to the console it ' +
-  'was made in: each has a session cookie of its own and renews only its own.';
-
-export const CONSOLE_REQUIRED_DESCRIPTION =
-  'The request does not say which console it comes from (`X-Ranch-Console`). ' +
-  "Body is `{ code: 'CONSOLE_REQUIRED', message }`.";
+  'was made in: each has a session cookie of its own and renews only its ' +
+  'own. Without the header no cookie is set or read: a sign-in then ' +
+  'returns the access token alone, and a renewal finds no session.';
 
 /** Swagger for the header every sign-in route reads. */
 export const ApiConsoleHeader = () =>
   ApiHeader({
     name: 'X-Ranch-Console',
-    required: true,
+    required: false,
     enum: ['admin', 'app'],
     description: CONSOLE_HEADER_DESCRIPTION,
   });
@@ -94,6 +89,9 @@ export const ApiConsoleHeader = () =>
  * that console's own, and renewing or signing out touches only that one.
  * The header selects, it does not authorise: what makes the admin's sign-in
  * useless to the user console is the console recorded on the session row.
+ *
+ * A request that names no console (a script signing in for a token) gets the
+ * access token and no cookie, and has nothing to renew.
  */
 @ApiTags('auth')
 @Controller('auth')
@@ -108,7 +106,6 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   @ApiConsoleHeader()
-  @ApiBadRequestResponse({ description: CONSOLE_REQUIRED_DESCRIPTION })
   @ApiOperation({
     summary:
       'Authenticate: returns a short-lived access token and sets the httpOnly session cookie used by POST /auth/refresh',
@@ -118,7 +115,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthDto> {
-    const surface = requireConsole(req);
+    const surface = consoleOf(req);
     const result = await this.authService.login(
       dto.email,
       dto.password,
@@ -132,7 +129,6 @@ export class AuthController {
   @Post('register')
   @HttpCode(200)
   @ApiConsoleHeader()
-  @ApiBadRequestResponse({ description: CONSOLE_REQUIRED_DESCRIPTION })
   @ApiOperation({
     summary:
       "Self-service signup. Requires the 'auth.registration_enabled' setting to be true; otherwise 403. Sets the session cookie like login.",
@@ -142,7 +138,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthDto> {
-    const surface = requireConsole(req);
+    const surface = consoleOf(req);
     const result = await this.authService.register(
       dto.name,
       dto.email,
@@ -250,14 +246,18 @@ export class AuthController {
     req: Request,
     res: Response,
     result: IAuthSessionResult,
-    surface: SessionSurface,
+    surface: SessionSurface | null,
   ): AuthDto {
     dropLegacyCookie(req, res, this.sessions);
-    res.cookie(
-      sessionCookieName(surface),
-      result.cookie.value,
-      this.sessions.cookieOptions(result.cookie.maxAgeSeconds),
-    );
+    // No console, no cookie: nothing of this sign-in is left in the browser
+    // for either console to pick up.
+    if (surface) {
+      res.cookie(
+        sessionCookieName(surface),
+        result.cookie.value,
+        this.sessions.cookieOptions(result.cookie.maxAgeSeconds),
+      );
+    }
     return {
       accessToken: result.accessToken,
       expiresIn: result.expiresIn,
@@ -269,19 +269,6 @@ export class AuthController {
 /** The console a request says it comes from, or null when it does not say. */
 export function consoleOf(req: Request): SessionSurface | null {
   return sessionSurfaceOf(req.headers?.[SESSION_CONSOLE_HEADER]);
-}
-
-/** The same, for a route that creates a sign-in and so has to know. */
-export function requireConsole(req: Request): SessionSurface {
-  const surface = consoleOf(req);
-  if (!surface) {
-    throw new BadRequestException({
-      code: CONSOLE_REQUIRED_CODE,
-      message:
-        'Say which console is signing in: send X-Ranch-Console: admin or app',
-    });
-  }
-  return surface;
 }
 
 /** The secret in the cookie of one console, and of no other. */

@@ -7,16 +7,15 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
-import { ApiBadRequestResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { InitService } from './domain';
 import { CreateOwnerDto, InitStatusDto } from './dtos';
 import { AuthDto } from '#/user/auth/dtos';
 import {
   ApiConsoleHeader,
-  CONSOLE_REQUIRED_DESCRIPTION,
+  consoleOf,
   dropLegacyCookie,
-  requireConsole,
   userAgentOf,
 } from '#/user/auth/auth.controller';
 import { SessionService } from '#/user/session/domain/session.service';
@@ -44,7 +43,6 @@ export class InitController {
   @Post('init')
   @HttpCode(201)
   @ApiConsoleHeader()
-  @ApiBadRequestResponse({ description: CONSOLE_REQUIRED_DESCRIPTION })
   @ApiOperation({
     summary:
       'Create the first owner. Fails if one already exists. Sets the session cookie like login, for the console named in X-Ranch-Console.',
@@ -54,8 +52,9 @@ export class InitController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthDto> {
-    // The first Owner is signed in to the console the setup page is part of.
-    const surface = requireConsole(req);
+    // The first Owner is signed in to the console the setup page is part
+    // of. A setup done by a script names none and gets the token alone.
+    const surface = consoleOf(req);
     const result = await this.initService.createOwner(
       dto.name,
       dto.email,
@@ -64,11 +63,13 @@ export class InitController {
       userAgentOf(req),
     );
     dropLegacyCookie(req, res, this.sessions);
-    res.cookie(
-      sessionCookieName(surface),
-      result.cookie.value,
-      this.sessions.cookieOptions(result.cookie.maxAgeSeconds),
-    );
+    if (surface) {
+      res.cookie(
+        sessionCookieName(surface),
+        result.cookie.value,
+        this.sessions.cookieOptions(result.cookie.maxAgeSeconds),
+      );
+    }
     return {
       accessToken: result.accessToken,
       expiresIn: result.expiresIn,

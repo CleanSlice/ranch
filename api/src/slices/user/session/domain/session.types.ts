@@ -51,8 +51,10 @@ export interface ISessionData {
   revokedAt: Date | null;
   userAgent: string | null;
   /**
-   * The console the sign-in was made in. Null only on a row from before
-   * CLEAN-236, which no console can renew.
+   * The console the sign-in was made in. Null on a row from before
+   * CLEAN-236, and on a sign-in no console made (a script calling
+   * `POST /auth/login` for a token): neither has a cookie, and no console
+   * can renew either.
    */
   surface: SessionSurface | null;
   createdAt: Date;
@@ -65,7 +67,8 @@ export interface ICreateSessionData {
   expiresAt: Date;
   absoluteExpiresAt: Date;
   userAgent?: string | null;
-  surface: SessionSurface;
+  /** Null: no console is signing in, and none will be able to renew it. */
+  surface: SessionSurface | null;
 }
 
 export interface ISessionConfig {

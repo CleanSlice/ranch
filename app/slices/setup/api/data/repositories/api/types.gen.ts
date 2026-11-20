@@ -3061,71 +3061,62 @@ export type InitControllerStatusResponses = {
 
 export type InitControllerInitData = {
   body: CreateOwnerDto;
-  headers: {
+  headers?: {
     /**
-     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own.
+     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own. Without the header no cookie is set or read: a sign-in then returns the access token alone, and a renewal finds no session.
      */
-    "X-Ranch-Console": "admin" | "app";
+    "X-Ranch-Console"?: "admin" | "app";
   };
   path?: never;
   query?: never;
   url: "/setup/init";
 };
 
-export type InitControllerInitErrors = {
-  /**
-   * The request does not say which console it comes from (`X-Ranch-Console`). Body is `{ code: 'CONSOLE_REQUIRED', message }`.
-   */
-  400: unknown;
+export type InitControllerInitResponses = {
+  201: unknown;
 };
 
 export type AuthControllerLoginData = {
   body: LoginDto;
-  headers: {
+  headers?: {
     /**
-     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own.
+     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own. Without the header no cookie is set or read: a sign-in then returns the access token alone, and a renewal finds no session.
      */
-    "X-Ranch-Console": "admin" | "app";
+    "X-Ranch-Console"?: "admin" | "app";
   };
   path?: never;
   query?: never;
   url: "/auth/login";
 };
 
-export type AuthControllerLoginErrors = {
-  /**
-   * The request does not say which console it comes from (`X-Ranch-Console`). Body is `{ code: 'CONSOLE_REQUIRED', message }`.
-   */
-  400: unknown;
+export type AuthControllerLoginResponses = {
+  200: unknown;
 };
 
 export type AuthControllerRegisterData = {
   body: RegisterDto;
-  headers: {
+  headers?: {
     /**
-     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own.
+     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own. Without the header no cookie is set or read: a sign-in then returns the access token alone, and a renewal finds no session.
      */
-    "X-Ranch-Console": "admin" | "app";
+    "X-Ranch-Console"?: "admin" | "app";
   };
   path?: never;
   query?: never;
   url: "/auth/register";
 };
 
-export type AuthControllerRegisterErrors = {
-  /**
-   * The request does not say which console it comes from (`X-Ranch-Console`). Body is `{ code: 'CONSOLE_REQUIRED', message }`.
-   */
-  400: unknown;
+export type AuthControllerRegisterResponses = {
+  200: unknown;
 };
 
 export type AuthControllerRefreshData = {
   body?: never;
-  headers: {
+  headers?: {
     /**
-     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own.
+     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own. Without the header no cookie is set or read: a sign-in then returns the access token alone, and a renewal finds no session.
      */
-    "X-Ranch-Console": "admin" | "app";
+    "X-Ranch-Console"?: "admin" | "app";
   };
   path?: never;
   query?: never;
@@ -3141,11 +3132,11 @@ export type AuthControllerRefreshErrors = {
 
 export type AuthControllerLogoutData = {
   body?: never;
-  headers: {
+  headers?: {
     /**
-     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own.
+     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own. Without the header no cookie is set or read: a sign-in then returns the access token alone, and a renewal finds no session.
      */
-    "X-Ranch-Console": "admin" | "app";
+    "X-Ranch-Console"?: "admin" | "app";
   };
   path?: never;
   query?: never;

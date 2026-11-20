@@ -69,7 +69,7 @@ export class AuthService {
   async login(
     email: string,
     password: string,
-    surface: SessionSurface,
+    surface: SessionSurface | null,
     userAgent?: string | null,
   ): Promise<IAuthSessionResult> {
     const record = await this.prisma.user.findUnique({
@@ -105,7 +105,7 @@ export class AuthService {
     name: string,
     email: string,
     password: string,
-    surface: SessionSurface,
+    surface: SessionSurface | null,
     userAgent?: string | null,
   ): Promise<IAuthSessionResult> {
     const enabled = await this.isRegistrationEnabled();
@@ -186,11 +186,13 @@ export class AuthService {
    * The single console-token minter: creates the server-side session and
    * signs an access token bound to it. Used by login, register and the
    * first-run owner bootstrap. `surface` is the console the sign-in is
-   * made in, and the only one that can renew it (CLEAN-236).
+   * made in, and the only one that can renew it (CLEAN-236). Null when no
+   * console is signing in: the caller then gets the access token and no
+   * cookie, which is what a script that logs in for a token always wanted.
    */
   async issueSession(
     user: IUserData,
-    surface: SessionSurface,
+    surface: SessionSurface | null,
     userAgent?: string | null,
   ): Promise<IAuthSessionResult> {
     const issue = await this.sessions.create(user.id, surface, userAgent);

@@ -8,7 +8,7 @@ console (`auth.surface`) and needs nothing new.
 
 | Route | With the header | Without, or with another value |
 |---|---|---|
-| `POST /auth/login`, `POST /auth/register` | session created with that `surface`; cookie `ranch_session_<surface>` set | 400 `CONSOLE_REQUIRED` |
+| `POST /auth/login`, `POST /auth/register`, `POST /setup/init` | session created with that `surface`; cookie `ranch_session_<surface>` set | the access token alone: a session with no surface, no cookie set, nothing any console can renew. This is the script that signs in for a token, as the settings pages describe |
 | `POST /auth/refresh` | reads only `ranch_session_<surface>`; the session must be live and of that surface, else 401 `SESSION_INVALID` | 401 `SESSION_INVALID` |
 | `POST /auth/logout` | revokes the session behind `ranch_session_<surface>` and clears that cookie only | 200 `{ revoked: false }` |
 
@@ -16,7 +16,8 @@ console (`auth.surface`) and needs nothing new.
   host-only, `secure` by configuration.
 - The cookie `ranch_session` is cleared on every response of the three
   routes above when the request carried it. It is never read.
-- A `Session` row with no `surface` is never renewed.
+- A `Session` row with no `surface` is never renewed: one from before the
+  migration, or one no console made.
 - CORS: the header is added to the allowed request headers wherever a list
   is stated.
 - Everything that ends all sessions of an account is unchanged and covers

@@ -28,7 +28,7 @@ export class InitService {
     name: string,
     email: string,
     password: string,
-    surface: SessionSurface,
+    surface: SessionSurface | null,
     userAgent?: string | null,
   ): Promise<IAuthSessionResult> {
     const { requiresInit } = await this.getStatus();

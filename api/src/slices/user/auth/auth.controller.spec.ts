@@ -1,4 +1,4 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthController, consoleOf, sessionCookieOf } from './auth.controller';
 import type { AuthService } from './domain/auth.service';
@@ -159,29 +159,43 @@ describe('AuthController — login', () => {
     );
   });
 
-  it.each([null, 'ADMIN ', 'dashboard', ''])(
-    'refuses a sign-in that does not say which console it is (%p), unless it only differs in case',
+  // A script that signs in for a token, as the settings pages describe:
+  // it names no console, and nothing of its sign-in is left in a browser.
+  it.each([null, 'dashboard', ''])(
+    'signs in without any cookie when no console is named (%p)',
     async (stated) => {
       const { controller, authServiceStub } = makeController();
       const { res, cookies } = makeRes();
-      const attempt = controller.login(
+
+      const dto = await controller.login(
         { email: 'ada@example.com', password: 'pw' },
-        makeReq(undefined, stated),
+        makeReq({ ranch_session_admin: 'rs_owner' }, stated),
         res,
       );
 
-      if (stated === 'ADMIN ') {
-        await attempt;
-        expect(cookies[0][0]).toBe('ranch_session_admin');
-        return;
-      }
-      const err = await attempt.catch((e) => e);
-      expect(err).toBeInstanceOf(BadRequestException);
-      expect(err.getResponse()).toMatchObject({ code: 'CONSOLE_REQUIRED' });
-      expect(authServiceStub.login).not.toHaveBeenCalled();
+      expect(dto).toEqual({ accessToken: 'jwt-8', expiresIn: 900, user });
+      expect(authServiceStub.login).toHaveBeenCalledWith(
+        'ada@example.com',
+        'pw',
+        null,
+        'UA/1',
+      );
       expect(cookies).toEqual([]);
     },
   );
+
+  it('reads the name of the console whatever its case', async () => {
+    const { controller } = makeController();
+    const { res, cookies } = makeRes();
+
+    await controller.login(
+      { email: 'ada@example.com', password: 'pw' },
+      makeReq(undefined, 'ADMIN '),
+      res,
+    );
+
+    expect(cookies[0][0]).toBe('ranch_session_admin');
+  });
 });
 
 describe('AuthController — register', () => {
@@ -205,20 +219,24 @@ describe('AuthController — register', () => {
     expect(cookies.map(([name]) => name)).toEqual(['ranch_session_app']);
   });
 
-  it('refuses one that does not say which console it is', async () => {
+  it('registers without any cookie when no console is named', async () => {
     const { controller, authServiceStub } = makeController();
-    const { res } = makeRes();
+    const { res, cookies } = makeRes();
 
-    const err = await controller
-      .register(
-        { name: 'Ada', email: 'ada@example.com', password: 'pw' },
-        makeReq(undefined, null),
-        res,
-      )
-      .catch((e) => e);
+    await controller.register(
+      { name: 'Ada', email: 'ada@example.com', password: 'pw' },
+      makeReq(undefined, null),
+      res,
+    );
 
-    expect(err).toBeInstanceOf(BadRequestException);
-    expect(authServiceStub.register).not.toHaveBeenCalled();
+    expect(authServiceStub.register).toHaveBeenCalledWith(
+      'Ada',
+      'ada@example.com',
+      'pw',
+      null,
+      'UA/1',
+    );
+    expect(cookies).toEqual([]);
   });
 });
 

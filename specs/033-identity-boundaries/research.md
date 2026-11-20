@@ -146,7 +146,11 @@ anonymous callers).
   logout read only that cookie, and refuse a session whose `surface` differs
   (FR-037), with the existing `SESSION_INVALID`.
 - A request with no header, or an unknown value, has no session: refresh
-  answers `SESSION_INVALID`, login is refused with a 400. No default.
+  answers `SESSION_INVALID`. No default. A login that names no console is
+  still answered, with the access token and no cookie: `POST /auth/login` is
+  documented in the console itself as the way a script gets a token, and
+  refusing it would break that for nothing. Its session has no surface, so
+  no console can renew it.
 
 **Rationale**: the cookie is host-only on the API host and both consoles
 call that host, so only the name can tell the two apart, and only the

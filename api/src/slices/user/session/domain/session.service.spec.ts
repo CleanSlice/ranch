@@ -328,4 +328,17 @@ describe('SessionService — a sign-in belongs to its console', () => {
       expect(await service.revoke(old.secret, surface)).toBe(false);
     }
   });
+
+  it('a sign-in no console made is renewable by neither, and signs nobody out', async () => {
+    const { service, rows } = makeService();
+    const script = await service.create('user-1', null);
+
+    expect([...rows.values()][0].surface).toBeNull();
+    for (const surface of ['admin', 'app'] as const) {
+      expect(await codeOf(service.refresh(script.secret, surface))).toBe(
+        'SESSION_INVALID',
+      );
+      expect(await service.revoke(script.secret, surface)).toBe(false);
+    }
+  });
 });

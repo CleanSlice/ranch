@@ -26,6 +26,7 @@ const row = (
   contextId: 'ctx-1',
   turnId: 'turn-1',
   clientId: 'admin',
+  forUserId: null,
   task: 'What is the return window for shoes?',
   reason: 'Support Bot holds the returns policy base',
   matchedSkills: [{ id: 'knowledge:9a', name: 'Returns policy' }],

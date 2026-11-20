@@ -5,6 +5,7 @@ import type { ICallerParty } from '#/user/auth/domain/auth.types';
 import { IPeerGateway } from './peer.gateway';
 import { PeerAccessService } from './peerAccess';
 import { matchRoster, rosterFor } from './peerRoster';
+import { HandoverService } from './handover';
 import { IDelegationGateway } from './delegation.gateway';
 import {
   A2aClient,
@@ -46,9 +47,21 @@ export interface IRunDelegationInput {
   task: string;
   reason: string;
   contextId?: string;
-  /** The chain this request is already part of, when the caller is itself a peer. */
+  /**
+   * The chain this request is already part of, for a caller that could not
+   * say so itself: an agent whose runtime carries no hand-over token on its
+   * tool calls. A peer party's own chain wins over it.
+   */
   inboundChain: string[];
+  /**
+   * The hub client of the turn that asked, when the runtime said
+   * (CLEAN-236): where the progress step is shown.
+   */
+  turnClient?: string | null;
 }
+
+/** Slack on top of the answer timeout, for the receiving turn's last tool call. */
+const HANDOVER_SLACK_SECONDS = 60;
 
 export type IDelegationOutcome =
   | { kind: 'no_match'; peers: string[] }
@@ -89,6 +102,7 @@ export class DelegationService {
     private readonly client: A2aClient,
     private readonly hub: IBridleGateway,
     private readonly access: PeerAccessService,
+    private readonly handover: HandoverService,
   ) {}
 
   async run(
@@ -116,10 +130,33 @@ export class DelegationService {
     const contextId = input.contextId ?? `ctx-${crypto.randomUUID()}`;
     const matchedSkills = matchSkills(peer, `${input.reason} ${input.task}`);
 
-    // Whoever is watching this agent right now. Unknown is a normal outcome —
-    // a chat surface that renders no thinking timeline has no turn to join —
-    // and the delegation must run exactly the same either way.
-    const turn = this.hub.findActiveTurn(input.callerAgentId);
+    // The turn that asked, when the runtime said which conversation the
+    // call belongs to; otherwise the agent's one running turn, if it has
+    // exactly one. Unknown is a normal outcome (a chat surface that renders
+    // no thinking timeline has no turn to join, and with two people talking
+    // and no hint a guess would show one of them the other's task), and the
+    // delegation must run exactly the same either way.
+    const turn = this.hub.findActiveTurn(input.callerAgentId, input.turnClient);
+
+    // Every agent this question has passed, this one last. A hop that was
+    // itself handed the question continues that chain; the party says so
+    // when the runtime carried the token, and `inboundChain` when it could
+    // not. This agent is added once: a chain that already ends with it (the
+    // fallback publishes it that way) is not made a hop longer than it is.
+    const inbound =
+      input.party.kind === 'peer' ? input.party.chain : input.inboundChain;
+    const chain =
+      inbound[inbound.length - 1] === input.callerAgentId
+        ? inbound
+        : [...inbound, input.callerAgentId];
+    // The person the chain was started for. Their reach is what every
+    // further hop is asked about; their power stays where it was.
+    const forUserId =
+      input.party.kind === 'person'
+        ? input.party.userId
+        : input.party.kind === 'peer'
+          ? (input.party.forUserId ?? null)
+          : null;
 
     const row = await this.delegations.create({
       agentId: input.callerAgentId,
@@ -129,6 +166,7 @@ export class DelegationService {
       contextId,
       turnId: turn?.turnId ?? null,
       clientId: turn?.clientId ?? null,
+      forUserId,
       task: input.task,
       reason: input.reason,
       matchedSkills,
@@ -154,6 +192,22 @@ export class DelegationService {
         );
       }
       const interfaceUrl = callable.iface.url;
+      // The hand-over token: for an agent of this Ranch, and for it alone.
+      // An outside agent is told nothing of who asked, and is never handed a
+      // token this API signed.
+      const pass =
+        peer.origin === PeerOrigins.Internal && peer.peerAgentId
+          ? await this.handover.mint(
+              {
+                agentId: peer.peerAgentId,
+                connectionId: peer.id,
+                chain,
+                ...(forUserId ? { forUserId } : {}),
+                contextId,
+              },
+              Math.ceil(timeoutMs / 1000) + HANDOVER_SLACK_SECONDS,
+            )
+          : null;
       if (peer.origin === PeerOrigins.External) {
         // The interface URL inside a foreign card is remote content — never
         // let it point the platform at a private address (SSRF, CLEAN-95).
@@ -181,8 +235,9 @@ export class DelegationService {
             contextId,
             metadata: {
               ranch: {
-                chain: [...input.inboundChain, input.callerAgentId],
+                chain,
                 reason: input.reason,
+                ...(pass ? { pass } : {}),
               },
             },
           },

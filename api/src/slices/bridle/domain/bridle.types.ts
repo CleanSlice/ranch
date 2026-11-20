@@ -269,6 +269,12 @@ export interface IBridleSendOptions {
    */
   acting?: IBridleActing;
   /**
+   * The hand-over token of a question another agent passed to this one
+   * (CLEAN-236), minted and verified by the peer slice. The hub forwards it
+   * as is and never invents one.
+   */
+  handover?: { token: string };
+  /**
    * The person sending, when the caller verified them itself and has no
    * socket of its own to carry them: the HTTP message routes (CLEAN-232).
    * Stated, it is what the agent is told, and `null` states "nobody": the

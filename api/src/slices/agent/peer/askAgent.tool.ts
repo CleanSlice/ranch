@@ -5,7 +5,7 @@ import type { Request } from 'express';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import type { IDynamicallyDescribedTool } from '#/mcp/interfaces/dynamic-description.interface';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
-import { callerParty } from '#/mcp/tooling';
+import { callerParty, callerTurnClient } from '#/mcp/tooling';
 import { IPeerGateway } from './domain/peer.gateway';
 import { PeerAccessService } from './domain/peerAccess';
 import { rosterFor, type IRosterEntry } from './domain/peerRoster';
@@ -213,8 +213,11 @@ export class AskAgentTool
         contextId: parsed.data.context_id,
         // This agent may itself be serving a delegation right now. Carrying
         // that chain forward is what lets the far end refuse a loop it can see
-        // and this end cannot.
+        // and this end cannot. A call that states its hand-over brings the
+        // chain itself (the party); this is for a runtime that cannot.
         inboundChain: this.a2aServer.currentChain(agentId),
+        // The conversation the call belongs to, when the runtime said.
+        turnClient: callerTurnClient(httpRequest),
       },
       this.a2aServer.timeoutMs,
     );

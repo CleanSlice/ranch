@@ -3,7 +3,9 @@ import { JwtService } from '@nestjs/jwt';
 import {
   isHandoverToken,
   type IAuthTokenPayload,
+  type ICallerParty,
 } from '#/user/auth/domain/auth.types';
+import type { IPeerPartyResolver } from '#/mcp/interfaces/peer-party.interface';
 
 /**
  * The token that travels with a question one agent hands to another
@@ -54,10 +56,35 @@ interface IHandoverPayload extends IAuthTokenPayload {
 }
 
 @Injectable()
-export class HandoverService {
+export class HandoverService implements IPeerPartyResolver {
   private readonly logger = new Logger(HandoverService.name);
 
   constructor(private readonly jwt: JwtService) {}
+
+  /**
+   * The party of a tool call that states a hand-over (`PEER_PARTY_RESOLVER`).
+   * The token is worth something only on the token of the agent it was
+   * minted for; a person's console token, another agent's, or anything that
+   * does not verify is a guest.
+   */
+  async resolvePeer(
+    bearer: IAuthTokenPayload | null | undefined,
+    token: unknown,
+  ): Promise<ICallerParty> {
+    const sub = typeof bearer?.sub === 'string' ? bearer.sub : '';
+    if (!sub.startsWith(AGENT_AUD_PREFIX)) return { kind: 'guest' };
+    const handover = await this.verify(
+      typeof token === 'string' ? token : null,
+      sub.slice(AGENT_AUD_PREFIX.length),
+    );
+    if (!handover) return { kind: 'guest' };
+    return {
+      kind: 'peer',
+      chain: handover.chain,
+      connectionId: handover.connectionId,
+      ...(handover.forUserId ? { forUserId: handover.forUserId } : {}),
+    };
+  }
 
   /**
    * Sign a hand-over. `ttlSeconds` is the caller's: the time the receiving

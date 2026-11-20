@@ -28,6 +28,7 @@ export class DelegationGateway extends IDelegationGateway {
         contextId: input.contextId,
         turnId: input.turnId ?? null,
         clientId: input.clientId ?? null,
+        forUserId: input.forUserId ?? null,
         task: input.task,
         reason: input.reason,
         matchedSkills: input.matchedSkills as unknown as Prisma.InputJsonValue,

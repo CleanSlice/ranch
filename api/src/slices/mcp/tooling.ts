@@ -206,6 +206,37 @@ export function callerPerson(
     : null;
 }
 
+// ── Which conversation the call belongs to (CLEAN-236) ──────
+
+const TURN_CLIENT_PROPERTY = 'ranchTurnClient';
+
+/**
+ * Note the hub client the runtime says this call's turn belongs to
+ * (`_meta["ranch/turn"].client`). The MCP handler does this on the per-call
+ * view. It is a routing hint and nothing else: `ask_agent` uses it to show
+ * its progress step in the conversation that asked, and the hub ignores a
+ * client that has no running turn with the calling agent.
+ */
+export function setCallerTurnClient(
+  httpRequest: Request,
+  client: string,
+): void {
+  Object.defineProperty(httpRequest, TURN_CLIENT_PROPERTY, {
+    value: client,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+}
+
+/** The hub client of the turn this call belongs to, when the runtime said. */
+export function callerTurnClient(httpRequest: Request): string | null {
+  const client = (httpRequest as unknown as Record<string, unknown> | null)?.[
+    TURN_CLIENT_PROPERTY
+  ];
+  return typeof client === 'string' && client ? client : null;
+}
+
 // ── Who may manage an agent (CLEAN-232, contract section 5) ──
 
 const MANAGES_PROPERTY = 'ranchManagesAgents';

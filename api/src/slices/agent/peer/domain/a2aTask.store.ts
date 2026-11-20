@@ -19,7 +19,7 @@ const SWEEP_INTERVAL_MS = 60_000;
 export class A2aTaskStore implements OnModuleInit, OnModuleDestroy {
   private readonly tasks = new Map<
     string,
-    { task: IA2aTask; expiresAt: number }
+    { task: IA2aTask; connectionId: string; expiresAt: number }
   >();
 
   private sweeper: NodeJS.Timeout | null = null;
@@ -36,13 +36,22 @@ export class A2aTaskStore implements OnModuleInit, OnModuleDestroy {
     this.tasks.clear();
   }
 
-  put(task: IA2aTask): void {
-    this.tasks.set(task.id, { task, expiresAt: Date.now() + A2A_TASK_TTL_MS });
+  /** `connectionId`: the connection the task was made through. */
+  put(task: IA2aTask, connectionId: string): void {
+    this.tasks.set(task.id, {
+      task,
+      connectionId,
+      expiresAt: Date.now() + A2A_TASK_TTL_MS,
+    });
   }
 
-  get(id: string): IA2aTask | null {
+  /**
+   * The task, for the connection it was made through. Any other connection
+   * gets the answer of a task that does not exist (CLEAN-236).
+   */
+  get(id: string, connectionId: string): IA2aTask | null {
     const entry = this.tasks.get(id);
-    if (!entry) return null;
+    if (!entry || entry.connectionId !== connectionId) return null;
     if (entry.expiresAt <= Date.now()) {
       this.tasks.delete(id);
       return null;

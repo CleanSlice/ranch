@@ -481,6 +481,10 @@ export class BridleGateway extends IBridleGateway {
       // routes) and passed in with the message: `sendToAgent` is synchronous
       // and the token is per message, not per socket (CLEAN-232).
       ...(options.acting?.token ? { acting: options.acting } : {}),
+      // Another agent's question (CLEAN-236): the token the runtime carries
+      // on this turn's tool calls, which is what tells it and the API that
+      // a colleague is asking, not a visitor.
+      ...(options.handover?.token ? { handover: options.handover } : {}),
       ...(client?.origin ? { origin: client.origin } : {}),
       // Metadata only: the runtime persists this array verbatim into its
       // session transcript. The url is this API's own route (useless to the
@@ -658,14 +662,25 @@ export class BridleGateway extends IBridleGateway {
     });
   }
 
-  findActiveTurn(agentId: string): IActiveTurn | null {
-    let newest: (IActiveTurn & { agentId: string }) | null = null;
-    for (const turn of this.activeTurns.values()) {
-      if (turn.agentId !== agentId) continue;
-      if (!newest || turn.ts > newest.ts) newest = turn;
+  findActiveTurn(
+    agentId: string,
+    clientId?: string | null,
+  ): IActiveTurn | null {
+    if (clientId) {
+      const turn = this.activeTurns.get(this.clientKey(clientId, agentId));
+      return turn
+        ? { clientId: turn.clientId, turnId: turn.turnId, ts: turn.ts }
+        : null;
     }
-    if (!newest) return null;
-    return { clientId: newest.clientId, turnId: newest.turnId, ts: newest.ts };
+    // Nobody said whose turn it is. One running turn can only be that one;
+    // with two, a guess would put one person's delegation in the other's
+    // chat (CLEAN-236), so there is no answer.
+    const running = [...this.activeTurns.values()].filter(
+      (turn) => turn.agentId === agentId,
+    );
+    if (running.length !== 1) return null;
+    const [only] = running;
+    return { clientId: only.clientId, turnId: only.turnId, ts: only.ts };
   }
 
   setDebug(agentId: string, enabled: boolean): void {

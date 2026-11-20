@@ -30,6 +30,8 @@ export interface ISendAndAwaitInput {
   user?: IBridleUserIdentity;
   /** Proof of that login for the turn's tool calls (CLEAN-232). */
   acting?: IBridleActing;
+  /** The hand-over token of another agent's question (CLEAN-236). */
+  handover?: { token: string };
   timeoutMs?: number;
   /**
    * Who is asking, for the agent's request limits (CLEAN-224). Absent means
@@ -161,6 +163,7 @@ export class BridleSyncService {
           // person this call verified, or nobody (CLEAN-232).
           user: user ?? null,
           ...(input.acting ? { acting: input.acting } : {}),
+          ...(input.handover ? { handover: input.handover } : {}),
         },
       );
       // Refused for a limit: do not hold the call open for an answer that

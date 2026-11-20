@@ -22,13 +22,26 @@ export const PEER_TOKEN_RE = /^ap_[A-Za-z0-9_-]{43}$/;
 
 /**
  * Bridle client id a peer conversation registers under. One conversation per
- * (caller, context) pair, and the prefix keeps it apart from `admin`, `share-`,
- * `anon-`, `http-` and `sync-` ids in the chat history.
+ * (connection, context) pair, and the prefix keeps it apart from `admin`,
+ * `share-`, `anon-`, `http-` and `sync-` ids in the chat history.
+ *
+ * Named by the connection, not by the agent that asks (CLEAN-236): the id is
+ * shown in the receiving agent's list of conversations, to somebody who may
+ * not reach the asking agent, and a connection id says nothing to anybody
+ * who cannot list that agent's peers. Conversations stored before this keep
+ * the agent id in their name.
  */
 export const PEER_CLIENT_PREFIX = 'peer:';
 
-export function peerClientId(callerAgentId: string, contextId: string): string {
-  return `${PEER_CLIENT_PREFIX}${callerAgentId}:${contextId}`;
+export function peerClientId(connectionId: string, contextId: string): string {
+  return `${PEER_CLIENT_PREFIX}${connectionId}:${contextId}`;
+}
+
+/** The connection id inside a peer conversation's client id, or null. */
+export function connectionIdOfPeerClient(clientId: string): string | null {
+  if (!clientId.startsWith(PEER_CLIENT_PREFIX)) return null;
+  const [connectionId] = clientId.slice(PEER_CLIENT_PREFIX.length).split(':');
+  return connectionId || null;
 }
 
 /** Thinking-step id prefix, so a delegation's two pushes replace each other. */
@@ -277,6 +290,8 @@ export interface IAgentDelegationData {
   /** The caller's thinking turn, when one was known at the time. */
   turnId: string | null;
   clientId: string | null;
+  /** The person the chain was started for; null when nobody was (CLEAN-236). */
+  forUserId: string | null;
   task: string;
   reason: string;
   matchedSkills: IMatchedSkill[];
@@ -305,6 +320,7 @@ export interface ICreateDelegationData {
   contextId: string;
   turnId?: string | null;
   clientId?: string | null;
+  forUserId?: string | null;
   task: string;
   reason: string;
   matchedSkills: IMatchedSkill[];

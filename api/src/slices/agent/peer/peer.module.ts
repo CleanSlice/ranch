@@ -21,6 +21,7 @@ import { A2aClient } from './domain/a2a.client';
 import { PeerService } from './domain/peer.service';
 import { PeerAccessService } from './domain/peerAccess';
 import { HandoverService } from './domain/handover';
+import { PEER_PARTY_RESOLVER } from '#/mcp/interfaces/peer-party.interface';
 import { DelegationService } from './domain/delegation.service';
 import { AskAgentTool } from './askAgent.tool';
 import { PeerAdminTool } from './peerAdmin.tool';
@@ -59,8 +60,10 @@ import { PeerLinkController } from './peerLink.controller';
     A2aClient,
     // The one rule every listing, tool and hand-over asks (CLEAN-236).
     PeerAccessService,
-    // Signs and reads the token a handed-over question carries.
+    // Signs and reads the token a handed-over question carries, and tells
+    // the MCP layer whose question a tool call is part of.
     HandoverService,
+    { provide: PEER_PARTY_RESOLVER, useExisting: HandoverService },
     PeerService,
     DelegationService,
     // MCP tool: ask_agent. Discovered by the #mcp registry like every

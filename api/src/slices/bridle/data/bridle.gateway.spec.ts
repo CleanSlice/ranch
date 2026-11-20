@@ -19,9 +19,7 @@ describe('BridleGateway.sendToAgent', () => {
     url: '/api/agent/agent-1/attachment/a1',
     readableByAgent: true,
   };
-  const parts: BridlePart[] = [
-    { type: BridlePartTypes.Text, text: 'look' },
-  ];
+  const parts: BridlePart[] = [{ type: BridlePartTypes.Text, text: 'look' }];
 
   function connectedAgent() {
     const gateway = new BridleGateway();
@@ -156,7 +154,9 @@ describe('BridleGateway.findActiveTurn', () => {
     expect(gateway.findActiveTurn('agent-1')).toBeNull();
   });
 
-  it('picks the most recent turn when two people chat with one agent', () => {
+  // CLEAN-236. The most recent turn used to win here, which showed one
+  // person the task and the answer of another person's delegation.
+  it('names the turn of the conversation asked about when two people chat with one agent, and none when not told which', () => {
     const gateway = new BridleGateway();
     gateway.registerClient('admin', 'agent-1', 'socket-1', () => {}, true);
     gateway.registerClient('visitor', 'agent-1', 'socket-2', () => {}, false);
@@ -176,8 +176,35 @@ describe('BridleGateway.findActiveTurn', () => {
       ts: 2000,
     });
 
+    expect(gateway.findActiveTurn('agent-1', 'visitor')).toMatchObject({
+      clientId: 'visitor',
+      turnId: 'turn-visitor',
+    });
+    expect(gateway.findActiveTurn('agent-1', 'admin')).toMatchObject({
+      clientId: 'admin',
+      turnId: 'turn-admin',
+    });
+    // Somebody with no turn running, and nobody at all: no guess.
+    expect(gateway.findActiveTurn('agent-1', 'stranger')).toBeNull();
+    expect(gateway.findActiveTurn('agent-1')).toBeNull();
+  });
+
+  it('names the one running turn when not told which, since it can only be that one', () => {
+    const gateway = new BridleGateway();
+    gateway.registerClient('visitor', 'agent-1', 'socket-2', () => {}, false);
+    gateway.handleAgentEvent('agent-1', {
+      type: 'thinking',
+      clientId: 'visitor',
+      turnId: 'turn-visitor',
+      step,
+      ts: 2000,
+    });
+
     expect(gateway.findActiveTurn('agent-1')).toMatchObject({
       clientId: 'visitor',
+      turnId: 'turn-visitor',
+    });
+    expect(gateway.findActiveTurn('agent-1', null)).toMatchObject({
       turnId: 'turn-visitor',
     });
   });

@@ -19,6 +19,7 @@ import {
 } from '../utils/attachment'
 import { nextSeq, numberLegacy } from '../utils/chatFlow'
 import { debugKey, outboxKey } from '../utils/storageKeys'
+import { ownChannel } from '../utils/ownChannel'
 import { INTERIM_TURN, foldReplayedInterim, interimStep, isReplayBlock, trailingBlock } from '../utils/interim'
 import { openCitedSource, setCitedSourceRating } from '../utils/citedSource'
 import { describeCitedSourceError } from '../utils/citedSourceFile'
@@ -587,11 +588,18 @@ function proposalBubble(p: IProposalStamp, replayed: boolean): IBridleMessageDat
 // other's conversation (research F3). Everything a chat renders from now lives
 // in its own record; only what is genuinely app-wide stays global.
 
-/** The admin panel's channel — every Owner/Admin shares it. */
-const DEFAULT_CHANNEL = 'admin'
+/**
+ * The channel of the signed-in person's own conversation. Every Owner and
+ * Admin shared `admin` until CLEAN-236; an Admin's is their own now, and
+ * loading `admin` would show them the Owner's (`../utils/ownChannel`).
+ * Read when asked, not once: a console can change account without a reload.
+ */
+function defaultChannel(): string {
+  return ownChannel(useAuthStore().user)
+}
 
 /** Key of one conversation record. */
-export function bridleKey(agentId: string, channel = DEFAULT_CHANNEL): string {
+export function bridleKey(agentId: string, channel = defaultChannel()): string {
   return `${agentId}:${channel}`
 }
 
@@ -878,9 +886,9 @@ export const useBridleStore = defineStore('bridle', {
     // Read-only views for hosts that only watch a chat's connection (the
     // agent lifecycle, the Rancher page). They never create a record — a
     // conversation nobody mounted is simply "not connected".
-    isConnectedFor: (state) => (agentId: string, channel = DEFAULT_CHANNEL): boolean =>
+    isConnectedFor: (state) => (agentId: string, channel = defaultChannel()): boolean =>
       state.conversations[bridleKey(agentId, channel)]?.isConnected ?? false,
-    isAgentConnectedFor: (state) => (agentId: string, channel = DEFAULT_CHANNEL): boolean =>
+    isAgentConnectedFor: (state) => (agentId: string, channel = defaultChannel()): boolean =>
       state.conversations[bridleKey(agentId, channel)]?.isAgentConnected ?? false,
     getMessages: (state) => (key: string): IBridleMessageData[] =>
       (state.conversations[key]?.messages ?? []) as IBridleMessageData[],
@@ -919,7 +927,7 @@ export const useBridleStore = defineStore('bridle', {
      * The reactive record of one conversation, created on demand. Call it from
      * setup or an action — not from inside a computed, which must not write.
      */
-    conversation(agentId: string, channel = DEFAULT_CHANNEL): IBridleConversation {
+    conversation(agentId: string, channel = defaultChannel()): IBridleConversation {
       const key = bridleKey(agentId, channel)
       if (!this.conversations[key]) {
         this.conversations[key] = createConversation(agentId, channel)
@@ -932,7 +940,7 @@ export const useBridleStore = defineStore('bridle', {
     },
 
     /** A provider starts showing this conversation. Pair with `release`. */
-    acquire(agentId: string, channel = DEFAULT_CHANNEL): IBridleConversation {
+    acquire(agentId: string, channel = defaultChannel()): IBridleConversation {
       const c = this.conversation(agentId, channel)
       c.holders++
       return c
@@ -952,7 +960,7 @@ export const useBridleStore = defineStore('bridle', {
       this.clearStaged(key)
     },
 
-    async connect(apiUrl: string, agentId: string, channel = DEFAULT_CHANNEL) {
+    async connect(apiUrl: string, agentId: string, channel = defaultChannel()) {
       const auth = useAuthStore()
       const c = this.conversation(agentId, channel)
       const key = c.key
@@ -2001,7 +2009,7 @@ export const useBridleStore = defineStore('bridle', {
       if (c.apiUrl) this._hydrateAttachments(c.apiUrl, c.agentId, c.channel, missed)
     },
 
-    async loadAgentMeta(apiUrl: string, agentId: string, channel = DEFAULT_CHANNEL): Promise<void> {
+    async loadAgentMeta(apiUrl: string, agentId: string, channel = defaultChannel()): Promise<void> {
       const url = `${apiUrl.replace(/\/$/, '')}/agents/${encodeURIComponent(agentId)}`
       try {
         const res = await authedFetch(url)
@@ -2019,7 +2027,7 @@ export const useBridleStore = defineStore('bridle', {
       apiUrl: string,
       agentId: string,
       enabled: boolean,
-      channel = DEFAULT_CHANNEL,
+      channel = defaultChannel(),
     ): Promise<boolean> {
       // Debug is persisted through the regular agent-update endpoint
       // (PUT /agents/:id). The API still pushes the live prompt-debug control
@@ -2049,7 +2057,7 @@ export const useBridleStore = defineStore('bridle', {
       }
     },
 
-    async resetTranscript(apiUrl: string, agentId: string, channel = DEFAULT_CHANNEL) {
+    async resetTranscript(apiUrl: string, agentId: string, channel = defaultChannel()) {
       const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/transcript?channel=${encodeURIComponent(channel)}`
       try {
         const res = await authedFetch(url, { method: 'DELETE' })
@@ -2084,7 +2092,7 @@ export const useBridleStore = defineStore('bridle', {
      * Hydrate debug snapshots for the given bot from localStorage. Called from
      * the Provider on mount so the inspect icon survives a page refresh.
      */
-    loadPersistedDebug(agentId: string, channel = DEFAULT_CHANNEL): void {
+    loadPersistedDebug(agentId: string, channel = defaultChannel()): void {
       const stored = loadDebugFromStorage(agentId)
       if (!stored) return
       const c = this.conversation(agentId, channel)
@@ -2103,7 +2111,7 @@ export const useBridleStore = defineStore('bridle', {
      * (not-delivered messages, also from a previous page load) and this
      * session's live items the runtime has not saved yet.
      */
-    async loadTranscript(apiUrl: string, agentId: string, channel = DEFAULT_CHANNEL) {
+    async loadTranscript(apiUrl: string, agentId: string, channel = defaultChannel()) {
       const c = this.conversation(agentId, channel)
       const generation = accountGeneration
       let page: ITranscriptPage | null = null
@@ -2292,7 +2300,7 @@ export const useBridleStore = defineStore('bridle', {
     async loadOlderTranscript(
       apiUrl: string,
       agentId: string,
-      channel = DEFAULT_CHANNEL,
+      channel = defaultChannel(),
     ): Promise<number> {
       const c = this.conversation(agentId, channel)
       if (c.loadingOlder || !c.hasMoreOlder || !c.transcriptCursor) {

@@ -136,6 +136,9 @@ function only<T>(name: string, methods: Record<string, unknown>): T {
 
 const agents = only<IAgentGateway>('agents', {
   findAll: () => Promise.resolve(AGENTS),
+  // No Ranch admin agent among them: what an Admin may not supervise is
+  // covered by the chat slice's own specs.
+  findAdmin: () => Promise.resolve(null),
   findById: (id: string) =>
     Promise.resolve(AGENTS.find((a) => a.id === id) ?? null),
   hasCreatedBy: () => Promise.resolve(false),
@@ -307,6 +310,7 @@ const chatTool = new ChatTool(
   never('sync'),
   never('insight'),
   access,
+  permission,
 );
 const logs = new LogTool(agents, never('logService'), permission);
 const oauth = new McpOauthTool(never('oauth'), access);

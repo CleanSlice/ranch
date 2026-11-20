@@ -3718,6 +3718,38 @@ export const UpdateUserRoleDtoSchema = {
   required: ["role"],
 } as const;
 
+export const ChatPersonDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      nullable: true,
+      description: "Null once the account no longer exists.",
+      example: "Ada Lovelace",
+    },
+    role: {
+      type: "string",
+      nullable: true,
+      example: "Admin",
+    },
+  },
+  required: ["name", "role"],
+} as const;
+
+export const ChatPeerDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      nullable: true,
+      description:
+        "The asking agent's name, when the caller has access to that agent. Null otherwise: the conversation is then a colleague's, and no more.",
+      example: "Front Desk",
+    },
+  },
+  required: ["name"],
+} as const;
+
 export const ChatSessionDtoSchema = {
   type: "object",
   properties: {
@@ -3791,6 +3823,26 @@ export const ChatSessionDtoSchema = {
     updatedAt: {
       format: "date-time",
       type: "string",
+    },
+    person: {
+      nullable: true,
+      description:
+        'The signed-in person the conversation is with, by name: an account, or the Owner for `externalUserId: "admin"`. Null for a visitor, a messenger chat and another agent.',
+      allOf: [
+        {
+          $ref: "#/components/schemas/ChatPersonDto",
+        },
+      ],
+    },
+    peer: {
+      nullable: true,
+      description:
+        "Set when the conversation is a question another agent handed over (`externalUserId` starts with `peer:`). Null otherwise.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/ChatPeerDto",
+        },
+      ],
     },
   },
   required: [

@@ -1,4 +1,9 @@
 import {
+  ChatParticipantService,
+  type IChatParticipant,
+} from './domain/chatParticipant.service';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
+import {
   Controller,
   Get,
   Post,
@@ -83,12 +88,53 @@ export class ChatController {
     private readonly insight: ChatInsightService,
     private readonly sources: ChatSourceService,
     private readonly access: AgentAccessService,
+    private readonly permission: AgentPermissionService,
+    private readonly participants: ChatParticipantService,
   ) {}
 
   /**
-   * The session, when it exists and the caller reaches its agent
-   * (CLEAN-231). One answer for both: a chat of a hidden agent is a chat
-   * that does not exist.
+   * The conversations with who each one is with, in words (CLEAN-236). An
+   * agent that handed a conversation over is named by the caller's reach on
+   * using agents, not by `supervised`: being told a name is a question of
+   * access to that agent, not of reading its conversations.
+   */
+  private async withParticipants<T extends IChatSessionData>(
+    sessions: T[],
+    req: AuthedRequest | undefined,
+  ): Promise<Array<T & IChatParticipant>> {
+    const reach = await this.access.reachableIds(accessCallerOf(req));
+    const participantOf = this.participants.forViewer((id) => reach.has(id));
+    return Promise.all(
+      sessions.map(async (session) => ({
+        ...session,
+        ...(await participantOf(session)),
+      })),
+    );
+  }
+
+  /**
+   * The agents whose conversations this caller may read here: the ones they
+   * reach (CLEAN-231), less any that only the Owner manages (CLEAN-236).
+   *
+   * These routes read what other people said to an agent. While every Owner
+   * and Admin was one chat participant that added nothing: an Admin saw the
+   * Owner's conversation with the Ranch admin agent in their own chat window
+   * anyway. Now that the Owner's conversation is the Owner's, reading it
+   * from this side is the supervision of an agent the Admin does not manage.
+   */
+  private async supervised(req: AuthedRequest | undefined) {
+    const caller = accessCallerOf(req);
+    const [reach, ownerOnly] = await Promise.all([
+      this.access.reachableIds(caller),
+      this.permission.ownerOnlyIds(caller),
+    ]);
+    return reach.without(ownerOnly);
+  }
+
+  /**
+   * The session, when it exists and the caller may read the conversations
+   * of its agent (`supervised`). One answer for both: a chat of a hidden
+   * agent is a chat that does not exist.
    */
   private async requireChat(
     id: string,
@@ -97,11 +143,9 @@ export class ChatController {
     const session = await this.chats.findById(id);
     const notFound = `Chat ${id} not found`;
     if (!session) throw new NotFoundException(notFound);
-    await this.access.assertReaches(
-      accessCallerOf(req),
-      session.agentId,
-      notFound,
-    );
+    if (!(await this.supervised(req)).has(session.agentId)) {
+      throw new NotFoundException(notFound);
+    }
     return session;
   }
 
@@ -119,14 +163,25 @@ export class ChatController {
   ): Promise<ChatListResponseDto> {
     const page = filter.page ?? 1;
     const perPage = filter.perPage ?? 50;
-    const reach = await this.access.reachableIds(accessCallerOf(req));
+    const reach = await this.supervised(req);
+    // The guard asked whether the caller reaches a named agent. Whether its
+    // conversations are theirs to read is asked here, with the answer an
+    // agent with no conversations gives.
+    if (filter.agentId && !reach.has(filter.agentId)) {
+      return { items: [], total: 0, page, perPage };
+    }
     const { items, total } = await this.chats.list({
       ...filter,
       agentScope: reach.where(),
       page,
       perPage,
     });
-    return { items, total, page, perPage };
+    return {
+      items: await this.withParticipants(items, req),
+      total,
+      page,
+      perPage,
+    };
   }
 
   @ApiOperation({
@@ -139,7 +194,11 @@ export class ChatController {
     @Param('id') id: string,
     @Req() req?: AuthedRequest,
   ): Promise<ChatSessionDto> {
-    return this.requireChat(id, req);
+    const [session] = await this.withParticipants(
+      [await this.requireChat(id, req)],
+      req,
+    );
+    return session;
   }
 
   @ApiOperation({
@@ -215,10 +274,7 @@ export class ChatController {
   ): Promise<SyncChatsResponseDto> {
     // With no agent named the sync walks the agents the caller reaches, and
     // counts only those (CLEAN-231).
-    return this.sync.syncAll(
-      dto.agentId,
-      await this.access.reachableIds(accessCallerOf(req)),
-    );
+    return this.sync.syncAll(dto.agentId, await this.supervised(req));
   }
 
   @ApiOperation({

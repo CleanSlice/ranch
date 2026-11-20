@@ -24,6 +24,7 @@ import type {
   IBridleAgentLimitEvent,
 } from '../domain/bridle.types';
 import { randomUUID } from 'crypto';
+import { OWNER_CLIENT_ID } from '../domain/chatIdentity';
 
 interface IPendingSync {
   resolve: (value: ISyncAgentResult) => void;
@@ -481,6 +482,9 @@ export class BridleGateway extends IBridleGateway {
       // routes) and passed in with the message: `sendToAgent` is synchronous
       // and the token is per message, not per socket (CLEAN-232).
       ...(options.acting?.token ? { acting: options.acting } : {}),
+      // An administrator is sending (CLEAN-236). The runtime read this off
+      // the client id while every Owner and Admin was `admin`.
+      ...((options.admin ?? client?.isAdmin) === true ? { admin: true } : {}),
       // Another agent's question (CLEAN-236): the token the runtime carries
       // on this turn's tool calls, which is what tells it and the API that
       // a colleague is asking, not a visitor.
@@ -660,6 +664,16 @@ export class BridleGateway extends IBridleGateway {
       turnId: data.turnId,
       ts: typeof data.ts === 'number' ? data.ts : Date.now(),
     });
+  }
+
+  isAdminChannel(clientId: string, agentId: string): boolean {
+    if (clientId === OWNER_CLIENT_ID) return true;
+    const channel = this.channels.get(this.clientKey(clientId, agentId));
+    if (!channel) return false;
+    for (const socket of channel.sockets.values()) {
+      if (socket.isAdmin) return true;
+    }
+    return false;
   }
 
   findActiveTurn(

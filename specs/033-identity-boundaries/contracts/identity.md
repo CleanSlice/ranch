@@ -46,10 +46,9 @@ never does:
 | Embed token otherwise | its `sub` | false |
 | Share visitor, anonymous | as today | false |
 
-- `admin` is given to nobody else. `clientIdFromJwtPayload` stops deriving
-  it from token roles; an embed token whose `sub` is an account id or a
-  reserved id is unusable, and `mintEmbedToken` refuses such a `sub` with
-  400 `EMBED_SUB_RESERVED`.
+- `admin` is given to nobody else: `clientIdFromJwtPayload` gives it to a
+  token that carries Owner and is not an embed token. `mintEmbedToken`
+  already refuses a `sub` that is an account id or a reserved id.
 - `isAdmin` travels to the runtime as `admin: true` on the message
   ([handover.md](./handover.md) §2).
 
@@ -69,20 +68,23 @@ An Admin asking for `channel=admin` of an agent they manage reads the
 Owner's conversation with it; of the Ranch assistant they read nothing,
 since only the Owner manages it. This is the supervision rule of FR-035.
 
-`GET /chats` and the routes under it are unchanged (reach-scoped, Owner and
-Admin). The list DTO gains:
+`GET /chats`, the routes under it and the chat tools (`list_chats`,
+`get_chat`, `get_chat_messages`, `sync_chats`, …) stay Owner and Admin and
+are scoped by reach, less the agents only the Owner manages: an Admin lists
+and opens no conversation of the Ranch admin agent, with the answer of a
+chat that does not exist. The session DTO gains:
 
-- `user`: `{ name }` for a conversation whose id is an account's, and for
-  `admin` the Owner's name;
-- `peer`: `{ name? }` for a conversation named `peer:…`, the name present
-  only when the caller reaches the asking agent.
+- `person`: `{ name, role }` for a conversation whose id is an account's,
+  and for `admin` the Owner; `name` is null once the account is gone;
+- `peer`: `{ name }` for a conversation named `peer:…`, the name set only
+  when the caller reaches the asking agent, null otherwise.
 
 ## 4. Console changes
 
 | Console | File | Change |
 |---|---|---|
-| admin | `slices/bridle/stores/bridle.ts`, `components/bridle/Provider.vue` | the channel is the id the hub's `welcome` gives, not the literal `admin` |
-| admin | `slices/chat/utils/chatList.ts` | kinds: `admin` shows the Owner's name; an account id shows the person's name; new kind `peer`, label `Colleague` |
+| admin | `slices/bridle/stores/bridle.ts`, `components/bridle/Provider.vue` | the channel is the viewer's own (`utils/ownChannel.ts`: `admin` for the Owner, the user id otherwise), not the literal `admin`. Known before the socket's `welcome`, which the transcript load cannot wait for |
+| admin | `slices/chat/utils/chatList.ts` | kinds `person` (by name, with the role for an administrator) and `peer` (the agent's name, or `Colleague`); the id of a `peer` conversation is never shown |
 | app | `slices/bridle/stores/bridle.ts` | already takes its channel from `welcome`; verified, no change expected |
 | both | `slices/setup/api/plugins/*` | `X-Ranch-Console` |
 

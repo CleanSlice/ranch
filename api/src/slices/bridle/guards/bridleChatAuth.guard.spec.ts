@@ -79,16 +79,31 @@ describe('BridleChatAuthGuard — JWT callers', () => {
     expect(req.user?.sub).toBe('user-1');
   });
 
-  it('maps owner/admin roles to the shared "admin" client id', async () => {
-    // Same mapping as resolveClientId and the websocket handler: console
-    // admins share one chat identity so history stays in one channel.
-    const { guard } = makeGuard({
+  it('gives the Owner the admin client id, and an Admin their own, both marked as administrators', async () => {
+    // Same mapping as resolveRequester and the websocket handler, by the
+    // same function. The Owner keeps the conversation every administrator
+    // shared; an Admin is their own client since CLEAN-236.
+    const asOwner = makeGuard({
       verify: () => ({ sub: 'user-9', roles: ['Owner'] }),
     });
-    const { context, req } = makeContext({ authorization: 'Bearer jwt-token' });
+    const owner = makeContext({ authorization: 'Bearer jwt-token' });
+    await asOwner.guard.canActivate(owner.context);
+    expect(owner.req.chatAuth).toEqual({
+      clientId: 'admin',
+      kind: 'jwt',
+      isAdmin: true,
+    });
 
-    await guard.canActivate(context);
-    expect(req.chatAuth).toEqual({ clientId: 'admin', kind: 'jwt' });
+    const asAdmin = makeGuard({
+      verify: () => ({ sub: 'user-7', roles: ['Admin'] }),
+    });
+    const admin = makeContext({ authorization: 'Bearer jwt-token' });
+    await asAdmin.guard.canActivate(admin.context);
+    expect(admin.req.chatAuth).toEqual({
+      clientId: 'user-7',
+      kind: 'jwt',
+      isAdmin: true,
+    });
   });
 
   it('never consults the share link service for a JWT caller', async () => {

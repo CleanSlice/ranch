@@ -67,6 +67,7 @@ import {
   buildParts,
   clientIdFromJwtPayload,
   consoleSessionOf,
+  OWNER_CLIENT_ID,
   hasShareToken,
   parseBearer,
   resolveShareIdentity,
@@ -151,18 +152,22 @@ const INLINE_SAFE_TYPES = new Set([
 ]);
 
 /**
- * Who a requester is to the agent's request limits (CLEAN-224). The same test
- * this controller already uses for admin rights: a verified JWT whose chat
- * identity is the shared `admin` channel belongs to an Owner or Admin, who
+ * Who a requester is to the agent's request limits (CLEAN-224). A verified
+ * JWT that carries an administrator's role belongs to an Owner or Admin, who
  * must be able to reach an agent that is at its limit. Everyone else —
- * signed-in users, share visitors, anonymous callers — is a visitor.
+ * signed-in users, share visitors, anonymous callers — is a visitor. Read
+ * off the role the token states, not off the client id: an Admin's is their
+ * own since CLEAN-236.
  */
 function limitSourceOf(
   requester: IAttachmentRequester,
 ): 'visitor' | 'operator' {
-  return requester.kind === 'jwt' && requester.clientId === 'admin'
-    ? 'operator'
-    : 'visitor';
+  return isAdminRequester(requester) ? 'operator' : 'visitor';
+}
+
+/** A requester whose verified token carries an administrator's role. */
+function isAdminRequester(requester: IAttachmentRequester): boolean {
+  return requester.kind === 'jwt' && requester.isAdmin === true;
 }
 
 /**
@@ -246,8 +251,6 @@ const SHARE_FORBIDDEN_DESCRIPTION =
  * so they stay readable by name (CLEAN-175 FR-007).
  */
 const OPEN_CHANNEL_PREFIXES = ['anon-', 'http-'] as const;
-/** The chat identity `clientIdFromJwtPayload` gives every Owner and Admin. */
-const ADMIN_CLIENT_ID = 'admin';
 
 @ApiTags('bridle')
 // The embedded widget, served to visitors on customer sites. Every route here
@@ -397,6 +400,7 @@ export class BridleController {
         return {
           clientId: identity.clientId,
           kind: 'jwt',
+          ...(identity.isAdmin ? { isAdmin: true } : {}),
           ...(user ? { user } : {}),
           ...(session ? { console: session } : {}),
         };
@@ -438,6 +442,24 @@ export class BridleController {
   }
 
   /**
+   * The channel a transcript route is about: the one named, or the
+   * requester's own. The default used to be the literal `admin`, when that
+   * was every administrator's conversation; it is only the Owner's now, and
+   * an Admin who names no channel means their own (CLEAN-236). A caller with
+   * no identity gets `admin` as before, and is refused by the access check.
+   */
+  private async channelOf(
+    req: Record<string, unknown>,
+    agentId: string,
+    named: string | undefined,
+  ): Promise<string> {
+    const wanted = (named ?? '').trim();
+    if (wanted) return wanted;
+    const requester = await this.resolveRequester(req, agentId);
+    return requester.clientId ?? OWNER_CLIENT_ID;
+  }
+
+  /**
    * Gate the transcript routes (read, reset, archive) on who owns the channel.
    *
    * `channel` is caller-chosen and the controller is public, so the name
@@ -450,13 +472,21 @@ export class BridleController {
    *     no credential at all, random and unguessable, so they stay open as
    *     before (specs/010 research R8, CLEAN-175 FR-007). Closing them would
    *     cost the anonymous widget its history on reload.
-   *   - anything else is a JWT sub: an embed visitor (`wslid-…`) or a console
-   *     user's id. Only a JWT whose chat identity is that sub, or an admin
-   *     (chat identity `admin`, see `clientIdFromJwtPayload`), may touch it.
-   *     Everyone else gets `CHANNEL_FORBIDDEN`, again the same 403 for an
-   *     existing and a missing channel, and nothing is read first. A WSLID is
-   *     a known identifier, so without this any visitor could read and erase
-   *     another visitor's conversation (CLEAN-175).
+   *   - anything else is somebody's own conversation: an embed visitor
+   *     (`wslid-…`), a console person's id, or `admin`, the Owner's. Only a
+   *     JWT whose chat identity is that very id may touch it, or an
+   *     administrator who manages the agent (CLEAN-236). Everyone else gets
+   *     `CHANNEL_FORBIDDEN`, the same 403 for an existing and a missing
+   *     channel, and nothing is read first. A WSLID is a known identifier,
+   *     so without this any visitor could read and erase another visitor's
+   *     conversation (CLEAN-175).
+   *
+   * "An administrator who manages the agent" used to be "any Owner or
+   * Admin", by way of the client id they all shared. An Admin now reads
+   * another person's conversation with an agent they manage, the Owner's
+   * included, and nothing of the Ranch admin agent's, which only the Owner
+   * manages. An embed token minted with an administrator's role reads its
+   * own channel and no other: it has no person behind it to manage anything.
    */
   private async requireChannelAccess(
     req: Record<string, unknown>,
@@ -478,9 +508,10 @@ export class BridleController {
     }
 
     const requester = await this.resolveRequester(req, agentId);
+    if (requester.kind === 'jwt' && requester.clientId === channel) return;
     if (
-      requester.kind === 'jwt' &&
-      (requester.clientId === channel || requester.clientId === ADMIN_CLIENT_ID)
+      isAdminRequester(requester) &&
+      (await this.reach.manages(requester.console, agentId))
     ) {
       return;
     }
@@ -538,8 +569,10 @@ export class BridleController {
         source: limitSourceOf(requester),
         silentRefusal: true,
         // The requester, never a socket that happens to share the channel:
-        // `user` and `acting` must name the same person (CLEAN-232).
+        // `user` and `acting` must name the same person (CLEAN-232), and so
+        // must the word that an administrator is sending (CLEAN-236).
         user: requester.user ?? null,
+        admin: isAdminRequester(requester),
         ...(await this.actingFor(requester, agentId)),
       },
     );
@@ -624,6 +657,7 @@ export class BridleController {
       ...(requester.user ? { user: requester.user } : {}),
       ...(await this.actingFor(requester, agentId)),
       source: limitSourceOf(requester),
+      isAdmin: isAdminRequester(requester),
     });
 
     // The agent's limit was full: answered at once, as a refusal a caller can
@@ -934,12 +968,12 @@ export class BridleController {
     );
   }
 
-  /** The guard's identity as the chat slice wants it; `admin` only ever comes from a verified Owner/Admin token. */
+  /** The guard's identity as the chat slice wants it; `isAdmin` only ever comes from a verified token that carries the role. */
   private sourceViewer(req: IChatAuthRequest): IChatSourceViewer {
     const auth = this.requireChatAuth(req);
     return {
       clientId: auth.clientId,
-      isAdmin: auth.kind === 'jwt' && auth.clientId === 'admin',
+      isAdmin: auth.kind === 'jwt' && auth.isAdmin === true,
     };
   }
 
@@ -999,7 +1033,7 @@ export class BridleController {
     @Req() req: Record<string, unknown>,
     @Query() query: TranscriptQueryDto,
   ): Promise<TranscriptResponseDto> {
-    const channel = (query.channel ?? 'admin').trim() || 'admin';
+    const channel = await this.channelOf(req, agentId, query.channel);
     await this.requireChannelAccess(req, agentId, channel);
     const limit = query.limit ?? 50;
     const path = `data/sessions/bridle:${channel}.jsonl`;
@@ -1043,13 +1077,12 @@ export class BridleController {
     // runtime file: the record outlives the runtime compacting its
     // transcript, and `canOpen` depends on who is asking. "Who" is the
     // authenticated requester, never the `channel` query string — an admin
-    // identity comes only from a token that carries the role.
-    // `admin` is what clientIdFromJwtPayload yields for a verified Owner/Admin
-    // token and nothing else; an anonymous caller matches no citation row.
+    // identity comes only from a token that carries the role; an anonymous
+    // caller matches no citation row.
     const requester = await this.resolveRequester(req, agentId);
     const viewer: IChatSourceViewer = {
       clientId: requester.clientId ?? '',
-      isAdmin: requester.kind === 'jwt' && requester.clientId === 'admin',
+      isAdmin: isAdminRequester(requester),
     };
     return {
       messages: await this.chatSources.attach(
@@ -1117,7 +1150,7 @@ export class BridleController {
     @Req() req: Record<string, unknown>,
     @Query('channel') channelRaw?: string,
   ): Promise<void> {
-    const channel = (channelRaw ?? 'admin').trim() || 'admin';
+    const channel = await this.channelOf(req, agentId, channelRaw);
     await this.requireChannelAccess(req, agentId, channel);
     const path = `data/sessions/bridle:${channel}.jsonl`;
     try {
@@ -1168,7 +1201,7 @@ export class BridleController {
     @Req() req: Record<string, unknown>,
     @Query('channel') channelRaw?: string,
   ): Promise<ArchiveTranscriptResponseDto> {
-    const channel = (channelRaw ?? 'admin').trim() || 'admin';
+    const channel = await this.channelOf(req, agentId, channelRaw);
     await this.requireChannelAccess(req, agentId, channel);
     const livePath = `data/sessions/bridle:${channel}.jsonl`;
 

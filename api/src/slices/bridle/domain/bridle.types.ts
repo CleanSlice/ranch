@@ -269,6 +269,14 @@ export interface IBridleSendOptions {
    */
   acting?: IBridleActing;
   /**
+   * Whether the sender is an administrator (CLEAN-236), from what the caller
+   * verified. Stated by the HTTP routes, which have no socket of their own;
+   * absent, the hub reads it off the sending socket. It reaches the runtime
+   * as `admin: true` on the message, which is how the runtime knows an
+   * administrator now that their client id is their own.
+   */
+  admin?: boolean;
+  /**
    * The hand-over token of a question another agent passed to this one
    * (CLEAN-236), minted and verified by the peer slice. The hub forwards it
    * as is and never invents one.

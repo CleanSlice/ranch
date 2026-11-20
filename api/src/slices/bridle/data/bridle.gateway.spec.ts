@@ -249,3 +249,73 @@ describe('BridleGateway.findActiveTurn', () => {
     expect(received[0]).toMatchObject({ type: 'thinking', turnId: 'turn-1' });
   });
 });
+
+/**
+ * CLEAN-236. Every Owner and Admin used to be the client `admin`, and the
+ * runtime read "an administrator is sending" off that id. An Admin's id is
+ * their own now, so the hub says it on the message.
+ */
+describe('BridleGateway — the word that an administrator is sending', () => {
+  function connectedAgent() {
+    const gateway = new BridleGateway();
+    const received: Array<Record<string, unknown>> = [];
+    gateway.registerAgent('agent-1', 'socket-a', (data) =>
+      received.push(data as Record<string, unknown>),
+    );
+    return { gateway, received };
+  }
+  const say = (
+    gateway: BridleGateway,
+    clientId: string,
+    options: Record<string, unknown> = {},
+  ) => gateway.sendToAgent(clientId, 'agent-1', 'hi', [], undefined, options);
+
+  it('is read off the sending socket: an Admin’s yes, a User’s no', () => {
+    const { gateway, received } = connectedAgent();
+    gateway.registerClient('user-admin', 'agent-1', 's-1', () => {}, true);
+    gateway.registerClient('user-user', 'agent-1', 's-2', () => {}, false);
+
+    say(gateway, 'user-admin', { socketId: 's-1' });
+    say(gateway, 'user-user', { socketId: 's-2' });
+
+    expect(received[0]).toMatchObject({ clientId: 'user-admin', admin: true });
+    expect(received[1]).toMatchObject({ clientId: 'user-user' });
+    expect(received[1]).not.toHaveProperty('admin');
+  });
+
+  it('is what the caller states when it verified the sender itself, whatever socket shares the conversation', () => {
+    const { gateway, received } = connectedAgent();
+    // A User's conversation, with nothing administrative about its socket …
+    gateway.registerClient('user-user', 'agent-1', 's-2', () => {}, false);
+    // … and an HTTP route that verified an administrator's token.
+    say(gateway, 'user-admin', { admin: true });
+    // Stated as no, it stays no on an administrator's socket too.
+    gateway.registerClient('user-admin', 'agent-1', 's-1', () => {}, true);
+    say(gateway, 'user-admin', { socketId: 's-1', admin: false });
+
+    expect(received[0]).toMatchObject({ admin: true });
+    expect(received[1]).not.toHaveProperty('admin');
+  });
+
+  it('is never a property a visitor’s message carries', () => {
+    const { gateway, received } = connectedAgent();
+
+    say(gateway, 'anon-1');
+    say(gateway, 'share-1', { user: null });
+
+    for (const message of received) expect(message).not.toHaveProperty('admin');
+  });
+
+  it('says whether an administrator is on a conversation: the Owner’s own, or one with such a socket', () => {
+    const { gateway } = connectedAgent();
+    gateway.registerClient('user-admin', 'agent-1', 's-1', () => {}, true);
+    gateway.registerClient('user-user', 'agent-1', 's-2', () => {}, false);
+
+    expect(gateway.isAdminChannel('admin', 'agent-1')).toBe(true);
+    expect(gateway.isAdminChannel('user-admin', 'agent-1')).toBe(true);
+    expect(gateway.isAdminChannel('user-user', 'agent-1')).toBe(false);
+    expect(gateway.isAdminChannel('nobody', 'agent-1')).toBe(false);
+    // Per agent: the same person on another agent's conversation is not it.
+    expect(gateway.isAdminChannel('user-admin', 'agent-2')).toBe(false);
+  });
+});

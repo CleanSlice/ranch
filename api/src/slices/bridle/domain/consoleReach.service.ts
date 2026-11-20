@@ -1,6 +1,7 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { accessSubject } from '#/user/agentAccess/domain/agentAccess.types';
 import type { UserRoleTypes } from '#/user/user/domain/user.types';
 import type { IConsoleSession } from './chatIdentity';
@@ -30,7 +31,32 @@ export class ConsoleReachService {
     private readonly access: AgentAccessService,
     @Inject(forwardRef(() => IAgentGateway))
     private readonly agents: IAgentGateway,
+    private readonly permission: AgentPermissionService,
   ) {}
+
+  /**
+   * Whether the person behind this session manages that agent (CLEAN-236):
+   * what reading somebody else's conversation with it takes. Every Owner and
+   * Admin used to read every conversation of every agent by being the client
+   * `admin`; supervision is now a question about the agent. Nobody without a
+   * console session manages anything here: not an embed token, whatever
+   * roles it was minted with.
+   */
+  async manages(
+    session: IConsoleSession | null | undefined,
+    agentId: string,
+  ): Promise<boolean> {
+    if (!session) return false;
+    const managed = await this.permission.manageable(
+      {
+        kind: 'person',
+        userId: session.userId,
+        role: session.role as UserRoleTypes,
+      },
+      agentId,
+    );
+    return managed !== null;
+  }
 
   /** The person the lists apply to behind this session, or null. */
   subjectOf(session: IConsoleSession | null | undefined) {

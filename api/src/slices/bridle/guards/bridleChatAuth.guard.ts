@@ -93,7 +93,11 @@ export class BridleChatAuthGuard implements CanActivate {
         );
         if (!admitted) throw new NotFoundException(CHAT_AGENT_NOT_FOUND);
         req.user = verified.payload as unknown as IAuthTokenPayload;
-        req.chatAuth = { clientId: identity.clientId, kind: 'jwt' };
+        req.chatAuth = {
+          clientId: identity.clientId,
+          kind: 'jwt',
+          ...(identity.isAdmin ? { isAdmin: true } : {}),
+        };
         return true;
       }
       // Bad signature, expired, or no usable subject — only fatal when there

@@ -203,6 +203,12 @@ export abstract class IBridleGateway {
     clientId?: string | null,
   ): IActiveTurn | null;
   /**
+   * Whether an administrator is on this conversation (CLEAN-236): the
+   * Owner's own, or one with a socket whose token carried the role. What a
+   * frame pushed to it may show, where that used to be read off the id.
+   */
+  abstract isAdminChannel(clientId: string, agentId: string): boolean;
+  /**
    * Whether the agent is in the middle of a turn for this conversation: a
    * message was handed over and nothing that ends a turn came back, a stream
    * is open, or a thinking turn is open — and there was a sign of life within

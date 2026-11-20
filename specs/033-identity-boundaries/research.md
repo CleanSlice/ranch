@@ -205,6 +205,15 @@ role would open the Owner's conversation).
 **Consequence**: an Admin's messages already in the shared conversation stay
 there (spec, Assumptions).
 
+**Found while implementing**: the list of an agent's conversations (`GET
+/chats` and the `list_chats` family of tools) is scoped by reach, not by
+management. An Admin may talk to the Ranch admin agent without managing it,
+so they would have read the Owner's conversation with it there the moment it
+stopped being a conversation they were part of. Both are scoped by reach
+less the agents only the Owner manages (`AgentPermissionService.
+ownerOnlyIds`, `AgentReach.without`), which is what FR-035 says in the
+spec's words.
+
 ## R8. Every `clientId === 'admin'` that means "an administrator"
 
 **Decision**: replaced by the requester's `isAdmin`, which the same
@@ -227,14 +236,16 @@ person's conversation is supervision of the agent (FR-035).
 
 ## R9. An embed token never opens an account's conversation
 
-**Decision**: `mintEmbedToken` refuses a `sub` that is the id of an existing
-account or a reserved id, and the hub treats an embed token whose `sub` is an
-account id as unusable, as it does a reserved one.
+**Decision**: nothing to add. `mintEmbedToken` already refuses a `sub` that
+is the id of an existing account or a reserved id (found while implementing;
+the first draft of this file planned it as new). Account ids are generated
+by the API, so an account cannot later be created with the `sub` of a token
+already minted, and the planned second check at the hub would guard nothing.
+What does change: an embed token minted with an administrator's role is its
+`sub` and no longer `admin` (R7).
 
 **Rationale**: a conversation is named by the id, and an embed token's `sub`
-is chosen by whoever holds an API key with `embed:mint`. Today that already
-opens a User's conversation by naming their id. With R7 it would open an
-Admin's. Tokens live up to seven days, hence the check at the hub as well.
+is chosen by whoever holds an API key with `embed:mint`.
 
 ## R10. Audiences of the colleague tools
 

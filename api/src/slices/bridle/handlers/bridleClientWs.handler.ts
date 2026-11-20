@@ -299,8 +299,8 @@ export class BridleClientWsHandler
         clientId = identity.clientId;
         email = payload?.email as string | undefined;
         kind = 'jwt';
-        // The person, apart from the channel: owners and admins share the
-        // `admin` conversation, but each keeps their own `sub` (CLEAN-80).
+        // The person, apart from the channel: the Owner's conversation is
+        // `admin`, and their `sub` is still who they are (CLEAN-80).
         const sub = payload?.sub;
         if (typeof sub === 'string' && sub) {
           user = { id: sub, ...(email ? { email } : {}) };

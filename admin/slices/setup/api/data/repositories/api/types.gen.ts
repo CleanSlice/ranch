@@ -1688,6 +1688,21 @@ export type UpdateUserRoleDto = {
   role: AssignableUserRoleTypes;
 };
 
+export type ChatPersonDto = {
+  /**
+   * Null once the account no longer exists.
+   */
+  name: string | null;
+  role: string | null;
+};
+
+export type ChatPeerDto = {
+  /**
+   * The asking agent's name, when the caller has access to that agent. Null otherwise: the conversation is then a colleague's, and no more.
+   */
+  name: string | null;
+};
+
 export type ChatSessionDto = {
   id: string;
   agentId: string;
@@ -1728,6 +1743,14 @@ export type ChatSessionDto = {
   archived: boolean;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The signed-in person the conversation is with, by name: an account, or the Owner for `externalUserId: "admin"`. Null for a visitor, a messenger chat and another agent.
+   */
+  person?: ChatPersonDto | null;
+  /**
+   * Set when the conversation is a question another agent handed over (`externalUserId` starts with `peer:`). Null otherwise.
+   */
+  peer?: ChatPeerDto | null;
 };
 
 export type ChatListResponseDto = {

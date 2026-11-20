@@ -3061,39 +3061,72 @@ export type InitControllerStatusResponses = {
 
 export type InitControllerInitData = {
   body: CreateOwnerDto;
+  headers: {
+    /**
+     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own.
+     */
+    "X-Ranch-Console": "admin" | "app";
+  };
   path?: never;
   query?: never;
   url: "/setup/init";
 };
 
-export type InitControllerInitResponses = {
-  201: unknown;
+export type InitControllerInitErrors = {
+  /**
+   * The request does not say which console it comes from (`X-Ranch-Console`). Body is `{ code: 'CONSOLE_REQUIRED', message }`.
+   */
+  400: unknown;
 };
 
 export type AuthControllerLoginData = {
   body: LoginDto;
+  headers: {
+    /**
+     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own.
+     */
+    "X-Ranch-Console": "admin" | "app";
+  };
   path?: never;
   query?: never;
   url: "/auth/login";
 };
 
-export type AuthControllerLoginResponses = {
-  200: unknown;
+export type AuthControllerLoginErrors = {
+  /**
+   * The request does not say which console it comes from (`X-Ranch-Console`). Body is `{ code: 'CONSOLE_REQUIRED', message }`.
+   */
+  400: unknown;
 };
 
 export type AuthControllerRegisterData = {
   body: RegisterDto;
+  headers: {
+    /**
+     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own.
+     */
+    "X-Ranch-Console": "admin" | "app";
+  };
   path?: never;
   query?: never;
   url: "/auth/register";
 };
 
-export type AuthControllerRegisterResponses = {
-  200: unknown;
+export type AuthControllerRegisterErrors = {
+  /**
+   * The request does not say which console it comes from (`X-Ranch-Console`). Body is `{ code: 'CONSOLE_REQUIRED', message }`.
+   */
+  400: unknown;
 };
 
 export type AuthControllerRefreshData = {
   body?: never;
+  headers: {
+    /**
+     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own.
+     */
+    "X-Ranch-Console": "admin" | "app";
+  };
   path?: never;
   query?: never;
   url: "/auth/refresh";
@@ -3101,13 +3134,19 @@ export type AuthControllerRefreshData = {
 
 export type AuthControllerRefreshErrors = {
   /**
-   * The session cookie is missing, unknown, revoked or past its idle/absolute window. Body is `{ code: 'SESSION_MISSING' | 'SESSION_EXPIRED' | 'SESSION_INVALID', message }`. The console shows its session-ended state.
+   * The session cookie is missing, unknown, revoked, past its idle/absolute window, or was made in the other console. Body is `{ code: 'SESSION_MISSING' | 'SESSION_EXPIRED' | 'SESSION_INVALID', message }`. The console shows its session-ended state.
    */
   401: unknown;
 };
 
 export type AuthControllerLogoutData = {
   body?: never;
+  headers: {
+    /**
+     * The console the request comes from. A sign-in belongs to the console it was made in: each has a session cookie of its own and renews only its own.
+     */
+    "X-Ranch-Console": "admin" | "app";
+  };
   path?: never;
   query?: never;
   url: "/auth/logout";

@@ -151,6 +151,7 @@ describe('AuthService — login issues a session', () => {
     const result = await service.login(
       'ADA@example.com',
       'correct horse',
+      'admin',
       'UA/1',
     );
 
@@ -167,13 +168,17 @@ describe('AuthService — login issues a session', () => {
       sid: 'session-1',
     });
     expect(sessionsStub.pruneForUser).toHaveBeenCalledWith('user-1');
-    expect(sessionsStub.create).toHaveBeenCalledWith('user-1', 'UA/1');
+    expect(sessionsStub.create).toHaveBeenCalledWith('user-1', 'admin', 'UA/1');
   });
 
   it('keeps the secret out of the token and the user', async () => {
     const user = await makeUser();
     const { service, signed } = makeDeps({ users: [user] });
-    const result = await service.login('ada@example.com', 'correct horse');
+    const result = await service.login(
+      'ada@example.com',
+      'correct horse',
+      'admin',
+    );
 
     expect(
       JSON.stringify({ token: result.accessToken, user: result.user, signed }),
@@ -195,9 +200,13 @@ describe('AuthService — refresh', () => {
   it('signs a new token bound to the same session and re-issues the same cookie value', async () => {
     const user = await makeUser();
     const { service, signed } = makeDeps({ users: [user] });
-    const first = await service.login('ada@example.com', 'correct horse');
+    const first = await service.login(
+      'ada@example.com',
+      'correct horse',
+      'admin',
+    );
 
-    const renewed = await service.refresh(first.cookie.value);
+    const renewed = await service.refresh(first.cookie.value, 'admin');
 
     expect(renewed.accessToken).not.toBe(first.accessToken);
     expect(signed[1]).toMatchObject({ sub: 'user-1', sid: 'session-1' });
@@ -209,7 +218,11 @@ describe('AuthService — refresh', () => {
   it('refuses with SESSION_INVALID when the user is gone or disabled', async () => {
     const user = await makeUser();
     const { service, prisma } = makeDeps({ users: [user] });
-    const first = await service.login('ada@example.com', 'correct horse');
+    const first = await service.login(
+      'ada@example.com',
+      'correct horse',
+      'admin',
+    );
 
     await (
       prisma as unknown as {
@@ -219,7 +232,7 @@ describe('AuthService — refresh', () => {
       where: { id: 'user-1' },
       data: { status: 'disabled' },
     });
-    expect(await codeOf(service.refresh(first.cookie.value))).toBe(
+    expect(await codeOf(service.refresh(first.cookie.value, 'admin'))).toBe(
       'SESSION_INVALID',
     );
 
@@ -228,7 +241,7 @@ describe('AuthService — refresh', () => {
       session: { id: 'session-x', userId: 'nobody' },
       cookieMaxAgeSeconds: 1,
     });
-    expect(await codeOf(gone.service.refresh('rs_whatever'))).toBe(
+    expect(await codeOf(gone.service.refresh('rs_whatever', 'admin'))).toBe(
       'SESSION_INVALID',
     );
   });
@@ -236,10 +249,14 @@ describe('AuthService — refresh', () => {
   it('propagates the session service refusal after logout', async () => {
     const user = await makeUser();
     const { service } = makeDeps({ users: [user] });
-    const first = await service.login('ada@example.com', 'correct horse');
+    const first = await service.login(
+      'ada@example.com',
+      'correct horse',
+      'admin',
+    );
 
-    expect(await service.logout(first.cookie.value)).toBe(true);
-    expect(await codeOf(service.refresh(first.cookie.value))).toBe(
+    expect(await service.logout(first.cookie.value, 'admin')).toBe(true);
+    expect(await codeOf(service.refresh(first.cookie.value, 'admin'))).toBe(
       'SESSION_INVALID',
     );
   });
@@ -251,6 +268,7 @@ describe('AuthService — issueSession for the first-run bootstrap', () => {
     const { service, signed } = makeDeps();
     const result = await service.issueSession(
       new UserMapper().toEntity(user as never),
+      'admin',
       null,
     );
 
@@ -282,7 +300,10 @@ describe('AuthService — mintEmbedToken (CLEAN-175)', () => {
   it('strips Owner and Admin unless the key may mint admin tokens, and keeps the stamp either way', async () => {
     const { service, signed } = makeDeps();
 
-    await service.mintEmbedToken({ sub: 'kiosk', roles: ['Owner', 'User'] as never });
+    await service.mintEmbedToken({
+      sub: 'kiosk',
+      roles: ['Owner', 'User'] as never,
+    });
     await service.mintEmbedToken({
       sub: 'kiosk',
       roles: ['Owner'] as never,
@@ -302,7 +323,9 @@ describe('AuthService — mintEmbedToken refuses a sub that names a console user
     const user = await makeUser({ id: 'user-1' });
     const { service, signed } = makeDeps({ users: [user] });
 
-    await expect(service.mintEmbedToken({ sub: 'user-1' })).rejects.toMatchObject({
+    await expect(
+      service.mintEmbedToken({ sub: 'user-1' }),
+    ).rejects.toMatchObject({
       status: 400,
       message: 'sub must not be an existing user id',
     });
@@ -337,5 +360,39 @@ describe('AuthService — mintEmbedToken refuses a reserved client id (CLEAN-232
       message: 'sub must not be a reserved client id',
     });
     expect(signed).toHaveLength(0);
+  });
+});
+
+/**
+ * CLEAN-236. The console goes with every call to the session service: which
+ * one a sign-in is made in, and which one is renewing or signing out.
+ */
+describe('AuthService — the console of a sign-in', () => {
+  it('creates the session in the console that signed in', async () => {
+    const user = await makeUser();
+    const { service, sessionsStub } = makeDeps({ users: [user] });
+
+    await service.login('ada@example.com', 'correct horse', 'app', 'UA/2');
+
+    expect(sessionsStub.create).toHaveBeenCalledWith('user-1', 'app', 'UA/2');
+  });
+
+  it('renews and signs out for the console that asks', async () => {
+    const user = await makeUser();
+    const { service, sessionsStub } = makeDeps({ users: [user] });
+    const first = await service.login(
+      'ada@example.com',
+      'correct horse',
+      'app',
+    );
+
+    await service.refresh(first.cookie.value, 'app');
+    await service.logout(first.cookie.value, 'app');
+
+    expect(sessionsStub.refresh).toHaveBeenCalledWith(
+      first.cookie.value,
+      'app',
+    );
+    expect(sessionsStub.revoke).toHaveBeenCalledWith(first.cookie.value, 'app');
   });
 });

@@ -1,5 +1,6 @@
 import type { InternalAxiosRequestConfig } from 'axios';
 import { client } from '../data/repositories/api/client.gen';
+import { RANCH_CONSOLE, RANCH_CONSOLE_HEADER } from '../console';
 
 /**
  * A request config the response interceptor may have already re-issued once
@@ -51,6 +52,9 @@ export default defineNuxtPlugin({
       withCredentials: true,
     });
     client.instance.defaults.withCredentials = true;
+    // Which of the two session cookies on the API host is ours (CLEAN-236).
+    client.instance.defaults.headers.common[RANCH_CONSOLE_HEADER] =
+      RANCH_CONSOLE;
 
     const nuxtApp = useNuxtApp();
 
@@ -61,6 +65,9 @@ export default defineNuxtPlugin({
     // share headers, so those are left untouched — an owner opening their own
     // link must chat as a visitor.
     client.instance.interceptors.request.use((config) => {
+      // On every request, share-link ones included: a header that is only
+      // sometimes there is a sign-in that only sometimes renews.
+      setHeader(config.headers, RANCH_CONSOLE_HEADER, RANCH_CONSOLE);
       if (hasHeader(config.headers, SHARE_TOKEN_HEADER)) return config;
       const token = useAuthStore().accessToken;
       if (token) setHeader(config.headers, AUTH_HEADER, `Bearer ${token}`);

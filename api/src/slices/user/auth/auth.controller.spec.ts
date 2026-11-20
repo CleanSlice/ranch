@@ -1,13 +1,15 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { AuthController, sessionCookieOf } from './auth.controller';
+import { AuthController, consoleOf, sessionCookieOf } from './auth.controller';
 import type { AuthService } from './domain/auth.service';
 import type { ApiKeyService } from '../apiKey/domain/apiKey.service';
 import type { SessionService } from '../session/domain/session.service';
 
 /**
  * The controller is where the cookie is written and cleared; the specs pin
- * the attributes a browser needs to keep the secret out of page code.
+ * the attributes a browser needs to keep the secret out of page code, and
+ * that each console has a cookie of its own (CLEAN-236): both consoles call
+ * this one host, so under one name it was one sign-in for both.
  */
 
 const user = {
@@ -33,7 +35,7 @@ function makeController(
       }
       return sessionResult(secret);
     }),
-    logout: jest.fn(async (secret: string) => secret === 'rs_live'),
+    logout: jest.fn(async (secret: string) => secret.startsWith('rs_live')),
     ...stubs,
   };
   const authService = authServiceStub as unknown as AuthService;
@@ -87,18 +89,33 @@ function makeRes() {
   return { res, cookies, cleared };
 }
 
+/** A request as a console sends it: naming itself, unless `console` is null. */
 function makeReq(
   cookies?: Record<string, string>,
+  // A console's name, anything else a caller might send, or null for none.
+  console: string | null = 'admin',
   userAgent = 'UA/1',
 ): Request {
   return {
     cookies,
-    headers: { 'user-agent': userAgent },
+    headers: {
+      'user-agent': userAgent,
+      ...(console === null ? {} : { 'x-ranch-console': console }),
+    },
   } as unknown as Request;
 }
 
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: 'lax',
+  path: '/auth',
+  secure: false,
+  maxAge: 604_800_000,
+};
+const CLEARED = { ...COOKIE_OPTIONS, maxAge: 0 };
+
 describe('AuthController — login', () => {
-  it('sets the httpOnly /auth cookie and returns the DTO without the secret', async () => {
+  it('sets the httpOnly /auth cookie of the console and returns the DTO without the secret', async () => {
     const { controller, authServiceStub } = makeController();
     const { res, cookies } = makeRes();
 
@@ -111,86 +128,242 @@ describe('AuthController — login', () => {
     expect(dto).toEqual({ accessToken: 'jwt-8', expiresIn: 900, user });
     expect(JSON.stringify(dto)).not.toContain('rs_login');
     expect(cookies).toEqual([
-      [
-        'ranch_session',
-        'rs_login',
-        {
-          httpOnly: true,
-          sameSite: 'lax',
-          path: '/auth',
-          secure: false,
-          maxAge: 604_800_000,
-        },
-      ],
+      ['ranch_session_admin', 'rs_login', COOKIE_OPTIONS],
     ]);
     expect(authServiceStub.login).toHaveBeenCalledWith(
       'ada@example.com',
       'pw',
+      'admin',
       'UA/1',
     );
+  });
+
+  it('signs the user console in under its own cookie, and leaves the other alone', async () => {
+    const { controller, authServiceStub } = makeController();
+    const { res, cookies, cleared } = makeRes();
+
+    await controller.login(
+      { email: 'ada@example.com', password: 'pw' },
+      // The management console is signed in already, in the same browser.
+      makeReq({ ranch_session_admin: 'rs_owner' }, 'app'),
+      res,
+    );
+
+    expect(cookies.map(([name]) => name)).toEqual(['ranch_session_app']);
+    expect(cleared).toEqual([]);
+    expect(authServiceStub.login).toHaveBeenCalledWith(
+      'ada@example.com',
+      'pw',
+      'app',
+      'UA/1',
+    );
+  });
+
+  it.each([null, 'ADMIN ', 'dashboard', ''])(
+    'refuses a sign-in that does not say which console it is (%p), unless it only differs in case',
+    async (stated) => {
+      const { controller, authServiceStub } = makeController();
+      const { res, cookies } = makeRes();
+      const attempt = controller.login(
+        { email: 'ada@example.com', password: 'pw' },
+        makeReq(undefined, stated),
+        res,
+      );
+
+      if (stated === 'ADMIN ') {
+        await attempt;
+        expect(cookies[0][0]).toBe('ranch_session_admin');
+        return;
+      }
+      const err = await attempt.catch((e) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(err.getResponse()).toMatchObject({ code: 'CONSOLE_REQUIRED' });
+      expect(authServiceStub.login).not.toHaveBeenCalled();
+      expect(cookies).toEqual([]);
+    },
+  );
+});
+
+describe('AuthController — register', () => {
+  it('creates the sign-in in the console that registered', async () => {
+    const { controller, authServiceStub } = makeController();
+    const { res, cookies } = makeRes();
+
+    await controller.register(
+      { name: 'Ada', email: 'ada@example.com', password: 'pw' },
+      makeReq(undefined, 'app'),
+      res,
+    );
+
+    expect(authServiceStub.register).toHaveBeenCalledWith(
+      'Ada',
+      'ada@example.com',
+      'pw',
+      'app',
+      'UA/1',
+    );
+    expect(cookies.map(([name]) => name)).toEqual(['ranch_session_app']);
+  });
+
+  it('refuses one that does not say which console it is', async () => {
+    const { controller, authServiceStub } = makeController();
+    const { res } = makeRes();
+
+    const err = await controller
+      .register(
+        { name: 'Ada', email: 'ada@example.com', password: 'pw' },
+        makeReq(undefined, null),
+        res,
+      )
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(authServiceStub.register).not.toHaveBeenCalled();
   });
 });
 
 describe('AuthController — refresh', () => {
-  it('reads the cookie, re-sets it and returns a fresh token', async () => {
+  it('reads the cookie of its console, re-sets it and returns a fresh token', async () => {
     const { controller, authServiceStub } = makeController();
     const { res, cookies } = makeRes();
 
     const dto = await controller.refresh(
-      makeReq({ ranch_session: 'rs_live' }),
+      makeReq({ ranch_session_admin: 'rs_live' }),
       res,
     );
 
-    expect(authServiceStub.refresh).toHaveBeenCalledWith('rs_live');
+    expect(authServiceStub.refresh).toHaveBeenCalledWith('rs_live', 'admin');
     expect(dto.accessToken).toBe('jwt-7');
     expect(dto.expiresIn).toBe(900);
-    expect(cookies[0][1]).toBe('rs_live');
+    expect(cookies).toEqual([
+      ['ranch_session_admin', 'rs_live', COOKIE_OPTIONS],
+    ]);
   });
 
-  it('answers 401 SESSION_MISSING without a cookie and sets nothing', async () => {
+  // The reproduction of 2026-11-20: the user console signed in as a User,
+  // the management console then signed in as the Owner in the same browser,
+  // and the user console's next renewal came back as the Owner.
+  it('two consoles in one browser each renew their own sign-in', async () => {
+    const { controller, authServiceStub } = makeController();
+    const jar = {
+      ranch_session_app: 'rs_of_the_user',
+      ranch_session_admin: 'rs_of_the_owner',
+    };
+
+    const app = makeRes();
+    await controller.refresh(makeReq(jar, 'app'), app.res);
+    const admin = makeRes();
+    await controller.refresh(makeReq(jar, 'admin'), admin.res);
+
+    expect(authServiceStub.refresh.mock.calls).toEqual([
+      ['rs_of_the_user', 'app'],
+      ['rs_of_the_owner', 'admin'],
+    ]);
+    expect(app.cookies).toEqual([
+      ['ranch_session_app', 'rs_of_the_user', COOKIE_OPTIONS],
+    ]);
+    expect(admin.cookies).toEqual([
+      ['ranch_session_admin', 'rs_of_the_owner', COOKIE_OPTIONS],
+    ]);
+  });
+
+  it('answers 401 SESSION_MISSING when its own cookie is not there, whatever the other console has', async () => {
     const { controller } = makeController();
     const { res, cookies } = makeRes();
 
-    const err = await controller.refresh(makeReq(), res).catch((e) => e);
+    const err = await controller
+      .refresh(makeReq({ ranch_session_admin: 'rs_owner' }, 'app'), res)
+      .catch((e) => e);
     expect(err).toBeInstanceOf(UnauthorizedException);
     expect(err.getResponse()).toMatchObject({ code: 'SESSION_MISSING' });
     expect(cookies).toHaveLength(0);
   });
 
-  it('ignores non-string cookie values', () => {
-    expect(sessionCookieOf(makeReq({ ranch_session: 'rs_x' }))).toBe('rs_x');
-    expect(sessionCookieOf(makeReq())).toBe('');
+  it('a request that does not say which console it is has no sign-in at all', async () => {
+    const { controller, authServiceStub } = makeController();
+    const { res, cookies } = makeRes();
+
+    const err = await controller
+      .refresh(
+        makeReq(
+          { ranch_session_admin: 'rs_owner', ranch_session_app: 'rs_user' },
+          null,
+        ),
+        res,
+      )
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect(err.getResponse()).toMatchObject({ code: 'SESSION_INVALID' });
+    expect(authServiceStub.refresh).not.toHaveBeenCalled();
+    expect(cookies).toHaveLength(0);
+  });
+
+  it('never reads the cookie both consoles used to share, and clears it when the browser still sends it', async () => {
+    const { controller, authServiceStub } = makeController();
+    const { res, cookies, cleared } = makeRes();
+
+    const err = await controller
+      .refresh(makeReq({ ranch_session: 'rs_from_before' }, 'admin'), res)
+      .catch((e) => e);
+
+    // Each console asks for a sign-in once: the old session cannot be said
+    // to belong to either.
+    expect(err.getResponse()).toMatchObject({ code: 'SESSION_MISSING' });
+    expect(authServiceStub.refresh).toHaveBeenCalledWith('', 'admin');
+    expect(cookies).toHaveLength(0);
+    expect(cleared).toEqual([['ranch_session', CLEARED]]);
+  });
+
+  it('reads the cookie of the named console and ignores non-string values', () => {
+    const jar = { ranch_session_admin: 'rs_a', ranch_session_app: 'rs_b' };
+    expect(sessionCookieOf(makeReq(jar), 'admin')).toBe('rs_a');
+    expect(sessionCookieOf(makeReq(jar), 'app')).toBe('rs_b');
+    expect(sessionCookieOf(makeReq(), 'admin')).toBe('');
+    expect(sessionCookieOf(makeReq({ ranch_session: 'rs_x' }), 'admin')).toBe(
+      '',
+    );
     expect(
-      sessionCookieOf({
-        cookies: { ranch_session: ['a'] },
-      } as unknown as Request),
+      sessionCookieOf(
+        { cookies: { ranch_session_admin: ['a'] } } as unknown as Request,
+        'admin',
+      ),
     ).toBe('');
+  });
+
+  it('reads the console from the header, case and spaces aside, and nothing else', () => {
+    expect(consoleOf(makeReq(undefined, 'app'))).toBe('app');
+    expect(consoleOf(makeReq(undefined, ' Admin '))).toBe('admin');
+    expect(consoleOf(makeReq(undefined, null))).toBeNull();
+    expect(consoleOf(makeReq(undefined, 'owner'))).toBeNull();
+    expect(
+      consoleOf({
+        headers: { 'x-ranch-console': ['app', 'admin'] },
+      } as unknown as Request),
+    ).toBe('app');
   });
 });
 
 describe('AuthController — logout', () => {
-  it('revokes a live session and clears the cookie', async () => {
-    const { controller } = makeController();
+  it('revokes the sign-in of its console and clears that cookie only', async () => {
+    const { controller, authServiceStub } = makeController();
     const { res, cleared } = makeRes();
 
     const dto = await controller.logout(
-      makeReq({ ranch_session: 'rs_live' }),
+      makeReq(
+        {
+          ranch_session_admin: 'rs_live_admin',
+          ranch_session_app: 'rs_live_app',
+        },
+        'app',
+      ),
       res,
     );
 
     expect(dto).toEqual({ revoked: true });
-    expect(cleared).toEqual([
-      [
-        'ranch_session',
-        {
-          httpOnly: true,
-          sameSite: 'lax',
-          path: '/auth',
-          secure: false,
-          maxAge: 0,
-        },
-      ],
-    ]);
+    expect(authServiceStub.logout).toHaveBeenCalledWith('rs_live_app', 'app');
+    // The management console stays signed in.
+    expect(cleared).toEqual([['ranch_session_app', CLEARED]]);
   });
 
   it('is 200 with revoked=false and still clears the cookie when nothing matched', async () => {
@@ -200,6 +373,20 @@ describe('AuthController — logout', () => {
     const dto = await controller.logout(makeReq(), res);
 
     expect(dto).toEqual({ revoked: false });
-    expect(cleared).toHaveLength(1);
+    expect(cleared).toEqual([['ranch_session_admin', CLEARED]]);
+  });
+
+  it('signs nobody out for a request that does not say which console it is', async () => {
+    const { controller, authServiceStub } = makeController();
+    const { res, cleared } = makeRes();
+
+    const dto = await controller.logout(
+      makeReq({ ranch_session_admin: 'rs_live' }, null),
+      res,
+    );
+
+    expect(dto).toEqual({ revoked: false });
+    expect(authServiceStub.logout).not.toHaveBeenCalled();
+    expect(cleared).toEqual([]);
   });
 });

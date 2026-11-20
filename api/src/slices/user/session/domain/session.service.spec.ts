@@ -22,6 +22,7 @@ function makeGateway() {
         lastSeenAt: now,
         revokedAt: null,
         userAgent: data.userAgent ?? null,
+        surface: data.surface,
         createdAt: now,
         updatedAt: now,
       };
@@ -89,7 +90,7 @@ async function codeOf(p: Promise<unknown>): Promise<string | undefined> {
 describe('SessionService — create', () => {
   it('mints an rs_ secret and stores only its sha256', async () => {
     const { service, rows } = makeService();
-    const issue = await service.create('user-1', 'Mozilla/5.0');
+    const issue = await service.create('user-1', 'admin', 'Mozilla/5.0');
 
     expect(issue.secret).toMatch(/^rs_[A-Za-z0-9_-]{43}$/);
     const row = rows.get(issue.sessionId)!;
@@ -106,7 +107,7 @@ describe('SessionService — create', () => {
       SESSION_ABSOLUTE_DAYS: '10',
     });
     const before = Date.now();
-    const issue = await service.create('user-1');
+    const issue = await service.create('user-1', 'admin');
     const row = rows.get(issue.sessionId)!;
 
     expect(row.expiresAt.getTime()).toBeGreaterThanOrEqual(
@@ -127,7 +128,7 @@ describe('SessionService — create', () => {
 describe('SessionService — refresh', () => {
   it('slides expiresAt, touches lastSeenAt and keeps the same row and secret', async () => {
     const { service, rows, stub } = makeService({ SESSION_IDLE_DAYS: '1' });
-    const issue = await service.create('user-1');
+    const issue = await service.create('user-1', 'admin');
     const original = rows.get(issue.sessionId)!;
     // Pretend the row is half-way through its window.
     rows.set(issue.sessionId, {
@@ -136,7 +137,7 @@ describe('SessionService — refresh', () => {
       lastSeenAt: new Date(0),
     });
 
-    const result = await service.refresh(issue.secret);
+    const result = await service.refresh(issue.secret, 'admin');
 
     expect(result.session.id).toBe(issue.sessionId);
     expect(result.session.secretHash).toBe(original.secretHash);
@@ -150,41 +151,43 @@ describe('SessionService — refresh', () => {
 
   it('answers SESSION_MISSING for an empty secret', async () => {
     const { service } = makeService();
-    expect(await codeOf(service.refresh(''))).toBe('SESSION_MISSING');
+    expect(await codeOf(service.refresh('', 'admin'))).toBe('SESSION_MISSING');
   });
 
   it('answers SESSION_INVALID for a wrong prefix or an unknown secret', async () => {
     const { service } = makeService();
-    expect(await codeOf(service.refresh('rk_not_a_session'))).toBe(
+    expect(await codeOf(service.refresh('rk_not_a_session', 'admin'))).toBe(
       'SESSION_INVALID',
     );
-    expect(await codeOf(service.refresh('rs_unknownunknownunknown'))).toBe(
-      'SESSION_INVALID',
-    );
+    expect(
+      await codeOf(service.refresh('rs_unknownunknownunknown', 'admin')),
+    ).toBe('SESSION_INVALID');
   });
 
   it('answers SESSION_EXPIRED for revoked, idle-expired and absolute-expired rows', async () => {
     const { service, rows } = makeService();
 
-    const revoked = await service.create('user-1');
-    await service.revoke(revoked.secret);
-    expect(await codeOf(service.refresh(revoked.secret))).toBe(
+    const revoked = await service.create('user-1', 'admin');
+    await service.revoke(revoked.secret, 'admin');
+    expect(await codeOf(service.refresh(revoked.secret, 'admin'))).toBe(
       'SESSION_EXPIRED',
     );
 
-    const idle = await service.create('user-1');
+    const idle = await service.create('user-1', 'admin');
     rows.set(idle.sessionId, {
       ...rows.get(idle.sessionId)!,
       expiresAt: new Date(Date.now() - 1),
     });
-    expect(await codeOf(service.refresh(idle.secret))).toBe('SESSION_EXPIRED');
+    expect(await codeOf(service.refresh(idle.secret, 'admin'))).toBe(
+      'SESSION_EXPIRED',
+    );
 
-    const absolute = await service.create('user-1');
+    const absolute = await service.create('user-1', 'admin');
     rows.set(absolute.sessionId, {
       ...rows.get(absolute.sessionId)!,
       absoluteExpiresAt: new Date(Date.now() - 1),
     });
-    expect(await codeOf(service.refresh(absolute.secret))).toBe(
+    expect(await codeOf(service.refresh(absolute.secret, 'admin'))).toBe(
       'SESSION_EXPIRED',
     );
   });
@@ -193,21 +196,21 @@ describe('SessionService — refresh', () => {
 describe('SessionService — revoke and prune', () => {
   it('revokes once and reports false afterwards or for unknown secrets', async () => {
     const { service } = makeService();
-    const issue = await service.create('user-1');
+    const issue = await service.create('user-1', 'admin');
 
-    expect(await service.revoke(issue.secret)).toBe(true);
-    expect(await service.revoke(issue.secret)).toBe(false);
-    expect(await service.revoke('')).toBe(false);
-    expect(await service.revoke('rs_nope')).toBe(false);
+    expect(await service.revoke(issue.secret, 'admin')).toBe(true);
+    expect(await service.revoke(issue.secret, 'admin')).toBe(false);
+    expect(await service.revoke('', 'admin')).toBe(false);
+    expect(await service.revoke('rs_nope', 'admin')).toBe(false);
   });
 
   it('prunes only rows past their absolute deadline or revoked more than 30 days ago', async () => {
     const { service, rows } = makeService();
-    const live = await service.create('user-1');
-    const old = await service.create('user-1');
-    const recentlyRevoked = await service.create('user-1');
-    const longRevoked = await service.create('user-1');
-    const otherUser = await service.create('user-2');
+    const live = await service.create('user-1', 'admin');
+    const old = await service.create('user-1', 'admin');
+    const recentlyRevoked = await service.create('user-1', 'admin');
+    const longRevoked = await service.create('user-1', 'admin');
+    const otherUser = await service.create('user-2', 'admin');
 
     rows.set(old.sessionId, {
       ...rows.get(old.sessionId)!,
@@ -249,5 +252,80 @@ describe('SessionService — cookie options', () => {
 
     const secure = makeService().service;
     expect(secure.cookieOptions(1).secure).toBe(true);
+  });
+});
+
+/**
+ * CLEAN-236. A sign-in belongs to the console it was made in. Both consoles
+ * call one API host, so a console is told apart by what it says it is and by
+ * what the session row says it was made in; the second is the one that
+ * decides.
+ */
+describe('SessionService — a sign-in belongs to its console', () => {
+  it('records the console the sign-in was made in', async () => {
+    const { service, rows } = makeService();
+
+    await service.create('user-1', 'app');
+    await service.create('user-1', 'admin');
+
+    expect([...rows.values()].map((r) => r.surface)).toEqual(['app', 'admin']);
+  });
+
+  it('is renewed by its own console, and is an invalid session to the other', async () => {
+    const { service } = makeService();
+    const admin = await service.create('user-owner', 'admin');
+    const app = await service.create('user-user', 'app');
+
+    expect((await service.refresh(admin.secret, 'admin')).session.userId).toBe(
+      'user-owner',
+    );
+    expect((await service.refresh(app.secret, 'app')).session.userId).toBe(
+      'user-user',
+    );
+    // The secret of one console presented by the other: what a shared
+    // cookie used to make happen by itself.
+    expect(await codeOf(service.refresh(admin.secret, 'app'))).toBe(
+      'SESSION_INVALID',
+    );
+    expect(await codeOf(service.refresh(app.secret, 'admin'))).toBe(
+      'SESSION_INVALID',
+    );
+  });
+
+  it('a refusal for the wrong console does not slide the session', async () => {
+    const { service, stub } = makeService();
+    const admin = await service.create('user-owner', 'admin');
+
+    await codeOf(service.refresh(admin.secret, 'app'));
+
+    expect(stub.touch).not.toHaveBeenCalled();
+  });
+
+  it('is signed out by its own console only', async () => {
+    const { service } = makeService();
+    const admin = await service.create('user-owner', 'admin');
+
+    expect(await service.revoke(admin.secret, 'app')).toBe(false);
+    expect(
+      (await service.refresh(admin.secret, 'admin')).session.id,
+    ).toBeDefined();
+
+    expect(await service.revoke(admin.secret, 'admin')).toBe(true);
+    expect(await codeOf(service.refresh(admin.secret, 'admin'))).toBe(
+      'SESSION_EXPIRED',
+    );
+  });
+
+  it('a session from before the console was recorded is renewable by neither', async () => {
+    const { service, rows } = makeService();
+    const old = await service.create('user-1', 'admin');
+    for (const [id, row] of rows) rows.set(id, { ...row, surface: null });
+
+    for (const surface of ['admin', 'app'] as const) {
+      expect(await codeOf(service.refresh(old.secret, surface))).toBe(
+        'SESSION_INVALID',
+      );
+      expect(await service.revoke(old.secret, surface)).toBe(false);
+    }
   });
 });

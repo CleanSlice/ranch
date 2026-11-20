@@ -82,6 +82,7 @@ const baseInput = (userId = 'user-1', secretHash = 'hash-1') => ({
   expiresAt: new Date(Date.now() + DAY_MS),
   absoluteExpiresAt: new Date(Date.now() + 30 * DAY_MS),
   userAgent: 'ua',
+  surface: 'admin' as const,
 });
 
 describe('SessionGateway', () => {

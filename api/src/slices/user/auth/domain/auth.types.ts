@@ -168,6 +168,12 @@ const AUTH_ERROR_MESSAGES: Record<AuthErrorCode, string> = {
   SESSION_INVALID: 'Invalid session',
 };
 
+/**
+ * A sign-in request that does not say which console it comes from
+ * (CLEAN-236). A 400, not a 401: nothing about the credentials was wrong.
+ */
+export const CONSOLE_REQUIRED_CODE = 'CONSOLE_REQUIRED';
+
 /** 401 with an object body `{ code, message }` (same shape as the share-link 403s). */
 export function unauthorized(code: AuthErrorCode): UnauthorizedException {
   return new UnauthorizedException({

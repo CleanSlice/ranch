@@ -76,6 +76,7 @@ export function makeActingParty(secret: string = ACTING_TEST_SECRET) {
       lastSeenAt: new Date(now),
       revokedAt: null,
       userAgent: null,
+      surface: 'admin',
       createdAt: new Date(now),
       updatedAt: new Date(now),
       ...overrides,
